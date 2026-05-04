@@ -146,16 +146,17 @@ ${preview}
 مهمتك:
 1. حدد رقم الصف (0-indexed من القائمة أعلاه) الذي يحتوي على عناوين الأعمدة الفعلية
 2. عيّن كل عمود للحقل المناسب من القائمة:
-   - awb        : رقم الشحنة / البوليصة / AWB
-   - shipDate   : تاريخ الشحن
-   - dest       : الدولة المقصودة (ليس المدينة)
+   - awb        : رقم الشحنة / البوليصة / AWB / Airway Bill No.
+   - shipDate   : تاريخ الشحن / Pick up Date
+   - dest       : الدولة المقصودة (أو رمز الدولة AE/BH/KW/QA/OM/EG/JO إذا الملف دولي)
    - destCity   : المدينة (اختياري)
-   - weight     : الوزن بالكيلوغرام
-   - deliveryCharges : رسوم التوصيل / الشحن الأساسية
+   - weight     : الوزن بالكيلوغرام. ⚠️ **مهم لشركة أرامكس**: لو وُجدت أعمدة متعددة فيها كلمة "weight" (مثل Net weight و Chargeable Weight و Actual weight)، اختر **Chargeable Weight** دائماً — هذا الوزن المُسعَّر اللي يفوتر عليه أرامكس
+   - deliveryCharges : رسوم التوصيل / الشحن الأساسية / Base Charge
    - rss        : رسوم المناطق النائية RSS / Remote Area
-   - fuelSurcharge   : رسوم الوقود / Fuel Surcharge
+   - fuelSurcharge   : رسوم الوقود / Fuel Surcharge / Other Charge (في فواتير أرامكس عادة Other Charge يحتوي الفيول + RSS)
    - codAmount  : الدفع عند الاستلام COD (اختياري)
    - serviceType: نوع الخدمة / Service Type / Road / Air / Express (اختياري)
+   - billingType: نوع الفوترة / Billing Type (للتمييز بين محلي ودولي في أرامكس: ZDOI=محلي، ZIBI/ZOBI=دولي)
 
 3. إذا لم يكن الحقل موجوداً في الملف اجعل قيمته null
 
@@ -167,12 +168,13 @@ ${preview}
     "shipDate": "Shipment Date",
     "dest": "Country",
     "destCity": null,
-    "weight": "Weight KG",
-    "deliveryCharges": "Delivery Charges",
+    "weight": "Chargeable Weight",
+    "deliveryCharges": "Base Charge",
     "rss": null,
-    "fuelSurcharge": "Fuel Surcharge",
+    "fuelSurcharge": "Other Charge",
     "codAmount": null,
-    "serviceType": "Service Type"
+    "serviceType": null,
+    "billingType": "Billing Type"
   },
   "missingFields": ["rss", "codAmount", "serviceType"],
   "notes": "ملاحظة مختصرة إذا وجدت شيء مهم"
