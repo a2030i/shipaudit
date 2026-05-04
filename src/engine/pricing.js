@@ -93,7 +93,19 @@ export function calcTotal(contract, country, weight, shipDate, serviceType, orig
   // Per-destination fuel/RSS overrides take precedence over contract defaults.
   // Used when, e.g., domestic and international shipments share one contract
   // but apply different fuel-surcharge percentages.
-  const fuelPctEff = pricingDef.fuelPct ?? contract.fuelPct ?? 0;
+  let fuelPctEff = pricingDef.fuelPct ?? contract.fuelPct ?? 0;
+
+  // Per-date fuel rate history. Entries represent earlier periods with a
+  // different rate, each capped by `upTo` (inclusive). The default `fuelPct`
+  // applies to dates after the latest entry.
+  //   fuelHistory: [{ upTo: '2026-03-02', pct: 0.235 }, ...]
+  const fuelHist = pricingDef.fuelHistory ?? contract.fuelHistory;
+  if (Array.isArray(fuelHist) && fuelHist.length && shipDate) {
+    const sorted = [...fuelHist].sort((a, b) => (a.upTo || '').localeCompare(b.upTo || ''));
+    const match = sorted.find(h => h.upTo && shipDate <= h.upTo);
+    if (match) fuelPctEff = match.pct;
+  }
+
   const rssPctEff  = pricingDef.rss     ?? contract.rss     ?? 0;
   const rssFixedEff = pricingDef.rssFixed ?? contract.rssFixed;
 
