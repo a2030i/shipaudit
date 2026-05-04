@@ -127,7 +127,6 @@ export function mapRows(raw, colMap) {
     fuelSurcharge:   parseFloat(row[colMap.fuelSurcharge]   ?? 0) || 0,
     codAmount:       parseFloat(row[colMap.codAmount]   ?? 0) || 0,
     serviceType:     String(row[colMap.serviceType]     ?? '').trim(),
-    _raw:            row,
   })).filter(r => r.dest && r.weight > 0);
 }
 
