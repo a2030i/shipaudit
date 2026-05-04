@@ -205,9 +205,11 @@ function ResultsTable({ results, filter, showDetail }) {
   const mis = displayed.filter(r => r.status === 'mismatch');
 
   const ft = mis.reduce((a, r) => {
-    const iD = r.deliveryCharges || 0;
-    const iR = r.rss             || 0;
-    const iF = r.fuelSurcharge   || 0;
+    // Prefer post-audit invoiced values (split-out RSS, etc.) over the raw
+    // row values, so "مفوتر" matches the engine's per-component diffs.
+    const iD = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
+    const iR = r.invoiced?.rss      ?? r.rss             ?? 0;
+    const iF = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
     const iT = r.invoiced?.total ?? (iD + iR + iF);
     return {
       iD: a.iD + iD,  eD: a.eD + (r.expected?.delivery || 0),  dD: a.dD + (r.diffs?.delivery || 0),
