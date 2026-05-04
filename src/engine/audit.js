@@ -53,27 +53,37 @@ export function parseDate(v) {
 }
 
 // ─── Column auto-mapper ────────────────────────────────────────────────────────
+// Patterns are tried in order. Specific patterns first, generic fallbacks last.
 const COL_PATTERNS = {
-  awb:             [/awb/i, /waybill/i, /tracking/i, /رقم.?الشحن/],
-  shipDate:        [/ship.?date/i, /date/i, /تاريخ/],
-  origin:          [/^origin$/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
-  dest:            [/^dest$/i, /destination/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
+  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/],
+  shipDate:        [/ship.?date/i, /pick.?up.?date/i, /تاريخ/, /date/i],
+  origin:          [/^origin$/i, /origin.?location/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
+  dest:            [/^dest$/i, /destination.?location/i, /destination/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
   destCity:        [/dest.?city/i, /city/i, /مدين/i],
-  weight:          [/weight/i, /وزن/i, /wt/i],
-  deliveryCharges: [/delivery.?charge/i, /shipping.?charge/i, /رسوم/i, /توصيل/i],
+  // Prefer chargeable weight (used for billing) over net/actual weight,
+  // because some carriers (e.g. Aramex) leave Net weight at 0.
+  weight:          [/chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
+  deliveryCharges: [/delivery.?charge/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
   rss:             [/^rss$/i, /remote/i],
-  fuelSurcharge:   [/fuel/i, /وقود/i, /surcharge/i],
+  fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i],
   codAmount:       [/cod.?amount/i, /cash.?on/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
 };
 
 export function detectColumns(headers) {
   const map = {};
-  for (const header of headers) {
-    const kl = header.toLowerCase().trim();
-    for (const [field, patterns] of Object.entries(COL_PATTERNS)) {
-      if (!map[field] && patterns.some(p => p instanceof RegExp ? p.test(kl) : kl.includes(p))) {
-        map[field] = header;
+  const used = new Set();
+  // Iterate fields/patterns in declared order so specific patterns win.
+  for (const [field, patterns] of Object.entries(COL_PATTERNS)) {
+    for (const pattern of patterns) {
+      const match = headers.find(h => {
+        if (used.has(h)) return false;
+        const kl = h.toLowerCase().trim();
+        return pattern instanceof RegExp ? pattern.test(kl) : kl.includes(pattern);
+      });
+      if (match) {
+        map[field] = match;
+        used.add(match);
         break;
       }
     }
