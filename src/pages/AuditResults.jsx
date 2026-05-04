@@ -289,7 +289,11 @@ function ResultsTable({ results, filter, showDetail }) {
                   {r.awb || '—'}
                 </td>
                 <td style={{ color:'var(--muted)', fontSize:11, whiteSpace:'nowrap' }}>{r.shipDate || '—'}</td>
-                <td style={{ fontSize:12, whiteSpace:'nowrap' }}>{r.dest || '—'}</td>
+                <td style={{ fontSize:12, whiteSpace:'nowrap' }}>
+                  {r.domestic && r.destCity
+                    ? <>{r.destCity} <span style={{ color:'var(--muted)', fontSize:10 }}>· محلي</span></>
+                    : (r.dest || '—')}
+                </td>
                 {hasServiceType && (
                   <td style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)', whiteSpace:'nowrap' }}>
                     {r.serviceType || '—'}
