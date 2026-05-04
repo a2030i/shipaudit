@@ -2,8 +2,12 @@
  * Flexible tiered pricing engine.
  * Supports:
  *   - Legacy: { first, step, firstKg }
- *   - Tiered array: [{ upTo, price }, { upTo, pricePerUnit, unitKg }, ...]
+ *   - Tiered array (additive): [{ upTo, price }, { upTo, pricePerUnit, unitKg }, ...]
  *     upTo: null = unlimited last tier
+ *   - Lookup table: { mode: 'lookup', brackets: [{ upTo, price }, ...], excess: { perUnit, unitKg } }
+ *     Used by carriers that publish a flat per-bucket rate (e.g. Aramex international).
+ *     Weight rounds UP to the smallest bracket whose `upTo` >= weight; that bracket's
+ *     price is returned. If weight exceeds the last bracket, `excess` extends the table.
  */
 export function calcDelivery(pricingDef, weight) {
   if (!pricingDef || weight <= 0) return null;
@@ -15,7 +19,22 @@ export function calcDelivery(pricingDef, weight) {
     return first + Math.ceil((weight - firstKg) / 0.5) * step;
   }
 
-  // ── Tiered array format ───────────────────────────────────────────────────
+  // ── Lookup table (per-bucket flat rate) ───────────────────────────────────
+  if (!Array.isArray(pricingDef) && pricingDef.mode === 'lookup' && Array.isArray(pricingDef.brackets)) {
+    const sorted = [...pricingDef.brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+    const bucket = sorted.find(b => weight <= (b.upTo ?? Infinity));
+    if (bucket) return +Number(bucket.price).toFixed(4);
+    // Beyond last bracket → use excess rate from the last bracket's edge
+    const last = sorted[sorted.length - 1];
+    if (!last || !pricingDef.excess) return null;
+    const lastUpTo = last.upTo ?? 0;
+    const unitKg   = pricingDef.excess.unitKg   ?? 0.5;
+    const perUnit  = pricingDef.excess.perUnit  ?? 0;
+    const units    = Math.ceil((weight - lastUpTo) / unitKg);
+    return +(Number(last.price) + units * perUnit).toFixed(4);
+  }
+
+  // ── Tiered array format (additive) ────────────────────────────────────────
   if (Array.isArray(pricingDef)) {
     let cost = 0;
     let remaining = weight;
@@ -53,7 +72,11 @@ export function calcTotal(contract, country, weight, shipDate, serviceType, orig
   if (!pricingDef) return null;
 
   // Multi-type pricing: { Road: [...], Air: [...] }
-  if (!Array.isArray(pricingDef) && typeof pricingDef === 'object' && pricingDef.first === undefined) {
+  // (Lookup-mode pricing is also a non-array object, so guard against it explicitly.)
+  if (!Array.isArray(pricingDef)
+      && typeof pricingDef === 'object'
+      && pricingDef.first === undefined
+      && pricingDef.mode !== 'lookup') {
     if (serviceType) {
       const key = Object.keys(pricingDef).find(k => k.toLowerCase() === serviceType.toLowerCase().trim());
       pricingDef = pricingDef[key] ?? pricingDef[Object.keys(pricingDef)[0]];
@@ -67,19 +90,26 @@ export function calcTotal(contract, country, weight, shipDate, serviceType, orig
   const delivery = calcDelivery(pricingDef, weight);
   if (delivery === null) return null;
 
+  // Per-destination fuel/RSS overrides take precedence over contract defaults.
+  // Used when, e.g., domestic and international shipments share one contract
+  // but apply different fuel-surcharge percentages.
+  const fuelPctEff = pricingDef.fuelPct ?? contract.fuelPct ?? 0;
+  const rssPctEff  = pricingDef.rss     ?? contract.rss     ?? 0;
+  const rssFixedEff = pricingDef.rssFixed ?? contract.rssFixed;
+
   const date   = shipDate || '';
-  const hasRSS = contract.rssStartDate ? date >= contract.rssStartDate : !!(contract.rss || contract.rssFixed);
+  const hasRSS = contract.rssStartDate ? date >= contract.rssStartDate : !!(rssPctEff || rssFixedEff);
   let rss = 0;
   if (hasRSS) {
-    rss = contract.rssFixed
-      ? +Number(contract.rssFixed).toFixed(4)                        // fixed SAR amount
-      : +(delivery * (contract.rss ?? 0)).toFixed(4);                // percentage of delivery
+    rss = rssFixedEff
+      ? +Number(rssFixedEff).toFixed(4)
+      : +(delivery * rssPctEff).toFixed(4);
   }
 
   // Fuel is always based on delivery only unless contract explicitly says delivery+rss
-  const hasFuel = contract.fuelStartDate ? date >= contract.fuelStartDate : !!(contract.fuelPct);
+  const hasFuel = contract.fuelStartDate ? date >= contract.fuelStartDate : !!fuelPctEff;
   const fuelBase = contract.fuelBase === 'delivery+rss' ? delivery + rss : delivery;
-  const fuel     = hasFuel ? +(fuelBase * (contract.fuelPct ?? 0)).toFixed(4) : 0;
+  const fuel     = hasFuel ? +(fuelBase * fuelPctEff).toFixed(4) : 0;
 
   return {
     delivery,

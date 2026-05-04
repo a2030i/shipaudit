@@ -124,18 +124,21 @@ const COUNTRY_ALIASES = {
   // UAE
   'uae': 'United Arab Emirates', 'u.a.e': 'United Arab Emirates',
   'u.a.e.': 'United Arab Emirates', 'emirates': 'United Arab Emirates',
+  'ae': 'United Arab Emirates',
   'الامارات': 'United Arab Emirates', 'الإمارات': 'United Arab Emirates',
   'الإمارات العربية المتحدة': 'United Arab Emirates',
-  // Other GCC
-  'قطر': 'Qatar', 'الكويت': 'Kuwait', 'kuwait': 'Kuwait',
-  'عمان': 'Oman', 'سلطنة عمان': 'Oman',
-  'البحرين': 'Bahrain', 'bahrain': 'Bahrain',
+  // Other GCC (ISO codes + names + Arabic)
+  'kw': 'Kuwait', 'kuwait': 'Kuwait', 'الكويت': 'Kuwait',
+  'bh': 'Bahrain', 'bahrain': 'Bahrain', 'البحرين': 'Bahrain',
+  'om': 'Oman', 'oman': 'Oman', 'عمان': 'Oman', 'سلطنة عمان': 'Oman',
+  'qa': 'Qatar', 'qatar': 'Qatar', 'قطر': 'Qatar',
   // Levant / North Africa
-  'مصر': 'Egypt', 'الأردن': 'Jordan', 'jordan': 'Jordan',
-  'تركيا': 'Turkey', 'turkey': 'Turkey',
-  'العراق': 'Iraq', 'iraq': 'Iraq',
-  'لبنان': 'Lebanon', 'lebanon': 'Lebanon',
-  'اليمن': 'Yemen', 'yemen': 'Yemen',
+  'eg': 'Egypt', 'egypt': 'Egypt', 'مصر': 'Egypt',
+  'jo': 'Jordan', 'jordan': 'Jordan', 'الأردن': 'Jordan',
+  'tr': 'Turkey', 'turkey': 'Turkey', 'تركيا': 'Turkey',
+  'iq': 'Iraq', 'iraq': 'Iraq', 'العراق': 'Iraq',
+  'lb': 'Lebanon', 'lebanon': 'Lebanon', 'لبنان': 'Lebanon',
+  'ye': 'Yemen', 'yemen': 'Yemen', 'اليمن': 'Yemen',
 };
 
 export function normalizeCountry(raw) {
