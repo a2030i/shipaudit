@@ -23,7 +23,7 @@ const FIELD_META = {
   fuelSurcharge:   { label: 'رسوم الوقود',             required: false },
   serviceType:     { label: 'نوع الخدمة (Road/Air)',   required: false },
   codAmount:       { label: 'COD',                    required: false },
-  billingType:     { label: 'نوع الفوترة (ZDOI=محلي)', required: false },
+  billingType:     { label: 'نوع الفوترة (ZDOI محلي · ZIBI/ZOBI دولي)', required: false },
 };
 
 // ── Step 1 ─────────────────────────────────────────────────────────────────────

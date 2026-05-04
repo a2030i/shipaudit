@@ -71,13 +71,19 @@ const COL_PATTERNS = {
   billingType:     [/billing.?type/i],
 };
 
-// Aramex (and similar) encode domestic Saudi shipments via Billing Type "ZDOI",
-// or — as a fallback — AWB numbers starting with 5. International AWBs start with 3.
-const DOMESTIC_BILLING_CODES = new Set(['ZDOI']);
+// Aramex billing-type codes:
+//   ZDOI               → domestic Saudi shipment
+//   ZIBI, ZOBI         → international shipment
+// When the billing code is recognized it wins; otherwise we fall back to the
+// AWB-number prefix heuristic (5 = domestic, 3 = international).
+const DOMESTIC_BILLING_CODES      = new Set(['ZDOI']);
+const INTERNATIONAL_BILLING_CODES = new Set(['ZIBI', 'ZOBI']);
 
 function isDomesticShipment(billingType, awb) {
   const bt = String(billingType ?? '').trim().toUpperCase();
-  if (DOMESTIC_BILLING_CODES.has(bt)) return true;
+  if (DOMESTIC_BILLING_CODES.has(bt))      return true;
+  if (INTERNATIONAL_BILLING_CODES.has(bt)) return false;
+  // Unknown / missing billing type → use AWB prefix heuristic
   const firstChar = String(awb ?? '').trim()[0];
   return firstChar === '5';
 }
