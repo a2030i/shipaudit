@@ -431,6 +431,9 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           <StatCard label="إجمالي" value={summary.total} color="var(--accent)" onClick={()=>setFilter('all')}/>
           <StatCard label="✓ مطابقة" value={summary.ok} color="var(--green)" onClick={()=>setFilter('ok')}/>
           <StatCard label="✗ فروق" value={summary.mismatch} color="var(--red)" onClick={()=>setFilter('mismatch')}/>
+          {summary.favorable > 0 && (
+            <StatCard label="↓ لصالحك" value={summary.favorable} color="var(--accent)" onClick={()=>setFilter('favorable')}/>
+          )}
           <StatCard label="؟ غير معروف" value={summary.unknown} color="var(--muted)" onClick={()=>setFilter('unknown')}/>
           <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:11,padding:'13px 18px',
             borderTop:`3px solid ${summary.totalDiff>0?'var(--red)':'var(--green)'}`}}>
@@ -448,7 +451,13 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
 
         {/* Filters */}
         <div style={{display:'flex',gap:7,marginBottom:14}}>
-          {[{k:'all',l:`الكل (${summary.total})`},{k:'mismatch',l:`✗ فروق (${summary.mismatch})`},{k:'ok',l:`✓ مطابق (${summary.ok})`},{k:'unknown',l:`؟ (${summary.unknown})`}].map(t=>(
+          {[
+            { k:'all',       l:`الكل (${summary.total})` },
+            { k:'mismatch',  l:`✗ فروق (${summary.mismatch})` },
+            { k:'ok',        l:`✓ مطابق (${summary.ok})` },
+            ...(summary.favorable > 0 ? [{ k:'favorable', l:`↓ لصالحك (${summary.favorable})` }] : []),
+            { k:'unknown',   l:`؟ (${summary.unknown})` },
+          ].map(t=>(
             <button key={t.k} onClick={()=>setFilter(t.k)} style={{
               background:filter===t.k?'var(--accent)20':'transparent',
               border:`1px solid ${filter===t.k?'var(--accent)':'var(--border)'}`,
