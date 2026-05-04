@@ -279,9 +279,11 @@ function ResultsTable({ results, filter, showDetail }) {
         <tbody>
           {displayed.map((r, i) => {
             const isMis    = r.status === 'mismatch';
-            const iD       = r.deliveryCharges || 0;
-            const iR       = r.rss             || 0;
-            const iF       = r.fuelSurcharge   || 0;
+            // Show split-out invoiced values when available (e.g. RSS lifted out
+            // of a bundled fuel column) so the row totals tie out.
+            const iD       = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
+            const iR       = r.invoiced?.rss      ?? r.rss             ?? 0;
+            const iF       = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
             const iT       = r.invoiced?.total ?? (iD + iR + iF);
             const rowBg    = isMis ? 'rgba(248,113,113,.03)' : 'transparent';
             return (
