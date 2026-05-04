@@ -68,7 +68,19 @@ const COL_PATTERNS = {
   fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i],
   codAmount:       [/cod.?amount/i, /cash.?on/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
+  billingType:     [/billing.?type/i],
 };
+
+// Aramex (and similar) encode domestic Saudi shipments via Billing Type "ZDOI",
+// or — as a fallback — AWB numbers starting with 5. International AWBs start with 3.
+const DOMESTIC_BILLING_CODES = new Set(['ZDOI']);
+
+function isDomesticShipment(billingType, awb) {
+  const bt = String(billingType ?? '').trim().toUpperCase();
+  if (DOMESTIC_BILLING_CODES.has(bt)) return true;
+  const firstChar = String(awb ?? '').trim()[0];
+  return firstChar === '5';
+}
 
 export function detectColumns(headers) {
   const map = {};
@@ -125,19 +137,35 @@ export function normalizeCountry(raw) {
 
 // ─── Map raw rows using detected columns ───────────────────────────────────────
 export function mapRows(raw, colMap) {
-  return raw.map(row => ({
-    awb:             String(row[colMap.awb]             ?? ''),
-    shipDate:        parseDate(row[colMap.shipDate]     ?? ''),
-    origin:          normalizeCountry(row[colMap.origin] ?? '') || 'Saudi Arabia',
-    dest:            normalizeCountry(row[colMap.dest]  ?? ''),
-    destCity:        String(row[colMap.destCity]        ?? ''),
-    weight:          parseFloat(row[colMap.weight]      ?? 0) || 0,
-    deliveryCharges: parseFloat(row[colMap.deliveryCharges] ?? 0) || 0,
-    rss:             parseFloat(row[colMap.rss]         ?? 0) || 0,
-    fuelSurcharge:   parseFloat(row[colMap.fuelSurcharge]   ?? 0) || 0,
-    codAmount:       parseFloat(row[colMap.codAmount]   ?? 0) || 0,
-    serviceType:     String(row[colMap.serviceType]     ?? '').trim(),
-  })).filter(r => r.dest && r.weight > 0);
+  return raw.map(row => {
+    const awb         = String(row[colMap.awb] ?? '');
+    const billingType = String(row[colMap.billingType] ?? '').trim();
+    const rawDest     = row[colMap.dest] ?? '';
+    const rawCity     = row[colMap.destCity] ?? rawDest;
+
+    // Domestic shipments (e.g. Aramex ZDOI): the "destination" column carries
+    // a Saudi city, not a country. Route them to the Saudi pricing tier and
+    // preserve the original city for display.
+    const domestic = isDomesticShipment(billingType, awb);
+    const dest     = domestic ? 'Saudi Arabia' : normalizeCountry(rawDest);
+    const destCity = domestic ? String(rawDest).trim() : String(rawCity).trim();
+
+    return {
+      awb,
+      shipDate:        parseDate(row[colMap.shipDate] ?? ''),
+      origin:          normalizeCountry(row[colMap.origin] ?? '') || 'Saudi Arabia',
+      dest,
+      destCity,
+      domestic,
+      billingType,
+      weight:          parseFloat(row[colMap.weight] ?? 0) || 0,
+      deliveryCharges: parseFloat(row[colMap.deliveryCharges] ?? 0) || 0,
+      rss:             parseFloat(row[colMap.rss] ?? 0) || 0,
+      fuelSurcharge:   parseFloat(row[colMap.fuelSurcharge] ?? 0) || 0,
+      codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
+      serviceType:     String(row[colMap.serviceType] ?? '').trim(),
+    };
+  }).filter(r => r.dest && r.weight > 0);
 }
 
 // ─── Core audit ────────────────────────────────────────────────────────────────

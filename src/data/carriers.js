@@ -45,6 +45,29 @@ export const SEED_CARRIERS = [
       },
     ],
   },
+  {
+    id: 'aramex',
+    name: 'أرامكس Aramex',
+    logo: '🚚',
+    color: '#e2231a',
+    contracts: [
+      {
+        id: 'aramex_domestic_2026',
+        label: 'عقد محلي 2026',
+        startDate: '2026-01-01',
+        endDate: null,
+        rss: 0,
+        fuelPct: 0.16,
+        pricing: {
+          'Saudi Arabia': [
+            { upTo: 10,   price: 13 },                       // أول 10 كغ ثابت
+            { upTo: null, pricePerUnit: 1, unitKg: 1 },      // 1 ر.س لكل كيلو إضافي
+          ],
+        },
+        notes: 'تسعير محلي ثابت لكل المملكة. التصنيف عبر Billing Type=ZDOI أو AWB يبدأ بـ 5.',
+      },
+    ],
+  },
 ];
 
 // ─── Carriers CRUD ─────────────────────────────────────────────────────────────
