@@ -153,6 +153,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
 const BADGE_CFG = {
   ok:          { bg: 'rgba(52,211,153,.1)',  color: 'var(--green)',  bd: 'rgba(52,211,153,.25)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },
   mismatch:    { bg: 'rgba(248,113,113,.1)', color: 'var(--red)',    bd: 'rgba(248,113,113,.25)', lbl: '✗ فرق',       Icon: XCircle },
+  favorable:   { bg: 'rgba(56,189,248,.1)',  color: 'var(--accent)', bd: 'rgba(56,189,248,.25)',  lbl: '↓ لصالحك',    Icon: CheckCircle2 },
   unknown:     { bg: 'rgba(74,106,144,.1)',  color: 'var(--muted)',  bd: 'rgba(74,106,144,.25)',  lbl: '؟ غير معروف', Icon: HelpCircle },
   no_contract: { bg: 'rgba(251,146,60,.1)',  color: 'var(--warn)',   bd: 'rgba(251,146,60,.25)',  lbl: '⚠ لا عقد',   Icon: AlertTriangle },
 };

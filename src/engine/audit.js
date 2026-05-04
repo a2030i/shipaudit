@@ -216,9 +216,16 @@ export function auditRow(row, contract) {
   if (Math.abs(diffs.fuel) > TOLERANCE)
     issues.push({ field: 'fuel',     label: 'رسوم الوقود',  invoiced: invoiced.fuel,     expected: calc.fuel,     diff: diffs.fuel });
 
+  // Net diff < 0 → carrier billed less than the contract expected → in customer's
+  // favor; we report it separately as "favorable" rather than as an overcharge.
+  let status;
+  if (!issues.length)                  status = 'ok';
+  else if (diffs.total < -TOLERANCE)   status = 'favorable';
+  else                                 status = 'mismatch';
+
   return {
     ...row,
-    status: issues.length ? 'mismatch' : 'ok',
+    status,
     invoiced,
     expected: calc,
     diffs,
@@ -235,19 +242,25 @@ export function auditAll(rows, carrier, forDate) {
 
 // ─── Summary stats ─────────────────────────────────────────────────────────────
 export function buildSummary(results) {
-  const total    = results.length;
-  const ok       = results.filter(r => r.status === 'ok').length;
-  const mismatch = results.filter(r => r.status === 'mismatch').length;
-  const unknown  = results.filter(r => r.status === 'unknown' || r.status === 'no_contract').length;
+  const total     = results.length;
+  const ok        = results.filter(r => r.status === 'ok').length;
+  const mismatch  = results.filter(r => r.status === 'mismatch').length;
+  const favorable = results.filter(r => r.status === 'favorable').length;
+  const unknown   = results.filter(r => r.status === 'unknown' || r.status === 'no_contract').length;
 
+  // Overcharges only — do not include favorable rows here; the user shouldn't
+  // chase money back when the carrier under-billed.
   const mis = results.filter(r => r.status === 'mismatch');
+  const totalDiff    = mis.reduce((s, r) => s + (r.diffs?.total    ?? 0), 0);
+  const deliveryDiff = mis.reduce((s, r) => s + (r.diffs?.delivery ?? 0), 0);
+  const rssDiff      = mis.reduce((s, r) => s + (r.diffs?.rss      ?? 0), 0);
+  const fuelDiff     = mis.reduce((s, r) => s + (r.diffs?.fuel     ?? 0), 0);
 
-  const totalDiff     = mis.reduce((s, r) => s + (r.diffs?.total    ?? 0), 0);
-  const deliveryDiff  = mis.reduce((s, r) => s + (r.diffs?.delivery ?? 0), 0);
-  const rssDiff       = mis.reduce((s, r) => s + (r.diffs?.rss      ?? 0), 0);
-  const fuelDiff      = mis.reduce((s, r) => s + (r.diffs?.fuel     ?? 0), 0);
+  // Favorable variance — tracked separately for visibility, not added to totalDiff.
+  const fav = results.filter(r => r.status === 'favorable');
+  const favorableDiff = fav.reduce((s, r) => s + (r.diffs?.total ?? 0), 0);
 
-  // By country
+  // By country (overcharges only)
   const byCountry = {};
   for (const r of mis) {
     if (!byCountry[r.dest]) byCountry[r.dest] = { count:0, diff:0 };
@@ -255,5 +268,9 @@ export function buildSummary(results) {
     byCountry[r.dest].diff += r.diffs?.total ?? 0;
   }
 
-  return { total, ok, mismatch, unknown, totalDiff, deliveryDiff, rssDiff, fuelDiff, byCountry };
+  return {
+    total, ok, mismatch, favorable, unknown,
+    totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
+    byCountry,
+  };
 }
