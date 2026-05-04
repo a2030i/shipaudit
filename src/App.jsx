@@ -354,7 +354,7 @@ function AppInner({ theme, toggleTheme }) {
                 <AuditResultsPage carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
               </PageSlot>
               <PageSlot active={pathname==='/audits'} scroll>
-                <AuditsHistory onOpen={handleOpenAudit}/>
+                <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
               </PageSlot>
               <PageSlot active={pathname==='/employees'} scroll>
                 <EmployeeManager/>

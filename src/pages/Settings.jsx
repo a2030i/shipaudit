@@ -301,16 +301,19 @@ function NavPermissionsTab() {
 }
 
 // ── Audits History ─────────────────────────────────────────────────────────────
-export function AuditsHistory({ onOpen }) {
+export function AuditsHistory({ onOpen, isActive = true }) {
   const [audits,  setAudits]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
   const [opening, setOpening] = useState(null);
 
+  // Re-fetch each time the page becomes active so newly-saved audits show up.
   useEffect(() => {
+    if (!isActive) return;
+    setLoading(true);
     loadAuditsFromDB().then(data => { setAudits(data); setLoading(false); })
       .catch(() => setLoading(false));
-  }, []);
+  }, [isActive]);
 
   const handleDelete = async (id) => {
     try {
