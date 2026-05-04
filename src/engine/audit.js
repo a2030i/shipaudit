@@ -72,20 +72,23 @@ const COL_PATTERNS = {
 };
 
 // Aramex billing-type codes:
-//   ZDOI               → domestic Saudi shipment
-//   ZIBI, ZOBI         → international shipment
-// When the billing code is recognized it wins; otherwise we fall back to the
-// AWB-number prefix heuristic (5 = domestic, 3 = international).
+//   ZDOI                  → domestic Saudi shipment
+//   ZIBI, ZOBI            → international shipment
+//   ZDCF (and any other)  → unrecognized — leave as "unknown", do not auto-classify
+// AWB-prefix heuristic (5 = domestic, 3 = international) is used only when
+// `Billing Type` is missing / empty.
 const DOMESTIC_BILLING_CODES      = new Set(['ZDOI']);
 const INTERNATIONAL_BILLING_CODES = new Set(['ZIBI', 'ZOBI']);
 
 function isDomesticShipment(billingType, awb) {
   const bt = String(billingType ?? '').trim().toUpperCase();
-  if (DOMESTIC_BILLING_CODES.has(bt))      return true;
-  if (INTERNATIONAL_BILLING_CODES.has(bt)) return false;
-  // Unknown / missing billing type → use AWB prefix heuristic
-  const firstChar = String(awb ?? '').trim()[0];
-  return firstChar === '5';
+  if (DOMESTIC_BILLING_CODES.has(bt)) return true;
+  // Any non-empty billing type that isn't an explicit domestic code → not
+  // domestic. This deliberately covers ZDCF and any future unrecognized code
+  // so they fall through to the unknown-route audit branch.
+  if (bt) return false;
+  // No billing type → fall back to AWB-prefix heuristic
+  return String(awb ?? '').trim()[0] === '5';
 }
 
 export function detectColumns(headers) {
