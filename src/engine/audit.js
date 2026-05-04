@@ -197,11 +197,23 @@ export function auditRow(row, contract) {
     };
   }
 
+  // Some carriers (e.g. Aramex) bundle RSS into the fuel-surcharge column on
+  // the invoice. If the row didn't have a dedicated RSS amount but the contract
+  // expects RSS, attribute the expected RSS portion out of the bundled fuel
+  // value so per-component comparisons line up. The total is unchanged.
+  let invoicedRss  = row.rss;
+  let invoicedFuel = row.fuelSurcharge;
+  if (row.rss === 0 && calc.rss > 0 && invoicedFuel > 0) {
+    const split = Math.min(calc.rss, invoicedFuel);
+    invoicedRss  = split;
+    invoicedFuel = +(invoicedFuel - split).toFixed(4);
+  }
+
   const invoiced = {
     delivery: row.deliveryCharges,
-    rss:      row.rss,
-    fuel:     row.fuelSurcharge,
-    total:    row.deliveryCharges + row.rss + row.fuelSurcharge,
+    rss:      invoicedRss,
+    fuel:     invoicedFuel,
+    total:    row.deliveryCharges + invoicedRss + invoicedFuel,
   };
 
   const diffs = {
