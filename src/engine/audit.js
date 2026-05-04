@@ -219,12 +219,15 @@ export function auditRow(row, contract) {
   if (Math.abs(diffs.fuel) > TOLERANCE)
     issues.push({ field: 'fuel',     label: 'رسوم الوقود',  invoiced: invoiced.fuel,     expected: calc.fuel,     diff: diffs.fuel });
 
-  // Net diff < 0 → carrier billed less than the contract expected → in customer's
-  // favor; we report it separately as "favorable" rather than as an overcharge.
+  // Status is driven by the NET total, not per-component. Carriers like Aramex
+  // bundle RSS + fuel into a single "Other Charge" column on the invoice, so a
+  // per-component split produces fake offsetting diffs (rss −7.5, fuel +7.5)
+  // even when the total is exactly right. Only the total tells us whether
+  // money actually changed hands.
   let status;
-  if (!issues.length)                  status = 'ok';
-  else if (diffs.total < -TOLERANCE)   status = 'favorable';
-  else                                 status = 'mismatch';
+  if (Math.abs(diffs.total) <= TOLERANCE) status = 'ok';
+  else if (diffs.total < 0)               status = 'favorable';
+  else                                    status = 'mismatch';
 
   return {
     ...row,
