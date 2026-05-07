@@ -5,14 +5,10 @@ import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../compo
 import { loadSettings, saveSettings } from '../data/carriers.js';
 import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB } from '../lib/coreService.js';
 import { OR_MODELS, testConnection } from '../engine/openrouter.js';
-import { getNavPermissions, saveNavPermissions } from '../lib/mailService.js';
-import GmailSettings from './mail/GmailSettings.jsx';
-import SyncRules    from './mail/SyncRules.jsx';
+import { getNavPermissions, saveNavPermissions } from '../lib/permissionsService.js';
 
 const TABS = [
   { id: 'ai',          label: '✨ الذكاء الاصطناعي' },
-  { id: 'gmail',       label: '📧 Gmail' },
-  { id: 'rules',       label: '⚡ قواعد المزامنة' },
   { id: 'permissions', label: '🔐 صلاحيات التنقل' },
   { id: 'data',        label: '🗄️ البيانات' },
 ];
@@ -78,17 +74,6 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
             transition:'all .15s',
           }}>{t.label}</button>
         ))}
-      </div>
-
-      {/* Gmail tab */}
-      {/* Gmail tab — always mounted so state isn't lost on tab switch */}
-      <div style={{display: tab==='gmail' ? 'block' : 'none'}}>
-        <GmailSettings/>
-      </div>
-
-      {/* Sync Rules tab */}
-      <div style={{display: tab==='rules' ? 'block' : 'none'}}>
-        <SyncRules/>
       </div>
 
       {/* Nav Permissions tab */}
@@ -197,7 +182,6 @@ const NAV_ITEMS = [
   { id: 'upload',    label: 'مراجعة جديدة'  },
   { id: 'audits',    label: 'السجل'         },
   { id: 'employees', label: 'الموظفون'      },
-  { id: 'mail',      label: 'البريد المالي' },
 ];
 const ROLES_CONFIG = [
   { id: 'accountant1', label: 'محاسب أول',  color: 'var(--green)' },
@@ -214,12 +198,10 @@ function NavPermissionsTab() {
 
   const toggle = (role, pageId) => {
     setPerms(prev => {
-      const current = prev[role] ?? ['mail'];
+      const current = prev[role] ?? [];
       const next = current.includes(pageId)
         ? current.filter(x => x !== pageId)
         : [...current, pageId];
-      // mail is always on for non-admins
-      if (pageId === 'mail') return prev;
       return { ...prev, [role]: next };
     });
   };

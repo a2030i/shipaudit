@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Spinner } from '../../components/UI.jsx';
-import { useAuth } from '../../lib/auth.jsx';
+import { Spinner } from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
 
 export default function LoginPage() {
   const { signIn } = useAuth();
