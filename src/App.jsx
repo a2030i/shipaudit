@@ -1,46 +1,39 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  Package, ChevronLeft, ChevronRight, Mail, Menu, X, Bell, Users, Sun, Moon,
+  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
-import { supabase } from './lib/supabase.js';
 import { loadCarriers } from './lib/coreService.js';
-import { getUnreadCount, getNotifications, markAllRead, getNavPermissions } from './lib/mailService.js';
+import { getNavPermissions } from './lib/permissionsService.js';
 import Dashboard      from './pages/Dashboard.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
 import AuditResults   from './pages/AuditResults.jsx';
 import { SettingsPage, AuditsHistory } from './pages/Settings.jsx';
-import MailApp         from './pages/mail/MailApp.jsx';
-import LoginPage       from './pages/mail/LoginPage.jsx';
+import LoginPage      from './pages/LoginPage.jsx';
 import EmployeeManager from './pages/EmployeeManager.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
-const AUDIT_ITEMS = [
+const NAV_ITEMS = [
   { id: 'dashboard',  path: '/dashboard',  label: 'الرئيسية',     icon: LayoutDashboard },
   { id: 'carriers',   path: '/carriers',   label: 'شركات الشحن',  icon: Truck },
   { id: 'upload',     path: '/upload',     label: 'مراجعة جديدة', icon: Upload },
   { id: 'audits',     path: '/audits',     label: 'السجل',        icon: History },
-  { id: 'employees',  path: '/employees',  label: 'الموظفون',     icon: Users },
-];
-const MAIL_ITEMS = [
-  { id: 'mail', path: '/mail', label: 'البريد المالي', icon: Mail },
+  { id: 'employees',  path: '/employees',  label: 'الموظفون',     icon: Users, adminOnly: true },
 ];
 const PAGE_TITLES = {
-  '/dashboard':      'الرئيسية',
-  '/carriers':       'شركات الشحن',
-  '/upload':         'مراجعة جديدة',
-  '/audits':         'سجل المراجعات',
-  '/mail':           'البريد المالي',
-  '/employees':      'الموظفون',
-  '/settings/ai':    'الإعدادات — الذكاء الاصطناعي',
-  '/settings/gmail': 'الإعدادات — Gmail',
-  '/settings/rules': 'الإعدادات — قواعد المزامنة',
-  '/settings/data':  'الإعدادات — البيانات',
-  '/results':        'نتائج التدقيق',
+  '/dashboard':       'الرئيسية',
+  '/carriers':        'شركات الشحن',
+  '/upload':          'مراجعة جديدة',
+  '/audits':          'سجل المراجعات',
+  '/employees':       'الموظفون',
+  '/settings/ai':     'الإعدادات — الذكاء الاصطناعي',
+  '/settings/permissions': 'الإعدادات — الصلاحيات',
+  '/settings/data':   'الإعدادات — البيانات',
+  '/results':         'نتائج التدقيق',
 };
 const ROLE_LABEL = { admin: 'مدير', accountant1: 'محاسب أول', accountant2: 'محاسب ثانٍ' };
 
@@ -71,7 +64,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/mail','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -79,26 +72,22 @@ function AppInner({ theme, toggleTheme }) {
   const [navPerms,        setNavPerms]        = useState(null);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
-  const [unread,          setUnread]          = useState(0);
-  const [notifOpen,       setNotifOpen]       = useState(false);
-  const [notifs,          setNotifs]          = useState([]);
-  const notifChannelRef = useRef(null);
 
-  // ── Default redirect after login ──
+  // ── Default redirect after login: always go to dashboard ──
   useEffect(() => {
     if (!profile) return;
     if (location.pathname === '/' || location.pathname === '') {
-      navigate(profile.role === 'admin' ? '/dashboard' : '/mail', { replace: true });
+      navigate('/dashboard', { replace: true });
     }
   }, [profile]);
 
   // ── Load carriers ──
   const reloadCarriers = useCallback(async () => {
-    if (!user || !isAdmin) return;
+    if (!user) return;
     setCarriersLoading(true);
     try { setCarriers(await loadCarriers()); } catch { /* silent */ }
     setCarriersLoading(false);
-  }, [user, isAdmin]);
+  }, [user]);
 
   useEffect(() => { reloadCarriers(); }, [reloadCarriers]);
 
@@ -107,34 +96,6 @@ function AppInner({ theme, toggleTheme }) {
     if (!user) return;
     getNavPermissions().then(setNavPerms).catch(() => setNavPerms({}));
   }, [user]);
-
-  // ── Notifications ──
-  const loadUnread = useCallback(async () => {
-    if (!user) return;
-    setUnread(await getUnreadCount(user.id));
-  }, [user]);
-
-  useEffect(() => {
-    if (!user) return;
-    loadUnread();
-    const ch = supabase.channel(`app_notifs_${user.id}`)
-      .on('postgres_changes', {
-        event: 'INSERT', schema: 'public', table: 'notifications',
-        filter: `user_id=eq.${user.id}`,
-      }, loadUnread)
-      .subscribe();
-    notifChannelRef.current = ch;
-    return () => { supabase.removeChannel(ch); };
-  }, [user, loadUnread]);
-
-  const openNotifs = async () => {
-    if (!user) return;
-    setNotifOpen(true);
-    const data = await getNotifications(user.id);
-    setNotifs(data);
-    await markAllRead(user.id);
-    setUnread(0);
-  };
 
   const goto = (path) => {
     navigate(path);
@@ -165,6 +126,13 @@ function AppInner({ theme, toggleTheme }) {
   );
 
   if (!user || !profile) return <LoginPage/>;
+
+  // Filter nav items by role: admin sees all; others see only what permissions allow.
+  const visibleNav = isAdmin
+    ? NAV_ITEMS
+    : NAV_ITEMS.filter(n =>
+        !n.adminOnly && (navPerms?.[profile.role] ?? []).includes(n.id)
+      );
 
   const currentTitle = PAGE_TITLES[location.pathname]
     ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
@@ -207,25 +175,14 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Nav */}
           <nav className="sidebar-nav">
-            {(() => {
-              const allowed = isAdmin
-                ? AUDIT_ITEMS
-                : AUDIT_ITEMS.filter(n => (navPerms?.[profile?.role] ?? []).includes(n.id));
-              if (!allowed.length) return null;
-              return (
-                <>
-                  <div className="section-label">المراجعة المالية</div>
-                  {allowed.map(n => (
-                    <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-                  ))}
-                  <div className="nav-divider"/>
-                </>
-              );
-            })()}
-            <div className="section-label">البريد المالي</div>
-            {MAIL_ITEMS.map(n => (
-              <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-            ))}
+            {visibleNav.length > 0 && (
+              <>
+                <div className="section-label">المراجعة المالية</div>
+                {visibleNav.map(n => (
+                  <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
+                ))}
+              </>
+            )}
           </nav>
 
           {/* Footer */}
@@ -313,22 +270,6 @@ function AppInner({ theme, toggleTheme }) {
               {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
             </button>
 
-            <button onClick={openNotifs} style={{
-              position:'relative', background:'none', border:'none',
-              color:'var(--muted)', cursor:'pointer', padding:'6px 8px',
-              borderRadius:8, display:'flex', alignItems:'center',
-            }}>
-              <Bell size={16}/>
-              {unread > 0 && (
-                <span style={{
-                  position:'absolute', top:2, left:2,
-                  background:'var(--red)', color:'#fff',
-                  fontSize:9, borderRadius:9, padding:'1px 4px',
-                  lineHeight:1.4, minWidth:14, textAlign:'center', fontWeight:700,
-                }}>{unread > 9 ? '9+' : unread}</span>
-              )}
-            </button>
-
             <div style={{ display:'flex', alignItems:'center', gap:5 }}>
               <div style={{ width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', flexShrink:0 }}/>
               <span style={{ color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)' }}>جاهز</span>
@@ -340,30 +281,26 @@ function AppInner({ theme, toggleTheme }) {
               prevents CSS animations from replaying on every navigation */}
           <div className="page-content">
 
-            {isAdmin && <>
-              <PageSlot active={pathname==='/dashboard'} scroll>
-                <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
-              </PageSlot>
-              <PageSlot active={pathname==='/carriers'}>
-                <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
-              </PageSlot>
-              <PageSlot active={pathname==='/upload'} scroll>
-                <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>
-              </PageSlot>
-              <PageSlot active={pathname==='/results'}>
-                <AuditResultsPage carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
-              </PageSlot>
-              <PageSlot active={pathname==='/audits'} scroll>
-                <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
-              </PageSlot>
+            <PageSlot active={pathname==='/dashboard'} scroll>
+              <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/carriers'}>
+              <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/upload'} scroll>
+              <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/results'}>
+              <AuditResultsPage carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/audits'} scroll>
+              <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
+            </PageSlot>
+            {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>
                 <EmployeeManager/>
               </PageSlot>
-            </>}
-
-            <PageSlot active={pathname==='/mail'}>
-              <MailApp onNotification={loadUnread}/>
-            </PageSlot>
+            )}
 
             <PageSlot active={isSettingsPath} scroll>
               <SettingsPage
@@ -375,21 +312,13 @@ function AppInner({ theme, toggleTheme }) {
             {/* Unknown paths → redirect */}
             {!isKnownPath && !isSettingsPath && (
               <Routes>
-                <Route path="*" element={<Navigate to={isAdmin ? '/dashboard' : '/mail'} replace/>}/>
+                <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
               </Routes>
             )}
 
           </div>
         </main>
       </div>
-
-      {notifOpen && (
-        <NotifDrawer
-          notifs={notifs}
-          onClose={() => setNotifOpen(false)}
-          onSelectTask={() => { navigate('/mail'); setNotifOpen(false); }}
-        />
-      )}
     </>
   );
 }
@@ -436,49 +365,5 @@ function NavBtn({ n, active, collapsed, onClick }) {
       <span className="nav-label" style={{ flex:1 }}>{n.label}</span>
       {active && <span className="nav-dot"/>}
     </button>
-  );
-}
-
-function NotifDrawer({ notifs, onClose, onSelectTask }) {
-  return (
-    <>
-      <div onClick={onClose} style={{ position:'fixed', inset:0, zIndex:900, background:'rgba(0,0,0,.4)' }}/>
-      <div style={{
-        position:'fixed', top:0, left:0, bottom:0, zIndex:901,
-        width:300, background:'var(--card)', borderRight:'1px solid var(--border)',
-        display:'flex', flexDirection:'column', overflow:'hidden',
-        boxShadow:'var(--shadow-lg)',
-        animation:'slideInRight .25s ease forwards',
-      }}>
-        <div style={{ padding:'14px 16px', borderBottom:'1px solid var(--border)', display:'flex', justifyContent:'space-between', alignItems:'center', flexShrink:0 }}>
-          <span style={{ fontWeight:700, fontSize:14 }}>🔔 الإشعارات</span>
-          <button onClick={onClose} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', fontSize:18 }}>✕</button>
-        </div>
-        <div style={{ flex:1, overflowY:'auto' }}>
-          {notifs.length === 0 && (
-            <div style={{ padding:30, textAlign:'center', color:'var(--muted)', fontSize:12 }}>لا توجد إشعارات</div>
-          )}
-          {notifs.map(n => (
-            <div key={n.id}
-              onClick={() => n.task_id && onSelectTask(n.task_id)}
-              style={{
-                padding:'12px 16px', borderBottom:'1px solid var(--border)',
-                cursor: n.task_id ? 'pointer' : 'default',
-                background: n.read ? 'transparent' : 'rgba(56,189,248,.05)',
-                transition:'background .15s',
-              }}
-              onMouseEnter={e => { if(n.task_id) e.currentTarget.style.background='var(--surface)'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = n.read ? 'transparent' : 'rgba(56,189,248,.05)'; }}
-            >
-              <div style={{ fontWeight:600, fontSize:12, marginBottom:3 }}>{n.title}</div>
-              {n.message && <div style={{ fontSize:11, color:'var(--muted)' }}>{n.message}</div>}
-              <div style={{ fontSize:10, color:'var(--muted)', marginTop:4 }}>
-                {new Date(n.created_at).toLocaleString('ar-SA')}
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </>
   );
 }
