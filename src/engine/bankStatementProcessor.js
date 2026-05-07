@@ -59,11 +59,31 @@ export function detectColumnsByHeader(rows) {
 // ─── Summary extraction ───────────────────────────────────────────────────────
 // Pull the closing balance and period (from – to dates) out of any header rows.
 const CLOSING_PATTERNS = [
-  /الرصيد.?الختامي/i, /الرصيد.?الحالي/i, /closing.?balance/i, /ending.?balance/i,
+  /رصيد.?الإقفال/i, /رصيد.?الاقفال/i,
+  /الرصيد.?الختامي/i, /الرصيد.?الحالي/i,
+  /closing.?balance/i, /ending.?balance/i,
 ];
 const PERIOD_PATTERNS = [
+  /تاريخ.?كشف.?الحساب/i, /statement.?date/i, /statement.?period/i,
   /الفترة/i, /فترة/i, /period/i, /from/i, /إلى/i, /to/i,
 ];
+
+// Extract every ISO-ish date from a string. Handles "2026-04-01 - 2026-04-30",
+// "01/04/2026 to 30/04/2026", etc.
+function findAllDatesInText(text) {
+  const out = [];
+  if (!text) return out;
+  const s = String(text);
+  // ISO YYYY-MM-DD or YYYY/MM/DD
+  for (const m of s.matchAll(/(\d{4})[-/](\d{1,2})[-/](\d{1,2})/g)) {
+    out.push(`${m[1]}-${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}`);
+  }
+  // DMY: DD/MM/YYYY or DD-MM-YYYY
+  for (const m of s.matchAll(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/g)) {
+    out.push(`${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}`);
+  }
+  return out;
+}
 
 function parseDateCell(v) {
   if (v == null || v === '') return null;
@@ -102,22 +122,42 @@ export function extractSummaryFromRows(rows, headerRowIndex) {
     if (!Array.isArray(row)) continue;
     const joined = row.map(c => String(c ?? '').trim()).join(' | ');
 
-    // Closing balance
+    // Closing balance — find the cell containing the label, then look in cells
+    // *before* it (RTL layouts put the value to the left of the label).
     if (summary.closingBalance == null && CLOSING_PATTERNS.some(p => p.test(joined))) {
-      // Look for a numeric cell on the same row
-      for (const cell of row) {
-        const n = parseNumber(cell);
-        if (n != null && Math.abs(n) > 0.01) { summary.closingBalance = n; break; }
+      let labelIdx = -1;
+      for (let c = 0; c < row.length; c++) {
+        const cell = String(row[c] ?? '');
+        if (CLOSING_PATTERNS.some(p => p.test(cell))) { labelIdx = c; break; }
+      }
+      if (labelIdx > 0) {
+        for (let c = labelIdx - 1; c >= 0; c--) {
+          const n = parseNumber(row[c]);
+          if (n != null && Math.abs(n) > 0.01) { summary.closingBalance = n; break; }
+        }
+      }
+      // Fallback: first numeric on the row
+      if (summary.closingBalance == null) {
+        for (const cell of row) {
+          const n = parseNumber(cell);
+          if (n != null && Math.abs(n) > 0.01) { summary.closingBalance = n; break; }
+        }
       }
     }
 
-    // Period — look for two dates anywhere in the row
+    // Period — extract every date in every cell text (handles both
+    // "2026-04-01 - 2026-04-30" in one cell and dates in separate cells).
     if ((summary.periodFrom == null || summary.periodTo == null)
         && PERIOD_PATTERNS.some(p => p.test(joined))) {
       const dates = [];
       for (const cell of row) {
-        const d = parseDateCell(cell);
-        if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) dates.push(d);
+        if (cell == null) continue;
+        if (typeof cell === 'number') {
+          const d = parseDateCell(cell);
+          if (d && /^\d{4}-\d{2}-\d{2}$/.test(d)) dates.push(d);
+        } else {
+          dates.push(...findAllDatesInText(cell));
+        }
       }
       if (dates.length >= 2) {
         const sorted = [...dates].sort();
@@ -132,19 +172,29 @@ export function extractSummaryFromRows(rows, headerRowIndex) {
 }
 
 // ─── Fee + tax extraction from description ────────────────────────────────────
-// When a Saudi bank line looks like:
-//   "حوالة من ... رسوم: 8.70 ر.س ضريبة القيمة المضافة: 1.30 ر.س"
-// pull the numeric fee and tax amounts out of the prose.
+// Saudi banks write fees inline in several flavours:
+//   "الرسوم SAR50.00 ضريبة القيمة المضافة SAR7.50"     ← Bank Alinma export
+//   "رسوم: 8.70 ر.س ضريبة القيمة المضافة: 1.30 ر.س"    ← spec example
+// The regex below tolerates an optional currency token (SAR / ر.س / SR / VAT)
+// and any combination of separators (`:`, `،`, `-`, whitespace) between the
+// keyword and the number.
+const CURRENCY_TOKEN = '(?:SAR|SR|ر\\.?\\s?س|ر\\.?\\س|VAT|﷼)?';
+
 function extractFeesFromDescription(desc) {
   if (!desc) return { fees: 0, tax: 0 };
   const text = String(desc);
   let fees = 0, tax = 0;
 
-  const feeMatch = text.match(/رسوم[\s:،\-]*([\d.,]+)/);
+  // Match `الرسوم` only when it's the standalone fee marker, not when it
+  // appears in phrases like `بغرض الرسوم...`. Anchor to a word break before it.
+  const feeRe = new RegExp(`(?:^|[\\s\\(\\)،,])الرسوم\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
+  const feeMatch = text.match(feeRe);
   if (feeMatch) fees = parseNumber(feeMatch[1]) || 0;
 
-  const taxMatch = text.match(/ضريبة[\s:،\-]*([\d.,]+)/i)
-                || text.match(/vat[\s:]*([\d.,]+)/i);
+  // VAT: prefer the explicit `ضريبة القيمة المضافة` phrase to avoid grabbing
+  // unrelated `الضريبة` mentions elsewhere.
+  const taxRe = new RegExp(`ضريبة(?:\\s+القيمة\\s+المضافة)?\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
+  const taxMatch = text.match(taxRe) || text.match(/vat\s*[:،\-]?\s*([\d.,]+)/i);
   if (taxMatch) tax = parseNumber(taxMatch[1]) || 0;
 
   return { fees, tax };
@@ -164,8 +214,12 @@ export function parseAlinmaFormat(rows, colMap) {
     const date    = parseDateCell(dateRaw);
     const ref     = colMap.refCol  != null ? String(row[colMap.refCol]  ?? '').trim() : '';
     const desc    = colMap.descCol != null ? String(row[colMap.descCol] ?? '').trim() : '';
-    const credit  = colMap.creditCol != null ? parseNumber(row[colMap.creditCol]) : null;
-    const debit   = colMap.debitCol  != null ? parseNumber(row[colMap.debitCol])  : null;
+    // Banks often store debits as signed negatives (e.g. -155.25). Convert to
+    // positive magnitude so totals and the "مدين" column read correctly.
+    const creditRaw = colMap.creditCol != null ? parseNumber(row[colMap.creditCol]) : null;
+    const debitRaw  = colMap.debitCol  != null ? parseNumber(row[colMap.debitCol])  : null;
+    const credit  = creditRaw != null ? Math.abs(creditRaw) : null;
+    const debit   = debitRaw  != null ? Math.abs(debitRaw)  : null;
     const colFees = colMap.feesCol   != null ? parseNumber(row[colMap.feesCol])   : null;
     const colTax  = colMap.taxCol    != null ? parseNumber(row[colMap.taxCol])    : null;
 
