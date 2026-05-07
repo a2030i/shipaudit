@@ -51,7 +51,8 @@
       "Bash(rm src/lib/mailService.js)",
       "Bash(rm -rf supabase/functions/gmail-auth supabase/functions/gmail-callback supabase/functions/gmail-fetch-attachment supabase/functions/gmail-sync supabase/functions/gmail-sync-cron)",
       "Bash(git -c user.email=\"ahmad.raike@gmail.com\" -c user.name=\"ahmad\" add -A)",
-      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'refactor: remove mail and Gmail integration entirely — system is now finance-only *)"
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'refactor: remove mail and Gmail integration entirely — system is now finance-only *)",
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: bank statement processor \\(Bank Alinma\\) + grouped sidebar sections *)"
     ]
   }
 }

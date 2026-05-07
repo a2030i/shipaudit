@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon,
+  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
@@ -15,20 +15,29 @@ import AuditResults   from './pages/AuditResults.jsx';
 import { SettingsPage, AuditsHistory } from './pages/Settings.jsx';
 import LoginPage      from './pages/LoginPage.jsx';
 import EmployeeManager from './pages/EmployeeManager.jsx';
+import BankStatement   from './pages/BankStatement.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
+// Each item belongs to a section. Sections render as headers; items beneath them.
 const NAV_ITEMS = [
-  { id: 'dashboard',  path: '/dashboard',  label: 'الرئيسية',     icon: LayoutDashboard },
-  { id: 'carriers',   path: '/carriers',   label: 'شركات الشحن',  icon: Truck },
-  { id: 'upload',     path: '/upload',     label: 'مراجعة جديدة', icon: Upload },
-  { id: 'audits',     path: '/audits',     label: 'السجل',        icon: History },
-  { id: 'employees',  path: '/employees',  label: 'الموظفون',     icon: Users, adminOnly: true },
+  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'audit' },
+  { id: 'carriers',  path: '/carriers',  label: 'شركات الشحن',   icon: Truck,           section: 'audit' },
+  { id: 'upload',    path: '/upload',    label: 'مراجعة جديدة',  icon: Upload,          section: 'audit' },
+  { id: 'audits',    path: '/audits',    label: 'السجل',         icon: History,         section: 'audit' },
+  { id: 'bank',      path: '/bank',      label: 'كشف بنكي',      icon: Wallet,          section: 'bank' },
+  { id: 'employees', path: '/employees', label: 'الموظفون',      icon: Users,           section: 'admin', adminOnly: true },
+];
+const NAV_SECTIONS = [
+  { id: 'audit', label: 'مراجعة فواتير الشحن' },
+  { id: 'bank',  label: 'كشوف بنكية' },
+  { id: 'admin', label: 'الإدارة' },
 ];
 const PAGE_TITLES = {
   '/dashboard':       'الرئيسية',
   '/carriers':        'شركات الشحن',
   '/upload':          'مراجعة جديدة',
   '/audits':          'سجل المراجعات',
+  '/bank':            'كشف بنكي',
   '/employees':       'الموظفون',
   '/settings/ai':     'الإعدادات — الذكاء الاصطناعي',
   '/settings/permissions': 'الإعدادات — الصلاحيات',
@@ -64,7 +73,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -173,16 +182,21 @@ function AppInner({ theme, toggleTheme }) {
             )}
           </div>
 
-          {/* Nav */}
+          {/* Nav — grouped by section */}
           <nav className="sidebar-nav">
-            {visibleNav.length > 0 && (
-              <>
-                <div className="section-label">المراجعة المالية</div>
-                {visibleNav.map(n => (
-                  <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-                ))}
-              </>
-            )}
+            {NAV_SECTIONS.map((sec, idx) => {
+              const items = visibleNav.filter(n => n.section === sec.id);
+              if (!items.length) return null;
+              return (
+                <div key={sec.id}>
+                  {idx > 0 && <div className="nav-divider"/>}
+                  <div className="section-label">{sec.label}</div>
+                  {items.map(n => (
+                    <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
+                  ))}
+                </div>
+              );
+            })}
           </nav>
 
           {/* Footer */}
@@ -295,6 +309,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/audits'} scroll>
               <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/bank'} scroll>
+              <BankStatement/>
             </PageSlot>
             {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>
