@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen,
+  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Scale,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import AIChat from './components/AIChat.jsx';
@@ -19,6 +19,7 @@ import EmployeeManager from './pages/EmployeeManager.jsx';
 import BankStatement   from './pages/BankStatement.jsx';
 import CarrierStatements from './pages/CarrierStatements.jsx';
 import CarrierLedger     from './pages/CarrierLedger.jsx';
+import ExcessWeight      from './pages/ExcessWeight.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Each item belongs to a section. Sections render as headers; items beneath them.
@@ -28,13 +29,15 @@ const NAV_ITEMS = [
   { id: 'upload',    path: '/upload',    label: 'مراجعة جديدة',  icon: Upload,          section: 'audit' },
   { id: 'audits',    path: '/audits',    label: 'السجل',         icon: History,         section: 'audit' },
   { id: 'ledger',        path: '/ledger',            label: 'الدفتر',      icon: BookOpen, section: 'carrier_acct' },
-  { id: 'aramex-stmt',   path: '/aramex-statements', label: 'رفع كشف أرامكس', icon: FileText, section: 'carrier_acct' },
+  { id: 'aramex-stmt',   path: '/aramex-statements', label: 'رفع كشف',      icon: FileText, section: 'carrier_acct' },
+  { id: 'excess',    path: '/excess',    label: 'فوترة الوزن الزائد', icon: Scale,        section: 'ar' },
   { id: 'bank',      path: '/bank',      label: 'كشف بنكي',      icon: Wallet,          section: 'bank' },
   { id: 'employees', path: '/employees', label: 'الموظفون',      icon: Users,           section: 'admin', adminOnly: true },
 ];
 const NAV_SECTIONS = [
   { id: 'audit',         label: 'مراجعة فواتير الشحن' },
   { id: 'carrier_acct',  label: 'كشوف حسابات شركات الشحن' },
+  { id: 'ar',            label: 'فواتير العملاء (AR)' },
   { id: 'bank',          label: 'كشوف بنكية' },
   { id: 'admin',         label: 'الإدارة' },
 ];
@@ -44,8 +47,9 @@ const PAGE_TITLES = {
   '/upload':          'مراجعة جديدة',
   '/audits':          'سجل المراجعات',
   '/bank':            'كشف بنكي',
-  '/aramex-statements': 'كشف حساب أرامكس',
+  '/aramex-statements': 'رفع كشف حساب',
   '/ledger':            'الدفتر',
+  '/excess':            'فوترة الوزن الزائد',
   '/employees':       'الموظفون',
   '/settings/ai':     'الإعدادات — الذكاء الاصطناعي',
   '/settings/permissions': 'الإعدادات — الصلاحيات',
@@ -81,7 +85,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/excess','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -326,6 +330,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/excess'} scroll>
+              <ExcessWeight isActive={pathname==='/excess'}/>
             </PageSlot>
             {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>
