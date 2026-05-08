@@ -60,7 +60,8 @@
       "Bash(node ./test_stmt.mjs)",
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: Aramex statement-of-account PDF parser + carrier statements page *)",
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: AP module phase 1B + audits-history filters *)",
-      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: link audit to ledger operation *)"
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: link audit to ledger operation *)",
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: AP command-center dashboard + unified cross-carrier ledger *)"
     ]
   }
 }

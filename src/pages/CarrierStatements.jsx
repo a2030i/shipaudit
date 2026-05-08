@@ -222,10 +222,10 @@ export default function CarrierStatements() {
                 </span>
               )}
               <span style={{ color: 'var(--muted)' }}>· {savedDiff.unchanged} بدون تغيير</span>
-              <a href="/aramex-ledger" style={{
+              <a href="/ledger?carrier=aramex" style={{
                 marginRight: 'auto', color: 'var(--accent)', textDecoration: 'underline', fontSize: 12,
               }}>
-                افتح دفتر أرامكس لإدارة الحالات وربط المراجعات →
+                افتح الدفتر لإدارة الحالات وربط المراجعات →
               </a>
             </div>
           )}
