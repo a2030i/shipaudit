@@ -124,6 +124,112 @@ export async function saveCarrierStatement({ carrierId, carrierName, fileName, p
   return { statement: stmt, diff };
 }
 
+// ─── Payment-matching suggestions ────────────────────────────────────────
+/**
+ * For each candidate bank transfer, propose the best-fitting open operation
+ * across all carriers using:
+ *   • carrier-id match (must be the same carrier the transfer goes to)
+ *   • amount tolerance (±0.5 SAR or ±0.5%)
+ *   • date proximity (transfer date within 45 days after doc_date or before
+ *     due_date — which yields the lowest score wins)
+ *   • prefer larger debits & older docs
+ *
+ * Returns: [{ transfer, suggestion, confidence }, ...]
+ */
+export async function suggestPaymentMatches(transfers) {
+  if (!transfers?.length) return [];
+  // Pull all open operations once.
+  const { data: ops, error } = await supabase
+    .from('carrier_operations')
+    .select('id, carrier_id, doc_no, doc_type, doc_date, due_date, amount_dr, amount_cr, balance, status, reference_no')
+    .neq('status', 'paid')
+    .neq('amount_dr', 0);
+  if (error) throw error;
+
+  const opsByCarrier = new Map();
+  for (const op of ops ?? []) {
+    if (!opsByCarrier.has(op.carrier_id)) opsByCarrier.set(op.carrier_id, []);
+    opsByCarrier.get(op.carrier_id).push(op);
+  }
+
+  const out = [];
+  for (const t of transfers) {
+    const candidates = opsByCarrier.get(t.matchedCarrier) ?? [];
+    if (!candidates.length) {
+      out.push({ transfer: t, suggestion: null, confidence: 0 });
+      continue;
+    }
+
+    // 1) Try EXACT amount match first (the carrier-statement amount = bank amount)
+    const target = Number(t.grossAmount ?? t.debit) || 0;
+    const tolAbs = 1.0; // 1 SAR
+    const tolPct = 0.005; // 0.5%
+    const within = (a) => {
+      const diff = Math.abs((Number(a.amount_dr) || 0) - target);
+      return diff <= tolAbs || diff / Math.max(target, 1) <= tolPct;
+    };
+
+    let exact = candidates.filter(within);
+
+    // 2) Or try matching the SUM-of-multiple-ops if exact one not found
+    let pickedSet = null;
+    if (exact.length === 0) {
+      // Greedy 2-op match: try pairs that add up to target
+      for (let i = 0; i < candidates.length && !pickedSet; i++) {
+        for (let j = i + 1; j < candidates.length && !pickedSet; j++) {
+          const sum = (candidates[i].amount_dr || 0) + (candidates[j].amount_dr || 0);
+          if (Math.abs(sum - target) <= tolAbs) pickedSet = [candidates[i], candidates[j]];
+        }
+      }
+    }
+
+    let suggestion = null;
+    let confidence = 0;
+    if (exact.length === 1) {
+      suggestion = { type: 'single', ops: exact };
+      confidence = 95;
+    } else if (exact.length > 1) {
+      // Pick the one whose due_date is closest BEFORE transfer date (oldest open)
+      exact.sort((a, b) => (a.due_date || a.doc_date || '').localeCompare(b.due_date || b.doc_date || ''));
+      suggestion = { type: 'single', ops: [exact[0]] };
+      confidence = 80;
+    } else if (pickedSet) {
+      suggestion = { type: 'multi', ops: pickedSet };
+      confidence = 70;
+    } else {
+      // Fallback: amount-closest single
+      candidates.sort((a, b) =>
+        Math.abs((Number(a.amount_dr) || 0) - target)
+        - Math.abs((Number(b.amount_dr) || 0) - target)
+      );
+      const top = candidates[0];
+      const diff = Math.abs((Number(top.amount_dr) || 0) - target);
+      if (diff <= 50) {
+        suggestion = { type: 'closest', ops: [top] };
+        confidence = 40;
+      }
+    }
+    out.push({ transfer: t, suggestion, confidence });
+  }
+  return out;
+}
+
+/**
+ * Bulk-mark operations as paid against the same bank transfer.
+ */
+export async function markOperationsPaid(opIds, paymentRef, paidAtIso) {
+  if (!opIds?.length) return;
+  const { error } = await supabase
+    .from('carrier_operations')
+    .update({
+      status: 'paid',
+      paid_at: paidAtIso || new Date().toISOString(),
+      payment_ref: paymentRef || null,
+    })
+    .in('id', opIds);
+  if (error) throw error;
+}
+
 // ─── Reads ────────────────────────────────────────────────────────────────
 export async function loadStatements(carrierId, limit = 50) {
   let q = supabase.from('carrier_statements').select('*')

@@ -294,6 +294,65 @@ export function parseExcelFile(arrayBuffer) {
   return { transactions, summary, hiddenFees };
 }
 
+// ─── Carrier-payment detection ────────────────────────────────────────────────
+/**
+ * Heuristically match an Arabic+English bank-statement description against a
+ * known carrier name list. Returns the carrier_id of the best match, or null.
+ *
+ * The matcher tokenizes both sides, so "أرامكس" / "ارامكس" / "ARAMEX" /
+ * "Aramex Saudi Limited" all light up the same carrier.
+ */
+function normaliseToken(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    // Strip Arabic diacritics
+    .replace(/[ً-ْٰ]/g, '')
+    // Normalise common alef variants
+    .replace(/[إأآا]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه');
+}
+
+const MIN_TOKEN_LEN = 3;
+
+function tokensOf(s) {
+  return normaliseToken(s).split(/[^\p{L}\p{N}]+/u).filter(t => t.length >= MIN_TOKEN_LEN);
+}
+
+export function detectCarrierFromText(text, carriers) {
+  if (!text || !carriers?.length) return null;
+  const haystack = ' ' + normaliseToken(text) + ' ';
+  let best = null;
+  for (const c of carriers) {
+    const candidates = [c.name, c.id, ...(c.aliases ?? [])];
+    let hits = 0;
+    for (const cand of candidates) {
+      const toks = tokensOf(cand);
+      for (const t of toks) {
+        if (haystack.includes(' ' + t)) hits += t.length; // longer tokens score higher
+      }
+    }
+    if (hits > 0 && (!best || hits > best.score)) best = { carrierId: c.id, score: hits };
+  }
+  return best?.carrierId ?? null;
+}
+
+/**
+ * Walk parsed bank transactions and return the ones that look like outgoing
+ * payments to known carriers. Each gets a `matchedCarrier` tag.
+ */
+export function extractCarrierPayments(transactions, carriers) {
+  const out = [];
+  for (const t of transactions) {
+    const debit = Number(t.debit) || 0;
+    if (debit <= 0) continue; // we only care about money leaving the account
+    const matchedCarrier = detectCarrierFromText(t.description, carriers);
+    if (!matchedCarrier) continue;
+    out.push({ ...t, matchedCarrier, grossAmount: debit + (Number(t.feesRemoved) || 0) });
+  }
+  return out;
+}
+
 // ─── Clean Excel export ───────────────────────────────────────────────────────
 /**
  * Build an "كشف صافي" workbook from the parsed transactions.

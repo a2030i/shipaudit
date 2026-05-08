@@ -1,7 +1,9 @@
-import { useState, useMemo, useCallback } from 'react';
-import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
-import { parseExcelFile, generateCleanExcel } from '../engine/bankStatementProcessor.js';
+import { useState, useMemo, useCallback, useEffect } from 'react';
+import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2 } from 'lucide-react';
+import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
+import { parseExcelFile, generateCleanExcel, extractCarrierPayments } from '../engine/bankStatementProcessor.js';
+import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
+import { loadCarriers } from '../lib/coreService.js';
 
 // ── State machine: idle → processing → done | error ──
 const fmtMoney = n =>
@@ -9,12 +11,37 @@ const fmtMoney = n =>
     ? '—'
     : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Carrier aliases used for description matching (extends what's in the carrier name field)
+const CARRIER_ALIASES = {
+  aramex: ['أرامكس', 'ارامكس', 'aramex', 'ARAMEX', 'aramex saudi'],
+  smsa:   ['سمسا', 'smsa', 'SMSA'],
+};
+
 export default function BankStatement() {
   const [state, setState] = useState('idle');           // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);            // { transactions, summary, hiddenFees, fileName }
   const [drag, setDrag]     = useState(false);
   const [search, setSearch] = useState('');
+  const [carriers, setCarriers] = useState([]);
+  const [reconcileOpen, setReconcileOpen] = useState(false);
+  const [reconciledTxIds, setReconciledTxIds] = useState(new Set()); // tx index → matched
+
+  // Pull carrier list once so we can detect transfers to them.
+  useEffect(() => {
+    loadCarriers().then(rows => {
+      const enriched = rows.map(c => ({
+        ...c,
+        aliases: CARRIER_ALIASES[c.id] ?? [],
+      }));
+      setCarriers(enriched);
+    }).catch(() => {});
+  }, []);
+
+  const carrierTransfers = useMemo(() => {
+    if (!result?.transactions || !carriers.length) return [];
+    return extractCarrierPayments(result.transactions, carriers).map((t, i) => ({ ...t, _idx: i }));
+  }, [result, carriers]);
 
   // ── File handling ──────────────────────────────────────────────────────────
   const processFile = useCallback((file) => {
@@ -205,10 +232,15 @@ export default function BankStatement() {
           </div>
 
           {/* Toolbar */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             <Btn variant="primary" icon={<Download size={14}/>} onClick={handleExport}>
               تحميل الكشف الصافي
             </Btn>
+            {carrierTransfers.length > 0 && (
+              <Btn variant="gold" icon={<Link2 size={14}/>} onClick={() => setReconcileOpen(true)}>
+                💼 مطابقة الموردين ({carrierTransfers.length})
+              </Btn>
+            )}
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>
               ملف جديد
             </Btn>
@@ -285,7 +317,165 @@ export default function BankStatement() {
           </Card>
         </>
       )}
+
+      {reconcileOpen && (
+        <ReconcileModal
+          transfers={carrierTransfers}
+          carriers={carriers}
+          reconciledTxIds={reconciledTxIds}
+          onClose={() => setReconcileOpen(false)}
+          onReconciled={(txIdx) => setReconciledTxIds(prev => new Set([...prev, txIdx]))}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Reconciliation modal ─────────────────────────────────────────────────
+function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onReconciled }) {
+  const [matches, setMatches] = useState(null);  // [{ transfer, suggestion, confidence }]
+  const [loading, setLoading] = useState(true);
+  const [busyIdx, setBusyIdx] = useState(null);
+  const carriersById = useMemo(
+    () => Object.fromEntries((carriers ?? []).map(c => [c.id, c])),
+    [carriers],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    suggestPaymentMatches(transfers).then(rows => {
+      if (!cancelled) { setMatches(rows); setLoading(false); }
+    }).catch(e => {
+      if (!cancelled) { toast(`فشل التحليل: ${e.message}`, 'error'); setLoading(false); }
+    });
+    return () => { cancelled = true; };
+  }, [transfers]);
+
+  const confirm = async (row, idx) => {
+    if (!row.suggestion) return;
+    setBusyIdx(idx);
+    try {
+      const opIds = row.suggestion.ops.map(o => o.id);
+      await markOperationsPaid(opIds, row.transfer.reference, row.transfer.date);
+      toast(`✓ تم تسديد ${opIds.length} عملية`, 'success');
+      onReconciled(row.transfer._idx);
+      // Update local state to mark this row as done
+      setMatches(prev => prev.map((r, i) => i === idx ? { ...r, _done: true } : r));
+    } catch (e) {
+      toast(`فشل التسديد: ${e.message}`, 'error');
+    }
+    setBusyIdx(null);
+  };
+
+  return (
+    <Modal title="💼 مطابقة دفعات الموردين" onClose={onClose} width={780}>
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 14 }}>
+        اقتراحات لربط التحويلات الصادرة لشركات الشحن بالعمليات المعلّقة في الدفتر.
+        كل تأكيد يُسجّل تسديد العملية مع رقم الحوالة وتاريخها تلقائياً.
+      </p>
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 30 }}><Spinner size={22}/></div>
+        : matches.length === 0
+          ? <Empty icon="🔍" title="ما لقيت اقتراحات" sub="لا يوجد عمليات معلّقة بنفس مبالغ التحويلات"/>
+          : (
+            <div style={{ maxHeight: 460, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {matches.map((row, idx) => {
+                const t = row.transfer;
+                const sug = row.suggestion;
+                const carrierName = carriersById[t.matchedCarrier]?.name || t.matchedCarrier;
+                const isDone = row._done || reconciledTxIds.has(t._idx);
+                const isLow = (row.confidence || 0) < 60;
+                return (
+                  <div key={idx} style={{
+                    border: `1px solid ${isDone ? 'var(--green)' : sug ? 'var(--accent)' : 'var(--border)'}`,
+                    background: isDone ? 'rgba(52,211,153,.05)' : 'var(--surface)',
+                    borderRadius: 10, padding: '10px 12px',
+                  }}>
+                    {/* Bank transfer line */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: sug ? 8 : 0 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 3 }}>
+                          <span style={{
+                            background: 'var(--accent)20', color: 'var(--accent)',
+                            padding: '2px 8px', borderRadius: 9, fontSize: 10, fontWeight: 700,
+                            fontFamily: 'var(--font-mono)',
+                          }}>{carrierName}</span>
+                          <span style={{ fontSize: 11, color: 'var(--muted)' }}>{t.date}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>{t.reference}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          {t.description}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'left', minWidth: 110 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)', fontSize: 14 }}>
+                          {fmtMoney(t.grossAmount ?? t.debit)}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)' }}>تحويل صادر</div>
+                      </div>
+                    </div>
+
+                    {/* Suggestion or empty */}
+                    {!sug && (
+                      <div style={{ fontSize: 11, color: 'var(--muted)', padding: '6px 0' }}>
+                        ما لقيت عملية معلّقة بنفس المبلغ — يحتاج تسديد يدوي من الدفتر.
+                      </div>
+                    )}
+                    {sug && !isDone && (
+                      <div style={{
+                        background: 'var(--card)', borderRadius: 8, padding: 10,
+                        display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10,
+                      }}>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+                            مطابقة مقترحة:
+                            <span style={{
+                              marginRight: 8,
+                              background: isLow ? 'var(--gold)15' : 'var(--green)15',
+                              color: isLow ? 'var(--gold)' : 'var(--green)',
+                              padding: '1px 7px', borderRadius: 9, fontSize: 9, fontWeight: 700,
+                            }}>
+                              ثقة {row.confidence}%
+                            </span>
+                            {sug.type === 'multi' && <span style={{ marginRight: 6, color: 'var(--gold)' }}>(عمليتان مجمّعتان)</span>}
+                          </div>
+                          {sug.ops.map(op => (
+                            <div key={op.id} style={{ fontSize: 12, fontFamily: 'var(--font-mono)' }}>
+                              <span style={{ color: 'var(--accent)' }}>{op.doc_no}</span>
+                              <span style={{ color: 'var(--muted)' }}> · {op.doc_type} · </span>
+                              <span style={{ color: 'var(--text)' }}>{op.reference_no}</span>
+                              <span style={{ color: 'var(--muted)' }}> · </span>
+                              <span style={{ color: 'var(--red)', fontWeight: 600 }}>{fmtMoney(op.amount_dr)} ر.س</span>
+                              {op.due_date && <span style={{ color: 'var(--muted)', fontSize: 10 }}> · يستحق {op.due_date}</span>}
+                            </div>
+                          ))}
+                        </div>
+                        <Btn size="sm" variant="success" disabled={busyIdx === idx} onClick={() => confirm(row, idx)}>
+                          {busyIdx === idx ? <Spinner size={11}/> : <><CheckCircle2 size={12}/> تأكيد</>}
+                        </Btn>
+                      </div>
+                    )}
+                    {isDone && (
+                      <div style={{
+                        background: 'rgba(52,211,153,.1)', borderRadius: 8, padding: '8px 12px',
+                        color: 'var(--green)', fontSize: 12, fontWeight: 600,
+                        display: 'flex', alignItems: 'center', gap: 6,
+                      }}>
+                        <CheckCircle2 size={14}/> تم التسديد ✓
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )
+      }
+
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}>
+        <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
+      </div>
+    </Modal>
   );
 }
 

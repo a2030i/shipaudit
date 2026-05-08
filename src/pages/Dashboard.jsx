@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   AlertOctagon, Wallet, TrendingDown, TrendingUp, Clock, Building2,
-  RefreshCw, ArrowLeft, Upload, FileText, BookOpen,
+  RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty } from '../components/UI.jsx';
 import {
-  loadCarriersOverview, aggregateOverview, loadRecentActivity,
+  loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
 } from '../lib/carrierStatementsService.js';
 import { loadAuditsFromDB } from '../lib/coreService.js';
 
@@ -24,16 +24,39 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   const [overview, setOverview]   = useState([]);
   const [audits,   setAudits]     = useState([]);
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
+  const [actionItems, setActionItems] = useState([]);
   const [loading,  setLoading]    = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [ov, ad, act] = await Promise.all([
+      const [ov, ad, act, allOps] = await Promise.all([
         loadCarriersOverview(),
         loadAuditsFromDB(8),
         loadRecentActivity(6),
+        loadOperations({}),
       ]);
+      // Build action-required list across all carriers.
+      const today = new Date().toISOString().slice(0, 10);
+      const actions = (allOps || [])
+        .filter(o => o.status !== 'paid')
+        .map(o => {
+          let kind = null;
+          if (o.due_date && o.due_date < today)  kind = 'overdue';
+          else if (o.status === 'disputed')      kind = 'disputed';
+          else if (o.status === 'reviewing')     kind = 'reviewing';
+          if (!kind) return null;
+          return { ...o, _kind: kind };
+        })
+        .filter(Boolean)
+        .sort((a, b) => {
+          // overdue → reviewing → disputed; within each, oldest first
+          const order = { overdue: 0, reviewing: 1, disputed: 2 };
+          if (order[a._kind] !== order[b._kind]) return order[a._kind] - order[b._kind];
+          return (a.due_date || a.doc_date || '').localeCompare(b.due_date || b.doc_date || '');
+        })
+        .slice(0, 12);
+      setActionItems(actions);
       // Decorate overview rows with carrier metadata (logo, color, name fallback)
       const byId = new Map((carriers ?? []).map(c => [c.id, c]));
       ov.forEach(r => {
@@ -144,6 +167,58 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
               </div>
             </Card>
           </div>
+
+          {/* ACTION REQUIRED — overdue / disputed / reviewing */}
+          {actionItems.length > 0 && (
+            <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--gold)' }}>
+              <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Bell size={14}/> إجراءات مطلوبة ({actionItems.length})
+                </span>
+                <Btn size="sm" variant="ghost" onClick={() => onNavigate('ledger')} icon={<BookOpen size={12}/>}>
+                  افتح الدفتر
+                </Btn>
+              </div>
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {actionItems.map(o => {
+                  const kindMeta = {
+                    overdue:   { label: '⚠ متأخّرة',  color: 'var(--gold)' },
+                    disputed:  { label: '✗ متنازع',  color: 'var(--red)' },
+                    reviewing: { label: '🔄 مراجعة', color: 'var(--gold)' },
+                  }[o._kind];
+                  const amount = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+                  return (
+                    <div key={o.id} style={{
+                      padding: '10px 18px', borderBottom: '1px solid var(--border)22',
+                      display: 'grid', gridTemplateColumns: '110px 1fr auto auto', gap: 12, alignItems: 'center',
+                    }}>
+                      <span style={{
+                        background: `${kindMeta.color}20`, border: `1px solid ${kindMeta.color}40`,
+                        color: kindMeta.color, fontSize: 10, fontWeight: 700,
+                        padding: '2px 8px', borderRadius: 12, fontFamily: 'var(--font-mono)',
+                        textAlign: 'center', whiteSpace: 'nowrap',
+                      }}>{kindMeta.label}</span>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                          <span style={{ color: 'var(--accent)' }}>{o.doc_no}</span>
+                          <span style={{ color: 'var(--muted)' }}> · {o.doc_type}</span>
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {o.carrier_id} · {o.due_date ? `يستحق ${o.due_date}` : `بتاريخ ${o.doc_date || '—'}`}
+                        </div>
+                      </div>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)', textAlign: 'left' }}>
+                        {fmt(amount)}
+                      </div>
+                      <Btn size="sm" variant="ghost" onClick={() => onNavigate(`ledger?carrier=${o.carrier_id}`)}>
+                        فتح
+                      </Btn>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           {/* TOP CREDITORS TABLE */}
           <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
