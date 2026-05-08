@@ -5,6 +5,7 @@ import {
   Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
+import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
 import { getNavPermissions } from './lib/permissionsService.js';
@@ -349,6 +350,9 @@ function AppInner({ theme, toggleTheme }) {
           </div>
         </main>
       </div>
+
+      {/* Floating AI assistant — always available once logged in */}
+      <AIChat/>
     </>
   );
 }

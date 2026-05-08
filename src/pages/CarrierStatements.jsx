@@ -1,7 +1,8 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, Search, Trash2, Save } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
+import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles } from 'lucide-react';
+import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
+import { parseStatementWithAI } from '../engine/aiStatementParser.js';
 import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -23,33 +24,64 @@ const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Built-in carriers with deterministic parsers. Anything else uses AI.
+const BUILTIN_CARRIERS = [
+  { id: 'aramex', name: 'أرامكس', parser: 'aramex' },
+];
+
 export default function CarrierStatements() {
   const { user } = useAuth();
+  const [carrierId,   setCarrierId]   = useState('aramex');
+  const [carrierName, setCarrierName] = useState('أرامكس');
+  const [parserMode,  setParserMode]  = useState('auto'); // auto | aramex | ai
   const [state, setState] = useState('idle');     // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
-  const [result, setResult] = useState(null);      // { header, operations, totals, fileName }
+  const [result, setResult] = useState(null);      // { header, operations, totals, fileName, carrierId, carrierName, parserUsed }
   const [drag, setDrag] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [savedDiff, setSavedDiff] = useState(null); // { added, updated, reviewing, unchanged }
+  const [aiStatus, setAiStatus] = useState('');
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
     setState('processing');
     setErrorMsg('');
+    setAiStatus('');
     try {
       const buf = await file.arrayBuffer();
-      const parsed = await parseAramexStatement(buf);
-      setResult({ ...parsed, fileName: file.name });
+      const builtin = BUILTIN_CARRIERS.find(c => c.id === carrierId);
+      const useAI = parserMode === 'ai' || !builtin;
+      let parsed, parserUsed;
+
+      if (useAI) {
+        setAiStatus('✨ AI يقرأ الكشف ويستخرج العمليات...');
+        parsed = await parseStatementWithAI(buf, { carrierHint: carrierName });
+        parserUsed = 'ai';
+      } else {
+        parsed = await parseAramexStatement(buf);
+        parserUsed = builtin.parser;
+
+        // Auto-fallback: if the deterministic parser found nothing, retry with AI
+        if (parsed.operations.length === 0 && parserMode === 'auto') {
+          setAiStatus('✨ القارئ السريع لم يلتقط شيئاً — يجرّب AI الآن...');
+          parsed = await parseStatementWithAI(buf, { carrierHint: carrierName });
+          parserUsed = 'ai-fallback';
+        }
+      }
+
+      setResult({ ...parsed, fileName: file.name, carrierId, carrierName, parserUsed });
       setState('done');
-      toast(`تم استخراج ${parsed.operations.length} عملية`, 'success');
+      toast(`تم استخراج ${parsed.operations.length} عملية` +
+        (parserUsed.startsWith('ai') ? ' عبر AI' : ''), 'success');
     } catch (err) {
       console.error(err);
       setErrorMsg(err.message || 'تعذّر قراءة كشف الحساب');
       setState('error');
     }
-  }, []);
+    setAiStatus('');
+  }, [carrierId, carrierName, parserMode]);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -76,8 +108,8 @@ export default function CarrierStatements() {
     setSaving(true);
     try {
       const { diff } = await saveCarrierStatement({
-        carrierId:   'aramex',
-        carrierName: 'أرامكس',
+        carrierId:   result.carrierId   || carrierId,
+        carrierName: result.carrierName || carrierName,
         fileName:    result.fileName,
         parsed:      result,
         userId:      user?.id,
@@ -121,39 +153,101 @@ export default function CarrierStatements() {
   return (
     <div style={{ padding: '32px 24px', maxWidth: 1300, margin: '0 auto' }}>
       <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
-        📑 كشف حساب <span style={{ color: 'var(--accent)' }}>أرامكس</span>
+        📑 رفع كشف <span style={{ color: 'var(--accent)' }}>حساب</span>
       </h2>
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 24 }}>
-        ارفع ملف PDF كشف الحساب الشهري لأرامكس ليتم استخراج كل العمليات (فواتير، خصومات، إشعارات).
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 18 }}>
+        اختر الشركة وارفع ملف PDF — أرامكس عبر القارئ السريع، باقي الشركات عبر AI.
       </p>
 
-      {/* IDLE — drop zone */}
+      {/* IDLE — carrier picker + drop zone */}
       {state === 'idle' && (
-        <div
-          onDragOver={e => { e.preventDefault(); setDrag(true); }}
-          onDragLeave={() => setDrag(false)}
-          onDrop={handleDrop}
-          onClick={() => document.getElementById('cs-file').click()}
-          style={{
-            border: `2px dashed ${drag ? 'var(--accent)' : 'var(--border2)'}`,
-            borderRadius: 14, padding: '64px 24px', textAlign: 'center',
-            background: drag ? 'rgba(56,189,248,.05)' : 'var(--surface)',
-            cursor: 'pointer', transition: 'all .2s',
-          }}
-        >
-          <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
-          <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-            ملفات PDF من أرامكس (Statement of Account)
+        <>
+          <Card style={{ marginBottom: 14, padding: 14 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>الشركة</div>
+                <select
+                  value={carrierId}
+                  onChange={e => {
+                    const v = e.target.value;
+                    setCarrierId(v);
+                    const builtin = BUILTIN_CARRIERS.find(c => c.id === v);
+                    if (builtin) setCarrierName(builtin.name);
+                  }}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
+                >
+                  <optgroup label="مع قارئ سريع">
+                    {BUILTIN_CARRIERS.map(c => (
+                      <option key={c.id} value={c.id}>{c.name} (قارئ سريع)</option>
+                    ))}
+                  </optgroup>
+                  <optgroup label="عبر AI">
+                    <option value="dhl">DHL</option>
+                    <option value="fedex">FedEx</option>
+                    <option value="smsa">سمسا (AI)</option>
+                    <option value="naqel">ناقل</option>
+                    <option value="ups">UPS</option>
+                    <option value="other">أخرى — أكتب الاسم</option>
+                  </optgroup>
+                </select>
+              </div>
+              {!BUILTIN_CARRIERS.find(c => c.id === carrierId) && (
+                <Input
+                  label="اسم الشركة (للحفظ والربط)"
+                  value={carrierName}
+                  onChange={e => setCarrierName(e.target.value)}
+                  placeholder="مثال: DHL Express"
+                />
+              )}
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>
+                  وضع القراءة
+                </div>
+                <select
+                  value={parserMode}
+                  onChange={e => setParserMode(e.target.value)}
+                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
+                >
+                  <option value="auto">تلقائي (سريع → AI)</option>
+                  {BUILTIN_CARRIERS.find(c => c.id === carrierId) && (
+                    <option value="aramex">قارئ سريع فقط</option>
+                  )}
+                  <option value="ai">✨ AI فقط</option>
+                </select>
+              </div>
+            </div>
+          </Card>
+
+          <div
+            onDragOver={e => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={handleDrop}
+            onClick={() => document.getElementById('cs-file').click()}
+            style={{
+              border: `2px dashed ${drag ? 'var(--accent)' : 'var(--border2)'}`,
+              borderRadius: 14, padding: '54px 24px', textAlign: 'center',
+              background: drag ? 'rgba(56,189,248,.05)' : 'var(--surface)',
+              cursor: 'pointer', transition: 'all .2s',
+            }}
+          >
+            <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
+            <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
+            <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+              PDF · ستحلَّل بـ {BUILTIN_CARRIERS.find(c => c.id === carrierId) && parserMode !== 'ai'
+                ? 'القارئ السريع'
+                : <>AI <Sparkles size={11} style={{ display: 'inline' }}/></>}
+            </div>
+            <input id="cs-file" type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePick}/>
           </div>
-          <input id="cs-file" type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePick}/>
-        </div>
+        </>
       )}
 
       {state === 'processing' && (
         <Card style={{ padding: 64, textAlign: 'center' }}>
           <Spinner size={36}/>
-          <div style={{ color: 'var(--muted)', marginTop: 12, fontSize: 13 }}>جارٍ قراءة الكشف...</div>
+          <div style={{ color: 'var(--muted)', marginTop: 12, fontSize: 13 }}>
+            {aiStatus || 'جارٍ قراءة الكشف...'}
+          </div>
         </Card>
       )}
 
@@ -222,7 +316,7 @@ export default function CarrierStatements() {
                 </span>
               )}
               <span style={{ color: 'var(--muted)' }}>· {savedDiff.unchanged} بدون تغيير</span>
-              <a href="/ledger?carrier=aramex" style={{
+              <a href={`/ledger?carrier=${result?.carrierId || carrierId}`} style={{
                 marginRight: 'auto', color: 'var(--accent)', textDecoration: 'underline', fontSize: 12,
               }}>
                 افتح الدفتر لإدارة الحالات وربط المراجعات →

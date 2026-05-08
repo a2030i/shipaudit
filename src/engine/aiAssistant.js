@@ -1,0 +1,156 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  Floating AI assistant.
+//
+//  When the user opens the chat we collect a snapshot of their current AP
+//  state and inject it into the system prompt; subsequent answers are grounded
+//  in that snapshot. Requests go to OpenRouter using the user's saved key.
+//
+//  Public API:
+//    buildAssistantContext()   →  { snapshot, contextText }
+//    askAssistant(messages, contextText, signal)  →  string
+// ─────────────────────────────────────────────────────────────────────────────
+
+import { loadSettings } from '../data/carriers.js';
+import { loadCarriersOverview, aggregateOverview, loadRecentActivity } from '../lib/carrierStatementsService.js';
+import { loadCarriers, loadAuditsFromDB } from '../lib/coreService.js';
+
+const OR_BASE = 'https://openrouter.ai/api/v1';
+
+// Concise SAR formatter for prompts (fewer tokens than locale-aware).
+const fmt = n => (n == null || Number.isNaN(n)) ? '—' : Number(n).toFixed(2);
+
+export async function buildAssistantContext() {
+  const [overview, carriers, audits, activity] = await Promise.all([
+    loadCarriersOverview().catch(() => []),
+    loadCarriers().catch(() => []),
+    loadAuditsFromDB(20).catch(() => []),
+    loadRecentActivity(10).catch(() => ({ statements: [], operations: [] })),
+  ]);
+  const totals = aggregateOverview(overview);
+  const today = new Date().toISOString().slice(0, 10);
+
+  // Compact text representation for the system prompt.
+  const lines = [];
+  lines.push(`اليوم: ${today}`);
+  lines.push(`عدد الشركات الموردة (شركات الشحن): ${carriers.length}`);
+  lines.push(`عدد الشركات اللي عندها كشوف محفوظة: ${overview.length}`);
+  lines.push('');
+  lines.push('=== الإجماليات عبر كل الشركات ===');
+  lines.push(`المستحق الإجمالي: ${fmt(totals.outstanding)} ر.س`);
+  lines.push(`متأخّر السداد: ${fmt(totals.overdueAmount)} ر.س (${totals.overdueCount} عملية)`);
+  lines.push(`مسدّد سابقاً: ${fmt(totals.paidTotal)} ر.س (${totals.paidCount} عملية)`);
+  lines.push(`عمليات معلّقة: ${totals.pendingCount}`);
+  lines.push(`عمليات معتمدة (مدققة): ${totals.auditedCount}`);
+  lines.push(`متنازع عليها: ${totals.disputedCount}`);
+  lines.push(`تحت المراجعة: ${totals.reviewingCount}`);
+  lines.push('');
+  lines.push('=== أعمار الديون ===');
+  lines.push(`حتى 30 يوم: ${fmt(totals.aging.d0_30)} ر.س`);
+  lines.push(`31 إلى 60 يوم: ${fmt(totals.aging.d31_60)} ر.س`);
+  lines.push(`61 إلى 90 يوم: ${fmt(totals.aging.d61_90)} ر.س`);
+  lines.push(`فوق 90 يوم: ${fmt(totals.aging.over90)} ر.س`);
+  lines.push('');
+
+  if (overview.length) {
+    lines.push('=== أرصدة كل شركة ===');
+    for (const r of overview) {
+      lines.push(`• ${r.carrierName || r.carrierId}: ` +
+        `مستحق ${fmt(r.outstanding)} | متأخّر ${fmt(r.overdueAmount)} | ` +
+        `مسدّد ${fmt(r.paidTotal)} | معلّقة ${r.pendingCount} | ` +
+        `معتمدة ${r.auditedCount} | متنازع ${r.disputedCount} | ` +
+        `آخر كشف ${r.lastStatementAt ? r.lastStatementAt.slice(0,10) : '—'}`);
+    }
+    lines.push('');
+  }
+
+  if (carriers.length) {
+    lines.push('=== شركات معرّفة في النظام ===');
+    for (const c of carriers) {
+      const contracts = c.contracts ?? [];
+      const countries = contracts[0] ? Object.keys(contracts[0].pricing ?? {}).length : 0;
+      lines.push(`• ${c.name} (${c.id}) — ${contracts.length} عقد · ${countries} وجهة مسعّرة`);
+    }
+    lines.push('');
+  }
+
+  if (audits.length) {
+    lines.push(`=== آخر ${audits.length} مراجعة فاتورة شحنات ===`);
+    for (const a of audits.slice(0, 12)) {
+      lines.push(`• ${a.carrierName} ${a.period} — ${a.rowCount ?? 0} شحنة، ` +
+        `${a.issueCount ?? 0} فرق، إجمالي ${fmt(a.diff)} ر.س ` +
+        `(${new Date(a.date).toISOString().slice(0,10)})`);
+    }
+    lines.push('');
+  }
+
+  if (activity.statements.length) {
+    lines.push('=== آخر الكشوف المرفوعة ===');
+    for (const s of activity.statements.slice(0, 6)) {
+      lines.push(`• ${s.carrier_name} ${s.period_from}→${s.period_to} ` +
+        `إجمالي ${fmt(s.total_balance)} ر.س (${s.uploaded_at?.slice(0,10)})`);
+    }
+    lines.push('');
+  }
+
+  if (activity.operations.length) {
+    lines.push('=== آخر تغييرات الحالة ===');
+    for (const o of activity.operations.slice(0, 6)) {
+      lines.push(`• ${o.carrier_id} ${o.doc_no} (${o.doc_type}) → ${o.status} ` +
+        `بمبلغ ${fmt((o.amount_dr || 0) - (o.amount_cr || 0))} ر.س`);
+    }
+  }
+
+  return {
+    snapshot: { totals, overview, carriers, audits, activity },
+    contextText: lines.join('\n'),
+  };
+}
+
+const SYSTEM_PROMPT = `أنت مساعد مالي ذكي اسمه "محاسب" داخل نظام ShipAudit Pro.
+تساعد مدير الحسابات على فهم الالتزامات تجاه شركات الشحن والإجابة عن أي سؤال متعلق بالأرصدة والعمليات والفواتير والتدقيق.
+
+قواعد الجواب:
+- استخدم البيانات الفعلية من السياق المعطى أدناه فقط — لا تخمّن أرقاماً.
+- لو السؤال يحتاج معلومة مش موجودة في السياق، اعتذر بوضوح وأخبر المستخدم وين يلقاها في النظام.
+- أجوبة قصيرة ومباشرة بالعربية، الأرقام بصيغة سعودية مع "ر.س".
+- لو في معلومة مهمة (مثلاً متأخرات أو مبالغ كبيرة)، نبّه المستخدم بإيموجي مناسب (⚠️ ✅ 💰).
+- لو السؤال غير مالي (طبخ، رياضة...)، بأدب أعد المستخدم لتركيز النظام.
+
+السياق الحالي للنظام:
+{{CONTEXT}}`;
+
+export async function askAssistant(messages, contextText, signal) {
+  const settings = loadSettings();
+  if (!settings.openrouterKey) {
+    throw new Error('أدخل OpenRouter API Key في الإعدادات أولاً.');
+  }
+  const model = settings.openrouterModel || 'google/gemini-2.0-flash-001';
+  const system = SYSTEM_PROMPT.replace('{{CONTEXT}}', contextText || '(لا يوجد سياق)');
+
+  const res = await fetch(`${OR_BASE}/chat/completions`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Authorization': `Bearer ${settings.openrouterKey}`,
+      'Content-Type':  'application/json',
+      'HTTP-Referer':  'https://shipaudit.local',
+      'X-Title':       'ShipAudit Pro · AI Assistant',
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: 700,
+      temperature: 0.3,
+      messages: [
+        { role: 'system', content: system },
+        ...messages,
+      ],
+    }),
+  });
+  if (!res.ok) {
+    let body = '';
+    try { body = (await res.json())?.error?.message; } catch {}
+    throw new Error(`AI خطأ ${res.status}: ${body || ''}`.trim());
+  }
+  const data = await res.json();
+  return data?.choices?.[0]?.message?.content ?? '';
+}
