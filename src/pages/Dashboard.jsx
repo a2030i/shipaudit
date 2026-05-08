@@ -7,6 +7,7 @@ import { Card, Btn, Spinner, Empty } from '../components/UI.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
 } from '../lib/carrierStatementsService.js';
+import { loadCustomersAR } from '../lib/excessWeightService.js';
 import { loadAuditsFromDB } from '../lib/coreService.js';
 
 const fmt = n => (n == null || Number.isNaN(n))
@@ -25,17 +26,20 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   const [audits,   setAudits]     = useState([]);
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
   const [actionItems, setActionItems] = useState([]);
+  const [arSummary, setArSummary] = useState(null);
   const [loading,  setLoading]    = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [ov, ad, act, allOps] = await Promise.all([
+      const [ov, ad, act, allOps, ar] = await Promise.all([
         loadCarriersOverview(),
         loadAuditsFromDB(8),
         loadRecentActivity(6),
         loadOperations({}),
+        loadCustomersAR().catch(() => ({ summary: [], totals: null })),
       ]);
+      setArSummary(ar);
       // Build action-required list across all carriers.
       const today = new Date().toISOString().slice(0, 10);
       const actions = (allOps || [])
@@ -102,45 +106,52 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28}/></div>
       ) : (
         <>
-          {/* HERO METRICS — outstanding · overdue · paid · carriers */}
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 12, marginBottom: 18,
-          }}>
-            <Hero
-              label="المستحق الإجمالي"
-              icon={<Wallet size={20}/>}
-              value={fmt(totals.outstanding)}
-              suffix="ر.س"
-              color="var(--red)"
-              hint={`${totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount} عملية مفتوحة`}
-              big
-            />
-            <Hero
-              label="متأخّر السداد"
-              icon={<AlertOctagon size={20}/>}
-              value={fmt(totals.overdueAmount)}
-              suffix="ر.س"
-              color="var(--gold)"
-              hint={`${totals.overdueCount} فاتورة تجاوزت الاستحقاق`}
-            />
-            <Hero
-              label="مسدّد سابقاً"
-              icon={<TrendingDown size={20}/>}
-              value={fmt(totals.paidTotal)}
-              suffix="ر.س"
-              color="var(--green)"
-              hint={`${totals.paidCount} عملية مسدّدة`}
-            />
-            <Hero
-              label="شركات نشطة"
-              icon={<Building2 size={20}/>}
-              value={overview.length}
-              color="var(--accent)"
-              hint={`${totals.carrierCount} لها كشوف · ${carriers?.length ?? 0} مُعرَّفة`}
-            />
-          </div>
+          {/* HERO METRICS — net position + AP + AR + overdue */}
+          {(() => {
+            const arOpen = arSummary?.totals?.openDue ?? 0;
+            const netPosition = arOpen - totals.outstanding;
+            return (
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                gap: 12, marginBottom: 18,
+              }}>
+                <Hero
+                  label="الوضع الصافي"
+                  icon={<Wallet size={20}/>}
+                  value={(netPosition >= 0 ? '+' : '') + fmt(netPosition)}
+                  suffix="ر.س"
+                  color={netPosition >= 0 ? 'var(--green)' : 'var(--red)'}
+                  hint={netPosition >= 0 ? 'ميزانك إيجابي' : 'عليك أكثر مما لك'}
+                  big
+                />
+                <Hero
+                  label="المستحق على شركات الشحن (AP)"
+                  icon={<TrendingDown size={20}/>}
+                  value={fmt(totals.outstanding)}
+                  suffix="ر.س"
+                  color="var(--red)"
+                  hint={`${totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount} عملية مفتوحة`}
+                />
+                <Hero
+                  label="المستحق من العملاء (AR)"
+                  icon={<TrendingUp size={20}/>}
+                  value={fmt(arOpen)}
+                  suffix="ر.س"
+                  color="var(--green)"
+                  hint={`${arSummary?.totals?.customers ?? 0} عميل · ${arSummary?.totals?.shipments ?? 0} شحنة بزيادة`}
+                />
+                <Hero
+                  label="متأخّر السداد"
+                  icon={<AlertOctagon size={20}/>}
+                  value={fmt(totals.overdueAmount)}
+                  suffix="ر.س"
+                  color="var(--gold)"
+                  hint={`${totals.overdueCount} فاتورة تجاوزت الاستحقاق`}
+                />
+              </div>
+            );
+          })()}
 
           {/* AGING + STATUS COUNTS — 2-column grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 14, marginBottom: 18 }}>
