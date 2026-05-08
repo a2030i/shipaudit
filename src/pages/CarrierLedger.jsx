@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Search, RefreshCw, Link2 } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import {
   loadOperations,
   loadOpenBalance,
+  loadCarriersOverview,
   setOperationStatus,
 } from '../lib/carrierStatementsService.js';
 import { loadAuditsFromDB } from '../lib/coreService.js';
@@ -27,7 +29,9 @@ const fmt = n => (n == null || Number.isNaN(n))
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function CarrierLedger({ isActive = true }) {
-  const [carrier]   = useState('aramex');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [carrier, setCarrier] = useState(() => searchParams.get('carrier') || '');
+  const [carrierList, setCarrierList] = useState([]);
   const [ops, setOps] = useState([]);
   const [bal, setBal] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -36,12 +40,29 @@ export default function CarrierLedger({ isActive = true }) {
   const [shipmentFilter, setShipmentFilter] = useState('all');
   const [modal, setModal] = useState(null); // { op, action: 'paid'|'dispute' }
 
+  // Sync carrier param ↔ URL
+  useEffect(() => {
+    if (carrier) setSearchParams({ carrier }, { replace: true });
+    else         setSearchParams({}, { replace: true });
+  }, [carrier]); // eslint-disable-line
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      // Discover carriers that have operations (so the dropdown is data-driven)
+      const overview = await loadCarriersOverview();
+      setCarrierList(overview);
+
+      // Default carrier = whichever has the highest outstanding (or fall back
+      // to first in list, or 'aramex' for backwards compatibility).
+      const effective = carrier
+        || overview[0]?.carrierId
+        || 'aramex';
+      if (!carrier) setCarrier(effective);
+
       const [opsData, balData] = await Promise.all([
-        loadOperations({ carrierId: carrier }),
-        loadOpenBalance(carrier),
+        loadOperations({ carrierId: effective }),
+        loadOpenBalance(effective),
       ]);
       setOps(opsData);
       setBal(balData);
@@ -138,12 +159,36 @@ export default function CarrierLedger({ isActive = true }) {
     <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={22}/></div>
   );
 
+  const currentCarrierName = useMemo(() => {
+    const found = carrierList.find(c => c.carrierId === carrier);
+    return found?.carrierName || carrier;
+  }, [carrier, carrierList]);
+
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1300 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-          📒 دفتر <span style={{ color: 'var(--text)' }}>أرامكس</span>
-        </h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
+            📒 الدفتر
+          </h2>
+          {carrierList.length > 0 && (
+            <select
+              value={carrier}
+              onChange={e => setCarrier(e.target.value)}
+              style={{
+                padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
+                background: 'var(--card)', border: '1px solid var(--accent)', color: 'var(--text)',
+                cursor: 'pointer', minWidth: 180,
+              }}
+            >
+              {carrierList.map(c => (
+                <option key={c.carrierId} value={c.carrierId}>
+                  {c.carrierName || c.carrierId} · {Number(c.outstanding ?? 0).toLocaleString('ar-SA', { maximumFractionDigits: 0 })} ر.س
+                </option>
+              ))}
+            </select>
+          )}
+        </div>
         <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
       </div>
 
@@ -274,6 +319,7 @@ export default function CarrierLedger({ isActive = true }) {
       {modal && (
         <ActionModal
           modal={modal}
+          carrierName={currentCarrierName}
           onClose={() => setModal(null)}
           onPaid={markPaid}
           onDispute={markDispute}
@@ -285,13 +331,13 @@ export default function CarrierLedger({ isActive = true }) {
 }
 
 // ── ActionModal ────────────────────────────────────────────────────────────
-function ActionModal({ modal, onClose, onPaid, onDispute, onLink }) {
+function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink }) {
   const [paymentRef, setPaymentRef] = useState('');
   const [notes, setNotes] = useState('');
   const isPay  = modal.action === 'paid';
   const isLink = modal.action === 'link';
 
-  if (isLink) return <LinkAuditModal op={modal.op} onClose={onClose} onLink={onLink}/>;
+  if (isLink) return <LinkAuditModal op={modal.op} carrierName={carrierName} onClose={onClose} onLink={onLink}/>;
 
   return (
     <Modal title={isPay ? '💰 تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={420}>
@@ -319,26 +365,38 @@ function ActionModal({ modal, onClose, onPaid, onDispute, onLink }) {
 }
 
 // ── LinkAuditModal — pick an existing audit to attach to this operation ──
-function LinkAuditModal({ op, onClose, onLink }) {
+function LinkAuditModal({ op, carrierName, onClose, onLink }) {
   const [audits, setAudits]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
 
   useEffect(() => {
     loadAuditsFromDB(200).then(rows => {
-      // Aramex carrier name varies (ارامكس / أرامكس / Aramex). Filter loosely.
-      const aramex = rows.filter(r => /ارامكس|أرامكس|aramex/i.test(r.carrierName || ''));
+      // Audits are tagged by carrier name string (e.g., "أرامكس" / "ارامكس" /
+      // "سمسا SMSA"). Match loosely on the same word stem so spelling variants
+      // line up.
+      let pool = rows;
+      if (carrierName) {
+        const norm = carrierName.toLowerCase();
+        const tokens = norm.split(/[\s/]+/).filter(t => t.length >= 3);
+        pool = rows.filter(r => {
+          const nm = (r.carrierName || '').toLowerCase();
+          return tokens.some(t => nm.includes(t));
+        });
+        // If nothing matched, fall back to the full list (better than empty).
+        if (pool.length === 0) pool = rows;
+      }
       // Sort: file name containing this doc_no first.
-      aramex.sort((a, b) => {
+      pool.sort((a, b) => {
         const aHit = (a.fileName || '').includes(op.doc_no) ? 0 : 1;
         const bHit = (b.fileName || '').includes(op.doc_no) ? 0 : 1;
         if (aHit !== bHit) return aHit - bHit;
         return new Date(b.date) - new Date(a.date);
       });
-      setAudits(aramex);
+      setAudits(pool);
       setLoading(false);
     }).catch(() => { setAudits([]); setLoading(false); });
-  }, [op.doc_no]);
+  }, [op.doc_no, carrierName]);
 
   const filtered = useMemo(() => {
     if (!audits) return [];
