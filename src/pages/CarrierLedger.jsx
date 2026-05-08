@@ -164,6 +164,28 @@ export default function CarrierLedger({ isActive = true }) {
     return found?.carrierName || carrier;
   }, [carrier, carrierList]);
 
+  // First-time empty state — no statement has been saved yet anywhere.
+  if (!loading && carrierList.length === 0) {
+    return (
+      <div style={{ padding: '28px 32px', maxWidth: 900 }}>
+        <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0, marginBottom: 18 }}>
+          📒 الدفتر
+        </h2>
+        <Card style={{ textAlign: 'center', padding: 44 }}>
+          <div style={{ fontSize: 44, marginBottom: 12 }}>📒</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>الدفتر فاضي</div>
+          <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 22, maxWidth: 480, margin: '0 auto 22px' }}>
+            ارفع كشف حساب من صفحة <strong style={{ color: 'var(--accent)' }}>"رفع كشف"</strong>،
+            ثم اضغط <strong style={{ color: 'var(--green)' }}>"💾 حفظ في الدفتر"</strong> ليتعبأ الدفتر هنا.
+          </div>
+          <Btn variant="primary" onClick={() => { window.location.href = '/aramex-statements'; }}>
+            رفع كشف حساب →
+          </Btn>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1300 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
