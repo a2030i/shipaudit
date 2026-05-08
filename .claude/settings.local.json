@@ -55,7 +55,10 @@
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: bank statement processor \\(Bank Alinma\\) + grouped sidebar sections *)",
       "Bash(node ./test_bank.mjs)",
       "Bash(rm test_bank.mjs)",
-      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: bank statement parser handles real Bank Alinma export *)"
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: bank statement parser handles real Bank Alinma export *)",
+      "Bash(node ./test_pdf.mjs)",
+      "Bash(node ./test_stmt.mjs)",
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: Aramex statement-of-account PDF parser + carrier statements page *)"
     ]
   }
 }
