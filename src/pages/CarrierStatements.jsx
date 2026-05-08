@@ -1,7 +1,9 @@
 import { useState, useMemo, useCallback } from 'react';
-import { Upload, FileText, AlertCircle, Search, Trash2 } from 'lucide-react';
+import { Upload, FileText, AlertCircle, Search, Trash2, Save } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
+import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
+import { useAuth } from '../lib/auth.jsx';
 
 // ─── Doc-type & shipment-type labels ──────────────────────────────────────
 const DOC_TYPE_META = {
@@ -22,12 +24,15 @@ const fmt = n => (n == null || Number.isNaN(n))
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function CarrierStatements() {
+  const { user } = useAuth();
   const [state, setState] = useState('idle');     // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);      // { header, operations, totals, fileName }
   const [drag, setDrag] = useState(false);
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all');
+  const [saving, setSaving] = useState(false);
+  const [savedDiff, setSavedDiff] = useState(null); // { added, updated, reviewing, unchanged }
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
@@ -63,6 +68,30 @@ export default function CarrierStatements() {
     setSearch('');
     setFilter('all');
     setErrorMsg('');
+    setSavedDiff(null);
+  };
+
+  const handleSave = async () => {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const { diff } = await saveCarrierStatement({
+        carrierId:   'aramex',
+        carrierName: 'أرامكس',
+        fileName:    result.fileName,
+        parsed:      result,
+        userId:      user?.id,
+      });
+      setSavedDiff(diff);
+      toast(
+        `تم الحفظ — ${diff.added} جديدة، ${diff.updated} محدّثة، ${diff.reviewing} تحت المراجعة`,
+        'success',
+      );
+    } catch (e) {
+      console.error(e);
+      toast(`فشل الحفظ: ${e.message}`, 'error');
+    }
+    setSaving(false);
   };
 
   // ── Derived ────────────────────────────────────────────────────────────
@@ -166,11 +195,35 @@ export default function CarrierStatements() {
 
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            {!savedDiff && (
+              <Btn variant="primary" icon={saving ? <Spinner size={12}/> : <Save size={14}/>}
+                onClick={handleSave} disabled={saving}>
+                {saving ? 'جارٍ الحفظ...' : 'حفظ في الدفتر'}
+              </Btn>
+            )}
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>كشف جديد</Btn>
             <span style={{ color: 'var(--muted)', fontSize: 11, marginRight: 8, fontFamily: 'var(--font-mono)' }}>
               العمليات ({result.operations.length}) — RV {breakdown.rv} | DR {breakdown.dr} | DG {breakdown.dg} | AB {breakdown.ab}
             </span>
           </div>
+
+          {savedDiff && (
+            <div style={{
+              background: 'rgba(52,211,153,.08)', border: '1px solid rgba(52,211,153,.25)',
+              borderRadius: 9, padding: '10px 14px', marginBottom: 12, fontSize: 12,
+              color: 'var(--green)', display: 'flex', gap: 14, flexWrap: 'wrap',
+            }}>
+              <span>✓ تم الحفظ في الدفتر</span>
+              <span>✚ {savedDiff.added} جديدة</span>
+              <span>✎ {savedDiff.updated} محدّثة</span>
+              {savedDiff.reviewing > 0 && (
+                <span style={{ color: 'var(--gold)' }}>
+                  ⚠ {savedDiff.reviewing} تحت المراجعة (مبلغ تغيّر بعد التسديد/التدقيق)
+                </span>
+              )}
+              <span style={{ color: 'var(--muted)' }}>· {savedDiff.unchanged} بدون تغيير</span>
+            </div>
+          )}
 
           {/* Filter tabs */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>

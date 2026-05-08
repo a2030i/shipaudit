@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Wifi, WifiOff } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
@@ -327,47 +327,49 @@ export function AuditsHistory({ onOpen, isActive = true }) {
 
   return (
     <div style={{padding:'28px 32px',maxWidth:900}}>
-      <h2 style={{fontFamily:'var(--font-mono)',color:'var(--accent)',marginBottom:24}}>📋 سجل المراجعات</h2>
+      <h2 style={{fontFamily:'var(--font-mono)',color:'var(--accent)',marginBottom:18}}>📋 سجل المراجعات</h2>
 
-      {audits.length === 0
-        ? <Empty icon="📋" title="لا توجد مراجعات بعد" sub="ارفع ملف Excel لبدء أول مراجعة"/>
-        : (
-          <div className="stagger">
-            {audits.map(a => (
-              <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
-                <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
-                  <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                    <div style={{fontSize:28}}>📦</div>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{a.carrierName}</div>
-                      <div style={{color:'var(--muted)',fontSize:12}}>
-                        {a.period} · {a.rowCount ?? 0} شحنة · {new Date(a.date).toLocaleString('ar-SA')}
-                      </div>
-                    </div>
-                  </div>
-                  <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                    <div style={{textAlign:'center',minWidth:80}}>
-                      <div style={{color:(a.issueCount??0)>0?'var(--red)':'var(--green)',fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14}}>
-                        {(a.issueCount??0)>0 ? `✗ ${a.issueCount}` : '✓ كامل'}
-                      </div>
-                      {(a.issueCount??0)>0 && (
-                        <div style={{color:'var(--red)',fontFamily:'var(--font-mono)',fontSize:11}}>
-                          +{Number(a.diff??0).toFixed(2)} ر.س
+      <AuditsFilter audits={audits}>
+        {filtered => filtered.length === 0
+          ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
+          : (
+            <div className="stagger">
+              {filtered.map(a => (
+                <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
+                  <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
+                    <div style={{display:'flex',gap:14,alignItems:'center'}}>
+                      <div style={{fontSize:28}}>📦</div>
+                      <div>
+                        <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{a.carrierName}</div>
+                        <div style={{color:'var(--muted)',fontSize:12}}>
+                          {a.period} · {a.rowCount ?? 0} شحنة · {new Date(a.date).toLocaleString('ar-SA')}
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <Btn size="sm" variant="primary" disabled={opening===a.id}
-                      onClick={() => handleOpen(a.id)}>
-                      {opening === a.id ? <Spinner size={12}/> : 'فتح'}
-                    </Btn>
-                    <Btn size="sm" variant="danger" onClick={()=>setConfirm(a.id)}>🗑</Btn>
+                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                      <div style={{textAlign:'center',minWidth:80}}>
+                        <div style={{color:(a.issueCount??0)>0?'var(--red)':'var(--green)',fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14}}>
+                          {(a.issueCount??0)>0 ? `✗ ${a.issueCount}` : '✓ كامل'}
+                        </div>
+                        {(a.issueCount??0)>0 && (
+                          <div style={{color:'var(--red)',fontFamily:'var(--font-mono)',fontSize:11}}>
+                            +{Number(a.diff??0).toFixed(2)} ر.س
+                          </div>
+                        )}
+                      </div>
+                      <Btn size="sm" variant="primary" disabled={opening===a.id}
+                        onClick={() => handleOpen(a.id)}>
+                        {opening === a.id ? <Spinner size={12}/> : 'فتح'}
+                      </Btn>
+                      <Btn size="sm" variant="danger" onClick={()=>setConfirm(a.id)}>🗑</Btn>
+                    </div>
                   </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-        )
-      }
+                </Card>
+              ))}
+            </div>
+          )
+        }
+      </AuditsFilter>
 
       {confirm && (
         <Modal title="⚠️ حذف المراجعة" onClose={()=>setConfirm(null)} width={360}>
@@ -379,5 +381,72 @@ export function AuditsHistory({ onOpen, isActive = true }) {
         </Modal>
       )}
     </div>
+  );
+}
+
+// ── Audits filter (carrier · month · status · search) ─────────────────────
+function AuditsFilter({ audits, children }) {
+  const [carrier, setCarrier]   = useState('all');
+  const [month,   setMonth]     = useState('all');
+  const [status,  setStatus]    = useState('all');
+  const [query,   setQuery]     = useState('');
+
+  // Build option lists from data
+  const carriers = useMemo(
+    () => [...new Set(audits.map(a => a.carrierName).filter(Boolean))].sort(),
+    [audits],
+  );
+  const months = useMemo(
+    () => [...new Set(audits.map(a => (a.date || '').slice(0, 7)).filter(Boolean))].sort().reverse(),
+    [audits],
+  );
+
+  const filtered = useMemo(() => audits.filter(a => {
+    if (carrier !== 'all' && a.carrierName !== carrier) return false;
+    if (month !== 'all' && (a.date || '').slice(0, 7) !== month) return false;
+    if (status === 'issues' && !((a.issueCount ?? 0) > 0)) return false;
+    if (status === 'clean'  &&  ((a.issueCount ?? 0) > 0)) return false;
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      const hay = `${a.carrierName} ${a.period} ${a.fileName ?? ''}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  }), [audits, carrier, month, status, query]);
+
+  const reset = () => { setCarrier('all'); setMonth('all'); setStatus('all'); setQuery(''); };
+  const hasFilter = carrier !== 'all' || month !== 'all' || status !== 'all' || query !== '';
+
+  if (!audits.length) {
+    return <Empty icon="📋" title="لا توجد مراجعات بعد" sub="ارفع ملف Excel لبدء أول مراجعة"/>;
+  }
+
+  return (
+    <>
+      <Card style={{ marginBottom: 14, padding: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 2fr auto', gap: 8, alignItems: 'center' }}>
+          <Select label="الشركة" value={carrier} onChange={e => setCarrier(e.target.value)}>
+            <option value="all">كل الشركات</option>
+            {carriers.map(c => <option key={c} value={c}>{c}</option>)}
+          </Select>
+          <Select label="الشهر" value={month} onChange={e => setMonth(e.target.value)}>
+            <option value="all">كل الشهور</option>
+            {months.map(m => <option key={m} value={m}>{m}</option>)}
+          </Select>
+          <Select label="الحالة" value={status} onChange={e => setStatus(e.target.value)}>
+            <option value="all">الكل</option>
+            <option value="issues">بفروق فقط</option>
+            <option value="clean">مطابقة فقط</option>
+          </Select>
+          <Input label="بحث" value={query} onChange={e => setQuery(e.target.value)}
+            placeholder="اسم/فترة/ملف..."/>
+          {hasFilter && <Btn size="sm" variant="ghost" onClick={reset}>مسح</Btn>}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          {filtered.length} من أصل {audits.length}
+        </div>
+      </Card>
+      {children(filtered)}
+    </>
   );
 }
