@@ -1,5 +1,25 @@
 import * as XLSX from 'xlsx';
 
+/**
+ * Export a stripped-down (AWB, total weight) sheet for hand-off to an
+ * external pricing/billing system. Includes every audited row.
+ */
+export function exportWeightsForExternalSystem(results, carrierName, period) {
+  if (!results?.length) return false;
+  const wb = XLSX.utils.book_new();
+  const headers = ['رقم الشحنة (AWB)', 'الوزن الإجمالي (كغ)', 'تاريخ الشحن', 'الدولة'];
+  const rows = results
+    .filter(r => r.awb && (r.weight ?? 0) > 0)
+    .map(r => [r.awb, +Number(r.weight).toFixed(3), r.shipDate || '', r.dest || '']);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 13 }, { wch: 22 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'AWB + الوزن');
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `أوزان_${carrierName}_${period}_${dateStr}.xlsx`);
+  return true;
+}
+
 export function exportAuditExcel(results, summary, carrierName, period, contractLabel) {
   const mis = results.filter(r => r.status === 'mismatch');
   if (!mis.length) return false;
