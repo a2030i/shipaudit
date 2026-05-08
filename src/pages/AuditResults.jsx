@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
-import { exportAuditExcel } from '../engine/export.js';
+import { exportAuditExcel, exportWeightsForExternalSystem } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 
@@ -399,6 +399,12 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     else    toast('لا توجد فروق للتصدير','info');
   };
 
+  const handleExportWeights = () => {
+    const ok = exportWeightsForExternalSystem(results, audit.carrierName, audit.period);
+    if (ok) toast('تم تصدير ملف الأوزان (AWB + الوزن) ✓','success');
+    else    toast('لا توجد شحنات لتصديرها','info');
+  };
+
   return (
     <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:'100%',overflow:'hidden'}}>
 
@@ -421,9 +427,12 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </Btn>
             {summary.mismatch>0 && (
               <Btn size="sm" variant="success" onClick={handleExport} icon="⬇️">
-                تصدير ({summary.mismatch} فرق)
+                تصدير الفروق ({summary.mismatch})
               </Btn>
             )}
+            <Btn size="sm" variant="outline" onClick={handleExportWeights} icon="⚖️">
+              تصدير الأوزان
+            </Btn>
             <Btn size="sm" variant={showAI?'primary':'gold'} onClick={()=>setShowAI(s=>!s)} icon="✨">
               {showAI?'إخفاء AI':'مساعد AI'}
             </Btn>

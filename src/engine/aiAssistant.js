@@ -13,7 +13,6 @@
 import { loadSettings } from '../data/carriers.js';
 import { loadCarriersOverview, aggregateOverview, loadRecentActivity } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB } from '../lib/coreService.js';
-import { loadCustomersAR } from '../lib/excessWeightService.js';
 
 const OR_BASE = 'https://openrouter.ai/api/v1';
 
@@ -21,12 +20,11 @@ const OR_BASE = 'https://openrouter.ai/api/v1';
 const fmt = n => (n == null || Number.isNaN(n)) ? '—' : Number(n).toFixed(2);
 
 export async function buildAssistantContext() {
-  const [overview, carriers, audits, activity, ar] = await Promise.all([
+  const [overview, carriers, audits, activity] = await Promise.all([
     loadCarriersOverview().catch(() => []),
     loadCarriers().catch(() => []),
     loadAuditsFromDB(20).catch(() => []),
     loadRecentActivity(10).catch(() => ({ statements: [], operations: [] })),
-    loadCustomersAR().catch(() => ({ summary: [], totals: null })),
   ]);
   const totals = aggregateOverview(overview);
   const today = new Date().toISOString().slice(0, 10);
@@ -100,38 +98,10 @@ export async function buildAssistantContext() {
       lines.push(`• ${o.carrier_id} ${o.doc_no} (${o.doc_type}) → ${o.status} ` +
         `بمبلغ ${fmt((o.amount_dr || 0) - (o.amount_cr || 0))} ر.س`);
     }
-    lines.push('');
-  }
-
-  // ── AR side: customer excess-weight billing ──
-  if (ar?.totals) {
-    lines.push('=== فواتير الوزن الزائد (AR — مستحق من العملاء) ===');
-    lines.push(`عدد العملاء: ${ar.totals.customers}`);
-    lines.push(`عدد الشحنات بزيادة: ${ar.totals.shipments}`);
-    lines.push(`إجمالي مفتوح (لم يُحصَّل): ${fmt(ar.totals.openDue)} ر.س`);
-    lines.push(`  منها معلّقة (لم تُفوتر): ${fmt(ar.totals.pendingDue)} ر.س`);
-    lines.push(`  منها مفوترة (بانتظار التحصيل): ${fmt(ar.totals.billedDue)} ر.س`);
-    lines.push(`محصّلة فعلياً: ${fmt(ar.totals.paidDue)} ر.س`);
-    if (ar.summary?.length) {
-      lines.push('');
-      lines.push('أعلى 8 عملاء بمستحقات مفتوحة:');
-      for (const c of ar.summary.slice(0, 8)) {
-        const open = c.pendingDue + c.billedDue;
-        lines.push(`• ${c.customer}: مفتوح ${fmt(open)} ر.س ` +
-          `(${c.pendingCount} معلّقة + ${c.billedCount} مفوترة) · ` +
-          `محصّل ${fmt(c.paidDue)} ر.س · زائد ${fmt(c.totalExcess)} كغ`);
-      }
-    }
-    lines.push('');
-    // Net financial position
-    const net = ar.totals.openDue - totals.outstanding;
-    lines.push(`=== الوضع الصافي ===`);
-    lines.push(`المستحق من العملاء (AR) − المستحق على شركات الشحن (AP) = ${fmt(net)} ر.س`);
-    lines.push(net >= 0 ? 'ميزانك إيجابي.' : 'عليك أكثر مما لك حالياً.');
   }
 
   return {
-    snapshot: { totals, overview, carriers, audits, activity, ar },
+    snapshot: { totals, overview, carriers, audits, activity },
     contextText: lines.join('\n'),
   };
 }
