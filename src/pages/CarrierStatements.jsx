@@ -211,7 +211,7 @@ export default function CarrierStatements() {
             <div style={{
               background: 'rgba(52,211,153,.08)', border: '1px solid rgba(52,211,153,.25)',
               borderRadius: 9, padding: '10px 14px', marginBottom: 12, fontSize: 12,
-              color: 'var(--green)', display: 'flex', gap: 14, flexWrap: 'wrap',
+              color: 'var(--green)', display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
             }}>
               <span>✓ تم الحفظ في الدفتر</span>
               <span>✚ {savedDiff.added} جديدة</span>
@@ -222,6 +222,11 @@ export default function CarrierStatements() {
                 </span>
               )}
               <span style={{ color: 'var(--muted)' }}>· {savedDiff.unchanged} بدون تغيير</span>
+              <a href="/aramex-ledger" style={{
+                marginRight: 'auto', color: 'var(--accent)', textDecoration: 'underline', fontSize: 12,
+              }}>
+                افتح دفتر أرامكس لإدارة الحالات وربط المراجعات →
+              </a>
             </div>
           )}
 

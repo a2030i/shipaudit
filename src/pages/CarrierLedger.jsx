@@ -1,17 +1,18 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Search, RefreshCw, CheckCircle2, AlertOctagon, Clock, Eye } from 'lucide-react';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, Badge, toast } from '../components/UI.jsx';
+import { Search, RefreshCw, Link2 } from 'lucide-react';
+import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import {
   loadOperations,
   loadOpenBalance,
   setOperationStatus,
 } from '../lib/carrierStatementsService.js';
+import { loadAuditsFromDB } from '../lib/coreService.js';
 
 // ─── Status meta ───────────────────────────────────────────────────────────
 const STATUS_META = {
   pending:   { label: '⏳ معلّقة',   color: 'var(--gold)'   },
-  audited:   { label: '🔬 مدققة',    color: 'var(--accent)' },
-  paid:      { label: '✓ مسدّدة',    color: 'var(--green)'  },
+  audited:   { label: '✓ معتمدة',   color: 'var(--accent)' },
+  paid:      { label: '💰 مسدّدة',   color: 'var(--green)'  },
   disputed:  { label: '⚠ متنازع',   color: 'var(--red)'    },
   reviewing: { label: '🔄 مراجعة',   color: 'var(--gold)'   },
 };
@@ -98,6 +99,35 @@ export default function CarrierLedger({ isActive = true }) {
     try {
       await setOperationStatus(op.id, { status: 'pending', paid_at: null });
       toast('تم إعادة فتح العملية', 'info');
+      refresh();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+  };
+
+  const linkAudit = async (op, audit) => {
+    try {
+      await setOperationStatus(op.id, {
+        status: 'audited',
+        audit_id: audit.id,
+        invoice_file_name: audit.fileName ?? null,
+      });
+      toast(`✓ ربطت المراجعة — العملية الآن معتمدة`, 'success');
+      refresh();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setModal(null);
+  };
+
+  const unlinkAudit = async (op) => {
+    try {
+      await setOperationStatus(op.id, {
+        status: 'pending',
+        audit_id: null,
+        invoice_file_name: null,
+      });
+      toast('تم إلغاء الربط', 'info');
       refresh();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -196,20 +226,39 @@ export default function CarrierLedger({ isActive = true }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {o.status !== 'paid' && (
-                              <Btn size="sm" variant="success" onClick={() => setModal({ op: o, action: 'paid' })}>
-                                ✓ تسديد
+                            {/* Link / unlink audit (only for RV invoices) */}
+                            {o.doc_type === 'RV' && !o.audit_id && o.status !== 'paid' && (
+                              <Btn size="sm" variant="primary" onClick={() => setModal({ op: o, action: 'link' })}>
+                                🔗 ربط مراجعة
                               </Btn>
                             )}
+                            {o.audit_id && o.status !== 'paid' && (
+                              <Btn size="sm" variant="ghost" onClick={() => unlinkAudit(o)}>
+                                🔗✕ إلغاء الربط
+                              </Btn>
+                            )}
+                            {/* Pay */}
+                            {o.status !== 'paid' && (
+                              <Btn size="sm" variant="success" onClick={() => setModal({ op: o, action: 'paid' })}>
+                                💰 تسديد
+                              </Btn>
+                            )}
+                            {/* Dispute */}
                             {o.status !== 'disputed' && o.status !== 'paid' && (
                               <Btn size="sm" variant="ghost" onClick={() => setModal({ op: o, action: 'dispute' })}>
                                 ⚠ نزاع
                               </Btn>
                             )}
+                            {/* Reopen */}
                             {(o.status === 'paid' || o.status === 'disputed') && (
                               <Btn size="sm" variant="ghost" onClick={() => reopen(o)}>↩ إعادة فتح</Btn>
                             )}
                           </div>
+                          {o.audit_id && (
+                            <div style={{ marginTop: 4, fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+                              🔗 {o.invoice_file_name || o.audit_id.slice(0, 12)}
+                            </div>
+                          )}
                         </td>
                       </tr>
                     );
@@ -222,19 +271,30 @@ export default function CarrierLedger({ isActive = true }) {
       </Card>
 
       {/* Action modal */}
-      {modal && <ActionModal modal={modal} onClose={() => setModal(null)} onPaid={markPaid} onDispute={markDispute}/>}
+      {modal && (
+        <ActionModal
+          modal={modal}
+          onClose={() => setModal(null)}
+          onPaid={markPaid}
+          onDispute={markDispute}
+          onLink={linkAudit}
+        />
+      )}
     </div>
   );
 }
 
 // ── ActionModal ────────────────────────────────────────────────────────────
-function ActionModal({ modal, onClose, onPaid, onDispute }) {
+function ActionModal({ modal, onClose, onPaid, onDispute, onLink }) {
   const [paymentRef, setPaymentRef] = useState('');
   const [notes, setNotes] = useState('');
-  const isPay = modal.action === 'paid';
+  const isPay  = modal.action === 'paid';
+  const isLink = modal.action === 'link';
+
+  if (isLink) return <LinkAuditModal op={modal.op} onClose={onClose} onLink={onLink}/>;
 
   return (
-    <Modal title={isPay ? '✓ تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={420}>
+    <Modal title={isPay ? '💰 تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={420}>
       <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--muted)' }}>
         رقم المستند: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{modal.op.doc_no}</span>
         {' · '}المبلغ: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
@@ -253,6 +313,101 @@ function ActionModal({ modal, onClose, onPaid, onDispute }) {
           onClick={() => isPay ? onPaid(modal.op, paymentRef) : onDispute(modal.op, notes)}>
           تأكيد
         </Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── LinkAuditModal — pick an existing audit to attach to this operation ──
+function LinkAuditModal({ op, onClose, onLink }) {
+  const [audits, setAudits]   = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch]   = useState('');
+
+  useEffect(() => {
+    loadAuditsFromDB(200).then(rows => {
+      // Aramex carrier name varies (ارامكس / أرامكس / Aramex). Filter loosely.
+      const aramex = rows.filter(r => /ارامكس|أرامكس|aramex/i.test(r.carrierName || ''));
+      // Sort: file name containing this doc_no first.
+      aramex.sort((a, b) => {
+        const aHit = (a.fileName || '').includes(op.doc_no) ? 0 : 1;
+        const bHit = (b.fileName || '').includes(op.doc_no) ? 0 : 1;
+        if (aHit !== bHit) return aHit - bHit;
+        return new Date(b.date) - new Date(a.date);
+      });
+      setAudits(aramex);
+      setLoading(false);
+    }).catch(() => { setAudits([]); setLoading(false); });
+  }, [op.doc_no]);
+
+  const filtered = useMemo(() => {
+    if (!audits) return [];
+    if (!search.trim()) return audits;
+    const q = search.trim().toLowerCase();
+    return audits.filter(a =>
+      `${a.carrierName} ${a.period} ${a.fileName ?? ''}`.toLowerCase().includes(q)
+    );
+  }, [audits, search]);
+
+  return (
+    <Modal title="🔗 ربط مراجعة بالعملية" onClose={onClose} width={620}>
+      <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--muted)' }}>
+        ربط بـ: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{op.doc_no}</span>
+        {' · '}المبلغ: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+          {Number((op.amount_dr ?? 0) - (op.amount_cr ?? 0)).toFixed(2)} ر.س
+        </span>
+      </div>
+
+      <div style={{ position: 'relative', marginBottom: 10 }}>
+        <Search size={14} style={{ position: 'absolute', right: 12, top: 11, color: 'var(--muted)' }}/>
+        <input
+          autoFocus value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="بحث بالفترة أو اسم الملف..."
+          style={{ width: '100%', padding: '9px 36px 9px 12px', borderRadius: 9, fontSize: 13 }}
+        />
+      </div>
+
+      {loading
+        ? <div style={{ textAlign: 'center', padding: 30 }}><Spinner size={20}/></div>
+        : filtered.length === 0
+          ? <Empty icon="🔍" title="لا توجد مراجعات أرامكس" sub="ارفع فاتورة Excel من 'مراجعة جديدة' أولاً"/>
+          : (
+            <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {filtered.map(a => {
+                const matchHint = (a.fileName || '').includes(op.doc_no);
+                return (
+                  <button key={a.id} onClick={() => onLink(op, a)} style={{
+                    display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center',
+                    padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
+                    background: matchHint ? 'rgba(56,189,248,.06)' : 'var(--surface)',
+                    border: `1px solid ${matchHint ? 'var(--accent)' : 'var(--border)'}`,
+                    textAlign: 'right', color: 'inherit',
+                  }}>
+                    <div>
+                      <div style={{ fontWeight: 600, fontSize: 13 }}>
+                        {a.fileName || '(بدون اسم ملف)'}
+                        {matchHint && <span style={{ marginRight: 8, color: 'var(--accent)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>✦ مطابق</span>}
+                      </div>
+                      <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
+                        {a.carrierName} · {a.period} · {new Date(a.date).toLocaleDateString('ar-SA')}
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>الفروق</div>
+                      <div style={{ color: (a.issueCount ?? 0) > 0 ? 'var(--red)' : 'var(--green)', fontWeight: 700 }}>
+                        {(a.issueCount ?? 0) > 0 ? `✗ ${a.issueCount}` : '✓'}
+                      </div>
+                    </div>
+                    <Link2 size={14} color="var(--accent)"/>
+                  </button>
+                );
+              })}
+            </div>
+          )
+      }
+
+      <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 14 }}>
+        <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
       </div>
     </Modal>
   );
