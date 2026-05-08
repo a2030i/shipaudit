@@ -1,18 +1,18 @@
 import * as XLSX from 'xlsx';
 
 /**
- * Export a stripped-down (AWB, total weight) sheet for hand-off to an
- * external pricing/billing system. Includes every audited row.
+ * Export AWB + total weight only — for hand-off to the external pricing
+ * system. Two columns, nothing else.
  */
 export function exportWeightsForExternalSystem(results, carrierName, period) {
   if (!results?.length) return false;
   const wb = XLSX.utils.book_new();
-  const headers = ['رقم الشحنة (AWB)', 'الوزن الإجمالي (كغ)', 'تاريخ الشحن', 'الدولة'];
+  const headers = ['رقم الشحنة', 'الوزن الإجمالي'];
   const rows = results
     .filter(r => r.awb && (r.weight ?? 0) > 0)
-    .map(r => [r.awb, +Number(r.weight).toFixed(3), r.shipDate || '', r.dest || '']);
+    .map(r => [r.awb, +Number(r.weight).toFixed(3)]);
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 13 }, { wch: 22 }];
+  ws['!cols'] = [{ wch: 24 }, { wch: 18 }];
   XLSX.utils.book_append_sheet(wb, ws, 'AWB + الوزن');
 
   const dateStr = new Date().toISOString().slice(0, 10);
