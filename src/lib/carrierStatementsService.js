@@ -483,6 +483,24 @@ export async function loadRecentActivity(limit = 8) {
   return { statements: stmtsRes.data ?? [], operations: opsRes.data ?? [] };
 }
 
+/**
+ * Returns a Map( audit_id → { opId, docNo, carrierId } ) for every
+ * operation that already has an audit attached. Used by the link-audit
+ * modal to prevent re-linking the same audit to a second operation.
+ */
+export async function loadLinkedAuditIndex() {
+  const { data, error } = await supabase
+    .from('carrier_operations')
+    .select('id, carrier_id, doc_no, audit_id')
+    .not('audit_id', 'is', null);
+  if (error) throw error;
+  const map = new Map();
+  for (const r of data ?? []) {
+    if (r.audit_id) map.set(r.audit_id, { opId: r.id, docNo: r.doc_no, carrierId: r.carrier_id });
+  }
+  return map;
+}
+
 // ─── Mutations ────────────────────────────────────────────────────────────
 export async function setOperationStatus(id, patch) {
   const { error } = await supabase
