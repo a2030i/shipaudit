@@ -78,11 +78,12 @@ export default function AIChat() {
         <button
           onClick={() => setOpen(true)}
           aria-label="مساعد AI"
+          className="ai-chat-fab"
           style={{
             position: 'fixed',
             bottom: 22,
             left: 22, // bottom-left corner (visual)
-            width: 58, height: 58, borderRadius: '50%',
+            width: 56, height: 56, borderRadius: '50%',
             background: 'linear-gradient(135deg, var(--accent3, var(--accent)), var(--accent))',
             color: '#fff', border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
@@ -99,7 +100,7 @@ export default function AIChat() {
 
       {/* Chat panel */}
       {open && (
-        <div style={{
+        <div className="ai-chat-panel" style={{
           position: 'fixed',
           bottom: 22, left: 22,
           width: 380, maxWidth: 'calc(100vw - 28px)',
