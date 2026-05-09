@@ -174,14 +174,17 @@ export default function CarrierLedger({ isActive = true }) {
     }
   };
 
-  if (loading) return (
-    <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={22}/></div>
-  );
-
+  // Compute the current carrier display name BEFORE any early returns so the
+  // hook order stays stable between renders (otherwise we crash with
+  // "Rendered fewer hooks than expected" on the second render).
   const currentCarrierName = useMemo(() => {
     const found = carrierList.find(c => c.carrierId === carrier);
     return found?.carrierName || carrier;
   }, [carrier, carrierList]);
+
+  if (loading) return (
+    <div style={{ display:'flex', justifyContent:'center', padding:60 }}><Spinner size={22}/></div>
+  );
 
   // First-time empty state — no statement has been saved yet anywhere.
   if (!loading && carrierList.length === 0) {
