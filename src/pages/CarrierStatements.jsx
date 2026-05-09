@@ -24,16 +24,20 @@ const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-// Built-in carriers with deterministic parsers. Anything else uses AI.
-const BUILTIN_CARRIERS = [
-  { id: 'aramex', name: 'أرامكس', parser: 'aramex' },
-];
+// Carrier IDs that have a deterministic, non-AI parser. We auto-detect AI for
+// every other carrier (or names that look like Aramex but use a different id).
+const FAST_PARSER_IDS = new Set(['aramex']);
+const isFastParser = (id) => FAST_PARSER_IDS.has(id) || /aramex|أرامكس|ارامكس/i.test(id ?? '');
 
-export default function CarrierStatements() {
+export default function CarrierStatements({ carriers = [] }) {
   const { user } = useAuth();
-  const [carrierId,   setCarrierId]   = useState('aramex');
-  const [carrierName, setCarrierName] = useState('أرامكس');
-  const [parserMode,  setParserMode]  = useState('auto'); // auto | aramex | ai
+  // Default carrier = first one configured by the admin.
+  const initialId   = carriers[0]?.id   || '';
+  const initialName = carriers[0]?.name || '';
+  const [carrierId,   setCarrierId]   = useState(initialId);
+  const [carrierName, setCarrierName] = useState(initialName);
+  const [customName,  setCustomName]  = useState('');
+  const [parserMode,  setParserMode]  = useState('auto'); // auto | fast | ai
   const [state, setState] = useState('idle');     // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);      // { header, operations, totals, fileName, carrierId, carrierName, parserUsed }
@@ -46,32 +50,39 @@ export default function CarrierStatements() {
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
+    const effectiveId   = carrierId === '__custom' ? customName.trim() : carrierId;
+    const effectiveName = carrierId === '__custom' ? customName.trim() : carrierName;
+    if (!effectiveId) {
+      setErrorMsg('اختر شركة أولاً');
+      setState('error');
+      return;
+    }
     setState('processing');
     setErrorMsg('');
     setAiStatus('');
     try {
       const buf = await file.arrayBuffer();
-      const builtin = BUILTIN_CARRIERS.find(c => c.id === carrierId);
-      const useAI = parserMode === 'ai' || !builtin;
+      const fastEligible = isFastParser(effectiveId) || isFastParser(effectiveName);
+      const useAI = parserMode === 'ai' || !fastEligible;
       let parsed, parserUsed;
 
       if (useAI) {
         setAiStatus('✨ AI يقرأ الكشف ويستخرج العمليات...');
-        parsed = await parseStatementWithAI(buf, { carrierHint: carrierName });
+        parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
         parserUsed = 'ai';
       } else {
         parsed = await parseAramexStatement(buf);
-        parserUsed = builtin.parser;
+        parserUsed = 'aramex';
 
         // Auto-fallback: if the deterministic parser found nothing, retry with AI
         if (parsed.operations.length === 0 && parserMode === 'auto') {
           setAiStatus('✨ القارئ السريع لم يلتقط شيئاً — يجرّب AI الآن...');
-          parsed = await parseStatementWithAI(buf, { carrierHint: carrierName });
+          parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
           parserUsed = 'ai-fallback';
         }
       }
 
-      setResult({ ...parsed, fileName: file.name, carrierId, carrierName, parserUsed });
+      setResult({ ...parsed, fileName: file.name, carrierId: effectiveId, carrierName: effectiveName, parserUsed });
       setState('done');
       toast(`تم استخراج ${parsed.operations.length} عملية` +
         (parserUsed.startsWith('ai') ? ' عبر AI' : ''), 'success');
@@ -156,66 +167,69 @@ export default function CarrierStatements() {
         📑 رفع كشف <span style={{ color: 'var(--accent)' }}>حساب</span>
       </h2>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 18 }}>
-        اختر الشركة وارفع ملف PDF — أرامكس عبر القارئ السريع، باقي الشركات عبر AI.
+        اختر الشركة من شركاتك المُعرّفة وارفع ملف PDF.
       </p>
 
       {/* IDLE — carrier picker + drop zone */}
       {state === 'idle' && (
         <>
           <Card style={{ marginBottom: 14, padding: 14 }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>الشركة</div>
-                <select
-                  value={carrierId}
-                  onChange={e => {
-                    const v = e.target.value;
-                    setCarrierId(v);
-                    const builtin = BUILTIN_CARRIERS.find(c => c.id === v);
-                    if (builtin) setCarrierName(builtin.name);
-                  }}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
-                >
-                  <optgroup label="مع قارئ سريع">
-                    {BUILTIN_CARRIERS.map(c => (
-                      <option key={c.id} value={c.id}>{c.name} (قارئ سريع)</option>
+            {carriers.length === 0 ? (
+              <div style={{ padding: '12px 4px', fontSize: 13, color: 'var(--muted)' }}>
+                لم تُعرَّف أي شركة شحن بعد.
+                {' '}
+                <a href="/carriers" style={{ color: 'var(--accent)' }}>أضف شركة من إدارة شركات الشحن</a>
+                {' '}قبل رفع كشف.
+              </div>
+            ) : (
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>الشركة</div>
+                  <select
+                    value={carrierId}
+                    onChange={e => {
+                      const v = e.target.value;
+                      setCarrierId(v);
+                      if (v === '__custom') return;
+                      const found = carriers.find(c => c.id === v);
+                      if (found) setCarrierName(found.name);
+                    }}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 16 }}
+                  >
+                    {carriers.map(c => (
+                      <option key={c.id} value={c.id}>
+                        {c.logo ? `${c.logo} ` : ''}{c.name}{isFastParser(c.id) || isFastParser(c.name) ? ' (قارئ سريع)' : ''}
+                      </option>
                     ))}
-                  </optgroup>
-                  <optgroup label="عبر AI">
-                    <option value="dhl">DHL</option>
-                    <option value="fedex">FedEx</option>
-                    <option value="smsa">سمسا (AI)</option>
-                    <option value="naqel">ناقل</option>
-                    <option value="ups">UPS</option>
-                    <option value="other">أخرى — أكتب الاسم</option>
-                  </optgroup>
-                </select>
-              </div>
-              {!BUILTIN_CARRIERS.find(c => c.id === carrierId) && (
-                <Input
-                  label="اسم الشركة (للحفظ والربط)"
-                  value={carrierName}
-                  onChange={e => setCarrierName(e.target.value)}
-                  placeholder="مثال: DHL Express"
-                />
-              )}
-              <div>
-                <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>
-                  وضع القراءة
+                    <option value="__custom">+ شركة أخرى (مرة واحدة)</option>
+                  </select>
                 </div>
-                <select
-                  value={parserMode}
-                  onChange={e => setParserMode(e.target.value)}
-                  style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
-                >
-                  <option value="auto">تلقائي (سريع → AI)</option>
-                  {BUILTIN_CARRIERS.find(c => c.id === carrierId) && (
-                    <option value="aramex">قارئ سريع فقط</option>
-                  )}
-                  <option value="ai">✨ AI فقط</option>
-                </select>
+                {carrierId === '__custom' && (
+                  <Input
+                    label="اسم الشركة (يُحفَظ مع الكشف)"
+                    value={customName}
+                    onChange={e => setCustomName(e.target.value)}
+                    placeholder="مثال: DHL Express"
+                  />
+                )}
+                <div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>
+                    وضع القراءة
+                  </div>
+                  <select
+                    value={parserMode}
+                    onChange={e => setParserMode(e.target.value)}
+                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 16 }}
+                  >
+                    <option value="auto">تلقائي (سريع → AI)</option>
+                    {(isFastParser(carrierId) || isFastParser(carrierName)) && (
+                      <option value="fast">قارئ سريع فقط</option>
+                    )}
+                    <option value="ai">✨ AI فقط</option>
+                  </select>
+                </div>
               </div>
-            </div>
+            )}
           </Card>
 
           <div
@@ -233,7 +247,7 @@ export default function CarrierStatements() {
             <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
             <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-              PDF · ستحلَّل بـ {BUILTIN_CARRIERS.find(c => c.id === carrierId) && parserMode !== 'ai'
+              PDF · ستحلَّل بـ {(isFastParser(carrierId) || isFastParser(carrierName)) && parserMode !== 'ai'
                 ? 'القارئ السريع'
                 : <>AI <Sparkles size={11} style={{ display: 'inline' }}/></>}
             </div>

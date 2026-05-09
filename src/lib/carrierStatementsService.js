@@ -19,8 +19,38 @@ import { supabase } from './supabase.js';
 
 const TOLERANCE = 0.01; // SAR
 
+/**
+ * Net out adjustment pairs that share the same doc_no (Aramex AB rows are
+ * a debit + a credit that cancel out). The DB has UNIQUE(carrier_id, doc_no)
+ * so we have to fold them into a single row before insert.
+ */
+function dedupeByDocNo(ops) {
+  const map = new Map();
+  for (const op of ops) {
+    if (!map.has(op.docNo)) {
+      map.set(op.docNo, { ...op });
+      continue;
+    }
+    // Merge: keep the latest doc/due dates and reference, sum DR/CR, take
+    // the LAST balance (running ledger), prefer non-empty shipment type.
+    const existing = map.get(op.docNo);
+    map.set(op.docNo, {
+      ...existing,
+      docDate:      op.docDate || existing.docDate,
+      dueDate:      op.dueDate || existing.dueDate,
+      referenceNo:  existing.referenceNo || op.referenceNo,
+      dr:           (Number(existing.dr) || 0) + (Number(op.dr) || 0),
+      cr:           (Number(existing.cr) || 0) + (Number(op.cr) || 0),
+      balance:      op.balance ?? existing.balance,
+      shipmentType: existing.shipmentType || op.shipmentType,
+    });
+  }
+  return [...map.values()];
+}
+
 export async function saveCarrierStatement({ carrierId, carrierName, fileName, parsed, userId }) {
-  const { header, operations, totals } = parsed;
+  const { header, totals } = parsed;
+  const operations = dedupeByDocNo(parsed.operations || []);
 
   // 1. Insert the statement snapshot
   const { data: stmt, error: stmtErr } = await supabase

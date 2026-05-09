@@ -340,7 +340,7 @@ function AppInner({ theme, toggleTheme }) {
               <BankStatement/>
             </PageSlot>
             <PageSlot active={pathname==='/aramex-statements'} scroll>
-              <CarrierStatements/>
+              <CarrierStatements carriers={carriers}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
