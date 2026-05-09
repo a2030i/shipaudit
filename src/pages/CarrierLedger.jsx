@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Link2, FileText } from 'lucide-react';
+import { Search, RefreshCw, Link2, FileText, Upload } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import {
   loadOperations,
@@ -10,7 +11,13 @@ import {
   loadStatements,
   getStatementFileUrl,
 } from '../lib/carrierStatementsService.js';
-import { loadAuditsFromDB } from '../lib/coreService.js';
+import { loadCarriers, loadAuditsFromDB, saveAuditToDB } from '../lib/coreService.js';
+import {
+  detectHeaderRow, buildHeaders, detectColumns, mapRows, auditAll, buildSummary,
+} from '../engine/audit.js';
+import { aiAnalyzeFile } from '../engine/openrouter.js';
+import { loadSettings } from '../data/carriers.js';
+import { useAuth } from '../lib/auth.jsx';
 
 // ─── Status meta ───────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -441,11 +448,14 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink })
   );
 }
 
-// ── LinkAuditModal — pick an existing audit to attach to this operation ──
+// ── LinkAuditModal — pick or upload an audit to attach to this operation ──
 function LinkAuditModal({ op, carrierName, onClose, onLink }) {
+  const { user } = useAuth();
   const [audits, setAudits]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   useEffect(() => {
     loadAuditsFromDB(200).then(rows => {
@@ -484,6 +494,93 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
     );
   }, [audits, search]);
 
+  // ── Inline upload: read Excel → audit → save → link to this operation ──
+  const handleInlineUpload = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    setUploadStatus('قراءة الملف...');
+    try {
+      // 1. Find the carrier from the database (need the contract for pricing)
+      const carriers = await loadCarriers();
+      const carrier = carriers.find(c =>
+        c.id === op.carrier_id
+        || (c.name && c.name === carrierName)
+        || (c.name && carrierName && c.name.toLowerCase().includes(carrierName.toLowerCase()))
+      ) || carriers[0];
+      if (!carrier) throw new Error('شركة الشحن غير معرّفة في النظام');
+
+      // 2. Read Excel
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      if (!allRows.length) throw new Error('الملف فارغ');
+
+      // 3. Detect columns — prefer AI when configured, else regex.
+      let headerRow = detectHeaderRow(allRows);
+      let headers   = buildHeaders(allRows[headerRow]);
+      let colMap    = detectColumns(headers);
+      const settings = loadSettings();
+      if (settings.openrouterKey) {
+        setUploadStatus('✨ AI يعيّن الأعمدة...');
+        try {
+          const aiResult = await aiAnalyzeFile(allRows);
+          if (aiResult) {
+            headerRow = Math.min(aiResult.headerRow ?? headerRow, allRows.length - 2);
+            headers   = buildHeaders(allRows[headerRow]);
+            const merged = { ...detectColumns(headers) };
+            for (const [field, col] of Object.entries(aiResult.colMap || {})) {
+              if (col && headers.includes(col)) merged[field] = col;
+              else if (col === null)             merged[field] = null;
+            }
+            colMap = merged;
+          }
+        } catch { /* AI optional — fall through to regex */ }
+      }
+
+      // 4. Build rows + audit
+      setUploadStatus('جارٍ التدقيق...');
+      const data = allRows.slice(headerRow + 1)
+        .filter(row => row && row.some(v => v !== null && v !== '' && v !== undefined))
+        .map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])));
+      const mapped  = mapRows(data, colMap);
+      const forDate = op.doc_date || new Date().toISOString().slice(0, 10);
+      const results = auditAll(mapped, carrier, forDate);
+      const summary = buildSummary(results);
+
+      if (!results.length) throw new Error('لم تُستخرج أي شحنة من الملف — تحقق من الأعمدة');
+
+      // 5. Persist the audit
+      const auditId = `a_${Date.now()}`;
+      const period  = (op.doc_date || forDate).slice(0, 7);
+      const audit = {
+        id:           auditId,
+        carrierId:    carrier.id,
+        carrierName:  carrier.name,
+        period,
+        fileName:     file.name,
+        rowCount:     results.length,
+        issueCount:   summary.mismatch,
+        diff:         summary.totalDiff,
+        colMap,
+        summary,
+        results,
+        createdAt:    new Date().toISOString(),
+      };
+      await saveAuditToDB(audit, user?.id);
+
+      // 6. Link the just-created audit to this operation
+      await onLink(op, { id: auditId, fileName: file.name });
+
+      toast(`تم التدقيق وربطه (${summary.mismatch} فرق · ${summary.totalDiff.toFixed(2)} ر.س)`, 'success');
+    } catch (e) {
+      console.error(e);
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setUploading(false);
+    setUploadStatus('');
+  };
+
   return (
     <Modal title="🔗 ربط مراجعة بالعملية" onClose={onClose} width={620}>
       <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--muted)' }}>
@@ -491,6 +588,35 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         {' · '}المبلغ: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
           {Number((op.amount_dr ?? 0) - (op.amount_cr ?? 0)).toFixed(2)} ر.س
         </span>
+      </div>
+
+      {/* Inline upload — bypass the wizard for one-off attachments */}
+      <button
+        onClick={() => document.getElementById('link-audit-file').click()}
+        disabled={uploading}
+        style={{
+          width: '100%', padding: '14px 16px', marginBottom: 12,
+          background: 'rgba(56,189,248,.06)',
+          border: '1.5px dashed var(--accent)',
+          borderRadius: 10, cursor: uploading ? 'wait' : 'pointer',
+          color: 'var(--accent)', fontWeight: 600, fontSize: 13,
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
+          fontFamily: 'inherit',
+        }}
+      >
+        {uploading
+          ? <><Spinner size={14}/> {uploadStatus || 'جارٍ المعالجة...'}</>
+          : <><Upload size={16}/> ارفع فاتورة Excel وربطها مباشرة</>
+        }
+      </button>
+      <input id="link-audit-file" type="file" accept=".xlsx,.xls"
+        style={{ display: 'none' }}
+        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleInlineUpload(f); }}/>
+
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', color: 'var(--muted)', fontSize: 11 }}>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }}/>
+        <span>أو اختر من المراجعات السابقة</span>
+        <div style={{ flex: 1, height: 1, background: 'var(--border)' }}/>
       </div>
 
       <div style={{ position: 'relative', marginBottom: 10 }}>
