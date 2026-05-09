@@ -10,6 +10,7 @@ import {
   setOperationStatus,
   loadStatements,
   getStatementFileUrl,
+  loadLinkedAuditIndex,
 } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB, saveAuditToDB } from '../lib/coreService.js';
 import {
@@ -458,22 +459,36 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink })
 }
 
 // Validate that an audit is safe to link to an operation. Returns { ok: true }
-// or { ok: false, reason }. The user explicitly required: only allow linking
-// when the audit is 100% clean AND its total billed matches the operation
-// amount stated in the carrier statement.
+// or { ok: false, reason }. Three rules, in order of precedence:
+//   1. Already linked elsewhere → reject (one audit = one operation)
+//   2. Has open issues → reject
+//   3. Total billed must equal operation amount within tolerance
 const LINK_AMOUNT_TOLERANCE = 1.0; // SAR
 
 function validateAuditLink(op, audit, opts = {}) {
+  const linkedIndex = opts.linkedIndex; // Map(audit_id → { opId, docNo })
   const opAmount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
   const auditBilled = Number(audit.totalBilled ?? opts.totalBilled ?? 0);
   const issueCount  = Number(audit.issueCount ?? opts.issueCount  ?? 0);
 
+  // Rule 1 — already linked to a DIFFERENT operation?
+  const taken = audit.id ? linkedIndex?.get(audit.id) : null;
+  if (taken && taken.opId !== op.id) {
+    return {
+      ok: false,
+      reason:
+        `هذه المراجعة مرتبطة فعلاً بعملية أخرى (${taken.docNo}). ` +
+        `كل مراجعة تُربط بعملية واحدة فقط.`,
+    };
+  }
+  // Rule 2 — clean audit
   if (issueCount > 0) {
     return {
       ok: false,
       reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
     };
   }
+  // Rule 3 — amount matches the statement
   if (Math.abs(auditBilled - opAmount) > LINK_AMOUNT_TOLERANCE) {
     return {
       ok: false,
@@ -494,33 +509,39 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
   const [search, setSearch]   = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadStatus, setUploadStatus] = useState('');
+  // Map(audit_id → { opId, docNo, carrierId }) — every audit currently linked
+  // to ANY operation. Used to enforce one-audit-one-operation in Rule 1.
+  const [linkedIndex, setLinkedIndex] = useState(new Map());
 
   useEffect(() => {
-    loadAuditsFromDB(200).then(rows => {
-      // Audits are tagged by carrier name string (e.g., "أرامكس" / "ارامكس" /
-      // "سمسا SMSA"). Match loosely on the same word stem so spelling variants
-      // line up.
-      let pool = rows;
-      if (carrierName) {
-        const norm = carrierName.toLowerCase();
-        const tokens = norm.split(/[\s/]+/).filter(t => t.length >= 3);
-        pool = rows.filter(r => {
-          const nm = (r.carrierName || '').toLowerCase();
-          return tokens.some(t => nm.includes(t));
+    Promise.all([loadAuditsFromDB(200), loadLinkedAuditIndex().catch(() => new Map())])
+      .then(([rows, idx]) => {
+        setLinkedIndex(idx);
+        // Audits are tagged by carrier name string (e.g., "أرامكس" / "ارامكس" /
+        // "سمسا SMSA"). Match loosely on the same word stem so spelling
+        // variants line up.
+        let pool = rows;
+        if (carrierName) {
+          const norm = carrierName.toLowerCase();
+          const tokens = norm.split(/[\s/]+/).filter(t => t.length >= 3);
+          pool = rows.filter(r => {
+            const nm = (r.carrierName || '').toLowerCase();
+            return tokens.some(t => nm.includes(t));
+          });
+          // If nothing matched, fall back to the full list (better than empty).
+          if (pool.length === 0) pool = rows;
+        }
+        // Sort: file name containing this doc_no first.
+        pool.sort((a, b) => {
+          const aHit = (a.fileName || '').includes(op.doc_no) ? 0 : 1;
+          const bHit = (b.fileName || '').includes(op.doc_no) ? 0 : 1;
+          if (aHit !== bHit) return aHit - bHit;
+          return new Date(b.date) - new Date(a.date);
         });
-        // If nothing matched, fall back to the full list (better than empty).
-        if (pool.length === 0) pool = rows;
-      }
-      // Sort: file name containing this doc_no first.
-      pool.sort((a, b) => {
-        const aHit = (a.fileName || '').includes(op.doc_no) ? 0 : 1;
-        const bHit = (b.fileName || '').includes(op.doc_no) ? 0 : 1;
-        if (aHit !== bHit) return aHit - bHit;
-        return new Date(b.date) - new Date(a.date);
-      });
-      setAudits(pool);
-      setLoading(false);
-    }).catch(() => { setAudits([]); setLoading(false); });
+        setAudits(pool);
+        setLoading(false);
+      })
+      .catch(() => { setAudits([]); setLoading(false); });
   }, [op.doc_no, carrierName]);
 
   const filtered = useMemo(() => {
@@ -693,7 +714,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
             <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {filtered.map(a => {
                 const matchHint = (a.fileName || '').includes(op.doc_no);
-                const verdict = validateAuditLink(op, a);
+                const verdict = validateAuditLink(op, a, { linkedIndex });
                 const eligible = verdict.ok;
                 return (
                   <button
