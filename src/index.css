@@ -378,16 +378,24 @@ button:active { transform: scale(.97); }
   html, body { height: 100%; overflow: hidden; }
   #root { height: 100vh; }
 
-  /* Sidebar becomes fixed overlay */
+  /* Sidebar becomes fixed overlay
+     - 100dvh keeps the bottom out from under iOS Safari's URL bar, but we also
+       fall back to overall sidebar scrolling so even if the footer ends up below
+       the viewport (older browsers) the user can scroll inside it.
+   */
   .sidebar {
     position: fixed !important;
     right: 0; top: 0; bottom: 0;
     height: 100vh !important;
+    height: 100dvh !important;
     z-index: 150;
     width: var(--sw) !important;
     transform: translateX(110%);
     transition: transform .3s cubic-bezier(.4,0,.2,1);
     box-shadow: var(--shadow-lg);
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: env(safe-area-inset-bottom, 0);
   }
   .sidebar.mobile-open { transform: translateX(0); }
   .sidebar.collapsed   { width: var(--sw) !important; transform: translateX(110%); }
@@ -401,6 +409,14 @@ button:active { transform: scale(.97); }
   .sidebar .sidebar-toggle { display: none; }
   .sidebar.collapsed .sidebar-footer { padding: 10px 10px; }
   .sidebar.collapsed .sidebar-logo { justify-content: flex-start; padding: 16px 14px; }
+
+  /* Inner nav can no longer be flex:1 with overflow:auto when the parent is
+     scrollable — let it grow to fit its content so footer follows naturally. */
+  .sidebar-nav {
+    flex: 0 0 auto !important;
+    overflow: visible !important;
+  }
+  .sidebar-footer { flex-shrink: 0; }
 
   /* Backdrop */
   .sidebar-backdrop { display: block; }
