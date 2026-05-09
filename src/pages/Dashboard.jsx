@@ -25,6 +25,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   const [audits,   setAudits]     = useState([]);
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
   const [actionItems, setActionItems] = useState([]);
+  const [dueWeek, setDueWeek]   = useState([]); // operations due in next 7 days
   const [loading,  setLoading]    = useState(true);
 
   const refresh = useCallback(async () => {
@@ -38,8 +39,20 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
       ]);
       // Build action-required list across all carriers.
       const today = new Date().toISOString().slice(0, 10);
-      const actions = (allOps || [])
-        .filter(o => o.status !== 'paid')
+      const sevenDaysFromNow = new Date();
+      sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+      const weekHorizon = sevenDaysFromNow.toISOString().slice(0, 10);
+
+      const open = (allOps || []).filter(o => o.status !== 'paid' && o.status !== 'waived');
+
+      // Due-this-week = open + due_date in [today, today+7]
+      const due = open
+        .filter(o => o.due_date && o.due_date >= today && o.due_date <= weekHorizon)
+        .sort((a, b) => (a.due_date || '').localeCompare(b.due_date || ''));
+      setDueWeek(due);
+
+      // Action required: overdue / disputed / reviewing
+      const actions = open
         .map(o => {
           let kind = null;
           if (o.due_date && o.due_date < today)  kind = 'overdue';
@@ -167,6 +180,59 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
               </div>
             </Card>
           </div>
+
+          {/* DUE THIS WEEK — operations whose due_date is within the next 7 days */}
+          {dueWeek.length > 0 && (() => {
+            const totalDue = dueWeek.reduce((s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0);
+            return (
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--accent)' }}>
+                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    📅 مستحق هذا الأسبوع ({dueWeek.length})
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gold)', fontWeight: 700 }}>
+                    {fmt(totalDue)} ر.س
+                  </span>
+                </div>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {dueWeek.map(o => {
+                    const amount = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+                    const daysLeft = Math.ceil((new Date(o.due_date) - new Date()) / 86_400_000);
+                    return (
+                      <div key={o.id} style={{
+                        padding: '10px 18px', borderBottom: '1px solid var(--border)22',
+                        display: 'grid', gridTemplateColumns: '90px 1fr auto auto', gap: 12, alignItems: 'center',
+                      }}>
+                        <span style={{
+                          background: 'var(--accent)18', border: '1px solid var(--accent)40',
+                          color: 'var(--accent)', fontSize: 10, fontWeight: 700,
+                          padding: '2px 8px', borderRadius: 12, fontFamily: 'var(--font-mono)',
+                          textAlign: 'center', whiteSpace: 'nowrap',
+                        }}>
+                          {daysLeft <= 0 ? 'اليوم' : `بعد ${daysLeft} يوم`}
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                            <span style={{ color: 'var(--accent)' }}>{o.doc_no}</span>
+                            <span style={{ color: 'var(--muted)' }}> · {o.doc_type}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {o.carrier_id} · يستحق {o.due_date}
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)', textAlign: 'left' }}>
+                          {fmt(amount)}
+                        </div>
+                        <Btn size="sm" variant="ghost" onClick={() => onNavigate(`ledger?carrier=${o.carrier_id}`)}>
+                          فتح
+                        </Btn>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* ACTION REQUIRED — overdue / disputed / reviewing */}
           {actionItems.length > 0 && (
