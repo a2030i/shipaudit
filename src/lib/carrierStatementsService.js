@@ -509,6 +509,22 @@ export async function setOperationStatus(id, patch) {
 }
 
 export async function deleteStatement(id) {
+  // Refuse to delete a statement if any of its operations are linked to an
+  // audit — deleting would cascade into linked ops, breaking the audit↔op
+  // pairing the user explicitly asked us to protect.
+  const { data: linked, error: linkErr } = await supabase
+    .from('carrier_operations')
+    .select('id, doc_no, audit_id')
+    .eq('last_statement_id', id)
+    .not('audit_id', 'is', null)
+    .limit(1);
+  if (linkErr) throw linkErr;
+  if (linked?.length) {
+    throw new Error(
+      `لا يمكن حذف الكشف — توجد عملية (${linked[0].doc_no}) مرتبطة بمراجعة. ` +
+      `الغِ الربط من الدفتر أولاً.`,
+    );
+  }
   const { error } = await supabase.from('carrier_statements').delete().eq('id', id);
   if (error) throw error;
 }
