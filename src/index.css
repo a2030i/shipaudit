@@ -378,6 +378,13 @@ button:active { transform: scale(.97); }
   html, body { height: 100%; overflow: hidden; }
   #root { height: 100vh; }
 
+  /* iOS Safari auto-zooms when an input/select has font-size < 16px on focus.
+     Force 16px on form controls on mobile so the page stays at 1× zoom.
+     (Buttons are excluded — they don't trigger zoom and we want compact pills.) */
+  input, select, textarea {
+    font-size: 16px !important;
+  }
+
   /* Sidebar becomes fixed overlay
      - 100dvh keeps the bottom out from under iOS Safari's URL bar, but we also
        fall back to overall sidebar scrolling so even if the footer ends up below

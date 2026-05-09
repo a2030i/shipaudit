@@ -68,7 +68,9 @@
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'revert: drop AR / customer-billing module — system stays carrier-only *)",
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: weight export is two columns only — رقم الشحنة + الوزن الإجمالي *)",
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: ledger first-time empty state — guide the user to upload a statement *)",
-      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: mobile sidebar footer \\(Settings, account card\\) was hidden below the iOS URL bar *)"
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: mobile sidebar footer \\(Settings, account card\\) was hidden below the iOS URL bar *)",
+      "Bash(carriers)",
+      "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'fix: save duplicate-key crash + carrier picker uses real DB carriers + iOS auto-zoom *)"
     ]
   }
 }
