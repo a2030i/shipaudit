@@ -139,6 +139,15 @@ export default function CarrierLedger({ isActive = true }) {
   };
 
   const linkAudit = async (op, audit) => {
+    // The audit object MUST carry { issueCount, totalBilled } so we can
+    // validate the link. The picker passes both straight from
+    // loadAuditsFromDB; the inline-upload path computes them from the
+    // freshly-built summary before calling onLink.
+    const verdict = validateAuditLink(op, audit);
+    if (!verdict.ok) {
+      toast(verdict.reason, 'error');
+      return; // keep modal open so the user can pick another file/audit
+    }
     try {
       await setOperationStatus(op.id, {
         status: 'audited',
@@ -147,10 +156,10 @@ export default function CarrierLedger({ isActive = true }) {
       });
       toast(`✓ ربطت المراجعة — العملية الآن معتمدة`, 'success');
       refresh();
+      setModal(null);
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
     }
-    setModal(null);
   };
 
   const openSourcePdf = async (stmt) => {
@@ -448,6 +457,35 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink })
   );
 }
 
+// Validate that an audit is safe to link to an operation. Returns { ok: true }
+// or { ok: false, reason }. The user explicitly required: only allow linking
+// when the audit is 100% clean AND its total billed matches the operation
+// amount stated in the carrier statement.
+const LINK_AMOUNT_TOLERANCE = 1.0; // SAR
+
+function validateAuditLink(op, audit, opts = {}) {
+  const opAmount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+  const auditBilled = Number(audit.totalBilled ?? opts.totalBilled ?? 0);
+  const issueCount  = Number(audit.issueCount ?? opts.issueCount  ?? 0);
+
+  if (issueCount > 0) {
+    return {
+      ok: false,
+      reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
+    };
+  }
+  if (Math.abs(auditBilled - opAmount) > LINK_AMOUNT_TOLERANCE) {
+    return {
+      ok: false,
+      reason:
+        `المبلغ لا يطابق الكشف.\n` +
+        `الكشف: ${opAmount.toFixed(2)} ر.س · المراجعة: ${auditBilled.toFixed(2)} ر.س ` +
+        `(فرق ${Math.abs(auditBilled - opAmount).toFixed(2)} ر.س)`,
+    };
+  }
+  return { ok: true };
+}
+
 // ── LinkAuditModal — pick or upload an audit to attach to this operation ──
 function LinkAuditModal({ op, carrierName, onClose, onLink }) {
   const { user } = useAuth();
@@ -550,7 +588,19 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
 
       if (!results.length) throw new Error('لم تُستخرج أي شحنة من الملف — تحقق من الأعمدة');
 
-      // 5. Persist the audit
+      // 5. Validate BEFORE saving — reject linking when the audit is not 100%
+      // clean or the total billed doesn't match the operation amount.
+      const totalBilled = results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0);
+      const verdict = validateAuditLink(op, {}, {
+        issueCount: summary.mismatch,
+        totalBilled,
+      });
+      if (!verdict.ok) {
+        toast(verdict.reason, 'error');
+        return; // don't save; let the user pick a different file
+      }
+
+      // 6. Persist the audit
       const auditId = `a_${Date.now()}`;
       const period  = (op.doc_date || forDate).slice(0, 7);
       const audit = {
@@ -569,8 +619,15 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       };
       await saveAuditToDB(audit, user?.id);
 
-      // 6. Link the just-created audit to this operation
-      await onLink(op, { id: auditId, fileName: file.name });
+      // 7. Link the just-created audit (re-validate inside linkAudit too, but
+      // pass the pre-computed totalBilled + issueCount so it doesn't need to
+      // refetch).
+      await onLink(op, {
+        id:          auditId,
+        fileName:    file.name,
+        issueCount:  summary.mismatch,
+        totalBilled,
+      });
 
       toast(`تم التدقيق وربطه (${summary.mismatch} فرق · ${summary.totalDiff.toFixed(2)} ر.س)`, 'success');
     } catch (e) {
@@ -636,30 +693,51 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
             <div style={{ maxHeight: 380, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
               {filtered.map(a => {
                 const matchHint = (a.fileName || '').includes(op.doc_no);
+                const verdict = validateAuditLink(op, a);
+                const eligible = verdict.ok;
                 return (
-                  <button key={a.id} onClick={() => onLink(op, a)} style={{
-                    display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center',
-                    padding: '10px 14px', borderRadius: 9, cursor: 'pointer',
-                    background: matchHint ? 'rgba(56,189,248,.06)' : 'var(--surface)',
-                    border: `1px solid ${matchHint ? 'var(--accent)' : 'var(--border)'}`,
-                    textAlign: 'right', color: 'inherit',
-                  }}>
+                  <button
+                    key={a.id}
+                    onClick={() => eligible && onLink(op, a)}
+                    disabled={!eligible}
+                    title={eligible ? 'اضغط للربط' : verdict.reason}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center',
+                      padding: '10px 14px', borderRadius: 9,
+                      cursor: eligible ? 'pointer' : 'not-allowed',
+                      background: eligible
+                        ? (matchHint ? 'rgba(56,189,248,.06)' : 'var(--surface)')
+                        : 'rgba(248,113,113,.04)',
+                      border: `1px solid ${eligible
+                        ? (matchHint ? 'var(--accent)' : 'var(--border)')
+                        : 'rgba(248,113,113,.25)'}`,
+                      textAlign: 'right', color: 'inherit', opacity: eligible ? 1 : 0.7,
+                      fontFamily: 'inherit',
+                    }}>
                     <div>
                       <div style={{ fontWeight: 600, fontSize: 13 }}>
                         {a.fileName || '(بدون اسم ملف)'}
-                        {matchHint && <span style={{ marginRight: 8, color: 'var(--accent)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>✦ مطابق</span>}
+                        {matchHint && eligible && <span style={{ marginRight: 8, color: 'var(--accent)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>✦ مطابق</span>}
                       </div>
                       <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
                         {a.carrierName} · {a.period} · {new Date(a.date).toLocaleDateString('ar-SA')}
                       </div>
+                      {!eligible && (
+                        <div style={{ color: 'var(--red)', fontSize: 10.5, marginTop: 4, lineHeight: 1.5 }}>
+                          {verdict.reason}
+                        </div>
+                      )}
                     </div>
                     <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                      <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>الفروق</div>
-                      <div style={{ color: (a.issueCount ?? 0) > 0 ? 'var(--red)' : 'var(--green)', fontWeight: 700 }}>
-                        {(a.issueCount ?? 0) > 0 ? `✗ ${a.issueCount}` : '✓'}
+                      <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>المفوتر</div>
+                      <div style={{ color: 'var(--text)', fontWeight: 700 }}>
+                        {Number(a.totalBilled ?? 0).toFixed(0)}
+                      </div>
+                      <div style={{ color: (a.issueCount ?? 0) > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10, marginTop: 2 }}>
+                        {(a.issueCount ?? 0) > 0 ? `✗ ${a.issueCount} فرق` : '✓ نظيف'}
                       </div>
                     </div>
-                    <Link2 size={14} color="var(--accent)"/>
+                    <Link2 size={14} color={eligible ? 'var(--accent)' : 'var(--muted3)'}/>
                   </button>
                 );
               })}
