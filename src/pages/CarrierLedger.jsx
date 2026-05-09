@@ -1,12 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Search, RefreshCw, Link2 } from 'lucide-react';
+import { Search, RefreshCw, Link2, FileText } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import {
   loadOperations,
   loadOpenBalance,
   loadCarriersOverview,
   setOperationStatus,
+  loadStatements,
+  getStatementFileUrl,
 } from '../lib/carrierStatementsService.js';
 import { loadAuditsFromDB } from '../lib/coreService.js';
 
@@ -34,6 +36,7 @@ export default function CarrierLedger({ isActive = true }) {
   const [carrierList, setCarrierList] = useState([]);
   const [ops, setOps] = useState([]);
   const [bal, setBal] = useState(null);
+  const [statements, setStatements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -60,12 +63,14 @@ export default function CarrierLedger({ isActive = true }) {
         || 'aramex';
       if (!carrier) setCarrier(effective);
 
-      const [opsData, balData] = await Promise.all([
+      const [opsData, balData, stmtsData] = await Promise.all([
         loadOperations({ carrierId: effective }),
         loadOpenBalance(effective),
+        loadStatements(effective, 12),
       ]);
       setOps(opsData);
       setBal(balData);
+      setStatements(stmtsData);
     } catch (e) {
       toast(`خطأ في التحميل: ${e.message}`, 'error');
     }
@@ -139,6 +144,20 @@ export default function CarrierLedger({ isActive = true }) {
       toast(`فشل: ${e.message}`, 'error');
     }
     setModal(null);
+  };
+
+  const openSourcePdf = async (stmt) => {
+    if (!stmt.source_path) {
+      toast('الملف الأصلي غير محفوظ — ارفعه مرة أخرى ليُحفَظ', 'info');
+      return;
+    }
+    try {
+      const url = await getStatementFileUrl(stmt.source_path, 600);
+      if (url) window.open(url, '_blank', 'noopener');
+      else     toast('تعذّر فتح الملف', 'error');
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
   };
 
   const unlinkAudit = async (op) => {
@@ -222,6 +241,39 @@ export default function CarrierLedger({ isActive = true }) {
         <Stat label="متنازع"                value={bal?.disputed ?? 0} color="var(--red)"/>
         <Stat label="مراجعة"                value={bal?.reviewing ?? 0}color="var(--gold)"/>
       </div>
+
+      {/* Statements history (collapsible feel) */}
+      {statements.length > 0 && (
+        <Card style={{ padding: 0, marginBottom: 14, overflow: 'hidden' }}>
+          <div style={{ padding: '10px 14px', borderBottom: '1px solid var(--border)', fontSize: 12, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+            📑 الكشوف المرفوعة ({statements.length})
+          </div>
+          <div style={{ display: 'flex', overflowX: 'auto', padding: 10, gap: 8 }}>
+            {statements.map(s => (
+              <button key={s.id} onClick={() => openSourcePdf(s)}
+                disabled={!s.source_path}
+                title={s.source_path ? 'افتح الملف الأصلي' : 'الملف الأصلي غير متوفر'}
+                style={{
+                  flexShrink: 0, padding: '8px 12px', borderRadius: 9,
+                  background: s.source_path ? 'var(--surface)' : 'var(--card)',
+                  border: `1px solid ${s.source_path ? 'var(--accent)40' : 'var(--border)'}`,
+                  color: 'var(--text)', cursor: s.source_path ? 'pointer' : 'default',
+                  fontSize: 11, textAlign: 'right', minWidth: 200,
+                  opacity: s.source_path ? 1 : 0.55,
+                }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+                  <FileText size={12} color={s.source_path ? 'var(--accent)' : 'var(--muted)'}/>
+                  <span style={{ fontWeight: 600 }}>{s.period_from || '—'} ← {s.period_to || '—'}</span>
+                </div>
+                <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+                  {Number(s.total_balance ?? 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })} ر.س
+                  {' · '}{s.operations_count} عملية
+                </div>
+              </button>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card style={{ padding: 12, marginBottom: 14 }}>

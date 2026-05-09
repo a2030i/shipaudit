@@ -48,9 +48,53 @@ function dedupeByDocNo(ops) {
   return [...map.values()];
 }
 
-export async function saveCarrierStatement({ carrierId, carrierName, fileName, parsed, userId }) {
+/**
+ * Push the original PDF into the `carrier-statements` Storage bucket and
+ * return its path. Best-effort — if the upload fails (network, RLS, etc.)
+ * we still let the row save with source_path = null so the user doesn't
+ * lose the parsed data.
+ */
+async function uploadSourcePdf({ carrierId, file }) {
+  if (!file) return null;
+  try {
+    const safeName = file.name.replace(/[^a-zA-Z0-9._\-]/g, '_');
+    const path = `${carrierId || 'unknown'}/${Date.now()}_${safeName}`;
+    const { error } = await supabase.storage
+      .from('carrier-statements')
+      .upload(path, file, {
+        contentType: file.type || 'application/pdf',
+        upsert: false,
+      });
+    if (error) {
+      console.warn('Storage upload failed:', error.message);
+      return null;
+    }
+    return path;
+  } catch (e) {
+    console.warn('Storage upload threw:', e?.message);
+    return null;
+  }
+}
+
+/**
+ * Generate a signed URL good for `expiresInSec` seconds. Used by the
+ * UI to open the original PDF in a new tab.
+ */
+export async function getStatementFileUrl(sourcePath, expiresInSec = 600) {
+  if (!sourcePath) return null;
+  const { data, error } = await supabase.storage
+    .from('carrier-statements')
+    .createSignedUrl(sourcePath, expiresInSec);
+  if (error) throw error;
+  return data?.signedUrl ?? null;
+}
+
+export async function saveCarrierStatement({ carrierId, carrierName, fileName, file, parsed, userId }) {
   const { header, totals } = parsed;
   const operations = dedupeByDocNo(parsed.operations || []);
+
+  // 0. Upload the original PDF (best-effort)
+  const sourcePath = file ? await uploadSourcePdf({ carrierId, file }) : null;
 
   // 1. Insert the statement snapshot
   const { data: stmt, error: stmtErr } = await supabase
@@ -71,6 +115,7 @@ export async function saveCarrierStatement({ carrierId, carrierName, fileName, p
       aging_over_90:    totals.aging?.over90,
       operations_count: operations.length,
       file_name:        fileName,
+      source_path:      sourcePath,
       uploaded_by:      userId ?? null,
     })
     .select()

@@ -37,7 +37,6 @@ export default function CarrierStatements({ carriers = [] }) {
   const [carrierId,   setCarrierId]   = useState(initialId);
   const [carrierName, setCarrierName] = useState(initialName);
   const [customName,  setCustomName]  = useState('');
-  const [parserMode,  setParserMode]  = useState('auto'); // auto | fast | ai
   const [state, setState] = useState('idle');     // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);      // { header, operations, totals, fileName, carrierId, carrierName, parserUsed }
@@ -62,27 +61,27 @@ export default function CarrierStatements({ carriers = [] }) {
     setAiStatus('');
     try {
       const buf = await file.arrayBuffer();
+      // Always run in auto mode: try the fast deterministic parser first if
+      // the carrier qualifies; fall back to AI if it returns nothing or the
+      // carrier doesn't have a fast parser.
       const fastEligible = isFastParser(effectiveId) || isFastParser(effectiveName);
-      const useAI = parserMode === 'ai' || !fastEligible;
       let parsed, parserUsed;
 
-      if (useAI) {
-        setAiStatus('✨ AI يقرأ الكشف ويستخرج العمليات...');
-        parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
-        parserUsed = 'ai';
-      } else {
+      if (fastEligible) {
         parsed = await parseAramexStatement(buf);
         parserUsed = 'aramex';
-
-        // Auto-fallback: if the deterministic parser found nothing, retry with AI
-        if (parsed.operations.length === 0 && parserMode === 'auto') {
+        if (parsed.operations.length === 0) {
           setAiStatus('✨ القارئ السريع لم يلتقط شيئاً — يجرّب AI الآن...');
           parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
           parserUsed = 'ai-fallback';
         }
+      } else {
+        setAiStatus('✨ AI يقرأ الكشف ويستخرج العمليات...');
+        parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
+        parserUsed = 'ai';
       }
 
-      setResult({ ...parsed, fileName: file.name, carrierId: effectiveId, carrierName: effectiveName, parserUsed });
+      setResult({ ...parsed, fileName: file.name, file, carrierId: effectiveId, carrierName: effectiveName, parserUsed });
       setState('done');
       toast(`تم استخراج ${parsed.operations.length} عملية` +
         (parserUsed.startsWith('ai') ? ' عبر AI' : ''), 'success');
@@ -92,7 +91,7 @@ export default function CarrierStatements({ carriers = [] }) {
       setState('error');
     }
     setAiStatus('');
-  }, [carrierId, carrierName, parserMode]);
+  }, [carrierId, carrierName, customName]);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -122,6 +121,7 @@ export default function CarrierStatements({ carriers = [] }) {
         carrierId:   result.carrierId   || carrierId,
         carrierName: result.carrierName || carrierName,
         fileName:    result.fileName,
+        file:        result.file,
         parsed:      result,
         userId:      user?.id,
       });
@@ -182,7 +182,7 @@ export default function CarrierStatements({ carriers = [] }) {
                 {' '}قبل رفع كشف.
               </div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div style={{ display: 'grid', gridTemplateColumns: carrierId === '__custom' ? '1fr 1fr' : '1fr', gap: 10 }}>
                 <div>
                   <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>الشركة</div>
                   <select
@@ -198,7 +198,7 @@ export default function CarrierStatements({ carriers = [] }) {
                   >
                     {carriers.map(c => (
                       <option key={c.id} value={c.id}>
-                        {c.logo ? `${c.logo} ` : ''}{c.name}{isFastParser(c.id) || isFastParser(c.name) ? ' (قارئ سريع)' : ''}
+                        {c.logo ? `${c.logo} ` : ''}{c.name}
                       </option>
                     ))}
                     <option value="__custom">+ شركة أخرى (مرة واحدة)</option>
@@ -212,22 +212,6 @@ export default function CarrierStatements({ carriers = [] }) {
                     placeholder="مثال: DHL Express"
                   />
                 )}
-                <div>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>
-                    وضع القراءة
-                  </div>
-                  <select
-                    value={parserMode}
-                    onChange={e => setParserMode(e.target.value)}
-                    style={{ width: '100%', padding: '10px 12px', borderRadius: 8, fontSize: 16 }}
-                  >
-                    <option value="auto">تلقائي (سريع → AI)</option>
-                    {(isFastParser(carrierId) || isFastParser(carrierName)) && (
-                      <option value="fast">قارئ سريع فقط</option>
-                    )}
-                    <option value="ai">✨ AI فقط</option>
-                  </select>
-                </div>
               </div>
             )}
           </Card>
@@ -247,9 +231,9 @@ export default function CarrierStatements({ carriers = [] }) {
             <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
             <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-              PDF · ستحلَّل بـ {(isFastParser(carrierId) || isFastParser(carrierName)) && parserMode !== 'ai'
-                ? 'القارئ السريع'
-                : <>AI <Sparkles size={11} style={{ display: 'inline' }}/></>}
+              PDF · ستحلَّل تلقائياً ({(isFastParser(carrierId) || isFastParser(carrierName))
+                ? 'قارئ سريع'
+                : <>AI <Sparkles size={11} style={{ display: 'inline' }}/></>})
             </div>
             <input id="cs-file" type="file" accept=".pdf" style={{ display: 'none' }} onChange={handlePick}/>
           </div>
