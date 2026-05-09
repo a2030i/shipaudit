@@ -127,6 +127,26 @@ export async function loadAuditByIdFromDB(id) {
 }
 
 export async function deleteAuditFromDB(id) {
+  // Refuse to delete an audit that is currently linked to an operation.
+  // The operation row has a foreign key on audit_id and the user's rule is
+  // "ممنوع حذف المراجعه إذا مرتبطة بعملية" — so we surface a clear Arabic
+  // error instead of letting Postgres reject it with a constraint code.
+  const { data: linked, error: linkErr } = await supabase
+    .from('carrier_operations')
+    .select('id, doc_no, carrier_id')
+    .eq('audit_id', id)
+    .limit(1);
+  if (linkErr) throw linkErr;
+  if (linked?.length) {
+    const op = linked[0];
+    const err = new Error(
+      `لا يمكن حذف مراجعة مرتبطة بعملية (${op.doc_no}). ` +
+      `الغِ الربط من الدفتر أولاً ثم احذفها.`,
+    );
+    err.code = 'AUDIT_LINKED';
+    err.linkedOp = op;
+    throw err;
+  }
   const { error } = await supabase.from('audits').delete().eq('id', id);
   if (error) throw error;
 }

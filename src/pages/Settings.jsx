@@ -1,9 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wifi, WifiOff } from 'lucide-react';
+import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import { loadSettings, saveSettings } from '../data/carriers.js';
 import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB } from '../lib/coreService.js';
+import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { OR_MODELS, testConnection } from '../engine/openrouter.js';
 import { getNavPermissions, saveNavPermissions } from '../lib/permissionsService.js';
 
@@ -284,16 +285,29 @@ function NavPermissionsTab() {
 
 // ── Audits History ─────────────────────────────────────────────────────────────
 export function AuditsHistory({ onOpen, isActive = true }) {
+  const navigate = useNavigate();
   const [audits,  setAudits]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
   const [opening, setOpening] = useState(null);
+  // Map(audit_id → { opId, docNo, carrierId }) — which op (if any) each audit
+  // is linked to. Drives the "🔗 مرتبطة بـ X" badge + the "افتح في الدفتر"
+  // jump button + disables the delete button.
+  const [linkedIndex, setLinkedIndex] = useState(new Map());
 
   // Re-fetch each time the page becomes active so newly-saved audits show up.
   useEffect(() => {
     if (!isActive) return;
     setLoading(true);
-    loadAuditsFromDB().then(data => { setAudits(data); setLoading(false); })
+    Promise.all([
+      loadAuditsFromDB(),
+      loadLinkedAuditIndex().catch(() => new Map()),
+    ])
+      .then(([data, idx]) => {
+        setAudits(data);
+        setLinkedIndex(idx);
+        setLoading(false);
+      })
       .catch(() => setLoading(false));
   }, [isActive]);
 
@@ -303,7 +317,8 @@ export function AuditsHistory({ onOpen, isActive = true }) {
       setAudits(prev => prev.filter(a => a.id !== id));
       toast('تم حذف المراجعة', 'info');
     } catch (e) {
-      toast(`خطأ: ${e.message}`, 'error');
+      // Service throws a localized message when the audit is linked to an op.
+      toast(e.message || 'فشل الحذف', 'error');
     }
     setConfirm(null);
   };
@@ -317,6 +332,17 @@ export function AuditsHistory({ onOpen, isActive = true }) {
       toast(`خطأ في التحميل: ${e.message}`, 'error');
     }
     setOpening(null);
+  };
+
+  // Jump to the ledger row this audit is linked to (carrier dropdown picks
+  // the right carrier; doc_no goes into the search filter so the row is
+  // immediately visible).
+  const jumpToLedger = (link) => {
+    if (!link) return;
+    const params = new URLSearchParams();
+    if (link.carrierId) params.set('carrier', link.carrierId);
+    if (link.docNo)     params.set('doc',     link.docNo);
+    navigate(`/ledger?${params.toString()}`);
   };
 
   if (loading) return (
@@ -334,38 +360,63 @@ export function AuditsHistory({ onOpen, isActive = true }) {
           ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
           : (
             <div className="stagger">
-              {filtered.map(a => (
-                <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
-                  <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
-                    <div style={{display:'flex',gap:14,alignItems:'center'}}>
-                      <div style={{fontSize:28}}>📦</div>
-                      <div>
-                        <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{a.carrierName}</div>
-                        <div style={{color:'var(--muted)',fontSize:12}}>
-                          {a.period} · {a.rowCount ?? 0} شحنة · {new Date(a.date).toLocaleString('ar-SA')}
-                        </div>
-                      </div>
-                    </div>
-                    <div style={{display:'flex',gap:8,alignItems:'center'}}>
-                      <div style={{textAlign:'center',minWidth:80}}>
-                        <div style={{color:(a.issueCount??0)>0?'var(--red)':'var(--green)',fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14}}>
-                          {(a.issueCount??0)>0 ? `✗ ${a.issueCount}` : '✓ كامل'}
-                        </div>
-                        {(a.issueCount??0)>0 && (
-                          <div style={{color:'var(--red)',fontFamily:'var(--font-mono)',fontSize:11}}>
-                            +{Number(a.diff??0).toFixed(2)} ر.س
+              {filtered.map(a => {
+                const link = linkedIndex.get(a.id);
+                return (
+                  <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
+                    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
+                      <div style={{display:'flex',gap:14,alignItems:'center'}}>
+                        <div style={{fontSize:28}}>📦</div>
+                        <div>
+                          <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{a.carrierName}</div>
+                          <div style={{color:'var(--muted)',fontSize:12}}>
+                            {a.period} · {a.rowCount ?? 0} شحنة · {new Date(a.date).toLocaleString('ar-SA')}
                           </div>
-                        )}
+                          {link && (
+                            <div style={{
+                              marginTop: 6, display: 'inline-flex', alignItems: 'center',
+                              gap: 6, padding: '3px 9px', borderRadius: 999,
+                              background: 'rgba(56,189,248,.10)',
+                              border: '1px solid rgba(56,189,248,.35)',
+                              color: 'var(--accent)', fontSize: 11,
+                              fontFamily: 'var(--font-mono)',
+                            }}>
+                              🔗 مرتبطة بعملية {link.docNo}
+                            </div>
+                          )}
+                        </div>
                       </div>
-                      <Btn size="sm" variant="primary" disabled={opening===a.id}
-                        onClick={() => handleOpen(a.id)}>
-                        {opening === a.id ? <Spinner size={12}/> : 'فتح'}
-                      </Btn>
-                      <Btn size="sm" variant="danger" onClick={()=>setConfirm(a.id)}>🗑</Btn>
+                      <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                        <div style={{textAlign:'center',minWidth:80}}>
+                          <div style={{color:(a.issueCount??0)>0?'var(--red)':'var(--green)',fontFamily:'var(--font-mono)',fontWeight:700,fontSize:14}}>
+                            {(a.issueCount??0)>0 ? `✗ ${a.issueCount}` : '✓ كامل'}
+                          </div>
+                          {(a.issueCount??0)>0 && (
+                            <div style={{color:'var(--red)',fontFamily:'var(--font-mono)',fontSize:11}}>
+                              +{Number(a.diff??0).toFixed(2)} ر.س
+                            </div>
+                          )}
+                        </div>
+                        {link && (
+                          <Btn size="sm" variant="ghost"
+                            title="افتح العملية المرتبطة في الدفتر"
+                            onClick={() => jumpToLedger(link)}>
+                            <ExternalLink size={12}/> الدفتر
+                          </Btn>
+                        )}
+                        <Btn size="sm" variant="primary" disabled={opening===a.id}
+                          onClick={() => handleOpen(a.id)}>
+                          {opening === a.id ? <Spinner size={12}/> : 'فتح'}
+                        </Btn>
+                        <Btn size="sm" variant="danger"
+                          disabled={!!link}
+                          title={link ? `لا يمكن حذف مراجعة مرتبطة (${link.docNo})` : 'حذف'}
+                          onClick={() => !link && setConfirm(a.id)}>🗑</Btn>
+                      </div>
                     </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )
         }

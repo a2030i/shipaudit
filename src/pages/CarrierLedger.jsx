@@ -46,15 +46,21 @@ export default function CarrierLedger({ isActive = true }) {
   const [bal, setBal] = useState(null);
   const [statements, setStatements] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [search, setSearch]   = useState('');
+  // ?doc=XXX (deep-link from Audits History) seeds the search box so the
+  // linked op is immediately visible in the table.
+  const [search, setSearch]   = useState(() => searchParams.get('doc') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [shipmentFilter, setShipmentFilter] = useState('all');
   const [modal, setModal] = useState(null); // { op, action: 'paid'|'dispute' }
 
-  // Sync carrier param ↔ URL
+  // Sync carrier param ↔ URL (preserve ?doc= when present so the deep-link is
+  // shareable / refreshable).
   useEffect(() => {
-    if (carrier) setSearchParams({ carrier }, { replace: true });
-    else         setSearchParams({}, { replace: true });
+    const next = {};
+    if (carrier) next.carrier = carrier;
+    const doc = searchParams.get('doc');
+    if (doc) next.doc = doc;
+    setSearchParams(next, { replace: true });
   }, [carrier]); // eslint-disable-line
 
   const refresh = useCallback(async () => {
