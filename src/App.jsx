@@ -144,12 +144,19 @@ function AppInner({ theme, toggleTheme }) {
 
   if (!user || !profile) return <LoginPage/>;
 
-  // Filter nav items by role: admin sees all; others see only what permissions allow.
+  // Filter nav items by role.
+  //   • admin → everything
+  //   • non-admin with explicit allowlist → only those items
+  //   • non-admin without any permission row yet → everything except admin-only
+  //     (default-open: better than an empty sidebar before someone configures perms)
   const visibleNav = isAdmin
     ? NAV_ITEMS
-    : NAV_ITEMS.filter(n =>
-        !n.adminOnly && (navPerms?.[profile.role] ?? []).includes(n.id)
-      );
+    : NAV_ITEMS.filter(n => {
+        if (n.adminOnly) return false;
+        const allowed = navPerms?.[profile.role];
+        if (!allowed || allowed.length === 0) return true;
+        return allowed.includes(n.id);
+      });
 
   const currentTitle = PAGE_TITLES[location.pathname]
     ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
@@ -192,6 +199,17 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Nav — grouped by section */}
           <nav className="sidebar-nav">
+            {visibleNav.length === 0 && (
+              <div style={{
+                padding: '20px 14px', fontSize: 12, color: 'var(--nav-text)',
+                textAlign: 'center', lineHeight: 1.7,
+              }}>
+                <div style={{ marginBottom: 8, fontSize: 22 }}>🔒</div>
+                لم يتم تفعيل أي صلاحية لهذا الحساب.
+                <br/>
+                تواصل مع المدير لإضافة الصفحات.
+              </div>
+            )}
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
