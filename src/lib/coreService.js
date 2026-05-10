@@ -54,6 +54,18 @@ export async function deleteCarrierFromDB(id) {
 
 export async function saveAuditToDB(audit, userId) {
   const summary = audit.summary ?? {};
+  const results = audit.results ?? [];
+  // Defensive recompute — buildSummary used to omit these fields, and the
+  // carrier-statement link flow needs totalBilled to compare against the
+  // post-VAT operation amount. If the caller already filled them in we
+  // honor those numbers; otherwise we sum across results so old/legacy
+  // call sites still produce a usable row.
+  const totalBilled = summary.totalBilled
+    ?? +results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0).toFixed(2);
+  const totalExpected = summary.totalExpected
+    ?? +results.reduce((s, r) => s + (Number(r.expected?.total) || 0), 0).toFixed(2);
+  const diff = summary.diff ?? summary.totalDiff ?? 0;
+
   const { error } = await supabase.from('audits').upsert({
     id:             audit.id,
     carrier_id:     audit.carrierId,
@@ -61,12 +73,12 @@ export async function saveAuditToDB(audit, userId) {
     contract_label: audit.contractLabel ?? summary.contractLabel ?? '',
     file_name:      audit.fileName     ?? summary.fileName ?? '',
     period:         audit.period       ?? '',
-    row_count:      audit.results?.length ?? 0,
-    issue_count:    audit.results?.filter(r => r.status !== 'ok').length ?? 0,
-    total_expected: summary.totalExpected ?? 0,
-    total_billed:   summary.totalBilled   ?? 0,
-    diff:           summary.diff          ?? 0,
-    results:        audit.results  ?? [],
+    row_count:      results.length,
+    issue_count:    results.filter(r => r.status !== 'ok').length,
+    total_expected: totalExpected,
+    total_billed:   totalBilled,
+    diff,
+    results,
     col_map:        audit.colMap   ?? {},
     created_by:     userId,
     created_at:     audit.createdAt ?? new Date().toISOString(),

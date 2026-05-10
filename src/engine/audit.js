@@ -302,9 +302,20 @@ export function buildSummary(results) {
     byCountry[r.dest].diff += r.diffs?.total ?? 0;
   }
 
+  // Pre-VAT totals across ALL audited rows (including ok / favorable). Used
+  // when matching the audit against a carrier_operations row, which carries
+  // a post-VAT amount — see validateAuditLink in CarrierLedger.
+  const totalBilled = +results.reduce(
+    (s, r) => s + (Number(r.invoiced?.total) || 0), 0,
+  ).toFixed(2);
+  const totalExpected = +results.reduce(
+    (s, r) => s + (Number(r.expected?.total) || 0), 0,
+  ).toFixed(2);
+
   return {
     total, ok, mismatch, favorable, unknown,
     totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
+    totalBilled, totalExpected,
     byCountry,
   };
 }
