@@ -18,6 +18,7 @@ import {
   resolveDispute,
   reopenDispute,
   loadCreditCandidates,
+  logActivity,
 } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import {
@@ -397,6 +398,18 @@ export default function CarrierLedger({ isActive = true }) {
         invoice_file_name: audit.fileName ?? null,
         audit_link_overridden: override === true,
       });
+      await logActivity({
+        action:     'audit_linked',
+        entityType: 'operation',
+        entityId:   op.id,
+        carrierId:  op.carrier_id,
+        payload:    {
+          doc_no: op.doc_no,
+          audit_id: audit.id,
+          file_name: audit.fileName ?? null,
+          override: override === true,
+        },
+      });
       toast(
         override
           ? `⚠️ ربطت بتجاوز — تم تسجيل الربط رغم الفروق`
@@ -435,6 +448,13 @@ export default function CarrierLedger({ isActive = true }) {
         audit_id: null,
         invoice_file_name: null,
         audit_link_overridden: false,
+      });
+      await logActivity({
+        action:     'audit_unlinked',
+        entityType: 'operation',
+        entityId:   op.id,
+        carrierId:  op.carrier_id,
+        payload:    { doc_no: op.doc_no, prior_audit_id: op.audit_id },
       });
       toast('تم إلغاء الربط', 'info');
       refresh();
@@ -899,10 +919,14 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
 
   // Bulk-paid: shared payment_ref applies to every selected op. We show
   // a brief preview so the user can sanity-check what's about to be
-  // marked before committing.
+  // marked before committing. Large totals trip a second confirmation
+  // gate (HIGH_VALUE_THRESHOLD) so a fat-finger can't accidentally
+  // commit a six-figure batch.
   if (isBulkPay) {
+    const HIGH_VALUE_THRESHOLD = 50000; // SAR — anything above demands re-confirm
     const ops = modal.ops ?? [];
     const total = modal.total ?? 0;
+    const isHighValue = total > HIGH_VALUE_THRESHOLD;
     return (
       <Modal title={`💰 تسديد جماعي · ${ops.length} عملية`} onClose={onClose} width={520}>
         <div style={{
@@ -949,9 +973,38 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
         <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
           نفس الرقم سيُسجَّل على كل العمليات المحددة.
         </div>
+
+        {/* High-value confirmation gate — shows when total exceeds the
+            threshold. The user must explicitly tick the checkbox before
+            the confirm button enables. */}
+        {isHighValue && (
+          <div style={{
+            marginTop: 12, padding: '10px 14px',
+            background: 'rgba(248,113,113,.08)',
+            border: '1px solid var(--red)', borderRadius: 9,
+          }}>
+            <div style={{ fontWeight: 700, color: 'var(--red)', fontSize: 13, marginBottom: 6 }}>
+              ⚠️ مبلغ كبير — يحتاج تأكيد إضافي
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.6 }}>
+              الإجمالي ({Number(total).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س) يتجاوز الحد ({HIGH_VALUE_THRESHOLD.toLocaleString('ar-SA')} ر.س).
+              يرجى التحقق من الرقم قبل التأكيد.
+            </div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
+              <input type="checkbox"
+                checked={notes === '__hv_ok__'}
+                onChange={e => setNotes(e.target.checked ? '__hv_ok__' : '')}
+                style={{ width: 16, height: 16, accentColor: 'var(--red)', cursor: 'pointer' }}/>
+              <span>راجعت المبلغ وأؤكد التسديد</span>
+            </label>
+          </div>
+        )}
+
         <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn variant="success" onClick={() => onPaidBulk(ops, paymentRef)}>
+          <Btn variant="success"
+            disabled={isHighValue && notes !== '__hv_ok__'}
+            onClick={() => onPaidBulk(ops, paymentRef)}>
             تأكيد تسديد {ops.length} عملية
           </Btn>
         </div>
