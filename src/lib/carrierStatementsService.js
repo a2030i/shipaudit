@@ -325,6 +325,28 @@ export async function loadOperations({ carrierId, status, limit = 500 } = {}) {
   return data ?? [];
 }
 
+// Pre-save delta lookup for the statement upload preview. Caller passes
+// an array of doc_nos parsed from the new file; we return a Map keyed by
+// doc_no carrying the existing row's amounts/status so the UI can label
+// each parsed op as 'new' / 'unchanged' / 'changed' before commit.
+export async function loadExistingOpsByDocNos(carrierId, docNos) {
+  if (!carrierId || !Array.isArray(docNos) || !docNos.length) return new Map();
+  // Chunk the IN list — Supabase choke on huge arrays.
+  const map = new Map();
+  const CHUNK = 500;
+  for (let i = 0; i < docNos.length; i += CHUNK) {
+    const slice = docNos.slice(i, i + CHUNK).map(d => String(d));
+    const { data, error } = await supabase
+      .from('carrier_operations')
+      .select('id, doc_no, amount_dr, amount_cr, status')
+      .eq('carrier_id', carrierId)
+      .in('doc_no', slice);
+    if (error) throw error;
+    for (const r of data ?? []) map.set(String(r.doc_no), r);
+  }
+  return map;
+}
+
 export async function loadOpenBalance(carrierId) {
   // Sum of (dr - cr) for everything not paid.
   const { data, error } = await supabase
