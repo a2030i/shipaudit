@@ -125,11 +125,18 @@ export default function CarrierLedger({ isActive = true }) {
   useEffect(() => { setSelectedIds(new Set()); }, [carrier]);
 
   const filtered = useMemo(() => ops.filter(o => {
-    // 'unaudited' is a synthetic filter: RV invoices that have never been
-    // linked to an audit yet (and aren't already paid → those don't need
-    // chasing). Real status filters are exact-matches on o.status.
+    // Synthetic filters:
+    // 'unaudited'    → open RV invoices not yet linked to an audit
+    //                  (still need to be audited BEFORE paying)
+    // 'paid_unaudited' → RV invoices that were already paid without
+    //                  an audit attached. These are easy to forget —
+    //                  the user paid against the statement but never
+    //                  reconciled the per-shipment file. Surfacing
+    //                  them keeps the audit trail complete.
     if (statusFilter === 'unaudited') {
       if (o.doc_type !== 'RV' || o.audit_id || o.status === 'paid') return false;
+    } else if (statusFilter === 'paid_unaudited') {
+      if (o.doc_type !== 'RV' || o.audit_id || o.status !== 'paid') return false;
     } else if (statusFilter !== 'all' && o.status !== statusFilter) {
       return false;
     }
@@ -241,13 +248,19 @@ export default function CarrierLedger({ isActive = true }) {
   }, [ops]);
 
   const counts = useMemo(() => {
-    const c = { all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0, unaudited: 0 };
+    const c = {
+      all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0,
+      unaudited: 0, paid_unaudited: 0,
+    };
     for (const o of ops) {
       c[o.status] = (c[o.status] ?? 0) + 1;
-      // Unaudited = RV invoice, no audit linked yet, not already paid. This
-      // is the biggest leak vector in any AP audit workflow — invoices
-      // sitting unverified.
-      if (o.doc_type === 'RV' && !o.audit_id && o.status !== 'paid') c.unaudited++;
+      if (o.doc_type === 'RV' && !o.audit_id) {
+        // Open RVs without an audit — leak vector pre-pay.
+        if (o.status !== 'paid') c.unaudited++;
+        // Paid RVs that were never audited — leak vector post-pay.
+        // Easy to forget once paid, so we surface them too.
+        else c.paid_unaudited++;
+      }
     }
     return c;
   }, [ops]);
@@ -504,7 +517,8 @@ export default function CarrierLedger({ isActive = true }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 8 }}>
           <Select label="الحالة" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="all">الكل ({counts.all})</option>
-            <option value="unaudited">⚠️ غير مدققة ({counts.unaudited ?? 0})</option>
+            <option value="unaudited">⚠️ غير مدققة — مفتوحة ({counts.unaudited ?? 0})</option>
+            <option value="paid_unaudited">⚠️ مسدّدة بدون تدقيق ({counts.paid_unaudited ?? 0})</option>
             <option value="pending">⏳ معلّقة ({counts.pending ?? 0})</option>
             <option value="reviewing">🔄 مراجعة ({counts.reviewing ?? 0})</option>
             <option value="audited">🔬 مدققة ({counts.audited ?? 0})</option>
@@ -569,6 +583,31 @@ export default function CarrierLedger({ isActive = true }) {
             </div>
           </div>
           <Btn size="sm" variant="primary" onClick={() => setStatusFilter('unaudited')}>
+            عرضها الآن →
+          </Btn>
+        </div>
+      )}
+
+      {/* Paid-but-unaudited alert — separate so it doesn't dilute the
+          higher-priority pre-pay alert above. Easy to skip past once you
+          paid the bill, but the audit trail is incomplete without it. */}
+      {(counts.paid_unaudited ?? 0) > 0 && statusFilter !== 'paid_unaudited' && (
+        <div style={{
+          marginBottom: 10, padding: '10px 14px',
+          background: 'linear-gradient(135deg, rgba(168,85,247,.12), rgba(168,85,247,.04))',
+          border: '1px solid #a855f7', borderRadius: 11,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 18 }}>💰</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: '#a855f7' }}>
+              {counts.paid_unaudited} فاتورة مسدّدة بدون تدقيق
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              دفعت دون أن تُربط بمراجعة — يمكن الربط الآن بأثر رجعي لإتمام السجلات
+            </div>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={() => setStatusFilter('paid_unaudited')}>
             عرضها الآن →
           </Btn>
         </div>
