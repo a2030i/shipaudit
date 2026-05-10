@@ -178,11 +178,14 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
 
 // ── Nav Permissions Tab ────────────────────────────────────────────────────────
 const NAV_ITEMS = [
-  { id: 'dashboard', label: 'الرئيسية'      },
-  { id: 'carriers',  label: 'شركات الشحن'   },
-  { id: 'upload',    label: 'مراجعة جديدة'  },
-  { id: 'audits',    label: 'السجل'         },
-  { id: 'employees', label: 'الموظفون'      },
+  { id: 'dashboard',        label: 'الرئيسية'           },
+  { id: 'carriers',         label: 'شركات الشحن'        },
+  { id: 'upload',           label: 'مراجعة جديدة'       },
+  { id: 'audits',           label: 'السجل'              },
+  { id: 'ledger',           label: 'الدفتر'             },
+  { id: 'aramex-stmt',      label: 'رفع كشف'            },
+  { id: 'cod-settlements',  label: 'تسويات COD'         },
+  { id: 'employees',        label: 'الموظفون'           },
 ];
 const ROLES_CONFIG = [
   { id: 'accountant1', label: 'محاسب أول',  color: 'var(--green)' },
