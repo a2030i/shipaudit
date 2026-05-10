@@ -186,6 +186,7 @@ const NAV_ITEMS = [
   { id: 'ledger',           label: 'الدفتر'             },
   { id: 'aramex-stmt',      label: 'رفع كشف'            },
   { id: 'cod-settlements',  label: 'تسويات COD'         },
+  { id: 'payments',         label: 'الدفعات'            },
   { id: 'employees',        label: 'الموظفون'           },
 ];
 const ROLES_CONFIG = [
