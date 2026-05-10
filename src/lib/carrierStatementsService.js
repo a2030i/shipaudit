@@ -133,6 +133,24 @@ export async function saveCarrierStatement({ carrierId, carrierName, fileName, f
 
   const existing = new Map((existingRows ?? []).map(r => [r.doc_no, r]));
 
+  // Some statement rows (DR / DG / AB and occasionally RV) print only one
+  // date column instead of two. The parser leaves dueDate=null in that
+  // case, which propagates into the ledger and breaks aging buckets +
+  // sort. Fall back to docDate + creditTerms (e.g. "30 days") so every
+  // op has a usable due_date. Defaults to 30 days when terms are missing.
+  const creditDays = (() => {
+    const m = String(header?.creditTerms ?? '').match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : 30;
+  })();
+  const computeDueDate = (op) => {
+    if (op.dueDate)  return op.dueDate;
+    if (!op.docDate) return null;
+    const d = new Date(op.docDate);
+    if (Number.isNaN(d.getTime())) return null;
+    d.setDate(d.getDate() + creditDays);
+    return d.toISOString().slice(0, 10);
+  };
+
   const inserts = [];
   const updates = [];      // each: { id, patch, flagReviewing }
   const diff = { added: 0, updated: 0, reviewing: 0, unchanged: 0 };
@@ -145,7 +163,7 @@ export async function saveCarrierStatement({ carrierId, carrierName, fileName, f
       doc_type:         op.docType,
       reference_no:     op.referenceNo,
       doc_date:         op.docDate,
-      due_date:         op.dueDate,
+      due_date:         computeDueDate(op),
       amount_dr:        op.dr,
       amount_cr:        op.cr,
       balance:          op.balance,
