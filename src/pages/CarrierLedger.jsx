@@ -51,7 +51,11 @@ export default function CarrierLedger({ isActive = true }) {
   const [search, setSearch]   = useState(() => searchParams.get('doc') || '');
   const [statusFilter, setStatusFilter] = useState('all');
   const [shipmentFilter, setShipmentFilter] = useState('all');
-  const [modal, setModal] = useState(null); // { op, action: 'paid'|'dispute' }
+  const [modal, setModal] = useState(null); // { op, action: 'paid'|'dispute' } or { ops, action:'bulk-paid' }
+  // Bulk selection: Set<opId> for checkbox-driven multi-pay. Cleared on
+  // carrier change, after a bulk action, or on filter changes that would
+  // hide selected rows (we just reset to keep mental model simple).
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
 
   // Sync carrier param ↔ URL (preserve ?doc= when present so the deep-link is
   // shareable / refreshable).
@@ -93,6 +97,11 @@ export default function CarrierLedger({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
+  // Drop the bulk selection whenever the carrier changes — the IDs are
+  // scoped to the previous carrier's ops and would silently apply to
+  // nothing on the new view.
+  useEffect(() => { setSelectedIds(new Set()); }, [carrier]);
+
   const filtered = useMemo(() => ops.filter(o => {
     if (statusFilter   !== 'all' && o.status        !== statusFilter)   return false;
     if (shipmentFilter !== 'all' && o.shipment_type !== shipmentFilter) return false;
@@ -103,6 +112,41 @@ export default function CarrierLedger({ isActive = true }) {
     }
     return true;
   }), [ops, statusFilter, shipmentFilter, search]);
+
+  // Selected ops, scoped to whatever's currently visible. Filtering out
+  // already-paid rows so the bulk-pay button never tries to re-pay them.
+  const selectedOps = useMemo(
+    () => filtered.filter(o => selectedIds.has(o.id) && o.status !== 'paid'),
+    [filtered, selectedIds],
+  );
+  const selectedTotal = useMemo(
+    () => selectedOps.reduce((s, o) => s + ((o.amount_dr ?? 0) - (o.amount_cr ?? 0)), 0),
+    [selectedOps],
+  );
+  // Rows in the current view that *could* be selected (= unpaid).
+  const selectableInView = useMemo(
+    () => filtered.filter(o => o.status !== 'paid'),
+    [filtered],
+  );
+  const allInViewSelected = selectableInView.length > 0
+    && selectableInView.every(o => selectedIds.has(o.id));
+
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const toggleSelectAllInView = () => setSelectedIds(prev => {
+    if (allInViewSelected) {
+      // Clear only the visible ones — keep any selection from other views.
+      const next = new Set(prev);
+      for (const o of selectableInView) next.delete(o.id);
+      return next;
+    }
+    const next = new Set(prev);
+    for (const o of selectableInView) next.add(o.id);
+    return next;
+  });
 
   const counts = useMemo(() => {
     const c = { all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0 };
@@ -124,6 +168,33 @@ export default function CarrierLedger({ isActive = true }) {
       toast(`فشل: ${e.message}`, 'error');
     }
     setModal(null);
+  };
+  // Bulk-pay: stamp the same paid_at + payment_ref across every selected
+  // op in parallel. We collect failures so a single bad row doesn't kill
+  // the rest, then refresh once.
+  const markPaidBulk = async (ops, payment_ref) => {
+    const paidAt = new Date().toISOString();
+    const ref = payment_ref || null;
+    const results = await Promise.allSettled(
+      ops.map(op => setOperationStatus(op.id, {
+        status: 'paid',
+        paid_at: paidAt,
+        payment_ref: ref,
+      })),
+    );
+    const failed = results.filter(r => r.status === 'rejected');
+    if (failed.length) {
+      toast(
+        `تم تسديد ${ops.length - failed.length} من ${ops.length} — ` +
+        `فشل ${failed.length}: ${failed[0].reason?.message ?? 'خطأ غير معروف'}`,
+        'error',
+      );
+    } else {
+      toast(`✓ تم تسديد ${ops.length} عملية`, 'success');
+    }
+    setSelectedIds(new Set());
+    setModal(null);
+    refresh();
   };
   const markDispute = async (op, notes) => {
     try {
@@ -324,6 +395,45 @@ export default function CarrierLedger({ isActive = true }) {
         </div>
       </Card>
 
+      {/* Bulk-action bar — only when something is checked. Sticks to the
+          top of the table area so it stays visible while scrolling. */}
+      {selectedOps.length > 0 && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 5, marginBottom: 10,
+          background: 'linear-gradient(135deg, rgba(56,189,248,.14), rgba(56,189,248,.05))',
+          border: '1px solid var(--accent)', borderRadius: 11,
+          padding: '10px 14px',
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          boxShadow: '0 4px 12px rgba(0,0,0,.12)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: 8 }}>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontWeight: 700,
+              fontSize: 14, color: 'var(--accent)',
+            }}>
+              {selectedOps.length}
+            </span>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+              عملية محددة · إجمالي
+            </span>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontWeight: 700,
+              fontSize: 16, color: 'var(--text)',
+            }}>
+              {fmt(selectedTotal)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+            </span>
+          </div>
+          <div style={{ flex: 1 }}/>
+          <Btn size="sm" variant="success"
+            onClick={() => setModal({ ops: selectedOps, action: 'bulk-paid', total: selectedTotal })}>
+            💰 تسديد جماعي ({selectedOps.length})
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+            إلغاء التحديد
+          </Btn>
+        </div>
+      )}
+
       {/* Operations table */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>
         <div style={{ maxHeight: 600, overflowY: 'auto' }}>
@@ -333,6 +443,16 @@ export default function CarrierLedger({ isActive = true }) {
               <table style={{ fontSize: 12, width: '100%' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>
+                    <th style={{ width: 36, textAlign: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={allInViewSelected}
+                        onChange={toggleSelectAllInView}
+                        disabled={selectableInView.length === 0}
+                        title={allInViewSelected ? 'إلغاء تحديد الكل في العرض' : 'تحديد الكل في العرض'}
+                        style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                      />
+                    </th>
                     <th style={{ minWidth: 100 }}>الحالة</th>
                     <th style={{ minWidth: 60 }}>النوع</th>
                     <th style={{ minWidth: 110 }}>رقم المستند</th>
@@ -348,8 +468,25 @@ export default function CarrierLedger({ isActive = true }) {
                   {filtered.map(o => {
                     const meta = STATUS_META[o.status] ?? STATUS_META.pending;
                     const amount = (o.amount_dr ?? 0) - (o.amount_cr ?? 0);
+                    const selectable = o.status !== 'paid';
+                    const checked = selectedIds.has(o.id);
                     return (
-                      <tr key={o.id}>
+                      <tr key={o.id} style={checked ? { background: 'rgba(56,189,248,.06)' } : undefined}>
+                        <td style={{ textAlign: 'center' }}>
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            disabled={!selectable}
+                            onChange={() => selectable && toggleSelect(o.id)}
+                            title={selectable ? 'اختر للتسديد الجماعي' : 'العملية مسدّدة'}
+                            style={{
+                              width: 16, height: 16,
+                              cursor: selectable ? 'pointer' : 'not-allowed',
+                              accentColor: 'var(--accent)',
+                              opacity: selectable ? 1 : 0.35,
+                            }}
+                          />
+                        </td>
                         <td>
                           <span style={{
                             background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
@@ -422,6 +559,7 @@ export default function CarrierLedger({ isActive = true }) {
           carrierName={currentCarrierName}
           onClose={() => setModal(null)}
           onPaid={markPaid}
+          onPaidBulk={markPaidBulk}
           onDispute={markDispute}
           onLink={linkAudit}
         />
@@ -431,13 +569,76 @@ export default function CarrierLedger({ isActive = true }) {
 }
 
 // ── ActionModal ────────────────────────────────────────────────────────────
-function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink }) {
+function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDispute, onLink }) {
   const [paymentRef, setPaymentRef] = useState('');
   const [notes, setNotes] = useState('');
-  const isPay  = modal.action === 'paid';
-  const isLink = modal.action === 'link';
+  const isPay     = modal.action === 'paid';
+  const isLink    = modal.action === 'link';
+  const isBulkPay = modal.action === 'bulk-paid';
 
   if (isLink) return <LinkAuditModal op={modal.op} carrierName={carrierName} onClose={onClose} onLink={onLink}/>;
+
+  // Bulk-paid: shared payment_ref applies to every selected op. We show
+  // a brief preview so the user can sanity-check what's about to be
+  // marked before committing.
+  if (isBulkPay) {
+    const ops = modal.ops ?? [];
+    const total = modal.total ?? 0;
+    return (
+      <Modal title={`💰 تسديد جماعي · ${ops.length} عملية`} onClose={onClose} width={520}>
+        <div style={{
+          marginBottom: 14, padding: '10px 14px',
+          background: 'rgba(34,197,94,.08)',
+          border: '1px solid rgba(34,197,94,.3)',
+          borderRadius: 9, fontSize: 13,
+        }}>
+          الإجمالي:{' '}
+          <span style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 16 }}>
+            {Number(total).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س
+          </span>
+        </div>
+        <div style={{
+          maxHeight: 220, overflowY: 'auto', marginBottom: 14,
+          border: '1px solid var(--border)', borderRadius: 9,
+        }}>
+          <table style={{ fontSize: 11, width: '100%' }}>
+            <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
+              <tr>
+                <th style={{ minWidth: 110 }}>رقم المستند</th>
+                <th style={{ minWidth: 90 }}>التاريخ</th>
+                <th style={{ minWidth: 100, textAlign: 'left' }}>المبلغ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ops.map(o => {
+                const amt = (o.amount_dr ?? 0) - (o.amount_cr ?? 0);
+                return (
+                  <tr key={o.id}>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{o.doc_no}</td>
+                    <td style={{ color: 'var(--muted)' }}>{o.doc_date || '—'}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, textAlign: 'left' }}>
+                      {Number(Math.abs(amt)).toFixed(2)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <Input label="رقم الحوالة المشترك (اختياري)" value={paymentRef}
+          onChange={e => setPaymentRef(e.target.value)} placeholder="FT261XXXX"/>
+        <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
+          نفس الرقم سيُسجَّل على كل العمليات المحددة.
+        </div>
+        <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
+          <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+          <Btn variant="success" onClick={() => onPaidBulk(ops, paymentRef)}>
+            تأكيد تسديد {ops.length} عملية
+          </Btn>
+        </div>
+      </Modal>
+    );
+  }
 
   return (
     <Modal title={isPay ? '💰 تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={420}>
