@@ -898,11 +898,32 @@ export async function loadStaleDisputes({ thresholdDays = 30 } = {}) {
 // by markPaid / markPaidBulk and persisted alongside the per-op state
 // flip so the audit trail of "what did we pay, when, against which
 // invoices" is reconstructable forever after.
+// allocations: [{ opId, amount }] — explicit per-op coverage. opIds is
+// kept as a backwards-compat shim; when passed, each op gets its full
+// outstanding amount allocated. Mixed callers are NOT supported.
 export async function createPaymentRecord({
-  carrierId, paidAt, amount, paymentRef, notes, opIds, userId, userEmail,
+  carrierId, paidAt, amount, paymentRef, notes,
+  opIds, allocations, userId, userEmail,
 }) {
-  if (!carrierId)             throw new Error('carrier_id مطلوب');
-  if (!Array.isArray(opIds))  throw new Error('opIds مطلوبة');
+  if (!carrierId) throw new Error('carrier_id مطلوب');
+  let allocs = allocations;
+  if (!allocs && Array.isArray(opIds) && opIds.length) {
+    // Fetch per-op outstanding so we can build full-amount allocations.
+    const { data: ops, error: oErr } = await supabase
+      .from('carrier_operations')
+      .select('id, amount_dr, amount_cr, amount_paid')
+      .in('id', opIds);
+    if (oErr) throw oErr;
+    allocs = (ops ?? []).map(o => {
+      const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+      const remaining = +(owed - (Number(o.amount_paid) || 0)).toFixed(2);
+      return { opId: o.id, amount: Math.max(remaining, 0) };
+    }).filter(a => a.amount > 0);
+  }
+  if (!Array.isArray(allocs) || !allocs.length) {
+    throw new Error('opIds أو allocations مطلوبة');
+  }
+
   const { data, error } = await supabase
     .from('payments')
     .insert({
@@ -916,17 +937,19 @@ export async function createPaymentRecord({
     .select('id, paid_at, amount, payment_ref, notes, created_at')
     .single();
   if (error) throw error;
-  // Tag all the included ops with the payment id. Done in chunks since
-  // Postgres' IN list capacity is generous but not unlimited.
-  const CHUNK = 500;
-  for (let i = 0; i < opIds.length; i += CHUNK) {
-    const slice = opIds.slice(i, i + CHUNK);
-    const { error: linkErr } = await supabase
-      .from('carrier_operations')
-      .update({ payment_id: data.id })
-      .in('id', slice);
-    if (linkErr) throw linkErr;
-  }
+
+  // Insert allocations + back-link each op to this payment (legacy
+  // payment_id stays useful as a "last payment" hint for the UI).
+  const allocRows = allocs.map(a => ({
+    payment_id:   data.id,
+    operation_id: a.opId,
+    amount:       Number(a.amount) || 0,
+  }));
+  const { error: aErr } = await supabase
+    .from('payment_allocations').insert(allocRows);
+  if (aErr) throw aErr;
+  await Promise.all(allocs.map(a => recalcOperationPaymentState(a.opId, data.id)));
+
   await logActivity({
     action:     'payment_created',
     entityType: 'payment',
@@ -937,10 +960,48 @@ export async function createPaymentRecord({
       amount: Number(amount) || 0,
       paid_at: data.paid_at,
       payment_ref: paymentRef || null,
-      ops_count: opIds.length,
+      ops_count: allocs.length,
+      partial_count: allocs.filter(a => a.partial).length,
     },
   });
   return data;
+}
+
+// Recompute amount_paid from allocations and snap status accordingly:
+//   amount_paid >= owed → 'paid' (fully)
+//   amount_paid > 0     → 'partial' (some but not all)
+//   amount_paid == 0    → leave existing status (we don't override
+//                          'audited' / 'disputed' / 'reviewing')
+async function recalcOperationPaymentState(operationId, lastPaymentId) {
+  const { data: op, error: e1 } = await supabase
+    .from('carrier_operations')
+    .select('amount_dr, amount_cr, status')
+    .eq('id', operationId).single();
+  if (e1) throw e1;
+  const { data: allocs, error: e2 } = await supabase
+    .from('payment_allocations')
+    .select('amount')
+    .eq('operation_id', operationId);
+  if (e2) throw e2;
+  const paid = (allocs ?? []).reduce((s, a) => s + (Number(a.amount) || 0), 0);
+  const owed = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+  const TOL = 0.01;
+  const patch = { amount_paid: +paid.toFixed(2) };
+  if (lastPaymentId) patch.payment_id = lastPaymentId;
+  if (paid + TOL >= owed && owed > 0) {
+    patch.status = 'paid';
+    patch.paid_at = new Date().toISOString();
+  } else if (paid > TOL) {
+    patch.status = 'partial';
+  } else if (op.status === 'paid' || op.status === 'partial') {
+    // No allocations left but op was previously paid/partial — revert
+    patch.status = 'pending';
+    patch.paid_at = null;
+    patch.payment_id = null;
+  }
+  const { error: e3 } = await supabase
+    .from('carrier_operations').update(patch).eq('id', operationId);
+  if (e3) throw e3;
 }
 
 export async function loadPayments({ carrierId, limit = 200 } = {}) {
@@ -966,27 +1027,43 @@ export async function loadPayments({ carrierId, limit = 200 } = {}) {
   return (data ?? []).map(p => ({ ...p, opsCount: counts.get(p.id) ?? 0 }));
 }
 
+// Returns the operations covered by a payment, joined with the
+// allocation amount each received from THIS payment (since one op
+// can span multiple payments under the partial-pay model).
 export async function loadPaymentOps(paymentId) {
-  const { data, error } = await supabase
+  const { data: allocs, error: aErr } = await supabase
+    .from('payment_allocations')
+    .select('operation_id, amount')
+    .eq('payment_id', paymentId);
+  if (aErr) throw aErr;
+  const opIds = (allocs ?? []).map(a => a.operation_id);
+  if (!opIds.length) return [];
+  const { data: ops, error: oErr } = await supabase
     .from('carrier_operations')
     .select('*')
-    .eq('payment_id', paymentId)
+    .in('id', opIds)
     .order('doc_date', { ascending: false });
-  if (error) throw error;
-  return data ?? [];
+  if (oErr) throw oErr;
+  const allocMap = new Map((allocs ?? []).map(a => [a.operation_id, Number(a.amount) || 0]));
+  return (ops ?? []).map(o => ({ ...o, allocated_amount: allocMap.get(o.id) ?? 0 }));
 }
 
 export async function deletePaymentRecord(paymentId) {
-  // Reverse: detach ops (their payment_id goes NULL) + flip them back to
-  // pending, then delete the payment row. Used when the user wants to
-  // undo a payment they entered by mistake.
-  const { error: e1 } = await supabase
-    .from('carrier_operations')
-    .update({ status: 'pending', payment_id: null, paid_at: null, payment_ref: null })
+  // Pull every op this payment touched via allocations BEFORE the
+  // CASCADE strips them, so we know which ops to recalc.
+  const { data: allocs, error: e0 } = await supabase
+    .from('payment_allocations')
+    .select('operation_id')
     .eq('payment_id', paymentId);
+  if (e0) throw e0;
+  const opIds = (allocs ?? []).map(a => a.operation_id);
+
+  const { error: e1 } = await supabase.from('payments').delete().eq('id', paymentId);
   if (e1) throw e1;
-  const { error: e2 } = await supabase.from('payments').delete().eq('id', paymentId);
-  if (e2) throw e2;
+  // Allocations cascade-deleted by FK. Now recompute each affected op's
+  // amount_paid + status (might still be partial if other payments
+  // contributed).
+  await Promise.all(opIds.map(id => recalcOperationPaymentState(id, null)));
 }
 
 export async function deleteStatement(id) {
