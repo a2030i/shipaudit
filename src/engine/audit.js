@@ -162,8 +162,15 @@ export function normalizeCountry(raw) {
 }
 
 // ─── Map raw rows using detected columns ───────────────────────────────────────
+// Returns the filtered shipment array. The array gets a `taxRoundingAdjustment`
+// property attached: a small SAR amount Aramex appends as a single
+// "TAX Rounding Diff" row at the end of each file, reconciling the period's
+// VAT collected from customers (per-receipt rounding) against the sum of
+// per-shipment 15% tax (which can differ by a few SAR). We filter the row
+// itself out (it isn't a shipment) but preserve the tax amount so the
+// comparison against the carrier statement's gross total stays accurate.
 export function mapRows(raw, colMap) {
-  return raw.map(row => {
+  const allMapped = raw.map(row => {
     const awb         = String(row[colMap.awb] ?? '');
     const billingType = String(row[colMap.billingType] ?? '').trim();
     const rawDest     = row[colMap.dest] ?? '';
@@ -208,7 +215,28 @@ export function mapRows(raw, colMap) {
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
     };
-  }).filter(r => r.dest && r.weight > 0 && isRealShipmentAwb(r.awb));
+  });
+
+  // Sweep over the un-filtered rows for "TAX Rounding Diff" / similar tax-
+  // reconciliation lines. They have a label-style AWB (rejected by
+  // isRealShipmentAwb) but a non-zero Tax Amount we want to keep in the
+  // file's tax total. Aramex emits ONE such row per file in our samples;
+  // summing is defensive in case the format ever changes.
+  let taxRoundingAdjustment = 0;
+  for (const r of allMapped) {
+    if (isRealShipmentAwb(r.awb)) continue;
+    const label = String(r.awb || '').toLowerCase();
+    if (!/round|tax/i.test(label)) continue;
+    const t = Number(r.tax) || 0;
+    if (t !== 0) taxRoundingAdjustment += t;
+  }
+
+  const filtered = allMapped.filter(r => r.dest && r.weight > 0 && isRealShipmentAwb(r.awb));
+  // Attach as a property so the rest of the pipeline (auditAll →
+  // buildSummary → save) can fold it into totalTax without changing
+  // function signatures or breaking existing callers.
+  filtered.taxRoundingAdjustment = +taxRoundingAdjustment.toFixed(2);
+  return filtered;
 }
 
 // Aramex monthly Excels include phantom rows like "TAX Rounding Diff",
@@ -326,10 +354,18 @@ export function auditRow(row, contract) {
 
 export function auditAll(rows, carrier, forDate) {
   const contract = getActiveContract(carrier, forDate);
-  if (!contract) return rows.map(r => ({ ...r, status: 'no_contract', issues: ['لا يوجد عقد ساري لهذه الفترة'] }));
+  if (!contract) {
+    const out = rows.map(r => ({ ...r, status: 'no_contract', issues: ['لا يوجد عقد ساري لهذه الفترة'] }));
+    if (rows.taxRoundingAdjustment) out.taxRoundingAdjustment = rows.taxRoundingAdjustment;
+    return out;
+  }
 
   const results = rows.map(r => auditRow(r, contract));
   flagDuplicateAwbs(results);
+  // Carry the file-level tax rounding adjustment through to summary stage.
+  if (rows.taxRoundingAdjustment) {
+    results.taxRoundingAdjustment = rows.taxRoundingAdjustment;
+  }
   return results;
 }
 
@@ -461,9 +497,17 @@ export function buildSummary(results) {
   // rows carry tax=0 (zero-rated export); ZDOI domestic ≈ 15%; ZDCF COD
   // = 15% of fee. totalGross = what we expect the carrier statement
   // amount to equal — it removes the need for a hardcoded VAT rate.
-  const totalTax = +results.reduce(
+  const taxFromShipments = +results.reduce(
     (s, r) => s + (Number(r.invoiced?.tax) || 0), 0,
   ).toFixed(2);
+  // Aramex appends a single "TAX Rounding Diff" row per file that
+  // reconciles the period's actual collected VAT against the sum of
+  // per-shipment 15% (which can differ by a few SAR due to per-receipt
+  // rounding). mapRows captures that amount and attaches it here. We
+  // include it in totalTax so the gross total matches the carrier's
+  // statement even when the per-row tax sum doesn't.
+  const taxRoundingAdjustment = +(Number(results.taxRoundingAdjustment) || 0).toFixed(2);
+  const totalTax   = +(taxFromShipments + taxRoundingAdjustment).toFixed(2);
   const totalGross = +(totalBilled + totalTax).toFixed(2);
 
   // Duplicate-AWB tally — independent of status so the user sees the count
@@ -479,6 +523,9 @@ export function buildSummary(results) {
     total, ok, mismatch, favorable, unknown,
     totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
     totalBilled, totalExpected, totalTax, totalGross,
+    // Surfaced for the UI / debugging: how much of totalTax came from a
+    // per-period rounding row vs from individual shipments.
+    taxFromShipments, taxRoundingAdjustment,
     duplicates, duplicateAwbs,
     byCountry,
   };
