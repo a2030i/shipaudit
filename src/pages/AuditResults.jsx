@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
-import { exportAuditExcel, exportWeightsForExternalSystem } from '../engine/export.js';
+import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 
@@ -405,6 +405,25 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     else    toast('لا توجد شحنات لتصديرها','info');
   };
 
+  // Excess-weight export — only shipments whose chargeable weight exceeds
+  // the contract's first-bracket allowance for that destination. The
+  // user's external billing system uses this to invoice merchants for
+  // the weight that pushed Aramex's charge above the standard rate.
+  const handleExportExcessWeights = () => {
+    if (!contract) {
+      toast('لا يوجد عقد ساري لهذه الفترة', 'error');
+      return;
+    }
+    const result = exportExcessWeights(results, contract, audit.carrierName, audit.period);
+    if (result.ok) {
+      toast(`تم تصدير ${result.count} شحنة بوزن إضافي ✓`, 'success');
+    } else if (result.reason === 'empty') {
+      toast('لا توجد شحنات تجاوزت الوزن المسموح', 'info');
+    } else if (result.reason === 'no_contract') {
+      toast('لا يوجد عقد ساري لهذه الفترة', 'error');
+    }
+  };
+
   return (
     <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:'100%',overflow:'hidden'}}>
 
@@ -432,6 +451,9 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             )}
             <Btn size="sm" variant="outline" onClick={handleExportWeights} icon="⚖️">
               تصدير الأوزان
+            </Btn>
+            <Btn size="sm" variant="gold" onClick={handleExportExcessWeights} icon="📦">
+              أوزان إضافية فقط
             </Btn>
             <Btn size="sm" variant={showAI?'primary':'gold'} onClick={()=>setShowAI(s=>!s)} icon="✨">
               {showAI?'إخفاء AI':'مساعد AI'}

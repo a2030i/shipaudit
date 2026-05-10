@@ -20,6 +20,76 @@ export function exportWeightsForExternalSystem(results, carrierName, period) {
   return true;
 }
 
+// Returns the standard-weight allowance for a destination from the
+// contract — i.e. the upTo of the first bracket. Above this weight the
+// merchant should be billed for excess. Works with both formats:
+//   • Tiered array:  [{ upTo: 10, price: 13 }, ...]
+//   • Lookup table:  { mode: 'lookup', brackets: [{ upTo: 0.5, ... }] }
+function standardWeightForDest(contract, dest) {
+  const def = contract?.pricing?.[dest];
+  if (!def) return null;
+  if (Array.isArray(def)) return def[0]?.upTo ?? null;
+  if (def.mode === 'lookup' && Array.isArray(def.brackets)) {
+    const sorted = [...def.brackets].sort(
+      (a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity),
+    );
+    return sorted[0]?.upTo ?? null;
+  }
+  // Multi-service nested ({ Road: [...], Air: [...] }) — pick the first.
+  if (typeof def === 'object') {
+    const firstKey = Object.keys(def).find(k => Array.isArray(def[k]));
+    if (firstKey) return def[firstKey][0]?.upTo ?? null;
+  }
+  return null;
+}
+
+/**
+ * Export ONLY shipments whose chargeable weight exceeds the contract's
+ * standard allowance for that destination — used to bill merchants for
+ * excess weight in the user's external billing system.
+ *
+ * Threshold is derived per-destination from the contract:
+ *   • Saudi domestic (Aramex):     10 kg
+ *   • International (Aramex):      0.5 kg (smallest bracket)
+ *   • SMSA UAE/KW/BH:              1.0 kg
+ *   • SMSA QA/OM:                  0.5 kg
+ *
+ * Two columns only — AWB + chargeable weight — because the user's
+ * downstream system computes the billing math itself. Chargeable (not
+ * actual) weight is what Aramex bills on, so it's what the merchant
+ * needs to be billed on.
+ *
+ * Returns:
+ *   { ok: true,  count }                — file written
+ *   { ok: false, reason: 'empty' }      — no shipments exceeded
+ *   { ok: false, reason: 'no_contract'} — contract missing
+ */
+export function exportExcessWeights(results, contract, carrierName, period) {
+  if (!results?.length) return { ok: false, reason: 'empty' };
+  if (!contract)        return { ok: false, reason: 'no_contract' };
+
+  const excess = [];
+  for (const r of results) {
+    if (!r.awb || !(r.weight > 0)) continue;
+    const threshold = standardWeightForDest(contract, r.dest);
+    if (threshold == null) continue;        // unknown route — skip silently
+    if (r.weight > threshold) {
+      excess.push([r.awb, +Number(r.weight).toFixed(3)]);
+    }
+  }
+  if (!excess.length) return { ok: false, reason: 'empty' };
+
+  const wb = XLSX.utils.book_new();
+  const headers = ['رقم الشحنة', 'الوزن الإجمالي'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...excess]);
+  ws['!cols'] = [{ wch: 24 }, { wch: 18 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'أوزان إضافية');
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `أوزان_إضافية_${carrierName}_${period}_${dateStr}.xlsx`);
+  return { ok: true, count: excess.length };
+}
+
 export function exportAuditExcel(results, summary, carrierName, period, contractLabel) {
   const mis = results.filter(r => r.status === 'mismatch');
   if (!mis.length) return false;
