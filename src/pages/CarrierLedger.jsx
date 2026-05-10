@@ -468,13 +468,21 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onDispute, onLink })
 // or { ok: false, reason }. Three rules, in order of precedence:
 //   1. Already linked elsewhere → reject (one audit = one operation)
 //   2. Has open issues → reject
-//   3. Total billed must equal operation amount within tolerance
+//   3. Total billed (grossed up by VAT) must equal operation amount within tolerance
+//
+// IMPORTANT — VAT handling
+// Aramex monthly invoices (the carrier_operations row) carry the amount
+// INCLUDING 15% Saudi VAT. The audit's totalBilled is computed from the
+// per-shipment Excel which is PRE-VAT. So we gross up the audit total by
+// 1 + VAT_RATE before comparing. Tolerance is in SAR after the gross-up.
 const LINK_AMOUNT_TOLERANCE = 1.0; // SAR
+const VAT_RATE = 0.15;
 
 function validateAuditLink(op, audit, opts = {}) {
   const linkedIndex = opts.linkedIndex; // Map(audit_id → { opId, docNo })
   const opAmount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
-  const auditBilled = Number(audit.totalBilled ?? opts.totalBilled ?? 0);
+  const auditBilledNet = Number(audit.totalBilled ?? opts.totalBilled ?? 0);
+  const auditBilledGross = +(auditBilledNet * (1 + VAT_RATE)).toFixed(2);
   const issueCount  = Number(audit.issueCount ?? opts.issueCount  ?? 0);
 
   // Rule 1 — already linked to a DIFFERENT operation?
@@ -494,14 +502,15 @@ function validateAuditLink(op, audit, opts = {}) {
       reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
     };
   }
-  // Rule 3 — amount matches the statement
-  if (Math.abs(auditBilled - opAmount) > LINK_AMOUNT_TOLERANCE) {
+  // Rule 3 — amount matches the statement (after adding VAT)
+  if (Math.abs(auditBilledGross - opAmount) > LINK_AMOUNT_TOLERANCE) {
     return {
       ok: false,
       reason:
         `المبلغ لا يطابق الكشف.\n` +
-        `الكشف: ${opAmount.toFixed(2)} ر.س · المراجعة: ${auditBilled.toFixed(2)} ر.س ` +
-        `(فرق ${Math.abs(auditBilled - opAmount).toFixed(2)} ر.س)`,
+        `الكشف (شامل ضريبة): ${opAmount.toFixed(2)} ر.س · ` +
+        `المراجعة + 15% ضريبة: ${auditBilledGross.toFixed(2)} ر.س ` +
+        `(فرق ${Math.abs(auditBilledGross - opAmount).toFixed(2)} ر.س)`,
     };
   }
   return { ok: true };
