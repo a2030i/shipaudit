@@ -11,6 +11,13 @@
 
 import { supabase } from './supabase.js';
 
+// Threshold (in days) after which an over_remit row stops being treated
+// as "probably still waiting for the matching outgoing settlement" and
+// starts being treated as a real anomaly worth investigating. The first
+// 30 days are the common-case sequencing buffer (Aramex remits faster
+// than the internal weekly export).
+const OVER_REMIT_AGE_DAYS = 30;
+
 // ── Settlement uploads ─────────────────────────────────────────────────
 export async function saveSettlementUpload({
   direction, carrierId, rows, uploadDate, sourceFile, userId,
@@ -107,6 +114,7 @@ export async function loadReconciliation(carrierId) {
   }
 
   const TOL = 0.01; // SAR — sub-fils diffs are pure rounding
+  const today = new Date(); today.setHours(0, 0, 0, 0);
   const out = [];
   for (const m of map.values()) {
     m.paid     = +m.paid.toFixed(2);
@@ -127,6 +135,20 @@ export async function loadReconciliation(carrierId) {
     } else {
       m.status = 'pending_review';
     }
+
+    // Days since carrier remitted — only meaningful for over_remit rows,
+    // but cheap to compute everywhere.
+    if (m.firstInDate) {
+      m.daysReceived = Math.floor((today - new Date(m.firstInDate)) / 86400000);
+    } else {
+      m.daysReceived = null;
+    }
+    // Aged over_remit = received from the carrier > 30 days ago without
+    // a matching outgoing settlement ever showing up. Flag for the UI.
+    m.isOverRemitAged = m.status === 'over_remit'
+      && m.daysReceived != null
+      && m.daysReceived > OVER_REMIT_AGE_DAYS;
+
     out.push(m);
   }
   return out;
@@ -141,6 +163,8 @@ export function summarizeReconciliation(rows) {
     disputedCount: 0, disputedAmount: 0, oldestDisputeDays: 0,
     matchedCount: 0,
     overRemitCount: 0, overRemitAmount: 0,
+    overRemitRecentCount: 0, overRemitRecentAmount: 0,
+    overRemitAgedCount: 0,   overRemitAgedAmount: 0,
     totalAwbs: rows.length,
   };
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -163,12 +187,22 @@ export function summarizeReconciliation(rows) {
     } else if (r.status === 'over_remit') {
       s.overRemitCount++;
       s.overRemitAmount += Math.abs(r.diff);
+      // Recent (likely just sequencing) vs aged (real anomaly) split.
+      if (r.isOverRemitAged) {
+        s.overRemitAgedCount++;
+        s.overRemitAgedAmount += Math.abs(r.diff);
+      } else {
+        s.overRemitRecentCount++;
+        s.overRemitRecentAmount += Math.abs(r.diff);
+      }
     }
   }
-  s.outstandingAmount   = +s.outstandingAmount.toFixed(2);
-  s.pendingReviewAmount = +s.pendingReviewAmount.toFixed(2);
-  s.disputedAmount      = +s.disputedAmount.toFixed(2);
-  s.overRemitAmount     = +s.overRemitAmount.toFixed(2);
+  s.outstandingAmount     = +s.outstandingAmount.toFixed(2);
+  s.pendingReviewAmount   = +s.pendingReviewAmount.toFixed(2);
+  s.disputedAmount        = +s.disputedAmount.toFixed(2);
+  s.overRemitAmount       = +s.overRemitAmount.toFixed(2);
+  s.overRemitAgedAmount   = +s.overRemitAgedAmount.toFixed(2);
+  s.overRemitRecentAmount = +s.overRemitRecentAmount.toFixed(2);
   return s;
 }
 
@@ -199,6 +233,34 @@ export async function clearReconciliationAction(carrierId, awb) {
     .eq('carrier_id', carrierId)
     .eq('awb', String(awb).trim());
   if (error) throw error;
+}
+
+// Aging for over_remit rows. Buckets by `firstInDate` — the day the
+// carrier remitted the cash. The first 30 days are "probably just
+// waiting on the matching outgoing"; past that it's a real anomaly.
+export function ageOverRemit(rows) {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const buckets = {
+    d0_30:  { count: 0, amount: 0, label: '0–30 يوم (طبيعي)' },
+    d31_60: { count: 0, amount: 0, label: '31–60 يوم'        },
+    d61:    { count: 0, amount: 0, label: '+60 يوم'          },
+  };
+  for (const r of rows) {
+    if (r.status !== 'over_remit') continue;
+    const days = r.firstInDate
+      ? Math.floor((today - new Date(r.firstInDate)) / 86400000)
+      : 0;
+    let key;
+    if (days <= 30)      key = 'd0_30';
+    else if (days <= 60) key = 'd31_60';
+    else                 key = 'd61';
+    buckets[key].count++;
+    buckets[key].amount += Math.abs(r.diff);
+  }
+  for (const k of Object.keys(buckets)) {
+    buckets[k].amount = +buckets[k].amount.toFixed(2);
+  }
+  return buckets;
 }
 
 // Aging buckets for outstanding rows. Buckets count by `firstOutDate` —

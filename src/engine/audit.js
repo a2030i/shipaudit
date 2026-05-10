@@ -70,6 +70,10 @@ const COL_PATTERNS = {
   // engine routes it correctly per row based on Billing Type.
   fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i, /other.?charge/i],
   codAmount:       [/cod.?amount/i, /cash.?on/i],
+  // "Tax Amount" — actual VAT line from the carrier file. Reading this
+  // verbatim lets validateAuditLink skip the 15% assumption (which is
+  // wrong for ZOBI international exports = zero-rated).
+  tax:             [/^tax\s*amount$/i, /^tax$/i, /tax.?amount/i, /^vat$/i, /^ضريبة$/, /قيمة\s*مضافة/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
   billingType:     [/billing.?type/i],
 };
@@ -197,6 +201,10 @@ export function mapRows(raw, colMap) {
       rss:             isCod ? 0 : baseRss,
       fuelSurcharge:   isCod ? 0 : baseFuel,
       codFee,
+      // Verbatim tax from the carrier file. ZOBI rows ship with tax=0
+      // (zero-rated export); ZDOI domestic ≈ 15%; ZDCF COD = 15% of fee.
+      // Comparison against the carrier statement uses this directly.
+      tax:             parseFloat(row[colMap.tax] ?? 0) || 0,
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
     };
@@ -231,7 +239,7 @@ export function auditRow(row, contract) {
   if (row.isCod) {
     const expectedFee = Number(contract?.codFee ?? 5);
     const invoicedFee = Number(row.codFee || 0);
-    const invoiced = { delivery: invoicedFee, rss: 0, fuel: 0, total: invoicedFee };
+    const invoiced = { delivery: invoicedFee, rss: 0, fuel: 0, total: invoicedFee, tax: Number(row.tax) || 0 };
     const expected = { delivery: expectedFee, rss: 0, fuel: 0, total: expectedFee };
     const diffTotal = +(invoicedFee - expectedFee).toFixed(2);
     const diffs    = { delivery: diffTotal, rss: 0, fuel: 0, total: diffTotal };
@@ -275,6 +283,10 @@ export function auditRow(row, contract) {
     rss:      invoicedRss,
     fuel:     invoicedFuel,
     total:    row.deliveryCharges + invoicedRss + invoicedFuel,
+    // Pass through whatever Tax Amount the carrier file showed for this
+    // row. We don't audit tax (the carrier's number is authoritative);
+    // we just preserve it so totalTax sums correctly.
+    tax:      Number(row.tax) || 0,
   };
 
   const diffs = {
@@ -445,6 +457,14 @@ export function buildSummary(results) {
   const totalExpected = +results.reduce(
     (s, r) => s + (Number(r.expected?.total) || 0), 0,
   ).toFixed(2);
+  // Sum of "Tax Amount" verbatim from the carrier file. ZOBI international
+  // rows carry tax=0 (zero-rated export); ZDOI domestic ≈ 15%; ZDCF COD
+  // = 15% of fee. totalGross = what we expect the carrier statement
+  // amount to equal — it removes the need for a hardcoded VAT rate.
+  const totalTax = +results.reduce(
+    (s, r) => s + (Number(r.invoiced?.tax) || 0), 0,
+  ).toFixed(2);
+  const totalGross = +(totalBilled + totalTax).toFixed(2);
 
   // Duplicate-AWB tally — independent of status so the user sees the count
   // even when the duplicates happen to be tiny (still worth disputing).
@@ -458,7 +478,7 @@ export function buildSummary(results) {
   return {
     total, ok, mismatch, favorable, unknown,
     totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
-    totalBilled, totalExpected,
+    totalBilled, totalExpected, totalTax, totalGross,
     duplicates, duplicateAwbs,
     byCountry,
   };
