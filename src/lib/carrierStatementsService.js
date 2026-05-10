@@ -407,10 +407,25 @@ export async function loadCarriersOverview() {
     .order('uploaded_at', { ascending: false });
   if (e2) throw e2;
 
+  // Pull the canonical carrier list — we'll only surface entries that
+  // actually exist in `carriers`. Orphan carrier_ids that linger in
+  // statements/operations after a rename + cleanup were showing up as
+  // ghost rows in the dropdown ("two Aramex"); this gates that out.
+  const { data: carrierRows, error: e3 } = await supabase
+    .from('carriers').select('id, name');
+  if (e3) throw e3;
+  const validCarrierIds = new Set((carrierRows ?? []).map(c => c.id));
+  const carrierNameById = new Map((carrierRows ?? []).map(c => [c.id, c.name]));
+
   const today = new Date().toISOString().slice(0, 10);
   const byCarrier = new Map();
 
   for (const o of ops ?? []) {
+    // Skip orphan carrier_ids — operations whose carrier was deleted /
+    // renamed but legacy rows still reference the old id. They belong
+    // nowhere and showing them as a separate dropdown entry just
+    // confuses the user.
+    if (!validCarrierIds.has(o.carrier_id)) continue;
     if (!byCarrier.has(o.carrier_id)) {
       byCarrier.set(o.carrier_id, {
         carrierId: o.carrier_id,
@@ -458,19 +473,24 @@ export async function loadCarriersOverview() {
     }
   }
 
-  // Last statement per carrier
+  // Last statement per carrier — same orphan filter as above.
   const seenStmt = new Set();
   for (const s of stmts ?? []) {
+    if (!validCarrierIds.has(s.carrier_id)) continue;
     if (seenStmt.has(s.carrier_id)) continue;
     seenStmt.add(s.carrier_id);
     const row = byCarrier.get(s.carrier_id);
     if (row) {
       row.lastStatementAt = s.uploaded_at;
-      row.carrierName = s.carrier_name;
+      // Prefer the carriers-table name over the statement's, so a typo
+      // in an old PDF doesn't override the canonical record.
+      row.carrierName = carrierNameById.get(s.carrier_id) ?? s.carrier_name;
     } else {
-      // Carrier has a statement but no operations (rare)
+      // Carrier has a statement but no operations (rare). Use the
+      // carriers-table name as the source of truth.
       byCarrier.set(s.carrier_id, {
-        carrierId: s.carrier_id, carrierName: s.carrier_name,
+        carrierId: s.carrier_id,
+        carrierName: carrierNameById.get(s.carrier_id) ?? s.carrier_name,
         outstanding: 0, paidTotal: 0, overdueAmount: 0,
         pendingCount: 0, overdueCount: 0, disputedCount: 0, reviewingCount: 0, auditedCount: 0, paidCount: 0,
         aging: { d0_30: 0, d31_60: 0, d61_90: 0, over90: 0 },
