@@ -1,13 +1,14 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   AlertOctagon, Wallet, TrendingDown, TrendingUp, Clock, Building2,
-  RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell,
+  RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell, Search, ExternalLink,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty } from '../components/UI.jsx';
+import { useNavigate } from 'react-router-dom';
+import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
 } from '../lib/carrierStatementsService.js';
-import { loadAuditsFromDB } from '../lib/coreService.js';
+import { loadAuditsFromDB, searchAwbAcrossAudits, loadAuditByIdFromDB } from '../lib/coreService.js';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -115,6 +116,10 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28}/></div>
       ) : (
         <>
+          {/* AWB lookup — fastest path during a dispute. Type a tracking
+              number, see every audit that ever billed this shipment. */}
+          <AwbSearchCard/>
+
           {/* HERO METRICS — outstanding · overdue · paid · carriers */}
           <div style={{
             display: 'grid',
@@ -509,5 +514,141 @@ function CountRow({ label, n, color }) {
       <span style={{ fontSize: 12, color: 'var(--muted)' }}>{label}</span>
       <span style={{ color, fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14 }}>{n}</span>
     </div>
+  );
+}
+
+// ── AWB search ─────────────────────────────────────────────────────────
+// Drill-down for disputes: paste any AWB / tracking number and we surface
+// every audit that ever billed it (shipping side + COD side, across
+// months). Clicking a hit loads the full audit and routes to /results.
+const AUDIT_TYPE_META_DASH = {
+  domestic:      { label: 'محلي',           icon: '🇸🇦', color: '#22c55e' },
+  international: { label: 'دولي',           icon: '🌐', color: '#f59e0b' },
+  cod:           { label: 'COD',            icon: '💰', color: '#a855f7' },
+  mixed:         { label: 'مختلط',          icon: '🔀', color: '#06b6d4' },
+  unknown:       { label: '—',              icon: '❓', color: 'var(--muted)' },
+};
+
+function AwbSearchCard() {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState(null); // null = no search yet
+  const [searching, setSearching] = useState(false);
+  const [loadingAudit, setLoadingAudit] = useState(null);
+
+  const runSearch = async () => {
+    const q = query.trim();
+    if (!q) return;
+    setSearching(true);
+    try {
+      const hits = await searchAwbAcrossAudits(q);
+      setResults(hits);
+    } catch (e) {
+      toast(`فشل البحث: ${e.message}`, 'error');
+      setResults([]);
+    }
+    setSearching(false);
+  };
+
+  const openAudit = async (auditId) => {
+    setLoadingAudit(auditId);
+    try {
+      const full = await loadAuditByIdFromDB(auditId);
+      sessionStorage.setItem('lastAudit', JSON.stringify(full));
+      navigate('/results');
+    } catch (e) {
+      toast(`فشل التحميل: ${e.message}`, 'error');
+    }
+    setLoadingAudit(null);
+  };
+
+  const clearSearch = () => { setQuery(''); setResults(null); };
+
+  return (
+    <Card style={{ padding: 14, marginBottom: 18 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
+        <Search size={16} color="var(--accent)"/>
+        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+          🔍 بحث عن شحنة (AWB) في كل المراجعات
+        </div>
+      </div>
+      <form onSubmit={e => { e.preventDefault(); runSearch(); }}
+        style={{ display: 'flex', gap: 8 }}>
+        <input
+          value={query}
+          onChange={e => setQuery(e.target.value)}
+          placeholder="رقم الشحنة (AWB) أو جزء منه..."
+          style={{
+            flex: 1, padding: '9px 12px', borderRadius: 9, fontSize: 13,
+            fontFamily: 'var(--font-mono)',
+          }}
+        />
+        <Btn type="submit" variant="primary" size="sm" disabled={searching || !query.trim()}>
+          {searching ? <Spinner size={13}/> : 'بحث'}
+        </Btn>
+        {results !== null && (
+          <Btn type="button" variant="ghost" size="sm" onClick={clearSearch}>مسح</Btn>
+        )}
+      </form>
+
+      {results !== null && (
+        <div style={{ marginTop: 12 }}>
+          {results.length === 0
+            ? <div style={{ padding: 18, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+                لا يوجد ما يطابق &laquo;{query}&raquo; في أي مراجعة محفوظة.
+              </div>
+            : <>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+                  {results.length} نتيجة · انقر &laquo;افتح&raquo; للذهاب إلى المراجعة
+                </div>
+                <div style={{ maxHeight: 260, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 5 }}>
+                  {results.map((r, i) => {
+                    const tm = AUDIT_TYPE_META_DASH[r.audit?.auditType] ?? AUDIT_TYPE_META_DASH.unknown;
+                    const cls = r.billingClass === 'cod' ? '💰 COD' : '🚚 شحن';
+                    return (
+                      <div key={`${r.auditId}-${i}`} style={{
+                        display: 'grid', gridTemplateColumns: '120px 1fr auto auto', gap: 12,
+                        alignItems: 'center', padding: '8px 12px',
+                        background: 'var(--surface)', border: '1px solid var(--border)',
+                        borderRadius: 9, fontSize: 12,
+                      }}>
+                        <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 700 }}>
+                          {r.awb}
+                        </span>
+                        <div>
+                          <div style={{ fontWeight: 600 }}>
+                            {r.audit?.carrierName ?? '—'}{' '}
+                            <span style={{
+                              padding: '1px 6px', borderRadius: 999,
+                              background: `${tm.color}1F`, border: `1px solid ${tm.color}55`,
+                              color: tm.color, fontSize: 9, fontFamily: 'var(--font-mono)', marginRight: 4,
+                            }}>{tm.icon} {tm.label}</span>
+                            <span style={{
+                              padding: '1px 6px', borderRadius: 999,
+                              background: 'rgba(56,189,248,.10)',
+                              border: '1px solid rgba(56,189,248,.35)',
+                              color: 'var(--accent)', fontSize: 9, fontFamily: 'var(--font-mono)',
+                            }}>{cls}</span>
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 2 }}>
+                            {r.shipDate || r.period || '—'} · {r.audit?.fileName || `(${(r.auditId || '').slice(0, 10)}...)`}
+                          </div>
+                        </div>
+                        <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13, whiteSpace: 'nowrap' }}>
+                          {Number(r.invoiced ?? 0).toFixed(2)} <span style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</span>
+                        </span>
+                        <Btn size="sm" variant="ghost" disabled={loadingAudit === r.auditId}
+                          onClick={() => openAudit(r.auditId)}>
+                          {loadingAudit === r.auditId ? <Spinner size={11}/> : <><ExternalLink size={11}/> افتح</>}
+                        </Btn>
+                      </div>
+                    );
+                  })}
+                </div>
+              </>
+          }
+        </div>
+      )}
+    </Card>
   );
 }
