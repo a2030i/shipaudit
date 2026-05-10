@@ -15,11 +15,19 @@ export async function loadCarriers() {
   }
 
   return data.map(row => ({
-    id:        row.id,
-    name:      row.name,
-    logo:      row.logo,
-    color:     row.color,
-    contracts: row.contracts ?? [],
+    id:               row.id,
+    name:             row.name,
+    logo:             row.logo,
+    color:            row.color,
+    contracts:        row.contracts ?? [],
+    // Operational metadata — used by /payments and the carrier ledger
+    // for "who do I call about this invoice" lookups.
+    contactEmail:     row.contact_email     ?? '',
+    contactPhone:     row.contact_phone     ?? '',
+    accountManager:   row.account_manager   ?? '',
+    iban:             row.iban              ?? '',
+    bankName:         row.bank_name         ?? '',
+    contractPdfPath:  row.contract_pdf_path ?? null,
   }));
 }
 
@@ -36,12 +44,18 @@ async function seedCarriers() {
 
 export async function saveCarrier(carrier) {
   const { error } = await supabase.from('carriers').upsert({
-    id:         carrier.id,
-    name:       carrier.name,
-    logo:       carrier.logo,
-    color:      carrier.color,
-    contracts:  carrier.contracts ?? [],
-    updated_at: new Date().toISOString(),
+    id:                 carrier.id,
+    name:               carrier.name,
+    logo:               carrier.logo,
+    color:              carrier.color,
+    contracts:          carrier.contracts ?? [],
+    contact_email:      carrier.contactEmail    || null,
+    contact_phone:      carrier.contactPhone    || null,
+    account_manager:    carrier.accountManager  || null,
+    iban:               carrier.iban            || null,
+    bank_name:          carrier.bankName        || null,
+    contract_pdf_path:  carrier.contractPdfPath || null,
+    updated_at:         new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;
 }
@@ -49,6 +63,39 @@ export async function saveCarrier(carrier) {
 export async function deleteCarrierFromDB(id) {
   const { error } = await supabase.from('carriers').delete().eq('id', id);
   if (error) throw error;
+}
+
+// ── Carrier contract PDF storage ─────────────────────────────────────────
+// Best-effort upload to the carrier-contracts bucket. Returns the storage
+// path on success or null on failure. Called from CarrierManager when
+// the user attaches a PDF; the path is then saved to carriers.contract_pdf_path.
+export async function uploadCarrierContractPdf({ carrierId, file }) {
+  if (!file || !carrierId) return null;
+  const ext = (file.name.split('.').pop() || 'pdf').toLowerCase();
+  const safeId = carrierId.replace(/[^a-z0-9_-]/gi, '_');
+  const path = `${safeId}/contract_${Date.now()}.${ext}`;
+  const { error } = await supabase.storage
+    .from('carrier-contracts')
+    .upload(path, file, { upsert: true, contentType: file.type || 'application/pdf' });
+  if (error) {
+    console.warn('contract pdf upload failed:', error.message);
+    return null;
+  }
+  return path;
+}
+
+// Signed URL for viewing — bucket is private, so we mint a short-lived
+// link only when the user clicks "view".
+export async function getCarrierContractUrl(path, expiresInSec = 600) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage
+    .from('carrier-contracts')
+    .createSignedUrl(path, expiresInSec);
+  if (error) {
+    console.warn('contract pdf signed-url failed:', error.message);
+    return null;
+  }
+  return data?.signedUrl ?? null;
 }
 
 // ── Audits ────────────────────────────────────────────────────────────────────

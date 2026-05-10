@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import { addCarrier, updateCarrier, deleteCarrier, COUNTRIES, loadSettings } from '../data/carriers.js';
-import { saveCarrier, deleteCarrierFromDB } from '../lib/coreService.js';
+import { saveCarrier, deleteCarrierFromDB, uploadCarrierContractPdf, getCarrierContractUrl } from '../lib/coreService.js';
 import { previewPricing } from '../engine/pricing.js';
 import { aiParseContract, aiRefineContract } from '../engine/openrouter.js';
 
@@ -611,15 +611,71 @@ function CarrierForm({ carrier, onSave, onClose }) {
   const [name,  setName]  = useState(carrier?.name||'');
   const [logo,  setLogo]  = useState(carrier?.logo||'📦');
   const [color, setColor] = useState(carrier?.color||COLORS[0]);
+  // Operational metadata — all optional
+  const [contactEmail,   setContactEmail]   = useState(carrier?.contactEmail   || '');
+  const [contactPhone,   setContactPhone]   = useState(carrier?.contactPhone   || '');
+  const [accountManager, setAccountManager] = useState(carrier?.accountManager || '');
+  const [iban,           setIban]           = useState(carrier?.iban           || '');
+  const [bankName,       setBankName]       = useState(carrier?.bankName       || '');
+  const [contractFile,   setContractFile]   = useState(null);
+  const [uploading,      setUploading]      = useState(false);
+  const [contractPath,   setContractPath]   = useState(carrier?.contractPdfPath || null);
 
-  const save = () => {
+  const handleContractUpload = async (file) => {
+    if (!file) return;
+    if (!carrier?.id) {
+      // Carrier doesn't exist yet — defer until save
+      setContractFile(file);
+      return;
+    }
+    setUploading(true);
+    try {
+      const path = await uploadCarrierContractPdf({ carrierId: carrier.id, file });
+      if (path) {
+        setContractPath(path);
+        setContractFile(null);
+        toast('تم رفع العقد ✓', 'success');
+      } else {
+        toast('فشل رفع العقد', 'error');
+      }
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setUploading(false);
+  };
+
+  const handleViewContract = async () => {
+    if (!contractPath) return;
+    const url = await getCarrierContractUrl(contractPath, 600);
+    if (url) window.open(url, '_blank', 'noopener');
+    else toast('تعذّر فتح الملف', 'error');
+  };
+
+  const save = async () => {
     if (!name.trim()) { toast('أدخل اسم الشركة','error'); return; }
-    onSave({ ...carrier, id: carrier?.id||`c_${Date.now()}`, name, logo, color, contracts: carrier?.contracts||[] });
+    const id = carrier?.id || `c_${Date.now()}`;
+    let finalContractPath = contractPath;
+    // If a file was queued (new carrier without id at the time), upload now.
+    if (contractFile && !contractPath) {
+      setUploading(true);
+      try {
+        finalContractPath = await uploadCarrierContractPdf({ carrierId: id, file: contractFile });
+      } catch { /* fall through, save without contract */ }
+      setUploading(false);
+    }
+    onSave({
+      ...carrier, id, name, logo, color,
+      contracts: carrier?.contracts || [],
+      contactEmail, contactPhone, accountManager,
+      iban, bankName,
+      contractPdfPath: finalContractPath,
+    });
   };
 
   return (
-    <Modal title={carrier?'✏️ تعديل شركة':'➕ شركة جديدة'} onClose={onClose} width={400}>
+    <Modal title={carrier?'✏️ تعديل شركة':'➕ شركة جديدة'} onClose={onClose} width={520}>
       <Input label="اسم الشركة" value={name} onChange={e=>setName(e.target.value)} placeholder="مثال: سمسا SMSA" style={{marginBottom:16}}/>
+
       <div style={{marginBottom:16}}>
         <div style={{color:'var(--muted)',fontSize:11,marginBottom:8}}>الأيقونة</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
@@ -632,7 +688,8 @@ function CarrierForm({ carrier, onSave, onClose }) {
           ))}
         </div>
       </div>
-      <div style={{marginBottom:20}}>
+
+      <div style={{marginBottom:18}}>
         <div style={{color:'var(--muted)',fontSize:11,marginBottom:8}}>لون الشركة</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
           {COLORS.map(c=>(
@@ -644,9 +701,75 @@ function CarrierForm({ carrier, onSave, onClose }) {
           ))}
         </div>
       </div>
+
+      {/* Operational metadata — collapsible-style section */}
+      <div style={{
+        marginBottom: 16, padding: '12px 14px',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 9,
+      }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', marginBottom: 10 }}>
+          📞 بيانات تواصل (اختياري)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Input label="البريد الإلكتروني" value={contactEmail} onChange={e=>setContactEmail(e.target.value)}
+            placeholder="billing@aramex.com" type="email"/>
+          <Input label="رقم الجوال" value={contactPhone} onChange={e=>setContactPhone(e.target.value)}
+            placeholder="+966 5XX XXX XXXX"/>
+          <Input label="مدير الحساب" value={accountManager} onChange={e=>setAccountManager(e.target.value)}
+            placeholder="اسم المسؤول من الناقل" style={{ gridColumn: '1 / -1' }}/>
+        </div>
+      </div>
+
+      <div style={{
+        marginBottom: 16, padding: '12px 14px',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 9,
+      }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', marginBottom: 10 }}>
+          🏦 بيانات بنكية (اختياري)
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <Input label="اسم البنك" value={bankName} onChange={e=>setBankName(e.target.value)}
+            placeholder="مصرف الراجحي"/>
+          <Input label="IBAN" value={iban} onChange={e=>setIban(e.target.value)}
+            placeholder="SA12 3456 7890 1234 5678 9012"/>
+        </div>
+      </div>
+
+      <div style={{
+        marginBottom: 16, padding: '12px 14px',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 9,
+      }}>
+        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', marginBottom: 10 }}>
+          📄 العقد الموقّع (اختياري)
+        </div>
+        {contractPath ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <span style={{ flex: 1, fontSize: 12, color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>
+              ✓ مرفوع — {contractPath.split('/').pop()}
+            </span>
+            <Btn size="sm" variant="ghost" onClick={handleViewContract}>عرض</Btn>
+            <Btn size="sm" variant="ghost" onClick={() => setContractPath(null)}>إزالة</Btn>
+          </div>
+        ) : contractFile ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+            📎 جاهز للرفع: {contractFile.name} (سيُرفع عند حفظ الشركة)
+            <Btn size="sm" variant="ghost" onClick={() => setContractFile(null)} style={{ marginRight: 8 }}>إلغاء</Btn>
+          </div>
+        ) : (
+          <input type="file" accept=".pdf" disabled={uploading}
+            onChange={e => handleContractUpload(e.target.files?.[0])}
+            style={{ width: '100%', fontSize: 12 }}/>
+        )}
+      </div>
+
       <div style={{display:'flex',gap:9,justifyContent:'flex-end'}}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-        <Btn variant="primary" onClick={save}>حفظ ✓</Btn>
+        <Btn variant="primary" onClick={save} disabled={uploading}>
+          {uploading ? 'جارٍ الرفع...' : 'حفظ ✓'}
+        </Btn>
       </div>
     </Modal>
   );
