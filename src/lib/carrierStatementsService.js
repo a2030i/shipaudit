@@ -574,6 +574,182 @@ export async function setOperationStatus(id, patch) {
   if (error) throw error;
 }
 
+// ── Activity log — audit trail of every meaningful mutation ───────────
+// Best-effort write: failures are swallowed so a logging hiccup never
+// blocks the underlying mutation. Used for "who paid this op" and
+// "who reopened this dispute" forensics.
+export async function logActivity({
+  action, entityType, entityId, carrierId, payload, userId, userEmail,
+}) {
+  try {
+    await supabase.from('activity_log').insert({
+      action,
+      entity_type: entityType,
+      entity_id:   entityId ? String(entityId) : null,
+      actor_id:    userId || null,
+      actor_email: userEmail || null,
+      carrier_id:  carrierId || null,
+      payload:     payload || null,
+    });
+  } catch {
+    // Logging must never block the user's action — drop silently.
+  }
+}
+
+export async function loadActivityLog({ limit = 100, entityType, entityId, carrierId, action } = {}) {
+  let q = supabase
+    .from('activity_log')
+    .select('id, action, entity_type, entity_id, actor_id, actor_email, carrier_id, payload, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (entityType) q = q.eq('entity_type', entityType);
+  if (entityId)   q = q.eq('entity_id',   String(entityId));
+  if (carrierId)  q = q.eq('carrier_id',  carrierId);
+  if (action)     q = q.eq('action',      action);
+  const { data, error } = await q;
+  if (error) throw error;
+  return data ?? [];
+}
+
+// ── Carrier KPIs — performance scorecard per carrier ──────────────────
+// Pure read-side aggregation across the existing tables (no new schema).
+// Returns one row per carrier carrying the metrics the AP team uses to
+// rank carriers: how often they overcharge, how fast they resolve
+// disputes, how reliably the user pays them on time, etc.
+//
+// Returned shape per carrier:
+//   { carrierId, carrierName, ops, opsAudited, auditCoverage,
+//     overcharges, overchargeAmount, mismatchRate,
+//     disputesOpened, disputesResolved, disputesOpen, avgDisputeDays,
+//     avgPayDays, paidOnTime, paidLate, totalBilled, totalPaid }
+export async function loadCarrierKpis() {
+  // Pull everything in parallel — small DB, fine.
+  const [carriersRes, opsRes, auditsRes, notesRes, paymentsRes] = await Promise.all([
+    supabase.from('carriers').select('id, name'),
+    supabase.from('carrier_operations').select('id, carrier_id, doc_type, status, amount_dr, amount_cr, due_date, paid_at, dispute_opened_at, dispute_resolved_at, audit_id'),
+    supabase.from('audits').select('id, carrier_id, total_billed, total_tax, diff, issue_count'),
+    supabase.from('dispute_notes').select('operation_id, kind'),
+    supabase.from('payments').select('id, carrier_id'),
+  ]);
+  for (const r of [carriersRes, opsRes, auditsRes, notesRes, paymentsRes]) {
+    if (r.error) throw r.error;
+  }
+
+  const carrierName = new Map((carriersRes.data ?? []).map(c => [c.id, c.name]));
+  const validIds = new Set((carriersRes.data ?? []).map(c => c.id));
+  const opsByCarrier = new Map();
+  for (const o of opsRes.data ?? []) {
+    if (!validIds.has(o.carrier_id)) continue;
+    if (!opsByCarrier.has(o.carrier_id)) opsByCarrier.set(o.carrier_id, []);
+    opsByCarrier.get(o.carrier_id).push(o);
+  }
+  // Operation id → its carrier (so we can attribute dispute notes via op)
+  const carrierOfOp = new Map();
+  for (const o of opsRes.data ?? []) carrierOfOp.set(o.id, o.carrier_id);
+
+  // Distinct disputed-op count per carrier from notes (unique op ids).
+  // We don't double-count multi-note disputes here; only "kind=opened"
+  // entries are relevant to the count, but we accept any-kind because
+  // legacy disputes may not have a synthetic 'opened' row.
+  const disputedOpIdsByCarrier = new Map();
+  for (const n of notesRes.data ?? []) {
+    const cid = carrierOfOp.get(n.operation_id);
+    if (!cid) continue;
+    if (!disputedOpIdsByCarrier.has(cid)) disputedOpIdsByCarrier.set(cid, new Set());
+    disputedOpIdsByCarrier.get(cid).add(n.operation_id);
+  }
+
+  const auditsByCarrier = new Map();
+  for (const a of auditsRes.data ?? []) {
+    if (!auditsByCarrier.has(a.carrier_id)) auditsByCarrier.set(a.carrier_id, []);
+    auditsByCarrier.get(a.carrier_id).push(a);
+  }
+  const paymentsCountByCarrier = new Map();
+  for (const p of paymentsRes.data ?? []) {
+    paymentsCountByCarrier.set(p.carrier_id, (paymentsCountByCarrier.get(p.carrier_id) ?? 0) + 1);
+  }
+
+  const out = [];
+  for (const cid of validIds) {
+    const ops = opsByCarrier.get(cid) ?? [];
+    const audits = auditsByCarrier.get(cid) ?? [];
+
+    // RV-only invoices for "audit coverage" calc — DR/DG/AB shouldn't
+    // require audits.
+    const rvOps = ops.filter(o => o.doc_type === 'RV');
+    const rvAudited = rvOps.filter(o => o.audit_id).length;
+
+    const totalBilled = ops.reduce(
+      (s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0,
+    );
+    const totalPaid = ops.filter(o => o.status === 'paid').reduce(
+      (s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0,
+    );
+
+    // Overcharges captured by audits — only audits with issue_count > 0
+    // contribute, and we sum the saved diff (positive = overbilled).
+    const auditsWithIssues = audits.filter(a => (a.issue_count ?? 0) > 0);
+    const overchargeAmount = auditsWithIssues.reduce((s, a) => s + (Number(a.diff) || 0), 0);
+
+    // Disputes
+    const disputedSet = disputedOpIdsByCarrier.get(cid) ?? new Set();
+    const disputesOpened = disputedSet.size;
+    let disputesResolved = 0, disputesOpen = 0;
+    let totalDisputeDays = 0, resolvedWithDuration = 0;
+    for (const opId of disputedSet) {
+      const op = ops.find(o => o.id === opId);
+      if (!op) continue;
+      if (op.dispute_resolved_at) {
+        disputesResolved++;
+        if (op.dispute_opened_at) {
+          const days = (new Date(op.dispute_resolved_at) - new Date(op.dispute_opened_at)) / 86400000;
+          totalDisputeDays += days;
+          resolvedWithDuration++;
+        }
+      } else if (op.status === 'disputed') {
+        disputesOpen++;
+      }
+    }
+    const avgDisputeDays = resolvedWithDuration ? totalDisputeDays / resolvedWithDuration : 0;
+
+    // Payment timeliness — paid ops with both due_date + paid_at.
+    let totalPayDays = 0, paidWithDates = 0, paidOnTime = 0, paidLate = 0;
+    for (const o of ops) {
+      if (o.status !== 'paid' || !o.paid_at || !o.due_date) continue;
+      const days = (new Date(o.paid_at) - new Date(o.due_date)) / 86400000;
+      totalPayDays += days;
+      paidWithDates++;
+      if (days <= 0) paidOnTime++; else paidLate++;
+    }
+    const avgPayDays = paidWithDates ? totalPayDays / paidWithDates : 0;
+
+    out.push({
+      carrierId:        cid,
+      carrierName:      carrierName.get(cid) ?? cid,
+      ops:              ops.length,
+      rvOps:            rvOps.length,
+      opsAudited:       rvAudited,
+      auditCoverage:    rvOps.length ? (rvAudited / rvOps.length) : 0,
+      auditsCount:      audits.length,
+      overcharges:      auditsWithIssues.length,
+      overchargeAmount: +overchargeAmount.toFixed(2),
+      mismatchRate:     audits.length ? (auditsWithIssues.length / audits.length) : 0,
+      disputesOpened,
+      disputesResolved,
+      disputesOpen,
+      avgDisputeDays:   +avgDisputeDays.toFixed(1),
+      avgPayDays:       +avgPayDays.toFixed(1),
+      paidOnTime,
+      paidLate,
+      paymentsCount:    paymentsCountByCarrier.get(cid) ?? 0,
+      totalBilled:      +totalBilled.toFixed(2),
+      totalPaid:        +totalPaid.toFixed(2),
+    });
+  }
+  // Sort: most billed first
+  return out.sort((a, b) => b.totalBilled - a.totalBilled);
+}
+
 // ── Disputes — journal + lifecycle ────────────────────────────────────
 // Each disputed operation accumulates a thread of dispute_notes entries
 // (opened → follow_ups → response → resolved). The op itself carries
@@ -608,10 +784,10 @@ export async function addDisputeNote({
 // Open a dispute: flip status, stamp dispute_opened_at, add a note
 // (kind='opened'). Idempotent — if it's already disputed, we just add
 // a follow-up note instead of resetting the open timestamp.
-export async function openDispute({ operationId, note, userId }) {
+export async function openDispute({ operationId, note, userId, userEmail }) {
   const { data: existing } = await supabase
     .from('carrier_operations')
-    .select('status, dispute_opened_at')
+    .select('status, dispute_opened_at, carrier_id, doc_no')
     .eq('id', operationId)
     .single();
   const isFreshOpen = existing?.status !== 'disputed' || !existing?.dispute_opened_at;
@@ -625,17 +801,28 @@ export async function openDispute({ operationId, note, userId }) {
       userId,
     });
   }
+  if (isFreshOpen) {
+    await logActivity({
+      action: 'dispute_opened',
+      entityType: 'operation',
+      entityId:   operationId,
+      carrierId:  existing?.carrier_id,
+      userId, userEmail,
+      payload:    { doc_no: existing?.doc_no, note: note?.trim() || null },
+    });
+  }
 }
 
 export async function resolveDispute({
-  operationId, resolution = 'accepted', creditOpId, note, userId,
+  operationId, resolution = 'accepted', creditOpId, note, userId, userEmail,
 }) {
   if (!['credit_received', 'accepted'].includes(resolution)) {
     throw new Error(`resolution غير صالح: ${resolution}`);
   }
-  // Status flips to 'audited' if no credit involved (we just accept the
-  // charge as-is); if a credit was received, also 'audited' since the
-  // open balance is now reconciled.
+  const { data: existing } = await supabase
+    .from('carrier_operations')
+    .select('carrier_id, doc_no')
+    .eq('id', operationId).single();
   await setOperationStatus(operationId, {
     status: 'audited',
     dispute_resolved_at: new Date().toISOString(),
@@ -650,6 +837,14 @@ export async function resolveDispute({
         : 'تم قبول الفاتورة كما هي'),
     kind: 'resolved',
     userId,
+  });
+  await logActivity({
+    action: 'dispute_resolved',
+    entityType: 'operation',
+    entityId:   operationId,
+    carrierId:  existing?.carrier_id,
+    userId, userEmail,
+    payload:    { doc_no: existing?.doc_no, resolution, credit_op_id: creditOpId || null },
   });
 }
 
@@ -704,7 +899,7 @@ export async function loadStaleDisputes({ thresholdDays = 30 } = {}) {
 // flip so the audit trail of "what did we pay, when, against which
 // invoices" is reconstructable forever after.
 export async function createPaymentRecord({
-  carrierId, paidAt, amount, paymentRef, notes, opIds, userId,
+  carrierId, paidAt, amount, paymentRef, notes, opIds, userId, userEmail,
 }) {
   if (!carrierId)             throw new Error('carrier_id مطلوب');
   if (!Array.isArray(opIds))  throw new Error('opIds مطلوبة');
@@ -732,6 +927,19 @@ export async function createPaymentRecord({
       .in('id', slice);
     if (linkErr) throw linkErr;
   }
+  await logActivity({
+    action:     'payment_created',
+    entityType: 'payment',
+    entityId:   data.id,
+    carrierId,
+    userId, userEmail,
+    payload: {
+      amount: Number(amount) || 0,
+      paid_at: data.paid_at,
+      payment_ref: paymentRef || null,
+      ops_count: opIds.length,
+    },
+  });
   return data;
 }
 

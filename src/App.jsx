@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard,
+  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import AIChat from './components/AIChat.jsx';
@@ -21,6 +21,8 @@ import CarrierStatements from './pages/CarrierStatements.jsx';
 import CarrierLedger     from './pages/CarrierLedger.jsx';
 import CodSettlements    from './pages/CodSettlements.jsx';
 import Payments          from './pages/Payments.jsx';
+import CarrierKpi        from './pages/CarrierKpi.jsx';
+import ActivityLog       from './pages/ActivityLog.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Each item belongs to a section. Sections render as headers; items beneath them.
@@ -33,6 +35,8 @@ const NAV_ITEMS = [
   { id: 'aramex-stmt',     path: '/aramex-statements', label: 'رفع كشف',         icon: FileText, section: 'carrier_acct' },
   { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',      icon: Banknote, section: 'carrier_acct' },
   { id: 'payments',        path: '/payments',          label: 'الدفعات',         icon: CreditCard, section: 'carrier_acct' },
+  { id: 'carrier-kpi',     path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,  section: 'carrier_acct' },
+  { id: 'activity-log',    path: '/activity-log',      label: 'سجل النشاط',      icon: Activity,   section: 'admin' },
   { id: 'bank',      path: '/bank',      label: 'كشف بنكي',      icon: Wallet,          section: 'bank' },
   { id: 'employees', path: '/employees', label: 'الموظفون',      icon: Users,           section: 'admin', adminOnly: true },
 ];
@@ -52,6 +56,8 @@ const PAGE_TITLES = {
   '/ledger':            'الدفتر',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
   '/payments':          'الدفعات',
+  '/carrier-kpi':       'أداء الناقلين',
+  '/activity-log':      'سجل النشاط',
   '/employees':       'الموظفون',
   '/settings/ai':     'الإعدادات — الذكاء الاصطناعي',
   '/settings/permissions': 'الإعدادات — الصلاحيات',
@@ -87,7 +93,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/carrier-kpi','/activity-log','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -356,6 +362,12 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/payments'} scroll>
               <Payments isActive={pathname==='/payments'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/carrier-kpi'} scroll>
+              <CarrierKpi isActive={pathname==='/carrier-kpi'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/activity-log'} scroll>
+              <ActivityLog isActive={pathname==='/activity-log'}/>
             </PageSlot>
             {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>

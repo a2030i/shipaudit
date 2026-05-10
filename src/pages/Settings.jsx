@@ -187,6 +187,8 @@ const NAV_ITEMS = [
   { id: 'aramex-stmt',      label: 'رفع كشف'            },
   { id: 'cod-settlements',  label: 'تسويات COD'         },
   { id: 'payments',         label: 'الدفعات'            },
+  { id: 'carrier-kpi',      label: 'أداء الناقلين'      },
+  { id: 'activity-log',     label: 'سجل النشاط'         },
   { id: 'employees',        label: 'الموظفون'           },
 ];
 const ROLES_CONFIG = [
