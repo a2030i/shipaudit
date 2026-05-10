@@ -12,6 +12,12 @@ import {
   getStatementFileUrl,
   loadLinkedAuditIndex,
   createPaymentRecord,
+  loadDisputeNotes,
+  openDispute,
+  addDisputeNote,
+  resolveDispute,
+  reopenDispute,
+  loadCreditCandidates,
 } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import {
@@ -346,8 +352,10 @@ export default function CarrierLedger({ isActive = true }) {
   };
   const markDispute = async (op, notes) => {
     try {
-      await setOperationStatus(op.id, { status: 'disputed', notes: notes || null });
-      toast('تم تحديد العملية كمتنازع', 'success');
+      // openDispute = stamp dispute_opened_at + first dispute_notes entry
+      // (auto-detects whether to mark as 'opened' vs 'follow_up').
+      await openDispute({ operationId: op.id, note: notes, userId: null });
+      toast('تم فتح النزاع', 'success');
       refresh();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -816,14 +824,20 @@ export default function CarrierLedger({ isActive = true }) {
                                 💰 تسديد
                               </Btn>
                             )}
-                            {/* Dispute */}
+                            {/* Open new dispute */}
                             {o.status !== 'disputed' && o.status !== 'paid' && (
                               <Btn size="sm" variant="ghost" onClick={() => setModal({ op: o, action: 'dispute' })}>
                                 ⚠ نزاع
                               </Btn>
                             )}
-                            {/* Reopen */}
-                            {(o.status === 'paid' || o.status === 'disputed') && (
+                            {/* Open dispute thread (drawer) for already-disputed ops */}
+                            {o.status === 'disputed' && (
+                              <Btn size="sm" variant="ghost" onClick={() => setModal({ op: o, action: 'dispute-thread' })}>
+                                💬 سجل النزاع
+                              </Btn>
+                            )}
+                            {/* Reopen — for paid only; disputed gets reopen via thread */}
+                            {o.status === 'paid' && (
                               <Btn size="sm" variant="ghost" onClick={() => reopen(o)}>↩ إعادة فتح</Btn>
                             )}
                           </div>
@@ -864,6 +878,7 @@ export default function CarrierLedger({ isActive = true }) {
           onPaidBulk={markPaidBulk}
           onDispute={markDispute}
           onLink={linkAudit}
+          onRefresh={refresh}
         />
       )}
     </div>
@@ -871,14 +886,16 @@ export default function CarrierLedger({ isActive = true }) {
 }
 
 // ── ActionModal ────────────────────────────────────────────────────────────
-function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDispute, onLink }) {
+function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDispute, onLink, onRefresh }) {
   const [paymentRef, setPaymentRef] = useState('');
   const [notes, setNotes] = useState('');
-  const isPay     = modal.action === 'paid';
-  const isLink    = modal.action === 'link';
-  const isBulkPay = modal.action === 'bulk-paid';
+  const isPay        = modal.action === 'paid';
+  const isLink       = modal.action === 'link';
+  const isBulkPay    = modal.action === 'bulk-paid';
+  const isThread     = modal.action === 'dispute-thread';
 
   if (isLink) return <LinkAuditModal op={modal.op} carrierName={carrierName} onClose={onClose} onLink={onLink}/>;
+  if (isThread) return <DisputeThreadModal op={modal.op} onClose={onClose} onRefresh={onRefresh}/>;
 
   // Bulk-paid: shared payment_ref applies to every selected op. We show
   // a brief preview so the user can sanity-check what's about to be
@@ -1443,6 +1460,305 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       )}
 
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 14 }}>
+        <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
+      </div>
+    </Modal>
+  );
+}
+
+// ── DisputeThreadModal — full lifecycle for an active dispute ──────────
+const NOTE_KIND_META = {
+  opened:    { icon: '🔴', label: 'فُتح النزاع',     color: 'var(--red)'   },
+  follow_up: { icon: '💬', label: 'متابعة',          color: 'var(--gold)'  },
+  response:  { icon: '📩', label: 'رد من الناقل',    color: 'var(--accent)'},
+  resolved:  { icon: '✓',  label: 'تم الحل',         color: 'var(--green)' },
+  reopened:  { icon: '↩', label: 'أُعيد الفتح',     color: 'var(--gold)'  },
+};
+
+function DisputeThreadModal({ op, onClose, onRefresh }) {
+  const [notes, setNotes] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [newNote, setNewNote] = useState('');
+  const [newKind, setNewKind] = useState('follow_up');
+  const [busy, setBusy] = useState(false);
+  const [resolveOpen, setResolveOpen] = useState(false);
+  const [credits, setCredits] = useState([]);
+  const [selectedCredit, setSelectedCredit] = useState('');
+  const [resolveNote, setResolveNote] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      loadDisputeNotes(op.id),
+      loadCreditCandidates(op.carrier_id),
+    ]).then(([n, c]) => {
+      if (cancelled) return;
+      setNotes(n);
+      setCredits(c);
+    }).catch(e => {
+      if (!cancelled) toast(`فشل: ${e.message}`, 'error');
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [op.id, op.carrier_id]);
+
+  const refreshThread = async () => {
+    const n = await loadDisputeNotes(op.id);
+    setNotes(n);
+  };
+
+  const handleAddNote = async () => {
+    if (!newNote.trim()) {
+      toast('اكتب ملاحظة قبل الإضافة', 'error');
+      return;
+    }
+    setBusy(true);
+    try {
+      await addDisputeNote({
+        operationId: op.id,
+        note: newNote,
+        kind: newKind,
+        userId: null,
+      });
+      setNewNote('');
+      setNewKind('follow_up');
+      await refreshThread();
+      toast('تم حفظ الملاحظة', 'success');
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setBusy(false);
+  };
+
+  const handleResolve = async (resolution) => {
+    setBusy(true);
+    try {
+      await resolveDispute({
+        operationId: op.id,
+        resolution,
+        creditOpId: resolution === 'credit_received' ? (selectedCredit || null) : null,
+        note: resolveNote,
+        userId: null,
+      });
+      toast(
+        resolution === 'credit_received'
+          ? '✓ النزاع محلول — مرتبط بالمذكرة الدائنة'
+          : '✓ النزاع محلول — تم قبول الفاتورة',
+        'success',
+      );
+      onRefresh?.();
+      onClose();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setBusy(false);
+  };
+
+  const handleReopen = async () => {
+    setBusy(true);
+    try {
+      await reopenDispute({ operationId: op.id, note: 'إعادة فتح', userId: null });
+      onRefresh?.();
+      await refreshThread();
+      toast('تم إعادة فتح النزاع', 'info');
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setBusy(false);
+  };
+
+  const opAmount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+  const today = new Date(); today.setHours(0,0,0,0);
+  const daysOpen = op.dispute_opened_at
+    ? Math.floor((today - new Date(op.dispute_opened_at)) / 86_400_000)
+    : 0;
+
+  return (
+    <Modal title={`💬 سجل النزاع — ${op.doc_no}`} onClose={onClose} width={600}>
+      {/* Header summary */}
+      <div style={{
+        marginBottom: 14, padding: '12px 14px',
+        background: 'var(--surface)', border: '1px solid var(--border)',
+        borderRadius: 9,
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>المبلغ المتنازع عليه</div>
+            <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 16, color: 'var(--red)' }}>
+              {fmt(opAmount)} ر.س
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>أيام منذ الفتح</div>
+            <div style={{
+              fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 16,
+              color: daysOpen > 30 ? 'var(--red)' : daysOpen > 14 ? 'var(--gold)' : 'var(--text)',
+            }}>
+              {daysOpen} يوم{daysOpen > 30 && ' ⚠️'}
+            </div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>تاريخ الفتح</div>
+            <div style={{ fontSize: 13 }}>
+              {op.dispute_opened_at ? new Date(op.dispute_opened_at).toLocaleDateString('ar-SA') : '—'}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Timeline */}
+      {loading ? (
+        <div style={{ textAlign: 'center', padding: 30 }}><Spinner size={20}/></div>
+      ) : (
+        <div style={{ marginBottom: 14, maxHeight: 280, overflowY: 'auto', padding: '4px 4px 4px 0' }}>
+          {(!notes || notes.length === 0) ? (
+            <div style={{ padding: 16, textAlign: 'center', color: 'var(--muted)', fontSize: 12 }}>
+              لا توجد ملاحظات بعد. أضف أول متابعة أدناه.
+            </div>
+          ) : notes.map(n => {
+            const meta = NOTE_KIND_META[n.kind] ?? NOTE_KIND_META.follow_up;
+            return (
+              <div key={n.id} style={{
+                display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 10,
+                padding: '10px 12px', marginBottom: 7,
+                background: 'var(--card)', border: `1px solid ${meta.color}30`,
+                borderRadius: 9,
+              }}>
+                <div style={{
+                  fontSize: 16, alignSelf: 'flex-start',
+                  width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: `${meta.color}20`, borderRadius: '50%',
+                }}>
+                  {meta.icon}
+                </div>
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                    <span style={{ color: meta.color, fontWeight: 700, fontSize: 12 }}>
+                      {meta.label}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                      {new Date(n.created_at).toLocaleString('ar-SA')}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 4, whiteSpace: 'pre-wrap' }}>
+                    {n.note}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add note form */}
+      {!resolveOpen && op.status === 'disputed' && (
+        <div style={{
+          padding: '12px 14px', background: 'var(--surface)',
+          border: '1px solid var(--border)', borderRadius: 9, marginBottom: 12,
+        }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, fontFamily: 'var(--font-mono)' }}>
+            ➕ إضافة ملاحظة جديدة
+          </div>
+          <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+            {[
+              { k: 'follow_up', l: '💬 متابعة' },
+              { k: 'response',  l: '📩 رد من الناقل' },
+            ].map(t => (
+              <button key={t.k} onClick={() => setNewKind(t.k)}
+                style={{
+                  flex: 1, padding: '6px 10px', borderRadius: 7,
+                  background: newKind === t.k ? 'var(--accent)20' : 'transparent',
+                  border: `1px solid ${newKind === t.k ? 'var(--accent)' : 'var(--border)'}`,
+                  color: newKind === t.k ? 'var(--accent)' : 'var(--muted)',
+                  fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+                }}>
+                {t.l}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={newNote} onChange={e => setNewNote(e.target.value)}
+            placeholder="مثلاً: تواصلت مع مدير حساب أرامكس، وعد بالرد خلال 3 أيام..."
+            rows={3}
+            style={{
+              width: '100%', padding: '8px 11px', borderRadius: 7,
+              fontSize: 13, fontFamily: 'inherit', resize: 'vertical', lineHeight: 1.7,
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 8 }}>
+            <Btn size="sm" variant="primary" onClick={handleAddNote} disabled={busy || !newNote.trim()}>
+              {busy ? <Spinner size={12}/> : 'إضافة'}
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Resolve panel */}
+      {resolveOpen && op.status === 'disputed' && (
+        <div style={{
+          padding: '12px 14px',
+          background: 'rgba(34,197,94,.08)', border: '1px solid var(--green)',
+          borderRadius: 9, marginBottom: 12,
+        }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', marginBottom: 10 }}>
+            ✓ إغلاق النزاع
+          </div>
+
+          {credits.length > 0 && (
+            <>
+              <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
+                مذكرة دائنة من الناقل (اختياري)
+              </label>
+              <select value={selectedCredit} onChange={e => setSelectedCredit(e.target.value)}
+                style={{
+                  width: '100%', padding: '7px 10px', borderRadius: 7,
+                  fontSize: 12, fontFamily: 'var(--font-mono)', marginBottom: 10,
+                }}>
+                <option value="">— لا أربط بمذكرة (قبول الفاتورة) —</option>
+                {credits.map(c => (
+                  <option key={c.id} value={c.id}>
+                    {c.doc_type} {c.doc_no} · {c.doc_date} · {fmt(c.amount_cr)} ر.س
+                  </option>
+                ))}
+              </select>
+            </>
+          )}
+
+          <textarea
+            value={resolveNote} onChange={e => setResolveNote(e.target.value)}
+            placeholder="ملاحظة الإغلاق (اختياري)..."
+            rows={2}
+            style={{
+              width: '100%', padding: '8px 11px', borderRadius: 7,
+              fontSize: 13, fontFamily: 'inherit', resize: 'vertical',
+            }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10, flexWrap: 'wrap' }}>
+            <Btn size="sm" variant="ghost" onClick={() => setResolveOpen(false)}>تراجع</Btn>
+            <Btn size="sm" variant="success"
+              onClick={() => handleResolve(selectedCredit ? 'credit_received' : 'accepted')}
+              disabled={busy}>
+              {busy ? <Spinner size={12}/> :
+                selectedCredit ? 'إغلاق + ربط بالمذكرة' : 'إغلاق (قبول)'}
+            </Btn>
+          </div>
+        </div>
+      )}
+
+      {/* Footer actions */}
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div>
+          {op.status === 'disputed' && !resolveOpen && (
+            <Btn size="sm" variant="success" onClick={() => setResolveOpen(true)}>
+              ✓ إغلاق النزاع
+            </Btn>
+          )}
+          {op.status !== 'disputed' && (
+            <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={busy}>
+              ↩ إعادة فتح النزاع
+            </Btn>
+          )}
+        </div>
         <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
       </div>
     </Modal>
