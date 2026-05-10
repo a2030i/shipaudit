@@ -11,7 +11,7 @@ import {
 } from '../engine/audit.js';
 import { aiAnalyzeFile } from '../engine/openrouter.js';
 import { loadSettings } from '../data/carriers.js';
-import { loadCarriers, saveAuditToDB } from '../lib/coreService.js';
+import { loadCarriers, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -171,6 +171,9 @@ export default function AIChat() {
 
     const today = new Date().toISOString().slice(0, 10);
     const results = auditAll(mapped, carrier, today);
+    // Cross-month duplicate check across past audits for this carrier.
+    try { await applyCrossAuditDuplicates(results, carrier.id); }
+    catch { /* best-effort */ }
     const summary = buildSummary(results);
     if (!results.length) throw new Error('لم تُستخرج شحنات من الملف — تحقق من الأعمدة');
 

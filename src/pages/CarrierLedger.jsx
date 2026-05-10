@@ -12,7 +12,7 @@ import {
   getStatementFileUrl,
   loadLinkedAuditIndex,
 } from '../lib/carrierStatementsService.js';
-import { loadCarriers, loadAuditsFromDB, saveAuditToDB } from '../lib/coreService.js';
+import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import {
   detectHeaderRow, buildHeaders, detectColumns, mapRows, auditAll, buildSummary,
 } from '../engine/audit.js';
@@ -763,12 +763,16 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
 
   const filtered = useMemo(() => {
     if (!audits) return [];
-    if (!search.trim()) return audits;
+    // Hide audits already linked to ANY operation — the user can't pick
+    // them anyway (Rule 1 in validateAuditLink rejects them) and seeing
+    // them in the picker is just visual noise.
+    const pool = audits.filter(a => !linkedIndex.has(a.id));
+    if (!search.trim()) return pool;
     const q = search.trim().toLowerCase();
-    return audits.filter(a =>
+    return pool.filter(a =>
       `${a.carrierName} ${a.period} ${a.fileName ?? ''}`.toLowerCase().includes(q)
     );
-  }, [audits, search]);
+  }, [audits, search, linkedIndex]);
 
   // ── Inline upload: read Excel → audit → save → link to this operation ──
   const handleInlineUpload = async (file) => {
@@ -822,6 +826,13 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       const mapped  = mapRows(data, colMap);
       const forDate = op.doc_date || new Date().toISOString().slice(0, 10);
       const results = auditAll(mapped, carrier, forDate);
+      // Cross-audit duplicate check — flags AWBs that have already appeared
+      // in any past audit for this carrier (e.g. same shipment billed last
+      // month and again this month). Within-file duplicates are caught by
+      // auditAll; this catches the cross-month case.
+      setUploadStatus('فحص التكرار بين الأشهر...');
+      try { await applyCrossAuditDuplicates(results, carrier.id); }
+      catch { /* ledger lookup is best-effort — don't block the audit */ }
       const summary = buildSummary(results);
 
       if (!results.length) throw new Error('لم تُستخرج أي شحنة من الملف — تحقق من الأعمدة');
