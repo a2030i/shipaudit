@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { getActiveContract } from '../data/carriers.js';
 
 /**
  * Export AWB + total weight only — for hand-off to the external pricing
@@ -88,6 +89,95 @@ export function exportExcessWeights(results, contract, carrierName, period) {
   const dateStr = new Date().toISOString().slice(0, 10);
   XLSX.writeFile(wb, `أوزان_إضافية_${carrierName}_${period}_${dateStr}.xlsx`);
   return { ok: true, count: excess.length };
+}
+
+/**
+ * Combine excess-weight rows across MANY audits into a single Excel.
+ * Each audit may belong to a different carrier and a different period —
+ * we resolve the active contract per-audit so the threshold is correct.
+ *
+ * Inputs:
+ *   audits[]   — array of full audit objects (id, carrierId, period,
+ *                results[]). Each must include .results.
+ *   carriers[] — array of carrier objects so we can look up contracts.
+ *
+ * Behavior:
+ *   • Skips COD rows (isCod) — those are flat-fee, not weight-billed.
+ *   • Skips rows whose destination has no contract entry.
+ *   • Dedups by AWB across all selected audits — same shipment in two
+ *     audits would be a data issue, so we keep the FIRST (earliest by
+ *     audit createdAt order) occurrence and ignore subsequent.
+ *   • Returns { ok, count, skipped, sources } so the caller can toast a
+ *     useful breakdown.
+ */
+export function exportMergedExcessWeights(audits, carriers) {
+  if (!Array.isArray(audits) || !audits.length) {
+    return { ok: false, reason: 'empty_selection' };
+  }
+  if (!Array.isArray(carriers) || !carriers.length) {
+    return { ok: false, reason: 'no_carriers' };
+  }
+
+  const carrierById = new Map(carriers.map(c => [c.id, c]));
+  // Sort audits oldest-first so dedup keeps the earliest occurrence.
+  const ordered = [...audits].sort((a, b) =>
+    String(a.createdAt || a.date || '').localeCompare(String(b.createdAt || b.date || '')),
+  );
+
+  const seen = new Set();   // dedup by AWB
+  const rows = [];          // [awb, weight] pairs for the file
+  const sources = new Set(); // for the toast — which audits contributed
+
+  let skippedNoContract = 0;
+  let skippedCod        = 0;
+
+  for (const audit of ordered) {
+    const carrier = carrierById.get(audit.carrierId);
+    if (!carrier) { skippedNoContract += (audit.results?.length || 0); continue; }
+    // Period = "YYYY-MM"; for getActiveContract we need a date — use the
+    // first day of the period so we hit the contract that was active then.
+    const periodKey = audit.period
+      ? `${String(audit.period).slice(0, 7)}-01`
+      : (audit.date || new Date().toISOString().slice(0, 10));
+    const contract = getActiveContract(carrier, periodKey);
+    if (!contract) { skippedNoContract += (audit.results?.length || 0); continue; }
+
+    let contributedRows = 0;
+    for (const r of audit.results ?? []) {
+      if (!r?.awb || !(r.weight > 0)) continue;
+      if (r.isCod) { skippedCod++; continue; }   // COD is flat-fee, not weight
+      const threshold = standardWeightForDest(contract, r.dest);
+      if (threshold == null) continue;
+      if (r.weight <= threshold) continue;
+      const awb = String(r.awb).trim();
+      if (seen.has(awb)) continue;               // dedup across audits
+      seen.add(awb);
+      rows.push([awb, +Number(r.weight).toFixed(3)]);
+      contributedRows++;
+    }
+    if (contributedRows > 0) sources.add(audit.id);
+  }
+
+  if (!rows.length) {
+    return { ok: false, reason: 'empty', skippedCod, skippedNoContract };
+  }
+
+  const wb = XLSX.utils.book_new();
+  const headers = ['رقم الشحنة', 'الوزن الإجمالي'];
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{ wch: 24 }, { wch: 18 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'أوزان إضافية مجمعة');
+
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `أوزان_إضافية_مجمعة_${audits.length}مراجعة_${dateStr}.xlsx`);
+  return {
+    ok: true,
+    count: rows.length,
+    auditCount: sources.size,
+    selectedCount: audits.length,
+    skippedCod,
+    skippedNoContract,
+  };
 }
 
 export function exportAuditExcel(results, summary, carrierName, period, contractLabel) {

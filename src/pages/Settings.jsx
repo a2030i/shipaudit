@@ -1,10 +1,11 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Wifi, WifiOff, ExternalLink } from 'lucide-react';
+import { Wifi, WifiOff, ExternalLink, Package } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import { loadSettings, saveSettings } from '../data/carriers.js';
-import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB } from '../lib/coreService.js';
+import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers } from '../lib/coreService.js';
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
+import { exportMergedExcessWeights } from '../engine/export.js';
 import { OR_MODELS, testConnection } from '../engine/openrouter.js';
 import { getNavPermissions, saveNavPermissions } from '../lib/permissionsService.js';
 
@@ -307,6 +308,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
   // is linked to. Drives the "🔗 مرتبطة بـ X" badge + the "افتح في الدفتر"
   // jump button + disables the delete button.
   const [linkedIndex, setLinkedIndex] = useState(new Map());
+  // Set<auditId> for the merged excess-weight export. Cleared on
+  // successful export and on isActive transitions.
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [exporting, setExporting] = useState(false);
 
   // Re-fetch each time the page becomes active so newly-saved audits show up.
   useEffect(() => {
@@ -347,6 +352,46 @@ export function AuditsHistory({ onOpen, isActive = true }) {
     setOpening(null);
   };
 
+  const toggleSelect = (id) => setSelectedIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+
+  // Multi-audit excess-weight export — load each selected audit's full
+  // results (the list view doesn't include them), resolve the active
+  // contract per audit, and hand off to exportMergedExcessWeights.
+  const handleExportMergedExcess = async () => {
+    if (!selectedIds.size) return;
+    setExporting(true);
+    try {
+      const ids = [...selectedIds];
+      const [carriers, ...fullAudits] = await Promise.all([
+        loadCarriers(),
+        ...ids.map(id => loadAuditByIdFromDB(id)),
+      ]);
+      const result = exportMergedExcessWeights(fullAudits, carriers);
+      if (result.ok) {
+        toast(
+          `تم تصدير ${result.count} شحنة بوزن إضافي ` +
+          `من ${result.auditCount}/${result.selectedCount} مراجعة ✓`,
+          'success',
+        );
+        setSelectedIds(new Set());
+      } else if (result.reason === 'empty') {
+        toast(
+          'لا توجد شحنات تجاوزت الوزن المسموح في المراجعات المحددة',
+          'info',
+        );
+      } else {
+        toast('فشل التصدير', 'error');
+      }
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setExporting(false);
+  };
+
   // Jump to the ledger row this audit is linked to (carrier dropdown picks
   // the right carrier; doc_no goes into the search filter so the row is
   // immediately visible).
@@ -368,6 +413,39 @@ export function AuditsHistory({ onOpen, isActive = true }) {
     <div style={{padding:'28px 32px',maxWidth:900}}>
       <h2 style={{fontFamily:'var(--font-mono)',color:'var(--accent)',marginBottom:18}}>📋 سجل المراجعات</h2>
 
+      {/* Floating action bar — appears whenever the user has selected at
+          least one audit. The merged excess-weights export is the only
+          bulk action right now; more can slot in later. */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          position: 'sticky', top: 0, zIndex: 5, marginBottom: 12,
+          background: 'linear-gradient(135deg, rgba(251,191,36,.16), rgba(251,191,36,.04))',
+          border: '1px solid var(--gold)', borderRadius: 11,
+          padding: '10px 14px',
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{
+            fontFamily: 'var(--font-mono)', fontWeight: 700,
+            fontSize: 14, color: 'var(--gold)',
+          }}>
+            {selectedIds.size}
+          </span>
+          <span style={{ fontSize: 12, color: 'var(--muted)', flex: 1 }}>
+            مراجعة محددة — يمكن دمج أوزانها الإضافية في ملف Excel واحد
+          </span>
+          <Btn size="sm" variant="primary" disabled={exporting}
+            onClick={handleExportMergedExcess}>
+            {exporting
+              ? <><Spinner size={12}/> جارٍ التصدير...</>
+              : <><Package size={12}/> تصدير أوزان إضافية مدمجة</>
+            }
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+            إلغاء التحديد
+          </Btn>
+        </div>
+      )}
+
       <AuditsFilter audits={audits}>
         {filtered => filtered.length === 0
           ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
@@ -376,9 +454,21 @@ export function AuditsHistory({ onOpen, isActive = true }) {
               {filtered.map(a => {
                 const link = linkedIndex.get(a.id);
                 const typeMeta = AUDIT_TYPE_META[a.auditType] ?? AUDIT_TYPE_META.unknown;
+                const isSelected = selectedIds.has(a.id);
                 return (
-                  <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
-                    <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
+                  <Card key={a.id} style={{
+                    marginBottom: 12, padding: 0, overflow: 'hidden',
+                    border: isSelected ? '1px solid var(--gold)' : undefined,
+                    background: isSelected ? 'rgba(251,191,36,.05)' : undefined,
+                  }}>
+                    <div style={{display:'grid',gridTemplateColumns:'auto 1fr auto',gap:14,padding:'14px 18px',alignItems:'center'}}>
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => toggleSelect(a.id)}
+                        title="حدد لتصدير الأوزان الإضافية مدمجة"
+                        style={{ width: 17, height: 17, cursor: 'pointer', accentColor: 'var(--gold)' }}
+                      />
                       <div style={{display:'flex',gap:14,alignItems:'center'}}>
                         <div style={{fontSize:28}}>📦</div>
                         <div>
