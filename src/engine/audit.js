@@ -321,6 +321,23 @@ export function auditAll(rows, carrier, forDate) {
   return results;
 }
 
+// ─── Audit type derivation ──────────────────────────────────────────────────
+// Single label that summarises what the user just uploaded, so the audits
+// history list can show "محلي / دولي / دفع عند استلام / مختلط" without the
+// caller having to scan all results.
+export function deriveAuditType(results) {
+  if (!Array.isArray(results) || !results.length) return 'unknown';
+  let cod = 0, domestic = 0, international = 0;
+  for (const r of results) {
+    if (r.isCod) cod++;
+    else if (r.domestic) domestic++;
+    else international++;
+  }
+  const present = [cod && 'cod', domestic && 'domestic', international && 'international'].filter(Boolean);
+  if (present.length === 1) return present[0];
+  return 'mixed';
+}
+
 // ─── Duplicate-AWB detection ────────────────────────────────────────────────
 // Within ONE upload, an AWB legitimately appears at most:
 //   • once in the shipping invoice (ZDOI / international / unknown carriers)

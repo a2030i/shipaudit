@@ -283,6 +283,16 @@ function NavPermissionsTab() {
   );
 }
 
+// Visual map for the per-audit type badge. Keys match deriveAuditType()
+// in src/engine/audit.js — keep in sync.
+const AUDIT_TYPE_META = {
+  domestic:      { label: 'محلي',                 icon: '🇸🇦', color: '#22c55e' },
+  international: { label: 'دولي',                 icon: '🌐', color: '#f59e0b' },
+  cod:           { label: 'دفع عند الاستلام',     icon: '💰', color: '#a855f7' },
+  mixed:         { label: 'مختلط',                icon: '🔀', color: '#06b6d4' },
+  unknown:       { label: 'غير محدد',             icon: '❓', color: 'var(--muted)' },
+};
+
 // ── Audits History ─────────────────────────────────────────────────────────────
 export function AuditsHistory({ onOpen, isActive = true }) {
   const navigate = useNavigate();
@@ -362,13 +372,26 @@ export function AuditsHistory({ onOpen, isActive = true }) {
             <div className="stagger">
               {filtered.map(a => {
                 const link = linkedIndex.get(a.id);
+                const typeMeta = AUDIT_TYPE_META[a.auditType] ?? AUDIT_TYPE_META.unknown;
                 return (
                   <Card key={a.id} style={{marginBottom:12,padding:0,overflow:'hidden'}}>
                     <div style={{display:'grid',gridTemplateColumns:'1fr auto',gap:16,padding:'14px 18px',alignItems:'center'}}>
                       <div style={{display:'flex',gap:14,alignItems:'center'}}>
                         <div style={{fontSize:28}}>📦</div>
                         <div>
-                          <div style={{fontWeight:700,fontSize:14,marginBottom:3}}>{a.carrierName}</div>
+                          <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:3,flexWrap:'wrap'}}>
+                            <span style={{fontWeight:700,fontSize:14}}>{a.carrierName}</span>
+                            <span style={{
+                              display:'inline-flex',alignItems:'center',gap:5,
+                              padding:'2px 9px',borderRadius:999,
+                              background:`${typeMeta.color}1F`,
+                              border:`1px solid ${typeMeta.color}55`,
+                              color:typeMeta.color,fontSize:10,fontWeight:700,
+                              fontFamily:'var(--font-mono)',whiteSpace:'nowrap',
+                            }}>
+                              {typeMeta.icon} {typeMeta.label}
+                            </span>
+                          </div>
                           <div style={{color:'var(--muted)',fontSize:12}}>
                             {a.period} · {a.rowCount ?? 0} شحنة · {new Date(a.date).toLocaleString('ar-SA')}
                           </div>

@@ -4,7 +4,7 @@ import { Card, Btn, Select, Spinner, Badge, toast } from '../components/UI.jsx';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders } from '../engine/audit.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { saveAuditToDB } from '../lib/coreService.js';
+import { saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const MONTHS = [
@@ -380,11 +380,15 @@ export default function UploadWizard({ carriers, onComplete }) {
     setAiLoading(false);
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = async () => {
     if (!carrier) return;
     const forDate = `${year}-${String(month).padStart(2,'0')}-01`;
     const mapped  = mapRows(rawRows, colMap);
     const results = auditAll(mapped, carrier, forDate);
+    // Cross-month duplicate check — adds issues to AWBs that were already
+    // billed in a prior audit for this same carrier + billing class.
+    try { await applyCrossAuditDuplicates(results, carrier.id); }
+    catch { /* best-effort — never block the audit on a ledger query */ }
     const summary = buildSummary(results);
     const audit   = {
       id: `a_${Date.now()}`,
