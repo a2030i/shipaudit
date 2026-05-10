@@ -35,6 +35,17 @@ const SHIPMENT_LABEL = {
   international_in:   'دولي وارد',
   international_out:  'دولي صادر',
 };
+// Doc-type metadata. RV = invoice (we owe), DR = small debit adjustment
+// (we owe a bit more), DG = credit note (carrier owes us / refund),
+// AB = adjustment-both (a netted correction). Distinct colors so a glance
+// at the ledger answers "what kind of line is this."
+const DOC_TYPE_META = {
+  RV: { label: 'فاتورة',     icon: '📄', color: '#3b82f6' },
+  DR: { label: 'مدين إضافي', icon: '+',  color: '#f59e0b' },
+  DG: { label: 'إشعار دائن', icon: '↩',  color: 'var(--green)' },
+  AB: { label: 'تعديل',       icon: '🔄', color: 'var(--muted)' },
+};
+
 // Visual metadata for the per-row shipment-type badge. `domestic_other` is
 // the Aramex DCF/COD invoice class — we colour it differently so the user
 // can spot COD-fee lines at a glance, since the math (5 SAR flat) and the
@@ -644,7 +655,27 @@ export default function CarrierLedger({ isActive = true }) {
                             whiteSpace: 'nowrap',
                           }}>{meta.label}</span>
                         </td>
-                        <td style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>{o.doc_type}</td>
+                        <td>
+                          {(() => {
+                            const dm = DOC_TYPE_META[o.doc_type];
+                            if (!dm) return (
+                              <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)' }}>
+                                {o.doc_type}
+                              </span>
+                            );
+                            return (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                background: `${dm.color}20`, border: `1px solid ${dm.color}40`,
+                                color: dm.color, fontSize: 10, fontWeight: 700,
+                                padding: '2px 7px', borderRadius: 12,
+                                fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                              }} title={dm.label}>
+                                {dm.icon} {o.doc_type}
+                              </span>
+                            );
+                          })()}
+                        </td>
                         <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)' }}>{o.doc_no}</td>
                         <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>{o.reference_no}</td>
                         <td style={{ fontSize: 11, color: 'var(--muted)' }}>{o.doc_date || '—'}</td>

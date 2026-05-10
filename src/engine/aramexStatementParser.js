@@ -175,12 +175,20 @@ function parseOperationRow(cells) {
   const amountTokens = rest.slice(i).filter(isAmount);
   if (amountTokens.length < 3) return null;
 
-  // After due-date comes DR, CR, Balance. Some rows may have extra noise after
-  // the balance — take the last three numeric tokens defensively.
+  // After due-date comes DR, CR, Balance. Some rows may have extra noise
+  // after the balance — take the last three numeric tokens defensively.
+  // The Aramex statement renders a credit as `(2,485.00)` in the CR
+  // column — parens are the column's own "credit" notation, not a
+  // signed value. The convention in our DB is that amount_cr stores the
+  // MAGNITUDE of the credit (positive); the sign is implicit from the
+  // column. Storing -2485 caused balance = dr - cr = 0 - (-2485) = +2485
+  // (a credit became a debit). Take absolute value to restore the right
+  // convention. Same for the running balance, which is always positive
+  // in Aramex statements.
   const tail = amountTokens.slice(-3);
-  const dr      = parseAmount(tail[0]);
-  const cr      = parseAmount(tail[1]);
-  const balance = parseAmount(tail[2]);
+  const dr      = Math.abs(parseAmount(tail[0]));
+  const cr      = Math.abs(parseAmount(tail[1]));
+  const balance = Math.abs(parseAmount(tail[2]));
 
   return {
     docNo,
