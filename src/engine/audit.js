@@ -177,7 +177,23 @@ export function mapRows(raw, colMap) {
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
     };
-  }).filter(r => r.dest && r.weight > 0);
+  }).filter(r => r.dest && r.weight > 0 && isRealShipmentAwb(r.awb));
+}
+
+// Aramex monthly Excels include phantom rows like "TAX Rounding Diff",
+// "Total", subtotals, etc. They sneak through every other filter (they
+// have a destination + a weight) but the AWB column carries a label
+// instead of a tracking number. Real Aramex AWBs are pure-digit
+// 10-character codes, so we drop anything with alphabetic content.
+function isRealShipmentAwb(awb) {
+  if (!awb) return false;
+  const trimmed = String(awb).trim();
+  if (!trimmed) return false;
+  // Reject if the cell contains any letters (Latin or Arabic)
+  if (/[a-z؀-ۿ]/i.test(trimmed)) return false;
+  // Must contain at least one run of 4+ digits
+  if (!/\d{4,}/.test(trimmed)) return false;
+  return true;
 }
 
 // ─── Core audit ────────────────────────────────────────────────────────────────
