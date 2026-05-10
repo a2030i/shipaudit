@@ -65,6 +65,10 @@ export async function saveAuditToDB(audit, userId) {
     ?? +results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0).toFixed(2);
   const totalExpected = summary.totalExpected
     ?? +results.reduce((s, r) => s + (Number(r.expected?.total) || 0), 0).toFixed(2);
+  // Per-file Tax Amount — falls back to summing invoiced.tax in case the
+  // caller built the audit object without going through buildSummary.
+  const totalTax = summary.totalTax
+    ?? +results.reduce((s, r) => s + (Number(r.invoiced?.tax) || 0), 0).toFixed(2);
   const diff = summary.diff ?? summary.totalDiff ?? 0;
   const auditType = audit.auditType ?? deriveAuditType(results);
 
@@ -79,6 +83,7 @@ export async function saveAuditToDB(audit, userId) {
     issue_count:    results.filter(r => r.status !== 'ok').length,
     total_expected: totalExpected,
     total_billed:   totalBilled,
+    total_tax:      totalTax,
     diff,
     audit_type:     auditType,
     results,
@@ -209,7 +214,7 @@ export async function findCrossAuditDuplicates({ carrierId, awbsByClass, exclude
 export async function loadAuditsFromDB(limit = 50) {
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, diff, audit_type, created_at')
+    .select('id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -224,6 +229,7 @@ export async function loadAuditsFromDB(limit = 50) {
     issueCount:    row.issue_count,
     totalExpected: row.total_expected,
     totalBilled:   row.total_billed,
+    totalTax:      row.total_tax,
     diff:          row.diff,
     auditType:     row.audit_type,
     date:          row.created_at,
@@ -245,6 +251,7 @@ export async function loadAuditByIdFromDB(id) {
     issueCount:    data.issue_count,
     totalExpected: data.total_expected,
     totalBilled:   data.total_billed,
+    totalTax:      data.total_tax,
     diff:          data.diff,
     auditType:     data.audit_type,
     results:       data.results ?? [],

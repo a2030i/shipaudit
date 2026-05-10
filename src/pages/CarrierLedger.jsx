@@ -15,6 +15,7 @@ import {
 import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import {
   detectHeaderRow, buildHeaders, detectColumns, mapRows, auditAll, buildSummary,
+  deriveAuditType,
 } from '../engine/audit.js';
 import { aiAnalyzeFile } from '../engine/openrouter.js';
 import { loadSettings } from '../data/carriers.js';
@@ -835,10 +836,18 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
 //   3. Total billed (grossed up by VAT) must equal operation amount within tolerance
 //
 // IMPORTANT — VAT handling
-// Aramex monthly invoices (the carrier_operations row) carry the amount
-// INCLUDING 15% Saudi VAT. The audit's totalBilled is computed from the
-// per-shipment Excel which is PRE-VAT. So we gross up the audit total by
-// 1 + VAT_RATE before comparing. Tolerance is in SAR after the gross-up.
+// Carrier statement amounts (carrier_operations) carry the line gross —
+// i.e. sub-total + tax — exactly the same number you see on the PDF. The
+// audit's totalBilled is the sum of delivery + RSS + fuel from the per-
+// shipment Excel, PRE-tax. We need a gross figure to compare.
+//
+// Strategy, in order of preference:
+//   1. audit.totalTax — actual sum of "Tax Amount" verbatim from the
+//      file. Works for ZOBI export (tax=0), ZDOI domestic (~15%),
+//      ZDCF COD (15% × fee). This is the only path that's exact.
+//   2. audit.auditType === 'international' → assume zero-rated → tax=0.
+//      Fallback for legacy audits saved before total_tax existed.
+//   3. Otherwise → 15% × billed (covers domestic + COD legacy audits).
 const LINK_AMOUNT_TOLERANCE = 1.0; // SAR
 const VAT_RATE = 0.15;
 
@@ -846,7 +855,16 @@ function validateAuditLink(op, audit, opts = {}) {
   const linkedIndex = opts.linkedIndex; // Map(audit_id → { opId, docNo })
   const opAmount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
   const auditBilledNet = Number(audit.totalBilled ?? opts.totalBilled ?? 0);
-  const auditBilledGross = +(auditBilledNet * (1 + VAT_RATE)).toFixed(2);
+  const auditTax       = audit.totalTax  ?? opts.totalTax  ?? null;
+  const auditType      = audit.auditType ?? opts.auditType ?? null;
+  let auditBilledGross;
+  if (auditTax != null && Number.isFinite(Number(auditTax))) {
+    auditBilledGross = +(auditBilledNet + Number(auditTax)).toFixed(2);
+  } else if (auditType === 'international') {
+    auditBilledGross = +auditBilledNet.toFixed(2);
+  } else {
+    auditBilledGross = +(auditBilledNet * (1 + VAT_RATE)).toFixed(2);
+  }
   const issueCount  = Number(audit.issueCount ?? opts.issueCount  ?? 0);
 
   // Rule 1 — already linked to a DIFFERENT operation?
@@ -866,14 +884,19 @@ function validateAuditLink(op, audit, opts = {}) {
       reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
     };
   }
-  // Rule 3 — amount matches the statement (after adding VAT)
+  // Rule 3 — amount matches the statement (after adding the file's tax)
   if (Math.abs(auditBilledGross - opAmount) > LINK_AMOUNT_TOLERANCE) {
+    // Phrase the breakdown exactly the way the user thinks about it:
+    // "billed + tax = gross" so they can spot which side is off.
+    const taxShown = auditTax != null
+      ? Number(auditTax).toFixed(2)
+      : (auditType === 'international' ? '0.00' : (auditBilledNet * VAT_RATE).toFixed(2));
     return {
       ok: false,
       reason:
         `المبلغ لا يطابق الكشف.\n` +
-        `الكشف (شامل ضريبة): ${opAmount.toFixed(2)} ر.س · ` +
-        `المراجعة + 15% ضريبة: ${auditBilledGross.toFixed(2)} ر.س ` +
+        `الكشف: ${opAmount.toFixed(2)} ر.س · ` +
+        `المراجعة: ${auditBilledNet.toFixed(2)} + ضريبة ${taxShown} = ${auditBilledGross.toFixed(2)} ر.س ` +
         `(فرق ${Math.abs(auditBilledGross - opAmount).toFixed(2)} ر.س)`,
     };
   }
@@ -1005,6 +1028,8 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       // mapping the system picked, and inspect the rows that caused the
       // mismatch. The link gate runs AFTER save.
       const totalBilled = results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0);
+      const totalTax    = results.reduce((s, r) => s + (Number(r.invoiced?.tax)   || 0), 0);
+      const auditType   = deriveAuditType(results);
       const auditId = `a_${Date.now()}`;
       const period  = (op.doc_date || forDate).slice(0, 7);
       const audit = {
@@ -1012,12 +1037,13 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         carrierId:    carrier.id,
         carrierName:  carrier.name,
         period,
+        auditType,
         fileName:     file.name,
         rowCount:     results.length,
         issueCount:   summary.mismatch,
         diff:         summary.totalDiff,
         colMap,
-        summary: { ...summary, totalBilled },
+        summary: { ...summary, totalBilled, totalTax },
         results,
         createdAt:    new Date().toISOString(),
       };
@@ -1027,6 +1053,8 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       const verdict = validateAuditLink(op, {}, {
         issueCount: summary.mismatch,
         totalBilled,
+        totalTax,
+        auditType,
       });
       if (!verdict.ok) {
         // Don't link — but do open the audit so the user can verify columns
@@ -1057,12 +1085,15 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       }
 
       // 7. Validation passed → link the just-created audit (parent
-      // re-validates with linkedIndex too).
+      // re-validates with linkedIndex too). We pass tax + type so the
+      // re-validation uses the exact same gross figure we just computed.
       await onLink(op, {
         id:          auditId,
         fileName:    file.name,
         issueCount:  summary.mismatch,
         totalBilled,
+        totalTax,
+        auditType,
       });
 
       toast(`تم التدقيق وربطه (${summary.mismatch} فرق · ${summary.totalDiff.toFixed(2)} ر.س)`, 'success');

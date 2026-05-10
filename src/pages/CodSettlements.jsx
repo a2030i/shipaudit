@@ -4,21 +4,29 @@ import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
-  loadReconciliation, summarizeReconciliation, ageOutstanding,
+  loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 
 // ─── Status meta ──────────────────────────────────────────────────────────
+// over_remit splits visually: recent (≤ 30d, blue) is just sequencing —
+// the matching outgoing settlement hasn't been uploaded yet, totally
+// normal. Aged (> 30d, red) is a real anomaly worth investigating.
 const STATUS_META = {
-  matched:        { label: '✓ مسوّاة',          color: 'var(--green)' },
-  approved:       { label: '✓ مُعتمَدة',        color: 'var(--green)' },
-  resolved:       { label: '✓ تم الحل',         color: 'var(--green)' },
-  outstanding:    { label: '🔴 متبقّي',          color: 'var(--red)'   },
-  pending_review: { label: '🟡 فرق غير مراجَع',  color: 'var(--gold)'  },
-  disputed:       { label: '⚠️ اعتراض مفتوح',    color: '#f59e0b'      },
-  over_remit:     { label: '❓ تحويل بدون مقابل', color: 'var(--accent)'},
+  matched:          { label: '✓ مسوّاة',                 color: 'var(--green)' },
+  approved:         { label: '✓ مُعتمَدة',               color: 'var(--green)' },
+  resolved:         { label: '✓ تم الحل',                color: 'var(--green)' },
+  outstanding:      { label: '🔴 متبقّي',                color: 'var(--red)'   },
+  pending_review:   { label: '🟡 فرق غير مراجَع',         color: 'var(--gold)'  },
+  disputed:         { label: '⚠️ اعتراض مفتوح',           color: '#f59e0b'      },
+  over_remit:       { label: '🔵 وارد · بانتظار المطابقة', color: '#3b82f6'      },
+  over_remit_aged:  { label: '🔴 وارد قديم بدون مقابل',   color: 'var(--red)'   },
 };
+
+function statusKey(r) {
+  return (r.status === 'over_remit' && r.isOverRemitAged) ? 'over_remit_aged' : r.status;
+}
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -49,8 +57,9 @@ export default function CodSettlements({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
-  const summary = useMemo(() => summarizeReconciliation(rows), [rows]);
-  const aging   = useMemo(() => ageOutstanding(rows), [rows]);
+  const summary    = useMemo(() => summarizeReconciliation(rows), [rows]);
+  const aging      = useMemo(() => ageOutstanding(rows), [rows]);
+  const agingOver  = useMemo(() => ageOverRemit(rows), [rows]);
 
   const counts = useMemo(() => {
     const c = {
@@ -175,11 +184,15 @@ export default function CodSettlements({ isActive = true }) {
             <Hero label="اعتراضات مفتوحة" value={summary.disputedCount}
               hint={summary.disputedCount > 0 ? `أقدم اعتراض: ${summary.oldestDisputeDays} يوم` : 'لا اعتراضات'}
               color="#f59e0b"/>
-            <Hero label="مسوّاة" value={summary.matchedCount}
-              hint={`${rows.length} شحنة بإجمالي`} color="var(--green)"/>
+            {summary.overRemitAgedCount > 0
+              ? <Hero label="🚨 وارد قديم بدون مقابل" value={summary.overRemitAgedCount}
+                  hint={`${fmt(summary.overRemitAgedAmount)} ر.س · مضى +30 يوم`} color="var(--red)"/>
+              : <Hero label="مسوّاة" value={summary.matchedCount}
+                  hint={`${rows.length} شحنة بإجمالي`} color="var(--green)"/>
+            }
           </div>
 
-          {/* Aging of outstanding */}
+          {/* Aging of outstanding (we paid merchant, carrier hasn't paid us yet) */}
           {summary.outstandingCount > 0 && (
             <Card style={{ padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: 'var(--accent)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
@@ -194,13 +207,27 @@ export default function CodSettlements({ isActive = true }) {
             </Card>
           )}
 
+          {/* Aging of over_remit (carrier paid us, no matching outgoing yet) */}
+          {summary.overRemitCount > 0 && (
+            <Card style={{ padding: 14, marginBottom: 14 }}>
+              <div style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
+                📥 أعمار الوارد بدون مقابل (من تاريخ تحويل الناقل)
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
+                <AgingCard label="0–30 يوم · طبيعي"   color="#3b82f6"   {...agingOver.d0_30}/>
+                <AgingCard label="31–60 يوم · انتبه"  color="#f59e0b"   {...agingOver.d31_60}/>
+                <AgingCard label="+60 يوم · حقّق"    color="var(--red)" {...agingOver.d61}/>
+              </div>
+            </Card>
+          )}
+
           {/* Tabs */}
           <Card style={{ padding: 0, marginBottom: 14, overflow: 'hidden' }}>
             <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)', flexWrap: 'wrap' }}>
               <Tab id="outstanding" label="🔴 متبقّي"        n={counts.outstanding} active={tab} onClick={setTab}/>
               <Tab id="pending"     label="🟡 فروق"          n={counts.pending}     active={tab} onClick={setTab}/>
               <Tab id="disputed"    label="⚠️ اعتراضات"      n={counts.disputed}    active={tab} onClick={setTab}/>
-              <Tab id="over"        label="❓ بدون مقابل"     n={counts.overRemit}   active={tab} onClick={setTab}/>
+              <Tab id="over"        label="🔵 وارد بانتظار"   n={counts.overRemit}   active={tab} onClick={setTab}/>
               <Tab id="matched"     label="✓ مسوّاة"         n={counts.matched}     active={tab} onClick={setTab}/>
               <Tab id="all"         label="الكل"             n={counts.all}         active={tab} onClick={setTab}/>
             </div>
@@ -211,6 +238,26 @@ export default function CodSettlements({ isActive = true }) {
                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
             </div>
           </Card>
+
+          {/* Helpful explainer when looking at the over_remit tab — most of
+              the time these aren't anomalies, they're just sequencing. */}
+          {tab === 'over' && counts.overRemit > 0 && (
+            <div style={{
+              marginBottom: 12, padding: '10px 14px',
+              background: 'rgba(59,130,246,.08)',
+              border: '1px solid rgba(59,130,246,.35)',
+              borderRadius: 11, fontSize: 12, lineHeight: 1.7, color: 'var(--text)',
+            }}>
+              💡 هذي شحنات استلمت تحويلها من الناقل ولم يطابقها أي AWB في تسوياتك الصادرة بعد.
+              غالباً تسلسل رفع طبيعي — ارفع التسوية الصادرة من نظامكم وستتم المطابقة تلقائياً.
+              {summary.overRemitAgedCount > 0 && (
+                <div style={{ marginTop: 6, color: 'var(--red)', fontWeight: 600 }}>
+                  ⚠️ منها {summary.overRemitAgedCount} شحنة بمبلغ {summary.overRemitAgedAmount.toFixed(2)} ر.س
+                  مضى عليها +{30} يوم بدون مقابل — تحتاج تحقيق.
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Table */}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -265,7 +312,7 @@ export default function CodSettlements({ isActive = true }) {
 
 // ── Row ────────────────────────────────────────────────────────────────
 function Row({ r, onAction, onReopen }) {
-  const meta = STATUS_META[r.status] ?? STATUS_META.matched;
+  const meta = STATUS_META[statusKey(r)] ?? STATUS_META.matched;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const daysOpen = r.actionDate
     ? Math.floor((today - new Date(r.actionDate)) / 86400000)
@@ -338,7 +385,15 @@ function Row({ r, onAction, onReopen }) {
           </span>
         )}
         {r.status === 'over_remit' && (
-          <Btn size="sm" variant="ghost" onClick={() => onAction(r, 'dispute')}>⚠️ اعتراض</Btn>
+          <>
+            <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>
+              مرّ {r.daysReceived ?? 0} يوم على الاستلام بدون مقابل
+            </div>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
+              <Btn size="sm" variant="success" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
+              <Btn size="sm" variant="ghost"  onClick={() => onAction(r, 'dispute')}>⚠️ اعتراض</Btn>
+            </div>
+          </>
         )}
         {r.status === 'matched' && (
           <span style={{ fontSize: 11, color: 'var(--green)' }}>—</span>
