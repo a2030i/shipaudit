@@ -316,7 +316,79 @@ export function auditAll(rows, carrier, forDate) {
   const contract = getActiveContract(carrier, forDate);
   if (!contract) return rows.map(r => ({ ...r, status: 'no_contract', issues: ['لا يوجد عقد ساري لهذه الفترة'] }));
 
-  return rows.map(r => auditRow(r, contract));
+  const results = rows.map(r => auditRow(r, contract));
+  flagDuplicateAwbs(results);
+  return results;
+}
+
+// ─── Duplicate-AWB detection ────────────────────────────────────────────────
+// Within ONE upload, an AWB legitimately appears at most:
+//   • once in the shipping invoice (ZDOI / international / unknown carriers)
+//   • once in the COD-fee invoice (ZDCF)
+// Anything beyond that means the carrier double-billed for the SAME charge
+// type. We split rows by class (`cod` vs `ship`) so the COD pairing isn't
+// flagged.
+//
+// First occurrence in each duplicate group keeps its original audit math
+// and just gets an info issue tag. Subsequent copies are forced to status
+// 'mismatch' with `expected = 0`, so the full invoiced amount registers as
+// an overcharge in totalDiff. That way the operator sees both the duplicate
+// signal AND the financial impact in one place.
+export function flagDuplicateAwbs(results) {
+  const groups = new Map();
+  for (const r of results) {
+    const awbKey = String(r.awb || '').trim();
+    if (!awbKey) continue;
+    const classKey = r.isCod ? 'cod' : 'ship';
+    const key = `${awbKey}|${classKey}`;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(r);
+  }
+  for (const [, group] of groups) {
+    if (group.length <= 1) continue;
+    // Earliest shipDate becomes the canonical charge; later copies = phantoms
+    group.sort((a, b) => (a.shipDate || '').localeCompare(b.shipDate || ''));
+    const total = group.length;
+    const classLabel = group[0].isCod ? 'رسوم تحصيل (ZDCF)' : 'فاتورة الشحن (ZDOI)';
+    for (let i = 0; i < group.length; i++) {
+      const r = group[i];
+      r.duplicateGroup = total;
+      r.duplicateIndex = i + 1;
+      if (i === 0) {
+        // Keep math intact — this is the real shipment. Just inform.
+        r.issues = [
+          ...(r.issues || []),
+          {
+            field: 'duplicate',
+            label: 'AWB له نسخ مكررة',
+            invoiced: r.invoiced?.total ?? 0,
+            expected: r.expected?.total ?? 0,
+            diff: 0,
+            note: `الـAWB ${r.awb} تكرر ${total} مرات في ${classLabel}. هذي النسخة الأصلية.`,
+          },
+        ];
+        continue;
+      }
+      // Phantom charge: expected = 0, full invoiced is the overcharge.
+      const inv = r.invoiced ?? { delivery: 0, rss: 0, fuel: 0, total: 0 };
+      r.expected = { delivery: 0, rss: 0, fuel: 0, total: 0 };
+      r.diffs = {
+        delivery: inv.delivery,
+        rss:      inv.rss,
+        fuel:     inv.fuel,
+        total:    inv.total,
+      };
+      r.status = inv.total > TOLERANCE ? 'mismatch' : 'ok';
+      r.issues = [{
+        field: 'duplicate',
+        label: 'AWB مكرر',
+        invoiced: inv.total,
+        expected: 0,
+        diff: inv.total,
+        note: `النسخة ${i + 1} من ${total} لنفس الـAWB ${r.awb} في ${classLabel} — تكرار غير مشروع`,
+      }];
+    }
+  }
 }
 
 // ─── Summary stats ─────────────────────────────────────────────────────────────
@@ -357,10 +429,20 @@ export function buildSummary(results) {
     (s, r) => s + (Number(r.expected?.total) || 0), 0,
   ).toFixed(2);
 
+  // Duplicate-AWB tally — independent of status so the user sees the count
+  // even when the duplicates happen to be tiny (still worth disputing).
+  const duplicates = results.filter(r => (r.duplicateGroup ?? 0) > 1).length;
+  // Number of distinct AWBs that have at least one duplicate. Useful for the
+  // headline "X AWBs مكررة" message.
+  const duplicateAwbs = new Set(
+    results.filter(r => (r.duplicateGroup ?? 0) > 1).map(r => String(r.awb || '').trim()),
+  ).size;
+
   return {
     total, ok, mismatch, favorable, unknown,
     totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
     totalBilled, totalExpected,
+    duplicates, duplicateAwbs,
     byCountry,
   };
 }
