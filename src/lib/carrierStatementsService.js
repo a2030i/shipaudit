@@ -316,8 +316,14 @@ export async function loadStatements(carrierId, limit = 50) {
 }
 
 export async function loadOperations({ carrierId, status, limit = 500 } = {}) {
+  // AP-first ordering: earliest due date at the top so the user sees
+  // what's about to be overdue (or already is) without having to sort.
+  // NULL due dates land at the end. Tie-break by doc_date desc so within
+  // the same due date the newest receipt appears first.
   let q = supabase.from('carrier_operations').select('*')
-    .order('doc_date', { ascending: false }).limit(limit);
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('doc_date', { ascending: false })
+    .limit(limit);
   if (carrierId) q = q.eq('carrier_id', carrierId);
   if (status)    q = q.eq('status', status);
   const { data, error } = await q;
