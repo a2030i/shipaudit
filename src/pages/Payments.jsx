@@ -278,25 +278,34 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete }) {
                 <thead>
                   <tr style={{ background: 'var(--card)' }}>
                     <th style={{ padding: '8px 14px', textAlign: 'right' }}>رقم المستند</th>
-                    <th style={{ padding: '8px 14px', textAlign: 'right' }}>المرجع</th>
                     <th style={{ padding: '8px 14px', textAlign: 'right' }}>النوع</th>
                     <th style={{ padding: '8px 14px', textAlign: 'right' }}>تاريخ المستند</th>
-                    <th style={{ padding: '8px 14px', textAlign: 'right' }}>المبلغ</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'right' }}>إجمالي العملية</th>
+                    <th style={{ padding: '8px 14px', textAlign: 'right' }}>مخصّص لهذه الدفعة</th>
                   </tr>
                 </thead>
                 <tbody>
                   {ops.map(o => {
                     const amt = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+                    const allocated = Number(o.allocated_amount) || 0;
+                    const isPartial = allocated > 0 && allocated + 0.01 < Math.abs(amt);
                     return (
                       <tr key={o.id}>
                         <td style={{ padding: '7px 14px', fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{o.doc_no}</td>
-                        <td style={{ padding: '7px 14px', fontFamily: 'var(--font-mono)', color: 'var(--muted)', fontSize: 11 }}>{o.reference_no || '—'}</td>
                         <td style={{ padding: '7px 14px', fontSize: 11 }}>
                           {o.shipment_type ? SHIPMENT_LABEL[o.shipment_type] : o.doc_type}
                         </td>
                         <td style={{ padding: '7px 14px', fontSize: 11, color: 'var(--muted)' }}>{o.doc_date || '—'}</td>
-                        <td style={{ padding: '7px 14px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: amt > 0 ? 'var(--text)' : 'var(--green)' }}>
+                        <td style={{ padding: '7px 14px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
                           {fmt(Math.abs(amt))}
+                        </td>
+                        <td style={{ padding: '7px 14px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: isPartial ? 'var(--gold)' : 'var(--text)' }}>
+                          {fmt(allocated)}
+                          {isPartial && (
+                            <span style={{ marginRight: 6, fontSize: 9, color: 'var(--gold)', fontWeight: 600 }}>
+                              · جزئي
+                            </span>
+                          )}
                         </td>
                       </tr>
                     );

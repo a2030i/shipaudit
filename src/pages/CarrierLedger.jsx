@@ -31,11 +31,12 @@ import { useAuth } from '../lib/auth.jsx';
 
 // ─── Status meta ───────────────────────────────────────────────────────────
 const STATUS_META = {
-  pending:   { label: '⏳ معلّقة',   color: 'var(--gold)'   },
-  audited:   { label: '✓ معتمدة',   color: 'var(--accent)' },
-  paid:      { label: '💰 مسدّدة',   color: 'var(--green)'  },
-  disputed:  { label: '⚠ متنازع',   color: 'var(--red)'    },
-  reviewing: { label: '🔄 مراجعة',   color: 'var(--gold)'   },
+  pending:   { label: '⏳ معلّقة',          color: 'var(--gold)'   },
+  audited:   { label: '✓ معتمدة',          color: 'var(--accent)' },
+  paid:      { label: '💰 مسدّدة',          color: 'var(--green)'  },
+  partial:   { label: '🟡 مسدّدة جزئياً',   color: '#f59e0b'       },
+  disputed:  { label: '⚠ متنازع',          color: 'var(--red)'    },
+  reviewing: { label: '🔄 مراجعة',          color: 'var(--gold)'   },
 };
 const SHIPMENT_LABEL = {
   domestic:           'محلي',
@@ -157,14 +158,21 @@ export default function CarrierLedger({ isActive = true }) {
     return true;
   }), [ops, statusFilter, shipmentFilter, search]);
 
-  // Selected ops, scoped to whatever's currently visible. Filtering out
-  // already-paid rows so the bulk-pay button never tries to re-pay them.
+  // Selected ops, scoped to whatever's currently visible. Excludes
+  // fully-paid rows (no remaining to settle); 'partial' rows ARE
+  // included since they still have remaining balance.
   const selectedOps = useMemo(
     () => filtered.filter(o => selectedIds.has(o.id) && o.status !== 'paid'),
     [filtered, selectedIds],
   );
   const selectedTotal = useMemo(
-    () => selectedOps.reduce((s, o) => s + ((o.amount_dr ?? 0) - (o.amount_cr ?? 0)), 0),
+    // Use REMAINING (not full owed) so partials show the correct
+    // outstanding amount in the bulk-pay summary.
+    () => selectedOps.reduce((s, o) => {
+      const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+      const remaining = Math.max(0, owed - (Number(o.amount_paid) || 0));
+      return s + remaining;
+    }, 0),
     [selectedOps],
   );
   // Rows in the current view that *could* be selected (= unpaid).
@@ -257,7 +265,7 @@ export default function CarrierLedger({ isActive = true }) {
 
   const counts = useMemo(() => {
     const c = {
-      all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0,
+      all: ops.length, pending: 0, audited: 0, paid: 0, partial: 0, disputed: 0, reviewing: 0,
       unaudited: 0, paid_unaudited: 0,
     };
     for (const o of ops) {
@@ -274,30 +282,39 @@ export default function CarrierLedger({ isActive = true }) {
   }, [ops]);
 
   // ── Status mutations ──
-  // Both single + bulk pay now go through the same payment-record
-  // creation path: create one row in `payments`, then flip all the
-  // included ops to status='paid' with payment_id pointing at the
-  // record. Single pay is just a bulk pay of one op — keeps the audit
-  // trail uniform.
-  const markPaid = async (op, payment_ref) => {
+  // markPaid handles both full and partial. When `partialAmount` is
+  // provided, we create an allocation for that amount (op stays in
+  // 'partial' status until allocations sum to the full owed amount).
+  // payment_id and status are updated by recalcOperationPaymentState
+  // inside createPaymentRecord — no need to setOperationStatus here.
+  const markPaid = async (op, payment_ref, partialAmount = null) => {
     try {
-      const amount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
-      const paidAtIso = new Date().toISOString();
-      const payment = await createPaymentRecord({
-        carrierId:  carrier,
-        paidAt:     paidAtIso.slice(0, 10),
-        amount,
-        paymentRef: payment_ref || null,
-        opIds:      [op.id],
-        userId:     null,
+      const owed = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+      const remaining = +(owed - (Number(op.amount_paid) || 0)).toFixed(2);
+      const useAmount = partialAmount != null ? Number(partialAmount) : remaining;
+      if (!(useAmount > 0)) {
+        toast('المبلغ يجب أن يكون أكبر من صفر', 'error');
+        return;
+      }
+      if (useAmount > remaining + 0.01) {
+        toast(`المبلغ يتجاوز المتبقي (${remaining.toFixed(2)} ر.س)`, 'error');
+        return;
+      }
+      await createPaymentRecord({
+        carrierId:   carrier,
+        paidAt:      new Date().toISOString().slice(0, 10),
+        amount:      useAmount,
+        paymentRef:  payment_ref || null,
+        allocations: [{ opId: op.id, amount: useAmount, partial: useAmount < remaining }],
+        userId:      null,
       });
-      await setOperationStatus(op.id, {
-        status: 'paid',
-        paid_at: paidAtIso,
-        payment_ref: payment_ref || null,
-        payment_id: payment.id,
-      });
-      toast('تم تحديد العملية كمسدّدة', 'success');
+      const isFull = useAmount + 0.01 >= remaining;
+      toast(
+        isFull
+          ? '✓ تم تسديد العملية كاملة'
+          : `💰 تسديد جزئي ${useAmount.toFixed(2)} — متبقّي ${(remaining - useAmount).toFixed(2)} ر.س`,
+        isFull ? 'success' : 'info',
+      );
       refresh();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -307,43 +324,39 @@ export default function CarrierLedger({ isActive = true }) {
   const markPaidBulk = async (ops, payment_ref) => {
     const paidAtIso = new Date().toISOString();
     const ref = payment_ref || null;
-    const total = ops.reduce(
-      (s, o) => s + (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0),
-      0,
-    );
+    // Build allocations from each op's REMAINING amount (so a partial
+    // op gets its remainder paid, not double-billed).
+    const allocations = ops.map(o => {
+      const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+      const remaining = +(owed - (Number(o.amount_paid) || 0)).toFixed(2);
+      return { opId: o.id, amount: Math.max(remaining, 0) };
+    }).filter(a => a.amount > 0);
+    const total = allocations.reduce((s, a) => s + a.amount, 0);
+    if (!allocations.length) {
+      toast('لا توجد مبالغ مستحقة على العمليات المحددة', 'error');
+      return;
+    }
     try {
-      // Create the payment record first so each op has a payment_id to
-      // attach. createPaymentRecord links all ids in a single update.
       const payment = await createPaymentRecord({
-        carrierId:  carrier,
-        paidAt:     paidAtIso.slice(0, 10),
-        amount:     total,
-        paymentRef: ref,
-        opIds:      ops.map(o => o.id),
-        userId:     null,
+        carrierId:   carrier,
+        paidAt:      paidAtIso.slice(0, 10),
+        amount:      total,
+        paymentRef:  ref,
+        allocations,
+        userId:      null,
       });
-      // Then flip statuses (payment_id is already set by createPaymentRecord;
-      // this just stamps paid_at + payment_ref + status on each).
-      const results = await Promise.allSettled(
-        ops.map(op => setOperationStatus(op.id, {
-          status: 'paid',
-          paid_at: paidAtIso,
-          payment_ref: ref,
-        })),
-      );
-      const failed = results.filter(r => r.status === 'rejected');
-      if (failed.length) {
-        toast(
-          `تم تسديد ${ops.length - failed.length} من ${ops.length} — ` +
-          `فشل ${failed.length}: ${failed[0].reason?.message ?? 'خطأ غير معروف'}`,
-          'error',
-        );
-      } else {
-        toast(
-          `✓ تم تسديد ${ops.length} عملية ضمن دفعة واحدة (#${payment.id})`,
-          'success',
+      // Update payment_ref on each op for legacy display compatibility.
+      // status + payment_id are already set by recalcOperationPaymentState
+      // inside createPaymentRecord.
+      if (ref) {
+        await Promise.allSettled(
+          allocations.map(a => setOperationStatus(a.opId, { payment_ref: ref })),
         );
       }
+      toast(
+        `✓ تم تسديد ${allocations.length} عملية ضمن دفعة واحدة (#${payment.id})`,
+        'success',
+      );
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
     }
@@ -588,6 +601,7 @@ export default function CarrierLedger({ isActive = true }) {
             <option value="reviewing">🔄 مراجعة ({counts.reviewing ?? 0})</option>
             <option value="audited">🔬 مدققة ({counts.audited ?? 0})</option>
             <option value="disputed">⚠ متنازع ({counts.disputed ?? 0})</option>
+            <option value="partial">🟡 مسدّدة جزئياً ({counts.partial ?? 0})</option>
             <option value="paid">✓ مسدّدة ({counts.paid ?? 0})</option>
           </Select>
           <Select label="نوع الشحنة" value={shipmentFilter} onChange={e => setShipmentFilter(e.target.value)}>
@@ -805,6 +819,26 @@ export default function CarrierLedger({ isActive = true }) {
                         <td style={{ fontSize: 11, color: 'var(--muted)' }}>{o.due_date || '—'}</td>
                         <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: amount > 0 ? 'var(--red)' : 'var(--green)' }}>
                           {fmt(Math.abs(amount))}
+                          {(Number(o.amount_paid) || 0) > 0 && amount > 0 && (() => {
+                            const paid = Number(o.amount_paid) || 0;
+                            const pct = Math.min(100, Math.round((paid / amount) * 100));
+                            return (
+                              <div style={{ marginTop: 4 }}>
+                                <div style={{
+                                  height: 4, background: 'var(--surface)', borderRadius: 2,
+                                  overflow: 'hidden',
+                                }}>
+                                  <div style={{
+                                    width: `${pct}%`, height: '100%',
+                                    background: pct >= 100 ? 'var(--green)' : '#f59e0b',
+                                  }}/>
+                                </div>
+                                <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                                  مسدّد {paid.toFixed(0)} / {Math.abs(amount).toFixed(0)}
+                                </div>
+                              </div>
+                            );
+                          })()}
                         </td>
                         <td style={{ fontSize: 11 }}>
                           {o.shipment_type ? (() => {
@@ -1012,24 +1046,101 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
     );
   }
 
+  // Pay modal state for partial pay: 'full' covers the remaining
+  // owed; 'partial' opens a numeric input. We never disable 'full'
+  // since the user might mean to top up an already-partial op.
+  const owed = isPay ? (Number(modal.op.amount_dr) || 0) - (Number(modal.op.amount_cr) || 0) : 0;
+  const alreadyPaid = isPay ? (Number(modal.op.amount_paid) || 0) : 0;
+  const remaining = isPay ? +(owed - alreadyPaid).toFixed(2) : 0;
+  // 'partialAmount' lives in `notes` to keep ActionModal's local state
+  // surface small. Fresh modals start in 'full' mode so the common
+  // case (one click, full pay) stays one-click.
+  const isPartialMode = notes.startsWith('__partial:');
+  const partialAmount = isPartialMode ? parseFloat(notes.slice(10)) : 0;
+  const setPartialAmount = (v) => setNotes(v == null ? '' : `__partial:${v}`);
+
   return (
-    <Modal title={isPay ? '💰 تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={420}>
+    <Modal title={isPay ? '💰 تحديد كمسدّدة' : '⚠ تحديد كمتنازع'} onClose={onClose} width={460}>
       <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--muted)' }}>
         رقم المستند: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{modal.op.doc_no}</span>
-        {' · '}المبلغ: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-          {Number(modal.op.amount_dr - modal.op.amount_cr).toFixed(2)} ر.س
+        {' · '}المبلغ الكلي: <span style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+          {Number(owed).toFixed(2)} ر.س
         </span>
+        {isPay && alreadyPaid > 0 && (
+          <div style={{ marginTop: 4, fontSize: 12 }}>
+            مسدّد سابقاً:{' '}
+            <span style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>
+              {alreadyPaid.toFixed(2)} ر.س
+            </span>
+            {' · '}متبقّي:{' '}
+            <span style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+              {remaining.toFixed(2)} ر.س
+            </span>
+          </div>
+        )}
       </div>
-      {isPay
-        ? <Input label="رقم الحوالة (اختياري)" value={paymentRef}
+      {isPay ? (
+        <>
+          {/* Mode toggle */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+            <button onClick={() => setNotes('')}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 8,
+                background: !isPartialMode ? 'var(--green)20' : 'transparent',
+                border: `1px solid ${!isPartialMode ? 'var(--green)' : 'var(--border)'}`,
+                color: !isPartialMode ? 'var(--green)' : 'var(--muted)',
+                fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              ✓ تسديد كامل ({remaining.toFixed(2)} ر.س)
+            </button>
+            <button onClick={() => setPartialAmount(remaining ? Math.floor(remaining / 2) : '')}
+              style={{
+                flex: 1, padding: '8px 10px', borderRadius: 8,
+                background: isPartialMode ? 'var(--gold)20' : 'transparent',
+                border: `1px solid ${isPartialMode ? 'var(--gold)' : 'var(--border)'}`,
+                color: isPartialMode ? 'var(--gold)' : 'var(--muted)',
+                fontWeight: 700, fontSize: 12, cursor: 'pointer', fontFamily: 'inherit',
+              }}>
+              💰 تسديد جزئي
+            </button>
+          </div>
+
+          {isPartialMode && (
+            <div style={{ marginBottom: 12 }}>
+              <label style={{ display: 'block', color: 'var(--muted)', fontSize: 11, marginBottom: 4 }}>
+                المبلغ المسدّد (الحد الأقصى {remaining.toFixed(2)} ر.س)
+              </label>
+              <input type="number" step="0.01" min="0.01" max={remaining}
+                value={isPartialMode ? notes.slice(10) : ''}
+                onChange={e => setPartialAmount(e.target.value)}
+                placeholder="مثلاً 50000"
+                style={{ width: '100%', padding: '9px 12px', borderRadius: 7, fontSize: 13, fontFamily: 'var(--font-mono)' }}
+              />
+              {partialAmount > 0 && partialAmount < remaining && (
+                <div style={{ marginTop: 6, fontSize: 11, color: 'var(--muted)' }}>
+                  بعد التسديد سيتبقّى:{' '}
+                  <span style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                    {(remaining - partialAmount).toFixed(2)} ر.س
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          <Input label="رقم الحوالة (اختياري)" value={paymentRef}
             onChange={e => setPaymentRef(e.target.value)} placeholder="FT261XXXX"/>
-        : <Input label="ملاحظات النزاع" value={notes}
-            onChange={e => setNotes(e.target.value)} placeholder="السبب أو رقم المرجع..."/>
-      }
+        </>
+      ) : (
+        <Input label="ملاحظات النزاع" value={notes}
+          onChange={e => setNotes(e.target.value)} placeholder="السبب أو رقم المرجع..."/>
+      )}
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
         <Btn variant={isPay ? 'success' : 'primary'}
-          onClick={() => isPay ? onPaid(modal.op, paymentRef) : onDispute(modal.op, notes)}>
+          disabled={isPay && isPartialMode && !(partialAmount > 0)}
+          onClick={() => isPay
+            ? onPaid(modal.op, paymentRef, isPartialMode ? partialAmount : null)
+            : onDispute(modal.op, notes)}>
           تأكيد
         </Btn>
       </div>
