@@ -65,30 +65,40 @@ const COL_PATTERNS = {
   weight:          [/chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
   deliveryCharges: [/delivery.?charge/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
   rss:             [/^rss$/i, /remote/i],
-  fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i],
+  // "Other Charge" is the canonical Aramex column that bundles either fuel
+  // surcharge (ZDOI rows) or the COD service fee (ZDCF rows). The audit
+  // engine routes it correctly per row based on Billing Type.
+  fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i, /other.?charge/i],
   codAmount:       [/cod.?amount/i, /cash.?on/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
   billingType:     [/billing.?type/i],
 };
 
 // Aramex billing-type codes:
-//   ZDOI                  → domestic Saudi shipment
+//   ZDOI                  → domestic Saudi shipment (regular shipping)
 //   ZIBI, ZOBI            → international shipment
-//   ZDCF (and any other)  → unrecognized — leave as "unknown", do not auto-classify
+//   ZDCF                  → Cash-on-Delivery service fee (separate invoice
+//                            from the regular shipping bill). 5 SAR flat per
+//                            shipment + 15% VAT, independent of weight.
+//   anything else         → unknown — falls through to the unknown-route branch
 // AWB-prefix heuristic (5 = domestic, 3 = international) is used only when
 // `Billing Type` is missing / empty.
 const DOMESTIC_BILLING_CODES      = new Set(['ZDOI']);
 const INTERNATIONAL_BILLING_CODES = new Set(['ZIBI', 'ZOBI']);
+const COD_BILLING_CODES           = new Set(['ZDCF']);
 
 function isDomesticShipment(billingType, awb) {
   const bt = String(billingType ?? '').trim().toUpperCase();
   if (DOMESTIC_BILLING_CODES.has(bt)) return true;
   // Any non-empty billing type that isn't an explicit domestic code → not
-  // domestic. This deliberately covers ZDCF and any future unrecognized code
-  // so they fall through to the unknown-route audit branch.
+  // domestic. ZDCF is handled separately as a COD-fee row, not as a shipment.
   if (bt) return false;
   // No billing type → fall back to AWB-prefix heuristic
   return String(awb ?? '').trim()[0] === '5';
+}
+
+function isCodFeeRow(billingType) {
+  return COD_BILLING_CODES.has(String(billingType ?? '').trim().toUpperCase());
 }
 
 export function detectColumns(headers) {
@@ -155,12 +165,23 @@ export function mapRows(raw, colMap) {
     const rawDest     = row[colMap.dest] ?? '';
     const rawCity     = row[colMap.destCity] ?? rawDest;
 
+    const isCod    = isCodFeeRow(billingType);
     // Domestic shipments (e.g. Aramex ZDOI): the "destination" column carries
     // a Saudi city, not a country. Route them to the Saudi pricing tier and
-    // preserve the original city for display.
-    const domestic = isDomesticShipment(billingType, awb);
+    // preserve the original city for display. COD-fee rows (ZDCF) are also
+    // domestic by nature — the fee only applies to Saudi-domestic shipments.
+    const domestic = isCod || isDomesticShipment(billingType, awb);
     const dest     = domestic ? 'Saudi Arabia' : normalizeCountry(rawDest);
     const destCity = domestic ? String(rawDest).trim() : String(rawCity).trim();
+
+    // For COD-fee rows the regular delivery/fuel columns don't apply — the
+    // 5 SAR fee sits in the "Other Charge" column (which our patterns map to
+    // fuelSurcharge). Move it onto a dedicated `codFee` field and zero out
+    // the others so the regular auditRow math sees a clean COD line.
+    const baseDelivery = parseFloat(row[colMap.deliveryCharges] ?? 0) || 0;
+    const baseRss      = parseFloat(row[colMap.rss] ?? 0) || 0;
+    const baseFuel     = parseFloat(row[colMap.fuelSurcharge] ?? 0) || 0;
+    const codFee       = isCod ? baseFuel : 0;
 
     return {
       awb,
@@ -170,10 +191,12 @@ export function mapRows(raw, colMap) {
       destCity,
       domestic,
       billingType,
+      isCod,
       weight:          parseFloat(row[colMap.weight] ?? 0) || 0,
-      deliveryCharges: parseFloat(row[colMap.deliveryCharges] ?? 0) || 0,
-      rss:             parseFloat(row[colMap.rss] ?? 0) || 0,
-      fuelSurcharge:   parseFloat(row[colMap.fuelSurcharge] ?? 0) || 0,
+      deliveryCharges: isCod ? 0 : baseDelivery,
+      rss:             isCod ? 0 : baseRss,
+      fuelSurcharge:   isCod ? 0 : baseFuel,
+      codFee,
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
     };
@@ -200,6 +223,28 @@ function isRealShipmentAwb(awb) {
 const TOLERANCE = 0.51; // SAR rounding tolerance
 
 export function auditRow(row, contract) {
+  // ── COD-fee branch (Aramex ZDCF) ──
+  // Flat fee per shipment regardless of weight or destination. The expected
+  // amount is `contract.codFee` (defaults to 5 SAR). We slot it into the
+  // `delivery` bucket so the rest of the pipeline (totals, summary, exports)
+  // keeps working with no further branching.
+  if (row.isCod) {
+    const expectedFee = Number(contract?.codFee ?? 5);
+    const invoicedFee = Number(row.codFee || 0);
+    const invoiced = { delivery: invoicedFee, rss: 0, fuel: 0, total: invoicedFee };
+    const expected = { delivery: expectedFee, rss: 0, fuel: 0, total: expectedFee };
+    const diffTotal = +(invoicedFee - expectedFee).toFixed(2);
+    const diffs    = { delivery: diffTotal, rss: 0, fuel: 0, total: diffTotal };
+    const issues   = Math.abs(diffTotal) > TOLERANCE
+      ? [{ field: 'cod', label: 'رسوم تحصيل (COD)', invoiced: invoicedFee, expected: expectedFee, diff: diffTotal }]
+      : [];
+    let status;
+    if (Math.abs(diffTotal) <= TOLERANCE) status = 'ok';
+    else if (diffTotal < 0)               status = 'favorable';
+    else                                  status = 'mismatch';
+    return { ...row, status, invoiced, expected, diffs, issues };
+  }
+
   const calc = calcTotal(contract, row.dest, row.weight, row.shipDate, row.serviceType, row.origin);
 
   if (!calc) {
