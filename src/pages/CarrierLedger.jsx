@@ -314,23 +314,37 @@ export default function CarrierLedger({ isActive = true }) {
     }
   };
 
-  const linkAudit = async (op, audit) => {
-    // The audit object MUST carry { issueCount, totalBilled } so we can
-    // validate the link. The picker passes both straight from
-    // loadAuditsFromDB; the inline-upload path computes them from the
-    // freshly-built summary before calling onLink.
+  const linkAudit = async (op, audit, opts = {}) => {
+    const { override = false } = opts;
+    // Re-validate even when override=true so we can refuse Rule 1
+    // (already linked elsewhere) — that one is never overridable.
     const verdict = validateAuditLink(op, audit);
     if (!verdict.ok) {
-      toast(verdict.reason, 'error');
-      return; // keep modal open so the user can pick another file/audit
+      if (override && verdict.overridable) {
+        // Caller already saw the warning + confirmed; proceed.
+      } else {
+        toast(verdict.reason, 'error');
+        return;
+      }
     }
     try {
+      // Preserve the operation's current status when linking on a paid op
+      // — re-stamping as 'audited' would erase the paid record. We only
+      // flip to 'audited' when the op is in pre-payment states.
+      const PRE_PAY = new Set(['pending', 'reviewing', 'audited', 'disputed']);
+      const nextStatus = PRE_PAY.has(op.status) ? 'audited' : op.status;
       await setOperationStatus(op.id, {
-        status: 'audited',
+        status: nextStatus,
         audit_id: audit.id,
         invoice_file_name: audit.fileName ?? null,
+        audit_link_overridden: override === true,
       });
-      toast(`✓ ربطت المراجعة — العملية الآن معتمدة`, 'success');
+      toast(
+        override
+          ? `⚠️ ربطت بتجاوز — تم تسجيل الربط رغم الفروق`
+          : `✓ ربطت المراجعة — العملية الآن معتمدة`,
+        override ? 'info' : 'success',
+      );
       refresh();
       setModal(null);
     } catch (e) {
@@ -354,10 +368,15 @@ export default function CarrierLedger({ isActive = true }) {
 
   const unlinkAudit = async (op) => {
     try {
+      // Restore the op to a sensible pre-link state. If it was already
+      // paid, keep it paid (the payment isn't being undone) — just
+      // strip the audit binding + the override flag.
+      const wasPaid = op.status === 'paid';
       await setOperationStatus(op.id, {
-        status: 'pending',
+        status: wasPaid ? 'paid' : 'pending',
         audit_id: null,
         invoice_file_name: null,
+        audit_link_overridden: false,
       });
       toast('تم إلغاء الربط', 'info');
       refresh();
@@ -703,13 +722,14 @@ export default function CarrierLedger({ isActive = true }) {
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                            {/* Link / unlink audit (only for RV invoices) */}
-                            {o.doc_type === 'RV' && !o.audit_id && o.status !== 'paid' && (
+                            {/* Link / unlink audit — RV invoices only, but paid
+                                ops are still linkable (post-pay audit trail). */}
+                            {o.doc_type === 'RV' && !o.audit_id && (
                               <Btn size="sm" variant="primary" onClick={() => setModal({ op: o, action: 'link' })}>
                                 🔗 ربط مراجعة
                               </Btn>
                             )}
-                            {o.audit_id && o.status !== 'paid' && (
+                            {o.audit_id && (
                               <Btn size="sm" variant="ghost" onClick={() => unlinkAudit(o)}>
                                 🔗✕ إلغاء الربط
                               </Btn>
@@ -734,6 +754,17 @@ export default function CarrierLedger({ isActive = true }) {
                           {o.audit_id && (
                             <div style={{ marginTop: 4, fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
                               🔗 {o.invoice_file_name || o.audit_id.slice(0, 12)}
+                              {o.audit_link_overridden && (
+                                <span style={{
+                                  display: 'inline-block', marginRight: 6,
+                                  padding: '1px 7px', borderRadius: 999,
+                                  background: 'rgba(251,191,36,.16)',
+                                  border: '1px solid var(--gold)',
+                                  color: 'var(--gold)', fontSize: 9, fontWeight: 700,
+                                }} title="رُبطت رغم وجود تحقق فاشل">
+                                  ⚠️ تجاوز
+                                </span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -899,36 +930,45 @@ function validateAuditLink(op, audit, opts = {}) {
   const issueCount  = Number(audit.issueCount ?? opts.issueCount  ?? 0);
 
   // Rule 1 — already linked to a DIFFERENT operation?
+  // NEVER overridable — a link override here would corrupt the
+  // one-audit-one-operation invariant the rest of the system relies on.
   const taken = audit.id ? linkedIndex?.get(audit.id) : null;
   if (taken && taken.opId !== op.id) {
     return {
       ok: false,
+      code: 'linked_elsewhere',
+      overridable: false,
       reason:
         `هذه المراجعة مرتبطة فعلاً بعملية أخرى (${taken.docNo}). ` +
         `كل مراجعة تُربط بعملية واحدة فقط.`,
     };
   }
-  // Rule 2 — clean audit
+  // Rule 2 — clean audit (overridable: user can force-link with a warning)
   if (issueCount > 0) {
     return {
       ok: false,
+      code: 'has_issues',
+      overridable: true,
       reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
+      issueCount,
     };
   }
-  // Rule 3 — amount matches the statement (after adding the file's tax)
+  // Rule 3 — amount matches the statement (overridable)
   if (Math.abs(auditBilledGross - opAmount) > LINK_AMOUNT_TOLERANCE) {
-    // Phrase the breakdown exactly the way the user thinks about it:
-    // "billed + tax = gross" so they can spot which side is off.
     const taxShown = auditTax != null
       ? Number(auditTax).toFixed(2)
       : (auditType === 'international' ? '0.00' : (auditBilledNet * VAT_RATE).toFixed(2));
+    const diff = Math.abs(auditBilledGross - opAmount);
     return {
       ok: false,
+      code: 'amount_mismatch',
+      overridable: true,
       reason:
         `المبلغ لا يطابق الكشف.\n` +
         `الكشف: ${opAmount.toFixed(2)} ر.س · ` +
         `المراجعة: ${auditBilledNet.toFixed(2)} + ضريبة ${taxShown} = ${auditBilledGross.toFixed(2)} ر.س ` +
-        `(فرق ${Math.abs(auditBilledGross - opAmount).toFixed(2)} ر.س)`,
+        `(فرق ${diff.toFixed(2)} ر.س)`,
+      diffAmount: diff,
     };
   }
   return { ok: true };
@@ -946,6 +986,10 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
   // Map(audit_id → { opId, docNo, carrierId }) — every audit currently linked
   // to ANY operation. Used to enforce one-audit-one-operation in Rule 1.
   const [linkedIndex, setLinkedIndex] = useState(new Map());
+  // When the user clicks an audit that fails an overridable rule, we
+  // park it here and render a confirmation panel instead of routing
+  // straight to onLink. Cleared when they confirm or cancel.
+  const [overrideAudit, setOverrideAudit] = useState(null); // { audit, verdict }
 
   useEffect(() => {
     Promise.all([loadAuditsFromDB(200), loadLinkedAuditIndex().catch(() => new Map())])
@@ -1193,23 +1237,36 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                 const matchHint = (a.fileName || '').includes(op.doc_no);
                 const verdict = validateAuditLink(op, a, { linkedIndex });
                 const eligible = verdict.ok;
+                // Overridable failure: clicking opens a confirmation panel
+                // instead of immediately linking. Non-overridable failures
+                // (Rule 1) stay fully disabled.
+                const overridable = !eligible && verdict.overridable;
+                const handleClick = () => {
+                  if (eligible) onLink(op, a);
+                  else if (overridable) setOverrideAudit({ audit: a, verdict });
+                };
                 return (
                   <button
                     key={a.id}
-                    onClick={() => eligible && onLink(op, a)}
-                    disabled={!eligible}
-                    title={eligible ? 'اضغط للربط' : verdict.reason}
+                    onClick={handleClick}
+                    disabled={!eligible && !overridable}
+                    title={eligible ? 'اضغط للربط' : overridable ? 'اضغط لمراجعة التجاوز' : verdict.reason}
                     style={{
                       display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 12, alignItems: 'center',
                       padding: '10px 14px', borderRadius: 9,
-                      cursor: eligible ? 'pointer' : 'not-allowed',
+                      cursor: (eligible || overridable) ? 'pointer' : 'not-allowed',
                       background: eligible
                         ? (matchHint ? 'rgba(56,189,248,.06)' : 'var(--surface)')
-                        : 'rgba(248,113,113,.04)',
+                        : overridable
+                          ? 'rgba(251,191,36,.06)'
+                          : 'rgba(248,113,113,.04)',
                       border: `1px solid ${eligible
                         ? (matchHint ? 'var(--accent)' : 'var(--border)')
-                        : 'rgba(248,113,113,.25)'}`,
-                      textAlign: 'right', color: 'inherit', opacity: eligible ? 1 : 0.7,
+                        : overridable
+                          ? 'rgba(251,191,36,.35)'
+                          : 'rgba(248,113,113,.25)'}`,
+                      textAlign: 'right', color: 'inherit',
+                      opacity: (eligible || overridable) ? 1 : 0.7,
                       fontFamily: 'inherit',
                     }}>
                     <div>
@@ -1221,8 +1278,14 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                         {a.carrierName} · {a.period} · {new Date(a.date).toLocaleDateString('ar-SA')}
                       </div>
                       {!eligible && (
-                        <div style={{ color: 'var(--red)', fontSize: 10.5, marginTop: 4, lineHeight: 1.5 }}>
+                        <div style={{
+                          color: overridable ? 'var(--gold)' : 'var(--red)',
+                          fontSize: 10.5, marginTop: 4, lineHeight: 1.5,
+                        }}>
                           {verdict.reason}
+                          {overridable && <div style={{ marginTop: 3, fontWeight: 700 }}>
+                            ⚠️ اضغط للربط بتجاوز
+                          </div>}
                         </div>
                       )}
                     </div>
@@ -1263,6 +1326,45 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
             </div>
           )
       }
+
+      {overrideAudit && (
+        <div style={{
+          marginTop: 14, padding: '14px 16px',
+          background: 'rgba(251,191,36,.08)',
+          border: '1.5px solid var(--gold)',
+          borderRadius: 11, fontSize: 13, lineHeight: 1.7,
+        }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--gold)', marginBottom: 8 }}>
+            ⚠️ تأكيد الربط بتجاوز
+          </div>
+          <div style={{ color: 'var(--text)', fontSize: 12, marginBottom: 10 }}>
+            ستربط هذه المراجعة بالعملية رغم وجود تحقّق فاشل:
+          </div>
+          <div style={{
+            background: 'var(--card)', padding: '10px 12px', borderRadius: 8,
+            border: '1px solid var(--border)',
+            fontSize: 12, lineHeight: 1.7, color: 'var(--muted)',
+            whiteSpace: 'pre-line', marginBottom: 12,
+          }}>
+            {overrideAudit.verdict.reason}
+          </div>
+          <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
+            ستُسجَّل العملية كمعتمدة، مع علامة "تم التجاوز" للمراجعة الداخلية.
+            تقدر تلغي الربط لاحقاً من نفس الصف.
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" size="sm" onClick={() => setOverrideAudit(null)}>تراجع</Btn>
+            <Btn variant="primary" size="sm"
+              onClick={async () => {
+                const a = overrideAudit.audit;
+                setOverrideAudit(null);
+                await onLink(op, a, { override: true });
+              }}>
+              تأكيد التجاوز والربط
+            </Btn>
+          </div>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 14 }}>
         <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
