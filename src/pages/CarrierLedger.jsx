@@ -34,6 +34,16 @@ const SHIPMENT_LABEL = {
   international_in:   'دولي وارد',
   international_out:  'دولي صادر',
 };
+// Visual metadata for the per-row shipment-type badge. `domestic_other` is
+// the Aramex DCF/COD invoice class — we colour it differently so the user
+// can spot COD-fee lines at a glance, since the math (5 SAR flat) and the
+// audit type are completely different from regular shipping.
+const SHIPMENT_META = {
+  domestic:          { label: 'محلي',        icon: '🇸🇦', color: '#22c55e' },
+  domestic_other:    { label: 'COD محلي',    icon: '💰', color: '#a855f7' },
+  international_in:  { label: 'دولي وارد',   icon: '✈️', color: '#f59e0b' },
+  international_out: { label: 'دولي صادر',   icon: '✈️', color: '#f59e0b' },
+};
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -103,7 +113,14 @@ export default function CarrierLedger({ isActive = true }) {
   useEffect(() => { setSelectedIds(new Set()); }, [carrier]);
 
   const filtered = useMemo(() => ops.filter(o => {
-    if (statusFilter   !== 'all' && o.status        !== statusFilter)   return false;
+    // 'unaudited' is a synthetic filter: RV invoices that have never been
+    // linked to an audit yet (and aren't already paid → those don't need
+    // chasing). Real status filters are exact-matches on o.status.
+    if (statusFilter === 'unaudited') {
+      if (o.doc_type !== 'RV' || o.audit_id || o.status === 'paid') return false;
+    } else if (statusFilter !== 'all' && o.status !== statusFilter) {
+      return false;
+    }
     if (shipmentFilter !== 'all' && o.shipment_type !== shipmentFilter) return false;
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -148,9 +165,78 @@ export default function CarrierLedger({ isActive = true }) {
     return next;
   });
 
+  // Period gaps — months between the earliest uploaded statement and now
+  // that have NO statement on file for this carrier. A real Aramex flow
+  // produces a statement every month, so a missing month is almost always
+  // an "I forgot to upload it" situation worth surfacing loudly.
+  const periodGaps = useMemo(() => {
+    if (!statements.length) return [];
+    const months = new Set();
+    for (const s of statements) {
+      const p = s.period_from || s.period_to;
+      if (!p) continue;
+      months.add(String(p).slice(0, 7));
+    }
+    if (!months.size) return [];
+    const sorted = [...months].sort();
+    const earliest = sorted[0];
+    const todayYM = new Date().toISOString().slice(0, 7);
+    const gaps = [];
+    let cur = earliest;
+    while (cur < todayYM) {
+      // increment
+      const [y, m] = cur.split('-').map(Number);
+      cur = m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`;
+      if (cur >= todayYM) break;
+      if (!months.has(cur)) gaps.push(cur);
+    }
+    return gaps;
+  }, [statements]);
+
+  // Aging buckets — splits unpaid (and unsettled) ops by how long they've
+  // been overdue from due_date. Standard AP buckets so the user can rank
+  // collection / payment urgency at a glance.
+  const aging = useMemo(() => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const buckets = {
+      notDue:    { count: 0, amount: 0 },
+      d30:       { count: 0, amount: 0 },
+      d60:       { count: 0, amount: 0 },
+      d90:       { count: 0, amount: 0 },
+    };
+    for (const o of ops) {
+      if (o.status === 'paid') continue;
+      const amt = (o.amount_dr ?? 0) - (o.amount_cr ?? 0);
+      if (amt <= 0) continue;
+      // Without a due_date we can't bucket — count as "not due" so the
+      // money still appears somewhere.
+      if (!o.due_date) {
+        buckets.notDue.count++;
+        buckets.notDue.amount += amt;
+        continue;
+      }
+      const due = new Date(o.due_date);
+      const days = Math.floor((today - due) / 86400000);
+      let key;
+      if (days <= 0)        key = 'notDue';
+      else if (days <= 30)  key = 'd30';
+      else if (days <= 60)  key = 'd60';
+      else                  key = 'd90';
+      buckets[key].count++;
+      buckets[key].amount += amt;
+    }
+    return buckets;
+  }, [ops]);
+
   const counts = useMemo(() => {
-    const c = { all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0 };
-    for (const o of ops) c[o.status] = (c[o.status] ?? 0) + 1;
+    const c = { all: ops.length, pending: 0, audited: 0, paid: 0, disputed: 0, reviewing: 0, unaudited: 0 };
+    for (const o of ops) {
+      c[o.status] = (c[o.status] ?? 0) + 1;
+      // Unaudited = RV invoice, no audit linked yet, not already paid. This
+      // is the biggest leak vector in any AP audit workflow — invoices
+      // sitting unverified.
+      if (o.doc_type === 'RV' && !o.audit_id && o.status !== 'paid') c.unaudited++;
+    }
     return c;
   }, [ops]);
 
@@ -331,12 +417,22 @@ export default function CarrierLedger({ isActive = true }) {
       </div>
 
       {/* Balance summary */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 12, marginBottom: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 12, marginBottom: 12 }}>
         <Stat label="الرصيد المستحق الفعلي" value={fmt(bal?.balance)} suffix="ر.س" color="var(--red)" big/>
         <Stat label="مسدّد سابقاً"          value={fmt(bal?.paid)}    suffix="ر.س" color="var(--green)"/>
         <Stat label="معلّقة"                value={bal?.pending ?? 0}  color="var(--gold)"/>
         <Stat label="متنازع"                value={bal?.disputed ?? 0} color="var(--red)"/>
         <Stat label="مراجعة"                value={bal?.reviewing ?? 0}color="var(--gold)"/>
+      </div>
+
+      {/* Aging buckets — outstanding balance split by overdue age. Standard
+          AP report so the user knows what's about to age into bad-debt-ish
+          territory vs what's freshly due. */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
+        <AgingCard label="غير مستحق"        sub="due_date في المستقبل"     color="var(--green)" {...aging.notDue}/>
+        <AgingCard label="متأخر 1–30 يوم"   sub="نطاق طبيعي"               color="var(--gold)"  {...aging.d30}/>
+        <AgingCard label="متأخر 31–60 يوم"  sub="ينبغي المتابعة"           color="#f59e0b"      {...aging.d60}/>
+        <AgingCard label="متأخر +60 يوم"    sub="مخاطرة عالية"             color="var(--red)"   {...aging.d90}/>
       </div>
 
       {/* Statements history (collapsible feel) */}
@@ -377,6 +473,7 @@ export default function CarrierLedger({ isActive = true }) {
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: 8 }}>
           <Select label="الحالة" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
             <option value="all">الكل ({counts.all})</option>
+            <option value="unaudited">⚠️ غير مدققة ({counts.unaudited ?? 0})</option>
             <option value="pending">⏳ معلّقة ({counts.pending ?? 0})</option>
             <option value="reviewing">🔄 مراجعة ({counts.reviewing ?? 0})</option>
             <option value="audited">🔬 مدققة ({counts.audited ?? 0})</option>
@@ -394,6 +491,57 @@ export default function CarrierLedger({ isActive = true }) {
             placeholder="رقم المستند أو المرجع..."/>
         </div>
       </Card>
+
+      {/* Period gaps — months without a statement, between the earliest one
+          we have and last month. Likely "I forgot to upload" cases. */}
+      {periodGaps.length > 0 && (
+        <div style={{
+          marginBottom: 10, padding: '10px 14px',
+          background: 'linear-gradient(135deg, rgba(248,113,113,.12), rgba(248,113,113,.04))',
+          border: '1px solid var(--red)', borderRadius: 11,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 18 }}>📭</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--red)' }}>
+              فجوة في كشوف الحساب — {periodGaps.length} شهر بدون كشف
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
+              الأشهر المفقودة: {periodGaps.slice(0, 6).join(' · ')}
+              {periodGaps.length > 6 ? ` · +${periodGaps.length - 6}` : ''}
+            </div>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={() => { window.location.href = '/aramex-statements'; }}>
+            رفع كشف →
+          </Btn>
+        </div>
+      )}
+
+      {/* Unaudited-invoices alert — biggest leak vector. One click filters
+          the table to just the unverified RV invoices so the user can blast
+          through them. Hidden when the filter is already showing them, or
+          when there's nothing to chase. */}
+      {(counts.unaudited ?? 0) > 0 && statusFilter !== 'unaudited' && (
+        <div style={{
+          marginBottom: 10, padding: '10px 14px',
+          background: 'linear-gradient(135deg, rgba(251,191,36,.16), rgba(251,191,36,.05))',
+          border: '1px solid var(--gold)', borderRadius: 11,
+          display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <span style={{ fontSize: 18 }}>⚠️</span>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--gold)' }}>
+              {counts.unaudited} فاتورة بدون تدقيق
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+              فواتير RV لم تُربط بأي مراجعة بعد — مخاطرة فروق غير مكتشفة
+            </div>
+          </div>
+          <Btn size="sm" variant="primary" onClick={() => setStatusFilter('unaudited')}>
+            عرضها الآن →
+          </Btn>
+        </div>
+      )}
 
       {/* Bulk-action bar — only when something is checked. Sticks to the
           top of the table area so it stays visible while scrolling. */}
@@ -504,7 +652,22 @@ export default function CarrierLedger({ isActive = true }) {
                           {fmt(Math.abs(amount))}
                         </td>
                         <td style={{ fontSize: 11 }}>
-                          {o.shipment_type ? SHIPMENT_LABEL[o.shipment_type] : '—'}
+                          {o.shipment_type ? (() => {
+                            const sm = SHIPMENT_META[o.shipment_type];
+                            if (!sm) return SHIPMENT_LABEL[o.shipment_type] ?? o.shipment_type;
+                            return (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '2px 8px', borderRadius: 999,
+                                background: `${sm.color}1F`,
+                                border: `1px solid ${sm.color}55`,
+                                color: sm.color, fontSize: 10, fontWeight: 700,
+                                fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                              }}>
+                                {sm.icon} {sm.label}
+                              </span>
+                            );
+                          })() : '—'}
                         </td>
                         <td>
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
@@ -1022,6 +1185,30 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
       </div>
     </Modal>
+  );
+}
+
+// ── Aging bucket card ─────────────────────────────────────────────────────
+function AgingCard({ label, sub, count, amount, color }) {
+  const dim = !count;
+  return (
+    <div style={{
+      background: dim ? 'var(--card)' : `linear-gradient(135deg, ${color}14, transparent)`,
+      border: `1px solid ${dim ? 'var(--border)' : color + '55'}`,
+      borderRadius: 11, padding: '11px 14px',
+      borderTop: `3px solid ${color}`,
+      opacity: dim ? 0.55 : 1,
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+        <span style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{label}</span>
+        <span style={{ color, fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{count}</span>
+      </div>
+      <div style={{ color, fontSize: 16, fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap' }}>
+        {Number(amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        <span style={{ fontSize: 9, color: 'var(--muted)', marginRight: 4 }}> ر.س</span>
+      </div>
+      <div style={{ color: 'var(--muted)', fontSize: 9, marginTop: 2 }}>{sub}</div>
+    </div>
   );
 }
 

@@ -260,6 +260,42 @@ export async function loadAuditByIdFromDB(id) {
   };
 }
 
+// Global AWB lookup: every place this shipment was billed across audits.
+// Joins audit_awb_ledger with audits so each hit carries the audit's
+// metadata (carrier, file, period, type) — the user is usually mid-dispute
+// and needs to jump straight to the audit.
+export async function searchAwbAcrossAudits(awbQuery) {
+  const q = String(awbQuery ?? '').trim();
+  if (!q) return [];
+  const { data, error } = await supabase
+    .from('audit_awb_ledger')
+    .select(`
+      audit_id, awb, billing_class, period, ship_date, invoiced, carrier_id,
+      audits!inner ( id, carrier_name, file_name, audit_type, period, created_at )
+    `)
+    .ilike('awb', `%${q}%`)
+    .order('ship_date', { ascending: false })
+    .limit(80);
+  if (error) throw error;
+  return (data ?? []).map(row => ({
+    auditId:      row.audit_id,
+    awb:          row.awb,
+    billingClass: row.billing_class,
+    period:       row.period,
+    shipDate:     row.ship_date,
+    invoiced:     Number(row.invoiced ?? 0),
+    carrierId:    row.carrier_id,
+    audit: row.audits ? {
+      id:          row.audits.id,
+      carrierName: row.audits.carrier_name,
+      fileName:    row.audits.file_name,
+      auditType:   row.audits.audit_type,
+      period:      row.audits.period,
+      createdAt:   row.audits.created_at,
+    } : null,
+  }));
+}
+
 export async function deleteAuditFromDB(id) {
   // Refuse to delete an audit that is currently linked to an operation.
   // The operation row has a foreign key on audit_id and the user's rule is
