@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles } from 'lucide-react';
 import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
-import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
+import { saveCarrierStatement, loadExistingOpsByDocNos } from '../lib/carrierStatementsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ─── Doc-type & shipment-type labels ──────────────────────────────────────
@@ -46,6 +46,11 @@ export default function CarrierStatements({ carriers = [] }) {
   const [saving, setSaving] = useState(false);
   const [savedDiff, setSavedDiff] = useState(null); // { added, updated, reviewing, unchanged }
   const [aiStatus, setAiStatus] = useState('');
+  // Map<doc_no, existing-op> populated after parser finishes. Drives the
+  // "new / unchanged / changed" badges so the user sees deltas without
+  // having to commit first. null means "we haven't checked yet".
+  const [existingMap, setExistingMap] = useState(null);
+  const [deltaLoading, setDeltaLoading] = useState(false);
 
   const processFile = useCallback(async (file) => {
     if (!file) return;
@@ -137,6 +142,58 @@ export default function CarrierStatements({ carriers = [] }) {
     setSaving(false);
   };
 
+  // After parsing, look up which doc_nos already exist in the ledger so
+  // the preview can label each row 'new' / 'unchanged' / 'changed' before
+  // commit. Saves the user from clicking save just to discover most rows
+  // were already there.
+  useEffect(() => {
+    if (!result?.operations?.length || !result.carrierId) {
+      setExistingMap(null);
+      return;
+    }
+    let cancelled = false;
+    setDeltaLoading(true);
+    const docNos = result.operations.map(o => String(o.docNo)).filter(Boolean);
+    loadExistingOpsByDocNos(result.carrierId, docNos)
+      .then(map => { if (!cancelled) setExistingMap(map); })
+      .catch(() => { if (!cancelled) setExistingMap(new Map()); })
+      .finally(() => { if (!cancelled) setDeltaLoading(false); });
+    return () => { cancelled = true; };
+  }, [result]);
+
+  // Per-op delta classification. 'unchanged' = same doc_no + same
+  // dr/cr (within 0.01 SAR); 'changed' = same doc_no but different
+  // amount (will become reviewing on save); 'new' = first time.
+  const deltaOf = useCallback((op) => {
+    if (!existingMap) return 'unknown';
+    const prior = existingMap.get(String(op.docNo));
+    if (!prior) return 'new';
+    const drDiff = Math.abs(Number(prior.amount_dr ?? 0) - Number(op.dr ?? 0));
+    const crDiff = Math.abs(Number(prior.amount_cr ?? 0) - Number(op.cr ?? 0));
+    return (drDiff > 0.01 || crDiff > 0.01) ? 'changed' : 'unchanged';
+  }, [existingMap]);
+
+  const deltaCounts = useMemo(() => {
+    const c = { all: 0, new: 0, changed: 0, unchanged: 0 };
+    if (!result?.operations || !existingMap) return c;
+    for (const op of result.operations) {
+      c.all++;
+      c[deltaOf(op)]++;
+    }
+    return c;
+  }, [result, existingMap, deltaOf]);
+
+  // When delta lands and there ARE existing ops, default the filter to
+  // 'new' so the user sees the truly fresh rows first. If everything is
+  // new (first upload for this carrier), keep 'all' since 'new' would
+  // be the same set anyway and 'all' is more familiar.
+  useEffect(() => {
+    if (!existingMap) return;
+    if (deltaCounts.unchanged + deltaCounts.changed > 0 && filter === 'all') {
+      setFilter('new');
+    }
+  }, [existingMap, deltaCounts, filter]);
+
   // ── Derived ────────────────────────────────────────────────────────────
   const breakdown = useMemo(() => {
     if (!result) return { rv: 0, dr: 0, dg: 0, ab: 0 };
@@ -149,7 +206,14 @@ export default function CarrierStatements({ carriers = [] }) {
   const filtered = useMemo(() => {
     if (!result) return [];
     let out = result.operations;
-    if (filter !== 'all') out = out.filter(o => o.docType === filter);
+    // Doc-type filters (RV / DR / DG / AB)
+    if (['RV','DR','DG','AB'].includes(filter)) {
+      out = out.filter(o => o.docType === filter);
+    }
+    // Synthetic delta filters — only meaningful once existingMap loaded
+    else if (filter === 'new'       && existingMap) out = out.filter(o => deltaOf(o) === 'new');
+    else if (filter === 'changed'   && existingMap) out = out.filter(o => deltaOf(o) === 'changed');
+    else if (filter === 'unchanged' && existingMap) out = out.filter(o => deltaOf(o) === 'unchanged');
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter(o =>
@@ -158,7 +222,7 @@ export default function CarrierStatements({ carriers = [] }) {
       );
     }
     return out;
-  }, [result, filter, search]);
+  }, [result, filter, search, existingMap, deltaOf]);
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -290,7 +354,12 @@ export default function CarrierStatements({ carriers = [] }) {
             {!savedDiff && (
               <Btn variant="primary" icon={saving ? <Spinner size={12}/> : <Save size={14}/>}
                 onClick={handleSave} disabled={saving}>
-                {saving ? 'جارٍ الحفظ...' : 'حفظ في الدفتر'}
+                {saving
+                  ? 'جارٍ الحفظ...'
+                  : existingMap && (deltaCounts.unchanged + deltaCounts.changed > 0)
+                    ? `حفظ ${deltaCounts.new} جديدة + تحديث ${deltaCounts.changed + deltaCounts.unchanged}`
+                    : 'حفظ في الدفتر'
+                }
               </Btn>
             )}
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>كشف جديد</Btn>
@@ -298,6 +367,35 @@ export default function CarrierStatements({ carriers = [] }) {
               العمليات ({result.operations.length}) — RV {breakdown.rv} | DR {breakdown.dr} | DG {breakdown.dg} | AB {breakdown.ab}
             </span>
           </div>
+
+          {/* Delta summary — only when at least some ops are already in
+              the ledger (otherwise everything is new and chips are noise). */}
+          {existingMap && (deltaCounts.unchanged + deltaCounts.changed > 0) && (
+            <div style={{
+              background: 'linear-gradient(135deg, rgba(56,189,248,.10), rgba(56,189,248,.02))',
+              border: '1px solid var(--accent)', borderRadius: 9,
+              padding: '9px 14px', marginBottom: 12,
+              display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',
+              fontSize: 12,
+            }}>
+              <span style={{ fontWeight: 700, color: 'var(--accent)' }}>
+                {deltaCounts.all} عملية:
+              </span>
+              <span><span style={{ color: 'var(--green)', fontWeight: 700 }}>🆕 {deltaCounts.new}</span> جديدة</span>
+              <span><span style={{ color: 'var(--muted)', fontWeight: 700 }}>✓ {deltaCounts.unchanged}</span> موجودة</span>
+              {deltaCounts.changed > 0 && (
+                <span><span style={{ color: 'var(--gold)', fontWeight: 700 }}>🔄 {deltaCounts.changed}</span> متغيّرة</span>
+              )}
+              <span style={{ marginRight: 'auto', color: 'var(--muted)', fontSize: 11 }}>
+                المعروض حالياً: {filter === 'new' ? '🆕 الجديدة فقط' : filter === 'changed' ? '🔄 المتغيّرة فقط' : filter === 'unchanged' ? '✓ الموجودة' : 'الكل'}
+              </span>
+            </div>
+          )}
+          {deltaLoading && (
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 8 }}>
+              <Spinner size={11}/> جارٍ مقارنة العمليات مع الدفتر...
+            </div>
+          )}
 
           {savedDiff && (
             <div style={{
@@ -322,23 +420,33 @@ export default function CarrierStatements({ carriers = [] }) {
             </div>
           )}
 
-          {/* Filter tabs */}
+          {/* Filter tabs — delta filters appear only when applicable */}
           <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
             {[
               { k: 'all', l: `الكل (${result.operations.length})` },
+              ...(existingMap && deltaCounts.new > 0 && (deltaCounts.unchanged + deltaCounts.changed > 0)
+                ? [{ k: 'new', l: `🆕 جديدة (${deltaCounts.new})`, accent: 'var(--green)' }] : []),
+              ...(existingMap && deltaCounts.changed > 0
+                ? [{ k: 'changed', l: `🔄 متغيّرة (${deltaCounts.changed})`, accent: 'var(--gold)' }] : []),
+              ...(existingMap && deltaCounts.unchanged > 0
+                ? [{ k: 'unchanged', l: `✓ موجودة (${deltaCounts.unchanged})`, accent: 'var(--muted)' }] : []),
               { k: 'RV',  l: `فواتير (${breakdown.rv})` },
               { k: 'DR',  l: `مدين (${breakdown.dr})` },
               { k: 'DG',  l: `دائن (${breakdown.dg})` },
               { k: 'AB',  l: `تعديلات (${breakdown.ab})` },
-            ].map(t => (
-              <button key={t.k} onClick={() => setFilter(t.k)} style={{
-                background: filter === t.k ? 'var(--accent)20' : 'transparent',
-                border: `1px solid ${filter === t.k ? 'var(--accent)' : 'var(--border)'}`,
-                color: filter === t.k ? 'var(--accent)' : 'var(--muted)',
-                borderRadius: 7, padding: '5px 13px', cursor: 'pointer',
-                fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
-              }}>{t.l}</button>
-            ))}
+            ].map(t => {
+              const active = filter === t.k;
+              const accent = t.accent || 'var(--accent)';
+              return (
+                <button key={t.k} onClick={() => setFilter(t.k)} style={{
+                  background: active ? `${accent}20` : 'transparent',
+                  border: `1px solid ${active ? accent : 'var(--border)'}`,
+                  color: active ? accent : 'var(--muted)',
+                  borderRadius: 7, padding: '5px 13px', cursor: 'pointer',
+                  fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
+                }}>{t.l}</button>
+              );
+            })}
           </div>
 
           {/* Search */}
@@ -361,6 +469,7 @@ export default function CarrierStatements({ carriers = [] }) {
                   <table style={{ fontSize: 12, width: '100%' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                       <tr>
+                        {existingMap && <th style={{ minWidth: 70 }}>الحالة</th>}
                         <th style={{ minWidth: 60 }}>النوع</th>
                         <th style={{ minWidth: 110 }}>رقم المستند</th>
                         <th style={{ minWidth: 200 }}>المرجع</th>
@@ -376,8 +485,31 @@ export default function CarrierStatements({ carriers = [] }) {
                     <tbody>
                       {filtered.map((o, i) => {
                         const meta = DOC_TYPE_META[o.docType] ?? DOC_TYPE_META.RV;
+                        const delta = existingMap ? deltaOf(o) : null;
+                        const deltaMeta = delta === 'new'
+                          ? { label: '🆕 جديدة', color: 'var(--green)' }
+                          : delta === 'changed'
+                            ? { label: '🔄 متغيّرة', color: 'var(--gold)' }
+                            : delta === 'unchanged'
+                              ? { label: '✓ موجودة', color: 'var(--muted)' }
+                              : null;
                         return (
-                          <tr key={i}>
+                          <tr key={i} style={delta === 'new' ? { background: 'rgba(52,211,153,.04)' } : undefined}>
+                            {existingMap && (
+                              <td>
+                                {deltaMeta && (
+                                  <span style={{
+                                    background: `${deltaMeta.color}20`,
+                                    border: `1px solid ${deltaMeta.color}40`,
+                                    color: deltaMeta.color, fontSize: 10, fontWeight: 700,
+                                    padding: '2px 8px', borderRadius: 12,
+                                    fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                                  }}>
+                                    {deltaMeta.label}
+                                  </span>
+                                )}
+                              </td>
+                            )}
                             <td>
                               <span style={{
                                 background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
