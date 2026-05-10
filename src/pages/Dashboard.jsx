@@ -7,6 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
+  loadStaleDisputes,
 } from '../lib/carrierStatementsService.js';
 import { loadAuditsFromDB, searchAwbAcrossAudits, loadAuditByIdFromDB } from '../lib/coreService.js';
 
@@ -27,17 +28,20 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
   const [actionItems, setActionItems] = useState([]);
   const [dueWeek, setDueWeek]   = useState([]); // operations due in next 7 days
+  const [staleDisputes, setStaleDisputes] = useState([]);
   const [loading,  setLoading]    = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [ov, ad, act, allOps] = await Promise.all([
+      const [ov, ad, act, allOps, stale] = await Promise.all([
         loadCarriersOverview(),
         loadAuditsFromDB(8),
         loadRecentActivity(6),
         loadOperations({}),
+        loadStaleDisputes({ thresholdDays: 30 }),
       ]);
+      setStaleDisputes(stale);
       // Build action-required list across all carriers.
       const today = new Date().toISOString().slice(0, 10);
       const sevenDaysFromNow = new Date();
@@ -229,6 +233,69 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
                           {fmt(amount)}
                         </div>
                         <Btn size="sm" variant="ghost" onClick={() => onNavigate(`ledger?carrier=${o.carrier_id}`)}>
+                          فتح
+                        </Btn>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Card>
+            );
+          })()}
+
+          {/* STALE DISPUTES — disputes opened > 30 days ago, still unresolved.
+              Surfaced separately because they're an SLA / collection-risk
+              signal the AP person needs to chase, distinct from the
+              "anything overdue" pile in the action card below. */}
+          {staleDisputes.length > 0 && (() => {
+            const totalAmt = staleDisputes.reduce(
+              (s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0,
+            );
+            const today = new Date(); today.setHours(0,0,0,0);
+            return (
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--red)' }}>
+                <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    🚨 نزاعات قديمة بدون حل ({staleDisputes.length})
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--red)', fontWeight: 700 }}>
+                    {fmt(totalAmt)} ر.س
+                  </span>
+                </div>
+                <div style={{ padding: '8px 18px', fontSize: 11, color: 'var(--muted)', borderBottom: '1px dashed var(--border)' }}>
+                  هذي النزاعات مرّ عليها أكثر من 30 يوم بدون رد من الناقل أو إغلاق — متابعة عاجلة موصى بها.
+                </div>
+                <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+                  {staleDisputes.map(o => {
+                    const amount = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
+                    const days = o.dispute_opened_at
+                      ? Math.floor((today - new Date(o.dispute_opened_at)) / 86_400_000)
+                      : 0;
+                    return (
+                      <div key={o.id} style={{
+                        padding: '10px 18px', borderBottom: '1px solid var(--border)22',
+                        display: 'grid', gridTemplateColumns: '90px 1fr auto auto', gap: 12, alignItems: 'center',
+                      }}>
+                        <span style={{
+                          background: 'rgba(248,113,113,.15)', border: '1px solid var(--red)40',
+                          color: 'var(--red)', fontSize: 10, fontWeight: 700,
+                          padding: '2px 8px', borderRadius: 12, fontFamily: 'var(--font-mono)',
+                          textAlign: 'center', whiteSpace: 'nowrap',
+                        }}>
+                          {days} يوم
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                            <span style={{ color: 'var(--accent)' }}>{o.doc_no}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            فُتح {o.dispute_opened_at?.slice(0,10) ?? '—'} · {o.carrier_id}
+                          </div>
+                        </div>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)', textAlign: 'left' }}>
+                          {fmt(amount)}
+                        </div>
+                        <Btn size="sm" variant="ghost" onClick={() => onNavigate(`ledger?carrier=${o.carrier_id}&doc=${o.doc_no}`)}>
                           فتح
                         </Btn>
                       </div>

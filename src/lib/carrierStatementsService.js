@@ -574,6 +574,130 @@ export async function setOperationStatus(id, patch) {
   if (error) throw error;
 }
 
+// ── Disputes — journal + lifecycle ────────────────────────────────────
+// Each disputed operation accumulates a thread of dispute_notes entries
+// (opened → follow_ups → response → resolved). The op itself carries
+// summary state: dispute_opened_at, dispute_resolved_at, resolution
+// kind, and an optional link to the credit-memo op that settled it.
+
+export async function loadDisputeNotes(operationId) {
+  if (!operationId) return [];
+  const { data, error } = await supabase
+    .from('dispute_notes')
+    .select('id, note, kind, created_by, created_at')
+    .eq('operation_id', operationId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function addDisputeNote({
+  operationId, note, kind = 'follow_up', userId,
+}) {
+  if (!operationId)    throw new Error('operation_id مطلوب');
+  if (!note?.trim())   throw new Error('الملاحظة مطلوبة');
+  const { error } = await supabase.from('dispute_notes').insert({
+    operation_id: operationId,
+    note:         note.trim(),
+    kind,
+    created_by:   userId ?? null,
+  });
+  if (error) throw error;
+}
+
+// Open a dispute: flip status, stamp dispute_opened_at, add a note
+// (kind='opened'). Idempotent — if it's already disputed, we just add
+// a follow-up note instead of resetting the open timestamp.
+export async function openDispute({ operationId, note, userId }) {
+  const { data: existing } = await supabase
+    .from('carrier_operations')
+    .select('status, dispute_opened_at')
+    .eq('id', operationId)
+    .single();
+  const isFreshOpen = existing?.status !== 'disputed' || !existing?.dispute_opened_at;
+  const patch = { status: 'disputed' };
+  if (isFreshOpen) patch.dispute_opened_at = new Date().toISOString();
+  await setOperationStatus(operationId, patch);
+  if (note?.trim()) {
+    await addDisputeNote({
+      operationId, note,
+      kind: isFreshOpen ? 'opened' : 'follow_up',
+      userId,
+    });
+  }
+}
+
+export async function resolveDispute({
+  operationId, resolution = 'accepted', creditOpId, note, userId,
+}) {
+  if (!['credit_received', 'accepted'].includes(resolution)) {
+    throw new Error(`resolution غير صالح: ${resolution}`);
+  }
+  // Status flips to 'audited' if no credit involved (we just accept the
+  // charge as-is); if a credit was received, also 'audited' since the
+  // open balance is now reconciled.
+  await setOperationStatus(operationId, {
+    status: 'audited',
+    dispute_resolved_at: new Date().toISOString(),
+    dispute_resolution:  resolution,
+    dispute_credit_op_id: creditOpId || null,
+  });
+  await addDisputeNote({
+    operationId,
+    note: note?.trim() ||
+      (resolution === 'credit_received'
+        ? 'تم استلام مذكرة دائنة من الناقل'
+        : 'تم قبول الفاتورة كما هي'),
+    kind: 'resolved',
+    userId,
+  });
+}
+
+export async function reopenDispute({ operationId, note, userId }) {
+  await setOperationStatus(operationId, {
+    status: 'disputed',
+    dispute_resolved_at: null,
+    dispute_resolution:  null,
+    dispute_credit_op_id: null,
+  });
+  await addDisputeNote({
+    operationId,
+    note: note?.trim() || 'تم إعادة فتح النزاع',
+    kind: 'reopened',
+    userId,
+  });
+}
+
+// Pull all DG / AB / CM-style credit operations for a carrier so the
+// resolve-dispute UI can offer them as candidates to link.
+export async function loadCreditCandidates(carrierId) {
+  if (!carrierId) return [];
+  const { data, error } = await supabase
+    .from('carrier_operations')
+    .select('id, doc_no, doc_type, doc_date, amount_cr, reference_no')
+    .eq('carrier_id', carrierId)
+    .in('doc_type', ['DG', 'AB', 'CM'])
+    .gt('amount_cr', 0)
+    .order('doc_date', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// Stale disputes for the dashboard panel — disputes opened > N days ago
+// that are still not resolved.
+export async function loadStaleDisputes({ thresholdDays = 30 } = {}) {
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() - thresholdDays);
+  const { data, error } = await supabase
+    .from('carrier_operations')
+    .select('id, carrier_id, doc_no, doc_date, due_date, amount_dr, amount_cr, dispute_opened_at, notes')
+    .eq('status', 'disputed')
+    .lt('dispute_opened_at', cutoff.toISOString())
+    .order('dispute_opened_at', { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
 // ── Payments — first-class records of money out ────────────────────────
 // Each payment groups N operations that were settled together. Created
 // by markPaid / markPaidBulk and persisted alongside the per-op state
