@@ -53,6 +53,29 @@ export async function deleteCarrierFromDB(id) {
 
 // ── Audits ────────────────────────────────────────────────────────────────────
 
+// Deterministic fingerprint of the audit's contents — sorted "awb|amount"
+// pairs hashed with djb2 in 32-bit space. Two audits with the same hash
+// (and same carrier) almost certainly came from the same source file.
+// Used by saveAuditToDB to refuse re-uploading the same file twice.
+function computeContentHash(results) {
+  if (!Array.isArray(results) || !results.length) return null;
+  const sigs = [];
+  for (const r of results) {
+    const awb = String(r.awb || '').trim();
+    if (!awb) continue;
+    const amt = Number(r.invoiced?.total || 0).toFixed(2);
+    sigs.push(`${awb}|${amt}`);
+  }
+  if (!sigs.length) return null;
+  sigs.sort();
+  const joined = sigs.join('\n');
+  let h = 5381;
+  for (let i = 0; i < joined.length; i++) {
+    h = (((h << 5) + h) + joined.charCodeAt(i)) | 0;
+  }
+  return `${sigs.length}_${(h >>> 0).toString(36)}`;
+}
+
 export async function saveAuditToDB(audit, userId) {
   const summary = audit.summary ?? {};
   const results = audit.results ?? [];
@@ -71,6 +94,36 @@ export async function saveAuditToDB(audit, userId) {
     ?? +results.reduce((s, r) => s + (Number(r.invoiced?.tax) || 0), 0).toFixed(2);
   const diff = summary.diff ?? summary.totalDiff ?? 0;
   const auditType = audit.auditType ?? deriveAuditType(results);
+  const contentHash = computeContentHash(results);
+
+  // Refuse re-uploading the exact same file. The fingerprint is
+  // (sorted awb|amount pairs) — robust against re-saves of the same
+  // audit (we exclude its own id) but catches "I clicked رفع twice"
+  // and "I uploaded last week's file again by mistake".
+  if (contentHash) {
+    const { data: existing, error: hashErr } = await supabase
+      .from('audits')
+      .select('id, file_name, period, created_at')
+      .eq('carrier_id', audit.carrierId)
+      .eq('content_hash', contentHash)
+      .neq('id', audit.id)
+      .limit(1);
+    if (hashErr) throw hashErr;
+    if (existing?.length) {
+      const prior = existing[0];
+      const date = prior.created_at
+        ? new Date(prior.created_at).toLocaleDateString('ar-SA')
+        : '—';
+      const label = prior.file_name || `#${String(prior.id).slice(0, 12)}`;
+      const err = new Error(
+        `هذا الملف مرفوع سابقاً (${label} · ${date}). ` +
+        `لتجنب التكرار، احذف المراجعة الموجودة من 📋 السجل أولاً ثم أعد الرفع.`,
+      );
+      err.code = 'DUPLICATE_AUDIT';
+      err.priorAuditId = prior.id;
+      throw err;
+    }
+  }
 
   const { error } = await supabase.from('audits').upsert({
     id:             audit.id,
@@ -86,6 +139,7 @@ export async function saveAuditToDB(audit, userId) {
     total_tax:      totalTax,
     diff,
     audit_type:     auditType,
+    content_hash:   contentHash,
     results,
     col_map:        audit.colMap   ?? {},
     created_by:     userId,

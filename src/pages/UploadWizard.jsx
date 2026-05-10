@@ -396,9 +396,22 @@ export default function UploadWizard({ carriers, onComplete }) {
       period, month, year, colMap, summary, results,
       createdAt: new Date().toISOString(),
     };
-    saveAuditToDB(audit, user?.id).catch(() => {});
-    toast(`تم تدقيق ${results.length} شحنة`, 'success');
-    onComplete(audit);
+    // Surface duplicate-file errors to the user — saving silently used
+    // to mean the same file could be saved twice without anyone noticing.
+    try {
+      await saveAuditToDB(audit, user?.id);
+      toast(`تم تدقيق ${results.length} شحنة`, 'success');
+      onComplete(audit);
+    } catch (e) {
+      if (e.code === 'DUPLICATE_AUDIT') {
+        toast(e.message, 'error');
+        return;
+      }
+      // Non-duplicate errors: still show + still hand the audit back so the
+      // user doesn't lose the analysis. They can save manually later.
+      toast(`فشل الحفظ: ${e.message}`, 'error');
+      onComplete(audit);
+    }
   };
 
   return (
