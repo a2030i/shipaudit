@@ -11,6 +11,7 @@ import {
   loadStatements,
   getStatementFileUrl,
   loadLinkedAuditIndex,
+  createPaymentRecord,
 } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
 import {
@@ -266,12 +267,28 @@ export default function CarrierLedger({ isActive = true }) {
   }, [ops]);
 
   // ── Status mutations ──
+  // Both single + bulk pay now go through the same payment-record
+  // creation path: create one row in `payments`, then flip all the
+  // included ops to status='paid' with payment_id pointing at the
+  // record. Single pay is just a bulk pay of one op — keeps the audit
+  // trail uniform.
   const markPaid = async (op, payment_ref) => {
     try {
+      const amount = (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+      const paidAtIso = new Date().toISOString();
+      const payment = await createPaymentRecord({
+        carrierId:  carrier,
+        paidAt:     paidAtIso.slice(0, 10),
+        amount,
+        paymentRef: payment_ref || null,
+        opIds:      [op.id],
+        userId:     null,
+      });
       await setOperationStatus(op.id, {
         status: 'paid',
-        paid_at: new Date().toISOString(),
+        paid_at: paidAtIso,
         payment_ref: payment_ref || null,
+        payment_id: payment.id,
       });
       toast('تم تحديد العملية كمسدّدة', 'success');
       refresh();
@@ -280,28 +297,48 @@ export default function CarrierLedger({ isActive = true }) {
     }
     setModal(null);
   };
-  // Bulk-pay: stamp the same paid_at + payment_ref across every selected
-  // op in parallel. We collect failures so a single bad row doesn't kill
-  // the rest, then refresh once.
   const markPaidBulk = async (ops, payment_ref) => {
-    const paidAt = new Date().toISOString();
+    const paidAtIso = new Date().toISOString();
     const ref = payment_ref || null;
-    const results = await Promise.allSettled(
-      ops.map(op => setOperationStatus(op.id, {
-        status: 'paid',
-        paid_at: paidAt,
-        payment_ref: ref,
-      })),
+    const total = ops.reduce(
+      (s, o) => s + (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0),
+      0,
     );
-    const failed = results.filter(r => r.status === 'rejected');
-    if (failed.length) {
-      toast(
-        `تم تسديد ${ops.length - failed.length} من ${ops.length} — ` +
-        `فشل ${failed.length}: ${failed[0].reason?.message ?? 'خطأ غير معروف'}`,
-        'error',
+    try {
+      // Create the payment record first so each op has a payment_id to
+      // attach. createPaymentRecord links all ids in a single update.
+      const payment = await createPaymentRecord({
+        carrierId:  carrier,
+        paidAt:     paidAtIso.slice(0, 10),
+        amount:     total,
+        paymentRef: ref,
+        opIds:      ops.map(o => o.id),
+        userId:     null,
+      });
+      // Then flip statuses (payment_id is already set by createPaymentRecord;
+      // this just stamps paid_at + payment_ref + status on each).
+      const results = await Promise.allSettled(
+        ops.map(op => setOperationStatus(op.id, {
+          status: 'paid',
+          paid_at: paidAtIso,
+          payment_ref: ref,
+        })),
       );
-    } else {
-      toast(`✓ تم تسديد ${ops.length} عملية`, 'success');
+      const failed = results.filter(r => r.status === 'rejected');
+      if (failed.length) {
+        toast(
+          `تم تسديد ${ops.length - failed.length} من ${ops.length} — ` +
+          `فشل ${failed.length}: ${failed[0].reason?.message ?? 'خطأ غير معروف'}`,
+          'error',
+        );
+      } else {
+        toast(
+          `✓ تم تسديد ${ops.length} عملية ضمن دفعة واحدة (#${payment.id})`,
+          'success',
+        );
+      }
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
     }
     setSelectedIds(new Set());
     setModal(null);

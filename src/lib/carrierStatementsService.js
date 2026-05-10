@@ -574,6 +574,89 @@ export async function setOperationStatus(id, patch) {
   if (error) throw error;
 }
 
+// ── Payments — first-class records of money out ────────────────────────
+// Each payment groups N operations that were settled together. Created
+// by markPaid / markPaidBulk and persisted alongside the per-op state
+// flip so the audit trail of "what did we pay, when, against which
+// invoices" is reconstructable forever after.
+export async function createPaymentRecord({
+  carrierId, paidAt, amount, paymentRef, notes, opIds, userId,
+}) {
+  if (!carrierId)             throw new Error('carrier_id مطلوب');
+  if (!Array.isArray(opIds))  throw new Error('opIds مطلوبة');
+  const { data, error } = await supabase
+    .from('payments')
+    .insert({
+      carrier_id:  carrierId,
+      paid_at:     paidAt || new Date().toISOString().slice(0, 10),
+      amount:      Number(amount) || 0,
+      payment_ref: paymentRef || null,
+      notes:       notes || null,
+      created_by:  userId || null,
+    })
+    .select('id, paid_at, amount, payment_ref, notes, created_at')
+    .single();
+  if (error) throw error;
+  // Tag all the included ops with the payment id. Done in chunks since
+  // Postgres' IN list capacity is generous but not unlimited.
+  const CHUNK = 500;
+  for (let i = 0; i < opIds.length; i += CHUNK) {
+    const slice = opIds.slice(i, i + CHUNK);
+    const { error: linkErr } = await supabase
+      .from('carrier_operations')
+      .update({ payment_id: data.id })
+      .in('id', slice);
+    if (linkErr) throw linkErr;
+  }
+  return data;
+}
+
+export async function loadPayments({ carrierId, limit = 200 } = {}) {
+  let q = supabase
+    .from('payments')
+    .select('id, carrier_id, paid_at, amount, payment_ref, notes, created_at')
+    .order('paid_at', { ascending: false })
+    .limit(limit);
+  if (carrierId) q = q.eq('carrier_id', carrierId);
+  const { data, error } = await q;
+  if (error) throw error;
+  // Fold in op counts so the list view can show "N عملية" without an
+  // N+1 query per row.
+  const ids = (data ?? []).map(p => p.id);
+  if (!ids.length) return [];
+  const { data: ops, error: opErr } = await supabase
+    .from('carrier_operations')
+    .select('payment_id')
+    .in('payment_id', ids);
+  if (opErr) throw opErr;
+  const counts = new Map();
+  for (const o of ops ?? []) counts.set(o.payment_id, (counts.get(o.payment_id) ?? 0) + 1);
+  return (data ?? []).map(p => ({ ...p, opsCount: counts.get(p.id) ?? 0 }));
+}
+
+export async function loadPaymentOps(paymentId) {
+  const { data, error } = await supabase
+    .from('carrier_operations')
+    .select('*')
+    .eq('payment_id', paymentId)
+    .order('doc_date', { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function deletePaymentRecord(paymentId) {
+  // Reverse: detach ops (their payment_id goes NULL) + flip them back to
+  // pending, then delete the payment row. Used when the user wants to
+  // undo a payment they entered by mistake.
+  const { error: e1 } = await supabase
+    .from('carrier_operations')
+    .update({ status: 'pending', payment_id: null, paid_at: null, payment_ref: null })
+    .eq('payment_id', paymentId);
+  if (e1) throw e1;
+  const { error: e2 } = await supabase.from('payments').delete().eq('id', paymentId);
+  if (e2) throw e2;
+}
+
 export async function deleteStatement(id) {
   // Refuse to delete a statement if any of its operations are linked to an
   // audit — deleting would cascade into linked ops, breaking the audit↔op
