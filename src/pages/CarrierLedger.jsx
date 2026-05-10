@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, RefreshCw, Link2, FileText, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
@@ -510,6 +510,7 @@ function validateAuditLink(op, audit, opts = {}) {
 // ── LinkAuditModal — pick or upload an audit to attach to this operation ──
 function LinkAuditModal({ op, carrierName, onClose, onLink }) {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [audits, setAudits]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
@@ -615,19 +616,11 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
 
       if (!results.length) throw new Error('لم تُستخرج أي شحنة من الملف — تحقق من الأعمدة');
 
-      // 5. Validate BEFORE saving — reject linking when the audit is not 100%
-      // clean or the total billed doesn't match the operation amount.
+      // 5. Persist the audit FIRST — even if it can't be linked we want it
+      // saved so the user can open it from "📋 السجل", verify the column
+      // mapping the system picked, and inspect the rows that caused the
+      // mismatch. The link gate runs AFTER save.
       const totalBilled = results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0);
-      const verdict = validateAuditLink(op, {}, {
-        issueCount: summary.mismatch,
-        totalBilled,
-      });
-      if (!verdict.ok) {
-        toast(verdict.reason, 'error');
-        return; // don't save; let the user pick a different file
-      }
-
-      // 6. Persist the audit
       const auditId = `a_${Date.now()}`;
       const period  = (op.doc_date || forDate).slice(0, 7);
       const audit = {
@@ -640,15 +633,47 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         issueCount:   summary.mismatch,
         diff:         summary.totalDiff,
         colMap,
-        summary,
+        summary: { ...summary, totalBilled },
         results,
         createdAt:    new Date().toISOString(),
       };
       await saveAuditToDB(audit, user?.id);
 
-      // 7. Link the just-created audit (re-validate inside linkAudit too, but
-      // pass the pre-computed totalBilled + issueCount so it doesn't need to
-      // refetch).
+      // 6. Validate — only NOW decide whether to actually link.
+      const verdict = validateAuditLink(op, {}, {
+        issueCount: summary.mismatch,
+        totalBilled,
+      });
+      if (!verdict.ok) {
+        // Don't link — but do open the audit so the user can verify columns
+        // and see the rows that caused the difference. The audit is already
+        // in the DB and shows up in 📋 السجل.
+        toast(
+          `${verdict.reason}\n` +
+          `حُفظت المراجعة — افتح النتائج لتراجع الأعمدة والصفوف.`,
+          'error',
+        );
+        sessionStorage.setItem('lastAudit', JSON.stringify({
+          id: auditId,
+          carrierId:   carrier.id,
+          carrierName: carrier.name,
+          period,
+          fileName:    file.name,
+          rowCount:    results.length,
+          issueCount:  summary.mismatch,
+          diff:        summary.totalDiff,
+          colMap,
+          summary:     { ...summary, totalBilled },
+          results,
+          date:        audit.createdAt,
+        }));
+        onClose();
+        navigate('/results');
+        return;
+      }
+
+      // 7. Validation passed → link the just-created audit (parent
+      // re-validates with linkedIndex too).
       await onLink(op, {
         id:          auditId,
         fileName:    file.name,
