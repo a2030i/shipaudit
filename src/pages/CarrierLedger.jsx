@@ -1196,13 +1196,34 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                       )}
                     </div>
                     <div style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', fontSize: 11 }}>
-                      <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>المفوتر</div>
-                      <div style={{ color: 'var(--text)', fontWeight: 700 }}>
-                        {Number(a.totalBilled ?? 0).toFixed(0)}
-                      </div>
-                      <div style={{ color: (a.issueCount ?? 0) > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10, marginTop: 2 }}>
-                        {(a.issueCount ?? 0) > 0 ? `✗ ${a.issueCount} فرق` : '✓ نظيف'}
-                      </div>
+                      {(() => {
+                        // Show the GROSS amount (billed + tax) since that's
+                        // what compares against op.amount_dr — avoids the
+                        // visual mismatch where a 90,836 pre-VAT figure
+                        // sat next to a 104,461 statement amount even
+                        // though they actually reconcile via tax.
+                        const billed = Number(a.totalBilled ?? 0);
+                        const tax    = Number(a.totalTax ?? 0);
+                        // Defensive fallback for legacy audits saved
+                        // before total_tax existed: international = 0,
+                        // others ≈ 15%. Matches validateAuditLink logic.
+                        const taxResolved = a.totalTax != null
+                          ? tax
+                          : (a.auditType === 'international' ? 0 : billed * 0.15);
+                        const gross = +(billed + taxResolved).toFixed(2);
+                        return <>
+                          <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>الإجمالي شامل الضريبة</div>
+                          <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 13 }}>
+                            {gross.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ color: 'var(--muted)', fontSize: 9, marginTop: 1 }}>
+                            {billed.toFixed(0)} + ضريبة {taxResolved.toFixed(0)}
+                          </div>
+                          <div style={{ color: (a.issueCount ?? 0) > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10, marginTop: 3 }}>
+                            {(a.issueCount ?? 0) > 0 ? `✗ ${a.issueCount} فرق` : '✓ نظيف'}
+                          </div>
+                        </>;
+                      })()}
                     </div>
                     <Link2 size={14} color={eligible ? 'var(--accent)' : 'var(--muted3)'}/>
                   </button>
