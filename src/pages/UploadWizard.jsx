@@ -538,11 +538,34 @@ export default function UploadWizard({ carriers, onComplete }) {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
-        const wb      = XLSX.read(e.target.result, { type:'array' });
-        const ws      = wb.Sheets[wb.SheetNames[0]];
-        const allRows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+        const wb = XLSX.read(e.target.result, { type:'array' });
+
+        // ── Pick the right sheet ─────────────────────────────────
+        // Some carriers (J&T) ship the file with a SUMMARY sheet first
+        // and the actual line-level data on a second sheet (DETAILS).
+        // If we blindly read Sheet 0 we'd only see the period totals.
+        // Heuristic: prefer the sheet with the most data rows that has
+        // at least 5 columns. Skip sheets whose name screams summary.
+        const isSummaryName = (n) => /summary|total|ملخص|إجمالي/i.test(n);
+        const candidates = wb.SheetNames.map(name => {
+          const ws = wb.Sheets[name];
+          const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
+          const dataRows = rows.filter(r => r && r.some(v => v != null && v !== ''));
+          const cols = Math.max(...rows.slice(0, 5).map(r => (r || []).length), 0);
+          return { name, rows, dataRows: dataRows.length, cols, isSummary: isSummaryName(name) };
+        });
+        // Pick: non-summary with most rows; fall back to overall max.
+        candidates.sort((a, b) => {
+          if (a.isSummary !== b.isSummary) return a.isSummary ? 1 : -1;
+          return b.dataRows - a.dataRows;
+        });
+        const chosen  = candidates[0] || { rows: [], name: wb.SheetNames[0] };
+        const allRows = chosen.rows;
 
         if (!allRows.length) { toast('الملف فارغ', 'error'); setUploading(false); return; }
+        if (wb.SheetNames.length > 1) {
+          toast(`الورقة المختارة: ${chosen.name} (${chosen.dataRows} سطر)`, 'info');
+        }
         setAllRawRows(allRows);
 
         // ── Auto-detect carrier from file structure ──────────────
