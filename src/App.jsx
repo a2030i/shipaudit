@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -102,6 +102,24 @@ function AppInner({ theme, toggleTheme }) {
   const [navPerms,        setNavPerms]        = useState(null);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
+  // Per-section open/closed state for the sidebar accordion. Persists in
+  // localStorage so the user's preferred layout survives reloads. Default:
+  // every section starts collapsed except the one containing the active
+  // route — keeps the sidebar quiet until the user opens what they need.
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sa-nav-sections') || 'null');
+      if (saved && typeof saved === 'object') return saved;
+    } catch { /* fall through to defaults */ }
+    return {};
+  });
+  const toggleSection = (id) => {
+    setOpenSections(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      try { localStorage.setItem('sa-nav-sections', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // ── Default redirect after login: always go to dashboard ──
   useEffect(() => {
@@ -120,6 +138,21 @@ function AppInner({ theme, toggleTheme }) {
   }, [user]);
 
   useEffect(() => { reloadCarriers(); }, [reloadCarriers]);
+
+  // Auto-open the section that contains the currently active route, so the
+  // user never lands on a page whose sidebar entry is hidden behind a
+  // collapsed section. We *only* open — never auto-close — so the user's
+  // manual choices stick.
+  useEffect(() => {
+    const item = NAV_ITEMS.find(n => n.path === location.pathname);
+    if (!item) return;
+    setOpenSections(prev => {
+      if (prev[item.section]) return prev;
+      const next = { ...prev, [item.section]: true };
+      try { localStorage.setItem('sa-nav-sections', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [location.pathname]);
 
   // ── Nav permissions ──
   useEffect(() => {
@@ -224,13 +257,60 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
+              // Collapsed sidebar → always render items (the section header
+              // becomes a thin divider). Expanded sidebar → accordion.
+              const isOpen = collapsed ? true : !!openSections[sec.id];
+              const sectionHasActive = items.some(n => activeFor(n));
               return (
-                <div key={sec.id}>
+                <div key={sec.id} style={{ marginBottom: idx === NAV_SECTIONS.length - 1 ? 0 : 4 }}>
                   {idx > 0 && <div className="nav-divider"/>}
-                  <div className="section-label">{sec.label}</div>
-                  {items.map(n => (
-                    <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-                  ))}
+                  {collapsed ? (
+                    <div className="section-label" style={{ height: 0, padding: 0 }}/>
+                  ) : (
+                    <button
+                      onClick={() => toggleSection(sec.id)}
+                      className="section-header"
+                      aria-expanded={isOpen}
+                      style={{
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                        width: '100%', background: 'transparent', border: 'none',
+                        padding: '10px 13px 6px', cursor: 'pointer',
+                        fontFamily: 'var(--font-mono)', fontSize: 9.5,
+                        letterSpacing: 1.8, textTransform: 'uppercase',
+                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-label-color)',
+                        fontWeight: 600, textAlign: 'right',
+                        transition: 'color .15s',
+                      }}
+                    >
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        {sec.label}
+                        {sectionHasActive && (
+                          <span style={{
+                            width: 5, height: 5, borderRadius: '50%',
+                            background: 'var(--accent)',
+                            boxShadow: '0 0 6px var(--accent)',
+                          }}/>
+                        )}
+                      </span>
+                      <ChevronDown
+                        size={12}
+                        style={{
+                          transition: 'transform .2s',
+                          transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
+                          opacity: .65,
+                        }}
+                      />
+                    </button>
+                  )}
+                  <div style={{
+                    overflow: 'hidden',
+                    maxHeight: isOpen ? items.length * 44 + 8 : 0,
+                    transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
+                  }}>
+                    {items.map(n => (
+                      <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
+                    ))}
+                  </div>
                 </div>
               );
             })}

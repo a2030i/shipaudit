@@ -1,99 +1,68 @@
-// Lamha brand logo — SVG inline so it scales perfectly, themes via currentColor.
-// Two variants:
-//   <LamhaMark/>  → just the hexagonal icon (square aspect, sidebar collapsed)
-//   <LamhaLogo/>  → full wordmark + icon (sidebar expanded, login splash, headers)
+// Lamha brand logo.
 //
-// The hex icon is a stylised "lamha" diamond split: deep navy facets on the
-// left, teal facets on the right, with three motion lines suggesting shipping
-// speed. Matches the official artwork.
+// Drop the official artwork into `public/`:
+//   • public/lamha-logo.png   — full horizontal logo (wordmark + mark)
+//   • public/lamha-mark.png   — just the hexagonal mark (used when collapsed)
+//
+// If a file is missing the component silently falls back to an inline
+// SVG approximation so the UI never breaks. Replace the PNGs with the
+// official artwork to get a pixel-perfect logo.
 
-export function LamhaMark({ size = 32 }) {
+import { useState } from 'react';
+
+const FULL_LOGO_SRC = '/lamha-logo.png';
+const MARK_SRC      = '/lamha-mark.png';
+
+function FallbackMark({ size }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 64 64"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-      aria-label="Lamha"
-    >
-      {/* Hexagon — left half (deep navy) */}
-      <path
-        d="M32 6 L10 18 L10 46 L32 58 Z"
-        fill="#1B1E54"
-      />
-      {/* Hexagon — right half (teal) */}
-      <path
-        d="M32 6 L54 18 L54 46 L32 58 Z"
-        fill="#2DD4BF"
-      />
-      {/* Inner diamond highlight */}
-      <path
-        d="M32 14 L46 24 L46 40 L32 50 L18 40 L18 24 Z"
-        stroke="#fff"
-        strokeOpacity=".18"
-        strokeWidth="1.4"
-        fill="none"
-      />
-      {/* Center accent */}
-      <circle cx="32" cy="32" r="3" fill="#fff" fillOpacity=".22" />
+    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-label="Lamha">
+      <path d="M32 6 L10 18 L10 46 L32 58 Z" fill="#1B1E54"/>
+      <path d="M32 6 L54 18 L54 46 L32 58 Z" fill="#2DD4BF"/>
+      <path d="M32 14 L46 24 L46 40 L32 50 L18 40 L18 24 Z"
+            stroke="#fff" strokeOpacity=".18" strokeWidth="1.4" fill="none"/>
+      <circle cx="32" cy="32" r="3" fill="#fff" fillOpacity=".22"/>
     </svg>
   );
 }
 
-export function LamhaLogo({ height = 28, color = '#fff', accent = '#2DD4BF' }) {
-  // Motion lines + mark + Arabic "لمحة" wordmark.
-  // Sized to match a 28px-tall mark; wordmark uses the system font in a bold weight.
+export function LamhaMark({ size = 32 }) {
+  const [broken, setBroken] = useState(false);
+  if (broken) return <FallbackMark size={size}/>;
   return (
-    <div
-      style={{
-        display: 'inline-flex',
-        alignItems: 'center',
-        gap: 8,
-        lineHeight: 1,
-      }}
-      aria-label="Lamha"
-    >
-      {/* Wordmark — Arabic + Latin stacked */}
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-        <span style={{
-          fontFamily: 'var(--font-sans)',
-          fontSize: height * 0.78,
-          fontWeight: 800,
-          color,
-          letterSpacing: '-.5px',
-          lineHeight: 1,
-        }}>
-          لمحة
-        </span>
-        <span style={{
-          fontFamily: 'var(--font-mono)',
-          fontSize: height * 0.32,
-          color: accent,
-          letterSpacing: 3,
-          fontWeight: 600,
-          textTransform: 'uppercase',
-          lineHeight: 1,
-        }}>
-          LAMHA
-        </span>
+    <img
+      src={MARK_SRC}
+      alt="Lamha"
+      width={size}
+      height={size}
+      onError={() => setBroken(true)}
+      style={{ display: 'block', objectFit: 'contain' }}
+    />
+  );
+}
+
+export function LamhaLogo({ height = 32 }) {
+  const [broken, setBroken] = useState(false);
+
+  if (broken) {
+    // Inline fallback wordmark + mark
+    return (
+      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, lineHeight: 1 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: height * 0.78, fontWeight: 800, color: '#fff', letterSpacing: '-.5px', lineHeight: 1 }}>لمحة</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: height * 0.32, color: '#2DD4BF', letterSpacing: 3, fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>LAMHA</span>
+        </div>
+        <FallbackMark size={height + 4}/>
       </div>
+    );
+  }
 
-      {/* Motion lines */}
-      <svg
-        width={height * 0.5}
-        height={height}
-        viewBox="0 0 16 32"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-        style={{ flexShrink: 0 }}
-      >
-        <rect x="0" y="9"  width="16" height="2.2" rx="1.1" fill={color} opacity=".9"/>
-        <rect x="3" y="15" width="13" height="2.2" rx="1.1" fill={accent} opacity=".9"/>
-        <rect x="6" y="21" width="10" height="2.2" rx="1.1" fill={color} opacity=".7"/>
-      </svg>
-
-      <LamhaMark size={height + 4}/>
-    </div>
+  return (
+    <img
+      src={FULL_LOGO_SRC}
+      alt="Lamha"
+      height={height}
+      onError={() => setBroken(true)}
+      style={{ display: 'block', height, width: 'auto', objectFit: 'contain' }}
+    />
   );
 }
