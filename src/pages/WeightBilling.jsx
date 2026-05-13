@@ -1,0 +1,366 @@
+// Weight-billing workspace.
+//
+// Top: hero card with "X مراجعة جديدة" + a giant pull button.
+// Middle: history of previous exports (download, mark billed, void).
+// The pull button is the daily driver — one click and the merchant
+// billing system gets a fresh Excel.
+
+import { useState, useEffect, useCallback } from 'react';
+import {
+  RefreshCw, Download, CheckCircle2, XCircle, Clock, FileSpreadsheet,
+  AlertCircle, Sparkles, ChevronDown,
+} from 'lucide-react';
+import { Card, Btn, Spinner, Empty, Badge, toast, Modal } from '../components/UI.jsx';
+import {
+  loadPendingAuditsForBilling, loadBillingExports,
+  exportPendingExcessWeights, markExportBilled, voidExport, downloadExport,
+} from '../lib/weightBillingService.js';
+import { useAuth } from '../lib/auth.jsx';
+
+const fmtDate = (iso) => {
+  if (!iso) return '—';
+  try {
+    return new Date(iso).toLocaleString('ar-SA', {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit',
+    });
+  } catch { return iso; }
+};
+
+const STATUS_META = {
+  exported: { color: 'var(--gold)',   label: '⏳ بانتظار الفوترة', bg: 'rgba(251,191,36,.10)' },
+  billed:   { color: 'var(--green)',  label: '✓ مفوتر',           bg: 'rgba(45,212,191,.10)' },
+  voided:   { color: 'var(--muted)',  label: '✗ ملغي',            bg: 'rgba(122,130,196,.10)' },
+};
+
+export default function WeightBilling({ carriers, isActive = true }) {
+  const { profile } = useAuth();
+  const [pending,  setPending]  = useState([]);
+  const [exports,  setExports]  = useState([]);
+  const [loading,  setLoading]  = useState(true);
+  const [pulling,  setPulling]  = useState(false);
+  const [voiding,  setVoiding]  = useState(null); // export row being voided
+  const [voidReason, setVoidReason] = useState('');
+  const [expanded, setExpanded] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [p, e] = await Promise.all([
+        loadPendingAuditsForBilling(),
+        loadBillingExports({ limit: 50 }),
+      ]);
+      setPending(p);
+      setExports(e);
+    } catch (err) {
+      toast(`فشل التحميل: ${err.message}`, 'error');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
+
+  const handlePull = async () => {
+    if (pulling) return;
+    setPulling(true);
+    try {
+      const result = await exportPendingExcessWeights({
+        carriers,
+        userId: profile?.id,
+        trigger: 'manual',
+      });
+      if (result.ok) {
+        toast(`تم سحب ${result.count} شحنة من ${result.auditCount} مراجعة ✓`, 'success');
+        refresh();
+      } else if (result.reason === 'empty') {
+        toast('لا توجد مراجعات جديدة بانتظار السحب', 'info');
+      } else if (result.reason === 'no_excess') {
+        toast('المراجعات المُعلّقة لا تحتوي على أوزان زائدة', 'info');
+      }
+    } catch (err) {
+      toast(`فشل السحب: ${err.message}`, 'error');
+    }
+    setPulling(false);
+  };
+
+  const handleMarkBilled = async (exportRow) => {
+    try {
+      await markExportBilled(exportRow.id, profile?.id);
+      toast('تم تعليم التصدير كـ "مفوتر"', 'success');
+      refresh();
+    } catch (err) {
+      toast(`فشلت العملية: ${err.message}`, 'error');
+    }
+  };
+
+  const handleVoidConfirm = async () => {
+    if (!voiding) return;
+    try {
+      await voidExport(voiding.id, voidReason.trim() || null);
+      toast('تم إلغاء التصدير وإرجاع المراجعات لقائمة الانتظار', 'success');
+      setVoiding(null);
+      setVoidReason('');
+      refresh();
+    } catch (err) {
+      toast(`فشل الإلغاء: ${err.message}`, 'error');
+    }
+  };
+
+  const handleDownload = async (exportRow) => {
+    try {
+      await downloadExport(exportRow);
+      toast('جاري تنزيل الملف...', 'info');
+    } catch (err) {
+      toast(err.message, 'error');
+    }
+  };
+
+  // Aggregate stats from pending audits
+  const pendingStats = {
+    audits: pending.length,
+    rows:   pending.reduce((s, a) => s + (a.row_count || 0), 0),
+    carriers: new Set(pending.map(a => a.carrier_id)).size,
+  };
+
+  return (
+    <div style={{ padding: '24px 28px', maxWidth: 1280 }}>
+      {/* ── HERO ──────────────────────────────────────────────────────── */}
+      <div style={{
+        position: 'relative',
+        padding: '28px 32px',
+        marginBottom: 22,
+        borderRadius: 'var(--r-lg)',
+        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
+        color: '#fff',
+        overflow: 'hidden',
+        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
+      }}>
+        {/* Decorative hex */}
+        <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
+          </svg>
+        </div>
+
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20 }}>
+          <div style={{ minWidth: 280 }}>
+            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
+              LAMHA · WEIGHT BILLING
+            </div>
+            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
+              فوترة الأوزان الزائدة
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
+              اسحب أوزان كل المراجعات الجديدة بضغطة واحدة. الملف يجي بعمودين (رقم الشحنة + الوزن) جاهز لنظامك المالي.
+            </p>
+          </div>
+
+          {/* Pending counter */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 11, opacity: .7, marginBottom: 4, letterSpacing: 1 }}>مراجعات جديدة</div>
+              <div style={{ fontSize: 44, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fff', lineHeight: 1 }}>
+                {loading ? '…' : pendingStats.audits}
+              </div>
+              <div style={{ fontSize: 10, opacity: .55, marginTop: 6 }}>
+                {pendingStats.rows.toLocaleString('ar-SA')} شحنة · {pendingStats.carriers} شركة
+              </div>
+            </div>
+
+            <button
+              onClick={handlePull}
+              disabled={pulling || pendingStats.audits === 0}
+              style={{
+                background: pendingStats.audits === 0 ? 'rgba(255,255,255,.10)' : 'rgba(255,255,255,.18)',
+                border: '1.5px solid rgba(255,255,255,.32)',
+                color: '#fff',
+                padding: '14px 28px',
+                borderRadius: 12,
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: pendingStats.audits === 0 ? 'not-allowed' : (pulling ? 'wait' : 'pointer'),
+                opacity: pendingStats.audits === 0 ? .5 : 1,
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 10,
+                fontFamily: 'var(--font-sans)',
+                backdropFilter: 'blur(8px)',
+                transition: 'all .18s',
+                boxShadow: '0 4px 20px rgba(0,0,0,.18)',
+              }}
+            >
+              {pulling
+                ? <><Spinner size={18}/> جاري السحب...</>
+                : <><Sparkles size={18}/> سحب الأوزان الآن</>
+              }
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── PENDING LIST (collapsible) ───────────────────────────────── */}
+      {pendingStats.audits > 0 && (
+        <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 22 }}>
+          <button
+            onClick={() => setExpanded(e => e === 'pending' ? null : 'pending')}
+            style={{
+              width: '100%', padding: '14px 20px', background: 'transparent',
+              border: 'none', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+              borderBottom: expanded === 'pending' ? '1px solid var(--border)' : 'none',
+            }}
+          >
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gold)' }}>
+              <Clock size={15}/> المراجعات المُعلّقة ({pendingStats.audits})
+            </span>
+            <ChevronDown size={14} style={{ transition: 'transform .2s', transform: expanded === 'pending' ? 'rotate(0)' : 'rotate(-90deg)', opacity: .65 }}/>
+          </button>
+          {expanded === 'pending' && (
+            <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              {pending.map(a => (
+                <div key={a.id} style={{
+                  padding: '10px 20px', borderBottom: '1px solid var(--border)',
+                  display: 'grid', gridTemplateColumns: '1.4fr 1fr auto auto', gap: 12, alignItems: 'center',
+                  fontSize: 12,
+                }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {a.carrier_name} <span style={{ color: 'var(--muted)' }}>· {a.period}</span>
+                    </div>
+                    <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {a.file_name}
+                    </div>
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                    {a.row_count?.toLocaleString('ar-SA')} شحنة
+                  </div>
+                  <div style={{ color: 'var(--muted)', fontSize: 11 }}>
+                    {fmtDate(a.created_at)}
+                  </div>
+                  <Badge status="no_contract" label="بانتظار السحب"/>
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {/* ── EXPORTS HISTORY ──────────────────────────────────────────── */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{
+          padding: '14px 20px', borderBottom: '1px solid var(--border)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+        }}>
+          <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)' }}>
+            <FileSpreadsheet size={15}/> سجل التصديرات ({exports.length})
+          </span>
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
+            تحديث
+          </Btn>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 48 }}><Spinner size={24}/></div>
+        ) : exports.length === 0 ? (
+          <Empty
+            icon="📦"
+            title="ما فيه تصديرات سابقة"
+            sub="اضغط زر السحب أعلاه لتوليد أول ملف فوترة"
+          />
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table>
+              <thead>
+                <tr>
+                  <th style={{ minWidth: 130 }}>التاريخ</th>
+                  <th style={{ minWidth: 240 }}>اسم الملف</th>
+                  <th style={{ minWidth: 80 }}>الشحنات</th>
+                  <th style={{ minWidth: 80 }}>المراجعات</th>
+                  <th style={{ minWidth: 100 }}>الحالة</th>
+                  <th style={{ minWidth: 80 }}>المصدر</th>
+                  <th style={{ minWidth: 200 }}>إجراءات</th>
+                </tr>
+              </thead>
+              <tbody>
+                {exports.map(e => {
+                  const meta = STATUS_META[e.status] || STATUS_META.exported;
+                  return (
+                    <tr key={e.id}>
+                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
+                        {fmtDate(e.exported_at)}
+                      </td>
+                      <td style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
+                        {e.file_name}
+                      </td>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 700 }}>{e.row_count}</td>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{e.audit_ids?.length ?? 0}</td>
+                      <td>
+                        <span style={{
+                          padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                          background: meta.bg, color: meta.color, fontFamily: 'var(--font-mono)',
+                          border: `1px solid ${meta.color}40`,
+                        }}>
+                          {meta.label}
+                        </span>
+                      </td>
+                      <td style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                        {e.trigger === 'cron' ? '🤖 تلقائي' : '👤 يدوي'}
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {e.file_path && (
+                            <Btn size="sm" variant="ghost" icon={<Download size={12}/>} onClick={() => handleDownload(e)}>
+                              تنزيل
+                            </Btn>
+                          )}
+                          {e.status === 'exported' && (
+                            <>
+                              <Btn size="sm" variant="accent" icon={<CheckCircle2 size={12}/>} onClick={() => handleMarkBilled(e)}>
+                                مفوتر
+                              </Btn>
+                              <Btn size="sm" variant="ghost" icon={<XCircle size={12}/>} onClick={() => { setVoiding(e); setVoidReason(''); }}>
+                                إلغاء
+                              </Btn>
+                            </>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+
+      {/* ── Void confirm modal ──────────────────────────────────────── */}
+      {voiding && (
+        <Modal title="إلغاء التصدير" onClose={() => setVoiding(null)}>
+          <div style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', gap: 10, padding: '12px 14px', background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.25)', borderRadius: 10, marginBottom: 14 }}>
+              <AlertCircle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
+              <div style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+                سيتم إرجاع <strong>{voiding.audit_ids?.length ?? 0}</strong> مراجعة لقائمة الانتظار، وراح تطلع مرة ثانية في زر السحب. لا تستخدمها إلا لو الملف لم يُفوتر فعلياً.
+              </div>
+            </div>
+            <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+              السبب (اختياري)
+            </label>
+            <input
+              type="text"
+              value={voidReason}
+              onChange={e => setVoidReason(e.target.value)}
+              placeholder="مثال: تم سحبه بالخطأ"
+              style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
+            />
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => setVoiding(null)}>تراجع</Btn>
+            <Btn variant="danger" onClick={handleVoidConfirm}>تأكيد الإلغاء</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
