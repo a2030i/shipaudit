@@ -1,50 +1,65 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* ══════════════════════════════════════════════
-   DARK THEME (default)
+   LAMHA BRAND COLORS
+   Navy  #1B1E54  – wordmark / primary
+   Teal  #2DD4BF  – icon / accent
 ══════════════════════════════════════════════ */
 :root {
-  --bg:        #040912;
-  --bg2:       #06101e;
-  --surface:   #091526;
-  --surface2:  #0c1a30;
-  --card:      #0d1f36;
-  --card2:     #102440;
-  --sidebar:   #060f1c;
-  --sidebar2:  #081424;
+  /* ── Brand constants (shared across themes) ───────────────────────────── */
+  --brand-navy:      #1B1E54;
+  --brand-navy-2:    #262A6E;
+  --brand-navy-3:    #0F1235;
+  --brand-teal:      #2DD4BF;
+  --brand-teal-2:    #14B8A6;
+  --brand-teal-3:    #5EEAD4;
+  --brand-gradient:  linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(27,30,84,.85) 0%, rgba(45,212,191,.65) 140%);
+}
 
-  --border:    #142236;
-  --border2:   #1c3050;
-  --border3:   #254468;
+/* ── DARK THEME (default) ──────────────────────────────────────────────── */
+:root {
+  --bg:        #07091c;
+  --bg2:       #0b0e26;
+  --surface:   #11143a;
+  --surface2:  #161a47;
+  --card:      #141849;
+  --card2:     #1a1f5a;
+  --sidebar:   #0F1235;
+  --sidebar2:  #14174a;
 
-  --accent:    #38bdf8;
-  --accent2:   #0ea5e9;
-  --accent3:   #0072ff;
-  --accent-dim: rgba(56,189,248,.12);
-  --accent-glow: rgba(56,189,248,.18);
+  --border:    #232867;
+  --border2:   #2e3580;
+  --border3:   #3d4699;
 
-  --green:     #34d399;
-  --green2:    #059669;
+  --accent:    #2DD4BF;
+  --accent2:   #14B8A6;
+  --accent3:   #5EEAD4;
+  --accent-dim:  rgba(45,212,191,.12);
+  --accent-glow: rgba(45,212,191,.22);
+
+  --green:     #2DD4BF;
+  --green2:    #14B8A6;
   --red:       #f87171;
   --red2:      #be123c;
   --gold:      #fbbf24;
   --gold2:     #d97706;
-  --purple:    #c084fc;
+  --purple:    #a78bfa;
   --purple2:   #7c3aed;
   --warn:      #fb923c;
 
-  --text:      #e2eefa;
-  --text2:     #bdd0e8;
-  --muted:     #5a7ea8;
-  --muted2:    #344f6e;
-  --muted3:    #243a56;
+  --text:      #eaeaff;
+  --text2:     #c3c6ee;
+  --muted:     #7a82c4;
+  --muted2:    #4a5290;
+  --muted3:    #2b3275;
 
-  --nav-text:       #8ab0d0;
-  --nav-text-hover: #c8dff0;
-  --nav-active-bg:  rgba(56,189,248,.12);
-  --nav-active-border: rgba(56,189,248,.35);
-  --nav-hover-bg:   rgba(255,255,255,.04);
-  --nav-label-color: #3a5878;
+  --nav-text:       #a4abdc;
+  --nav-text-hover: #e0e3ff;
+  --nav-active-bg:  rgba(45,212,191,.14);
+  --nav-active-border: rgba(45,212,191,.42);
+  --nav-hover-bg:   rgba(255,255,255,.05);
+  --nav-label-color: #5a62a3;
 
   --font-mono: 'IBM Plex Mono', 'Courier New', monospace;
   --font-sans: 'IBM Plex Sans Arabic', 'Segoe UI', sans-serif;
@@ -66,51 +81,51 @@
    LIGHT THEME
 ══════════════════════════════════════════════ */
 [data-theme="light"] {
-  --bg:        #f0f4f9;
-  --bg2:       #e8eef6;
+  --bg:        #f4f6fb;
+  --bg2:       #eef1f8;
   --surface:   #ffffff;
-  --surface2:  #f5f8fc;
+  --surface2:  #f8fafd;
   --card:      #ffffff;
-  --card2:     #f2f6fb;
-  --sidebar:   #1b2d47;
-  --sidebar2:  #162540;
+  --card2:     #f5f7fc;
+  --sidebar:   #0F1235;
+  --sidebar2:  #1B1E54;
 
-  --border:    #dce4ef;
-  --border2:   #c5d2e3;
-  --border3:   #aabdd4;
+  --border:    #e3e7f1;
+  --border2:   #ccd2e3;
+  --border3:   #a8b0cf;
 
-  --accent:    #0ea5e9;
-  --accent2:   #0284c7;
-  --accent3:   #0060df;
-  --accent-dim: rgba(14,165,233,.12);
-  --accent-glow: rgba(14,165,233,.2);
+  --accent:    #14B8A6;
+  --accent2:   #0D9488;
+  --accent3:   #0F766E;
+  --accent-dim:  rgba(20,184,166,.10);
+  --accent-glow: rgba(20,184,166,.18);
 
-  --green:     #10b981;
-  --green2:    #059669;
+  --green:     #14B8A6;
+  --green2:    #0D9488;
   --red:       #ef4444;
   --red2:      #b91c1c;
   --gold:      #f59e0b;
   --gold2:     #d97706;
-  --purple:    #a855f7;
-  --purple2:   #7c3aed;
+  --purple:    #7c3aed;
+  --purple2:   #6d28d9;
   --warn:      #f97316;
 
-  --text:      #0d1b2e;
-  --text2:     #1e3452;
-  --muted:     #6b85a0;
-  --muted2:    #8da5bd;
-  --muted3:    #b8cad9;
+  --text:      #1B1E54;
+  --text2:     #353a72;
+  --muted:     #6c739f;
+  --muted2:    #969cc4;
+  --muted3:    #c4c8e0;
 
-  --nav-text:       #a8c0d8;
-  --nav-text-hover: #dceaf5;
-  --nav-active-bg:  rgba(56,189,248,.18);
-  --nav-active-border: rgba(56,189,248,.5);
-  --nav-hover-bg:   rgba(255,255,255,.08);
-  --nav-label-color: #4a6a88;
+  --nav-text:       #b4baea;
+  --nav-text-hover: #ffffff;
+  --nav-active-bg:  rgba(45,212,191,.18);
+  --nav-active-border: rgba(45,212,191,.55);
+  --nav-hover-bg:   rgba(255,255,255,.07);
+  --nav-label-color: #6970b3;
 
-  --shadow-sm: 0 2px 8px rgba(0,0,0,.08);
-  --shadow-md: 0 6px 24px rgba(0,0,0,.12);
-  --shadow-lg: 0 16px 48px rgba(0,0,0,.18);
+  --shadow-sm: 0 2px 8px rgba(27,30,84,.06);
+  --shadow-md: 0 8px 28px rgba(27,30,84,.10);
+  --shadow-lg: 0 20px 60px rgba(27,30,84,.16);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -165,7 +180,7 @@ button:active { transform: scale(.97); }
 @keyframes scaleIn    { from { opacity:0; transform:scale(.94)       } to { opacity:1; transform:scale(1) } }
 @keyframes spin       { to { transform: rotate(360deg) } }
 @keyframes pulse      { 0%,100% { opacity:1 } 50% { opacity:.4 } }
-@keyframes glow       { 0%,100% { box-shadow: 0 0 14px var(--accent-glow) } 50% { box-shadow: 0 0 28px var(--accent-glow), 0 0 60px rgba(56,189,248,.08) } }
+@keyframes glow       { 0%,100% { box-shadow: 0 0 14px var(--accent-glow) } 50% { box-shadow: 0 0 28px var(--accent-glow), 0 0 60px rgba(45,212,191,.10) } }
 @keyframes slideInRight  { from { transform:translateX(110%) } to { transform:translateX(0) } }
 @keyframes progressPulse { 0%,100% { opacity:.35 } 50% { opacity:1 } }
 
@@ -315,7 +330,7 @@ button:active { transform: scale(.97); }
   border-color: var(--border);
 }
 [data-theme="light"] .topbar::after {
-  background: linear-gradient(90deg, transparent, rgba(14,165,233,.15), transparent);
+  background: linear-gradient(90deg, transparent, rgba(45,212,191,.18), transparent);
 }
 
 /* ── Main ── */
@@ -334,7 +349,7 @@ button:active { transform: scale(.97); }
 .topbar::after {
   content: ''; position: absolute; bottom: -1px; right: 0;
   width: 100%; height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(14,165,233,.25), transparent);
+  background: linear-gradient(90deg, transparent, rgba(45,212,191,.30), transparent);
 }
 
 .page-content {

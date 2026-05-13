@@ -697,7 +697,7 @@ export default function CarrierLedger({ isActive = true }) {
       {selectedOps.length > 0 && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 5, marginBottom: 10,
-          background: 'linear-gradient(135deg, rgba(56,189,248,.14), rgba(56,189,248,.05))',
+          background: 'linear-gradient(135deg, rgba(45,212,191,.14), rgba(45,212,191,.05))',
           border: '1px solid var(--accent)', borderRadius: 11,
           padding: '10px 14px',
           display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
@@ -768,7 +768,7 @@ export default function CarrierLedger({ isActive = true }) {
                     const selectable = o.status !== 'paid';
                     const checked = selectedIds.has(o.id);
                     return (
-                      <tr key={o.id} style={checked ? { background: 'rgba(56,189,248,.06)' } : undefined}>
+                      <tr key={o.id} style={checked ? { background: 'rgba(45,212,191,.06)' } : undefined}>
                         <td style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
@@ -1452,7 +1452,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         disabled={uploading}
         style={{
           width: '100%', padding: '14px 16px', marginBottom: 12,
-          background: 'rgba(56,189,248,.06)',
+          background: 'rgba(45,212,191,.06)',
           border: '1.5px dashed var(--accent)',
           borderRadius: 10, cursor: uploading ? 'wait' : 'pointer',
           color: 'var(--accent)', fontWeight: 600, fontSize: 13,
@@ -1513,7 +1513,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                       padding: '10px 14px', borderRadius: 9,
                       cursor: (eligible || overridable) ? 'pointer' : 'not-allowed',
                       background: eligible
-                        ? (matchHint ? 'rgba(56,189,248,.06)' : 'var(--surface)')
+                        ? (matchHint ? 'rgba(45,212,191,.06)' : 'var(--surface)')
                         : overridable
                           ? 'rgba(251,191,36,.06)'
                           : 'rgba(248,113,113,.04)',

@@ -218,7 +218,7 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete }) {
           gridTemplateColumns: 'auto 1fr 1fr 1fr auto auto',
           gap: 16, alignItems: 'center', padding: '14px 18px',
           width: '100%', textAlign: 'right', cursor: 'pointer',
-          background: isExpanded ? 'rgba(56,189,248,.04)' : 'transparent',
+          background: isExpanded ? 'rgba(45,212,191,.04)' : 'transparent',
           border: 'none', color: 'inherit', fontFamily: 'inherit',
         }}>
         {isExpanded ? <ChevronDown size={16} color="var(--accent)"/> : <ChevronLeft size={16} color="var(--muted)"/>}

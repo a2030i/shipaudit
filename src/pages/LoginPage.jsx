@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Spinner } from '../components/UI.jsx';
+import { LamhaMark } from '../components/BrandLogo.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
 export default function LoginPage() {
@@ -33,9 +34,9 @@ export default function LoginPage() {
       background: 'var(--bg)',
       display: 'flex', overflow: 'hidden',
       backgroundImage: `
-        radial-gradient(ellipse 80% 60% at 15% 50%, rgba(56,189,248,.07) 0%, transparent 60%),
-        radial-gradient(ellipse 60% 50% at 85% 20%, rgba(167,139,250,.05) 0%, transparent 55%),
-        radial-gradient(ellipse 40% 40% at 50% 90%, rgba(14,165,233,.04) 0%, transparent 50%)
+        radial-gradient(ellipse 80% 60% at 15% 50%, rgba(45,212,191,.10) 0%, transparent 60%),
+        radial-gradient(ellipse 60% 50% at 85% 20%, rgba(27,30,84,.30) 0%, transparent 55%),
+        radial-gradient(ellipse 40% 40% at 50% 90%, rgba(45,212,191,.06) 0%, transparent 50%)
       `,
     }}>
 
@@ -59,46 +60,46 @@ export default function LoginPage() {
         <div style={{
           position: 'absolute', top: '25%', right: '20%',
           width: 300, height: 300, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(56,189,248,.12) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, rgba(45,212,191,.18) 0%, transparent 70%)',
           filter: 'blur(40px)',
           pointerEvents: 'none',
         }}/>
 
         <div style={{ position: 'relative', zIndex: 1, maxWidth: 420, width: '100%' }}>
-          {/* Logo */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 48 }}>
-            <div style={{
-              width: 52, height: 52, borderRadius: 14,
-              background: 'linear-gradient(135deg, var(--accent3), var(--accent))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 24, boxShadow: '0 8px 32px rgba(56,189,248,.35)',
-              flexShrink: 0,
-            }}>📦</div>
+          {/* Logo — Lamha brand */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 44 }}>
+            <LamhaMark size={62}/>
             <div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 26, lineHeight: 1 }}>
-                Ship<span style={{ color: 'var(--accent)' }}>Audit</span>
+              <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 36, lineHeight: 1, color: 'var(--text)' }}>
+                لمحة
               </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4, letterSpacing: 1 }}>
-                FINANCIAL MANAGEMENT SYSTEM
+              <div style={{
+                fontSize: 11, color: 'var(--accent)', marginTop: 6,
+                letterSpacing: 4, fontFamily: 'var(--font-mono)',
+                fontWeight: 600, textTransform: 'uppercase',
+              }}>
+                LAMHA · Finance
               </div>
             </div>
           </div>
 
           {/* Features */}
           {[
-            { icon: '📊', title: 'تدقيق فواتير الشحن', sub: 'مراجعة تلقائية لفواتير شركات الشحن وكشف الفروق' },
-            { icon: '📨', title: 'إدارة البريد المالي',  sub: 'تصنيف ومتابعة المراسلات المالية الواردة بالذكاء الاصطناعي' },
-            { icon: '✨', title: 'تحليل ذكي',            sub: 'استخراج البيانات وتوليد التقارير تلقائياً' },
+            { icon: '📊', title: 'تدقيق فواتير الشحن',   sub: 'مراجعة تلقائية لفواتير الناقلين وكشف الفروق بدقة' },
+            { icon: '💸', title: 'إدارة المدفوعات + COD', sub: 'تتبع كل دفعة، تسوية COD، وأعمار ديون مباشرة' },
+            { icon: '📨', title: 'استلام تلقائي بالويب هوك', sub: 'الفواتير تصل لإيميل النظام وتُسجَّل تلقائياً للشركة الصحيحة' },
           ].map(f => (
             <div key={f.title} style={{
-              display: 'flex', gap: 14, marginBottom: 24,
-              padding: '14px 16px', borderRadius: 12,
-              background: 'rgba(13,31,54,.6)', border: '1px solid var(--border)',
+              display: 'flex', gap: 14, marginBottom: 18,
+              padding: '14px 18px', borderRadius: 12,
+              background: 'color-mix(in srgb, var(--card) 60%, transparent)',
+              border: '1px solid var(--border2)',
+              transition: 'all .2s',
             }}>
-              <span style={{ fontSize: 22, flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
+              <span style={{ fontSize: 24, flexShrink: 0, marginTop: 1 }}>{f.icon}</span>
               <div>
-                <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3 }}>{f.title}</div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>{f.sub}</div>
+                <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 4, color: 'var(--text)' }}>{f.title}</div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.65 }}>{f.sub}</div>
               </div>
             </div>
           ))}
@@ -118,14 +119,14 @@ export default function LoginPage() {
 
         {/* Mobile logo (hidden on desktop) */}
         <div className="login-mobile-logo" style={{ textAlign: 'center', marginBottom: 32 }}>
-          <div style={{
-            width: 52, height: 52, borderRadius: 14, margin: '0 auto 12px',
-            background: 'linear-gradient(135deg, var(--accent3), var(--accent))',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 24, boxShadow: '0 8px 32px rgba(56,189,248,.35)',
-          }}>📦</div>
-          <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 22 }}>
-            Ship<span style={{ color: 'var(--accent)' }}>Audit</span>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 10 }}>
+            <LamhaMark size={56}/>
+          </div>
+          <div style={{ fontFamily: 'var(--font-sans)', fontWeight: 800, fontSize: 28, color: 'var(--text)' }}>
+            لمحة
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--accent)', letterSpacing: 3, marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+            LAMHA · FINANCE
           </div>
         </div>
 
@@ -152,7 +153,7 @@ export default function LoginPage() {
                   outline: 'none', boxSizing: 'border-box', direction: 'ltr',
                   transition: 'border-color .2s, box-shadow .2s',
                 }}
-                onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(56,189,248,.12)'; }}
+                onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(45,212,191,.12)'; }}
                 onBlur={e  => { e.target.style.borderColor = 'var(--border2)'; e.target.style.boxShadow = 'none'; }}
               />
             </div>
@@ -174,7 +175,7 @@ export default function LoginPage() {
                     outline: 'none', boxSizing: 'border-box', direction: 'ltr',
                     transition: 'border-color .2s, box-shadow .2s',
                   }}
-                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(56,189,248,.12)'; }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(45,212,191,.12)'; }}
                   onBlur={e  => { e.target.style.borderColor = 'var(--border2)'; e.target.style.boxShadow = 'none'; }}
                 />
                 <button type="button" onClick={() => setShowPw(v => !v)} style={{
@@ -203,13 +204,13 @@ export default function LoginPage() {
               width: '100%', padding: '13px 0', borderRadius: 11,
               background: loading
                 ? 'var(--surface)'
-                : 'linear-gradient(135deg, var(--accent3), var(--accent))',
+                : 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
               border: 'none',
               color: loading ? 'var(--muted)' : '#fff',
               fontWeight: 700, fontSize: 14,
               cursor: loading ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: loading ? 'none' : '0 4px 20px rgba(56,189,248,.35)',
+              boxShadow: loading ? 'none' : '0 8px 24px rgba(27,30,84,.32), 0 2px 8px rgba(45,212,191,.22)',
               transition: 'opacity .2s, box-shadow .2s',
               fontFamily: 'var(--font-sans)',
             }}>
@@ -219,7 +220,7 @@ export default function LoginPage() {
         </div>
 
         <div style={{ position: 'absolute', bottom: 20, fontSize: 11, color: 'var(--muted2)' }}>
-          ShipAudit Pro · {new Date().getFullYear()}
+          لمحة · {new Date().getFullYear()}
         </div>
       </div>
     </div>

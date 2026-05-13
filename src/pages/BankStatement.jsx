@@ -153,7 +153,7 @@ export default function BankStatement() {
           style={{
             border: `2px dashed ${drag ? 'var(--accent)' : 'var(--border2)'}`,
             borderRadius: 14, padding: '64px 24px', textAlign: 'center',
-            background: drag ? 'rgba(56,189,248,.05)' : 'var(--surface)',
+            background: drag ? 'rgba(45,212,191,.05)' : 'var(--surface)',
             cursor: 'pointer', transition: 'all .2s',
             transform: drag ? 'scale(1.01)' : 'scale(1)',
           }}

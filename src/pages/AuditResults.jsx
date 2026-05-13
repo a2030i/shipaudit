@@ -163,8 +163,8 @@ function ColMapBadges({ colMap }) {
               <div key={field} style={{
                 display:'flex', alignItems:'center', gap:5,
                 padding:'4px 10px', borderRadius:7,
-                background: mapped ? 'rgba(56,189,248,.07)' : isReq ? 'rgba(248,113,113,.07)' : 'transparent',
-                border:`1px solid ${mapped?'rgba(56,189,248,.2)':isReq?'rgba(248,113,113,.25)':'var(--border)'}`,
+                background: mapped ? 'rgba(45,212,191,.07)' : isReq ? 'rgba(248,113,113,.07)' : 'transparent',
+                border:`1px solid ${mapped?'rgba(45,212,191,.2)':isReq?'rgba(248,113,113,.25)':'var(--border)'}`,
               }}>
                 <span style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{label}</span>
                 <span style={{fontSize:9,color:'var(--muted3)'}}>→</span>

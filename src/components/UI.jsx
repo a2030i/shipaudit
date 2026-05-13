@@ -2,24 +2,45 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
+// Variants are Lamha-branded:
+//   primary  → navy→teal gradient (the brand mark in motion)
+//   accent   → solid teal (CTAs, "save", "confirm")
+//   navy     → solid navy (secondary brand action)
+//   danger   → red (destructive)
+//   success  → teal (positive confirmations — same family as accent)
+//   gold     → amber (warnings / drafts)
+//   ghost    → transparent with border
+//   outline  → teal border, transparent fill (less weight than primary)
 const VARIANTS = {
   primary: {
-    background: 'linear-gradient(135deg, var(--accent3), var(--accent2))',
+    background: 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
     color: '#fff',
     border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(14,165,233,.28)',
+    boxShadow: '0 6px 20px rgba(27,30,84,.32), 0 2px 6px rgba(45,212,191,.18)',
+  },
+  accent: {
+    background: 'linear-gradient(135deg, #2DD4BF, #14B8A6)',
+    color: '#0F1235',
+    border: '1px solid transparent',
+    boxShadow: '0 4px 16px rgba(45,212,191,.32)',
+  },
+  navy: {
+    background: 'linear-gradient(135deg, #1B1E54, #262A6E)',
+    color: '#fff',
+    border: '1px solid transparent',
+    boxShadow: '0 4px 16px rgba(27,30,84,.28)',
   },
   danger: {
     background: 'linear-gradient(135deg, #be123c, var(--red))',
     color: '#fff',
     border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(248,113,113,.2)',
+    boxShadow: '0 4px 16px rgba(248,113,113,.22)',
   },
   success: {
-    background: 'linear-gradient(135deg, var(--green2), var(--green))',
+    background: 'linear-gradient(135deg, #14B8A6, #2DD4BF)',
     color: '#fff',
     border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(52,211,153,.22)',
+    boxShadow: '0 4px 16px rgba(45,212,191,.28)',
   },
   gold: {
     background: 'linear-gradient(135deg, var(--gold2), var(--gold))',
@@ -36,7 +57,7 @@ const VARIANTS = {
   outline: {
     background: 'transparent',
     color: 'var(--accent)',
-    border: '1px solid rgba(56,189,248,.35)',
+    border: '1px solid rgba(45,212,191,.45)',
     boxShadow: 'none',
   },
 };
@@ -151,11 +172,11 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
 
 // ─── Badge ─────────────────────────────────────────────────────────────────────
 const BADGE_CFG = {
-  ok:          { bg: 'rgba(52,211,153,.1)',  color: 'var(--green)',  bd: 'rgba(52,211,153,.25)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },
-  mismatch:    { bg: 'rgba(248,113,113,.1)', color: 'var(--red)',    bd: 'rgba(248,113,113,.25)', lbl: '✗ فرق',       Icon: XCircle },
-  favorable:   { bg: 'rgba(56,189,248,.1)',  color: 'var(--accent)', bd: 'rgba(56,189,248,.25)',  lbl: '↓ لصالحك',    Icon: CheckCircle2 },
-  unknown:     { bg: 'rgba(74,106,144,.1)',  color: 'var(--muted)',  bd: 'rgba(74,106,144,.25)',  lbl: '؟ غير معروف', Icon: HelpCircle },
-  no_contract: { bg: 'rgba(251,146,60,.1)',  color: 'var(--warn)',   bd: 'rgba(251,146,60,.25)',  lbl: '⚠ لا عقد',   Icon: AlertTriangle },
+  ok:          { bg: 'rgba(45,212,191,.10)', color: 'var(--green)',  bd: 'rgba(45,212,191,.30)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },
+  mismatch:    { bg: 'rgba(248,113,113,.10)', color: 'var(--red)',    bd: 'rgba(248,113,113,.28)', lbl: '✗ فرق',       Icon: XCircle },
+  favorable:   { bg: 'rgba(45,212,191,.12)', color: 'var(--accent)', bd: 'rgba(45,212,191,.32)',  lbl: '↓ لصالحك',    Icon: CheckCircle2 },
+  unknown:     { bg: 'rgba(122,130,196,.10)', color: 'var(--muted)',  bd: 'rgba(122,130,196,.28)', lbl: '؟ غير معروف', Icon: HelpCircle },
+  no_contract: { bg: 'rgba(251,146,60,.10)', color: 'var(--warn)',   bd: 'rgba(251,146,60,.28)',  lbl: '⚠ لا عقد',   Icon: AlertTriangle },
 };
 
 export function Badge({ status, label }) {
@@ -243,7 +264,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
           padding: 28, width,
           maxWidth: '95vw', maxHeight: '90vh',
           overflowY: 'auto',
-          boxShadow: '0 24px 80px rgba(0,0,0,.8), 0 0 0 1px rgba(56,189,248,.06)',
+          boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(45,212,191,.12)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
