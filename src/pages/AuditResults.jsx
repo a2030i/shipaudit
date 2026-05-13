@@ -198,7 +198,65 @@ function diffText(v) {
   return (v > 0 ? '+' : '') + num(v);
 }
 
-function ResultsTable({ results, filter, showDetail }) {
+// ─── Contract helpers ──────────────────────────────────────────────────────────
+// Carriers don't all bill the same components. Aramex breaks out delivery
+// + RSS + fuel; J&T and iMile bundle everything into a single flat
+// charge. Showing empty RSS/fuel columns for those carriers is noise.
+// We probe `results` for what actually has data and only render those
+// column groups.
+function detectColumnVisibility(results) {
+  let rss = false, fuel = false, cod = false;
+  for (const r of results) {
+    const iR = r.invoiced?.rss  ?? r.rss            ?? 0;
+    const eR = r.expected?.rss  ?? 0;
+    const iF = r.invoiced?.fuel ?? r.fuelSurcharge  ?? 0;
+    const eF = r.expected?.fuel ?? 0;
+    if (Math.abs(iR) > 0.001 || Math.abs(eR) > 0.001) rss = true;
+    if (Math.abs(iF) > 0.001 || Math.abs(eF) > 0.001) fuel = true;
+    if (r.isCod || (r.codAmount && r.codAmount > 0) || (r.codFee && r.codFee > 0)) cod = true;
+    if (rss && fuel && cod) break;
+  }
+  return { rss, fuel, cod };
+}
+
+// First-bracket allowance (kg) for a destination — the maximum weight the
+// carrier bills at the "base" rate. Anything over this is "excess weight"
+// the user can re-bill the merchant for through their external system.
+function firstBracketUpTo(contract, dest) {
+  const p = contract?.pricing?.[dest];
+  if (!p) return null;
+  if (Array.isArray(p)) {
+    const first = p[0];
+    return first?.upTo ?? null;
+  }
+  if (p?.mode === 'lookup' && Array.isArray(p.brackets)) {
+    const sorted = [...p.brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+    return sorted[0]?.upTo ?? null;
+  }
+  return null;
+}
+
+// Excess weight + the SAR portion of the carrier's expected delivery
+// charge attributable to it. For a 7kg shipment on a 10-kg-base contract:
+// excessKg = 0, excessCharge = 0. For 12kg on the same contract:
+// excessKg = 2, excessCharge = expectedDelivery − basePrice.
+function computeExcess(row, contract) {
+  const threshold = firstBracketUpTo(contract, row.dest);
+  if (threshold == null || !(row.weight > 0)) return { kg: 0, charge: 0 };
+  if (row.weight <= threshold) return { kg: 0, charge: 0 };
+  const p = contract?.pricing?.[row.dest];
+  let baseCharge = 0;
+  if (Array.isArray(p) && p[0]?.price != null) baseCharge = p[0].price;
+  else if (p?.mode === 'lookup' && Array.isArray(p.brackets)) {
+    const sorted = [...p.brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+    baseCharge = sorted[0]?.price ?? 0;
+  }
+  const kg = +(row.weight - threshold).toFixed(2);
+  const charge = +(Math.max(0, (row.expected?.delivery ?? 0) - baseCharge)).toFixed(2);
+  return { kg, charge };
+}
+
+function ResultsTable({ results, filter, showDetail, contract }) {
   const displayed = filter === 'all' ? results : results.filter(r => r.status === filter);
   if (!displayed.length) return <Empty icon="🔍" title="لا توجد نتائج" sub="جرب فلتراً مختلفاً"/>;
 
@@ -210,29 +268,74 @@ function ResultsTable({ results, filter, showDetail }) {
     const iD = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
     const iR = r.invoiced?.rss      ?? r.rss             ?? 0;
     const iF = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
+    const iC = r.codFee             ?? 0;
     const iT = r.invoiced?.total ?? (iD + iR + iF);
     return {
       iD: a.iD + iD,  eD: a.eD + (r.expected?.delivery || 0),  dD: a.dD + (r.diffs?.delivery || 0),
       iR: a.iR + iR,  eR: a.eR + (r.expected?.rss      || 0),  dR: a.dR + (r.diffs?.rss      || 0),
       iF: a.iF + iF,  eF: a.eF + (r.expected?.fuel     || 0),  dF: a.dF + (r.diffs?.fuel     || 0),
+      iC: a.iC + iC,
       iT: a.iT + iT,  eT: a.eT + (r.expected?.total    || 0),  dT: a.dT + (r.diffs?.total    || 0),
     };
-  }, { iD:0,eD:0,dD:0, iR:0,eR:0,dR:0, iF:0,eF:0,dF:0, iT:0,eT:0,dT:0 });
+  }, { iD:0,eD:0,dD:0, iR:0,eR:0,dR:0, iF:0,eF:0,dF:0, iC:0, iT:0,eT:0,dT:0 });
 
   const hasServiceType = results.some(r => r.serviceType);
-  const infoCols = hasServiceType ? 6 : 5;
+  const colVis = detectColumnVisibility(results);
+  // Excess columns show whenever the contract publishes per-destination
+  // brackets — that's the only way "excess" is defined. For lookup
+  // contracts with multiple brackets the threshold is the FIRST one.
+  const hasExcess = !!contract && results.some(r => firstBracketUpTo(contract, r.dest) != null);
+
+  // info-col count = #, AWB, date, dest, (serviceType?), weight, (excessKg?, excessCharge?)
+  let infoCols = 5 + (hasServiceType ? 1 : 0) + (hasExcess ? 2 : 0);
 
   // Per-group header styles
   const GH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid ${c}55`, padding:'5px 6px', fontSize:11, fontWeight:700 });
   const SH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid ${c}33`, fontSize:10, padding:'4px 8px', fontWeight:600, whiteSpace:'nowrap', minWidth:68 });
   const FC = (c, bg) => ({ fontFamily:'var(--font-mono)', fontSize:11, textAlign:'center', background:bg, color:c });
 
+  // Build the visible groups dynamically. Always show delivery + total;
+  // RSS/fuel/COD appear only when at least one row populates them.
+  const allGroups = {
+    delivery: { key: 'delivery', label: 'شحن',     color:'#3b9ccc', bg:'rgba(59,156,204,.08)', bgL:'rgba(59,156,204,.04)' },
+    rss:      { key: 'rss',      label: 'RSS',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
+    fuel:     { key: 'fuel',     label: 'وقود',    color:'#3aad78', bg:'rgba(58,173,120,.08)', bgL:'rgba(58,173,120,.03)' },
+    cod:      { key: 'cod',      label: 'COD',     color:'#2dd4bf', bg:'rgba(45,212,191,.10)', bgL:'rgba(45,212,191,.04)' },
+    total:    { key: 'total',    label: 'الإجمالي',color:'#f59e0b', bg:'rgba(245,158,11,.08)', bgL:'rgba(245,158,11,.04)' },
+  };
   const groups = [
-    { label:'شحن',    color:'#3b9ccc', bg:'rgba(59,156,204,.08)',  bgL:'rgba(59,156,204,.04)' },
-    { label:'RSS',    color:'#a855f7', bg:'rgba(168,85,247,.08)',  bgL:'rgba(168,85,247,.03)' },
-    { label:'وقود',   color:'#3aad78', bg:'rgba(58,173,120,.08)',  bgL:'rgba(58,173,120,.03)' },
-    { label:'الإجمالي',color:'#f59e0b',bg:'rgba(245,158,11,.08)',  bgL:'rgba(245,158,11,.04)' },
+    allGroups.delivery,
+    ...(colVis.rss  ? [allGroups.rss]  : []),
+    ...(colVis.fuel ? [allGroups.fuel] : []),
+    ...(colVis.cod  ? [allGroups.cod]  : []),
+    allGroups.total,
   ];
+
+  // Helper to pick the invoiced/expected/diff per group key for a row.
+  const cellsFor = (g, r, iD, iR, iF) => {
+    const iC = r.codFee || 0;
+    const eC = r.isCod ? (r.expected?.delivery || 0) : 0; // COD expected lands in delivery bucket
+    const dC = r.isCod ? (r.diffs?.delivery || 0) : 0;
+    if (g.key === 'delivery') return { inv: r.isCod ? 0 : iD, exp: r.isCod ? 0 : (r.expected?.delivery || 0), diff: r.isCod ? 0 : (r.diffs?.delivery ?? null) };
+    if (g.key === 'rss')      return { inv: iR, exp: r.expected?.rss  || 0, diff: r.diffs?.rss  ?? null };
+    if (g.key === 'fuel')     return { inv: iF, exp: r.expected?.fuel || 0, diff: r.diffs?.fuel ?? null };
+    if (g.key === 'cod')      return { inv: iC, exp: eC, diff: dC };
+    /* total */
+    const iT = r.invoiced?.total ?? (iD + iR + iF);
+    return { inv: iT, exp: r.expected?.total || 0, diff: r.diffs?.total ?? null };
+  };
+
+  const totalFor = (g) => {
+    if (g.key === 'delivery') return { inv: ft.iD, exp: ft.eD, diff: ft.dD };
+    if (g.key === 'rss')      return { inv: ft.iR, exp: ft.eR, diff: ft.dR };
+    if (g.key === 'fuel')     return { inv: ft.iF, exp: ft.eF, diff: ft.dF };
+    if (g.key === 'cod')      return { inv: ft.iC, exp: 0,     diff: 0 };
+    return { inv: ft.iT, exp: ft.eT, diff: ft.dT };
+  };
+
+  // Excess-column header styles (info-side, not a per-group diff trio)
+  const excessColor = '#fbbf24';
+  const excessBg    = 'rgba(251,191,36,.06)';
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -247,16 +350,20 @@ function ResultsTable({ results, filter, showDetail }) {
                 <th rowSpan={2} style={{ minWidth:110 }}>الدولة</th>
                 {hasServiceType && <th rowSpan={2} style={{ minWidth:80 }}>نوع الخدمة</th>}
                 <th rowSpan={2} style={{ minWidth:70  }}>الوزن</th>
+                {hasExcess && <>
+                  <th rowSpan={2} style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>وزن زائد</th>
+                  <th rowSpan={2} style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
+                </>}
                 {groups.map(g => (
-                  <th key={g.label} colSpan={3} style={GH(g.color, g.bg)}>{g.label}</th>
+                  <th key={g.key} colSpan={3} style={GH(g.color, g.bg)}>{g.label}</th>
                 ))}
                 <th rowSpan={2} style={{ minWidth:90 }}>الحالة</th>
               </tr>
               <tr>
                 {groups.map(g => (
-                  [<th key={`${g.label}-i`} style={SH(g.color, g.bg)}>مفوتر</th>,
-                   <th key={`${g.label}-e`} style={SH(g.color, g.bg)}>متوقع</th>,
-                   <th key={`${g.label}-d`} style={{ ...SH(g.color, g.bg), fontWeight:800 }}>فرق</th>]
+                  [<th key={`${g.key}-i`} style={SH(g.color, g.bg)}>مفوتر</th>,
+                   <th key={`${g.key}-e`} style={SH(g.color, g.bg)}>متوقع</th>,
+                   <th key={`${g.key}-d`} style={{ ...SH(g.color, g.bg), fontWeight:800 }}>فرق</th>]
                 ))}
               </tr>
             </>
@@ -268,8 +375,12 @@ function ResultsTable({ results, filter, showDetail }) {
               <th style={{ minWidth:110 }}>الدولة</th>
               {hasServiceType && <th style={{ minWidth:80 }}>نوع الخدمة</th>}
               <th style={{ minWidth:70  }}>الوزن</th>
+              {hasExcess && <>
+                <th style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>وزن زائد</th>
+                <th style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
+              </>}
               <th style={{ background:'rgba(139,92,246,.1)', color:'var(--purple)', borderBottom:'2px solid rgba(139,92,246,.3)', minWidth:90 }}>مفوتر</th>
-              <th style={{ background:'rgba(52,211,153,.08)', color:'var(--green)', borderBottom:'2px solid rgba(52,211,153,.3)', minWidth:90 }}>متوقع</th>
+              <th style={{ background:'rgba(45,212,191,.08)', color:'var(--green)', borderBottom:'2px solid rgba(45,212,191,.3)', minWidth:90 }}>متوقع</th>
               <th style={{ background:'rgba(248,113,113,.08)', color:'var(--red)', borderBottom:'2px solid rgba(248,113,113,.3)', minWidth:80, fontWeight:700 }}>الفرق</th>
               <th style={{ minWidth:90 }}>الحالة</th>
             </tr>
@@ -279,12 +390,10 @@ function ResultsTable({ results, filter, showDetail }) {
         <tbody>
           {displayed.map((r, i) => {
             const isMis    = r.status === 'mismatch';
-            // Show split-out invoiced values when available (e.g. RSS lifted out
-            // of a bundled fuel column) so the row totals tie out.
             const iD       = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
             const iR       = r.invoiced?.rss      ?? r.rss             ?? 0;
             const iF       = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
-            const iT       = r.invoiced?.total ?? (iD + iR + iF);
+            const excess   = hasExcess ? computeExcess(r, contract) : { kg: 0, charge: 0 };
             const rowBg    = isMis ? 'rgba(248,113,113,.03)' : 'transparent';
             return (
               <tr key={i} style={{ background: rowBg }}>
@@ -306,32 +415,34 @@ function ResultsTable({ results, filter, showDetail }) {
                 <td style={{ fontFamily:'var(--font-mono)', color:'var(--gold)', whiteSpace:'nowrap', fontSize:11 }}>
                   {num(r.weight)} كغ
                 </td>
+                {hasExcess && <>
+                  <td style={{ ...FC(excess.kg > 0 ? excessColor : 'var(--muted)', excessBg), fontWeight: excess.kg > 0 ? 700 : 400 }}>
+                    {excess.kg > 0 ? `+${num(excess.kg)}` : '—'}
+                  </td>
+                  <td style={{ ...FC(excess.charge > 0 ? excessColor : 'var(--muted)', excessBg), fontWeight: excess.charge > 0 ? 700 : 400 }}>
+                    {excess.charge > 0 ? num(excess.charge) : '—'}
+                  </td>
+                </>}
 
                 {showDetail ? (
-                  <>
-                    {/* Delivery */}
-                    <td style={FC('var(--text)',           groups[0].bgL)}>{num(iD)}</td>
-                    <td style={FC('var(--green)',          groups[0].bgL)}>{num(r.expected?.delivery)}</td>
-                    <td style={{ textAlign:'center', background:groups[0].bgL }}><DiffCell value={r.diffs?.delivery}/></td>
-                    {/* RSS */}
-                    <td style={FC('var(--text)',           groups[1].bgL)}>{num(iR)}</td>
-                    <td style={FC('var(--green)',          groups[1].bgL)}>{num(r.expected?.rss)}</td>
-                    <td style={{ textAlign:'center', background:groups[1].bgL }}><DiffCell value={r.diffs?.rss}/></td>
-                    {/* Fuel */}
-                    <td style={FC('var(--text)',           groups[2].bgL)}>{num(iF)}</td>
-                    <td style={FC('var(--green)',          groups[2].bgL)}>{num(r.expected?.fuel)}</td>
-                    <td style={{ textAlign:'center', background:groups[2].bgL }}><DiffCell value={r.diffs?.fuel}/></td>
-                    {/* Total */}
-                    <td style={{ ...FC(isMis?'rgba(248,113,113,.9)':'var(--text)', groups[3].bgL), fontWeight:600 }}>{num(iT)}</td>
-                    <td style={{ ...FC('var(--green)', groups[3].bgL), fontWeight:600 }}>{num(r.expected?.total)}</td>
-                    <td style={{ textAlign:'center', background:groups[3].bgL }}><DiffCell value={r.diffs?.total}/></td>
-                  </>
+                  groups.flatMap((g) => {
+                    const c = cellsFor(g, r, iD, iR, iF);
+                    const isTotal = g.key === 'total';
+                    return [
+                      <td key={`${g.key}-i`} style={{ ...FC(isTotal && isMis ? 'rgba(248,113,113,.9)' : 'var(--text)', g.bgL), ...(isTotal ? { fontWeight:600 } : {}) }}>{num(c.inv)}</td>,
+                      <td key={`${g.key}-e`} style={{ ...FC('var(--green)', g.bgL), ...(isTotal ? { fontWeight:600 } : {}) }}>{num(c.exp)}</td>,
+                      <td key={`${g.key}-d`} style={{ textAlign:'center', background:g.bgL }}><DiffCell value={c.diff}/></td>,
+                    ];
+                  })
                 ) : (
-                  <>
-                    <td style={{ fontFamily:'var(--font-mono)', fontWeight:600, color: isMis ? 'rgba(248,113,113,.9)' : 'var(--text)' }}>{num(iT)}</td>
-                    <td style={{ fontFamily:'var(--font-mono)', color:'var(--green)', fontWeight:600 }}>{num(r.expected?.total)}</td>
-                    <td><DiffCell value={r.diffs?.total}/></td>
-                  </>
+                  (() => {
+                    const totalCell = cellsFor(allGroups.total, r, iD, iR, iF);
+                    return <>
+                      <td style={{ fontFamily:'var(--font-mono)', fontWeight:600, color: isMis ? 'rgba(248,113,113,.9)' : 'var(--text)' }}>{num(totalCell.inv)}</td>
+                      <td style={{ fontFamily:'var(--font-mono)', color:'var(--green)', fontWeight:600 }}>{num(totalCell.exp)}</td>
+                      <td><DiffCell value={totalCell.diff}/></td>
+                    </>;
+                  })()
                 )}
                 <td><Badge status={r.status}/></td>
               </tr>
@@ -346,26 +457,17 @@ function ResultsTable({ results, filter, showDetail }) {
                 إجمالي الفروق · {mis.length} شحنة
               </td>
               {showDetail ? (
-                <>
-                  {/* Delivery */}
-                  <td style={FC('var(--text)',    groups[0].bgL)}>{num(ft.iD)}</td>
-                  <td style={FC('var(--green)',   groups[0].bgL)}>{num(ft.eD)}</td>
-                  <td style={{ ...FC(diffColor(ft.dD), groups[0].bgL), fontWeight:700 }}>{diffText(ft.dD)}</td>
-                  {/* RSS */}
-                  <td style={FC('var(--text)',    groups[1].bgL)}>{num(ft.iR)}</td>
-                  <td style={FC('var(--green)',   groups[1].bgL)}>{num(ft.eR)}</td>
-                  <td style={{ ...FC(diffColor(ft.dR), groups[1].bgL), fontWeight:700 }}>{diffText(ft.dR)}</td>
-                  {/* Fuel */}
-                  <td style={FC('var(--text)',    groups[2].bgL)}>{num(ft.iF)}</td>
-                  <td style={FC('var(--green)',   groups[2].bgL)}>{num(ft.eF)}</td>
-                  <td style={{ ...FC(diffColor(ft.dF), groups[2].bgL), fontWeight:700 }}>{diffText(ft.dF)}</td>
-                  {/* Total */}
-                  <td style={{ ...FC('var(--text)', groups[3].bgL), fontWeight:700 }}>{num(ft.iT)}</td>
-                  <td style={{ ...FC('var(--green)', groups[3].bgL), fontWeight:700 }}>{num(ft.eT)}</td>
-                  <td style={{ ...FC(diffColor(ft.dT), groups[3].bgL), fontWeight:800, fontSize:13, whiteSpace:'nowrap' }}>
-                    {diffText(ft.dT)} ر.س
-                  </td>
-                </>
+                groups.flatMap((g) => {
+                  const t = totalFor(g);
+                  const isTotal = g.key === 'total';
+                  return [
+                    <td key={`ft-${g.key}-i`} style={{ ...FC('var(--text)', g.bgL), fontWeight:isTotal?700:600 }}>{num(t.inv)}</td>,
+                    <td key={`ft-${g.key}-e`} style={{ ...FC('var(--green)', g.bgL), fontWeight:isTotal?700:600 }}>{num(t.exp)}</td>,
+                    <td key={`ft-${g.key}-d`} style={{ ...FC(diffColor(t.diff), g.bgL), fontWeight:isTotal?800:700, ...(isTotal ? { fontSize:13, whiteSpace:'nowrap' } : {}) }}>
+                      {diffText(t.diff)}{isTotal ? ' ر.س' : ''}
+                    </td>,
+                  ];
+                })
               ) : (
                 <>
                   <td colSpan={2}/>
@@ -505,7 +607,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
 
         {/* Table */}
         <Card style={{padding:0,overflow:'hidden'}}>
-          <ResultsTable results={results} filter={filter} showDetail={showDetail}/>
+          <ResultsTable results={results} filter={filter} showDetail={showDetail} contract={contract}/>
         </Card>
       </div>
 
