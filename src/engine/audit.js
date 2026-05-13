@@ -80,6 +80,12 @@ const COL_PATTERNS = {
   // shipment; Aramex breaks it out on a separate ZDCF billing-type row
   // which the engine routes via fuelSurcharge → codFee inside mapRows.
   codFee:          [/cod.?service.?fee/i, /cod.?fee/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
+  // POS (electronic payment / card-acquiring) — iMile exposes two
+  // related columns: "POS Amount" (cash collected via card) and
+  // "POS Fee" (carrier's processing fee, usually a fixed percent of
+  // POS Amount). We audit the fee against contract.posFeePct.
+  posAmount:       [/pos.?amount/i, /مبلغ.?pos/i, /مبلغ.?بطاقة/i],
+  posFee:          [/pos.?fee/i, /رسوم.?pos/i, /رسوم.?البطاقة/i],
   // "Tax Amount" — actual VAT line from the carrier file. Reading this
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
@@ -382,6 +388,8 @@ export function mapRows(raw, colMap) {
       ? (parseFloat(row[colMap.codFee] ?? 0) || 0)
       : 0;
     const codFee       = isCod ? baseFuel : inlineCodFee;
+    const posAmount    = colMap.posAmount ? (parseFloat(row[colMap.posAmount] ?? 0) || 0) : 0;
+    const posFee       = colMap.posFee    ? (parseFloat(row[colMap.posFee]    ?? 0) || 0) : 0;
 
     return {
       awb,
@@ -397,6 +405,8 @@ export function mapRows(raw, colMap) {
       rss:             isCod ? 0 : baseRss,
       fuelSurcharge:   isCod ? 0 : baseFuel,
       codFee,
+      posAmount,
+      posFee,
       // Verbatim tax from the carrier file. ZOBI rows ship with tax=0
       // (zero-rated export); ZDOI domestic ≈ 15%; ZDCF COD = 15% of fee.
       // Comparison against the carrier statement uses this directly.
@@ -537,12 +547,25 @@ export function auditRow(row, contract) {
   const isCodShipment  = invoicedCodFee > 0 || (Number(row.codAmount) || 0) > 0;
   const expectedCodFee = isCodShipment ? Number(contract?.codFee ?? 0) : 0;
 
+  // POS fee (card-acquiring): iMile charges a percentage of POS Amount
+  // (typically 1%). Expected = posAmount * contract.posFeePct, rounded
+  // to 4 decimals to match the carrier's column precision. Skip when
+  // no POS amount on the row (the customer paid cash) — even if the
+  // contract has a posFeePct, no POS amount = no fee owed.
+  const invoicedPosFee = Number(row.posFee || 0);
+  const posAmount      = Number(row.posAmount || 0);
+  const posPct         = Number(contract?.posFeePct ?? 0);
+  const expectedPosFee = posAmount > 0 && posPct > 0
+    ? +(posAmount * posPct).toFixed(4)
+    : 0;
+
   const invoiced = {
     delivery: row.deliveryCharges,
     rss:      invoicedRss,
     fuel:     invoicedFuel,
     codFee:   invoicedCodFee,
-    total:    row.deliveryCharges + invoicedRss + invoicedFuel + invoicedCodFee,
+    posFee:   invoicedPosFee,
+    total:    row.deliveryCharges + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee,
     // Pass through whatever Tax Amount the carrier file showed for this
     // row. We don't audit tax (the carrier's number is authoritative);
     // we just preserve it so totalTax sums correctly.
@@ -554,7 +577,8 @@ export function auditRow(row, contract) {
     rss:      calc.rss,
     fuel:     calc.fuel,
     codFee:   expectedCodFee,
-    total:    calc.total + expectedCodFee,
+    posFee:   expectedPosFee,
+    total:    calc.total + expectedCodFee + expectedPosFee,
   };
 
   const diffs = {
@@ -562,6 +586,7 @@ export function auditRow(row, contract) {
     rss:      +(invoiced.rss      - expectedCalc.rss).toFixed(2),
     fuel:     +(invoiced.fuel     - expectedCalc.fuel).toFixed(2),
     codFee:   +(invoiced.codFee   - expectedCalc.codFee).toFixed(2),
+    posFee:   +(invoiced.posFee   - expectedCalc.posFee).toFixed(2),
     total:    +(invoiced.total    - expectedCalc.total).toFixed(2),
   };
 
@@ -574,6 +599,8 @@ export function auditRow(row, contract) {
     issues.push({ field: 'fuel',     label: 'رسوم الوقود',  invoiced: invoiced.fuel,     expected: expectedCalc.fuel,     diff: diffs.fuel });
   if (Math.abs(diffs.codFee) > TOLERANCE)
     issues.push({ field: 'codFee',   label: 'رسوم COD',     invoiced: invoiced.codFee,   expected: expectedCalc.codFee,   diff: diffs.codFee });
+  if (Math.abs(diffs.posFee) > TOLERANCE)
+    issues.push({ field: 'posFee',   label: 'رسوم POS',     invoiced: invoiced.posFee,   expected: expectedCalc.posFee,   diff: diffs.posFee });
 
   // Status is driven by the NET total, not per-component. Carriers like Aramex
   // bundle RSS + fuel into a single "Other Charge" column on the invoice, so a
