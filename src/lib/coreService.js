@@ -42,7 +42,19 @@ async function seedCarriers() {
   await supabase.from('carriers').upsert(rows, { onConflict: 'id' });
 }
 
-export async function saveCarrier(carrier) {
+export async function saveCarrier(carrier, opts = {}) {
+  // Capture pre-save contracts so we can diff and write a history row
+  // per changed contract. Best-effort: failures here never block the save.
+  let priorContracts = null;
+  try {
+    const { data: prior } = await supabase
+      .from('carriers')
+      .select('contracts')
+      .eq('id', carrier.id)
+      .maybeSingle();
+    priorContracts = prior?.contracts || [];
+  } catch { /* first-time save → no prior row */ }
+
   const { error } = await supabase.from('carriers').upsert({
     id:                 carrier.id,
     name:               carrier.name,
@@ -58,6 +70,22 @@ export async function saveCarrier(carrier) {
     updated_at:         new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;
+
+  // After the save lands, write contract-history rows for any contract
+  // that was added, removed, or modified. Done inline so the same
+  // database session sees the new contracts array; failure is logged
+  // but doesn't bubble up — history is auxiliary.
+  try {
+    const { saveCarrierContractsWithHistory } = await import('./contractHistoryService.js');
+    await saveCarrierContractsWithHistory(
+      carrier.id,
+      priorContracts,
+      carrier.contracts ?? [],
+      opts.userId || null,
+    );
+  } catch (e) {
+    console.warn('contract history write failed:', e.message);
+  }
 }
 
 export async function deleteCarrierFromDB(id) {
