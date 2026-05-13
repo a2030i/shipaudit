@@ -11,13 +11,15 @@
 //   parse(allRows: any[][]) → [{ awb: string, amount: number }]
 //   Throws Error with an Arabic message if the file shape doesn't match.
 
-import { internalSettlementParser } from './internalSettlement.js';
-import { aramexRemittanceParser }   from './aramexRemittance.js';
+import { internalSettlementParser }   from './internalSettlement.js';
+import { aramexRemittanceParser }     from './aramexRemittance.js';
+import { deliverNowRemittanceParser } from './deliverNowRemittance.js';
 
 export const INTERNAL_PARSER = internalSettlementParser;
 
 export const REMITTANCE_PARSERS = {
-  aramex: aramexRemittanceParser,
+  aramex:     aramexRemittanceParser,
+  delivernow: deliverNowRemittanceParser,
   // smsa: smsaRemittanceParser,   // future
   // dhl:  dhlRemittanceParser,    // future
 };
