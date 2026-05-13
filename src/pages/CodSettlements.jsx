@@ -7,6 +7,7 @@ import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
   loadSettlementUploads, deleteSettlementUpload,
+  findDuplicateSettlementAwbs,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 
@@ -617,7 +618,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 // ── UploadModal ────────────────────────────────────────────────────────
 function UploadModal({ direction, carrier, onClose, onDone, userId }) {
   const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null); // { rows, parserId }
+  const [preview, setPreview] = useState(null); // { rows, parserId, inBatchDups, crossFileDups }
   const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [settlementRef, setSettlementRef] = useState('');
   const [busy, setBusy] = useState(false);
@@ -639,7 +640,54 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
 
       const rows = parser.parse(allRows);
       if (!rows.length) throw new Error('لم تُستخرج أي صفوف صالحة من الملف');
-      setPreview({ rows, parserId: parser.id, parserLabel: parser.label });
+
+      // Duplicate detection — both inside the batch and against rows
+      // already saved in the cod_settlement ledger for this carrier +
+      // direction. Same AWB twice in the same direction is always a
+      // mistake (real reconciliation matches an AWB across direction,
+      // not within).
+      const seenInBatch = new Set();
+      const inBatchDups = new Set();
+      const uniqueAwbs = [];
+      for (const r of rows) {
+        const awb = String(r.awb).trim();
+        if (!awb) continue;
+        if (seenInBatch.has(awb)) inBatchDups.add(awb);
+        else {
+          seenInBatch.add(awb);
+          uniqueAwbs.push(awb);
+        }
+      }
+      const existing = await findDuplicateSettlementAwbs({
+        carrierId: carrier, direction, awbs: uniqueAwbs,
+      });
+
+      // Tag each row so the preview table can show the user which will
+      // be skipped on save and why.
+      const tagged = rows.map(r => {
+        const awb = String(r.awb).trim();
+        let tag = 'new';
+        if (existing.has(awb)) tag = 'cross_file';
+        // We track the FIRST occurrence as new; subsequent same-awb in
+        // batch get tagged 'in_batch'.
+        return { ...r, awb, _dup: tag };
+      });
+      // Mark second+ occurrences inside the batch
+      const seen2 = new Set();
+      for (const r of tagged) {
+        if (r._dup !== 'new') continue;
+        if (seen2.has(r.awb)) r._dup = 'in_batch';
+        else seen2.add(r.awb);
+      }
+
+      setPreview({
+        rows: tagged,
+        parserId: parser.id,
+        parserLabel: parser.label,
+        inBatchDups:    tagged.filter(r => r._dup === 'in_batch').length,
+        crossFileDups:  tagged.filter(r => r._dup === 'cross_file').length,
+        newCount:       tagged.filter(r => r._dup === 'new').length,
+      });
     } catch (e) {
       toast(e.message, 'error');
       setFile(null);
@@ -652,13 +700,23 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
     if (!preview) return;
     setBusy(true);
     try {
-      const { count } = await saveSettlementUpload({
+      const result = await saveSettlementUpload({
         direction, carrierId: carrier, rows: preview.rows,
         uploadDate, sourceFile: file?.name,
         settlementRef: settlementRef.trim() || null,
         userId,
       });
-      toast(`تم حفظ ${count} صف${settlementRef ? ` (تسوية #${settlementRef.trim()})` : ''}`, 'success');
+      const { count, inBatchDuplicates, crossFileDuplicates } = result;
+      const skipped = (inBatchDuplicates || 0) + (crossFileDuplicates || 0);
+      if (count === 0) {
+        toast(`كل الصفوف مكررة — لم يُحفظ شيء (${skipped} متجاوَزة)`, 'error');
+        setBusy(false);
+        return;
+      }
+      const parts = [`تم حفظ ${count} صف`];
+      if (skipped) parts.push(`تم تجاوز ${skipped} مكرّر`);
+      if (settlementRef) parts.push(`تسوية #${settlementRef.trim()}`);
+      toast(parts.join(' · '), skipped ? 'info' : 'success');
       onDone();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -710,6 +768,33 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
               </span>
             </div>
           </div>
+
+          {/* Duplicate warnings — only when there's something to flag */}
+          {(preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
+            <div style={{
+              padding: '10px 14px', marginBottom: 12,
+              background: 'rgba(248,113,113,.08)',
+              border: '1px solid var(--red)',
+              borderRadius: 9, fontSize: 12, lineHeight: 1.8,
+            }}>
+              <div style={{ fontWeight: 700, color: 'var(--red)', marginBottom: 6 }}>
+                ⚠️ كشف تكرار — سيتم تجاوز الصفوف المكررة عند الحفظ
+              </div>
+              {preview.inBatchDups > 0 && (
+                <div style={{ color: 'var(--text)' }}>
+                  🔁 <strong>{preview.inBatchDups}</strong> صف مكرّر داخل نفس الملف (نفس AWB أكثر من مرة)
+                </div>
+              )}
+              {preview.crossFileDups > 0 && (
+                <div style={{ color: 'var(--text)' }}>
+                  📎 <strong>{preview.crossFileDups}</strong> صف موجود في ملف سابق لنفس الناقل في نفس الاتجاه
+                </div>
+              )}
+              <div style={{ color: 'var(--green)', fontWeight: 700, marginTop: 4 }}>
+                ✓ سيُحفظ {preview.newCount} صف جديد فقط
+              </div>
+            </div>
+          )}
           <Input label="تاريخ التسوية" type="date" value={uploadDate}
             onChange={e => setUploadDate(e.target.value)}/>
           <div style={{ marginTop: 6, fontSize: 10, color: 'var(--muted)' }}>
@@ -732,12 +817,29 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
                 <tr><th>AWB</th><th style={{ textAlign: 'left' }}>المبلغ</th></tr>
               </thead>
               <tbody>
-                {preview.rows.slice(0, 50).map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{r.awb}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left' }}>{r.amount.toFixed(2)}</td>
-                  </tr>
-                ))}
+                {preview.rows.slice(0, 50).map((r, i) => {
+                  const isDup = r._dup === 'in_batch' || r._dup === 'cross_file';
+                  return (
+                    <tr key={i} style={isDup ? { background: 'rgba(248,113,113,.06)' } : undefined}>
+                      <td style={{ fontFamily: 'var(--font-mono)', color: isDup ? 'var(--red)' : 'var(--accent)' }}>
+                        {r.awb}
+                        {r._dup === 'in_batch' && (
+                          <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                            🔁 مكرّر داخل الملف
+                          </span>
+                        )}
+                        {r._dup === 'cross_file' && (
+                          <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                            📎 مكرّر مع ملف سابق
+                          </span>
+                        )}
+                      </td>
+                      <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', color: isDup ? 'var(--muted)' : 'var(--text)', textDecoration: isDup ? 'line-through' : 'none' }}>
+                        {r.amount.toFixed(2)}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {preview.rows.length > 50 && (
                   <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 10 }}>
                     +{preview.rows.length - 50} صف إضافية…
