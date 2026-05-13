@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -26,12 +26,14 @@ import CarrierKpi        from './pages/CarrierKpi.jsx';
 import ActivityLog       from './pages/ActivityLog.jsx';
 import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
+import ContractsOverview from './pages/ContractsOverview.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Each item belongs to a section. Sections render as headers; items beneath them.
 const NAV_ITEMS = [
   { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'audit' },
   { id: 'carriers',  path: '/carriers',  label: 'شركات الشحن',   icon: Truck,           section: 'audit' },
+  { id: 'contracts', path: '/contracts', label: 'جدول العقود',   icon: ClipboardList,   section: 'audit' },
   { id: 'upload',    path: '/upload',    label: 'مراجعة جديدة',  icon: Upload,          section: 'audit' },
   { id: 'audits',    path: '/audits',    label: 'السجل',         icon: History,         section: 'audit' },
   { id: 'ledger',          path: '/ledger',            label: 'الدفتر',          icon: BookOpen, section: 'carrier_acct' },
@@ -54,6 +56,7 @@ const NAV_SECTIONS = [
 const PAGE_TITLES = {
   '/dashboard':       'الرئيسية',
   '/carriers':        'شركات الشحن',
+  '/contracts':       'جدول العقود',
   '/upload':          'مراجعة جديدة',
   '/audits':          'سجل المراجعات',
   '/bank':            'كشف بنكي',
@@ -100,7 +103,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -452,6 +455,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/carriers'}>
               <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/contracts'} scroll>
+              <ContractsOverview isActive={pathname==='/contracts'}/>
             </PageSlot>
             <PageSlot active={pathname==='/upload'} scroll>
               <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>

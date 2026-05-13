@@ -5,7 +5,7 @@ import {
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
 import { Card, Btn, Select, Spinner, Badge, toast } from '../components/UI.jsx';
-import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders } from '../engine/audit.js';
+import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile } from '../engine/audit.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
@@ -79,130 +79,56 @@ function DetailRow({ label, value, mono }) {
   );
 }
 
-// ── Step 1 — Pick carrier + period ────────────────────────────────────────────
-function Step1({ carriers, carrierId, setCarrierId, month, setMonth, year, setYear, onNext }) {
-  const carrier  = carriers.find(c => c.id === carrierId);
-  const contract = carrier
-    ? getActiveContract(carrier, `${year}-${String(month).padStart(2,'0')}-01`)
-    : null;
-
+// ── Step 1 — Period only (carrier is auto-detected from the uploaded file) ───
+function Step1({ month, setMonth, year, setYear, onNext }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
-      {/* ── LEFT: form card ─────────────────────────────────────────── */}
-      <Card style={{ padding: 28 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-          <div style={{
-            width: 36, height: 36, borderRadius: 10,
-            background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(45,212,191,.06))',
-            border: '1px solid rgba(45,212,191,.32)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            flexShrink: 0,
-          }}>
-            <Building2 size={18} color="var(--accent)"/>
-          </div>
-          <div>
-            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
-              اختر الشركة والفترة
-            </h3>
-            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
-              الفاتورة التي ستتم مراجعتها
-            </p>
-          </div>
+    <Card style={{ maxWidth: 580, margin: '0 auto', padding: 28 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+        <div style={{
+          width: 36, height: 36, borderRadius: 10,
+          background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(45,212,191,.06))',
+          border: '1px solid rgba(45,212,191,.32)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Calendar size={18} color="var(--accent)"/>
         </div>
+        <div>
+          <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+            اختر فترة الفاتورة
+          </h3>
+          <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+            الشهر والسنة اللي تغطيهم الفاتورة — الشركة نحدّدها من الملف
+          </p>
+        </div>
+      </div>
 
-        <Select label="شركة الشحن" value={carrierId} onChange={e => setCarrierId(e.target.value)} style={{ marginBottom: 16 }}>
-          <option value="">— اختر —</option>
-          {carriers.map(c => <option key={c.id} value={c.id}>{c.logo ? `${c.logo}  ${c.name}` : c.name}</option>)}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+        <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
+          {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
         </Select>
+        <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
+          {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+        </Select>
+      </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
-          <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
-            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-          </Select>
-          <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
-            {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-          </Select>
-        </div>
-
-        <Btn variant="primary" onClick={onNext} disabled={!carrierId} style={{ width: '100%', justifyContent: 'center', padding: '11px 20px', fontSize: 14 }}>
-          التالي <ArrowLeft size={15}/>
-        </Btn>
-      </Card>
-
-      {/* ── RIGHT: contract preview ─────────────────────────────────── */}
-      <Card style={{
-        padding: 0, overflow: 'hidden',
-        borderTop: contract ? '3px solid var(--accent)' : '3px solid var(--gold)',
+      <div style={{
+        padding: '12px 14px', marginBottom: 18,
+        background: 'rgba(45,212,191,.06)',
+        border: '1px solid rgba(45,212,191,.22)',
+        borderRadius: 9,
+        display: 'flex', gap: 10,
       }}>
-        {!carrier ? (
-          <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--muted)' }}>
-            <div style={{
-              width: 56, height: 56, margin: '0 auto 14px',
-              background: 'var(--surface)', borderRadius: 16,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              border: '1px dashed var(--border2)',
-            }}>
-              <Truck size={26} color="var(--muted)"/>
-            </div>
-            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
-              اختر شركة لعرض تفاصيل العقد الساري
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{
-              padding: '16px 22px',
-              borderBottom: '1px solid var(--border)',
-              background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
-              display: 'flex', alignItems: 'center', gap: 12,
-            }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 11,
-                background: 'var(--card)', border: '1px solid var(--border2)',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 22, flexShrink: 0,
-              }}>
-                {carrier.logo || '📦'}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-                  {carrier.name}
-                </div>
-                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase' }}>
-                  {contract ? 'عقد ساري' : 'لا يوجد عقد'}
-                </div>
-              </div>
-            </div>
+        <Sparkles size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 2 }}/>
+        <div style={{ fontSize: 12, color: 'var(--text2)', lineHeight: 1.65 }}>
+          ما تحتاج تختار الشركة — النظام يتعرف عليها من بنية الملف (الأعمدة + نمط AWB). إذا فشل في التعرف نطلب منك تحديدها يدوياً.
+        </div>
+      </div>
 
-            <div style={{ padding: '18px 22px' }}>
-              {contract ? (
-                <>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
-                    <CheckCircle2 size={14} color="var(--accent)"/>
-                    <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>
-                      {contract.label}
-                    </span>
-                  </div>
-                  <ContractPreview contract={contract}/>
-                </>
-              ) : (
-                <div style={{
-                  display: 'flex', gap: 10, padding: '12px 14px',
-                  background: 'rgba(251,146,60,.08)',
-                  border: '1px solid rgba(251,146,60,.22)',
-                  borderRadius: 9,
-                }}>
-                  <AlertCircle size={18} color="var(--warn)" style={{ flexShrink: 0, marginTop: 1 }}/>
-                  <div style={{ fontSize: 12.5, color: 'var(--warn)', lineHeight: 1.65 }}>
-                    لا يوجد عقد ساري لهذه الفترة. أضف عقداً جديداً من صفحة شركات الشحن قبل المتابعة.
-                  </div>
-                </div>
-              )}
-            </div>
-          </>
-        )}
-      </Card>
-    </div>
+      <Btn variant="primary" onClick={onNext} style={{ width: '100%', justifyContent: 'center', padding: '11px 20px', fontSize: 14 }}>
+        التالي <ArrowLeft size={15}/>
+      </Btn>
+    </Card>
   );
 }
 
@@ -339,22 +265,86 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
 
 // ── Step 3 — Review & Confirm ──────────────────────────────────────────────────
 function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiMap,
-                 detectedRow, aiNotes, missingFields, rowCount }) {
+                 detectedRow, aiNotes, missingFields, rowCount,
+                 carriers, carrierId, setCarrierId, carrierDetect }) {
 
   const mappedCount     = Object.values(colMap).filter(Boolean).length;
   const requiredMissing = Object.entries(FIELD_META)
     .filter(([f, { required }]) => required && !colMap[f]).length;
+  const carrier = carriers?.find(c => c.id === carrierId);
+  const detectConfidence = carrierDetect?.confidence ?? 0;
+  const detectedOk = !!carrierId && detectConfidence >= 0.5;
 
   return (
     <Card style={{ maxWidth: 640, margin: '0 auto' }}>
       {/* Header */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
         <h3 style={{ fontFamily:'var(--font-mono)', color:'var(--accent)', fontSize:14 }}>
           الخطوة 3 — مراجعة النتائج
         </h3>
         <Btn size="sm" variant="gold" onClick={onAiMap} disabled={aiLoading}>
           {aiLoading ? <><Spinner size={13}/> AI يحلل...</> : '✨ إعادة تحليل AI'}
         </Btn>
+      </div>
+
+      {/* Carrier identification result */}
+      <div style={{
+        marginBottom: 16,
+        padding: '12px 14px',
+        background: detectedOk
+          ? 'rgba(45,212,191,.06)'
+          : !carrierId
+            ? 'rgba(251,146,60,.08)'
+            : 'rgba(251,191,36,.06)',
+        border: `1px solid ${detectedOk
+          ? 'rgba(45,212,191,.30)'
+          : !carrierId
+            ? 'rgba(251,146,60,.30)'
+            : 'rgba(251,191,36,.30)'}`,
+        borderRadius: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: !carrierId ? 8 : 0 }}>
+          {detectedOk
+            ? <CheckCircle2 size={16} color="var(--accent)"/>
+            : <AlertCircle size={16} color={!carrierId ? 'var(--warn)' : 'var(--gold)'}/>
+          }
+          <div style={{ flex: 1, minWidth: 0 }}>
+            {carrierId ? (
+              <>
+                <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+                  {carrier?.logo} {carrier?.name}
+                  {carrierDetect && (
+                    <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500, marginInlineStart: 8 }}>
+                      · ثقة {Math.round(detectConfidence * 100)}% ·{' '}
+                      {carrierDetect.method === 'signature' ? 'بصمة محفوظة' : 'كشف تلقائي'}
+                    </span>
+                  )}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  لو الشركة خطأ، غيّرها من القائمة أدناه
+                </div>
+              </>
+            ) : (
+              <div style={{ fontSize: 12.5, color: 'var(--warn)', fontWeight: 700 }}>
+                ما قدرنا نتعرف على الشركة — اختارها يدوياً
+              </div>
+            )}
+          </div>
+        </div>
+        {(!detectedOk || !carrierId) && (
+          <select
+            value={carrierId || ''}
+            onChange={e => setCarrierId(e.target.value)}
+            style={{
+              width: '100%', padding: '8px 11px', borderRadius: 8, fontSize: 13,
+              marginTop: 8,
+            }}>
+            <option value="">— اختر الشركة —</option>
+            {(carriers || []).map(c => (
+              <option key={c.id} value={c.id}>{c.logo ? `${c.logo} ${c.name}` : c.name}</option>
+            ))}
+          </select>
+        )}
       </div>
 
       {/* Status pills */}
@@ -454,7 +444,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
       <div style={{ display:'flex', gap:9 }}>
         <Btn variant="ghost" onClick={onBack} style={{ flex:1, justifyContent:'center' }}>← رجوع</Btn>
         <Btn variant="primary" onClick={onConfirm}
-          disabled={!colMap.weight || !colMap.deliveryCharges}
+          disabled={!carrierId || !colMap.weight || !colMap.deliveryCharges}
           style={{ flex:2, justifyContent:'center' }}>
           تأكيد وبدء التدقيق ←
         </Btn>
@@ -468,7 +458,10 @@ export default function UploadWizard({ carriers, onComplete }) {
   const { user } = useAuth();
   const now = new Date();
   const [step,         setStep]        = useState(1);
-  const [carrierId,    setCarrierId]   = useState(carriers[0]?.id || '');
+  // carrierId is now set automatically after the file is read.
+  // Stays empty during step 1 (period picker).
+  const [carrierId,    setCarrierId]   = useState('');
+  const [carrierDetect, setCarrierDetect] = useState(null); // { confidence, method, reasons }
   const [month,        setMonth]       = useState(now.getMonth() + 1);
   const [year,         setYear]        = useState(now.getFullYear());
   const [headers,      setHeaders]     = useState([]);
@@ -529,6 +522,19 @@ export default function UploadWizard({ carriers, onComplete }) {
 
         if (!allRows.length) { toast('الملف فارغ', 'error'); setUploading(false); return; }
         setAllRawRows(allRows);
+
+        // ── Auto-detect carrier from file structure ──────────────
+        // Skipped if the user is re-running with a manual override
+        // (i.e. carrierId is already set from a prior attempt).
+        const detected = detectCarrierFromFile(allRows, carriers);
+        if (detected && detected.confidence >= 0.5) {
+          setCarrierId(detected.carrierId);
+          setCarrierDetect(detected);
+          const dname = carriers.find(c => c.id === detected.carrierId)?.name;
+          toast(`تم التعرف على الشركة: ${dname} (${Math.round(detected.confidence * 100)}%)`, 'success');
+        } else {
+          setCarrierDetect(detected); // may be a low-confidence guess
+        }
 
         const settings = loadSettings();
 
@@ -723,12 +729,11 @@ export default function UploadWizard({ carriers, onComplete }) {
 
       {/* ── ACTIVE STEP ───────────────────────────────────────────────── */}
       {step === 1 && (
-        <Step1 carriers={carriers} carrierId={carrierId} setCarrierId={setCarrierId}
-          month={month} setMonth={setMonth} year={year} setYear={setYear}
+        <Step1 month={month} setMonth={setMonth} year={year} setYear={setYear}
           onNext={() => setStep(2)}/>
       )}
       {step === 2 && (
-        <Step2 carrierName={carrier?.name||''} carrierLogo={carrier?.logo} period={period}
+        <Step2 carrierName={carrier?.name || 'سنحدّدها من الملف'} carrierLogo={carrier?.logo} period={period}
           onUpload={handleFile} onBack={() => setStep(1)}
           uploading={uploading} aiStatus={aiStatus}/>
       )}
@@ -737,7 +742,9 @@ export default function UploadWizard({ carriers, onComplete }) {
           onConfirm={handleConfirm} onBack={() => setStep(2)}
           aiLoading={aiLoading} onAiMap={handleReAnalyze}
           detectedRow={detectedRow} aiNotes={aiNotes}
-          missingFields={missingFields} rowCount={rawRows.length}/>
+          missingFields={missingFields} rowCount={rawRows.length}
+          carriers={carriers} carrierId={carrierId} setCarrierId={setCarrierId}
+          carrierDetect={carrierDetect}/>
       )}
     </div>
   );

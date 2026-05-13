@@ -114,6 +114,146 @@ function isCodFeeRow(billingType) {
   return COD_BILLING_CODES.has(String(billingType ?? '').trim().toUpperCase());
 }
 
+// ─── Carrier identification from file structure ──────────────────────────────
+// Each carrier file has a recognisable fingerprint — Aramex puts the
+// AWB column right next to "Billing Type" with ZDOI/ZIBI codes; J&T
+// has a "Settlement Weight" column and AWBs prefixed JTE; iMile uses
+// "Delivery Fee"; SMSA uses an "EX" AWB prefix and "Ship Status".
+//
+// This walks the carriers list (each carrier's `file_signature` JSONB)
+// PLUS a built-in fallback rules table for carriers whose signature
+// hasn't been learned yet. Returns the best match + a 0..1 confidence.
+//
+// Falls back to null when nothing matches — the UI then prompts the
+// user to pick manually (and we save the signature for next time).
+const BUILT_IN_CARRIER_RULES = [
+  {
+    id: 'aramex',
+    must_headers: [/billing.?type/i],
+    awb_pattern: /^\d{8,}$/,
+    sample_values: { col: /billing.?type/i, values: /^(ZDOI|ZIBI|ZOBI|ZDCF)/i },
+    weight: 1.0,
+  },
+  {
+    id: 'smsa',
+    must_headers: [/^awb$/i, /(ship|delivery).?status/i],
+    awb_pattern: /^\d{9,}$/,
+    weight: 0.9,
+  },
+  {
+    id: 'jt',
+    must_headers: [/(jt|j&t|jandt|settlement.?weight)/i],
+    awb_pattern: /^JTE\d+/i,
+    weight: 0.95,
+  },
+  {
+    id: 'imile',
+    must_headers: [/delivery.?fee/i, /(tier|tracking)/i],
+    awb_pattern: /^[A-Z]{0,4}\d{10,}$/,
+    weight: 0.85,
+  },
+  {
+    id: 'delivernow',
+    must_headers: [/awb.?no/i, /cod.?amount/i],
+    awb_pattern: /^DNL/i,
+    weight: 0.85,
+  },
+];
+
+function matchSignatureFromHeaders(headers, signature) {
+  if (!signature?.header_must_contain?.length) return 0;
+  const hdrs = headers.map(h => String(h).toLowerCase());
+  let matched = 0;
+  for (const needle of signature.header_must_contain) {
+    const n = String(needle).toLowerCase();
+    if (hdrs.some(h => h.includes(n))) matched++;
+  }
+  return matched / signature.header_must_contain.length;
+}
+
+function matchBuiltInRule(headers, rows, rule) {
+  let score = 0;
+  let max   = 0;
+
+  // Header presence
+  if (rule.must_headers) {
+    max += rule.must_headers.length;
+    for (const re of rule.must_headers) {
+      if (headers.some(h => re.test(String(h)))) score++;
+    }
+  }
+
+  // AWB prefix sample on first few data rows
+  if (rule.awb_pattern && rows.length > 0) {
+    max += 1;
+    // Try to find an AWB column among first 5 rows
+    let hits = 0, tries = 0;
+    for (let r = 0; r < Math.min(5, rows.length); r++) {
+      for (const v of rows[r] || []) {
+        if (v == null || v === '') continue;
+        tries++;
+        if (rule.awb_pattern.test(String(v).trim())) { hits++; break; }
+      }
+      if (tries === 0) continue;
+    }
+    if (hits > 0) score += 1;
+  }
+
+  // Specific cell-value test (e.g. Aramex's ZDOI/ZIBI in the Billing Type column)
+  if (rule.sample_values) {
+    max += 1;
+    const colIdx = headers.findIndex(h => rule.sample_values.col.test(String(h)));
+    if (colIdx >= 0) {
+      const hasMatch = rows
+        .slice(0, 20)
+        .some(r => r && rule.sample_values.values.test(String(r[colIdx] ?? '')));
+      if (hasMatch) score += 1;
+    }
+  }
+
+  if (max === 0) return 0;
+  return (score / max) * (rule.weight ?? 1);
+}
+
+// Detect which carrier a file belongs to. Returns
+//   { carrierId, confidence: 0..1, method: 'signature' | 'builtin' | null,
+//     reasons: string[] }
+// or null if nothing matched.
+export function detectCarrierFromFile(allRows, carriers) {
+  if (!allRows?.length || !carriers?.length) return null;
+  const hdrIdx  = detectHeaderRow(allRows);
+  const headers = buildHeaders(allRows[hdrIdx]);
+  const dataRows = allRows.slice(hdrIdx + 1, hdrIdx + 25);
+
+  let best = { carrierId: null, confidence: 0, method: null, reasons: [] };
+
+  // Pass 1: learned signatures
+  for (const c of carriers) {
+    const sig = c.file_signature || {};
+    const conf = matchSignatureFromHeaders(headers, sig);
+    if (conf > best.confidence) {
+      best = { carrierId: c.id, confidence: conf, method: 'signature', reasons: [`${Math.round(conf*100)}% توافق مع بصمة ${c.name}`] };
+    }
+  }
+
+  // Pass 2: built-in carrier rules (only relevant for carriers actually in DB)
+  const ids = new Set(carriers.map(c => c.id));
+  for (const rule of BUILT_IN_CARRIER_RULES) {
+    if (!ids.has(rule.id)) continue;
+    const conf = matchBuiltInRule(headers, dataRows, rule);
+    if (conf > best.confidence) {
+      best = {
+        carrierId: rule.id,
+        confidence: conf,
+        method: 'builtin',
+        reasons: [`أعمدة ونمط AWB يطابق ${carriers.find(c => c.id === rule.id)?.name || rule.id}`],
+      };
+    }
+  }
+
+  return best.carrierId ? best : null;
+}
+
 export function detectColumns(headers) {
   const map = {};
   const used = new Set();
