@@ -68,7 +68,12 @@ const COL_PATTERNS = {
   // that's what the contract math compares against.
   weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
   deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
-  rss:             [/^rss$/i, /remote/i],
+  // RSS = Remote Shipping Surcharge (Aramex). The literal phrase
+  // "Remote Area" appears in iMile/iMile-like files as a Yes/No flag,
+  // NOT a fee — keep the broad `/remote/i` pattern OUT to avoid the
+  // false match. Per-carrier schemas restrict which fields the mapper
+  // even tries to populate.
+  rss:             [/^rss$/i, /remote.?(charge|fee|surcharge)/i],
   // "Other Charge" is the canonical Aramex column that bundles either fuel
   // surcharge (ZDOI rows) or the COD service fee (ZDCF rows). The audit
   // engine routes it correctly per row based on Billing Type.
@@ -124,6 +129,53 @@ function isDomesticShipment(billingType, awb) {
 
 function isCodFeeRow(billingType) {
   return COD_BILLING_CODES.has(String(billingType ?? '').trim().toUpperCase());
+}
+
+// ─── Per-carrier field schemas ───────────────────────────────────────────────
+// Each carrier's invoice exposes a different subset of columns. iMile
+// has POS-fee fields but no RSS / fuel / billing-type; Aramex has all
+// of those except POS; J&T has the minimum set. The UI's
+// column-mapping step + the auto-detect column resolver only show
+// fields in the carrier's schema, so the user never has to map (and
+// later look at) columns that aren't billed.
+//
+// Order matters: this is the order rendered in Step3 of the wizard.
+//
+// `core` = fields shown in the mapper UI.
+// `required` = subset that must map for the audit to be allowed.
+export const CARRIER_FIELDS = {
+  aramex: {
+    core:     ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'serviceType', 'billingType'],
+    required: ['weight', 'deliveryCharges'],
+  },
+  smsa: {
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'signingStatus'],
+    required: ['weight', 'deliveryCharges'],
+  },
+  jt: {
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'tax', 'signingStatus'],
+    required: ['weight', 'deliveryCharges'],
+  },
+  imile: {
+    // POS Amount + POS Fee are first-class for iMile (1% card fee
+    // every COD-by-card shipment carries). No RSS or fuel.
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax'],
+    required: ['weight', 'deliveryCharges'],
+  },
+  delivernow: {
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax'],
+    required: ['weight', 'deliveryCharges'],
+  },
+};
+
+// Default schema when the carrier is unknown — show everything.
+export const DEFAULT_FIELD_SCHEMA = {
+  core: ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax', 'serviceType', 'billingType', 'signingStatus'],
+  required: ['weight', 'deliveryCharges'],
+};
+
+export function getFieldSchema(carrierId) {
+  return CARRIER_FIELDS[carrierId] || DEFAULT_FIELD_SCHEMA;
 }
 
 // ─── Carrier identification from file structure ──────────────────────────────
@@ -266,11 +318,16 @@ export function detectCarrierFromFile(allRows, carriers) {
   return best.carrierId ? best : null;
 }
 
-export function detectColumns(headers) {
+export function detectColumns(headers, carrierId = null) {
+  const schema = carrierId ? getFieldSchema(carrierId) : DEFAULT_FIELD_SCHEMA;
+  const allowedFields = new Set(schema.core);
   const map = {};
   const used = new Set();
   // Iterate fields/patterns in declared order so specific patterns win.
+  // Skip fields that aren't relevant for this carrier — keeps iMile
+  // from grabbing "Remote Area" as RSS, etc.
   for (const [field, patterns] of Object.entries(COL_PATTERNS)) {
+    if (carrierId && !allowedFields.has(field)) continue;
     for (const pattern of patterns) {
       const match = headers.find(h => {
         if (used.has(h)) return false;
