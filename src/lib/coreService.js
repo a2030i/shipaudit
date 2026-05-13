@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { buildSummary } from '../engine/audit.js';
 import { SEED_CARRIERS } from '../data/carriers.js';
 import { deriveAuditType } from '../engine/audit.js';
 
@@ -386,6 +387,14 @@ export async function loadAuditByIdFromDB(id) {
   const { data, error } = await supabase
     .from('audits').select('*').eq('id', id).single();
   if (error) throw error;
+  const results = data.results ?? [];
+  // Rebuild the full per-status summary (ok / mismatch / favorable /
+  // unknown counts, per-component diffs, gross totals) from the
+  // results array. The DB only persists scalar columns (total_billed,
+  // total_expected, diff, total_tax) — those alone aren't enough to
+  // drive the audit-results page, which needs the full shape returned
+  // by buildSummary.
+  const rebuilt = buildSummary(results);
   return {
     id:            data.id,
     carrierId:     data.carrier_id,
@@ -400,7 +409,7 @@ export async function loadAuditByIdFromDB(id) {
     totalTax:      data.total_tax,
     diff:          data.diff,
     auditType:     data.audit_type,
-    results:       data.results ?? [],
+    results,
     colMap:        data.col_map ?? {},
     date:          data.created_at,
     reviewStatus:  data.review_status ?? 'pending',
@@ -409,11 +418,9 @@ export async function loadAuditByIdFromDB(id) {
     rejectedReason: data.rejected_reason,
     rejectedAt:    data.rejected_at,
     summary: {
+      ...rebuilt,
       contractLabel: data.contract_label,
       fileName:      data.file_name,
-      totalExpected: data.total_expected,
-      totalBilled:   data.total_billed,
-      diff:          data.diff,
     },
   };
 }
