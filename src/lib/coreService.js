@@ -200,6 +200,19 @@ export async function saveAuditToDB(audit, userId) {
     }
   }
 
+  // Honor review status from the audit object so the
+  // "approve-while-saving-the-draft" flow actually flips
+  // review_status='approved' in the same upsert. Old callers that
+  // don't set audit.reviewStatus get the table default ('pending').
+  const rs = audit.reviewStatus;
+  const reviewFields = rs ? {
+    review_status:   rs,
+    approved_at:     rs === 'approved' ? (audit.approvedAt || new Date().toISOString()) : null,
+    approved_by:     rs === 'approved' ? (audit.approvedBy || userId || null) : null,
+    rejected_at:     rs === 'rejected' ? (audit.rejectedAt || new Date().toISOString()) : null,
+    rejected_reason: rs === 'rejected' ? (audit.rejectedReason || null) : null,
+  } : {};
+
   const { error } = await supabase.from('audits').upsert({
     id:             audit.id,
     carrier_id:     audit.carrierId,
@@ -207,6 +220,7 @@ export async function saveAuditToDB(audit, userId) {
     contract_label: audit.contractLabel ?? summary.contractLabel ?? '',
     file_name:      audit.fileName     ?? summary.fileName ?? '',
     period:         audit.period       ?? '',
+    ...reviewFields,
     row_count:      results.length,
     issue_count:    results.filter(r => r.status !== 'ok').length,
     total_expected: totalExpected,
