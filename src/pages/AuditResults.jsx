@@ -208,18 +208,21 @@ function diffText(v) {
 // We probe `results` for what actually has data and only render those
 // column groups.
 function detectColumnVisibility(results) {
-  let rss = false, fuel = false, cod = false;
+  let rss = false, fuel = false, cod = false, pos = false;
   for (const r of results) {
-    const iR = r.invoiced?.rss  ?? r.rss            ?? 0;
-    const eR = r.expected?.rss  ?? 0;
-    const iF = r.invoiced?.fuel ?? r.fuelSurcharge  ?? 0;
-    const eF = r.expected?.fuel ?? 0;
+    const iR = r.invoiced?.rss    ?? r.rss            ?? 0;
+    const eR = r.expected?.rss    ?? 0;
+    const iF = r.invoiced?.fuel   ?? r.fuelSurcharge  ?? 0;
+    const eF = r.expected?.fuel   ?? 0;
+    const iP = r.invoiced?.posFee ?? r.posFee         ?? 0;
+    const eP = r.expected?.posFee ?? 0;
     if (Math.abs(iR) > 0.001 || Math.abs(eR) > 0.001) rss = true;
     if (Math.abs(iF) > 0.001 || Math.abs(eF) > 0.001) fuel = true;
     if (r.isCod || (r.codAmount && r.codAmount > 0) || (r.codFee && r.codFee > 0)) cod = true;
-    if (rss && fuel && cod) break;
+    if (Math.abs(iP) > 0.001 || Math.abs(eP) > 0.001 || (r.posAmount && r.posAmount > 0)) pos = true;
+    if (rss && fuel && cod && pos) break;
   }
-  return { rss, fuel, cod };
+  return { rss, fuel, cod, pos };
 }
 
 // First-bracket allowance (kg) for a destination — the maximum weight the
@@ -271,16 +274,18 @@ function ResultsTable({ results, filter, showDetail, contract }) {
     const iD = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
     const iR = r.invoiced?.rss      ?? r.rss             ?? 0;
     const iF = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
-    const iC = r.codFee             ?? 0;
-    const iT = r.invoiced?.total ?? (iD + iR + iF);
+    const iC = r.invoiced?.codFee   ?? r.codFee          ?? 0;
+    const iP = r.invoiced?.posFee   ?? r.posFee          ?? 0;
+    const iT = r.invoiced?.total ?? (iD + iR + iF + iC + iP);
     return {
       iD: a.iD + iD,  eD: a.eD + (r.expected?.delivery || 0),  dD: a.dD + (r.diffs?.delivery || 0),
       iR: a.iR + iR,  eR: a.eR + (r.expected?.rss      || 0),  dR: a.dR + (r.diffs?.rss      || 0),
       iF: a.iF + iF,  eF: a.eF + (r.expected?.fuel     || 0),  dF: a.dF + (r.diffs?.fuel     || 0),
       iC: a.iC + iC,
+      iP: a.iP + iP,
       iT: a.iT + iT,  eT: a.eT + (r.expected?.total    || 0),  dT: a.dT + (r.diffs?.total    || 0),
     };
-  }, { iD:0,eD:0,dD:0, iR:0,eR:0,dR:0, iF:0,eF:0,dF:0, iC:0, iT:0,eT:0,dT:0 });
+  }, { iD:0,eD:0,dD:0, iR:0,eR:0,dR:0, iF:0,eF:0,dF:0, iC:0, iP:0, iT:0,eT:0,dT:0 });
 
   const hasServiceType = results.some(r => r.serviceType);
   const colVis = detectColumnVisibility(results);
@@ -304,6 +309,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
     rss:      { key: 'rss',      label: 'RSS',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
     fuel:     { key: 'fuel',     label: 'وقود',    color:'#3aad78', bg:'rgba(58,173,120,.08)', bgL:'rgba(58,173,120,.03)' },
     cod:      { key: 'cod',      label: 'COD',     color:'#2dd4bf', bg:'rgba(45,212,191,.10)', bgL:'rgba(45,212,191,.04)' },
+    pos:      { key: 'pos',      label: 'POS',     color:'#ec4899', bg:'rgba(236,72,153,.10)', bgL:'rgba(236,72,153,.04)' },
     total:    { key: 'total',    label: 'الإجمالي',color:'#f59e0b', bg:'rgba(245,158,11,.08)', bgL:'rgba(245,158,11,.04)' },
   };
   const groups = [
@@ -311,20 +317,27 @@ function ResultsTable({ results, filter, showDetail, contract }) {
     ...(colVis.rss  ? [allGroups.rss]  : []),
     ...(colVis.fuel ? [allGroups.fuel] : []),
     ...(colVis.cod  ? [allGroups.cod]  : []),
+    ...(colVis.pos  ? [allGroups.pos]  : []),
     allGroups.total,
   ];
 
   // Helper to pick the invoiced/expected/diff per group key for a row.
   const cellsFor = (g, r, iD, iR, iF) => {
-    const iC = r.codFee || 0;
-    const eC = r.isCod ? (r.expected?.delivery || 0) : 0; // COD expected lands in delivery bucket
-    const dC = r.isCod ? (r.diffs?.delivery || 0) : 0;
+    const iC = r.invoiced?.codFee ?? r.codFee ?? 0;
+    const eC = r.isCod ? (r.expected?.delivery || 0)
+                       : (r.expected?.codFee   || 0);
+    const dC = r.isCod ? (r.diffs?.delivery   || 0)
+                       : (r.diffs?.codFee     || 0);
+    const iP = r.invoiced?.posFee ?? r.posFee ?? 0;
+    const eP = r.expected?.posFee || 0;
+    const dP = r.diffs?.posFee    || 0;
     if (g.key === 'delivery') return { inv: r.isCod ? 0 : iD, exp: r.isCod ? 0 : (r.expected?.delivery || 0), diff: r.isCod ? 0 : (r.diffs?.delivery ?? null) };
     if (g.key === 'rss')      return { inv: iR, exp: r.expected?.rss  || 0, diff: r.diffs?.rss  ?? null };
     if (g.key === 'fuel')     return { inv: iF, exp: r.expected?.fuel || 0, diff: r.diffs?.fuel ?? null };
     if (g.key === 'cod')      return { inv: iC, exp: eC, diff: dC };
+    if (g.key === 'pos')      return { inv: iP, exp: eP, diff: dP };
     /* total */
-    const iT = r.invoiced?.total ?? (iD + iR + iF);
+    const iT = r.invoiced?.total ?? (iD + iR + iF + iC + iP);
     return { inv: iT, exp: r.expected?.total || 0, diff: r.diffs?.total ?? null };
   };
 
@@ -333,6 +346,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
     if (g.key === 'rss')      return { inv: ft.iR, exp: ft.eR, diff: ft.dR };
     if (g.key === 'fuel')     return { inv: ft.iF, exp: ft.eF, diff: ft.dF };
     if (g.key === 'cod')      return { inv: ft.iC, exp: 0,     diff: 0 };
+    if (g.key === 'pos')      return { inv: ft.iP, exp: 0,     diff: 0 };
     return { inv: ft.iT, exp: ft.eT, diff: ft.dT };
   };
 
