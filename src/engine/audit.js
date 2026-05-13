@@ -271,17 +271,27 @@ export function mapRows(raw, colMap) {
   const filtered = allMapped.filter(r => {
     if (!r.dest || !(r.weight > 0)) return false;
     if (!isRealShipmentAwb(r.awb)) return false;
-    // Skip carrier-marked returns/failures when they're billed at
-    // zero — they're not part of the financial reconciliation. J&T
-    // uses "Return Sign", iMile uses "Delivery Failed", others may
-    // surface as "Cancelled" / "Not Delivered". Any of these stays
-    // in if some charge wasn't waived, so a billing bug on a failed
-    // delivery still gets caught.
+
+    const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
+      + (r.fuelSurcharge || 0) + (r.codFee || 0);
+
+    // Returns / failed deliveries: drop unbilled rows entirely. Two
+    // independent signals — either works on its own because each
+    // carrier file is different:
+    //   1. signingStatus says "Return / Failed / Cancelled / Not Delivered"
+    //      (J&T's "Return Sign", iMile when the status column is present)
+    //   2. Zero-billed delivery (iMile's typical pattern: returns just
+    //      have all charge columns blank with no status column at all)
+    // A row that says "return" but still has a non-zero bill stays in
+    // — that's a billing bug worth catching.
     if (r.signingStatus && /return|fail|cancel|not.?delivered/i.test(r.signingStatus)) {
-      const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
-        + (r.fuelSurcharge || 0) + (r.codFee || 0);
       if (totalBilled <= 0.01) return false;
     }
+    // Per the user's rule: returns don't count toward AP. If the
+    // carrier didn't bill anything (and this isn't a COD-fee row that
+    // legitimately has a 1 SAR fee waiting to apply), it's a return.
+    if (!r.isCod && totalBilled <= 0.01) return false;
+
     return true;
   });
   // Attach as a property so the rest of the pipeline (auditAll →
