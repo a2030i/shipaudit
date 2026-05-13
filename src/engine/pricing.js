@@ -51,7 +51,15 @@ export function calcDelivery(pricingDef, weight) {
         cost += tier.price;
       } else if (tier.pricePerUnit !== undefined) {
         const unitKg = tier.unitKg ?? 0.5;
-        const units  = Math.ceil(inTier / unitKg);
+        // Most carriers round excess weight UP to the next unit (ceil).
+        // iMile is the exception: they drop the fractional kg (floor).
+        // The tier can override via `roundMode: 'floor' | 'round' | 'ceil'`.
+        const mode = tier.roundMode || 'ceil';
+        const raw = inTier / unitKg;
+        let units;
+        if (mode === 'floor')      units = Math.floor(raw);
+        else if (mode === 'round') units = Math.round(raw);
+        else                       units = Math.ceil(raw);
         cost += units * tier.pricePerUnit;
       }
 
