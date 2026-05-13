@@ -503,15 +503,21 @@ export function mapRows(raw, colMap) {
     // iMile keeps separate columns (POS Amount, POS Fee, COD Service
     // Fee) so its rows already split correctly. J&T puts both in one
     // "COD service charge" column and disambiguates via the "COD
-    // payment method" column: Cash → flat COD handling fee, NLCard /
-    // card → percent-of-COD card fee. When we detect a card payment
-    // AND the file has no separate POS columns, we treat the COD
-    // service charge as the POS fee and treat codAmount as the POS
-    // amount, so the audit compares against contract.posFeePct.
+    // payment method" column: Cash → flat COD handling fee, anything
+    // else → percent-of-COD card fee. When we detect a non-cash COD
+    // method AND the file has no separate POS columns, we treat the
+    // COD service charge as the POS fee and treat codAmount as the
+    // POS amount, so the audit compares against contract.posFeePct.
+    //
+    // We match against KNOWN cash values (much shorter list than
+    // every possible card-network name). Anything else — NLCard,
+    // Mada, Apple Pay, plus any future payment methods carriers may
+    // add — automatically gets the card-fee treatment.
     const payMethod   = colMap.codPaymentMethod
       ? String(row[colMap.codPaymentMethod] ?? '').trim()
       : '';
-    const isCardPay   = /card|nlcard|mada|pos|knet|visa|master|stc.?pay|apple.?pay|tap/i.test(payMethod);
+    const isCashPay   = /^(cash|نقد(ي|اً|ا)?|كاش|نقداً)$/i.test(payMethod);
+    const isCardPay   = !!payMethod && !isCashPay;
     const hasInlinePos = !!colMap.posFee || !!colMap.posAmount;
     const rawCodAmt   = parseFloat(row[colMap.codAmount] ?? 0) || 0;
 
