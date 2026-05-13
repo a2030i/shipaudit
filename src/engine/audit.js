@@ -55,8 +55,13 @@ export function parseDate(v) {
 // ─── Column auto-mapper ────────────────────────────────────────────────────────
 // Patterns are tried in order. Specific patterns first, generic fallbacks last.
 const COL_PATTERNS = {
+  // AWB column — different carriers call it different things. We're
+  // specific enough to skip clearly-different columns: "Tracking No."
+  // for J&T, "Waybill No." for iMile, "AWB" for Aramex/SMSA. The bare
+  // /tracking/i also catches things like "Tracking Number" / "Tracking No".
   awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/],
-  shipDate:        [/ship.?date/i, /pick.?up.?date/i, /تاريخ/, /date/i],
+  // Ship date — also accept J&T's "Entry time" / "Signing time".
+  shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
   origin:          [/^origin$/i, /origin.?location/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
   dest:            [/^dest$/i, /destination.?location/i, /destination/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
   destCity:        [/dest.?city/i, /city/i, /مدين/i],
@@ -84,7 +89,7 @@ const COL_PATTERNS = {
   // this in a dedicated "COD Service Fee" column on the same row as the
   // shipment; Aramex breaks it out on a separate ZDCF billing-type row
   // which the engine routes via fuelSurcharge → codFee inside mapRows.
-  codFee:          [/cod.?service.?fee/i, /cod.?fee/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
+  codFee:          [/cod.?service.?fee/i, /cod.?service.?charge/i, /cod.?fee/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
   // POS (electronic payment / card-acquiring) — iMile exposes two
   // related columns: "POS Amount" (cash collected via card) and
   // "POS Fee" (carrier's processing fee, usually a fixed percent of
@@ -153,7 +158,9 @@ export const CARRIER_FIELDS = {
     required: ['weight', 'deliveryCharges'],
   },
   jt: {
-    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'tax', 'signingStatus'],
+    // J&T has COD amount + COD service charge on every COD shipment.
+    // Origin column is also useful since J&T billing is route-based.
+    core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax', 'signingStatus'],
     required: ['weight', 'deliveryCharges'],
   },
   imile: {
@@ -206,7 +213,10 @@ const BUILT_IN_CARRIER_RULES = [
   },
   {
     id: 'jt',
-    must_headers: [/(jt|j&t|jandt|settlement.?weight)/i],
+    // Real J&T file headers: "Tracking No.", "Settlement weight",
+    // "Delivery Charge", "Signing status", "COD service charge".
+    // We pick a quartet that's unlikely to appear together elsewhere.
+    must_headers: [/tracking.?no/i, /settlement.?weight/i, /signing.?status/i, /cod.?service.?charge/i],
     awb_pattern: /^JTE\d+/i,
     weight: 0.95,
   },
