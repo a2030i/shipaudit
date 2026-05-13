@@ -176,21 +176,31 @@ export async function loadSettlementUploads({ carrierId } = {}) {
 // (out − in, summed across AWBs with positive net). Returns a Map<id, sar>
 // so the COD-settlements dropdown can decorate each option with its
 // current outstanding balance.
+//
+// Paginates because Supabase caps a single SELECT at 1000 rows. The
+// cod_settlement table grows linearly with shipments, so we must
+// loop until we get a short page.
 export async function loadOutstandingByCarrier() {
-  const { data: ledger, error } = await supabase
-    .from('cod_settlement')
-    .select('carrier_id, awb, direction, amount');
-  if (error) throw error;
-
-  // Aggregate: paid - received per (carrier_id, awb)
+  const PAGE = 1000;
   const byKey = new Map();
-  for (const r of ledger ?? []) {
-    const key = `${r.carrier_id}__${String(r.awb).trim()}`;
-    const cur = byKey.get(key) || { carrier_id: r.carrier_id, awb: r.awb, paid: 0, received: 0 };
-    if (r.direction === 'out') cur.paid += Number(r.amount) || 0;
-    else                       cur.received += Number(r.amount) || 0;
-    byKey.set(key, cur);
+  let from = 0;
+  while (true) {
+    const { data: ledger, error } = await supabase
+      .from('cod_settlement')
+      .select('carrier_id, awb, direction, amount')
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const r of ledger ?? []) {
+      const key = `${r.carrier_id}__${String(r.awb).trim()}`;
+      const cur = byKey.get(key) || { carrier_id: r.carrier_id, awb: r.awb, paid: 0, received: 0 };
+      if (r.direction === 'out') cur.paid += Number(r.amount) || 0;
+      else                       cur.received += Number(r.amount) || 0;
+      byKey.set(key, cur);
+    }
+    if (!ledger || ledger.length < PAGE) break;
+    from += PAGE;
   }
+
   const TOL = 0.01;
   const totals = new Map();
   for (const m of byKey.values()) {
