@@ -7,7 +7,7 @@ import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
   loadSettlementUploads, deleteSettlementUpload,
-  findDuplicateSettlementAwbs,
+  findDuplicateSettlementAwbs, loadOutstandingByCarrier,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 
@@ -47,17 +47,22 @@ export default function CodSettlements({ isActive = true }) {
   const [uploads, setUploads] = useState([]);
   const [uploadsOpen, setUploadsOpen] = useState(false);
   const [confirmDeleteUpload, setConfirmDeleteUpload] = useState(null);
+  // outstandingByCarrier: Map<carrier_id, sar> — drives the dropdown
+  // labels so the user can see at a glance which carrier owes the most.
+  const [outstandingByCarrier, setOutstandingByCarrier] = useState(new Map());
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
     setLoading(true);
     try {
-      const [data, uploadsList] = await Promise.all([
+      const [data, uploadsList, outstanding] = await Promise.all([
         loadReconciliation(carrier),
         loadSettlementUploads({ carrierId: carrier }),
+        loadOutstandingByCarrier(),
       ]);
       setRows(data);
       setUploads(uploadsList);
+      setOutstandingByCarrier(outstanding);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -180,9 +185,15 @@ export default function CodSettlements({ isActive = true }) {
             style={{
               padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
               background: 'var(--card)', border: '1px solid var(--accent)',
-              color: 'var(--text)', cursor: 'pointer', minWidth: 160,
+              color: 'var(--text)', cursor: 'pointer', minWidth: 220,
             }}>
-            {carriers.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
+            {carriers.map(c => {
+              const due = outstandingByCarrier.get(c.id) || 0;
+              const dueLabel = due > 0
+                ? ` — ${due.toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ر.س`
+                : '';
+              return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
+            })}
           </select>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>

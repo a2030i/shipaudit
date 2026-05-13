@@ -172,6 +172,37 @@ export async function loadSettlementUploads({ carrierId } = {}) {
 //   • only in, no out     → 'over_remit'   (we don't have a payable
 //                           record for this remittance)
 //   • diff != 0           → 'pending_review' (needs approve/dispute)
+// Per-carrier outstanding totals: how much each carrier still owes us
+// (out − in, summed across AWBs with positive net). Returns a Map<id, sar>
+// so the COD-settlements dropdown can decorate each option with its
+// current outstanding balance.
+export async function loadOutstandingByCarrier() {
+  const { data: ledger, error } = await supabase
+    .from('cod_settlement')
+    .select('carrier_id, awb, direction, amount');
+  if (error) throw error;
+
+  // Aggregate: paid - received per (carrier_id, awb)
+  const byKey = new Map();
+  for (const r of ledger ?? []) {
+    const key = `${r.carrier_id}__${String(r.awb).trim()}`;
+    const cur = byKey.get(key) || { carrier_id: r.carrier_id, awb: r.awb, paid: 0, received: 0 };
+    if (r.direction === 'out') cur.paid += Number(r.amount) || 0;
+    else                       cur.received += Number(r.amount) || 0;
+    byKey.set(key, cur);
+  }
+  const TOL = 0.01;
+  const totals = new Map();
+  for (const m of byKey.values()) {
+    const diff = m.paid - m.received;
+    if (diff <= TOL) continue; // matched / over-remit don't count as outstanding
+    totals.set(m.carrier_id, (totals.get(m.carrier_id) || 0) + diff);
+  }
+  // Round to 2dp
+  for (const [k, v] of totals) totals.set(k, +v.toFixed(2));
+  return totals;
+}
+
 export async function loadReconciliation(carrierId) {
   if (!carrierId) return [];
 
