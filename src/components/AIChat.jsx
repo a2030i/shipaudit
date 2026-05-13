@@ -255,7 +255,7 @@ export default function AIChat() {
             background: 'linear-gradient(135deg, var(--accent3, var(--accent)), var(--accent))',
             color: '#fff', border: 'none', cursor: 'pointer',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 24px rgba(56,189,248,.35)',
+            boxShadow: '0 8px 24px rgba(45,212,191,.35)',
             zIndex: 950,
             transition: 'transform .15s',
           }}

@@ -288,7 +288,7 @@ export default function CarrierStatements({ carriers = [] }) {
             style={{
               border: `2px dashed ${drag ? 'var(--accent)' : 'var(--border2)'}`,
               borderRadius: 14, padding: '54px 24px', textAlign: 'center',
-              background: drag ? 'rgba(56,189,248,.05)' : 'var(--surface)',
+              background: drag ? 'rgba(45,212,191,.05)' : 'var(--surface)',
               cursor: 'pointer', transition: 'all .2s',
             }}
           >
@@ -372,7 +372,7 @@ export default function CarrierStatements({ carriers = [] }) {
               the ledger (otherwise everything is new and chips are noise). */}
           {existingMap && (deltaCounts.unchanged + deltaCounts.changed > 0) && (
             <div style={{
-              background: 'linear-gradient(135deg, rgba(56,189,248,.10), rgba(56,189,248,.02))',
+              background: 'linear-gradient(135deg, rgba(45,212,191,.10), rgba(45,212,191,.02))',
               border: '1px solid var(--accent)', borderRadius: 9,
               padding: '9px 14px', marginBottom: 12,
               display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center',

@@ -127,8 +127,8 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
                 style={{
                   display:'grid',gridTemplateColumns:'1fr auto',gap:'4px 12px',
                   padding:'10px 14px',borderRadius:9,cursor:'pointer',textAlign:'right',
-                  background:s.openrouterModel===m.id?'rgba(56,189,248,.1)':'var(--surface)',
-                  border:`1px solid ${s.openrouterModel===m.id?'rgba(56,189,248,.3)':'var(--border)'}`,
+                  background:s.openrouterModel===m.id?'rgba(45,212,191,.1)':'var(--surface)',
+                  border:`1px solid ${s.openrouterModel===m.id?'rgba(45,212,191,.3)':'var(--border)'}`,
                   transition:'all .15s',
                 }}>
                 <div style={{display:'flex',alignItems:'center',gap:7}}>
@@ -527,8 +527,8 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                             <div style={{
                               marginTop: 6, display: 'inline-flex', alignItems: 'center',
                               gap: 6, padding: '3px 9px', borderRadius: 999,
-                              background: 'rgba(56,189,248,.10)',
-                              border: '1px solid rgba(56,189,248,.35)',
+                              background: 'rgba(45,212,191,.10)',
+                              border: '1px solid rgba(45,212,191,.35)',
                               color: 'var(--accent)', fontSize: 11,
                               fontFamily: 'var(--font-mono)',
                             }}>

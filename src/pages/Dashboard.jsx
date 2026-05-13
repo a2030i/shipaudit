@@ -101,19 +101,61 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 22, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h1 style={{ fontFamily: 'var(--font-mono)', fontSize: 22, color: 'var(--text)', marginBottom: 4 }}>
-            Ship<span style={{ color: 'var(--accent)' }}>Audit</span> · لوحة التحكم
-          </h1>
-          <p style={{ color: 'var(--muted)', fontSize: 13, margin: 0 }}>
-            نظرة شاملة على التزاماتك تجاه شركات الشحن
-          </p>
+      {/* Hero banner — Lamha brand gradient */}
+      <div style={{
+        position: 'relative',
+        padding: '24px 28px',
+        marginBottom: 22,
+        borderRadius: 'var(--r-lg)',
+        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
+        color: '#fff',
+        overflow: 'hidden',
+        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
+      }}>
+        {/* Decorative hex shape */}
+        <div style={{
+          position: 'absolute', left: -40, top: -40, width: 220, height: 220,
+          opacity: .08, pointerEvents: 'none',
+        }}>
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
+          </svg>
         </div>
-        <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh} disabled={loading}>
-          {loading ? 'جارٍ التحميل...' : 'تحديث'}
-        </Btn>
+        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
+              LAMHA · FINANCIAL CONTROL
+            </div>
+            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
+              لوحة التحكم المالية
+            </h1>
+            <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
+              نظرة شاملة على التزاماتك تجاه شركات الشحن — مدفوعات، نزاعات، أعمار ديون
+            </p>
+          </div>
+          <button
+            onClick={refresh}
+            disabled={loading}
+            style={{
+              background: 'rgba(255,255,255,.12)',
+              border: '1px solid rgba(255,255,255,.22)',
+              color: '#fff',
+              padding: '8px 16px',
+              borderRadius: 9,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: loading ? 'wait' : 'pointer',
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 6,
+              fontFamily: 'var(--font-sans)',
+              backdropFilter: 'blur(6px)',
+            }}
+          >
+            <RefreshCw size={13} className={loading ? 'spin' : ''}/>
+            {loading ? 'جارٍ التحميل...' : 'تحديث البيانات'}
+          </button>
+        </div>
       </div>
 
       {loading && overview.length === 0 ? (
@@ -692,8 +734,8 @@ function AwbSearchCard() {
                             }}>{tm.icon} {tm.label}</span>
                             <span style={{
                               padding: '1px 6px', borderRadius: 999,
-                              background: 'rgba(56,189,248,.10)',
-                              border: '1px solid rgba(56,189,248,.35)',
+                              background: 'rgba(45,212,191,.10)',
+                              border: '1px solid rgba(45,212,191,.35)',
                               color: 'var(--accent)', fontSize: 9, fontFamily: 'var(--font-mono)',
                             }}>{cls}</span>
                           </div>

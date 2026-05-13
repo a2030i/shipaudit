@@ -173,8 +173,8 @@ function CountryBlock({ entry, onChange, onDelete }) {
         <button onClick={multiType ? toSingle : toMulti}
           title={multiType ? 'تحويل لنوع واحد' : 'إضافة أنواع خدمة (Road/Air)'}
           style={{
-            background: multiType ? 'rgba(56,189,248,.12)' : 'transparent',
-            border:`1px solid ${multiType?'rgba(56,189,248,.3)':'var(--border)'}`,
+            background: multiType ? 'rgba(45,212,191,.12)' : 'transparent',
+            border:`1px solid ${multiType?'rgba(45,212,191,.3)':'var(--border)'}`,
             color: multiType ? 'var(--accent)' : 'var(--muted)',
             borderRadius:7, padding:'4px 10px', cursor:'pointer', fontSize:10,
             marginLeft:6, whiteSpace:'nowrap',
@@ -470,8 +470,8 @@ function ContractForm({ contract, onSave, onClose }) {
                 <div key={i} style={{
                   alignSelf:   m.role==='user'?'flex-end':'flex-start',
                   maxWidth:    '88%',
-                  background:  m.role==='user'?'rgba(56,189,248,.12)':'var(--surface)',
-                  border:      `1px solid ${m.role==='user'?'rgba(56,189,248,.25)':'var(--border)'}`,
+                  background:  m.role==='user'?'rgba(45,212,191,.12)':'var(--surface)',
+                  border:      `1px solid ${m.role==='user'?'rgba(45,212,191,.25)':'var(--border)'}`,
                   borderRadius: m.role==='user'?'12px 12px 4px 12px':'12px 12px 12px 4px',
                   padding:'9px 12px', fontSize:12, lineHeight:1.65, whiteSpace:'pre-wrap',
                 }}>

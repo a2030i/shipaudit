@@ -97,7 +97,7 @@ function Step2({ carrierName, period, onUpload, onBack, uploading, aiStatus }) {
           border:`2px dashed ${drag?'var(--accent)':'var(--border2)'}`,
           borderRadius:14, padding:'48px 20px', textAlign:'center',
           cursor: uploading ? 'not-allowed' : 'pointer',
-          background: drag ? 'rgba(56,189,248,.05)' : 'var(--surface)',
+          background: drag ? 'rgba(45,212,191,.05)' : 'var(--surface)',
           transition:'all .2s', marginBottom:16,
         }}
       >
@@ -152,10 +152,10 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
             ✓ عناوين في الصف {detectedRow}
           </span>
         )}
-        <span style={{ background:'rgba(56,189,248,.1)', border:'1px solid rgba(56,189,248,.25)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
+        <span style={{ background:'rgba(45,212,191,.1)', border:'1px solid rgba(45,212,191,.25)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
           {rowCount} سطر بيانات
         </span>
-        <span style={{ background:'rgba(56,189,248,.08)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
+        <span style={{ background:'rgba(45,212,191,.08)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
           {mappedCount}/{Object.keys(FIELD_META).length} أعمدة معيّنة
         </span>
         {aiLoading && (
@@ -224,8 +224,8 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
         <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
           {headers.map(h => (
             <span key={h} style={{
-              background: Object.values(colMap).includes(h) ? 'rgba(56,189,248,.12)' : 'var(--card)',
-              border: `1px solid ${Object.values(colMap).includes(h)?'rgba(56,189,248,.28)':'var(--border)'}`,
+              background: Object.values(colMap).includes(h) ? 'rgba(45,212,191,.12)' : 'var(--card)',
+              border: `1px solid ${Object.values(colMap).includes(h)?'rgba(45,212,191,.28)':'var(--border)'}`,
               color: Object.values(colMap).includes(h) ? 'var(--accent)' : 'var(--muted)',
               borderRadius:5, padding:'2px 8px', fontSize:10, fontFamily:'var(--font-mono)',
             }}>{h}</span>

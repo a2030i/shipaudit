@@ -2,9 +2,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  Package, ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity,
+  ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
+import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
@@ -182,28 +183,26 @@ function AppInner({ theme, toggleTheme }) {
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
 
-          {/* Logo */}
+          {/* Logo — Lamha brand */}
           <div className="sidebar-logo">
-            <div style={{
-              width:34, height:34, flexShrink:0, borderRadius:9,
-              background:'linear-gradient(135deg,var(--accent3),var(--accent))',
-              display:'flex', alignItems:'center', justifyContent:'center',
-              boxShadow:'0 4px 16px rgba(56,189,248,.25)',
-            }}>
-              <Package size={16} color="#fff" strokeWidth={2.5}/>
-            </div>
-            {!collapsed && (
-              <div style={{ overflow:'hidden', flex:1 }}>
-                <div style={{ fontFamily:'var(--font-mono)', fontWeight:700, fontSize:14, color:'var(--text)', lineHeight:1, whiteSpace:'nowrap' }}>
-                  Ship<span style={{ color:'var(--accent)' }}>Audit</span>
-                </div>
-                <div style={{ fontSize:9, color:'var(--muted)', fontFamily:'var(--font-mono)', marginTop:3, letterSpacing:1.5, textTransform:'uppercase' }}>
-                  Pro · v1.0
+            {collapsed ? (
+              <LamhaMark size={36}/>
+            ) : (
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%' }}>
+                <LamhaLogo height={26} color="#fff" accent="#2DD4BF"/>
+                <div style={{
+                  fontSize:8.5, color:'rgba(255,255,255,.45)',
+                  fontFamily:'var(--font-mono)', letterSpacing:1.5,
+                  textTransform:'uppercase', fontWeight:600,
+                  padding:'2px 6px', border:'1px solid rgba(45,212,191,.3)',
+                  borderRadius:4, marginInlineStart:8,
+                }}>
+                  v2.0
                 </div>
               </div>
             )}
             {mobileOpen && (
-              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', marginRight:'auto', padding:4 }}>
+              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.6)', cursor:'pointer', marginRight:'auto', padding:4 }}>
                 <X size={16}/>
               </button>
             )}
@@ -248,38 +247,50 @@ function AppInner({ theme, toggleTheme }) {
 
             {isAdmin && !collapsed && (
               <div style={{
-                marginTop:8, padding:'8px 11px',
-                background:'var(--surface)', border:'1px solid var(--border2)', borderRadius:8,
+                marginTop:10, padding:'10px 13px',
+                background:'rgba(45,212,191,.06)',
+                border:'1px solid rgba(45,212,191,.22)',
+                borderRadius:10,
+                display:'flex', alignItems:'center', justifyContent:'space-between',
               }}>
-                <div style={{ color:'var(--muted)', fontSize:9, fontFamily:'var(--font-mono)', marginBottom:3 }}>شركات مُعرَّفة</div>
-                <span style={{ color:'var(--accent)', fontSize:18, fontFamily:'var(--font-mono)', fontWeight:700 }}>
-                  {carriersLoading ? '…' : carriers.length}
-                </span>
+                <div>
+                  <div style={{ color:'rgba(255,255,255,.55)', fontSize:9, fontFamily:'var(--font-mono)', marginBottom:3, letterSpacing:1, textTransform:'uppercase' }}>شركات</div>
+                  <span style={{ color:'#2DD4BF', fontSize:20, fontFamily:'var(--font-mono)', fontWeight:700, lineHeight:1 }}>
+                    {carriersLoading ? '…' : carriers.length}
+                  </span>
+                </div>
+                <Truck size={20} color="rgba(45,212,191,.55)"/>
               </div>
             )}
 
             {!collapsed && (
               <div style={{
-                marginTop:8, display:'flex', alignItems:'center', gap:8,
-                padding:'8px 10px', borderRadius:8,
-                background:'var(--surface)', border:'1px solid var(--border2)',
+                marginTop:10, display:'flex', alignItems:'center', gap:10,
+                padding:'10px 12px', borderRadius:10,
+                background:'rgba(255,255,255,.04)',
+                border:'1px solid rgba(255,255,255,.08)',
               }}>
                 <div style={{
-                  width:28, height:28, borderRadius:'50%', flexShrink:0,
-                  background: profile.avatar_color || '#38bdf8',
+                  width:32, height:32, borderRadius:'50%', flexShrink:0,
+                  background: profile.avatar_color || 'linear-gradient(135deg,#1B1E54,#2DD4BF)',
                   display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:11, fontWeight:700, color:'#000',
+                  fontSize:13, fontWeight:700, color:'#fff',
+                  boxShadow:'0 2px 8px rgba(45,212,191,.22)',
                 }}>
                   {profile.name?.[0] ?? '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:600, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:10, color:'var(--muted)' }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
+                  <div style={{ fontSize:12, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
+                  <div style={{ fontSize:10, color:'rgba(255,255,255,.5)', marginTop:1 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
                 <button onClick={signOut} title="تسجيل خروج" style={{
-                  background:'none', border:'none', color:'var(--muted)',
-                  cursor:'pointer', fontSize:14, padding:'2px 3px', lineHeight:1,
-                }}>⏻</button>
+                  background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.08)',
+                  color:'rgba(255,255,255,.55)',
+                  cursor:'pointer', padding:'5px 6px', borderRadius:6,
+                  display:'flex', alignItems:'center',
+                }}>
+                  <LogOut size={12}/>
+                </button>
               </div>
             )}
           </div>
@@ -298,21 +309,27 @@ function AppInner({ theme, toggleTheme }) {
               <Menu size={16}/>
             </button>
 
-            <div style={{ flex:1, display:'flex', alignItems:'center', gap:8 }}>
-              <span style={{ fontFamily:'var(--font-mono)', fontSize:13, fontWeight:600, color:'var(--text)' }}>
+            <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
+              <span style={{
+                fontFamily:'var(--font-sans)', fontSize:14, fontWeight:700,
+                color:'var(--text)', whiteSpace:'nowrap',
+              }}>
                 {currentTitle}
               </span>
               {location.pathname !== '/dashboard' && (
-                <span style={{ color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)' }}>
-                  · ShipAudit Pro
-                </span>
+                <>
+                  <span style={{ color:'var(--muted2)', fontSize:11 }}>›</span>
+                  <span style={{ color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)', letterSpacing:1, textTransform:'uppercase' }}>
+                    Lamha
+                  </span>
+                </>
               )}
             </div>
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title={theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'} style={{
-              background:'none', border:'1px solid var(--border2)',
-              color:'var(--muted)', cursor:'pointer', padding:'6px 8px',
+              background:'var(--surface)', border:'1px solid var(--border2)',
+              color:'var(--muted)', cursor:'pointer', padding:'7px 9px',
               borderRadius:8, display:'flex', alignItems:'center',
               transition:'all .15s',
             }}
@@ -322,9 +339,20 @@ function AppInner({ theme, toggleTheme }) {
               {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
             </button>
 
-            <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-              <div style={{ width:6, height:6, borderRadius:'50%', background:'var(--green)', boxShadow:'0 0 6px var(--green)', flexShrink:0 }}/>
-              <span style={{ color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)' }}>جاهز</span>
+            <div style={{
+              display:'flex', alignItems:'center', gap:6,
+              padding:'6px 10px', borderRadius:20,
+              background:'rgba(45,212,191,.08)',
+              border:'1px solid rgba(45,212,191,.22)',
+            }}>
+              <div style={{
+                width:6, height:6, borderRadius:'50%',
+                background:'var(--accent)',
+                boxShadow:'0 0 6px var(--accent)',
+                flexShrink:0,
+                animation:'pulse 2s ease infinite',
+              }}/>
+              <span style={{ color:'var(--accent)', fontSize:11, fontFamily:'var(--font-mono)', fontWeight:600, letterSpacing:.5 }}>متصل</span>
             </div>
           </div>
 

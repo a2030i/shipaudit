@@ -310,7 +310,7 @@ export default function CodSettlements({ isActive = true }) {
                       <span style={{
                         padding: '2px 8px', borderRadius: 999,
                         fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        background: u.direction === 'in' ? 'rgba(34,197,94,.15)' : 'rgba(56,189,248,.15)',
+                        background: u.direction === 'in' ? 'rgba(34,197,94,.15)' : 'rgba(45,212,191,.15)',
                         color: u.direction === 'in' ? 'var(--green)' : 'var(--accent)',
                         whiteSpace: 'nowrap',
                       }}>
