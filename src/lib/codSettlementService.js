@@ -60,6 +60,39 @@ export async function deleteSettlementUpload(uploadId) {
   if (error) throw error;
 }
 
+// List of all settlement uploads for a carrier, aggregated by upload_id
+// so the UI can show one row per uploaded file: date, direction, count,
+// total amount, source filename, settlement ref.
+export async function loadSettlementUploads({ carrierId } = {}) {
+  if (!carrierId) return [];
+  const { data, error } = await supabase
+    .from('cod_settlement')
+    .select('upload_id, direction, upload_date, source_file, settlement_ref, amount, created_at')
+    .eq('carrier_id', carrierId)
+    .order('upload_date', { ascending: false });
+  if (error) throw error;
+  const map = new Map();
+  for (const row of data ?? []) {
+    if (!map.has(row.upload_id)) {
+      map.set(row.upload_id, {
+        uploadId:     row.upload_id,
+        direction:    row.direction,
+        uploadDate:   row.upload_date,
+        sourceFile:   row.source_file,
+        settlementRef: row.settlement_ref,
+        createdAt:    row.created_at,
+        count:        0,
+        amount:       0,
+      });
+    }
+    const u = map.get(row.upload_id);
+    u.count++;
+    u.amount += Number(row.amount) || 0;
+  }
+  // Newest first by uploadDate (already sorted by DB) then createdAt
+  return [...map.values()].map(u => ({ ...u, amount: +u.amount.toFixed(2) }));
+}
+
 // ── Reconciliation engine ──────────────────────────────────────────────
 // Returns one row per AWB present in either direction for the given
 // carrier. The shape:

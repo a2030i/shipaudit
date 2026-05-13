@@ -1,11 +1,12 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare } from 'lucide-react';
+import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
+  loadSettlementUploads, deleteSettlementUpload,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 
@@ -42,18 +43,64 @@ export default function CodSettlements({ isActive = true }) {
   const [search, setSearch] = useState('');
   const [actionModal, setActionModal] = useState(null);  // { row, kind:'approve'|'dispute'|'edit'|'resolve' }
   const [uploadModal, setUploadModal] = useState(null);  // { direction:'out'|'in' }
+  const [uploads, setUploads] = useState([]);
+  const [uploadsOpen, setUploadsOpen] = useState(false);
+  const [confirmDeleteUpload, setConfirmDeleteUpload] = useState(null);
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
     setLoading(true);
     try {
-      const data = await loadReconciliation(carrier);
+      const [data, uploadsList] = await Promise.all([
+        loadReconciliation(carrier),
+        loadSettlementUploads({ carrierId: carrier }),
+      ]);
       setRows(data);
+      setUploads(uploadsList);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
   }, [carrier]);
+
+  const handleDeleteUpload = async (uploadId) => {
+    try {
+      await deleteSettlementUpload(uploadId);
+      toast('تم حذف التسوية', 'info');
+      setConfirmDeleteUpload(null);
+      refresh();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+  };
+
+  // Export the outstanding (متبقّي) list as Excel — what the carrier still
+  // owes us, ready to send back to them as a follow-up list.
+  const handleExportOutstanding = () => {
+    const outstanding = rows.filter(r => r.status === 'outstanding');
+    if (!outstanding.length) {
+      toast('لا توجد شحنات متبقّية للتصدير', 'info');
+      return;
+    }
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const wb = XLSX.utils.book_new();
+    const headers = ['رقم الشحنة (AWB)', 'المبلغ (ر.س)', 'تاريخ التسوية مع المتجر', 'الأيام منذ التسوية'];
+    const data = outstanding
+      .sort((a, b) => (a.firstOutDate || '').localeCompare(b.firstOutDate || ''))
+      .map(r => {
+        const days = r.firstOutDate
+          ? Math.floor((today - new Date(r.firstOutDate)) / 86_400_000)
+          : '—';
+        return [r.awb, +r.diff.toFixed(2), r.firstOutDate || '—', days];
+      });
+    const totalRow = ['الإجمالي', outstanding.reduce((s, r) => s + r.diff, 0).toFixed(2), '', ''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data, [], totalRow]);
+    ws['!cols'] = [{ wch: 24 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'متبقّي عند الناقل');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `متبقي_عند_الناقل_${carrier}_${dateStr}.xlsx`);
+    toast(`تم تصدير ${outstanding.length} شحنة`, 'success');
+  };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
@@ -139,6 +186,13 @@ export default function CodSettlements({ isActive = true }) {
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+          {summary.outstandingCount > 0 && (
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>}
+              onClick={handleExportOutstanding}
+              title="تصدير المتبقي عند الناقل كـExcel لإرساله لهم">
+              📤 صدّر المتبقي
+            </Btn>
+          )}
           <Btn size="sm" variant="primary" icon={<Upload size={14}/>}
             onClick={() => setUploadModal({ direction: 'out' })}>
             📤 تسوية صادرة
@@ -218,6 +272,81 @@ export default function CodSettlements({ isActive = true }) {
                 <AgingCard label="31–60 يوم · انتبه"  color="#f59e0b"   {...agingOver.d31_60}/>
                 <AgingCard label="+60 يوم · حقّق"    color="var(--red)" {...agingOver.d61}/>
               </div>
+            </Card>
+          )}
+
+          {/* Uploads history — one row per file, with per-file totals so
+              the user can see exactly which incoming file contributed
+              which amount. Collapsible to keep the page compact. */}
+          {uploads.length > 0 && (
+            <Card style={{ padding: 0, marginBottom: 14, overflow: 'hidden' }}>
+              <button onClick={() => setUploadsOpen(o => !o)}
+                style={{
+                  width: '100%', padding: '12px 16px',
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  background: 'var(--surface)', border: 'none',
+                  borderBottom: uploadsOpen ? '1px solid var(--border)' : 'none',
+                  cursor: 'pointer', color: 'inherit', fontFamily: 'inherit', textAlign: 'right',
+                }}>
+                {uploadsOpen ? <ChevronDown size={16} color="var(--accent)"/> : <ChevronLeft size={16} color="var(--muted)"/>}
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, color: 'var(--accent)' }}>
+                  📑 الملفات المرفوعة ({uploads.length})
+                </span>
+                <span style={{ marginRight: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+                  📥 {uploads.filter(u => u.direction === 'in').length} واردة ·
+                  {' '}📤 {uploads.filter(u => u.direction === 'out').length} صادرة
+                </span>
+              </button>
+              {uploadsOpen && (
+                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                  {uploads.map(u => (
+                    <div key={u.uploadId} style={{
+                      display: 'grid',
+                      gridTemplateColumns: 'auto 1fr auto auto auto',
+                      gap: 12, alignItems: 'center',
+                      padding: '10px 16px', borderBottom: '1px solid var(--border)22',
+                    }}>
+                      <span style={{
+                        padding: '2px 8px', borderRadius: 999,
+                        fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        background: u.direction === 'in' ? 'rgba(34,197,94,.15)' : 'rgba(56,189,248,.15)',
+                        color: u.direction === 'in' ? 'var(--green)' : 'var(--accent)',
+                        whiteSpace: 'nowrap',
+                      }}>
+                        {u.direction === 'in' ? '📥 واردة' : '📤 صادرة'}
+                      </span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 600 }}>
+                          {u.sourceFile || '(بدون اسم ملف)'}
+                          {u.settlementRef && (
+                            <span style={{ marginRight: 8, fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                              · رقم {u.settlementRef}
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                          {u.uploadDate}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'center', minWidth: 70 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>
+                          {u.count}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>شحنة</div>
+                      </div>
+                      <div style={{ textAlign: 'left', minWidth: 110 }}>
+                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: u.direction === 'in' ? 'var(--green)' : 'var(--text)' }}>
+                          {fmt(u.amount)}
+                        </div>
+                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</div>
+                      </div>
+                      <Btn size="sm" variant="ghost" onClick={() => setConfirmDeleteUpload(u)} title="حذف الملف">
+                        <Trash2 size={12}/>
+                      </Btn>
+                    </div>
+                  ))}
+                </div>
+              )}
             </Card>
           )}
 
@@ -306,6 +435,22 @@ export default function CodSettlements({ isActive = true }) {
           userId={user?.id}
         />
       )}
+
+      {confirmDeleteUpload && (
+        <Modal title="⚠️ حذف الملف" onClose={() => setConfirmDeleteUpload(null)} width={420}>
+          <div style={{ fontSize: 13, lineHeight: 1.7, marginBottom: 14 }}>
+            سيتم حذف الملف <strong>{confirmDeleteUpload.sourceFile || `#${confirmDeleteUpload.uploadId.slice(0, 16)}`}</strong>
+            {' '}({confirmDeleteUpload.count} صف، {fmt(confirmDeleteUpload.amount)} ر.س).
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 16 }}>
+            هذا الإجراء يحذف فقط هذي الدفعة من السجل — أي مطابقات أُعتمدت أو نزاعات أُغلقت بناءً عليها قد تعود للحالة "غير مراجعة".
+          </div>
+          <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => setConfirmDeleteUpload(null)}>إلغاء</Btn>
+            <Btn variant="danger" onClick={() => handleDeleteUpload(confirmDeleteUpload.uploadId)}>تأكيد الحذف</Btn>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -379,11 +524,26 @@ function Row({ r, onAction, onReopen }) {
             <Btn size="sm" variant="ghost" onClick={() => onReopen(r)}>↩ إعادة فتح</Btn>
           </>
         )}
-        {r.status === 'outstanding' && (
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-            بانتظار التحويل من الناقل
-          </span>
-        )}
+        {r.status === 'outstanding' && (() => {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const days = r.firstOutDate
+            ? Math.floor((today - new Date(r.firstOutDate)) / 86_400_000)
+            : null;
+          const ageColor = days == null ? 'var(--muted)'
+            : days > 60 ? 'var(--red)' : days > 30 ? 'var(--gold)' : 'var(--muted)';
+          return (
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                بانتظار التحويل من الناقل
+              </div>
+              {days != null && (
+                <div style={{ fontSize: 10, color: ageColor, marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                  ⏱ {days} يوم منذ التسوية
+                </div>
+              )}
+            </div>
+          );
+        })()}
         {r.status === 'over_remit' && (
           <>
             <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>
