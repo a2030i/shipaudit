@@ -60,9 +60,13 @@ const COL_PATTERNS = {
   origin:          [/^origin$/i, /origin.?location/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
   dest:            [/^dest$/i, /destination.?location/i, /destination/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
   destCity:        [/dest.?city/i, /city/i, /مدين/i],
-  // Prefer chargeable weight (used for billing) over net/actual weight,
-  // because some carriers (e.g. Aramex) leave Net weight at 0.
-  weight:          [/chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
+  // Weight column priority:
+  //   • "Settlement weight" — J&T's billed weight (rounded up to next kg)
+  //   • "Chargeable weight" — Aramex's billed weight
+  //   • Fallback to actual / generic / Arabic
+  // We always pick the column the carrier ACTUALLY billed against, since
+  // that's what the contract math compares against.
+  weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
   deliveryCharges: [/delivery.?charge/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
   rss:             [/^rss$/i, /remote/i],
   // "Other Charge" is the canonical Aramex column that bundles either fuel
@@ -73,9 +77,14 @@ const COL_PATTERNS = {
   // "Tax Amount" — actual VAT line from the carrier file. Reading this
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
-  tax:             [/^tax\s*amount$/i, /^tax$/i, /tax.?amount/i, /^vat$/i, /^ضريبة$/, /قيمة\s*مضافة/i],
+  tax:             [/^tax\s*amount$/i, /^tax$/i, /tax.?amount/i, /^vat$/i, /vat\s*amount/i, /^ضريبة$/, /قيمة\s*مضافة/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
   billingType:     [/billing.?type/i],
+  // J&T uses "Signing status" to flag returns ("Return Sign" vs
+  // "Normal Sign"). Surfaced to mapRows so we can skip returns from
+  // the audit — they're billed at 0 SAR and would otherwise show as
+  // false-positive "favorable" diffs.
+  signingStatus:   [/signing.?status/i, /حالة.?التوقيع/i, /^status$/i],
 };
 
 // Aramex billing-type codes:
@@ -155,10 +164,23 @@ const COUNTRY_ALIASES = {
   'ye': 'Yemen', 'yemen': 'Yemen', 'اليمن': 'Yemen',
 };
 
+// Saudi province names — matched as prefixes so we catch both
+// "<Province> Province-City" (J&T's common format) and "<Province>-City"
+// (J&T's remote-area format that omits the word "Province"). These are
+// the 13 administrative regions of Saudi Arabia plus common spellings.
+const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|al\s*madinah|eastern|al\s*qassim|qassim|asir|tabuk|najran|jazan|gizan|al\s*bahah|al\s*jawf|hail|ha'?il|northern\s*borders?)\b/i;
+
 export function normalizeCountry(raw) {
   if (!raw) return '';
-  const key = String(raw).trim().toLowerCase();
-  return COUNTRY_ALIASES[key] ?? String(raw).trim();
+  const str = String(raw).trim();
+  const key = str.toLowerCase();
+  if (COUNTRY_ALIASES[key]) return COUNTRY_ALIASES[key];
+  // Detect Saudi-domestic destinations even when the country name is
+  // absent. J&T writes "<Province> Province-City" or "<Province>-City".
+  // The leading word is always a Saudi administrative region.
+  if (/\bprovince\b/i.test(str)) return 'Saudi Arabia';
+  if (SAUDI_PROVINCE_RE.test(str)) return 'Saudi Arabia';
+  return str;
 }
 
 // ─── Map raw rows using detected columns ───────────────────────────────────────
@@ -214,6 +236,7 @@ export function mapRows(raw, colMap) {
       tax:             parseFloat(row[colMap.tax] ?? 0) || 0,
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
+      signingStatus:   String(row[colMap.signingStatus] ?? '').trim(),
     };
   });
 
@@ -231,7 +254,21 @@ export function mapRows(raw, colMap) {
     if (t !== 0) taxRoundingAdjustment += t;
   }
 
-  const filtered = allMapped.filter(r => r.dest && r.weight > 0 && isRealShipmentAwb(r.awb));
+  const filtered = allMapped.filter(r => {
+    if (!r.dest || !(r.weight > 0)) return false;
+    if (!isRealShipmentAwb(r.awb)) return false;
+    // Skip carrier-marked returns when they're billed at zero — they're
+    // not part of the financial reconciliation (J&T marks these as
+    // "Return Sign"; Aramex doesn't expose this column). Returns with
+    // ANY non-zero charge stay in so we can catch the rare bug where a
+    // return got billed by mistake.
+    if (r.signingStatus && /return/i.test(r.signingStatus)) {
+      const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
+        + (r.fuelSurcharge || 0) + (r.codFee || 0);
+      if (totalBilled <= 0.01) return false;
+    }
+    return true;
+  });
   // Attach as a property so the rest of the pipeline (auditAll →
   // buildSummary → save) can fold it into totalTax without changing
   // function signatures or breaking existing callers.
@@ -239,19 +276,25 @@ export function mapRows(raw, colMap) {
   return filtered;
 }
 
-// Aramex monthly Excels include phantom rows like "TAX Rounding Diff",
-// "Total", subtotals, etc. They sneak through every other filter (they
-// have a destination + a weight) but the AWB column carries a label
-// instead of a tracking number. Real Aramex AWBs are pure-digit
-// 10-character codes, so we drop anything with alphabetic content.
+// Carrier files include phantom rows like Aramex's "TAX Rounding Diff",
+// "Total", subtotals, etc. — they sneak through every other filter
+// (have a destination + weight). Real AWBs from every carrier we
+// support follow one of these patterns:
+//   Aramex:     pure digits      (e.g. 50676846194)
+//   J&T:        JTE + digits     (e.g. JTE000913047830)
+//   DeliverNow: DNL + digits     (e.g. DNL03559916127)
+// The phantom labels are always natural-language strings with spaces.
+// Heuristic: reject anything containing whitespace, accept anything
+// with a 6+ digit contiguous run (covers all real formats).
 function isRealShipmentAwb(awb) {
   if (!awb) return false;
   const trimmed = String(awb).trim();
   if (!trimmed) return false;
-  // Reject if the cell contains any letters (Latin or Arabic)
-  if (/[a-z؀-ۿ]/i.test(trimmed)) return false;
-  // Must contain at least one run of 4+ digits
-  if (!/\d{4,}/.test(trimmed)) return false;
+  // Phantom labels always contain spaces ("TAX Rounding Diff",
+  // "Grand Total", "Bill Doc.", "Sub Total" ...).
+  if (/\s/.test(trimmed)) return false;
+  // Real AWBs always have a long digit run.
+  if (!/\d{6,}/.test(trimmed)) return false;
   return true;
 }
 
