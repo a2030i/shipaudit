@@ -358,33 +358,37 @@ export function extractCarrierPayments(transactions, carriers) {
  * Build an "كشف صافي" workbook from the parsed transactions.
  * Returns the raw bytes so the caller can wrap it in a Blob and download.
  */
-export function generateCleanExcel(transactions, summary = {}) {
+export function generateCleanExcel(transactions, _summary = {}) {
+  // Single-sheet export matching the layout the user's external
+  // financial system parses. Column order, header names, and sheet
+  // name are pinned exactly — the summary sheet that used to ride
+  // along is gone because it broke their importer's "find header
+  // row 0" assumption.
+  //
+  // Empty cells (vs explicit 0) are intentional: their system reads
+  // a missing value as "not applicable" while 0 inflates totals.
   const wb = XLSX.utils.book_new();
-
-  // Sheet 1: Summary
-  const summaryRows = [
-    ['ملخص الكشف'],
-    ['الرصيد الختامي', summary.closingBalance ?? ''],
-    ['الفترة من',      summary.periodFrom    ?? ''],
-    ['الفترة إلى',     summary.periodTo      ?? ''],
-    ['عدد العمليات',   transactions.length],
-    [],
+  const headers = ['تاريخ العملية', 'وصف العملية', 'دائن', 'مدين', 'الرسوم', 'الضريبة', 'المرجع'];
+  const blankIfZero = v => (v == null || Number(v) === 0) ? '' : Number(v);
+  const rows = transactions.map(t => [
+    t.date        ?? '',
+    t.description ?? '',
+    blankIfZero(t.credit),
+    blankIfZero(t.debit),
+    blankIfZero(t.fees),
+    blankIfZero(t.tax),
+    t.reference   ?? '',
+  ]);
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [
+    { wch: 14 },   // تاريخ العملية
+    { wch: 80 },   // وصف العملية
+    { wch: 14 },   // دائن
+    { wch: 14 },   // مدين
+    { wch: 12 },   // الرسوم
+    { wch: 12 },   // الضريبة
+    { wch: 22 },   // المرجع
   ];
-  const summarySheet = XLSX.utils.aoa_to_sheet(summaryRows);
-  XLSX.utils.book_append_sheet(wb, summarySheet, 'الملخص');
-
-  // Sheet 2: Transactions
-  const txRows = transactions.map(t => ({
-    'التاريخ':       t.date,
-    'الرقم المرجعي': t.reference,
-    'الوصف':         t.description,
-    'دائن':          t.credit,
-    'مدين (صافي)':   t.debit,
-    'الرسوم':        t.fees,
-    'الضريبة (15%)': t.tax,
-  }));
-  const txSheet = XLSX.utils.json_to_sheet(txRows);
-  XLSX.utils.book_append_sheet(wb, txSheet, 'العمليات');
-
+  XLSX.utils.book_append_sheet(wb, ws, 'كشف حساب صافي');
   return XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
 }
