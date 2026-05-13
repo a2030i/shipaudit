@@ -343,7 +343,7 @@ export async function findCrossAuditDuplicates({ carrierId, awbsByClass, exclude
 export async function loadAuditsFromDB(limit = 50) {
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at')
+    .select('id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at, review_status, approved_at, rejected_reason')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
@@ -362,6 +362,9 @@ export async function loadAuditsFromDB(limit = 50) {
     diff:          row.diff,
     auditType:     row.audit_type,
     date:          row.created_at,
+    reviewStatus:  row.review_status ?? 'pending',
+    approvedAt:    row.approved_at,
+    rejectedReason: row.rejected_reason,
   }));
 }
 
@@ -386,6 +389,11 @@ export async function loadAuditByIdFromDB(id) {
     results:       data.results ?? [],
     colMap:        data.col_map ?? {},
     date:          data.created_at,
+    reviewStatus:  data.review_status ?? 'pending',
+    approvedAt:    data.approved_at,
+    approvedBy:    data.approved_by,
+    rejectedReason: data.rejected_reason,
+    rejectedAt:    data.rejected_at,
     summary: {
       contractLabel: data.contract_label,
       fileName:      data.file_name,
@@ -394,6 +402,60 @@ export async function loadAuditByIdFromDB(id) {
       diff:          data.diff,
     },
   };
+}
+
+// Approve an audit — flips its review_status from pending to approved
+// and stamps who/when. Idempotent: re-approving is a no-op aside from
+// updating approved_at.
+export async function approveAudit(auditId, userId) {
+  const { data, error } = await supabase
+    .from('audits')
+    .update({
+      review_status:    'approved',
+      approved_at:      new Date().toISOString(),
+      approved_by:      userId || null,
+      rejected_reason:  null,
+      rejected_at:      null,
+    })
+    .eq('id', auditId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function rejectAudit(auditId, reason, userId) {
+  const { data, error } = await supabase
+    .from('audits')
+    .update({
+      review_status:   'rejected',
+      rejected_at:     new Date().toISOString(),
+      rejected_reason: reason || null,
+      approved_at:     null,
+      approved_by:     userId || null,
+    })
+    .eq('id', auditId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+// Send an approved/rejected audit back to pending — useful when new
+// info shows up and the accountant wants to re-examine before billing.
+export async function reopenAudit(auditId) {
+  const { data, error } = await supabase
+    .from('audits')
+    .update({
+      review_status: 'pending',
+      approved_at:   null,
+      rejected_at:   null,
+    })
+    .eq('id', auditId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 // Global AWB lookup: every place this shipment was billed across audits.

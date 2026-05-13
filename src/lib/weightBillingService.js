@@ -67,10 +67,14 @@ function excessRowsFor(audit, carrier) {
 
 // ─── reads ─────────────────────────────────────────────────────────────────
 export async function loadPendingAuditsForBilling() {
+  // Only APPROVED audits feed the merchant-billing pipeline. Pending /
+  // rejected audits stay out: pending = accountant hasn't blessed the
+  // numbers yet; rejected = explicitly excluded.
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_id, carrier_name, period, file_name, contract_label, created_at, weight_billing_status, results, row_count')
+    .select('id, carrier_id, carrier_name, period, file_name, contract_label, created_at, weight_billing_status, review_status, results, row_count')
     .eq('weight_billing_status', 'pending')
+    .eq('review_status',         'approved')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data || [];
