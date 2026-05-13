@@ -214,6 +214,19 @@ export async function saveAuditToDB(audit, userId) {
     rejected_reason: rs === 'rejected' ? (audit.rejectedReason || null) : null,
   } : {};
 
+  // COD-only audits (Aramex ZDCF rows) audit the per-shipment COD
+  // service fee against contract.codFee. They share AWBs + weights
+  // with the underlying shipment, but the shipment itself lives in
+  // a separate ZDOI audit — these rows aren't billable to the
+  // merchant. Mark them `skipped` upfront so they don't show up in
+  // the weight-billing queue forever.
+  const hasShippableRow = results.some(r =>
+    r.awb && Number(r.weight) > 0 && !r.isCod,
+  );
+  const weightBillingFields = (!hasShippableRow || auditType === 'cod')
+    ? { weight_billing_status: 'skipped' }
+    : {};
+
   const { error } = await supabase.from('audits').upsert({
     id:             audit.id,
     carrier_id:     audit.carrierId,
@@ -222,6 +235,7 @@ export async function saveAuditToDB(audit, userId) {
     file_name:      audit.fileName     ?? summary.fileName ?? '',
     period:         audit.period       ?? '',
     ...reviewFields,
+    ...weightBillingFields,
     row_count:      results.length,
     issue_count:    results.filter(r => r.status !== 'ok').length,
     total_expected: totalExpected,
