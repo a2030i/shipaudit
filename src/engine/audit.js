@@ -425,7 +425,12 @@ const COUNTRY_ALIASES = {
 // "<Province> Province-City" (J&T's common format) and "<Province>-City"
 // (J&T's remote-area format that omits the word "Province"). These are
 // the 13 administrative regions of Saudi Arabia plus common spellings.
-const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|al\s*madinah|eastern|al\s*qassim|qassim|asir|tabuk|najran|jazan|gizan|al\s*bahah|al\s*jawf|hail|ha'?il|northern\s*borders?)\b/i;
+// All 13 Saudi administrative regions — each with the common
+// English-spelling variations carriers actually use (J&T tends to
+// use "Al Jouf"/"Aseer"; Aramex uses "Al Jawf"/"Asir"; both refer to
+// the same regions). Add a new spelling here when a future file
+// surfaces yet another variant.
+const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|al\s*madinah|eastern|al\s*qassim|qassim|asir|aseer|tabuk|najran|jazan|gizan|jizan|al\s*bahah|al\s*baha|al\s*jawf|al\s*jouf|al\s*jouff|hail|ha'?il|ha'?yel|northern\s*borders?)\b/i;
 
 export function normalizeCountry(raw) {
   if (!raw) return '';
