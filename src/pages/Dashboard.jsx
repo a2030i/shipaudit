@@ -10,6 +10,8 @@ import {
   loadStaleDisputes,
 } from '../lib/carrierStatementsService.js';
 import { loadAuditsFromDB, searchAwbAcrossAudits, loadAuditByIdFromDB } from '../lib/coreService.js';
+import { loadOutstandingByCarrier } from '../lib/codSettlementService.js';
+import { Banknote } from 'lucide-react';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -23,23 +25,29 @@ const fmtCompact = n => {
 };
 
 export default function Dashboard({ carriers, onNavigate, isActive = true }) {
+  const navigate = useNavigate();
   const [overview, setOverview]   = useState([]);
   const [audits,   setAudits]     = useState([]);
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
   const [actionItems, setActionItems] = useState([]);
   const [dueWeek, setDueWeek]   = useState([]); // operations due in next 7 days
   const [staleDisputes, setStaleDisputes] = useState([]);
+  // codOutstanding: [{ carrierId, carrierName, logo, color, amount }]
+  // — outstanding COD remittances per carrier, zero-balance ones
+  // dropped. Drives the "تحصيلات COD المتبقّية" card.
+  const [codOutstanding, setCodOutstanding] = useState([]);
   const [loading,  setLoading]    = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [ov, ad, act, allOps, stale] = await Promise.all([
+      const [ov, ad, act, allOps, stale, codMap] = await Promise.all([
         loadCarriersOverview(),
         loadAuditsFromDB(8),
         loadRecentActivity(6),
         loadOperations({}),
         loadStaleDisputes({ thresholdDays: 30 }),
+        loadOutstandingByCarrier(),
       ]);
       setStaleDisputes(stale);
       // Build action-required list across all carriers.
@@ -88,6 +96,25 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
       setOverview(ov);
       setAudits(ad);
       setActivity(act);
+
+      // Flatten the COD outstanding map into a sorted list of carriers
+      // with non-zero balances. The card on the dashboard shows them
+      // largest-first.
+      const carriersById = new Map((carriers ?? []).map(c => [c.id, c]));
+      const codList = [...(codMap?.entries?.() ?? codMap ?? [])]
+        .filter(([, amt]) => amt > 0)
+        .map(([carrierId, amount]) => {
+          const c = carriersById.get(carrierId);
+          return {
+            carrierId,
+            carrierName: c?.name || carrierId,
+            logo:        c?.logo || '📦',
+            color:       c?.color || '#2DD4BF',
+            amount,
+          };
+        })
+        .sort((a, b) => b.amount - a.amount);
+      setCodOutstanding(codList);
     } catch (e) {
       console.error(e);
     }
@@ -231,6 +258,72 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
               </div>
             </Card>
           </div>
+
+          {/* COD OUTSTANDING per carrier — what each carrier still
+              owes us in cash. Zero-balance carriers excluded so the
+              card stays focused on what needs follow-up. */}
+          {codOutstanding.length > 0 && (() => {
+            const grand = codOutstanding.reduce((s, x) => s + x.amount, 0);
+            return (
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid #2DD4BF' }}>
+                <div style={{
+                  padding: '14px 20px', borderBottom: '1px solid var(--border)',
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+                }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                    <Banknote size={16} color="var(--accent)"/>
+                    تحصيلات COD المتبقّية ({codOutstanding.length} شركة)
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 14, color: 'var(--accent)', fontWeight: 700 }}>
+                    إجمالي: {fmt(grand)} ر.س
+                  </span>
+                </div>
+                <div style={{ padding: '10px 8px' }}>
+                  <div style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                    gap: 8,
+                  }}>
+                    {codOutstanding.map(c => (
+                      <button
+                        key={c.carrierId}
+                        onClick={() => navigate('/cod-settlements')}
+                        style={{
+                          background: 'var(--surface)',
+                          border: '1px solid var(--border)',
+                          borderRight: `3px solid ${c.color}`,
+                          borderRadius: 9,
+                          padding: '10px 14px',
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          cursor: 'pointer', textAlign: 'right',
+                          transition: 'all .18s',
+                          fontFamily: 'inherit',
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--accent)'; e.currentTarget.style.background = 'var(--card)'; }}
+                        onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--surface)'; }}
+                      >
+                        <span style={{ fontSize: 22, flexShrink: 0 }}>{c.logo}</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {c.carrierName}
+                          </div>
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                            متبقّي عند الناقل
+                          </div>
+                        </div>
+                        <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 15, fontWeight: 700, color: c.color }}>
+                            {fmt(c.amount)}
+                          </div>
+                          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 1 }}>ر.س</div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* DUE THIS WEEK — operations whose due_date is within the next 7 days */}
           {dueWeek.length > 0 && (() => {
