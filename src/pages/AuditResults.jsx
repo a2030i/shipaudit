@@ -711,6 +711,71 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           </div>
         </div>
 
+        {/* ── Invoice reconciliation panel ─────────────────────────────
+            Shows the exact pre-VAT / VAT / gross numbers so the user
+            can match against the carrier's invoice line directly. */}
+        <div style={{
+          marginBottom: 16,
+          padding: '16px 20px',
+          background: 'linear-gradient(135deg, rgba(45,212,191,.06), rgba(27,30,84,.04))',
+          border: '1px solid var(--border)',
+          borderRadius: 12,
+        }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 }}>
+            مطابقة مع كشف شركة الشحن
+          </div>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 14,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>مفوتر من الشركة</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+                {Number(summary.totalBilled || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>قبل الضريبة</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>المتوقع حسب العقد</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
+                {Number(summary.totalExpected || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>قبل الضريبة</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>الضريبة (15%)</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>
+                {Number(summary.totalTax || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>على إجمالي الفاتورة</div>
+            </div>
+            <div style={{
+              padding: '12px 14px',
+              background: 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
+              borderRadius: 10,
+              color: '#fff',
+            }}>
+              <div style={{ fontSize: 11, opacity: .8, marginBottom: 4 }}>الإجمالي مع الضريبة</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 800, color: '#fff' }}>
+                {Number(summary.totalGross || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 12, opacity: .7 }}>ر.س</span>
+              </div>
+              <div style={{ fontSize: 10, opacity: .75, marginTop: 2 }}>طابقه مع كشف الشركة</div>
+            </div>
+          </div>
+          {summary.taxRoundingAdjustment && summary.taxRoundingAdjustment !== 0 ? (
+            <div style={{
+              marginTop: 12, padding: '8px 12px',
+              background: 'rgba(251,191,36,.06)',
+              border: '1px solid rgba(251,191,36,.20)',
+              borderRadius: 8, fontSize: 11.5, color: 'var(--gold)',
+              display: 'flex', alignItems: 'center', gap: 7,
+            }}>
+              ⚠ تسوية تقريب ضريبي ضمن الإجمالي: {Number(summary.taxRoundingAdjustment).toFixed(2)} ر.س
+            </div>
+          ) : null}
+        </div>
+
         {/* Column mapping used — lets user verify correctness */}
         {audit.colMap && (
           <ColMapBadges colMap={audit.colMap}/>
