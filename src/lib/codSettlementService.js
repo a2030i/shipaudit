@@ -19,6 +19,31 @@ import { supabase } from './supabase.js';
 const OVER_REMIT_AGE_DAYS = 30;
 
 // ── Settlement uploads ─────────────────────────────────────────────────
+// Returns Set of AWBs already present in cod_settlement for this
+// (carrier, direction) pair — used by the upload preview + save to
+// flag/skip duplicates before they hit the DB.
+export async function findDuplicateSettlementAwbs({
+  carrierId, direction, awbs,
+}) {
+  if (!carrierId || !direction || !Array.isArray(awbs) || !awbs.length) {
+    return new Set();
+  }
+  const found = new Set();
+  const CHUNK = 500;
+  for (let i = 0; i < awbs.length; i += CHUNK) {
+    const slice = awbs.slice(i, i + CHUNK).map(a => String(a).trim());
+    const { data, error } = await supabase
+      .from('cod_settlement')
+      .select('awb')
+      .eq('carrier_id', carrierId)
+      .eq('direction', direction)
+      .in('awb', slice);
+    if (error) throw error;
+    for (const r of data ?? []) found.add(String(r.awb).trim());
+  }
+  return found;
+}
+
 export async function saveSettlementUpload({
   direction, carrierId, rows, uploadDate, sourceFile, settlementRef, userId,
 }) {
@@ -32,10 +57,48 @@ export async function saveSettlementUpload({
   const uploadId = `cod_${direction}_${Date.now()}`;
   const date = uploadDate || new Date().toISOString().slice(0, 10);
   const ref  = (settlementRef ?? '').trim() || null;
-  const inserts = rows.map(r => ({
+
+  // ── Dedup 1: within the upload batch itself ──
+  // Same AWB twice in the same file → keep first, drop rest.
+  const seenInBatch = new Set();
+  const inBatchDupAwbs = [];
+  const dedupedRows = [];
+  for (const r of rows) {
+    const awb = String(r.awb).trim();
+    if (!awb) continue;
+    if (seenInBatch.has(awb)) { inBatchDupAwbs.push(awb); continue; }
+    seenInBatch.add(awb);
+    dedupedRows.push({ ...r, awb });
+  }
+
+  // ── Dedup 2: against rows already in the ledger ──
+  // Same AWB + same direction + same carrier → carrier or merchant
+  // already gave us this row in an earlier upload. Skip silently to
+  // prevent inflating the totals.
+  const existingDups = await findDuplicateSettlementAwbs({
+    carrierId, direction, awbs: dedupedRows.map(r => r.awb),
+  });
+  const crossFileDupAwbs = [];
+  const finalRows = [];
+  for (const r of dedupedRows) {
+    if (existingDups.has(r.awb)) { crossFileDupAwbs.push(r.awb); continue; }
+    finalRows.push(r);
+  }
+
+  if (!finalRows.length) {
+    return {
+      uploadId,
+      count: 0,
+      inBatchDuplicates: inBatchDupAwbs.length,
+      crossFileDuplicates: crossFileDupAwbs.length,
+      totalSubmitted: rows.length,
+    };
+  }
+
+  const inserts = finalRows.map(r => ({
     direction,
     carrier_id:     carrierId,
-    awb:            String(r.awb).trim(),
+    awb:            r.awb,
     amount:         Number(r.amount),
     upload_date:    date,
     source_file:    sourceFile ?? null,
@@ -43,14 +106,19 @@ export async function saveSettlementUpload({
     upload_id:      uploadId,
     created_by:     userId ?? null,
   }));
-  // Insert in chunks of 500 — Supabase rejects very large single payloads.
   const CHUNK = 500;
   for (let i = 0; i < inserts.length; i += CHUNK) {
     const { error } = await supabase
       .from('cod_settlement').insert(inserts.slice(i, i + CHUNK));
     if (error) throw error;
   }
-  return { uploadId, count: inserts.length };
+  return {
+    uploadId,
+    count: inserts.length,
+    inBatchDuplicates: inBatchDupAwbs.length,
+    crossFileDuplicates: crossFileDupAwbs.length,
+    totalSubmitted: rows.length,
+  };
 }
 
 // Delete every settlement row from a single upload (the user "undid" it).
