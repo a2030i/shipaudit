@@ -277,11 +277,11 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
   const carrier = carriers?.find(c => c.id === carrierId);
   const detectConfidence = carrierDetect?.confidence ?? 0;
   const detectedOk = !!carrierId && detectConfidence >= 0.5;
-  // Resolve the per-carrier field schema. When no carrier is selected
-  // yet, fall back to the default (every field). Required fields come
-  // from the same schema so e.g. iMile's required list doesn't ask for
-  // a Billing Type that doesn't exist in its files.
-  const schema = getFieldSchema(carrierId);
+  // Pass the carrier object so getFieldSchema resolves the correct kind
+  // (aramex/smsa/jt/imile/delivernow) from id+name regardless of what
+  // the DB id happens to be (e.g. 'jnt' for J&T, or a legacy UUID for
+  // Aramex).
+  const schema = getFieldSchema(carrier || carrierId, carriers);
   const visibleFields = schema.core;
   const requiredSet   = new Set(schema.required);
   const mappedCount   = visibleFields.filter(f => !!colMap[f]).length;
@@ -606,7 +606,9 @@ export default function UploadWizard({ carriers, onComplete }) {
         setRawRows(data);
         // Use the just-detected carrier id directly — setCarrierId from
         // a few lines above is async and won't reflect in this closure.
-        setColMap(detectColumns(hdrs, detected?.carrierId || null));
+        // Pass the full carriers list so getFieldSchema can resolve the
+        // kind from id+name regardless of what id the DB uses.
+        setColMap(detectColumns(hdrs, detected?.carrierId || null, carriers));
         setStep(3);
       } catch (err) {
         toast(`خطأ في قراءة الملف: ${err.message}`, 'error');

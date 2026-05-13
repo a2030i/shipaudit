@@ -136,16 +136,32 @@ function isCodFeeRow(billingType) {
   return COD_BILLING_CODES.has(String(billingType ?? '').trim().toUpperCase());
 }
 
+// ─── Carrier kind detection ──────────────────────────────────────────────────
+// Carrier rows in the DB can have any ID (legacy auto-generated UUIDs,
+// short codes like "jnt" vs "jt", etc). We resolve every DB carrier to
+// a stable "kind" (aramex | smsa | jt | imile | delivernow) by matching
+// either the id or the Arabic/English name against a regex. This keeps
+// the engine's hardcoded knowledge (schemas, billing rules) independent
+// of however carriers ended up being keyed.
+const CARRIER_KIND_PATTERNS = [
+  { kind: 'aramex',     re: /aramex|أرامكس|ارامكس/i },
+  { kind: 'smsa',       re: /smsa|سمسا/i },
+  { kind: 'jt',         re: /j&?t|jnt|jandt|جي.?اند.?ت|jt.?express/i },
+  { kind: 'imile',      re: /imile|آي.?مايل|اي.?مايل|آيمايل|ايمايل/i },
+  { kind: 'delivernow', re: /deliver.?now|ديلفر.?ناو|ديليفر|ديلفرناو/i },
+];
+
+export function resolveCarrierKind(carrier) {
+  if (!carrier) return null;
+  const blob = `${carrier.id || ''} ${carrier.name || ''}`;
+  for (const { kind, re } of CARRIER_KIND_PATTERNS) {
+    if (re.test(blob)) return kind;
+  }
+  return null;
+}
+
 // ─── Per-carrier field schemas ───────────────────────────────────────────────
-// Each carrier's invoice exposes a different subset of columns. iMile
-// has POS-fee fields but no RSS / fuel / billing-type; Aramex has all
-// of those except POS; J&T has the minimum set. The UI's
-// column-mapping step + the auto-detect column resolver only show
-// fields in the carrier's schema, so the user never has to map (and
-// later look at) columns that aren't billed.
-//
-// Order matters: this is the order rendered in Step3 of the wizard.
-//
+// Keyed by the canonical "kind" returned by resolveCarrierKind.
 // `core` = fields shown in the mapper UI.
 // `required` = subset that must map for the audit to be allowed.
 export const CARRIER_FIELDS = {
@@ -158,14 +174,10 @@ export const CARRIER_FIELDS = {
     required: ['weight', 'deliveryCharges'],
   },
   jt: {
-    // J&T has COD amount + COD service charge on every COD shipment.
-    // Origin column is also useful since J&T billing is route-based.
     core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax', 'signingStatus'],
     required: ['weight', 'deliveryCharges'],
   },
   imile: {
-    // POS Amount + POS Fee are first-class for iMile (1% card fee
-    // every COD-by-card shipment carries). No RSS or fuel.
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax'],
     required: ['weight', 'deliveryCharges'],
   },
@@ -181,8 +193,23 @@ export const DEFAULT_FIELD_SCHEMA = {
   required: ['weight', 'deliveryCharges'],
 };
 
-export function getFieldSchema(carrierId) {
-  return CARRIER_FIELDS[carrierId] || DEFAULT_FIELD_SCHEMA;
+// Look up a field schema. Accepts either a raw carrier id (legacy
+// callers) or the carrier object directly so we can resolve the kind.
+export function getFieldSchema(carrierOrId, carriers = null) {
+  if (!carrierOrId) return DEFAULT_FIELD_SCHEMA;
+  let carrier;
+  if (typeof carrierOrId === 'object') {
+    carrier = carrierOrId;
+  } else if (Array.isArray(carriers)) {
+    carrier = carriers.find(c => c.id === carrierOrId);
+  } else {
+    // Bare id — try matching it as a kind directly so legacy callers
+    // that pass 'jt' / 'imile' / etc. still work.
+    if (CARRIER_FIELDS[carrierOrId]) return CARRIER_FIELDS[carrierOrId];
+    carrier = { id: carrierOrId, name: '' };
+  }
+  const kind = resolveCarrierKind(carrier);
+  return CARRIER_FIELDS[kind] || DEFAULT_FIELD_SCHEMA;
 }
 
 // ─── Carrier identification from file structure ──────────────────────────────
@@ -197,37 +224,35 @@ export function getFieldSchema(carrierId) {
 //
 // Falls back to null when nothing matches — the UI then prompts the
 // user to pick manually (and we save the signature for next time).
+// Detection rules keyed by the canonical carrier kind (not DB id).
 const BUILT_IN_CARRIER_RULES = [
   {
-    id: 'aramex',
+    kind: 'aramex',
     must_headers: [/billing.?type/i],
     awb_pattern: /^\d{8,}$/,
     sample_values: { col: /billing.?type/i, values: /^(ZDOI|ZIBI|ZOBI|ZDCF)/i },
     weight: 1.0,
   },
   {
-    id: 'smsa',
+    kind: 'smsa',
     must_headers: [/^awb$/i, /(ship|delivery).?status/i],
     awb_pattern: /^\d{9,}$/,
     weight: 0.9,
   },
   {
-    id: 'jt',
-    // Real J&T file headers: "Tracking No.", "Settlement weight",
-    // "Delivery Charge", "Signing status", "COD service charge".
-    // We pick a quartet that's unlikely to appear together elsewhere.
+    kind: 'jt',
     must_headers: [/tracking.?no/i, /settlement.?weight/i, /signing.?status/i, /cod.?service.?charge/i],
     awb_pattern: /^JTE\d+/i,
     weight: 0.95,
   },
   {
-    id: 'imile',
-    must_headers: [/delivery.?fee/i, /(tier|tracking)/i],
+    kind: 'imile',
+    must_headers: [/delivery.?fee/i, /(tier|waybill)/i],
     awb_pattern: /^[A-Z]{0,4}\d{10,}$/,
     weight: 0.85,
   },
   {
-    id: 'delivernow',
+    kind: 'delivernow',
     must_headers: [/awb.?no/i, /cod.?amount/i],
     awb_pattern: /^DNL/i,
     weight: 0.85,
@@ -310,17 +335,23 @@ export function detectCarrierFromFile(allRows, carriers) {
     }
   }
 
-  // Pass 2: built-in carrier rules (only relevant for carriers actually in DB)
-  const ids = new Set(carriers.map(c => c.id));
-  for (const rule of BUILT_IN_CARRIER_RULES) {
-    if (!ids.has(rule.id)) continue;
+  // Pass 2: built-in rules. Each carrier in the DB is resolved to a
+  // "kind" (aramex / smsa / jt / imile / delivernow) by id+name regex,
+  // then matched against the corresponding rule. Independent of
+  // whatever DB id the carrier happens to use ('jt' vs 'jnt', or a
+  // legacy UUID like 'c_1777506662790').
+  for (const c of carriers) {
+    const kind = resolveCarrierKind(c);
+    if (!kind) continue;
+    const rule = BUILT_IN_CARRIER_RULES.find(r => r.kind === kind);
+    if (!rule) continue;
     const conf = matchBuiltInRule(headers, dataRows, rule);
     if (conf > best.confidence) {
       best = {
-        carrierId: rule.id,
+        carrierId: c.id,
         confidence: conf,
         method: 'builtin',
-        reasons: [`أعمدة ونمط AWB يطابق ${carriers.find(c => c.id === rule.id)?.name || rule.id}`],
+        reasons: [`أعمدة ونمط AWB يطابق ${c.name || c.id}`],
       };
     }
   }
@@ -328,8 +359,8 @@ export function detectCarrierFromFile(allRows, carriers) {
   return best.carrierId ? best : null;
 }
 
-export function detectColumns(headers, carrierId = null) {
-  const schema = carrierId ? getFieldSchema(carrierId) : DEFAULT_FIELD_SCHEMA;
+export function detectColumns(headers, carrierOrId = null, carriers = null) {
+  const schema = carrierOrId ? getFieldSchema(carrierOrId, carriers) : DEFAULT_FIELD_SCHEMA;
   const allowedFields = new Set(schema.core);
   const map = {};
   const used = new Set();
