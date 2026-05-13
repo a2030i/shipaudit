@@ -452,9 +452,41 @@ export function AuditsHistory({ onOpen, isActive = true }) {
       <AuditsFilter audits={audits}>
         {filtered => filtered.length === 0
           ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
-          : (
-            <div className="stagger">
-              {filtered.map(a => {
+          : (() => {
+            const visibleIds = filtered.map(a => a.id);
+            const allVisibleSelected = visibleIds.length > 0
+              && visibleIds.every(id => selectedIds.has(id));
+            const toggleSelectAllVisible = () => setSelectedIds(prev => {
+              const next = new Set(prev);
+              if (allVisibleSelected) {
+                for (const id of visibleIds) next.delete(id);
+              } else {
+                for (const id of visibleIds) next.add(id);
+              }
+              return next;
+            });
+            return (
+              <>
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                  padding: '8px 4px 12px',
+                }}>
+                  <label style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    cursor: 'pointer', userSelect: 'none', fontSize: 12, color: 'var(--muted)',
+                  }}>
+                    <input type="checkbox"
+                      checked={allVisibleSelected}
+                      onChange={toggleSelectAllVisible}
+                      style={{ width: 17, height: 17, cursor: 'pointer', accentColor: 'var(--gold)' }}
+                    />
+                    {allVisibleSelected
+                      ? `إلغاء تحديد الكل (${filtered.length})`
+                      : `تحديد الكل المعروض (${filtered.length})`}
+                  </label>
+                </div>
+                <div className="stagger">
+                  {filtered.map(a => {
                 const link = linkedIndex.get(a.id);
                 const typeMeta = AUDIT_TYPE_META[a.auditType] ?? AUDIT_TYPE_META.unknown;
                 const isSelected = selectedIds.has(a.id);
@@ -536,8 +568,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                   </Card>
                 );
               })}
-            </div>
-          )
+                </div>
+              </>
+            );
+          })()
         }
       </AuditsFilter>
 

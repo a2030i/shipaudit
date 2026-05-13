@@ -67,7 +67,7 @@ const COL_PATTERNS = {
   // We always pick the column the carrier ACTUALLY billed against, since
   // that's what the contract math compares against.
   weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
-  deliveryCharges: [/delivery.?charge/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
+  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
   rss:             [/^rss$/i, /remote/i],
   // "Other Charge" is the canonical Aramex column that bundles either fuel
   // surcharge (ZDOI rows) or the COD service fee (ZDCF rows). The audit
@@ -257,12 +257,13 @@ export function mapRows(raw, colMap) {
   const filtered = allMapped.filter(r => {
     if (!r.dest || !(r.weight > 0)) return false;
     if (!isRealShipmentAwb(r.awb)) return false;
-    // Skip carrier-marked returns when they're billed at zero — they're
-    // not part of the financial reconciliation (J&T marks these as
-    // "Return Sign"; Aramex doesn't expose this column). Returns with
-    // ANY non-zero charge stay in so we can catch the rare bug where a
-    // return got billed by mistake.
-    if (r.signingStatus && /return/i.test(r.signingStatus)) {
+    // Skip carrier-marked returns/failures when they're billed at
+    // zero — they're not part of the financial reconciliation. J&T
+    // uses "Return Sign", iMile uses "Delivery Failed", others may
+    // surface as "Cancelled" / "Not Delivered". Any of these stays
+    // in if some charge wasn't waived, so a billing bug on a failed
+    // delivery still gets caught.
+    if (r.signingStatus && /return|fail|cancel|not.?delivered/i.test(r.signingStatus)) {
       const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
         + (r.fuelSurcharge || 0) + (r.codFee || 0);
       if (totalBilled <= 0.01) return false;
