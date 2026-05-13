@@ -1,5 +1,9 @@
 import { useState, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import {
+  Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
+  Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
+} from 'lucide-react';
 import { Card, Btn, Select, Spinner, Badge, toast } from '../components/UI.jsx';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders } from '../engine/audit.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
@@ -29,7 +33,53 @@ const FIELD_META = {
   billingType:     { label: 'نوع الفوترة (ZDOI محلي · ZIBI/ZOBI دولي)', required: false },
 };
 
-// ── Step 1 ─────────────────────────────────────────────────────────────────────
+// ── Helper: contract pricing summary ─────────────────────────────────────────
+// Shows the first bracket + per-kg rate so the user instantly sees what
+// the audit will be comparing against. Works for both array-tier and
+// lookup-table contracts.
+function ContractPreview({ contract }) {
+  if (!contract) return null;
+  const dests = Object.keys(contract.pricing || {});
+  const primary = contract.pricing?.['Saudi Arabia'] || contract.pricing?.[dests[0]] || null;
+  let firstLine = null;
+  if (Array.isArray(primary)) {
+    const base = primary[0];
+    const next = primary[1];
+    if (base?.upTo && base?.price != null) {
+      firstLine = `حتى ${base.upTo} كغ → ${base.price} ر.س`;
+      if (next?.pricePerUnit) firstLine += ` · زائد ${next.pricePerUnit} ر.س/كغ`;
+    }
+  } else if (primary?.mode === 'lookup' && primary.brackets?.length) {
+    const sorted = [...primary.brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
+    firstLine = `${sorted.length} شريحة وزن مدوّنة`;
+  }
+  return (
+    <div style={{ display: 'grid', gap: 10 }}>
+      <DetailRow label="بداية العقد"  value={contract.startDate || '—'}/>
+      <DetailRow label="نهاية العقد"  value={contract.endDate || 'مفتوح'}/>
+      {firstLine && <DetailRow label="السعر الأساسي" value={firstLine} mono/>}
+      {contract.fuelPct != null && <DetailRow label="رسوم الوقود" value={`${(contract.fuelPct * 100).toFixed(1)}%`}/>}
+      {contract.rss != null && contract.rss > 0 && <DetailRow label="RSS" value={`${(contract.rss * 100).toFixed(1)}%`}/>}
+      {dests.length > 0 && <DetailRow label="الوجهات" value={`${dests.length} وجهة`}/>}
+    </div>
+  );
+}
+
+function DetailRow({ label, value, mono }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12 }}>
+      <span style={{ color: 'var(--muted)' }}>{label}</span>
+      <span style={{
+        color: 'var(--text)', fontWeight: 600,
+        fontFamily: mono ? 'var(--font-mono)' : 'var(--font-sans)',
+        fontSize: mono ? 11.5 : 12,
+        textAlign: 'left',
+      }}>{value}</span>
+    </div>
+  );
+}
+
+// ── Step 1 — Pick carrier + period ────────────────────────────────────────────
 function Step1({ carriers, carrierId, setCarrierId, month, setMonth, year, setYear, onNext }) {
   const carrier  = carriers.find(c => c.id === carrierId);
   const contract = carrier
@@ -37,90 +87,252 @@ function Step1({ carriers, carrierId, setCarrierId, month, setMonth, year, setYe
     : null;
 
   return (
-    <Card style={{ maxWidth: 500, margin: '0 auto' }}>
-      <h3 style={{ fontFamily:'var(--font-mono)', color:'var(--accent)', marginBottom:20, fontSize:14 }}>
-        الخطوة 1 — اختر الشركة والفترة
-      </h3>
-
-      <div style={{ marginBottom:16 }}>
-        <Select label="شركة الشحن" value={carrierId} onChange={e => setCarrierId(e.target.value)}>
-          <option value="">اختر شركة...</option>
-          {carriers.map(c => <option key={c.id} value={c.id}>{c.logo} {c.name}</option>)}
-        </Select>
-      </div>
-
-      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12, marginBottom:16 }}>
-        <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
-          {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-        </Select>
-        <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
-          {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-        </Select>
-      </div>
-
-      {carrier && (
-        <div style={{ background:'var(--surface)', borderRadius:8, padding:'10px 14px', marginBottom:16, fontSize:12 }}>
-          <div style={{ color:'var(--muted)', marginBottom:4 }}>العقد الساري:</div>
-          {contract
-            ? <span style={{ color:'var(--green)', fontFamily:'var(--font-mono)' }}>{contract.label} — {contract.startDate}</span>
-            : <span style={{ color:'var(--red)' }}>⚠️ لا يوجد عقد ساري لهذه الفترة</span>
-          }
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 18 }}>
+      {/* ── LEFT: form card ─────────────────────────────────────────── */}
+      <Card style={{ padding: 28 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
+          <div style={{
+            width: 36, height: 36, borderRadius: 10,
+            background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(45,212,191,.06))',
+            border: '1px solid rgba(45,212,191,.32)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0,
+          }}>
+            <Building2 size={18} color="var(--accent)"/>
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>
+              اختر الشركة والفترة
+            </h3>
+            <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0 }}>
+              الفاتورة التي ستتم مراجعتها
+            </p>
+          </div>
         </div>
-      )}
 
-      <Btn variant="primary" onClick={onNext} disabled={!carrierId} style={{ width:'100%', justifyContent:'center' }}>
-        التالي ←
-      </Btn>
-    </Card>
+        <Select label="شركة الشحن" value={carrierId} onChange={e => setCarrierId(e.target.value)} style={{ marginBottom: 16 }}>
+          <option value="">— اختر —</option>
+          {carriers.map(c => <option key={c.id} value={c.id}>{c.logo ? `${c.logo}  ${c.name}` : c.name}</option>)}
+        </Select>
+
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+          <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
+            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+          </Select>
+          <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
+            {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </Select>
+        </div>
+
+        <Btn variant="primary" onClick={onNext} disabled={!carrierId} style={{ width: '100%', justifyContent: 'center', padding: '11px 20px', fontSize: 14 }}>
+          التالي <ArrowLeft size={15}/>
+        </Btn>
+      </Card>
+
+      {/* ── RIGHT: contract preview ─────────────────────────────────── */}
+      <Card style={{
+        padding: 0, overflow: 'hidden',
+        borderTop: contract ? '3px solid var(--accent)' : '3px solid var(--gold)',
+      }}>
+        {!carrier ? (
+          <div style={{ padding: '32px 24px', textAlign: 'center', color: 'var(--muted)' }}>
+            <div style={{
+              width: 56, height: 56, margin: '0 auto 14px',
+              background: 'var(--surface)', borderRadius: 16,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              border: '1px dashed var(--border2)',
+            }}>
+              <Truck size={26} color="var(--muted)"/>
+            </div>
+            <div style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.7 }}>
+              اختر شركة لعرض تفاصيل العقد الساري
+            </div>
+          </div>
+        ) : (
+          <>
+            <div style={{
+              padding: '16px 22px',
+              borderBottom: '1px solid var(--border)',
+              background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: 11,
+                background: 'var(--card)', border: '1px solid var(--border2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 22, flexShrink: 0,
+              }}>
+                {carrier.logo || '📦'}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
+                  {carrier.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase' }}>
+                  {contract ? 'عقد ساري' : 'لا يوجد عقد'}
+                </div>
+              </div>
+            </div>
+
+            <div style={{ padding: '18px 22px' }}>
+              {contract ? (
+                <>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 14 }}>
+                    <CheckCircle2 size={14} color="var(--accent)"/>
+                    <span style={{ fontSize: 13, color: 'var(--accent)', fontWeight: 700 }}>
+                      {contract.label}
+                    </span>
+                  </div>
+                  <ContractPreview contract={contract}/>
+                </>
+              ) : (
+                <div style={{
+                  display: 'flex', gap: 10, padding: '12px 14px',
+                  background: 'rgba(251,146,60,.08)',
+                  border: '1px solid rgba(251,146,60,.22)',
+                  borderRadius: 9,
+                }}>
+                  <AlertCircle size={18} color="var(--warn)" style={{ flexShrink: 0, marginTop: 1 }}/>
+                  <div style={{ fontSize: 12.5, color: 'var(--warn)', lineHeight: 1.65 }}>
+                    لا يوجد عقد ساري لهذه الفترة. أضف عقداً جديداً من صفحة شركات الشحن قبل المتابعة.
+                  </div>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </Card>
+    </div>
   );
 }
 
 // ── Step 2 — Upload + AI Analysis ─────────────────────────────────────────────
-function Step2({ carrierName, period, onUpload, onBack, uploading, aiStatus }) {
+function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, aiStatus }) {
   const [drag, setDrag] = useState(false);
-
   const handle = useCallback(file => { if (file) onUpload(file); }, [onUpload]);
+  const settings = loadSettings();
+  const hasAi = !!settings.openrouterKey;
 
   return (
-    <Card style={{ maxWidth: 520, margin: '0 auto' }}>
-      <h3 style={{ fontFamily:'var(--font-mono)', color:'var(--accent)', marginBottom:6, fontSize:14 }}>
-        الخطوة 2 — رفع الملف
-      </h3>
-      <p style={{ color:'var(--muted)', fontSize:12, marginBottom:20 }}>{carrierName} · {period}</p>
-
-      <div
-        onDragOver={e => { e.preventDefault(); setDrag(true); }}
-        onDragLeave={() => setDrag(false)}
-        onDrop={e => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files[0]); }}
-        onClick={() => !uploading && document.getElementById('fu-input').click()}
-        style={{
-          border:`2px dashed ${drag?'var(--accent)':'var(--border2)'}`,
-          borderRadius:14, padding:'48px 20px', textAlign:'center',
-          cursor: uploading ? 'not-allowed' : 'pointer',
-          background: drag ? 'rgba(45,212,191,.05)' : 'var(--surface)',
-          transition:'all .2s', marginBottom:16,
-        }}
-      >
-        {uploading ? (
-          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
-            <Spinner size={36}/>
-            <div style={{ color:'var(--muted)', fontSize:13 }}>{aiStatus || 'جارٍ قراءة الملف...'}</div>
+    <Card style={{ maxWidth: 720, margin: '0 auto', padding: 0, overflow: 'hidden' }}>
+      {/* Header */}
+      <div style={{
+        padding: '18px 24px',
+        borderBottom: '1px solid var(--border)',
+        background: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+        display: 'flex', alignItems: 'center', gap: 12,
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 11,
+          background: 'linear-gradient(135deg, #1B1E54, #2DD4BF)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0, fontSize: 18,
+        }}>
+          {carrierLogo || '📦'}
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
+            {carrierName}
           </div>
-        ) : (
-          <>
-            <div style={{ fontSize:42, marginBottom:10 }}>📂</div>
-            <div style={{ fontWeight:600, marginBottom:5, fontSize:14 }}>اسحب وأفلت ملف Excel هنا</div>
-            <div style={{ color:'var(--muted)', fontSize:12 }}>أو اضغط للاختيار · xlsx / xls</div>
-            <div style={{ color:'var(--muted)', fontSize:11, marginTop:10, fontFamily:'var(--font-mono)' }}>
-              ✨ AI سيقرأ الملف ويعيّن الأعمدة تلقائياً
-            </div>
-          </>
-        )}
-        <input id="fu-input" type="file" accept=".xlsx,.xls" style={{ display:'none' }}
-          onChange={e => handle(e.target.files[0])}/>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            ارفع فاتورة الفترة: <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{period}</span>
+          </div>
+        </div>
       </div>
 
-      <Btn variant="ghost" onClick={onBack} style={{ width:'100%', justifyContent:'center' }}>← رجوع</Btn>
+      {/* Drop zone */}
+      <div style={{ padding: '24px' }}>
+        <div
+          onDragOver={e => { e.preventDefault(); setDrag(true); }}
+          onDragLeave={() => setDrag(false)}
+          onDrop={e => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files[0]); }}
+          onClick={() => !uploading && document.getElementById('fu-input').click()}
+          style={{
+            border: `2px dashed ${drag ? 'var(--accent)' : uploading ? 'var(--border2)' : 'var(--border2)'}`,
+            borderRadius: 14,
+            padding: '52px 24px',
+            textAlign: 'center',
+            cursor: uploading ? 'wait' : 'pointer',
+            background: drag
+              ? 'rgba(45,212,191,.08)'
+              : uploading
+                ? 'var(--surface)'
+                : 'linear-gradient(180deg, var(--surface) 0%, var(--card) 100%)',
+            transition: 'all .2s',
+          }}
+        >
+          {uploading ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14 }}>
+              <Spinner size={36}/>
+              <div style={{ color: 'var(--text2)', fontSize: 13.5, fontWeight: 600 }}>
+                {aiStatus || 'جارٍ قراءة الملف...'}
+              </div>
+            </div>
+          ) : (
+            <>
+              <div style={{
+                width: 64, height: 64, margin: '0 auto 14px',
+                borderRadius: 16,
+                background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(27,30,84,.12))',
+                border: '1px solid rgba(45,212,191,.32)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+              }}>
+                <Upload size={28} color="var(--accent)"/>
+              </div>
+              <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 15, color: 'var(--text)' }}>
+                اسحب وأفلت ملف Excel هنا
+              </div>
+              <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>
+                أو اضغط للاختيار · يقبل <code style={{ fontFamily: 'var(--font-mono)' }}>.xlsx</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.xls</code>
+              </div>
+              {hasAi && (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  marginTop: 14, padding: '5px 11px',
+                  background: 'rgba(45,212,191,.10)',
+                  border: '1px solid rgba(45,212,191,.28)',
+                  borderRadius: 20,
+                  fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 600,
+                }}>
+                  <Sparkles size={11}/> AI يتعرف على الأعمدة تلقائياً
+                </div>
+              )}
+            </>
+          )}
+          <input id="fu-input" type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+            onChange={e => handle(e.target.files[0])}/>
+        </div>
+
+        {/* Tips row */}
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10,
+          marginTop: 18, marginBottom: 18,
+        }}>
+          {[
+            { icon: <FileSpreadsheet size={14}/>, label: 'Excel فقط', hint: 'xlsx / xls' },
+            { icon: <FileCheck    size={14}/>, label: 'كشف الفاتورة كاملاً', hint: 'بدون تعديل' },
+            { icon: <Sparkles     size={14}/>, label: 'AI يخمّن الأعمدة', hint: 'أو نمط Regex' },
+          ].map(t => (
+            <div key={t.label} style={{
+              padding: '10px 12px',
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              borderRadius: 9,
+              display: 'flex', gap: 9, alignItems: 'center',
+            }}>
+              <span style={{ color: 'var(--accent)', display: 'inline-flex', flexShrink: 0 }}>{t.icon}</span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap' }}>{t.label}</div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1 }}>{t.hint}</div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <Btn variant="ghost" onClick={onBack} style={{ width: '100%', justifyContent: 'center', padding: '10px 20px' }}>
+          <ArrowRight size={14}/> رجوع
+        </Btn>
+      </div>
     </Card>
   );
 }
@@ -417,41 +629,106 @@ export default function UploadWizard({ carriers, onComplete }) {
     }
   };
 
-  return (
-    <div style={{ padding:'32px 24px', maxWidth:720, margin:'0 auto' }}>
+  const stepLabels = [
+    { n: 1, title: 'اختر الشركة', sub: 'الناقل والفترة'   },
+    { n: 2, title: 'ارفع الملف',  sub: 'فاتورة Excel'      },
+    { n: 3, title: 'راجع',         sub: 'الأعمدة والنتائج' },
+  ];
 
-      {/* Steps indicator */}
-      <div style={{ display:'flex', alignItems:'center', gap:0, marginBottom:32, justifyContent:'center' }}>
-        {[['1','اختر الشركة'],['2','ارفع الملف'],['3','مراجعة']].map(([n, lbl], i) => (
-          <div key={n} style={{ display:'flex', alignItems:'center' }}>
-            <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:4 }}>
-              <div style={{
-                width:32, height:32, borderRadius:'50%',
-                background: step>i?'var(--green)':step===i+1?'var(--accent)':'var(--surface)',
-                border:`2px solid ${step>=i+1?'var(--accent)':'var(--border)'}`,
-                color: step>=i+1?'#fff':'var(--muted)',
-                display:'flex', alignItems:'center', justifyContent:'center',
-                fontFamily:'var(--font-mono)', fontWeight:700, fontSize:13,
-                transition:'all .3s',
-              }}>
-                {step > i+1 ? '✓' : n}
-              </div>
-              <span style={{ fontSize:10, color:step===i+1?'var(--accent)':'var(--muted)', whiteSpace:'nowrap' }}>{lbl}</span>
-            </div>
-            {i < 2 && (
-              <div style={{ width:60, height:2, background:step>i+1?'var(--accent)':'var(--border)', margin:'0 4px', marginBottom:18, transition:'all .3s' }}/>
-            )}
+  return (
+    <div style={{ padding: '24px 28px', maxWidth: 1100, margin: '0 auto' }}>
+
+      {/* ── HERO ──────────────────────────────────────────────────────── */}
+      <div style={{
+        position: 'relative',
+        padding: '22px 28px',
+        marginBottom: 22,
+        borderRadius: 'var(--r-lg)',
+        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
+        color: '#fff',
+        overflow: 'hidden',
+        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
+      }}>
+        <div style={{
+          position: 'absolute', left: -40, top: -40, width: 220, height: 220,
+          opacity: .08, pointerEvents: 'none',
+        }}>
+          <svg viewBox="0 0 64 64" fill="none">
+            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
+          </svg>
+        </div>
+        <div style={{ position: 'relative' }}>
+          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
+            LAMHA · NEW AUDIT
           </div>
-        ))}
+          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
+            مراجعة فاتورة جديدة
+          </h1>
+          <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
+            ثلاث خطوات لاكتشاف فروق الفاتورة، الأوزان الزائدة، والشحنات المكررة.
+          </p>
+        </div>
       </div>
 
+      {/* ── STEP INDICATOR ────────────────────────────────────────────── */}
+      <Card style={{ padding: '18px 24px', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
+          {stepLabels.map((s, i) => {
+            const done    = step > s.n;
+            const current = step === s.n;
+            return (
+              <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
+                  <div style={{
+                    width: 38, height: 38, borderRadius: '50%',
+                    background: done
+                      ? 'linear-gradient(135deg, #14B8A6, #2DD4BF)'
+                      : current
+                        ? 'linear-gradient(135deg, #1B1E54, #2DD4BF)'
+                        : 'var(--surface)',
+                    border: `2px solid ${done || current ? 'transparent' : 'var(--border2)'}`,
+                    color: done || current ? '#fff' : 'var(--muted)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14,
+                    flexShrink: 0,
+                    boxShadow: current ? '0 4px 16px rgba(45,212,191,.32)' : 'none',
+                    transition: 'all .25s',
+                  }}>
+                    {done ? <CheckCircle2 size={18}/> : s.n}
+                  </div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{
+                      fontSize: 13, fontWeight: 700,
+                      color: current ? 'var(--accent)' : done ? 'var(--text)' : 'var(--muted)',
+                      whiteSpace: 'nowrap',
+                    }}>{s.title}</div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 1, whiteSpace: 'nowrap' }}>
+                      {s.sub}
+                    </div>
+                  </div>
+                </div>
+                {i < stepLabels.length - 1 && (
+                  <div style={{
+                    flex: 1, height: 2, minWidth: 30,
+                    background: step > s.n ? 'linear-gradient(90deg, #14B8A6, #2DD4BF)' : 'var(--border)',
+                    borderRadius: 2,
+                    transition: 'background .3s',
+                  }}/>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* ── ACTIVE STEP ───────────────────────────────────────────────── */}
       {step === 1 && (
         <Step1 carriers={carriers} carrierId={carrierId} setCarrierId={setCarrierId}
           month={month} setMonth={setMonth} year={year} setYear={setYear}
           onNext={() => setStep(2)}/>
       )}
       {step === 2 && (
-        <Step2 carrierName={carrier?.name||''} period={period}
+        <Step2 carrierName={carrier?.name||''} carrierLogo={carrier?.logo} period={period}
           onUpload={handleFile} onBack={() => setStep(1)}
           uploading={uploading} aiStatus={aiStatus}/>
       )}
