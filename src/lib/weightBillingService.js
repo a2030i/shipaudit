@@ -152,16 +152,14 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   if (!byAwb.size) return { ok: false, reason: 'no_excess', count: 0, auditCount: 0 };
 
   // Build the Excel — the external billing system only needs AWB +
-  // billed weight; everything else is operational metadata the
-  // accountant can keep for reference.
+  // billed weight. Per the CFO's spec — the external billing system
+  // only needs (AWB, billed weight). Carrier / period / dest /
+  // shipDate stay on the audit rows for internal traceability but
+  // they don't belong in the export.
   const rows = Array.from(byAwb.values());
   const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
     'رقم الشحنة (AWB)': r.awb,
     'الوزن (كغ)':       r.weight,
-    'الدولة':           r.dest,
-    'الشركة':           r.carrier,
-    'الفترة':           r.period,
-    'تاريخ الشحن':      r.shipDate,
   })));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'أوزان للفوترة');
