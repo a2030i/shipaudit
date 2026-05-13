@@ -459,6 +459,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
   const [file, setFile] = useState(null);
   const [preview, setPreview] = useState(null); // { rows, parserId }
   const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [settlementRef, setSettlementRef] = useState('');
   const [busy, setBusy] = useState(false);
 
   const handleFile = async (f) => {
@@ -493,9 +494,11 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
     try {
       const { count } = await saveSettlementUpload({
         direction, carrierId: carrier, rows: preview.rows,
-        uploadDate, sourceFile: file?.name, userId,
+        uploadDate, sourceFile: file?.name,
+        settlementRef: settlementRef.trim() || null,
+        userId,
       });
-      toast(`تم حفظ ${count} صف`, 'success');
+      toast(`تم حفظ ${count} صف${settlementRef ? ` (تسوية #${settlementRef.trim()})` : ''}`, 'success');
       onDone();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -551,6 +554,14 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
             onChange={e => setUploadDate(e.target.value)}/>
           <div style={{ marginTop: 6, fontSize: 10, color: 'var(--muted)' }}>
             افتراضي = اليوم. عدّله إذا الملف يخصّ فترة سابقة.
+          </div>
+          <div style={{ marginTop: 12 }}>
+            <Input label="رقم التسوية (اختياري)" value={settlementRef}
+              onChange={e => setSettlementRef(e.target.value)}
+              placeholder={direction === 'out' ? 'مثلاً: تسوية 18102026' : 'رقم الفاتورة/التحويل من الناقل'}/>
+            <div style={{ marginTop: 6, fontSize: 10, color: 'var(--muted)' }}>
+              يساعد على ربط التسوية بسجلاتك الداخلية أو فاتورة الناقل.
+            </div>
           </div>
           <div style={{
             marginTop: 12, maxHeight: 200, overflowY: 'auto',

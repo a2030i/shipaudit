@@ -20,7 +20,7 @@ const OVER_REMIT_AGE_DAYS = 30;
 
 // ── Settlement uploads ─────────────────────────────────────────────────
 export async function saveSettlementUpload({
-  direction, carrierId, rows, uploadDate, sourceFile, userId,
+  direction, carrierId, rows, uploadDate, sourceFile, settlementRef, userId,
 }) {
   if (!['out', 'in'].includes(direction)) {
     throw new Error(`direction غير صالح: ${direction}`);
@@ -31,15 +31,17 @@ export async function saveSettlementUpload({
   }
   const uploadId = `cod_${direction}_${Date.now()}`;
   const date = uploadDate || new Date().toISOString().slice(0, 10);
+  const ref  = (settlementRef ?? '').trim() || null;
   const inserts = rows.map(r => ({
     direction,
-    carrier_id:  carrierId,
-    awb:         String(r.awb).trim(),
-    amount:      Number(r.amount),
-    upload_date: date,
-    source_file: sourceFile ?? null,
-    upload_id:   uploadId,
-    created_by:  userId ?? null,
+    carrier_id:     carrierId,
+    awb:            String(r.awb).trim(),
+    amount:         Number(r.amount),
+    upload_date:    date,
+    source_file:    sourceFile ?? null,
+    settlement_ref: ref,
+    upload_id:      uploadId,
+    created_by:     userId ?? null,
   }));
   // Insert in chunks of 500 — Supabase rejects very large single payloads.
   const CHUNK = 500;
