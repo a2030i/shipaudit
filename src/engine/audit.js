@@ -425,21 +425,22 @@ const COUNTRY_ALIASES = {
 // "<Province> Province-City" (J&T's common format) and "<Province>-City"
 // (J&T's remote-area format that omits the word "Province"). These are
 // the 13 administrative regions of Saudi Arabia plus common spellings.
-// All 13 Saudi administrative regions — each with the common
-// English-spelling variations carriers actually use (J&T tends to
-// use "Al Jouf"/"Aseer"; Aramex uses "Al Jawf"/"Asir"; both refer to
-// the same regions). Add a new spelling here when a future file
-// surfaces yet another variant.
-const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|al\s*madinah|eastern|al\s*qassim|qassim|asir|aseer|tabuk|najran|jazan|gizan|jizan|al\s*bahah|al\s*baha|al\s*jawf|al\s*jouf|al\s*jouff|hail|ha'?il|ha'?yel|northern\s*borders?)\b/i;
+// Province-name fallback for *international* carriers (Aramex / SMSA)
+// that occasionally drop the country and just write a Saudi province
+// or city. Domestic-only carriers don't need this — calcTotal falls
+// back to their single Saudi-Arabia pricing tier directly when a
+// destination doesn't match any contract key.
+const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|eastern|qassim|asir|tabuk|najran|jazan|al\s*bahah|al\s*jawf|al\s*jouf|hail|ha'?il)\b/i;
 
 export function normalizeCountry(raw) {
   if (!raw) return '';
   const str = String(raw).trim();
   const key = str.toLowerCase();
   if (COUNTRY_ALIASES[key]) return COUNTRY_ALIASES[key];
-  // Detect Saudi-domestic destinations even when the country name is
-  // absent. J&T writes "<Province> Province-City" or "<Province>-City".
-  // The leading word is always a Saudi administrative region.
+  // Aramex sometimes writes just the province name. J&T writes "X
+  // Province-City". Catch both even though the audit engine no longer
+  // strictly needs province → Saudi mapping (calcTotal handles the
+  // unknown-destination case for domestic-only contracts).
   if (/\bprovince\b/i.test(str)) return 'Saudi Arabia';
   if (SAUDI_PROVINCE_RE.test(str)) return 'Saudi Arabia';
   return str;
