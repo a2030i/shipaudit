@@ -24,42 +24,29 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-function firstBracketUpTo(contract, dest) {
-  const p = contract?.pricing?.[dest];
-  if (!p) return null;
-  if (Array.isArray(p)) return p[0]?.upTo ?? null;
-  if (p?.mode === 'lookup' && Array.isArray(p.brackets)) {
-    const sorted = [...p.brackets].sort((a, b) => (a.upTo ?? Infinity) - (b.upTo ?? Infinity));
-    return sorted[0]?.upTo ?? null;
-  }
-  return null;
-}
-
-// Walks an audit's results array and returns the excess rows in the
-// minimal shape the merchant-billing system wants: AWB + total weight.
-// The merchant-billing system does its own math; we only feed it what
-// it needs to identify and price the shipment.
-function excessRowsFor(audit, carrier) {
-  const contract = (carrier?.contracts ?? []).find(
-    c => c.id === audit.contractId || c.label === audit.contract_label,
-  ) || (carrier?.contracts ?? [])[0];
-  if (!contract) return [];
+// Walks an audit's results array and returns every billable shipment
+// in (AWB, total billed weight) form. We DON'T pre-filter by the
+// carrier's first-bracket threshold any more — the external billing
+// system has per-merchant rules (different customers, different
+// thresholds, different per-kg rates) that we don't model here. Better
+// to hand it every shipment and let it decide what to charge for.
+//
+// We still drop rows that can't be billed at all:
+//   • no AWB (data noise)
+//   • zero weight (likely a return; mapRows already filtered most)
+//   • COD-fee-only rows (separate per-shipment fee, not a shipment)
+function billableRowsFor(audit) {
   const out = [];
   for (const r of audit.results || []) {
     if (!r.awb || !(r.weight > 0)) continue;
-    if (r.status === 'unknown' || r.isCod) continue;
-    const threshold = firstBracketUpTo(contract, r.dest);
-    if (threshold == null) continue;
-    if (r.weight <= threshold) continue;
+    if (r.isCod) continue;
     out.push({
-      awb:         String(r.awb),
-      weight:      +Number(r.weight).toFixed(2),
-      dest:        r.dest || '',
-      shipDate:    r.shipDate || '',
-      carrier:     audit.carrier_name || carrier?.name || '',
-      period:      audit.period || '',
-      threshold,
-      excessKg:    +(r.weight - threshold).toFixed(2),
+      awb:      String(r.awb),
+      weight:   +Number(r.weight).toFixed(2),
+      dest:     r.dest || '',
+      shipDate: r.shipDate || '',
+      carrier:  audit.carrier_name || '',
+      period:   audit.period || '',
     });
   }
   return out;
@@ -132,24 +119,23 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
     return { ok: false, reason: 'empty', count: 0, auditCount: 0 };
   }
 
-  const carrierMap = new Map((carriers ?? []).map(c => [c.id, c]));
-
-  // Aggregate excess rows across every pending audit, dedup by AWB
-  // (a shipment that somehow appears in two audits — usually a re-
-  // billing — should not get billed to the merchant twice).
+  // Aggregate every billable shipment across the pending audits,
+  // dedup by AWB so a shipment that somehow appears in two audits
+  // (usually a re-upload) doesn't get billed to the merchant twice.
+  // We DON'T need the carriers list any more — billableRowsFor
+  // returns every shipment with its full billed weight, the external
+  // billing system applies its own per-merchant thresholds.
   const byAwb = new Map();
   const auditIds = [];
   for (const a of pending) {
-    const carrier = carrierMap.get(a.carrier_id);
-    if (!carrier) continue; // unknown carrier → skip silently; will retry next run
-    const rows = excessRowsFor(a, carrier);
+    const rows = billableRowsFor(a);
     if (!rows.length) continue;
     auditIds.push(a.id);
     for (const r of rows) {
       if (!byAwb.has(r.awb)) byAwb.set(r.awb, r);
     }
   }
-  if (!byAwb.size) return { ok: false, reason: 'no_excess', count: 0, auditCount: 0 };
+  if (!byAwb.size) return { ok: false, reason: 'no_shipments', count: 0, auditCount: 0 };
 
   // Build the Excel — the external billing system only needs AWB +
   // billed weight. Per the CFO's spec — the external billing system
@@ -165,7 +151,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   XLSX.utils.book_append_sheet(wb, ws, 'أوزان للفوترة');
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-  const fileName = `أوزان_فوترة_${rows.length}شحنة_${ts}.xlsx`;
+  const fileName = `أوزان_للفوترة_${rows.length}شحنة_${ts}.xlsx`;
   const xlsxBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
   const fileSize = xlsxBuf.byteLength;
 
