@@ -127,15 +127,32 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   // billing system applies its own per-merchant thresholds.
   const byAwb = new Map();
   const auditIds = [];
+  const skippedIds = []; // audits with no billable rows (COD-only, etc.)
   for (const a of pending) {
     const rows = billableRowsFor(a);
-    if (!rows.length) continue;
+    if (!rows.length) {
+      skippedIds.push(a.id);
+      continue;
+    }
     auditIds.push(a.id);
     for (const r of rows) {
       if (!byAwb.has(r.awb)) byAwb.set(r.awb, r);
     }
   }
-  if (!byAwb.size) return { ok: false, reason: 'no_shipments', count: 0, auditCount: 0 };
+
+  // Mark empty audits as 'skipped' regardless of whether we have any
+  // billable rows — they shouldn't keep clogging the pending counter.
+  if (skippedIds.length) {
+    const CHUNK = 100;
+    for (let i = 0; i < skippedIds.length; i += CHUNK) {
+      const slice = skippedIds.slice(i, i + CHUNK);
+      await supabase.from('audits')
+        .update({ weight_billing_status: 'skipped' })
+        .in('id', slice);
+    }
+  }
+
+  if (!byAwb.size) return { ok: false, reason: 'no_shipments', count: 0, auditCount: 0, skipped: skippedIds.length };
 
   // Build the Excel — the external billing system only needs AWB +
   // billed weight. Per the CFO's spec — the external billing system
