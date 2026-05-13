@@ -16,7 +16,10 @@ const buildPeriod = (m, y) => `${MONTHS[m - 1]} ${y}`;
 const FIELD_META = {
   awb:             { label: 'رقم الشحنة AWB',         required: false },
   shipDate:        { label: 'تاريخ الشحن',             required: false },
-  dest:            { label: 'الدولة',                  required: true  },
+  // dest is optional — many carriers (J&T, iMile) omit a literal
+  // "country" column because every shipment is domestic. mapRows falls
+  // back to Saudi Arabia when nothing is present.
+  dest:            { label: 'الدولة',                  required: false },
   weight:          { label: 'الوزن (كغ)',               required: true  },
   deliveryCharges: { label: 'رسوم الشحن',              required: true  },
   rss:             { label: 'RSS',                     required: false },
@@ -239,7 +242,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
       <div style={{ display:'flex', gap:9 }}>
         <Btn variant="ghost" onClick={onBack} style={{ flex:1, justifyContent:'center' }}>← رجوع</Btn>
         <Btn variant="primary" onClick={onConfirm}
-          disabled={!colMap.dest || !colMap.weight || !colMap.deliveryCharges}
+          disabled={!colMap.weight || !colMap.deliveryCharges}
           style={{ flex:2, justifyContent:'center' }}>
           تأكيد وبدء التدقيق ←
         </Btn>

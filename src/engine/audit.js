@@ -204,7 +204,21 @@ export function mapRows(raw, colMap) {
     // preserve the original city for display. COD-fee rows (ZDCF) are also
     // domestic by nature — the fee only applies to Saudi-domestic shipments.
     const domestic = isCod || isDomesticShipment(billingType, awb);
-    const dest     = domestic ? 'Saudi Arabia' : normalizeCountry(rawDest);
+    // When the file has no destination column at all (J&T, iMile when
+    // they omit it), or the parsed destination doesn't match any known
+    // country alias, default to Saudi Arabia. All four supported
+    // carriers are KSA-based and 99% of shipments are domestic; this
+    // gives the audit a chance at correct pricing instead of marking
+    // every row "unknown".
+    let dest;
+    if (domestic) dest = 'Saudi Arabia';
+    else if (!rawDest) dest = 'Saudi Arabia';
+    else {
+      const normalized = normalizeCountry(rawDest);
+      // normalizeCountry returns the raw string when no alias matches;
+      // treat that case as Saudi-domestic too rather than blowing up.
+      dest = normalized || 'Saudi Arabia';
+    }
     const destCity = domestic ? String(rawDest).trim() : String(rawCity).trim();
 
     // For COD-fee rows the regular delivery/fuel columns don't apply — the
@@ -397,16 +411,32 @@ export function auditRow(row, contract) {
 }
 
 export function auditAll(rows, carrier, forDate) {
-  const contract = getActiveContract(carrier, forDate);
-  if (!contract) {
+  // Some carriers (e.g. SMSA) keep separate contracts for domestic vs
+  // international shipping. We need to consult every active contract,
+  // not just the "newest" one, and pick the one whose pricing covers
+  // the row's destination. Fallback to the active contract for COD /
+  // unmatched rows so flat fees still apply.
+  const dateKey = forDate || new Date().toISOString().slice(0, 10);
+  const activeContracts = (carrier?.contracts ?? [])
+    .filter(c => (c.startDate || '0000') <= dateKey && (!c.endDate || c.endDate >= dateKey));
+  const primary = getActiveContract(carrier, forDate);
+  if (!primary && !activeContracts.length) {
     const out = rows.map(r => ({ ...r, status: 'no_contract', issues: ['لا يوجد عقد ساري لهذه الفترة'] }));
     if (rows.taxRoundingAdjustment) out.taxRoundingAdjustment = rows.taxRoundingAdjustment;
     return out;
   }
 
-  const results = rows.map(r => auditRow(r, contract));
+  // Per-row contract resolver: prefer the contract that has explicit
+  // pricing for the destination; otherwise fall back to the primary.
+  const pickContract = (row) => {
+    if (row.isCod) return primary;                       // COD uses carrier-wide codFee
+    if (!row.dest) return primary;
+    const match = activeContracts.find(c => c.pricing && c.pricing[row.dest]);
+    return match || primary;
+  };
+
+  const results = rows.map(r => auditRow(r, pickContract(r)));
   flagDuplicateAwbs(results);
-  // Carry the file-level tax rounding adjustment through to summary stage.
   if (rows.taxRoundingAdjustment) {
     results.taxRoundingAdjustment = rows.taxRoundingAdjustment;
   }
