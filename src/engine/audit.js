@@ -375,7 +375,7 @@ export function detectColumns(headers, carrierOrId = null, carriers = null) {
   // Skip fields that aren't relevant for this carrier — keeps iMile
   // from grabbing "Remote Area" as RSS, etc.
   for (const [field, patterns] of Object.entries(COL_PATTERNS)) {
-    if (carrierId && !allowedFields.has(field)) continue;
+    if (carrierOrId && !allowedFields.has(field)) continue;
     for (const pattern of patterns) {
       const match = headers.find(h => {
         if (used.has(h)) return false;
