@@ -5,7 +5,7 @@ import {
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
 import { Card, Btn, Select, Spinner, Badge, toast } from '../components/UI.jsx';
-import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile } from '../engine/audit.js';
+import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
@@ -18,19 +18,25 @@ const MONTHS = [
 const buildPeriod = (m, y) => `${MONTHS[m - 1]} ${y}`;
 
 const FIELD_META = {
-  awb:             { label: 'رقم الشحنة AWB',         required: false },
-  shipDate:        { label: 'تاريخ الشحن',             required: false },
+  awb:             { label: 'رقم الشحنة AWB' },
+  shipDate:        { label: 'تاريخ الشحن' },
   // dest is optional — many carriers (J&T, iMile) omit a literal
   // "country" column because every shipment is domestic. mapRows falls
   // back to Saudi Arabia when nothing is present.
-  dest:            { label: 'الدولة',                  required: false },
-  weight:          { label: 'الوزن (كغ)',               required: true  },
-  deliveryCharges: { label: 'رسوم الشحن',              required: true  },
-  rss:             { label: 'RSS',                     required: false },
-  fuelSurcharge:   { label: 'رسوم الوقود',             required: false },
-  serviceType:     { label: 'نوع الخدمة (Road/Air)',   required: false },
-  codAmount:       { label: 'COD',                    required: false },
-  billingType:     { label: 'نوع الفوترة (ZDOI محلي · ZIBI/ZOBI دولي)', required: false },
+  dest:            { label: 'الدولة' },
+  destCity:        { label: 'المدينة' },
+  weight:          { label: 'الوزن (كغ)' },
+  deliveryCharges: { label: 'رسوم الشحن' },
+  rss:             { label: 'RSS' },
+  fuelSurcharge:   { label: 'رسوم الوقود' },
+  codAmount:       { label: 'مبلغ COD' },
+  codFee:          { label: 'رسوم COD' },
+  posAmount:       { label: 'مبلغ POS' },
+  posFee:          { label: 'رسوم POS (بطاقة)' },
+  tax:             { label: 'الضريبة' },
+  serviceType:     { label: 'نوع الخدمة (Road/Air)' },
+  billingType:     { label: 'نوع الفوترة (ZDOI/ZIBI/ZOBI/ZDCF)' },
+  signingStatus:   { label: 'حالة التسليم' },
 };
 
 // ── Helper: contract pricing summary ─────────────────────────────────────────
@@ -268,12 +274,18 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
                  detectedRow, aiNotes, missingFields, rowCount,
                  carriers, carrierId, setCarrierId, carrierDetect }) {
 
-  const mappedCount     = Object.values(colMap).filter(Boolean).length;
-  const requiredMissing = Object.entries(FIELD_META)
-    .filter(([f, { required }]) => required && !colMap[f]).length;
   const carrier = carriers?.find(c => c.id === carrierId);
   const detectConfidence = carrierDetect?.confidence ?? 0;
   const detectedOk = !!carrierId && detectConfidence >= 0.5;
+  // Resolve the per-carrier field schema. When no carrier is selected
+  // yet, fall back to the default (every field). Required fields come
+  // from the same schema so e.g. iMile's required list doesn't ask for
+  // a Billing Type that doesn't exist in its files.
+  const schema = getFieldSchema(carrierId);
+  const visibleFields = schema.core;
+  const requiredSet   = new Set(schema.required);
+  const mappedCount   = visibleFields.filter(f => !!colMap[f]).length;
+  const requiredMissing = visibleFields.filter(f => requiredSet.has(f) && !colMap[f]).length;
 
   return (
     <Card style={{ maxWidth: 640, margin: '0 auto' }}>
@@ -358,8 +370,13 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
           {rowCount} سطر بيانات
         </span>
         <span style={{ background:'rgba(45,212,191,.08)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
-          {mappedCount}/{Object.keys(FIELD_META).length} أعمدة معيّنة
+          {mappedCount}/{visibleFields.length} أعمدة معيّنة
         </span>
+        {carrier && (
+          <span style={{ background:'rgba(45,212,191,.1)', border:'1px solid rgba(45,212,191,.30)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20, fontWeight: 700 }}>
+            {carrier.logo} {carrier.name}
+          </span>
+        )}
         {aiLoading && (
           <span style={{ color:'var(--gold)', fontSize:11, display:'flex', alignItems:'center', gap:5 }}>
             <Spinner size={11} color="var(--gold)"/> يحلل...
@@ -374,12 +391,16 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
         </div>
       )}
 
-      {/* Column mapping */}
+      {/* Column mapping — only fields relevant for this carrier */}
       <div style={{ marginBottom:16 }}>
         <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)', marginBottom:8, letterSpacing:.5 }}>
-          تعيين الأعمدة — عدّل إذا احتجت
+          تعيين الأعمدة — عدّل إذا احتجت{carrier ? ` · ${visibleFields.length} حقل خاص بـ ${carrier.name}` : ''}
         </div>
-        {Object.entries(FIELD_META).map(([field, { label, required }]) => {
+        {visibleFields.map(field => {
+          const meta = FIELD_META[field];
+          if (!meta) return null;
+          const { label } = meta;
+          const required = requiredSet.has(field);
           const isMapped = !!colMap[field];
           const isNull   = missingFields?.includes(field);
           return (
@@ -387,11 +408,11 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
               display:'grid', gridTemplateColumns:'180px 1fr', gap:10,
               marginBottom:7, alignItems:'center',
               padding:'6px 10px', borderRadius:8,
-              background: isMapped ? 'rgba(52,211,153,.04)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
-              border: `1px solid ${isMapped?'rgba(52,211,153,.14)':required&&!isMapped?'rgba(248,113,113,.14)':'transparent'}`,
+              background: isMapped ? 'rgba(45,212,191,.05)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
+              border: `1px solid ${isMapped?'rgba(45,212,191,.20)':required&&!isMapped?'rgba(248,113,113,.20)':'transparent'}`,
             }}>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <span style={{ fontSize:12, color: isMapped?'var(--green)':required?'var(--red)':'var(--muted3)' }}>
+                <span style={{ fontSize:12, color: isMapped?'var(--accent)':required?'var(--red)':'var(--muted3)' }}>
                   {isMapped ? '✓' : required ? '!' : '○'}
                 </span>
                 <span style={{ fontSize:12, color: isMapped?'var(--text)':'var(--muted)' }}>
@@ -408,7 +429,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
                 value={colMap[field] || ''}
                 onChange={e => setColMap({ ...colMap, [field]: e.target.value || null })}
                 style={{ padding:'5px 9px', borderRadius:7, fontSize:12, cursor:'pointer',
-                  borderColor: isMapped?'rgba(52,211,153,.3)':undefined }}
+                  borderColor: isMapped?'rgba(45,212,191,.30)':undefined }}
               >
                 <option value="">— غير محدد —</option>
                 {headers.map(h => <option key={h} value={h}>{h}</option>)}
@@ -498,8 +519,9 @@ export default function UploadWizard({ carriers, onComplete }) {
     setHeaders(hdrs);
     setRawRows(data);
 
-    // Merge AI map with fallback regex map
-    const regexMap = detectColumns(hdrs);
+    // Merge AI map with fallback regex map (carrier-scoped so iMile
+    // doesn't pick up Aramex's RSS column etc.)
+    const regexMap = detectColumns(hdrs, carrierId);
     const merged = { ...regexMap };
     for (const [field, col] of Object.entries(aiMap || {})) {
       if (col && hdrs.includes(col)) merged[field] = col;
@@ -572,7 +594,9 @@ export default function UploadWizard({ carriers, onComplete }) {
         setDetectedRow(hdrIdx + 1);
         setHeaders(hdrs);
         setRawRows(data);
-        setColMap(detectColumns(hdrs));
+        // Use the just-detected carrier id directly — setCarrierId from
+        // a few lines above is async and won't reflect in this closure.
+        setColMap(detectColumns(hdrs, detected?.carrierId || null));
         setStep(3);
       } catch (err) {
         toast(`خطأ في قراءة الملف: ${err.message}`, 'error');
