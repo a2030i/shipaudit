@@ -96,6 +96,13 @@ const COL_PATTERNS = {
   // POS Amount). We audit the fee against contract.posFeePct.
   posAmount:       [/pos.?amount/i, /مبلغ.?pos/i, /مبلغ.?بطاقة/i],
   posFee:          [/pos.?fee/i, /رسوم.?pos/i, /رسوم.?البطاقة/i],
+  // COD payment method — J&T tracks how the customer paid the COD
+  // amount (Cash / NLCard / empty). When it says NLCard (or any
+  // card-equivalent), J&T's "COD service charge" column actually
+  // holds a card-processing fee equal to codAmount × posFeePct.
+  // The audit engine routes that value to the POS bucket so we can
+  // compare against contract.posFeePct.
+  codPaymentMethod: [/cod.?payment.?method/i, /payment.?method/i, /طريقة.?الدفع/i],
   // "Tax Amount" — actual VAT line from the carrier file. Reading this
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
@@ -174,7 +181,7 @@ export const CARRIER_FIELDS = {
     required: ['weight', 'deliveryCharges'],
   },
   jt: {
-    core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax', 'signingStatus'],
+    core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codPaymentMethod', 'codFee', 'tax', 'signingStatus'],
     required: ['weight', 'deliveryCharges'],
   },
   imile: {
@@ -491,9 +498,32 @@ export function mapRows(raw, colMap) {
     const inlineCodFee = colMap.codFee
       ? (parseFloat(row[colMap.codFee] ?? 0) || 0)
       : 0;
-    const codFee       = isCod ? baseFuel : inlineCodFee;
-    const posAmount    = colMap.posAmount ? (parseFloat(row[colMap.posAmount] ?? 0) || 0) : 0;
-    const posFee       = colMap.posFee    ? (parseFloat(row[colMap.posFee]    ?? 0) || 0) : 0;
+
+    // Card-vs-cash COD routing.
+    // iMile keeps separate columns (POS Amount, POS Fee, COD Service
+    // Fee) so its rows already split correctly. J&T puts both in one
+    // "COD service charge" column and disambiguates via the "COD
+    // payment method" column: Cash → flat COD handling fee, NLCard /
+    // card → percent-of-COD card fee. When we detect a card payment
+    // AND the file has no separate POS columns, we treat the COD
+    // service charge as the POS fee and treat codAmount as the POS
+    // amount, so the audit compares against contract.posFeePct.
+    const payMethod   = colMap.codPaymentMethod
+      ? String(row[colMap.codPaymentMethod] ?? '').trim()
+      : '';
+    const isCardPay   = /card|nlcard|mada|pos|knet|visa|master|stc.?pay|apple.?pay|tap/i.test(payMethod);
+    const hasInlinePos = !!colMap.posFee || !!colMap.posAmount;
+    const rawCodAmt   = parseFloat(row[colMap.codAmount] ?? 0) || 0;
+
+    const codFee    = isCod
+      ? baseFuel
+      : (isCardPay && !hasInlinePos ? 0 : inlineCodFee);
+    const posAmount = colMap.posAmount
+      ? (parseFloat(row[colMap.posAmount] ?? 0) || 0)
+      : (isCardPay ? rawCodAmt : 0);
+    const posFee    = colMap.posFee
+      ? (parseFloat(row[colMap.posFee] ?? 0) || 0)
+      : (isCardPay && !hasInlinePos ? inlineCodFee : 0);
 
     return {
       awb,
