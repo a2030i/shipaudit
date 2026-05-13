@@ -62,9 +62,15 @@ const COL_PATTERNS = {
   awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/],
   // Ship date — also accept J&T's "Entry time" / "Signing time".
   shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
-  origin:          [/^origin$/i, /origin.?location/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
-  dest:            [/^dest$/i, /destination.?location/i, /destination/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
-  destCity:        [/dest.?city/i, /city/i, /مدين/i],
+  // Origin column — explicit "shipper / origin / from / source" so it
+  // doesn't accidentally match "Customer Country" (a destination).
+  origin:          [/^origin$/i, /origin.?(location|station|country)/i, /shipper.?country/i, /^from$/i, /^from.?country$/i, /^source$/i, /مصدر/i, /^من$/],
+  // Destination — prefer consignee / customer / destination first.
+  // The bare /country/i is the last resort and only matches when no
+  // more-specific pattern hit (origin patterns already consumed the
+  // shipper-country column thanks to detectColumns' `used` set).
+  dest:            [/^dest$/i, /destination.?(location|country)?/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
+  destCity:        [/dest.?city/i, /consignee.?city/i, /customer.?city/i, /city/i, /مدين/i],
   // Weight column priority:
   //   • "Settlement weight" — J&T's billed weight (rounded up to next kg)
   //   • "Chargeable weight" — Aramex's billed weight
@@ -82,7 +88,12 @@ const COL_PATTERNS = {
   // "Other Charge" is the canonical Aramex column that bundles either fuel
   // surcharge (ZDOI rows) or the COD service fee (ZDCF rows). The audit
   // engine routes it correctly per row based on Billing Type.
-  fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /surcharge/i, /other.?charge/i],
+  // Fuel surcharge. The bare /surcharge/i used to live here as a
+  // fallback but matched iMile's "Covid Surcharge Fee" by accident.
+  // We now require the word "fuel" (or Arabic equivalent) or Aramex's
+  // "Other Charge" bucket — every carrier we know labels its fuel
+  // line one of those three ways.
+  fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /other.?charge/i],
   codAmount:       [/cod.?amount/i, /cash.?on/i],
   // COD service fee — the per-shipment fee carriers charge for handling
   // cash-on-delivery (independent of the COD amount itself). iMile puts
