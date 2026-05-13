@@ -31,6 +31,7 @@ const FIELD_META = {
   fuelSurcharge:   { label: 'رسوم الوقود' },
   codAmount:       { label: 'مبلغ COD' },
   codFee:          { label: 'رسوم COD' },
+  codPaymentMethod:{ label: 'طريقة دفع COD' },
   posAmount:       { label: 'مبلغ POS' },
   posFee:          { label: 'رسوم POS (بطاقة)' },
   tax:             { label: 'الضريبة' },
