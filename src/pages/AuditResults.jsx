@@ -4,8 +4,9 @@ import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } fr
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { approveAudit, rejectAudit, reopenAudit } from '../lib/coreService.js';
+import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
+import { useNavigate } from 'react-router-dom';
 
 // ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ audit, carriers }) {
@@ -505,10 +506,17 @@ function ResultsTable({ results, filter, showDetail, contract }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function AuditResults({ audit, carriers, onNewAudit }) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [filter,     setFilter]     = useState('all');
   const [showAI,     setShowAI]     = useState(false);
   const [showDetail, setShowDetail] = useState(false);
-  const [reviewStatus, setReviewStatus] = useState(audit.reviewStatus || 'pending');
+  // Draft audits live in sessionStorage only. They flip to 'approved'
+  // (and get persisted) the moment the user clicks اعتماد. Stored
+  // audits arrive with reviewStatus already set.
+  const initialStatus = audit.isDraft
+    ? 'draft'
+    : (audit.reviewStatus || 'pending');
+  const [reviewStatus, setReviewStatus] = useState(initialStatus);
   const [approving,    setApproving]    = useState(false);
   const [rejecting,    setRejecting]    = useState(false);
   const [rejectModal,  setRejectModal]  = useState(false);
@@ -516,20 +524,51 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   const { results=[], summary={} } = audit;
 
   // Keep local state in sync if the page re-mounts with a different audit
-  useEffect(() => { setReviewStatus(audit.reviewStatus || 'pending'); }, [audit.id]);
+  useEffect(() => {
+    setReviewStatus(audit.isDraft ? 'draft' : (audit.reviewStatus || 'pending'));
+  }, [audit.id, audit.isDraft, audit.reviewStatus]);
 
   const handleApprove = async () => {
     setApproving(true);
     try {
-      await approveAudit(audit.id, profile?.id);
-      setReviewStatus('approved');
-      toast('تم اعتماد المراجعة ✓', 'success');
-    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+      if (reviewStatus === 'draft' || audit.isDraft) {
+        // First-time save: persist with review_status=approved in one shot
+        await saveAuditToDB(
+          { ...audit, reviewStatus: 'approved', approvedAt: new Date().toISOString(), approvedBy: profile?.id },
+          profile?.id,
+        );
+        // After save, mark the audit no longer draft so subsequent
+        // approve/reopen calls use the simple status flip path
+        audit.isDraft = false;
+        // Refresh sessionStorage so navigating away + back keeps the
+        // approved state
+        try { sessionStorage.setItem('lastAudit', JSON.stringify({ ...audit, reviewStatus: 'approved' })); } catch { /* ignore */ }
+        setReviewStatus('approved');
+        toast('تم حفظ واعتماد المراجعة ✓', 'success');
+      } else {
+        await approveAudit(audit.id, profile?.id);
+        setReviewStatus('approved');
+        toast('تم اعتماد المراجعة ✓', 'success');
+      }
+    } catch (e) {
+      if (e.code === 'DUPLICATE_AUDIT') { toast(e.message, 'error'); }
+      else                              { toast(`فشل الحفظ: ${e.message}`, 'error'); }
+    }
     setApproving(false);
   };
   const handleReject = async () => {
     setRejecting(true);
     try {
+      if (reviewStatus === 'draft' || audit.isDraft) {
+        // Draft rejection = discard without persisting anywhere.
+        sessionStorage.removeItem('lastAudit');
+        toast('تم تجاهل المراجعة', 'info');
+        setRejectModal(false);
+        setRejectReason('');
+        setRejecting(false);
+        navigate('/upload');
+        return;
+      }
       await rejectAudit(audit.id, rejectReason.trim() || null, profile?.id);
       setReviewStatus('rejected');
       setRejectModal(false);
@@ -589,7 +628,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       <div style={{overflowY:'auto',padding:'20px 24px'}}>
 
         {/* ── Review status banner ─────────────────────────────────── */}
-        {reviewStatus === 'pending' && (
+        {(reviewStatus === 'draft' || reviewStatus === 'pending') && (
           <div style={{
             marginBottom: 16, padding: '14px 18px', borderRadius: 12,
             background: 'linear-gradient(135deg, rgba(251,191,36,.14), rgba(251,191,36,.04))',
@@ -606,17 +645,19 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </div>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 13.5 }}>
-                مراجعة قيد الانتظار
+                {reviewStatus === 'draft' ? 'مسودة — لم تُحفظ بعد' : 'مراجعة قيد الانتظار'}
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                راجع الفروق ثم اضغط <strong>اعتماد</strong> ليُسمح للنظام بسحب أوزانها للفوترة. أو <strong>رفض</strong> لإخراجها من التدفق.
+                {reviewStatus === 'draft'
+                  ? <>راجع الفروق ثم اضغط <strong>اعتماد</strong> لحفظ المراجعة في السجل. <strong>رفض</strong> يتجاهل الملف ولا يخزن شي.</>
+                  : <>راجع الفروق ثم اضغط <strong>اعتماد</strong> ليُسمح للنظام بسحب أوزانها للفوترة. أو <strong>رفض</strong> لإخراجها من التدفق.</>}
               </div>
             </div>
             <Btn size="md" variant="accent" onClick={handleApprove} disabled={approving} icon={<CheckCircle2 size={14}/>}>
               {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
             </Btn>
             <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
-              رفض
+              {reviewStatus === 'draft' ? 'تجاهل' : 'رفض'}
             </Btn>
           </div>
         )}

@@ -412,7 +412,13 @@ export function mapRows(raw, colMap) {
     // a Saudi city, not a country. Route them to the Saudi pricing tier and
     // preserve the original city for display. COD-fee rows (ZDCF) are also
     // domestic by nature — the fee only applies to Saudi-domestic shipments.
-    const domestic = isCod || isDomesticShipment(billingType, awb);
+    // Also probe the destination column directly: iMile / J&T / DeliverNow
+    // don't have a Billing Type column and their AWBs don't follow Aramex's
+    // 3/5 prefix rule, but every shipment carries Customer Country = KSA
+    // or a Province name that normalizeCountry recognises as Saudi Arabia.
+    // Without this probe those carriers' rows get tagged international.
+    const destSaysKSA = normalizeCountry(rawDest) === 'Saudi Arabia';
+    const domestic = isCod || isDomesticShipment(billingType, awb) || destSaysKSA;
     // When the file has no destination column at all (J&T, iMile when
     // they omit it), or the parsed destination doesn't match any known
     // country alias, default to Saudi Arabia. All four supported
