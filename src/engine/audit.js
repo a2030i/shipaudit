@@ -793,7 +793,21 @@ export function auditAll(rows, carrier, forDate) {
     return match || primary;
   };
 
-  const results = rows.map(r => auditRow(r, pickContract(r)));
+  // Domestic-only contracts (J&T / iMile / DeliverNow) cover every
+  // shipment regardless of what the destination column says — the
+  // city/province text is informational only. Force row.domestic=true
+  // for those carriers so the audit type rolls up as "محلي" instead
+  // of "مختلط" when a stray spelling slipped past normalizeCountry.
+  const isDomesticOnly = (c) => {
+    const keys = Object.keys(c?.pricing ?? {});
+    return keys.length === 1 && keys[0] === 'Saudi Arabia';
+  };
+
+  const results = rows.map(r => {
+    const c = pickContract(r);
+    const row = isDomesticOnly(c) ? { ...r, domestic: true, dest: 'Saudi Arabia' } : r;
+    return auditRow(row, c);
+  });
   flagDuplicateAwbs(results);
   if (rows.taxRoundingAdjustment) {
     results.taxRoundingAdjustment = rows.taxRoundingAdjustment;

@@ -12,9 +12,10 @@ import {
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Badge, toast, Modal } from '../components/UI.jsx';
 import {
-  loadPendingAuditsForBilling, loadBillingExports,
+  loadPendingAuditsForBilling, loadBillingExports, loadAwaitingApproval,
   exportPendingExcessWeights, markExportBilled, voidExport, downloadExport,
 } from '../lib/weightBillingService.js';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth.jsx';
 
 const fmtDate = (iso) => {
@@ -35,8 +36,10 @@ const STATUS_META = {
 
 export default function WeightBilling({ carriers, isActive = true }) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [pending,  setPending]  = useState([]);
   const [exports,  setExports]  = useState([]);
+  const [awaiting, setAwaiting] = useState([]); // pending review (need approval)
   const [loading,  setLoading]  = useState(true);
   const [pulling,  setPulling]  = useState(false);
   const [voiding,  setVoiding]  = useState(null); // export row being voided
@@ -46,12 +49,14 @@ export default function WeightBilling({ carriers, isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, e] = await Promise.all([
+      const [p, e, a] = await Promise.all([
         loadPendingAuditsForBilling(),
         loadBillingExports({ limit: 50 }),
+        loadAwaitingApproval(),
       ]);
       setPending(p);
       setExports(e);
+      setAwaiting(a);
     } catch (err) {
       toast(`فشل التحميل: ${err.message}`, 'error');
     }
@@ -197,6 +202,33 @@ export default function WeightBilling({ carriers, isActive = true }) {
           </div>
         </div>
       </div>
+
+      {/* ── AWAITING APPROVAL CARD ───────────────────────────────────── */}
+      {awaiting.length > 0 && (
+        <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 14, border: '1px solid rgba(251,191,36,.32)' }}>
+          <div style={{
+            padding: '14px 18px',
+            background: 'linear-gradient(135deg, rgba(251,191,36,.14), rgba(251,191,36,.04))',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <AlertCircle size={20} color="var(--gold)" style={{ flexShrink: 0 }}/>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>
+                {awaiting.length} مراجعة بانتظار الاعتماد
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                هذي المراجعات ما تظهر في "سحب الأوزان" حتى تفتحها وتضغط <strong>اعتماد المراجعة</strong>.
+                {awaiting.length > 0 && (
+                  <> · شركات: {[...new Set(awaiting.map(a => a.carrier_name))].slice(0, 5).join(' · ')}</>
+                )}
+              </div>
+            </div>
+            <Btn size="sm" variant="accent" onClick={() => navigate('/audits')}>
+              فتح السجل
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       {/* ── PENDING LIST (collapsible) ───────────────────────────────── */}
       {pendingStats.audits > 0 && (

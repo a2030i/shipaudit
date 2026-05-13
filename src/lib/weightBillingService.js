@@ -80,6 +80,20 @@ export async function loadPendingAuditsForBilling() {
   return data || [];
 }
 
+// How many audits are stuck in `pending` review — they have rows but
+// the accountant hasn't blessed them yet. Surfaced on the
+// weight-billing hero so the user knows there's a queue waiting.
+export async function loadAwaitingApproval() {
+  const { data, error } = await supabase
+    .from('audits')
+    .select('id, carrier_id, carrier_name, period, file_name, created_at, row_count')
+    .eq('review_status', 'pending')
+    .eq('weight_billing_status', 'pending')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data || [];
+}
+
 export async function loadBillingExports({ limit = 50, status } = {}) {
   let q = supabase
     .from('weight_billing_exports')
