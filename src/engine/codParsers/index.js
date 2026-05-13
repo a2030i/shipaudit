@@ -18,6 +18,7 @@ import { smsaRemittanceParser }       from './smsaRemittance.js';
 import { aatakRemittanceParser }      from './aatakRemittance.js';
 import { delexRemittanceParser }      from './delexRemittance.js';
 import { webekRemittanceParser }      from './webekRemittance.js';
+import { boleesehRemittanceParser }   from './boleesehRemittance.js';
 
 export const INTERNAL_PARSER = internalSettlementParser;
 
@@ -28,6 +29,7 @@ export const REMITTANCE_PARSERS = {
   aatak:      aatakRemittanceParser,
   delex:      delexRemittanceParser,
   webek:      webekRemittanceParser,
+  boleeseh:   boleesehRemittanceParser,
 };
 
 // Convenience: the list of carriers we currently support for incoming
