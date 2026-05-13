@@ -79,8 +79,8 @@ export default function WeightBilling({ carriers, isActive = true }) {
         refresh();
       } else if (result.reason === 'empty') {
         toast('لا توجد مراجعات جديدة بانتظار السحب', 'info');
-      } else if (result.reason === 'no_excess') {
-        toast('المراجعات المُعلّقة لا تحتوي على أوزان زائدة', 'info');
+      } else if (result.reason === 'no_shipments') {
+        toast('المراجعات المُعلّقة لا تحتوي على شحنات صالحة للفوترة', 'info');
       }
     } catch (err) {
       toast(`فشل السحب: ${err.message}`, 'error');
@@ -153,10 +153,10 @@ export default function WeightBilling({ carriers, isActive = true }) {
               LAMHA · WEIGHT BILLING
             </div>
             <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-              فوترة الأوزان الزائدة
+              فوترة الأوزان
             </h1>
             <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
-              اسحب أوزان كل المراجعات الجديدة بضغطة واحدة. الملف يجي بعمودين (رقم الشحنة + الوزن) جاهز لنظامك المالي.
+              اسحب أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف يجي بعمودين (رقم الشحنة + الوزن المفوتر) — نظامك المالي يطبّق قواعد كل عميل ويحسب الفرق.
             </p>
           </div>
 
