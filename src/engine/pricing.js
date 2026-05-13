@@ -77,6 +77,20 @@ export function calcTotal(contract, country, weight, shipDate, serviceType, orig
   // Route-specific lookup first (e.g. "Kuwait → Saudi Arabia"), then dest-only fallback
   const routeKey = origin && origin !== 'Saudi Arabia' ? `${origin} → ${country}` : null;
   let pricingDef = (routeKey && contract?.pricing?.[routeKey]) || contract?.pricing?.[country];
+  // If the row's literal destination doesn't appear in the contract,
+  // fall back to "Saudi Arabia" pricing IF the contract only ships
+  // domestically — i.e. its pricing map is just { "Saudi Arabia": ... }.
+  // J&T / iMile / DeliverNow are domestic-only; their files carry city
+  // or province names in the destination column (e.g. "Al Jouf-Dumah Al
+  // Jandal") which don't match any contract key. Refusing to price
+  // them as "unknown" is overkill — there's literally no other tier
+  // they could belong to.
+  if (!pricingDef && contract?.pricing) {
+    const dests = Object.keys(contract.pricing);
+    if (dests.length === 1 && dests[0] === 'Saudi Arabia') {
+      pricingDef = contract.pricing['Saudi Arabia'];
+    }
+  }
   if (!pricingDef) return null;
 
   // Multi-type pricing: { Road: [...], Air: [...] }
