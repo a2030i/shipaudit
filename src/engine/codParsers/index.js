@@ -14,14 +14,20 @@
 import { internalSettlementParser }   from './internalSettlement.js';
 import { aramexRemittanceParser }     from './aramexRemittance.js';
 import { deliverNowRemittanceParser } from './deliverNowRemittance.js';
+import { smsaRemittanceParser }       from './smsaRemittance.js';
+import { aatakRemittanceParser }      from './aatakRemittance.js';
+import { delexRemittanceParser }      from './delexRemittance.js';
+import { webekRemittanceParser }      from './webekRemittance.js';
 
 export const INTERNAL_PARSER = internalSettlementParser;
 
 export const REMITTANCE_PARSERS = {
   aramex:     aramexRemittanceParser,
+  smsa:       smsaRemittanceParser,
   delivernow: deliverNowRemittanceParser,
-  // smsa: smsaRemittanceParser,   // future
-  // dhl:  dhlRemittanceParser,    // future
+  aatak:      aatakRemittanceParser,
+  delex:      delexRemittanceParser,
+  webek:      webekRemittanceParser,
 };
 
 // Convenience: the list of carriers we currently support for incoming
