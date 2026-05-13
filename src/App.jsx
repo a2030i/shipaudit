@@ -280,30 +280,30 @@ function AppInner({ theme, toggleTheme }) {
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         width: '100%', background: 'transparent', border: 'none',
-                        padding: '10px 13px 6px', cursor: 'pointer',
-                        fontFamily: 'var(--font-mono)', fontSize: 9.5,
-                        letterSpacing: 1.8, textTransform: 'uppercase',
-                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-label-color)',
-                        fontWeight: 600, textAlign: 'right',
+                        padding: '12px 14px 10px', cursor: 'pointer',
+                        fontFamily: 'var(--font-sans)', fontSize: 13,
+                        letterSpacing: .2,
+                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-text)',
+                        fontWeight: 700, textAlign: 'right',
                         transition: 'color .15s',
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                         {sec.label}
                         {sectionHasActive && (
                           <span style={{
-                            width: 5, height: 5, borderRadius: '50%',
+                            width: 6, height: 6, borderRadius: '50%',
                             background: 'var(--accent)',
-                            boxShadow: '0 0 6px var(--accent)',
+                            boxShadow: '0 0 8px var(--accent)',
                           }}/>
                         )}
                       </span>
                       <ChevronDown
-                        size={12}
+                        size={14}
                         style={{
                           transition: 'transform .2s',
                           transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                          opacity: .65,
+                          opacity: .7,
                         }}
                       />
                     </button>
