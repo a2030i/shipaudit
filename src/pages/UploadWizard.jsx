@@ -558,26 +558,13 @@ export default function UploadWizard({ carriers, onComplete }) {
           setCarrierDetect(detected); // may be a low-confidence guess
         }
 
-        const settings = loadSettings();
+        // No AI here. Per-carrier schemas + regex column detection are
+        // deterministic and 100% accurate for the four carriers we
+        // support. The "✨ إعادة تحليل AI" button in Step 3 stays as
+        // a manual escape hatch for files with unexpected layouts.
+        setAiStatus('جارٍ قراءة الأعمدة...');
 
-        if (settings.openrouterKey) {
-          // ── AI full analysis ──────────────────────────────────────
-          setAiStatus('✨ AI يقرأ الملف ويحدد الأعمدة...');
-          try {
-            const result = await aiAnalyzeFile(allRows);
-            if (result) {
-              applyAiResult(result, allRows);
-              toast('AI حلّل الملف وعيّن الأعمدة ✓', 'success');
-              setStep(3);
-              setUploading(false);
-              return;
-            }
-          } catch (aiErr) {
-            toast(`AI: ${aiErr.message} — سيتم التعيين اليدوي`, 'warn');
-          }
-        }
-
-        // ── Fallback: smart regex detection ───────────────────────
+        // ── Carrier-aware regex detection ─────────────────────────
         const hdrIdx = detectHeaderRow(allRows);
         const hdrs   = buildHeaders(allRows[hdrIdx]);
         const data   = allRows
@@ -640,23 +627,15 @@ export default function UploadWizard({ carriers, onComplete }) {
       carrierId: carrier.id, carrierName: carrier.name,
       period, month, year, colMap, summary, results,
       createdAt: new Date().toISOString(),
+      // Marker: this audit lives in-memory only. AuditResults shows
+      // an "اعتماد المراجعة" CTA that persists it (with review_status
+      // = approved) the moment the user blesses the numbers. "رفض"
+      // just discards. Nothing hits the audits table or the history
+      // page until the user explicitly decides.
+      isDraft: true,
     };
-    // Surface duplicate-file errors to the user — saving silently used
-    // to mean the same file could be saved twice without anyone noticing.
-    try {
-      await saveAuditToDB(audit, user?.id);
-      toast(`تم تدقيق ${results.length} شحنة`, 'success');
-      onComplete(audit);
-    } catch (e) {
-      if (e.code === 'DUPLICATE_AUDIT') {
-        toast(e.message, 'error');
-        return;
-      }
-      // Non-duplicate errors: still show + still hand the audit back so the
-      // user doesn't lose the analysis. They can save manually later.
-      toast(`فشل الحفظ: ${e.message}`, 'error');
-      onComplete(audit);
-    }
+    toast(`جاهز للمراجعة — ${results.length} شحنة`, 'success');
+    onComplete(audit);
   };
 
   const stepLabels = [
