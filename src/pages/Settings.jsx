@@ -546,12 +546,19 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                 const stripeColor = isSelected ? '#fbbf24'
                                   : hasIssues  ? '#f87171'
                                   :              '#2DD4BF';
+                const review = a.reviewStatus || 'pending';
+                const reviewMeta = review === 'approved'
+                  ? { color: '#2DD4BF', label: '✓ معتمدة', bg: 'rgba(45,212,191,.10)', bd: 'rgba(45,212,191,.32)' }
+                  : review === 'rejected'
+                    ? { color: '#f87171', label: '✗ مرفوضة', bg: 'rgba(248,113,113,.10)', bd: 'rgba(248,113,113,.32)' }
+                    : { color: '#fbbf24', label: '⏳ بانتظار الاعتماد', bg: 'rgba(251,191,36,.10)', bd: 'rgba(251,191,36,.32)' };
                 return (
                   <Card key={a.id} style={{
                     padding: 0, overflow: 'hidden',
                     position: 'relative',
                     border: isSelected ? '1px solid rgba(251,191,36,.55)' : undefined,
                     background: isSelected ? 'rgba(251,191,36,.04)' : undefined,
+                    opacity: review === 'rejected' ? 0.65 : 1,
                     transition: 'all .2s',
                   }}>
                     {/* Left status stripe */}
@@ -590,6 +597,16 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--text)' }}>{a.carrierName}</span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '2px 9px', borderRadius: 999,
+                            background: reviewMeta.bg,
+                            border: `1px solid ${reviewMeta.bd}`,
+                            color: reviewMeta.color, fontSize: 10.5, fontWeight: 700,
+                            fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                          }}>
+                            {reviewMeta.label}
+                          </span>
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             padding: '2px 9px', borderRadius: 999,
@@ -708,6 +725,7 @@ function AuditsFilter({ audits, children }) {
   const [carrier, setCarrier]   = useState('all');
   const [month,   setMonth]     = useState('all');
   const [status,  setStatus]    = useState('all');
+  const [review,  setReview]    = useState('all');
   const [query,   setQuery]     = useState('');
 
   // Build option lists from data
@@ -725,16 +743,17 @@ function AuditsFilter({ audits, children }) {
     if (month !== 'all' && (a.date || '').slice(0, 7) !== month) return false;
     if (status === 'issues' && !((a.issueCount ?? 0) > 0)) return false;
     if (status === 'clean'  &&  ((a.issueCount ?? 0) > 0)) return false;
+    if (review !== 'all' && (a.reviewStatus || 'pending') !== review) return false;
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       const hay = `${a.carrierName} ${a.period} ${a.fileName ?? ''}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }
     return true;
-  }), [audits, carrier, month, status, query]);
+  }), [audits, carrier, month, status, review, query]);
 
-  const reset = () => { setCarrier('all'); setMonth('all'); setStatus('all'); setQuery(''); };
-  const hasFilter = carrier !== 'all' || month !== 'all' || status !== 'all' || query !== '';
+  const reset = () => { setCarrier('all'); setMonth('all'); setStatus('all'); setReview('all'); setQuery(''); };
+  const hasFilter = carrier !== 'all' || month !== 'all' || status !== 'all' || review !== 'all' || query !== '';
 
   if (!audits.length) {
     return <Empty icon="📋" title="لا توجد مراجعات بعد" sub="ارفع ملف Excel لبدء أول مراجعة"/>;
@@ -772,6 +791,12 @@ function AuditsFilter({ audits, children }) {
             <option value="all">الكل</option>
             <option value="issues">بفروق فقط</option>
             <option value="clean">مطابقة فقط</option>
+          </Select>
+          <Select label="المراجعة" value={review} onChange={e => setReview(e.target.value)}>
+            <option value="all">الكل</option>
+            <option value="pending">⏳ بانتظار الاعتماد</option>
+            <option value="approved">✓ معتمدة</option>
+            <option value="rejected">✗ مرفوضة</option>
           </Select>
           <Input label="بحث" value={query} onChange={e => setQuery(e.target.value)}
             placeholder="اسم / فترة / ملف..."/>

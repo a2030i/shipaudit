@@ -1,8 +1,11 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
 import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
+import { approveAudit, rejectAudit, reopenAudit } from '../lib/coreService.js';
+import { useAuth } from '../lib/auth.jsx';
 
 // ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ audit, carriers }) {
@@ -487,10 +490,49 @@ function ResultsTable({ results, filter, showDetail, contract }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function AuditResults({ audit, carriers, onNewAudit }) {
+  const { profile } = useAuth();
   const [filter,     setFilter]     = useState('all');
   const [showAI,     setShowAI]     = useState(false);
   const [showDetail, setShowDetail] = useState(false);
+  const [reviewStatus, setReviewStatus] = useState(audit.reviewStatus || 'pending');
+  const [approving,    setApproving]    = useState(false);
+  const [rejecting,    setRejecting]    = useState(false);
+  const [rejectModal,  setRejectModal]  = useState(false);
+  const [rejectReason, setRejectReason] = useState('');
   const { results=[], summary={} } = audit;
+
+  // Keep local state in sync if the page re-mounts with a different audit
+  useEffect(() => { setReviewStatus(audit.reviewStatus || 'pending'); }, [audit.id]);
+
+  const handleApprove = async () => {
+    setApproving(true);
+    try {
+      await approveAudit(audit.id, profile?.id);
+      setReviewStatus('approved');
+      toast('تم اعتماد المراجعة ✓', 'success');
+    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+    setApproving(false);
+  };
+  const handleReject = async () => {
+    setRejecting(true);
+    try {
+      await rejectAudit(audit.id, rejectReason.trim() || null, profile?.id);
+      setReviewStatus('rejected');
+      setRejectModal(false);
+      setRejectReason('');
+      toast('تم رفض المراجعة', 'info');
+    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+    setRejecting(false);
+  };
+  const handleReopen = async () => {
+    setApproving(true);
+    try {
+      await reopenAudit(audit.id);
+      setReviewStatus('pending');
+      toast('أُعيدت المراجعة لقائمة الانتظار', 'info');
+    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+    setApproving(false);
+  };
 
   const carrier = carriers.find(c=>c.id===audit.carrierId);
   const contract = carrier ? getActiveContract(carrier, `${audit.year}-${String(audit.month).padStart(2,'0')}-01`) : null;
@@ -531,6 +573,80 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
 
       {/* Main */}
       <div style={{overflowY:'auto',padding:'20px 24px'}}>
+
+        {/* ── Review status banner ─────────────────────────────────── */}
+        {reviewStatus === 'pending' && (
+          <div style={{
+            marginBottom: 16, padding: '14px 18px', borderRadius: 12,
+            background: 'linear-gradient(135deg, rgba(251,191,36,.14), rgba(251,191,36,.04))',
+            border: '1px solid rgba(251,191,36,.45)',
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+          }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: 'rgba(251,191,36,.20)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Spinner size={16} color="var(--gold)"/>
+            </div>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 13.5 }}>
+                مراجعة قيد الانتظار
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                راجع الفروق ثم اضغط <strong>اعتماد</strong> ليُسمح للنظام بسحب أوزانها للفوترة. أو <strong>رفض</strong> لإخراجها من التدفق.
+              </div>
+            </div>
+            <Btn size="md" variant="accent" onClick={handleApprove} disabled={approving} icon={<CheckCircle2 size={14}/>}>
+              {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
+            </Btn>
+            <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
+              رفض
+            </Btn>
+          </div>
+        )}
+        {reviewStatus === 'approved' && (
+          <div style={{
+            marginBottom: 16, padding: '10px 16px', borderRadius: 11,
+            background: 'rgba(45,212,191,.08)',
+            border: '1px solid rgba(45,212,191,.32)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <CheckCircle2 size={18} color="var(--accent)"/>
+            <div style={{ flex: 1, fontSize: 12.5 }}>
+              <strong style={{ color: 'var(--accent)' }}>مراجعة معتمدة</strong>
+              <span style={{ color: 'var(--muted)', marginInlineStart: 8 }}>
+                مؤهَّلة لفوترة الأوزان وربط الدفعات
+              </span>
+            </div>
+            <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
+              إعادة فتح
+            </Btn>
+          </div>
+        )}
+        {reviewStatus === 'rejected' && (
+          <div style={{
+            marginBottom: 16, padding: '10px 16px', borderRadius: 11,
+            background: 'rgba(248,113,113,.08)',
+            border: '1px solid rgba(248,113,113,.32)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <XCircle size={18} color="var(--red)"/>
+            <div style={{ flex: 1, fontSize: 12.5 }}>
+              <strong style={{ color: 'var(--red)' }}>مراجعة مرفوضة</strong>
+              {audit.rejectedReason && (
+                <span style={{ color: 'var(--muted)', marginInlineStart: 8 }}>
+                  · {audit.rejectedReason}
+                </span>
+              )}
+            </div>
+            <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
+              إعادة فتح
+            </Btn>
+          </div>
+        )}
+
         {/* Header */}
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
           <div>
@@ -616,6 +732,30 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         <div style={{borderRight:'1px solid var(--border)',background:'var(--card)',display:'flex',flexDirection:'column',height:'100%'}}>
           <AIPanel audit={audit} carriers={carriers}/>
         </div>
+      )}
+
+      {rejectModal && (
+        <Modal title="رفض المراجعة" onClose={() => setRejectModal(false)}>
+          <p style={{ color: 'var(--muted)', marginBottom: 14, fontSize: 13, lineHeight: 1.7 }}>
+            المراجعة راح تُحفظ في السجل لكن ما تدخل في تدفق فوترة الأوزان والمدفوعات. تقدر تعيد فتحها لاحقاً.
+          </p>
+          <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+            السبب (اختياري)
+          </label>
+          <input
+            type="text"
+            value={rejectReason}
+            onChange={e => setRejectReason(e.target.value)}
+            placeholder="مثلاً: الملف خطأ، شركة ثانية، تكرار..."
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}
+          />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => setRejectModal(false)}>تراجع</Btn>
+            <Btn variant="danger" onClick={handleReject} disabled={rejecting}>
+              {rejecting ? <Spinner size={12}/> : 'تأكيد الرفض'}
+            </Btn>
+          </div>
+        </Modal>
       )}
     </div>
   );
