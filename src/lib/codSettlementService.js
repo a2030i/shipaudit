@@ -172,15 +172,16 @@ export async function loadSettlementUploads({ carrierId } = {}) {
 //   • only in, no out     → 'over_remit'   (we don't have a payable
 //                           record for this remittance)
 //   • diff != 0           → 'pending_review' (needs approve/dispute)
-// Per-carrier outstanding totals: how much each carrier still owes us
-// (out − in, summed across AWBs with positive net). Returns a Map<id, sar>
-// so the COD-settlements dropdown can decorate each option with its
-// current outstanding balance.
+// Per-carrier net balance: paid − received summed across every AWB
+// (positive = carrier owes us, negative = carrier remitted more than
+// we billed, i.e. we owe them / they over-remitted). Returns
+// Map<carrier_id, sar>. Callers decide whether to filter (the
+// dashboard's "تحصيلات COD المتبقّية" card hides ≤ 0; the COD-
+// settlements dropdown shows everything with the sign).
 //
-// Paginates because Supabase caps a single SELECT at 1000 rows. The
-// cod_settlement table grows linearly with shipments, so we must
-// loop until we get a short page.
-export async function loadOutstandingByCarrier() {
+// Paginates — Supabase caps a single SELECT at 1000 rows and the
+// cod_settlement table outgrows that with one busy carrier.
+export async function loadCarrierNetBalances() {
   const PAGE = 1000;
   const byKey = new Map();
   let from = 0;
@@ -201,17 +202,21 @@ export async function loadOutstandingByCarrier() {
     from += PAGE;
   }
 
-  const TOL = 0.01;
+  // Sum NET per carrier — keep the sign so the UI can render
+  // negatives (over-remitted carriers).
   const totals = new Map();
   for (const m of byKey.values()) {
     const diff = m.paid - m.received;
-    if (diff <= TOL) continue; // matched / over-remit don't count as outstanding
     totals.set(m.carrier_id, (totals.get(m.carrier_id) || 0) + diff);
   }
-  // Round to 2dp
   for (const [k, v] of totals) totals.set(k, +v.toFixed(2));
   return totals;
 }
+
+// Backwards-compatible alias for the existing callers. Same data
+// (signed net per carrier) — caller filters if it only wants
+// positive balances.
+export const loadOutstandingByCarrier = loadCarrierNetBalances;
 
 export async function loadReconciliation(carrierId) {
   if (!carrierId) return [];

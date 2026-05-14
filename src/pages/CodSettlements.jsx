@@ -189,9 +189,16 @@ export default function CodSettlements({ isActive = true }) {
             }}>
             {carriers.map(c => {
               const due = outstandingByCarrier.get(c.id) || 0;
-              const dueLabel = due > 0
-                ? ` — ${due.toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 })} ر.س`
-                : '';
+              // Show the carrier's net position with its sign:
+              //   +X ر.س  → carrier still owes us
+              //   -X ر.س  → carrier over-remitted (we owe them)
+              //   nothing → exactly settled
+              let dueLabel = '';
+              if (Math.abs(due) >= 0.5) {
+                const sign = due > 0 ? '' : '-';
+                const num = Math.abs(due).toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                dueLabel = ` — ${sign}${num} ر.س`;
+              }
               return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
             })}
           </select>
