@@ -218,12 +218,24 @@ export async function loadReconciliation(carrierId) {
 
   // Pull all rows for this carrier and aggregate client-side. For the
   // expected volume (thousands) this is fine; we move to a SQL view if
-  // it ever feels slow.
-  const { data: ledger, error: lErr } = await supabase
-    .from('cod_settlement')
-    .select('direction, awb, amount, upload_date')
-    .eq('carrier_id', carrierId);
-  if (lErr) throw lErr;
+  // it ever feels slow. Paginated because Supabase silently caps a
+  // SELECT at 1000 rows — a single busy carrier (SMSA had 1,131 rows
+  // after one COD report upload) easily blows past that.
+  const PAGE = 1000;
+  const ledger = [];
+  let from = 0;
+  while (true) {
+    const { data, error: lErr } = await supabase
+      .from('cod_settlement')
+      .select('direction, awb, amount, upload_date')
+      .eq('carrier_id', carrierId)
+      .range(from, from + PAGE - 1);
+    if (lErr) throw lErr;
+    if (!data?.length) break;
+    ledger.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
 
   const { data: actions, error: aErr } = await supabase
     .from('cod_reconciliation_action')
