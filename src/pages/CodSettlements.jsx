@@ -635,137 +635,167 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 
 // ── UploadModal ────────────────────────────────────────────────────────
 function UploadModal({ direction, carrier, onClose, onDone, userId }) {
-  const [file, setFile] = useState(null);
-  const [preview, setPreview] = useState(null); // { rows, parserId, inBatchDups, crossFileDups }
+  // Multi-file: each file produces its own preview (rows, dedup tags,
+  // own filename). They're saved one-by-one, so each gets its own
+  // upload_id and shows up as a separate row in the uploads strip.
+  const [files, setFiles] = useState([]);             // File[]
+  const [previews, setPreviews] = useState([]);       // [{ file, parserId, parserLabel, rows, newCount, inBatchDups, crossFileDups }]
   const [uploadDate, setUploadDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [settlementRef, setSettlementRef] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const handleFile = async (f) => {
-    if (!f) return;
-    setFile(f);
-    setBusy(true);
-    try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
+  const parseOne = async (f) => {
+    const buf = await f.arrayBuffer();
+    const wb = XLSX.read(buf, { type: 'array' });
 
-      const parser = direction === 'out'
-        ? INTERNAL_PARSER
-        : REMITTANCE_PARSERS[carrier];
-      if (!parser) throw new Error(`لا يوجد parser للناقل ${carrier}`);
+    const parser = direction === 'out'
+      ? INTERNAL_PARSER
+      : REMITTANCE_PARSERS[carrier];
+    if (!parser) throw new Error(`لا يوجد parser للناقل ${carrier}`);
 
-      // Some carriers (e.g. SMSA) ship one workbook with one sheet per
-      // batch — each sheet has its own header row + data rows. Run the
-      // parser per sheet and merge. Single-sheet carriers (Aramex,
-      // DeliverNow) still work because the loop runs once.
-      const rows = [];
-      const seenAcrossSheets = new Set();
-      const sheetErrors = [];
-      for (const sheetName of wb.SheetNames) {
-        const ws = wb.Sheets[sheetName];
-        const sheetRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-        if (!sheetRows.length) continue;
-        try {
-          const parsed = parser.parse(sheetRows);
-          for (const r of parsed) {
-            const key = String(r.awb).trim();
-            if (seenAcrossSheets.has(key)) continue; // dedup across sheets
-            seenAcrossSheets.add(key);
-            rows.push(r);
-          }
-        } catch (sheetErr) {
-          sheetErrors.push(`${sheetName}: ${sheetErr.message}`);
+    const rows = [];
+    const seenAcrossSheets = new Set();
+    const sheetErrors = [];
+    for (const sheetName of wb.SheetNames) {
+      const ws = wb.Sheets[sheetName];
+      const sheetRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+      if (!sheetRows.length) continue;
+      try {
+        const parsed = parser.parse(sheetRows);
+        for (const r of parsed) {
+          const key = String(r.awb).trim();
+          if (seenAcrossSheets.has(key)) continue;
+          seenAcrossSheets.add(key);
+          rows.push(r);
         }
+      } catch (sheetErr) {
+        sheetErrors.push(`${sheetName}: ${sheetErr.message}`);
       }
-      if (!rows.length) {
-        const detail = sheetErrors.length ? `\n${sheetErrors.join('\n')}` : '';
-        throw new Error('لم تُستخرج أي صفوف صالحة من الملف' + detail);
-      }
-
-      // Duplicate detection — both inside the batch and against rows
-      // already saved in the cod_settlement ledger for this carrier +
-      // direction. Same AWB twice in the same direction is always a
-      // mistake (real reconciliation matches an AWB across direction,
-      // not within).
-      const seenInBatch = new Set();
-      const inBatchDups = new Set();
-      const uniqueAwbs = [];
-      for (const r of rows) {
-        const awb = String(r.awb).trim();
-        if (!awb) continue;
-        if (seenInBatch.has(awb)) inBatchDups.add(awb);
-        else {
-          seenInBatch.add(awb);
-          uniqueAwbs.push(awb);
-        }
-      }
-      const existing = await findDuplicateSettlementAwbs({
-        carrierId: carrier, direction, awbs: uniqueAwbs,
-      });
-
-      // Tag each row so the preview table can show the user which will
-      // be skipped on save and why.
-      const tagged = rows.map(r => {
-        const awb = String(r.awb).trim();
-        let tag = 'new';
-        if (existing.has(awb)) tag = 'cross_file';
-        // We track the FIRST occurrence as new; subsequent same-awb in
-        // batch get tagged 'in_batch'.
-        return { ...r, awb, _dup: tag };
-      });
-      // Mark second+ occurrences inside the batch
-      const seen2 = new Set();
-      for (const r of tagged) {
-        if (r._dup !== 'new') continue;
-        if (seen2.has(r.awb)) r._dup = 'in_batch';
-        else seen2.add(r.awb);
-      }
-
-      setPreview({
-        rows: tagged,
-        parserId: parser.id,
-        parserLabel: parser.label,
-        inBatchDups:    tagged.filter(r => r._dup === 'in_batch').length,
-        crossFileDups:  tagged.filter(r => r._dup === 'cross_file').length,
-        newCount:       tagged.filter(r => r._dup === 'new').length,
-      });
-    } catch (e) {
-      toast(e.message, 'error');
-      setFile(null);
-      setPreview(null);
     }
+    if (!rows.length) {
+      const detail = sheetErrors.length ? `\n${sheetErrors.join('\n')}` : '';
+      throw new Error(`${f.name}: لم تُستخرج أي صفوف صالحة` + detail);
+    }
+    return { rows, parser };
+  };
+
+  const handleFiles = async (fileList) => {
+    const list = Array.from(fileList || []).filter(Boolean);
+    if (!list.length) return;
+    setFiles(list);
+    setBusy(true);
+    const out = [];
+    // Cross-file dedup runs across BOTH the prior DB ledger AND the
+    // pending batches in this same upload session.
+    const sessionAwbs = new Set();
+    for (const f of list) {
+      try {
+        const { rows, parser } = await parseOne(f);
+
+        // In-file dups
+        const seenInFile = new Set();
+        const inBatchDups = new Set();
+        const fileUniqueAwbs = [];
+        for (const r of rows) {
+          const awb = String(r.awb).trim();
+          if (!awb) continue;
+          if (seenInFile.has(awb)) inBatchDups.add(awb);
+          else {
+            seenInFile.add(awb);
+            fileUniqueAwbs.push(awb);
+          }
+        }
+        // Cross-file dups: against DB + against previously-staged
+        // files in this same multi-upload session.
+        const dbExisting = await findDuplicateSettlementAwbs({
+          carrierId: carrier, direction, awbs: fileUniqueAwbs,
+        });
+
+        const tagged = rows.map(r => {
+          const awb = String(r.awb).trim();
+          let tag = 'new';
+          if (dbExisting.has(awb))    tag = 'cross_file';
+          else if (sessionAwbs.has(awb)) tag = 'cross_file';
+          return { ...r, awb, _dup: tag };
+        });
+        const seen2 = new Set();
+        for (const r of tagged) {
+          if (r._dup !== 'new') continue;
+          if (seen2.has(r.awb)) r._dup = 'in_batch';
+          else seen2.add(r.awb);
+        }
+        // Add this file's uniques to the session set so later files
+        // in the same multi-upload don't double-count them.
+        for (const r of tagged) {
+          if (r._dup === 'new') sessionAwbs.add(r.awb);
+        }
+
+        out.push({
+          file: f,
+          parserId:      parser.id,
+          parserLabel:   parser.label,
+          rows:          tagged,
+          newCount:      tagged.filter(r => r._dup === 'new').length,
+          inBatchDups:   tagged.filter(r => r._dup === 'in_batch').length,
+          crossFileDups: tagged.filter(r => r._dup === 'cross_file').length,
+          total:         tagged.reduce((s, r) => s + r.amount, 0),
+          error:         null,
+        });
+      } catch (e) {
+        out.push({ file: f, error: e.message });
+      }
+    }
+    setPreviews(out);
     setBusy(false);
   };
 
+  // Re-bind the rest of the component to the FIRST preview's data
+  // when only one file is staged (keeps the single-file UX clean).
+  const preview = previews.length === 1 ? previews[0] : null;
+  const isMulti = previews.length > 1;
+  const validPreviews = previews.filter(p => !p.error && p.rows?.length);
+  const grandRows = validPreviews.reduce((s, p) => s + p.newCount, 0);
+  const grandTotal = validPreviews.reduce((s, p) => s + (p.rows || []).filter(r => r._dup === 'new').reduce((a, r) => a + r.amount, 0), 0);
+
+  // Save every staged file. Each file becomes its own upload_id row,
+  // so the uploads strip lists them separately. The save loop runs
+  // sequentially; aggregate counts feed the success toast.
   const handleSave = async () => {
-    if (!preview) return;
+    if (!previews.length) return;
     setBusy(true);
+    let savedCount = 0;
+    let skippedCount = 0;
+    const fileErrors = [];
     try {
-      const result = await saveSettlementUpload({
-        direction, carrierId: carrier, rows: preview.rows,
-        uploadDate, sourceFile: file?.name,
-        settlementRef: settlementRef.trim() || null,
-        userId,
-      });
-      const { count, inBatchDuplicates, crossFileDuplicates } = result;
-      const skipped = (inBatchDuplicates || 0) + (crossFileDuplicates || 0);
-      if (count === 0) {
-        toast(`كل الصفوف مكررة — لم يُحفظ شيء (${skipped} متجاوَزة)`, 'error');
+      for (const p of previews) {
+        if (p.error || !p.rows?.length) continue;
+        const result = await saveSettlementUpload({
+          direction, carrierId: carrier, rows: p.rows,
+          uploadDate, sourceFile: p.file?.name,
+          settlementRef: settlementRef.trim() || null,
+          userId,
+        });
+        savedCount += result.count || 0;
+        skippedCount += (result.inBatchDuplicates || 0) + (result.crossFileDuplicates || 0);
+      }
+      if (savedCount === 0) {
+        toast(`كل الصفوف مكررة — لم يُحفظ شيء (${skippedCount} متجاوَزة)`, 'error');
         setBusy(false);
         return;
       }
-      const parts = [`تم حفظ ${count} صف`];
-      if (skipped) parts.push(`تم تجاوز ${skipped} مكرّر`);
+      const parts = [`تم حفظ ${savedCount} صف`];
+      if (previews.length > 1) parts.push(`من ${previews.length} ملف`);
+      if (skippedCount) parts.push(`تم تجاوز ${skippedCount} مكرّر`);
       if (settlementRef) parts.push(`تسوية #${settlementRef.trim()}`);
-      toast(parts.join(' · '), skipped ? 'info' : 'success');
+      toast(parts.join(' · '), skippedCount ? 'info' : 'success');
       onDone();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
     }
+    if (fileErrors.length) toast(fileErrors.join(' / '), 'warn');
     setBusy(false);
   };
 
-  const total = preview?.rows.reduce((s, r) => s + r.amount, 0) ?? 0;
   const isIn = direction === 'in';
 
   return (
@@ -773,7 +803,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
       title={isIn ? `📥 رفع تسوية واردة (من الناقل)` : `📤 رفع تسوية صادرة (من نظامكم)`}
       onClose={onClose} width={560}
     >
-      {!preview && (
+      {previews.length === 0 && (
         <>
           <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
             {isIn
@@ -781,37 +811,86 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
                 ' — يجب أن يحتوي على عمودَي AWB و CollectedAmount.'
               : 'الملف من نظامكم الداخلي — يجب أن يحتوي على عمودَي "رقم الشحنة" و"إجمالي الاستحقاق".'
             }
+            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)' }}>
+              💡 تقدر تختار أكثر من ملف مرة وحدة (Ctrl + Click في نافذة الاختيار)
+            </div>
           </div>
           <input
-            type="file" accept=".xlsx,.xls"
-            onChange={e => handleFile(e.target.files?.[0])}
+            type="file" accept=".xlsx,.xls" multiple
+            onChange={e => handleFiles(e.target.files)}
             disabled={busy}
             style={{ width: '100%', padding: 8 }}
           />
-          {busy && <div style={{ marginTop: 10, textAlign: 'center' }}><Spinner size={16}/></div>}
+          {busy && <div style={{ marginTop: 10, textAlign: 'center' }}><Spinner size={16}/> جارٍ تحليل الملفات...</div>}
         </>
       )}
-      {preview && (
+      {previews.length > 0 && (
         <>
+          {/* Multi-file summary: one row per uploaded file with its
+              own SAR total + dup tags. The single-file case still
+              renders cleanly (just one row). */}
           <div style={{
             padding: '10px 14px', marginBottom: 12,
-            background: 'rgba(34,197,94,.08)',
-            border: '1px solid rgba(34,197,94,.3)',
+            background: 'rgba(45,212,191,.08)',
+            border: '1px solid rgba(45,212,191,.30)',
             borderRadius: 9, fontSize: 12,
           }}>
-            <div style={{ fontWeight: 700, marginBottom: 4 }}>
-              ✓ تم تحليل الملف ({preview.parserLabel})
-            </div>
-            <div style={{ color: 'var(--muted)' }}>
-              {preview.rows.length} صف ·{' '}
-              <span style={{ color: 'var(--text)', fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
-                {fmt(total)} ر.س
+            <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>
+              ✓ تم تحليل {previews.length} {previews.length === 1 ? 'ملف' : 'ملفات'}
+              {' · '}
+              <span style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+                {grandRows} صف جديد · {fmt(grandTotal)} ر.س
               </span>
+            </div>
+            <div style={{ display: 'grid', gap: 6 }}>
+              {previews.map((p, idx) => {
+                const fileTotal = p.error ? 0 : (p.rows || []).reduce((s, r) => s + r.amount, 0);
+                const newTotal  = p.error ? 0 : (p.rows || []).filter(r => r._dup === 'new').reduce((s, r) => s + r.amount, 0);
+                return (
+                  <div key={idx} style={{
+                    display: 'grid', gridTemplateColumns: '1fr auto', gap: 10,
+                    padding: '6px 10px',
+                    background: p.error ? 'rgba(248,113,113,.08)' : 'var(--card)',
+                    border: `1px solid ${p.error ? 'rgba(248,113,113,.30)' : 'var(--border)'}`,
+                    borderRadius: 7,
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {p.file.name}
+                      </div>
+                      {p.error ? (
+                        <div style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 2 }}>✗ {p.error}</div>
+                      ) : (
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                          {p.rows.length} صف
+                          {p.inBatchDups > 0   && ` · 🔁 ${p.inBatchDups} مكرّر داخل الملف`}
+                          {p.crossFileDups > 0 && ` · 📎 ${p.crossFileDups} مكرّر مع سابق`}
+                          {p.newCount !== p.rows.length && ` · سيُحفظ ${p.newCount}`}
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                      {!p.error && (
+                        <>
+                          <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: 'var(--accent)' }}>
+                            {fmt(newTotal)}
+                          </div>
+                          <div style={{ fontSize: 9.5, color: 'var(--muted)' }}>
+                            {newTotal !== fileTotal ? `إجمالي الملف ${fmt(fileTotal)}` : 'ر.س'}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
-          {/* Duplicate warnings — only when there's something to flag */}
-          {(preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
+          {/* In single-file mode keep the legacy dup warning for
+              visual symmetry with the rest of the modal. Multi-file
+              previews already show per-file dup counts above. */}
+          {preview && (preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
             <div style={{
               padding: '10px 14px', marginBottom: 12,
               background: 'rgba(248,113,113,.08)',
@@ -849,53 +928,58 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
               يساعد على ربط التسوية بسجلاتك الداخلية أو فاتورة الناقل.
             </div>
           </div>
-          <div style={{
-            marginTop: 12, maxHeight: 200, overflowY: 'auto',
-            border: '1px solid var(--border)', borderRadius: 9,
-          }}>
-            <table style={{ fontSize: 11, width: '100%' }}>
-              <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
-                <tr><th>AWB</th><th style={{ textAlign: 'left' }}>المبلغ</th></tr>
-              </thead>
-              <tbody>
-                {preview.rows.slice(0, 50).map((r, i) => {
-                  const isDup = r._dup === 'in_batch' || r._dup === 'cross_file';
-                  return (
-                    <tr key={i} style={isDup ? { background: 'rgba(248,113,113,.06)' } : undefined}>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: isDup ? 'var(--red)' : 'var(--accent)' }}>
-                        {r.awb}
-                        {r._dup === 'in_batch' && (
-                          <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
-                            🔁 مكرّر داخل الملف
-                          </span>
-                        )}
-                        {r._dup === 'cross_file' && (
-                          <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
-                            📎 مكرّر مع ملف سابق
-                          </span>
-                        )}
-                      </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', color: isDup ? 'var(--muted)' : 'var(--text)', textDecoration: isDup ? 'line-through' : 'none' }}>
-                        {r.amount.toFixed(2)}
-                      </td>
-                    </tr>
-                  );
-                })}
-                {preview.rows.length > 50 && (
-                  <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 10 }}>
-                    +{preview.rows.length - 50} صف إضافية…
-                  </td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          {/* Single-file: show a peek of the rows. Multi-file: per-
+              file summary above is the right level of detail and a
+              giant row table would be overwhelming. */}
+          {preview && (
+            <div style={{
+              marginTop: 12, maxHeight: 200, overflowY: 'auto',
+              border: '1px solid var(--border)', borderRadius: 9,
+            }}>
+              <table style={{ fontSize: 11, width: '100%' }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
+                  <tr><th>AWB</th><th style={{ textAlign: 'left' }}>المبلغ</th></tr>
+                </thead>
+                <tbody>
+                  {preview.rows.slice(0, 50).map((r, i) => {
+                    const isDup = r._dup === 'in_batch' || r._dup === 'cross_file';
+                    return (
+                      <tr key={i} style={isDup ? { background: 'rgba(248,113,113,.06)' } : undefined}>
+                        <td style={{ fontFamily: 'var(--font-mono)', color: isDup ? 'var(--red)' : 'var(--accent)' }}>
+                          {r.awb}
+                          {r._dup === 'in_batch' && (
+                            <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                              🔁 مكرّر داخل الملف
+                            </span>
+                          )}
+                          {r._dup === 'cross_file' && (
+                            <span style={{ marginRight: 6, fontSize: 9, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                              📎 مكرّر مع ملف سابق
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', color: isDup ? 'var(--muted)' : 'var(--text)', textDecoration: isDup ? 'line-through' : 'none' }}>
+                          {r.amount.toFixed(2)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {preview.rows.length > 50 && (
+                    <tr><td colSpan={2} style={{ textAlign: 'center', color: 'var(--muted)', fontSize: 10 }}>
+                      +{preview.rows.length - 50} صف إضافية…
+                    </td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          )}
         </>
       )}
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-        {preview && (
-          <Btn variant="success" onClick={handleSave} disabled={busy}>
-            {busy ? <Spinner size={13}/> : `تأكيد حفظ ${preview.rows.length} صف`}
+        {previews.length > 0 && (
+          <Btn variant="success" onClick={handleSave} disabled={busy || grandRows === 0}>
+            {busy ? <Spinner size={13}/> : `تأكيد حفظ ${grandRows} صف${previews.length > 1 ? ` من ${previews.length} ملف` : ''}`}
           </Btn>
         )}
       </div>
