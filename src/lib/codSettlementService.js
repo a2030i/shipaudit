@@ -317,7 +317,7 @@ export function summarizeReconciliation(rows) {
     outstandingCount: 0, outstandingAmount: 0,
     pendingReviewCount: 0, pendingReviewAmount: 0,
     disputedCount: 0, disputedAmount: 0, oldestDisputeDays: 0,
-    matchedCount: 0,
+    matchedCount: 0, matchedAmount: 0,
     overRemitCount: 0, overRemitAmount: 0,
     overRemitRecentCount: 0, overRemitRecentAmount: 0,
     overRemitAgedCount: 0,   overRemitAgedAmount: 0,
@@ -340,6 +340,12 @@ export function summarizeReconciliation(rows) {
       }
     } else if (r.status === 'matched' || r.status === 'approved' || r.status === 'resolved') {
       s.matchedCount++;
+      // For matched rows paid ≈ received (within tolerance). For
+      // approved / resolved rows the user has signed off on a small
+      // diff; we still count the received amount as "settled cash".
+      // Use received (what actually hit the bank) as the conservative
+      // SAR figure.
+      s.matchedAmount += Number(r.received) || 0;
     } else if (r.status === 'over_remit') {
       s.overRemitCount++;
       s.overRemitAmount += Math.abs(r.diff);
@@ -356,6 +362,7 @@ export function summarizeReconciliation(rows) {
   s.outstandingAmount     = +s.outstandingAmount.toFixed(2);
   s.pendingReviewAmount   = +s.pendingReviewAmount.toFixed(2);
   s.disputedAmount        = +s.disputedAmount.toFixed(2);
+  s.matchedAmount         = +s.matchedAmount.toFixed(2);
   s.overRemitAmount       = +s.overRemitAmount.toFixed(2);
   s.overRemitAgedAmount   = +s.overRemitAgedAmount.toFixed(2);
   s.overRemitRecentAmount = +s.overRemitRecentAmount.toFixed(2);

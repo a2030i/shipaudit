@@ -253,8 +253,8 @@ export default function CodSettlements({ isActive = true }) {
             {summary.overRemitAgedCount > 0
               ? <Hero label="🚨 وارد قديم بدون مقابل" value={summary.overRemitAgedCount}
                   hint={`${fmt(summary.overRemitAgedAmount)} ر.س · مضى +30 يوم`} color="var(--red)"/>
-              : <Hero label="مسوّاة" value={summary.matchedCount}
-                  hint={`${rows.length} شحنة بإجمالي`} color="var(--green)"/>
+              : <Hero label="مسوّاة" value={fmt(summary.matchedAmount)} suffix="ر.س"
+                  hint={`${summary.matchedCount} شحنة من أصل ${rows.length}`} color="var(--green)"/>
             }
           </div>
 
