@@ -11,8 +11,8 @@ export const aatakRemittanceParser = makeRemittanceParser({
     'رقم الشحنة', 'رقم البوليصة', 'رقم الطلب', 'رقم الشحن',
   ],
   amtKeys: [
-    'cod amount', 'collected amount', 'collection amount', 'amount',
-    'net amount', 'cod', 'المبلغ', 'قيمة التحصيل', 'المبلغ المحصّل',
+    'cod amount', 'collected amount', 'collection amount', 'collected amount', 
+    'net amount',  'المبلغ', 'قيمة التحصيل', 'المبلغ المحصّل',
     'المحصل', 'الصافي',
   ],
 });
