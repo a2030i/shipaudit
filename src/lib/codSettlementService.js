@@ -133,14 +133,27 @@ export async function deleteSettlementUpload(uploadId) {
 // total amount, source filename, settlement ref.
 export async function loadSettlementUploads({ carrierId } = {}) {
   if (!carrierId) return [];
-  const { data, error } = await supabase
-    .from('cod_settlement')
-    .select('upload_id, direction, upload_date, source_file, settlement_ref, amount, created_at')
-    .eq('carrier_id', carrierId)
-    .order('upload_date', { ascending: false });
-  if (error) throw error;
+  // Paginated — same 1000-row cap as everywhere else in this file.
+  // Without pagination the per-file totals shifted every refresh
+  // because Supabase returned a different 1000-row slice each time.
+  const PAGE = 1000;
+  const all = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('cod_settlement')
+      .select('upload_id, direction, upload_date, source_file, settlement_ref, amount, created_at')
+      .eq('carrier_id', carrierId)
+      .order('upload_date', { ascending: false })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    all.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
   const map = new Map();
-  for (const row of data ?? []) {
+  for (const row of all) {
     if (!map.has(row.upload_id)) {
       map.set(row.upload_id, {
         uploadId:     row.upload_id,
