@@ -641,16 +641,39 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
     try {
       const buf = await f.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
       const parser = direction === 'out'
         ? INTERNAL_PARSER
         : REMITTANCE_PARSERS[carrier];
       if (!parser) throw new Error(`لا يوجد parser للناقل ${carrier}`);
 
-      const rows = parser.parse(allRows);
-      if (!rows.length) throw new Error('لم تُستخرج أي صفوف صالحة من الملف');
+      // Some carriers (e.g. SMSA) ship one workbook with one sheet per
+      // batch — each sheet has its own header row + data rows. Run the
+      // parser per sheet and merge. Single-sheet carriers (Aramex,
+      // DeliverNow) still work because the loop runs once.
+      const rows = [];
+      const seenAcrossSheets = new Set();
+      const sheetErrors = [];
+      for (const sheetName of wb.SheetNames) {
+        const ws = wb.Sheets[sheetName];
+        const sheetRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+        if (!sheetRows.length) continue;
+        try {
+          const parsed = parser.parse(sheetRows);
+          for (const r of parsed) {
+            const key = String(r.awb).trim();
+            if (seenAcrossSheets.has(key)) continue; // dedup across sheets
+            seenAcrossSheets.add(key);
+            rows.push(r);
+          }
+        } catch (sheetErr) {
+          sheetErrors.push(`${sheetName}: ${sheetErr.message}`);
+        }
+      }
+      if (!rows.length) {
+        const detail = sheetErrors.length ? `\n${sheetErrors.join('\n')}` : '';
+        throw new Error('لم تُستخرج أي صفوف صالحة من الملف' + detail);
+      }
 
       // Duplicate detection — both inside the batch and against rows
       // already saved in the cod_settlement ledger for this carrier +

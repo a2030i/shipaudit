@@ -10,8 +10,8 @@ export const boleesehRemittanceParser = makeRemittanceParser({
     'رقم الشحنة', 'رقم البوليصة', 'رقم الطلب', 'بوليصة',
   ],
   amtKeys: [
-    'cod amount', 'collected amount', 'collection amount', 'amount',
-    'net amount', 'cod', 'paid amount',
+    'cod amount', 'collected amount', 'collection amount', 'collected amount', 
+    'net amount',  'paid amount',
     'المبلغ', 'قيمة التحصيل', 'المبلغ المحصّل', 'المحصل', 'الصافي',
   ],
 });
