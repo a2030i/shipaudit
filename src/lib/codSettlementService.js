@@ -152,6 +152,36 @@ export async function loadSettlementUploads({ carrierId } = {}) {
     if (data.length < PAGE) break;
     from += PAGE;
   }
+  // Need each row's AWB too to compute per-file settled / unsettled
+  // counts. Pull all AWBs for the carrier once, build a quick lookup
+  // of which direction each AWB has, then walk through `all` again
+  // to tag rows. Cheaper than a second roundtrip per upload.
+  const PAGE2 = 1000;
+  const awbRows = [];
+  let from2 = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('cod_settlement')
+      .select('upload_id, direction, awb, amount')
+      .eq('carrier_id', carrierId)
+      .range(from2, from2 + PAGE2 - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    awbRows.push(...data);
+    if (data.length < PAGE2) break;
+    from2 += PAGE2;
+  }
+  // Cross-direction set: every AWB that has at least one 'in' row +
+  // every AWB that has at least one 'out' row. Used to decide whether
+  // a row from this upload has been matched yet.
+  const inAwbs  = new Set();
+  const outAwbs = new Set();
+  for (const r of awbRows) {
+    const awb = String(r.awb).trim();
+    if (r.direction === 'in')  inAwbs.add(awb);
+    else                       outAwbs.add(awb);
+  }
+
   const map = new Map();
   for (const row of all) {
     if (!map.has(row.upload_id)) {
@@ -164,14 +194,48 @@ export async function loadSettlementUploads({ carrierId } = {}) {
         createdAt:    row.created_at,
         count:        0,
         amount:       0,
+        // Per-upload settlement progress.
+        // For outgoing uploads (out): settledCount = number of AWBs
+        // in this file that ALSO have an 'in' row anywhere. The rest
+        // are still waiting for the carrier to remit.
+        // For incoming uploads (in):  matchedCount = AWBs in this
+        // file that have a matching 'out' (otherwise it's over-remit).
+        settledCount:   0,
+        settledAmount:  0,
+        unsettledCount: 0,
+        unsettledAmount: 0,
       });
     }
     const u = map.get(row.upload_id);
     u.count++;
     u.amount += Number(row.amount) || 0;
   }
-  // Newest first by uploadDate (already sorted by DB) then createdAt
-  return [...map.values()].map(u => ({ ...u, amount: +u.amount.toFixed(2) }));
+
+  // Second pass: walk AWBs grouped by upload_id and tag each as
+  // settled/unsettled. We use awbRows so we have every AWB on hand.
+  for (const r of awbRows) {
+    const u = map.get(r.upload_id);
+    if (!u) continue;
+    const awb = String(r.awb).trim();
+    const amt = Number(r.amount) || 0;
+    const settled = u.direction === 'out'
+      ? inAwbs.has(awb)
+      : outAwbs.has(awb);
+    if (settled) {
+      u.settledCount++;
+      u.settledAmount += amt;
+    } else {
+      u.unsettledCount++;
+      u.unsettledAmount += amt;
+    }
+  }
+
+  return [...map.values()].map(u => ({
+    ...u,
+    amount:           +u.amount.toFixed(2),
+    settledAmount:    +u.settledAmount.toFixed(2),
+    unsettledAmount:  +u.unsettledAmount.toFixed(2),
+  }));
 }
 
 // ── Reconciliation engine ──────────────────────────────────────────────

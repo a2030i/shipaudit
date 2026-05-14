@@ -316,56 +316,123 @@ export default function CodSettlements({ isActive = true }) {
                   {' '}📤 {uploads.filter(u => u.direction === 'out').length} صادرة
                 </span>
               </button>
-              {uploadsOpen && (
-                <div style={{ maxHeight: 320, overflowY: 'auto' }}>
-                  {uploads.map(u => (
-                    <div key={u.uploadId} style={{
-                      display: 'grid',
-                      gridTemplateColumns: 'auto 1fr auto auto auto',
-                      gap: 12, alignItems: 'center',
-                      padding: '10px 16px', borderBottom: '1px solid var(--border)22',
+              {uploadsOpen && (() => {
+                // Split outbound vs inbound so each side gets its
+                // own column with totals. Per-outbound file we also
+                // show "unsettled" — shipments paid to the merchant
+                // whose matching 'in' from the carrier hasn't arrived
+                // yet. Per-inbound we show "matched vs over-remit".
+                const outFiles = uploads.filter(u => u.direction === 'out');
+                const inFiles  = uploads.filter(u => u.direction === 'in');
+                const outTotal = outFiles.reduce((s, u) => s + u.amount, 0);
+                const inTotal  = inFiles.reduce((s, u) => s + u.amount, 0);
+                const outUnsettled = outFiles.reduce((s, u) => s + (u.unsettledAmount || 0), 0);
+
+                const FileRow = ({ u }) => (
+                  <div key={u.uploadId} style={{
+                    display: 'grid',
+                    gridTemplateColumns: '1fr auto auto auto',
+                    gap: 10, alignItems: 'center',
+                    padding: '10px 14px', borderBottom: '1px solid var(--border)22',
+                  }}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {u.sourceFile || '(بدون اسم ملف)'}
+                      </div>
+                      <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                        {u.uploadDate}
+                        {u.settlementRef && (
+                          <span style={{ marginInlineStart: 6, fontFamily: 'var(--font-mono)' }}>· {u.settlementRef}</span>
+                        )}
+                      </div>
+                      {u.direction === 'out' && u.unsettledCount > 0 && (
+                        <div style={{ fontSize: 10.5, color: 'var(--gold)', marginTop: 3, fontWeight: 600 }}>
+                          ⏳ متبقّي {u.unsettledCount} شحنة · {fmt(u.unsettledAmount)} ر.س
+                        </div>
+                      )}
+                      {u.direction === 'out' && u.unsettledCount === 0 && u.count > 0 && (
+                        <div style={{ fontSize: 10.5, color: 'var(--accent)', marginTop: 3, fontWeight: 600 }}>
+                          ✓ مسوّى بالكامل
+                        </div>
+                      )}
+                      {u.direction === 'in' && u.unsettledCount > 0 && (
+                        <div style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 3, fontWeight: 600 }}>
+                          ⚠ {u.unsettledCount} شحنة بلا مقابل صادر · {fmt(u.unsettledAmount)} ر.س
+                        </div>
+                      )}
+                    </div>
+                    <div style={{ textAlign: 'center', minWidth: 56 }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700 }}>{u.count}</div>
+                      <div style={{ fontSize: 9, color: 'var(--muted)' }}>شحنة</div>
+                    </div>
+                    <div style={{ textAlign: 'left', minWidth: 100 }}>
+                      <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: u.direction === 'in' ? 'var(--green)' : 'var(--text)' }}>
+                        {fmt(u.amount)}
+                      </div>
+                      <div style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</div>
+                    </div>
+                    <Btn size="sm" variant="ghost" onClick={() => setConfirmDeleteUpload(u)} title="حذف الملف">
+                      <Trash2 size={12}/>
+                    </Btn>
+                  </div>
+                );
+
+                const SectionHeader = ({ icon, label, color, files, total, extra }) => (
+                  <div style={{
+                    padding: '10px 14px',
+                    background: `color-mix(in srgb, ${color} 8%, transparent)`,
+                    borderTop: '1px solid var(--border)',
+                    borderBottom: '1px solid var(--border)22',
+                    display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                  }}>
+                    <span style={{
+                      padding: '3px 10px', borderRadius: 999,
+                      fontSize: 10.5, fontWeight: 700,
+                      background: `color-mix(in srgb, ${color} 18%, transparent)`,
+                      color, fontFamily: 'var(--font-sans)',
                     }}>
-                      <span style={{
-                        padding: '2px 8px', borderRadius: 999,
-                        fontSize: 10, fontWeight: 700, fontFamily: 'var(--font-mono)',
-                        background: u.direction === 'in' ? 'rgba(34,197,94,.15)' : 'rgba(45,212,191,.15)',
-                        color: u.direction === 'in' ? 'var(--green)' : 'var(--accent)',
-                        whiteSpace: 'nowrap',
-                      }}>
-                        {u.direction === 'in' ? '📥 واردة' : '📤 صادرة'}
-                      </span>
-                      <div>
-                        <div style={{ fontSize: 12, fontWeight: 600 }}>
-                          {u.sourceFile || '(بدون اسم ملف)'}
-                          {u.settlementRef && (
-                            <span style={{ marginRight: 8, fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                              · رقم {u.settlementRef}
+                      {icon} {label}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      {files.length} ملف
+                    </span>
+                    <span style={{ marginInlineStart: 'auto', fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color }}>
+                      {fmt(total)} ر.س
+                    </span>
+                    {extra}
+                  </div>
+                );
+
+                return (
+                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                    {/* Outgoing section */}
+                    {outFiles.length > 0 && (
+                      <>
+                        <SectionHeader
+                          icon="📤" label="صادرة (دفعنا للتاجر)" color="#2DD4BF"
+                          files={outFiles} total={outTotal}
+                          extra={outUnsettled > 0 && (
+                            <span style={{ fontSize: 10.5, color: 'var(--gold)', fontWeight: 700 }}>
+                              · متبقّي عند الناقل {fmt(outUnsettled)} ر.س
                             </span>
                           )}
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
-                          {u.uploadDate}
-                        </div>
-                      </div>
-                      <div style={{ textAlign: 'center', minWidth: 70 }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700 }}>
-                          {u.count}
-                        </div>
-                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>شحنة</div>
-                      </div>
-                      <div style={{ textAlign: 'left', minWidth: 110 }}>
-                        <div style={{ fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700, color: u.direction === 'in' ? 'var(--green)' : 'var(--text)' }}>
-                          {fmt(u.amount)}
-                        </div>
-                        <div style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</div>
-                      </div>
-                      <Btn size="sm" variant="ghost" onClick={() => setConfirmDeleteUpload(u)} title="حذف الملف">
-                        <Trash2 size={12}/>
-                      </Btn>
-                    </div>
-                  ))}
-                </div>
-              )}
+                        />
+                        {outFiles.map(u => <FileRow key={u.uploadId} u={u}/>)}
+                      </>
+                    )}
+                    {/* Incoming section */}
+                    {inFiles.length > 0 && (
+                      <>
+                        <SectionHeader
+                          icon="📥" label="واردة (وصلتنا من الناقل)" color="#22c55e"
+                          files={inFiles} total={inTotal}
+                        />
+                        {inFiles.map(u => <FileRow key={u.uploadId} u={u}/>)}
+                      </>
+                    )}
+                  </div>
+                );
+              })()}
             </Card>
           )}
 
