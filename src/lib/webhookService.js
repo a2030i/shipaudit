@@ -131,6 +131,10 @@ export async function markEventFailed(eventId, error_message) {
 // from the webhook-uploads bucket so we don't leave orphans behind.
 // Best-effort on the storage cleanup — if it fails (file already
 // gone, perms, etc.) we still delete the DB row.
+//
+// Uses .select() after the delete so an RLS silent-no-op (policy
+// missing, denied) surfaces as an actual error instead of pretending
+// it worked.
 export async function deleteWebhookEvent(event) {
   const id = typeof event === 'string' ? event : event?.id;
   if (!id) throw new Error('event id مفقود');
@@ -140,12 +144,16 @@ export async function deleteWebhookEvent(event) {
       await supabase.storage.from('webhook-uploads').remove([path]);
     } catch { /* non-fatal */ }
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('webhook_events')
     .delete()
-    .eq('id', id);
+    .eq('id', id)
+    .select('id');
   if (error) throw error;
-  return true;
+  if (!data || data.length === 0) {
+    throw new Error('لم يُحذف أي صف — تأكّد من صلاحيات RLS أو من وجود الحدث.');
+  }
+  return data.length;
 }
 
 // Bulk delete — same logic, in one round-trip per file + one DB call.
@@ -158,12 +166,17 @@ export async function deleteWebhookEvents(events) {
     catch { /* non-fatal */ }
   }
   const ids = list.map(e => e.id || e).filter(Boolean);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from('webhook_events')
     .delete()
-    .in('id', ids);
+    .in('id', ids)
+    .select('id');
   if (error) throw error;
-  return ids.length;
+  const deleted = data?.length ?? 0;
+  if (deleted === 0) {
+    throw new Error('لم يُحذف أي صف — تأكّد من صلاحيات RLS.');
+  }
+  return deleted;
 }
 
 export async function downloadEventFile(event) {
