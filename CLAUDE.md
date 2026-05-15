@@ -60,6 +60,16 @@
 - على نجاح الاعتماد: `markEventProcessed(eventId, auditId)` يربط الـ webhook event بالمراجعة
 - الشارة في `/webhook`: **"✓ تمت مراجعتها"** + زر **"فتح المراجعة"**
 
+### 1.5b دورة حياة Webhook → COD Remittance ✅ (J&T-style)
+- للشركات تاجد `file_kind='audit_and_cod_separate'` أو `'cod_only'`، يظهر زر **"💰 حفظ كتحصيل"** بجانب أو بدل "حفظ كمراجعة"
+- `importToCod` في `WebhookEvents.jsx`: stash payload في `sessionStorage.webhookCodImport` → `navigate('/cod-settlements')`
+- `CodSettlements` يفحص `location.pathname === '/cod-settlements'` ويلتقط الـ payload (مع `CONSUMED_COD_IMPORTS` set)
+- يفتح `UploadModal` تلقائياً بـ `direction='in'` + `preloadedFile` + `sourceEventId`
+- `UploadModal` يستدعي `handleFiles([preloadedFile])` على mount → preview جاهز
+- بعد save بنجاح: `markEventProcessed(eventId, auditId=null, userId)` — `processed_at` تُحدَّث
+- الشارة في `/webhook`: **"تحصيل مُستلَم"** (gold) + زر **"تم استيراده كتحصيل"** → ينقل لـ `/cod-settlements`
+- إشارة الفعل: `e.processed_at != null && !e.audit_id` → COD imported
+
 ### 1.6 حذف Webhook Events ✅
 - RLS policy `webhook_events_delete` موجودة (FOR DELETE TO authenticated USING true)
 - `deleteWebhookEvent` / `deleteWebhookEvents` يستخدمان `.select('id')` بعد الحذف

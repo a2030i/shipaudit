@@ -106,6 +106,12 @@ function primaryBtnStyle(variant = 'accent') {
       border: '1px solid rgba(45,212,191,.40)',
       boxShadow: 'none',
     },
+    gold: {
+      background: 'linear-gradient(135deg, #F59E0B, #FBBF24)',
+      color: '#1f2937',
+      border: '1px solid transparent',
+      boxShadow: '0 2px 8px rgba(251,191,36,.30)',
+    },
     ghost: {
       background: 'transparent',
       color: 'var(--muted)',
@@ -245,6 +251,39 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       }));
       toast('جارٍ فتح المعالج…', 'success');
       navigate('/upload');
+    } catch (err) {
+      toast(`فشل الاستيراد: ${err.message}`, 'error');
+    } finally {
+      setImportingId(null);
+    }
+  };
+
+  // Send the file to /cod-settlements as an inbound COD remittance.
+  // Same pattern as importToAudit: stash file in sessionStorage, the
+  // CodSettlements page picks it up on visit and auto-opens its
+  // upload modal pre-filled with the carrier + file.
+  const importToCod = async (event) => {
+    if (!event?.file_path) { toast('الملف غير موجود في المخزن', 'error'); return; }
+    if (!isSpreadsheet(event.file_name)) {
+      toast('لا يمكن تحويل هذا الملف لتحصيل (يجب أن يكون Excel أو CSV)', 'error');
+      return;
+    }
+    if (!event.detected_carrier_id) {
+      toast('لا يمكن استيراده كتحصيل قبل ربط الملف بشركة', 'error');
+      return;
+    }
+    setImportingId(event.id);
+    try {
+      const blob   = await loadEventFileBlob(event);
+      const base64 = await blobToBase64(blob);
+      sessionStorage.setItem('webhookCodImport', JSON.stringify({
+        eventId:   event.id,
+        filename:  event.file_name,
+        carrierId: event.detected_carrier_id,
+        base64,
+      }));
+      toast('جارٍ فتح تسويات COD…', 'success');
+      navigate('/cod-settlements');
     } catch (err) {
       toast(`فشل الاستيراد: ${err.message}`, 'error');
     } finally {
@@ -458,6 +497,22 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                   const Icn = chip.Icon;
                   const canImport = isSpreadsheet(e.file_name) && !!e.file_path;
                   const isSel = selected.has(e.id);
+                  // Determine if the file should be treated as an audit or
+                  // as a COD remittance. We expose BOTH buttons only when
+                  // the carrier is tagged audit_and_cod_separate — for
+                  // those carriers the admin needs to pick. Combined
+                  // (audit_with_cod) carriers always treat the file as an
+                  // audit. cod_only carriers always treat as COD.
+                  // Once the event has been actioned (processed_at is set
+                  // OR audit_id is set), buttons disappear and a badge
+                  // takes their place.
+                  const carrierObj = (carriers || []).find(c => c.id === e.detected_carrier_id);
+                  const carrierKind = carrierObj?.file_signature?.file_kind || null;
+                  const isActioned  = !!e.audit_id || !!e.processed_at;
+                  const isCodDone   = !!e.processed_at && !e.audit_id;
+                  const showAuditBtn = canImport && !isActioned && (carrierKind !== 'cod_only');
+                  const showCodBtn   = canImport && !isActioned && !!e.detected_carrier_id
+                                       && ['audit_and_cod_separate', 'cod_only'].includes(carrierKind);
                   return (
                     <tr key={e.id} style={isSel ? { background: 'rgba(45,212,191,.06)' } : undefined}>
                       <td style={{ paddingInline: 8 }}>
@@ -544,6 +599,19 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                             <FileCheck2 size={11}/>
                             تمت مراجعتها
                           </span>
+                        ) : isCodDone ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '3px 9px', borderRadius: 12,
+                            background: 'rgba(251,191,36,.14)',
+                            color: '#F59E0B',
+                            border: '1px solid rgba(251,191,36,.40)',
+                            fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            <FileCheck2 size={11}/>
+                            تحصيل مُستلَم
+                          </span>
                         ) : (
                           <span style={{
                             padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600,
@@ -560,7 +628,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           display: 'inline-flex', alignItems: 'center', gap: 6,
                           flexWrap: 'nowrap',
                         }}>
-                          {/* Primary action — only one, with full label */}
+                          {/* Primary actions — picked by row state.
+                              Audit + COD buttons can co-exist for
+                              audit_and_cod_separate carriers (J&T-style)
+                              so the admin chooses how to route the file. */}
                           {e.audit_id ? (
                             <button
                               onClick={() => openLinkedAudit(e.audit_id)}
@@ -570,18 +641,16 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                               <FileCheck2 size={13}/>
                               فتح المراجعة
                             </button>
-                          ) : canImport ? (
+                          ) : isCodDone ? (
                             <button
-                              onClick={() => importToAudit(e)}
-                              disabled={importingId === e.id}
-                              style={primaryBtnStyle('accent')}
+                              onClick={() => navigate('/cod-settlements')}
+                              title="فتح صفحة تسويات COD"
+                              style={primaryBtnStyle('accent-soft')}
                             >
-                              {importingId === e.id
-                                ? <Spinner size={13}/>
-                                : <UploadIcon size={13}/>}
-                              حفظ كمراجعة
+                              <FileCheck2 size={13}/>
+                              تم استيراده كتحصيل
                             </button>
-                          ) : !e.detected_carrier_id ? (
+                          ) : !e.detected_carrier_id && canImport ? (
                             <button
                               onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}
                               style={primaryBtnStyle('ghost')}
@@ -589,7 +658,36 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                               <HelpCircle size={13}/>
                               ربط بشركة
                             </button>
-                          ) : null}
+                          ) : (
+                            <>
+                              {showAuditBtn && (
+                                <button
+                                  onClick={() => importToAudit(e)}
+                                  disabled={importingId === e.id}
+                                  style={primaryBtnStyle('accent')}
+                                  title="معالجة الملف كفاتورة مراجعة"
+                                >
+                                  {importingId === e.id
+                                    ? <Spinner size={13}/>
+                                    : <UploadIcon size={13}/>}
+                                  حفظ كمراجعة
+                                </button>
+                              )}
+                              {showCodBtn && (
+                                <button
+                                  onClick={() => importToCod(e)}
+                                  disabled={importingId === e.id}
+                                  style={primaryBtnStyle('gold')}
+                                  title="معالجة الملف كتحصيل COD"
+                                >
+                                  {importingId === e.id
+                                    ? <Spinner size={13}/>
+                                    : <UploadIcon size={13}/>}
+                                  حفظ كتحصيل
+                                </button>
+                              )}
+                            </>
+                          )}
 
                           {/* Secondary actions — icon-only squares */}
                           {e.file_path && (
