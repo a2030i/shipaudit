@@ -112,6 +112,45 @@ export async function saveSettlementUpload({
       .from('cod_settlement').insert(inserts.slice(i, i + CHUNK));
     if (error) throw error;
   }
+
+  // ── Financial ledger auto-post ───────────────────────────────────
+  // Only the 'in' direction (carrier remitting COD back to us) creates
+  // a ledger line — that's a real CR against the carrier's account.
+  // 'out' is purely the merchant-settlement side (internal data) and
+  // doesn't flow through the carrier sub-ledger. One CR row per upload,
+  // idempotent via the unique partial index on (reference_no) WHERE
+  // doc_type='COD'.
+  if (direction === 'in') {
+    try {
+      const totalCr = +inserts.reduce((s, r) => s + (Number(r.amount) || 0), 0).toFixed(2);
+      if (totalCr > 0) {
+        const nowIso = new Date().toISOString();
+        const op = {
+          carrier_id:   carrierId,
+          doc_type:     'COD',
+          doc_no:       `COD-${uploadId.slice(-10)}`,
+          reference_no: uploadId,
+          doc_date:     date,
+          amount_dr:    0,
+          amount_cr:    totalCr,
+          balance:      -totalCr,
+          status:       'open',
+          notes:        `تحصيل COD — ${inserts.length} شحنة · ${sourceFile || ref || ''}`.trim(),
+          created_at:   nowIso,
+          updated_at:   nowIso,
+        };
+        const { error: opErr } = await supabase
+          .from('carrier_operations')
+          .upsert(op, { onConflict: 'reference_no' });
+        if (opErr && !String(opErr.message).includes('duplicate')) {
+          console.warn('COD ledger auto-post failed:', opErr.message);
+        }
+      }
+    } catch (e) {
+      console.warn('COD ledger auto-post threw:', e.message);
+    }
+  }
+
   return {
     uploadId,
     count: inserts.length,
@@ -122,10 +161,19 @@ export async function saveSettlementUpload({
 }
 
 // Delete every settlement row from a single upload (the user "undid" it).
+// Also reverses the matching ledger line so the carrier balance updates.
 export async function deleteSettlementUpload(uploadId) {
   const { error } = await supabase
     .from('cod_settlement').delete().eq('upload_id', uploadId);
   if (error) throw error;
+  try {
+    await supabase.from('carrier_operations')
+      .delete()
+      .eq('doc_type', 'COD')
+      .eq('reference_no', uploadId);
+  } catch (e) {
+    console.warn('COD ledger reverse-on-delete failed:', e.message);
+  }
 }
 
 // List of all settlement uploads for a carrier, aggregated by upload_id

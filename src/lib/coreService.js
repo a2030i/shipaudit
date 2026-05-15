@@ -152,6 +152,75 @@ function computeContentHash(results) {
   return `${sigs.length}_${(h >>> 0).toString(36)}`;
 }
 
+// Pre-tax drift tolerance: how many SAR the file totals are allowed to
+// differ from the contract-expected totals before we refuse to approve.
+// Set very tight on purpose — the engine math should match the carrier
+// math to within rounding noise. Any larger drift = something is wrong.
+export const APPROVAL_DRIFT_TOLERANCE_PRE_TAX = 0.50;
+export const APPROVAL_DRIFT_TOLERANCE_TAX     = 1.00;
+
+// Slim a result row down to what we need for cross-audit dup tracing +
+// for legacy audits.results JSONB fallback. The full detail (invoiced /
+// expected breakdowns) lives in audit_shipments.detail and is loaded only
+// when the user drills in.
+function trimResultForLegacyJsonb(r) {
+  return {
+    awb:     r.awb,
+    status:  r.status,
+    invoiced: { total: Number(r.invoiced?.total) || 0, tax: Number(r.invoiced?.tax) || 0 },
+  };
+}
+
+// Convert any string the parser might have left as the shipDate into an
+// ISO yyyy-mm-dd date or null. Postgres rejects free-form date strings.
+function toIsoDate(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
+  const d = new Date(v);
+  return Number.isFinite(d.getTime()) ? d.toISOString().slice(0, 10) : null;
+}
+
+// Map one engine result row → audit_shipments column shape.
+function toShipmentRow(auditId, carrierId, r) {
+  return {
+    audit_id:        auditId,
+    carrier_id:      carrierId ?? '',
+    awb:             String(r.awb || '').trim() || null,
+    ship_date:       toIsoDate(r.shipDate),
+    dest_country:    r.dest || null,
+    domestic:        !!r.domestic,
+    is_cod:          !!r.isCod,
+    weight_kg:       Number(r.weight) || 0,
+    invoiced_total:  Number(r.invoiced?.total) || 0,
+    expected_total:  Number(r.expected?.total) || 0,
+    diff_total:      Number(r.diffs?.total) || 0,
+    tax_amount:      Number(r.invoiced?.tax) || 0,
+    cod_amount:      Number(r.codAmount) || 0,
+    cod_fee:         Number(r.codFee) || 0,
+    pos_amount:      Number(r.posAmount) || 0,
+    pos_fee:         Number(r.posFee) || 0,
+    rss:             Number(r.rss) || 0,
+    fuel_surcharge:  Number(r.fuelSurcharge) || 0,
+    status:          r.status || 'ok',
+    issue_count:     Array.isArray(r.issues) ? r.issues.length : 0,
+    issues:          Array.isArray(r.issues) ? r.issues : [],
+    // Keep the full breakdowns (invoiced / expected / diffs + flags)
+    // for the drill-down panel — but only as JSONB on the row that
+    // actually has issues; clean rows store an empty object.
+    detail: r.status === 'ok' ? {} : {
+      invoiced:    r.invoiced,
+      expected:    r.expected,
+      diffs:       r.diffs,
+      destCity:    r.destCity,
+      origin:      r.origin,
+      billingType: r.billingType,
+      serviceType: r.serviceType,
+      signingStatus: r.signingStatus,
+      crossAuditDup: r.crossAuditDup,
+    },
+  };
+}
+
 export async function saveAuditToDB(audit, userId) {
   const summary = audit.summary ?? {};
   const results = audit.results ?? [];
@@ -171,6 +240,12 @@ export async function saveAuditToDB(audit, userId) {
   const diff = summary.diff ?? summary.totalDiff ?? 0;
   const auditType = audit.auditType ?? deriveAuditType(results);
   const contentHash = computeContentHash(results);
+
+  // ── Penny-perfect gate inputs (persisted so the UI can decide whether
+  //    approval is allowed without recomputing) ─────────────────────────
+  const driftPreTax    = +Math.abs(totalBilled - totalExpected).toFixed(2);
+  const driftTax       = +Math.abs(totalTax - (totalBilled * 0.15)).toFixed(2);
+  const mismatchCount  = results.filter(r => r.status === 'mismatch').length;
 
   // Refuse re-uploading the exact same file. The fingerprint is
   // (sorted awb|amount pairs) — robust against re-saves of the same
@@ -227,6 +302,14 @@ export async function saveAuditToDB(audit, userId) {
     ? { weight_billing_status: 'skipped' }
     : {};
 
+  // Slim legacy JSONB: keep only the rows with issues (typically <5% of
+  // a clean audit). The full row-level detail lives in audit_shipments.
+  // This stops 500K-row audits from blowing past Postgres's TOAST limits.
+  const legacyResultsSlim = results
+    .filter(r => r.status !== 'ok')
+    .map(trimResultForLegacyJsonb)
+    .slice(0, 2000); // hard cap — UI uses paginated loads beyond this
+
   const { error } = await supabase.from('audits').upsert({
     id:             audit.id,
     carrier_id:     audit.carrierId,
@@ -238,23 +321,48 @@ export async function saveAuditToDB(audit, userId) {
     ...weightBillingFields,
     row_count:      results.length,
     issue_count:    results.filter(r => r.status !== 'ok').length,
+    mismatch_count: mismatchCount,
+    drift_pre_tax:  driftPreTax,
+    drift_tax:      driftTax,
     total_expected: totalExpected,
     total_billed:   totalBilled,
     total_tax:      totalTax,
     diff,
     audit_type:     auditType,
     content_hash:   contentHash,
-    results,
+    results:        legacyResultsSlim,
     col_map:        audit.colMap   ?? {},
     created_by:     userId,
     created_at:     audit.createdAt ?? new Date().toISOString(),
   }, { onConflict: 'id' });
   if (error) throw error;
 
+  // ── Persist per-shipment rows in batches. Handles 100K+ comfortably. ─
+  await syncAuditShipments(audit.id, audit.carrierId, results);
+
   // Write the per-AWB ledger so future audits can detect cross-month
-  // double-billing. Replace any prior rows for this audit (in case it's
-  // being re-saved) with the fresh shipment list.
+  // double-billing. (Continues to use the lightweight audit_awb_ledger
+  // table because the cross-audit duplicate path is already tuned for it.)
   await syncAwbLedger(audit.id, audit.carrierId, results);
+}
+
+// Replace prior audit_shipments rows for this audit with a fresh set,
+// inserted in chunks so that 100K-500K shipments fit within Supabase's
+// per-request payload limits. Each chunk is ~1000 rows and bounded by
+// the JSON size Postgres + supabase-js will accept (~1MB).
+async function syncAuditShipments(auditId, carrierId, results) {
+  await supabase.from('audit_shipments').delete().eq('audit_id', auditId);
+  if (!Array.isArray(results) || !results.length) return;
+  const CHUNK = 1000;
+  for (let i = 0; i < results.length; i += CHUNK) {
+    const slice = results.slice(i, i + CHUNK).map(r => toShipmentRow(auditId, carrierId, r));
+    const { error } = await supabase.from('audit_shipments').insert(slice);
+    if (error) {
+      throw new Error(
+        `فشل حفظ شحنات المراجعة (دفعة ${i}-${i + slice.length}): ${error.message}`,
+      );
+    }
+  }
 }
 
 // ── AWB ledger ─────────────────────────────────────────────────────────────
@@ -397,18 +505,116 @@ export async function loadAuditsFromDB(limit = 50) {
   }));
 }
 
-export async function loadAuditByIdFromDB(id) {
+// Reverse of toShipmentRow — rebuild the engine result row from a
+// audit_shipments DB row. Used by loadAuditByIdFromDB so the existing
+// AuditResults page sees the legacy shape.
+function fromShipmentRow(r) {
+  const d = r.detail || {};
+  return {
+    awb:             r.awb || '',
+    shipDate:        r.ship_date || '',
+    dest:            r.dest_country || '',
+    destCity:        d.destCity || '',
+    origin:          d.origin || '',
+    domestic:        !!r.domestic,
+    isCod:           !!r.is_cod,
+    billingType:     d.billingType || '',
+    serviceType:     d.serviceType || '',
+    signingStatus:   d.signingStatus || '',
+    weight:          Number(r.weight_kg) || 0,
+    deliveryCharges: Number(d.invoiced?.delivery) || 0,
+    rss:             Number(r.rss) || 0,
+    fuelSurcharge:   Number(r.fuel_surcharge) || 0,
+    codFee:          Number(r.cod_fee) || 0,
+    posAmount:       Number(r.pos_amount) || 0,
+    posFee:          Number(r.pos_fee) || 0,
+    tax:             Number(r.tax_amount) || 0,
+    codAmount:       Number(r.cod_amount) || 0,
+    status:          r.status || 'ok',
+    invoiced: d.invoiced || {
+      delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0,
+      total: Number(r.invoiced_total) || 0,
+      tax:   Number(r.tax_amount) || 0,
+    },
+    expected: d.expected || {
+      delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0,
+      total: Number(r.expected_total) || 0,
+    },
+    diffs: d.diffs || {
+      delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0,
+      total: Number(r.diff_total) || 0,
+    },
+    issues:        Array.isArray(r.issues) ? r.issues : [],
+    crossAuditDup: d.crossAuditDup || 0,
+  };
+}
+
+// Paginated row loader. Used by the AuditResults page so big audits
+// don't load 500K rows into the browser at once. status='all' returns
+// every row in the page; 'issues' returns only mismatched/favorable/
+// unknown rows (the only ones the user typically wants to see).
+//
+//   loadAuditShipments(id, { status:'issues', from:0, limit:200 })
+//
+export async function loadAuditShipments(auditId, { status = 'all', from = 0, limit = 500 } = {}) {
+  let q = supabase
+    .from('audit_shipments')
+    .select('*')
+    .eq('audit_id', auditId)
+    .order('id', { ascending: true })
+    .range(from, from + limit - 1);
+  if (status === 'issues') q = q.neq('status', 'ok');
+  else if (status && status !== 'all') q = q.eq('status', status);
+  const { data, error } = await q;
+  if (error) throw error;
+  return (data || []).map(fromShipmentRow);
+}
+
+export async function countAuditShipments(auditId, { status = 'all' } = {}) {
+  let q = supabase
+    .from('audit_shipments')
+    .select('id', { count: 'exact', head: true })
+    .eq('audit_id', auditId);
+  if (status === 'issues') q = q.neq('status', 'ok');
+  else if (status && status !== 'all') q = q.eq('status', status);
+  const { count, error } = await q;
+  if (error) throw error;
+  return count || 0;
+}
+
+export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
   const { data, error } = await supabase
     .from('audits').select('*').eq('id', id).single();
   if (error) throw error;
-  const results = data.results ?? [];
+
+  // Pull row-level detail from audit_shipments. For very big audits we
+  // ONLY hydrate the problematic rows by default — clean rows stay on
+  // the server. The UI fetches more on demand via loadAuditShipments().
+  let results = [];
+  if (hydrateRows) {
+    try {
+      const issues = await loadAuditShipments(id, { status: 'issues', from: 0, limit: 5000 });
+      results = issues;
+      // Legacy fallback: audits saved before the audit_shipments table
+      // existed still have full results in the JSONB column.
+      if (!results.length && Array.isArray(data.results) && data.results.length) {
+        results = data.results;
+      }
+    } catch {
+      if (Array.isArray(data.results)) results = data.results;
+    }
+  }
+
   // Rebuild the full per-status summary (ok / mismatch / favorable /
-  // unknown counts, per-component diffs, gross totals) from the
-  // results array. The DB only persists scalar columns (total_billed,
-  // total_expected, diff, total_tax) — those alone aren't enough to
-  // drive the audit-results page, which needs the full shape returned
-  // by buildSummary.
+  // unknown counts, per-component diffs, gross totals). For the new
+  // pipeline, audits row already holds totals + drift in scalar columns
+  // so we trust those over re-summing the slim results array.
   const rebuilt = buildSummary(results);
+  // Reconcile aggregate counts from the audits row (these are authoritative
+  // for new-pipeline audits where `results` only contains issues).
+  const issueCount = data.issue_count ?? rebuilt.total - rebuilt.ok;
+  const okCount    = Math.max(0, (data.row_count || rebuilt.total) - issueCount);
+
   return {
     id:            data.id,
     carrierId:     data.carrier_id,
@@ -422,6 +628,9 @@ export async function loadAuditByIdFromDB(id) {
     totalBilled:   data.total_billed,
     totalTax:      data.total_tax,
     diff:          data.diff,
+    driftPreTax:   data.drift_pre_tax,
+    driftTax:      data.drift_tax,
+    mismatchCount: data.mismatch_count,
     auditType:     data.audit_type,
     results,
     colMap:        data.col_map ?? {},
@@ -433,21 +642,83 @@ export async function loadAuditByIdFromDB(id) {
     rejectedAt:    data.rejected_at,
     summary: {
       ...rebuilt,
+      total:         data.row_count || rebuilt.total,
+      ok:            okCount,
+      mismatch:      data.mismatch_count ?? rebuilt.mismatch,
+      totalBilled:   Number(data.total_billed)   || 0,
+      totalExpected: Number(data.total_expected) || 0,
+      totalTax:      Number(data.total_tax)      || 0,
+      totalGross:    +(Number(data.total_billed || 0) + Number(data.total_tax || 0)).toFixed(2),
+      driftPreTax:   Number(data.drift_pre_tax)  || 0,
+      driftTax:      Number(data.drift_tax)      || 0,
       contractLabel: data.contract_label,
       fileName:      data.file_name,
     },
   };
 }
 
-// Approve an audit — flips its review_status from pending to approved
-// and stamps who/when. Idempotent: re-approving is a no-op aside from
-// updating approved_at.
+// ── Penny-perfect approval gate ───────────────────────────────────────
+// Returns { canApprove, errors[], warnings[] }. The page disables the
+// approve button when any 'block' issue is present, and surfaces the
+// list to the user so they know exactly what to fix.
+export function evaluateApprovalGate(audit) {
+  const errors = [];
+  const warnings = [];
+  const s = audit?.summary || {};
+
+  const mismatchCount = Number(s.mismatch ?? audit?.mismatchCount ?? 0);
+  if (mismatchCount > 0) {
+    errors.push({
+      code: 'mismatch_rows',
+      message: `${mismatchCount} شحنة فيها فرق فردي يجب حلّها أولاً`,
+    });
+  }
+
+  const driftPre = Number(s.driftPreTax ?? audit?.driftPreTax ?? Math.abs((s.totalBilled || 0) - (s.totalExpected || 0)));
+  if (driftPre > APPROVAL_DRIFT_TOLERANCE_PRE_TAX) {
+    errors.push({
+      code: 'drift_pre_tax',
+      message: `فرق ${driftPre.toFixed(2)} ر.س بين المتوقع (${Number(s.totalExpected || 0).toFixed(2)}) والمفوتر (${Number(s.totalBilled || 0).toFixed(2)})`,
+    });
+  }
+
+  const driftTax = Number(s.driftTax ?? audit?.driftTax ?? Math.abs((s.totalTax || 0) - (s.totalBilled || 0) * 0.15));
+  if (driftTax > APPROVAL_DRIFT_TOLERANCE_TAX) {
+    warnings.push({
+      code: 'drift_tax',
+      message: `ضريبة ${Number(s.totalTax || 0).toFixed(2)} ر.س لا تطابق 15% (متوقع ${((s.totalBilled || 0) * 0.15).toFixed(2)})`,
+    });
+  }
+
+  return { canApprove: errors.length === 0, errors, warnings };
+}
+
+// Approve an audit — gated by evaluateApprovalGate(). On success:
+//   1. flips audits.review_status to 'approved'
+//   2. inserts ONE row in carrier_operations (doc_type='INV') that
+//      represents the carrier's invoice. Idempotent via the unique
+//      index (audit_id) WHERE doc_type='INV'.
+//
+// Throws an Error with .code='APPROVAL_BLOCKED' if any drift / mismatch
+// gate fails. The caller surfaces .errors to the user.
 export async function approveAudit(auditId, userId) {
-  const { data, error } = await supabase
+  // Fetch the latest audit + summary so the gate evaluates against the
+  // current numbers (callers might re-approve after a re-save).
+  const audit = await loadAuditByIdFromDB(auditId, { hydrateRows: false });
+  const gate = evaluateApprovalGate(audit);
+  if (!gate.canApprove) {
+    const err = new Error('تعذّر الاعتماد — اختلافات يجب حلّها أولاً.');
+    err.code   = 'APPROVAL_BLOCKED';
+    err.errors = gate.errors;
+    throw err;
+  }
+
+  const nowIso = new Date().toISOString();
+  const { data: updated, error: updErr } = await supabase
     .from('audits')
     .update({
       review_status:    'approved',
-      approved_at:      new Date().toISOString(),
+      approved_at:      nowIso,
       approved_by:      userId || null,
       rejected_reason:  null,
       rejected_at:      null,
@@ -455,8 +726,44 @@ export async function approveAudit(auditId, userId) {
     .eq('id', auditId)
     .select()
     .single();
-  if (error) throw error;
-  return data;
+  if (updErr) throw updErr;
+
+  // ── Auto-post to the carrier sub-ledger (A/P sub-ledger). One DR
+  //    line per audit, totalling the invoice amount + VAT. Idempotent
+  //    via the unique partial index on (audit_id) WHERE doc_type='INV'.
+  try {
+    const gross = +((Number(updated.total_billed) || 0) + (Number(updated.total_tax) || 0)).toFixed(2);
+    if (gross > 0) {
+      const op = {
+        carrier_id:   updated.carrier_id,
+        doc_type:     'INV',
+        doc_no:       updated.file_name || updated.id,
+        reference_no: updated.period || null,
+        doc_date:     nowIso.slice(0, 10),
+        amount_dr:    gross,
+        amount_cr:    0,
+        balance:      gross,
+        status:       'open',
+        audit_id:     updated.id,
+        invoice_file_name: updated.file_name || null,
+        notes:        `فاتورة ${updated.carrier_name || ''} — ${updated.period || ''} (إجمالي مع الضريبة)`,
+        created_at:   nowIso,
+        updated_at:   nowIso,
+      };
+      // Upsert by audit_id+doc_type so retries don't double-post.
+      const { error: opErr } = await supabase
+        .from('carrier_operations')
+        .upsert(op, { onConflict: 'audit_id' });
+      if (opErr && !String(opErr.message).includes('duplicate')) {
+        console.warn('ledger auto-post failed:', opErr.message);
+      }
+    }
+  } catch (e) {
+    // Approval already landed — surface ledger errors but don't roll back.
+    console.warn('ledger auto-post threw:', e.message);
+  }
+
+  return updated;
 }
 
 export async function rejectAudit(auditId, reason, userId) {
@@ -473,11 +780,23 @@ export async function rejectAudit(auditId, reason, userId) {
     .select()
     .single();
   if (error) throw error;
+  // If this audit was previously approved + posted, drop the ledger line
+  // so the balance stays accurate. Audit trail = the audit row itself,
+  // which keeps both rejected_at and (possibly) approved_at history.
+  try {
+    await supabase.from('carrier_operations')
+      .delete()
+      .eq('audit_id', auditId)
+      .eq('doc_type', 'INV');
+  } catch (e) {
+    console.warn('ledger reverse-on-reject failed:', e.message);
+  }
   return data;
 }
 
 // Send an approved/rejected audit back to pending — useful when new
 // info shows up and the accountant wants to re-examine before billing.
+// Also reverses the ledger line if it was previously posted.
 export async function reopenAudit(auditId) {
   const { data, error } = await supabase
     .from('audits')
@@ -490,6 +809,14 @@ export async function reopenAudit(auditId) {
     .select()
     .single();
   if (error) throw error;
+  try {
+    await supabase.from('carrier_operations')
+      .delete()
+      .eq('audit_id', auditId)
+      .eq('doc_type', 'INV');
+  } catch (e) {
+    console.warn('ledger reverse-on-reopen failed:', e.message);
+  }
   return data;
 }
 
