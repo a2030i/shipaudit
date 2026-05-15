@@ -1,4 +1,12 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+
+// Module-level guard for webhook auto-imports. React StrictMode in dev
+// double-invokes useEffect; using sessionStorage or useRef as the
+// "already consumed" marker breaks because the second run can't see the
+// state from the first. A module-level Set persists across the entire
+// session (until full page reload) so the same import is never
+// processed twice — even though useEffect runs twice.
+const CONSUMED_WEBHOOK_IMPORTS = new Set();
 import * as XLSX from 'xlsx';
 import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
@@ -625,20 +633,31 @@ export default function UploadWizard({ carriers, onComplete }) {
 
   // ── Auto-import from /webhook ──────────────────────────────────
   // When the user clicks "حفظ كمراجعة" on the Webhook Events page we
-  // stash the file as base64 in sessionStorage and route here. Pick
-  // it up, reconstruct a File object, jump to Step 2 and feed it
-  // through the normal handleFile pipeline.
-  const importedRef = useRef(false);
+  // stash the file as base64 in sessionStorage and route here. We
+  // pick it up here, decode the bytes back into a File, and feed
+  // them through the same pipeline that a manual upload uses.
+  //
+  // React 18 StrictMode (dev) double-invokes effects — so the guard
+  // CAN'T be a useRef (which doesn't survive the simulated remount
+  // cleanly) or `sessionStorage.removeItem` followed by a re-read
+  // (the second invocation sees empty storage and bails before
+  // handleFile has fired). We use a module-level Set keyed by the
+  // payload's eventId so the import runs exactly once per click,
+  // regardless of dev-mode double-invocation.
   useEffect(() => {
-    if (importedRef.current) return;
     let raw;
     try { raw = sessionStorage.getItem('webhookImport'); } catch { return; }
     if (!raw) return;
-    importedRef.current = true;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { return; }
+    if (!payload?.base64 || !payload?.filename) return;
+
+    const key = payload.eventId || `${payload.filename}_${payload.base64.length}`;
+    if (CONSUMED_WEBHOOK_IMPORTS.has(key)) return;
+    CONSUMED_WEBHOOK_IMPORTS.add(key);
     sessionStorage.removeItem('webhookImport');
+
     try {
-      const payload = JSON.parse(raw);
-      if (!payload?.base64 || !payload?.filename) return;
       // Decode base64 → Uint8Array → File
       const bin = atob(payload.base64);
       const arr = new Uint8Array(bin.length);
@@ -651,10 +670,15 @@ export default function UploadWizard({ carriers, onComplete }) {
       if (payload.carrierId) setCarrierId(payload.carrierId);
       if (payload.eventId)   setSourceWebhookEventId(payload.eventId);
       setStep(2);
-      // Run on next tick so the Step2 view mounts first.
-      setTimeout(() => handleFile(file), 0);
+      // Synchronous call so handleFile starts immediately. Internally
+      // it uses FileReader.onload (async) which then setStep(3) on
+      // success. Skipping setTimeout avoids losing the call when
+      // StrictMode's first invocation gets torn down.
+      handleFile(file);
       toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
     } catch (err) {
+      // If decoding failed, drop the consumed marker so the user can retry.
+      CONSUMED_WEBHOOK_IMPORTS.delete(key);
       toast(`فشل استيراد الملف: ${err.message}`, 'error');
     }
   }, [handleFile]);
