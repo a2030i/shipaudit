@@ -108,6 +108,71 @@ export default function CodSettlements({ isActive = true }) {
     toast(`تم تصدير ${outstanding.length} شحنة`, 'success');
   };
 
+  // Export whatever the user is currently looking at — respects both the
+  // active tab AND the search filter. Sheet/file names adapt to the tab
+  // so the admin can save several exports without overwriting each other.
+  const handleExportCurrentTab = () => {
+    if (!filtered.length) {
+      toast('لا توجد شحنات في هذا القسم لتصديرها', 'info');
+      return;
+    }
+    const TAB_NAMES = {
+      outstanding: 'متبقّي عند الناقل',
+      pending:     'فروق تنتظر مراجعة',
+      disputed:    'اعتراضات',
+      over:        'مُستلَم بانتظار',
+      matched:     'مسوّاة',
+      all:         'كل الشحنات',
+    };
+    const tabName = TAB_NAMES[tab] || 'COD';
+    const STATUS_AR = {
+      outstanding:     'متبقّي',
+      pending_review:  'فرق ينتظر',
+      disputed:        'اعتراض',
+      over_remit:      'مُستلَم بانتظار',
+      matched:         'مسوّى',
+      approved:        'معتمد',
+      resolved:        'محلول',
+    };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const headers = [
+      'رقم الشحنة (AWB)',
+      'دفعنا للمتجر (ر.س)',
+      'استلمنا من الناقل (ر.س)',
+      'الفرق (ر.س)',
+      'الحالة',
+      'تاريخ التسوية مع المتجر',
+      'الأيام منذ التسوية',
+      'ملاحظات',
+    ];
+    const data = filtered.map(r => {
+      const days = r.firstOutDate
+        ? Math.floor((today - new Date(r.firstOutDate)) / 86_400_000)
+        : '';
+      return [
+        r.awb,
+        r.hasOut    ? Number(r.paid).toFixed(2)     : '',
+        r.hasIn     ? Number(r.received).toFixed(2) : '',
+        Number(r.diff || 0).toFixed(2),
+        STATUS_AR[r.status] || r.status || '',
+        r.firstOutDate || '',
+        days,
+        r.notes || '',
+      ];
+    });
+    const totalPaid     = filtered.reduce((s, r) => s + (r.hasOut ? Number(r.paid) || 0 : 0), 0);
+    const totalReceived = filtered.reduce((s, r) => s + (r.hasIn  ? Number(r.received) || 0 : 0), 0);
+    const totalDiff     = filtered.reduce((s, r) => s + (Number(r.diff) || 0), 0);
+    const totalRow = ['الإجمالي', totalPaid.toFixed(2), totalReceived.toFixed(2), totalDiff.toFixed(2), '', '', '', ''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data, [], totalRow]);
+    ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 22 }, { wch: 14 }, { wch: 18 }, { wch: 22 }, { wch: 18 }, { wch: 36 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, tabName.slice(0, 28)); // sheet name limit ≈ 31 chars
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${tabName}_${carrier}_${dateStr}.xlsx`);
+    toast(`تم تصدير ${filtered.length} شحنة من قسم «${tabName}»`, 'success');
+  };
+
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
   const summary    = useMemo(() => summarizeReconciliation(rows), [rows]);
@@ -492,6 +557,16 @@ export default function CodSettlements({ isActive = true }) {
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="بحث برقم الشحنة (AWB)..."
                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+              <Btn
+                size="sm" variant="ghost" icon={<Download size={13}/>}
+                onClick={handleExportCurrentTab}
+                disabled={!filtered.length}
+                title={filtered.length
+                  ? `تصدير ${filtered.length} شحنة من القسم الحالي إلى Excel`
+                  : 'لا توجد شحنات في القسم الحالي'}
+              >
+                📥 صدّر القسم الحالي ({filtered.length})
+              </Btn>
             </div>
           </Card>
 
