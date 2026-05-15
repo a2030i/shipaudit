@@ -364,8 +364,8 @@ export default function CarriersHub({ isActive = true }) {
             <CarrierCard
               key={row.carrierId}
               row={row}
-              onClick={() => navigate(`/ledger?carrier=${row.carrierId}`)}
-              onSetup={() => navigate(`/carriers?edit=${row.carrierId}`)}
+              onClick={() => navigate(`/carrier?id=${row.carrierId}`)}
+              onSetup={() => navigate(`/carrier?id=${row.carrierId}`)}
               onWebhook={() => navigate('/webhook')}
             />
           ))}

@@ -12,6 +12,7 @@ import { loadCarriers } from './lib/coreService.js';
 import { getNavPermissions } from './lib/permissionsService.js';
 import Dashboard      from './pages/Dashboard.jsx';
 import CarriersHub    from './pages/CarriersHub.jsx';
+import CarrierProfile from './pages/CarrierProfile.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
 import AuditResults   from './pages/AuditResults.jsx';
@@ -71,6 +72,7 @@ const NAV_SECTIONS = [
 const PAGE_TITLES = {
   '/dashboard':         'الرئيسية',
   '/hub':               'كشف الشركات',
+  '/carrier':           'بروفايل الشركة',
   '/webhook':           'الوارد',
   '/upload':            'مراجعة جديدة',
   '/audits':            'سجل المراجعات',
@@ -119,7 +121,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -485,6 +487,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/hub'} scroll>
               <CarriersHub isActive={pathname==='/hub'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/carrier'} scroll>
+              <CarrierProfile/>
             </PageSlot>
             <PageSlot active={pathname==='/carriers'}>
               <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
