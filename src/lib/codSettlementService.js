@@ -161,33 +161,39 @@ export async function saveSettlementUpload({
 }
 
 // ── Audit-driven COD extraction ─────────────────────────────────────
-// When the user approves an audit for a carrier whose invoice file
-// includes COD amounts (e.g., DeliverNow), we automatically pre-fill
-// `cod_settlement` with one direction='out' row per AWB that collected
-// COD ("متوقّع من الناقل").
+// When the user approves an audit that carries COD amounts, we
+// automatically insert rows in cod_settlement so the COD reconciliation
+// reflects the audit's content. The DIRECTION depends on the carrier's
+// file profile:
 //
-// For carriers tagged `file_kind='audit_with_cod'` (combined invoice)
-// the carrier's own file IS the settlement document — there's no
-// separate remittance file coming later. In that case we ALSO insert
-// matching direction='in' rows so the COD reconciliation immediately
-// shows as مسوّاة. Pass `autoSettle: true` to enable this.
+//   audit_with_cod (e.g., DeliverNow)
+//     The invoice file IS the carrier's own statement — coming FROM the
+//     carrier. Treat as direction='in' (مُستلَم من الناقل): single
+//     record, no duplication. It reconciles against any direction='out'
+//     uploads from the internal system.
 //
-// Idempotent: re-approving an audit deletes the prior rows in BOTH
-// directions first, then re-inserts the current set. Rejecting /
-// reopening calls clearAuditCodOut which wipes both too.
+//   audit_and_cod_separate (e.g., Aramex)
+//     The audit's COD column lists what we EXPECT the carrier to remit.
+//     Treat as direction='out' (متوقّع من الناقل). The separate
+//     remittance file arrives later as a manual 'in' upload.
 //
-// upload_id convention:
-//   audit_out_${auditId} → 'out' batch (expected from carrier)
-//   audit_in_${auditId}  → 'in'  batch (auto-settled, combined mode)
+// Idempotent: re-approving an audit deletes both possible prior batches
+// first, then re-inserts under whichever direction is current. Rejecting
+// or reopening calls clearAuditCodOut which wipes the audit's rows.
 export async function syncAuditCodOut({
-  auditId, carrierId, sourceFile, userId, autoSettle = false,
+  auditId, carrierId, sourceFile, userId, direction = 'out',
 }) {
   if (!auditId || !carrierId) throw new Error('auditId + carrierId مطلوبان');
+  if (!['in', 'out'].includes(direction)) {
+    throw new Error(`direction غير صالح: ${direction}`);
+  }
   const outUploadId = `audit_out_${auditId}`;
   const inUploadId  = `audit_in_${auditId}`;
+  const uploadId    = direction === 'in' ? inUploadId : outUploadId;
 
-  // Idempotent reset — clear BOTH directions in case autoSettle flipped
-  // since the last approval.
+  // Idempotent reset — clear BOTH directions so swapping file_kind on a
+  // carrier (e.g., audit_with_cod → audit_and_cod_separate) cleans up
+  // the previous direction's leftovers automatically.
   await supabase
     .from('cod_settlement')
     .delete()
@@ -212,7 +218,7 @@ export async function syncAuditCodOut({
     if (data.length < PAGE) break;
     from += PAGE;
   }
-  if (!codRows.length) return { count: 0, total: 0, autoSettled: false };
+  if (!codRows.length) return { count: 0, total: 0, direction };
 
   // Dedup AWBs within the batch (one shipment can show up twice in the
   // file if the carrier billed it on multiple invoice lines).
@@ -229,49 +235,29 @@ export async function syncAuditCodOut({
     });
   }
 
-  const today = new Date().toISOString().slice(0, 10);
-
-  // Build out + (optional) in rows
-  const outRows = baseRows.map(r => ({
-    direction:      'out',
+  const rows = baseRows.map(r => ({
+    direction,
     carrier_id:     carrierId,
     awb:            r.awb,
     amount:         r.amount,
     upload_date:    r.upload_date,
     source_file:    sourceFile || `audit:${auditId}`,
     settlement_ref: null,
-    upload_id:      outUploadId,
+    upload_id:      uploadId,
     created_by:     userId || null,
   }));
 
-  const inRows = autoSettle ? baseRows.map(r => ({
-    direction:      'in',
-    carrier_id:     carrierId,
-    awb:            r.awb,
-    amount:         r.amount,
-    upload_date:    today,
-    // Source marker distinguishes auto-settled rows from real bank-transfer
-    // files. The UI surfaces this as a "🤖 ضمنياً من الفاتورة" chip.
-    source_file:    `audit:${auditId}:auto-in`,
-    settlement_ref: null,
-    upload_id:      inUploadId,
-    created_by:     userId || null,
-  })) : [];
-
-  // Insert in chunks
   const CHUNK = 500;
-  for (const set of [outRows, inRows]) {
-    for (let i = 0; i < set.length; i += CHUNK) {
-      const { error } = await supabase
-        .from('cod_settlement').insert(set.slice(i, i + CHUNK));
-      if (error) throw error;
-    }
+  for (let i = 0; i < rows.length; i += CHUNK) {
+    const { error } = await supabase
+      .from('cod_settlement').insert(rows.slice(i, i + CHUNK));
+    if (error) throw error;
   }
   const total = baseRows.reduce((s, r) => s + r.amount, 0);
   return {
-    count:       baseRows.length,
-    total:       +total.toFixed(2),
-    autoSettled: autoSettle,
+    count:     baseRows.length,
+    total:     +total.toFixed(2),
+    direction,
   };
 }
 

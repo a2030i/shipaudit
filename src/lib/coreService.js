@@ -741,35 +741,34 @@ export async function approveAudit(auditId, userId) {
       .maybeSingle();
     const fileKind = carrierRow?.file_signature?.file_kind || null;
     if (fileKind === 'audit_with_cod') {
-      // Combined-invoice carriers: the audit IS the settlement document.
-      // Auto-create BOTH 'out' and 'in' rows so the COD reconciliation
-      // shows as مسوّاة immediately — the actual cash transfer is then
-      // tracked separately in /payments.
+      // Combined-invoice carriers: the audit file IS the carrier's own
+      // statement — recorded as 'in' (مُستلَم من الناقل), a single row
+      // batch. Reconciles against any internal-system 'out' uploads.
       const { syncAuditCodOut } = await import('./codSettlementService.js');
-      const codOut = await syncAuditCodOut({
+      const codRes = await syncAuditCodOut({
         auditId:    updated.id,
         carrierId:  updated.carrier_id,
         sourceFile: updated.file_name || null,
         userId:     userId || null,
-        autoSettle: true,
+        direction:  'in',
       });
-      if (codOut.count > 0) {
-        console.info(`audit ${updated.id}: extracted ${codOut.count} COD shipments (${codOut.total} SAR) — auto-settled (combined invoice)`);
+      if (codRes.count > 0) {
+        console.info(`audit ${updated.id}: extracted ${codRes.count} COD shipments (${codRes.total} SAR) as 'in' (combined invoice)`);
       }
     } else if (fileKind === 'audit_and_cod_separate') {
-      // Separate-invoice carriers: only seed 'out' entries. The carrier's
-      // remittance file arrives later as a manual 'in' upload, then
-      // reconciles AWB-by-AWB.
+      // Separate-invoice carriers: audit's COD column is OUR EXPECTATION.
+      // Record as 'out' (متوقّع من الناقل). The actual remittance file
+      // arrives later as a manual 'in' upload, which reconciles per AWB.
       const { syncAuditCodOut } = await import('./codSettlementService.js');
-      const codOut = await syncAuditCodOut({
+      const codRes = await syncAuditCodOut({
         auditId:    updated.id,
         carrierId:  updated.carrier_id,
         sourceFile: updated.file_name || null,
         userId:     userId || null,
-        autoSettle: false,
+        direction:  'out',
       });
-      if (codOut.count > 0) {
-        console.info(`audit ${updated.id}: extracted ${codOut.count} COD shipments (${codOut.total} SAR) — awaiting remittance`);
+      if (codRes.count > 0) {
+        console.info(`audit ${updated.id}: extracted ${codRes.count} COD shipments (${codRes.total} SAR) as 'out' (awaiting remittance)`);
       }
     } else {
       console.info(`audit ${updated.id}: file_kind=${fileKind || 'unset'} — skipping COD auto-extract`);

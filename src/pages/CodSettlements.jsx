@@ -340,22 +340,8 @@ export default function CodSettlements({ isActive = true }) {
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                         {(() => {
                           const src = String(u.sourceFile || '');
-                          if (src.includes(':auto-in')) {
-                            return (
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                padding: '1px 7px', borderRadius: 10,
-                                background: 'rgba(139,92,246,.12)',
-                                color: '#8B5CF6',
-                                border: '1px solid rgba(139,92,246,.32)',
-                                fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                              }} title="مسوّى تلقائياً عند اعتماد فاتورة الناقل (الفاتورة هي السند)">
-                                🤖 ضمنياً من الفاتورة
-                              </span>
-                            );
-                          }
-                          if (src.startsWith('audit:')) {
+                          // Audit-driven batch — either direction, single chip.
+                          if (src.startsWith('audit:') || src.includes(':auto-in')) {
                             return (
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -365,7 +351,7 @@ export default function CodSettlements({ isActive = true }) {
                                 border: '1px solid rgba(45,212,191,.30)',
                                 fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
                                 whiteSpace: 'nowrap',
-                              }} title="مُستخرج تلقائياً من مراجعة معتمدة">
+                              }} title="مُستخرج تلقائياً من فاتورة الناقل المعتمَدة">
                                 📋 من فاتورة الناقل
                               </span>
                             );
