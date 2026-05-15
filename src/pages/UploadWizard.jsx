@@ -496,6 +496,10 @@ export default function UploadWizard({ carriers, onComplete }) {
   const [detectedRow,  setDetectedRow] = useState(null);
   const [aiNotes,      setAiNotes]     = useState('');
   const [missingFields,setMissingFields] = useState([]);
+  // When the file came from the Webhook page (via "حفظ كمراجعة"), we
+  // carry the originating webhook_events row id so AuditResults can
+  // mark it processed + linked after the user approves.
+  const [sourceWebhookEventId, setSourceWebhookEventId] = useState(null);
 
   const carrier = carriers.find(c => c.id === carrierId);
   const period  = buildPeriod(month, year);
@@ -645,6 +649,7 @@ export default function UploadWizard({ carriers, onComplete }) {
           : 'application/octet-stream',
       });
       if (payload.carrierId) setCarrierId(payload.carrierId);
+      if (payload.eventId)   setSourceWebhookEventId(payload.eventId);
       setStep(2);
       // Run on next tick so the Step2 view mounts first.
       setTimeout(() => handleFile(file), 0);
@@ -694,6 +699,9 @@ export default function UploadWizard({ carriers, onComplete }) {
       // just discards. Nothing hits the audits table or the history
       // page until the user explicitly decides.
       isDraft: true,
+      // If we came from the Webhook page, carry the source event id
+      // so AuditResults can flip it to 'processed' on approval.
+      sourceWebhookEventId,
     };
     toast(`جاهز للمراجعة — ${results.length} شحنة`, 'success');
     onComplete(audit);
