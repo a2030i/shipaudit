@@ -5,14 +5,17 @@
 // source identifies automatically.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Download, Webhook, Mail, FileText, CheckCircle2,
-  AlertCircle, HelpCircle, Copy, ExternalLink,
+  AlertCircle, HelpCircle, Copy, ExternalLink, FileSpreadsheet, FileType2,
+  FileX2, FileQuestion, Upload as UploadIcon, Trash2,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
 import {
   loadWebhookEvents, countByStatus, assignEventToCarrier,
-  downloadEventFile, getWebhookEndpoint,
+  downloadEventFile, loadEventFileBlob, getWebhookEndpoint,
+  deleteWebhookEvent, deleteWebhookEvents,
 } from '../lib/webhookService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -41,8 +44,62 @@ const fmtSize = (bytes) => {
   return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 };
 
+// "accounting@delivernow.net" → "delivernow"
+// "billing@aramex.com.sa"     → "aramex"
+// Strips the user part + the TLD chain, leaving the second-level domain.
+function extractCompanyFromEmail(sender) {
+  if (!sender || typeof sender !== 'string') return '';
+  const cleaned = sender.trim().replace(/^.*<|>.*$/g, ''); // strip "Name <email>"
+  const at = cleaned.lastIndexOf('@');
+  if (at < 0) return cleaned;
+  const domain = cleaned.slice(at + 1).toLowerCase();
+  const parts  = domain.split('.').filter(Boolean);
+  if (!parts.length) return domain;
+  // For "delivernow.net" → "delivernow"
+  // For "aramex.com.sa" → "aramex" (drop trailing TLDs)
+  // Heuristic: keep the first label that is >= 3 chars and not a known TLD.
+  const TLD = new Set(['com', 'net', 'org', 'sa', 'co', 'io', 'me', 'app', 'gov', 'edu']);
+  for (const p of parts) {
+    if (p.length >= 3 && !TLD.has(p)) return p;
+  }
+  return parts[0];
+}
+
+// File-type chip: maps the extension to an icon + label + colour.
+function fileTypeChip(filename) {
+  const ext = String(filename || '').toLowerCase().split('.').pop();
+  const M = {
+    xlsx: { label: 'XLSX', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
+    xlsm: { label: 'XLSM', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
+    xls:  { label: 'XLS',  color: '#10B981', bg: 'rgba(16,185,129,.10)', Icon: FileSpreadsheet },
+    csv:  { label: 'CSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
+    tsv:  { label: 'TSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
+    pdf:  { label: 'PDF',  color: '#EF4444', bg: 'rgba(239,68,68,.10)',  Icon: FileType2 },
+    eml:  { label: 'EML',  color: '#8B5CF6', bg: 'rgba(139,92,246,.10)', Icon: Mail },
+    msg:  { label: 'MSG',  color: '#8B5CF6', bg: 'rgba(139,92,246,.10)', Icon: Mail },
+  };
+  return M[ext] || { label: (ext || '?').toUpperCase(), color: 'var(--muted)', bg: 'rgba(122,130,196,.10)', Icon: FileQuestion };
+}
+
+const SPREADSHEET_EXTS = ['xlsx', 'xlsm', 'xls', 'csv', 'tsv'];
+function isSpreadsheet(filename) {
+  const ext = String(filename || '').toLowerCase().split('.').pop();
+  return SPREADSHEET_EXTS.includes(ext);
+}
+
+// Convert a Blob to base64 (without the "data:..." prefix).
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload  = () => resolve(String(fr.result).split(',')[1] || '');
+    fr.onerror = () => reject(fr.error);
+    fr.readAsDataURL(blob);
+  });
+}
+
 export default function WebhookEvents({ carriers, isActive = true }) {
   const { profile } = useAuth();
+  const navigate = useNavigate();
   const [events,    setEvents]    = useState([]);
   const [counts,    setCounts]    = useState({});
   const [loading,   setLoading]   = useState(true);
@@ -50,6 +107,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
   const [assigning, setAssigning] = useState(null);
   const [chosenCarrier, setChosenCarrier] = useState('');
   const [learnSig,  setLearnSig]  = useState(true);
+  const [importingId, setImportingId] = useState(null);
+  const [deletingId,  setDeletingId]  = useState(null);
+  const [selected,    setSelected]    = useState(new Set());
+  const [confirmDel,  setConfirmDel]  = useState(null); // { events:[], label:'' }
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -83,6 +144,86 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       refresh();
     } catch (err) {
       toast(`فشلت العملية: ${err.message}`, 'error');
+    }
+  };
+
+  // "حفظ كمراجعة" — download the file from storage, stash it in
+  // sessionStorage as base64, then navigate to /upload. The Upload
+  // Wizard reads the stashed file on mount and treats it as if the
+  // user dropped it in manually.
+  const importToAudit = async (event) => {
+    if (!event?.file_path) {
+      toast('الملف غير موجود في المخزن', 'error');
+      return;
+    }
+    if (!isSpreadsheet(event.file_name)) {
+      toast('لا يمكن تحويل هذا الملف لمراجعة (يجب أن يكون Excel أو CSV)', 'error');
+      return;
+    }
+    setImportingId(event.id);
+    try {
+      const blob   = await loadEventFileBlob(event);
+      const base64 = await blobToBase64(blob);
+      sessionStorage.setItem('webhookImport', JSON.stringify({
+        eventId:   event.id,
+        filename:  event.file_name,
+        carrierId: event.detected_carrier_id || null,
+        base64,
+      }));
+      toast('جارٍ فتح المعالج…', 'success');
+      navigate('/upload');
+    } catch (err) {
+      toast(`فشل الاستيراد: ${err.message}`, 'error');
+    } finally {
+      setImportingId(null);
+    }
+  };
+
+  // Single-row delete (opens confirm modal first).
+  const askDelete = (event) => {
+    setConfirmDel({ events: [event], label: event.file_name });
+  };
+
+  // Bulk delete of all currently-checked rows.
+  const askBulkDelete = () => {
+    const list = events.filter(e => selected.has(e.id));
+    if (!list.length) return;
+    setConfirmDel({
+      events: list,
+      label:  `${list.length} حدث محدّد`,
+    });
+  };
+
+  const doDelete = async () => {
+    if (!confirmDel?.events?.length) return;
+    const list = confirmDel.events;
+    setDeletingId(list[0].id);
+    try {
+      await deleteWebhookEvents(list);
+      toast(`تم حذف ${list.length} ${list.length === 1 ? 'حدث' : 'أحداث'}`, 'success');
+      setSelected(new Set());
+      setConfirmDel(null);
+      refresh();
+    } catch (err) {
+      toast(`فشل الحذف: ${err.message}`, 'error');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const toggleSel = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelAll = () => {
+    if (selected.size === filtered.length && filtered.length > 0) {
+      setSelected(new Set());
+    } else {
+      setSelected(new Set(filtered.map(e => e.id)));
     }
   };
 
@@ -175,7 +316,12 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             }}>{t.n}</span>
           </button>
         ))}
-        <div style={{ marginInlineStart: 'auto' }}>
+        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8 }}>
+          {selected.size > 0 && (
+            <Btn size="sm" variant="danger" icon={<Trash2 size={13}/>} onClick={askBulkDelete}>
+              حذف المحدّد ({selected.size})
+            </Btn>
+          )}
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
             تحديث
           </Btn>
@@ -197,33 +343,60 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             <table>
               <thead>
                 <tr>
+                  <th style={{ width: 36, paddingInline: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={filtered.length > 0 && selected.size === filtered.length}
+                      onChange={toggleSelAll}
+                      style={{ cursor: 'pointer', accentColor: '#2DD4BF' }}
+                      title="تحديد الكل"
+                    />
+                  </th>
                   <th style={{ minWidth: 130 }}>التاريخ</th>
-                  <th style={{ minWidth: 200 }}>المُرسِل</th>
+                  <th style={{ minWidth: 160 }}>المُرسِل</th>
                   <th style={{ minWidth: 240 }}>الملف</th>
+                  <th style={{ minWidth: 90 }}>نوع الملف</th>
                   <th style={{ minWidth: 130 }}>الشركة المعرّفة</th>
                   <th style={{ minWidth: 100 }}>طريقة</th>
                   <th style={{ minWidth: 110 }}>الحالة</th>
-                  <th style={{ minWidth: 180 }}>إجراءات</th>
+                  <th style={{ minWidth: 260 }}>إجراءات</th>
                 </tr>
               </thead>
               <tbody>
                 {filtered.map(e => {
                   const meta = STATUS_META[e.status] || STATUS_META.pending;
                   const cName = carrierName(e.detected_carrier_id);
+                  const company = extractCompanyFromEmail(e.sender) || '—';
+                  const chip = fileTypeChip(e.file_name);
+                  const Icn = chip.Icon;
+                  const canImport = isSpreadsheet(e.file_name) && !!e.file_path;
+                  const isSel = selected.has(e.id);
                   return (
-                    <tr key={e.id}>
+                    <tr key={e.id} style={isSel ? { background: 'rgba(45,212,191,.06)' } : undefined}>
+                      <td style={{ paddingInline: 8 }}>
+                        <input
+                          type="checkbox"
+                          checked={isSel}
+                          onChange={() => toggleSel(e.id)}
+                          style={{ cursor: 'pointer', accentColor: '#2DD4BF' }}
+                        />
+                      </td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                         {fmtDate(e.received_at)}
                       </td>
-                      <td style={{ fontSize: 11.5 }}>
+                      <td style={{ fontSize: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Mail size={11} color="var(--muted)"/>
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200, direction: 'ltr' }}>
-                            {e.sender || '—'}
+                          <span title={e.sender || ''} style={{
+                            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+                            maxWidth: 160, fontWeight: 700, textTransform: 'capitalize',
+                            color: 'var(--text)',
+                          }}>
+                            {company}
                           </span>
                         </div>
                         {e.subject && (
-                          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 220 }}>
+                          <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 200 }}>
                             {e.subject}
                           </div>
                         )}
@@ -238,6 +411,19 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                         <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
                           {fmtSize(e.file_size)}
                         </div>
+                      </td>
+                      <td>
+                        <span style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 5,
+                          padding: '3px 9px', borderRadius: 12,
+                          background: chip.bg, color: chip.color,
+                          border: `1px solid ${chip.color}40`,
+                          fontFamily: 'var(--font-mono)', fontSize: 10.5, fontWeight: 700,
+                          whiteSpace: 'nowrap',
+                        }}>
+                          <Icn size={11}/>
+                          {chip.label}
+                        </span>
                       </td>
                       <td style={{ fontSize: 12, fontWeight: 600 }}>
                         {e.detected_carrier_id
@@ -269,16 +455,38 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                       </td>
                       <td>
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                          {canImport && (
+                            <Btn
+                              size="sm"
+                              variant="accent"
+                              icon={importingId === e.id ? <Spinner size={12}/> : <UploadIcon size={12}/>}
+                              onClick={() => importToAudit(e)}
+                              disabled={importingId === e.id}
+                            >
+                              حفظ كمراجعة
+                            </Btn>
+                          )}
                           {e.file_path && (
                             <Btn size="sm" variant="ghost" icon={<Download size={12}/>} onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}>
                               تنزيل
                             </Btn>
                           )}
                           {!e.detected_carrier_id && (
-                            <Btn size="sm" variant="accent" icon={<HelpCircle size={12}/>} onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}>
+                            <Btn size="sm" variant="ghost" icon={<HelpCircle size={12}/>} onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}>
                               ربط بشركة
                             </Btn>
                           )}
+                          <Btn
+                            size="sm"
+                            variant="ghost"
+                            icon={deletingId === e.id ? <Spinner size={12}/> : <Trash2 size={12}/>}
+                            onClick={() => askDelete(e)}
+                            disabled={deletingId === e.id}
+                            style={{ color: 'var(--red)' }}
+                            title="حذف الحدث"
+                          >
+                            حذف
+                          </Btn>
                         </div>
                       </td>
                     </tr>
@@ -328,6 +536,46 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             <Btn variant="ghost" onClick={() => setAssigning(null)}>تراجع</Btn>
             <Btn variant="accent" onClick={handleAssign} disabled={!chosenCarrier} icon={<CheckCircle2 size={13}/>}>
               ربط
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ── Delete confirmation modal ────────────────────────────────── */}
+      {confirmDel && (
+        <Modal title="تأكيد الحذف" onClose={() => setConfirmDel(null)}>
+          <div style={{
+            display: 'flex', alignItems: 'flex-start', gap: 11,
+            padding: '12px 14px', marginBottom: 16,
+            background: 'rgba(248,113,113,.08)',
+            border: '1px solid rgba(248,113,113,.32)',
+            borderRadius: 9,
+          }}>
+            <AlertCircle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
+            <div style={{ fontSize: 12.5, lineHeight: 1.6 }}>
+              <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+                هل تريد حذف {confirmDel.events.length === 1 ? 'هذا الحدث' : `${confirmDel.events.length} أحداث`}؟
+              </div>
+              <div style={{ color: 'var(--muted)' }}>
+                سيُحذف صف الـ webhook + الملف المرتبط في المخزن نهائياً. لا يمكن التراجع.
+              </div>
+              {confirmDel.events.length === 1 && (
+                <div style={{
+                  marginTop: 8, padding: '6px 10px',
+                  background: 'var(--surface)',
+                  borderRadius: 6,
+                  fontFamily: 'var(--font-mono)', fontSize: 11,
+                  color: 'var(--text)',
+                }}>
+                  {confirmDel.label}
+                </div>
+              )}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>تراجع</Btn>
+            <Btn variant="danger" onClick={doDelete} disabled={!!deletingId} icon={<Trash2 size={13}/>}>
+              {deletingId ? 'جارٍ الحذف...' : 'حذف نهائي'}
             </Btn>
           </div>
         </Modal>

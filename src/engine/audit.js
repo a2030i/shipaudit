@@ -78,7 +78,9 @@ const COL_PATTERNS = {
   // We always pick the column the carrier ACTUALLY billed against, since
   // that's what the contract math compares against.
   weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
-  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /freight.?charge/i, /base.?charge/i, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
+  // DeliverNow names this "Shipping Service / المجموع الصافي" — neither side
+  // contains the word "charge" or "رسوم", so we add explicit patterns.
+  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /shipping.?service/i, /freight.?charge/i, /base.?charge/i, /المجموع.?الصافي/, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
   // RSS = Remote Shipping Surcharge (Aramex). The literal phrase
   // "Remote Area" appears in iMile/iMile-like files as a Yes/No flag,
   // NOT a fee — keep the broad `/remote/i` pattern OUT to avoid the

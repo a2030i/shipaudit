@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import * as XLSX from 'xlsx';
 import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
@@ -618,6 +618,41 @@ export default function UploadWizard({ carriers, onComplete }) {
     };
     reader.readAsArrayBuffer(file);
   }, []);
+
+  // ── Auto-import from /webhook ──────────────────────────────────
+  // When the user clicks "حفظ كمراجعة" on the Webhook Events page we
+  // stash the file as base64 in sessionStorage and route here. Pick
+  // it up, reconstruct a File object, jump to Step 2 and feed it
+  // through the normal handleFile pipeline.
+  const importedRef = useRef(false);
+  useEffect(() => {
+    if (importedRef.current) return;
+    let raw;
+    try { raw = sessionStorage.getItem('webhookImport'); } catch { return; }
+    if (!raw) return;
+    importedRef.current = true;
+    sessionStorage.removeItem('webhookImport');
+    try {
+      const payload = JSON.parse(raw);
+      if (!payload?.base64 || !payload?.filename) return;
+      // Decode base64 → Uint8Array → File
+      const bin = atob(payload.base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], payload.filename, {
+        type: /\.(xlsx|xlsm)$/i.test(payload.filename)
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/octet-stream',
+      });
+      if (payload.carrierId) setCarrierId(payload.carrierId);
+      setStep(2);
+      // Run on next tick so the Step2 view mounts first.
+      setTimeout(() => handleFile(file), 0);
+      toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
+    } catch (err) {
+      toast(`فشل استيراد الملف: ${err.message}`, 'error');
+    }
+  }, [handleFile]);
 
   const handleReAnalyze = async () => {
     if (!allRawRows.length) return;

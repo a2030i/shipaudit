@@ -127,6 +127,45 @@ export async function markEventFailed(eventId, error_message) {
   return data;
 }
 
+// Permanently delete a webhook event. Also removes the stored file
+// from the webhook-uploads bucket so we don't leave orphans behind.
+// Best-effort on the storage cleanup — if it fails (file already
+// gone, perms, etc.) we still delete the DB row.
+export async function deleteWebhookEvent(event) {
+  const id = typeof event === 'string' ? event : event?.id;
+  if (!id) throw new Error('event id مفقود');
+  const path = typeof event === 'object' ? event?.file_path : null;
+  if (path) {
+    try {
+      await supabase.storage.from('webhook-uploads').remove([path]);
+    } catch { /* non-fatal */ }
+  }
+  const { error } = await supabase
+    .from('webhook_events')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+  return true;
+}
+
+// Bulk delete — same logic, in one round-trip per file + one DB call.
+export async function deleteWebhookEvents(events) {
+  const list = (events || []).filter(Boolean);
+  if (!list.length) return 0;
+  const paths = list.map(e => e.file_path).filter(Boolean);
+  if (paths.length) {
+    try { await supabase.storage.from('webhook-uploads').remove(paths); }
+    catch { /* non-fatal */ }
+  }
+  const ids = list.map(e => e.id || e).filter(Boolean);
+  const { error } = await supabase
+    .from('webhook_events')
+    .delete()
+    .in('id', ids);
+  if (error) throw error;
+  return ids.length;
+}
+
 export async function downloadEventFile(event) {
   if (!event?.file_path) throw new Error('الملف غير موجود في المخزن');
   const { data, error } = await supabase
