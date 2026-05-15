@@ -524,10 +524,17 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   const [rejectReason, setRejectReason] = useState('');
   const { results=[], summary={} } = audit;
 
-  // Keep local state in sync if the page re-mounts with a different audit
+  // Keep local state in sync if the page re-mounts with a DIFFERENT audit.
+  // Within the same audit, local state changes (approve / reject / reopen)
+  // are the source of truth — we must NOT re-derive from audit.isDraft /
+  // audit.reviewStatus here, because handleApprove mutates audit.isDraft
+  // to false, which would re-run this effect and reset reviewStatus from
+  // 'approved' back to 'pending' (since audit.reviewStatus was never
+  // re-assigned on the in-memory object).
   useEffect(() => {
     setReviewStatus(audit.isDraft ? 'draft' : (audit.reviewStatus || 'pending'));
-  }, [audit.id, audit.isDraft, audit.reviewStatus]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit.id]);
 
   // Penny-perfect gate — recomputes on every render so the banner stays
   // in sync if numbers shift (e.g., after a re-analyze).
@@ -556,11 +563,18 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         // Now flip to approved through the gated path so the ledger
         // entry actually gets created.
         await approveAudit(audit.id, profile?.id);
-        try { sessionStorage.setItem('lastAudit', JSON.stringify({ ...audit, reviewStatus: 'approved' })); } catch { /* ignore */ }
+        // Sync the in-memory audit + sessionStorage so navigating away
+        // and back, or any parent re-render, sees the approved state.
+        audit.reviewStatus = 'approved';
+        audit.approvedAt   = new Date().toISOString();
+        try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
       } else {
         await approveAudit(audit.id, profile?.id);
+        audit.reviewStatus = 'approved';
+        audit.approvedAt   = new Date().toISOString();
+        try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
       }
@@ -601,6 +615,10 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         return;
       }
       await rejectAudit(audit.id, rejectReason.trim() || null, profile?.id);
+      audit.reviewStatus  = 'rejected';
+      audit.rejectedAt    = new Date().toISOString();
+      audit.rejectedReason = rejectReason.trim() || null;
+      try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
       setReviewStatus('rejected');
       setRejectModal(false);
       setRejectReason('');
@@ -612,6 +630,10 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     setApproving(true);
     try {
       await reopenAudit(audit.id);
+      audit.reviewStatus = 'pending';
+      audit.approvedAt   = null;
+      audit.rejectedAt   = null;
+      try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
       setReviewStatus('pending');
       toast('أُعيدت المراجعة لقائمة الانتظار', 'info');
     } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
