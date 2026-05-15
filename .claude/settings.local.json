@@ -95,7 +95,8 @@
       "Bash(cp supabase/functions/webhook-intake/index.ts /tmp/. 2>/dev/null; echo \"deployed\")",
       "Bash(findstr /n \"sessionStorage\" C:\\\\Users\\\\huawei\\\\shipaudit\\\\src\\\\pages\\\\UploadWizard.jsx)",
       "Bash(node --experimental-vm-modules -e ' *)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(git ls-tree *)"
     ]
   }
 }
