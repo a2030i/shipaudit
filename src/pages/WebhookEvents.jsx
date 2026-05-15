@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Download, Webhook, Mail, FileText, CheckCircle2,
   AlertCircle, HelpCircle, Copy, ExternalLink, FileSpreadsheet, FileType2,
-  FileX2, FileQuestion, Upload as UploadIcon, Trash2,
+  FileX2, FileQuestion, Upload as UploadIcon, Trash2, FileCheck2,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
 import {
@@ -17,6 +17,7 @@ import {
   downloadEventFile, loadEventFileBlob, getWebhookEndpoint,
   deleteWebhookEvent, deleteWebhookEvents,
 } from '../lib/webhookService.js';
+import { loadAuditByIdFromDB } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const STATUS_META = {
@@ -176,6 +177,20 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       toast(`فشل الاستيراد: ${err.message}`, 'error');
     } finally {
       setImportingId(null);
+    }
+  };
+
+  // Open the audit linked to a webhook event (after "حفظ كمراجعة" → اعتماد).
+  // Loads the audit, stashes it in sessionStorage so AuditResults can
+  // hydrate, then routes to /results.
+  const openLinkedAudit = async (auditId) => {
+    if (!auditId) return;
+    try {
+      const audit = await loadAuditByIdFromDB(auditId);
+      sessionStorage.setItem('lastAudit', JSON.stringify(audit));
+      navigate('/results');
+    } catch (err) {
+      toast(`فشل فتح المراجعة: ${err.message}`, 'error');
     }
   };
 
@@ -454,8 +469,33 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                         </span>
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                          {canImport && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                          {/* Once this webhook event has been turned into an
+                              audit, swap the "حفظ كمراجعة" button for an
+                              "open audit" link + a tiny success badge. */}
+                          {e.audit_id ? (
+                            <>
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '3px 8px', borderRadius: 11,
+                                background: 'rgba(45,212,191,.14)',
+                                color: 'var(--accent)',
+                                border: '1px solid rgba(45,212,191,.40)',
+                                fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                              }}>
+                                <FileCheck2 size={11}/>
+                                تمت مراجعتها
+                              </span>
+                              <Btn
+                                size="sm" variant="ghost" icon={<ExternalLink size={12}/>}
+                                onClick={() => openLinkedAudit(e.audit_id)}
+                                title="فتح المراجعة المرتبطة"
+                              >
+                                فتح المراجعة
+                              </Btn>
+                            </>
+                          ) : canImport && (
                             <Btn
                               size="sm"
                               variant="accent"

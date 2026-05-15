@@ -5,6 +5,7 @@ import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights }
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX } from '../lib/coreService.js';
+import { markEventProcessed } from '../lib/webhookService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -562,6 +563,17 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         await approveAudit(audit.id, profile?.id);
         setReviewStatus('approved');
         toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
+      }
+      // If the audit started life as a Webhook event, close the loop:
+      // mark that event as 'processed' + linked. The UI then shows
+      // "تمت مراجعتها" instead of the "حفظ كمراجعة" button.
+      if (audit.sourceWebhookEventId) {
+        try {
+          await markEventProcessed(audit.sourceWebhookEventId, audit.id, profile?.id);
+          audit.sourceWebhookEventId = null; // don't double-mark on re-approve
+        } catch (err) {
+          console.warn('webhook event mark-processed failed:', err.message);
+        }
       }
     } catch (e) {
       if (e.code === 'APPROVAL_BLOCKED') {
