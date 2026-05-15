@@ -728,20 +728,31 @@ export async function approveAudit(auditId, userId) {
     .single();
   if (updErr) throw updErr;
 
-  // ── Auto-extract per-AWB COD shipments to cod_settlement (out) so
-  //    the user doesn't have to manually upload anything for combined-
-  //    invoice carriers (DeliverNow etc). Idempotent — re-approval just
-  //    refreshes the batch.
+  // ── Auto-extract per-AWB COD shipments to cod_settlement (out) ONLY
+  //    when the carrier's profile says its invoice file ALSO carries
+  //    COD (file_kind='audit_with_cod' — e.g. DeliverNow). For carriers
+  //    whose COD comes in a SEPARATE remittance file (Aramex etc) we
+  //    skip extraction so we don't double-count later.
   try {
-    const { syncAuditCodOut } = await import('./codSettlementService.js');
-    const codOut = await syncAuditCodOut({
-      auditId:    updated.id,
-      carrierId:  updated.carrier_id,
-      sourceFile: updated.file_name || null,
-      userId:     userId || null,
-    });
-    if (codOut.count > 0) {
-      console.info(`audit ${updated.id}: extracted ${codOut.count} COD shipments (${codOut.total} SAR) to cod_settlement`);
+    const { data: carrierRow } = await supabase
+      .from('carriers')
+      .select('file_signature')
+      .eq('id', updated.carrier_id)
+      .maybeSingle();
+    const fileKind = carrierRow?.file_signature?.file_kind || null;
+    if (fileKind === 'audit_with_cod') {
+      const { syncAuditCodOut } = await import('./codSettlementService.js');
+      const codOut = await syncAuditCodOut({
+        auditId:    updated.id,
+        carrierId:  updated.carrier_id,
+        sourceFile: updated.file_name || null,
+        userId:     userId || null,
+      });
+      if (codOut.count > 0) {
+        console.info(`audit ${updated.id}: extracted ${codOut.count} COD shipments (${codOut.total} SAR) to cod_settlement`);
+      }
+    } else {
+      console.info(`audit ${updated.id}: file_kind=${fileKind || 'unset'} — skipping COD auto-extract`);
     }
   } catch (e) {
     console.warn('COD auto-extract failed:', e.message);
