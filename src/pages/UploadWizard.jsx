@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { useLocation } from 'react-router-dom';
 
 // Module-level guard for webhook auto-imports. React StrictMode in dev
 // double-invokes useEffect; using sessionStorage or useRef as the
@@ -486,6 +487,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
 // ── Main ───────────────────────────────────────────────────────────────────────
 export default function UploadWizard({ carriers, onComplete }) {
   const { user } = useAuth();
+  const location = useLocation();
   const now = new Date();
   const [step,         setStep]        = useState(1);
   // carrierId is now set automatically after the file is read.
@@ -637,25 +639,53 @@ export default function UploadWizard({ carriers, onComplete }) {
   // pick it up here, decode the bytes back into a File, and feed
   // them through the same pipeline that a manual upload uses.
   //
-  // React 18 StrictMode (dev) double-invokes effects — so the guard
-  // CAN'T be a useRef (which doesn't survive the simulated remount
-  // cleanly) or `sessionStorage.removeItem` followed by a re-read
-  // (the second invocation sees empty storage and bails before
-  // handleFile has fired). We use a module-level Set keyed by the
-  // payload's eventId so the import runs exactly once per click,
-  // regardless of dev-mode double-invocation.
+  // IMPORTANT: App.jsx renders every page inside a <PageSlot> that
+  // toggles visibility/pointer-events but DOES NOT unmount inactive
+  // pages. That means a one-shot useEffect on mount only fires once
+  // per browser session — not every time the user lands on /upload.
+  // We solve this by depending on `location.pathname`: every time the
+  // user navigates here, the effect re-runs and re-checks for an
+  // incoming webhook payload.
+  //
+  // The CONSUMED_WEBHOOK_IMPORTS Set (module-level) still prevents
+  // double-processing across React StrictMode's double-invocation in
+  // dev, and against rapid re-navigation back-and-forth.
   useEffect(() => {
+    if (location.pathname !== '/upload') return;
+    // Diagnostic logging — keep until the flow is rock-solid in prod.
     let raw;
-    try { raw = sessionStorage.getItem('webhookImport'); } catch { return; }
-    if (!raw) return;
+    try { raw = sessionStorage.getItem('webhookImport'); } catch (e) {
+      console.warn('[webhook-import] sessionStorage read failed:', e);
+      return;
+    }
+    if (!raw) {
+      console.info('[webhook-import] no pending import — manual upload mode');
+      return;
+    }
+    console.info('[webhook-import] found pending import, length:', raw.length);
+
     let payload;
-    try { payload = JSON.parse(raw); } catch { return; }
-    if (!payload?.base64 || !payload?.filename) return;
+    try { payload = JSON.parse(raw); } catch (e) {
+      console.warn('[webhook-import] JSON parse failed:', e);
+      sessionStorage.removeItem('webhookImport');
+      toast('استيراد Webhook غير صالح — تجاهل', 'error');
+      return;
+    }
+    if (!payload?.base64 || !payload?.filename) {
+      console.warn('[webhook-import] payload missing base64 or filename:', Object.keys(payload || {}));
+      sessionStorage.removeItem('webhookImport');
+      toast('استيراد Webhook ناقص — تجاهل', 'error');
+      return;
+    }
 
     const key = payload.eventId || `${payload.filename}_${payload.base64.length}`;
-    if (CONSUMED_WEBHOOK_IMPORTS.has(key)) return;
+    if (CONSUMED_WEBHOOK_IMPORTS.has(key)) {
+      console.info('[webhook-import] already consumed in this session:', key);
+      return;
+    }
     CONSUMED_WEBHOOK_IMPORTS.add(key);
     sessionStorage.removeItem('webhookImport');
+    console.info('[webhook-import] starting import for', payload.filename, '(', payload.base64.length, 'b64 chars)');
 
     try {
       // Decode base64 → Uint8Array → File
@@ -667,21 +697,24 @@ export default function UploadWizard({ carriers, onComplete }) {
           ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
           : 'application/octet-stream',
       });
+      console.info('[webhook-import] reconstructed File, size:', file.size, 'type:', file.type);
+
       if (payload.carrierId) setCarrierId(payload.carrierId);
       if (payload.eventId)   setSourceWebhookEventId(payload.eventId);
       setStep(2);
+      toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
       // Synchronous call so handleFile starts immediately. Internally
       // it uses FileReader.onload (async) which then setStep(3) on
       // success. Skipping setTimeout avoids losing the call when
       // StrictMode's first invocation gets torn down.
       handleFile(file);
-      toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
+      console.info('[webhook-import] handleFile dispatched');
     } catch (err) {
-      // If decoding failed, drop the consumed marker so the user can retry.
+      console.error('[webhook-import] decode/dispatch failed:', err);
       CONSUMED_WEBHOOK_IMPORTS.delete(key);
       toast(`فشل استيراد الملف: ${err.message}`, 'error');
     }
-  }, [handleFile]);
+  }, [handleFile, location.pathname]);
 
   const handleReAnalyze = async () => {
     if (!allRawRows.length) return;
