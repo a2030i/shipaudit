@@ -21,6 +21,11 @@ export async function loadCarriers() {
     logo:             row.logo,
     color:            row.color,
     contracts:        row.contracts ?? [],
+    // The webhook/file profile (email_from, file_kind, awb_prefix, etc.).
+    // Passed straight through — WebhookEvents needs `file_kind` to decide
+    // whether to show 'حفظ كتحصيل' alongside 'حفظ كمراجعة', and the
+    // CarrierProfile editor reads + writes it.
+    file_signature:   row.file_signature   ?? {},
     // Operational metadata — used by /payments and the carrier ledger
     // for "who do I call about this invoice" lookups.
     contactEmail:     row.contact_email     ?? '',
