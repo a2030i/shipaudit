@@ -77,7 +77,25 @@
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: file attachments in AI chat + stop Chrome password-save prompt *)",
       "Bash(git -c user.email=ahmad.raike@gmail.com -c user.name=ahmad commit -m 'feat: enforce strict audit-to-operation link validation *)",
       "Bash(git commit -m ' *)",
-      "mcp__supabase__list_tables"
+      "mcp__supabase__list_tables",
+      "Bash(node test-smsa-ex712494.mjs)",
+      "Bash(node inspect-imile.mjs)",
+      "Bash(node inspect-imile-tiers.mjs)",
+      "Bash(git commit --allow-empty -m ' *)",
+      "Bash(node check-awb.mjs)",
+      "Bash(node inspect-jt.mjs)",
+      "Bash(node check-jt-awb.mjs)",
+      "Bash(node debug-jt.mjs)",
+      "Bash(node debug-jt-dests.mjs)",
+      "Bash(node debug-imile-detect.mjs)",
+      "Bash(node inspect-smsa-cod.mjs)",
+      "Bash(node test-smsa-cod.mjs)",
+      "Bash(perl -i -pe \"s/'cod', / /g; s/, *'cod'\\\\\\\\b//g; s/, *'amount'\\\\\\\\b/, 'collected amount'/g; s/'amount', */'collected amount', /g\" src/engine/codParsers/aatakRemittance.js src/engine/codParsers/delexRemittance.js src/engine/codParsers/webekRemittance.js src/engine/codParsers/boleesehRemittance.js)",
+      "Bash(perl -i -pe \"s/'collected amount', 'collected amount'/'collected amount'/g\" src/engine/codParsers/aatakRemittance.js src/engine/codParsers/delexRemittance.js src/engine/codParsers/webekRemittance.js src/engine/codParsers/boleesehRemittance.js)",
+      "Bash(cp supabase/functions/webhook-intake/index.ts /tmp/. 2>/dev/null; echo \"deployed\")",
+      "Bash(findstr /n \"sessionStorage\" C:\\\\Users\\\\huawei\\\\shipaudit\\\\src\\\\pages\\\\UploadWizard.jsx)",
+      "Bash(node --experimental-vm-modules -e ' *)",
+      "Bash(git commit *)"
     ]
   }
 }
