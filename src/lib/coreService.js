@@ -728,6 +728,25 @@ export async function approveAudit(auditId, userId) {
     .single();
   if (updErr) throw updErr;
 
+  // ── Auto-extract per-AWB COD shipments to cod_settlement (out) so
+  //    the user doesn't have to manually upload anything for combined-
+  //    invoice carriers (DeliverNow etc). Idempotent — re-approval just
+  //    refreshes the batch.
+  try {
+    const { syncAuditCodOut } = await import('./codSettlementService.js');
+    const codOut = await syncAuditCodOut({
+      auditId:    updated.id,
+      carrierId:  updated.carrier_id,
+      sourceFile: updated.file_name || null,
+      userId:     userId || null,
+    });
+    if (codOut.count > 0) {
+      console.info(`audit ${updated.id}: extracted ${codOut.count} COD shipments (${codOut.total} SAR) to cod_settlement`);
+    }
+  } catch (e) {
+    console.warn('COD auto-extract failed:', e.message);
+  }
+
   // ── Auto-post to the carrier sub-ledger (A/P sub-ledger). One DR
   //    line per audit, totalling the invoice amount + VAT. Idempotent
   //    via the unique partial index on (audit_id) WHERE doc_type='INV'.
@@ -781,8 +800,9 @@ export async function rejectAudit(auditId, reason, userId) {
     .single();
   if (error) throw error;
   // If this audit was previously approved + posted, drop the ledger line
-  // so the balance stays accurate. Audit trail = the audit row itself,
-  // which keeps both rejected_at and (possibly) approved_at history.
+  // AND the auto-extracted cod_settlement rows so the balances stay
+  // accurate. Audit trail = the audit row itself, which keeps both
+  // rejected_at and (possibly) approved_at history.
   try {
     await supabase.from('carrier_operations')
       .delete()
@@ -791,12 +811,18 @@ export async function rejectAudit(auditId, reason, userId) {
   } catch (e) {
     console.warn('ledger reverse-on-reject failed:', e.message);
   }
+  try {
+    const { clearAuditCodOut } = await import('./codSettlementService.js');
+    await clearAuditCodOut(auditId);
+  } catch (e) {
+    console.warn('COD reverse-on-reject failed:', e.message);
+  }
   return data;
 }
 
 // Send an approved/rejected audit back to pending — useful when new
 // info shows up and the accountant wants to re-examine before billing.
-// Also reverses the ledger line if it was previously posted.
+// Also reverses the ledger line + COD extractions if previously posted.
 export async function reopenAudit(auditId) {
   const { data, error } = await supabase
     .from('audits')
@@ -816,6 +842,12 @@ export async function reopenAudit(auditId) {
       .eq('doc_type', 'INV');
   } catch (e) {
     console.warn('ledger reverse-on-reopen failed:', e.message);
+  }
+  try {
+    const { clearAuditCodOut } = await import('./codSettlementService.js');
+    await clearAuditCodOut(auditId);
+  } catch (e) {
+    console.warn('COD reverse-on-reopen failed:', e.message);
   }
   return data;
 }
