@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -11,6 +11,7 @@ import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
 import { getNavPermissions } from './lib/permissionsService.js';
 import Dashboard      from './pages/Dashboard.jsx';
+import CarriersHub    from './pages/CarriersHub.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
 import AuditResults   from './pages/AuditResults.jsx';
@@ -32,6 +33,7 @@ import ContractsOverview from './pages/ContractsOverview.jsx';
 // Each item belongs to a section. Sections render as headers; items beneath them.
 const NAV_ITEMS = [
   { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'audit' },
+  { id: 'hub',       path: '/hub',       label: 'كشف الشركات',   icon: Building2,       section: 'audit' },
   { id: 'carriers',  path: '/carriers',  label: 'شركات الشحن',   icon: Truck,           section: 'audit' },
   { id: 'contracts', path: '/contracts', label: 'جدول العقود',   icon: ClipboardList,   section: 'audit' },
   { id: 'upload',    path: '/upload',    label: 'مراجعة جديدة',  icon: Upload,          section: 'audit' },
@@ -55,6 +57,7 @@ const NAV_SECTIONS = [
 ];
 const PAGE_TITLES = {
   '/dashboard':       'الرئيسية',
+  '/hub':             'كشف الشركات',
   '/carriers':        'شركات الشحن',
   '/contracts':       'جدول العقود',
   '/upload':          'مراجعة جديدة',
@@ -103,7 +106,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -452,6 +455,9 @@ function AppInner({ theme, toggleTheme }) {
 
             <PageSlot active={pathname==='/dashboard'} scroll>
               <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/hub'} scroll>
+              <CarriersHub isActive={pathname==='/hub'}/>
             </PageSlot>
             <PageSlot active={pathname==='/carriers'}>
               <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
