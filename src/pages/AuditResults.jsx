@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
-import { CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
+import { useState, useRef, useEffect, useMemo } from 'react';
+import { CheckCircle2, XCircle, RotateCcw, AlertCircle } from 'lucide-react';
 import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB } from '../lib/coreService.js';
+import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -528,31 +528,50 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     setReviewStatus(audit.isDraft ? 'draft' : (audit.reviewStatus || 'pending'));
   }, [audit.id, audit.isDraft, audit.reviewStatus]);
 
+  // Penny-perfect gate — recomputes on every render so the banner stays
+  // in sync if numbers shift (e.g., after a re-analyze).
+  const approvalGate = useMemo(() => evaluateApprovalGate(audit), [audit]);
+
   const handleApprove = async () => {
+    // Client-side gate check first — gives a fast, specific error before
+    // we round-trip to the server. The server-side approveAudit() will
+    // re-verify (defense in depth).
+    if (!approvalGate.canApprove) {
+      const top = approvalGate.errors[0]?.message || 'تعذّر الاعتماد';
+      toast(top, 'error');
+      return;
+    }
     setApproving(true);
     try {
       if (reviewStatus === 'draft' || audit.isDraft) {
-        // First-time save: persist with review_status=approved in one shot
+        // First-time save: persist as 'pending' (NOT approved). Approving
+        // is a separate step that goes through the server-side gate and
+        // posts to the ledger. This keeps the audit trail clean.
         await saveAuditToDB(
-          { ...audit, reviewStatus: 'approved', approvedAt: new Date().toISOString(), approvedBy: profile?.id },
+          { ...audit, reviewStatus: 'pending' },
           profile?.id,
         );
-        // After save, mark the audit no longer draft so subsequent
-        // approve/reopen calls use the simple status flip path
         audit.isDraft = false;
-        // Refresh sessionStorage so navigating away + back keeps the
-        // approved state
+        // Now flip to approved through the gated path so the ledger
+        // entry actually gets created.
+        await approveAudit(audit.id, profile?.id);
         try { sessionStorage.setItem('lastAudit', JSON.stringify({ ...audit, reviewStatus: 'approved' })); } catch { /* ignore */ }
         setReviewStatus('approved');
-        toast('تم حفظ واعتماد المراجعة ✓', 'success');
+        toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
       } else {
         await approveAudit(audit.id, profile?.id);
         setReviewStatus('approved');
-        toast('تم اعتماد المراجعة ✓', 'success');
+        toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
       }
     } catch (e) {
-      if (e.code === 'DUPLICATE_AUDIT') { toast(e.message, 'error'); }
-      else                              { toast(`فشل الحفظ: ${e.message}`, 'error'); }
+      if (e.code === 'APPROVAL_BLOCKED') {
+        const reasons = (e.errors || []).map(x => '• ' + x.message).join('\n') || e.message;
+        toast(reasons, 'error');
+      } else if (e.code === 'DUPLICATE_AUDIT') {
+        toast(e.message, 'error');
+      } else {
+        toast(`فشل الحفظ: ${e.message}`, 'error');
+      }
     }
     setApproving(false);
   };
@@ -631,34 +650,83 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         {(reviewStatus === 'draft' || reviewStatus === 'pending') && (
           <div style={{
             marginBottom: 16, padding: '14px 18px', borderRadius: 12,
-            background: 'linear-gradient(135deg, rgba(251,191,36,.14), rgba(251,191,36,.04))',
-            border: '1px solid rgba(251,191,36,.45)',
-            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            background: approvalGate.canApprove
+              ? 'linear-gradient(135deg, rgba(45,212,191,.10), rgba(45,212,191,.02))'
+              : 'linear-gradient(135deg, rgba(239,68,68,.10), rgba(239,68,68,.02))',
+            border: `1px solid ${approvalGate.canApprove ? 'rgba(45,212,191,.40)' : 'rgba(239,68,68,.40)'}`,
+            display: 'flex', flexDirection: 'column', gap: 12,
           }}>
-            <div style={{
-              width: 38, height: 38, borderRadius: 10,
-              background: 'rgba(251,191,36,.20)',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <Spinner size={16} color="var(--gold)"/>
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 13.5 }}>
-                {reviewStatus === 'draft' ? 'مسودة — لم تُحفظ بعد' : 'مراجعة قيد الانتظار'}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+              <div style={{
+                width: 38, height: 38, borderRadius: 10,
+                background: approvalGate.canApprove ? 'rgba(45,212,191,.22)' : 'rgba(239,68,68,.18)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                {approvalGate.canApprove
+                  ? <CheckCircle2 size={18} color="var(--accent)"/>
+                  : <AlertCircle  size={18} color="var(--red)"/>}
               </div>
-              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                {reviewStatus === 'draft'
-                  ? <>راجع الفروق ثم اضغط <strong>اعتماد</strong> لحفظ المراجعة في السجل. <strong>رفض</strong> يتجاهل الملف ولا يخزن شي.</>
-                  : <>راجع الفروق ثم اضغط <strong>اعتماد</strong> ليُسمح للنظام بسحب أوزانها للفوترة. أو <strong>رفض</strong> لإخراجها من التدفق.</>}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, color: 'var(--text)', fontSize: 13.5 }}>
+                  {approvalGate.canApprove
+                    ? (reviewStatus === 'draft' ? 'جاهزة للاعتماد — لم تُحفظ بعد' : 'جاهزة للاعتماد')
+                    : `الاعتماد مقفل — ${approvalGate.errors.length} ${approvalGate.errors.length === 1 ? 'سبب' : 'أسباب'}`}
+                </div>
+                <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                  {approvalGate.canApprove
+                    ? <>الأرقام مطابقة بالهلله — اضغط <strong>اعتماد</strong> ليُسجَّل قيد في كشف حساب الشركة.</>
+                    : <>راجع الأسباب أدناه، عدّل المراجعة أو ناقش الشركة، ثم أعد المحاولة.</>}
+                </div>
               </div>
+              <Btn
+                size="md"
+                variant={approvalGate.canApprove ? 'accent' : 'ghost'}
+                onClick={handleApprove}
+                disabled={approving || !approvalGate.canApprove}
+                icon={<CheckCircle2 size={14}/>}
+                title={!approvalGate.canApprove ? approvalGate.errors.map(e => e.message).join(' / ') : ''}
+              >
+                {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
+              </Btn>
+              <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
+                {reviewStatus === 'draft' ? 'تجاهل' : 'رفض'}
+              </Btn>
             </div>
-            <Btn size="md" variant="accent" onClick={handleApprove} disabled={approving} icon={<CheckCircle2 size={14}/>}>
-              {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
-            </Btn>
-            <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
-              {reviewStatus === 'draft' ? 'تجاهل' : 'رفض'}
-            </Btn>
+
+            {/* Gate violation list — shown only when approval is blocked */}
+            {!approvalGate.canApprove && approvalGate.errors.length > 0 && (
+              <div style={{
+                padding: '10px 14px',
+                background: 'rgba(239,68,68,.06)',
+                border: '1px solid rgba(239,68,68,.20)',
+                borderRadius: 9,
+                display: 'grid', gap: 6,
+              }}>
+                {approvalGate.errors.map((e, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12 }}>
+                    <span style={{ color: 'var(--red)', fontWeight: 700, marginTop: 1 }}>✗</span>
+                    <span style={{ color: 'var(--text)' }}>{e.message}</span>
+                  </div>
+                ))}
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                  حد التسامح: ±{APPROVAL_DRIFT_TOLERANCE_PRE_TAX.toFixed(2)} ر.س قبل الضريبة · ±{APPROVAL_DRIFT_TOLERANCE_TAX.toFixed(2)} ر.س للضريبة
+                </div>
+              </div>
+            )}
+
+            {/* Soft warnings (don't block, just FYI) */}
+            {approvalGate.warnings?.length > 0 && (
+              <div style={{
+                padding: '8px 12px',
+                background: 'rgba(251,191,36,.06)',
+                border: '1px solid rgba(251,191,36,.22)',
+                borderRadius: 8,
+                fontSize: 11.5, color: 'var(--muted)',
+              }}>
+                {approvalGate.warnings.map((w, i) => <div key={i}>⚠ {w.message}</div>)}
+              </div>
+            )}
           </div>
         )}
         {reviewStatus === 'approved' && (
