@@ -214,17 +214,18 @@ export default function CodSettlements({ isActive = true }) {
           )}
           <Btn size="sm" variant="primary" icon={<Upload size={14}/>}
             onClick={() => setUploadModal({ direction: 'out' })}>
-            📤 تسوية صادرة
+            📋 ارفع متوقّع
           </Btn>
           <Btn size="sm" variant="success" icon={<Upload size={14}/>}
             onClick={() => setUploadModal({ direction: 'in' })}>
-            📥 تسوية واردة
+            📥 ارفع تحويل وارد
           </Btn>
         </div>
       </div>
 
       <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0, marginBottom: 16 }}>
-        التدفق: نظامكم يُصدر &laquo;تسوية صادرة&raquo; للمتاجر، الناقل يُحوّل &laquo;تسوية واردة&raquo; إليكم. الفرق = ما تبقى عند الناقل.
+        التدفق: المعتمد للمراجعات بإجمالي COD أو نظامكم الداخلي يُغذّي &laquo;المتوقَّع من الناقل&raquo;،
+        والناقل يُحوّل النقد فعلياً كـ&laquo;مُستلَم&raquo;. الفرق = ما تبقّى عند الناقل.
       </p>
 
       {loading ? (
@@ -234,15 +235,15 @@ export default function CodSettlements({ isActive = true }) {
           <div style={{ fontSize: 44, marginBottom: 12 }}>💰</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>لا توجد تسويات بعد</div>
           <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 22 }}>
-            ارفع &laquo;تسوية صادرة&raquo; من نظامكم الداخلي، ثم &laquo;تسوية واردة&raquo; من {carriers.find(c => c.id === carrier)?.label || 'الناقل'}.
-            النظام يُطابق رقم الشحنة (AWB) ويعرض الفرق.
+            اعتماد أي مراجعة فيها أعمدة COD يُغذّي «المتوقّع من الناقل» تلقائياً.
+            وعند وصول التحويل، ارفع ملف التحويل كـ«مُستلَم». النظام يُطابق رقم الشحنة (AWB) ويعرض الفرق.
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <Btn variant="primary" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'out' })}>
-              ارفع تسوية صادرة
+              ارفع متوقّع يدوي
             </Btn>
             <Btn variant="success" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>
-              ارفع تسوية واردة
+              ارفع تحويل وارد
             </Btn>
           </div>
         </Card>
@@ -312,8 +313,8 @@ export default function CodSettlements({ isActive = true }) {
                   📑 الملفات المرفوعة ({uploads.length})
                 </span>
                 <span style={{ marginRight: 'auto', fontSize: 11, color: 'var(--muted)' }}>
-                  📥 {uploads.filter(u => u.direction === 'in').length} واردة ·
-                  {' '}📤 {uploads.filter(u => u.direction === 'out').length} صادرة
+                  📥 {uploads.filter(u => u.direction === 'in').length} مُستلَم ·
+                  {' '}📋 {uploads.filter(u => u.direction === 'out').length} متوقّع
                 </span>
               </button>
               {uploadsOpen && (() => {
@@ -336,8 +337,35 @@ export default function CodSettlements({ isActive = true }) {
                     padding: '10px 14px', borderBottom: '1px solid var(--border)22',
                   }}>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {u.sourceFile || '(بدون اسم ملف)'}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {String(u.sourceFile || '').startsWith('audit:') ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '1px 7px', borderRadius: 10,
+                            background: 'rgba(45,212,191,.12)',
+                            color: 'var(--accent)',
+                            border: '1px solid rgba(45,212,191,.30)',
+                            fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                          }} title="مُستخرج تلقائياً من مراجعة معتمدة">
+                            📋 من فاتورة الناقل
+                          </span>
+                        ) : u.direction === 'out' ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '1px 7px', borderRadius: 10,
+                            background: 'var(--surface)',
+                            color: 'var(--muted)',
+                            border: '1px solid var(--border)',
+                            fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            🏢 من نظامكم الداخلي
+                          </span>
+                        ) : null}
+                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {u.sourceFile || '(بدون اسم ملف)'}
+                        </span>
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
                         {u.uploadDate}
@@ -357,7 +385,7 @@ export default function CodSettlements({ isActive = true }) {
                       )}
                       {u.direction === 'in' && u.unsettledCount > 0 && (
                         <div style={{ fontSize: 10.5, color: 'var(--red)', marginTop: 3, fontWeight: 600 }}>
-                          ⚠ {u.unsettledCount} شحنة بلا مقابل صادر · {fmt(u.unsettledAmount)} ر.س
+                          ⚠ {u.unsettledCount} شحنة بلا مقابل متوقّع · {fmt(u.unsettledAmount)} ر.س
                         </div>
                       )}
                     </div>
@@ -405,11 +433,14 @@ export default function CodSettlements({ isActive = true }) {
 
                 return (
                   <div style={{ maxHeight: 420, overflowY: 'auto' }}>
-                    {/* Outgoing section */}
+                    {/* Outgoing section — what we EXPECT to receive from
+                        the carrier. Sources: internal merchant-settlement
+                        export, OR auto-extracted from an approved carrier
+                        invoice (rows tagged with source_file='audit:...'). */}
                     {outFiles.length > 0 && (
                       <>
                         <SectionHeader
-                          icon="📤" label="صادرة (دفعنا للتاجر)" color="#2DD4BF"
+                          icon="📋" label="متوقّع من الناقل" color="#2DD4BF"
                           files={outFiles} total={outTotal}
                           extra={outUnsettled > 0 && (
                             <span style={{ fontSize: 10.5, color: 'var(--gold)', fontWeight: 700 }}>
@@ -420,11 +451,11 @@ export default function CodSettlements({ isActive = true }) {
                         {outFiles.map(u => <FileRow key={u.uploadId} u={u}/>)}
                       </>
                     )}
-                    {/* Incoming section */}
+                    {/* Incoming section — actual cash carrier remitted to us. */}
                     {inFiles.length > 0 && (
                       <>
                         <SectionHeader
-                          icon="📥" label="واردة (وصلتنا من الناقل)" color="#22c55e"
+                          icon="📥" label="مُستلَم من الناقل" color="#22c55e"
                           files={inFiles} total={inTotal}
                         />
                         {inFiles.map(u => <FileRow key={u.uploadId} u={u}/>)}
@@ -442,7 +473,7 @@ export default function CodSettlements({ isActive = true }) {
               <Tab id="outstanding" label="🔴 متبقّي"        n={counts.outstanding} active={tab} onClick={setTab}/>
               <Tab id="pending"     label="🟡 فروق"          n={counts.pending}     active={tab} onClick={setTab}/>
               <Tab id="disputed"    label="⚠️ اعتراضات"      n={counts.disputed}    active={tab} onClick={setTab}/>
-              <Tab id="over"        label="🔵 وارد بانتظار"   n={counts.overRemit}   active={tab} onClick={setTab}/>
+              <Tab id="over"        label="🔵 مُستلَم بانتظار" n={counts.overRemit}   active={tab} onClick={setTab}/>
               <Tab id="matched"     label="✓ مسوّاة"         n={counts.matched}     active={tab} onClick={setTab}/>
               <Tab id="all"         label="الكل"             n={counts.all}         active={tab} onClick={setTab}/>
             </div>
@@ -867,7 +898,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
 
   return (
     <Modal
-      title={isIn ? `📥 رفع تسوية واردة (من الناقل)` : `📤 رفع تسوية صادرة (من نظامكم)`}
+      title={isIn ? `📥 رفع تحويل وارد من الناقل` : `📋 رفع متوقّع يدوياً`}
       onClose={onClose} width={560}
     >
       {previews.length === 0 && (
