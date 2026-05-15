@@ -160,6 +160,95 @@ export async function saveSettlementUpload({
   };
 }
 
+// ── Audit-driven COD extraction ─────────────────────────────────────
+// When the user approves an audit for a carrier whose invoice file
+// includes COD amounts (e.g., DeliverNow), we automatically pre-fill
+// `cod_settlement` with one direction='out' row per AWB that
+// collected COD. These rows are the system's record of "we expect to
+// receive this much from this carrier" — they're matched against
+// future direction='in' uploads when the carrier remits.
+//
+// Idempotent: re-approving an audit deletes the prior auto-extracted
+// rows first, then re-inserts the current set. Rejecting / reopening
+// the audit drops them entirely (see clearAuditCodOut).
+//
+// upload_id convention: `audit_out_${auditId}` so the auto-extracted
+// batch is distinguishable from manual uploads.
+export async function syncAuditCodOut({
+  auditId, carrierId, sourceFile, userId,
+}) {
+  if (!auditId || !carrierId) throw new Error('auditId + carrierId مطلوبان');
+  const uploadId = `audit_out_${auditId}`;
+
+  // Idempotent reset
+  await supabase.from('cod_settlement').delete().eq('upload_id', uploadId);
+
+  // Pull COD-bearing shipments from the per-row table. Paginate so a
+  // 500K-shipment audit with 50K COD rows doesn't fail on the 1K cap.
+  const PAGE = 1000;
+  const codRows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('audit_shipments')
+      .select('awb, cod_amount, ship_date')
+      .eq('audit_id', auditId)
+      .gt('cod_amount', 0)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    codRows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  if (!codRows.length) return { count: 0, total: 0 };
+
+  // Dedup AWBs within the batch (one shipment can show up twice in the
+  // file if the carrier billed it on multiple invoice lines).
+  const seen = new Set();
+  const inserts = [];
+  for (const r of codRows) {
+    const awb = String(r.awb || '').trim();
+    if (!awb || seen.has(awb)) continue;
+    seen.add(awb);
+    inserts.push({
+      direction:      'out',
+      carrier_id:     carrierId,
+      awb,
+      amount:         Number(r.cod_amount) || 0,
+      upload_date:    r.ship_date || new Date().toISOString().slice(0, 10),
+      source_file:    sourceFile || `audit:${auditId}`,
+      settlement_ref: null,
+      upload_id:      uploadId,
+      created_by:     userId || null,
+    });
+  }
+
+  const CHUNK = 500;
+  for (let i = 0; i < inserts.length; i += CHUNK) {
+    const { error } = await supabase
+      .from('cod_settlement').insert(inserts.slice(i, i + CHUNK));
+    if (error) throw error;
+  }
+  const total = inserts.reduce((s, r) => s + r.amount, 0);
+  return { count: inserts.length, total: +total.toFixed(2) };
+}
+
+// Reverse: drop every cod_settlement row this audit's approval created.
+// Called when the audit is rejected or reopened.
+export async function clearAuditCodOut(auditId) {
+  if (!auditId) return 0;
+  const uploadId = `audit_out_${auditId}`;
+  const { data, error } = await supabase
+    .from('cod_settlement')
+    .delete()
+    .eq('upload_id', uploadId)
+    .select('id');
+  if (error) throw error;
+  return data?.length || 0;
+}
+
 // Delete every settlement row from a single upload (the user "undid" it).
 // Also reverses the matching ledger line so the carrier balance updates.
 export async function deleteSettlementUpload(uploadId) {
