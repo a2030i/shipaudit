@@ -202,6 +202,7 @@
 | إعادة اشتقاق `reviewStatus` من `audit.isDraft` بعد تعديل `audit.isDraft` في handleApprove | يُلغي `setReviewStatus('approved')` | اعتمد فقط على `[audit.id]` في الـ useEffect |
 | استخراج COD كـ 'out' من فاتورة الشركة | يكرّر مع ملف التحويل الفعلي | فقط 'in' من ملف الناقل |
 | `from('table').delete()` بدون `.select()` | RLS silent-fail (0 rows affected = no error) | استخدم `.select('id')` وتحقّق من العدد |
+| تجاهل `file_signature` في mapping `loadCarriers` | الـ pages تفقد القدرة على قراءة `file_kind` وإلخ — اختفاء أزرار صامت | احرص أن المابر يمرّر كل عمود يحتاجه أي مكوّن استهلاكي |
 | محاولة تعديل سعر/شريحة العقد مباشرة في DB | يدمّر تاريخ العقود | استخدم `saveCarrierContractsWithHistory` |
 | تعديل `audits.results` JSONB لإضافة بيانات مهمة | حد TOAST + لن يُحمَّل للـ audits الكبيرة | استخدم `audit_shipments` بدلاً |
 | نسيان `idempotency` على auto-posts | إعادة الاعتماد ينشئ قيود مكررة | استخدم unique partial indexes |
