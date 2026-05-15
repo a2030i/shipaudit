@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -30,52 +30,65 @@ import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
+// Sidebar IA — 4 sections, ordered by daily workflow:
+//   1) overview  — landing screens (dashboard + per-carrier hub)
+//   2) audits    — handle inbound files end-to-end (inbox → audit → history)
+//   3) ledger    — financial sub-ledger + reconciliation
+//   4) admin     — config + reports + logs
+//
 // Each item belongs to a section. Sections render as headers; items beneath them.
 const NAV_ITEMS = [
-  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'audit' },
-  { id: 'hub',       path: '/hub',       label: 'كشف الشركات',   icon: Building2,       section: 'audit' },
-  { id: 'carriers',  path: '/carriers',  label: 'شركات الشحن',   icon: Truck,           section: 'audit' },
-  { id: 'contracts', path: '/contracts', label: 'جدول العقود',   icon: ClipboardList,   section: 'audit' },
-  { id: 'upload',    path: '/upload',    label: 'مراجعة جديدة',  icon: Upload,          section: 'audit' },
-  { id: 'audits',    path: '/audits',    label: 'السجل',         icon: History,         section: 'audit' },
-  { id: 'ledger',          path: '/ledger',            label: 'الدفتر',          icon: BookOpen, section: 'carrier_acct' },
-  { id: 'aramex-stmt',     path: '/aramex-statements', label: 'رفع كشف',         icon: FileText, section: 'carrier_acct' },
-  { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',      icon: Banknote, section: 'carrier_acct' },
-  { id: 'payments',        path: '/payments',          label: 'الدفعات',         icon: CreditCard, section: 'carrier_acct' },
-  { id: 'weight-billing',  path: '/weight-billing',    label: 'فوترة الأوزان',   icon: Scale,      section: 'carrier_acct' },
-  { id: 'carrier-kpi',     path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,  section: 'carrier_acct' },
-  { id: 'webhook',         path: '/webhook',           label: 'سجل Webhook',     icon: Webhook,    section: 'admin' },
-  { id: 'activity-log',    path: '/activity-log',      label: 'سجل النشاط',      icon: Activity,   section: 'admin' },
-  { id: 'bank',      path: '/bank',      label: 'كشف بنكي',      icon: Wallet,          section: 'bank' },
-  { id: 'employees', path: '/employees', label: 'الموظفون',      icon: Users,           section: 'admin', adminOnly: true },
+  // ── Overview ───────────────────────────────────────────────────
+  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'overview' },
+  { id: 'hub',       path: '/hub',       label: 'كشف الشركات',   icon: Building2,       section: 'overview' },
+
+  // ── Audits (inbound + processing workflow) ─────────────────────
+  { id: 'webhook',         path: '/webhook',           label: 'الوارد',          icon: Inbox,    section: 'audits' },
+  { id: 'upload',          path: '/upload',            label: 'مراجعة جديدة',    icon: Upload,   section: 'audits' },
+  { id: 'audits',          path: '/audits',            label: 'سجل المراجعات',   icon: History,  section: 'audits' },
+  { id: 'weight-billing',  path: '/weight-billing',    label: 'فوترة الأوزان',   icon: Scale,    section: 'audits' },
+
+  // ── Financial ledger + settlements ─────────────────────────────
+  { id: 'ledger',          path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen, section: 'ledger' },
+  { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',      icon: Banknote, section: 'ledger' },
+  { id: 'payments',        path: '/payments',          label: 'الدفعات',         icon: CreditCard, section: 'ledger' },
+  { id: 'aramex-stmt',     path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText, section: 'ledger' },
+  { id: 'bank',            path: '/bank',              label: 'كشف بنكي',        icon: Wallet,   section: 'ledger' },
+
+  // ── Admin (config + reports + audit-trail) ─────────────────────
+  { id: 'carriers',        path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'admin' },
+  { id: 'contracts',       path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'admin' },
+  { id: 'carrier-kpi',     path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'admin' },
+  { id: 'activity-log',    path: '/activity-log',      label: 'سجل النشاط',      icon: Activity,      section: 'admin' },
+  { id: 'employees',       path: '/employees',         label: 'الموظفون',        icon: Users,         section: 'admin', adminOnly: true },
 ];
 const NAV_SECTIONS = [
-  { id: 'audit',         label: 'مراجعة فواتير الشحن' },
-  { id: 'carrier_acct',  label: 'كشوف حسابات شركات الشحن' },
-  { id: 'bank',          label: 'كشوف بنكية' },
-  { id: 'admin',         label: 'الإدارة' },
+  { id: 'overview', label: 'نظرة عامة' },
+  { id: 'audits',   label: 'المراجعات' },
+  { id: 'ledger',   label: 'الكشوف المالية' },
+  { id: 'admin',    label: 'الإدارة والإعداد' },
 ];
 const PAGE_TITLES = {
-  '/dashboard':       'الرئيسية',
-  '/hub':             'كشف الشركات',
-  '/carriers':        'شركات الشحن',
-  '/contracts':       'جدول العقود',
-  '/upload':          'مراجعة جديدة',
-  '/audits':          'سجل المراجعات',
-  '/bank':            'كشف بنكي',
-  '/aramex-statements': 'رفع كشف حساب',
-  '/ledger':            'الدفتر',
+  '/dashboard':         'الرئيسية',
+  '/hub':               'كشف الشركات',
+  '/webhook':           'الوارد',
+  '/upload':            'مراجعة جديدة',
+  '/audits':            'سجل المراجعات',
+  '/weight-billing':    'فوترة الأوزان',
+  '/ledger':            'دفتر الشركات',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
   '/payments':          'الدفعات',
-  '/weight-billing':    'فوترة الأوزان',
+  '/aramex-statements': 'كشوف خارجية',
+  '/bank':              'كشف بنكي',
+  '/carriers':          'إدارة الشركات',
+  '/contracts':         'جدول العقود',
   '/carrier-kpi':       'أداء الناقلين',
-  '/webhook':           'سجل Webhook',
   '/activity-log':      'سجل النشاط',
-  '/employees':       'الموظفون',
-  '/settings/ai':     'الإعدادات — الذكاء الاصطناعي',
-  '/settings/permissions': 'الإعدادات — الصلاحيات',
-  '/settings/data':   'الإعدادات — البيانات',
-  '/results':         'نتائج التدقيق',
+  '/employees':         'الموظفون',
+  '/settings/ai':            'الإعدادات — الذكاء الاصطناعي',
+  '/settings/permissions':   'الإعدادات — الصلاحيات',
+  '/settings/data':          'الإعدادات — البيانات',
+  '/results':                'نتائج التدقيق',
 };
 const ROLE_LABEL = { admin: 'مدير', accountant1: 'محاسب أول', accountant2: 'محاسب ثانٍ' };
 
@@ -121,9 +134,23 @@ function AppInner({ theme, toggleTheme }) {
   const [openSections, setOpenSections] = useState(() => {
     try {
       const saved = JSON.parse(localStorage.getItem('sa-nav-sections') || 'null');
-      if (saved && typeof saved === 'object') return saved;
+      if (saved && typeof saved === 'object') {
+        // Drop stale section IDs from a previous IA — keep only keys that
+        // still exist in NAV_SECTIONS so the menu doesn't render empty
+        // headers from a previous build.
+        const validIds = new Set(NAV_SECTIONS.map(s => s.id));
+        const cleaned = {};
+        for (const [k, v] of Object.entries(saved)) {
+          if (validIds.has(k)) cleaned[k] = v;
+        }
+        // Make sure the most-used section is open on first land after
+        // an IA migration. Auto-open useEffect below will also kick in
+        // based on the current route.
+        if (Object.keys(cleaned).length === 0) cleaned.overview = true;
+        return cleaned;
+      }
     } catch { /* fall through to defaults */ }
-    return {};
+    return { overview: true };
   });
   const toggleSection = (id) => {
     setOpenSections(prev => {
