@@ -338,31 +338,55 @@ export default function CodSettlements({ isActive = true }) {
                   }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                        {String(u.sourceFile || '').startsWith('audit:') ? (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '1px 7px', borderRadius: 10,
-                            background: 'rgba(45,212,191,.12)',
-                            color: 'var(--accent)',
-                            border: '1px solid rgba(45,212,191,.30)',
-                            fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                          }} title="مُستخرج تلقائياً من مراجعة معتمدة">
-                            📋 من فاتورة الناقل
-                          </span>
-                        ) : u.direction === 'out' ? (
-                          <span style={{
-                            display: 'inline-flex', alignItems: 'center', gap: 4,
-                            padding: '1px 7px', borderRadius: 10,
-                            background: 'var(--surface)',
-                            color: 'var(--muted)',
-                            border: '1px solid var(--border)',
-                            fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
-                            whiteSpace: 'nowrap',
-                          }}>
-                            🏢 من نظامكم الداخلي
-                          </span>
-                        ) : null}
+                        {(() => {
+                          const src = String(u.sourceFile || '');
+                          if (src.includes(':auto-in')) {
+                            return (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '1px 7px', borderRadius: 10,
+                                background: 'rgba(139,92,246,.12)',
+                                color: '#8B5CF6',
+                                border: '1px solid rgba(139,92,246,.32)',
+                                fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                              }} title="مسوّى تلقائياً عند اعتماد فاتورة الناقل (الفاتورة هي السند)">
+                                🤖 ضمنياً من الفاتورة
+                              </span>
+                            );
+                          }
+                          if (src.startsWith('audit:')) {
+                            return (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '1px 7px', borderRadius: 10,
+                                background: 'rgba(45,212,191,.12)',
+                                color: 'var(--accent)',
+                                border: '1px solid rgba(45,212,191,.30)',
+                                fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                              }} title="مُستخرج تلقائياً من مراجعة معتمدة">
+                                📋 من فاتورة الناقل
+                              </span>
+                            );
+                          }
+                          if (u.direction === 'out') {
+                            return (
+                              <span style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 4,
+                                padding: '1px 7px', borderRadius: 10,
+                                background: 'var(--surface)',
+                                color: 'var(--muted)',
+                                border: '1px solid var(--border)',
+                                fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                                whiteSpace: 'nowrap',
+                              }}>
+                                🏢 من نظامكم الداخلي
+                              </span>
+                            );
+                          }
+                          return null;
+                        })()}
                         <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {u.sourceFile || '(بدون اسم ملف)'}
                         </span>
