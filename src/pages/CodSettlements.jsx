@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
@@ -34,8 +35,16 @@ const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
   : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// Module-level guard for COD imports landing from the Webhook page.
+// React 18 StrictMode (dev) runs effects twice and PageSlot keeps the
+// page mounted across navigation — useRef would reset and an empty-
+// deps useEffect would only fire once. A Set on module scope survives
+// both, so an import is consumed exactly once per click.
+const CONSUMED_COD_IMPORTS = new Set();
+
 export default function CodSettlements({ isActive = true }) {
   const { user } = useAuth();
+  const location = useLocation();
   const carriers = listSupportedCarriers();
   const [carrier, setCarrier] = useState(carriers[0]?.id || 'aramex');
   const [rows, setRows] = useState([]);
@@ -174,6 +183,51 @@ export default function CodSettlements({ isActive = true }) {
   };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
+
+  // ── Webhook → COD auto-import ───────────────────────────────────
+  // When the admin clicks "حفظ كتحصيل" in the Webhook page, the file
+  // is stashed in sessionStorage as `webhookCodImport`. We pick it up
+  // here, switch the dropdown to its carrier, and open the 'in'
+  // upload modal pre-filled with the file's bytes so the user just
+  // clicks "حفظ" to import.
+  //
+  // Same module-level Set pattern as UploadWizard: PageSlot keeps
+  // this page mounted, so an empty deps useEffect would never re-fire
+  // on later visits. We depend on location.pathname instead.
+  useEffect(() => {
+    if (location.pathname !== '/cod-settlements') return;
+    let raw;
+    try { raw = sessionStorage.getItem('webhookCodImport'); } catch { return; }
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch {
+      sessionStorage.removeItem('webhookCodImport');
+      return;
+    }
+    if (!payload?.base64 || !payload?.filename || !payload?.carrierId) return;
+    const key = payload.eventId || payload.filename;
+    if (CONSUMED_COD_IMPORTS.has(key)) return;
+    CONSUMED_COD_IMPORTS.add(key);
+    sessionStorage.removeItem('webhookCodImport');
+
+    try {
+      // Decode base64 → File so UploadModal can run the parser on it.
+      const bin = atob(payload.base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], payload.filename, {
+        type: /\.(xlsx|xlsm)$/i.test(payload.filename)
+          ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+          : 'application/octet-stream',
+      });
+      setCarrier(payload.carrierId);
+      setUploadModal({ direction: 'in', preloadedFile: file, sourceEventId: payload.eventId });
+      toast(`جارٍ معالجة ملف التحصيل: ${payload.filename}`, 'info');
+    } catch (err) {
+      CONSUMED_COD_IMPORTS.delete(key);
+      toast(`فشل استيراد ملف التحصيل: ${err.message}`, 'error');
+    }
+  }, [location.pathname]);
 
   const summary    = useMemo(() => summarizeReconciliation(rows), [rows]);
   const aging      = useMemo(() => ageOutstanding(rows), [rows]);
@@ -632,6 +686,8 @@ export default function CodSettlements({ isActive = true }) {
         <UploadModal
           direction={uploadModal.direction}
           carrier={carrier}
+          preloadedFile={uploadModal.preloadedFile}
+          sourceEventId={uploadModal.sourceEventId}
           onClose={() => setUploadModal(null)}
           onDone={() => { setUploadModal(null); refresh(); }}
           userId={user?.id}
@@ -817,7 +873,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 }
 
 // ── UploadModal ────────────────────────────────────────────────────────
-function UploadModal({ direction, carrier, onClose, onDone, userId }) {
+function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFile, sourceEventId }) {
   // Multi-file: each file produces its own preview (rows, dedup tags,
   // own filename). They're saved one-by-one, so each gets its own
   // upload_id and shows up as a separate row in the uploads strip.
@@ -932,6 +988,15 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
     setBusy(false);
   };
 
+  // If a preloaded File was passed in (Webhook → "حفظ كتحصيل" flow),
+  // feed it through handleFiles once on mount.
+  useEffect(() => {
+    if (preloadedFile) {
+      handleFiles([preloadedFile]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Re-bind the rest of the component to the FIRST preview's data
   // when only one file is staged (keeps the single-file UX clean).
   const preview = previews.length === 1 ? previews[0] : null;
@@ -971,6 +1036,17 @@ function UploadModal({ direction, carrier, onClose, onDone, userId }) {
       if (skippedCount) parts.push(`تم تجاوز ${skippedCount} مكرّر`);
       if (settlementRef) parts.push(`تسوية #${settlementRef.trim()}`);
       toast(parts.join(' · '), skippedCount ? 'info' : 'success');
+      // Close the loop on a webhook → COD import: flip the source
+      // event to 'processed' so the Webhook page swaps in the
+      // "✓ تمت معالجته" badge instead of the import button.
+      if (sourceEventId) {
+        try {
+          const { markEventProcessed } = await import('../lib/webhookService.js');
+          await markEventProcessed(sourceEventId, null, userId || null);
+        } catch (err) {
+          console.warn('webhook event mark-processed (COD) failed:', err.message);
+        }
+      }
       onDone();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
