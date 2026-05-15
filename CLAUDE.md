@@ -206,7 +206,7 @@
 | DeliverNow | `delivernow` | `audit_with_cod` | ✅ 11 ر.س ثابتة، 15% VAT | ✅ `@delivernow.net` |
 | أرامكس | `c_1777506662790` | (غير محدد) | ✅ | ❌ |
 | iMile V1 | `imile` | (غير محدد) | ✅ 17/15kg ثم 1/kg | ❌ |
-| J&T Express | `jnt` | (غير محدد) | ✅ 16/15kg ثم 1/kg | ❌ |
+| J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
 | سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
 | Boleeseh | `boleeseh` | (غير محدد) | ❌ | ❌ |
 | Webek | `webek` | (غير محدد) | ❌ | ❌ |
@@ -234,9 +234,9 @@
 ## 9. مهام معلّقة معروفة (لا تبدأ بدون قراءة سياقها)
 
 - [ ] back-fill قيود ledger للمراجعات الـ 12 السابقة (قبل auto-posting)
-- [ ] تعريف `file_kind` لباقي الشركات (iMile, J&T, SMSA, Aramex)
-- [ ] back-fill بصمات Webhook (`email_from`) لباقي الشركات
-- [ ] تطوير parsers لـ COD remittance لـ iMile و J&T
+- [ ] تعريف `file_kind` لباقي الشركات (iMile, SMSA, Aramex) — ✅ J&T انتهت
+- [ ] back-fill بصمات Webhook (`email_from`) لباقي الشركات بما فيها J&T
+- [ ] تطوير parser لـ COD remittance لـ iMile — ✅ J&T انتهى
 - [ ] إضافة دور "محاسب" / "مدير" مع صلاحيات اعتماد منفصلة
 - [ ] إغلاق فترات شهرية (period closing)
 

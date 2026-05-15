@@ -19,6 +19,7 @@ import { aatakRemittanceParser }      from './aatakRemittance.js';
 import { delexRemittanceParser }      from './delexRemittance.js';
 import { webekRemittanceParser }      from './webekRemittance.js';
 import { boleesehRemittanceParser }   from './boleesehRemittance.js';
+import { jntRemittanceParser }        from './jntRemittance.js';
 
 export const INTERNAL_PARSER = internalSettlementParser;
 
@@ -26,6 +27,7 @@ export const REMITTANCE_PARSERS = {
   aramex:     aramexRemittanceParser,
   smsa:       smsaRemittanceParser,
   delivernow: deliverNowRemittanceParser,
+  jnt:        jntRemittanceParser,
   aatak:      aatakRemittanceParser,
   delex:      delexRemittanceParser,
   webek:      webekRemittanceParser,
