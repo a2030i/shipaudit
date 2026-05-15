@@ -88,6 +88,78 @@ function isSpreadsheet(filename) {
   return SPREADSHEET_EXTS.includes(ext);
 }
 
+// ── Action button helpers ─────────────────────────────────────
+// Compact, consistent, single-line action buttons for the events
+// table. The primary action gets a full label; secondary actions
+// (download, delete) are square icon-only buttons with tooltips.
+function primaryBtnStyle(variant = 'accent') {
+  const variants = {
+    accent: {
+      background: 'linear-gradient(135deg, #14B8A6, #2DD4BF)',
+      color: '#fff',
+      border: '1px solid transparent',
+      boxShadow: '0 2px 8px rgba(45,212,191,.30)',
+    },
+    'accent-soft': {
+      background: 'rgba(45,212,191,.12)',
+      color: 'var(--accent)',
+      border: '1px solid rgba(45,212,191,.40)',
+      boxShadow: 'none',
+    },
+    ghost: {
+      background: 'transparent',
+      color: 'var(--muted)',
+      border: '1px solid var(--border2)',
+      boxShadow: 'none',
+    },
+  };
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 6,
+    padding: '6px 12px',
+    borderRadius: 8,
+    fontFamily: 'var(--font-sans)',
+    fontSize: 12, fontWeight: 600,
+    cursor: 'pointer',
+    height: 30,
+    whiteSpace: 'nowrap',
+    ...(variants[variant] || variants.accent),
+  };
+}
+
+function IconBtn({ icon, title, onClick, disabled, danger }) {
+  return (
+    <button
+      onClick={disabled ? undefined : onClick}
+      title={title}
+      disabled={disabled}
+      style={{
+        width: 30, height: 30,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        background: 'transparent',
+        color: danger ? 'var(--red)' : 'var(--muted)',
+        border: `1px solid ${danger ? 'rgba(239,68,68,.30)' : 'var(--border2)'}`,
+        borderRadius: 8,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+        opacity: disabled ? .45 : 1,
+        transition: 'all .12s',
+      }}
+      onMouseEnter={e => {
+        if (disabled) return;
+        e.currentTarget.style.borderColor = danger ? 'var(--red)' : 'var(--text)';
+        e.currentTarget.style.color       = danger ? 'var(--red)' : 'var(--text)';
+        e.currentTarget.style.background  = danger ? 'rgba(239,68,68,.06)' : 'var(--surface)';
+      }}
+      onMouseLeave={e => {
+        e.currentTarget.style.borderColor = danger ? 'rgba(239,68,68,.30)' : 'var(--border2)';
+        e.currentTarget.style.color       = danger ? 'var(--red)' : 'var(--muted)';
+        e.currentTarget.style.background  = 'transparent';
+      }}
+    >
+      {icon}
+    </button>
+  );
+}
+
 // Convert a Blob to base64 (without the "data:..." prefix).
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
@@ -459,74 +531,81 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                         )}
                       </td>
                       <td>
-                        <span style={{
-                          padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600,
-                          background: meta.bg, color: meta.color, fontFamily: 'var(--font-mono)',
-                          border: `1px solid ${meta.color}40`,
-                          whiteSpace: 'nowrap',
-                        }}>
-                          {meta.label}
-                        </span>
+                        {e.audit_id ? (
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '3px 9px', borderRadius: 12,
+                            background: 'rgba(45,212,191,.14)',
+                            color: 'var(--accent)',
+                            border: '1px solid rgba(45,212,191,.40)',
+                            fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                            whiteSpace: 'nowrap',
+                          }}>
+                            <FileCheck2 size={11}/>
+                            تمت مراجعتها
+                          </span>
+                        ) : (
+                          <span style={{
+                            padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600,
+                            background: meta.bg, color: meta.color, fontFamily: 'var(--font-mono)',
+                            border: `1px solid ${meta.color}40`,
+                            whiteSpace: 'nowrap',
+                          }}>
+                            {meta.label}
+                          </span>
+                        )}
                       </td>
                       <td>
-                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
-                          {/* Once this webhook event has been turned into an
-                              audit, swap the "حفظ كمراجعة" button for an
-                              "open audit" link + a tiny success badge. */}
+                        <div style={{
+                          display: 'inline-flex', alignItems: 'center', gap: 6,
+                          flexWrap: 'nowrap',
+                        }}>
+                          {/* Primary action — only one, with full label */}
                           {e.audit_id ? (
-                            <>
-                              <span style={{
-                                display: 'inline-flex', alignItems: 'center', gap: 4,
-                                padding: '3px 8px', borderRadius: 11,
-                                background: 'rgba(45,212,191,.14)',
-                                color: 'var(--accent)',
-                                border: '1px solid rgba(45,212,191,.40)',
-                                fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
-                                whiteSpace: 'nowrap',
-                              }}>
-                                <FileCheck2 size={11}/>
-                                تمت مراجعتها
-                              </span>
-                              <Btn
-                                size="sm" variant="ghost" icon={<ExternalLink size={12}/>}
-                                onClick={() => openLinkedAudit(e.audit_id)}
-                                title="فتح المراجعة المرتبطة"
-                              >
-                                فتح المراجعة
-                              </Btn>
-                            </>
-                          ) : canImport && (
-                            <Btn
-                              size="sm"
-                              variant="accent"
-                              icon={importingId === e.id ? <Spinner size={12}/> : <UploadIcon size={12}/>}
+                            <button
+                              onClick={() => openLinkedAudit(e.audit_id)}
+                              title="فتح المراجعة المرتبطة"
+                              style={primaryBtnStyle('accent-soft')}
+                            >
+                              <FileCheck2 size={13}/>
+                              فتح المراجعة
+                            </button>
+                          ) : canImport ? (
+                            <button
                               onClick={() => importToAudit(e)}
                               disabled={importingId === e.id}
+                              style={primaryBtnStyle('accent')}
                             >
+                              {importingId === e.id
+                                ? <Spinner size={13}/>
+                                : <UploadIcon size={13}/>}
                               حفظ كمراجعة
-                            </Btn>
-                          )}
-                          {e.file_path && (
-                            <Btn size="sm" variant="ghost" icon={<Download size={12}/>} onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}>
-                              تنزيل
-                            </Btn>
-                          )}
-                          {!e.detected_carrier_id && (
-                            <Btn size="sm" variant="ghost" icon={<HelpCircle size={12}/>} onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}>
+                            </button>
+                          ) : !e.detected_carrier_id ? (
+                            <button
+                              onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}
+                              style={primaryBtnStyle('ghost')}
+                            >
+                              <HelpCircle size={13}/>
                               ربط بشركة
-                            </Btn>
+                            </button>
+                          ) : null}
+
+                          {/* Secondary actions — icon-only squares */}
+                          {e.file_path && (
+                            <IconBtn
+                              icon={<Download size={13}/>}
+                              title="تنزيل الملف"
+                              onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}
+                            />
                           )}
-                          <Btn
-                            size="sm"
-                            variant="ghost"
-                            icon={deletingId === e.id ? <Spinner size={12}/> : <Trash2 size={12}/>}
+                          <IconBtn
+                            icon={deletingId === e.id ? <Spinner size={13}/> : <Trash2 size={13}/>}
+                            title="حذف الحدث"
+                            danger
                             onClick={() => askDelete(e)}
                             disabled={deletingId === e.id}
-                            style={{ color: 'var(--red)' }}
-                            title="حذف الحدث"
-                          >
-                            حذف
-                          </Btn>
+                          />
                         </div>
                       </td>
                     </tr>
