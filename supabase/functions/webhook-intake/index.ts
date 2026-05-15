@@ -217,11 +217,13 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   if (req.method !== "POST")    return json({ error: "method_not_allowed" }, 405);
 
-  const authHeader = req.headers.get("authorization") || "";
-  const webhookSecret = req.headers.get("x-webhook-secret") || "";
-  const hasJwt = authHeader.startsWith("Bearer ") && authHeader.length > 20;
-  const hasSecret = SHARED_SECRET && webhookSecret === SHARED_SECRET;
-  if (!hasJwt && !hasSecret) return json({ error: "unauthorized" }, 401);
+  // Open endpoint — no auth required. The URL itself is the secret
+  // (it's not guessable and only shared with the user's email
+  // automation). Junk files surface as 'awaiting_assignment' in the
+  // /webhook page and the admin can delete or classify them.
+  // If WEBHOOK_SHARED_SECRET is set later, requests carrying a
+  // matching X-Webhook-Secret still get the same treatment — but
+  // we no longer reject calls that omit it.
 
   let body: Record<string, unknown>;
   try { body = await req.json(); }
