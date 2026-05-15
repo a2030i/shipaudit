@@ -60,6 +60,12 @@ const VARIANTS = {
     border: '1px solid rgba(45,212,191,.45)',
     boxShadow: 'none',
   },
+  danger: {
+    background: 'linear-gradient(135deg, #DC2626, #EF4444)',
+    color: '#fff',
+    border: '1px solid transparent',
+    boxShadow: '0 4px 16px rgba(239,68,68,.28)',
+  },
 };
 
 const SIZES = {
