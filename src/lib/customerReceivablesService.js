@@ -281,13 +281,28 @@ export async function loadLatestReceivables() {
     c.invoices.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
   }
 
+  // Overlay the per-customer status tags so the UI can split between
+  // the main view and the "متابعة خاصة" tab.
+  const statuses = await loadCustomerStatuses();
+  for (const c of byCustomer.values()) {
+    const s = statuses.get(c.name);
+    c.status = s?.status || 'normal';
+    c.notes  = s?.notes  || null;
+  }
+
   const customers = [...byCustomer.values()].sort((a, b) => b.total - a.total);
-  const total = +customers.reduce((s, c) => s + c.total, 0).toFixed(2);
+  // Totals + aging are calculated on the ACTIVE set only (excluded
+  // customers are tracked separately so they don't inflate KPIs).
+  const activeCustomers   = customers.filter(c => c.status !== 'excluded');
+  const excludedCustomers = customers.filter(c => c.status === 'excluded');
+  const total = +activeCustomers.reduce((s, c) => s + c.total, 0).toFixed(2);
   // Aging: bucket each INVOICE (not customer) by days outstanding, since
   // a customer may have invoices in multiple buckets.
+  const excludedNameSet = new Set(excludedCustomers.map(c => c.name));
   const aging = { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
   for (const r of all) {
     if (r.is_summary || !r.invoice_date) continue;
+    if (excludedNameSet.has(r.customer_name)) continue;
     const days = Math.floor((today - new Date(r.invoice_date)) / 86_400_000);
     const bucket = ageBucket(days);
     aging[bucket] += Number(r.balance_amount) || 0;
@@ -304,9 +319,12 @@ export async function loadLatestReceivables() {
       uploadedAt: snap.uploaded_at,
     },
     customers,
+    activeCustomers,
+    excludedCustomers,
     aging,
     total,
-    customerCount: customers.length,
+    customerCount: activeCustomers.length,
+    excludedTotal: +excludedCustomers.reduce((s, c) => s + c.total, 0).toFixed(2),
   };
 }
 
@@ -349,4 +367,54 @@ export async function deleteReceivablesSnapshot(snapshotId) {
     .select('id');
   if (error) throw error;
   return data?.length || 0;
+}
+
+// ── Customer settings (excluded / priority tags) ──────────────────
+// These flags persist across snapshots — the customer name is the
+// natural key. Tagging "Foodie" as excluded once is enough; they stay
+// excluded on every future snapshot until the user reverses it.
+
+export async function loadCustomerStatuses() {
+  const { data, error } = await supabase
+    .from('customer_settings')
+    .select('customer_name, status, notes, updated_at');
+  if (error) throw error;
+  const map = new Map();
+  for (const r of data || []) {
+    map.set(r.customer_name, {
+      status:    r.status,
+      notes:     r.notes,
+      updatedAt: r.updated_at,
+    });
+  }
+  return map;
+}
+
+export async function setCustomerStatus({ customerName, status, notes, userId }) {
+  if (!customerName) throw new Error('customer name مطلوب');
+  if (!['normal', 'excluded', 'priority'].includes(status)) {
+    throw new Error(`status غير صالح: ${status}`);
+  }
+  // 'normal' = default → clear the row to keep the table small.
+  if (status === 'normal' && !notes) {
+    const { error } = await supabase
+      .from('customer_settings')
+      .delete()
+      .eq('customer_name', customerName);
+    if (error) throw error;
+    return null;
+  }
+  const { data, error } = await supabase
+    .from('customer_settings')
+    .upsert({
+      customer_name: customerName,
+      status,
+      notes:         notes || null,
+      updated_by:    userId || null,
+      updated_at:    new Date().toISOString(),
+    }, { onConflict: 'customer_name' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
