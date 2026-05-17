@@ -1,19 +1,37 @@
-// Parser for DeliverNow's COD remittance file. Format spotted from the
-// user's real export ("ف 2769 - فورتيك.xls"):
-//   • Row 0: title "Draft Invoice - الفاتورة المبدئية"
-//   • Row 1: bilingual account/customer info blob
-//   • Row 2: blank
-//   • Row 3: HEADER — Awb No / COD Amount + other columns
-//   • Rows 4..N: data — one shipment per row
-//   • Last rows: VAT / totals (no AWB)
+// Parser for DeliverNow's COD remittance files. DeliverNow ships TWO
+// formats depending on the report type:
 //
-// We extract only the rows that actually represent COD cash the carrier
-// collected on our behalf — i.e. rows with a numeric COD Amount > 0.
-// CC/Delivered rows (prepaid) get filtered out because they don't
-// reconcile against a settlement we paid the merchant for.
+// 1) "Draft Invoice / الفاتورة المبدئية" (monthly billing, AWB=DNL...)
+//    • Row 0:  title 'Draft Invoice - الفاتورة المبدئية'
+//    • Row 1:  bilingual account/customer info blob
+//    • Row 2:  blank
+//    • Row 3:  HEADER — Awb No / COD Amount + other columns
+//    • Last rows: VAT / totals (no AWB)
+//
+// 2) "كشف تحصيلات لمحه" (weekly cash-collection report, AWB=DLX...)
+//    • Row 0:  blank
+//    • Row 1:  title + total ("تحصيلات الأسبوع X · 9,788.05")
+//    • Row 2:  HEADER — Barcode, Package Source, Sender Business Name,
+//              ..., Payment Type, COD Collection Method,
+//              Collection Amount, Original COD, ...
+//    • Rows 3..N: data — one shipment per row, Prepaid rows have
+//              Collection Amount=0 and get skipped.
+//
+// Both produce the same output: [{ awb, amount }] with amount > 0.
+// CC/Delivered / Prepaid rows are filtered because they don't represent
+// cash the carrier actually collected on our behalf.
 
-const AWB_HEADER_KEYS = ['awb no', 'awb number', 'رقم البوليصة'];
-const AMT_HEADER_KEYS = ['cod amount', 'قيمة التحصيل'];
+const AWB_HEADER_KEYS = [
+  'awb no', 'awb number', 'barcode', 'tracking',
+  'رقم البوليصة', 'رقم الشحنة',
+];
+const AMT_HEADER_KEYS = [
+  // Variants ordered by specificity — first match wins.
+  'collection amount',    // weekly DLX format (net the carrier paid us)
+  'cod amount',           // monthly DNL invoice format
+  'original cod',
+  'قيمة التحصيل', 'المبلغ المحصّل', 'الصافي',
+];
 
 function cellHas(cell, keys) {
   const s = String(cell ?? '').toLowerCase();
@@ -43,8 +61,9 @@ export const deliverNowRemittanceParser = {
     const headerIdx = findHeaderRow(allRows);
     if (headerIdx < 0) {
       throw new Error(
-        'الملف لا يطابق صيغة DeliverNow — تأكد أن فيه عمودَي ' +
-        '"Awb No / رقم البوليصة" و "COD Amount / قيمة التحصيل".',
+        'الملف لا يطابق صيغة DeliverNow — يلزم وجود عمود AWB ' +
+        '("Awb No" أو "Barcode") + عمود مبلغ ("COD Amount" أو ' +
+        '"Collection Amount").',
       );
     }
     const header  = allRows[headerIdx];
