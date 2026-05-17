@@ -129,6 +129,7 @@
 |---|---|
 | `src/lib/coreService.js` | CRUD للـ audits + carriers، بوابة الاعتماد، auto-posting، loadAuditShipments |
 | `src/lib/codSettlementService.js` | COD reconciliation، syncAuditCodOut، saveSettlementUpload |
+| `src/lib/customerReceivablesService.js` | parser + snapshot upload + load latest AR rollup |
 | `src/lib/webhookService.js` | CRUD لـ webhook_events، delete (مع verify) |
 | `src/lib/carriersHubService.js` | تجميع بيانات `/hub` (paginated) |
 | `src/lib/carrierProfileService.js` | بيانات بروفايل شركة واحدة، updateCarrierFileSignature |
@@ -138,6 +139,7 @@
 | `src/pages/AuditResults.jsx` | شاشة المراجعة + بوابة الاعتماد UI |
 | `src/pages/WebhookEvents.jsx` | صندوق الوارد، حفظ كمراجعة، حذف |
 | `src/pages/CodSettlements.jsx` | تسويات COD، تبويبات، تصدير قسم حالي |
+| `src/pages/CustomerReceivables.jsx` | `/receivables` — مديونيات العملاء (read-only snapshots) |
 | `src/pages/CarriersHub.jsx` | `/hub` — كرت لكل شركة |
 | `src/pages/CarrierProfile.jsx` | `/carrier?id=X` — بروفايل شركة كامل |
 | `src/pages/CarrierLedger.jsx` | `/ledger` — الكشف المحاسبي للشركات |
@@ -160,6 +162,7 @@
 | `webhook_events` | الإيميلات الواردة |
 | `cod_settlement` | تسويات COD per-AWB (in/out) |
 | `cod_reconciliation_action` | اعتمادات/اعتراضات على فروق COD |
+| `customer_receivables` | snapshots لمديونيات العملاء (read-only AR view) |
 | `carrier_operations` | الكشف المحاسبي (DR/CR لكل شركة) |
 | `carrier_statements` | كشوف خارجية مرفوعة من الشركات |
 | `payments` + `payment_allocations` | الدفعات وربطها بالعمليات |
