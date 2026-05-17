@@ -1149,7 +1149,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
           {/* In single-file mode keep the legacy dup warning for
               visual symmetry with the rest of the modal. Multi-file
               previews already show per-file dup counts above. */}
-          {preview && (preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
+          {preview && !preview.error && (preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
             <div style={{
               padding: '10px 14px', marginBottom: 12,
               background: 'rgba(248,113,113,.08)',
@@ -1189,8 +1189,26 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
           </div>
           {/* Single-file: show a peek of the rows. Multi-file: per-
               file summary above is the right level of detail and a
-              giant row table would be overwhelming. */}
-          {preview && (
+              giant row table would be overwhelming.
+              When the parser failed for this file (preview.error set),
+              preview.rows is undefined — show the error inline instead
+              of crashing the render with a "Cannot read 'slice'" throw. */}
+          {preview && preview.error && (
+            <div style={{
+              marginTop: 12, padding: '10px 14px',
+              background: 'rgba(248,113,113,.08)',
+              border: '1px solid rgba(248,113,113,.32)',
+              borderRadius: 9, fontSize: 12, color: 'var(--text)', lineHeight: 1.7,
+            }}>
+              <div style={{ fontWeight: 700, color: 'var(--red)', marginBottom: 4 }}>
+                ⚠ تعذّر قراءة الملف
+              </div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
+                {preview.error}
+              </div>
+            </div>
+          )}
+          {preview && !preview.error && Array.isArray(preview.rows) && (
             <div style={{
               marginTop: 12, maxHeight: 200, overflowY: 'auto',
               border: '1px solid var(--border)', borderRadius: 9,
