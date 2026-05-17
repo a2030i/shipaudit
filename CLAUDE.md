@@ -163,6 +163,7 @@
 | `cod_settlement` | تسويات COD per-AWB (in/out) |
 | `cod_reconciliation_action` | اعتمادات/اعتراضات على فروق COD |
 | `customer_receivables` | snapshots لمديونيات العملاء (read-only AR view) |
+| `customer_settings` | per-customer tag (excluded/priority) — يدوم عبر snapshots |
 | `carrier_operations` | الكشف المحاسبي (DR/CR لكل شركة) |
 | `carrier_statements` | كشوف خارجية مرفوعة من الشركات |
 | `payments` + `payment_allocations` | الدفعات وربطها بالعمليات |

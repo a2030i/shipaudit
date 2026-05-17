@@ -9,12 +9,14 @@ import * as XLSX from 'xlsx';
 import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
+  ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
   loadLatestReceivables, loadReceivablesSnapshots, deleteReceivablesSnapshot,
+  setCustomerStatus,
 } from '../lib/customerReceivablesService.js';
 
 const fmt = (n) =>
@@ -35,6 +37,41 @@ const fmtDate = (iso) => {
     return new Date(iso).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch { return iso; }
 };
+
+// ── Tab pill ────────────────────────────────────────────────────
+function Tab({ id, label, count, amount, active, onClick }) {
+  return (
+    <button onClick={() => onClick(id)} style={{
+      flex: 1,
+      background: active ? 'var(--card)' : 'transparent',
+      border: 'none',
+      padding: '10px 14px',
+      cursor: 'pointer',
+      borderRadius: 8,
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+      fontFamily: 'var(--font-sans)',
+      boxShadow: active ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+    }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: active ? 'var(--text)' : 'var(--muted)' }}>
+        {label}
+      </span>
+      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {amount != null && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: active ? 'var(--accent)' : 'var(--muted)', fontWeight: 700 }}>
+            {Number(amount).toLocaleString('ar-SA', { maximumFractionDigits: 0 })} ر.س
+          </span>
+        )}
+        <span style={{
+          background: 'var(--surface)',
+          color: active ? 'var(--text)' : 'var(--muted)',
+          padding: '2px 9px', borderRadius: 9,
+          fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
+          border: '1px solid var(--border)',
+        }}>{count}</span>
+      </span>
+    </button>
+  );
+}
 
 // ── Hero ────────────────────────────────────────────────────────
 function Hero({ total, customerCount, snapshot, oldestDays }) {
@@ -329,6 +366,87 @@ function Row({ label, value, accent }) {
   );
 }
 
+// ── Tag (exclude / restore) modal ──────────────────────────────
+function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
+  const [notes, setNotes] = useState(customer.notes || '');
+  const isExclude = mode === 'exclude';
+  return (
+    <Modal
+      title={isExclude ? '🛡 نقل لمتابعة خاصة' : 'إرجاع للمتابعة الافتراضية'}
+      onClose={onClose} width={480}
+    >
+      <div style={{
+        marginBottom: 14, padding: '10px 14px',
+        background: 'var(--surface)',
+        border: '1px solid var(--border)',
+        borderRadius: 9, fontSize: 12.5, lineHeight: 1.7,
+      }}>
+        <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>
+          {customer.name}
+        </div>
+        <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>
+          مديونيته الحالية: <strong style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmt(customer.total)} ر.س</strong>
+          {customer.invoiceCount > 0 && ` · ${customer.invoiceCount} فاتورة`}
+        </div>
+      </div>
+
+      <div style={{
+        marginBottom: 14, padding: '10px 14px',
+        background: isExclude ? 'rgba(45,212,191,.06)' : 'rgba(251,191,36,.06)',
+        border: `1px solid ${isExclude ? 'rgba(45,212,191,.32)' : 'rgba(251,191,36,.32)'}`,
+        borderRadius: 9, fontSize: 12, lineHeight: 1.7,
+      }}>
+        {isExclude ? (
+          <>
+            <strong style={{ color: 'var(--accent)' }}>ماذا يحدث؟</strong>
+            <ul style={{ margin: '6px 0 0 0', paddingInlineStart: 18, color: 'var(--muted)' }}>
+              <li>يخرج من جدول المديونيات الافتراضي</li>
+              <li>لا يُحتسب في الإجماليات + الـ aging</li>
+              <li>يظهر في تبويب "متابعة خاصة"</li>
+              <li>يبقى موسوماً حتى عبر snapshots لاحقة</li>
+            </ul>
+          </>
+        ) : (
+          <>
+            <strong style={{ color: 'var(--gold)' }}>سيتم:</strong>
+            <ul style={{ margin: '6px 0 0 0', paddingInlineStart: 18, color: 'var(--muted)' }}>
+              <li>إرجاعه للمتابعة الافتراضية</li>
+              <li>احتسابه في الإجماليات + الـ aging</li>
+              <li>إزالة الملاحظة إن وُجدت</li>
+            </ul>
+          </>
+        )}
+      </div>
+
+      <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
+        ملاحظة (اختياري)
+      </label>
+      <textarea
+        value={notes}
+        onChange={e => setNotes(e.target.value)}
+        placeholder={isExclude ? "مثال: عميل ملتزم — دفع منتظم شهرياً" : "اتركها فارغة لإزالة الملاحظة الحالية"}
+        rows={3}
+        style={{
+          width: '100%', padding: '8px 10px', borderRadius: 8,
+          fontSize: 12, fontFamily: 'var(--font-sans)',
+          resize: 'vertical',
+        }}
+      />
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
+        <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+        <Btn
+          variant={isExclude ? 'accent' : 'gold'}
+          icon={isExclude ? <ShieldCheck size={13}/> : <EyeOff size={13}/>}
+          onClick={() => onSubmit(notes.trim() || null)}
+        >
+          {isExclude ? 'نقل لمتابعة خاصة' : 'إرجاع للافتراضية'}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────
 export default function CustomerReceivables({ isActive = true }) {
   const { user } = useAuth();
@@ -342,6 +460,14 @@ export default function CustomerReceivables({ isActive = true }) {
   const [showUpload, setShowUpload] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
+  // Tab: 'active' = الافتراضي, 'excluded' = متابعة خاصة
+  const [tab, setTab] = useState('active');
+  // Filters
+  const [minBalance, setMinBalance] = useState('');
+  const [minDays,    setMinDays]    = useState('');
+  const [bucketFilters, setBucketFilters] = useState(new Set()); // 'd0_30' | 'd31_60' | 'd61_90' | 'd90_plus'
+  // Tag modal
+  const [tagModal, setTagModal] = useState(null); // { customer, mode:'exclude'|'restore' }
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -366,20 +492,79 @@ export default function CustomerReceivables({ isActive = true }) {
   }, [data]);
 
   const visibleCustomers = useMemo(() => {
-    if (!data?.customers) return [];
-    let pool = data.customers;
+    if (!data) return [];
+    // Pick the right pool first — excluded customers are tracked
+    // separately so the active KPIs don't count them.
+    let pool = tab === 'excluded'
+      ? (data.excludedCustomers || [])
+      : (data.activeCustomers   || []);
+    // Text search
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       pool = pool.filter(c => c.name.toLowerCase().includes(q));
     }
+    // Filter: min balance
+    const mb = parseFloat(minBalance);
+    if (Number.isFinite(mb) && mb > 0) {
+      pool = pool.filter(c => (c.total || 0) >= mb);
+    }
+    // Filter: min days outstanding
+    const md = parseInt(minDays, 10);
+    if (Number.isFinite(md) && md > 0) {
+      pool = pool.filter(c => (c.daysOutstanding || 0) >= md);
+    }
+    // Filter: aging bucket (a customer "is in" a bucket if their
+    // oldest invoice falls in that bucket OR they have any invoice
+    // there. We use oldest-bucket as the primary tag for simplicity.)
+    if (bucketFilters.size > 0) {
+      pool = pool.filter(c => bucketFilters.has(c.agingBucket));
+    }
     const dir = sortDir === 'asc' ? 1 : -1;
     return [...pool].sort((a, b) => {
-      if (sortBy === 'name')    return a.name.localeCompare(b.name) * dir;
-      if (sortBy === 'oldest')  return ((a.daysOutstanding || 0) - (b.daysOutstanding || 0)) * dir;
+      if (sortBy === 'name')     return a.name.localeCompare(b.name) * dir;
+      if (sortBy === 'oldest')   return ((a.daysOutstanding || 0) - (b.daysOutstanding || 0)) * dir;
       if (sortBy === 'invoices') return ((a.invoiceCount || 0) - (b.invoiceCount || 0)) * dir;
       return ((a.total || 0) - (b.total || 0)) * dir;
     });
-  }, [data, search, sortBy, sortDir]);
+  }, [data, tab, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
+
+  const toggleBucket = (k) => {
+    setBucketFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(k)) next.delete(k); else next.add(k);
+      return next;
+    });
+  };
+
+  const clearFilters = () => {
+    setMinBalance('');
+    setMinDays('');
+    setBucketFilters(new Set());
+    setSearch('');
+  };
+
+  const hasFilters = !!minBalance || !!minDays || bucketFilters.size > 0 || !!search.trim();
+
+  const handleTagCustomer = async (customerName, status, notes) => {
+    try {
+      await setCustomerStatus({
+        customerName,
+        status,
+        notes,
+        userId: user?.id,
+      });
+      toast(
+        status === 'excluded' ? `تم نقل ${customerName} إلى متابعة خاصة` :
+        status === 'normal'   ? `تم إرجاع ${customerName} للمتابعة الافتراضية` :
+                                'تم التحديث',
+        'success',
+      );
+      setTagModal(null);
+      refresh();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+  };
 
   const handleSort = (col) => {
     if (sortBy === col) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -472,19 +657,90 @@ export default function CustomerReceivables({ isActive = true }) {
         <>
           <AgingGrid aging={data.aging} total={data.total}/>
 
-          {/* Search */}
-          <Card style={{ padding: 10, marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <Search size={14} color="var(--muted)"/>
-            <input
-              value={search} onChange={e => setSearch(e.target.value)}
-              placeholder="بحث باسم العميل…"
-              style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12 }}
-            />
-            {search && (
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-                {visibleCustomers.length} نتيجة
-              </span>
-            )}
+          {/* Tabs */}
+          <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)' }}>
+              <Tab
+                id="active" label="المتابعة الافتراضية"
+                count={data.activeCustomers?.length || 0}
+                amount={data.total}
+                active={tab === 'active'} onClick={setTab}
+              />
+              <Tab
+                id="excluded" label="🛡 متابعة خاصة"
+                count={data.excludedCustomers?.length || 0}
+                amount={data.excludedTotal}
+                active={tab === 'excluded'} onClick={setTab}
+              />
+            </div>
+          </Card>
+
+          {/* Filter bar */}
+          <Card style={{ padding: 12, marginBottom: 12 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(140px,1fr) auto auto auto auto',
+              gap: 8, alignItems: 'center', flexWrap: 'wrap',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Search size={14} color="var(--muted)"/>
+                <input
+                  value={search} onChange={e => setSearch(e.target.value)}
+                  placeholder="بحث باسم العميل…"
+                  style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, minWidth: 0 }}
+                />
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--muted)' }}>
+                <span style={{ whiteSpace: 'nowrap' }}>أكثر من</span>
+                <input
+                  type="number" value={minBalance} onChange={e => setMinBalance(e.target.value)}
+                  placeholder="0"
+                  style={{ width: 90, padding: '7px 8px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)', textAlign: 'left' }}
+                />
+                <span style={{ whiteSpace: 'nowrap' }}>ر.س</span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--muted)' }}>
+                <span style={{ whiteSpace: 'nowrap' }}>أقدم من</span>
+                <input
+                  type="number" value={minDays} onChange={e => setMinDays(e.target.value)}
+                  placeholder="0"
+                  style={{ width: 70, padding: '7px 8px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)', textAlign: 'left' }}
+                />
+                <span style={{ whiteSpace: 'nowrap' }}>يوم</span>
+              </div>
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {[
+                  { k: 'd0_30',    l: '0–30',  c: '#10B981' },
+                  { k: 'd31_60',   l: '31–60', c: '#F59E0B' },
+                  { k: 'd61_90',   l: '61–90', c: '#F97316' },
+                  { k: 'd90_plus', l: '+90',   c: '#EF4444' },
+                ].map(b => {
+                  const on = bucketFilters.has(b.k);
+                  return (
+                    <button key={b.k} onClick={() => toggleBucket(b.k)} style={{
+                      padding: '4px 9px', borderRadius: 12,
+                      background: on ? `${b.c}20` : 'var(--surface)',
+                      color: on ? b.c : 'var(--muted)',
+                      border: `1px solid ${on ? `${b.c}80` : 'var(--border)'}`,
+                      fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                      cursor: 'pointer', whiteSpace: 'nowrap',
+                    }}>
+                      {b.l}
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                  {visibleCustomers.length} نتيجة
+                </span>
+                {hasFilters && (
+                  <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={clearFilters} title="مسح الفلاتر">
+                    مسح
+                  </Btn>
+                )}
+              </div>
+            </div>
           </Card>
 
           {/* Table */}
@@ -506,6 +762,7 @@ export default function CustomerReceivables({ isActive = true }) {
                     <th onClick={() => handleSort('oldest')} style={{ ...thStyle, textAlign: 'center' }}>
                       الأيام {sortBy === 'oldest' && (sortDir === 'asc' ? '↑' : '↓')}
                     </th>
+                    <th style={{ ...thStyle, width: 80, textAlign: 'center', cursor: 'default' }}>الإجراء</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -516,16 +773,33 @@ export default function CustomerReceivables({ isActive = true }) {
                       : c.daysOutstanding > 60 ? '#F97316'
                       : c.daysOutstanding > 30 ? '#F59E0B'
                       : '#10B981';
+                    const isExcluded = c.status === 'excluded';
                     return (
                       <tr
                         key={c.name}
                         onClick={() => setOpenCustomer(c)}
-                        style={{ cursor: 'pointer' }}
-                        onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
-                        onMouseLeave={e => e.currentTarget.style.background = ''}
+                        style={{ cursor: 'pointer', background: isExcluded ? 'rgba(45,212,191,.04)' : undefined }}
+                        onMouseEnter={e => e.currentTarget.style.background = isExcluded ? 'rgba(45,212,191,.10)' : 'var(--surface)'}
+                        onMouseLeave={e => e.currentTarget.style.background = isExcluded ? 'rgba(45,212,191,.04)' : ''}
                       >
                         <td style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
-                          {c.name}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                            {isExcluded && <ShieldCheck size={12} color="var(--accent)"/>}
+                            <span>{c.name}</span>
+                            {c.notes && (
+                              <span title={c.notes} style={{
+                                display: 'inline-flex', alignItems: 'center', gap: 3,
+                                padding: '1px 6px', borderRadius: 9,
+                                background: 'rgba(122,130,196,.10)',
+                                color: 'var(--muted)',
+                                border: '1px solid var(--border)',
+                                fontSize: 9.5, fontFamily: 'var(--font-mono)',
+                              }}>
+                                <MessageSquare size={9}/>
+                                ملاحظة
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', fontWeight: 700 }}>
                           {fmt(c.total)}
@@ -538,6 +812,27 @@ export default function CustomerReceivables({ isActive = true }) {
                         </td>
                         <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: ageColor, fontWeight: 700 }}>
                           {c.daysOutstanding != null ? `${c.daysOutstanding} يوم` : '—'}
+                        </td>
+                        <td style={{ textAlign: 'center' }} onClick={e => e.stopPropagation()}>
+                          {isExcluded ? (
+                            <button
+                              onClick={() => setTagModal({ customer: c, mode: 'restore' })}
+                              title="إرجاع للمتابعة الافتراضية"
+                              style={tagBtnStyle('restore')}
+                            >
+                              <EyeOff size={11}/>
+                              إرجاع
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => setTagModal({ customer: c, mode: 'exclude' })}
+                              title="نقل لمتابعة خاصة (يخرج من الإجماليات)"
+                              style={tagBtnStyle('exclude')}
+                            >
+                              <ShieldCheck size={11}/>
+                              استثناء
+                            </button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -558,6 +853,20 @@ export default function CustomerReceivables({ isActive = true }) {
           userId={user?.id}
           onClose={() => setShowUpload(false)}
           onDone={() => { setShowUpload(false); refresh(); }}
+        />
+      )}
+
+      {/* Tag modal — exclude / restore + optional note */}
+      {tagModal && (
+        <TagCustomerModal
+          customer={tagModal.customer}
+          mode={tagModal.mode}
+          onClose={() => setTagModal(null)}
+          onSubmit={(notes) => handleTagCustomer(
+            tagModal.customer.name,
+            tagModal.mode === 'exclude' ? 'excluded' : 'normal',
+            notes,
+          )}
         />
       )}
 
@@ -628,3 +937,18 @@ const thStyle = {
   cursor: 'pointer',
   userSelect: 'none',
 };
+
+function tagBtnStyle(kind) {
+  const isExclude = kind === 'exclude';
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 4,
+    padding: '3px 8px',
+    borderRadius: 8,
+    background: isExclude ? 'rgba(45,212,191,.10)' : 'rgba(122,130,196,.10)',
+    color:      isExclude ? 'var(--accent)'        : 'var(--muted)',
+    border: `1px solid ${isExclude ? 'rgba(45,212,191,.35)' : 'var(--border2)'}`,
+    fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+    cursor: 'pointer',
+    whiteSpace: 'nowrap',
+  };
+}
