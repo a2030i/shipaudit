@@ -45,6 +45,7 @@ const FIELD_META = {
   posFee:          { label: 'رسوم POS (بطاقة)' },
   tax:             { label: 'الضريبة' },
   serviceType:     { label: 'نوع الخدمة (Road/Air)' },
+  subCarrier:      { label: 'الناقل الفرعي (لوسطاء مثل بوليصة)' },
   billingType:     { label: 'نوع الفوترة (ZDOI/ZIBI/ZOBI/ZDCF)' },
   signingStatus:   { label: 'حالة التسليم' },
 };
