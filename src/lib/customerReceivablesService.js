@@ -279,6 +279,18 @@ export async function loadLatestReceivables() {
       c.agingBucket = ageBucket(c.daysOutstanding);
     }
     c.invoices.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+
+    // Per-customer aging breakdown — so the UI can show "of this
+    // customer's 17,037 SAR, only 7,533 is +90". When the user filters
+    // by a bucket, we display this slice instead of the full total.
+    const breakdown = { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+    for (const inv of c.invoices) {
+      if (!inv.date) continue;
+      const d = Math.floor((today - new Date(inv.date)) / 86_400_000);
+      breakdown[ageBucket(d)] += Number(inv.amount) || 0;
+    }
+    for (const k of Object.keys(breakdown)) breakdown[k] = +breakdown[k].toFixed(2);
+    c.bucketAmounts = breakdown;
   }
 
   // Overlay the per-customer status tags so the UI can split between

@@ -524,18 +524,31 @@ export default function CustomerReceivables({ isActive = true }) {
     if (Number.isFinite(md) && md > 0) {
       pool = pool.filter(c => (c.daysOutstanding || 0) >= md);
     }
-    // Filter: aging bucket (a customer "is in" a bucket if their
-    // oldest invoice falls in that bucket OR they have any invoice
-    // there. We use oldest-bucket as the primary tag for simplicity.)
+    // Filter: aging bucket — INVOICE-level. A customer enters the list
+    // if they have ANY invoice in the active buckets, and the displayed
+    // "filteredTotal" reflects only the slice within those buckets
+    // (NOT the customer's full balance). This matches the user's
+    // expectation: filtering "+90" should show the +90 portion of each
+    // customer's debt, not their whole receivable.
     if (bucketFilters.size > 0) {
-      pool = pool.filter(c => bucketFilters.has(c.agingBucket));
+      pool = pool
+        .map(c => {
+          const filteredTotal = [...bucketFilters].reduce(
+            (s, k) => s + (c.bucketAmounts?.[k] || 0), 0,
+          );
+          return { ...c, filteredTotal: +filteredTotal.toFixed(2) };
+        })
+        .filter(c => c.filteredTotal > 0.005);
     }
+    // Sort — sort by the FILTERED amount when bucket filter is on,
+    // otherwise by the full total.
     const dir = sortDir === 'asc' ? 1 : -1;
+    const totalKey = (c) => bucketFilters.size > 0 ? (c.filteredTotal || 0) : (c.total || 0);
     return [...pool].sort((a, b) => {
       if (sortBy === 'name')     return a.name.localeCompare(b.name) * dir;
       if (sortBy === 'oldest')   return ((a.daysOutstanding || 0) - (b.daysOutstanding || 0)) * dir;
       if (sortBy === 'invoices') return ((a.invoiceCount || 0) - (b.invoiceCount || 0)) * dir;
-      return ((a.total || 0) - (b.total || 0)) * dir;
+      return (totalKey(a) - totalKey(b)) * dir;
     });
   }, [data, tab, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
 
@@ -587,17 +600,24 @@ export default function CustomerReceivables({ isActive = true }) {
       toast('لا توجد بيانات للتصدير', 'info');
       return;
     }
-    const headers = ['اسم العميل', 'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام منذ أقدم فاتورة'];
-    const rows = visibleCustomers.map(c => [
-      c.name,
-      Number(c.total || 0).toFixed(2),
-      c.invoiceCount,
-      c.oldestInvoiceDate || '',
-      c.daysOutstanding || '',
-    ]);
-    const totalRow = ['الإجمالي', visibleCustomers.reduce((s, c) => s + (c.total || 0), 0).toFixed(2), '', '', ''];
+    const bucketActive = bucketFilters.size > 0;
+    const headers = bucketActive
+      ? ['اسم العميل', 'في الشريحة (ر.س)', 'إجمالي الرصيد (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
+      : ['اسم العميل', 'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام منذ أقدم فاتورة'];
+    const rows = visibleCustomers.map(c => bucketActive
+      ? [c.name, Number(c.filteredTotal || 0).toFixed(2), Number(c.total || 0).toFixed(2),
+         c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || '']
+      : [c.name, Number(c.total || 0).toFixed(2),
+         c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || '']);
+    const sumSlice = visibleCustomers.reduce((s, c) => s + (c.filteredTotal || 0), 0);
+    const sumTotal = visibleCustomers.reduce((s, c) => s + (c.total || 0), 0);
+    const totalRow = bucketActive
+      ? ['الإجمالي', sumSlice.toFixed(2), sumTotal.toFixed(2), '', '', '']
+      : ['الإجمالي', sumTotal.toFixed(2), '', '', ''];
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], totalRow]);
-    ws['!cols'] = [{ wch: 50 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 20 }];
+    ws['!cols'] = bucketActive
+      ? [{ wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]
+      : [{ wch: 50 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 20 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'مديونيات العملاء');
     const dateStr = new Date().toISOString().slice(0, 10);
@@ -754,7 +774,9 @@ export default function CustomerReceivables({ isActive = true }) {
                 }}>
                   {visibleCustomers.length} عميل
                   <span style={{ opacity: .55 }}>·</span>
-                  {fmt(visibleCustomers.reduce((s, c) => s + (c.total || 0), 0))} ر.س
+                  {fmt(visibleCustomers.reduce(
+                    (s, c) => s + (bucketFilters.size > 0 ? (c.filteredTotal || 0) : (c.total || 0)), 0,
+                  ))} ر.س
                 </span>
                 {hasFilters && (
                   <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={clearFilters} title="مسح الفلاتر">
@@ -824,7 +846,16 @@ export default function CustomerReceivables({ isActive = true }) {
                           </div>
                         </td>
                         <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left', fontWeight: 700 }}>
-                          {fmt(c.total)}
+                          {bucketFilters.size > 0 ? (
+                            <>
+                              <div>{fmt(c.filteredTotal)}</div>
+                              <div style={{ fontSize: 9.5, color: 'var(--muted)', fontWeight: 500, marginTop: 1 }}>
+                                من {fmt(c.total)}
+                              </div>
+                            </>
+                          ) : (
+                            fmt(c.total)
+                          )}
                         </td>
                         <td style={{ textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
                           {c.invoiceCount}
