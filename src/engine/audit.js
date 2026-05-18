@@ -96,7 +96,7 @@ const COL_PATTERNS = {
   // "Other Charge" bucket — every carrier we know labels its fuel
   // line one of those three ways.
   fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /other.?charge/i],
-  codAmount:       [/cod.?amount/i, /cash.?on/i],
+  codAmount:       [/cod.?amount/i, /cash.?on/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i],
   // COD service fee — the per-shipment fee carriers charge for handling
   // cash-on-delivery (independent of the COD amount itself). iMile puts
   // this in a dedicated "COD Service Fee" column on the same row as the
@@ -133,7 +133,7 @@ const COL_PATTERNS = {
   // "Normal Sign"). Surfaced to mapRows so we can skip returns from
   // the audit — they're billed at 0 SAR and would otherwise show as
   // false-positive "favorable" diffs.
-  signingStatus:   [/signing.?status/i, /حالة.?التوقيع/i, /^status$/i],
+  signingStatus:   [/signing.?status/i, /حالة.?التوقيع/i, /حالة.?الشحن/i, /حالة.?التسليم/i, /^status$/i],
 };
 
 // Aramex billing-type codes:
