@@ -74,7 +74,7 @@ function Tab({ id, label, count, amount, active, onClick }) {
 }
 
 // ── Hero ────────────────────────────────────────────────────────
-function Hero({ total, customerCount, snapshot, oldestDays }) {
+function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
   return (
     <div style={{
       position: 'relative',
@@ -91,7 +91,7 @@ function Hero({ total, customerCount, snapshot, oldestDays }) {
           <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
         </svg>
       </div>
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: 18, alignItems: 'center' }}>
+      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto auto', gap: 18, alignItems: 'center' }}>
         <Users size={36} style={{ opacity: .55 }}/>
         <div>
           <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7 }}>
@@ -108,6 +108,12 @@ function Hero({ total, customerCount, snapshot, oldestDays }) {
           )}
         </div>
         <HeroStat label="إجمالي المستحقّات" value={fmt(total)} suffix="ر.س" big/>
+        <HeroStat
+          label="المتجاوز 30 يوم"
+          value={fmt(overdueTotal)}
+          suffix="ر.س"
+          color="#FBBF24"
+        />
         <HeroStat label="عدد العملاء" value={customerCount}/>
         <HeroStat
           label="أقدم فاتورة"
@@ -213,7 +219,12 @@ function CustomerDrawer({ customer, onClose }) {
                 const days = inv.date
                   ? Math.floor((today - new Date(inv.date)) / 86_400_000)
                   : null;
-                const color = days == null ? 'var(--muted)' : days > 90 ? 'var(--red)' : days > 60 ? '#F59E0B' : 'var(--text)';
+                const color =
+                  days == null ? 'var(--muted)' :
+                  days > 90    ? '#EF4444' :   // red — critically overdue
+                  days > 60    ? '#F97316' :   // orange — chase
+                  days > 30    ? '#F59E0B' :   // yellow — past due
+                                 '#10B981';    // green — current
                 return (
                   <tr key={inv.id}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{fmtDate(inv.date)}</td>
@@ -608,6 +619,7 @@ export default function CustomerReceivables({ isActive = true }) {
     <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
       <Hero
         total={data?.total || 0}
+        overdueTotal={data ? (data.aging.d31_60 + data.aging.d61_90 + data.aging.d90_plus) : 0}
         customerCount={data?.customerCount || 0}
         snapshot={data?.snapshot}
         oldestDays={oldestDays}
@@ -731,8 +743,18 @@ export default function CustomerReceivables({ isActive = true }) {
                 })}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, justifyContent: 'flex-end' }}>
-                <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                  {visibleCustomers.length} نتيجة
+                <span style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '3px 10px', borderRadius: 11,
+                  background: hasFilters ? 'rgba(45,212,191,.10)' : 'var(--surface)',
+                  border: `1px solid ${hasFilters ? 'rgba(45,212,191,.32)' : 'var(--border)'}`,
+                  fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                  color: hasFilters ? 'var(--accent)' : 'var(--muted)',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {visibleCustomers.length} عميل
+                  <span style={{ opacity: .55 }}>·</span>
+                  {fmt(visibleCustomers.reduce((s, c) => s + (c.total || 0), 0))} ر.س
                 </span>
                 {hasFilters && (
                   <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={clearFilters} title="مسح الفلاتر">
