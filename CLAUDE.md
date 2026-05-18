@@ -208,7 +208,7 @@
 | `from('table').delete()` بدون `.select()` | RLS silent-fail (0 rows affected = no error) | استخدم `.select('id')` وتحقّق من العدد |
 | تجاهل `file_signature` في mapping `loadCarriers` | الـ pages تفقد القدرة على قراءة `file_kind` وإلخ — اختفاء أزرار صامت | احرص أن المابر يمرّر كل عمود يحتاجه أي مكوّن استهلاكي |
 | استخدام `preview.rows.slice()` بدون فحص `preview.error` | شاشة بيضاء عند فشل الـ parser (rows = undefined) | افحص `!preview.error && Array.isArray(preview.rows)` قبل أي iteration |
-| Parser keys لشركة بصيغة ملف واحدة فقط | الملفات بصيغ أخرى تفشل صامتاً (no rows extracted) | احفظ كل column synonyms المعروفة في الـ parser. مثال: DeliverNow يدعم monthly invoice + weekly remittance |
+| Parser keys لشركة بصيغة ملف واحدة فقط | الملفات بصيغ أخرى تفشل صامتاً (no rows extracted) | احفظ كل column synonyms المعروفة في الـ parser. لكن: `DLX` AWB = ديلكس Delex، `DNL` AWB = ديلفر ناو. لا تخلط الـ keys بينهم |
 | محاولة تعديل سعر/شريحة العقد مباشرة في DB | يدمّر تاريخ العقود | استخدم `saveCarrierContractsWithHistory` |
 | تعديل `audits.results` JSONB لإضافة بيانات مهمة | حد TOAST + لن يُحمَّل للـ audits الكبيرة | استخدم `audit_shipments` بدلاً |
 | نسيان `idempotency` على auto-posts | إعادة الاعتماد ينشئ قيود مكررة | استخدم unique partial indexes |
