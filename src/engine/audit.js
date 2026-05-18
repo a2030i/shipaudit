@@ -59,7 +59,7 @@ const COL_PATTERNS = {
   // specific enough to skip clearly-different columns: "Tracking No."
   // for J&T, "Waybill No." for iMile, "AWB" for Aramex/SMSA. The bare
   // /tracking/i also catches things like "Tracking Number" / "Tracking No".
-  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/],
+  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/],
   // Ship date — also accept J&T's "Entry time" / "Signing time".
   shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
   // Origin column — explicit "shipper / origin / from / source" so it
@@ -115,7 +115,14 @@ const COL_PATTERNS = {
   // holds a card-processing fee equal to codAmount × posFeePct.
   // The audit engine routes that value to the POS bucket so we can
   // compare against contract.posFeePct.
-  codPaymentMethod: [/cod.?payment.?method/i, /payment.?method/i, /طريقة.?الدفع/i],
+  codPaymentMethod: [/cod.?payment.?method/i, /payment.?method/i, /طريقة.?الدفع/i, /نوع.?الدفع/i],
+  // Boleeseh's invoices have a "شركة الشحن" column listing the
+  // sub-carrier that actually moved the shipment (smsa / aramex /
+  // aymakan / jt_express). auditAll uses this to pick the right
+  // pricing bracket when the contract sets pricingKey='subCarrier'.
+  // Pattern is intentionally narrow — only matches the exact Arabic
+  // header so it doesn't false-positive on direct-carrier files.
+  subCarrier:       [/^شركة\s*الشحن$/i, /^carrier$/i, /sub.?carrier/i],
   // "Tax Amount" — actual VAT line from the carrier file. Reading this
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
@@ -164,6 +171,11 @@ function isCodFeeRow(billingType) {
 // the engine's hardcoded knowledge (schemas, billing rules) independent
 // of however carriers ended up being keyed.
 const CARRIER_KIND_PATTERNS = [
+  // Boleeseh first — its id literally contains "smsa" / "aramex" etc.
+  // inside a sub-carrier column, but the carrier itself is بوليصة.
+  // Resolution by id+name still wins because we test the carrier
+  // object, not file content.
+  { kind: 'boleeseh',   re: /boleeseh|بوليصة|بوليصه/i },
   { kind: 'aramex',     re: /aramex|أرامكس|ارامكس/i },
   { kind: 'smsa',       re: /smsa|سمسا/i },
   { kind: 'jt',         re: /j&?t|jnt|jandt|جي.?اند.?ت|jt.?express/i },
@@ -204,6 +216,15 @@ export const CARRIER_FIELDS = {
   delivernow: {
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax'],
     required: ['weight', 'deliveryCharges'],
+  },
+  // بوليصة Boleeseh — broker that issues policies via 4 sub-carriers
+  // (smsa / aramex / aymakan / jt_express). The pricing key in the
+  // contract is the sub-carrier name, NOT the destination country.
+  // The audit picks the right rate via row.subCarrier (and adds a
+  // '_cod' suffix when the payment method is COD).
+  boleeseh: {
+    core:     ['awb', 'shipDate', 'subCarrier', 'weight', 'deliveryCharges', 'codAmount', 'codPaymentMethod', 'signingStatus'],
+    required: ['weight', 'deliveryCharges', 'subCarrier'],
   },
 };
 
@@ -573,6 +594,11 @@ export function mapRows(raw, colMap) {
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
       signingStatus:   String(row[colMap.signingStatus] ?? '').trim(),
+      // Boleeseh: which back-end carrier moved the shipment. Used by
+      // auditAll to look up the right rate when the contract sets
+      // pricingKey='subCarrier'. Empty for direct-carrier files.
+      subCarrier:      String(row[colMap.subCarrier] ?? '').trim().toLowerCase(),
+      codPaymentMethod: String(row[colMap.codPaymentMethod] ?? '').trim().toLowerCase(),
     };
   });
 
@@ -816,9 +842,33 @@ export function auditAll(rows, carrier, forDate) {
     return keys.length === 1 && keys[0] === 'Saudi Arabia';
   };
 
+  // Boleeseh-style brokers: the pricing key on the contract is the
+  // sub-carrier name (smsa / aramex / jt_express / aymakan), not a
+  // destination country. We rewrite row.dest BEFORE auditRow runs so
+  // the standard pickContract → contract.pricing[row.dest] flow lands
+  // on the right bracket. COD rows get an additional '_cod' suffix
+  // when the contract exposes that variant (e.g. jt_express_cod for
+  // the 18.40 SAR rate that J&T charges via Boleeseh on COD).
+  const useSubCarrierKey = (primary?.pricingKey === 'subCarrier')
+    || activeContracts.some(c => c.pricingKey === 'subCarrier');
+
   const results = rows.map(r => {
-    const c = pickContract(r);
-    const row = isDomesticOnly(c) ? { ...r, domestic: true, dest: 'Saudi Arabia' } : r;
+    let row = r;
+    if (useSubCarrierKey && r.subCarrier) {
+      let key = r.subCarrier;
+      // Check the contract for a COD-variant rate at the same sub-carrier.
+      const isCodRow = r.isCod || /^cod$/i.test(r.codPaymentMethod || '');
+      if (isCodRow) {
+        const codKey = `${key}_cod`;
+        const hasCodKey = activeContracts.some(c => c.pricing && c.pricing[codKey]);
+        if (hasCodKey) key = codKey;
+      }
+      row = { ...r, dest: key, domestic: true };
+    } else {
+      const c = pickContract(r);
+      if (isDomesticOnly(c)) row = { ...r, domestic: true, dest: 'Saudi Arabia' };
+    }
+    const c = pickContract(row);
     return auditRow(row, c);
   });
   flagDuplicateAwbs(results);
