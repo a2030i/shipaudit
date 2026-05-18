@@ -114,6 +114,14 @@
 - الرصيد = `SUM(DR) - SUM(CR)`. موجب = نحن مدينون، سالب = هي مدينة لنا
 - **قيد واحد لكل حدث مالي.** لا قيد لكل AWB. التفاصيل في `audit_shipments` / `cod_settlement`
 
+### 2.4b Broker / sub-carrier pricing (Boleeseh-style)
+- `contract.pricingKey = 'subCarrier'` يحوّل سلوك `auditAll`:
+  - بدل `pricing['Saudi Arabia']` يستخدم `pricing[row.subCarrier]`
+  - لـ COD: يبحث عن `pricing[<subCarrier>_cod]` أولاً قبل الـ fallback
+- الـ `subCarrier` يُستخرج من عمود "شركة الشحن" (regex `/^شركة\s*الشحن$/`)
+- الـ `codPaymentMethod` يقبل أيضاً عمود "نوع الدفع"
+- بوليصة هي المثال الوحيد حالياً (4 ناقلين فرعيين)
+
 ### 2.5 file_kind القيم المسموحة
 - `'audit_with_cod'` — الفاتورة تشمل COD (DeliverNow)
 - `'audit_and_cod_separate'` — ملفان منفصلان (Aramex)
@@ -225,7 +233,7 @@
 | iMile V1 | `imile` | (غير محدد) | ✅ 17/15kg ثم 1/kg | ❌ |
 | J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
 | سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
-| Boleeseh | `boleeseh` | (غير محدد) | ❌ | ❌ |
+| Boleeseh | `boleeseh` | `audit_only` (وسيط broker) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
 | Webek | `webek` | (غير محدد) | ❌ | ❌ |
 | Aatak | `aatak` | (غير محدد) | ❌ | ❌ |
 | Delex | `delex` | (غير محدد) | ❌ | ❌ |
