@@ -4,6 +4,15 @@
 // external billing system. The app does NOT bill — it just shows the
 // uploaded snapshot's aggregates + lets the CFO drill in.
 //
+// When the merchants directory has been imported AND the customer→
+// store map has been populated (see merchantsService.autoLinkCustomers),
+// loadLatestReceivables overlays each customer with:
+//   storeId, phone, billingType, status, shipmentCount,
+//   lastShipmentAt, walletBalance
+// so the UI can colour-code anomalies (prepaid-with-debt, postpaid
+// long-overdue, dormant-with-debt) and the collection-campaign export
+// has the contact info.
+//
 // API:
 //   parseReceivablesFile(allRows)
 //     → { periodFrom, periodTo, rows:[{ customer, date, amount, isSummary }] }
@@ -300,6 +309,53 @@ export async function loadLatestReceivables() {
     const s = statuses.get(c.name);
     c.status = s?.status || 'normal';
     c.notes  = s?.notes  || null;
+  }
+
+  // Overlay the merchant directory (if uploaded). Joins via the
+  // persistent customer_merchant_links table — auto-fuzzy + manual
+  // overrides both come through here. Resilient: any failure in this
+  // path leaves the receivables data untouched, no merchant fields
+  // added, anomalies tab degrades gracefully.
+  try {
+    const [{ data: linkRows }, latestMerchants] = await Promise.all([
+      supabase.from('customer_merchant_links').select('customer_name, store_id, confidence, match_method'),
+      (async () => {
+        const { merchants: m } = await import('./merchantsService.js').then(mod => mod.loadLatestMerchants());
+        return m;
+      })().catch(() => []),
+    ]);
+    const linkByName = new Map((linkRows || []).map(r => [r.customer_name, r]));
+    const merchantById = new Map((latestMerchants || []).map(m => [m.store_id, m]));
+    for (const c of byCustomer.values()) {
+      const link = linkByName.get(c.name);
+      if (!link?.store_id) {
+        c.merchant = null;
+        c.merchantMatch = link ? { method: link.match_method, confidence: link.confidence } : null;
+        continue;
+      }
+      const m = merchantById.get(link.store_id);
+      if (!m) {
+        c.merchant = null;
+        c.merchantMatch = { method: link.match_method, confidence: link.confidence };
+        continue;
+      }
+      c.merchant = {
+        storeId:        m.store_id,
+        storeName:      m.store_name,
+        phone:          m.phone,
+        billingType:    m.billing_type,
+        platformStatus: m.status,
+        integrationType:m.integration_type,
+        shipmentCount:  m.shipment_count,
+        lastShipmentAt: m.last_shipment_at,
+        walletBalance:  Number(m.wallet_balance) || 0,
+      };
+      c.merchantMatch = { method: link.match_method, confidence: link.confidence };
+    }
+  } catch (e) {
+    // No merchants snapshot or links table not populated yet — that's
+    // fine, the receivables view still works without enrichment.
+    console.info('[receivables] merchant overlay skipped:', e.message);
   }
 
   const customers = [...byCustomer.values()].sort((a, b) => b.total - a.total);
