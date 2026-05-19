@@ -11,14 +11,16 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import {
   RefreshCw, Users, TrendingUp, TrendingDown, Wallet,
   ShoppingBag, AlertTriangle, UserPlus, ZapOff, Phone,
-  ArrowLeft, AlertOctagon, Flame, Clock, Moon,
+  ArrowLeft, AlertOctagon, Flame, Clock, Moon, Search, X,
+  Download, Activity, Calendar, Hash,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, toast,
-  SpotlightCard, PageHeader, SectionTitle,
+  Card, Btn, Spinner, Empty, Modal, toast,
+  SpotlightCard, PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 
@@ -57,6 +59,8 @@ export default function CustomerWatch({ isActive = true }) {
   const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [openCustomer, setOpenCustomer] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -73,14 +77,83 @@ export default function CustomerWatch({ isActive = true }) {
 
   const t = data?.totals;
 
-  // Sparkline of monthly invoicing — placeholder until we have a real
-  // time-series source; for now uses [lastMonth, thisMonth] to give the
-  // spotlight a visible direction indicator.
+  // Sparkline of monthly invoicing — picks the values from the 12-month
+  // series for the spotlight's mini trend.
   const sparkline = useMemo(() => {
-    if (!t) return [];
-    if (!t.lastMonthInvoiced && !t.monthlyInvoiced) return [];
-    return [t.lastMonthInvoiced, t.monthlyInvoiced];
-  }, [t]);
+    if (!data?.monthsSeries?.length) return [];
+    return data.monthsSeries.map(m => m.value);
+  }, [data]);
+
+  // Cross-customer + merchant search — searches name, store_id, phone.
+  // Returns up to 12 results, customer-first, then merchants without
+  // a customer row.
+  const searchResults = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q || !data) return [];
+    const out = [];
+    const seen = new Set();
+    for (const c of data.customers || []) {
+      const hit =
+        c.name?.toLowerCase().includes(q) ||
+        c.merchant?.storeId?.toLowerCase().includes(q) ||
+        c.merchant?.phone?.includes(q) ||
+        c.merchant?.storeName?.toLowerCase().includes(q);
+      if (hit) {
+        out.push({ kind: 'customer', name: c.name, customer: c, merchant: c.merchant || null });
+        if (c.merchant?.storeId) seen.add(c.merchant.storeId);
+      }
+      if (out.length >= 12) break;
+    }
+    if (out.length < 12) {
+      for (const m of data.merchants || []) {
+        if (seen.has(m.store_id)) continue;
+        const hit =
+          m.store_name?.toLowerCase().includes(q) ||
+          m.store_id?.toLowerCase().includes(q) ||
+          m.phone?.includes(q);
+        if (hit) {
+          out.push({
+            kind: 'merchant',
+            name: m.store_name,
+            customer: null,
+            merchant: {
+              storeId: m.store_id, storeName: m.store_name, phone: m.phone,
+              billingType: m.billing_type, platformStatus: m.status,
+              shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at,
+              walletBalance: Number(m.wallet_balance) || 0,
+              createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at,
+              integrationType: m.integration_type,
+            },
+          });
+          if (out.length >= 12) break;
+        }
+      }
+    }
+    return out;
+  }, [search, data]);
+
+  // Build chart series + labels from the monthsSeries
+  const chartData = useMemo(() => {
+    if (!data?.monthsSeries?.length) return null;
+    return {
+      labels: data.monthsSeries.map(m => m.label),
+      series: [
+        { data: data.monthsSeries.map(m => m.value), color: '#10B981', label: 'مبلغ الفواتير' },
+      ],
+    };
+  }, [data]);
+
+  // Excel export — flexible by which list to dump.
+  const handleExport = (listName, rows, columnFn) => {
+    if (!rows?.length) { toast('لا توجد بيانات للتصدير', 'info'); return; }
+    const aoa = [columnFn('headers'), ...rows.map(r => columnFn('row', r))];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, listName.slice(0, 28));
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${listName}_${dateStr}.xlsx`);
+    toast(`تم تصدير ${rows.length} صف`, 'success');
+  };
 
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
@@ -135,6 +208,160 @@ export default function CustomerWatch({ isActive = true }) {
               { label: 'إجمالي المحافظ',     value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? '#FCA5A5' : '#5EEAD4' },
             ]}
           />
+
+          {/* ── SEARCH BAR ─────────────────────────────────────── */}
+          <Card style={{ padding: '12px 16px', marginBottom: 24, position: 'relative' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <Search size={16} color="var(--muted)"/>
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
+                placeholder="ابحث عن عميل أو متجر بالاسم، الـ ID، أو الهاتف…"
+                autoComplete="off"
+                data-lpignore="true" data-form-type="other"
+                name="customer-watch-search"
+                style={{
+                  flex: 1, border: 'none', outline: 'none', background: 'transparent',
+                  fontSize: 14, padding: '6px 0', color: 'var(--text)',
+                  boxShadow: 'none',
+                }}
+              />
+              {search && (
+                <button onClick={() => setSearch('')} style={{
+                  background: 'transparent', border: 'none', color: 'var(--muted)',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center',
+                }}>
+                  <X size={14}/>
+                </button>
+              )}
+            </div>
+            {search.trim() && (
+              <div style={{
+                position: 'absolute', insetInline: 0, top: '100%',
+                background: 'var(--card)',
+                border: '1px solid var(--border)', borderRadius: 'var(--r-lg)',
+                marginTop: 8, zIndex: 10,
+                boxShadow: 'var(--shadow-lg)',
+                maxHeight: 420, overflowY: 'auto',
+              }}>
+                {searchResults.length === 0 ? (
+                  <div style={{ padding: 24, textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+                    لا توجد نتائج لـ "{search}"
+                  </div>
+                ) : searchResults.map((r, i) => (
+                  <div key={i} onClick={() => { setOpenCustomer(r); setSearch(''); }} style={{
+                    padding: '11px 16px', cursor: 'pointer',
+                    borderBottom: i === searchResults.length - 1 ? 'none' : '1px solid var(--border)',
+                    display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                        {r.merchant?.storeName || r.name}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
+                        {r.merchant?.storeId || '—'}{r.merchant?.phone && ` · ${r.merchant.phone}`}
+                      </div>
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      {r.customer?.total > 0 && (
+                        <span style={{
+                          fontSize: 11, padding: '3px 9px', borderRadius: 999,
+                          background: 'rgba(239,68,68,.10)', color: 'var(--red)',
+                          fontFamily: 'var(--font-mono)', fontWeight: 700,
+                        }}>{fmtCompact(r.customer.total)} ر.س</span>
+                      )}
+                      {r.kind === 'merchant' && (
+                        <span style={{
+                          fontSize: 10, padding: '2px 8px', borderRadius: 999,
+                          background: 'var(--accent-dim)', color: 'var(--accent)',
+                          fontWeight: 600,
+                        }}>متجر بدون فواتير</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+
+          {/* ── MONTHLY INVOICING TREND ────────────────────────── */}
+          {chartData && chartData.series[0].data.some(v => v > 0) && (
+            <Card style={{ padding: '24px 28px', marginBottom: 24 }}>
+              <SectionTitle
+                tag="TREND · 12 MONTHS"
+                title="تطوّر الفوترة الشهرية"
+                color="#10B981"
+              />
+              <AreaChart series={chartData.series} labels={chartData.labels} height={240}/>
+            </Card>
+          )}
+
+          {/* ── TODAY'S PRIORITIES ─────────────────────────────── */}
+          {data.todayActions?.length > 0 && (
+            <Card style={{ padding: '20px 24px', marginBottom: 28 }}>
+              <SectionTitle
+                tag="DAILY PRIORITIES"
+                title="اليوم تحتاج"
+                color="#F59E0B"
+                action={
+                  <Btn size="sm" variant="ghost" onClick={() => navigate('/receivables')}>
+                    كل التنبيهات
+                  </Btn>
+                }
+              />
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {data.todayActions.map((a, i) => {
+                  const meta = ANOMALY_META[a.kind];
+                  const Icon = meta?.icon || AlertTriangle;
+                  return (
+                    <div key={i} onClick={() => setOpenCustomer({
+                      kind: a.c.merchant ? 'customer' : 'phantom',
+                      name: a.c.name, customer: a.c, merchant: a.c.merchant,
+                    })} style={{
+                      display: 'grid',
+                      gridTemplateColumns: '28px 1fr auto auto',
+                      gap: 14, alignItems: 'center',
+                      padding: '12px 14px',
+                      background: `color-mix(in srgb, ${meta?.color || '#71717A'} 5%, transparent)`,
+                      borderRadius: 12, cursor: 'pointer',
+                      transition: 'background .15s',
+                    }}
+                    onMouseEnter={e => e.currentTarget.style.background = `color-mix(in srgb, ${meta?.color || '#71717A'} 10%, transparent)`}
+                    onMouseLeave={e => e.currentTarget.style.background = `color-mix(in srgb, ${meta?.color || '#71717A'} 5%, transparent)`}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8,
+                        background: `color-mix(in srgb, ${meta?.color || '#71717A'} 16%, transparent)`,
+                        color: meta?.color || '#71717A',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      }}><Icon size={14}/></div>
+                      <div style={{ minWidth: 0 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {a.c.merchant?.storeName || a.c.name}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                          {a.action}
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: meta?.color || 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                          {a.kind === 'negative_wallet'
+                            ? `${fmtCompact(a.c.merchant?.walletBalance || 0)} ر.س`
+                            : `${fmtCompact(a.c.total || 0)} ر.س`}
+                        </div>
+                        {a.c.merchant?.phone && (
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', direction: 'ltr', marginTop: 2 }}>
+                            {a.c.merchant.phone}
+                          </div>
+                        )}
+                      </div>
+                      <ArrowLeft size={14} color="var(--muted2)"/>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
 
           {/* ── QUICK STATS (merchant-side) ─────────────────────── */}
           <SectionTitle tag="MERCHANTS" title="بيانات المتاجر"/>
@@ -229,6 +456,10 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: c.daysOutstanding ? `${c.daysOutstanding}ي متأخر` : null,
               })}
               empty="لا توجد مديونيات"
+              onRowClick={(c) => setOpenCustomer({ kind: 'customer', name: c.name, customer: c, merchant: c.merchant })}
+              onExport={() => handleExport('أعلى_المديونيات', data.top.byDebt, (kind, c) => kind === 'headers'
+                ? ['اسم العميل', 'المتجر', 'الهاتف', 'الإجمالي', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
+                : [c.name, c.merchant?.storeName || '', c.merchant?.phone || '', c.total?.toFixed(2) || 0, c.invoiceCount || 0, c.oldestInvoiceDate || '', c.daysOutstanding || ''])}
             />
             <TopList
               icon={<TrendingUp size={14}/>}
@@ -244,6 +475,11 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.last_shipment_at ? `آخر شحنة ${daysAgo(m.last_shipment_at)}ي` : null,
               })}
               empty="لا توجد بيانات شحن"
+              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+                merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
+              onExport={() => handleExport('أنشط_المتاجر', data.top.byShipments, (kind, m) => kind === 'headers'
+                ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'حالة المتجر', 'نوع الفوترة']
+                : [m.store_name, m.store_id, m.phone || '', m.shipment_count, m.last_shipment_at || '', m.status || '', m.billing_type || ''])}
             />
             <TopList
               icon={<Wallet size={14}/>}
@@ -259,6 +495,11 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.last_topup_at ? `آخر شحن ${daysAgo(m.last_topup_at)}ي` : null,
               })}
               empty="لا توجد محافظ نشطة"
+              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+                merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
+              onExport={() => handleExport('أكبر_المحافظ', data.top.byWallet, (kind, m) => kind === 'headers'
+                ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد', 'آخر شحن للمحفظة']
+                : [m.store_name, m.store_id, m.phone || '', Number(m.wallet_balance).toFixed(2), m.last_topup_at || ''])}
             />
             <TopList
               icon={<AlertOctagon size={14}/>}
@@ -274,6 +515,11 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.billing_type || null,
               })}
               empty="لا توجد أرصدة سالبة"
+              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+                merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
+              onExport={() => handleExport('محافظ_سالبة', data.top.walletDebtors, (kind, m) => kind === 'headers'
+                ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'نوع الفوترة']
+                : [m.store_name, m.store_id, m.phone || '', Number(m.wallet_balance).toFixed(2), m.billing_type || ''])}
             />
             <TopList
               icon={<UserPlus size={14}/>}
@@ -289,6 +535,11 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: (m.shipment_count || 0) === 0 ? 'لم يشحن بعد' : `${m.shipment_count} شحنة`,
               })}
               empty="لا تسجيلات جديدة"
+              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+                merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
+              onExport={() => handleExport('أحدث_التسجيلات', data.top.newest, (kind, m) => kind === 'headers'
+                ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'تاريخ التسجيل', 'عدد الشحنات', 'حالة المتجر']
+                : [m.store_name, m.store_id, m.phone || '', m.created_at_platform || '', m.shipment_count || 0, m.status || ''])}
             />
             <TopList
               icon={<ZapOff size={14}/>}
@@ -304,10 +555,176 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: `${m.shipment_count} شحنة في حياته`,
               })}
               empty="لا يوجد عملاء فُقدوا — ممتاز"
+              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+                merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
+              onExport={() => handleExport('فُقدوا', data.top.churned, (kind, m) => kind === 'headers'
+                ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'تاريخ التسجيل']
+                : [m.store_name, m.store_id, m.phone || '', m.shipment_count || 0, m.last_shipment_at || '', m.created_at_platform || ''])}
             />
           </div>
         </>
       )}
+
+      {openCustomer && (
+        <CustomerDrillDown
+          entry={openCustomer}
+          onClose={() => setOpenCustomer(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── CustomerDrillDown ────────────────────────────────────────────
+// Full 360 modal for one customer/merchant. Shows: identity, billing
+// status, shipment activity, wallet, receivables totals, recent
+// invoices (if any). One-click phone CTA for the operator.
+function CustomerDrillDown({ entry, onClose }) {
+  const c = entry.customer;
+  const m = entry.merchant;
+  const debt = Number(c?.total) || 0;
+  const wallet = Number(m?.walletBalance) || 0;
+
+  return (
+    <Modal title={m?.storeName || c?.name || 'تفاصيل'} onClose={onClose} width={780}>
+      {/* Identity strip */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16,
+        padding: '14px 16px', marginBottom: 18,
+        background: 'var(--bg2)', borderRadius: 12,
+        alignItems: 'center',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: 12,
+          background: 'var(--accent-dim)', color: 'var(--accent)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontWeight: 700, fontSize: 18,
+        }}>
+          {(m?.storeName || c?.name || '?').slice(0, 1)}
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            {m?.storeName || c?.name}
+          </div>
+          <div style={{ display: 'flex', gap: 14, marginTop: 4, fontSize: 11.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+            {m?.storeId && <span><Hash size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.storeId}</span>}
+            {m?.phone && <span style={{ direction: 'ltr' }}><Phone size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.phone}</span>}
+          </div>
+        </div>
+        {m?.phone && (
+          <a href={`tel:${m.phone}`} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '8px 14px', borderRadius: 999,
+            background: 'var(--accent)', color: '#fff',
+            fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+            boxShadow: '0 1px 2px rgba(16,185,129,.22)',
+          }}>
+            <Phone size={13}/> اتصل
+          </a>
+        )}
+      </div>
+
+      {/* Status chips */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
+        {m?.billingType && (
+          <Chip color={m.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B'} label={m.billingType}/>
+        )}
+        {m?.platformStatus && (
+          <Chip color={m.platformStatus === 'نشط' ? '#10B981' : '#71717A'} label={`المنصّة: ${m.platformStatus}`}/>
+        )}
+        {m?.integrationType && (
+          <Chip color="#8B5CF6" label={m.integrationType}/>
+        )}
+        {!m && <Chip color="#71717A" label="غير مرتبط بمتجر"/>}
+      </div>
+
+      {/* KPI grid */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 10, marginBottom: 18,
+      }}>
+        <MiniStat label="رصيد المحفظة" value={m ? fmt(wallet) : '—'} suffix="ر.س"
+          color={wallet < -0.5 ? 'var(--red)' : wallet > 0 ? 'var(--accent)' : 'var(--muted)'}/>
+        <MiniStat label="المديونية" value={fmt(debt)} suffix="ر.س"
+          color={debt > 0.5 ? 'var(--red)' : 'var(--muted)'}/>
+        <MiniStat label="عدد الشحنات" value={fmtCount(m?.shipmentCount || 0)}/>
+        <MiniStat label="آخر شحنة"
+          value={m?.lastShipmentAt ? fmtDate(m.lastShipmentAt) : '—'}
+          hint={m?.lastShipmentAt ? `${daysAgo(m.lastShipmentAt)} يوم` : null}/>
+      </div>
+
+      {/* Secondary info row */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+        gap: 10, marginBottom: 18,
+      }}>
+        <MiniStat label="تاريخ التسجيل" value={m?.createdAt ? fmtDate(m.createdAt) : '—'}/>
+        <MiniStat label="آخر شحن للمحفظة" value={m?.lastTopupAt ? fmtDate(m.lastTopupAt) : '—'}/>
+        <MiniStat label="عدد الفواتير" value={fmtCount(c?.invoiceCount || 0)}/>
+        <MiniStat label="أيام التأخير" value={c?.daysOutstanding ? `${c.daysOutstanding} يوم` : '—'}
+          color={c?.daysOutstanding > 60 ? 'var(--red)' : c?.daysOutstanding > 30 ? 'var(--gold)' : 'var(--muted)'}/>
+      </div>
+
+      {/* Recent invoices */}
+      {c?.invoices?.length > 0 && (
+        <div>
+          <div style={{
+            fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
+            letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+          }}>
+            آخر الفواتير ({c.invoices.length})
+          </div>
+          <div style={{
+            maxHeight: 220, overflowY: 'auto',
+            border: '1px solid var(--border)', borderRadius: 12,
+          }}>
+            {[...c.invoices].reverse().slice(0, 15).map((inv, i, arr) => (
+              <div key={inv.id || i} style={{
+                display: 'grid', gridTemplateColumns: '1fr auto', gap: 12,
+                padding: '10px 14px',
+                borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--border)',
+                alignItems: 'center',
+              }}>
+                <div style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>
+                  {inv.date ? fmtDate(inv.date) : '—'}
+                </div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                  {fmt(inv.amount)} <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function Chip({ color, label }) {
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '4px 12px', borderRadius: 999,
+      background: `color-mix(in srgb, ${color} 12%, transparent)`,
+      color, fontSize: 11.5, fontWeight: 600,
+    }}>{label}</span>
+  );
+}
+
+function MiniStat({ label, value, suffix, hint, color }) {
+  return (
+    <div style={{
+      padding: '12px 14px',
+      background: 'var(--bg2)', borderRadius: 12,
+    }}>
+      <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 500, marginBottom: 5 }}>{label}</div>
+      <div style={{ fontSize: 16, fontWeight: 700, color: color || 'var(--text)', fontFamily: 'var(--font-mono)', letterSpacing: -0.3, whiteSpace: 'nowrap' }}>
+        {value}
+        {suffix && <span style={{ fontSize: 10, color: 'var(--muted)', marginRight: 4, fontWeight: 500 }}> {suffix}</span>}
+      </div>
+      {hint && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3 }}>{hint}</div>}
     </div>
   );
 }
@@ -339,20 +756,45 @@ function QuickStat({ icon, label, value, hint, color }) {
 }
 
 // ── TopList ───────────────────────────────────────────────────────
-function TopList({ icon, accent, title, sub, rows, valueLabel, renderRow, empty }) {
+function TopList({ icon, accent, title, sub, rows, valueLabel, renderRow, empty, onRowClick, onExport }) {
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
-      <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-          <span style={{
-            width: 24, height: 24, borderRadius: 7,
-            background: `color-mix(in srgb, ${accent} 14%, transparent)`,
-            color: accent,
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          }}>{icon}</span>
-          <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.2 }}>{title}</span>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        gap: 12, padding: '14px 18px', borderBottom: '1px solid var(--border)',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+            <span style={{
+              width: 24, height: 24, borderRadius: 7,
+              background: `color-mix(in srgb, ${accent} 14%, transparent)`,
+              color: accent,
+              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>{icon}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</span>
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{sub}</div>
         </div>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{sub}</div>
+        {onExport && rows?.length > 0 && (
+          <button
+            onClick={onExport}
+            title="تصدير القائمة كـ Excel"
+            style={{
+              background: 'transparent', border: '1px solid var(--border2)',
+              color: 'var(--muted)', borderRadius: 999,
+              padding: '6px 10px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', gap: 5,
+              fontSize: 11.5, fontFamily: 'var(--font-sans)', fontWeight: 600,
+              transition: 'all .15s',
+              flexShrink: 0,
+            }}
+            onMouseEnter={e => { e.currentTarget.style.borderColor = accent; e.currentTarget.style.color = accent; }}
+            onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border2)'; e.currentTarget.style.color = 'var(--muted)'; }}
+          >
+            <Download size={12}/> Excel
+          </button>
+        )}
       </div>
       <div style={{ maxHeight: 360, overflowY: 'auto' }}>
         {!rows?.length ? (
@@ -361,13 +803,21 @@ function TopList({ icon, accent, title, sub, rows, valueLabel, renderRow, empty 
           rows.map((r, i) => {
             const cell = renderRow(r);
             return (
-              <div key={r.id || r.name || r.store_id || i} style={{
-                display: 'grid',
-                gridTemplateColumns: '24px 1fr auto',
-                gap: 12, padding: '10px 18px',
-                borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--border)',
-                alignItems: 'center',
-              }}>
+              <div
+                key={r.id || r.name || r.store_id || i}
+                onClick={onRowClick ? () => onRowClick(r) : undefined}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '24px 1fr auto',
+                  gap: 12, padding: '10px 18px',
+                  borderBottom: i === rows.length - 1 ? 'none' : '1px solid var(--border)',
+                  alignItems: 'center',
+                  cursor: onRowClick ? 'pointer' : 'default',
+                  transition: 'background .12s',
+                }}
+                onMouseEnter={e => onRowClick && (e.currentTarget.style.background = 'var(--surface2)')}
+                onMouseLeave={e => onRowClick && (e.currentTarget.style.background = 'transparent')}
+              >
                 <span style={{
                   fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)',
                   fontWeight: 700, textAlign: 'center',

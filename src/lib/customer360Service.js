@@ -62,6 +62,22 @@ export async function loadCustomerWatch() {
   let lastMonthInvoiced = 0;
   const debtByCustomer = [];      // for top-by-debt list
 
+  // 12-month time series — keyed by `YYYY-MM`, oldest → newest. Used
+  // for the trend AreaChart on the watch page.
+  const monthsSeries = [];
+  const monthKey = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+  for (let i = 11; i >= 0; i--) {
+    const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+    monthsSeries.push({
+      key: monthKey(d),
+      label: d.toLocaleDateString('ar-SA', { month: 'short' }),
+      year: d.getFullYear(),
+      value: 0,
+      count: 0,
+    });
+  }
+  const seriesByKey = new Map(monthsSeries.map(m => [m.key, m]));
+
   // PASS 1 — merchant-driven anomalies that don't require receivables debt:
   // a negative prepaid wallet is a technical bug whether or not the
   // merchant currently shows up in the AR snapshot. We loop merchants
@@ -111,13 +127,16 @@ export async function loadCustomerWatch() {
     totalDebt += debt;
     if (debt > 0.5) debtByCustomer.push(c);
 
-    // Sum this-month's invoices for the monthly-invoiced metric.
+    // Sum this-month's invoices for the monthly-invoiced metric +
+    // bucket every invoice into the 12-month series for the chart.
     for (const inv of c.invoices || []) {
       if (!inv.date) continue;
       const d = new Date(inv.date);
       const amt = Number(inv.amount) || 0;
       if (d >= monthStart) monthlyInvoiced += amt;
       else if (d >= lastMonthStart && d < monthStart) lastMonthInvoiced += amt;
+      const bucket = seriesByKey.get(monthKey(d));
+      if (bucket) { bucket.value += amt; bucket.count += 1; }
     }
 
     const m = c.merchant;
@@ -220,6 +239,30 @@ export async function loadCustomerWatch() {
     monthlyDelta = +pct.toFixed(1);
   }
 
+  // "اليوم تحتاج" — top 5 prioritised action items. Score each anomaly
+  // entry by financial impact + urgency, return the top 5 with the
+  // action label the operator should take.
+  const allAnoms = [
+    ...anomalies.negative_wallet.map(c => ({ c, kind: 'negative_wallet',
+      score: Math.abs(c.merchant?.walletBalance || 0) * 5,                 // tech bug, weight 5×
+      action: 'افتح تذكرة مع الفريق التقني — رصيد سالب' })),
+    ...anomalies.active_with_debt.map(c => ({ c, kind: 'active_with_debt',
+      score: (c.total || 0) * 3,                                            // still shipping, weight 3×
+      action: 'اتصل اليوم قبل ما يتراكم الدين' })),
+    ...anomalies.prepaid_with_debt.map(c => ({ c, kind: 'prepaid_with_debt',
+      score: (c.total || 0) * 2,                                            // tech anomaly, weight 2×
+      action: 'تحقق من المحفظة — ليه عليه دين وهو دفع مسبق؟' })),
+    ...anomalies.postpaid_overdue.map(c => ({ c, kind: 'postpaid_overdue',
+      score: (c.total || 0) * (1 + Math.min(1, (c.daysOutstanding || 0) / 180)),
+      action: c.daysOutstanding > 90 ? 'مرشّح للإيقاف — أرسل تنبيه نهائي' : 'تنبيه دفع' })),
+    ...anomalies.inactive_with_debt.map(c => ({ c, kind: 'inactive_with_debt',
+      score: (c.total || 0) * 0.5,
+      action: 'حصّل قبل الإغلاق النهائي' })),
+  ];
+  const todayActions = allAnoms
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 8);
+
   return {
     snapshot: {
       receivables: receivablesResult?.snapshot || null,
@@ -253,6 +296,8 @@ export async function loadCustomerWatch() {
     },
     anomalies,
     top,
+    todayActions,
+    monthsSeries,
     customers,
     merchants,
   };
