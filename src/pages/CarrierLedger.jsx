@@ -491,7 +491,7 @@ export default function CarrierLedger({ isActive = true }) {
   // First-time empty state — no statement has been saved yet anywhere.
   if (!loading && carrierList.length === 0) {
     return (
-      <div style={{ padding: '28px 32px', maxWidth: 900 }}>
+      <div style={{ padding: '32px 40px 80px', maxWidth: 1100 }}>
         <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0, marginBottom: 18 }}>
           📒 الدفتر
         </h2>
@@ -511,7 +511,7 @@ export default function CarrierLedger({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1300 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1300 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>

@@ -188,6 +188,65 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
   );
 }
 
+// ─── PageHeader ──────────────────────────────────────────────────────────────
+// The welcome bar that every modern page opens with. Avatar/icon on the
+// right (RTL), title + optional subtitle, actions on the left.
+// Pattern matches Dashboard's welcome banner — apply across the system
+// so every page reads the same way.
+export function PageHeader({
+  icon, avatar, title, subtitle, actions, meta,
+  iconColor = '#10B981',
+}) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      marginBottom: 28, gap: 16, flexWrap: 'wrap',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+        {avatar !== undefined ? (
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+            background: avatar?.bg || 'linear-gradient(135deg,#10B981,#059669)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 19, fontWeight: 700, color: '#fff',
+            boxShadow: '0 4px 14px rgba(16,185,129,.22)',
+          }}>
+            {avatar?.letter || '?'}
+          </div>
+        ) : icon && (
+          <div style={{
+            width: 48, height: 48, borderRadius: 14, flexShrink: 0,
+            background: `color-mix(in srgb, ${iconColor} 12%, transparent)`,
+            color: iconColor,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{icon}</div>
+        )}
+        <div style={{ minWidth: 0 }}>
+          <h1 style={{
+            fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700,
+            color: 'var(--text)', margin: 0, lineHeight: 1.2, letterSpacing: -0.4,
+            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          }}>{title}</h1>
+          {subtitle && (
+            <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: 0, marginTop: 4 }}>
+              {subtitle}
+            </p>
+          )}
+          {meta && (
+            <div style={{
+              fontSize: 11.5, marginTop: 6, fontFamily: 'var(--font-mono)',
+              color: 'var(--muted2)', letterSpacing: 0.3,
+            }}>{meta}</div>
+          )}
+        </div>
+      </div>
+      {actions && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{actions}</div>
+      )}
+    </div>
+  );
+}
+
 // ─── PageHero ─────────────────────────────────────────────────────────────────
 // Standardized page header for every screen. Replaces the per-page gradient
 // hero blocks (each one a different palette) with one calm primitive:
@@ -208,63 +267,92 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
 export function PageHero({
   tag, title, subtitle,
   stats = [], actions, variant = 'white',
-  meta, icon,
+  meta, icon, accent = '#10B981',
 }) {
   const dark = variant === 'dark';
   return (
     <div style={{
       position: 'relative',
-      borderRadius: 'var(--r-lg)',
-      padding: '22px 28px',
-      marginBottom: 18,
-      background: dark ? '#0F1235' : 'var(--card)',
+      borderRadius: 'var(--r-xl)',
+      padding: dark ? '32px 36px' : '28px 32px',
+      marginBottom: 24,
+      background: dark ? '#0A0A0B' : 'var(--card)',
       color: dark ? '#fff' : 'var(--text)',
-      border: dark ? '1px solid #0F1235' : '1px solid var(--border)',
+      border: dark ? 'none' : '1px solid transparent',
       boxShadow: dark
-        ? '0 10px 32px rgba(15,18,53,.20)'
+        ? '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)'
         : 'var(--shadow-sm)',
       overflow: 'hidden',
     }}>
+      {/* Decorative emerald glow blob on dark variant */}
+      {dark && (
+        <div style={{
+          position: 'absolute', top: -100, right: -80, width: 320, height: 320,
+          background: `radial-gradient(closest-side, ${accent}24, transparent)`,
+          pointerEvents: 'none', filter: 'blur(8px)',
+        }}/>
+      )}
       <div style={{
+        position: 'relative',
         display: 'grid',
         gridTemplateColumns: stats.length ? 'minmax(0,1fr) auto' : 'minmax(0,1fr) auto',
-        alignItems: 'center', gap: 24,
+        alignItems: 'center', gap: 28,
       }}>
         {/* Left: tag → title → subtitle */}
-        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 18 }}>
           {icon && (
             <div style={{
-              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              width: 52, height: 52, borderRadius: 14, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              background: dark ? 'rgba(255,255,255,.08)' : 'var(--accent-dim)',
-              color: dark ? '#fff' : 'var(--accent)',
+              background: dark ? 'rgba(255,255,255,.06)' : `color-mix(in srgb, ${accent} 12%, transparent)`,
+              color: dark ? '#fff' : accent,
+              border: dark ? '1px solid rgba(255,255,255,.08)' : 'none',
             }}>{icon}</div>
           )}
           <div style={{ minWidth: 0 }}>
             {tag && (
-              <div style={{
-                fontSize: 10.5, fontFamily: 'var(--font-mono)',
-                letterSpacing: 2, textTransform: 'uppercase',
-                color: dark ? 'rgba(255,255,255,.55)' : 'var(--muted)',
-                fontWeight: 600, marginBottom: 4,
-              }}>{tag}</div>
+              dark ? (
+                <div style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 8,
+                  padding: '5px 12px', borderRadius: 999,
+                  background: 'rgba(255,255,255,.06)',
+                  border: '1px solid rgba(255,255,255,.10)',
+                  fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                  letterSpacing: 1.5, textTransform: 'uppercase',
+                  color: 'rgba(255,255,255,.7)', fontWeight: 600,
+                  marginBottom: 12,
+                }}>
+                  <span style={{
+                    width: 6, height: 6, borderRadius: '50%',
+                    background: accent, boxShadow: `0 0 10px ${accent}`,
+                  }}/>
+                  {tag}
+                </div>
+              ) : (
+                <div style={{
+                  fontSize: 11, fontFamily: 'var(--font-mono)',
+                  letterSpacing: 1.5, textTransform: 'uppercase',
+                  color: 'var(--muted)', fontWeight: 600,
+                  marginBottom: 6,
+                }}>{tag}</div>
+              )
             )}
             <h1 style={{
-              fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800,
+              fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 700,
               color: dark ? '#fff' : 'var(--text)',
-              margin: 0, lineHeight: 1.2,
+              margin: 0, lineHeight: 1.15, letterSpacing: -0.5,
             }}>{title}</h1>
             {subtitle && (
               <div style={{
-                fontSize: 12.5, marginTop: 4,
-                color: dark ? 'rgba(255,255,255,.65)' : 'var(--muted)',
+                fontSize: 13.5, marginTop: 6,
+                color: dark ? 'rgba(255,255,255,.6)' : 'var(--muted)',
               }}>{subtitle}</div>
             )}
             {meta && (
               <div style={{
-                fontSize: 10.5, marginTop: 6, fontFamily: 'var(--font-mono)',
-                color: dark ? 'rgba(255,255,255,.45)' : 'var(--muted2)',
-                letterSpacing: 0.5,
+                fontSize: 11, marginTop: 8, fontFamily: 'var(--font-mono)',
+                color: dark ? 'rgba(255,255,255,.4)' : 'var(--muted2)',
+                letterSpacing: 0.3,
               }}>{meta}</div>
             )}
           </div>
@@ -298,28 +386,27 @@ export function StatTile({ label, value, hint, color, big, dark }) {
   const valueColor = color || (dark ? '#fff' : 'var(--text)');
   return (
     <div style={{
-      paddingInline: 14, paddingBlock: 6,
+      paddingInline: 18, paddingBlock: 8,
       borderInlineStart: dark
-        ? '1px solid rgba(255,255,255,.14)'
+        ? '1px solid rgba(255,255,255,.08)'
         : '1px solid var(--border)',
-      minWidth: big ? 130 : 100,
+      minWidth: big ? 150 : 110,
     }}>
       <div style={{
-        fontSize: 9.5, opacity: dark ? .7 : 1,
-        fontFamily: 'var(--font-mono)', letterSpacing: 1.5,
-        textTransform: 'uppercase', fontWeight: 600,
-        color: dark ? 'rgba(255,255,255,.7)' : 'var(--muted)',
-        whiteSpace: 'nowrap',
+        fontSize: 11, fontFamily: 'var(--font-sans)',
+        letterSpacing: 0.2, fontWeight: 500,
+        color: dark ? 'rgba(255,255,255,.55)' : 'var(--muted)',
+        whiteSpace: 'nowrap', marginBottom: 6,
       }}>{label}</div>
       <div style={{
-        fontSize: big ? 22 : 17, fontWeight: 800,
+        fontSize: big ? 24 : 20, fontWeight: 700,
         color: valueColor, fontFamily: 'var(--font-mono)',
-        marginTop: 3, whiteSpace: 'nowrap', letterSpacing: -0.3,
+        whiteSpace: 'nowrap', letterSpacing: -0.4, lineHeight: 1,
       }}>{value ?? '—'}</div>
       {hint && (
         <div style={{
-          fontSize: 10, marginTop: 2,
-          color: dark ? 'rgba(255,255,255,.5)' : 'var(--muted)',
+          fontSize: 11, marginTop: 6,
+          color: dark ? 'rgba(255,255,255,.45)' : 'var(--muted)',
         }}>{hint}</div>
       )}
     </div>

@@ -167,7 +167,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
       }}>
         <div style={{
           width: 40, height: 40, borderRadius: 11,
-          background: '#0F1235',
+          background: '#0A0A0B',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, fontSize: 18,
         }}>
@@ -787,7 +787,7 @@ export default function UploadWizard({ carriers, onComplete }) {
   ];
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1100, margin: '0 auto' }}>
 
       {/* ── HERO ──────────────────────────────────────────────────────── */}
       <div style={{
@@ -795,10 +795,10 @@ export default function UploadWizard({ carriers, onComplete }) {
         padding: '22px 28px',
         marginBottom: 22,
         borderRadius: 'var(--r-lg)',
-        background: '#0F1235',
+        background: '#0A0A0B',
         color: '#fff',
         overflow: 'hidden',
-        boxShadow: '0 10px 32px rgba(15,18,53,.20)',
+        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
       }}>
         <div style={{
           position: 'absolute', left: -40, top: -40, width: 220, height: 220,

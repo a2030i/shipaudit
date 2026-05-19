@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, Building2, Webhook as WebhookIcon,
   Settings as SettingsIcon, Wallet, ArrowLeft,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHero } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero, PageHeader } from '../components/UI.jsx';
 import { loadCarriersHub } from '../lib/carriersHubService.js';
 
 const fmt = (n) =>
@@ -270,28 +270,28 @@ export default function CarriersHub({ isActive = true }) {
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+      <PageHeader
+        icon={<Building2 size={22}/>}
+        title="شركات الشحن"
+        subtitle={loading
+          ? 'جارٍ التحميل…'
+          : `${data.rows.length} ${data.rows.length === 1 ? 'شركة' : 'شركات'} · ${data.totals.pendingActions ?? 0} ${(data.totals.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
+        actions={
+          <>
+            <Btn size="md" variant="ghost" icon={<Inbox size={14}/>} onClick={() => navigate('/webhook')}>
+              الوارد
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<SettingsIcon size={14}/>} onClick={() => navigate('/carriers')}>
+              إدارة
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+              تحديث
+            </Btn>
+          </>
+        }
+      />
       <HeaderTotals totals={data.totals} loading={loading}/>
-
-      {/* Action bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          {loading
-            ? 'جارٍ التحميل…'
-            : `${data.rows.length} ${data.rows.length === 1 ? 'شركة' : 'شركات'} · ${data.totals.pendingActions ?? 0} ${(data.totals.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
-        </div>
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8 }}>
-          <Btn size="sm" variant="ghost" icon={<Inbox size={13}/>} onClick={() => navigate('/webhook')}>
-            صندوق الوارد
-          </Btn>
-          <Btn size="sm" variant="ghost" icon={<SettingsIcon size={13}/>} onClick={() => navigate('/carriers')}>
-            إدارة الشركات
-          </Btn>
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
-            تحديث
-          </Btn>
-        </div>
-      </div>
 
       {/* Carrier grid */}
       {loading ? (

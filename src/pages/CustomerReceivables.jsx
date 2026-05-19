@@ -11,7 +11,7 @@ import {
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
@@ -666,7 +666,36 @@ export default function CustomerReceivables({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+      <PageHeader
+        icon={<Users size={22}/>}
+        title="مديونيات العملاء"
+        subtitle={loading
+          ? 'جارٍ التحميل…'
+          : data?.customerCount
+            ? `${data.customerCount} عميل في الـ snapshot الحالي`
+            : 'لا توجد بيانات بعد'}
+        meta={data?.snapshot ? `snapshot ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
+        actions={
+          <>
+            <Btn size="md" variant="ghost" icon={<ChevronDown size={14}/>} onClick={handleShowHistory}>
+              السجل
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
+              تصدير
+            </Btn>
+            <Btn size="md" variant="gold" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
+              ملف تحصيل
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+              تحديث
+            </Btn>
+            <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
+              رفع كشف
+            </Btn>
+          </>
+        }
+      />
       <Hero
         total={data?.total || 0}
         overdueTotal={data ? (data.aging.d31_60 + data.aging.d61_90 + data.aging.d90_plus) : 0}
@@ -674,34 +703,6 @@ export default function CustomerReceivables({ isActive = true }) {
         snapshot={data?.snapshot}
         oldestDays={oldestDays}
       />
-
-      {/* Action bar */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          {loading
-            ? 'جارٍ التحميل…'
-            : data?.customerCount
-              ? `${data.customerCount} عميل · ${data?.snapshot?.id || ''}`
-              : 'لا توجد بيانات بعد'}
-        </div>
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8 }}>
-          <Btn size="sm" variant="ghost" icon={<ChevronDown size={13}/>} onClick={handleShowHistory}>
-            السجل
-          </Btn>
-          <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
-            تصدير Excel
-          </Btn>
-          <Btn size="sm" variant="gold" icon={<Download size={13}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
-            📞 ملف حملة تحصيل
-          </Btn>
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
-            تحديث
-          </Btn>
-          <Btn size="sm" variant="accent" icon={<Upload size={13}/>} onClick={() => setShowUpload(true)}>
-            رفع كشف جديد
-          </Btn>
-        </div>
-      </div>
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
