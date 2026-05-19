@@ -34,6 +34,7 @@
 //     → drops the snapshot entirely
 
 import { supabase } from './supabase.js';
+import { loadLatestMerchants } from './merchantsService.js';
 
 // Arabic month abbreviations → 1-12. Covers what the user's export
 // uses ("12 أبر 2026" etc.). Full names also accepted for safety.
@@ -317,15 +318,20 @@ export async function loadLatestReceivables() {
   // path leaves the receivables data untouched, no merchant fields
   // added, anomalies tab degrades gracefully.
   try {
-    const [{ data: linkRows }, latestMerchants] = await Promise.all([
+    // Static imports for both halves — the previous dynamic
+    // import(`./merchantsService.js`) inside an IIFE swallowed errors
+    // silently, leaving merchantById empty in production. Result: every
+    // customer's link.store_id check failed → all customers tagged as
+    // unlinked even when 80+ were genuinely linked. Static import +
+    // explicit destructure means a real error now surfaces in the catch
+    // below instead of corrupting the overlay.
+    const [{ data: linkRows }, merchantsResult] = await Promise.all([
       supabase.from('customer_merchant_links').select('customer_name, store_id, confidence, match_method'),
-      (async () => {
-        const { merchants: m } = await import('./merchantsService.js').then(mod => mod.loadLatestMerchants());
-        return m;
-      })().catch(() => []),
+      loadLatestMerchants(),
     ]);
+    const latestMerchants = merchantsResult?.merchants || [];
     const linkByName = new Map((linkRows || []).map(r => [r.customer_name, r]));
-    const merchantById = new Map((latestMerchants || []).map(m => [m.store_id, m]));
+    const merchantById = new Map(latestMerchants.map(m => [m.store_id, m]));
     for (const c of byCustomer.values()) {
       const link = linkByName.get(c.name);
       if (!link?.store_id) {
