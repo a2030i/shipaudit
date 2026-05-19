@@ -114,7 +114,9 @@ function InsightGrid({ insights }) {
     { k:'newLast30',     label:'جدد آخر 30 يوم',   value: insights.newLast30,     icon: TrendingUp,  color:'#10B981' },
     { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب funnel' },
     { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'#F59E0B' },
-    { k:'walletTotal',   label:'أرصدة المحافظ',     value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'#3B82F6', raw: true },
+    { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'#7A82C4', hint: 'مرشحون لإعادة الاسترداد' },
+    { k:'walletPiles',   label:'محافظ راكدة (+60ي)', value: `${fmtCount(insights.walletPilesUp)} · ${fmt(insights.walletPilesAmount)} ر.س`, icon: Wallet, color:'#F97316', raw: true, hint: 'رصيد دون نشاط' },
+    { k:'walletTotal',   label:'إجمالي أرصدة المحافظ', value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'#3B82F6', raw: true },
   ];
   return (
     <div style={{
@@ -130,7 +132,7 @@ function InsightGrid({ insights }) {
               <Icon size={12} color={c.color}/>
               {c.label}
             </div>
-            <div style={{ fontSize:22, fontWeight:800, color:c.color, fontFamily:'var(--font-mono)', marginTop:4 }}>
+            <div style={{ fontSize: c.raw ? 16 : 22, fontWeight:800, color:c.color, fontFamily:'var(--font-mono)', marginTop:4 }}>
               {c.raw ? c.value : fmtCount(c.value)}
             </div>
             {c.hint && (
@@ -140,6 +142,83 @@ function InsightGrid({ insights }) {
         );
       })}
     </div>
+  );
+}
+
+// ── Top-volume + churned panels ────────────────────────────────
+// Two side-by-side mini-tables: the merchants who ship the most
+// (focus celebration / retention), and the merchants who were active
+// but went inactive (collection priorities + win-back leads).
+function MerchantInsightsPanels({ insights }) {
+  if (!insights.topByVolume?.length && !insights.churnedTop?.length) return null;
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+      gap: 12, marginBottom: 14,
+    }}>
+      <MiniMerchantTable
+        icon={TrendingUp}
+        accent="#10B981"
+        title={`أعلى ${insights.topByVolume?.length || 0} متجراً بالشحنات`}
+        sub="فرص نموّ + علاقات استراتيجية"
+        rows={insights.topByVolume || []}
+        valueLabel="شحنة"
+        valueFn={m => fmtCount(m.shipment_count)}
+        emptyMsg="لا يوجد متاجر بشحنات بعد"
+      />
+      <MiniMerchantTable
+        icon={ZapOff}
+        accent="#7A82C4"
+        title={`فُقدوا (${fmtCount(insights.churned || 0)}) — مرشّحون لاسترداد`}
+        sub="مُعطَّلون في المنصّة لكن شحنوا سابقاً"
+        rows={insights.churnedTop || []}
+        valueLabel="آخر شحنة"
+        valueFn={m => m.last_shipment_at ? `${fmtDate(m.last_shipment_at)} · ${daysAgo(m.last_shipment_at)}ي` : '—'}
+        emptyMsg="لا يوجد عملاء فقدوا — ممتاز"
+      />
+    </div>
+  );
+}
+
+function MiniMerchantTable({ icon: Icon, accent, title, sub, rows, valueLabel, valueFn, emptyMsg }) {
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden', borderTop: `2px solid ${accent}` }}>
+      <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10.5, color:'var(--muted)', fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase' }}>
+          <Icon size={13} color={accent}/>
+          {title}
+        </div>
+        <div style={{ fontSize:11, color:'var(--muted)', marginTop:3 }}>{sub}</div>
+      </div>
+      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+        {!rows.length ? (
+          <div style={{ padding:24, textAlign:'center', fontSize:12, color:'var(--muted)' }}>{emptyMsg}</div>
+        ) : (
+          <table style={{ width:'100%', fontSize:11.5 }}>
+            <tbody>
+              {rows.map((m, i) => (
+                <tr key={m.id || m.store_id} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding:'7px 12px', width: 22, color:'var(--muted)', fontFamily:'var(--font-mono)', fontSize:10 }}>{i + 1}</td>
+                  <td style={{ padding:'7px 4px', fontWeight:600, color:'var(--text)' }}>
+                    {m.store_name}
+                    {m.phone && (
+                      <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)', direction:'ltr', textAlign:'right', marginTop:1 }}>
+                        {m.phone}
+                      </div>
+                    )}
+                  </td>
+                  <td style={{ padding:'7px 12px', textAlign:'left', whiteSpace:'nowrap', fontFamily:'var(--font-mono)', fontWeight:700, color: accent, fontSize:11 }}>
+                    {valueFn(m)}
+                    <div style={{ fontSize:9, color:'var(--muted)', fontWeight:500, letterSpacing:1.5, textTransform:'uppercase' }}>{valueLabel}</div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+    </Card>
   );
 }
 
@@ -373,6 +452,7 @@ export default function Merchants({ isActive = true }) {
       ) : (
         <>
           <InsightGrid insights={insights}/>
+          <MerchantInsightsPanels insights={insights}/>
 
           {/* Filter bar */}
           <Card style={{ padding:12, marginBottom:12 }}>
