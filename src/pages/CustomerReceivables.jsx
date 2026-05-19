@@ -957,7 +957,11 @@ export default function CustomerReceivables({ isActive = true }) {
               {Object.entries(anomalyBreakdown).map(([key, list]) => {
                 const meta = ANOMALY_META[key];
                 if (!meta || list.length === 0) return null;
-                const total = list.reduce((s, c) => s + (Number(c.total) || 0), 0);
+                // negative_wallet aggregates by wallet balance (phantom
+                // entries have 0 debt); other buckets aggregate by debt.
+                const total = key === 'negative_wallet'
+                  ? list.reduce((s, c) => s + Math.abs(Number(c.merchant?.walletBalance) || 0), 0)
+                  : list.reduce((s, c) => s + (Number(c.total) || 0), 0);
                 return (
                   <div key={key} style={{
                     background: 'var(--card)',
