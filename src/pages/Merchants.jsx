@@ -25,6 +25,7 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
   computeMerchantInsights, autoLinkCustomers,
+  loadUnmatchedCustomers, setCustomerMerchantLink,
 } from '../lib/merchantsService.js';
 import { supabase } from '../lib/supabase.js';
 
@@ -351,6 +352,15 @@ export default function Merchants({ isActive = true }) {
   const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
   const [showUpload, setShowUpload] = useState(false);
   const [autoLinking, setAutoLinking] = useState(false);
+  const [showUnmatched, setShowUnmatched] = useState(false);
+  const [unmatchedCount, setUnmatchedCount] = useState(null);
+
+  const refreshUnmatchedCount = useCallback(async () => {
+    try {
+      const list = await loadUnmatchedCustomers();
+      setUnmatchedCount(list.length);
+    } catch { /* non-fatal */ }
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -358,11 +368,12 @@ export default function Merchants({ isActive = true }) {
       const d = await loadLatestMerchants();
       setData(d);
       setInsights(computeMerchantInsights(d.merchants));
+      refreshUnmatchedCount();
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, []);
+  }, [refreshUnmatchedCount]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -383,6 +394,7 @@ export default function Merchants({ isActive = true }) {
       const matched   = [...results.values()].filter(r => r.storeId).length;
       const unmatched = distinct.length - matched;
       toast(`ربط ${matched}/${distinct.length} عميل (${unmatched} غير مرتبط — يحتاج ربط يدوي)`, 'success');
+      refreshUnmatchedCount();
     } catch (e) {
       toast(`فشل الربط: ${e.message}`, 'error');
     }
@@ -423,6 +435,11 @@ export default function Merchants({ isActive = true }) {
           {data.merchants.length > 0 && (
             <Btn size="sm" variant="ghost" icon={<LinkIcon size={13}/>} onClick={handleAutoLink} disabled={autoLinking}>
               {autoLinking ? 'جارٍ الربط…' : 'ربط تلقائي مع المديونيات'}
+            </Btn>
+          )}
+          {unmatchedCount > 0 && (
+            <Btn size="sm" variant="gold" icon={<AlertTriangle size={13}/>} onClick={() => setShowUnmatched(true)}>
+              غير مرتبطين ({fmtCount(unmatchedCount)})
             </Btn>
           )}
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
@@ -571,6 +588,228 @@ export default function Merchants({ isActive = true }) {
           onDone={() => { setShowUpload(false); refresh(); }}
         />
       )}
+
+      {showUnmatched && (
+        <UnmatchedModal
+          merchants={data.merchants}
+          userId={user?.id}
+          onClose={() => setShowUnmatched(false)}
+          onLinkSaved={() => refreshUnmatchedCount()}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── Unmatched customers modal ─────────────────────────────────
+// Lists every customer_name that the auto-linker couldn't find a
+// merchant for (store_id is null OR match_method='unmatched'),
+// enriched with the receivables debt + aging so the user knows who
+// to prioritise. Each row offers a searchable store dropdown — on
+// save we write a manual link that the auto-linker will never
+// overwrite.
+function UnmatchedModal({ merchants, userId, onClose, onLinkSaved }) {
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const list = await loadUnmatchedCustomers();
+      setRows(list);
+    } catch (e) {
+      toast(`فشل التحميل: ${e.message}`, 'error');
+    }
+    setLoading(false);
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const visible = useMemo(() => {
+    if (!rows) return [];
+    const q = search.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter(r => (r.customerName || '').toLowerCase().includes(q));
+  }, [rows, search]);
+
+  const handleLink = async (customerName, storeId) => {
+    if (!storeId) return;
+    try {
+      await setCustomerMerchantLink({ customerName, storeId, method: 'manual', confidence: 1.0, userId });
+      toast(`✓ ربط ${customerName}`, 'success');
+      setRows(prev => (prev || []).filter(r => r.customerName !== customerName));
+      onLinkSaved?.();
+    } catch (e) {
+      toast(`فشل الحفظ: ${e.message}`, 'error');
+    }
+  };
+
+  const handleSkip = async (customerName) => {
+    // Mark as "skipped" — store_id stays null, but method='manual'
+    // so the auto-linker won't keep trying to match it.
+    try {
+      await setCustomerMerchantLink({ customerName, storeId: null, method: 'manual', confidence: 0, userId });
+      toast(`✓ تم تجاهل ${customerName}`, 'success');
+      setRows(prev => (prev || []).filter(r => r.customerName !== customerName));
+      onLinkSaved?.();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+  };
+
+  return (
+    <Modal title={`الربط اليدوي — ${rows?.length || 0} عميل غير مرتبط`} onClose={onClose} width={780}>
+      <div style={{
+        padding:'10px 14px', marginBottom:10,
+        background:'rgba(245,158,11,.08)',
+        border:'1px solid rgba(245,158,11,.3)',
+        borderRadius:9, fontSize:12, lineHeight:1.7,
+        color:'var(--text)',
+      }}>
+        <strong style={{ color:'#F59E0B' }}>⚠ هؤلاء العملاء بأسماء لم يستطع الـ auto-linker مطابقتها مع المتاجر.</strong>
+        <div style={{ color:'var(--muted)', marginTop:3 }}>
+          اختر المتجر الصحيح من القائمة (بحث بالاسم أو ID) — الربط اليدوي محمي ولن يُعاد كتابته في الرفعات القادمة.
+          أو اضغط "تجاهل" لو العميل لا يطابق أي متجر.
+        </div>
+      </div>
+
+      <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:10 }}>
+        <Search size={14} color="var(--muted)"/>
+        <input
+          value={search} onChange={e => setSearch(e.target.value)}
+          placeholder="بحث باسم العميل…"
+          style={{ flex:1, padding:'7px 10px', borderRadius:7, fontSize:12 }}
+        />
+        <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'var(--font-mono)' }}>
+          {fmtCount(visible.length)} / {fmtCount(rows?.length || 0)}
+        </span>
+      </div>
+
+      {loading ? (
+        <div style={{ display:'flex', justifyContent:'center', padding:40 }}><Spinner size={24}/></div>
+      ) : !visible.length ? (
+        <div style={{ padding:30, textAlign:'center', fontSize:12, color:'var(--muted)' }}>
+          {rows?.length ? 'لا نتائج للبحث' : '🎉 كل العملاء مرتبطون'}
+        </div>
+      ) : (
+        <div style={{ maxHeight:480, overflowY:'auto', border:'1px solid var(--border)', borderRadius:8 }}>
+          {visible.map(r => (
+            <UnmatchedRow
+              key={r.customerName}
+              row={r}
+              merchants={merchants}
+              onLink={(storeId) => handleLink(r.customerName, storeId)}
+              onSkip={() => handleSkip(r.customerName)}
+            />
+          ))}
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+// Single unmatched row: shows customer name + debt context, a
+// searchable merchant dropdown, link/skip buttons.
+function UnmatchedRow({ row, merchants, onLink, onSkip }) {
+  const [storeQ, setStoreQ] = useState('');
+  const [picked, setPicked] = useState(null);
+
+  const options = useMemo(() => {
+    const q = storeQ.trim().toLowerCase();
+    if (!q) return [];
+    return merchants.filter(m =>
+      (m.store_name || '').toLowerCase().includes(q) ||
+      (m.store_id   || '').toLowerCase().includes(q),
+    ).slice(0, 8);
+  }, [storeQ, merchants]);
+
+  return (
+    <div style={{
+      padding:'12px 14px', borderBottom:'1px solid var(--border)',
+      display:'grid', gridTemplateColumns:'1fr 1fr auto', gap:14, alignItems:'start',
+    }}>
+      <div>
+        <div style={{ fontWeight:700, fontSize:12.5, color:'var(--text)', wordBreak:'break-word' }}>
+          {row.customerName}
+        </div>
+        <div style={{ display:'flex', gap:8, marginTop:5, flexWrap:'wrap', fontSize:10.5 }}>
+          {row.totalDue > 0 && (
+            <span style={{ color:'#EF4444', fontFamily:'var(--font-mono)', fontWeight:700 }}>
+              {fmt(row.totalDue)} ر.س
+            </span>
+          )}
+          {row.daysOutstanding > 0 && (
+            <span style={{ color: row.daysOutstanding > 60 ? '#F59E0B' : 'var(--muted)' }}>
+              {row.daysOutstanding}ي متأخر
+            </span>
+          )}
+          {row.matchMethod === 'unmatched' && (
+            <span style={{ color:'var(--muted)', fontStyle:'italic' }}>auto: لم يجد تطابق</span>
+          )}
+        </div>
+      </div>
+
+      <div style={{ position:'relative' }}>
+        {picked ? (
+          <div style={{
+            display:'flex', alignItems:'center', gap:6,
+            padding:'6px 10px', borderRadius:7,
+            background:'rgba(45,212,191,.10)', border:'1px solid rgba(45,212,191,.35)',
+            fontSize:11.5,
+          }}>
+            <CheckCircle2 size={12} color="var(--accent)"/>
+            <div style={{ flex:1, minWidth:0 }}>
+              <div style={{ fontWeight:700, color:'var(--text)' }}>{picked.store_name}</div>
+              <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)' }}>{picked.store_id}</div>
+            </div>
+            <button onClick={() => setPicked(null)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--muted)' }}>
+              <X size={12}/>
+            </button>
+          </div>
+        ) : (
+          <>
+            <input
+              value={storeQ} onChange={e => setStoreQ(e.target.value)}
+              placeholder="ابحث عن متجر بالاسم أو ID…"
+              style={{ width:'100%', padding:'6px 10px', borderRadius:7, fontSize:11.5 }}
+            />
+            {options.length > 0 && (
+              <div style={{
+                position:'absolute', insetInline:0, top:'100%',
+                background:'var(--card)', border:'1px solid var(--border)',
+                borderRadius:7, marginTop:3, zIndex:10,
+                maxHeight:220, overflowY:'auto',
+                boxShadow:'0 6px 18px rgba(0,0,0,.18)',
+              }}>
+                {options.map(m => (
+                  <div key={m.id} onClick={() => { setPicked(m); setStoreQ(''); }} style={{
+                    padding:'7px 10px', cursor:'pointer', fontSize:11.5,
+                    borderBottom:'1px solid var(--border)',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                    <div style={{ fontWeight:600 }}>{m.store_name}</div>
+                    <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)' }}>
+                      {m.store_id} · {m.phone || 'بدون هاتف'}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+        {picked && (
+          <Btn size="sm" variant="accent" icon={<LinkIcon size={12}/>} onClick={() => { onLink(picked.store_id); setPicked(null); }}>
+            ربط
+          </Btn>
+        )}
+        <Btn size="sm" variant="ghost" onClick={onSkip}>
+          تجاهل
+        </Btn>
+      </div>
     </div>
   );
 }
