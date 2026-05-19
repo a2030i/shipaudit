@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -14,6 +14,7 @@ import Dashboard      from './pages/Dashboard.jsx';
 import CarriersHub    from './pages/CarriersHub.jsx';
 import CarrierProfile from './pages/CarrierProfile.jsx';
 import CustomerReceivables from './pages/CustomerReceivables.jsx';
+import Merchants from './pages/Merchants.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
 import AuditResults   from './pages/AuditResults.jsx';
@@ -57,6 +58,7 @@ const NAV_ITEMS = [
   { id: 'aramex-stmt',     path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText, section: 'ledger' },
   { id: 'bank',            path: '/bank',              label: 'كشف بنكي',        icon: Wallet,   section: 'ledger' },
   { id: 'receivables',     path: '/receivables',       label: 'مديونيات العملاء', icon: Users,    section: 'ledger' },
+  { id: 'merchants',       path: '/merchants',         label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'ledger' },
 
   // ── Admin (config + reports + audit-trail) ─────────────────────
   { id: 'carriers',        path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'admin' },
@@ -85,6 +87,7 @@ const PAGE_TITLES = {
   '/aramex-statements': 'كشوف خارجية',
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
+  '/merchants':         'متاجر المنصّة',
   '/carriers':          'إدارة الشركات',
   '/contracts':         'جدول العقود',
   '/carrier-kpi':       'أداء الناقلين',
@@ -124,7 +127,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -526,6 +529,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/receivables'} scroll>
               <CustomerReceivables isActive={pathname==='/receivables'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/merchants'} scroll>
+              <Merchants isActive={pathname==='/merchants'}/>
             </PageSlot>
             <PageSlot active={pathname==='/weight-billing'} scroll>
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
