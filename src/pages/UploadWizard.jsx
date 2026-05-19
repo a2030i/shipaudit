@@ -167,7 +167,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
       }}>
         <div style={{
           width: 40, height: 40, borderRadius: 11,
-          background: 'linear-gradient(135deg, #1B1E54, #2DD4BF)',
+          background: '#0F1235',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, fontSize: 18,
         }}>
@@ -795,10 +795,10 @@ export default function UploadWizard({ carriers, onComplete }) {
         padding: '22px 28px',
         marginBottom: 22,
         borderRadius: 'var(--r-lg)',
-        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
+        background: '#0F1235',
         color: '#fff',
         overflow: 'hidden',
-        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
+        boxShadow: '0 10px 32px rgba(15,18,53,.20)',
       }}>
         <div style={{
           position: 'absolute', left: -40, top: -40, width: 220, height: 220,
@@ -835,7 +835,7 @@ export default function UploadWizard({ carriers, onComplete }) {
                     background: done
                       ? 'linear-gradient(135deg, #14B8A6, #2DD4BF)'
                       : current
-                        ? 'linear-gradient(135deg, #1B1E54, #2DD4BF)'
+                        ? '#0F1235'
                         : 'var(--surface)',
                     border: `2px solid ${done || current ? 'transparent' : 'var(--border2)'}`,
                     color: done || current ? '#fff' : 'var(--muted)',

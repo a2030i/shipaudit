@@ -4,7 +4,7 @@ import {
   RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell, Search, ExternalLink,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero } from '../components/UI.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
   loadStaleDisputes,
@@ -128,62 +128,36 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
-      {/* Hero banner — Lamha brand gradient */}
-      <div style={{
-        position: 'relative',
-        padding: '24px 28px',
-        marginBottom: 22,
-        borderRadius: 'var(--r-lg)',
-        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
-        color: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
-      }}>
-        {/* Decorative hex shape */}
-        <div style={{
-          position: 'absolute', left: -40, top: -40, width: 220, height: 220,
-          opacity: .08, pointerEvents: 'none',
-        }}>
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-          </svg>
-        </div>
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 16 }}>
-          <div>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
-              LAMHA · FINANCIAL CONTROL
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-              لوحة التحكم المالية
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
-              نظرة شاملة على التزاماتك تجاه شركات الشحن — مدفوعات، نزاعات، أعمار ديون
-            </p>
-          </div>
+      <PageHero
+        variant="dark"
+        tag="LAMHA · FINANCIAL CONTROL"
+        title="لوحة التحكم المالية"
+        subtitle="نظرة شاملة على التزاماتك تجاه شركات الشحن — مدفوعات، نزاعات، أعمار ديون"
+        stats={[
+          { label: 'المستحق الإجمالي', value: `${fmt(totals.outstanding)} ر.س`, big: true, color: '#FCA5A5' },
+          { label: 'متأخّر', value: `${fmt(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
+          { label: 'شركات نشطة', value: overview.length, color: '#5EEAD4' },
+        ]}
+        actions={
           <button
             onClick={refresh}
             disabled={loading}
             style={{
-              background: 'rgba(255,255,255,.12)',
+              background: 'rgba(255,255,255,.10)',
               border: '1px solid rgba(255,255,255,.22)',
               color: '#fff',
-              padding: '8px 16px',
-              borderRadius: 9,
-              fontSize: 12,
-              fontWeight: 600,
+              padding: '8px 14px',
+              borderRadius: 8, fontSize: 12, fontWeight: 600,
               cursor: loading ? 'wait' : 'pointer',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 6,
+              display: 'inline-flex', alignItems: 'center', gap: 6,
               fontFamily: 'var(--font-sans)',
-              backdropFilter: 'blur(6px)',
             }}
           >
             <RefreshCw size={13} className={loading ? 'spin' : ''}/>
-            {loading ? 'جارٍ التحميل...' : 'تحديث البيانات'}
+            {loading ? 'جارٍ التحميل…' : 'تحديث'}
           </button>
-        </div>
-      </div>
+        }
+      />
 
       {loading && overview.length === 0 ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28}/></div>
@@ -645,22 +619,31 @@ function Hero({ label, icon, value, suffix, color, hint, big }) {
   return (
     <div style={{
       background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 12, padding: '14px 18px',
-      borderTop: `3px solid ${color}`,
-      position: 'relative', overflow: 'hidden',
+      borderRadius: 'var(--r-lg)', padding: '16px 20px',
+      boxShadow: 'var(--shadow-sm)',
+      position: 'relative',
     }}>
-      <div style={{ position: 'absolute', left: 14, top: 14, opacity: 0.5, color }}>{icon}</div>
-      <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
-        {label}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{
+          color: 'var(--muted)', fontSize: 10.5, fontFamily: 'var(--font-mono)',
+          letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600,
+        }}>{label}</span>
+        {icon && (
+          <div style={{
+            width: 30, height: 30, borderRadius: 8,
+            background: `color-mix(in srgb, ${color} 12%, transparent)`,
+            color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>{icon}</div>
+        )}
       </div>
       <div style={{
         color, fontSize: big ? 26 : 22, fontFamily: 'var(--font-mono)', fontWeight: 700,
-        whiteSpace: 'nowrap',
+        whiteSpace: 'nowrap', letterSpacing: -0.4, lineHeight: 1,
       }}>
         {value}
-        {suffix && <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 5 }}> {suffix}</span>}
+        {suffix && <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 5, fontWeight: 500 }}> {suffix}</span>}
       </div>
-      {hint && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>{hint}</div>}
     </div>
   );
 }

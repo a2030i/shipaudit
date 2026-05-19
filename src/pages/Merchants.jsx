@@ -20,7 +20,7 @@ import {
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
   Link as LinkIcon, X, Phone,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
@@ -50,62 +50,19 @@ const daysAgo = (iso) => {
 // ── Hero ────────────────────────────────────────────────────────
 function Hero({ insights, snapshot }) {
   return (
-    <div style={{
-      position: 'relative',
-      padding: '22px 28px', marginBottom: 18,
-      borderRadius: 'var(--r-lg)',
-      background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
-      color: '#fff',
-      overflow: 'hidden',
-      boxShadow: '0 10px 32px rgba(27,30,84,.25)',
-    }}>
-      <div style={{ position: 'absolute', left: -50, top: -50, width: 240, height: 240, opacity: .07, pointerEvents: 'none' }}>
-        <svg viewBox="0 0 64 64" fill="none">
-          <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-        </svg>
-      </div>
-      <div style={{ position:'relative', display:'grid', gridTemplateColumns:'auto 1fr auto auto auto auto', gap:18, alignItems:'center' }}>
-        <ShoppingBag size={36} style={{ opacity: .55 }}/>
-        <div>
-          <div style={{ fontSize:11, fontFamily:'var(--font-mono)', letterSpacing:3, textTransform:'uppercase', opacity:.7 }}>
-            LAMHA · MERCHANT DIRECTORY
-          </div>
-          <h1 style={{ fontFamily:'var(--font-sans)', fontSize:22, fontWeight:800, color:'#fff', margin:0, marginTop:4 }}>
-            متاجر المنصّة
-          </h1>
-          {snapshot && (
-            <div style={{ fontSize:11, opacity:.75, marginTop:4 }}>
-              snapshot {snapshot.id} · رُفع {fmtDate(snapshot.uploadedAt)}
-            </div>
-          )}
-        </div>
-        <HeroStat label="إجمالي" value={fmtCount(insights.total)} big/>
-        <HeroStat label="نشط" value={fmtCount(insights.active)} color="#86EFAC"/>
-        <HeroStat label="دفع مسبق" value={fmtCount(insights.prepaid)}/>
-        <HeroStat label="دفع لاحق" value={fmtCount(insights.postpaid)} color="#FBBF24"/>
-      </div>
-    </div>
-  );
-}
-
-function HeroStat({ label, value, big, color }) {
-  return (
-    <div style={{
-      paddingInline: 16, paddingBlock: 6,
-      borderInlineStart: '1px solid rgba(255,255,255,.18)',
-      minWidth: big ? 110 : 90,
-    }}>
-      <div style={{ fontSize:10, opacity:.65, fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase', whiteSpace:'nowrap' }}>
-        {label}
-      </div>
-      <div style={{
-        fontSize: big ? 22 : 17, fontWeight: 800,
-        color: color || '#fff', fontFamily: 'var(--font-mono)',
-        marginTop: 2, whiteSpace: 'nowrap',
-      }}>
-        {value}
-      </div>
-    </div>
+    <PageHero
+      variant="dark"
+      icon={<ShoppingBag size={22}/>}
+      tag="LAMHA · MERCHANT DIRECTORY"
+      title="متاجر المنصّة"
+      meta={snapshot ? `snapshot ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` : null}
+      stats={[
+        { label: 'إجمالي',    value: fmtCount(insights.total), big: true },
+        { label: 'نشط',       value: fmtCount(insights.active), color: '#86EFAC' },
+        { label: 'دفع مسبق',  value: fmtCount(insights.prepaid) },
+        { label: 'دفع لاحق',  value: fmtCount(insights.postpaid), color: '#FBBF24' },
+      ]}
+    />
   );
 }
 
