@@ -111,7 +111,7 @@ export default function Payments({ isActive = true }) {
   );
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1300 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1300 }}>
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>

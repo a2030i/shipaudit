@@ -55,10 +55,10 @@ function Hero({ carrier, onBack }) {
       padding: '22px 28px',
       marginBottom: 22,
       borderRadius: 'var(--r-lg)',
-      background: '#0F1235',
+      background: '#0A0A0B',
       color: '#fff',
       overflow: 'hidden',
-      boxShadow: '0 10px 32px rgba(15,18,53,.20)',
+      boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
         <button
@@ -529,7 +529,7 @@ export default function CarrierProfile() {
   const netColor = Math.abs(summary.netPosition) < 0.01 ? 'var(--muted)' : summary.netPosition > 0 ? 'var(--red)' : 'var(--accent)';
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1200 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1200 }}>
       <Hero carrier={carrier} onBack={() => navigate('/hub')}/>
 
       {/* Setup warning */}

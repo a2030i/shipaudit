@@ -937,7 +937,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </div>
             <div style={{
               padding: '12px 14px',
-              background: '#0F1235',
+              background: '#0A0A0B',
               borderRadius: 10,
               color: '#fff',
             }}>

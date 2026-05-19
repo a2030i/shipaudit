@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
+import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { Banknote } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
@@ -293,59 +294,49 @@ export default function CodSettlements({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            💰 تسويات الدفع عند الاستلام
-          </h2>
-          <select value={carrier} onChange={e => setCarrier(e.target.value)}
-            style={{
-              padding: '8px 14px', borderRadius: 8, fontSize: 13, fontWeight: 600,
-              background: 'var(--card)', border: '1px solid var(--accent)',
-              color: 'var(--text)', cursor: 'pointer', minWidth: 220,
-            }}>
-            {carriers.map(c => {
-              const due = outstandingByCarrier.get(c.id) || 0;
-              // Show the carrier's net position with its sign:
-              //   +X ر.س  → carrier still owes us
-              //   -X ر.س  → carrier over-remitted (we owe them)
-              //   nothing → exactly settled
-              let dueLabel = '';
-              if (Math.abs(due) >= 0.5) {
-                const sign = due > 0 ? '' : '-';
-                const num = Math.abs(due).toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-                dueLabel = ` — ${sign}${num} ر.س`;
-              }
-              return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
-            })}
-          </select>
-        </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-          {summary.outstandingCount > 0 && (
-            <Btn size="sm" variant="ghost" icon={<Download size={14}/>}
-              onClick={handleExportOutstanding}
-              title="تصدير المتبقي عند الناقل كـExcel لإرساله لهم">
-              📤 صدّر المتبقي
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+      <PageHeader
+        icon={<Banknote size={22}/>}
+        title="تسويات الدفع عند الاستلام"
+        subtitle="المعتمد للمراجعات يُغذّي «المتوقَّع»، والناقل يُحوّل النقد فعلياً كـ«مُستلَم» — الفرق = ما تبقّى"
+        actions={
+          <>
+            <select value={carrier} onChange={e => setCarrier(e.target.value)}
+              style={{
+                padding: '10px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
+                background: 'var(--surface)', border: '1px solid var(--border2)',
+                color: 'var(--text)', cursor: 'pointer', minWidth: 220,
+              }}>
+              {carriers.map(c => {
+                const due = outstandingByCarrier.get(c.id) || 0;
+                let dueLabel = '';
+                if (Math.abs(due) >= 0.5) {
+                  const sign = due > 0 ? '' : '-';
+                  const num = Math.abs(due).toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  dueLabel = ` — ${sign}${num} ر.س`;
+                }
+                return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
+              })}
+            </select>
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+            {summary.outstandingCount > 0 && (
+              <Btn size="md" variant="ghost" icon={<Download size={14}/>}
+                onClick={handleExportOutstanding}
+                title="تصدير المتبقي عند الناقل كـExcel لإرساله لهم">
+                صدّر المتبقي
+              </Btn>
+            )}
+            <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
+              onClick={() => setUploadModal({ direction: 'out' })}>
+              ارفع متوقّع
             </Btn>
-          )}
-          <Btn size="sm" variant="primary" icon={<Upload size={14}/>}
-            onClick={() => setUploadModal({ direction: 'out' })}>
-            📋 ارفع متوقّع
-          </Btn>
-          <Btn size="sm" variant="success" icon={<Upload size={14}/>}
-            onClick={() => setUploadModal({ direction: 'in' })}>
-            📥 ارفع تحويل وارد
-          </Btn>
-        </div>
-      </div>
-
-      <p style={{ color: 'var(--muted)', fontSize: 12, margin: 0, marginBottom: 16 }}>
-        التدفق: المعتمد للمراجعات بإجمالي COD أو نظامكم الداخلي يُغذّي &laquo;المتوقَّع من الناقل&raquo;،
-        والناقل يُحوّل النقد فعلياً كـ&laquo;مُستلَم&raquo;. الفرق = ما تبقّى عند الناقل.
-      </p>
+            <Btn size="md" variant="accent" icon={<Upload size={14}/>}
+              onClick={() => setUploadModal({ direction: 'in' })}>
+              ارفع تحويل
+            </Btn>
+          </>
+        }
+      />
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={22}/></div>

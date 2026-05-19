@@ -362,17 +362,17 @@ export default function WebhookEvents({ carriers, isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
       {/* ── HERO ──────────────────────────────────────────────────────── */}
       <div style={{
         position: 'relative',
         padding: '24px 28px',
         marginBottom: 22,
         borderRadius: 'var(--r-lg)',
-        background: '#0F1235',
+        background: '#0A0A0B',
         color: '#fff',
         overflow: 'hidden',
-        boxShadow: '0 10px 32px rgba(15,18,53,.20)',
+        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
       }}>
         <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>
           <svg viewBox="0 0 64 64" fill="none">

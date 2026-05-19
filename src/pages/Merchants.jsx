@@ -20,7 +20,7 @@ import {
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
   Link as LinkIcon, X, Phone,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
@@ -380,33 +380,34 @@ export default function Merchants({ isActive = true }) {
   }, [data.merchants, search, filterType, filterStatus]);
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1400 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+      <PageHeader
+        icon={<ShoppingBag size={22}/>}
+        title="متاجر المنصّة"
+        subtitle={loading ? 'جارٍ التحميل…' : `${fmtCount(data.merchants.length)} متجر مُسجَّل`}
+        meta={data.snapshot ? `snapshot ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
+        actions={
+          <>
+            {data.merchants.length > 0 && (
+              <Btn size="md" variant="ghost" icon={<LinkIcon size={14}/>} onClick={handleAutoLink} disabled={autoLinking}>
+                {autoLinking ? 'جارٍ الربط…' : 'ربط تلقائي'}
+              </Btn>
+            )}
+            {unmatchedCount > 0 && (
+              <Btn size="md" variant="gold" icon={<AlertTriangle size={14}/>} onClick={() => setShowUnmatched(true)}>
+                غير مرتبطين ({fmtCount(unmatchedCount)})
+              </Btn>
+            )}
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+              تحديث
+            </Btn>
+            <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
+              رفع كشف
+            </Btn>
+          </>
+        }
+      />
       <Hero insights={insights} snapshot={data.snapshot}/>
-
-      {/* Action bar */}
-      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:14, flexWrap:'wrap' }}>
-        <div style={{ fontSize:12, color:'var(--muted)' }}>
-          {loading ? 'جارٍ التحميل…' : `${fmtCount(data.merchants.length)} متجر`}
-        </div>
-        <div style={{ marginInlineStart:'auto', display:'flex', gap:8 }}>
-          {data.merchants.length > 0 && (
-            <Btn size="sm" variant="ghost" icon={<LinkIcon size={13}/>} onClick={handleAutoLink} disabled={autoLinking}>
-              {autoLinking ? 'جارٍ الربط…' : 'ربط تلقائي مع المديونيات'}
-            </Btn>
-          )}
-          {unmatchedCount > 0 && (
-            <Btn size="sm" variant="gold" icon={<AlertTriangle size={13}/>} onClick={() => setShowUnmatched(true)}>
-              غير مرتبطين ({fmtCount(unmatchedCount)})
-            </Btn>
-          )}
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
-            تحديث
-          </Btn>
-          <Btn size="sm" variant="accent" icon={<Upload size={13}/>} onClick={() => setShowUpload(true)}>
-            رفع كشف جديد
-          </Btn>
-        </div>
-      </div>
 
       {loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:80 }}><Spinner size={28}/></div>
