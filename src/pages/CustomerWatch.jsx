@@ -401,7 +401,15 @@ export default function CustomerWatch({ isActive = true }) {
                   if (!list.length) return null;
                   const meta = ANOMALY_META[key];
                   const Icon = meta.icon;
-                  const total = list.reduce((s, c) => s + (Number(c.total) || 0), 0);
+                  // For negative_wallet the meaningful aggregate is the
+                  // absolute sum of the negative wallet balances — most
+                  // entries are phantoms (no AR row) so their c.total is
+                  // 0 and summing it under-reports the real exposure.
+                  // For every other bucket the receivables debt is what
+                  // matters.
+                  const total = key === 'negative_wallet'
+                    ? list.reduce((s, c) => s + Math.abs(Number(c.merchant?.walletBalance) || 0), 0)
+                    : list.reduce((s, c) => s + (Number(c.total) || 0), 0);
                   return (
                     <Card key={key} hover onClick={() => setOpenAnomaly(key)} style={{
                       padding: '16px 18px',
