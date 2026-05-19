@@ -86,93 +86,98 @@ function CarrierCard({ row, onClick, onSetup, onWebhook }) {
       onClick={onClick}
       style={{
         background: 'var(--card)',
-        border: '1px solid var(--border)',
+        border: '1px solid transparent',
         borderRadius: 'var(--r-lg)',
-        padding: '18px 20px',
+        padding: '22px 24px',
         cursor: 'pointer',
-        transition: 'all .15s',
+        transition: 'transform .18s, box-shadow .18s',
         position: 'relative',
-        overflow: 'hidden',
+        boxShadow: 'var(--shadow-sm)',
       }}
       onMouseEnter={e => {
-        e.currentTarget.style.borderColor = 'var(--border2)';
-        e.currentTarget.style.transform   = 'translateY(-2px)';
-        e.currentTarget.style.boxShadow   = 'var(--shadow-md)';
+        e.currentTarget.style.transform = 'translateY(-2px)';
+        e.currentTarget.style.boxShadow = 'var(--shadow-md)';
       }}
       onMouseLeave={e => {
-        e.currentTarget.style.borderColor = 'var(--border)';
-        e.currentTarget.style.transform   = 'none';
-        e.currentTarget.style.boxShadow   = 'none';
+        e.currentTarget.style.transform = 'none';
+        e.currentTarget.style.boxShadow = 'var(--shadow-sm)';
       }}
     >
-      {/* Top stripe with carrier color */}
-      <div style={{
-        position: 'absolute', top: 0, left: 0, right: 0, height: 3,
-        background: row.color || '#2DD4BF',
-      }}/>
-
-      {/* Header: name + setup gauge */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 14 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-          {row.logo ? (
-            <img src={row.logo} alt="" style={{
-              width: 34, height: 34, borderRadius: 8, objectFit: 'cover',
-              border: '1px solid var(--border)',
-            }}/>
-          ) : (
-            <div style={{
-              width: 34, height: 34, borderRadius: 8,
-              background: (row.color || '#2DD4BF') + '22',
-              color: row.color || '#2DD4BF',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontWeight: 800, fontFamily: 'var(--font-mono)',
-            }}>
-              {(row.name || '?').slice(0, 1)}
-            </div>
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              {row.name}
-            </div>
-            <div style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
-              آخر نشاط: {relTime(row.lastActivityAt)}
-            </div>
+      {/* Header: logo + name (no top color stripe) */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
+        {row.logo ? (
+          <img src={row.logo} alt="" style={{
+            width: 44, height: 44, borderRadius: 12, objectFit: 'cover',
+            border: '1px solid var(--border)',
+          }}/>
+        ) : (
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: `color-mix(in srgb, ${row.color || '#10B981'} 14%, transparent)`,
+            color: row.color || '#10B981',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 700, fontFamily: 'var(--font-sans)', fontSize: 18,
+          }}>
+            {(row.name || '?').slice(0, 1)}
           </div>
-        </div>
-        <div title={`اكتمال الإعداد: ${row.setupCompleteness}%`} style={{
-          padding: '2px 8px',
-          borderRadius: 12,
-          fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700,
-          background: setupColor + '20',
-          color: setupColor,
-          border: `1px solid ${setupColor}40`,
-          whiteSpace: 'nowrap',
-        }}>
-          {row.setupCompleteness}%
+        )}
+        <div style={{ minWidth: 0, flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', letterSpacing: -0.2 }}>
+            {row.name}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+            آخر نشاط · {relTime(row.lastActivityAt)}
+          </div>
         </div>
       </div>
 
       {/* Balance — the headline */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 2, textTransform: 'uppercase', marginBottom: 4 }}>
+      <div style={{ marginBottom: 22 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500, marginBottom: 8 }}>
           {balanceLabel}
         </div>
         <div style={{
-          fontSize: 24, fontWeight: 800, color: balanceColor,
-          fontFamily: 'var(--font-mono)',
+          display: 'flex', alignItems: 'baseline', gap: 6,
         }}>
-          {fmt(Math.abs(owed))} <span style={{ fontSize: 11, opacity: .65 }}>ر.س</span>
+          <div style={{
+            fontSize: 30, fontWeight: 700, color: balanceColor,
+            fontFamily: 'var(--font-mono)', letterSpacing: -1, lineHeight: 1,
+          }}>
+            {fmt(Math.abs(owed))}
+          </div>
+          <div style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 500 }}>ر.س</div>
         </div>
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 3, fontFamily: 'var(--font-mono)' }}>
-          فواتير {fmtCompact(row.totalDr)} − تحصيل {fmtCompact(row.totalCr)}
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, display: 'flex', gap: 14 }}>
+          <span>فواتير <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalDr)}</span></span>
+          <span style={{ color: 'var(--muted3)' }}>·</span>
+          <span>تحصيل <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalCr)}</span></span>
         </div>
       </div>
 
-      {/* Actions row */}
+      {/* Setup completeness — horizontal progress bar */}
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 500 }}>اكتمال الإعداد</span>
+          <span style={{
+            fontSize: 11, color: setupColor, fontFamily: 'var(--font-mono)',
+            fontWeight: 700,
+          }}>{row.setupCompleteness}%</span>
+        </div>
+        <div style={{
+          height: 6, background: 'var(--bg2)', borderRadius: 999,
+          overflow: 'hidden',
+        }}>
+          <div style={{
+            width: `${row.setupCompleteness}%`, height: '100%',
+            background: setupColor, borderRadius: 999,
+            transition: 'width .4s cubic-bezier(.4,0,.2,1)',
+          }}/>
+        </div>
+      </div>
+
+      {/* Status pills */}
       <div style={{
         display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
-        paddingBlock: 10,
-        borderBlock: '1px dashed var(--border)',
       }}>
         {row.pendingAudits > 0 && (
           <ActionPill icon={<FileText size={11}/>} label={`${row.pendingAudits} مراجعة بانتظار الاعتماد`} color="#F59E0B"/>
@@ -186,36 +191,35 @@ function CarrierCard({ row, onClick, onSetup, onWebhook }) {
           />
         )}
         {actionsCount === 0 && (
-          <ActionPill icon={<CheckCircle2 size={11}/>} label="لا عمل معلّق" color="var(--accent)"/>
+          <ActionPill icon={<CheckCircle2 size={11}/>} label="لا عمل معلّق" color="#10B981"/>
         )}
         {row.approvedAudits > 0 && (
-          <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 'auto' }}>
             {row.approvedAudits} مراجعة معتمدة
           </span>
         )}
       </div>
 
-      {/* Setup gaps row */}
+      {/* Setup gaps — clean alert ribbon */}
       {setupGaps.length > 0 && (
         <div style={{
-          display: 'flex', alignItems: 'center', gap: 6,
-          marginTop: 10,
-          padding: '6px 10px',
+          display: 'flex', alignItems: 'center', gap: 10,
+          marginTop: 14,
+          padding: '10px 14px',
           background: 'rgba(239,68,68,.06)',
-          border: '1px solid rgba(239,68,68,.20)',
-          borderRadius: 8,
+          borderRadius: 10,
         }}>
-          <AlertTriangle size={11} color="var(--red)"/>
-          <span style={{ fontSize: 10.5, color: 'var(--text)', flex: 1 }}>
-            ينقصها: <strong>{setupGaps.join(' / ')}</strong>
+          <AlertTriangle size={14} color="var(--red)" style={{ flexShrink: 0 }}/>
+          <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>
+            ينقصها <span style={{ fontWeight: 600 }}>{setupGaps.join(' · ')}</span>
           </span>
           <button
             onClick={(e) => { e.stopPropagation(); onSetup?.(); }}
             style={{
-              background: 'transparent', border: '1px solid var(--red)',
-              color: 'var(--red)', padding: '2px 8px',
-              fontSize: 10, fontFamily: 'var(--font-sans)', fontWeight: 600,
-              borderRadius: 6, cursor: 'pointer',
+              background: 'var(--red)', border: 'none',
+              color: '#fff', padding: '5px 14px',
+              fontSize: 11.5, fontFamily: 'var(--font-sans)', fontWeight: 600,
+              borderRadius: 999, cursor: 'pointer', flexShrink: 0,
             }}
           >
             ضبط
@@ -231,17 +235,17 @@ function ActionPill({ icon, label, color, onClick }) {
     <span
       onClick={onClick}
       style={{
-        display: 'inline-flex', alignItems: 'center', gap: 5,
-        padding: '3px 9px',
-        borderRadius: 11,
-        background: color + '18',
+        display: 'inline-flex', alignItems: 'center', gap: 6,
+        padding: '5px 12px',
+        borderRadius: 999,
+        background: `color-mix(in srgb, ${color} 12%, transparent)`,
         color,
-        border: `1px solid ${color}40`,
-        fontSize: 10.5,
-        fontFamily: 'var(--font-mono)',
+        fontSize: 11.5,
+        fontFamily: 'var(--font-sans)',
         fontWeight: 600,
         whiteSpace: 'nowrap',
         cursor: onClick ? 'pointer' : 'default',
+        transition: 'background .15s',
       }}
     >
       {icon}
