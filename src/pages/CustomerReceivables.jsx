@@ -39,34 +39,36 @@ const fmtDate = (iso) => {
 };
 
 // ── Tab pill ────────────────────────────────────────────────────
-function Tab({ id, label, count, amount, active, onClick }) {
+function Tab({ id, label, count, amount, active, accent, onClick }) {
+  const isActive = active;
+  const accentColor = accent || (isActive ? 'var(--accent)' : null);
   return (
     <button onClick={() => onClick(id)} style={{
       flex: 1,
-      background: active ? 'var(--card)' : 'transparent',
+      background: isActive ? 'var(--card)' : 'transparent',
       border: 'none',
       padding: '10px 14px',
       cursor: 'pointer',
       borderRadius: 8,
       display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
       fontFamily: 'var(--font-sans)',
-      boxShadow: active ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
+      boxShadow: isActive ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
     }}>
-      <span style={{ fontSize: 13, fontWeight: 700, color: active ? 'var(--text)' : 'var(--muted)' }}>
+      <span style={{ fontSize: 13, fontWeight: 700, color: isActive ? 'var(--text)' : accent || 'var(--muted)' }}>
         {label}
       </span>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        {amount != null && (
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: active ? 'var(--accent)' : 'var(--muted)', fontWeight: 700 }}>
+        {amount != null && amount > 0 && (
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: accentColor || 'var(--muted)', fontWeight: 700 }}>
             {Number(amount).toLocaleString('ar-SA', { maximumFractionDigits: 0 })} ر.س
           </span>
         )}
         <span style={{
-          background: 'var(--surface)',
-          color: active ? 'var(--text)' : 'var(--muted)',
+          background: accent && count > 0 ? accent + '20' : 'var(--surface)',
+          color: accent && count > 0 ? accent : (isActive ? 'var(--text)' : 'var(--muted)'),
           padding: '2px 9px', borderRadius: 9,
           fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 700,
-          border: '1px solid var(--border)',
+          border: `1px solid ${accent && count > 0 ? accent + '60' : 'var(--border)'}`,
         }}>{count}</span>
       </span>
     </button>
@@ -502,13 +504,40 @@ export default function CustomerReceivables({ isActive = true }) {
     return days.length ? Math.max(...days) : null;
   }, [data]);
 
+  // Anomalies — computed once whenever data changes so the tab badge
+  // count and the table render share the same source of truth.
+  // Each entry carries an `anomaly` tag for the UI to colour-code.
+  const anomalies = useMemo(() => {
+    if (!data?.activeCustomers) return [];
+    const out = [];
+    for (const c of data.activeCustomers) {
+      const m = c.merchant;
+      if (!m) continue;                                   // no merchant link → can't classify
+      if (m.billingType === 'دفع مسبق' && (c.total || 0) > 0.5) {
+        out.push({ ...c, anomaly: 'prepaid_with_debt' });
+        continue;
+      }
+      if (m.billingType === 'دفع لاحق' && (c.daysOutstanding || 0) > 60 && (c.total || 0) > 0.5) {
+        out.push({ ...c, anomaly: 'postpaid_overdue' });
+        continue;
+      }
+      if (m.platformStatus === 'غير نشط' && (c.total || 0) > 0.5) {
+        out.push({ ...c, anomaly: 'inactive_with_debt' });
+        continue;
+      }
+    }
+    return out;
+  }, [data]);
+
   const visibleCustomers = useMemo(() => {
     if (!data) return [];
     // Pick the right pool first — excluded customers are tracked
     // separately so the active KPIs don't count them.
-    let pool = tab === 'excluded'
-      ? (data.excludedCustomers || [])
-      : (data.activeCustomers   || []);
+    let pool = tab === 'anomalies'
+      ? anomalies
+      : tab === 'excluded'
+        ? (data.excludedCustomers || [])
+        : (data.activeCustomers   || []);
     // Text search
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -550,7 +579,7 @@ export default function CustomerReceivables({ isActive = true }) {
       if (sortBy === 'invoices') return ((a.invoiceCount || 0) - (b.invoiceCount || 0)) * dir;
       return (totalKey(a) - totalKey(b)) * dir;
     });
-  }, [data, tab, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
+  }, [data, anomalies, tab, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
 
   const toggleBucket = (k) => {
     setBucketFilters(prev => {
@@ -625,6 +654,57 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${visibleCustomers.length} عميل`, 'success');
   };
 
+  // Collection-campaign export — contact info + debt summary for the
+  // call-center team. Includes phone, billing type, days outstanding,
+  // last-shipment date. Works on whatever is currently filtered.
+  const handleCollectionExport = () => {
+    if (!visibleCustomers.length) {
+      toast('لا توجد بيانات للتصدير', 'info');
+      return;
+    }
+    const today = new Date(); today.setHours(0,0,0,0);
+    const headers = [
+      'اسم المتجر', 'هاتف', 'نوع الفوترة', 'الحالة في المنصّة',
+      'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام',
+      'آخر شحنة', 'الأيام منذ آخر شحنة', 'الرصيد في المحفظة',
+      'حالة الربط', 'ملاحظة',
+    ];
+    const rows = visibleCustomers.map(c => {
+      const m = c.merchant;
+      const daysSinceShip = m?.lastShipmentAt
+        ? Math.floor((today - new Date(m.lastShipmentAt)) / 86_400_000)
+        : '';
+      return [
+        m?.storeName || c.name,
+        m?.phone || '',
+        m?.billingType || '',
+        m?.platformStatus || '',
+        Number(c.total || 0).toFixed(2),
+        c.invoiceCount || 0,
+        c.oldestInvoiceDate || '',
+        c.daysOutstanding || '',
+        m?.lastShipmentAt ? new Date(m.lastShipmentAt).toLocaleDateString('en-CA') : '',
+        daysSinceShip,
+        m ? Number(m.walletBalance || 0).toFixed(2) : '',
+        c.anomaly ? anomalyLabel(c.anomaly) : (m ? 'مرتبط' : 'غير مرتبط بمتجر'),
+        c.notes || '',
+      ];
+    });
+    const totalDebt = visibleCustomers.reduce((s, c) => s + (c.total || 0), 0);
+    const footer = ['الإجمالي', '', '', '', totalDebt.toFixed(2), '', '', '', '', '', '', '', ''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], footer]);
+    ws['!cols'] = [
+      { wch: 40 }, { wch: 16 }, { wch: 14 }, { wch: 14 },
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 10 },
+      { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'حملة تحصيل');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `حملة_تحصيل_${dateStr}.xlsx`);
+    toast(`تم تصدير ${visibleCustomers.length} عميل لحملة التحصيل`, 'success');
+  };
+
   const handleShowHistory = async () => {
     try {
       const list = await loadReceivablesSnapshots();
@@ -660,6 +740,9 @@ export default function CustomerReceivables({ isActive = true }) {
           </Btn>
           <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
             تصدير Excel
+          </Btn>
+          <Btn size="sm" variant="gold" icon={<Download size={13}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
+            📞 ملف حملة تحصيل
           </Btn>
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
             تحديث
@@ -697,6 +780,13 @@ export default function CustomerReceivables({ isActive = true }) {
                 count={data.activeCustomers?.length || 0}
                 amount={data.total}
                 active={tab === 'active'} onClick={setTab}
+              />
+              <Tab
+                id="anomalies" label="🚨 تنبيهات"
+                count={anomalies.length}
+                amount={anomalies.reduce((s, c) => s + (c.total || 0), 0)}
+                active={tab === 'anomalies'} onClick={setTab}
+                accent={anomalies.length > 0 ? '#EF4444' : null}
               />
               <Tab
                 id="excluded" label="🛡 متابعة خاصة"
@@ -818,18 +908,50 @@ export default function CustomerReceivables({ isActive = true }) {
                       : c.daysOutstanding > 30 ? '#F59E0B'
                       : '#10B981';
                     const isExcluded = c.status === 'excluded';
+                    const m = c.merchant;
+                    // Pick a tinted row background based on anomaly tag.
+                    const anomalyTint = c.anomaly === 'prepaid_with_debt' ? 'rgba(239,68,68,.06)'
+                      : c.anomaly === 'postpaid_overdue'  ? 'rgba(245,158,11,.06)'
+                      : c.anomaly === 'inactive_with_debt' ? 'rgba(122,130,196,.06)'
+                      : null;
+                    const baseBg = anomalyTint || (isExcluded ? 'rgba(45,212,191,.04)' : undefined);
                     return (
                       <tr
                         key={c.name}
                         onClick={() => setOpenCustomer(c)}
-                        style={{ cursor: 'pointer', background: isExcluded ? 'rgba(45,212,191,.04)' : undefined }}
-                        onMouseEnter={e => e.currentTarget.style.background = isExcluded ? 'rgba(45,212,191,.10)' : 'var(--surface)'}
-                        onMouseLeave={e => e.currentTarget.style.background = isExcluded ? 'rgba(45,212,191,.04)' : ''}
+                        style={{ cursor: 'pointer', background: baseBg }}
+                        onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12') : isExcluded ? 'rgba(45,212,191,.10)' : 'var(--surface)'}
+                        onMouseLeave={e => e.currentTarget.style.background = baseBg || ''}
                       >
                         <td style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             {isExcluded && <ShieldCheck size={12} color="var(--accent)"/>}
-                            <span>{c.name}</span>
+                            <span>{m?.storeName || c.name}</span>
+                            {/* Merchant info chips — only when linked */}
+                            {m && (
+                              <>
+                                {m.billingType === 'دفع لاحق' && (
+                                  <span style={miniChip('#F59E0B')} title="نوع الفوترة">📋 لاحق</span>
+                                )}
+                                {m.billingType === 'دفع مسبق' && (
+                                  <span style={miniChip('#3B82F6')} title="نوع الفوترة">💳 مسبق</span>
+                                )}
+                                {m.platformStatus === 'غير نشط' && (
+                                  <span style={miniChip('var(--muted)')} title="حالة المتجر">○ غير نشط</span>
+                                )}
+                                {m.phone && (
+                                  <span style={{
+                                    fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)', direction: 'ltr',
+                                  }} title="هاتف">{m.phone}</span>
+                                )}
+                              </>
+                            )}
+                            {/* Anomaly badge */}
+                            {c.anomaly && (
+                              <span style={anomalyChip(c.anomaly)} title={anomalyHint(c.anomaly)}>
+                                {anomalyLabel(c.anomaly)}
+                              </span>
+                            )}
                             {c.notes && (
                               <span title={c.notes} style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -990,6 +1112,35 @@ const thStyle = {
   cursor: 'pointer',
   userSelect: 'none',
 };
+
+function miniChip(color) {
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    padding: '1px 6px', borderRadius: 9,
+    background: color === 'var(--muted)' ? 'var(--surface)' : `${color}18`,
+    color,
+    border: `1px solid ${color === 'var(--muted)' ? 'var(--border)' : color + '40'}`,
+    fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+    whiteSpace: 'nowrap',
+  };
+}
+
+const ANOMALY_META = {
+  prepaid_with_debt:   { color: '#EF4444', label: '🚨 دفع مسبق وعليه دين',  hint: 'متجر يدفع من المحفظة لكن عليه فواتير — احتمال خطأ تقني، يحتاج تحقق' },
+  postpaid_overdue:    { color: '#F59E0B', label: '⏰ متأخر +60 يوم',         hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
+  inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',       hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
+};
+function anomalyChip(kind) {
+  const m = ANOMALY_META[kind]; if (!m) return {};
+  return {
+    display: 'inline-flex', alignItems: 'center', gap: 3,
+    padding: '2px 8px', borderRadius: 10,
+    background: m.color + '20', color: m.color, border: `1px solid ${m.color}50`,
+    fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
+  };
+}
+function anomalyLabel(kind) { return ANOMALY_META[kind]?.label || kind; }
+function anomalyHint(kind)  { return ANOMALY_META[kind]?.hint  || ''; }
 
 function tagBtnStyle(kind) {
   const isExclude = kind === 'exclude';
