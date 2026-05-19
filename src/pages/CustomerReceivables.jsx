@@ -580,28 +580,75 @@ export default function CustomerReceivables({ isActive = true }) {
       return;
     }
     const bucketActive = bucketFilters.size > 0;
-    const headers = bucketActive
-      ? ['اسم العميل', 'في الشريحة (ر.س)', 'إجمالي الرصيد (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
-      : ['اسم العميل', 'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام منذ أقدم فاتورة'];
-    const rows = visibleCustomers.map(c => bucketActive
-      ? [c.name, Number(c.filteredTotal || 0).toFixed(2), Number(c.total || 0).toFixed(2),
-         c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || '']
-      : [c.name, Number(c.total || 0).toFixed(2),
-         c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || '']);
+    // Merchant columns are appended after the financial columns so the
+    // operator can see *which store* every customer name resolves to —
+    // store_id and clean store_name come from customer_merchant_links.
+    const baseHeaders = bucketActive
+      ? ['اسم العميل (كما في كشف الفواتير)', 'في الشريحة (ر.س)', 'إجمالي الرصيد (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
+      : ['اسم العميل (كما في كشف الفواتير)', 'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام منذ أقدم فاتورة'];
+    const merchantHeaders = [
+      'رقم المتجر',
+      'اسم المتجر (من المنصّة)',
+      'هاتف المتجر',
+      'نوع الفوترة',
+      'حالة المتجر',
+      'حالة الربط',
+      'دقة الربط',
+    ];
+    const headers = [...baseHeaders, ...merchantHeaders];
+
+    const linkStatusFor = (c) => {
+      if (c.merchant) return c.merchantMatch?.method === 'manual' ? 'مرتبط يدوياً' : 'مرتبط تلقائياً';
+      if (c.merchantMatch) return 'تم التخطّي يدوياً';
+      return 'غير مرتبط';
+    };
+
+    const rows = visibleCustomers.map(c => {
+      const m = c.merchant;
+      const baseRow = bucketActive
+        ? [c.name, Number(c.filteredTotal || 0).toFixed(2), Number(c.total || 0).toFixed(2),
+           c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || '']
+        : [c.name, Number(c.total || 0).toFixed(2),
+           c.invoiceCount, c.oldestInvoiceDate || '', c.daysOutstanding || ''];
+      const merchantRow = [
+        m?.storeId || '',
+        m?.storeName || '',
+        m?.phone || '',
+        m?.billingType || '',
+        m?.platformStatus || '',
+        linkStatusFor(c),
+        c.merchantMatch?.confidence != null ? `${Math.round(c.merchantMatch.confidence * 100)}%` : '',
+      ];
+      return [...baseRow, ...merchantRow];
+    });
+
     const sumSlice = visibleCustomers.reduce((s, c) => s + (c.filteredTotal || 0), 0);
     const sumTotal = visibleCustomers.reduce((s, c) => s + (c.total || 0), 0);
-    const totalRow = bucketActive
+    const linked = visibleCustomers.filter(c => c.merchant).length;
+    const totalRowBase = bucketActive
       ? ['الإجمالي', sumSlice.toFixed(2), sumTotal.toFixed(2), '', '', '']
       : ['الإجمالي', sumTotal.toFixed(2), '', '', ''];
+    const totalRow = [...totalRowBase, '', '', '', '', '', `${linked} / ${visibleCustomers.length} مرتبط`, ''];
+
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], totalRow]);
-    ws['!cols'] = bucketActive
+    const colWidths = bucketActive
       ? [{ wch: 50 }, { wch: 18 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }]
       : [{ wch: 50 }, { wch: 16 }, { wch: 14 }, { wch: 14 }, { wch: 20 }];
+    ws['!cols'] = [
+      ...colWidths,
+      { wch: 14 }, // store id
+      { wch: 28 }, // store name
+      { wch: 16 }, // phone
+      { wch: 14 }, // billing
+      { wch: 14 }, // status
+      { wch: 18 }, // link status
+      { wch: 10 }, // confidence
+    ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'مديونيات العملاء');
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `مديونيات_العملاء_${dateStr}.xlsx`);
-    toast(`تم تصدير ${visibleCustomers.length} عميل`, 'success');
+    toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success');
   };
 
   // Collection-campaign export — contact info + debt summary for the
@@ -721,6 +768,55 @@ export default function CustomerReceivables({ isActive = true }) {
         </Card>
       ) : (
         <>
+          {/* ── Merchant-link status banner ──────────────────────────
+              Tells the operator at-a-glance how many of their receivables
+              customers are linked to a platform store. Click to jump
+              to /merchants where the auto-link button + unmatched
+              modal live. Hidden when 100% of customers are linked. */}
+          {(() => {
+            const all = data.customers || [];
+            if (!all.length) return null;
+            const linked = all.filter(c => c.merchant).length;
+            const unlinked = all.length - linked;
+            const pct = Math.round((linked / all.length) * 100);
+            if (unlinked === 0) {
+              return (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12,
+                  padding: '12px 18px', marginBottom: 16,
+                  background: 'rgba(16,185,129,.08)',
+                  borderRadius: 12,
+                }}>
+                  <CheckCircle2 size={18} color="var(--green)"/>
+                  <span style={{ fontSize: 13, color: 'var(--text)' }}>
+                    كل العملاء ({all.length}) مرتبطون بمتاجرهم على المنصّة — التصدير يحتوي معلومات المتجر الكاملة.
+                  </span>
+                </div>
+              );
+            }
+            return (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 14,
+                padding: '14px 18px', marginBottom: 16,
+                background: linked === 0 ? 'rgba(239,68,68,.06)' : 'rgba(245,158,11,.08)',
+                borderRadius: 12,
+              }}>
+                <AlertTriangle size={18} color={linked === 0 ? 'var(--red)' : 'var(--gold)'}/>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 600, color: 'var(--text)' }}>
+                    {linked} من {all.length} عميل مرتبط بمتجر <span style={{ color: 'var(--muted)', fontWeight: 500 }}>({pct}%)</span>
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                    {unlinked} عميل بدون متجر — التصدير سيظهر الأعمدة فارغة لهم. اربطهم يدوياً للحصول على هاتف + نوع فوترة + حالة كل عميل.
+                  </div>
+                </div>
+                <Btn size="md" variant="primary" onClick={() => window.location.href = '/merchants'}>
+                  افتح صفحة المتاجر
+                </Btn>
+              </div>
+            );
+          })()}
+
           <AgingGrid aging={data.aging} total={data.total}/>
 
           {/* Tabs */}
