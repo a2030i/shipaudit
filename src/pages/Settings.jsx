@@ -4,7 +4,8 @@ import {
   Wifi, WifiOff, ExternalLink, Package, History, Search, Filter, Trash2,
   CheckCircle2, AlertTriangle, Calendar, FileText, Truck, X,
 } from 'lucide-react';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
+import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { History as HistoryIcon } from 'lucide-react';
 import { loadSettings, saveSettings } from '../data/carriers.js';
 import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers } from '../lib/coreService.js';
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
@@ -417,48 +418,12 @@ export function AuditsHistory({ onOpen, isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1180 }}>
-      {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <div style={{
-        position: 'relative',
-        padding: '22px 28px',
-        marginBottom: 22,
-        borderRadius: 'var(--r-lg)',
-        background: '#0A0A0B',
-        color: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
-      }}>
-        <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-          </svg>
-        </div>
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: 14 }}>
-          <div>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
-              LAMHA · AUDIT HISTORY
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-              سجل المراجعات
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
-              كل فاتورة تم تدقيقها — بحث، فلترة، فتح، ودمج للأوزان الإضافية.
-            </p>
-          </div>
-          <div style={{
-            background: 'rgba(255,255,255,.12)',
-            border: '1px solid rgba(255,255,255,.22)',
-            borderRadius: 10,
-            padding: '10px 18px',
-            backdropFilter: 'blur(6px)',
-            textAlign: 'center',
-          }}>
-            <div style={{ fontSize: 10, opacity: .7, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 2 }}>إجمالي</div>
-            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{audits.length}</div>
-            <div style={{ fontSize: 10, opacity: .65, marginTop: 4 }}>مراجعة</div>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={<HistoryIcon size={22}/>}
+        title="سجل المراجعات"
+        subtitle="كل فاتورة تم تدقيقها — بحث، فلترة، فتح، ودمج للأوزان الإضافية"
+        meta={`${audits.length} مراجعة في السجل`}
+      />
 
       {/* Floating bulk-action bar */}
       {selectedIds.size > 0 && (

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag,
+  ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -135,38 +135,7 @@ function AppInner({ theme, toggleTheme }) {
   const [navPerms,        setNavPerms]        = useState(null);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
-  // Per-section open/closed state for the sidebar accordion. Persists in
-  // localStorage so the user's preferred layout survives reloads. Default:
-  // every section starts collapsed except the one containing the active
-  // route — keeps the sidebar quiet until the user opens what they need.
-  const [openSections, setOpenSections] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('sa-nav-sections') || 'null');
-      if (saved && typeof saved === 'object') {
-        // Drop stale section IDs from a previous IA — keep only keys that
-        // still exist in NAV_SECTIONS so the menu doesn't render empty
-        // headers from a previous build.
-        const validIds = new Set(NAV_SECTIONS.map(s => s.id));
-        const cleaned = {};
-        for (const [k, v] of Object.entries(saved)) {
-          if (validIds.has(k)) cleaned[k] = v;
-        }
-        // Make sure the most-used section is open on first land after
-        // an IA migration. Auto-open useEffect below will also kick in
-        // based on the current route.
-        if (Object.keys(cleaned).length === 0) cleaned.overview = true;
-        return cleaned;
-      }
-    } catch { /* fall through to defaults */ }
-    return { overview: true };
-  });
-  const toggleSection = (id) => {
-    setOpenSections(prev => {
-      const next = { ...prev, [id]: !prev[id] };
-      try { localStorage.setItem('sa-nav-sections', JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  };
+  // (Sidebar is now a flat list — no accordion state needed.)
 
   // ── Default redirect after login: always go to dashboard ──
   useEffect(() => {
@@ -186,20 +155,7 @@ function AppInner({ theme, toggleTheme }) {
 
   useEffect(() => { reloadCarriers(); }, [reloadCarriers]);
 
-  // Auto-open the section that contains the currently active route, so the
-  // user never lands on a page whose sidebar entry is hidden behind a
-  // collapsed section. We *only* open — never auto-close — so the user's
-  // manual choices stick.
-  useEffect(() => {
-    const item = NAV_ITEMS.find(n => n.path === location.pathname);
-    if (!item) return;
-    setOpenSections(prev => {
-      if (prev[item.section]) return prev;
-      const next = { ...prev, [item.section]: true };
-      try { localStorage.setItem('sa-nav-sections', JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, [location.pathname]);
+  // (Removed: section-auto-open effect — flat sidebar shows everything.)
 
   // ── Nav permissions ──
   useEffect(() => {
@@ -295,51 +251,22 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
-              // Collapsed sidebar → always render items (the section header
-              // becomes a thin divider). Expanded sidebar → accordion.
-              const isOpen = collapsed ? true : !!openSections[sec.id];
-              const sectionHasActive = items.some(n => activeFor(n));
               return (
-                <div key={sec.id} style={{ marginBottom: idx === NAV_SECTIONS.length - 1 ? 0 : 4 }}>
-                  {idx > 0 && <div className="nav-divider"/>}
-                  {collapsed ? (
-                    <div className="section-label" style={{ height: 0, padding: 0 }}/>
-                  ) : (
-                    <button
-                      onClick={() => toggleSection(sec.id)}
-                      className="section-header"
-                      aria-expanded={isOpen}
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        width: '100%', background: 'transparent', border: 'none',
-                        padding: '14px 14px 8px', cursor: 'pointer',
-                        fontFamily: 'var(--font-mono)', fontSize: 10,
-                        letterSpacing: 1.8, textTransform: 'uppercase',
-                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-label-color)',
-                        fontWeight: 700, textAlign: 'right',
-                        transition: 'color .15s',
-                      }}
-                    >
-                      <span>{sec.label}</span>
-                      <ChevronDown
-                        size={12}
-                        style={{
-                          transition: 'transform .2s',
-                          transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                          opacity: .6,
-                        }}
-                      />
-                    </button>
+                <div key={sec.id} style={{ marginBottom: idx === NAV_SECTIONS.length - 1 ? 0 : 14 }}>
+                  {!collapsed && (
+                    <div style={{
+                      padding: '8px 14px 6px',
+                      fontFamily: 'var(--font-sans)', fontSize: 11,
+                      letterSpacing: 0.4, fontWeight: 600,
+                      color: 'var(--nav-label-color)',
+                      textAlign: 'right',
+                    }}>
+                      {sec.label}
+                    </div>
                   )}
-                  <div style={{
-                    overflow: 'hidden',
-                    maxHeight: isOpen ? items.length * 44 + 8 : 0,
-                    transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
-                  }}>
-                    {items.map(n => (
-                      <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-                    ))}
-                  </div>
+                  {items.map(n => (
+                    <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
+                  ))}
                 </div>
               );
             })}
