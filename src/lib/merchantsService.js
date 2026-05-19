@@ -397,6 +397,9 @@ export function computeMerchantInsights(merchants, today = new Date()) {
   let newLast30 = 0, newLast90 = 0, neverShipped = 0;
   let dormantActive = 0, walletPilesUp = 0;
   let walletTotal = 0;
+  let totalShipments = 0;
+  const churnedList = [];     // status=inactive but had shipments → real customers we lost
+  const walletPilesList = []; // prepaid + balance > 0 + idle > 60d
   for (const m of merchants) {
     if (m.billing_type === 'دفع مسبق') prepaid++;
     if (m.billing_type === 'دفع لاحق') postpaid++;
@@ -406,17 +409,40 @@ export function computeMerchantInsights(merchants, today = new Date()) {
     if (m.created_at_platform && days(m.created_at_platform, today) <= 90) newLast90++;
     if ((m.shipment_count || 0) === 0) neverShipped++;
     if (m.status === 'نشط' && m.last_shipment_at && days(m.last_shipment_at, today) > 60) dormantActive++;
-    if (m.billing_type === 'دفع مسبق' && (m.wallet_balance || 0) > 0 && m.last_shipment_at && days(m.last_shipment_at, today) > 60) walletPilesUp++;
+    if (m.status === 'غير نشط' && (m.shipment_count || 0) > 0) churnedList.push(m);
+    if (m.billing_type === 'دفع مسبق' && (m.wallet_balance || 0) > 0 && m.last_shipment_at && days(m.last_shipment_at, today) > 60) {
+      walletPilesUp++;
+      walletPilesList.push(m);
+    }
     walletTotal += Number(m.wallet_balance) || 0;
+    totalShipments += Number(m.shipment_count) || 0;
   }
   const topByVolume = [...merchants]
     .filter(m => (m.shipment_count || 0) > 0)
     .sort((a, b) => (b.shipment_count || 0) - (a.shipment_count || 0))
     .slice(0, 20);
+  const churnedSorted = churnedList
+    .sort((a, b) => {
+      // Most recently lost first (newest last_shipment_at wins)
+      const ta = a.last_shipment_at ? new Date(a.last_shipment_at).getTime() : 0;
+      const tb = b.last_shipment_at ? new Date(b.last_shipment_at).getTime() : 0;
+      return tb - ta;
+    })
+    .slice(0, 20);
+  const walletPilesSorted = walletPilesList
+    .sort((a, b) => (b.wallet_balance || 0) - (a.wallet_balance || 0))
+    .slice(0, 20);
+  const walletPilesAmount = walletPilesList.reduce((s, m) => s + (Number(m.wallet_balance) || 0), 0);
   return {
     total: merchants.length, prepaid, postpaid, active, inactive,
     newLast30, newLast90, neverShipped, dormantActive, walletPilesUp,
     walletTotal: +walletTotal.toFixed(2),
+    walletPilesAmount: +walletPilesAmount.toFixed(2),
+    churned: churnedList.length,
+    totalShipments,
+    avgShipmentsPerActive: active ? Math.round(totalShipments / active) : 0,
     topByVolume,
+    churnedTop: churnedSorted,
+    walletPilesTop: walletPilesSorted,
   };
 }
