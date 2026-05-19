@@ -266,23 +266,14 @@ function AppInner({ theme, toggleTheme }) {
           {/* Logo — Lamha brand */}
           <div className="sidebar-logo">
             {collapsed ? (
-              <LamhaMark size={36}/>
+              <LamhaMark size={32}/>
             ) : (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', width:'100%' }}>
-                <LamhaLogo height={26} color="#fff" accent="#2DD4BF"/>
-                <div style={{
-                  fontSize:8.5, color:'rgba(255,255,255,.45)',
-                  fontFamily:'var(--font-mono)', letterSpacing:1.5,
-                  textTransform:'uppercase', fontWeight:600,
-                  padding:'2px 6px', border:'1px solid rgba(45,212,191,.3)',
-                  borderRadius:4, marginInlineStart:8,
-                }}>
-                  v2.0
-                </div>
+              <div style={{ display:'flex', alignItems:'center', width:'100%' }}>
+                <LamhaLogo height={24} color="#fff" accent="#10B981"/>
               </div>
             )}
             {mobileOpen && (
-              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.6)', cursor:'pointer', marginRight:'auto', padding:4 }}>
+              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.55)', cursor:'pointer', marginRight:'auto', padding:4 }}>
                 <X size={16}/>
               </button>
             )}
@@ -365,31 +356,34 @@ function AppInner({ theme, toggleTheme }) {
 
             {!collapsed && (
               <div style={{
-                marginTop:10, display:'flex', alignItems:'center', gap:10,
-                padding:'10px 12px', borderRadius:10,
-                background:'rgba(255,255,255,.04)',
-                border:'1px solid rgba(255,255,255,.08)',
+                marginTop:10, display:'flex', alignItems:'center', gap:11,
+                padding:'12px 14px', borderRadius:14,
+                background:'rgba(255,255,255,.03)',
+                border:'1px solid rgba(255,255,255,.06)',
               }}>
                 <div style={{
-                  width:32, height:32, borderRadius:'50%', flexShrink:0,
-                  background: profile.avatar_color || 'linear-gradient(135deg,#1B1E54,#2DD4BF)',
+                  width:36, height:36, borderRadius:'50%', flexShrink:0,
+                  background: profile.avatar_color || 'linear-gradient(135deg,#10B981,#059669)',
                   display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:13, fontWeight:700, color:'#fff',
-                  boxShadow:'0 2px 8px rgba(45,212,191,.22)',
+                  fontSize:14, fontWeight:700, color:'#fff',
+                  boxShadow:'0 4px 12px rgba(16,185,129,.22)',
                 }}>
                   {profile.name?.[0] ?? '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:12, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:10, color:'rgba(255,255,255,.5)', marginTop:1 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
+                  <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
                 <button onClick={signOut} title="تسجيل خروج" style={{
-                  background:'rgba(255,255,255,.05)', border:'1px solid rgba(255,255,255,.08)',
-                  color:'rgba(255,255,255,.55)',
-                  cursor:'pointer', padding:'5px 6px', borderRadius:6,
-                  display:'flex', alignItems:'center',
-                }}>
-                  <LogOut size={12}/>
+                  background:'transparent', border:'1px solid rgba(255,255,255,.08)',
+                  color:'rgba(255,255,255,.5)',
+                  cursor:'pointer', padding:'6px 7px', borderRadius:8,
+                  display:'flex', alignItems:'center', transition:'all .15s',
+                }}
+                  onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.18)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.5)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; }}
+                >
+                  <LogOut size={13}/>
                 </button>
               </div>
             )}

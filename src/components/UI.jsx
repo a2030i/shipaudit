@@ -2,79 +2,86 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
-// Flat, professional fills (no gradients) — gradient buttons read as toys
-// in dashboards, single-tone fills with a thin shadow read as enterprise.
-//   primary  → deep navy (top-level CTA: confirm, save, approve)
-//   accent   → teal (secondary positive action: complete, finalize)
-//   navy     → alias of primary for legacy call-sites
-//   danger   → red (destructive: delete, reject)
-//   success  → teal (alias of accent — kept so call-sites don't break)
-//   gold     → amber (warnings, drafts)
-//   ghost    → transparent + neutral border (low-emphasis)
-//   outline  → teal border, transparent fill (medium emphasis)
+// Modern SaaS pill button. Flat fill + soft inset top highlight + hover
+// lift. Sized for confident touch targets — never tiny pills. Variants
+// keep brand intent (primary, accent, etc.) but the visual weight is
+// rebalanced toward less-but-bigger.
 const VARIANTS = {
   primary: {
-    background: '#0F1235',
-    color: '#fff',
-    border: '1px solid #0F1235',
-    boxShadow: '0 1px 2px rgba(15,18,53,.18)',
+    background: '#18181B',
+    color: '#FAFAFA',
+    border: '1px solid #18181B',
+    boxShadow: '0 1px 2px rgba(0,0,0,.06), inset 0 1px 0 rgba(255,255,255,.08)',
+    _hover: { background: '#000', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(0,0,0,.12)' },
   },
   accent: {
-    background: '#14B8A6',
+    background: '#10B981',
     color: '#fff',
-    border: '1px solid #14B8A6',
-    boxShadow: '0 1px 2px rgba(20,184,166,.22)',
+    border: '1px solid #10B981',
+    boxShadow: '0 1px 2px rgba(16,185,129,.18), inset 0 1px 0 rgba(255,255,255,.16)',
+    _hover: { background: '#059669', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(16,185,129,.28)' },
   },
   navy: {
-    background: '#1B1E54',
+    background: '#0A0A0B',
     color: '#fff',
-    border: '1px solid #1B1E54',
-    boxShadow: '0 1px 2px rgba(27,30,84,.20)',
+    border: '1px solid #0A0A0B',
+    boxShadow: '0 1px 2px rgba(0,0,0,.18)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 8px 18px rgba(0,0,0,.18)' },
   },
   danger: {
-    background: '#DC2626',
+    background: '#EF4444',
     color: '#fff',
-    border: '1px solid #DC2626',
-    boxShadow: '0 1px 2px rgba(220,38,38,.20)',
+    border: '1px solid #EF4444',
+    boxShadow: '0 1px 2px rgba(239,68,68,.20)',
+    _hover: { background: '#DC2626', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(239,68,68,.32)' },
   },
   success: {
-    background: '#14B8A6',
+    background: '#10B981',
     color: '#fff',
-    border: '1px solid #14B8A6',
-    boxShadow: '0 1px 2px rgba(20,184,166,.22)',
+    border: '1px solid #10B981',
+    boxShadow: '0 1px 2px rgba(16,185,129,.20)',
+    _hover: { background: '#059669', transform: 'translateY(-1px)' },
   },
   gold: {
     background: '#F59E0B',
     color: '#fff',
     border: '1px solid #F59E0B',
-    boxShadow: '0 1px 2px rgba(245,158,11,.22)',
+    boxShadow: '0 1px 2px rgba(245,158,11,.20)',
+    _hover: { background: '#D97706', transform: 'translateY(-1px)' },
   },
   ghost: {
     background: 'transparent',
     color: 'var(--text2)',
     border: '1px solid var(--border2)',
     boxShadow: 'none',
+    _hover: { background: 'var(--bg2)', borderColor: 'var(--border3)' },
   },
   outline: {
     background: 'transparent',
     color: 'var(--accent)',
     border: '1px solid var(--accent)',
     boxShadow: 'none',
+    _hover: { background: 'var(--accent-dim)' },
   },
 };
 
 const SIZES = {
-  sm: { padding: '5px 12px',  fontSize: 12, borderRadius: 8,  gap: 5 },
-  md: { padding: '8px 18px',  fontSize: 13, borderRadius: 9,  gap: 6 },
-  lg: { padding: '11px 24px', fontSize: 14, borderRadius: 10, gap: 7 },
+  sm: { padding: '7px 14px',  fontSize: 12.5, borderRadius: 999, gap: 6 },
+  md: { padding: '10px 20px', fontSize: 13.5, borderRadius: 999, gap: 7 },
+  lg: { padding: '13px 26px', fontSize: 14.5, borderRadius: 999, gap: 8 },
 };
 
 export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, style = {} }) {
+  const [hovered, setHovered] = useState(false);
   const s = SIZES[size];
   const v = VARIANTS[variant] || VARIANTS.ghost;
+  const hoverStyle = (hovered && !disabled && v._hover) ? v._hover : {};
+  const { _hover, ...baseV } = v;
   return (
     <button
       onClick={disabled ? undefined : onClick}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
       style={{
         display: 'inline-flex', alignItems: 'center', gap: s.gap,
         cursor: disabled ? 'not-allowed' : 'pointer',
@@ -82,21 +89,23 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
         borderRadius: s.borderRadius,
         padding: s.padding, fontSize: s.fontSize,
         opacity: disabled ? .45 : 1,
-        ...v,
+        transition: 'all .18s cubic-bezier(.4,0,.2,1)',
+        whiteSpace: 'nowrap',
+        ...baseV,
+        ...hoverStyle,
         ...style,
       }}
     >
-      {icon && <span style={{ fontSize: s.fontSize + 1 }}>{icon}</span>}
+      {icon && <span style={{ display: 'inline-flex', alignItems: 'center' }}>{icon}</span>}
       {children}
     </button>
   );
 }
 
 // ─── Card ──────────────────────────────────────────────────────────────────────
-// Flat surface with subtle 1px border + soft shadow on hover. Drops the
-// borderTop accent strip — the colour gets relocated to the icon tile or
-// to a small chip inside the card, freeing the card itself to look like
-// a calm primitive.
+// Elevated white surface, no visible border, soft layered shadow. Modern
+// SaaS card pattern — looks like Stripe/Linear/Notion. Hover adds a
+// 1px lift + tighter shadow ring.
 export function Card({ children, style = {}, accent, hover = false }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -105,13 +114,13 @@ export function Card({ children, style = {}, accent, hover = false }) {
       onMouseLeave={() => hover && setHovered(false)}
       style={{
         background: 'var(--card)',
-        border: `1px solid var(--border)`,
+        border: '1px solid transparent',
         borderRadius: 'var(--r-lg)',
-        padding: 20,
-        transition: 'transform .18s, box-shadow .18s, border-color .18s',
-        transform: hovered && hover ? 'translateY(-1px)' : 'none',
+        padding: 24,
+        transition: 'transform .18s, box-shadow .18s',
+        transform: hovered && hover ? 'translateY(-2px)' : 'none',
         boxShadow: hovered && hover ? 'var(--shadow-md)' : 'var(--shadow-sm)',
-        ...(accent ? { borderTop: `2px solid ${accent}` } : {}),
+        ...(accent ? { borderTop: `3px solid ${accent}` } : {}),
         ...style,
       }}
     >
@@ -335,103 +344,146 @@ export function StatTile({ label, value, hint, color, big, dark }) {
 export function SpotlightCard({
   tag, title, value, suffix,
   delta, sparkline, side, stats = [],
-  accent = '#2DD4BF',
+  accent = '#10B981',
 }) {
   return (
     <div style={{
       position: 'relative',
-      background: '#0F1235',
-      borderRadius: 'var(--r-xl)',
-      padding: '32px 36px',
+      background: '#0A0A0B',
+      borderRadius: 24,
+      padding: '40px 44px',
       color: '#fff',
       overflow: 'hidden',
-      boxShadow: '0 12px 36px rgba(15,18,53,.22)',
-      marginBottom: 22,
+      boxShadow: '0 24px 56px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.06)',
+      marginBottom: 28,
     }}>
-      {/* Subtle radial glow on the left */}
+      {/* Decorative glow blobs — modern saas vibe */}
       <div style={{
-        position: 'absolute', inset: 0, pointerEvents: 'none',
-        background: `radial-gradient(380px 240px at 8% 50%, ${accent}22, transparent 70%)`,
+        position: 'absolute', top: -120, right: -60, width: 380, height: 380,
+        background: `radial-gradient(closest-side, ${accent}26, transparent)`,
+        pointerEvents: 'none', filter: 'blur(8px)',
       }}/>
       <div style={{
+        position: 'absolute', bottom: -100, left: -40, width: 280, height: 280,
+        background: 'radial-gradient(closest-side, rgba(139,92,246,.18), transparent)',
+        pointerEvents: 'none', filter: 'blur(8px)',
+      }}/>
+
+      {/* Top row: tag + side action */}
+      <div style={{
         position: 'relative',
-        display: 'grid',
-        gridTemplateColumns: side ? 'minmax(0,1fr) auto' : '1fr',
-        gap: 32, alignItems: 'center',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 28, gap: 16, flexWrap: 'wrap',
       }}>
-        <div style={{ minWidth: 0 }}>
-          {tag && (
-            <div style={{
-              fontSize: 10.5, fontFamily: 'var(--font-mono)',
-              letterSpacing: 2.5, textTransform: 'uppercase',
-              color: 'rgba(255,255,255,.55)', fontWeight: 600,
-              marginBottom: 6,
-            }}>{tag}</div>
-          )}
-          {title && (
-            <div style={{
-              fontSize: 13, color: 'rgba(255,255,255,.7)',
-              marginBottom: 16,
-            }}>{title}</div>
-          )}
+        {tag && (
           <div style={{
-            display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '6px 14px', borderRadius: 999,
+            background: 'rgba(255,255,255,.06)',
+            border: '1px solid rgba(255,255,255,.10)',
+            fontSize: 11, fontFamily: 'var(--font-mono)',
+            letterSpacing: 1.5, textTransform: 'uppercase',
+            color: 'rgba(255,255,255,.7)', fontWeight: 600,
           }}>
-            <div style={{
-              fontSize: 56, fontWeight: 800, lineHeight: 1,
-              fontFamily: 'var(--font-mono)', letterSpacing: -2,
-              color: '#fff',
-            }}>
-              {value ?? '—'}
-            </div>
-            {suffix && (
-              <div style={{
-                fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,.55)',
-                fontFamily: 'var(--font-mono)',
-              }}>{suffix}</div>
-            )}
-            {delta && (
-              <div style={{
-                display: 'inline-flex', alignItems: 'center', gap: 4,
-                padding: '4px 10px', borderRadius: 999,
-                background: delta.positive ? 'rgba(16,185,129,.18)' : 'rgba(239,68,68,.18)',
-                border: `1px solid ${delta.positive ? 'rgba(16,185,129,.4)' : 'rgba(239,68,68,.4)'}`,
-                color: delta.positive ? '#6EE7B7' : '#FCA5A5',
-                fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700,
-                marginInlineStart: 4,
-              }}>
-                {delta.positive
-                  ? <TrendingUp size={12}/>
-                  : <TrendingDown size={12}/>}
-                {delta.value > 0 ? '+' : ''}{delta.value}%
-                {delta.label && (
-                  <span style={{ color: 'rgba(255,255,255,.55)', fontWeight: 500, marginInlineStart: 4 }}>
-                    {delta.label}
-                  </span>
-                )}
-              </div>
-            )}
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: accent, boxShadow: `0 0 12px ${accent}`,
+            }}/>
+            {tag}
           </div>
-          {sparkline && sparkline.length > 1 && (
-            <div style={{ marginTop: 18 }}>
-              <Sparkline data={sparkline} color={accent} width={240} height={40}/>
-            </div>
-          )}
-          {stats.length > 0 && (
+        )}
+        {side && <div style={{ flexShrink: 0 }}>{side}</div>}
+      </div>
+
+      {/* The headline number */}
+      <div style={{ position: 'relative', marginBottom: 12 }}>
+        {title && (
+          <div style={{
+            fontSize: 14, color: 'rgba(255,255,255,.6)',
+            marginBottom: 14, fontWeight: 500,
+          }}>{title}</div>
+        )}
+        <div style={{
+          display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap',
+        }}>
+          <div style={{
+            fontSize: 'clamp(48px, 7vw, 88px)', fontWeight: 700, lineHeight: 1,
+            fontFamily: 'var(--font-mono)', letterSpacing: -3,
+            color: '#fff',
+          }}>
+            {value ?? '—'}
+          </div>
+          {suffix && (
             <div style={{
-              display: 'flex', gap: 0, marginTop: 22,
-              flexWrap: 'wrap',
+              fontSize: 22, fontWeight: 500, color: 'rgba(255,255,255,.5)',
+              fontFamily: 'var(--font-mono)',
+            }}>{suffix}</div>
+          )}
+          {delta && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 14px', borderRadius: 999,
+              background: delta.positive ? 'rgba(16,185,129,.18)' : 'rgba(239,68,68,.18)',
+              border: `1px solid ${delta.positive ? 'rgba(16,185,129,.4)' : 'rgba(239,68,68,.4)'}`,
+              color: delta.positive ? '#6EE7B7' : '#FCA5A5',
+              fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
+              marginInlineStart: 6,
             }}>
-              {stats.map((s, i) => (
-                <StatTile key={i} {...s} dark/>
-              ))}
+              {delta.positive
+                ? <TrendingUp size={14}/>
+                : <TrendingDown size={14}/>}
+              {delta.value > 0 ? '+' : ''}{delta.value}%
+              {delta.label && (
+                <span style={{ color: 'rgba(255,255,255,.5)', fontWeight: 500, marginInlineStart: 6 }}>
+                  {delta.label}
+                </span>
+              )}
             </div>
           )}
         </div>
-        {side && (
-          <div style={{ flexShrink: 0 }}>{side}</div>
-        )}
       </div>
+
+      {/* Sparkline */}
+      {sparkline && sparkline.length > 1 && (
+        <div style={{ position: 'relative', marginTop: 24, marginBottom: 4 }}>
+          <Sparkline data={sparkline} color={accent} width={320} height={56}/>
+        </div>
+      )}
+
+      {/* Stat rail */}
+      {stats.length > 0 && (
+        <div style={{
+          position: 'relative',
+          display: 'grid',
+          gridTemplateColumns: `repeat(${Math.min(stats.length, 4)}, 1fr)`,
+          gap: 0, marginTop: 32,
+          paddingTop: 24,
+          borderTop: '1px solid rgba(255,255,255,.08)',
+        }}>
+          {stats.map((s, i) => (
+            <div key={i} style={{
+              paddingInline: 20,
+              borderInlineStart: i > 0 ? '1px solid rgba(255,255,255,.08)' : 'none',
+            }}>
+              <div style={{
+                fontSize: 11, fontFamily: 'var(--font-sans)',
+                letterSpacing: .2, color: 'rgba(255,255,255,.55)',
+                fontWeight: 500, marginBottom: 6,
+              }}>{s.label}</div>
+              <div style={{
+                fontSize: 22, fontWeight: 700, color: s.color || '#fff',
+                fontFamily: 'var(--font-mono)', letterSpacing: -0.5,
+                lineHeight: 1, whiteSpace: 'nowrap',
+              }}>{s.value ?? '—'}</div>
+              {s.hint && (
+                <div style={{
+                  fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 6,
+                }}>{s.hint}</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -465,6 +517,129 @@ export function Sparkline({ data, color = 'var(--accent)', width = 120, height =
       {fill && <path d={pathFill} fill={`url(#spark-${color.replace(/[^a-z0-9]/gi, '')})`}/>}
       <path d={pathLine} fill="none" stroke={color} strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ─── AreaChart ───────────────────────────────────────────────────────────────
+// Full-width SVG area chart with gridlines, axis labels, and smooth
+// curves. Takes one or two series and renders them as soft gradient
+// fills over a thin baseline.
+//
+// Props:
+//   series  Array of { data: number[], color, label }
+//   labels  Array of x-axis labels (same length as data)
+//   height  Default 220
+//   formatY (n) => string for Y-axis ticks (default: fmt with k/m)
+export function AreaChart({ series = [], labels = [], height = 220, formatY }) {
+  if (!series.length || !series[0]?.data?.length) {
+    return (
+      <div style={{
+        padding: 40, textAlign: 'center', fontSize: 13, color: 'var(--muted)',
+      }}>لا توجد بيانات</div>
+    );
+  }
+  const fmtY = formatY || ((n) => {
+    if (Math.abs(n) >= 1_000_000) return (n/1_000_000).toFixed(1) + 'م';
+    if (Math.abs(n) >= 1_000) return (n/1_000).toFixed(0) + 'ك';
+    return n.toFixed(0);
+  });
+  const W = 800, H = height;
+  const padL = 56, padR = 16, padT = 16, padB = 32;
+  const innerW = W - padL - padR;
+  const innerH = H - padT - padB;
+  const N = series[0].data.length;
+
+  const allValues = series.flatMap(s => s.data);
+  const dataMax = Math.max(...allValues);
+  const dataMin = Math.min(0, Math.min(...allValues));
+  // Nice ceiling for the axis
+  const range = dataMax - dataMin || 1;
+  const pow = Math.pow(10, Math.floor(Math.log10(range)));
+  const ceil = Math.ceil(dataMax / pow) * pow;
+  const yMax = ceil || 1;
+  const yMin = dataMin < 0 ? dataMin : 0;
+  const ySpan = yMax - yMin;
+
+  const xAt = (i) => padL + (N > 1 ? (i * innerW) / (N - 1) : innerW / 2);
+  const yAt = (v) => padT + (1 - (v - yMin) / ySpan) * innerH;
+
+  // 4 gridlines
+  const gridSteps = 4;
+  const gridLines = [];
+  for (let i = 0; i <= gridSteps; i++) {
+    const t = i / gridSteps;
+    const y = padT + t * innerH;
+    const v = yMax - t * ySpan;
+    gridLines.push({ y, v });
+  }
+
+  // Smoothed Bezier path through points
+  const smoothPath = (data) => {
+    if (data.length < 2) return '';
+    const pts = data.map((d, i) => [xAt(i), yAt(d)]);
+    let p = `M${pts[0][0]},${pts[0][1]}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1];
+      const [x1, y1] = pts[i];
+      const cx1 = x0 + (x1 - x0) / 2;
+      const cy1 = y0;
+      const cx2 = x0 + (x1 - x0) / 2;
+      const cy2 = y1;
+      p += ` C${cx1},${cy1} ${cx2},${cy2} ${x1},${y1}`;
+    }
+    return p;
+  };
+
+  // X-axis label sampling — only show ~6 labels even if data is dense
+  const labelStep = Math.max(1, Math.ceil(N / 6));
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ overflow: 'visible' }} preserveAspectRatio="none">
+      <defs>
+        {series.map((s, i) => (
+          <linearGradient key={i} id={`area-${i}-${(s.color || '').replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"  stopColor={s.color} stopOpacity="0.35"/>
+            <stop offset="100%" stopColor={s.color} stopOpacity="0"/>
+          </linearGradient>
+        ))}
+      </defs>
+
+      {/* Gridlines + Y-axis ticks */}
+      {gridLines.map((g, i) => (
+        <g key={i}>
+          <line x1={padL} y1={g.y} x2={W - padR} y2={g.y} stroke="var(--border)" strokeWidth="1" strokeDasharray={i === gridLines.length - 1 ? '0' : '3 4'}/>
+          <text x={padL - 10} y={g.y + 4} textAnchor="end" fontSize="11" fill="var(--muted)" fontFamily="var(--font-mono)">
+            {fmtY(g.v)}
+          </text>
+        </g>
+      ))}
+
+      {/* Series */}
+      {series.map((s, i) => {
+        const linePath = smoothPath(s.data);
+        const baseY = yAt(yMin);
+        const fillPath = `${linePath} L${xAt(N - 1)},${baseY} L${xAt(0)},${baseY} Z`;
+        const gradId = `area-${i}-${(s.color || '').replace(/[^a-z0-9]/gi, '')}`;
+        return (
+          <g key={i}>
+            <path d={fillPath} fill={`url(#${gradId})`}/>
+            <path d={linePath} fill="none" stroke={s.color} strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"/>
+            {s.data.map((d, idx) => (
+              <circle key={idx} cx={xAt(idx)} cy={yAt(d)} r={3.5} fill="#fff" stroke={s.color} strokeWidth="2"/>
+            ))}
+          </g>
+        );
+      })}
+
+      {/* X-axis labels */}
+      {labels.length > 0 && labels.map((l, i) => (
+        (i % labelStep === 0 || i === N - 1) && (
+          <text key={i} x={xAt(i)} y={H - 10} textAnchor="middle" fontSize="11" fill="var(--muted)" fontFamily="var(--font-mono)">
+            {l}
+          </text>
+        )
+      ))}
     </svg>
   );
 }
