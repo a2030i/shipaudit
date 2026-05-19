@@ -102,7 +102,7 @@ const ROLE_LABEL = { admin: 'مدير', accountant1: 'محاسب أول', accoun
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
-  const [theme, setTheme] = useState(() => localStorage.getItem('sa-theme') || 'dark');
+  const [theme, setTheme] = useState(() => localStorage.getItem('sa-theme') || 'light');
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -321,30 +321,21 @@ function AppInner({ theme, toggleTheme }) {
                       style={{
                         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                         width: '100%', background: 'transparent', border: 'none',
-                        padding: '12px 14px 10px', cursor: 'pointer',
-                        fontFamily: 'var(--font-sans)', fontSize: 13,
-                        letterSpacing: .2,
-                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-text)',
+                        padding: '14px 14px 8px', cursor: 'pointer',
+                        fontFamily: 'var(--font-mono)', fontSize: 10,
+                        letterSpacing: 1.8, textTransform: 'uppercase',
+                        color: sectionHasActive ? 'var(--accent)' : 'var(--nav-label-color)',
                         fontWeight: 700, textAlign: 'right',
                         transition: 'color .15s',
                       }}
                     >
-                      <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                        {sec.label}
-                        {sectionHasActive && (
-                          <span style={{
-                            width: 6, height: 6, borderRadius: '50%',
-                            background: 'var(--accent)',
-                            boxShadow: '0 0 8px var(--accent)',
-                          }}/>
-                        )}
-                      </span>
+                      <span>{sec.label}</span>
                       <ChevronDown
-                        size={14}
+                        size={12}
                         style={{
                           transition: 'transform .2s',
                           transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                          opacity: .7,
+                          opacity: .6,
                         }}
                       />
                     </button>
@@ -371,24 +362,6 @@ function AppInner({ theme, toggleTheme }) {
               collapsed={collapsed}
               onClick={() => goto('/settings/ai')}
             />
-
-            {isAdmin && !collapsed && (
-              <div style={{
-                marginTop:10, padding:'10px 13px',
-                background:'rgba(45,212,191,.06)',
-                border:'1px solid rgba(45,212,191,.22)',
-                borderRadius:10,
-                display:'flex', alignItems:'center', justifyContent:'space-between',
-              }}>
-                <div>
-                  <div style={{ color:'rgba(255,255,255,.55)', fontSize:9, fontFamily:'var(--font-mono)', marginBottom:3, letterSpacing:1, textTransform:'uppercase' }}>شركات</div>
-                  <span style={{ color:'#2DD4BF', fontSize:20, fontFamily:'var(--font-mono)', fontWeight:700, lineHeight:1 }}>
-                    {carriersLoading ? '…' : carriers.length}
-                  </span>
-                </div>
-                <Truck size={20} color="rgba(45,212,191,.55)"/>
-              </div>
-            )}
 
             {!collapsed && (
               <div style={{
@@ -438,49 +411,34 @@ function AppInner({ theme, toggleTheme }) {
 
             <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
               <span style={{
-                fontFamily:'var(--font-sans)', fontSize:14, fontWeight:700,
-                color:'var(--text)', whiteSpace:'nowrap',
+                fontFamily:'var(--font-sans)', fontSize:15, fontWeight:800,
+                color:'var(--text)', whiteSpace:'nowrap', letterSpacing:-0.2,
               }}>
                 {currentTitle}
               </span>
               {location.pathname !== '/dashboard' && (
-                <>
-                  <span style={{ color:'var(--muted2)', fontSize:11 }}>›</span>
-                  <span style={{ color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)', letterSpacing:1, textTransform:'uppercase' }}>
-                    Lamha
-                  </span>
-                </>
+                <span style={{
+                  color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)',
+                  letterSpacing:1.5, textTransform:'uppercase', fontWeight:600,
+                  marginInlineStart:6,
+                }}>
+                  Lamha
+                </span>
               )}
             </div>
 
             {/* Theme toggle */}
             <button onClick={toggleTheme} title={theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'} style={{
-              background:'var(--surface)', border:'1px solid var(--border2)',
+              background:'transparent', border:'1px solid var(--border2)',
               color:'var(--muted)', cursor:'pointer', padding:'7px 9px',
               borderRadius:8, display:'flex', alignItems:'center',
               transition:'all .15s',
             }}
-              onMouseEnter={e => { e.currentTarget.style.borderColor='var(--accent)'; e.currentTarget.style.color='var(--accent)'; }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor='var(--text2)'; e.currentTarget.style.color='var(--text)'; }}
               onMouseLeave={e => { e.currentTarget.style.borderColor='var(--border2)'; e.currentTarget.style.color='var(--muted)'; }}
             >
               {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
             </button>
-
-            <div style={{
-              display:'flex', alignItems:'center', gap:6,
-              padding:'6px 10px', borderRadius:20,
-              background:'rgba(45,212,191,.08)',
-              border:'1px solid rgba(45,212,191,.22)',
-            }}>
-              <div style={{
-                width:6, height:6, borderRadius:'50%',
-                background:'var(--accent)',
-                boxShadow:'0 0 6px var(--accent)',
-                flexShrink:0,
-                animation:'pulse 2s ease infinite',
-              }}/>
-              <span style={{ color:'var(--accent)', fontSize:11, fontFamily:'var(--font-mono)', fontWeight:600, letterSpacing:.5 }}>متصل</span>
-            </div>
           </div>
 
           {/* ── Pages ── */}
