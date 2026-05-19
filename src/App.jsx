@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -34,50 +34,58 @@ import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
-// Sidebar IA — 3 sections, ordered by the operator's daily workflow:
+// Sidebar IA — collapsible sections grouped by domain.
 //
-//   1) workspace — the home screens you start your day on
-//   2) operations — daily transactional work (inbox → audit → settle → pay)
-//   3) finance    — financial reports + customer-side data
-//   4) settings   — configuration + admin (collapsed to a single label,
-//                   rendered visually at the bottom)
+// "الرئيسية" sits alone above the sections as a top-level shortcut so
+// the operator can always one-click home. Everything else falls into
+// one of five sections that collapse/expand on click:
 //
-// Re-ordered so the items the operator opens 10× per day live at the top
-// and the rarely-touched config sits at the bottom. Customers/Merchants
-// moved under "finance" (was "ledger") because they describe AR, not AP.
+//   1) carriers   — anything carrier-facing (AP side)
+//   2) audits     — the inbound + audit pipeline
+//   3) finance    — money in / money out
+//   4) customers  — customer / merchant directory (AR side)
+//   5) system     — config + reports + admin
+//
+// `pinned: true` on a NAV_ITEM means it renders above sections (no
+// section header). Currently only the dashboard is pinned.
 const NAV_ITEMS = [
-  // ── Workspace ──────────────────────────────────────────────────
-  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'workspace' },
-  { id: 'hub',       path: '/hub',       label: 'الشركات',        icon: Building2,       section: 'workspace' },
-  { id: 'webhook',   path: '/webhook',   label: 'الوارد',          icon: Inbox,           section: 'workspace' },
-  { id: 'customers', path: '/customers', label: 'متابعة العملاء',  icon: Users,           section: 'workspace' },
+  // ── Pinned top-level ───────────────────────────────────────────
+  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, pinned: true },
 
-  // ── Operations (the daily audit → settle → pay loop) ───────────
-  { id: 'upload',          path: '/upload',            label: 'مراجعة جديدة',  icon: Upload,     section: 'operations' },
-  { id: 'audits',          path: '/audits',            label: 'سجل المراجعات', icon: History,    section: 'operations' },
-  { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',    icon: Banknote,   section: 'operations' },
-  { id: 'payments',        path: '/payments',          label: 'الدفعات',       icon: CreditCard, section: 'operations' },
-  { id: 'weight-billing',  path: '/weight-billing',    label: 'فوترة الأوزان', icon: Scale,      section: 'operations' },
+  // ── Carriers (AP side) ────────────────────────────────────────
+  { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers' },
+  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers' },
+  { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers' },
+  { id: 'contracts',    path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'carriers' },
+  { id: 'carrier-kpi',  path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'carriers' },
 
-  // ── Finance (statements + customer-side) ──────────────────────
-  { id: 'ledger',          path: '/ledger',            label: 'دفتر الشركات',     icon: BookOpen,    section: 'finance' },
-  { id: 'aramex-stmt',     path: '/aramex-statements', label: 'كشوف خارجية',      icon: FileText,    section: 'finance' },
-  { id: 'bank',            path: '/bank',              label: 'كشف بنكي',         icon: Wallet,      section: 'finance' },
-  { id: 'receivables',     path: '/receivables',       label: 'مديونيات العملاء', icon: Users,       section: 'finance' },
-  { id: 'merchants',       path: '/merchants',         label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'finance' },
+  // ── Audits pipeline ───────────────────────────────────────────
+  { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits' },
+  { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits' },
+  { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits' },
+  { id: 'weight-billing',  path: '/weight-billing', label: 'فوترة الأوزان',  icon: Scale,    section: 'audits' },
 
-  // ── Admin (config + reports — least-touched) ──────────────────
-  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات', icon: Truck,         section: 'admin' },
-  { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',   icon: ClipboardList, section: 'admin' },
-  { id: 'carrier-kpi',  path: '/carrier-kpi',  label: 'أداء الناقلين', icon: BarChart3,     section: 'admin' },
-  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط',    icon: Activity,      section: 'admin' },
-  { id: 'employees',    path: '/employees',    label: 'الموظفون',      icon: Users,         section: 'admin', adminOnly: true },
+  // ── Finance ────────────────────────────────────────────────────
+  { id: 'cod-settlements', path: '/cod-settlements', label: 'تسويات COD', icon: Banknote,   section: 'finance' },
+  { id: 'payments',        path: '/payments',        label: 'الدفعات',     icon: CreditCard, section: 'finance' },
+  { id: 'bank',            path: '/bank',            label: 'كشف بنكي',    icon: Wallet,     section: 'finance' },
+
+  // ── Customers (AR side) ───────────────────────────────────────
+  { id: 'customers',       path: '/customers',       label: 'متابعة العملاء',   icon: Users,       section: 'customers' },
+  { id: 'receivables',     path: '/receivables',     label: 'مديونيات العملاء', icon: DollarSign,  section: 'customers' },
+  { id: 'merchants',       path: '/merchants',       label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'customers' },
+
+  // ── System (config + reports — least-touched) ─────────────────
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system' },
+  { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
 ];
 const NAV_SECTIONS = [
-  { id: 'workspace',  label: 'الواجهة' },
-  { id: 'operations', label: 'العمليات اليومية' },
-  { id: 'finance',    label: 'التقارير المالية' },
-  { id: 'admin',      label: 'إعداد النظام' },
+  { id: 'carriers',  label: 'شركات الشحن',  icon: Building2, hint: 'الكشوف والعقود' },
+  { id: 'audits',    label: 'المراجعات',     icon: FileCheck, hint: 'دورة الفواتير' },
+  { id: 'finance',   label: 'الحركات المالية', icon: DollarSign, hint: 'COD والدفعات' },
+  { id: 'customers', label: 'العملاء والمتاجر', icon: Users,    hint: 'AR والمتابعة' },
+  { id: 'system',    label: 'إعدادات النظام', icon: Briefcase, hint: 'الإدارة والسجلات' },
 ];
 const PAGE_TITLES = {
   '/dashboard':         'الرئيسية',
@@ -142,7 +150,31 @@ function AppInner({ theme, toggleTheme }) {
   const [navPerms,        setNavPerms]        = useState(null);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
-  // (Sidebar is now a flat list — no accordion state needed.)
+  // Per-section open/closed state for the accordion. Persists in
+  // localStorage so the operator's preferred layout survives reloads.
+  // Default on first visit: open the carriers section (most-trafficked
+  // group) and the section containing the current route.
+  const [openSections, setOpenSections] = useState(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem('sa-nav-sections-v2') || 'null');
+      if (saved && typeof saved === 'object') {
+        const validIds = new Set(NAV_SECTIONS.map(s => s.id));
+        const cleaned = {};
+        for (const [k, v] of Object.entries(saved)) {
+          if (validIds.has(k)) cleaned[k] = v;
+        }
+        return cleaned;
+      }
+    } catch { /* fall through */ }
+    return { carriers: true };
+  });
+  const toggleSection = (id) => {
+    setOpenSections(prev => {
+      const next = { ...prev, [id]: !prev[id] };
+      try { localStorage.setItem('sa-nav-sections-v2', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  };
 
   // ── Default redirect after login: always go to dashboard ──
   useEffect(() => {
@@ -162,7 +194,18 @@ function AppInner({ theme, toggleTheme }) {
 
   useEffect(() => { reloadCarriers(); }, [reloadCarriers]);
 
-  // (Removed: section-auto-open effect — flat sidebar shows everything.)
+  // Auto-open the section that contains the active route. We only
+  // open — never auto-close — so manual choices stick.
+  useEffect(() => {
+    const item = NAV_ITEMS.find(n => n.path === location.pathname);
+    if (!item || !item.section) return;
+    setOpenSections(prev => {
+      if (prev[item.section]) return prev;
+      const next = { ...prev, [item.section]: true };
+      try { localStorage.setItem('sa-nav-sections-v2', JSON.stringify(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [location.pathname]);
 
   // ── Nav permissions ──
   useEffect(() => {
@@ -255,25 +298,76 @@ function AppInner({ theme, toggleTheme }) {
                 تواصل مع المدير لإضافة الصفحات.
               </div>
             )}
-            {NAV_SECTIONS.map((sec, idx) => {
+            {/* Pinned top-level items (no section header) */}
+            {visibleNav.filter(n => n.pinned).map(n => (
+              <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
+            ))}
+
+            {/* Accordion sections */}
+            {NAV_SECTIONS.map((sec) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
+              const isOpen = collapsed ? true : !!openSections[sec.id];
+              const sectionHasActive = items.some(n => activeFor(n));
+              const SecIcon = sec.icon;
               return (
-                <div key={sec.id} style={{ marginBottom: idx === NAV_SECTIONS.length - 1 ? 0 : 14 }}>
-                  {!collapsed && (
+                <div key={sec.id} style={{ marginTop: 8 }}>
+                  {collapsed ? (
                     <div style={{
-                      padding: '8px 14px 6px',
-                      fontFamily: 'var(--font-sans)', fontSize: 11,
-                      letterSpacing: 0.4, fontWeight: 600,
-                      color: 'var(--nav-label-color)',
-                      textAlign: 'right',
-                    }}>
-                      {sec.label}
-                    </div>
+                      height: 1, margin: '8px 14px',
+                      background: 'rgba(255,255,255,.04)',
+                    }}/>
+                  ) : (
+                    <button
+                      onClick={() => toggleSection(sec.id)}
+                      aria-expanded={isOpen}
+                      style={{
+                        display: 'flex', alignItems: 'center', gap: 10,
+                        width: '100%', padding: '9px 12px',
+                        background: 'transparent', border: 'none',
+                        borderRadius: 10, cursor: 'pointer',
+                        fontFamily: 'var(--font-sans)',
+                        color: sectionHasActive
+                          ? 'var(--nav-text-hover)'
+                          : 'var(--nav-text)',
+                        textAlign: 'right',
+                        transition: 'background .15s, color .15s',
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background = 'var(--nav-hover-bg)'}
+                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                    >
+                      <SecIcon size={15} strokeWidth={sectionHasActive ? 2.2 : 1.8} style={{ opacity: sectionHasActive ? 1 : .72, color: sectionHasActive ? 'var(--accent)' : undefined }}/>
+                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {sec.label}
+                      </span>
+                      {sectionHasActive && !isOpen && (
+                        <span style={{
+                          width: 6, height: 6, borderRadius: '50%',
+                          background: 'var(--accent)',
+                          boxShadow: '0 0 8px var(--accent-glow)',
+                          flexShrink: 0,
+                        }}/>
+                      )}
+                      <ChevronDown
+                        size={14}
+                        style={{
+                          transition: 'transform .22s cubic-bezier(.4,0,.2,1)',
+                          transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
+                          opacity: .55, flexShrink: 0,
+                        }}
+                      />
+                    </button>
                   )}
-                  {items.map(n => (
-                    <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-                  ))}
+                  <div style={{
+                    overflow: 'hidden',
+                    maxHeight: isOpen ? items.length * 44 + 12 : 0,
+                    transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
+                    paddingInlineEnd: collapsed ? 0 : 8,
+                  }}>
+                    {items.map(n => (
+                      <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)} nested/>
+                    ))}
+                  </div>
                 </div>
               );
             })}
@@ -498,11 +592,16 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function NavBtn({ n, active, collapsed, onClick }) {
+function NavBtn({ n, active, collapsed, onClick, nested }) {
   const Icon = n.icon;
   return (
-    <button className={`nav-item ${active ? 'active' : ''}`} onClick={onClick} title={collapsed ? n.label : undefined}>
-      <Icon size={16} strokeWidth={active ? 2.2 : 1.8} style={{ flexShrink:0 }}/>
+    <button
+      className={`nav-item ${active ? 'active' : ''}`}
+      onClick={onClick}
+      title={collapsed ? n.label : undefined}
+      style={nested && !collapsed ? { paddingInlineStart: 28 } : undefined}
+    >
+      <Icon size={15} strokeWidth={active ? 2.2 : 1.8} style={{ flexShrink:0 }}/>
       <span className="nav-label" style={{ flex:1 }}>{n.label}</span>
       {active && <span className="nav-dot"/>}
     </button>
