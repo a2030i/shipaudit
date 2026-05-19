@@ -18,6 +18,7 @@ import {
   loadLatestReceivables, loadReceivablesSnapshots, deleteReceivablesSnapshot,
   setCustomerStatus,
 } from '../lib/customerReceivablesService.js';
+import { loadLatestMerchants } from '../lib/merchantsService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -416,6 +417,7 @@ export default function CustomerReceivables({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
   const [data,    setData]    = useState(null);
+  const [merchants, setMerchants] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openCustomer, setOpenCustomer] = useState(null);
   const [search,  setSearch]  = useState('');
@@ -436,8 +438,15 @@ export default function CustomerReceivables({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const d = await loadLatestReceivables();
+      // Pull receivables + merchants in parallel — the anomalies tab
+      // needs both (negative-wallet merchants surface even when they
+      // have no AR row in the current snapshot).
+      const [d, mResult] = await Promise.all([
+        loadLatestReceivables(),
+        loadLatestMerchants().catch(() => ({ merchants: [] })),
+      ]);
       setData(d);
+      setMerchants(mResult?.merchants || []);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
       setData(null);
@@ -476,21 +485,57 @@ export default function CustomerReceivables({ isActive = true }) {
     if (!data?.activeCustomers) return [];
     const today = new Date(); today.setHours(0, 0, 0, 0);
     const out = [];
+
+    // PASS 1 — merchant-driven: negative-wallet bug surfaces for EVERY
+    // store regardless of whether it has a receivables row, so the
+    // count here matches the "محافظ بأرصدة سالبة" list on /customers.
+    const customerByStoreId = new Map(
+      data.activeCustomers
+        .filter(c => c.merchant?.storeId)
+        .map(c => [c.merchant.storeId, c]),
+    );
+    const handledByNegativeWallet = new Set();
+    for (const m of merchants) {
+      if (m.billing_type !== 'دفع مسبق') continue;
+      const w = Number(m.wallet_balance) || 0;
+      if (w >= -0.5) continue;
+      handledByNegativeWallet.add(m.store_id);
+      const c = customerByStoreId.get(m.store_id);
+      if (c) {
+        out.push({ ...c, anomaly: 'negative_wallet' });
+      } else {
+        // Phantom entry — store has negative wallet but no AR row.
+        out.push({
+          name: m.store_name,
+          total: 0,
+          invoiceCount: 0,
+          daysOutstanding: 0,
+          merchant: {
+            storeId: m.store_id,
+            storeName: m.store_name,
+            phone: m.phone,
+            billingType: m.billing_type,
+            platformStatus: m.status,
+            shipmentCount: m.shipment_count,
+            lastShipmentAt: m.last_shipment_at,
+            walletBalance: w,
+          },
+          anomaly: 'negative_wallet',
+        });
+      }
+    }
+
+    // PASS 2 — customer-driven: the remaining four buckets all need
+    // receivables debt to be meaningful.
     for (const c of data.activeCustomers) {
       const m = c.merchant;
-      if (!m) continue;                                   // no merchant link → can't classify
+      if (!m) continue;
+      if (m.storeId && handledByNegativeWallet.has(m.storeId)) continue;
 
-      // 1. Prepaid + negative wallet (technical / financial error)
-      if (m.billingType === 'دفع مسبق' && Number(m.walletBalance || 0) < -0.5) {
-        out.push({ ...c, anomaly: 'negative_wallet' });
-        continue;
-      }
-      // 2. Prepaid + outstanding debt (shouldn't happen on prepaid model)
       if (m.billingType === 'دفع مسبق' && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'prepaid_with_debt' });
         continue;
       }
-      // 3. Actively shipping + debt (recent shipment within 10 days)
       if ((c.total || 0) > 0.5 && m.lastShipmentAt) {
         const daysSinceShip = Math.floor((today - new Date(m.lastShipmentAt)) / 86_400_000);
         if (daysSinceShip <= 10) {
@@ -498,19 +543,17 @@ export default function CustomerReceivables({ isActive = true }) {
           continue;
         }
       }
-      // 4. Postpaid 60+ days overdue
       if (m.billingType === 'دفع لاحق' && (c.daysOutstanding || 0) > 60 && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'postpaid_overdue' });
         continue;
       }
-      // 5. Deactivated store + outstanding debt
       if (m.platformStatus === 'غير نشط' && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'inactive_with_debt' });
         continue;
       }
     }
     return out;
-  }, [data]);
+  }, [data, merchants]);
 
   // Group anomalies by type for the breakdown banner.
   const anomalyBreakdown = useMemo(() => {
