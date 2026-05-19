@@ -305,34 +305,44 @@ export function findMerchantForCustomer(customerName, merchants) {
   return null;
 }
 
-// Returns the customer_names that couldn't be linked to a merchant in the
-// last auto-link pass (store_id null OR method='unmatched'). Joined with
-// the receivables roll-up so the operator sees the debt + last-invoice
-// context next to each name and can decide quickly.
+// Returns customers in the CURRENT receivables snapshot who don't
+// resolve to a valid merchant link. "Unmatched" means one of:
+//   • no row in customer_merchant_links for this customer_name
+//   • a row exists but store_id is null
+//   • a row exists but the linked store_id is no longer in the latest
+//     merchants snapshot (orphaned)
+//
+// Important: this used to start from customer_merchant_links and only
+// surface entries that had already been auto-link processed. That made
+// the count diverge from the receivables page — a brand-new customer
+// in the latest snapshot wouldn't appear here at all because it never
+// got an auto-link entry. Now both pages agree on the same number.
 export async function loadUnmatchedCustomers() {
-  const { data: links, error: e1 } = await supabase
-    .from('customer_merchant_links')
-    .select('customer_name, store_id, match_method, confidence');
-  if (e1) throw e1;
-  const unmatched = (links || []).filter(l => !l.store_id || l.match_method === 'unmatched');
-  if (!unmatched.length) return [];
-
-  // Enrich with latest receivables totals so the user has context.
-  // We reuse loadLatestReceivables (single source of truth for snapshot
-  // selection + aging) and intersect by name.
   const { customers: recCustomers = [] } = await loadLatestReceivablesLite();
-  const recByName = new Map(recCustomers.map(c => [c.name, c]));
-  return unmatched.map(l => {
-    const r = recByName.get(l.customer_name);
-    return {
-      customerName: l.customer_name,
-      confidence:   l.confidence,
-      matchMethod:  l.match_method,
-      totalDue:     r?.total || 0,
-      oldestInvoiceAt: r?.oldestInvoiceDate || null,
-      daysOutstanding: r?.daysOutstanding || 0,
-    };
-  }).sort((a, b) => (b.totalDue || 0) - (a.totalDue || 0));
+  if (!recCustomers.length) return [];
+
+  const [{ data: links }, { merchants }] = await Promise.all([
+    supabase.from('customer_merchant_links').select('customer_name, store_id, match_method, confidence'),
+    loadLatestMerchants(),
+  ]);
+  const linkByName  = new Map((links || []).map(l => [l.customer_name, l]));
+  const merchantIds = new Set((merchants || []).map(m => m.store_id));
+
+  const unmatched = [];
+  for (const c of recCustomers) {
+    const link = linkByName.get(c.name);
+    const truly = !link || !link.store_id || !merchantIds.has(link.store_id);
+    if (!truly) continue;
+    unmatched.push({
+      customerName: c.name,
+      confidence:   link?.confidence ?? null,
+      matchMethod:  link?.match_method ?? 'never_linked',
+      totalDue:     c.total || 0,
+      oldestInvoiceAt: c.oldestInvoiceDate || null,
+      daysOutstanding: c.daysOutstanding || 0,
+    });
+  }
+  return unmatched.sort((a, b) => (b.totalDue || 0) - (a.totalDue || 0));
 }
 
 // Lightweight receivables fetcher (just name + total + aging) — kept

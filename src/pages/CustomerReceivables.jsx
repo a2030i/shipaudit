@@ -4,7 +4,7 @@
 // READ-ONLY: the app doesn't bill, it only reflects what was uploaded.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
@@ -414,6 +414,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
 export default function CustomerReceivables({ isActive = true }) {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
   const [openCustomer, setOpenCustomer] = useState(null);
@@ -866,7 +867,7 @@ export default function CustomerReceivables({ isActive = true }) {
                     {unlinked} عميل بدون متجر — التصدير سيظهر الأعمدة فارغة لهم. اربطهم يدوياً للحصول على هاتف + نوع فوترة + حالة كل عميل.
                   </div>
                 </div>
-                <Btn size="md" variant="primary" onClick={() => window.location.href = '/merchants'}>
+                <Btn size="md" variant="primary" onClick={() => navigate('/merchants')}>
                   افتح صفحة المتاجر
                 </Btn>
               </div>

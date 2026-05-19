@@ -636,6 +636,10 @@ function UnmatchedModal({ merchants, userId, onClose, onLinkSaved }) {
         <input
           value={search} onChange={e => setSearch(e.target.value)}
           placeholder="بحث باسم العميل…"
+          autoComplete="off"
+          data-lpignore="true"
+          data-form-type="other"
+          name="customer-search"
           style={{ flex:1, padding:'7px 10px', borderRadius:7, fontSize:12 }}
         />
         <span style={{ fontSize:11, color:'var(--muted)', fontFamily:'var(--font-mono)' }}>
@@ -729,6 +733,10 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
             <input
               value={storeQ} onChange={e => setStoreQ(e.target.value)}
               placeholder="ابحث عن متجر بالاسم أو ID…"
+              autoComplete="off"
+              data-lpignore="true"
+              data-form-type="other"
+              name="merchant-search"
               style={{ width:'100%', padding:'6px 10px', borderRadius:7, fontSize:11.5 }}
             />
             {options.length > 0 && (
