@@ -1056,12 +1056,40 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
   };
 
   const isIn = direction === 'in';
+  const carrierLabel = REMITTANCE_PARSERS[carrier]?.label || carrier;
 
   return (
     <Modal
-      title={isIn ? `📥 رفع تحويل وارد من الناقل` : `📋 رفع متوقّع يدوياً`}
+      title={isIn
+        ? `📥 تحويل وارد · ${carrierLabel}`
+        : `📋 متوقّع يدوياً · ${carrierLabel}`}
       onClose={onClose} width={560}
     >
+      {/* Carrier badge — keeps the destination carrier visible at all
+          times so the user never wonders which carrier they're
+          uploading against, especially when the modal was opened via
+          the Webhook auto-import path. */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '8px 12px', marginBottom: 14,
+        background: isIn ? 'rgba(45,212,191,.10)' : 'rgba(122,130,196,.10)',
+        border: `1px solid ${isIn ? 'rgba(45,212,191,.32)' : 'var(--border2)'}`,
+        borderRadius: 9, fontSize: 12,
+      }}>
+        <span style={{ fontSize: 16 }}>{isIn ? '📥' : '📋'}</span>
+        <span style={{ color: 'var(--muted)' }}>
+          {isIn ? 'تحويل وارد من' : 'متوقّع لـ'}:
+        </span>
+        <strong style={{ color: 'var(--text)', fontSize: 13 }}>{carrierLabel}</strong>
+        <span style={{
+          marginInlineStart: 'auto',
+          padding: '2px 8px', borderRadius: 9,
+          background: 'var(--surface)', border: '1px solid var(--border)',
+          fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--muted)',
+        }}>
+          {carrier}
+        </span>
+      </div>
       {previews.length === 0 && (
         <>
           <div style={{ marginBottom: 14, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
