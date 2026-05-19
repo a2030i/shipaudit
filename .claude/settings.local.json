@@ -96,7 +96,19 @@
       "Bash(findstr /n \"sessionStorage\" C:\\\\Users\\\\huawei\\\\shipaudit\\\\src\\\\pages\\\\UploadWizard.jsx)",
       "Bash(node --experimental-vm-modules -e ' *)",
       "Bash(git commit *)",
-      "Bash(git ls-tree *)"
+      "Bash(git ls-tree *)",
+      "Bash(node --experimental-vm-modules *)",
+      "Read(//e/مستندات/الدعم و الاسناد/**)",
+      "Bash(git -C C:/Users/huawei/shipaudit add src/lib/customerReceivablesService.js src/pages/CustomerReceivables.jsx)",
+      "Bash(git -C C:/Users/huawei/shipaudit commit -m ' *)",
+      "Bash(git -C C:/Users/huawei/shipaudit status)",
+      "Bash(git -C C:/Users/huawei/shipaudit add src/lib/merchantsService.js src/pages/Merchants.jsx)",
+      "Bash(git -C C:/Users/huawei/shipaudit add CLAUDE.md)",
+      "Bash(git -C C:/Users/huawei/shipaudit push origin main)",
+      "Bash(git -C C:/Users/huawei/shipaudit add src/index.css src/components/UI.jsx src/App.jsx)",
+      "Bash(node -e 'require\\('\\\\''@babel/parser'\\\\''\\).parse\\(require\\('\\\\''fs'\\\\''\\).readFileSync\\('\\\\''__TRACKED_VAR__'\\\\'','\\\\''utf8'\\\\''\\), { sourceType:'\\\\''module'\\\\'', plugins:['\\\\''jsx'\\\\''] }\\)')",
+      "Bash(git -C C:/Users/huawei/shipaudit add src/pages)",
+      "Bash(git -C C:/Users/huawei/shipaudit add -u)"
     ]
   }
 }

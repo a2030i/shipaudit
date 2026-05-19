@@ -317,6 +317,291 @@ export function StatTile({ label, value, hint, color, big, dark }) {
   );
 }
 
+// ─── SpotlightCard ───────────────────────────────────────────────────────────
+// The hero number primitive: black/navy card with one huge focal number,
+// optional delta indicator, optional inline sparkline. This is the
+// "headline metric" pattern from the reference (the 23.80 r.s profit
+// number in "كم ربحي"). Use ONCE per page, for the number that matters most.
+//
+// Props:
+//   tag          uppercase mono label above the title ("LAMHA · OUTSTANDING")
+//   title        short Arabic title under the tag
+//   value        the big focal number (already-formatted string)
+//   suffix       e.g. "ر.س"
+//   delta        { value, label, positive }  → e.g. {+12.4, "vs last week"}
+//   sparkline    array of numbers — renders a 120×34 SVG trend below the value
+//   side         optional ReactNode rendered on the LEFT of the card
+//   stats        small KPI tiles to render under the value (max 3 recommended)
+export function SpotlightCard({
+  tag, title, value, suffix,
+  delta, sparkline, side, stats = [],
+  accent = '#2DD4BF',
+}) {
+  return (
+    <div style={{
+      position: 'relative',
+      background: '#0F1235',
+      borderRadius: 'var(--r-xl)',
+      padding: '32px 36px',
+      color: '#fff',
+      overflow: 'hidden',
+      boxShadow: '0 12px 36px rgba(15,18,53,.22)',
+      marginBottom: 22,
+    }}>
+      {/* Subtle radial glow on the left */}
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: `radial-gradient(380px 240px at 8% 50%, ${accent}22, transparent 70%)`,
+      }}/>
+      <div style={{
+        position: 'relative',
+        display: 'grid',
+        gridTemplateColumns: side ? 'minmax(0,1fr) auto' : '1fr',
+        gap: 32, alignItems: 'center',
+      }}>
+        <div style={{ minWidth: 0 }}>
+          {tag && (
+            <div style={{
+              fontSize: 10.5, fontFamily: 'var(--font-mono)',
+              letterSpacing: 2.5, textTransform: 'uppercase',
+              color: 'rgba(255,255,255,.55)', fontWeight: 600,
+              marginBottom: 6,
+            }}>{tag}</div>
+          )}
+          {title && (
+            <div style={{
+              fontSize: 13, color: 'rgba(255,255,255,.7)',
+              marginBottom: 16,
+            }}>{title}</div>
+          )}
+          <div style={{
+            display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap',
+          }}>
+            <div style={{
+              fontSize: 56, fontWeight: 800, lineHeight: 1,
+              fontFamily: 'var(--font-mono)', letterSpacing: -2,
+              color: '#fff',
+            }}>
+              {value ?? '—'}
+            </div>
+            {suffix && (
+              <div style={{
+                fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,.55)',
+                fontFamily: 'var(--font-mono)',
+              }}>{suffix}</div>
+            )}
+            {delta && (
+              <div style={{
+                display: 'inline-flex', alignItems: 'center', gap: 4,
+                padding: '4px 10px', borderRadius: 999,
+                background: delta.positive ? 'rgba(16,185,129,.18)' : 'rgba(239,68,68,.18)',
+                border: `1px solid ${delta.positive ? 'rgba(16,185,129,.4)' : 'rgba(239,68,68,.4)'}`,
+                color: delta.positive ? '#6EE7B7' : '#FCA5A5',
+                fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700,
+                marginInlineStart: 4,
+              }}>
+                {delta.positive
+                  ? <TrendingUp size={12}/>
+                  : <TrendingDown size={12}/>}
+                {delta.value > 0 ? '+' : ''}{delta.value}%
+                {delta.label && (
+                  <span style={{ color: 'rgba(255,255,255,.55)', fontWeight: 500, marginInlineStart: 4 }}>
+                    {delta.label}
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+          {sparkline && sparkline.length > 1 && (
+            <div style={{ marginTop: 18 }}>
+              <Sparkline data={sparkline} color={accent} width={240} height={40}/>
+            </div>
+          )}
+          {stats.length > 0 && (
+            <div style={{
+              display: 'flex', gap: 0, marginTop: 22,
+              flexWrap: 'wrap',
+            }}>
+              {stats.map((s, i) => (
+                <StatTile key={i} {...s} dark/>
+              ))}
+            </div>
+          )}
+        </div>
+        {side && (
+          <div style={{ flexShrink: 0 }}>{side}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Sparkline ───────────────────────────────────────────────────────────────
+// Pure SVG trendline. No deps. Accepts a numeric array and renders a
+// smooth line + soft fill underneath. Auto-scales to its data range.
+export function Sparkline({ data, color = 'var(--accent)', width = 120, height = 34, fill = true }) {
+  if (!Array.isArray(data) || data.length < 2) return null;
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+  const range = max - min || 1;
+  const stepX = data.length > 1 ? width / (data.length - 1) : 0;
+  const pad = 2;
+  const innerH = height - pad * 2;
+  const points = data.map((v, i) => {
+    const x = i * stepX;
+    const y = pad + (1 - (v - min) / range) * innerH;
+    return [x, y];
+  });
+  const pathLine = points.map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`)).join(' ');
+  const pathFill = `${pathLine} L${width},${height} L0,${height} Z`;
+  return (
+    <svg width={width} height={height} style={{ display: 'block' }}>
+      <defs>
+        <linearGradient id={`spark-${color.replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%"  stopColor={color} stopOpacity="0.32"/>
+          <stop offset="100%" stopColor={color} stopOpacity="0"/>
+        </linearGradient>
+      </defs>
+      {fill && <path d={pathFill} fill={`url(#spark-${color.replace(/[^a-z0-9]/gi, '')})`}/>}
+      <path d={pathLine} fill="none" stroke={color} strokeWidth="2"
+            strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  );
+}
+
+// ─── Donut ────────────────────────────────────────────────────────────────────
+// Pure SVG donut chart. Pass segments [{ value, color, label }]. Renders
+// stroked arcs in a single radius. Optional center text via children prop.
+export function Donut({ segments, size = 160, thickness = 18, children }) {
+  const total = segments.reduce((s, x) => s + (x.value || 0), 0);
+  const radius = (size - thickness) / 2;
+  const circ = 2 * Math.PI * radius;
+  let offset = 0;
+  return (
+    <div style={{ position: 'relative', width: size, height: size }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+        <circle cx={size/2} cy={size/2} r={radius} fill="none"
+          stroke="var(--border)" strokeWidth={thickness}/>
+        {total > 0 && segments.map((seg, i) => {
+          const v = seg.value || 0;
+          if (v <= 0) return null;
+          const len = (v / total) * circ;
+          const dash = `${len} ${circ - len}`;
+          const node = (
+            <circle key={i}
+              cx={size/2} cy={size/2} r={radius}
+              fill="none" stroke={seg.color} strokeWidth={thickness}
+              strokeDasharray={dash} strokeDashoffset={-offset}
+              strokeLinecap="butt"/>
+          );
+          offset += len;
+          return node;
+        })}
+      </svg>
+      {children && (
+        <div style={{
+          position: 'absolute', inset: 0,
+          display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center',
+        }}>{children}</div>
+      )}
+    </div>
+  );
+}
+
+// ─── Timeline ────────────────────────────────────────────────────────────────
+// Vertical activity timeline. Each item: { icon, color, title, sub, time, value }.
+// Items render with a coloured dot/icon on the right (RTL), then content
+// flowing left, with optional trailing value on the far left.
+export function Timeline({ items = [], emptyMsg = 'لا توجد نشاطات' }) {
+  if (!items.length) {
+    return (
+      <div style={{
+        padding: 28, textAlign: 'center', fontSize: 12, color: 'var(--muted)',
+      }}>{emptyMsg}</div>
+    );
+  }
+  return (
+    <div style={{ position: 'relative' }}>
+      {items.map((it, i) => {
+        const last = i === items.length - 1;
+        return (
+          <div key={it.id ?? i} style={{
+            display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12,
+            alignItems: 'flex-start', padding: '12px 0',
+            position: 'relative',
+          }}>
+            <div style={{ position: 'relative', width: 28, display: 'flex', justifyContent: 'center' }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 8,
+                background: `color-mix(in srgb, ${it.color || 'var(--accent)'} 12%, transparent)`,
+                color: it.color || 'var(--accent)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                zIndex: 1,
+              }}>{it.icon}</div>
+              {!last && (
+                <div style={{
+                  position: 'absolute', top: 32, bottom: -20,
+                  width: 1, background: 'var(--border)',
+                }}/>
+              )}
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', lineHeight: 1.35 }}>
+                {it.title}
+              </div>
+              {it.sub && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{it.sub}</div>
+              )}
+            </div>
+            <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+              {it.value && (
+                <div style={{
+                  fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                  color: it.color || 'var(--text)',
+                }}>{it.value}</div>
+              )}
+              {it.time && (
+                <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                  {it.time}
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── SectionTitle ────────────────────────────────────────────────────────────
+// Consistent section header: small mono uppercase eyebrow + h2 title,
+// with optional right-side action. Used to break the page into clean
+// horizontal sections like the reference dashboard.
+export function SectionTitle({ tag, title, action, color = 'var(--accent)' }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'flex-end', justifyContent: 'space-between',
+      marginBottom: 14, gap: 12, flexWrap: 'wrap',
+    }}>
+      <div>
+        {tag && (
+          <div style={{
+            fontSize: 10, fontFamily: 'var(--font-mono)',
+            letterSpacing: 2, textTransform: 'uppercase',
+            color, fontWeight: 700, marginBottom: 4,
+          }}>{tag}</div>
+        )}
+        <h2 style={{
+          fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 800,
+          color: 'var(--text)', margin: 0, letterSpacing: -0.3,
+        }}>{title}</h2>
+      </div>
+      {action && <div>{action}</div>}
+    </div>
+  );
+}
+
 // ─── Badge ─────────────────────────────────────────────────────────────────────
 const BADGE_CFG = {
   ok:          { bg: 'rgba(45,212,191,.10)', color: 'var(--green)',  bd: 'rgba(45,212,191,.30)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },

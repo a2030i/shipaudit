@@ -4,7 +4,7 @@ import {
   RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell, Search, ExternalLink,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Btn, Spinner, Empty, toast, PageHero } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero, SpotlightCard, Sparkline, Donut, SectionTitle } from '../components/UI.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
   loadStaleDisputes,
@@ -125,20 +125,42 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
 
   const totals = useMemo(() => aggregateOverview(overview), [overview]);
 
+  // Build a 14-point trend from the most recent audits — gives the
+  // SpotlightCard sparkline real movement instead of a flat line. We
+  // walk the audits oldest→newest so the line reads left-to-right
+  // (older on the right in RTL, newer on the left). If we don't have
+  // enough audits, the sparkline silently hides itself.
+  const trendData = useMemo(() => {
+    if (!audits?.length) return [];
+    const ordered = [...audits]
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+      .slice(-14);
+    const pts = ordered.map(a => Number(a.total_billed || a.totalBilled || a.total_expected || a.totalExpected) || 0);
+    return pts;
+  }, [audits]);
+
+  // Aging segments for the donut. We re-derive from totals.aging so
+  // both the donut and the existing list-bar can render the same
+  // numbers in different shapes.
+  const agingSegments = useMemo(() => ([
+    { value: totals.aging?.d0_30   || 0, color: '#10B981', label: 'حتى 30 يوم' },
+    { value: totals.aging?.d31_60  || 0, color: '#F59E0B', label: '31 إلى 60' },
+    { value: totals.aging?.d61_90  || 0, color: '#F97316', label: '61 إلى 90' },
+    { value: totals.aging?.over90  || 0, color: '#EF4444', label: 'فوق 90 يوم' },
+  ]), [totals]);
+  const agingTotal = agingSegments.reduce((s, x) => s + x.value, 0);
+
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
-      <PageHero
-        variant="dark"
+      <SpotlightCard
         tag="LAMHA · FINANCIAL CONTROL"
-        title="لوحة التحكم المالية"
-        subtitle="نظرة شاملة على التزاماتك تجاه شركات الشحن — مدفوعات، نزاعات، أعمار ديون"
-        stats={[
-          { label: 'المستحق الإجمالي', value: `${fmt(totals.outstanding)} ر.س`, big: true, color: '#FCA5A5' },
-          { label: 'متأخّر', value: `${fmt(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
-          { label: 'شركات نشطة', value: overview.length, color: '#5EEAD4' },
-        ]}
-        actions={
+        title="إجمالي المستحقات لشركات الشحن"
+        value={fmt(totals.outstanding)}
+        suffix="ر.س"
+        sparkline={trendData}
+        accent="#2DD4BF"
+        side={
           <button
             onClick={refresh}
             disabled={loading}
@@ -146,17 +168,23 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
               background: 'rgba(255,255,255,.10)',
               border: '1px solid rgba(255,255,255,.22)',
               color: '#fff',
-              padding: '8px 14px',
-              borderRadius: 8, fontSize: 12, fontWeight: 600,
+              padding: '10px 18px',
+              borderRadius: 9, fontSize: 12.5, fontWeight: 600,
               cursor: loading ? 'wait' : 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 6,
               fontFamily: 'var(--font-sans)',
             }}
           >
-            <RefreshCw size={13} className={loading ? 'spin' : ''}/>
-            {loading ? 'جارٍ التحميل…' : 'تحديث'}
+            <RefreshCw size={14} className={loading ? 'spin' : ''}/>
+            {loading ? 'جارٍ التحميل…' : 'تحديث البيانات'}
           </button>
         }
+        stats={[
+          { label: 'متأخر',         value: `${fmtCompact(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
+          { label: 'مسدّد سابقاً',   value: `${fmtCompact(totals.paidTotal)} ر.س`,    color: '#86EFAC' },
+          { label: 'شركات نشطة',    value: overview.length },
+          { label: 'عمليات مفتوحة', value: totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount },
+        ]}
       />
 
       {loading && overview.length === 0 ? (
@@ -167,69 +195,78 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
               number, see every audit that ever billed this shipment. */}
           <AwbSearchCard/>
 
-          {/* HERO METRICS — outstanding · overdue · paid · carriers */}
+          {/* AGING DONUT  +  STATUS BREAKDOWN  ────────────────────────
+              Two-column visual section. Left: donut chart of receivable
+              ages (the most decision-driving cut). Right: status counts
+              as a clean rail with coloured dot + count + percentage. */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 12, marginBottom: 18,
+            gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)',
+            gap: 14, marginBottom: 22,
           }}>
-            <Hero
-              label="المستحق الإجمالي"
-              icon={<Wallet size={20}/>}
-              value={fmt(totals.outstanding)}
-              suffix="ر.س"
-              color="var(--red)"
-              hint={`${totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount} عملية مفتوحة`}
-              big
-            />
-            <Hero
-              label="متأخّر السداد"
-              icon={<AlertOctagon size={20}/>}
-              value={fmt(totals.overdueAmount)}
-              suffix="ر.س"
-              color="var(--gold)"
-              hint={`${totals.overdueCount} فاتورة تجاوزت الاستحقاق`}
-            />
-            <Hero
-              label="مسدّد سابقاً"
-              icon={<TrendingDown size={20}/>}
-              value={fmt(totals.paidTotal)}
-              suffix="ر.س"
-              color="var(--green)"
-              hint={`${totals.paidCount} عملية مسدّدة`}
-            />
-            <Hero
-              label="شركات نشطة"
-              icon={<Building2 size={20}/>}
-              value={overview.length}
-              color="var(--accent)"
-              hint={`${totals.carrierCount} لها كشوف · ${carriers?.length ?? 0} مُعرَّفة`}
-            />
-          </div>
-
-          {/* AGING + STATUS COUNTS — 2-column grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))', gap: 14, marginBottom: 18 }}>
-            <Card>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <Clock size={16} color="var(--gold)"/>
-                <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>أعمار الديون (Aging)</h3>
-              </div>
-              <AgingBar aging={totals.aging}/>
+            {/* Aging donut */}
+            <Card style={{ padding: '20px 24px' }}>
+              <SectionTitle
+                tag="AGING"
+                title="أعمار الديون"
+                color="var(--gold)"
+              />
+              {agingTotal <= 0 ? (
+                <div style={{ color: 'var(--muted)', fontSize: 12, padding: '20px 0', textAlign: 'center' }}>
+                  لا توجد التزامات حالياً
+                </div>
+              ) : (
+                <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: 28, alignItems: 'center' }}>
+                  <Donut
+                    segments={agingSegments}
+                    size={170} thickness={20}
+                  >
+                    <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>
+                      الإجمالي
+                    </div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text)', fontFamily: 'var(--font-mono)', letterSpacing: -0.5, marginTop: 2 }}>
+                      {fmtCompact(agingTotal)}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>ر.س</div>
+                  </Donut>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    {agingSegments.map(s => {
+                      const pct = agingTotal > 0 ? (s.value / agingTotal) * 100 : 0;
+                      return (
+                        <div key={s.label} style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'auto 1fr auto auto',
+                          gap: 10, alignItems: 'center', fontSize: 12.5,
+                        }}>
+                          <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color, flexShrink: 0 }}/>
+                          <span style={{ color: 'var(--muted)', fontWeight: 500 }}>{s.label}</span>
+                          <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: s.color }}>
+                            {fmtCompact(s.value)}
+                          </span>
+                          <span style={{ color: 'var(--muted2)', fontSize: 10.5, fontFamily: 'var(--font-mono)', minWidth: 36, textAlign: 'left' }}>
+                            {pct.toFixed(0)}%
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </Card>
 
-            <Card>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
-                <FileText size={16} color="var(--accent)"/>
-                <h3 style={{ fontSize: 14, fontWeight: 700, margin: 0 }}>توزيع العمليات</h3>
-              </div>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10 }}>
-                <CountRow label="⏳ معلّقة"    n={totals.pendingCount}   color="var(--gold)"/>
-                <CountRow label="✓ معتمدة"    n={totals.auditedCount}   color="var(--accent)"/>
-                <CountRow label="⚠ متنازع"    n={totals.disputedCount}  color="var(--red)"/>
-                <CountRow label="🔄 مراجعة"   n={totals.reviewingCount} color="var(--gold)"/>
-                <CountRow label="💰 مسدّدة"    n={totals.paidCount}      color="var(--green)"/>
-                <CountRow label="إجمالي"      n={totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount + totals.paidCount} color="var(--muted)"/>
-              </div>
+            {/* Status breakdown — clean rail */}
+            <Card style={{ padding: '20px 24px' }}>
+              <SectionTitle
+                tag="OPERATIONS"
+                title="توزيع العمليات"
+              />
+              <StatusRail items={[
+                { label: 'معلّقة',    n: totals.pendingCount,   color: '#F59E0B', icon: <Clock size={14}/> },
+                { label: 'معتمدة',    n: totals.auditedCount,   color: '#14B8A6', icon: <FileText size={14}/> },
+                { label: 'تحت المراجعة', n: totals.reviewingCount, color: '#7C3AED', icon: <RefreshCw size={14}/> },
+                { label: 'متنازع',    n: totals.disputedCount,  color: '#EF4444', icon: <AlertOctagon size={14}/> },
+                { label: 'مسدّدة',     n: totals.paidCount,      color: '#10B981', icon: <TrendingDown size={14}/> },
+              ]}/>
             </Card>
           </div>
 
@@ -615,6 +652,63 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
 }
 
 // ── Hero KPI ───────────────────────────────────────────────────────────
+// ── StatusRail ──────────────────────────────────────────────────────────────
+// Clean horizontal-bar list for breaking down counts by status. Each row:
+//   [icon-tile]  label  ─────────────  count  pct
+// The bar grows proportional to the largest value, giving a visual
+// hierarchy without needing a separate chart.
+function StatusRail({ items }) {
+  const max = Math.max(1, ...items.map(i => i.n || 0));
+  const total = items.reduce((s, i) => s + (i.n || 0), 0);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {items.map(it => {
+        const n = it.n || 0;
+        const pct = total > 0 ? (n / total) * 100 : 0;
+        const barW = total > 0 ? (n / max) * 100 : 0;
+        return (
+          <div key={it.label} style={{
+            display: 'grid',
+            gridTemplateColumns: '28px 1fr auto auto',
+            gap: 12, alignItems: 'center',
+          }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: `color-mix(in srgb, ${it.color} 12%, transparent)`,
+              color: it.color,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>{it.icon}</div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', marginBottom: 4 }}>
+                {it.label}
+              </div>
+              <div style={{
+                height: 4, borderRadius: 999,
+                background: 'var(--bg2)', overflow: 'hidden',
+              }}>
+                <div style={{
+                  width: `${barW}%`, height: '100%',
+                  background: it.color, borderRadius: 999,
+                  transition: 'width .4s cubic-bezier(.4,0,.2,1)',
+                }}/>
+              </div>
+            </div>
+            <span style={{
+              fontFamily: 'var(--font-mono)', fontWeight: 700,
+              fontSize: 16, color: it.color, minWidth: 32, textAlign: 'left',
+            }}>{n}</span>
+            <span style={{
+              color: 'var(--muted2)', fontSize: 10.5, fontFamily: 'var(--font-mono)',
+              minWidth: 36, textAlign: 'left',
+            }}>{pct.toFixed(0)}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Hero({ label, icon, value, suffix, color, hint, big }) {
   return (
     <div style={{
