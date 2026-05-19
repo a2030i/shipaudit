@@ -88,6 +88,30 @@
 - `loadAuditByIdFromDB` يحمّل issues فقط افتراضياً
 - `loadAuditShipments(id, { from, limit, status })` للـ pagination
 
+### 1.9 دليل المتاجر + التنبيهات + حملة التحصيل ✅ (Phase 1–5)
+- `/merchants` يستقبل رفع `stores.xlsx` من المنصّة الداخلية (1,491 متجر حالياً)
+- snapshot model: كل رفع يولّد `snapshot_id` جديد؛ `loadLatestMerchants` يرجع الأحدث
+- `customer_merchant_links` يربط `customer_name` (من الـ receivables) بـ `store_id`:
+  - زر "ربط تلقائي" في `/merchants` يستخدم Levenshtein + تطبيع عربي (alefs/ya/ta marbouta + diacritics)
+  - عتبة auto-fuzzy = 0.78. تطابق دقيق على segment بعد `splitReceivableName` → confidence 1.0
+  - `match_method='manual'` يُحفظ ضد إعادة كتابة auto-link لاحقة
+- `customerReceivablesService.loadLatestReceivables` يدمج بيانات المتاجر تلقائياً عبر:
+  `c.merchant = { storeId, storeName, phone, billingType, platformStatus, integrationType, shipmentCount, lastShipmentAt, walletBalance }`
+  والفشل صامت (try/catch + console.info) — صفحة المديونيات تشتغل بدون merchants snapshot
+- في `/receivables` تبويب **🚨 تنبيهات** (red accent) يصنّف كل عميل لواحد من:
+  - `prepaid_with_debt` 🚨 — دفع مسبق + عليه دين = خلل تقني
+  - `postpaid_overdue` ⏰ — دفع لاحق + +60 يوم = مرشّح للإيقاف
+  - `inactive_with_debt` 😴 — موقوف في المنصّة + عليه دين = تحصيل قبل الإغلاق
+- زر **📞 ملف حملة تحصيل** يصدّر 13 عمود (هاتف/نوع/حالة/aging/anomaly) للعرض الحالي بعد الفلاتر
+- `/merchants` يعرض: top-20 بالشحنات + top-20 churned (مُعطَّل لكن شحن سابقاً، مرتّب بأحدث آخر شحنة) + walletPilesUp (محافظ راكدة)
+
+**الثوابت:**
+- table `merchants` (snapshot rows) + `customer_merchant_links` (customer_name → store_id)
+- `computeMerchantInsights(merchants)` يرجع: `total/active/prepaid/postpaid/newLast30/neverShipped/dormantActive/churned/walletPilesUp/walletPilesAmount/walletTotal/topByVolume/churnedTop/walletPilesTop`
+- `findMerchantForCustomer(name, merchants)` يرجع `null` تحت 0.78 (لا تخفّض هذه القيمة دون اختبار)
+- الهواتف: `toPhoneString` يحوّل number → string بـ `Math.round` لحماية 12 رقم من scientific notation
+- XLSX read: `raw:true` مطلوب لقراءة الهواتف الكبيرة بدقّة
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)
@@ -137,7 +161,8 @@
 |---|---|
 | `src/lib/coreService.js` | CRUD للـ audits + carriers، بوابة الاعتماد، auto-posting، loadAuditShipments |
 | `src/lib/codSettlementService.js` | COD reconciliation، syncAuditCodOut، saveSettlementUpload |
-| `src/lib/customerReceivablesService.js` | parser + snapshot upload + load latest AR rollup |
+| `src/lib/customerReceivablesService.js` | parser + snapshot upload + load latest AR rollup + merchant overlay |
+| `src/lib/merchantsService.js` | merchant directory (snapshot) + Levenshtein fuzzy linker + insights |
 | `src/lib/webhookService.js` | CRUD لـ webhook_events، delete (مع verify) |
 | `src/lib/carriersHubService.js` | تجميع بيانات `/hub` (paginated) |
 | `src/lib/carrierProfileService.js` | بيانات بروفايل شركة واحدة، updateCarrierFileSignature |
@@ -147,7 +172,8 @@
 | `src/pages/AuditResults.jsx` | شاشة المراجعة + بوابة الاعتماد UI |
 | `src/pages/WebhookEvents.jsx` | صندوق الوارد، حفظ كمراجعة، حذف |
 | `src/pages/CodSettlements.jsx` | تسويات COD، تبويبات، تصدير قسم حالي |
-| `src/pages/CustomerReceivables.jsx` | `/receivables` — مديونيات العملاء (read-only snapshots) |
+| `src/pages/CustomerReceivables.jsx` | `/receivables` — مديونيات العملاء (snapshots) + تبويب تنبيهات + حملة تحصيل |
+| `src/pages/Merchants.jsx` | `/merchants` — دليل المتاجر + لوحة insights + ربط تلقائي |
 | `src/pages/CarriersHub.jsx` | `/hub` — كرت لكل شركة |
 | `src/pages/CarrierProfile.jsx` | `/carrier?id=X` — بروفايل شركة كامل |
 | `src/pages/CarrierLedger.jsx` | `/ledger` — الكشف المحاسبي للشركات |
@@ -172,6 +198,8 @@
 | `cod_reconciliation_action` | اعتمادات/اعتراضات على فروق COD |
 | `customer_receivables` | snapshots لمديونيات العملاء (read-only AR view) |
 | `customer_settings` | per-customer tag (excluded/priority) — يدوم عبر snapshots |
+| `merchants` | snapshots لكشف المتاجر من المنصّة الداخلية |
+| `customer_merchant_links` | الربط بين `customer_name` و `store_id` (auto/manual) |
 | `carrier_operations` | الكشف المحاسبي (DR/CR لكل شركة) |
 | `carrier_statements` | كشوف خارجية مرفوعة من الشركات |
 | `payments` + `payment_allocations` | الدفعات وربطها بالعمليات |
@@ -222,6 +250,9 @@
 | تعديل `audits.results` JSONB لإضافة بيانات مهمة | حد TOAST + لن يُحمَّل للـ audits الكبيرة | استخدم `audit_shipments` بدلاً |
 | نسيان `idempotency` على auto-posts | إعادة الاعتماد ينشئ قيود مكررة | استخدم unique partial indexes |
 | تجاهل `file_kind` عند audit approval | إنشاء قيود غير منطقية | افحص دائماً file_kind قبل الـ auto-extract |
+| قراءة `stores.xlsx` بدون `raw:true` في XLSX.read | الهواتف 12-رقم تصبح `9.66502E+11` (تفقد آخر رقمين) | `sheet_to_json(ws, { raw:true })` + `toPhoneString` يحوّل `number` → `String(Math.round(v))` |
+| auto-link يكتب فوق ربط يدوي | يفقد المستخدم تصنيفه | `autoLinkCustomers` يتخطّى `method='manual'` صراحةً |
+| استدعاء `loadLatestMerchants()` مباشرة في `loadLatestReceivables` كـ hard dep | الـ receivables تفشل لو ما رُفع snapshot للمتاجر | الاستيراد ديناميكي + `.catch(() => [])` — الـ merchant overlay اختياري |
 
 ---
 
@@ -268,4 +299,4 @@
 
 ---
 
-**آخر تحديث:** 2026-05-15 — بعد إصلاح duplication في COD direction
+**آخر تحديث:** 2026-05-19 — Phase 1–5: دليل المتاجر + تنبيهات المديونيات + حملة التحصيل
