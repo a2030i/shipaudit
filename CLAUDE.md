@@ -234,7 +234,7 @@
 | iMile V1 | `imile` | (غير محدد) | ✅ 17/15kg ثم 1/kg | ❌ |
 | J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
 | سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
-| Boleeseh | `boleeseh` | `audit_only` (وسيط broker) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
+| Boleeseh | `boleeseh` | `audit_and_cod_separate` (وسيط broker — فاتورة + تحصيل منفصل) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
 | Webek | `webek` | (غير محدد) | ❌ | ❌ |
 | Aatak | `aatak` | (غير محدد) | ❌ | ❌ |
 | Delex | `delex` | (غير محدد) | ❌ | ❌ |
