@@ -62,6 +62,50 @@ export async function loadCustomerWatch() {
   let lastMonthInvoiced = 0;
   const debtByCustomer = [];      // for top-by-debt list
 
+  // PASS 1 — merchant-driven anomalies that don't require receivables debt:
+  // a negative prepaid wallet is a technical bug whether or not the
+  // merchant currently shows up in the AR snapshot. We loop merchants
+  // first so every negative-wallet store is surfaced; if a matching
+  // customer record exists in receivables we attach it for context,
+  // otherwise we emit a phantom entry with debt=0.
+  const customerByStoreId = new Map(
+    customers
+      .filter(c => c.merchant?.storeId)
+      .map(c => [c.merchant.storeId, c]),
+  );
+  const handledByNegativeWallet = new Set();
+  for (const m of merchants) {
+    if (m.billing_type !== 'دفع مسبق') continue;
+    const w = Number(m.wallet_balance) || 0;
+    if (w >= -0.5) continue;
+    handledByNegativeWallet.add(m.store_id);
+    const c = customerByStoreId.get(m.store_id);
+    if (c) {
+      anomalies.negative_wallet.push({ ...c, anomaly: 'negative_wallet' });
+    } else {
+      // Phantom entry — store has neg wallet but no AR row in current
+      // snapshot. Still needs investigation as a technical anomaly.
+      anomalies.negative_wallet.push({
+        name: m.store_name,
+        total: 0,
+        invoiceCount: 0,
+        daysOutstanding: 0,
+        merchant: {
+          storeId: m.store_id,
+          storeName: m.store_name,
+          phone: m.phone,
+          billingType: m.billing_type,
+          platformStatus: m.status,
+          shipmentCount: m.shipment_count,
+          lastShipmentAt: m.last_shipment_at,
+          walletBalance: w,
+        },
+        anomaly: 'negative_wallet',
+      });
+    }
+  }
+
+  // PASS 2 — customer-driven anomalies (require receivables debt).
   for (const c of customers) {
     const debt = Number(c.total) || 0;
     totalDebt += debt;
@@ -76,14 +120,11 @@ export async function loadCustomerWatch() {
       else if (d >= lastMonthStart && d < monthStart) lastMonthInvoiced += amt;
     }
 
-    // Anomaly bucket (mirrors the logic in CustomerReceivables).
     const m = c.merchant;
     if (!m) continue;
+    // Skip if pass 1 already classified this customer as negative-wallet
+    if (m.storeId && handledByNegativeWallet.has(m.storeId)) continue;
 
-    if (m.billingType === 'دفع مسبق' && Number(m.walletBalance || 0) < -0.5) {
-      anomalies.negative_wallet.push(c);
-      continue;
-    }
     if (m.billingType === 'دفع مسبق' && debt > 0.5) {
       anomalies.prepaid_with_debt.push(c);
       continue;
