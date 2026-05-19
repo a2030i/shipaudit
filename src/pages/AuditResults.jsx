@@ -4,7 +4,7 @@ import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } fr
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX } from '../lib/coreService.js';
+import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX, loadAuditShipments } from '../lib/coreService.js';
 import { markEventProcessed } from '../lib/webhookService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
@@ -522,6 +522,13 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   const [rejecting,    setRejecting]    = useState(false);
   const [rejectModal,  setRejectModal]  = useState(false);
   const [rejectReason, setRejectReason] = useState('');
+  // Lazy-loaded 'ok' rows. loadAuditByIdFromDB hydrates only the issue
+  // rows to keep payloads small for 100K+ audits — but the "الكل" tab
+  // needs the rest too. Fetched on demand the first time the user
+  // switches to 'all' (or 'ok'). Big audits paginate by raising the
+  // limit; 5K is enough for nearly every real-world invoice.
+  const [okRows, setOkRows] = useState(null);
+  const [okLoading, setOkLoading] = useState(false);
   const { results=[], summary={} } = audit;
 
   // Keep local state in sync if the page re-mounts with a DIFFERENT audit.
@@ -533,8 +540,43 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   // re-assigned on the in-memory object).
   useEffect(() => {
     setReviewStatus(audit.isDraft ? 'draft' : (audit.reviewStatus || 'pending'));
+    // Reset the lazy-loaded OK rows whenever the audit identity flips.
+    setOkRows(null);
+    setOkLoading(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id]);
+
+  // Lazy-load the OK rows when the user switches to a tab that needs
+  // them. For audits with zero issues the hydrated results array is
+  // empty (loadAuditByIdFromDB only hydrates issue rows by default),
+  // so without this fetch the table on "الكل" would render empty even
+  // though summary.total = 109. Drafts (in-memory audits not yet
+  // persisted) already have the full results array — no fetch needed.
+  useEffect(() => {
+    if (audit.isDraft) return;
+    if (filter !== 'all' && filter !== 'ok') return;
+    if (okRows !== null) return;
+    const issueCount = results.filter(r => r.status !== 'ok').length;
+    const okExpected = (summary.total || 0) - issueCount;
+    if (okExpected <= 0) { setOkRows([]); return; }
+    setOkLoading(true);
+    loadAuditShipments(audit.id, { status: 'ok', from: 0, limit: 5000 })
+      .then(rows => setOkRows(rows || []))
+      .catch(err => {
+        console.warn('lazy-load ok rows failed:', err.message);
+        setOkRows([]);
+      })
+      .finally(() => setOkLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit.id, filter, audit.isDraft]);
+
+  // results that the ResultsTable should iterate over for the active tab
+  const tabResults = useMemo(() => {
+    if (audit.isDraft)               return results;
+    if (filter === 'ok')             return okRows || [];
+    if (filter === 'all' && okRows)  return [...results, ...okRows];
+    return results;
+  }, [results, okRows, filter, audit.isDraft]);
 
   // Penny-perfect gate — recomputes on every render so the banner stays
   // in sync if numbers shift (e.g., after a re-analyze).
@@ -945,7 +987,14 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
 
         {/* Table */}
         <Card style={{padding:0,overflow:'hidden'}}>
-          <ResultsTable results={results} filter={filter} showDetail={showDetail} contract={contract}/>
+          {okLoading && (filter === 'all' || filter === 'ok') ? (
+            <div style={{ display:'flex', justifyContent:'center', alignItems:'center', padding:48, gap:10 }}>
+              <Spinner size={20}/>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>جارٍ تحميل الشحنات المطابقة…</span>
+            </div>
+          ) : (
+            <ResultsTable results={tabResults} filter={filter} showDetail={showDetail} contract={contract}/>
+          )}
         </Card>
       </div>
 
