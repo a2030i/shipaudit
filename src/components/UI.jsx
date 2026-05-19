@@ -106,20 +106,23 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
 // Elevated white surface, no visible border, soft layered shadow. Modern
 // SaaS card pattern — looks like Stripe/Linear/Notion. Hover adds a
 // 1px lift + tighter shadow ring.
-export function Card({ children, style = {}, accent, hover = false }) {
+export function Card({ children, style = {}, accent, hover = false, onClick }) {
   const [hovered, setHovered] = useState(false);
+  const isInteractive = !!onClick || hover;
   return (
     <div
-      onMouseEnter={() => hover && setHovered(true)}
-      onMouseLeave={() => hover && setHovered(false)}
+      onClick={onClick}
+      onMouseEnter={() => isInteractive && setHovered(true)}
+      onMouseLeave={() => isInteractive && setHovered(false)}
       style={{
         background: 'var(--card)',
         border: '1px solid transparent',
         borderRadius: 'var(--r-lg)',
         padding: 24,
+        cursor: onClick ? 'pointer' : undefined,
         transition: 'transform .18s, box-shadow .18s',
-        transform: hovered && hover ? 'translateY(-2px)' : 'none',
-        boxShadow: hovered && hover ? 'var(--shadow-md)' : 'var(--shadow-sm)',
+        transform: hovered && isInteractive ? 'translateY(-2px)' : 'none',
+        boxShadow: hovered && isInteractive ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         ...(accent ? { borderTop: `3px solid ${accent}` } : {}),
         ...style,
       }}
