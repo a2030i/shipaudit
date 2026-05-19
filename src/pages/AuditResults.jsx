@@ -937,7 +937,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </div>
             <div style={{
               padding: '12px 14px',
-              background: 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
+              background: '#0F1235',
               borderRadius: 10,
               color: '#fff',
             }}>

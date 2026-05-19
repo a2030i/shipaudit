@@ -11,7 +11,7 @@ import {
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
@@ -78,76 +78,26 @@ function Tab({ id, label, count, amount, active, accent, onClick }) {
 // ── Hero ────────────────────────────────────────────────────────
 function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
   return (
-    <div style={{
-      position: 'relative',
-      padding: '22px 28px',
-      marginBottom: 18,
-      borderRadius: 'var(--r-lg)',
-      background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
-      color: '#fff',
-      overflow: 'hidden',
-      boxShadow: '0 10px 32px rgba(27,30,84,.25)',
-    }}>
-      <div style={{ position: 'absolute', left: -50, top: -50, width: 240, height: 240, opacity: .07, pointerEvents: 'none' }}>
-        <svg viewBox="0 0 64 64" fill="none">
-          <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-        </svg>
-      </div>
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto auto', gap: 18, alignItems: 'center' }}>
-        <Users size={36} style={{ opacity: .55 }}/>
-        <div>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7 }}>
-            LAMHA · CUSTOMER RECEIVABLES
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800, color: '#fff', margin: 0, marginTop: 4 }}>
-            مديونيات العملاء
-          </h1>
-          {snapshot && (
-            <div style={{ fontSize: 11, opacity: .75, marginTop: 4 }}>
-              snapshot {snapshot.id} · رُفع {fmtDate(snapshot.uploadedAt)}
-              {snapshot.periodFrom && ` · الفترة ${fmtDate(snapshot.periodFrom)} → ${fmtDate(snapshot.periodTo)}`}
-            </div>
-          )}
-        </div>
-        <HeroStat label="إجمالي المستحقّات" value={fmt(total)} suffix="ر.س" big/>
-        <HeroStat
-          label="المتجاوز 30 يوم"
-          value={fmt(overdueTotal)}
-          suffix="ر.س"
-          color="#FBBF24"
-        />
-        <HeroStat label="عدد العملاء" value={customerCount}/>
-        <HeroStat
-          label="أقدم فاتورة"
-          value={oldestDays != null ? `قبل ${oldestDays} يوم` : '—'}
-          color={oldestDays != null && oldestDays > 90 ? '#FCA5A5' : null}
-        />
-      </div>
-    </div>
-  );
-}
-
-function HeroStat({ label, value, suffix, big, color }) {
-  return (
-    <div style={{
-      paddingInline: 16, paddingBlock: 6,
-      borderInlineStart: '1px solid rgba(255,255,255,.18)',
-      minWidth: big ? 130 : 90,
-    }}>
-      <div style={{ fontSize: 10, opacity: .65, fontFamily: 'var(--font-mono)', letterSpacing: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-        {label}
-      </div>
-      <div style={{
-        fontSize: big ? 22 : 16,
-        fontWeight: 800,
-        color: color || '#fff',
-        fontFamily: 'var(--font-mono)',
-        marginTop: 2,
-        whiteSpace: 'nowrap',
-      }}>
-        {value}{suffix && <span style={{ fontSize: 9, opacity: .55, marginInlineStart: 4 }}>{suffix}</span>}
-      </div>
-    </div>
+    <PageHero
+      variant="dark"
+      icon={<Users size={22}/>}
+      tag="LAMHA · CUSTOMER RECEIVABLES"
+      title="مديونيات العملاء"
+      meta={snapshot
+        ? `snapshot ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` +
+          (snapshot.periodFrom ? ` · الفترة ${fmtDate(snapshot.periodFrom)} → ${fmtDate(snapshot.periodTo)}` : '')
+        : null}
+      stats={[
+        { label: 'إجمالي المستحقّات', value: `${fmt(total)} ر.س`, big: true },
+        { label: 'المتجاوز 30 يوم',   value: `${fmt(overdueTotal)} ر.س`, color: '#FBBF24' },
+        { label: 'عدد العملاء',       value: customerCount },
+        {
+          label: 'أقدم فاتورة',
+          value: oldestDays != null ? `قبل ${oldestDays} يوم` : '—',
+          color: oldestDays != null && oldestDays > 90 ? '#FCA5A5' : undefined,
+        },
+      ]}
+    />
   );
 }
 

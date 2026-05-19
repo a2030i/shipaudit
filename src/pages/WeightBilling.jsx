@@ -135,10 +135,10 @@ export default function WeightBilling({ carriers, isActive = true }) {
         padding: '28px 32px',
         marginBottom: 22,
         borderRadius: 'var(--r-lg)',
-        background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
+        background: '#0F1235',
         color: '#fff',
         overflow: 'hidden',
-        boxShadow: '0 10px 32px rgba(27,30,84,.25)',
+        boxShadow: '0 10px 32px rgba(15,18,53,.20)',
       }}>
         {/* Decorative hex */}
         <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>

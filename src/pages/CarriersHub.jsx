@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, Building2, Webhook as WebhookIcon,
   Settings as SettingsIcon, Wallet, ArrowLeft,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero } from '../components/UI.jsx';
 import { loadCarriersHub } from '../lib/carriersHubService.js';
 
 const fmt = (n) =>
@@ -41,70 +41,22 @@ function HeaderTotals({ totals, loading }) {
   const owed   = totals?.totalDr - totals?.totalCr; // positive = we owe carriers
   const sign   = owed >= 0 ? '—' : '+';
   return (
-    <div style={{
-      position: 'relative',
-      padding: '22px 28px',
-      marginBottom: 22,
-      borderRadius: 'var(--r-lg)',
-      background: 'linear-gradient(135deg, #1B1E54 0%, #262A6E 55%, #2DD4BF 130%)',
-      color: '#fff',
-      overflow: 'hidden',
-      boxShadow: '0 10px 32px rgba(27,30,84,.25)',
-    }}>
-      <div style={{ position: 'absolute', left: -60, top: -60, width: 280, height: 280, opacity: .07, pointerEvents: 'none' }}>
-        <svg viewBox="0 0 64 64" fill="none">
-          <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-        </svg>
-      </div>
-      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: 'auto 1fr auto auto auto', gap: 20, alignItems: 'center' }}>
-        <Building2 size={36} style={{ opacity: .55 }}/>
-        <div>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7 }}>
-            LAMHA · CARRIERS OVERVIEW
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800, color: '#fff', margin: 0, marginTop: 4 }}>
-            شركات الشحن — كشف موحّد
-          </h1>
-        </div>
-        <Stat label="مدين علينا (DR)" value={loading ? '…' : fmtCompact(totals?.totalDr)} positive/>
-        <Stat label="دائن لنا (CR)"  value={loading ? '…' : fmtCompact(totals?.totalCr)} negative/>
-        <Stat
-          label={owed >= 0 ? 'نحن مدينون' : 'الشركات مدينة'}
-          value={loading ? '…' : (sign + ' ' + fmtCompact(Math.abs(owed)))}
-          big highlight={owed >= 0 ? 'red' : 'green'}
-        />
-      </div>
-    </div>
-  );
-}
-
-function Stat({ label, value, big, positive, negative, highlight }) {
-  const color =
-    highlight === 'red'   ? '#FCA5A5' :
-    highlight === 'green' ? '#86EFAC' :
-    positive              ? 'rgba(255,255,255,.92)' :
-    negative              ? 'rgba(255,255,255,.92)' :
-                            '#fff';
-  return (
-    <div style={{
-      paddingInline: 16, paddingBlock: 6,
-      borderInlineStart: '1px solid rgba(255,255,255,.18)',
-      minWidth: big ? 140 : 90,
-    }}>
-      <div style={{ fontSize: 10, opacity: .65, fontFamily: 'var(--font-mono)', letterSpacing: 2, textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-        {label}
-      </div>
-      <div style={{
-        fontSize: big ? 22 : 17,
-        fontWeight: 800,
-        color,
-        fontFamily: 'var(--font-mono)',
-        marginTop: 2,
-        whiteSpace: 'nowrap',
-      }}>
-        {value} <span style={{ fontSize: 9, opacity: .55 }}>ر.س</span>
-      </div>
-    </div>
+    <PageHero
+      variant="dark"
+      icon={<Building2 size={22}/>}
+      tag="LAMHA · CARRIERS OVERVIEW"
+      title="شركات الشحن — كشف موحّد"
+      stats={[
+        { label: 'مدين علينا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
+        { label: 'دائن لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
+        {
+          label: owed >= 0 ? 'نحن مدينون' : 'الشركات مدينة',
+          value: loading ? '…' : `${sign} ${fmtCompact(Math.abs(owed))} ر.س`,
+          big: true,
+          color: owed >= 0 ? '#FCA5A5' : '#86EFAC',
+        },
+      ]}
+    />
   );
 }
 
