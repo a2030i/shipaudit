@@ -305,6 +305,70 @@ export function findMerchantForCustomer(customerName, merchants) {
   return null;
 }
 
+// Returns the customer_names that couldn't be linked to a merchant in the
+// last auto-link pass (store_id null OR method='unmatched'). Joined with
+// the receivables roll-up so the operator sees the debt + last-invoice
+// context next to each name and can decide quickly.
+export async function loadUnmatchedCustomers() {
+  const { data: links, error: e1 } = await supabase
+    .from('customer_merchant_links')
+    .select('customer_name, store_id, match_method, confidence');
+  if (e1) throw e1;
+  const unmatched = (links || []).filter(l => !l.store_id || l.match_method === 'unmatched');
+  if (!unmatched.length) return [];
+
+  // Enrich with latest receivables totals so the user has context.
+  // We reuse loadLatestReceivables (single source of truth for snapshot
+  // selection + aging) and intersect by name.
+  const { customers: recCustomers = [] } = await loadLatestReceivablesLite();
+  const recByName = new Map(recCustomers.map(c => [c.name, c]));
+  return unmatched.map(l => {
+    const r = recByName.get(l.customer_name);
+    return {
+      customerName: l.customer_name,
+      confidence:   l.confidence,
+      matchMethod:  l.match_method,
+      totalDue:     r?.total || 0,
+      oldestInvoiceAt: r?.oldestInvoiceDate || null,
+      daysOutstanding: r?.daysOutstanding || 0,
+    };
+  }).sort((a, b) => (b.totalDue || 0) - (a.totalDue || 0));
+}
+
+// Lightweight receivables fetcher (just name + total + aging) — kept
+// inside merchantsService to avoid a circular import with the receivables
+// service which itself reads from this file for merchant overlay.
+async function loadLatestReceivablesLite() {
+  const { data: latest, error: e1 } = await supabase
+    .from('customer_receivables')
+    .select('snapshot_id, uploaded_at')
+    .order('uploaded_at', { ascending: false })
+    .limit(1);
+  if (e1) throw e1;
+  if (!latest?.length) return { customers: [] };
+  const rows = await loadAll(
+    'customer_receivables',
+    'customer_name, balance_amount, invoice_date, is_summary',
+    { snapshot_id: latest[0].snapshot_id },
+  );
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const byCustomer = new Map();
+  for (const r of rows) {
+    const name = r.customer_name;
+    if (!byCustomer.has(name)) byCustomer.set(name, { name, total: 0, oldestInvoiceDate: null, daysOutstanding: 0 });
+    const c = byCustomer.get(name);
+    if (r.is_summary) {
+      c.total = Number(r.balance_amount) || 0;
+    } else if (r.invoice_date) {
+      if (!c.oldestInvoiceDate || r.invoice_date < c.oldestInvoiceDate) {
+        c.oldestInvoiceDate = r.invoice_date;
+        c.daysOutstanding = Math.max(0, Math.floor((today - new Date(r.invoice_date)) / 86_400_000));
+      }
+    }
+  }
+  return { customers: [...byCustomer.values()] };
+}
+
 export async function loadCustomerMerchantLinks() {
   const { data, error } = await supabase
     .from('customer_merchant_links')
