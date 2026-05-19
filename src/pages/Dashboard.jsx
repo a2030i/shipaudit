@@ -4,7 +4,8 @@ import {
   RefreshCw, ArrowLeft, Upload, FileText, BookOpen, Bell, Search, ExternalLink,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { Card, Btn, Spinner, Empty, toast, PageHero, SpotlightCard, Sparkline, Donut, SectionTitle } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero, SpotlightCard, Sparkline, Donut, SectionTitle, AreaChart } from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
 import {
   loadCarriersOverview, aggregateOverview, loadRecentActivity, loadOperations,
   loadStaleDisputes,
@@ -26,6 +27,7 @@ const fmtCompact = n => {
 
 export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [overview, setOverview]   = useState([]);
   const [audits,   setAudits]     = useState([]);
   const [activity, setActivity]   = useState({ statements: [], operations: [] });
@@ -139,6 +141,34 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
     return pts;
   }, [audits]);
 
+  // Build a richer multi-series trend for the AreaChart band — both
+  // total invoiced and expected so the user sees billing vs. contract
+  // expectations over the audit history.
+  const chartSeries = useMemo(() => {
+    if (!audits?.length) return { series: [], labels: [] };
+    const ordered = [...audits]
+      .sort((a, b) => (a.created_at || '').localeCompare(b.created_at || ''))
+      .slice(-12);
+    const billed   = ordered.map(a => Number(a.total_billed   || a.totalBilled   || 0));
+    const expected = ordered.map(a => Number(a.total_expected || a.totalExpected || 0));
+    const labels = ordered.map(a => {
+      const d = a.created_at ? new Date(a.created_at) : null;
+      return d ? d.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' }) : '—';
+    });
+    return {
+      labels,
+      series: [
+        { data: billed,   color: '#10B981', label: 'المفوتر فعلياً' },
+        { data: expected, color: '#8B5CF6', label: 'المتوقّع تعاقدياً' },
+      ],
+    };
+  }, [audits]);
+
+  // Greeting that bends with time of day — calmer for night reviewers.
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? 'صباح الخير' : hour < 18 ? 'مساء الخير' : 'مساء الخير';
+  const todayStr = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
   // Aging segments for the donut. We re-derive from totals.aging so
   // both the donut and the existing list-bar can render the same
   // numbers in different shapes.
@@ -152,36 +182,55 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1400 }}>
+    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+      {/* ── Welcome banner ─────────────────────────────────────── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 28, gap: 16, flexWrap: 'wrap',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <div style={{
+            width: 48, height: 48, borderRadius: '50%',
+            background: profile?.avatar_color || 'linear-gradient(135deg,#10B981,#059669)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 19, fontWeight: 700, color: '#fff',
+            boxShadow: '0 4px 14px rgba(16,185,129,.22)',
+          }}>
+            {profile?.name?.[0] ?? '?'}
+          </div>
+          <div>
+            <h1 style={{
+              fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700,
+              color: 'var(--text)', margin: 0, lineHeight: 1.2, letterSpacing: -0.4,
+            }}>
+              {greeting}، {profile?.name || 'Admin'}
+            </h1>
+            <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: 0, marginTop: 4 }}>
+              {todayStr}
+            </p>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn size="md" variant="ghost" onClick={refresh} disabled={loading} icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>}>
+            {loading ? 'جارٍ التحديث' : 'تحديث'}
+          </Btn>
+          <Btn size="md" variant="primary" onClick={() => navigate('/upload')} icon={<Upload size={14}/>}>
+            مراجعة جديدة
+          </Btn>
+        </div>
+      </div>
+
+      {/* ── Spotlight: the page's headline number ──────────────── */}
       <SpotlightCard
-        tag="LAMHA · FINANCIAL CONTROL"
+        tag="LAMHA · OUTSTANDING"
         title="إجمالي المستحقات لشركات الشحن"
         value={fmt(totals.outstanding)}
         suffix="ر.س"
         sparkline={trendData}
-        accent="#2DD4BF"
-        side={
-          <button
-            onClick={refresh}
-            disabled={loading}
-            style={{
-              background: 'rgba(255,255,255,.10)',
-              border: '1px solid rgba(255,255,255,.22)',
-              color: '#fff',
-              padding: '10px 18px',
-              borderRadius: 9, fontSize: 12.5, fontWeight: 600,
-              cursor: loading ? 'wait' : 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              fontFamily: 'var(--font-sans)',
-            }}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''}/>
-            {loading ? 'جارٍ التحميل…' : 'تحديث البيانات'}
-          </button>
-        }
+        accent="#10B981"
         stats={[
-          { label: 'متأخر',         value: `${fmtCompact(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
-          { label: 'مسدّد سابقاً',   value: `${fmtCompact(totals.paidTotal)} ر.س`,    color: '#86EFAC' },
+          { label: 'متأخر السداد',  value: `${fmtCompact(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
+          { label: 'مسدّد سابقاً',   value: `${fmtCompact(totals.paidTotal)} ر.س`,    color: '#6EE7B7' },
           { label: 'شركات نشطة',    value: overview.length },
           { label: 'عمليات مفتوحة', value: totals.pendingCount + totals.auditedCount + totals.disputedCount + totals.reviewingCount },
         ]}
@@ -191,6 +240,43 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={28}/></div>
       ) : (
         <>
+          {/* ── Trend chart: full-width modern area chart ──────────
+              Two series (المفوتر فعلياً vs المتوقع تعاقدياً) layered with
+              soft gradient fills. Tells the financial story at a glance. */}
+          {chartSeries.series.length > 0 && chartSeries.series[0].data.length > 1 && (
+            <Card style={{ padding: '28px 32px', marginBottom: 24 }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginBottom: 24, gap: 16, flexWrap: 'wrap',
+              }}>
+                <div>
+                  <div style={{
+                    fontSize: 11, color: 'var(--muted)', fontWeight: 600,
+                    letterSpacing: 1.5, textTransform: 'uppercase',
+                    marginBottom: 6, fontFamily: 'var(--font-mono)',
+                  }}>TREND · LAST {chartSeries.series[0].data.length} AUDITS</div>
+                  <h2 style={{
+                    fontSize: 20, fontWeight: 700, color: 'var(--text)',
+                    margin: 0, letterSpacing: -0.3,
+                  }}>تطوّر الفوترة عبر آخر المراجعات</h2>
+                </div>
+                <div style={{ display: 'flex', gap: 18 }}>
+                  {chartSeries.series.map(s => (
+                    <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                      <span style={{ width: 10, height: 10, borderRadius: 3, background: s.color }}/>
+                      <span style={{ fontSize: 12.5, color: 'var(--muted)', fontWeight: 500 }}>{s.label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <AreaChart
+                series={chartSeries.series}
+                labels={chartSeries.labels}
+                height={260}
+              />
+            </Card>
+          )}
+
           {/* AWB lookup — fastest path during a dispute. Type a tracking
               number, see every audit that ever billed this shipment. */}
           <AwbSearchCard/>
