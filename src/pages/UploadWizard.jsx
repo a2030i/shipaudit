@@ -565,6 +565,21 @@ export default function UploadWizard({ carriers, onComplete }) {
         const isSummaryName = (n) => /summary|total|ملخص|إجمالي/i.test(n);
         const candidates = wb.SheetNames.map(name => {
           const ws = wb.Sheets[name];
+          // Recompute !ref from actual cell addresses — some exporters
+          // (J&T's WestBr statement, certain ERP dumps) ship a stale
+          // !ref that covers only the first few rows even though the
+          // sheet has hundreds. sheet_to_json honours !ref, so without
+          // this fix we'd silently drop everything past the bad ref.
+          let mr = 0, mc = 0;
+          for (const k of Object.keys(ws)) {
+            if (k.startsWith('!')) continue;
+            const a = XLSX.utils.decode_cell(k);
+            if (a.r > mr) mr = a.r;
+            if (a.c > mc) mc = a.c;
+          }
+          if (mr > 0 || mc > 0) {
+            ws['!ref'] = XLSX.utils.encode_range({ s:{r:0,c:0}, e:{r:mr,c:mc} });
+          }
           const rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:null });
           const dataRows = rows.filter(r => r && r.some(v => v != null && v !== ''));
           const cols = Math.max(...rows.slice(0, 5).map(r => (r || []).length), 0);
