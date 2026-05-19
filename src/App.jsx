@@ -33,45 +33,49 @@ import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
-// Sidebar IA — 4 sections, ordered by daily workflow:
-//   1) overview  — landing screens (dashboard + per-carrier hub)
-//   2) audits    — handle inbound files end-to-end (inbox → audit → history)
-//   3) ledger    — financial sub-ledger + reconciliation
-//   4) admin     — config + reports + logs
+// Sidebar IA — 3 sections, ordered by the operator's daily workflow:
 //
-// Each item belongs to a section. Sections render as headers; items beneath them.
+//   1) workspace — the home screens you start your day on
+//   2) operations — daily transactional work (inbox → audit → settle → pay)
+//   3) finance    — financial reports + customer-side data
+//   4) settings   — configuration + admin (collapsed to a single label,
+//                   rendered visually at the bottom)
+//
+// Re-ordered so the items the operator opens 10× per day live at the top
+// and the rarely-touched config sits at the bottom. Customers/Merchants
+// moved under "finance" (was "ledger") because they describe AR, not AP.
 const NAV_ITEMS = [
-  // ── Overview ───────────────────────────────────────────────────
-  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'overview' },
-  { id: 'hub',       path: '/hub',       label: 'كشف الشركات',   icon: Building2,       section: 'overview' },
+  // ── Workspace ──────────────────────────────────────────────────
+  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, section: 'workspace' },
+  { id: 'hub',       path: '/hub',       label: 'الشركات',        icon: Building2,       section: 'workspace' },
+  { id: 'webhook',   path: '/webhook',   label: 'الوارد',          icon: Inbox,           section: 'workspace' },
 
-  // ── Audits (inbound + processing workflow) ─────────────────────
-  { id: 'webhook',         path: '/webhook',           label: 'الوارد',          icon: Inbox,    section: 'audits' },
-  { id: 'upload',          path: '/upload',            label: 'مراجعة جديدة',    icon: Upload,   section: 'audits' },
-  { id: 'audits',          path: '/audits',            label: 'سجل المراجعات',   icon: History,  section: 'audits' },
-  { id: 'weight-billing',  path: '/weight-billing',    label: 'فوترة الأوزان',   icon: Scale,    section: 'audits' },
+  // ── Operations (the daily audit → settle → pay loop) ───────────
+  { id: 'upload',          path: '/upload',            label: 'مراجعة جديدة',  icon: Upload,     section: 'operations' },
+  { id: 'audits',          path: '/audits',            label: 'سجل المراجعات', icon: History,    section: 'operations' },
+  { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',    icon: Banknote,   section: 'operations' },
+  { id: 'payments',        path: '/payments',          label: 'الدفعات',       icon: CreditCard, section: 'operations' },
+  { id: 'weight-billing',  path: '/weight-billing',    label: 'فوترة الأوزان', icon: Scale,      section: 'operations' },
 
-  // ── Financial ledger + settlements ─────────────────────────────
-  { id: 'ledger',          path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen, section: 'ledger' },
-  { id: 'cod-settlements', path: '/cod-settlements',   label: 'تسويات COD',      icon: Banknote, section: 'ledger' },
-  { id: 'payments',        path: '/payments',          label: 'الدفعات',         icon: CreditCard, section: 'ledger' },
-  { id: 'aramex-stmt',     path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText, section: 'ledger' },
-  { id: 'bank',            path: '/bank',              label: 'كشف بنكي',        icon: Wallet,   section: 'ledger' },
-  { id: 'receivables',     path: '/receivables',       label: 'مديونيات العملاء', icon: Users,    section: 'ledger' },
-  { id: 'merchants',       path: '/merchants',         label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'ledger' },
+  // ── Finance (statements + customer-side) ──────────────────────
+  { id: 'ledger',          path: '/ledger',            label: 'دفتر الشركات',     icon: BookOpen,    section: 'finance' },
+  { id: 'aramex-stmt',     path: '/aramex-statements', label: 'كشوف خارجية',      icon: FileText,    section: 'finance' },
+  { id: 'bank',            path: '/bank',              label: 'كشف بنكي',         icon: Wallet,      section: 'finance' },
+  { id: 'receivables',     path: '/receivables',       label: 'مديونيات العملاء', icon: Users,       section: 'finance' },
+  { id: 'merchants',       path: '/merchants',         label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'finance' },
 
-  // ── Admin (config + reports + audit-trail) ─────────────────────
-  { id: 'carriers',        path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'admin' },
-  { id: 'contracts',       path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'admin' },
-  { id: 'carrier-kpi',     path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'admin' },
-  { id: 'activity-log',    path: '/activity-log',      label: 'سجل النشاط',      icon: Activity,      section: 'admin' },
-  { id: 'employees',       path: '/employees',         label: 'الموظفون',        icon: Users,         section: 'admin', adminOnly: true },
+  // ── Admin (config + reports — least-touched) ──────────────────
+  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات', icon: Truck,         section: 'admin' },
+  { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',   icon: ClipboardList, section: 'admin' },
+  { id: 'carrier-kpi',  path: '/carrier-kpi',  label: 'أداء الناقلين', icon: BarChart3,     section: 'admin' },
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط',    icon: Activity,      section: 'admin' },
+  { id: 'employees',    path: '/employees',    label: 'الموظفون',      icon: Users,         section: 'admin', adminOnly: true },
 ];
 const NAV_SECTIONS = [
-  { id: 'overview', label: 'نظرة عامة' },
-  { id: 'audits',   label: 'المراجعات' },
-  { id: 'ledger',   label: 'الكشوف المالية' },
-  { id: 'admin',    label: 'الإدارة والإعداد' },
+  { id: 'workspace',  label: 'الواجهة' },
+  { id: 'operations', label: 'العمليات اليومية' },
+  { id: 'finance',    label: 'التقارير المالية' },
+  { id: 'admin',      label: 'إعداد النظام' },
 ];
 const PAGE_TITLES = {
   '/dashboard':         'الرئيسية',

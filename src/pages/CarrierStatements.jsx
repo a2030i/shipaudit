@@ -580,7 +580,6 @@ function Stat({ label, value, suffix, color, big }) {
     <div style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
-      borderTop: `3px solid ${color}`,
     }}>
       <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
         {label}
