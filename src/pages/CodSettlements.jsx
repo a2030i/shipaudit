@@ -1320,21 +1320,28 @@ function Tab({ id, label, n, active, onClick }) {
 function Hero({ label, value, suffix, hint, color, big }) {
   return (
     <div style={{
-      background: 'var(--card)', border: '1px solid var(--border)',
-      borderRadius: 12, padding: '14px 18px',
-      borderTop: `3px solid ${color}`,
+      background: 'var(--card)',
+      borderRadius: 'var(--r-lg)', padding: '20px 24px',
+      boxShadow: 'var(--shadow-sm)',
     }}>
-      <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
-        {label}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+        <span style={{ color: 'var(--muted)', fontSize: 11.5, fontWeight: 500 }}>
+          {label}
+        </span>
+        <div style={{
+          width: 8, height: 8, borderRadius: '50%',
+          background: color, boxShadow: `0 0 0 4px color-mix(in srgb, ${color} 14%, transparent)`,
+        }}/>
       </div>
       <div style={{
-        color, fontSize: big ? 24 : 22,
+        color, fontSize: big ? 28 : 24,
         fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
+        letterSpacing: -0.6, lineHeight: 1,
       }}>
         {value}
-        {suffix && <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 5 }}> {suffix}</span>}
+        {suffix && <span style={{ fontSize: 12, color: 'var(--muted)', marginRight: 6, fontWeight: 500 }}> {suffix}</span>}
       </div>
-      {hint && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 4 }}>{hint}</div>}
+      {hint && <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 8 }}>{hint}</div>}
     </div>
   );
 }
@@ -1343,19 +1350,24 @@ function AgingCard({ label, count, amount, color }) {
   const dim = !count;
   return (
     <div style={{
-      background: dim ? 'var(--card)' : `linear-gradient(135deg, ${color}14, transparent)`,
-      border: `1px solid ${dim ? 'var(--border)' : color + '55'}`,
-      borderRadius: 11, padding: '10px 14px',
-      borderTop: `3px solid ${color}`,
-      opacity: dim ? 0.55 : 1,
+      background: 'var(--card)',
+      borderRadius: 'var(--r-lg)', padding: '14px 18px',
+      boxShadow: 'var(--shadow-sm)',
+      opacity: dim ? 0.5 : 1,
+      transition: 'opacity .2s',
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-        <span style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{label}</span>
-        <span style={{ color, fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{count}</span>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+        <span style={{ color: 'var(--muted)', fontSize: 11, fontWeight: 500 }}>{label}</span>
+        <span style={{
+          minWidth: 22, height: 22, borderRadius: 999, paddingInline: 7,
+          display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          background: `color-mix(in srgb, ${color} 14%, transparent)`,
+          color, fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700,
+        }}>{count}</span>
       </div>
-      <div style={{ color, fontSize: 15, fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap' }}>
+      <div style={{ color, fontSize: 17, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap', letterSpacing: -0.3 }}>
         {fmt(amount)}
-        <span style={{ fontSize: 9, color: 'var(--muted)', marginRight: 4 }}> ر.س</span>
+        <span style={{ fontSize: 10, color: 'var(--muted)', marginRight: 5, fontWeight: 500 }}> ر.س</span>
       </div>
     </div>
   );

@@ -1937,7 +1937,6 @@ function AgingCard({ label, sub, count, amount, color }) {
       background: dim ? 'var(--card)' : `linear-gradient(135deg, ${color}14, transparent)`,
       border: `1px solid ${dim ? 'var(--border)' : color + '55'}`,
       borderRadius: 11, padding: '11px 14px',
-      borderTop: `3px solid ${color}`,
       opacity: dim ? 0.55 : 1,
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
@@ -1959,7 +1958,6 @@ function Stat({ label, value, suffix, color, big }) {
     <div style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
-      borderTop: `3px solid ${color}`,
     }}>
       <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
         {label}

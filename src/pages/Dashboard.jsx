@@ -362,7 +362,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
           {codOutstanding.length > 0 && (() => {
             const grand = codOutstanding.reduce((s, x) => s + x.amount, 0);
             return (
-              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid #2DD4BF' }}>
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, }}>
                 <div style={{
                   padding: '14px 20px', borderBottom: '1px solid var(--border)',
                   display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap',
@@ -426,7 +426,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
           {dueWeek.length > 0 && (() => {
             const totalDue = dueWeek.reduce((s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0);
             return (
-              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--accent)' }}>
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, }}>
                 <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--accent)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     📅 مستحق هذا الأسبوع ({dueWeek.length})
@@ -485,7 +485,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
             );
             const today = new Date(); today.setHours(0,0,0,0);
             return (
-              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--red)' }}>
+              <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, }}>
                 <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--red)', display: 'flex', alignItems: 'center', gap: 8 }}>
                     🚨 نزاعات قديمة بدون حل ({staleDisputes.length})
@@ -540,7 +540,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
 
           {/* ACTION REQUIRED — overdue / disputed / reviewing */}
           {actionItems.length > 0 && (
-            <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, borderTop: '3px solid var(--gold)' }}>
+            <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18, }}>
               <div style={{ padding: '12px 18px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13, color: 'var(--gold)', display: 'flex', alignItems: 'center', gap: 8 }}>
                   <Bell size={14}/> إجراءات مطلوبة ({actionItems.length})
