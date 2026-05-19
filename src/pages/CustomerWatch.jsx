@@ -742,8 +742,16 @@ function CustomerDrillDown({ entry, onClose }) {
   const debt = Number(c?.total) || 0;
   const wallet = Number(m?.walletBalance) || 0;
 
+  // Title preference: full customer_name from receivables (e.g.
+  // "مشاري سعد نجيب عبد العال - مختلفٌ") > clean merchant store_name
+  // (often just the brand suffix, e.g. "مختلفٌ"). Falls back to whatever
+  // is present. The receivables name carries the most identifying info.
+  const primaryName = c?.name || m?.storeName || 'تفاصيل';
+  const showStoreSubtitle = c?.name && m?.storeName && m.storeName !== c.name;
+  const initial = (primaryName.replace(/^\s+/, '').slice(0, 1)) || '?';
+
   return (
-    <Modal title={m?.storeName || c?.name || 'تفاصيل'} onClose={onClose} width={780}>
+    <Modal title={primaryName} onClose={onClose} width={780}>
       {/* Identity strip */}
       <div style={{
         display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16,
@@ -757,13 +765,24 @@ function CustomerDrillDown({ entry, onClose }) {
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontWeight: 700, fontSize: 18,
         }}>
-          {(m?.storeName || c?.name || '?').slice(0, 1)}
+          {initial}
         </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-            {m?.storeName || c?.name}
+          <div style={{
+            fontSize: 15, fontWeight: 700, color: 'var(--text)',
+            overflow: 'hidden', textOverflow: 'ellipsis',
+            display: '-webkit-box', WebkitBoxOrient: 'vertical',
+            WebkitLineClamp: 2, lineHeight: 1.35,
+          }}>
+            {primaryName}
           </div>
-          <div style={{ display: 'flex', gap: 14, marginTop: 4, fontSize: 11.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+          {showStoreSubtitle && (
+            <div style={{ fontSize: 12, color: 'var(--accent)', marginTop: 3, fontWeight: 500 }}>
+              <ShoppingBag size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 4 }}/>
+              المتجر على المنصّة: {m.storeName}
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 14, marginTop: 5, fontSize: 11.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', flexWrap: 'wrap' }}>
             {m?.storeId && <span><Hash size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.storeId}</span>}
             {m?.phone && <span style={{ direction: 'ltr' }}><Phone size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.phone}</span>}
           </div>
