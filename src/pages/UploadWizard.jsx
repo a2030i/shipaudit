@@ -13,7 +13,8 @@ import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
-import { Card, Btn, Select, Spinner, Badge, toast } from '../components/UI.jsx';
+import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
+import { Upload as UploadIcon } from 'lucide-react';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
@@ -789,37 +790,11 @@ export default function UploadWizard({ carriers, onComplete }) {
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1100, margin: '0 auto' }}>
 
-      {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <div style={{
-        position: 'relative',
-        padding: '22px 28px',
-        marginBottom: 22,
-        borderRadius: 'var(--r-lg)',
-        background: '#0A0A0B',
-        color: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
-      }}>
-        <div style={{
-          position: 'absolute', left: -40, top: -40, width: 220, height: 220,
-          opacity: .08, pointerEvents: 'none',
-        }}>
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-          </svg>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
-            LAMHA · NEW AUDIT
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-            مراجعة فاتورة جديدة
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
-            ثلاث خطوات لاكتشاف فروق الفاتورة، الأوزان الزائدة، والشحنات المكررة.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={<UploadIcon size={22}/>}
+        title="مراجعة فاتورة جديدة"
+        subtitle="ثلاث خطوات لاكتشاف فروق الفاتورة، الأوزان الزائدة، والشحنات المكررة"
+      />
 
       {/* ── STEP INDICATOR ────────────────────────────────────────────── */}
       <Card style={{ padding: '18px 24px', marginBottom: 18 }}>

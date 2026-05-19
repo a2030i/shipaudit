@@ -11,7 +11,8 @@ import {
   AlertCircle, HelpCircle, Copy, ExternalLink, FileSpreadsheet, FileType2,
   FileX2, FileQuestion, Upload as UploadIcon, Trash2, FileCheck2,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader } from '../components/UI.jsx';
+import { Inbox } from 'lucide-react';
 import {
   loadWebhookEvents, countByStatus, assignEventToCarrier,
   downloadEventFile, loadEventFileBlob, getWebhookEndpoint,
@@ -363,95 +364,96 @@ export default function WebhookEvents({ carriers, isActive = true }) {
 
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
-      {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <div style={{
-        position: 'relative',
-        padding: '24px 28px',
-        marginBottom: 22,
-        borderRadius: 'var(--r-lg)',
-        background: '#0A0A0B',
-        color: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
-      }}>
-        <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-          </svg>
-        </div>
-        <div style={{ position: 'relative' }}>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
-            LAMHA · INBOUND WEBHOOK
-          </div>
-          <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-            استلام الفواتير تلقائياً
-          </h1>
-          <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0, marginBottom: 14 }}>
-            وجّه أتمتتك (Zapier / n8n / Make / IFTTT) لهذا الرابط مع الملف بصيغة base64. الملف يُسجَّل تلقائياً ويُربط بالشركة الصحيحة.
-          </p>
+      <PageHeader
+        icon={<Inbox size={22}/>}
+        title="صندوق الوارد"
+        subtitle="الملفات الواصلة عبر Webhook — تُسجَّل تلقائياً وتُربط بالشركة الصحيحة"
+        actions={
+          <>
+            {selected.size > 0 && (
+              <Btn size="md" variant="danger" icon={<Trash2 size={14}/>} onClick={askBulkDelete}>
+                حذف المحدّد ({selected.size})
+              </Btn>
+            )}
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+              تحديث
+            </Btn>
+          </>
+        }
+      />
 
-          {/* Endpoint chip */}
+      {/* ── Endpoint card — modern, light, copy-to-clipboard ────────── */}
+      <Card style={{ padding: '20px 24px', marginBottom: 22 }}>
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+        }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10, flexShrink: 0,
+            background: 'var(--accent-dim)', color: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Webhook size={18}/>
+          </div>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
+              ENDPOINT
+            </div>
+            <div style={{ fontSize: 13.5, color: 'var(--text)', marginTop: 2 }}>
+              وجّه أتمتتك (Zapier / n8n / Make / IFTTT) لهذا الرابط
+            </div>
+          </div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
+            flex: '1 1 480px', minWidth: 280,
             padding: '10px 14px',
-            background: 'rgba(0,0,0,.22)',
-            border: '1px solid rgba(255,255,255,.22)',
+            background: 'var(--bg2)',
+            border: '1px solid var(--border2)',
             borderRadius: 10,
-            fontFamily: 'var(--font-mono)', fontSize: 11.5,
-            color: 'rgba(255,255,255,.9)',
-            maxWidth: 720,
+            fontFamily: 'var(--font-mono)', fontSize: 12,
+            color: 'var(--text2)',
             direction: 'ltr',
           }}>
-            <Webhook size={14} style={{ flexShrink: 0, opacity: .7 }}/>
+            <span style={{
+              fontSize: 10, padding: '2px 8px', borderRadius: 6,
+              background: 'var(--accent-dim)', color: 'var(--accent)',
+              fontWeight: 700, flexShrink: 0,
+            }}>POST</span>
             <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-              POST {endpoint}
+              {endpoint}
             </span>
-            <button onClick={copyEndpoint} style={{
-              background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.18)',
-              color: '#fff', padding: '4px 10px', borderRadius: 6,
-              fontSize: 11, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4,
-              fontFamily: 'var(--font-sans)',
-            }}>
-              <Copy size={11}/> نسخ
-            </button>
+            <Btn size="sm" variant="ghost" onClick={copyEndpoint} icon={<Copy size={12}/>}>
+              نسخ
+            </Btn>
           </div>
         </div>
-      </div>
+      </Card>
 
       {/* ── STAT FILTERS ─────────────────────────────────────────────── */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
         {[
-          { k: 'all',                  l: 'الكل',          n: events.length,                color: 'var(--accent)' },
+          { k: 'all',                  l: 'الكل',          n: events.length,                color: 'var(--text)' },
           { k: 'awaiting_assignment',  l: 'يحتاج ربط',     n: counts.awaiting_assignment ?? 0, color: 'var(--gold)' },
-          { k: 'processed',            l: 'تم',            n: counts.processed ?? 0,        color: 'var(--green)' },
+          { k: 'processed',            l: 'تم',            n: counts.processed ?? 0,        color: 'var(--accent)' },
           { k: 'failed',               l: 'فشل',           n: counts.failed ?? 0,           color: 'var(--red)' },
         ].map(t => (
           <button key={t.k} onClick={() => setFilter(t.k)} style={{
-            background: filter === t.k ? `color-mix(in srgb, ${t.color} 14%, transparent)` : 'transparent',
-            border: `1px solid ${filter === t.k ? t.color : 'var(--border)'}`,
-            color: filter === t.k ? t.color : 'var(--muted)',
-            borderRadius: 9, padding: '7px 14px', cursor: 'pointer',
-            fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
-            display: 'inline-flex', alignItems: 'center', gap: 7,
+            background: filter === t.k ? 'var(--text)' : 'var(--surface)',
+            border: `1px solid ${filter === t.k ? 'var(--text)' : 'var(--border2)'}`,
+            color: filter === t.k ? '#fff' : 'var(--text2)',
+            borderRadius: 999, padding: '9px 16px', cursor: 'pointer',
+            fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 600,
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            transition: 'all .15s',
           }}>
             {t.l}
             <span style={{
-              background: filter === t.k ? `color-mix(in srgb, ${t.color} 20%, transparent)` : 'var(--surface)',
-              color: filter === t.k ? t.color : 'var(--muted)',
-              fontSize: 10, padding: '1px 7px', borderRadius: 8, fontFamily: 'var(--font-mono)',
+              background: filter === t.k ? 'rgba(255,255,255,.18)' : 'var(--bg2)',
+              color: filter === t.k ? '#fff' : t.color,
+              fontSize: 11, padding: '2px 8px', borderRadius: 999, fontFamily: 'var(--font-mono)',
+              fontWeight: 700,
             }}>{t.n}</span>
           </button>
         ))}
-        <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 8 }}>
-          {selected.size > 0 && (
-            <Btn size="sm" variant="danger" icon={<Trash2 size={13}/>} onClick={askBulkDelete}>
-              حذف المحدّد ({selected.size})
-            </Btn>
-          )}
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
-            تحديث
-          </Btn>
-        </div>
       </div>
 
       {/* ── EVENTS TABLE ─────────────────────────────────────────────── */}

@@ -10,7 +10,8 @@ import {
   RefreshCw, Download, CheckCircle2, XCircle, Clock, FileSpreadsheet,
   AlertCircle, Sparkles, ChevronDown,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Badge, toast, Modal } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Badge, toast, Modal, PageHeader } from '../components/UI.jsx';
+import { Scale } from 'lucide-react';
 import {
   loadPendingAuditsForBilling, loadBillingExports, loadAwaitingApproval,
   exportPendingExcessWeights, markExportBilled, voidExport, downloadExport,
@@ -129,79 +130,23 @@ export default function WeightBilling({ carriers, isActive = true }) {
 
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1280 }}>
-      {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <div style={{
-        position: 'relative',
-        padding: '28px 32px',
-        marginBottom: 22,
-        borderRadius: 'var(--r-lg)',
-        background: '#0A0A0B',
-        color: '#fff',
-        overflow: 'hidden',
-        boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
-      }}>
-        {/* Decorative hex */}
-        <div style={{ position: 'absolute', left: -40, top: -40, width: 220, height: 220, opacity: .08, pointerEvents: 'none' }}>
-          <svg viewBox="0 0 64 64" fill="none">
-            <path d="M32 6 L54 18 L54 46 L32 58 L10 46 L10 18 Z" fill="#fff"/>
-          </svg>
-        </div>
-
-        <div style={{ position: 'relative', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 20 }}>
-          <div style={{ minWidth: 280 }}>
-            <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 8 }}>
-              LAMHA · WEIGHT BILLING
-            </div>
-            <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 800, color: '#fff', marginBottom: 6, lineHeight: 1.2 }}>
-              فوترة الأوزان
-            </h1>
-            <p style={{ color: 'rgba(255,255,255,.78)', fontSize: 13, margin: 0 }}>
-              اسحب أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف يجي بعمودين (رقم الشحنة + الوزن المفوتر) — نظامك المالي يطبّق قواعد كل عميل ويحسب الفرق.
-            </p>
-          </div>
-
-          {/* Pending counter */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: 11, opacity: .7, marginBottom: 4, letterSpacing: 1 }}>مراجعات جديدة</div>
-              <div style={{ fontSize: 44, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#fff', lineHeight: 1 }}>
-                {loading ? '…' : pendingStats.audits}
-              </div>
-              <div style={{ fontSize: 10, opacity: .55, marginTop: 6 }}>
-                {pendingStats.rows.toLocaleString('ar-SA')} شحنة · {pendingStats.carriers} شركة
-              </div>
-            </div>
-
-            <button
-              onClick={handlePull}
-              disabled={pulling || pendingStats.audits === 0}
-              style={{
-                background: pendingStats.audits === 0 ? 'rgba(255,255,255,.10)' : 'rgba(255,255,255,.18)',
-                border: '1.5px solid rgba(255,255,255,.32)',
-                color: '#fff',
-                padding: '14px 28px',
-                borderRadius: 12,
-                fontSize: 15,
-                fontWeight: 700,
-                cursor: pendingStats.audits === 0 ? 'not-allowed' : (pulling ? 'wait' : 'pointer'),
-                opacity: pendingStats.audits === 0 ? .5 : 1,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 10,
-                fontFamily: 'var(--font-sans)',
-                backdropFilter: 'blur(8px)',
-                transition: 'all .18s',
-                boxShadow: '0 4px 20px rgba(0,0,0,.18)',
-              }}
-            >
-              {pulling
-                ? <><Spinner size={18}/> جاري السحب...</>
-                : <><Sparkles size={18}/> سحب الأوزان الآن</>
-              }
-            </button>
-          </div>
-        </div>
-      </div>
+      <PageHeader
+        icon={<Scale size={22}/>}
+        title="فوترة الأوزان"
+        subtitle="اسحب أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
+        meta={loading ? null : `${pendingStats.audits} مراجعة جديدة · ${pendingStats.rows.toLocaleString('ar-SA')} شحنة · ${pendingStats.carriers} شركة`}
+        actions={
+          <Btn
+            size="md"
+            variant="accent"
+            icon={pulling ? <Spinner size={14}/> : <Sparkles size={14}/>}
+            onClick={handlePull}
+            disabled={pulling || pendingStats.audits === 0}
+          >
+            {pulling ? 'جاري السحب…' : 'سحب الأوزان الآن'}
+          </Btn>
+        }
+      />
 
       {/* ── AWAITING APPROVAL CARD ───────────────────────────────────── */}
       {awaiting.length > 0 && (

@@ -459,8 +459,11 @@ button:active { transform: scale(.97); }
   .topbar > div:first-of-type span { font-size: 12px !important; }
 
   /* Page padding adjustments — every page wraps content in a div with
-     padding ~28-32px. Override that to fit mobile screens. */
+     padding ~32-40px. Override that to fit mobile screens. */
   .page-content { overflow-y: auto; }
+  .page-content > div > div[style*="padding: '32px 40px"] {
+    padding: 18px 14px 40px !important;
+  }
   .page-content > div > div[style*="padding"] {
     padding-left: 14px !important;
     padding-right: 14px !important;
