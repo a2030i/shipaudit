@@ -457,20 +457,52 @@ export default function CustomerReceivables({ isActive = true }) {
   // Anomalies — computed once whenever data changes so the tab badge
   // count and the table render share the same source of truth.
   // Each entry carries an `anomaly` tag for the UI to colour-code.
+  //
+  // Check order matters: the FIRST matching rule wins (continue exits
+  // the loop body), so we put the most-severe technical errors first.
+  //   1. negative_wallet     — prepaid wallet < 0 → technical bug,
+  //                            shipping was allowed on credit somehow
+  //   2. prepaid_with_debt   — prepaid customer carrying invoices →
+  //                            should pay from wallet, technical error
+  //   3. active_with_debt    — customer is still actively shipping
+  //                            (last shipment ≤ 10d) but has debt →
+  //                            accumulating, call them today
+  //   4. postpaid_overdue    — postpaid invoice older than 60d →
+  //                            suspension candidate
+  //   5. inactive_with_debt  — deactivated store with open invoices →
+  //                            collect before closing the account
   const anomalies = useMemo(() => {
     if (!data?.activeCustomers) return [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
     const out = [];
     for (const c of data.activeCustomers) {
       const m = c.merchant;
       if (!m) continue;                                   // no merchant link → can't classify
+
+      // 1. Prepaid + negative wallet (technical / financial error)
+      if (m.billingType === 'دفع مسبق' && Number(m.walletBalance || 0) < -0.5) {
+        out.push({ ...c, anomaly: 'negative_wallet' });
+        continue;
+      }
+      // 2. Prepaid + outstanding debt (shouldn't happen on prepaid model)
       if (m.billingType === 'دفع مسبق' && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'prepaid_with_debt' });
         continue;
       }
+      // 3. Actively shipping + debt (recent shipment within 10 days)
+      if ((c.total || 0) > 0.5 && m.lastShipmentAt) {
+        const daysSinceShip = Math.floor((today - new Date(m.lastShipmentAt)) / 86_400_000);
+        if (daysSinceShip <= 10) {
+          out.push({ ...c, anomaly: 'active_with_debt', daysSinceShip });
+          continue;
+        }
+      }
+      // 4. Postpaid 60+ days overdue
       if (m.billingType === 'دفع لاحق' && (c.daysOutstanding || 0) > 60 && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'postpaid_overdue' });
         continue;
       }
+      // 5. Deactivated store + outstanding debt
       if (m.platformStatus === 'غير نشط' && (c.total || 0) > 0.5) {
         out.push({ ...c, anomaly: 'inactive_with_debt' });
         continue;
@@ -478,6 +510,21 @@ export default function CustomerReceivables({ isActive = true }) {
     }
     return out;
   }, [data]);
+
+  // Group anomalies by type for the breakdown banner.
+  const anomalyBreakdown = useMemo(() => {
+    const groups = {
+      negative_wallet:    [],
+      prepaid_with_debt:  [],
+      active_with_debt:   [],
+      postpaid_overdue:   [],
+      inactive_with_debt: [],
+    };
+    for (const c of anomalies) {
+      if (groups[c.anomaly]) groups[c.anomaly].push(c);
+    }
+    return groups;
+  }, [anomalies]);
 
   const visibleCustomers = useMemo(() => {
     if (!data) return [];
@@ -592,6 +639,9 @@ export default function CustomerReceivables({ isActive = true }) {
       'هاتف المتجر',
       'نوع الفوترة',
       'حالة المتجر',
+      'الرصيد في المحفظة',
+      'آخر شحنة',
+      'تنبيه',
       'حالة الربط',
       'دقة الربط',
     ];
@@ -616,6 +666,9 @@ export default function CustomerReceivables({ isActive = true }) {
         m?.phone || '',
         m?.billingType || '',
         m?.platformStatus || '',
+        m ? Number(m.walletBalance || 0).toFixed(2) : '',
+        m?.lastShipmentAt ? new Date(m.lastShipmentAt).toLocaleDateString('en-CA') : '',
+        c.anomaly ? anomalyLabel(c.anomaly) : '',
         linkStatusFor(c),
         c.merchantMatch?.confidence != null ? `${Math.round(c.merchantMatch.confidence * 100)}%` : '',
       ];
@@ -628,7 +681,7 @@ export default function CustomerReceivables({ isActive = true }) {
     const totalRowBase = bucketActive
       ? ['الإجمالي', sumSlice.toFixed(2), sumTotal.toFixed(2), '', '', '']
       : ['الإجمالي', sumTotal.toFixed(2), '', '', ''];
-    const totalRow = [...totalRowBase, '', '', '', '', '', `${linked} / ${visibleCustomers.length} مرتبط`, ''];
+    const totalRow = [...totalRowBase, '', '', '', '', '', '', '', '', `${linked} / ${visibleCustomers.length} مرتبط`, ''];
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], totalRow]);
     const colWidths = bucketActive
@@ -641,6 +694,9 @@ export default function CustomerReceivables({ isActive = true }) {
       { wch: 16 }, // phone
       { wch: 14 }, // billing
       { wch: 14 }, // status
+      { wch: 14 }, // wallet
+      { wch: 14 }, // last shipment
+      { wch: 26 }, // anomaly
       { wch: 18 }, // link status
       { wch: 10 }, // confidence
     ];
@@ -844,6 +900,54 @@ export default function CustomerReceivables({ isActive = true }) {
             </div>
           </Card>
 
+          {/* Anomalies breakdown — visible only when on the alerts tab.
+              Shows 5 type-tiles in a row, each clickable to filter the
+              table to just that anomaly type. Counts + total debt per
+              bucket so the operator can triage by financial impact. */}
+          {tab === 'anomalies' && anomalies.length > 0 && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+              gap: 10, marginBottom: 14,
+            }}>
+              {Object.entries(anomalyBreakdown).map(([key, list]) => {
+                const meta = ANOMALY_META[key];
+                if (!meta || list.length === 0) return null;
+                const total = list.reduce((s, c) => s + (Number(c.total) || 0), 0);
+                return (
+                  <div key={key} style={{
+                    background: 'var(--card)',
+                    borderRadius: 'var(--r-lg)',
+                    padding: '16px 18px',
+                    boxShadow: 'var(--shadow-sm)',
+                    borderRight: `3px solid ${meta.color}`,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {meta.label}
+                      </span>
+                      <span style={{
+                        minWidth: 24, height: 24, borderRadius: 999,
+                        background: `color-mix(in srgb, ${meta.color} 14%, transparent)`,
+                        color: meta.color,
+                        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 12, fontFamily: 'var(--font-mono)', fontWeight: 700,
+                        padding: '0 7px',
+                      }}>{list.length}</span>
+                    </div>
+                    <div style={{ fontSize: 18, fontFamily: 'var(--font-mono)', fontWeight: 700, color: meta.color, letterSpacing: -0.3, lineHeight: 1 }}>
+                      {fmt(total)}
+                      <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 4, fontWeight: 500 }}> ر.س</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
+                      {meta.hint}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Filter bar */}
           <Card style={{ padding: 12, marginBottom: 12 }}>
             <div style={{
@@ -957,9 +1061,11 @@ export default function CustomerReceivables({ isActive = true }) {
                     const isExcluded = c.status === 'excluded';
                     const m = c.merchant;
                     // Pick a tinted row background based on anomaly tag.
-                    const anomalyTint = c.anomaly === 'prepaid_with_debt' ? 'rgba(239,68,68,.06)'
-                      : c.anomaly === 'postpaid_overdue'  ? 'rgba(245,158,11,.06)'
-                      : c.anomaly === 'inactive_with_debt' ? 'rgba(122,130,196,.06)'
+                    const anomalyTint = c.anomaly === 'negative_wallet'    ? 'rgba(220,38,38,.08)'
+                      : c.anomaly === 'prepaid_with_debt'   ? 'rgba(239,68,68,.06)'
+                      : c.anomaly === 'active_with_debt'    ? 'rgba(249,115,22,.06)'
+                      : c.anomaly === 'postpaid_overdue'    ? 'rgba(245,158,11,.06)'
+                      : c.anomaly === 'inactive_with_debt'  ? 'rgba(122,130,196,.06)'
                       : null;
                     const baseBg = anomalyTint || (isExcluded ? 'rgba(45,212,191,.04)' : undefined);
                     return (
@@ -1173,9 +1279,11 @@ function miniChip(color) {
 }
 
 const ANOMALY_META = {
-  prepaid_with_debt:   { color: '#EF4444', label: '🚨 دفع مسبق وعليه دين',  hint: 'متجر يدفع من المحفظة لكن عليه فواتير — احتمال خطأ تقني، يحتاج تحقق' },
-  postpaid_overdue:    { color: '#F59E0B', label: '⏰ متأخر +60 يوم',         hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
-  inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',       hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
+  negative_wallet:     { color: '#DC2626', label: '💥 رصيد محفظة سالب',       hint: 'متجر دفع مسبق ورصيده ناقص — خطأ تقني، سُمح بشحن على الـ credit بدون رصيد' },
+  prepaid_with_debt:   { color: '#EF4444', label: '🚨 دفع مسبق وعليه دين',    hint: 'متجر يدفع من المحفظة لكن عليه فواتير — احتمال خطأ تقني، يحتاج تحقق' },
+  active_with_debt:    { color: '#F97316', label: '🔥 يشحن الآن وعليه دين',   hint: 'العميل لا يزال يشحن (آخر شحنة خلال 10 أيام) — اتصل عليه اليوم قبل ما يتراكم أكثر' },
+  postpaid_overdue:    { color: '#F59E0B', label: '⏰ متأخر +60 يوم',          hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
+  inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',        hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
 };
 function anomalyChip(kind) {
   const m = ANOMALY_META[kind]; if (!m) return {};
