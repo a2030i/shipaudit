@@ -2,69 +2,64 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
-// Variants are Lamha-branded:
-//   primary  → navy→teal gradient (the brand mark in motion)
-//   accent   → solid teal (CTAs, "save", "confirm")
-//   navy     → solid navy (secondary brand action)
-//   danger   → red (destructive)
-//   success  → teal (positive confirmations — same family as accent)
-//   gold     → amber (warnings / drafts)
-//   ghost    → transparent with border
-//   outline  → teal border, transparent fill (less weight than primary)
+// Flat, professional fills (no gradients) — gradient buttons read as toys
+// in dashboards, single-tone fills with a thin shadow read as enterprise.
+//   primary  → deep navy (top-level CTA: confirm, save, approve)
+//   accent   → teal (secondary positive action: complete, finalize)
+//   navy     → alias of primary for legacy call-sites
+//   danger   → red (destructive: delete, reject)
+//   success  → teal (alias of accent — kept so call-sites don't break)
+//   gold     → amber (warnings, drafts)
+//   ghost    → transparent + neutral border (low-emphasis)
+//   outline  → teal border, transparent fill (medium emphasis)
 const VARIANTS = {
   primary: {
-    background: 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
+    background: '#0F1235',
     color: '#fff',
-    border: '1px solid transparent',
-    boxShadow: '0 6px 20px rgba(27,30,84,.32), 0 2px 6px rgba(45,212,191,.18)',
+    border: '1px solid #0F1235',
+    boxShadow: '0 1px 2px rgba(15,18,53,.18)',
   },
   accent: {
-    background: 'linear-gradient(135deg, #2DD4BF, #14B8A6)',
-    color: '#0F1235',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(45,212,191,.32)',
+    background: '#14B8A6',
+    color: '#fff',
+    border: '1px solid #14B8A6',
+    boxShadow: '0 1px 2px rgba(20,184,166,.22)',
   },
   navy: {
-    background: 'linear-gradient(135deg, #1B1E54, #262A6E)',
+    background: '#1B1E54',
     color: '#fff',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(27,30,84,.28)',
+    border: '1px solid #1B1E54',
+    boxShadow: '0 1px 2px rgba(27,30,84,.20)',
   },
   danger: {
-    background: 'linear-gradient(135deg, #be123c, var(--red))',
+    background: '#DC2626',
     color: '#fff',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(248,113,113,.22)',
+    border: '1px solid #DC2626',
+    boxShadow: '0 1px 2px rgba(220,38,38,.20)',
   },
   success: {
-    background: 'linear-gradient(135deg, #14B8A6, #2DD4BF)',
+    background: '#14B8A6',
     color: '#fff',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(45,212,191,.28)',
+    border: '1px solid #14B8A6',
+    boxShadow: '0 1px 2px rgba(20,184,166,.22)',
   },
   gold: {
-    background: 'linear-gradient(135deg, var(--gold2), var(--gold))',
-    color: '#0a0f18',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(251,191,36,.22)',
+    background: '#F59E0B',
+    color: '#fff',
+    border: '1px solid #F59E0B',
+    boxShadow: '0 1px 2px rgba(245,158,11,.22)',
   },
   ghost: {
     background: 'transparent',
-    color: 'var(--muted)',
+    color: 'var(--text2)',
     border: '1px solid var(--border2)',
     boxShadow: 'none',
   },
   outline: {
     background: 'transparent',
     color: 'var(--accent)',
-    border: '1px solid rgba(45,212,191,.45)',
+    border: '1px solid var(--accent)',
     boxShadow: 'none',
-  },
-  danger: {
-    background: 'linear-gradient(135deg, #DC2626, #EF4444)',
-    color: '#fff',
-    border: '1px solid transparent',
-    boxShadow: '0 4px 16px rgba(239,68,68,.28)',
   },
 };
 
@@ -98,6 +93,10 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
 }
 
 // ─── Card ──────────────────────────────────────────────────────────────────────
+// Flat surface with subtle 1px border + soft shadow on hover. Drops the
+// borderTop accent strip — the colour gets relocated to the icon tile or
+// to a small chip inside the card, freeing the card itself to look like
+// a calm primitive.
 export function Card({ children, style = {}, accent, hover = false }) {
   const [hovered, setHovered] = useState(false);
   return (
@@ -106,12 +105,12 @@ export function Card({ children, style = {}, accent, hover = false }) {
       onMouseLeave={() => hover && setHovered(false)}
       style={{
         background: 'var(--card)',
-        border: `1px solid ${hovered && hover ? 'var(--border2)' : 'var(--border)'}`,
+        border: `1px solid var(--border)`,
         borderRadius: 'var(--r-lg)',
         padding: 20,
-        transition: 'all .2s',
-        transform: hovered && hover ? 'translateY(-2px)' : 'none',
-        boxShadow: hovered && hover ? 'var(--shadow-md)' : 'none',
+        transition: 'transform .18s, box-shadow .18s, border-color .18s',
+        transform: hovered && hover ? 'translateY(-1px)' : 'none',
+        boxShadow: hovered && hover ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         ...(accent ? { borderTop: `2px solid ${accent}` } : {}),
         ...style,
       }}
@@ -122,8 +121,12 @@ export function Card({ children, style = {}, accent, hover = false }) {
 }
 
 // ─── StatCard ──────────────────────────────────────────────────────────────────
+// Cleaner stat: tiny mono label up top, an optional tinted icon tile on
+// the right, a confident mono number, an optional sub-line. No accent
+// strip — colour shows through the icon tile and the number.
 export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
   const [hovered, setHovered] = useState(false);
+  const tone = color || 'var(--text)';
   return (
     <div
       onClick={onClick}
@@ -131,25 +134,25 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
       onMouseLeave={() => onClick && setHovered(false)}
       style={{
         background: 'var(--card)',
-        border: `1px solid ${hovered ? 'var(--border2)' : 'var(--border)'}`,
+        border: `1px solid var(--border)`,
         borderRadius: 'var(--r-lg)',
         padding: '16px 20px',
         cursor: onClick ? 'pointer' : 'default',
-        transition: 'all .2s',
-        transform: hovered && onClick ? 'translateY(-2px)' : 'none',
-        boxShadow: hovered && onClick ? 'var(--shadow-md)' : 'none',
+        transition: 'transform .18s, box-shadow .18s',
+        transform: hovered && onClick ? 'translateY(-1px)' : 'none',
+        boxShadow: hovered && onClick ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         minWidth: 130,
-        borderTop: `2px solid ${color}`,
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', letterSpacing: .5 }}>
+        <span style={{ color: 'var(--muted)', fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>
           {label}
         </span>
         {icon && (
           <div style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: `color-mix(in srgb, ${color} 14%, transparent)`,
+            width: 30, height: 30, borderRadius: 8,
+            background: `color-mix(in srgb, ${tone} 12%, transparent)`,
+            color: tone,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 13,
           }}>
@@ -157,20 +160,158 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
           </div>
         )}
       </div>
-      <div style={{ color, fontSize: 24, fontFamily: 'var(--font-mono)', fontWeight: 700, lineHeight: 1 }}>
+      <div style={{ color: tone, fontSize: 26, fontFamily: 'var(--font-mono)', fontWeight: 700, lineHeight: 1, letterSpacing: -0.5 }}>
         {value ?? '—'}
       </div>
-      {sub && <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 5 }}>{sub}</div>}
+      {sub && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>{sub}</div>}
       {trend !== undefined && (
-        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 5 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 6 }}>
           {trend > 0
             ? <TrendingUp size={11} color="var(--red)"/>
             : <TrendingDown size={11} color="var(--green)"/>
           }
-          <span style={{ color: trend > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
+          <span style={{ color: trend > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
             {trend > 0 ? '+' : ''}{trend.toFixed(2)} ر.س
           </span>
         </div>
+      )}
+    </div>
+  );
+}
+
+// ─── PageHero ─────────────────────────────────────────────────────────────────
+// Standardized page header for every screen. Replaces the per-page gradient
+// hero blocks (each one a different palette) with one calm primitive:
+//
+//   ┌──────────────────────────────────────────────────────────────────┐
+//   │  TAG          [title]                       [stat] [stat] [stat] │
+//   │               subtitle                                  [action] │
+//   └──────────────────────────────────────────────────────────────────┘
+//
+// Variants:
+//   • white  (default) — light page hero, 1px border, soft shadow
+//   • dark   — navy spotlight (use sparingly for screens that own a single
+//              critical metric, e.g. dashboard "balance owed" or
+//              receivables "total debt")
+//
+// Use <PageHero stats={...}> for KPI tiles on the right.
+// Use <PageHero actions={...}> for the action bar (buttons).
+export function PageHero({
+  tag, title, subtitle,
+  stats = [], actions, variant = 'white',
+  meta, icon,
+}) {
+  const dark = variant === 'dark';
+  return (
+    <div style={{
+      position: 'relative',
+      borderRadius: 'var(--r-lg)',
+      padding: '22px 28px',
+      marginBottom: 18,
+      background: dark ? '#0F1235' : 'var(--card)',
+      color: dark ? '#fff' : 'var(--text)',
+      border: dark ? '1px solid #0F1235' : '1px solid var(--border)',
+      boxShadow: dark
+        ? '0 10px 32px rgba(15,18,53,.20)'
+        : 'var(--shadow-sm)',
+      overflow: 'hidden',
+    }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: stats.length ? 'minmax(0,1fr) auto' : 'minmax(0,1fr) auto',
+        alignItems: 'center', gap: 24,
+      }}>
+        {/* Left: tag → title → subtitle */}
+        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 16 }}>
+          {icon && (
+            <div style={{
+              width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              background: dark ? 'rgba(255,255,255,.08)' : 'var(--accent-dim)',
+              color: dark ? '#fff' : 'var(--accent)',
+            }}>{icon}</div>
+          )}
+          <div style={{ minWidth: 0 }}>
+            {tag && (
+              <div style={{
+                fontSize: 10.5, fontFamily: 'var(--font-mono)',
+                letterSpacing: 2, textTransform: 'uppercase',
+                color: dark ? 'rgba(255,255,255,.55)' : 'var(--muted)',
+                fontWeight: 600, marginBottom: 4,
+              }}>{tag}</div>
+            )}
+            <h1 style={{
+              fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800,
+              color: dark ? '#fff' : 'var(--text)',
+              margin: 0, lineHeight: 1.2,
+            }}>{title}</h1>
+            {subtitle && (
+              <div style={{
+                fontSize: 12.5, marginTop: 4,
+                color: dark ? 'rgba(255,255,255,.65)' : 'var(--muted)',
+              }}>{subtitle}</div>
+            )}
+            {meta && (
+              <div style={{
+                fontSize: 10.5, marginTop: 6, fontFamily: 'var(--font-mono)',
+                color: dark ? 'rgba(255,255,255,.45)' : 'var(--muted2)',
+                letterSpacing: 0.5,
+              }}>{meta}</div>
+            )}
+          </div>
+        </div>
+
+        {/* Right: stat tiles + actions */}
+        {(stats.length > 0 || actions) && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            flexWrap: 'wrap', justifyContent: 'flex-end',
+          }}>
+            {stats.map((s, i) => (
+              <StatTile key={i} {...s} dark={dark}/>
+            ))}
+            {actions && (
+              <div style={{ display: 'flex', gap: 6, marginInlineStart: stats.length ? 6 : 0 }}>
+                {actions}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── StatTile ────────────────────────────────────────────────────────────────
+// Single KPI inside a PageHero. Compact, mono number, tiny label.
+// Stays legible on both light & dark hero backgrounds.
+export function StatTile({ label, value, hint, color, big, dark }) {
+  const valueColor = color || (dark ? '#fff' : 'var(--text)');
+  return (
+    <div style={{
+      paddingInline: 14, paddingBlock: 6,
+      borderInlineStart: dark
+        ? '1px solid rgba(255,255,255,.14)'
+        : '1px solid var(--border)',
+      minWidth: big ? 130 : 100,
+    }}>
+      <div style={{
+        fontSize: 9.5, opacity: dark ? .7 : 1,
+        fontFamily: 'var(--font-mono)', letterSpacing: 1.5,
+        textTransform: 'uppercase', fontWeight: 600,
+        color: dark ? 'rgba(255,255,255,.7)' : 'var(--muted)',
+        whiteSpace: 'nowrap',
+      }}>{label}</div>
+      <div style={{
+        fontSize: big ? 22 : 17, fontWeight: 800,
+        color: valueColor, fontFamily: 'var(--font-mono)',
+        marginTop: 3, whiteSpace: 'nowrap', letterSpacing: -0.3,
+      }}>{value ?? '—'}</div>
+      {hint && (
+        <div style={{
+          fontSize: 10, marginTop: 2,
+          color: dark ? 'rgba(255,255,255,.5)' : 'var(--muted)',
+        }}>{hint}</div>
       )}
     </div>
   );
@@ -254,8 +395,8 @@ export function Modal({ title, children, onClose, width = 520 }) {
     <div
       style={{
         position: 'fixed', inset: 0,
-        background: 'rgba(2,5,10,.82)',
-        backdropFilter: 'blur(6px)',
+        background: 'rgba(15,18,53,.45)',
+        backdropFilter: 'blur(4px)',
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
       }}
@@ -265,16 +406,16 @@ export function Modal({ title, children, onClose, width = 520 }) {
         className="scale-in"
         style={{
           background: 'var(--card)',
-          border: '1px solid var(--border2)',
+          border: '1px solid var(--border)',
           borderRadius: 'var(--r-xl)',
           padding: 28, width,
           maxWidth: '95vw', maxHeight: '90vh',
           overflowY: 'auto',
-          boxShadow: '0 24px 80px rgba(0,0,0,.6), 0 0 0 1px rgba(45,212,191,.12)',
+          boxShadow: 'var(--shadow-lg)',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-          <h3 style={{ color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 700 }}>
+          <h3 style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 800, letterSpacing: -0.2 }}>
             {title}
           </h3>
           <button
@@ -282,7 +423,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
             style={{
               background: 'var(--surface)', border: '1px solid var(--border)',
               color: 'var(--muted)', borderRadius: 8,
-              padding: '5px 8px', cursor: 'pointer',
+              padding: '6px 8px', cursor: 'pointer',
               display: 'flex', alignItems: 'center',
             }}
           >
