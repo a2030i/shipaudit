@@ -61,6 +61,7 @@ export default function CustomerWatch({ isActive = true }) {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [openCustomer, setOpenCustomer] = useState(null);
+  const [openAnomaly, setOpenAnomaly] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -402,7 +403,10 @@ export default function CustomerWatch({ isActive = true }) {
                   const Icon = meta.icon;
                   const total = list.reduce((s, c) => s + (Number(c.total) || 0), 0);
                   return (
-                    <Card key={key} hover style={{ padding: '16px 18px' }}>
+                    <Card key={key} hover onClick={() => setOpenAnomaly(key)} style={{
+                      padding: '16px 18px',
+                      cursor: 'pointer',
+                    }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
                         <div style={{
                           width: 32, height: 32, borderRadius: 9,
@@ -428,6 +432,12 @@ export default function CustomerWatch({ isActive = true }) {
                         <span style={{ fontSize: 11, color: 'var(--muted)', marginRight: 4, fontWeight: 500 }}> ر.س</span>
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>{meta.hint}</div>
+                      <div style={{
+                        fontSize: 11, color: meta.color, marginTop: 10,
+                        fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4,
+                      }}>
+                        اضغط لعرض القائمة <ArrowLeft size={12}/>
+                      </div>
                     </Card>
                   );
                 })}
@@ -571,7 +581,146 @@ export default function CustomerWatch({ isActive = true }) {
           onClose={() => setOpenCustomer(null)}
         />
       )}
+
+      {openAnomaly && data?.anomalies && (
+        <AnomalyListModal
+          kind={openAnomaly}
+          rows={data.anomalies[openAnomaly] || []}
+          onClose={() => setOpenAnomaly(null)}
+          onRowClick={(c) => {
+            setOpenCustomer({
+              kind: c.merchant ? 'customer' : 'phantom',
+              name: c.name,
+              customer: c,
+              merchant: c.merchant,
+            });
+            setOpenAnomaly(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ── AnomalyListModal ─────────────────────────────────────────────
+// Full list of customers/merchants in one anomaly bucket. Sorted by
+// financial impact (debt or wallet) descending. Each row clickable
+// → opens the drill-down modal. Includes Excel export of the bucket.
+function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
+  const meta = ANOMALY_META[kind];
+  if (!meta) return null;
+  const Icon = meta.icon;
+
+  const sortKeyFor = (r) =>
+    kind === 'negative_wallet'
+      ? Math.abs(Number(r.merchant?.walletBalance) || 0)
+      : Number(r.total) || 0;
+  const sorted = [...rows].sort((a, b) => sortKeyFor(b) - sortKeyFor(a));
+  const total = rows.reduce((s, c) =>
+    s + (kind === 'negative_wallet'
+      ? Math.abs(Number(c.merchant?.walletBalance) || 0)
+      : Number(c.total) || 0), 0);
+
+  const handleExport = () => {
+    if (!rows.length) return;
+    const headers = kind === 'negative_wallet'
+      ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'نوع الفوترة', 'حالة المنصّة', 'الدين الحالي']
+      : ['اسم العميل', 'اسم المتجر', 'رقم المتجر', 'الهاتف', 'المديونية', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام'];
+    const xRows = sorted.map(r => kind === 'negative_wallet'
+      ? [r.merchant?.storeName || r.name, r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.merchant?.walletBalance || 0).toFixed(2), r.merchant?.billingType || '', r.merchant?.platformStatus || '', Number(r.total || 0).toFixed(2)]
+      : [r.name, r.merchant?.storeName || '', r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.total || 0).toFixed(2), r.invoiceCount || 0, r.oldestInvoiceDate || '', r.daysOutstanding || '']);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, meta.label.slice(0, 28));
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${meta.label}_${dateStr}.xlsx`);
+    toast(`تم تصدير ${rows.length} صف`, 'success');
+  };
+
+  return (
+    <Modal title={`${meta.label} — ${rows.length} عميل`} onClose={onClose} width={820}>
+      {/* Header strip with total + export */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 14,
+        padding: '14px 16px', marginBottom: 14,
+        background: `color-mix(in srgb, ${meta.color} 8%, transparent)`,
+        borderRadius: 12,
+      }}>
+        <div style={{
+          width: 40, height: 40, borderRadius: 10,
+          background: `color-mix(in srgb, ${meta.color} 16%, transparent)`,
+          color: meta.color,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Icon size={18}/></div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 12, color: 'var(--muted)' }}>{meta.hint}</div>
+          <div style={{
+            fontSize: 22, fontFamily: 'var(--font-mono)', fontWeight: 700,
+            color: meta.color, letterSpacing: -0.4, marginTop: 4,
+          }}>
+            {fmt(total)} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
+          </div>
+        </div>
+        <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={handleExport}>
+          تصدير Excel
+        </Btn>
+      </div>
+
+      {/* Scrollable list */}
+      <div style={{
+        border: '1px solid var(--border)', borderRadius: 12,
+        maxHeight: 480, overflowY: 'auto',
+      }}>
+        {sorted.map((c, i) => {
+          const m = c.merchant;
+          const value = kind === 'negative_wallet'
+            ? Number(m?.walletBalance || 0)
+            : Number(c.total || 0);
+          return (
+            <div key={(m?.storeId || c.name) + i} onClick={() => onRowClick(c)} style={{
+              display: 'grid',
+              gridTemplateColumns: '28px 1fr auto auto',
+              gap: 12, padding: '12px 16px',
+              borderBottom: i === sorted.length - 1 ? 'none' : '1px solid var(--border)',
+              alignItems: 'center',
+              cursor: 'pointer',
+              transition: 'background .12s',
+            }}
+            onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+            onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+              <span style={{ fontSize: 10.5, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', fontWeight: 700, textAlign: 'center' }}>
+                {i + 1}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {m?.storeName || c.name}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontFamily: m?.phone ? 'var(--font-mono)' : 'inherit', direction: m?.phone ? 'ltr' : 'rtl', textAlign: 'right' }}>
+                  {m?.phone ? m.phone : m?.storeId ? m.storeId : `${c.invoiceCount || 0} فاتورة`}
+                </div>
+              </div>
+              <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: meta.color, fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
+                  {fmtCompact(value)}
+                  <span style={{ fontSize: 10, color: 'var(--muted)', marginRight: 3, fontWeight: 500 }}> ر.س</span>
+                </div>
+                {kind !== 'negative_wallet' && c.daysOutstanding != null && (
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                    {c.daysOutstanding}ي متأخر
+                  </div>
+                )}
+                {kind === 'negative_wallet' && m?.lastShipmentAt && (
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
+                    آخر شحنة {daysAgo(m.lastShipmentAt)}ي
+                  </div>
+                )}
+              </div>
+              <ArrowLeft size={14} color="var(--muted2)"/>
+            </div>
+          );
+        })}
+      </div>
+    </Modal>
   );
 }
 
