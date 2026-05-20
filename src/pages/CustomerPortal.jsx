@@ -502,25 +502,35 @@ export default function CustomerPortal() {
               />
             </div>
 
-            {/* Payment method buttons */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <button
-                onClick={handleOnlinePayment}
-                disabled={submitting || paymentAmount <= 0}
-                style={{
-                  padding: '16px', borderRadius: 14,
-                  background: '#10B981', color: '#fff', border: 'none',
-                  fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
-                  fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
-                  alignItems: 'center', gap: 4,
-                  opacity: paymentAmount <= 0 ? 0.4 : 1,
-                  boxShadow: '0 4px 14px rgba(16,185,129,.22)',
-                }}
-              >
-                <CreditCard size={20}/>
-                <span>دفع أون لاين</span>
-                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.85 }}>mada · Visa · Apple Pay</span>
-              </button>
+            {/* Payment method buttons — online button is shown only
+                when Moyasar is configured. Otherwise bank transfer
+                takes the full row so the customer doesn't see an
+                "online" option that silently falls back to "we'll
+                contact you" (current bug the operator caught). */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: MOYASAR_PK ? '1fr 1fr' : '1fr',
+              gap: 10,
+            }}>
+              {MOYASAR_PK && (
+                <button
+                  onClick={handleOnlinePayment}
+                  disabled={submitting || paymentAmount <= 0}
+                  style={{
+                    padding: '16px', borderRadius: 14,
+                    background: '#10B981', color: '#fff', border: 'none',
+                    fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
+                    fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
+                    alignItems: 'center', gap: 4,
+                    opacity: paymentAmount <= 0 ? 0.4 : 1,
+                    boxShadow: '0 4px 14px rgba(16,185,129,.22)',
+                  }}
+                >
+                  <CreditCard size={20}/>
+                  <span>دفع أون لاين</span>
+                  <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.85 }}>mada · Visa · Apple Pay</span>
+                </button>
+              )}
               <button
                 onClick={handleBankTransfer}
                 disabled={submitting || paymentAmount <= 0}
@@ -536,7 +546,9 @@ export default function CustomerPortal() {
               >
                 <ShoppingBag size={20}/>
                 <span>حوالة بنكية</span>
-                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.75 }}>تحويل بنكي يدوي</span>
+                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.75 }}>
+                  {MOYASAR_PK ? 'تحويل بنكي يدوي' : 'الطريقة الوحيدة المتاحة حالياً'}
+                </span>
               </button>
             </div>
 
