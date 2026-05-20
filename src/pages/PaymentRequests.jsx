@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import {
   listPaymentRequests, updatePaymentRequest, deletePaymentRequest,
-  STATUS_META,
+  STATUS_META, receiptUrl,
 } from '../lib/paymentRequestsService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
@@ -92,9 +92,13 @@ export default function PaymentRequests({ isActive = true }) {
         : r.handled_at
           ? fmtDate(r.handled_at)
           : fmtDate(r.created_at),
-      r.moyasar_payment_id
-        ? `Moyasar · ${r.payment_method || 'card'}`
-        : 'تحويل / يدوي',
+      r.payment_type === 'bank_transfer'
+        ? 'حوالة بنكية' + (r.receipt_path ? ' + إيصال' : '')
+        : r.moyasar_payment_id
+          ? `Moyasar · ${r.payment_method || 'card'}`
+          : r.payment_type === 'online'
+            ? 'أون لاين (لم يكتمل)'
+            : 'تحويل / يدوي',
       r.phone || '',
       STATUS_META[r.status]?.label || r.status,
     ]);
@@ -214,12 +218,33 @@ export default function PaymentRequests({ isActive = true }) {
                     <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {r.store_name || r.customer_name || '—'}
                     </span>
-                    {r.moyasar_payment_id && (
-                      <span title="دفع عبر Moyasar" style={{
+                    {r.payment_type === 'bank_transfer' && (
+                      <span title="حوالة بنكية" style={{
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
+                        background: 'rgba(59,130,246,.14)', color: '#3B82F6',
+                        fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>🏦 حوالة</span>
+                    )}
+                    {r.payment_type === 'online' && (
+                      <span title="دفع أون لاين" style={{
                         fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
                         background: 'rgba(16,185,129,.14)', color: '#10B981',
                         fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
-                      }}>💳 ميسر</span>
+                      }}>💳 أون لاين</span>
+                    )}
+                    {r.is_partial && (
+                      <span title="سداد جزئي" style={{
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
+                        background: 'rgba(245,158,11,.14)', color: '#F59E0B',
+                        fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>جزئي</span>
+                    )}
+                    {r.receipt_path && (
+                      <span title="فيه إيصال مرفق" style={{
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
+                        background: 'rgba(139,92,246,.14)', color: '#8B5CF6',
+                        fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>📎 إيصال</span>
                     )}
                   </div>
                   <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontFamily: 'var(--font-mono)', flexWrap: 'wrap' }}>
@@ -410,6 +435,63 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           </a>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, marginInlineStart: 38 }}>
             ⚠ تحقّق من حالة الدفع في Moyasar قبل ضغط "تم السداد"
+          </div>
+        </div>
+      )}
+
+      {/* Bank transfer receipt — when the customer chose the bank
+          transfer path, they uploaded a receipt. Show it inline as a
+          preview when it's an image, otherwise a link. Verify the
+          transfer in your bank statement before تم السداد. */}
+      {row.payment_type === 'bank_transfer' && (
+        <div style={{
+          padding: '14px 16px', marginBottom: 14,
+          background: 'rgba(59,130,246,.06)',
+          border: '1px solid rgba(59,130,246,.20)',
+          borderRadius: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'rgba(59,130,246,.14)', color: '#3B82F6',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>🏦</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              العميل حوّل بنكياً
+            </div>
+          </div>
+          {row.receipt_path ? (() => {
+            const url = receiptUrl(row.receipt_path);
+            const isPdf = /\.pdf$/i.test(row.receipt_path);
+            return (
+              <div style={{ marginInlineStart: 38 }}>
+                {isPdf ? (
+                  <a href={url} target="_blank" rel="noopener noreferrer" style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                    padding: '8px 14px', borderRadius: 999,
+                    background: '#3B82F6', color: '#fff', textDecoration: 'none',
+                    fontSize: 12.5, fontWeight: 600,
+                  }}>
+                    📎 افتح إيصال التحويل (PDF) ↗
+                  </a>
+                ) : (
+                  <a href={url} target="_blank" rel="noopener noreferrer" style={{
+                    display: 'block', borderRadius: 10, overflow: 'hidden',
+                    border: '1px solid rgba(59,130,246,.28)',
+                    maxWidth: 320,
+                  }}>
+                    <img src={url} alt="إيصال" style={{ width: '100%', height: 'auto', display: 'block' }}/>
+                  </a>
+                )}
+              </div>
+            );
+          })() : (
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 38 }}>
+              لم يُرفق إيصال
+            </div>
+          )}
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 10, marginInlineStart: 38 }}>
+            ⚠ تحقّق من وصول التحويل في كشف البنك قبل ضغط "تم السداد"
           </div>
         </div>
       )}

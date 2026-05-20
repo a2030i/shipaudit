@@ -15,7 +15,15 @@ import {
 } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import { Spinner, toast, ToastContainer } from '../components/UI.jsx';
-import { portalLookup, submitPaymentRequest, attachMoyasarPayment } from '../lib/paymentRequestsService.js';
+import { portalLookup, submitPaymentRequest, attachMoyasarPayment, uploadReceipt } from '../lib/paymentRequestsService.js';
+import { DropZone } from '../components/UI.jsx';
+
+// Bank transfer destination — shown to customers who pick "حوالة بنكية".
+const BANK_INFO = {
+  bank:        'مصرف الإنماء',
+  iban:        'SA0605000068204891807000',
+  beneficiary: 'شركة فور تيك لتقنية المعلومات',
+};
 
 // Moyasar publishable key — safe to expose, only allows initiating
 // payments (no balance / refund / customer data access). Set in
@@ -71,10 +79,12 @@ export default function CustomerPortal() {
   const [lookup, setLookup] = useState(null);    // { phone, stores: [...] }
   const [loading, setLoading] = useState(false);
   const [selectedStore, setSelectedStore] = useState(null);
-  const [selectedInvoices, setSelectedInvoices] = useState(new Set());
+  const [payMode, setPayMode] = useState('full');         // 'full' | 'partial'
+  const [partialAmount, setPartialAmount] = useState(''); // user-entered for partial
   const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
+  const [bankModalOpen, setBankModalOpen] = useState(false);
 
   // ── Step 1: phone lookup ────────────────────────────────────
   const handleLookup = async () => {
@@ -109,56 +119,91 @@ export default function CustomerPortal() {
   // ── Step 2 → 3: pick a store ────────────────────────────────
   const openStore = (store) => {
     setSelectedStore(store);
-    setSelectedInvoices(new Set());
+    setPayMode('full');
+    setPartialAmount('');
     setStep('invoices');
   };
 
-  // ── Step 3 helpers ──────────────────────────────────────────
-  const toggleInvoice = (invId) => {
-    setSelectedInvoices(prev => {
-      const next = new Set(prev);
-      if (next.has(invId)) next.delete(invId);
-      else next.add(invId);
-      return next;
-    });
-  };
-  const toggleAll = () => {
-    if (!selectedStore?.invoices) return;
-    if (selectedInvoices.size === selectedStore.invoices.length) {
-      setSelectedInvoices(new Set());
-    } else {
-      setSelectedInvoices(new Set(selectedStore.invoices.map(i => i.id)));
-    }
-  };
-  const selectedTotal = useMemo(() => {
-    if (!selectedStore?.invoices) return 0;
-    return selectedStore.invoices
-      .filter(i => selectedInvoices.has(i.id))
-      .reduce((s, i) => s + (Number(i.amount) || 0), 0);
-  }, [selectedStore, selectedInvoices]);
+  // The headline amount the customer ends up sending — full balance
+  // or a partial figure they typed in.
+  const paymentAmount = useMemo(() => {
+    if (!selectedStore) return 0;
+    if (payMode === 'full') return Number(selectedStore.total_due) || 0;
+    const v = parseFloat(partialAmount);
+    return Number.isFinite(v) && v > 0 ? v : 0;
+  }, [selectedStore, payMode, partialAmount]);
 
-  // ── Step 4: submit ──────────────────────────────────────────
-  const handleSubmit = async () => {
-    if (!selectedInvoices.size) return toast('اختر فاتورة على الأقل', 'warn');
+  // Common snapshot helper — we always include the FULL invoice list
+  // as a snapshot on the request so the admin sees what existed at
+  // payment time (even when the customer chose "partial" or "all").
+  const buildRefs = () => (selectedStore?.invoices || []).map(i => ({
+    id: i.id, date: i.date, amount: Number(i.amount) || 0,
+  }));
+
+  const validateAmount = () => {
+    if (!paymentAmount || paymentAmount <= 0) {
+      toast(payMode === 'partial' ? 'اكتب المبلغ المراد سداده' : 'لا يوجد مبلغ للسداد', 'warn');
+      return false;
+    }
+    return true;
+  };
+
+  // Online flow → create the request + route to Moyasar.
+  const handleOnlinePayment = async () => {
+    if (!validateAmount()) return;
     setSubmitting(true);
     try {
-      const refs = selectedStore.invoices
-        .filter(i => selectedInvoices.has(i.id))
-        .map(i => ({ id: i.id, date: i.date, amount: Number(i.amount) || 0 }));
       const res = await submitPaymentRequest({
         phone:         lookup.phone,
         customerName:  selectedStore.customer_name || null,
         storeId:       selectedStore.store_id,
         storeName:     selectedStore.store_name,
-        amountTotal:   selectedTotal,
-        invoiceCount:  refs.length,
-        invoiceRefs:   refs,
+        amountTotal:   paymentAmount,
+        invoiceCount:  (selectedStore.invoices || []).length,
+        invoiceRefs:   buildRefs(),
         notes,
+        paymentType:   'online',
+        isPartial:     payMode === 'partial',
       });
       setSubmitResult(res);
-      // If Moyasar is configured → offer immediate online payment.
-      // Otherwise the customer waits for the accountant.
       setStep(MOYASAR_PK ? 'pay' : 'done');
+    } catch (e) {
+      toast(`فشل الإرسال: ${e.message}`, 'error');
+    }
+    setSubmitting(false);
+  };
+
+  // Bank transfer flow → open the modal which handles the rest.
+  const handleBankTransfer = () => {
+    if (!validateAmount()) return;
+    setBankModalOpen(true);
+  };
+
+  // Submit after the customer uploads a receipt in the bank modal.
+  const handleBankSubmit = async (receiptFile) => {
+    setSubmitting(true);
+    try {
+      let receiptPath = null;
+      if (receiptFile) {
+        const upload = await uploadReceipt(receiptFile);
+        receiptPath = upload.path;
+      }
+      const res = await submitPaymentRequest({
+        phone:         lookup.phone,
+        customerName:  selectedStore.customer_name || null,
+        storeId:       selectedStore.store_id,
+        storeName:     selectedStore.store_name,
+        amountTotal:   paymentAmount,
+        invoiceCount:  (selectedStore.invoices || []).length,
+        invoiceRefs:   buildRefs(),
+        notes,
+        paymentType:   'bank_transfer',
+        receiptPath,
+        isPartial:     payMode === 'partial',
+      });
+      setSubmitResult(res);
+      setBankModalOpen(false);
+      setStep('done');
     } catch (e) {
       toast(`فشل الإرسال: ${e.message}`, 'error');
     }
@@ -339,6 +384,7 @@ export default function CustomerPortal() {
               <ArrowLeft size={14}/> اختر متجراً آخر
             </button>
 
+            {/* Store summary */}
             <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 3px rgba(24,24,27,.04)', marginBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
@@ -355,102 +401,148 @@ export default function CustomerPortal() {
               </div>
             </div>
 
-            <div style={{ background: '#fff', borderRadius: 16, padding: 0, boxShadow: '0 1px 3px rgba(24,24,27,.04)', overflow: 'hidden' }}>
-              <div style={{
-                padding: '14px 18px', borderBottom: '1px solid #F4F4F5',
-                display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
-              }}>
-                <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#18181B', margin: 0 }}>الفواتير</h3>
-                <button onClick={toggleAll} style={{
-                  background: 'transparent', border: '1px solid #E4E4E7', color: '#3F3F46',
-                  padding: '6px 12px', borderRadius: 999, fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  fontFamily: 'inherit',
-                }}>
-                  {selectedInvoices.size === (selectedStore.invoices || []).length ? 'إلغاء التحديد' : 'تحديد الكل'}
-                </button>
+            {/* Read-only invoice list */}
+            <div style={{ background: '#fff', borderRadius: 16, padding: 0, boxShadow: '0 1px 3px rgba(24,24,27,.04)', overflow: 'hidden', marginBottom: 14 }}>
+              <div style={{ padding: '14px 18px', borderBottom: '1px solid #F4F4F5' }}>
+                <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#18181B', margin: 0 }}>الفواتير المعلّقة</h3>
               </div>
-              <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+              <div style={{ maxHeight: 280, overflowY: 'auto' }}>
                 {(selectedStore.invoices || []).length === 0 ? (
                   <div style={{ padding: 32, textAlign: 'center', color: '#71717A', fontSize: 13 }}>
                     لا توجد فواتير معلّقة على هذا المتجر — كل شيء مسدّد
                   </div>
-                ) : (selectedStore.invoices || []).map((inv, i, arr) => {
-                  const checked = selectedInvoices.has(inv.id);
-                  return (
-                    <label
-                      key={inv.id}
-                      style={{
-                        display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 14,
-                        padding: '14px 18px', alignItems: 'center', cursor: 'pointer',
-                        borderBottom: i === arr.length - 1 ? 'none' : '1px solid #F4F4F5',
-                        background: checked ? 'rgba(16,185,129,.04)' : 'transparent',
-                        transition: 'background .12s',
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleInvoice(inv.id)}
-                        style={{ width: 18, height: 18, cursor: 'pointer', accentColor: '#10B981' }}
-                      />
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', fontFamily: 'var(--font-mono)' }}>
-                          {fmtDate(inv.date)}
-                        </div>
-                        <div style={{ fontSize: 11, color: '#71717A', marginTop: 1 }}>
-                          فاتورة #{String(inv.id).slice(0, 8)}
-                        </div>
+                ) : (selectedStore.invoices || []).map((inv, i, arr) => (
+                  <div
+                    key={inv.id}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '1fr auto', gap: 14,
+                      padding: '12px 18px', alignItems: 'center',
+                      borderBottom: i === arr.length - 1 ? 'none' : '1px solid #F4F4F5',
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', fontFamily: 'var(--font-mono)' }}>
+                        {fmtDate(inv.date)}
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
-                        {fmt(inv.amount)} <span style={{ fontSize: 10, color: '#A1A1AA', fontWeight: 500 }}>ر.س</span>
+                      <div style={{ fontSize: 11, color: '#71717A', marginTop: 1 }}>
+                        فاتورة #{String(inv.id).slice(0, 8)}
                       </div>
-                    </label>
-                  );
-                })}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
+                      {fmt(inv.amount)} <span style={{ fontSize: 10, color: '#A1A1AA', fontWeight: 500 }}>ر.س</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {selectedInvoices.size > 0 && (
-              <div style={{
-                position: 'sticky', bottom: 16, marginTop: 16,
-                background: '#0A0A0B', borderRadius: 16, padding: '18px 20px',
-                boxShadow: '0 16px 40px rgba(0,0,0,.18)',
-                color: '#fff',
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 10 }}>
-                  <div>
-                    <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
-                      مجموع المختار · {selectedInvoices.size} فاتورة
-                    </div>
-                    <div style={{ fontSize: 26, fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: -0.5, marginTop: 4 }}>
-                      {fmt(selectedTotal)} <span style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', fontWeight: 500 }}>ر.س</span>
-                    </div>
-                  </div>
-                </div>
-                <textarea
-                  value={notes}
-                  onChange={e => setNotes(e.target.value)}
-                  rows={2}
-                  placeholder="ملاحظة (اختياري) — مثلاً: سأحوّل اليوم بنكي"
-                  style={{
-                    width: '100%', padding: '10px 12px', borderRadius: 10,
-                    background: 'rgba(255,255,255,.06)', border: '1px solid rgba(255,255,255,.10)',
-                    color: '#fff', fontSize: 13, fontFamily: 'inherit',
-                    resize: 'vertical', marginBottom: 12,
-                  }}
-                />
+            {/* Amount mode selector */}
+            <div style={{ background: '#fff', borderRadius: 16, padding: '16px 18px', boxShadow: '0 1px 3px rgba(24,24,27,.04)', marginBottom: 14 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 12 }}>
+                المبلغ المراد سداده
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
                 <button
-                  onClick={handleSubmit}
-                  disabled={submitting}
+                  onClick={() => setPayMode('full')}
                   style={{
-                    width: '100%', padding: '14px', borderRadius: 12,
-                    background: '#10B981', color: '#fff', border: 'none',
-                    fontSize: 15, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
-                    fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+                    padding: '14px 14px', borderRadius: 12, textAlign: 'center',
+                    border: `2px solid ${payMode === 'full' ? '#10B981' : '#E4E4E7'}`,
+                    background: payMode === 'full' ? 'rgba(16,185,129,.06)' : '#fff',
+                    cursor: 'pointer', fontFamily: 'inherit',
                   }}
                 >
-                  {submitting ? <Loader size={18} className="spin"/> : <><Send size={16}/> إرسال طلب السداد</>}
+                  <div style={{ fontSize: 12, color: '#71717A', fontWeight: 600, marginBottom: 4 }}>
+                    سداد الكل
+                  </div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: payMode === 'full' ? '#10B981' : '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
+                    {fmt(selectedStore.total_due)} <span style={{ fontSize: 11, color: '#A1A1AA' }}>ر.س</span>
+                  </div>
                 </button>
+                <button
+                  onClick={() => setPayMode('partial')}
+                  style={{
+                    padding: '12px 14px', borderRadius: 12, textAlign: 'center',
+                    border: `2px solid ${payMode === 'partial' ? '#10B981' : '#E4E4E7'}`,
+                    background: payMode === 'partial' ? 'rgba(16,185,129,.06)' : '#fff',
+                    cursor: 'pointer', fontFamily: 'inherit',
+                  }}
+                >
+                  <div style={{ fontSize: 12, color: '#71717A', fontWeight: 600, marginBottom: 6 }}>
+                    سداد جزئي
+                  </div>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    min="0"
+                    step="0.01"
+                    value={partialAmount}
+                    onChange={e => { setPayMode('partial'); setPartialAmount(e.target.value); }}
+                    onClick={e => e.stopPropagation()}
+                    placeholder="مثلاً 200"
+                    style={{
+                      width: '100%', padding: '6px 10px', borderRadius: 8, textAlign: 'center',
+                      fontSize: 15, fontWeight: 700, fontFamily: 'var(--font-mono)',
+                      border: '1px solid #E4E4E7', direction: 'ltr',
+                    }}
+                  />
+                </button>
+              </div>
+
+              {/* Optional note */}
+              <textarea
+                value={notes}
+                onChange={e => setNotes(e.target.value)}
+                rows={2}
+                placeholder="ملاحظة (اختياري) — مثلاً: سأحوّل اليوم بنكي"
+                style={{
+                  width: '100%', padding: '10px 12px', borderRadius: 10,
+                  fontSize: 13, fontFamily: 'inherit', resize: 'vertical',
+                  marginTop: 12, border: '1px solid #E4E4E7',
+                }}
+              />
+            </div>
+
+            {/* Payment method buttons */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <button
+                onClick={handleOnlinePayment}
+                disabled={submitting || paymentAmount <= 0}
+                style={{
+                  padding: '16px', borderRadius: 14,
+                  background: '#10B981', color: '#fff', border: 'none',
+                  fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
+                  fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 4,
+                  opacity: paymentAmount <= 0 ? 0.4 : 1,
+                  boxShadow: '0 4px 14px rgba(16,185,129,.22)',
+                }}
+              >
+                <CreditCard size={20}/>
+                <span>دفع أون لاين</span>
+                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.85 }}>mada · Visa · Apple Pay</span>
+              </button>
+              <button
+                onClick={handleBankTransfer}
+                disabled={submitting || paymentAmount <= 0}
+                style={{
+                  padding: '16px', borderRadius: 14,
+                  background: '#0A0A0B', color: '#fff', border: 'none',
+                  fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
+                  fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
+                  alignItems: 'center', gap: 4,
+                  opacity: paymentAmount <= 0 ? 0.4 : 1,
+                  boxShadow: '0 4px 14px rgba(0,0,0,.18)',
+                }}
+              >
+                <ShoppingBag size={20}/>
+                <span>حوالة بنكية</span>
+                <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.75 }}>تحويل بنكي يدوي</span>
+              </button>
+            </div>
+
+            {paymentAmount <= 0 && payMode === 'partial' && (
+              <div style={{ textAlign: 'center', fontSize: 12, color: '#71717A', marginTop: 10 }}>
+                اكتب المبلغ المراد سداده في خانة "سداد جزئي"
               </div>
             )}
           </div>
@@ -514,7 +606,169 @@ export default function CustomerPortal() {
         )}
       </div>
 
+      {bankModalOpen && selectedStore && (
+        <BankTransferModal
+          amount={paymentAmount}
+          submitting={submitting}
+          onClose={() => setBankModalOpen(false)}
+          onSubmit={handleBankSubmit}
+        />
+      )}
+
       <ToastContainer/>
+    </div>
+  );
+}
+
+// ── Bank transfer modal ─────────────────────────────────────────
+// Displays the bank account info + accepts a receipt upload (image
+// or PDF). On submit, uploads to the receipts bucket then triggers
+// the request creation in the parent (handleBankSubmit).
+function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
+  const [file, setFile] = useState(null);
+  const [copied, setCopied] = useState('');
+
+  const copyToClipboard = async (text, key) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(key);
+      setTimeout(() => setCopied(''), 1800);
+    } catch {
+      toast('فشل النسخ', 'error');
+    }
+  };
+
+  const Row = ({ label, value, copyKey }) => (
+    <div style={{
+      display: 'grid', gridTemplateColumns: '1fr auto auto', gap: 10, alignItems: 'center',
+      padding: '12px 14px',
+      background: '#FAFAFA', borderRadius: 12, marginBottom: 8,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 11, color: '#71717A', fontWeight: 600, marginBottom: 3 }}>{label}</div>
+        <div style={{
+          fontSize: 14, fontWeight: 700, color: '#18181B',
+          fontFamily: copyKey === 'iban' ? 'var(--font-mono)' : 'inherit',
+          direction: copyKey === 'iban' ? 'ltr' : 'rtl',
+          textAlign: 'right',
+          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        }}>
+          {value}
+        </div>
+      </div>
+      <button
+        onClick={() => copyToClipboard(value, copyKey)}
+        style={{
+          background: copied === copyKey ? '#10B981' : '#fff',
+          color: copied === copyKey ? '#fff' : '#3F3F46',
+          border: `1px solid ${copied === copyKey ? '#10B981' : '#E4E4E7'}`,
+          padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
+          cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
+        }}
+      >
+        {copied === copyKey ? '✓ نُسخ' : 'نسخ'}
+      </button>
+    </div>
+  );
+
+  return (
+    <div style={{
+      position: 'fixed', inset: 0, background: 'rgba(15,18,53,.45)',
+      backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      zIndex: 1000, padding: 16,
+    }}
+    onClick={e => e.target === e.currentTarget && onClose()}>
+      <div style={{
+        background: '#fff', borderRadius: 20, padding: 24,
+        width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto',
+        boxShadow: '0 24px 56px rgba(0,0,0,.24)',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 18 }}>
+          <h2 style={{ fontSize: 18, fontWeight: 800, color: '#18181B', margin: 0, letterSpacing: -0.3 }}>
+            حوالة بنكية
+          </h2>
+          <button onClick={onClose} style={{
+            background: '#F4F4F5', border: 'none', color: '#3F3F46',
+            width: 32, height: 32, borderRadius: 8, cursor: 'pointer',
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+          }}>✕</button>
+        </div>
+
+        {/* Amount headline */}
+        <div style={{
+          background: '#0A0A0B', color: '#fff',
+          borderRadius: 14, padding: '16px 18px', marginBottom: 16,
+        }}>
+          <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>
+            مبلغ التحويل
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: -0.6 }}>
+            {fmt(amount)} <span style={{ fontSize: 13, color: 'rgba(255,255,255,.5)', fontWeight: 500 }}>ر.س</span>
+          </div>
+        </div>
+
+        {/* Bank details */}
+        <div style={{ marginBottom: 16 }}>
+          <Row label="البنك"      value={BANK_INFO.bank}        copyKey="bank"/>
+          <Row label="رقم الآيبان" value={BANK_INFO.iban}        copyKey="iban"/>
+          <Row label="المستفيد"   value={BANK_INFO.beneficiary} copyKey="ben"/>
+        </div>
+
+        {/* Receipt upload */}
+        <div style={{ marginBottom: 16 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: '#18181B', marginBottom: 8 }}>
+            إيصال التحويل
+          </div>
+          {file ? (
+            <div style={{
+              padding: '14px 16px', borderRadius: 12,
+              background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.28)',
+              display: 'flex', alignItems: 'center', gap: 12,
+            }}>
+              <CheckCircle2 size={20} color="#10B981"/>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {file.name}
+                </div>
+                <div style={{ fontSize: 11, color: '#71717A', marginTop: 2 }}>
+                  {(file.size / 1024).toFixed(0)} كيلوبايت
+                </div>
+              </div>
+              <button onClick={() => setFile(null)} style={{
+                background: 'transparent', border: 'none', color: '#71717A',
+                cursor: 'pointer', padding: 4,
+              }}>✕</button>
+            </div>
+          ) : (
+            <DropZone
+              onFile={setFile}
+              accept=".jpg,.jpeg,.png,.webp,.pdf"
+              title="ارفع إيصال التحويل"
+              hint={<>صورة أو PDF · حتى 10 ميجا<br/>اسحب الملف أو <span style={{ color: '#10B981', fontWeight: 600 }}>اضغط للاختيار</span></>}
+            />
+          )}
+        </div>
+
+        {/* Submit */}
+        <button
+          onClick={() => onSubmit(file)}
+          disabled={submitting || !file}
+          style={{
+            width: '100%', padding: '14px', borderRadius: 12,
+            background: !file ? '#E4E4E7' : '#10B981',
+            color: !file ? '#A1A1AA' : '#fff', border: 'none',
+            fontSize: 14.5, fontWeight: 700, cursor: (!file || submitting) ? 'not-allowed' : 'pointer',
+            fontFamily: 'inherit', display: 'inline-flex',
+            alignItems: 'center', justifyContent: 'center', gap: 8,
+          }}
+        >
+          {submitting
+            ? <><Loader size={18} className="spin"/> جارٍ الإرسال…</>
+            : !file
+              ? 'ارفع الإيصال أولاً'
+              : <><CheckCircle2 size={16}/> تم التحويل — أرسل الطلب</>}
+        </button>
+      </div>
     </div>
   );
 }
