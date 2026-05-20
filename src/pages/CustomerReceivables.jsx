@@ -10,6 +10,7 @@ import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
+  Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
@@ -141,10 +142,113 @@ function AgingGrid({ aging, total }) {
 }
 
 // ── Customer invoices drawer ───────────────────────────────────
-function CustomerDrawer({ customer, onClose }) {
+// Phone normaliser: strip non-digits, drop +966 / 00966 / 966 / leading
+// 0 so all the variants of the same Saudi number collapse to one key.
+function normalizePhone(raw) {
+  if (!raw) return null;
+  let s = String(raw).replace(/\D/g, '');
+  if (s.startsWith('00966')) s = s.slice(5);
+  else if (s.startsWith('966')) s = s.slice(3);
+  if (s.startsWith('0')) s = s.slice(1);
+  return s.length >= 8 ? s : null;
+}
+
+function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSelect, onClose }) {
   if (!customer) return null;
+  const m = customer.merchant;
+  const myPhone   = normalizePhone(m?.phone);
+  const myStoreId = m?.storeId || null;
+  const showStoreSubtitle = customer.name && m?.storeName && m.storeName !== customer.name;
+
+  // Phone siblings — every other merchant on the same phone, enriched
+  // with their receivables row when one exists.
+  const siblings = useMemo(() => {
+    if (!myPhone) return [];
+    const customerByStoreId = new Map();
+    for (const cu of allCustomers) {
+      const sid = cu.merchant?.storeId;
+      if (sid) customerByStoreId.set(sid, cu);
+    }
+    const out = [];
+    const seen = new Set(); if (myStoreId) seen.add(myStoreId);
+    for (const mm of allMerchants) {
+      if (seen.has(mm.store_id)) continue;
+      if (normalizePhone(mm.phone) !== myPhone) continue;
+      seen.add(mm.store_id);
+      const cu = customerByStoreId.get(mm.store_id) || null;
+      out.push({
+        merchant: mm,
+        customer: cu,
+        debt: Number(cu?.total) || 0,
+        wallet: Number(mm.wallet_balance) || 0,
+        shipments: Number(mm.shipment_count) || 0,
+      });
+    }
+    return out.sort((a, b) => (b.debt + Math.abs(b.wallet)) - (a.debt + Math.abs(a.wallet)));
+  }, [myPhone, myStoreId, allCustomers, allMerchants]);
+
   return (
-    <Modal title={customer.name} onClose={onClose} width={720}>
+    <Modal title={customer.name} onClose={onClose} width={780}>
+      {/* Identity strip — store info + phone + call CTA */}
+      {m && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 16,
+          padding: '12px 14px', marginBottom: 14,
+          background: 'var(--bg2)', borderRadius: 12,
+          alignItems: 'center',
+        }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'var(--accent-dim)', color: 'var(--accent)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontWeight: 700, fontSize: 17,
+          }}>
+            {(m.storeName || customer.name).slice(0, 1)}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            {showStoreSubtitle && (
+              <div style={{ fontSize: 12, color: 'var(--accent)', fontWeight: 500, marginBottom: 2 }}>
+                <ShoppingBag size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 4 }}/>
+                {m.storeName}
+              </div>
+            )}
+            <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', flexWrap: 'wrap', marginTop: 3 }}>
+              {m.storeId && <span><Hash size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.storeId}</span>}
+              {m.phone && <span style={{ direction: 'ltr' }}><Phone size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.phone}</span>}
+            </div>
+            <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+              {m.billingType && (
+                <span style={{
+                  fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
+                  background: m.billingType === 'دفع مسبق' ? 'rgba(59,130,246,.14)' : 'rgba(245,158,11,.14)',
+                  color: m.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B',
+                  fontWeight: 600,
+                }}>{m.billingType}</span>
+              )}
+              {m.platformStatus && (
+                <span style={{
+                  fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
+                  background: m.platformStatus === 'نشط' ? 'rgba(16,185,129,.14)' : 'rgba(113,113,122,.14)',
+                  color: m.platformStatus === 'نشط' ? '#10B981' : 'var(--muted)',
+                  fontWeight: 600,
+                }}>{m.platformStatus}</span>
+              )}
+            </div>
+          </div>
+          {m.phone && (
+            <a href={`tel:${m.phone}`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 999,
+              background: 'var(--accent)', color: '#fff',
+              fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+              boxShadow: '0 1px 2px rgba(16,185,129,.22)',
+            }}>
+              <Phone size={13}/> اتصل
+            </a>
+          )}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
         <StatPill label="إجمالي مديونيته" value={`${fmt(customer.total)} ر.س`}/>
         <StatPill label="عدد الفواتير" value={customer.invoiceCount}/>
@@ -156,6 +260,88 @@ function CustomerDrawer({ customer, onClose }) {
           />
         )}
       </div>
+
+      {/* Phone siblings — other stores owned by the same operator */}
+      {siblings.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 3 }}>
+              SAME PHONE · {siblings.length + 1} STORES
+            </div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              هذا الرقم يدير {siblings.length + 1} متاجر — اتصال واحد يكفي
+            </div>
+          </div>
+          <div style={{
+            border: '1px solid var(--border)', borderRadius: 12,
+            maxHeight: 220, overflowY: 'auto',
+          }}>
+            {siblings.map((s, i) => {
+              const sm = s.merchant;
+              const billingColor = sm.billing_type === 'دفع مسبق' ? '#3B82F6' : '#F59E0B';
+              const statusColor  = sm.status === 'نشط' ? '#10B981' : '#71717A';
+              return (
+                <div
+                  key={sm.store_id}
+                  onClick={() => onSelect?.(s.customer || {
+                    name: sm.store_name,
+                    total: 0, invoiceCount: 0, invoices: [],
+                    merchant: {
+                      storeId: sm.store_id, storeName: sm.store_name, phone: sm.phone,
+                      billingType: sm.billing_type, platformStatus: sm.status,
+                      shipmentCount: sm.shipment_count, lastShipmentAt: sm.last_shipment_at,
+                      walletBalance: Number(sm.wallet_balance) || 0,
+                    },
+                  })}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto auto',
+                    gap: 12, padding: '10px 12px',
+                    borderBottom: i === siblings.length - 1 ? 'none' : '1px solid var(--border)',
+                    alignItems: 'center', cursor: 'pointer',
+                    transition: 'background .12s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{
+                    width: 28, height: 28, borderRadius: 8,
+                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 13, fontWeight: 700,
+                  }}>{(sm.store_name || '?').slice(0, 1)}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {sm.store_name}
+                    </div>
+                    <div style={{ display: 'flex', gap: 5, marginTop: 3, flexWrap: 'wrap' }}>
+                      {sm.billing_type && (
+                        <span style={{ fontSize: 9.5, padding: '1px 7px', borderRadius: 999, background: `color-mix(in srgb, ${billingColor} 14%, transparent)`, color: billingColor, fontWeight: 600 }}>{sm.billing_type}</span>
+                      )}
+                      <span style={{ fontSize: 9.5, padding: '1px 7px', borderRadius: 999, background: `color-mix(in srgb, ${statusColor} 14%, transparent)`, color: statusColor, fontWeight: 600 }}>{sm.status || '—'}</span>
+                      <span style={{ fontSize: 10, color: 'var(--muted)' }}>{s.shipments} شحنة</span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                    {s.debt > 0.5 ? (
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                        {fmt(s.debt)} <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>دين</span>
+                      </div>
+                    ) : s.wallet !== 0 ? (
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: s.wallet < 0 ? 'var(--red)' : 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+                        {fmt(s.wallet)} <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>محفظة</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>—</div>
+                    )}
+                  </div>
+                  <ArrowLeft size={13} color="var(--muted2)"/>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Invoices table */}
       <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 20 }}>
@@ -1301,7 +1487,13 @@ export default function CustomerReceivables({ isActive = true }) {
       )}
 
       {/* Drawer for one customer's invoices */}
-      <CustomerDrawer customer={openCustomer} onClose={() => setOpenCustomer(null)}/>
+      <CustomerDrawer
+        customer={openCustomer}
+        allCustomers={data?.customers || []}
+        allMerchants={merchants}
+        onSelect={(c) => setOpenCustomer(c)}
+        onClose={() => setOpenCustomer(null)}
+      />
 
       {/* Upload modal */}
       {showUpload && (
