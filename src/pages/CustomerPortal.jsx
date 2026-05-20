@@ -95,13 +95,16 @@ export default function CustomerPortal() {
   const [phone, setPhone] = useState('');
   const [lookup, setLookup] = useState(null);    // { phone, stores: [...] }
   const [loading, setLoading] = useState(false);
-  const [selectedStore, setSelectedStore] = useState(null);
+  // (selectedStore derived from selectedStoreIds below; no separate state)
   const [payMode, setPayMode] = useState('full');         // 'full' | 'partial'
   const [partialAmount, setPartialAmount] = useState(''); // user-entered for partial
-  const [notes, setNotes] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
   const [bankModalOpen, setBankModalOpen] = useState(false);
+  // Multi-store support: when the customer has >1 debt-bearing store
+  // they can check-select multiple stores on step 2 and pay them all
+  // together in a single request. Stays a Set of store_ids.
+  const [selectedStoreIds, setSelectedStoreIds] = useState(new Set());
 
   // ── Step 1: phone lookup ────────────────────────────────────
   const handleLookup = async () => {
@@ -133,29 +136,75 @@ export default function CustomerPortal() {
     setLoading(false);
   };
 
-  // ── Step 2 → 3: pick a store ────────────────────────────────
+  // ── Step 2: store selection ────────────────────────────────
+  // Single-click flow: open one store + auto-add it to the selection set.
+  // The Set lets the customer add more stores later by going back to
+  // step 2 (currently they ALWAYS go through step 2 → 3).
   const openStore = (store) => {
-    setSelectedStore(store);
+    setSelectedStoreIds(new Set([store.store_id]));
     setPayMode('full');
     setPartialAmount('');
     setStep('invoices');
   };
 
+  // Toggle a store in the multi-selection set on the stores screen.
+  const toggleStore = (storeId) => {
+    setSelectedStoreIds(prev => {
+      const next = new Set(prev);
+      if (next.has(storeId)) next.delete(storeId);
+      else next.add(storeId);
+      return next;
+    });
+  };
+
+  // Resolved store objects in the current selection.
+  const selectedStores = useMemo(() => {
+    if (!lookup?.stores) return [];
+    return lookup.stores.filter(s => selectedStoreIds.has(s.store_id));
+  }, [lookup, selectedStoreIds]);
+
+  // Aggregate debt across all selected stores.
+  const selectedTotalDue = useMemo(
+    () => selectedStores.reduce((s, st) => s + (Number(st.total_due) || 0), 0),
+    [selectedStores],
+  );
+
   // The headline amount the customer ends up sending — full balance
-  // or a partial figure they typed in.
+  // (across ALL selected stores) or a partial figure they typed in.
   const paymentAmount = useMemo(() => {
-    if (!selectedStore) return 0;
-    if (payMode === 'full') return Number(selectedStore.total_due) || 0;
+    if (!selectedStores.length) return 0;
+    if (payMode === 'full') return selectedTotalDue;
     const v = parseFloat(partialAmount);
     return Number.isFinite(v) && v > 0 ? v : 0;
-  }, [selectedStore, payMode, partialAmount]);
+  }, [selectedStores, selectedTotalDue, payMode, partialAmount]);
 
-  // Common snapshot helper — we always include the FULL invoice list
-  // as a snapshot on the request so the admin sees what existed at
-  // payment time (even when the customer chose "partial" or "all").
-  const buildRefs = () => (selectedStore?.invoices || []).map(i => ({
-    id: i.id, date: i.date, amount: Number(i.amount) || 0,
-  }));
+  // Build the invoice_refs snapshot. Each item carries store_id +
+  // store_name so the admin modal can group by store when this
+  // request spans multiple stores.
+  const buildRefs = () => {
+    const refs = [];
+    for (const s of selectedStores) {
+      for (const i of (s.invoices || [])) {
+        refs.push({
+          id: i.id, date: i.date, amount: Number(i.amount) || 0,
+          store_id: s.store_id, store_name: s.store_name,
+        });
+      }
+    }
+    return refs;
+  };
+
+  // Display labels for multi vs single store requests.
+  const requestStoreLabel = useMemo(() => {
+    if (selectedStores.length === 0) return '';
+    if (selectedStores.length === 1) return selectedStores[0].store_name;
+    return `${selectedStores.length} متاجر`;
+  }, [selectedStores]);
+
+  // Backwards-compat: code that referenced `selectedStore` (singular)
+  // now reads the first selected store. Single-store flows are
+  // unaffected.
+  const selectedStore = selectedStores[0] || null;
 
   const validateAmount = () => {
     if (!paymentAmount || paymentAmount <= 0) {
@@ -170,15 +219,18 @@ export default function CustomerPortal() {
     if (!validateAmount()) return;
     setSubmitting(true);
     try {
+      const refs = buildRefs();
       const res = await submitPaymentRequest({
         phone:         lookup.phone,
-        customerName:  selectedStore.customer_name || null,
-        storeId:       selectedStore.store_id,
-        storeName:     selectedStore.store_name,
+        // For multi-store requests we leave customer_name + store_id
+        // null on the row and let the admin read store_id PER INVOICE
+        // from invoice_refs. Single-store keeps the legacy shape.
+        customerName:  selectedStores.length === 1 ? (selectedStore.customer_name || null) : null,
+        storeId:       selectedStores.length === 1 ? selectedStore.store_id : null,
+        storeName:     requestStoreLabel,
         amountTotal:   paymentAmount,
-        invoiceCount:  (selectedStore.invoices || []).length,
-        invoiceRefs:   buildRefs(),
-        notes,
+        invoiceCount:  refs.length,
+        invoiceRefs:   refs,
         paymentType:   'online',
         isPartial:     payMode === 'partial',
       });
@@ -205,15 +257,15 @@ export default function CustomerPortal() {
         const upload = await uploadReceipt(receiptFile);
         receiptPath = upload.path;
       }
+      const refs = buildRefs();
       const res = await submitPaymentRequest({
         phone:         lookup.phone,
-        customerName:  selectedStore.customer_name || null,
-        storeId:       selectedStore.store_id,
-        storeName:     selectedStore.store_name,
+        customerName:  selectedStores.length === 1 ? (selectedStore.customer_name || null) : null,
+        storeId:       selectedStores.length === 1 ? selectedStore.store_id : null,
+        storeName:     requestStoreLabel,
         amountTotal:   paymentAmount,
-        invoiceCount:  (selectedStore.invoices || []).length,
-        invoiceRefs:   buildRefs(),
-        notes,
+        invoiceCount:  refs.length,
+        invoiceRefs:   refs,
         paymentType:   'bank_transfer',
         receiptPath,
         isPartial:     payMode === 'partial',
@@ -231,7 +283,7 @@ export default function CustomerPortal() {
     setStep('phone');
     setPhone('');
     setLookup(null);
-    setSelectedStore(null);
+    setSelectedStoreIds(new Set());
     setSelectedInvoices(new Set());
     setNotes('');
     setSubmitResult(null);
@@ -347,23 +399,45 @@ export default function CustomerPortal() {
               متاجرك ({lookup.stores.length})
             </h2>
             <p style={{ fontSize: 13, color: '#71717A', marginBottom: 18 }}>
-              اختر متجراً لعرض فواتيره المعلّقة
+              {lookup.stores.length === 1
+                ? 'اضغط على المتجر لعرض فواتيره'
+                : 'اختر متجراً واحداً أو أكثر — تقدر تسددهم بدفعة وحدة'}
             </p>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
               {lookup.stores.map(s => {
                 const due = Number(s.total_due) || 0;
                 const invCount = (s.invoices || []).length;
+                const multiMode = lookup.stores.length > 1;
+                const checked = selectedStoreIds.has(s.store_id);
+                const handleClick = () => {
+                  if (multiMode) toggleStore(s.store_id);
+                  else openStore(s);
+                };
                 return (
-                  <div key={s.store_id} onClick={() => openStore(s)} style={{
+                  <div key={s.store_id} onClick={handleClick} style={{
                     background: '#fff', borderRadius: 16, padding: '18px 20px',
-                    boxShadow: '0 1px 3px rgba(24,24,27,.04), 0 1px 2px rgba(24,24,27,.04)',
+                    boxShadow: checked
+                      ? '0 0 0 2px #10B981, 0 6px 20px rgba(16,185,129,.18)'
+                      : '0 1px 3px rgba(24,24,27,.04), 0 1px 2px rgba(24,24,27,.04)',
                     cursor: 'pointer',
-                    display: 'grid', gridTemplateColumns: 'auto 1fr auto auto',
+                    display: 'grid', gridTemplateColumns: multiMode ? 'auto auto 1fr auto' : 'auto 1fr auto auto',
                     gap: 14, alignItems: 'center',
                     transition: 'transform .15s, box-shadow .15s',
                   }}
-                  onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(24,24,27,.08)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(24,24,27,.04), 0 1px 2px rgba(24,24,27,.04)'; }}>
+                  onMouseEnter={e => { if (!checked) { e.currentTarget.style.transform = 'translateY(-1px)'; e.currentTarget.style.boxShadow = '0 6px 20px rgba(24,24,27,.08)'; } }}
+                  onMouseLeave={e => { if (!checked) { e.currentTarget.style.transform = 'none'; e.currentTarget.style.boxShadow = '0 1px 3px rgba(24,24,27,.04), 0 1px 2px rgba(24,24,27,.04)'; } }}>
+                    {multiMode && (
+                      <div style={{
+                        width: 22, height: 22, borderRadius: 6,
+                        background: checked ? '#10B981' : '#fff',
+                        border: `2px solid ${checked ? '#10B981' : '#D4D4D8'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        color: '#fff', fontWeight: 700, fontSize: 14,
+                        transition: 'all .15s', flexShrink: 0,
+                      }}>
+                        {checked && '✓'}
+                      </div>
+                    )}
                     <div style={{
                       width: 44, height: 44, borderRadius: 12,
                       background: 'rgba(16,185,129,.10)', color: '#10B981',
@@ -382,26 +456,56 @@ export default function CustomerPortal() {
                         {fmt(due)} <span style={{ fontSize: 11, color: '#A1A1AA', fontWeight: 500 }}>ر.س</span>
                       </div>
                     </div>
-                    <ArrowLeft size={16} color="#A1A1AA"/>
                   </div>
                 );
               })}
             </div>
+
+            {/* Multi-select sticky footer */}
+            {lookup.stores.length > 1 && selectedStoreIds.size > 0 && (
+              <div style={{
+                position: 'sticky', bottom: 16, marginTop: 16,
+                background: '#0A0A0B', borderRadius: 16, padding: '18px 20px',
+                boxShadow: '0 16px 40px rgba(0,0,0,.18)',
+                color: '#fff',
+                display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'center',
+              }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
+                    {selectedStoreIds.size} متجر مختار
+                  </div>
+                  <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-mono)', letterSpacing: -0.5, marginTop: 4 }}>
+                    {fmt(selectedTotalDue)} <span style={{ fontSize: 12, color: 'rgba(255,255,255,.5)', fontWeight: 500 }}>ر.س</span>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { setPayMode('full'); setPartialAmount(''); setStep('invoices'); }}
+                  style={{
+                    padding: '14px 24px', borderRadius: 12,
+                    background: '#10B981', color: '#fff', border: 'none',
+                    fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  متابعة ←
+                </button>
+              </div>
+            )}
           </div>
         )}
 
         {/* ── STEP 3: invoices ───────────────────────────────── */}
-        {step === 'invoices' && selectedStore && (
+        {step === 'invoices' && selectedStores.length > 0 && (
           <div>
-            <button onClick={() => { setStep('stores'); setSelectedStore(null); }} style={{
+            <button onClick={() => { setStep('stores'); }} style={{
               background: 'transparent', border: 'none', color: '#71717A',
               cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6,
               fontSize: 13, fontWeight: 500, marginBottom: 14, fontFamily: 'inherit',
             }}>
-              <ArrowLeft size={14}/> اختر متجراً آخر
+              <ArrowLeft size={14}/> {selectedStores.length > 1 ? 'تعديل اختيار المتاجر' : 'اختر متجراً آخر'}
             </button>
 
-            {/* Store summary */}
+            {/* Top summary — single store vs multi-store layouts */}
             <div style={{ background: '#fff', borderRadius: 16, padding: '20px 22px', boxShadow: '0 1px 3px rgba(24,24,27,.04)', marginBottom: 14 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
@@ -410,44 +514,78 @@ export default function CustomerPortal() {
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}><Building2 size={20}/></div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: '#18181B' }}>{selectedStore.store_name}</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: '#18181B' }}>
+                    {requestStoreLabel}
+                  </div>
                   <div style={{ fontSize: 12, color: '#71717A', marginTop: 2 }}>
-                    {(selectedStore.invoices || []).length} فاتورة · إجمالي معلّق <strong style={{ color: '#EF4444', fontFamily: 'var(--font-mono)' }}>{fmt(selectedStore.total_due)}</strong> ر.س
+                    {selectedStores.reduce((c, s) => c + (s.invoices || []).length, 0)} فاتورة · إجمالي معلّق <strong style={{ color: '#EF4444', fontFamily: 'var(--font-mono)' }}>{fmt(selectedTotalDue)}</strong> ر.س
                   </div>
                 </div>
               </div>
+              {/* Per-store mini list (only shown when multi) */}
+              {selectedStores.length > 1 && (
+                <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid #F4F4F5', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  {selectedStores.map(s => (
+                    <div key={s.store_id} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12.5 }}>
+                      <span style={{ color: '#3F3F46', fontWeight: 500 }}>{s.store_name}</span>
+                      <span style={{ color: '#EF4444', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                        {fmt(s.total_due)} <span style={{ fontSize: 10, color: '#A1A1AA' }}>ر.س</span>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            {/* Read-only invoice list */}
+            {/* Read-only invoice list — grouped by store when multi */}
             <div style={{ background: '#fff', borderRadius: 16, padding: 0, boxShadow: '0 1px 3px rgba(24,24,27,.04)', overflow: 'hidden', marginBottom: 14 }}>
               <div style={{ padding: '14px 18px', borderBottom: '1px solid #F4F4F5' }}>
                 <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#18181B', margin: 0 }}>الفواتير المعلّقة</h3>
               </div>
-              <div style={{ maxHeight: 280, overflowY: 'auto' }}>
-                {(selectedStore.invoices || []).length === 0 ? (
+              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+                {selectedStores.every(s => !s.invoices?.length) ? (
                   <div style={{ padding: 32, textAlign: 'center', color: '#71717A', fontSize: 13 }}>
-                    لا توجد فواتير معلّقة على هذا المتجر — كل شيء مسدّد
+                    لا توجد فواتير معلّقة — كل شيء مسدّد
                   </div>
-                ) : (selectedStore.invoices || []).map((inv, i, arr) => (
-                  <div
-                    key={inv.id}
-                    style={{
-                      display: 'grid', gridTemplateColumns: '1fr auto', gap: 14,
-                      padding: '12px 18px', alignItems: 'center',
-                      borderBottom: i === arr.length - 1 ? 'none' : '1px solid #F4F4F5',
-                    }}
-                  >
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', fontFamily: 'var(--font-mono)' }}>
-                        {fmtDate(inv.date)}
+                ) : selectedStores.map((s, si) => (
+                  <div key={s.store_id}>
+                    {selectedStores.length > 1 && (
+                      <div style={{
+                        padding: '10px 18px', background: '#FAFAFA',
+                        fontSize: 11.5, fontWeight: 700, color: '#3F3F46',
+                        borderBottom: '1px solid #F4F4F5',
+                        borderTop: si > 0 ? '1px solid #F4F4F5' : 'none',
+                        display: 'flex', alignItems: 'center', gap: 8,
+                      }}>
+                        <ShoppingBag size={13} color="#10B981"/>
+                        {s.store_name}
+                        <span style={{ color: '#A1A1AA', fontWeight: 500, marginInlineStart: 6 }}>
+                          · {(s.invoices || []).length} فاتورة
+                        </span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#71717A', marginTop: 1 }}>
-                        فاتورة #{String(inv.id).slice(0, 8)}
+                    )}
+                    {(s.invoices || []).map((inv, i, arr) => (
+                      <div
+                        key={inv.id}
+                        style={{
+                          display: 'grid', gridTemplateColumns: '1fr auto', gap: 14,
+                          padding: '12px 18px', alignItems: 'center',
+                          borderBottom: i === arr.length - 1 ? 'none' : '1px solid #F4F4F5',
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', fontFamily: 'var(--font-mono)' }}>
+                            {fmtDate(inv.date)}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#71717A', marginTop: 1 }}>
+                            فاتورة #{String(inv.id).slice(0, 8)}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700, color: '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
+                          {fmt(inv.amount)} <span style={{ fontSize: 10, color: '#A1A1AA', fontWeight: 500 }}>ر.س</span>
+                        </div>
                       </div>
-                    </div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
-                      {fmt(inv.amount)} <span style={{ fontSize: 10, color: '#A1A1AA', fontWeight: 500 }}>ر.س</span>
-                    </div>
+                    ))}
                   </div>
                 ))}
               </div>
@@ -472,7 +610,7 @@ export default function CustomerPortal() {
                     سداد الكل
                   </div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: payMode === 'full' ? '#10B981' : '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
-                    {fmt(selectedStore.total_due)} <span style={{ fontSize: 11, color: '#A1A1AA' }}>ر.س</span>
+                    {fmt(selectedTotalDue)} <span style={{ fontSize: 11, color: '#A1A1AA' }}>ر.س</span>
                   </div>
                 </button>
                 <button
@@ -505,18 +643,6 @@ export default function CustomerPortal() {
                 </button>
               </div>
 
-              {/* Optional note */}
-              <textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                rows={2}
-                placeholder="ملاحظة (اختياري) — مثلاً: سأحوّل اليوم بنكي"
-                style={{
-                  width: '100%', padding: '10px 12px', borderRadius: 10,
-                  fontSize: 13, fontFamily: 'inherit', resize: 'vertical',
-                  marginTop: 12, border: '1px solid #E4E4E7',
-                }}
-              />
             </div>
 
             {/* Payment method buttons — online button is shown only
@@ -636,7 +762,7 @@ export default function CustomerPortal() {
         )}
       </div>
 
-      {bankModalOpen && selectedStore && (
+      {bankModalOpen && selectedStores.length > 0 && (
         <BankTransferModal
           amount={paymentAmount}
           submitting={submitting}
