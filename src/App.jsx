@@ -17,6 +17,7 @@ import CustomerReceivables from './pages/CustomerReceivables.jsx';
 import CustomerWatch from './pages/CustomerWatch.jsx';
 import CustomerPortal from './pages/CustomerPortal.jsx';
 import PaymentRequests from './pages/PaymentRequests.jsx';
+import InternalExports from './pages/InternalExports.jsx';
 import Merchants from './pages/Merchants.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
@@ -67,6 +68,7 @@ const NAV_ITEMS = [
   { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits' },
   { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits' },
   { id: 'weight-billing',  path: '/weight-billing', label: 'فوترة الأوزان',  icon: Scale,    section: 'audits' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'سحب للنظام الداخلي', icon: FileText, section: 'audits' },
 
   // ── Finance ────────────────────────────────────────────────────
   { id: 'cod-settlements',   path: '/cod-settlements',   label: 'تسويات COD',   icon: Banknote,   section: 'finance' },
@@ -97,6 +99,7 @@ const PAGE_TITLES = {
   '/webhook':           'الوارد',
   '/customers':         'متابعة العملاء',
   '/payment-requests':  'طلبات السداد',
+  '/internal-exports':  'سحب للنظام الداخلي',
   '/upload':            'مراجعة جديدة',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
@@ -160,7 +163,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -539,6 +542,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/weight-billing'} scroll>
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/internal-exports'} scroll>
+              <InternalExports isActive={pathname==='/internal-exports'}/>
             </PageSlot>
             <PageSlot active={pathname==='/carrier-kpi'} scroll>
               <CarrierKpi isActive={pathname==='/carrier-kpi'}/>
