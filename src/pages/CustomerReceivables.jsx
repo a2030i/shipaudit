@@ -11,7 +11,7 @@ import {
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
@@ -261,22 +261,11 @@ function UploadModal({ onClose, onDone, userId }) {
   return (
     <Modal title="رفع كشف مديونيات عملاء" onClose={onClose} width={520}>
       {!file && (
-        <div
-          onClick={() => document.getElementById('ar-file-input').click()}
-          style={{
-            padding: 32, textAlign: 'center', cursor: 'pointer',
-            border: '2px dashed var(--border2)', borderRadius: 12,
-            background: 'var(--surface)',
-          }}
-        >
-          <Upload size={28} color="var(--accent)" style={{ marginBottom: 8 }}/>
-          <div style={{ fontWeight: 700, fontSize: 13.5 }}>اختر ملف Excel</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.7 }}>
-            الملف لازم يحتوي على عنوان «تفاصيل الفاتورة» + رأس فيه «اسم العملاء» و«الرصيد».
-          </div>
-          <input id="ar-file-input" type="file" hidden accept=".xlsx,.xls,.csv"
-            onChange={e => handleFile(e.target.files?.[0])}/>
-        </div>
+        <DropZone
+          onFile={handleFile}
+          title="اسحب ملف Excel هنا"
+          hint={<>الملف لازم يحتوي على عنوان «تفاصيل الفاتورة» + رأس فيه «اسم العملاء» و«الرصيد».<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
+        />
       )}
 
       {busy && <div style={{ display: 'flex', justifyContent: 'center', padding: 18 }}><Spinner size={22}/></div>}

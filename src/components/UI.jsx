@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle } from 'lucide-react';
+import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle, Upload as UploadIcon } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
 // Modern SaaS pill button. Flat fill + soft inset top highlight + hover
@@ -863,6 +863,83 @@ export function SectionTitle({ tag, title, action, color = 'var(--accent)' }) {
         }}>{title}</h2>
       </div>
       {action && <div>{action}</div>}
+    </div>
+  );
+}
+
+// ─── DropZone ────────────────────────────────────────────────────────────────
+// Reusable file picker with drag-and-drop. Click to browse OR drag a
+// file from File Explorer / Finder straight onto it. Visual feedback:
+// border + tint shift while a drag is active over the surface.
+//
+// Props:
+//   onFile(file)  required — called with the chosen File
+//   accept        string of extensions, e.g. ".xlsx,.xls,.csv"
+//   title         the big label, e.g. "اختر ملف Excel"
+//   hint          smaller secondary copy
+//   icon          optional icon (defaults to upload arrow)
+export function DropZone({ onFile, accept = '.xlsx,.xls,.csv', title = 'اختر ملف Excel', hint, icon, multi = false }) {
+  const [dragOver, setDragOver] = useState(false);
+  const inputId = `dz-${Math.random().toString(36).slice(2, 9)}`;
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    setDragOver(false);
+    const files = Array.from(e.dataTransfer?.files || []);
+    if (!files.length) return;
+    if (multi) onFile(files);          // multi → array
+    else onFile(files[0]);             // single → File
+  };
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    if (!dragOver) setDragOver(true);
+  };
+  const handleDragLeave = (e) => {
+    // Only un-highlight when the drag truly leaves the zone (not when
+    // it crosses an inner element)
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    setDragOver(false);
+  };
+
+  const Icon = icon || UploadIcon;
+  const accent = 'var(--accent)';
+
+  return (
+    <div
+      onClick={() => document.getElementById(inputId)?.click()}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+      onDragEnter={handleDragOver}
+      onDragLeave={handleDragLeave}
+      style={{
+        padding: 32, textAlign: 'center', cursor: 'pointer',
+        border: `2px dashed ${dragOver ? accent : 'var(--border2)'}`,
+        background: dragOver ? 'var(--accent-dim)' : 'var(--surface)',
+        borderRadius: 14,
+        transition: 'border-color .15s, background .15s, transform .15s',
+        transform: dragOver ? 'scale(1.01)' : 'none',
+        position: 'relative',
+      }}
+    >
+      <Icon size={30} color={accent} style={{ marginBottom: 10, opacity: dragOver ? 1 : .9 }}/>
+      <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
+        {dragOver ? 'أفلت الملف هنا' : title}
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, lineHeight: 1.7 }}>
+        {hint || (
+          <>اسحب الملف هنا، أو <span style={{ color: accent, fontWeight: 600 }}>اضغط للاختيار</span></>
+        )}
+      </div>
+      <input
+        id={inputId} type="file" hidden accept={accept} multiple={multi}
+        onChange={e => {
+          const files = Array.from(e.target.files || []);
+          if (!files.length) return;
+          if (multi) onFile(files);
+          else onFile(files[0]);
+          e.target.value = '';
+        }}
+      />
     </div>
   );
 }

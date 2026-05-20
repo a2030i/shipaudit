@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { Banknote } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -1105,15 +1105,13 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
                 ' — يجب أن يحتوي على عمودَي AWB و CollectedAmount.'
               : 'الملف من نظامكم الداخلي — يجب أن يحتوي على عمودَي "رقم الشحنة" و"إجمالي الاستحقاق".'
             }
-            <div style={{ marginTop: 6, fontSize: 11, color: 'var(--accent)' }}>
-              💡 تقدر تختار أكثر من ملف مرة وحدة (Ctrl + Click في نافذة الاختيار)
-            </div>
           </div>
-          <input
-            type="file" accept=".xlsx,.xls" multiple
-            onChange={e => handleFiles(e.target.files)}
-            disabled={busy}
-            style={{ width: '100%', padding: 8 }}
+          <DropZone
+            onFile={(files) => handleFiles(files)}
+            accept=".xlsx,.xls"
+            multi
+            title="اسحب الملفات هنا"
+            hint={<>تقدر تسحب أكثر من ملف مرة وحدة، أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
           />
           {busy && <div style={{ marginTop: 10, textAlign: 'center' }}><Spinner size={16}/> جارٍ تحليل الملفات...</div>}
         </>
