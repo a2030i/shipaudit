@@ -611,7 +611,13 @@ export default function CustomerReceivables({ isActive = true }) {
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
   // Tab: 'active' = الافتراضي, 'excluded' = متابعة خاصة
-  const [tab, setTab] = useState('active');
+  const [tab, setTabRaw] = useState('active');
+  // When the user clicks an anomaly card on the alerts tab, this
+  // narrows the table below to only that bucket. null = show all.
+  const [anomalyFilter, setAnomalyFilter] = useState(null);
+  // Changing tab resets the anomaly card filter so the alerts-tab
+  // narrowing doesn't carry into the other tabs.
+  const setTab = (t) => { setTabRaw(t); setAnomalyFilter(null); };
   // Filters
   const [minBalance, setMinBalance] = useState('');
   const [minDays,    setMinDays]    = useState('');
@@ -763,6 +769,10 @@ export default function CustomerReceivables({ isActive = true }) {
       : tab === 'excluded'
         ? (data.excludedCustomers || [])
         : (data.activeCustomers   || []);
+    // Anomaly-card click narrows the pool to one bucket only.
+    if (tab === 'anomalies' && anomalyFilter) {
+      pool = pool.filter(c => c.anomaly === anomalyFilter);
+    }
     // Text search
     if (search.trim()) {
       const q = search.trim().toLowerCase();
@@ -804,7 +814,7 @@ export default function CustomerReceivables({ isActive = true }) {
       if (sortBy === 'invoices') return ((a.invoiceCount || 0) - (b.invoiceCount || 0)) * dir;
       return (totalKey(a) - totalKey(b)) * dir;
     });
-  }, [data, anomalies, tab, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
+  }, [data, anomalies, tab, anomalyFilter, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
 
   const toggleBucket = (k) => {
     setBucketFilters(prev => {
@@ -1228,14 +1238,24 @@ export default function CustomerReceivables({ isActive = true }) {
                 const total = key === 'negative_wallet'
                   ? list.reduce((s, c) => s + Math.abs(Number(c.merchant?.walletBalance) || 0), 0)
                   : list.reduce((s, c) => s + (Number(c.total) || 0), 0);
+                const isActive = anomalyFilter === key;
                 return (
-                  <div key={key} style={{
-                    background: 'var(--card)',
-                    borderRadius: 'var(--r-lg)',
-                    padding: '16px 18px',
-                    boxShadow: 'var(--shadow-sm)',
-                    borderRight: `3px solid ${meta.color}`,
-                  }}>
+                  <div
+                    key={key}
+                    onClick={() => setAnomalyFilter(isActive ? null : key)}
+                    style={{
+                      background: isActive ? `color-mix(in srgb, ${meta.color} 8%, var(--card))` : 'var(--card)',
+                      borderRadius: 'var(--r-lg)',
+                      padding: '16px 18px',
+                      boxShadow: isActive ? `0 0 0 2px ${meta.color}, var(--shadow-sm)` : 'var(--shadow-sm)',
+                      borderRight: `3px solid ${meta.color}`,
+                      cursor: 'pointer',
+                      transition: 'background .15s, box-shadow .15s, transform .15s',
+                      transform: isActive ? 'translateY(-1px)' : 'none',
+                    }}
+                    onMouseEnter={e => { if (!isActive) e.currentTarget.style.boxShadow = 'var(--shadow-md)'; }}
+                    onMouseLeave={e => { if (!isActive) e.currentTarget.style.boxShadow = 'var(--shadow-sm)'; }}
+                  >
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
                       <span style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                         {meta.label}
@@ -1255,6 +1275,9 @@ export default function CustomerReceivables({ isActive = true }) {
                     </div>
                     <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6, lineHeight: 1.5 }}>
                       {meta.hint}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: isActive ? meta.color : 'var(--muted2)', marginTop: 8, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                      {isActive ? '✓ مفعّل — اضغط للإلغاء' : 'اضغط لتصفية الجدول'}
                     </div>
                   </div>
                 );
