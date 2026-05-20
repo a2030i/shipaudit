@@ -2,145 +2,86 @@
 // rollup needed by the home dashboard. Designed to be cheap so the Hub
 // loads instantly even with many carriers.
 //
-// Each row carries:
+// As of the hub_rollup() migration, the heavy lifting (sum DR/CR, count
+// docs by type, count pending audits / webhooks / settlements, find
+// last activity) runs in Postgres as a single STABLE SECURITY DEFINER
+// function. The previous implementation pulled four full tables into
+// JS and aggregated client-side — fine at 26 ops / 3K settlements,
+// disastrous at multi-million. The RPC scans the same per-carrier
+// indexes the rest of the system uses, so cost is O(rows-per-carrier)
+// not O(total-rows-in-system).
+//
+// Each row returned to the UI carries:
 //   {
 //     carrierId, name, logo, color,
 //     balance,           // SUM(amount_dr) − SUM(amount_cr) — signed
 //     totalDr, totalCr,  // sub-totals for the breakdown panel
+//     docCounts,         // { INV, COD, PAY, ADJ, OTHER }
 //     pendingAudits,     // audits with review_status='pending' (or null)
 //     draftAudits,       // not used yet but reserved
+//     approvedAudits,
 //     webhookPending,    // webhook_events with status='awaiting_assignment'
+//     webhookTotal,
+//     settlementsCount,
 //     hasContract,       // true if at least one active contract
 //     hasFileSignature,  // true if email_from is set
+//     fileKind,
 //     lastActivityAt,    // most recent of: audit / op / settlement / webhook
 //     setupCompleteness, // 0..100 — green/red gauge on the card
 //   }
 //
-// Rows are returned sorted by |balance| desc — biggest financial
-// exposure first.
+// Rows are sorted: pending actions (audits + webhooks) first, then by
+// |balance| desc — biggest financial exposure on top.
 
 import { supabase } from './supabase.js';
 
-const PAGE = 1000;
-
-async function loadAll(table, columns, filters = {}) {
-  const rows = [];
-  let from = 0;
-  while (true) {
-    let q = supabase.from(table).select(columns).range(from, from + PAGE - 1);
-    for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
-    const { data, error } = await q;
-    if (error) throw error;
-    if (!data?.length) break;
-    rows.push(...data);
-    if (data.length < PAGE) break;
-    from += PAGE;
-  }
-  return rows;
-}
+const EMPTY_DOC_COUNTS = { INV: 0, COD: 0, PAY: 0, ADJ: 0, OTHER: 0 };
 
 export async function loadCarriersHub() {
-  // Pull in parallel — none of these tables is huge.
-  const [carriers, ops, audits, webhooks, settlements] = await Promise.all([
-    supabase.from('carriers').select('id, name, logo, color, contracts, file_signature').order('name'),
-    loadAll('carrier_operations', 'carrier_id, amount_dr, amount_cr, doc_type, doc_date, updated_at'),
-    loadAll('audits', 'id, carrier_id, review_status, created_at'),
-    loadAll('webhook_events', 'id, detected_carrier_id, status, received_at'),
-    loadAll('cod_settlement', 'carrier_id, upload_date, created_at'),
-  ]);
-  if (carriers.error) throw carriers.error;
+  const { data, error } = await supabase.rpc('hub_rollup');
+  if (error) throw error;
 
-  const byCarrier = new Map();
-  for (const c of carriers.data ?? []) {
-    const sig = c.file_signature || {};
-    const hasContract = Array.isArray(c.contracts) && c.contracts.length > 0;
-    const hasFileSignature = Array.isArray(sig.email_from) && sig.email_from.length > 0;
-    byCarrier.set(c.id, {
-      carrierId:        c.id,
-      name:             c.name,
-      logo:             c.logo,
-      color:            c.color,
-      balance:          0,
-      totalDr:          0,
-      totalCr:          0,
-      docCounts:        { INV: 0, COD: 0, PAY: 0, ADJ: 0, OTHER: 0 },
-      pendingAudits:    0,
-      draftAudits:      0,
-      approvedAudits:   0,
-      webhookPending:   0,
-      webhookTotal:     0,
-      settlementsCount: 0,
+  const rows = (data ?? []).map((r) => {
+    const sig = r.file_signature || {};
+    const hasContract       = Array.isArray(r.contracts) && r.contracts.length > 0;
+    const hasFileSignature  = Array.isArray(sig.email_from) && sig.email_from.length > 0;
+    const fileKind          = sig.file_kind || null;
+    const totalDr           = Number(r.total_dr) || 0;
+    const totalCr           = Number(r.total_cr) || 0;
+    const balance           = totalDr - totalCr;
+
+    // Setup completeness — gauges how "ready" each carrier is. The Hub
+    // surfaces this so the admin sees at a glance which carriers still
+    // need configuration before they can audit / receive COD.
+    let setupCompleteness = 0;
+    if (hasContract)       setupCompleteness += 50; // contract is the heaviest piece
+    if (hasFileSignature)  setupCompleteness += 25; // webhook auto-classification
+    if (fileKind)          setupCompleteness += 25; // file_kind explicitly chosen
+
+    return {
+      carrierId:        r.carrier_id,
+      name:             r.name,
+      logo:             r.logo,
+      color:            r.color,
+      balance:          +balance.toFixed(2),
+      totalDr:          +totalDr.toFixed(2),
+      totalCr:          +totalCr.toFixed(2),
+      docCounts:        { ...EMPTY_DOC_COUNTS, ...(r.doc_counts || {}) },
+      pendingAudits:    Number(r.pending_audits)    || 0,
+      draftAudits:      Number(r.draft_audits)      || 0,
+      approvedAudits:   Number(r.approved_audits)   || 0,
+      webhookPending:   Number(r.webhook_pending)   || 0,
+      webhookTotal:     Number(r.webhook_total)     || 0,
+      settlementsCount: Number(r.settlements_count) || 0,
       hasContract,
       hasFileSignature,
-      fileKind:         sig.file_kind || null,
-      lastActivityAt:   null,
-    });
-  }
+      fileKind,
+      lastActivityAt:   r.last_activity_at || null,
+      setupCompleteness,
+    };
+  });
 
-  const touchActivity = (cid, iso) => {
-    if (!cid || !iso) return;
-    const row = byCarrier.get(cid);
-    if (!row) return;
-    if (!row.lastActivityAt || iso > row.lastActivityAt) row.lastActivityAt = iso;
-  };
-
-  for (const o of ops || []) {
-    const row = byCarrier.get(o.carrier_id);
-    if (!row) continue;
-    const dr = Number(o.amount_dr) || 0;
-    const cr = Number(o.amount_cr) || 0;
-    row.totalDr += dr;
-    row.totalCr += cr;
-    row.balance += dr - cr;
-    const dt = (o.doc_type || 'OTHER').toUpperCase();
-    if (row.docCounts[dt] != null) row.docCounts[dt]++;
-    else                            row.docCounts.OTHER++;
-    touchActivity(o.carrier_id, o.updated_at || o.doc_date);
-  }
-
-  for (const a of audits || []) {
-    const row = byCarrier.get(a.carrier_id);
-    if (!row) continue;
-    const st = a.review_status || 'pending';
-    if (st === 'pending')        row.pendingAudits++;
-    else if (st === 'draft')     row.draftAudits++;
-    else if (st === 'approved')  row.approvedAudits++;
-    touchActivity(a.carrier_id, a.created_at);
-  }
-
-  for (const w of webhooks || []) {
-    const row = byCarrier.get(w.detected_carrier_id);
-    if (!row) continue;
-    row.webhookTotal++;
-    if (w.status === 'awaiting_assignment' || w.status === 'pending') {
-      row.webhookPending++;
-    }
-    touchActivity(w.detected_carrier_id, w.received_at);
-  }
-
-  for (const s of settlements || []) {
-    const row = byCarrier.get(s.carrier_id);
-    if (!row) continue;
-    row.settlementsCount++;
-    touchActivity(s.carrier_id, s.created_at || s.upload_date);
-  }
-
-  // Setup completeness — gauges how "ready" each carrier is. The Hub
-  // surfaces this so the admin sees at a glance which carriers still
-  // need configuration before they can audit / receive COD.
-  for (const row of byCarrier.values()) {
-    let score = 0;
-    if (row.hasContract)        score += 50; // contract is the heaviest piece
-    if (row.hasFileSignature)   score += 25; // webhook auto-classification
-    if (row.fileKind)           score += 25; // file_kind explicitly chosen
-    row.setupCompleteness = score;
-    row.balance = +row.balance.toFixed(2);
-    row.totalDr = +row.totalDr.toFixed(2);
-    row.totalCr = +row.totalCr.toFixed(2);
-  }
-
-  const rows = [...byCarrier.values()];
-  // Sort: pending audits first (action required), then by |balance| desc.
+  // Sort: pending actions first (action required), then by |balance| desc.
   rows.sort((a, b) => {
     const aActions = a.pendingAudits + a.webhookPending;
     const bActions = b.pendingAudits + b.webhookPending;
@@ -150,9 +91,9 @@ export async function loadCarriersHub() {
 
   // Global tallies for the header strip
   const totals = rows.reduce((acc, r) => {
-    acc.totalDr += r.totalDr;
-    acc.totalCr += r.totalCr;
-    acc.netBalance += r.balance;
+    acc.totalDr        += r.totalDr;
+    acc.totalCr        += r.totalCr;
+    acc.netBalance     += r.balance;
     acc.pendingActions += r.pendingAudits + r.webhookPending;
     return acc;
   }, { totalDr: 0, totalCr: 0, netBalance: 0, pendingActions: 0 });
