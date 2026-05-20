@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -35,6 +35,7 @@ import ActivityLog       from './pages/ActivityLog.jsx';
 import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
+import Tasks            from './pages/Tasks.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -65,10 +66,13 @@ const NAV_ITEMS = [
 
   // ── Audits pipeline ───────────────────────────────────────────
   { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits' },
+  { id: 'tasks',           path: '/tasks',          label: 'مهام الأسبوع',   icon: ListTodo, section: 'audits' },
   { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits' },
   { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits' },
-  { id: 'weight-billing',  path: '/weight-billing', label: 'فوترة الأوزان',  icon: Scale,    section: 'audits' },
-  { id: 'internal-exports', path: '/internal-exports', label: 'سحب للنظام الداخلي', icon: FileText, section: 'audits' },
+  // Note: /weight-billing is reachable from /internal-exports (link
+  // in the weights card footer) — removed from sidebar to reduce
+  // duplication. The pull workflow lives on /internal-exports.
+  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات', icon: FileText, section: 'audits' },
 
   // ── Finance ────────────────────────────────────────────────────
   { id: 'cod-settlements',   path: '/cod-settlements',   label: 'تسويات COD',   icon: Banknote,   section: 'finance' },
@@ -114,6 +118,7 @@ const PAGE_TITLES = {
   '/contracts':         'جدول العقود',
   '/carrier-kpi':       'أداء الناقلين',
   '/activity-log':      'سجل النشاط',
+  '/tasks':             'مهام الأسبوع',
   '/employees':         'الموظفون',
   '/settings/ai':            'الإعدادات — الذكاء الاصطناعي',
   '/settings/permissions':   'الإعدادات — الصلاحيات',
@@ -163,7 +168,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -544,7 +549,7 @@ function AppInner({ theme, toggleTheme }) {
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
             </PageSlot>
             <PageSlot active={pathname==='/internal-exports'} scroll>
-              <InternalExports isActive={pathname==='/internal-exports'}/>
+              <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/>
             </PageSlot>
             <PageSlot active={pathname==='/carrier-kpi'} scroll>
               <CarrierKpi isActive={pathname==='/carrier-kpi'}/>
@@ -554,6 +559,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/webhook'} scroll>
               <WebhookEvents carriers={carriers} isActive={pathname==='/webhook'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/tasks'} scroll>
+              <Tasks carriers={carriers} isActive={pathname==='/tasks'}/>
             </PageSlot>
             {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>
