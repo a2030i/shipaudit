@@ -1018,22 +1018,10 @@ export default function CustomerReceivables({ isActive = true }) {
         // Variable 2: amount — no decimals + thousands separators for
         // a clean WhatsApp render. 5,432 reads better than 5432.00.
         const amount = Math.round(Number(c.total) || 0).toLocaleString('en-US');
-        // Variable 4: oldest invoice — Gregorian YYYY/MM/DD using
-        // English digits so the WhatsApp message renders the date
-        // identically across devices regardless of locale.
-        const oldest = c.oldestInvoiceDate
-          ? (() => {
-              const d = new Date(c.oldestInvoiceDate);
-              const y = d.getFullYear();
-              const m = String(d.getMonth() + 1).padStart(2, '0');
-              const day = String(d.getDate()).padStart(2, '0');
-              return `${y}/${m}/${day}`;
-            })()
-          : '—';
         // Variable 1: prefer the platform store name (cleaner) over
         // the raw receivables name. Strip any leading dashes/spaces.
         const name = (c.merchant?.storeName || c.name || '').trim();
-        return { phone, name, amount, count: c.invoiceCount || 0, oldest, raw: c };
+        return { phone, name, amount, count: c.invoiceCount || 0, raw: c };
       })
       .sort((a, b) => Number(String(b.amount).replace(/,/g, '')) - Number(String(a.amount).replace(/,/g, '')));
 
@@ -1043,17 +1031,15 @@ export default function CustomerReceivables({ isActive = true }) {
     }
 
     // Headers match the WhatsApp template variables purely by COLUMN
-    // ORDER — A→{{1}}, B→{{2}}, etc. No "{{N}}" prefix in the names
-    // because the bulk-sender maps by position. Preview column removed
-    // per operator request.
+    // ORDER — A→{{1}}, B→{{2}}, C→{{3}}. Operator removed the
+    // {{4}} date variable from the template, so we drop that column.
     const headers = [
       'رقم الجوال',
       'اسم العميل',
       'المبلغ',
       'عدد الفواتير',
-      'أقدم فاتورة',
     ];
-    const rows = withPhone.map(r => [r.phone, r.name, r.amount, r.count, r.oldest]);
+    const rows = withPhone.map(r => [r.phone, r.name, r.amount, r.count]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = [
@@ -1061,7 +1047,6 @@ export default function CustomerReceivables({ isActive = true }) {
       { wch: 40 },  // name
       { wch: 14 },  // amount
       { wch: 12 },  // count
-      { wch: 14 },  // oldest
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'WhatsApp');
