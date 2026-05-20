@@ -20,7 +20,7 @@ import {
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
   Link as LinkIcon, X, Phone,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
@@ -231,22 +231,12 @@ function UploadModal({ onClose, onDone, userId }) {
   return (
     <Modal title="رفع كشف المتاجر" onClose={onClose} width={520}>
       {!file && (
-        <div
-          onClick={() => document.getElementById('merchants-file-input').click()}
-          style={{
-            padding:32, textAlign:'center', cursor:'pointer',
-            border:'2px dashed var(--border2)', borderRadius:12,
-            background:'var(--surface)',
-          }}
-        >
-          <Upload size={28} color="var(--accent)" style={{ marginBottom: 8 }}/>
-          <div style={{ fontWeight:700, fontSize:13.5 }}>اختر ملف Excel للمتاجر</div>
-          <div style={{ fontSize:11, color:'var(--muted)', marginTop:6, lineHeight:1.7 }}>
-            الملف لازم يحتوي على رأس فيه «رقم المتجر» و«اسم المتجر». أعمدة الهاتف ونوع الفوترة والحالة اختيارية لكنها مهمة.
-          </div>
-          <input id="merchants-file-input" type="file" hidden accept=".xlsx,.xls"
-            onChange={e => handleFile(e.target.files?.[0])}/>
-        </div>
+        <DropZone
+          onFile={handleFile}
+          accept=".xlsx,.xls"
+          title="اسحب كشف المتاجر هنا"
+          hint={<>يحتاج رأس فيه «رقم المتجر» و«اسم المتجر». الهاتف ونوع الفوترة والحالة اختيارية لكنها مهمة.<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
+        />
       )}
 
       {busy && <div style={{ display:'flex', justifyContent:'center', padding:18 }}><Spinner size={22}/></div>}
