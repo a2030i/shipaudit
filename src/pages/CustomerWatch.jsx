@@ -586,6 +586,9 @@ export default function CustomerWatch({ isActive = true }) {
       {openCustomer && (
         <CustomerDrillDown
           entry={openCustomer}
+          customers={data?.customers || []}
+          merchants={data?.merchants || []}
+          onSelect={(e) => setOpenCustomer(e)}
           onClose={() => setOpenCustomer(null)}
         />
       )}
@@ -736,11 +739,80 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
 // Full 360 modal for one customer/merchant. Shows: identity, billing
 // status, shipment activity, wallet, receivables totals, recent
 // invoices (if any). One-click phone CTA for the operator.
-function CustomerDrillDown({ entry, onClose }) {
+function CustomerDrillDown({ entry, customers = [], merchants = [], onSelect, onClose }) {
   const c = entry.customer;
   const m = entry.merchant;
   const debt = Number(c?.total) || 0;
   const wallet = Number(m?.walletBalance) || 0;
+
+  // Normalize phone for matching: strip non-digits, drop a leading
+  // country prefix (+966 / 00966 / 966) and a leading zero so all the
+  // variants of the same number collapse to one key.
+  const normalizePhone = (raw) => {
+    if (!raw) return null;
+    let s = String(raw).replace(/\D/g, '');
+    if (s.startsWith('00966')) s = s.slice(5);
+    else if (s.startsWith('966')) s = s.slice(3);
+    if (s.startsWith('0')) s = s.slice(1);
+    return s.length >= 8 ? s : null;
+  };
+  const myPhone = normalizePhone(m?.phone);
+  const myStoreId = m?.storeId || null;
+
+  // Sibling search: any merchant in the directory with the same phone,
+  // excluding the current one. Each sibling carries the merchant data
+  // PLUS, if it appears in receivables, the linked customer record so
+  // we can show debt context inline.
+  const siblings = useMemo(() => {
+    if (!myPhone) return [];
+    const out = [];
+    const seen = new Set();
+    if (myStoreId) seen.add(myStoreId);
+    // Build a customer lookup by storeId for quick AR overlay
+    const customerByStoreId = new Map();
+    for (const cu of customers) {
+      const sid = cu.merchant?.storeId;
+      if (sid) customerByStoreId.set(sid, cu);
+    }
+    for (const mm of merchants) {
+      if (seen.has(mm.store_id)) continue;
+      if (normalizePhone(mm.phone) !== myPhone) continue;
+      seen.add(mm.store_id);
+      const cu = customerByStoreId.get(mm.store_id) || null;
+      out.push({
+        merchant: {
+          storeId: mm.store_id, storeName: mm.store_name, phone: mm.phone,
+          billingType: mm.billing_type, platformStatus: mm.status,
+          shipmentCount: mm.shipment_count, lastShipmentAt: mm.last_shipment_at,
+          walletBalance: Number(mm.wallet_balance) || 0,
+          createdAt: mm.created_at_platform, lastTopupAt: mm.last_topup_at,
+          integrationType: mm.integration_type,
+        },
+        customer: cu,
+        debt: Number(cu?.total) || 0,
+        wallet: Number(mm.wallet_balance) || 0,
+        shipments: Number(mm.shipment_count) || 0,
+        status: mm.status,
+      });
+    }
+    return out.sort((a, b) => (b.debt + Math.abs(b.wallet)) - (a.debt + Math.abs(a.wallet)));
+  }, [myPhone, myStoreId, customers, merchants]);
+
+  // Aggregate across the customer + every sibling — so the operator
+  // sees "you're calling this number about 4 stores: 22,400 ر.س total
+  // debt, 1 has negative wallet"
+  const groupAggregate = useMemo(() => {
+    if (!siblings.length) return null;
+    const all = [{ merchant: m, customer: c, debt, wallet, shipments: m?.shipmentCount || 0, status: m?.platformStatus }, ...siblings];
+    return {
+      stores: all.length,
+      totalDebt: all.reduce((s, x) => s + (Number(x.debt) || 0), 0),
+      totalWallet: all.reduce((s, x) => s + (Number(x.wallet) || 0), 0),
+      negWalletCount: all.filter(x => Number(x.wallet) < -0.5).length,
+      totalShipments: all.reduce((s, x) => s + (Number(x.shipments) || 0), 0),
+      activeCount: all.filter(x => x.status === 'نشط').length,
+    };
+  }, [siblings, m, c, debt, wallet]);
 
   // Title preference: full customer_name from receivables (e.g.
   // "مشاري سعد نجيب عبد العال - مختلفٌ") > clean merchant store_name
@@ -843,6 +915,122 @@ function CustomerDrillDown({ entry, onClose }) {
           color={c?.daysOutstanding > 60 ? 'var(--red)' : c?.daysOutstanding > 30 ? 'var(--gold)' : 'var(--muted)'}/>
       </div>
 
+      {/* Phone siblings — same operator, multiple stores */}
+      {siblings.length > 0 && (
+        <div style={{ marginBottom: 18 }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            gap: 10, marginBottom: 10,
+          }}>
+            <div>
+              <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 3 }}>
+                SAME PHONE · {siblings.length + 1} STORES
+              </div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.2 }}>
+                هذا الرقم يدير {siblings.length + 1} متاجر — اتصال واحد يكفي
+              </div>
+            </div>
+          </div>
+
+          {/* Aggregate banner */}
+          {groupAggregate && (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))',
+              gap: 8, marginBottom: 12,
+              padding: '12px 14px',
+              background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
+              borderRadius: 12,
+            }}>
+              <GroupStat label="إجمالي المتاجر" value={fmtCount(groupAggregate.stores)} color="var(--accent)"/>
+              <GroupStat label="إجمالي الدين" value={`${fmtCompact(groupAggregate.totalDebt)} ر.س`} color={groupAggregate.totalDebt > 0.5 ? 'var(--red)' : 'var(--muted)'}/>
+              <GroupStat label="مجموع المحافظ" value={`${fmtCompact(groupAggregate.totalWallet)} ر.س`} color={groupAggregate.totalWallet < 0 ? 'var(--red)' : 'var(--accent)'}/>
+              <GroupStat label="إجمالي الشحنات" value={fmtCount(groupAggregate.totalShipments)}/>
+              <GroupStat label="متاجر نشطة" value={`${groupAggregate.activeCount}/${groupAggregate.stores}`}/>
+              {groupAggregate.negWalletCount > 0 && (
+                <GroupStat label="محافظ سالبة" value={fmtCount(groupAggregate.negWalletCount)} color="var(--red)"/>
+              )}
+            </div>
+          )}
+
+          {/* Sibling list — clickable to switch the modal */}
+          <div style={{
+            border: '1px solid var(--border)', borderRadius: 12,
+            maxHeight: 260, overflowY: 'auto',
+          }}>
+            {siblings.map((s, i) => {
+              const sm = s.merchant;
+              const billingColor = sm.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B';
+              const statusColor  = sm.platformStatus === 'نشط' ? '#10B981' : '#71717A';
+              return (
+                <div
+                  key={sm.storeId}
+                  onClick={() => onSelect?.({
+                    kind: s.customer ? 'customer' : 'merchant',
+                    name: s.customer?.name || sm.storeName,
+                    customer: s.customer,
+                    merchant: sm,
+                  })}
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'auto 1fr auto auto',
+                    gap: 12, padding: '12px 14px',
+                    borderBottom: i === siblings.length - 1 ? 'none' : '1px solid var(--border)',
+                    alignItems: 'center', cursor: 'pointer',
+                    transition: 'background .12s',
+                  }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 9,
+                    background: 'var(--accent-dim)', color: 'var(--accent)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, fontWeight: 700,
+                  }}>{(sm.storeName || '?').slice(0, 1)}</div>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {sm.storeName}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+                      {sm.billingType && (
+                        <span style={{
+                          fontSize: 10, padding: '1px 7px', borderRadius: 999,
+                          background: `color-mix(in srgb, ${billingColor} 14%, transparent)`,
+                          color: billingColor, fontWeight: 600,
+                        }}>{sm.billingType}</span>
+                      )}
+                      <span style={{
+                        fontSize: 10, padding: '1px 7px', borderRadius: 999,
+                        background: `color-mix(in srgb, ${statusColor} 14%, transparent)`,
+                        color: statusColor, fontWeight: 600,
+                      }}>{sm.platformStatus || '—'}</span>
+                      <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>
+                        {fmtCount(s.shipments)} شحنة
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
+                    {s.debt > 0.5 ? (
+                      <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
+                        {fmtCompact(s.debt)} <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>دين</span>
+                      </div>
+                    ) : s.wallet !== 0 ? (
+                      <div style={{ fontSize: 13, fontWeight: 700, color: s.wallet < 0 ? 'var(--red)' : 'var(--accent)', fontFamily: 'var(--font-mono)' }}>
+                        {fmtCompact(s.wallet)} <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>محفظة</span>
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: 'var(--muted)' }}>—</div>
+                    )}
+                  </div>
+                  <ArrowLeft size={14} color="var(--muted2)"/>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Recent invoices */}
       {c?.invoices?.length > 0 && (
         <div>
@@ -886,6 +1074,17 @@ function Chip({ color, label }) {
       background: `color-mix(in srgb, ${color} 12%, transparent)`,
       color, fontSize: 11.5, fontWeight: 600,
     }}>{label}</span>
+  );
+}
+
+function GroupStat({ label, value, color }) {
+  return (
+    <div>
+      <div style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 14, fontWeight: 700, color: color || 'var(--text)', fontFamily: 'var(--font-mono)', letterSpacing: -0.2, whiteSpace: 'nowrap' }}>
+        {value}
+      </div>
+    </div>
   );
 }
 
