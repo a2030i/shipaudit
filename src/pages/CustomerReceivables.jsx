@@ -820,14 +820,19 @@ export default function CustomerReceivables({ isActive = true }) {
       .map(c => {
         const phone = String(c.merchant.phone).replace(/[^\d]/g, '');
         // Variable 2: amount — no decimals + thousands separators for
-        // a clean WhatsApp render. ٥،٤٣٢ reads better than 5432.00.
+        // a clean WhatsApp render. 5,432 reads better than 5432.00.
         const amount = Math.round(Number(c.total) || 0).toLocaleString('en-US');
-        // Variable 4: oldest invoice — Saudi Arabic short format,
-        // ٢٠٢٦/٠٤/١٢ → the recipient sees a real date, not ISO.
+        // Variable 4: oldest invoice — Gregorian YYYY/MM/DD using
+        // English digits so the WhatsApp message renders the date
+        // identically across devices regardless of locale.
         const oldest = c.oldestInvoiceDate
-          ? new Date(c.oldestInvoiceDate).toLocaleDateString('ar-SA', {
-              year: 'numeric', month: '2-digit', day: '2-digit',
-            })
+          ? (() => {
+              const d = new Date(c.oldestInvoiceDate);
+              const y = d.getFullYear();
+              const m = String(d.getMonth() + 1).padStart(2, '0');
+              const day = String(d.getDate()).padStart(2, '0');
+              return `${y}/${m}/${day}`;
+            })()
           : '—';
         // Variable 1: prefer the platform store name (cleaner) over
         // the raw receivables name. Strip any leading dashes/spaces.
@@ -841,21 +846,18 @@ export default function CustomerReceivables({ isActive = true }) {
       return;
     }
 
+    // Headers match the WhatsApp template variables purely by COLUMN
+    // ORDER — A→{{1}}, B→{{2}}, etc. No "{{N}}" prefix in the names
+    // because the bulk-sender maps by position. Preview column removed
+    // per operator request.
     const headers = [
       'رقم الجوال',
-      '{{1}} — اسم العميل',
-      '{{2}} — المبلغ (ر.س)',
-      '{{3}} — عدد الفواتير',
-      '{{4}} — أقدم فاتورة',
-      'نص الرسالة كامل (للمراجعة)',
+      'اسم العميل',
+      'المبلغ',
+      'عدد الفواتير',
+      'أقدم فاتورة',
     ];
-    const rows = withPhone.map(r => {
-      const messagePreview =
-        `إشعار مستحقات : ${r.name}\n\n` +
-        `تجاوزت مديونيتكم ${r.amount} ر.س بعدد ${r.count} فاتورة، أقدمها بتاريخ ${r.oldest}\n\n` +
-        `نرجو السداد خلال 5 أيام عمل لتفادي إيقاف الخدمة.`;
-      return [r.phone, r.name, r.amount, r.count, r.oldest, messagePreview];
-    });
+    const rows = withPhone.map(r => [r.phone, r.name, r.amount, r.count, r.oldest]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = [
@@ -864,7 +866,6 @@ export default function CustomerReceivables({ isActive = true }) {
       { wch: 14 },  // amount
       { wch: 12 },  // count
       { wch: 14 },  // oldest
-      { wch: 80 },  // preview
     ];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'WhatsApp');
