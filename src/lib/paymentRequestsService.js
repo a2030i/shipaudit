@@ -41,6 +41,7 @@ export async function attachMoyasarPayment(requestId, paymentId, method = null) 
 export async function submitPaymentRequest({
   phone, customerName, storeId, storeName,
   amountTotal, invoiceCount, invoiceRefs, notes,
+  paymentType, receiptPath, isPartial,
 }) {
   if (!phone) throw new Error('phone مطلوب');
   if (!amountTotal || amountTotal <= 0) throw new Error('المبلغ مطلوب');
@@ -55,11 +56,39 @@ export async function submitPaymentRequest({
       invoice_count: Number(invoiceCount) || 0,
       invoice_refs:  invoiceRefs || [],
       notes:         notes?.trim() || null,
+      payment_type:  paymentType || 'online',
+      receipt_path:  receiptPath || null,
+      is_partial:    !!isPartial,
     })
     .select()
     .single();
   if (error) throw error;
   return data;
+}
+
+// Receipt upload — anon-allowed under storage.objects RLS. Returns
+// { path, publicUrl } so the caller can attach the path to the
+// payment_request row + display the URL in the admin.
+export async function uploadReceipt(file) {
+  if (!file) throw new Error('file مطلوب');
+  const ext = (file.name?.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const rand = Math.random().toString(36).slice(2, 10);
+  const path = `${stamp}_${rand}.${ext}`;
+  const { error } = await supabase.storage
+    .from('payment-receipts')
+    .upload(path, file, { contentType: file.type || 'application/octet-stream' });
+  if (error) throw error;
+  const { data } = supabase.storage.from('payment-receipts').getPublicUrl(path);
+  return { path, publicUrl: data?.publicUrl || null };
+}
+
+// Build a public URL for an already-stored receipt path (used by the
+// admin page to render the receipt link).
+export function receiptUrl(path) {
+  if (!path) return null;
+  const { data } = supabase.storage.from('payment-receipts').getPublicUrl(path);
+  return data?.publicUrl || null;
 }
 
 // ── Admin ──────────────────────────────────────────────────────
