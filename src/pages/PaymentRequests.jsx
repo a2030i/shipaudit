@@ -6,9 +6,10 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import {
   RefreshCw, Phone, ShoppingBag, Receipt, CheckCircle2, XCircle,
-  Clock, MessageSquare, Trash2, Filter, X,
+  Clock, MessageSquare, Trash2, Filter, X, Download, Info,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast,
@@ -76,6 +77,37 @@ export default function PaymentRequests({ isActive = true }) {
 
   const total = useMemo(() => rows.reduce((s, r) => s + (Number(r.amount_total) || 0), 0), [rows]);
 
+  // Excel export — exactly the 4 columns the accountant types into
+  // the external system, plus phone for follow-up if needed. Targets
+  // the CURRENT filter (so filtering by 'paid' before exporting gives
+  // you a clean sadadat list).
+  const handleExport = () => {
+    if (!rows.length) { toast('لا توجد بيانات للتصدير', 'info'); return; }
+    const headers = ['اسم المتجر', 'المبلغ (ر.س)', 'تاريخ السداد', 'طريقة الدفع', 'رقم الجوال', 'حالة الطلب'];
+    const data = rows.map(r => [
+      r.store_name || r.customer_name || '—',
+      Number(r.amount_total || 0).toFixed(2),
+      r.paid_at
+        ? fmtDate(r.paid_at)
+        : r.handled_at
+          ? fmtDate(r.handled_at)
+          : fmtDate(r.created_at),
+      r.moyasar_payment_id
+        ? `Moyasar · ${r.payment_method || 'card'}`
+        : 'تحويل / يدوي',
+      r.phone || '',
+      STATUS_META[r.status]?.label || r.status,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
+    ws['!cols'] = [{ wch: 32 }, { wch: 14 }, { wch: 14 }, { wch: 22 }, { wch: 16 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    const sheetName = statusFilter === 'paid' ? 'السدادات' : 'طلبات السداد';
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `${sheetName}_${dateStr}.xlsx`);
+    toast(`تم تصدير ${rows.length} سطر`, 'success');
+  };
+
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
       <PageHeader
@@ -84,11 +116,35 @@ export default function PaymentRequests({ isActive = true }) {
         subtitle="طلبات واردة من بوابة العميل — قائمة بالفواتير اللي يبغى يسددها"
         meta={`الرابط العام: /portal · إجمالي عرض حالي: ${fmt(total)} ر.س`}
         actions={
-          <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
-            تحديث
-          </Btn>
+          <>
+            <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!rows.length}>
+              تصدير Excel
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+              تحديث
+            </Btn>
+          </>
         }
       />
+
+      {/* Operational note — this page is informational only. The
+          actual AR balance lives in the external accounting system;
+          re-upload a new receivables snapshot to reflect cleared
+          invoices in /receivables. */}
+      <div style={{
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        padding: '12px 14px', marginBottom: 18,
+        background: 'rgba(59,130,246,.05)',
+        border: '1px solid rgba(59,130,246,.18)',
+        borderRadius: 12,
+      }}>
+        <Info size={16} color="#3B82F6" style={{ marginTop: 2, flexShrink: 0 }}/>
+        <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
+          <strong style={{ color: '#3B82F6' }}>هذي مجرد سجل — لا تؤثّر على الفواتير.</strong>{' '}
+          المحاسب يرصد السداد في النظام المالي الخارجي، ثم يرفع كشف فواتير جديد في صفحة المديونيات
+          عشان الأرصدة تتحدّث تلقائياً.
+        </div>
+      </div>
 
       {/* Status filter pills */}
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
