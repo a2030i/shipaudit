@@ -23,9 +23,7 @@ import {
   SpotlightCard, PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
-import {
-  listInteractions, addInteraction, deleteInteraction, interactionKindMeta,
-} from '../lib/customerInteractionsService.js';
+import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
 // ── Formatters ───────────────────────────────────────────────────
@@ -828,82 +826,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
   const showStoreSubtitle = c?.name && m?.storeName && m.storeName !== c.name;
   const initial = (primaryName.replace(/^\s+/, '').slice(0, 1)) || '?';
 
-  // ── Interactions log (CRM activity feed) ────────────────────────
-  const [interactions, setInteractions] = useState([]);
-  const [interactionsLoading, setInteractionsLoading] = useState(true);
-  const [showAddForm, setShowAddForm] = useState(false);
-  const [newKind, setNewKind] = useState('reminder_sent');
-  const [newNote, setNewNote] = useState('');
-  const [newDueDate, setNewDueDate] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  const reloadInteractions = useCallback(async () => {
-    setInteractionsLoading(true);
-    try {
-      const rows = await listInteractions({
-        customerName: c?.name || null,
-        storeId:      m?.storeId || null,
-      });
-      setInteractions(rows);
-    } catch (e) {
-      console.warn('interactions load failed:', e.message);
-      setInteractions([]);
-    }
-    setInteractionsLoading(false);
-  }, [c?.name, m?.storeId]);
-
-  useEffect(() => { reloadInteractions(); }, [reloadInteractions]);
-
-  const handleAdd = async () => {
-    if (newKind === 'note' && !newNote.trim()) {
-      toast('اكتب الملاحظة أولاً', 'warn');
-      return;
-    }
-    if (newKind === 'promise_to_pay' && !newDueDate) {
-      toast('اختر تاريخ الوعد', 'warn');
-      return;
-    }
-    setSaving(true);
-    try {
-      await addInteraction({
-        customerName: c?.name || null,
-        storeId:      m?.storeId || null,
-        kind:         newKind,
-        note:         newNote.trim() || null,
-        dueDate:      newDueDate || null,
-        userId:       profile?.id || null,
-        userName:     profile?.name || null,
-      });
-      toast('✓ تم الحفظ', 'success');
-      setNewNote('');
-      setNewDueDate('');
-      setShowAddForm(false);
-      reloadInteractions();
-    } catch (e) {
-      toast(`فشل الحفظ: ${e.message}`, 'error');
-    }
-    setSaving(false);
-  };
-
-  const handleDeleteInteraction = async (id) => {
-    if (!confirm('حذف هذه الحركة؟')) return;
-    try {
-      await deleteInteraction(id);
-      toast('تم الحذف', 'success');
-      reloadInteractions();
-    } catch (e) {
-      toast(`فشل: ${e.message}`, 'error');
-    }
-  };
-
-  // Last interaction summary shown right under the avatar so the
-  // operator instantly knows when the customer was last touched.
-  const lastInteraction = interactions[0] || null;
-  // Open promise-to-pay: most recent promise whose due_date >= today
-  // (or due_date in the past — overdue promise that wasn't kept).
-  const todayISO = new Date().toISOString().slice(0, 10);
-  const openPromise = interactions.find(i => i.kind === 'promise_to_pay' && i.due_date);
-  const promiseOverdue = openPromise && openPromise.due_date < todayISO;
+  // Activity log lives inside InteractionsLog (shared with /receivables).
 
   return (
     <Modal title={primaryName} onClose={onClose} width={780}>
@@ -955,50 +878,8 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
         )}
       </div>
 
-      {/* Promise / last-interaction summary banner — surfaces the
-          most actionable note from the activity log without scrolling. */}
-      {(openPromise || lastInteraction) && (
-        <div style={{
-          padding: '12px 14px', marginBottom: 14,
-          background: promiseOverdue
-            ? 'rgba(239,68,68,.06)'
-            : openPromise
-              ? 'rgba(245,158,11,.07)'
-              : 'rgba(59,130,246,.05)',
-          borderRadius: 12,
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          {openPromise ? (
-            <>
-              <Calendar size={16} color={promiseOverdue ? 'var(--red)' : '#F59E0B'}/>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
-                  {promiseOverdue ? 'وعد متأخّر · انقضى تاريخه' : 'وعد بالدفع'}
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                  {fmtDate(openPromise.due_date)}
-                  {openPromise.note ? ` — ${openPromise.note}` : ''}
-                  {openPromise.created_by_name ? ` · ${openPromise.created_by_name}` : ''}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <Activity size={16} color="#3B82F6"/>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
-                  آخر تواصل: {interactionKindMeta(lastInteraction.kind).label}
-                </div>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                  {fmtDate(lastInteraction.created_at)} · {daysAgo(lastInteraction.created_at)}ي
-                  {lastInteraction.created_by_name ? ` · ${lastInteraction.created_by_name}` : ''}
-                  {lastInteraction.note ? ` — ${lastInteraction.note}` : ''}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-      )}
+      {/* Promise / last-interaction summary banner is rendered inside
+          the shared InteractionsLog component below — no inline copy. */}
 
       {/* Status chips */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
@@ -1191,173 +1072,14 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
         </div>
       )}
 
-      {/* ── Activity log (interactions) ──────────────────────── */}
+      {/* ── Activity log (shared with /receivables drawer) ──── */}
       <div style={{ marginTop: 22 }}>
-        <div style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          gap: 10, marginBottom: 10,
-        }}>
-          <div>
-            <div style={{
-              fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
-              letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 4, fontWeight: 600,
-            }}>
-              ACTIVITY LOG
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>
-              سجل المتابعة {interactions.length > 0 ? `(${interactions.length})` : ''}
-            </div>
-          </div>
-          {!showAddForm && (
-            <Btn size="sm" variant="accent" onClick={() => setShowAddForm(true)}>
-              + إضافة حركة
-            </Btn>
-          )}
-        </div>
-
-        {/* Quick-add form */}
-        {showAddForm && (
-          <div style={{
-            padding: '14px 16px', marginBottom: 12,
-            background: 'var(--bg2)', borderRadius: 12,
-          }}>
-            <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
-              {Object.entries({
-                reminder_sent:  '📨 تذكير',
-                promise_to_pay: '📅 وعد دفع',
-                call_made:      '☎ مكالمة',
-                visit:          '🏃 زيارة',
-                note:           '✍ ملاحظة',
-              }).map(([k, label]) => (
-                <button key={k} onClick={() => setNewKind(k)} style={{
-                  padding: '6px 12px', borderRadius: 999,
-                  background: newKind === k ? interactionKindMeta(k).color : 'transparent',
-                  border: `1px solid ${newKind === k ? interactionKindMeta(k).color : 'var(--border2)'}`,
-                  color: newKind === k ? '#fff' : 'var(--text2)',
-                  fontSize: 12, fontWeight: 600, cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)',
-                  transition: 'all .15s',
-                }}>{label}</button>
-              ))}
-            </div>
-
-            {newKind === 'promise_to_pay' && (
-              <div style={{ marginBottom: 8 }}>
-                <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 4, fontWeight: 600 }}>
-                  تاريخ الوعد *
-                </label>
-                <input type="date" value={newDueDate} onChange={e => setNewDueDate(e.target.value)}
-                  style={{ width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13 }}/>
-              </div>
-            )}
-
-            <textarea
-              value={newNote}
-              onChange={e => setNewNote(e.target.value)}
-              placeholder={
-                newKind === 'reminder_sent'  ? 'مثال: أرسلت تذكير واتساب · ما رد' :
-                newKind === 'promise_to_pay' ? 'تفاصيل الوعد (اختياري)' :
-                newKind === 'call_made'      ? 'مثال: رد، طلب مهلة أسبوع' :
-                newKind === 'visit'          ? 'مثال: زرته في المعرض' :
-                                                'اكتب ملاحظتك…'
-              }
-              rows={3}
-              style={{
-                width: '100%', padding: '10px 12px', borderRadius: 10, fontSize: 13,
-                resize: 'vertical', fontFamily: 'var(--font-sans)',
-              }}
-            />
-            <div style={{ display: 'flex', gap: 8, marginTop: 10, justifyContent: 'flex-end' }}>
-              <Btn size="sm" variant="ghost" onClick={() => { setShowAddForm(false); setNewNote(''); setNewDueDate(''); }}>
-                إلغاء
-              </Btn>
-              <Btn size="sm" variant="accent" onClick={handleAdd} disabled={saving}>
-                {saving ? 'جارٍ الحفظ…' : 'حفظ الحركة'}
-              </Btn>
-            </div>
-          </div>
-        )}
-
-        {/* Timeline */}
-        {interactionsLoading ? (
-          <div style={{ padding: 24, textAlign: 'center', color: 'var(--muted)' }}>
-            <Spinner size={20}/>
-          </div>
-        ) : interactions.length === 0 ? (
-          <div style={{
-            padding: '22px 18px', textAlign: 'center', fontSize: 12.5,
-            color: 'var(--muted)',
-            border: '1px dashed var(--border2)', borderRadius: 12,
-          }}>
-            لا توجد حركات بعد — أضف أول تذكير أو ملاحظة
-          </div>
-        ) : (
-          <div style={{
-            border: '1px solid var(--border)', borderRadius: 12,
-            maxHeight: 320, overflowY: 'auto',
-          }}>
-            {interactions.map((it, i) => {
-              const km = interactionKindMeta(it.kind);
-              const isOverdue = it.kind === 'promise_to_pay' && it.due_date && it.due_date < todayISO;
-              return (
-                <div key={it.id} style={{
-                  display: 'grid', gridTemplateColumns: '32px 1fr auto', gap: 12,
-                  padding: '12px 14px', alignItems: 'flex-start',
-                  borderBottom: i === interactions.length - 1 ? 'none' : '1px solid var(--border)',
-                  background: isOverdue ? 'rgba(239,68,68,.04)' : 'transparent',
-                }}>
-                  <div style={{
-                    width: 32, height: 32, borderRadius: 9,
-                    background: `color-mix(in srgb, ${km.color} 14%, transparent)`,
-                    color: km.color,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, fontWeight: 700,
-                  }}>
-                    {km.label[0]}
-                  </div>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 12.5, fontWeight: 700, color: km.color }}>{km.label}</span>
-                      {it.due_date && (
-                        <span style={{
-                          fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
-                          background: isOverdue ? 'rgba(239,68,68,.14)' : 'rgba(245,158,11,.12)',
-                          color: isOverdue ? 'var(--red)' : '#F59E0B',
-                          fontFamily: 'var(--font-mono)', fontWeight: 700,
-                        }}>
-                          {isOverdue ? 'متأخّر · ' : 'يستحق · '}{fmtDate(it.due_date)}
-                        </span>
-                      )}
-                    </div>
-                    {it.note && (
-                      <div style={{ fontSize: 12.5, color: 'var(--text)', marginTop: 4, lineHeight: 1.55, whiteSpace: 'pre-wrap' }}>
-                        {it.note}
-                      </div>
-                    )}
-                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4, fontFamily: 'var(--font-mono)' }}>
-                      {fmtDate(it.created_at)} · {daysAgo(it.created_at)}ي
-                      {it.created_by_name ? ` · ${it.created_by_name}` : ''}
-                    </div>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteInteraction(it.id)}
-                    title="حذف الحركة"
-                    style={{
-                      background: 'transparent', border: 'none', color: 'var(--muted2)',
-                      cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center',
-                      transition: 'color .15s',
-                    }}
-                    onMouseEnter={e => e.currentTarget.style.color = 'var(--red)'}
-                    onMouseLeave={e => e.currentTarget.style.color = 'var(--muted2)'}
-                  >
-                    <X size={14}/>
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        <InteractionsLog
+          customerName={c?.name || null}
+          storeId={m?.storeId || null}
+        />
       </div>
+
     </Modal>
   );
 }

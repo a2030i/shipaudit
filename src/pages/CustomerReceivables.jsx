@@ -12,6 +12,7 @@ import {
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
+import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
@@ -143,7 +144,7 @@ function AgingGrid({ aging, total }) {
 function CustomerDrawer({ customer, onClose }) {
   if (!customer) return null;
   return (
-    <Modal title={customer.name} onClose={onClose} width={640}>
+    <Modal title={customer.name} onClose={onClose} width={720}>
       <div style={{ display: 'flex', gap: 14, marginBottom: 14, flexWrap: 'wrap' }}>
         <StatPill label="إجمالي مديونيته" value={`${fmt(customer.total)} ر.س`}/>
         <StatPill label="عدد الفواتير" value={customer.invoiceCount}/>
@@ -155,7 +156,9 @@ function CustomerDrawer({ customer, onClose }) {
           />
         )}
       </div>
-      <div style={{ maxHeight: 360, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9 }}>
+
+      {/* Invoices table */}
+      <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 20 }}>
         <table style={{ fontSize: 12, width: '100%' }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
             <tr>
@@ -191,6 +194,12 @@ function CustomerDrawer({ customer, onClose }) {
           </tbody>
         </table>
       </div>
+
+      {/* CRM activity log — same component used in /customers drill-down */}
+      <InteractionsLog
+        customerName={customer.name}
+        storeId={customer.merchant?.storeId || null}
+      />
     </Modal>
   );
 }
