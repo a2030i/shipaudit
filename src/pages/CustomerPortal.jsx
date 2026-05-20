@@ -44,9 +44,20 @@ export default function CustomerPortal() {
     setLoading(true);
     try {
       const result = await portalLookup(phone.trim());
-      setLookup(result);
-      if (!result?.stores?.length) {
-        toast('لم نجد متاجر مرتبطة بهذا الرقم', 'warn');
+      // Filter out stores with no outstanding debt — the portal is for
+      // sadad, so a zero-balance store is just noise.
+      const storesWithDebt = (result?.stores || []).filter(
+        s => (Number(s.total_due) || 0) > 0.5
+      );
+      const cleaned = { ...(result || {}), stores: storesWithDebt };
+      setLookup(cleaned);
+      if (!storesWithDebt.length) {
+        toast(
+          result?.stores?.length
+            ? 'كل متاجرك مسدّدة — لا توجد فواتير معلّقة'
+            : 'لم نجد متاجر مرتبطة بهذا الرقم',
+          'success',
+        );
         setLoading(false);
         return;
       }
