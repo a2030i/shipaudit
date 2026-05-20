@@ -15,6 +15,8 @@ import CarriersHub    from './pages/CarriersHub.jsx';
 import CarrierProfile from './pages/CarrierProfile.jsx';
 import CustomerReceivables from './pages/CustomerReceivables.jsx';
 import CustomerWatch from './pages/CustomerWatch.jsx';
+import CustomerPortal from './pages/CustomerPortal.jsx';
+import PaymentRequests from './pages/PaymentRequests.jsx';
 import Merchants from './pages/Merchants.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
@@ -67,9 +69,10 @@ const NAV_ITEMS = [
   { id: 'weight-billing',  path: '/weight-billing', label: 'فوترة الأوزان',  icon: Scale,    section: 'audits' },
 
   // ── Finance ────────────────────────────────────────────────────
-  { id: 'cod-settlements', path: '/cod-settlements', label: 'تسويات COD', icon: Banknote,   section: 'finance' },
-  { id: 'payments',        path: '/payments',        label: 'الدفعات',     icon: CreditCard, section: 'finance' },
-  { id: 'bank',            path: '/bank',            label: 'كشف بنكي',    icon: Wallet,     section: 'finance' },
+  { id: 'cod-settlements',   path: '/cod-settlements',   label: 'تسويات COD',   icon: Banknote,   section: 'finance' },
+  { id: 'payments',          path: '/payments',          label: 'الدفعات',       icon: CreditCard, section: 'finance' },
+  { id: 'bank',              path: '/bank',              label: 'كشف بنكي',      icon: Wallet,     section: 'finance' },
+  { id: 'payment-requests',  path: '/payment-requests',  label: 'طلبات السداد',  icon: Inbox,      section: 'finance' },
 
   // ── Customers (AR side) ───────────────────────────────────────
   { id: 'customers',       path: '/customers',       label: 'متابعة العملاء',   icon: Users,       section: 'customers' },
@@ -93,6 +96,7 @@ const PAGE_TITLES = {
   '/carrier':           'بروفايل الشركة',
   '/webhook':           'الوارد',
   '/customers':         'متابعة العملاء',
+  '/payment-requests':  'طلبات السداد',
   '/upload':            'مراجعة جديدة',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
@@ -128,10 +132,24 @@ export default function App() {
 
   return (
     <AuthProvider>
-      <AppInner theme={theme} toggleTheme={toggleTheme}/>
+      <AppShell theme={theme} toggleTheme={toggleTheme}/>
       <ToastContainer/>
     </AuthProvider>
   );
+}
+
+// Routes that should render standalone, OUTSIDE the authenticated app
+// shell (sidebar / topbar / auth check). Customer-facing surfaces live
+// here. Add public paths to this list as they appear.
+const PUBLIC_PATHS = ['/portal'];
+
+function AppShell(props) {
+  const location = useLocation();
+  // Public surfaces bypass auth and the sidebar/topbar layout entirely.
+  if (PUBLIC_PATHS.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))) {
+    if (location.pathname.startsWith('/portal')) return <CustomerPortal/>;
+  }
+  return <AppInner {...props}/>;
 }
 
 // ── Inner ─────────────────────────────────────────────────────────────────────
@@ -142,7 +160,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/carrier-kpi','/activity-log','/webhook','/employees'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -515,6 +533,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/customers'} scroll>
               <CustomerWatch isActive={pathname==='/customers'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/payment-requests'} scroll>
+              <PaymentRequests isActive={pathname==='/payment-requests'}/>
             </PageSlot>
             <PageSlot active={pathname==='/weight-billing'} scroll>
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
