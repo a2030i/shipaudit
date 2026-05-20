@@ -109,7 +109,8 @@
       "Bash(node -e 'require\\('\\\\''@babel/parser'\\\\''\\).parse\\(require\\('\\\\''fs'\\\\''\\).readFileSync\\('\\\\''__TRACKED_VAR__'\\\\'','\\\\''utf8'\\\\''\\), { sourceType:'\\\\''module'\\\\'', plugins:['\\\\''jsx'\\\\''] }\\)')",
       "Bash(git -C C:/Users/huawei/shipaudit add src/pages)",
       "Bash(git -C C:/Users/huawei/shipaudit add -u)",
-      "Bash(git -C C:/Users/huawei/shipaudit add -A)"
+      "Bash(git -C C:/Users/huawei/shipaudit add -A)",
+      "Bash(node -e \"require\\('@babel/parser'\\).parse\\(require\\('fs'\\).readFileSync\\('C:/Users/huawei/shipaudit/src/pages/CustomerWatch.jsx','utf8'\\), { sourceType:'module', plugins:['jsx'] }\\); console.log\\('OK'\\)\")"
     ]
   }
 }
