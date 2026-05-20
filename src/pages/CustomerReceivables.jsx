@@ -791,6 +791,84 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${visibleCustomers.length} عميل لحملة التحصيل`, 'success');
   };
 
+  // WhatsApp Business template export. Columns match the placeholder
+  // order in the template the operator showed us:
+  //
+  //   إشعار مستحقات : {{1}}
+  //   تجاوزت مديونيتكم {{2}} ر.س بعدد {{3}} فاتورة، أقدمها بتاريخ {{4}}
+  //   نرجو السداد خلال 5 أيام عمل لتفادي إيقاف الخدمة.
+  //
+  // Phone column first (the bulk-sender uses it as the recipient
+  // key), then variables 1..4 in the exact template order. Customers
+  // without phone are skipped — we can't message them.
+  const handleWhatsAppExport = () => {
+    if (!visibleCustomers.length) {
+      toast('لا توجد بيانات للتصدير', 'info');
+      return;
+    }
+    const withPhone = visibleCustomers
+      .filter(c => c.merchant?.phone && (c.total || 0) > 0.5)
+      .map(c => {
+        const phone = String(c.merchant.phone).replace(/[^\d]/g, '');
+        // Variable 2: amount — no decimals + thousands separators for
+        // a clean WhatsApp render. ٥،٤٣٢ reads better than 5432.00.
+        const amount = Math.round(Number(c.total) || 0).toLocaleString('en-US');
+        // Variable 4: oldest invoice — Saudi Arabic short format,
+        // ٢٠٢٦/٠٤/١٢ → the recipient sees a real date, not ISO.
+        const oldest = c.oldestInvoiceDate
+          ? new Date(c.oldestInvoiceDate).toLocaleDateString('ar-SA', {
+              year: 'numeric', month: '2-digit', day: '2-digit',
+            })
+          : '—';
+        // Variable 1: prefer the platform store name (cleaner) over
+        // the raw receivables name. Strip any leading dashes/spaces.
+        const name = (c.merchant?.storeName || c.name || '').trim();
+        return { phone, name, amount, count: c.invoiceCount || 0, oldest, raw: c };
+      })
+      .sort((a, b) => Number(String(b.amount).replace(/,/g, '')) - Number(String(a.amount).replace(/,/g, '')));
+
+    if (!withPhone.length) {
+      toast('لا يوجد عملاء بأرقام جوال للتصدير', 'warn');
+      return;
+    }
+
+    const headers = [
+      'رقم الجوال',
+      '{{1}} — اسم العميل',
+      '{{2}} — المبلغ (ر.س)',
+      '{{3}} — عدد الفواتير',
+      '{{4}} — أقدم فاتورة',
+      'نص الرسالة كامل (للمراجعة)',
+    ];
+    const rows = withPhone.map(r => {
+      const messagePreview =
+        `إشعار مستحقات : ${r.name}\n\n` +
+        `تجاوزت مديونيتكم ${r.amount} ر.س بعدد ${r.count} فاتورة، أقدمها بتاريخ ${r.oldest}\n\n` +
+        `نرجو السداد خلال 5 أيام عمل لتفادي إيقاف الخدمة.`;
+      return [r.phone, r.name, r.amount, r.count, r.oldest, messagePreview];
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    ws['!cols'] = [
+      { wch: 16 },  // phone
+      { wch: 40 },  // name
+      { wch: 14 },  // amount
+      { wch: 12 },  // count
+      { wch: 14 },  // oldest
+      { wch: 80 },  // preview
+    ];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'WhatsApp');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `رسائل_واتساب_${dateStr}.xlsx`);
+
+    const skipped = visibleCustomers.length - withPhone.length;
+    toast(
+      `تم تصدير ${withPhone.length} رسالة${skipped > 0 ? ` (تم تخطّي ${skipped} بلا رقم جوال)` : ''}`,
+      'success',
+    );
+  };
+
   const handleShowHistory = async () => {
     try {
       const list = await loadReceivablesSnapshots();
@@ -822,6 +900,9 @@ export default function CustomerReceivables({ isActive = true }) {
             </Btn>
             <Btn size="md" variant="gold" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
               ملف تحصيل
+            </Btn>
+            <Btn size="md" variant="success" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
+              رسائل واتساب
             </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
