@@ -21,6 +21,23 @@ export async function portalLookup(phone) {
   return data || { phone: null, stores: [] };
 }
 
+// Attach a Moyasar payment_id to an existing request after the
+// customer completes payment on the Moyasar hosted form. The RPC is
+// anon-callable + SECURITY DEFINER, but only adds the payment hint —
+// the admin still flips status='paid' manually after verifying in
+// the Moyasar dashboard. Client-side success callbacks can be faked,
+// so we don't trust them as a status authority.
+export async function attachMoyasarPayment(requestId, paymentId, method = null) {
+  if (!requestId || !paymentId) throw new Error('request_id و payment_id مطلوبان');
+  const { data, error } = await supabase.rpc('attach_moyasar_payment', {
+    p_request_id:     requestId,
+    p_payment_id:     paymentId,
+    p_payment_method: method,
+  });
+  if (error) throw error;
+  return data || null;
+}
+
 export async function submitPaymentRequest({
   phone, customerName, storeId, storeName,
   amountTotal, invoiceCount, invoiceRefs, notes,
