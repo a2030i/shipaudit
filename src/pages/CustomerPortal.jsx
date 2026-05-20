@@ -15,7 +15,10 @@ import {
 } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import { Spinner, toast, ToastContainer } from '../components/UI.jsx';
-import { portalLookup, submitPaymentRequest, attachMoyasarPayment, uploadReceipt } from '../lib/paymentRequestsService.js';
+import {
+  portalLookup, submitPaymentRequest, attachMoyasarPayment,
+  uploadReceipt, getPaymentConfig,
+} from '../lib/paymentRequestsService.js';
 import { DropZone } from '../components/UI.jsx';
 
 // Bank transfer destination — shown to customers who pick "حوالة بنكية".
@@ -25,11 +28,15 @@ const BANK_INFO = {
   beneficiary: 'شركة فور تيك لتقنية المعلومات',
 };
 
+// Build-time env-var fallback so existing Vercel deployments that
+// already set this var keep working without DB config.
+const ENV_MOYASAR_PK = import.meta.env.VITE_MOYASAR_PUBLISHABLE_KEY || '';
+
 // Moyasar publishable key — safe to expose, only allows initiating
-// payments (no balance / refund / customer data access). Set in
-// Vercel as VITE_MOYASAR_PUBLISHABLE_KEY to enable the pay-online
-// flow; the request-only flow still works without it.
-const MOYASAR_PK = import.meta.env.VITE_MOYASAR_PUBLISHABLE_KEY || '';
+// payments (no balance / refund / customer data access).
+// Loaded at runtime from app_settings (so the admin can change it
+// from the Settings UI without a redeploy). Falls back to the
+// build-time env var VITE_MOYASAR_PUBLISHABLE_KEY for compatibility.
 
 // Load the Moyasar SDK on demand — keeps the bundle small and the
 // portal usable even when Moyasar is unconfigured.
@@ -74,6 +81,16 @@ const fmtDate = (iso) => {
 };
 
 export default function CustomerPortal() {
+  // Runtime-fetched Moyasar publishable key, with env-var fallback.
+  // Loaded on first mount; the UI uses moyasarPK below to decide
+  // whether to show the online-pay button.
+  const [moyasarPK, setMoyasarPK] = useState(ENV_MOYASAR_PK);
+  useEffect(() => {
+    getPaymentConfig().then(cfg => {
+      if (cfg.moyasarPublishableKey) setMoyasarPK(cfg.moyasarPublishableKey);
+    }).catch(() => {});
+  }, []);
+
   const [step, setStep] = useState('phone');     // phone | stores | invoices | pay | done
   const [phone, setPhone] = useState('');
   const [lookup, setLookup] = useState(null);    // { phone, stores: [...] }
@@ -166,7 +183,7 @@ export default function CustomerPortal() {
         isPartial:     payMode === 'partial',
       });
       setSubmitResult(res);
-      setStep(MOYASAR_PK ? 'pay' : 'done');
+      setStep(moyasarPK ? 'pay' : 'done');
     } catch (e) {
       toast(`فشل الإرسال: ${e.message}`, 'error');
     }
@@ -244,7 +261,7 @@ export default function CustomerPortal() {
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 20px 80px' }}>
         {/* Progress dots */}
         {(() => {
-          const stages = MOYASAR_PK
+          const stages = moyasarPK
             ? ['phone', 'stores', 'invoices', 'pay', 'done']
             : ['phone', 'stores', 'invoices', 'done'];
           const idx = stages.indexOf(step);
@@ -509,10 +526,10 @@ export default function CustomerPortal() {
                 contact you" (current bug the operator caught). */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: MOYASAR_PK ? '1fr 1fr' : '1fr',
+              gridTemplateColumns: moyasarPK ? '1fr 1fr' : '1fr',
               gap: 10,
             }}>
-              {MOYASAR_PK && (
+              {moyasarPK && (
                 <button
                   onClick={handleOnlinePayment}
                   disabled={submitting || paymentAmount <= 0}
@@ -547,7 +564,7 @@ export default function CustomerPortal() {
                 <ShoppingBag size={20}/>
                 <span>حوالة بنكية</span>
                 <span style={{ fontSize: 10.5, fontWeight: 500, opacity: 0.75 }}>
-                  {MOYASAR_PK ? 'تحويل بنكي يدوي' : 'الطريقة الوحيدة المتاحة حالياً'}
+                  {moyasarPK ? 'تحويل بنكي يدوي' : 'الطريقة الوحيدة المتاحة حالياً'}
                 </span>
               </button>
             </div>
@@ -564,6 +581,7 @@ export default function CustomerPortal() {
         {step === 'pay' && submitResult && (
           <MoyasarStep
             request={submitResult}
+            publishableKey={moyasarPK}
             onPaid={(paymentId, method) => {
               attachMoyasarPayment(submitResult.id, paymentId, method)
                 .catch(() => { /* silent — admin still gets the request */ });
@@ -790,7 +808,7 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
 // wires the on_completed callback to mark the payment as attached.
 // The form supports mada / Visa / Mastercard / Apple Pay / STC Pay
 // depending on what's enabled in the Moyasar dashboard.
-function MoyasarStep({ request, onPaid, onSkip }) {
+function MoyasarStep({ request, publishableKey, onPaid, onSkip }) {
   const containerRef = useRef(null);
   const [ready, setReady]   = useState(false);
   const [errored, setErrored] = useState(false);
@@ -808,7 +826,7 @@ function MoyasarStep({ request, onPaid, onSkip }) {
           amount:         Math.round(Number(request.amount_total) * 100), // halalas
           currency:       'SAR',
           description:    `سداد ${request.invoice_count} فاتورة · ${request.store_name || ''}`.trim(),
-          publishable_api_key: MOYASAR_PK,
+          publishable_api_key: publishableKey,
           callback_url:   window.location.href,
           // We listen to the completion callback below; callback_url is
           // a fallback for hosted-redirect flows.

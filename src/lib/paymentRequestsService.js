@@ -13,6 +13,40 @@
 
 import { supabase } from './supabase.js';
 
+// ── Payment configuration (anon-callable read) ────────────────
+// Reads the Moyasar publishable key from app_settings via the
+// SECURITY DEFINER `get_payment_config` RPC. Cached in-memory for
+// the page lifetime so the portal doesn't re-fetch on every render.
+let _paymentConfigPromise = null;
+export async function getPaymentConfig({ force = false } = {}) {
+  if (!force && _paymentConfigPromise) return _paymentConfigPromise;
+  _paymentConfigPromise = (async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_payment_config');
+      if (error) throw error;
+      return {
+        moyasarPublishableKey: data?.moyasar_publishable_key || '',
+      };
+    } catch (e) {
+      console.info('[payment config] fetch failed:', e.message);
+      return { moyasarPublishableKey: '' };
+    }
+  })();
+  return _paymentConfigPromise;
+}
+
+// Admin-side setter — updates the app_settings row for the key.
+// Authenticated users only (RLS on app_settings).
+export async function setMoyasarPublishableKey(value) {
+  const trimmed = (value || '').trim();
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({ key: 'moyasar_publishable_key', value: trimmed, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  _paymentConfigPromise = null;  // invalidate cache
+  return { ok: true };
+}
+
 // ── Portal (anon-callable) ─────────────────────────────────────
 export async function portalLookup(phone) {
   if (!phone) return { phone: null, stores: [] };
