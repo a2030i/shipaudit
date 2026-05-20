@@ -118,9 +118,10 @@ export default function PaymentRequests({ isActive = true }) {
         icon={<Receipt size={22}/>}
         title="طلبات السداد"
         subtitle="طلبات واردة من بوابة العميل — قائمة بالفواتير اللي يبغى يسددها"
-        meta={`الرابط العام: /portal · إجمالي عرض حالي: ${fmt(total)} ر.س`}
+        meta={`إجمالي عرض حالي: ${fmt(total)} ر.س`}
         actions={
           <>
+            <PortalLinkButton/>
             <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!rows.length}>
               تصدير Excel
             </Btn>
@@ -496,33 +497,77 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
         </div>
       )}
 
-      {/* Invoices list */}
-      {invoices.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{
-            fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
-            letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
-          }}>
-            الفواتير المختارة ({invoices.length})
+      {/* Invoices list — grouped by store when the request spans
+          multiple stores (invoice_refs items carry store_id). */}
+      {invoices.length > 0 && (() => {
+        // Group by store_id; preserve insertion order
+        const groups = new Map();
+        for (const inv of invoices) {
+          const key = inv.store_id || '__single__';
+          if (!groups.has(key)) {
+            groups.set(key, { storeId: inv.store_id || null, storeName: inv.store_name || row.store_name || null, items: [] });
+          }
+          groups.get(key).items.push(inv);
+        }
+        const groupArr = [...groups.values()];
+        const isMulti = groupArr.length > 1;
+
+        return (
+          <div style={{ marginBottom: 14 }}>
+            <div style={{
+              fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
+              letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+            }}>
+              الفواتير المختارة ({invoices.length}) {isMulti && `· ${groupArr.length} متاجر`}
+            </div>
+            <div style={{ border: '1px solid var(--border)', borderRadius: 12, maxHeight: 280, overflowY: 'auto' }}>
+              {groupArr.map((g, gi) => {
+                const groupTotal = g.items.reduce((s, x) => s + (Number(x.amount) || 0), 0);
+                return (
+                  <div key={g.storeId || gi}>
+                    {isMulti && (
+                      <div style={{
+                        padding: '10px 14px',
+                        background: 'var(--bg2)',
+                        borderTop: gi > 0 ? '1px solid var(--border)' : 'none',
+                        borderBottom: '1px solid var(--border)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                          <ShoppingBag size={13} color="var(--accent)"/>
+                          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {g.storeName || g.storeId || '—'}
+                          </span>
+                          <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                            · {g.items.length} فاتورة
+                          </span>
+                        </div>
+                        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>
+                          {fmt(groupTotal)} <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
+                        </span>
+                      </div>
+                    )}
+                    {g.items.map((inv, i, arr) => (
+                      <div key={inv.id || `${gi}-${i}`} style={{
+                        display: 'grid', gridTemplateColumns: '1fr auto', gap: 12,
+                        padding: '10px 14px', alignItems: 'center',
+                        borderBottom: i === arr.length - 1 ? 'none' : '1px solid var(--border)',
+                      }}>
+                        <div style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>
+                          {fmtDate(inv.date)}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                          {fmt(inv.amount)} <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div style={{ border: '1px solid var(--border)', borderRadius: 12, maxHeight: 200, overflowY: 'auto' }}>
-            {invoices.map((inv, i) => (
-              <div key={inv.id || i} style={{
-                display: 'grid', gridTemplateColumns: '1fr auto', gap: 12,
-                padding: '10px 14px', alignItems: 'center',
-                borderBottom: i === invoices.length - 1 ? 'none' : '1px solid var(--border)',
-              }}>
-                <div style={{ fontSize: 12, color: 'var(--text2)', fontFamily: 'var(--font-mono)' }}>
-                  {fmtDate(inv.date)}
-                </div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-                  {fmt(inv.amount)} <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Customer note */}
       {row.notes && (
@@ -575,5 +620,65 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
         )}
       </div>
     </Modal>
+  );
+}
+
+// ── Portal link button ──────────────────────────────────────────
+// Shows the public /portal URL with a one-click "copy" CTA so the
+// admin can share it with customers via WhatsApp / SMS / email
+// without typing the host.
+function PortalLinkButton() {
+  const [copied, setCopied] = useState(false);
+  const url = typeof window !== 'undefined' ? `${window.location.origin}/portal` : '/portal';
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      toast('تم نسخ رابط البوابة ✓', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast('فشل النسخ — انسخه يدوياً', 'error');
+    }
+  };
+
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '4px 4px 4px 14px', borderRadius: 999,
+      background: 'var(--accent-dim)',
+      border: '1px solid var(--accent)',
+    }}>
+      <a
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11.5, fontWeight: 600,
+          color: 'var(--accent)', textDecoration: 'none',
+          direction: 'ltr',
+          whiteSpace: 'nowrap',
+          maxWidth: 280, overflow: 'hidden', textOverflow: 'ellipsis',
+        }}
+        title="افتح البوابة في تبويب جديد"
+      >
+        {url}
+      </a>
+      <button
+        onClick={handleCopy}
+        title="نسخ"
+        style={{
+          background: copied ? 'var(--accent)' : 'transparent',
+          color: copied ? '#fff' : 'var(--accent)',
+          border: 'none', borderRadius: 999,
+          padding: '5px 10px', fontSize: 11, fontWeight: 700,
+          cursor: 'pointer', fontFamily: 'var(--font-sans)',
+          transition: 'all .15s',
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+        }}
+      >
+        {copied ? '✓ نُسخ' : '📋 نسخ'}
+      </button>
+    </div>
   );
 }
