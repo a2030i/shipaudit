@@ -154,8 +154,17 @@ export default function PaymentRequests({ isActive = true }) {
                 }}><Receipt size={16}/></div>
 
                 <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {r.store_name || r.customer_name || '—'}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, overflow: 'hidden' }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {r.store_name || r.customer_name || '—'}
+                    </span>
+                    {r.moyasar_payment_id && (
+                      <span title="دفع عبر Moyasar" style={{
+                        fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
+                        background: 'rgba(16,185,129,.14)', color: '#10B981',
+                        fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
+                      }}>💳 ميسر</span>
+                    )}
                   </div>
                   <div style={{ display: 'flex', gap: 12, fontSize: 11.5, color: 'var(--muted)', marginTop: 3, fontFamily: 'var(--font-mono)', flexWrap: 'wrap' }}>
                     <span style={{ direction: 'ltr' }}><Phone size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{r.phone}</span>
@@ -308,6 +317,46 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           {row.invoice_count} فاتورة مختارة
         </div>
       </div>
+
+      {/* Moyasar payment hint — the customer paid via the portal's
+          card form. This is NOT a confirmation (client callbacks can
+          be faked); verify in Moyasar dashboard before تم السداد. */}
+      {row.moyasar_payment_id && (
+        <div style={{
+          padding: '14px 16px', marginBottom: 14,
+          background: 'rgba(16,185,129,.08)',
+          border: '1px solid rgba(16,185,129,.22)',
+          borderRadius: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+            <div style={{
+              width: 28, height: 28, borderRadius: 8,
+              background: 'rgba(16,185,129,.16)', color: '#10B981',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>💳</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              العميل دفع عبر Moyasar
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 38, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
+            <div>Payment ID: <strong style={{ color: 'var(--text2)' }}>{row.moyasar_payment_id}</strong></div>
+            {row.payment_method && <div>طريقة الدفع: {row.payment_method}</div>}
+            {row.paid_at && <div>وقت الدفع: {fmtDate(row.paid_at)}</div>}
+          </div>
+          <a href={`https://dashboard.moyasar.com/payments/${row.moyasar_payment_id}`} target="_blank" rel="noopener noreferrer" style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            marginTop: 10, marginInlineStart: 38,
+            padding: '6px 12px', borderRadius: 999,
+            background: '#10B981', color: '#fff',
+            fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
+          }}>
+            افتح في لوحة Moyasar ↗
+          </a>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 8, marginInlineStart: 38 }}>
+            ⚠ تحقّق من حالة الدفع في Moyasar قبل ضغط "تم السداد"
+          </div>
+        </div>
+      )}
 
       {/* Invoices list */}
       {invoices.length > 0 && (

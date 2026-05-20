@@ -8,14 +8,52 @@
 //   4. Confirmation + submit → request lands in /payment-requests
 //      where an admin/accountant picks it up.
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Phone, ArrowLeft, CheckCircle2, Building2, Receipt, Send,
-  ShoppingBag, Loader,
+  ShoppingBag, Loader, CreditCard, ShieldCheck,
 } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import { Spinner, toast, ToastContainer } from '../components/UI.jsx';
-import { portalLookup, submitPaymentRequest } from '../lib/paymentRequestsService.js';
+import { portalLookup, submitPaymentRequest, attachMoyasarPayment } from '../lib/paymentRequestsService.js';
+
+// Moyasar publishable key — safe to expose, only allows initiating
+// payments (no balance / refund / customer data access). Set in
+// Vercel as VITE_MOYASAR_PUBLISHABLE_KEY to enable the pay-online
+// flow; the request-only flow still works without it.
+const MOYASAR_PK = import.meta.env.VITE_MOYASAR_PUBLISHABLE_KEY || '';
+
+// Load the Moyasar SDK on demand — keeps the bundle small and the
+// portal usable even when Moyasar is unconfigured.
+let moyasarLoadPromise = null;
+function loadMoyasarSDK() {
+  if (typeof window === 'undefined') return Promise.resolve(false);
+  if (window.Moyasar) return Promise.resolve(true);
+  if (moyasarLoadPromise) return moyasarLoadPromise;
+  moyasarLoadPromise = new Promise((resolve) => {
+    // CSS
+    if (!document.querySelector('link[data-moyasar]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.css';
+      link.setAttribute('data-moyasar', '1');
+      document.head.appendChild(link);
+    }
+    // JS
+    if (document.querySelector('script[data-moyasar]')) {
+      // Already loading — wait for window.Moyasar
+      const tick = () => window.Moyasar ? resolve(true) : setTimeout(tick, 50);
+      tick(); return;
+    }
+    const s = document.createElement('script');
+    s.src = 'https://cdn.moyasar.com/mpf/1.15.0/moyasar.js';
+    s.setAttribute('data-moyasar', '1');
+    s.onload  = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+  return moyasarLoadPromise;
+}
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -28,7 +66,7 @@ const fmtDate = (iso) => {
 };
 
 export default function CustomerPortal() {
-  const [step, setStep] = useState('phone');     // phone | stores | invoices | done
+  const [step, setStep] = useState('phone');     // phone | stores | invoices | pay | done
   const [phone, setPhone] = useState('');
   const [lookup, setLookup] = useState(null);    // { phone, stores: [...] }
   const [loading, setLoading] = useState(false);
@@ -118,7 +156,9 @@ export default function CustomerPortal() {
         notes,
       });
       setSubmitResult(res);
-      setStep('done');
+      // If Moyasar is configured → offer immediate online payment.
+      // Otherwise the customer waits for the accountant.
+      setStep(MOYASAR_PK ? 'pay' : 'done');
     } catch (e) {
       toast(`فشل الإرسال: ${e.message}`, 'error');
     }
@@ -158,17 +198,23 @@ export default function CustomerPortal() {
 
       <div style={{ maxWidth: 720, margin: '0 auto', padding: '32px 20px 80px' }}>
         {/* Progress dots */}
-        <div style={{ display: 'flex', gap: 8, marginBottom: 28, justifyContent: 'center' }}>
-          {['phone', 'stores', 'invoices', 'done'].map(s => (
-            <div key={s} style={{
-              width: 10, height: 10, borderRadius: '50%',
-              background: step === s ? '#10B981'
-                : ['phone', 'stores', 'invoices', 'done'].indexOf(step) > ['phone', 'stores', 'invoices', 'done'].indexOf(s) ? '#10B981'
-                : '#E4E4E7',
-              transition: 'background .2s',
-            }}/>
-          ))}
-        </div>
+        {(() => {
+          const stages = MOYASAR_PK
+            ? ['phone', 'stores', 'invoices', 'pay', 'done']
+            : ['phone', 'stores', 'invoices', 'done'];
+          const idx = stages.indexOf(step);
+          return (
+            <div style={{ display: 'flex', gap: 8, marginBottom: 28, justifyContent: 'center' }}>
+              {stages.map((s, i) => (
+                <div key={s} style={{
+                  width: 10, height: 10, borderRadius: '50%',
+                  background: i <= idx ? '#10B981' : '#E4E4E7',
+                  transition: 'background .2s',
+                }}/>
+              ))}
+            </div>
+          );
+        })()}
 
         {/* ── STEP 1: phone ──────────────────────────────────── */}
         {step === 'phone' && (
@@ -410,7 +456,20 @@ export default function CustomerPortal() {
           </div>
         )}
 
-        {/* ── STEP 4: done ───────────────────────────────────── */}
+        {/* ── STEP 4: pay (Moyasar) ──────────────────────────── */}
+        {step === 'pay' && submitResult && (
+          <MoyasarStep
+            request={submitResult}
+            onPaid={(paymentId, method) => {
+              attachMoyasarPayment(submitResult.id, paymentId, method)
+                .catch(() => { /* silent — admin still gets the request */ });
+              setStep('done');
+            }}
+            onSkip={() => setStep('done')}
+          />
+        )}
+
+        {/* ── STEP 5: done ───────────────────────────────────── */}
         {step === 'done' && submitResult && (
           <div style={{
             background: '#fff', borderRadius: 24, padding: '48px 32px',
@@ -456,6 +515,118 @@ export default function CustomerPortal() {
       </div>
 
       <ToastContainer/>
+    </div>
+  );
+}
+
+// ── Moyasar payment step ─────────────────────────────────────────
+// Loads the Moyasar SDK, renders their hosted form into a div, and
+// wires the on_completed callback to mark the payment as attached.
+// The form supports mada / Visa / Mastercard / Apple Pay / STC Pay
+// depending on what's enabled in the Moyasar dashboard.
+function MoyasarStep({ request, onPaid, onSkip }) {
+  const containerRef = useRef(null);
+  const [ready, setReady]   = useState(false);
+  const [errored, setErrored] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    let initInstance = null;
+    (async () => {
+      const ok = await loadMoyasarSDK();
+      if (!alive) return;
+      if (!ok || !window.Moyasar) { setErrored(true); return; }
+      try {
+        initInstance = window.Moyasar.init({
+          element:        containerRef.current,
+          amount:         Math.round(Number(request.amount_total) * 100), // halalas
+          currency:       'SAR',
+          description:    `سداد ${request.invoice_count} فاتورة · ${request.store_name || ''}`.trim(),
+          publishable_api_key: MOYASAR_PK,
+          callback_url:   window.location.href,
+          // We listen to the completion callback below; callback_url is
+          // a fallback for hosted-redirect flows.
+          methods:        ['creditcard', 'applepay', 'stcpay'],
+          metadata: {
+            payment_request_id: request.id,
+            phone:              request.phone,
+            store_id:           request.store_id || '',
+            store_name:         request.store_name || '',
+          },
+          on_completed: (payment) => {
+            // Moyasar returns { id, status, source: { type } }
+            if (payment?.id) {
+              const method = payment?.source?.type || payment?.source?.method || 'card';
+              onPaid(payment.id, method);
+            }
+          },
+        });
+        setReady(true);
+      } catch (e) {
+        console.error('Moyasar init failed:', e);
+        setErrored(true);
+      }
+    })();
+    return () => { alive = false; /* SDK has no explicit teardown */ };
+  }, [request, onPaid]);
+
+  return (
+    <div>
+      <div style={{
+        background: '#fff', borderRadius: 16, padding: '20px 22px',
+        boxShadow: '0 1px 3px rgba(24,24,27,.04)', marginBottom: 14,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'rgba(16,185,129,.10)', color: '#10B981',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}><CreditCard size={20}/></div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#18181B' }}>الدفع الإلكتروني</div>
+            <div style={{ fontSize: 12, color: '#71717A', marginTop: 2 }}>
+              {request.invoice_count} فاتورة · إجمالي <strong style={{ color: '#10B981', fontFamily: 'var(--font-mono)' }}>{fmt(request.amount_total)}</strong> ر.س
+            </div>
+          </div>
+        </div>
+
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 12px', marginBottom: 14,
+          background: 'rgba(16,185,129,.06)', borderRadius: 10,
+          fontSize: 11.5, color: '#3F3F46',
+        }}>
+          <ShieldCheck size={14} color="#10B981"/>
+          الدفع مؤمَّن عبر Moyasar — يدعم mada و Apple Pay و Visa و Mastercard
+        </div>
+
+        {/* Moyasar form mounts here */}
+        <div ref={containerRef} className="moyasar-form" style={{ minHeight: 200 }}/>
+
+        {!ready && !errored && (
+          <div style={{ textAlign: 'center', padding: 20, color: '#71717A', fontSize: 13 }}>
+            <Loader size={20} className="spin" style={{ verticalAlign: 'middle', marginInlineEnd: 6 }}/>
+            جارٍ تحميل نموذج الدفع…
+          </div>
+        )}
+        {errored && (
+          <div style={{
+            padding: 14, fontSize: 13, color: '#EF4444',
+            background: 'rgba(239,68,68,.06)', borderRadius: 10,
+            textAlign: 'center',
+          }}>
+            تعذّر تحميل بوابة الدفع — تم استلام طلبك وراح يتواصل معك المحاسب
+          </div>
+        )}
+      </div>
+
+      <button onClick={onSkip} style={{
+        width: '100%', padding: '12px', borderRadius: 12,
+        background: 'transparent', border: '1px solid #E4E4E7', color: '#3F3F46',
+        fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit',
+      }}>
+        تخطّي الدفع الإلكتروني — أفضّل أنّ المحاسب يتواصل معي
+      </button>
     </div>
   );
 }
