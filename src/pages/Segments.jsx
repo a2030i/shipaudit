@@ -196,6 +196,23 @@ const LINK_LABELS = {
   unlinked:   'بدون متجر',
 };
 
+// Results-table column config — drives both the header row and the
+// sort handler. `sortKey: null` means the column isn't sortable
+// (only the row-index column).
+const COLUMNS = [
+  { id: 'index',           label: '#',                 sortKey: null            },
+  { id: 'name',            label: 'المتجر / الهاتف',   sortKey: 'storeName'     },
+  { id: 'status',          label: 'حالة',              sortKey: 'platformStatus'},
+  { id: 'billing',         label: 'الفوترة',           sortKey: 'billingType'   },
+  { id: 'integration',     label: 'الربط',             sortKey: 'integrationType'},
+  { id: 'shipments',       label: 'الشحنات',           sortKey: 'shipmentCount' },
+  { id: 'lastShip',        label: 'آخر شحنة',          sortKey: '_shipDays'     },
+  { id: 'signup',          label: 'تسجيل منذ',         sortKey: '_signupDays'   },
+  { id: 'topup',           label: 'شحن رصيد',          sortKey: '_topupDays'    },
+  { id: 'wallet',          label: 'المحفظة',           sortKey: 'walletBalance' },
+  { id: 'debt',            label: 'الدين',             sortKey: 'debt'          },
+];
+
 // ── unify merchants × receivables → one row per merchant ────────
 function unifyRows(merchants, receivables) {
   // Build customer lookup by storeId
@@ -306,6 +323,11 @@ export default function Segments({ isActive = true }) {
   const [receivables, setReceivables] = useState([]);
   const [snapshot, setSnapshot]     = useState(null);
   const [filters, setFilters]       = useState(EMPTY_FILTERS);
+  // Column sort — null sortBy means "keep snapshot order" (the order
+  // rows arrive from merchantsService). Click a header once → asc,
+  // again → desc, third time → clear back to snapshot order.
+  const [sortBy,  setSortBy]        = useState(null);
+  const [sortDir, setSortDir]       = useState('asc');
 
   // Saved segments (operator-defined). Counts are recomputed in JS
   // every time `rows` changes; never stored in the DB. `activeSavedId`
@@ -344,6 +366,29 @@ export default function Segments({ isActive = true }) {
     () => rows.filter(r => matchesFilters(r, filters)),
     [rows, filters],
   );
+
+  // Sorted view of the filtered set. Null/undefined values always sink
+  // to the bottom regardless of asc/desc — that's the convention every
+  // table grid uses. Without it, a "sort by آخر شحنة asc" would put
+  // every "never shipped" row first which is the opposite of what the
+  // operator usually wants.
+  const sortedFiltered = useMemo(() => {
+    if (!sortBy) return filtered;
+    const dir = sortDir === 'desc' ? -1 : 1;
+    const out = filtered.slice();
+    out.sort((a, b) => {
+      const va = a[sortBy];
+      const vb = b[sortBy];
+      const aMissing = va == null || va === '';
+      const bMissing = vb == null || vb === '';
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return 1;        // missing always last
+      if (bMissing) return -1;
+      if (typeof va === 'number' && typeof vb === 'number') return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), 'ar') * dir;
+    });
+    return out;
+  }, [filtered, sortBy, sortDir]);
 
   // Distinct facet values for the dropdowns — recomputed against the
   // full row set (not the filtered one) so the operator can always
@@ -496,7 +541,7 @@ export default function Segments({ isActive = true }) {
       'رصيد المحفظة',
       'اسم العميل في الفواتير', 'المديونية', 'عدد الفواتير', 'أقدم فاتورة', 'أيام التأخر',
     ];
-    const data = filtered.map(r => [
+    const data = sortedFiltered.map(r => [
       r.storeId, r.storeName, r.phone || '',
       r.platformStatus || '', r.billingType || '', r.integrationType || '',
       r.shipmentCount,
@@ -530,7 +575,7 @@ export default function Segments({ isActive = true }) {
     const headers = ['رقم الجوال', 'اسم المتجر', 'القيمة'];
     const xRows = [];
     let skipped = 0;
-    for (const r of filtered) {
+    for (const r of sortedFiltered) {
       const phone = normalizePhone(r.phone);
       if (!phone) { skipped++; continue; }
       // Pick the most meaningful value for this row — debt wins over
@@ -798,13 +843,23 @@ export default function Segments({ isActive = true }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
               <thead>
                 <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                  {['#', 'المتجر / الهاتف', 'حالة', 'الفوترة', 'الربط', 'الشحنات', 'آخر شحنة', 'تسجيل منذ', 'شحن رصيد', 'المحفظة', 'الدين'].map(h => (
-                    <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  {COLUMNS.map(col => (
+                    <SortableTh
+                      key={col.id}
+                      col={col}
+                      sortBy={sortBy}
+                      sortDir={sortDir}
+                      onSort={(id) => {
+                        if (sortBy !== id) { setSortBy(id); setSortDir('asc'); return; }
+                        if (sortDir === 'asc') { setSortDir('desc'); return; }
+                        setSortBy(null);              // third click clears
+                      }}
+                    />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {filtered.slice(0, 500).map((r, i) => {
+                {sortedFiltered.slice(0, 500).map((r, i) => {
                   const tone = statusPillTone(r.platformStatus, r._shipDays);
                   return (
                     <tr key={r.storeId} style={{ borderBottom: '1px solid var(--border)' }}>
@@ -838,9 +893,9 @@ export default function Segments({ isActive = true }) {
               </tbody>
             </table>
           </div>
-          {filtered.length > 500 && (
+          {sortedFiltered.length > 500 && (
             <div style={{ padding: 12, textAlign: 'center', fontSize: 11.5, color: 'var(--muted)', background: 'var(--surface2)' }}>
-              عرض أول ٥٠٠ نتيجة من {filtered.length.toLocaleString('ar-SA')} — التصدير يشمل الكل
+              عرض أول ٥٠٠ نتيجة من {sortedFiltered.length.toLocaleString('ar-SA')} — التصدير يشمل الكل
             </div>
           )}
         </Card>
@@ -856,6 +911,37 @@ const inputStyle = {
   background: 'var(--surface)', color: 'var(--text)',
   fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
 };
+
+function SortableTh({ col, sortBy, sortDir, onSort }) {
+  const sortable = !!col.sortKey;
+  const active   = sortable && sortBy === col.sortKey;
+  const arrow    = active ? (sortDir === 'asc' ? '↑' : '↓') : '⇅';
+  return (
+    <th
+      onClick={sortable ? () => onSort(col.sortKey) : undefined}
+      style={{
+        padding: '10px 12px', textAlign: 'right',
+        fontSize: 11, fontWeight: 600,
+        color: active ? '#0EA5E9' : 'var(--muted)',
+        whiteSpace: 'nowrap',
+        cursor: sortable ? 'pointer' : 'default',
+        userSelect: 'none',
+        transition: 'color .12s',
+      }}
+      onMouseEnter={(e) => { if (sortable && !active) e.currentTarget.style.color = 'var(--text)'; }}
+      onMouseLeave={(e) => { if (sortable && !active) e.currentTarget.style.color = 'var(--muted)'; }}
+    >
+      {col.label}
+      {sortable && (
+        <span style={{
+          marginInlineStart: 6, fontSize: 10,
+          opacity: active ? 1 : 0.35,
+          fontFamily: 'var(--font-mono)',
+        }}>{arrow}</span>
+      )}
+    </th>
+  );
+}
 
 function FacetTitle({ icon, color, children }) {
   return (
