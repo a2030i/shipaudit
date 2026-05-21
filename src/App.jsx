@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -36,6 +36,7 @@ import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 import Tasks            from './pages/Tasks.jsx';
+import Segments         from './pages/Segments.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -84,6 +85,7 @@ const NAV_ITEMS = [
   { id: 'customers',       path: '/customers',       label: 'متابعة العملاء',   icon: Users,       section: 'customers' },
   { id: 'receivables',     path: '/receivables',     label: 'مديونيات العملاء', icon: DollarSign,  section: 'customers' },
   { id: 'merchants',       path: '/merchants',       label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'customers' },
+  { id: 'segments',        path: '/segments',        label: 'شرائح العملاء',    icon: Layers,      section: 'customers' },
 
   // ── System (config + reports — least-touched) ─────────────────
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system' },
@@ -114,6 +116,7 @@ const PAGE_TITLES = {
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
   '/merchants':         'متاجر المنصّة',
+  '/segments':          'شرائح العملاء',
   '/carriers':          'إدارة الشركات',
   '/contracts':         'جدول العقود',
   '/carrier-kpi':       'أداء الناقلين',
@@ -168,7 +171,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -538,6 +541,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/merchants'} scroll>
               <Merchants isActive={pathname==='/merchants'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/segments'} scroll>
+              <Segments isActive={pathname==='/segments'}/>
             </PageSlot>
             <PageSlot active={pathname==='/customers'} scroll>
               <CustomerWatch isActive={pathname==='/customers'}/>
