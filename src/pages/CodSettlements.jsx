@@ -12,6 +12,7 @@ import {
   findDuplicateSettlementAwbs, loadOutstandingByCarrier,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
+import { useWindowedRows } from '../hooks/useWindowedRows.js';
 
 // ─── Status meta ──────────────────────────────────────────────────────────
 // over_remit splits visually: recent (≤ 30d, blue) is just sequencing —
@@ -266,6 +267,11 @@ export default function CodSettlements({ isActive = true }) {
       return (o(a) || '').localeCompare(o(b) || '');
     });
   }, [rows, tab, search]);
+
+  // Incremental render — only the first batch is in the DOM until the
+  // operator scrolls near the bottom. Keeps the table snappy as
+  // cod_settlement grows past tens of thousands of rows per carrier.
+  const { visible, hasMore, sentinelRef, count, total } = useWindowedRows(filtered, { batch: 200 });
 
   const openAction = (row, kind) => setActionModal({ row, kind });
 
@@ -654,7 +660,18 @@ export default function CodSettlements({ isActive = true }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map(r => <Row key={r.awb} r={r} onAction={openAction} onReopen={reopenAction}/>)}
+                      {visible.map(r => <Row key={r.awb} r={r} onAction={openAction} onReopen={reopenAction}/>)}
+                      {hasMore && (
+                        <tr ref={sentinelRef}>
+                          <td colSpan={7} style={{
+                            padding: '14px 16px', textAlign: 'center',
+                            color: 'var(--muted)', fontSize: 11.5,
+                            fontFamily: 'var(--font-mono)',
+                          }}>
+                            تحميل المزيد… ({count.toLocaleString('ar-SA')} / {total.toLocaleString('ar-SA')})
+                          </td>
+                        </tr>
+                      )}
                     </tbody>
                   </table>
                 )
