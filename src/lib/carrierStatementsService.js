@@ -371,22 +371,26 @@ export async function loadExistingOpsByDocNos(carrierId, docNos) {
   return map;
 }
 
+// One-row rollup for a single carrier: open balance + paid total +
+// status counts. Backed by the carrier_open_balance() RPC which runs
+// the SUM/COUNT on the server.
+//
+// The previous implementation pulled every carrier_operations row and
+// summed in JS. Supabase silently caps a single SELECT at 1000 rows,
+// so once a carrier crossed that threshold the displayed balance
+// began to diverge from reality with no error to surface the bug.
+// The RPC has no such limit — one row in, one row out.
 export async function loadOpenBalance(carrierId) {
-  // Sum of (dr - cr) for everything not paid.
-  const { data, error } = await supabase
-    .from('carrier_operations')
-    .select('amount_dr, amount_cr, status')
-    .eq('carrier_id', carrierId);
+  const { data, error } = await supabase.rpc('carrier_open_balance', { p_carrier_id: carrierId });
   if (error) throw error;
-  let balance = 0, pending = 0, paid = 0, disputed = 0, reviewing = 0;
-  for (const r of (data ?? [])) {
-    if (r.status === 'paid') { paid += (r.amount_dr || 0) - (r.amount_cr || 0); continue; }
-    balance += (r.amount_dr || 0) - (r.amount_cr || 0);
-    if (r.status === 'pending')   pending++;
-    if (r.status === 'disputed')  disputed++;
-    if (r.status === 'reviewing') reviewing++;
-  }
-  return { balance, pending, paid, disputed, reviewing };
+  const r = (data && data[0]) || {};
+  return {
+    balance:   Number(r.balance)   || 0,
+    paid:      Number(r.paid)      || 0,
+    pending:   Number(r.pending)   || 0,
+    disputed:  Number(r.disputed)  || 0,
+    reviewing: Number(r.reviewing) || 0,
+  };
 }
 
 // ─── Cross-carrier dashboard data ────────────────────────────────────────
