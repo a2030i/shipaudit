@@ -228,10 +228,18 @@ function ContractSection({ contracts, onEdit }) {
 }
 
 // ── File shape section ─────────────────────────────────────────
-function FileShapeSection({ signature, onSaveKind }) {
+function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
   const [editing, setEditing] = useState(false);
   const [pick,    setPick]    = useState(signature?.file_kind || '');
   const [saving,  setSaving]  = useState(false);
+
+  // Webhook email-from editor — independent of the file_kind editor
+  // above. The two facets serve different purposes (file shape vs
+  // sender identity) and the operator usually edits them in
+  // different sessions.
+  const [editingEmails, setEditingEmails] = useState(false);
+  const [emailsDraft,   setEmailsDraft]   = useState('');
+  const [savingEmails,  setSavingEmails]  = useState(false);
 
   const currentKindLabel = signature?.file_kind
     ? FILE_KIND_LABELS[signature.file_kind] || signature.file_kind
@@ -248,6 +256,35 @@ function FileShapeSection({ signature, onSaveKind }) {
       toast(`فشل: ${e.message}`, 'error');
     }
     setSaving(false);
+  };
+
+  // Parse the comma/space/newline-separated input into a clean
+  // list of domain tokens. We normalize to always carry a leading
+  // "@" so the webhook intake's substring match works consistently
+  // regardless of how the operator typed it ("aramex.com" /
+  // "@aramex.com" both produce ["@aramex.com"]).
+  const parseEmailsInput = (raw) => {
+    const tokens = String(raw || '')
+      .split(/[\s,;\n]+/)
+      .map(t => t.trim())
+      .filter(Boolean)
+      .map(t => t.toLowerCase())
+      .map(t => t.startsWith('@') ? t : '@' + t.replace(/^.*@/, ''));
+    // Dedupe while preserving order
+    return [...new Set(tokens)];
+  };
+
+  const handleSaveEmails = async () => {
+    const parsed = parseEmailsInput(emailsDraft);
+    setSavingEmails(true);
+    try {
+      await onSaveEmails(parsed);
+      setEditingEmails(false);
+      toast(parsed.length ? `تم حفظ ${parsed.length} نطاق ✓` : 'تم مسح البصمة', 'success');
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setSavingEmails(false);
   };
 
   return (
@@ -298,11 +335,68 @@ function FileShapeSection({ signature, onSaveKind }) {
           )
         }/>
         <Row label="بريد المرسِل (Webhook)" value={
-          (signature?.email_from || []).length
-            ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, direction: 'ltr' }}>
-                {(signature.email_from || []).join(' / ')}
-              </span>
-            : <span style={{ color: 'var(--muted)' }}>غير محدد</span>
+          editingEmails ? (
+            <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
+              <input
+                type="text"
+                name="webhook_email_from"
+                autoComplete="off"
+                spellCheck={false}
+                data-form-type="other"
+                data-lpignore="true"
+                data-1p-ignore="true"
+                placeholder="مثال: aramex.com, smsaexpress.com"
+                value={emailsDraft}
+                onChange={e => setEmailsDraft(e.target.value)}
+                style={{
+                  width: '100%', padding: '8px 10px',
+                  border: '1px solid var(--border)', borderRadius: 8,
+                  background: 'var(--surface)', color: 'var(--text)',
+                  fontFamily: 'var(--font-mono)', fontSize: 12,
+                  direction: 'ltr', textAlign: 'left',
+                }}
+              />
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', lineHeight: 1.6 }}>
+                أكتب نطاق واحد أو أكثر مفصولة بفاصلة. الـ <code>@</code> يُضاف تلقائياً. مثال: <code>aramex.com</code> يلتقط أي إيميل ينتهي بـ <code>@aramex.com</code> (مثل <code>accounts@aramex.com</code>).
+              </div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <Btn size="sm" variant="accent" icon={<Save size={12}/>} onClick={handleSaveEmails} disabled={savingEmails}>
+                  {savingEmails ? 'جارٍ الحفظ…' : 'حفظ'}
+                </Btn>
+                <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={() => setEditingEmails(false)}>
+                  تراجع
+                </Btn>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {(signature?.email_from || []).length
+                ? <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, direction: 'ltr', flex: 1 }}>
+                    {(signature.email_from || []).join(' / ')}
+                  </span>
+                : <span style={{ color: 'var(--muted)', flex: 1 }}>غير محدد</span>
+              }
+              <button
+                onClick={() => {
+                  setEmailsDraft((signature?.email_from || []).join(', '));
+                  setEditingEmails(true);
+                }}
+                title="تعديل بصمة الـ webhook"
+                style={{
+                  background: 'transparent', border: '1px solid var(--border)',
+                  color: 'var(--muted)', cursor: 'pointer',
+                  padding: '4px 8px', borderRadius: 6,
+                  display: 'inline-flex', alignItems: 'center', gap: 4,
+                  fontSize: 11, fontFamily: 'var(--font-sans)',
+                }}
+                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text2)'; }}
+                onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
+              >
+                <Edit3 size={11}/>
+                تعديل
+              </button>
+            </div>
+          )
         }/>
         {signature?.awb_prefix && <Row label="بادئة AWB" value={<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signature.awb_prefix}</code>}/>}
         {signature?.carrier_vat_id && <Row label="الرقم الضريبي" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signature.carrier_vat_id}</span>}/>}
@@ -502,6 +596,14 @@ export default function CarrierProfile() {
     await updateCarrierFileSignature(carrierId, { file_kind: newKind });
     await refresh();
   };
+  const handleSaveEmails = async (newEmails) => {
+    // Persist `null` when the list is empty so the column reflects
+    // "no signature" cleanly instead of carrying an empty array.
+    await updateCarrierFileSignature(carrierId, {
+      email_from: (newEmails && newEmails.length) ? newEmails : null,
+    });
+    await refresh();
+  };
 
   if (loading && !data) {
     return <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>;
@@ -598,7 +700,7 @@ export default function CarrierProfile() {
       {/* Sections */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
-          <FileShapeSection signature={carrier.file_signature} onSaveKind={handleSaveKind}/>
+          <FileShapeSection signature={carrier.file_signature} onSaveKind={handleSaveKind} onSaveEmails={handleSaveEmails}/>
           <ContractSection contracts={carrier.contracts} onEdit={() => navigate(`/carriers?edit=${carrierId}`)}/>
         </div>
         <div>
