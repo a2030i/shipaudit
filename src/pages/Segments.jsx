@@ -18,9 +18,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
-  RefreshCw, Filter, Download, Phone, Search, X, Layers,
-  Zap, Calendar, Wallet, Activity, ShoppingBag, AlertCircle,
-  Bookmark, Plus, Trash2, Save, Pencil, Check,
+  RefreshCw, Download, Phone, Search, X, Layers,
+  Wallet, Activity, ShoppingBag,
+  Bookmark, Save, Pencil, Check,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
@@ -102,38 +102,6 @@ const EMPTY_FILTERS = {
   // Free-text search (name / phone / storeId)
   search:            '',
 };
-
-// ── presets matching the user's three example questions + a 4th ─
-const PRESETS = [
-  {
-    id: 'debt_and_idle',
-    label: 'مديونية + خامل ١٥ يوم+',
-    icon: AlertCircle,
-    color: '#EF4444',
-    filters: { debtFilter: 'has_debt', shippedRecency: 'gte_15' },
-  },
-  {
-    id: 'signed_no_ship',
-    label: 'مسجّل +٥ أيام بدون شحنات',
-    icon: Calendar,
-    color: '#8B5CF6',
-    filters: { signupRecency: 5, shipmentCountKind: 'zero' },
-  },
-  {
-    id: 'live_no_ship',
-    label: 'ربط Live بدون شحنات',
-    icon: Zap,
-    color: '#F59E0B',
-    filters: { integrationTypes: ['Live'], shipmentCountKind: 'zero' },
-  },
-  {
-    id: 'topup_then_silent',
-    label: 'شحن رصيد ثم سكت ٣٠ يوم',
-    icon: Wallet,
-    color: '#0EA5E9',
-    filters: { topupRecency: 'never', walletFilter: 'positive', shippedRecency: 'gte_30' },
-  },
-];
 
 // Pretty labels for the shippedRecency / topupRecency / etc. dropdowns
 const SHIP_RECENCY_LABELS = {
@@ -273,7 +241,6 @@ export default function Segments({ isActive = true }) {
   const [receivables, setReceivables] = useState([]);
   const [snapshot, setSnapshot]     = useState(null);
   const [filters, setFilters]       = useState(EMPTY_FILTERS);
-  const [activePreset, setActivePreset] = useState(null);
 
   // Saved segments (operator-defined). Counts are recomputed in JS
   // every time `rows` changes; never stored in the DB. `activeSavedId`
@@ -348,15 +315,13 @@ export default function Segments({ isActive = true }) {
     };
   }, [filtered]);
 
-  // ── preset / filter handlers ────────────────────────────────
-  const applyPreset = (preset) => {
-    setFilters({ ...EMPTY_FILTERS, ...preset.filters });
-    setActivePreset(preset.id);
-    setActiveSavedId(null);
-  };
+  // ── filter handlers ────────────────────────────────────────
+  // Any direct filter edit clears the "currently loaded saved
+  // segment" highlight so the operator knows their tweaks haven't
+  // been persisted yet (and the "حدّث الشريحة الحالية" button
+  // appears so they can save the edit back).
   const setFilter = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
-    setActivePreset(null);
     setActiveSavedId(null);
   };
   const toggleMultiFilter = (key, value) => {
@@ -365,12 +330,10 @@ export default function Segments({ isActive = true }) {
       const next = cur.includes(value) ? cur.filter(v => v !== value) : [...cur, value];
       return { ...prev, [key]: next };
     });
-    setActivePreset(null);
     setActiveSavedId(null);
   };
   const resetFilters = () => {
     setFilters(EMPTY_FILTERS);
-    setActivePreset(null);
     setActiveSavedId(null);
   };
   const hasAnyFilter = useMemo(() => {
@@ -400,7 +363,6 @@ export default function Segments({ isActive = true }) {
 
   const loadSavedSegment = (segment) => {
     setFilters({ ...EMPTY_FILTERS, ...(segment.filters || {}) });
-    setActivePreset(null);
     setActiveSavedId(segment.id);
   };
 
@@ -614,46 +576,22 @@ export default function Segments({ isActive = true }) {
         </Card>
       )}
 
-      {/* Quick presets */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 11, fontWeight: 600, color: 'var(--muted)', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 8 }}>
-          شرائح جاهزة
+      {/* Reset link — only shown when at least one filter is active */}
+      {hasAnyFilter && (
+        <div style={{ marginBottom: 14 }}>
+          <button onClick={resetFilters} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '7px 12px', borderRadius: 999,
+            border: '1.5px solid var(--border)',
+            background: 'transparent', color: 'var(--muted)',
+            fontSize: 12, fontWeight: 600, cursor: 'pointer',
+            fontFamily: 'var(--font-sans)',
+          }}>
+            <X size={12}/>
+            مسح كل الفلاتر
+          </button>
         </div>
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          {PRESETS.map(p => {
-            const Icon = p.icon;
-            const active = activePreset === p.id;
-            return (
-              <button key={p.id} onClick={() => applyPreset(p)} style={{
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-                padding: '8px 14px', borderRadius: 999,
-                border: `1.5px solid ${active ? p.color : 'var(--border)'}`,
-                background: active ? `color-mix(in srgb, ${p.color} 12%, transparent)` : 'transparent',
-                color: active ? p.color : 'var(--text2)',
-                fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
-                fontFamily: 'var(--font-sans)',
-                transition: 'all .15s',
-              }}>
-                <Icon size={13}/>
-                {p.label}
-              </button>
-            );
-          })}
-          {hasAnyFilter && (
-            <button onClick={resetFilters} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '8px 12px', borderRadius: 999,
-              border: '1.5px solid var(--border)',
-              background: 'transparent', color: 'var(--muted)',
-              fontSize: 12, fontWeight: 600, cursor: 'pointer',
-              fontFamily: 'var(--font-sans)',
-            }}>
-              <X size={12}/>
-              مسح كل الفلاتر
-            </button>
-          )}
-        </div>
-      </div>
+      )}
 
       {/* Filter facets — 3 columns: activity / account / money */}
       <div style={{
@@ -761,7 +699,7 @@ export default function Segments({ isActive = true }) {
       {saveOpen && (
         <NameDialog
           title="حفظ شريحة جديدة"
-          initialValue={suggestSegmentName(filters, PRESETS, activePreset)}
+          initialValue={suggestSegmentName(filters)}
           onCancel={() => setSaveOpen(false)}
           onSubmit={handleSave}
         />
@@ -953,16 +891,35 @@ function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
   const [name, setName] = useState(initialValue);
   return (
     <Modal title={title} onClose={onCancel} width={420}>
-      <div style={{ padding: '4px 4px 0' }}>
+      {/* Wrap in a form with autoComplete='off' and tag the input with
+          name='search' + multiple ignore attributes (LastPass, 1Password,
+          Bitwarden, generic 'data-form-type=other') so browsers stop
+          mistaking this single-input modal for a login form and
+          offering to save it as a password. */}
+      <form
+        autoComplete="off"
+        onSubmit={(e) => { e.preventDefault(); onSubmit(name); }}
+        style={{ padding: '4px 4px 0' }}
+      >
         <label style={{ display: 'block', marginBottom: 14 }}>
           <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>
             اسم الشريحة
           </span>
           <input
-            type="text" autoFocus
+            type="text"
+            name="search"
+            role="textbox"
+            aria-label="اسم الشريحة"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
+            data-form-type="other"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-bwignore
+            autoFocus
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && onSubmit(name)}
             placeholder="مثال: مديونية + خامل ١٥ يوم"
             style={inputStyle}
           />
@@ -975,19 +932,15 @@ function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
             إلغاء
           </Btn>
         </div>
-      </div>
+      </form>
     </Modal>
   );
 }
 
 // Best-effort suggested name based on what filters are active. The
-// operator can edit it before saving. If a quick-preset was tapped
-// just before clicking save, we propose the preset label as the seed.
-function suggestSegmentName(filters, presets, presetId) {
-  if (presetId) {
-    const p = presets.find(x => x.id === presetId);
-    if (p) return p.label;
-  }
+// operator can edit it before saving — this is just a sensible seed
+// so they're not facing an empty field.
+function suggestSegmentName(filters) {
   const bits = [];
   if (filters.debtFilter === 'has_debt')            bits.push('عليه دين');
   if (filters.walletFilter === 'negative')          bits.push('رصيد سالب');
