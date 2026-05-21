@@ -421,37 +421,27 @@ export async function loadSettlementUploads({ carrierId } = {}) {
 // dashboard's "تحصيلات COD المتبقّية" card hides ≤ 0; the COD-
 // settlements dropdown shows everything with the sign).
 //
-// Paginates — Supabase caps a single SELECT at 1000 rows and the
-// cod_settlement table outgrows that with one busy carrier.
+// Backed by the carrier_cod_net_balances() RPC. Returns one row per
+// carrier with net = SUM(out) - SUM(in).
+//
+// The previous JS path paginated the entire cod_settlement table
+// (thousands of rows today, multi-million at scale) and re-aggregated
+// in JS — every Dashboard load paid that cost. The RPC does the same
+// aggregation on the server in one round-trip.
+//
+// Math equivalence: the JS grouped by (carrier_id, awb) first, then
+// summed per carrier. Since addition is commutative,
+//   per_carrier_total = SUM_over_awb(SUM(out) - SUM(in))
+//                     = SUM(out) - SUM(in)   over all rows
+// so the AWB grouping was unnecessary. Verified against prod: every
+// non-zero carrier returns the same net to two decimal places.
 export async function loadCarrierNetBalances() {
-  const PAGE = 1000;
-  const byKey = new Map();
-  let from = 0;
-  while (true) {
-    const { data: ledger, error } = await supabase
-      .from('cod_settlement')
-      .select('carrier_id, awb, direction, amount')
-      .range(from, from + PAGE - 1);
-    if (error) throw error;
-    for (const r of ledger ?? []) {
-      const key = `${r.carrier_id}__${String(r.awb).trim()}`;
-      const cur = byKey.get(key) || { carrier_id: r.carrier_id, awb: r.awb, paid: 0, received: 0 };
-      if (r.direction === 'out') cur.paid += Number(r.amount) || 0;
-      else                       cur.received += Number(r.amount) || 0;
-      byKey.set(key, cur);
-    }
-    if (!ledger || ledger.length < PAGE) break;
-    from += PAGE;
-  }
-
-  // Sum NET per carrier — keep the sign so the UI can render
-  // negatives (over-remitted carriers).
+  const { data, error } = await supabase.rpc('carrier_cod_net_balances');
+  if (error) throw error;
   const totals = new Map();
-  for (const m of byKey.values()) {
-    const diff = m.paid - m.received;
-    totals.set(m.carrier_id, (totals.get(m.carrier_id) || 0) + diff);
+  for (const r of (data ?? [])) {
+    totals.set(r.carrier_id, +(Number(r.net) || 0).toFixed(2));
   }
-  for (const [k, v] of totals) totals.set(k, +v.toFixed(2));
   return totals;
 }
 
