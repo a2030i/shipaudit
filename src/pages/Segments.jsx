@@ -20,7 +20,7 @@ import * as XLSX from 'xlsx';
 import {
   RefreshCw, Download, Phone, Search, X, Layers,
   Wallet, Activity, ShoppingBag,
-  Bookmark, Save, Pencil, Check,
+  Bookmark, Save, Pencil, Check, SlidersHorizontal, Type,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
@@ -336,6 +336,11 @@ export default function Segments({ isActive = true }) {
   const [activeSavedId,  setActiveSavedId]  = useState(null);
   const [saveOpen,       setSaveOpen]       = useState(false);
   const [renameTarget,   setRenameTarget]   = useState(null);
+  // Filter cards visibility. Default true so the operator can build a
+  // fresh segment from scratch. Loading a saved chip collapses them
+  // (they came to see results, not to fiddle with knobs). Clicking
+  // the chip's pencil re-expands them in edit mode.
+  const [filtersExpanded, setFiltersExpanded] = useState(true);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -433,6 +438,7 @@ export default function Segments({ isActive = true }) {
   const setFilter = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setActiveSavedId(null);
+    setFiltersExpanded(true);
   };
   const toggleMultiFilter = (key, value) => {
     setFilters(prev => {
@@ -441,10 +447,12 @@ export default function Segments({ isActive = true }) {
       return { ...prev, [key]: next };
     });
     setActiveSavedId(null);
+    setFiltersExpanded(true);
   };
   const resetFilters = () => {
     setFilters(EMPTY_FILTERS);
     setActiveSavedId(null);
+    setFiltersExpanded(true);
   };
   const hasAnyFilter = useMemo(() => {
     return Object.entries(filters).some(([k, v]) => {
@@ -471,9 +479,19 @@ export default function Segments({ isActive = true }) {
     return out;
   }, [rows, savedSegments]);
 
+  // Plain load — click on the chip body. Just runs the segment; the
+  // operator wants to see results, not knobs.
   const loadSavedSegment = (segment) => {
     setFilters({ ...EMPTY_FILTERS, ...(segment.filters || {}) });
     setActiveSavedId(segment.id);
+    setFiltersExpanded(false);
+  };
+  // Edit mode — clicking the pencil. Loads the segment AND opens the
+  // facet cards so they can be tweaked.
+  const editSavedSegment = (segment) => {
+    setFilters({ ...EMPTY_FILTERS, ...(segment.filters || {}) });
+    setActiveSavedId(segment.id);
+    setFiltersExpanded(true);
   };
 
   const handleSave = async (name) => {
@@ -677,6 +695,7 @@ export default function Segments({ isActive = true }) {
                   count={count}
                   active={active}
                   onLoad={() => loadSavedSegment(s)}
+                  onEdit={() => editSavedSegment(s)}
                   onRename={() => setRenameTarget(s)}
                   onDelete={() => handleDelete(s)}
                 />
@@ -686,8 +705,44 @@ export default function Segments({ isActive = true }) {
         </Card>
       )}
 
-      {/* Reset link — only shown when at least one filter is active */}
-      {hasAnyFilter && (
+      {/* Collapsed-filters banner — only shown when viewing a saved
+          segment with the filter cards hidden. Single click on
+          "تعديل الفلاتر" expands them so the operator can tweak. */}
+      {activeSavedId && !filtersExpanded && (
+        <Card style={{
+          marginBottom: 14, padding: '12px 16px',
+          background: 'color-mix(in srgb, #0EA5E9 5%, transparent)',
+          border: '1px solid color-mix(in srgb, #0EA5E9 18%, transparent)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <SlidersHorizontal size={14} color="#0EA5E9"/>
+            <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>
+              تشاهد شريحة محفوظة —
+              <strong style={{ color: 'var(--text)', marginInlineStart: 4 }}>
+                {savedSegments.find(s => s.id === activeSavedId)?.name || '—'}
+              </strong>
+            </span>
+            <button
+              onClick={() => setFiltersExpanded(true)}
+              style={{
+                marginInlineStart: 'auto',
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', borderRadius: 999,
+                border: '1.5px solid #0EA5E9',
+                background: 'transparent', color: '#0EA5E9',
+                fontSize: 12, fontWeight: 600, cursor: 'pointer',
+                fontFamily: 'var(--font-sans)',
+              }}
+            >
+              <Pencil size={11}/>
+              تعديل الفلاتر
+            </button>
+          </div>
+        </Card>
+      )}
+
+      {/* Reset link — only shown when filters are visible AND something is set */}
+      {filtersExpanded && hasAnyFilter && (
         <div style={{ marginBottom: 14 }}>
           <button onClick={resetFilters} style={{
             display: 'inline-flex', alignItems: 'center', gap: 6,
@@ -703,7 +758,10 @@ export default function Segments({ isActive = true }) {
         </div>
       )}
 
-      {/* Filter facets — 3 columns: activity / account / money */}
+      {/* Filter facets — 3 columns: activity / account / money.
+          Hidden when viewing a saved chip (operator wants results,
+          not knobs). Click the chip's pencil → expands. */}
+      {filtersExpanded && (
       <div style={{
         display: 'grid', gap: 14,
         gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
@@ -778,6 +836,7 @@ export default function Segments({ isActive = true }) {
           </Select>
         </Card>
       </div>
+      )}
 
       {/* Search + result strip */}
       <Card style={{ marginBottom: 14 }}>
@@ -1077,7 +1136,7 @@ function MultiChips({ label, options, selected, onToggle }) {
   );
 }
 
-function SavedChip({ segment, count, active, onLoad, onRename, onDelete }) {
+function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete }) {
   const tint = segment.color || '#0EA5E9';
   return (
     <div style={{
@@ -1087,9 +1146,10 @@ function SavedChip({ segment, count, active, onLoad, onRename, onDelete }) {
       background: active ? `color-mix(in srgb, ${tint} 12%, transparent)` : 'var(--surface)',
       transition: 'all .15s',
     }}>
+      {/* Click the chip body → load + collapse filters (just see results) */}
       <button
         onClick={onLoad}
-        title="افتح الشريحة"
+        title="افتح الشريحة وأظهر النتائج"
         style={{
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', gap: 7,
@@ -1107,25 +1167,31 @@ function SavedChip({ segment, count, active, onLoad, onRename, onDelete }) {
           {count.toLocaleString('ar-SA')}
         </span>
       </button>
+      {/* Pencil = enter edit mode (load + expand the filter cards).
+          Renaming moved to a small icon further right so the most
+          common edit-action (tweak filters) is the most prominent. */}
       <button
-        onClick={(e) => { e.stopPropagation(); onRename(); }}
-        title="تعديل الاسم"
-        style={{
-          background: 'transparent', border: 'none', padding: 2, cursor: 'pointer',
-          color: 'var(--muted)', display: 'flex',
-        }}
+        onClick={(e) => { e.stopPropagation(); onEdit(); }}
+        title="تعديل الفلاتر"
+        style={iconBtnStyle}
         onMouseEnter={(e) => e.currentTarget.style.color = tint}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
       >
-        <Pencil size={11}/>
+        <SlidersHorizontal size={11}/>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onRename(); }}
+        title="تعديل الاسم"
+        style={iconBtnStyle}
+        onMouseEnter={(e) => e.currentTarget.style.color = tint}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+      >
+        <Type size={11}/>
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
         title="حذف الشريحة"
-        style={{
-          background: 'transparent', border: 'none', padding: 2, cursor: 'pointer',
-          color: 'var(--muted)', display: 'flex',
-        }}
+        style={iconBtnStyle}
         onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
       >
@@ -1134,6 +1200,11 @@ function SavedChip({ segment, count, active, onLoad, onRename, onDelete }) {
     </div>
   );
 }
+
+const iconBtnStyle = {
+  background: 'transparent', border: 'none', padding: 2, cursor: 'pointer',
+  color: 'var(--muted)', display: 'flex',
+};
 
 function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
   const [name, setName] = useState(initialValue);
