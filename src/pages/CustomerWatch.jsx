@@ -47,6 +47,33 @@ const daysAgo = (iso) => {
   return Math.floor((Date.now() - new Date(iso)) / 86_400_000);
 };
 
+// Map a platform status string + last-shipment recency to a colored
+// pill. The platform mostly emits "نشط" / "موقوف" / "محذوف" / "غير
+// مفعّل" but we keep the matcher loose (includes()) so wording drift
+// doesn't break the badge. If the platform says active but the store
+// hasn't shipped in >30d, we down-shift to a "خامل" tone so the
+// operator doesn't mistake a dormant active store for a live one.
+function statusPillTone(rawStatus, shipDays) {
+  const s = String(rawStatus || '').trim();
+  // Real values in the platform export today (verified against the
+  // latest merchants snapshot): "نشط" / "غير نشط". We still keep the
+  // suspended/deleted matchers in case those terms appear in the
+  // future. Order matters — "غير نشط" must match BEFORE the bare
+  // /نشط/ check or else it would be flagged as active by substring.
+  const isSuspended = /موقوف|محذوف|إيقاف|stopped|deleted|disabled/i.test(s);
+  const isInactive  = /غير\s*نشط|غير\s*مفعّل|غير\s*مفعل|inactive/i.test(s);
+  const isActive    = /^نشط$|active|مفعّل/i.test(s);
+  if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: '#DC2626', label: s || 'موقوف' };
+  if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
+  if (isActive) {
+    if (shipDays != null && shipDays > 30) {
+      return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط — خامل' };
+    }
+    return { bg: 'rgba(16,185,129,.14)', fg: '#047857', label: 'شغّال' };
+  }
+  return { bg: 'rgba(148,163,184,.16)', fg: 'var(--muted)', label: s || 'غير معروف' };
+}
+
 const ANOMALY_META = {
   negative_wallet:    { color: '#DC2626', icon: AlertOctagon, label: 'رصيد محفظة سالب',     hint: 'دفع مسبق ورصيده ناقص — خطأ تقني' },
   prepaid_with_debt:  { color: '#EF4444', icon: AlertTriangle, label: 'دفع مسبق وعليه دين', hint: 'يدفع من المحفظة لكن عليه فواتير' },
@@ -638,12 +665,26 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
 
   const handleExport = () => {
     if (!rows.length) return;
+    // Common operational signals every row carries — included in every
+    // anomaly export so the collection campaign list always has the
+    // "is this store alive?" context (status + last shipment + last
+    // wallet top-up).
+    const baseOps = ['حالة المنصّة', 'نوع الفوترة', 'آخر شحنة', 'أيام منذ آخر شحنة', 'آخر شحن رصيد', 'أيام منذ آخر شحن رصيد', 'الرصيد الحالي'];
+    const opsCells = (m) => [
+      m?.platformStatus || '',
+      m?.billingType    || '',
+      m?.lastShipmentAt ? m.lastShipmentAt.slice(0, 10) : '',
+      m?.lastShipmentAt ? (daysAgo(m.lastShipmentAt) ?? '') : '',
+      m?.lastTopupAt    ? m.lastTopupAt.slice(0, 10)    : '',
+      m?.lastTopupAt    ? (daysAgo(m.lastTopupAt)    ?? '') : '',
+      m?.walletBalance != null ? Number(m.walletBalance).toFixed(2) : '',
+    ];
     const headers = kind === 'negative_wallet'
-      ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'نوع الفوترة', 'حالة المنصّة', 'الدين الحالي']
-      : ['اسم العميل', 'اسم المتجر', 'رقم المتجر', 'الهاتف', 'المديونية', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام'];
+      ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'الدين الحالي', ...baseOps]
+      : ['اسم العميل', 'اسم المتجر', 'رقم المتجر', 'الهاتف', 'المديونية', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام', ...baseOps];
     const xRows = sorted.map(r => kind === 'negative_wallet'
-      ? [r.merchant?.storeName || r.name, r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.merchant?.walletBalance || 0).toFixed(2), r.merchant?.billingType || '', r.merchant?.platformStatus || '', Number(r.total || 0).toFixed(2)]
-      : [r.name, r.merchant?.storeName || '', r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.total || 0).toFixed(2), r.invoiceCount || 0, r.oldestInvoiceDate || '', r.daysOutstanding || '']);
+      ? [r.merchant?.storeName || r.name, r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.merchant?.walletBalance || 0).toFixed(2), Number(r.total || 0).toFixed(2), ...opsCells(r.merchant)]
+      : [r.name, r.merchant?.storeName || '', r.merchant?.storeId || '', r.merchant?.phone || '', Number(r.total || 0).toFixed(2), r.invoiceCount || 0, r.oldestInvoiceDate || '', r.daysOutstanding || '', ...opsCells(r.merchant)]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, meta.label.slice(0, 28));
@@ -691,6 +732,13 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
           const value = kind === 'negative_wallet'
             ? Number(m?.walletBalance || 0)
             : Number(c.total || 0);
+          // Operational signals: "is this store alive right now?" — the
+          // operator wants to see, before calling, whether the store is
+          // still active on the platform and how recent its last
+          // shipment / wallet top-up are.
+          const shipDays = m?.lastShipmentAt ? daysAgo(m.lastShipmentAt) : null;
+          const topupDays = m?.lastTopupAt   ? daysAgo(m.lastTopupAt)   : null;
+          const statusTone = statusPillTone(m?.platformStatus, shipDays);
           return (
             <div key={(m?.storeId || c.name) + i} onClick={() => onRowClick(c)} style={{
               display: 'grid',
@@ -707,12 +755,68 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
                 {i + 1}
               </span>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {m?.storeName || c.name}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {m?.storeName || c.name}
+                  </span>
+                  {m?.platformStatus && (
+                    <span style={{
+                      fontSize: 10, fontWeight: 700, padding: '2px 7px',
+                      borderRadius: 999, whiteSpace: 'nowrap', flexShrink: 0,
+                      background: statusTone.bg,
+                      color:      statusTone.fg,
+                    }}>
+                      {statusTone.label}
+                    </span>
+                  )}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2, fontFamily: m?.phone ? 'var(--font-mono)' : 'inherit', direction: m?.phone ? 'ltr' : 'rtl', textAlign: 'right' }}>
                   {m?.phone ? m.phone : m?.storeId ? m.storeId : `${c.invoiceCount || 0} فاتورة`}
                 </div>
+                {/* Ops signals strip — only shown when merchant linked */}
+                {m && (shipDays != null || topupDays != null || m.billingType) && (
+                  <div style={{
+                    display: 'flex', flexWrap: 'wrap', gap: 10,
+                    marginTop: 6, fontSize: 10.5, color: 'var(--muted)',
+                  }}>
+                    {m.billingType && (
+                      <span title="نوع الفوترة">
+                        <span style={{ opacity: .65 }}>الفوترة:</span>{' '}
+                        <span style={{ color: 'var(--text2)', fontWeight: 600 }}>{m.billingType}</span>
+                      </span>
+                    )}
+                    {shipDays != null && (
+                      <span title={`آخر شحنة: ${m.lastShipmentAt.slice(0,10)}`}>
+                        🚚 <span style={{
+                          color: shipDays <= 10 ? '#10B981' : shipDays <= 30 ? '#F59E0B' : 'var(--muted)',
+                          fontWeight: 600,
+                        }}>{shipDays === 0 ? 'اليوم' : `قبل ${shipDays}ي`}</span>
+                      </span>
+                    )}
+                    {topupDays != null && (
+                      <span title={`آخر شحن رصيد: ${m.lastTopupAt.slice(0,10)}`}>
+                        💰 <span style={{
+                          color: topupDays <= 30 ? '#10B981' : topupDays <= 90 ? '#F59E0B' : 'var(--muted)',
+                          fontWeight: 600,
+                        }}>قبل {topupDays}ي</span>
+                      </span>
+                    )}
+                    {m.walletBalance != null && Math.abs(Number(m.walletBalance)) > 0.5 && (
+                      <span title="رصيد المحفظة الحالي">
+                        رصيد المحفظة:{' '}
+                        <span style={{
+                          color: Number(m.walletBalance) < 0 ? '#DC2626' : 'var(--text2)',
+                          fontWeight: 700, fontFamily: 'var(--font-mono)',
+                        }}>{fmtCompact(Number(m.walletBalance))}</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+                {!m && (
+                  <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 4, fontStyle: 'italic' }}>
+                    ⚠ غير مرتبط بمتجر — اربطه من /merchants
+                  </div>
+                )}
               </div>
               <div style={{ textAlign: 'left', whiteSpace: 'nowrap' }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: meta.color, fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
@@ -722,11 +826,6 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
                 {kind !== 'negative_wallet' && c.daysOutstanding != null && (
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
                     {c.daysOutstanding}ي متأخر
-                  </div>
-                )}
-                {kind === 'negative_wallet' && m?.lastShipmentAt && (
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
-                    آخر شحنة {daysAgo(m.lastShipmentAt)}ي
                   </div>
                 )}
               </div>
