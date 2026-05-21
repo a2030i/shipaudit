@@ -346,15 +346,21 @@ export async function loadLatestReceivables() {
         continue;
       }
       c.merchant = {
-        storeId:        m.store_id,
-        storeName:      m.store_name,
-        phone:          m.phone,
-        billingType:    m.billing_type,
-        platformStatus: m.status,
-        integrationType:m.integration_type,
-        shipmentCount:  m.shipment_count,
-        lastShipmentAt: m.last_shipment_at,
-        walletBalance:  Number(m.wallet_balance) || 0,
+        storeId:           m.store_id,
+        storeName:         m.store_name,
+        phone:             m.phone,
+        billingType:       m.billing_type,
+        platformStatus:    m.status,
+        integrationType:   m.integration_type,
+        shipmentCount:     m.shipment_count,
+        lastShipmentAt:    m.last_shipment_at,
+        // Operational signals — "is this store alive right now?". The
+        // anomaly modal renders them so the operator can tell at a glance
+        // whether to chase the debt (active store), suspend (idle), or
+        // skip (already inactive in the platform).
+        createdAtPlatform: m.created_at_platform,
+        lastTopupAt:       m.last_topup_at,
+        walletBalance:     Number(m.wallet_balance) || 0,
       };
       c.merchantMatch = { method: link.match_method, confidence: link.confidence };
     }
