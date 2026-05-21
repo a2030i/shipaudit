@@ -671,7 +671,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   const handleReopen = async () => {
     setApproving(true);
     try {
-      await reopenAudit(audit.id);
+      await reopenAudit(audit.id, profile?.id || null);
       audit.reviewStatus = 'pending';
       audit.approvedAt   = null;
       audit.rejectedAt   = null;

@@ -733,6 +733,38 @@ export async function approveAudit(auditId, userId) {
     .single();
   if (updErr) throw updErr;
 
+  // ── Hard audit trail: snapshot the financial state at the moment
+  //    of approval so any later re-edit of the audit row leaves the
+  //    historical decision intact in activity_log. The external
+  //    auditor's first question is always "what did this audit look
+  //    like when it was approved" — this is the answer.
+  try {
+    const { logActivity } = await import('./carrierStatementsService.js');
+    await logActivity({
+      action:     'audit.approve',
+      entityType: 'audit',
+      entityId:   updated.id,
+      carrierId:  updated.carrier_id,
+      userId:     userId || null,
+      payload: {
+        file_name:       updated.file_name,
+        period:          updated.period,
+        carrier_name:    updated.carrier_name,
+        total_billed:    Number(updated.total_billed)  || 0,
+        total_tax:       Number(updated.total_tax)     || 0,
+        total_expected:  Number(updated.total_expected)|| 0,
+        diff:            Number(updated.diff)          || 0,
+        drift_pre_tax:   Number(updated.drift_pre_tax) || 0,
+        drift_tax:       Number(updated.drift_tax)     || 0,
+        mismatch_count:  Number(updated.mismatch_count)|| 0,
+        row_count:       Number(updated.row_count)     || 0,
+        approved_at:     nowIso,
+      },
+    });
+  } catch (e) {
+    console.warn('audit.approve activity log failed:', e.message);
+  }
+
   // ── Auto-extract per-AWB COD shipments to cod_settlement (out) ONLY
   //    when the carrier's profile says its invoice file ALSO carries
   //    COD (file_kind='audit_with_cod' — e.g. DeliverNow). For carriers
@@ -811,11 +843,12 @@ export async function approveAudit(auditId, userId) {
 }
 
 export async function rejectAudit(auditId, reason, userId) {
+  const nowIso = new Date().toISOString();
   const { data, error } = await supabase
     .from('audits')
     .update({
       review_status:   'rejected',
-      rejected_at:     new Date().toISOString(),
+      rejected_at:     nowIso,
       rejected_reason: reason || null,
       approved_at:     null,
       approved_by:     userId || null,
@@ -824,6 +857,30 @@ export async function rejectAudit(auditId, reason, userId) {
     .select()
     .single();
   if (error) throw error;
+  // Hard audit trail — capture the reason + the financial state at
+  // rejection so the auditor can trace why a previously-approved
+  // audit was reversed.
+  try {
+    const { logActivity } = await import('./carrierStatementsService.js');
+    await logActivity({
+      action:     'audit.reject',
+      entityType: 'audit',
+      entityId:   data.id,
+      carrierId:  data.carrier_id,
+      userId:     userId || null,
+      payload: {
+        reason:          reason || null,
+        file_name:       data.file_name,
+        period:          data.period,
+        total_billed:    Number(data.total_billed)  || 0,
+        total_tax:       Number(data.total_tax)     || 0,
+        mismatch_count:  Number(data.mismatch_count)|| 0,
+        rejected_at:     nowIso,
+      },
+    });
+  } catch (e) {
+    console.warn('audit.reject activity log failed:', e.message);
+  }
   // If this audit was previously approved + posted, drop the ledger line
   // AND the auto-extracted cod_settlement rows so the balances stay
   // accurate. Audit trail = the audit row itself, which keeps both
@@ -848,7 +905,15 @@ export async function rejectAudit(auditId, reason, userId) {
 // Send an approved/rejected audit back to pending — useful when new
 // info shows up and the accountant wants to re-examine before billing.
 // Also reverses the ledger line + COD extractions if previously posted.
-export async function reopenAudit(auditId) {
+export async function reopenAudit(auditId, userId = null) {
+  const nowIso = new Date().toISOString();
+  // Capture the prior state for the audit trail BEFORE we overwrite it
+  const { data: prior } = await supabase
+    .from('audits')
+    .select('id, carrier_id, file_name, period, review_status, approved_at, approved_by, rejected_at, rejected_reason, total_billed, total_tax')
+    .eq('id', auditId)
+    .maybeSingle();
+
   const { data, error } = await supabase
     .from('audits')
     .update({
@@ -873,6 +938,32 @@ export async function reopenAudit(auditId) {
     await clearAuditCodOut(auditId);
   } catch (e) {
     console.warn('COD reverse-on-reopen failed:', e.message);
+  }
+  // Hard audit trail — include the prior state we're undoing so the
+  // record explains "this was approved on X, reopened on Y by Z".
+  try {
+    const { logActivity } = await import('./carrierStatementsService.js');
+    await logActivity({
+      action:     'audit.reopen',
+      entityType: 'audit',
+      entityId:   data.id,
+      carrierId:  data.carrier_id,
+      userId:     userId || null,
+      payload: {
+        file_name:        data.file_name,
+        period:           data.period,
+        prior_status:     prior?.review_status   || null,
+        prior_approved_at: prior?.approved_at    || null,
+        prior_approved_by: prior?.approved_by    || null,
+        prior_rejected_at: prior?.rejected_at    || null,
+        prior_rejected_reason: prior?.rejected_reason || null,
+        prior_total_billed: Number(prior?.total_billed) || 0,
+        prior_total_tax:    Number(prior?.total_tax)    || 0,
+        reopened_at:      nowIso,
+      },
+    });
+  } catch (e) {
+    console.warn('audit.reopen activity log failed:', e.message);
   }
   return data;
 }
