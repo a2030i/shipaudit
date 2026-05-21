@@ -103,40 +103,93 @@ const EMPTY_FILTERS = {
   search:            '',
 };
 
-// Pretty labels for the shippedRecency / topupRecency / etc. dropdowns
-const SHIP_RECENCY_LABELS = {
-  '':         'أي وقت',
-  never:      'لم يشحن نهائياً',
-  gte_15:     'آخر شحنة ≥ ١٥ يوم',
-  gte_30:     'آخر شحنة ≥ ٣٠ يوم',
-  gte_60:     'آخر شحنة ≥ ٦٠ يوم',
-  gte_90:     'آخر شحنة ≥ ٩٠ يوم',
+// Each numeric facet stores its value as one of three shapes:
+//   null / '' / 'any'  → no constraint
+//   '<token>'          → a "special" predicate the facet declares
+//                        (e.g. 'never', 'has_debt', 'negative')
+//   'gte_N' | 'lte_N' | 'eq_N'
+//                      → operator + free user-entered number N
+//
+// parseFacetValue() turns any of those into { op, value, special }
+// so the matcher and UI both work off the same parsed shape.
+function parseFacetValue(v) {
+  // Backwards compat: legacy signupRecency was stored as a raw number
+  // (years before the gte_N tokens existed). Treat that as gte_N.
+  if (typeof v === 'number' && Number.isFinite(v) && v > 0) {
+    return { op: 'gte', value: v, special: null };
+  }
+  if (v == null || v === '' || v === 'any') {
+    return { op: 'any', value: null, special: null };
+  }
+  const s = String(v);
+  const m = s.match(/^(gte|lte|eq)_(-?\d+(?:\.\d+)?)$/);
+  if (m) return { op: m[1], value: Number(m[2]), special: null };
+  return { op: 'special', value: null, special: s };
+}
+
+const buildToken = (op, value) => {
+  if (op === 'any')     return null;
+  if (op === 'special') return value;          // value carries the special token
+  if (value == null || value === '' || Number.isNaN(Number(value))) return null;
+  return `${op}_${Number(value)}`;
 };
-const TOPUP_RECENCY_LABELS = {
-  '':         'أي وقت',
-  never:      'لم يشحن رصيد نهائياً',
-  gte_30:     'آخر شحن رصيد ≥ ٣٠ يوم',
-  gte_60:     'آخر شحن رصيد ≥ ٦٠ يوم',
-  gte_90:     'آخر شحن رصيد ≥ ٩٠ يوم',
-  gte_180:    'آخر شحن رصيد ≥ ١٨٠ يوم',
+
+// Per-facet configuration. `specials` is the list of named predicates
+// the facet supports beyond the generic ≥ / ≤ / = operators.
+const FACET_CONFIG = {
+  shippedRecency: {
+    unit: 'يوم',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [{ value: 'never', label: 'لم يشحن نهائياً' }],
+    defaultValue: 15,
+  },
+  topupRecency: {
+    unit: 'يوم',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [{ value: 'never', label: 'لم يشحن رصيد نهائياً' }],
+    defaultValue: 30,
+  },
+  shipmentCountKind: {
+    unit: 'شحنة',
+    operators: ['any', 'gte', 'lte', 'eq'],
+    specials:  [],
+    defaultValue: 10,
+  },
+  signupRecency: {
+    unit: 'يوم',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [],
+    defaultValue: 5,
+  },
+  debtFilter: {
+    unit: 'ر.س',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [
+      { value: 'has_debt', label: 'عليه دين (> ٠)' },
+      { value: 'no_debt',  label: 'لا يوجد دين'    },
+    ],
+    defaultValue: 100,
+  },
+  walletFilter: {
+    unit: 'ر.س',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [
+      { value: 'negative', label: 'رصيد سالب' },
+      { value: 'positive', label: 'رصيد موجب' },
+      { value: 'zero',     label: 'رصيد صفر'  },
+    ],
+    defaultValue: 100,
+  },
 };
-const SHIPMENT_COUNT_LABELS = {
-  '':         'أي عدد',
-  zero:       'صفر شحنات',
-  one_plus:   'شحنة واحدة أو أكثر',
-  high:       'أكثر من ١٠٠ شحنة',
+
+const OP_LABEL = {
+  any:     'أي قيمة',
+  gte:     '≥ أكبر من',
+  lte:     '≤ أقل من',
+  eq:      '= يساوي',
+  special: 'حالة خاصة',
 };
-const DEBT_LABELS = {
-  '':         'أي قيمة',
-  has_debt:   'عليه دين (> ٠)',
-  no_debt:    'لا يوجد دين',
-};
-const WALLET_LABELS = {
-  '':         'أي رصيد',
-  negative:   'رصيد سالب',
-  positive:   'رصيد موجب',
-  zero:       'رصيد صفر',
-};
+
 const LINK_LABELS = {
   '':         'الكل',
   linked:     'مرتبط بمتجر',
@@ -183,41 +236,53 @@ function unifyRows(merchants, receivables) {
   });
 }
 
+// Generic numeric-facet matcher. `metric` is the row value to compare;
+// `null` means the row has no value (e.g. lastShipmentAt is unknown).
+// The "missing" rows fail ≥/≤/= constraints, which is what the
+// operator usually wants — if you ask "shipped at least once",
+// merchants with no shipment date don't qualify.
+function matchNumeric(parsed, metric, specialChecks = {}) {
+  if (parsed.op === 'any')   return true;
+  if (parsed.op === 'special') {
+    const check = specialChecks[parsed.special];
+    return check ? check() : true;
+  }
+  if (metric == null) return false;
+  if (parsed.op === 'gte') return metric >= parsed.value;
+  if (parsed.op === 'lte') return metric <= parsed.value;
+  if (parsed.op === 'eq')  return metric === parsed.value;
+  return true;
+}
+
 // ── filter predicate — pure, AND-combines every non-null facet ──
 function matchesFilters(row, f) {
-  // Activity: shipped recency
-  if (f.shippedRecency === 'never' && row.lastShipmentAt) return false;
-  if (f.shippedRecency?.startsWith('gte_')) {
-    const n = Number(f.shippedRecency.slice(4));
-    if (row._shipDays == null || row._shipDays < n) return false;
-  }
-  // Activity: shipment count bucket
-  if (f.shipmentCountKind === 'zero'     && row.shipmentCount !== 0)   return false;
-  if (f.shipmentCountKind === 'one_plus' && row.shipmentCount <  1)    return false;
-  if (f.shipmentCountKind === 'high'     && row.shipmentCount <= 100)  return false;
-  // Activity: signup recency (numeric input — days since signup)
-  if (f.signupRecency != null && f.signupRecency !== '' && Number(f.signupRecency) > 0) {
-    const n = Number(f.signupRecency);
-    if (row._signupDays == null || row._signupDays < n) return false;
-  }
+  // Activity: shipped recency (days since last shipment)
+  if (!matchNumeric(parseFacetValue(f.shippedRecency), row._shipDays, {
+    never: () => !row.lastShipmentAt,
+  })) return false;
+  // Activity: shipment count
+  if (!matchNumeric(parseFacetValue(f.shipmentCountKind), row.shipmentCount)) return false;
+  // Activity: signup recency (days since createdAtPlatform)
+  if (!matchNumeric(parseFacetValue(f.signupRecency), row._signupDays)) return false;
   // Activity: top-up recency
-  if (f.topupRecency === 'never' && row.lastTopupAt) return false;
-  if (f.topupRecency?.startsWith('gte_')) {
-    const n = Number(f.topupRecency.slice(4));
-    if (row._topupDays == null || row._topupDays < n) return false;
-  }
+  if (!matchNumeric(parseFacetValue(f.topupRecency), row._topupDays, {
+    never: () => !row.lastTopupAt,
+  })) return false;
   // Account: multi-select facets — empty array means no constraint
   if (f.platformStatuses?.length && !f.platformStatuses.includes(row.platformStatus || '')) return false;
   if (f.billingTypes?.length     && !f.billingTypes.includes(row.billingType || ''))         return false;
   if (f.integrationTypes?.length && !f.integrationTypes.includes(row.integrationType || '')) return false;
   // Money: debt
-  if (f.debtFilter === 'has_debt' && !(row.debt > 0.5))     return false;
-  if (f.debtFilter === 'no_debt'  && row.debt > 0.5)        return false;
-  if (typeof f.debtFilter === 'number' && row.debt < f.debtFilter) return false;
+  if (!matchNumeric(parseFacetValue(f.debtFilter), row.debt, {
+    has_debt: () => row.debt > 0.5,
+    no_debt:  () => row.debt <= 0.5,
+  })) return false;
   // Money: wallet
-  if (f.walletFilter === 'negative' && !(row.walletBalance < -0.01)) return false;
-  if (f.walletFilter === 'positive' && !(row.walletBalance >  0.01)) return false;
-  if (f.walletFilter === 'zero'     && Math.abs(row.walletBalance) > 0.01) return false;
+  if (!matchNumeric(parseFacetValue(f.walletFilter), row.walletBalance, {
+    negative: () => row.walletBalance < -0.01,
+    positive: () => row.walletBalance >  0.01,
+    zero:     () => Math.abs(row.walletBalance) <= 0.01,
+  })) return false;
   // Link status
   if (f.linkStatus === 'linked'   && !row.isLinked) return false;
   if (f.linkStatus === 'unlinked' && row.isLinked)  return false;
@@ -601,28 +666,30 @@ export default function Segments({ isActive = true }) {
       }}>
         <Card>
           <FacetTitle icon={<Activity size={14}/>} color="#10B981">نشاط الشحن</FacetTitle>
-          <Select label="آخر شحنة" value={filters.shippedRecency || ''} onChange={e => setFilter('shippedRecency', e.target.value || null)}>
-            {Object.entries(SHIP_RECENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-          <Select label="عدد الشحنات" value={filters.shipmentCountKind || ''} onChange={e => setFilter('shipmentCountKind', e.target.value || null)}>
-            {Object.entries(SHIPMENT_COUNT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-          <label style={{ display: 'block', marginTop: 8 }}>
-            <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 4 }}>
-              مسجّل منذ أكثر من (يوم)
-            </span>
-            <input
-              type="number" min="0" placeholder="مثال: ٥"
-              value={filters.signupRecency ?? ''}
-              onChange={e => setFilter('signupRecency', e.target.value === '' ? null : Number(e.target.value))}
-              style={inputStyle}
-            />
-          </label>
-          <div style={{ marginTop: 8 }}>
-            <Select label="آخر شحن رصيد" value={filters.topupRecency || ''} onChange={e => setFilter('topupRecency', e.target.value || null)}>
-              {Object.entries(TOPUP_RECENCY_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </Select>
-          </div>
+          <NumericFacet
+            label="آخر شحنة منذ"
+            facetKey="shippedRecency"
+            value={filters.shippedRecency}
+            onChange={v => setFilter('shippedRecency', v)}
+          />
+          <NumericFacet
+            label="عدد الشحنات"
+            facetKey="shipmentCountKind"
+            value={filters.shipmentCountKind}
+            onChange={v => setFilter('shipmentCountKind', v)}
+          />
+          <NumericFacet
+            label="تسجيل المتجر منذ"
+            facetKey="signupRecency"
+            value={filters.signupRecency}
+            onChange={v => setFilter('signupRecency', v)}
+          />
+          <NumericFacet
+            label="آخر شحن رصيد منذ"
+            facetKey="topupRecency"
+            value={filters.topupRecency}
+            onChange={v => setFilter('topupRecency', v)}
+          />
         </Card>
 
         <Card>
@@ -649,12 +716,18 @@ export default function Segments({ isActive = true }) {
 
         <Card>
           <FacetTitle icon={<Wallet size={14}/>} color="#F59E0B">المال والربط</FacetTitle>
-          <Select label="المديونية" value={filters.debtFilter || ''} onChange={e => setFilter('debtFilter', e.target.value || null)}>
-            {Object.entries(DEBT_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
-          <Select label="رصيد المحفظة" value={filters.walletFilter || ''} onChange={e => setFilter('walletFilter', e.target.value || null)}>
-            {Object.entries(WALLET_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-          </Select>
+          <NumericFacet
+            label="المديونية"
+            facetKey="debtFilter"
+            value={filters.debtFilter}
+            onChange={v => setFilter('debtFilter', v)}
+          />
+          <NumericFacet
+            label="رصيد المحفظة"
+            facetKey="walletFilter"
+            value={filters.walletFilter}
+            onChange={v => setFilter('walletFilter', v)}
+          />
           <Select label="حالة الربط بالفواتير" value={filters.linkStatus || ''} onChange={e => setFilter('linkStatus', e.target.value || null)}>
             {Object.entries(LINK_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
@@ -801,6 +874,95 @@ function FacetTitle({ icon, color, children }) {
   );
 }
 
+// Dynamic numeric filter: operator + free user-entered number.
+//   - Operator dropdown carries 'أي قيمة' + the operators the facet
+//     supports (gte/lte/eq) + every "special" predicate (e.g. لم يشحن
+//     نهائياً / عليه دين / رصيد سالب) flattened into the same list.
+//   - When the operator is gte/lte/eq the number input appears inline;
+//     for 'special' or 'any' it stays hidden.
+//
+// The component is self-contained: it owns the parsed split between
+// op + number but emits a single token back to the parent
+// (`gte_15`, `lte_30`, `eq_0`, 'never', etc.) so the persisted shape
+// stays one flat string per facet.
+function NumericFacet({ label, facetKey, value, onChange }) {
+  const cfg = FACET_CONFIG[facetKey];
+  if (!cfg) return null;
+  const parsed = parseFacetValue(value);
+
+  // Local input value — derived from the parsed token. We keep a
+  // separate `localN` so the user can type "1" without it being
+  // interpreted as `gte_1` before they finish typing "15".
+  const [localN, setLocalN] = useState(parsed.value ?? '');
+  useEffect(() => { setLocalN(parsed.value ?? ''); }, [value]);
+
+  const emit = (op, n) => {
+    const token = buildToken(op, n);
+    onChange(token);
+  };
+
+  const onOpChange = (e) => {
+    const v = e.target.value;
+    if (v === 'any') { onChange(null); return; }
+    // Special predicate values (e.g. 'never', 'has_debt') come back as
+    // bare tokens. Operator changes (gte/lte/eq) keep the current N
+    // or fall back to the facet's defaultValue if N is empty.
+    if (cfg.specials.some(s => s.value === v)) { onChange(v); return; }
+    const n = localN === '' ? cfg.defaultValue : Number(localN);
+    setLocalN(n);
+    emit(v, n);
+  };
+
+  const onNumChange = (e) => {
+    const raw = e.target.value;
+    setLocalN(raw);
+    if (raw === '') { onChange(null); return; }
+    emit(parsed.op === 'special' || parsed.op === 'any' ? 'gte' : parsed.op, Number(raw));
+  };
+
+  // Build the unified options list for the operator dropdown
+  const opOptions = [];
+  for (const op of cfg.operators) opOptions.push({ value: op, label: OP_LABEL[op] });
+  for (const sp of cfg.specials)  opOptions.push({ value: sp.value, label: sp.label });
+
+  const currentOpValue = parsed.op === 'special' ? parsed.special : parsed.op;
+  const showNumber = parsed.op === 'gte' || parsed.op === 'lte' || parsed.op === 'eq';
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
+        {label}
+      </div>
+      <div style={{ display: 'flex', gap: 6 }}>
+        <select
+          value={currentOpValue || 'any'}
+          onChange={onOpChange}
+          style={{
+            ...inputStyle, flex: showNumber ? '0 0 130px' : 1,
+            cursor: 'pointer',
+          }}
+        >
+          {opOptions.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+        </select>
+        {showNumber && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+            <input
+              type="number" min="0" inputMode="decimal"
+              value={localN}
+              onChange={onNumChange}
+              placeholder={String(cfg.defaultValue)}
+              style={{ ...inputStyle, flex: 1, textAlign: 'center', fontFamily: 'var(--font-mono)' }}
+            />
+            <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, whiteSpace: 'nowrap' }}>
+              {cfg.unit}
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function MultiChips({ label, options, selected, onToggle }) {
   if (!options?.length) return null;
   return (
@@ -942,14 +1104,41 @@ function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
 // so they're not facing an empty field.
 function suggestSegmentName(filters) {
   const bits = [];
-  if (filters.debtFilter === 'has_debt')            bits.push('عليه دين');
-  if (filters.walletFilter === 'negative')          bits.push('رصيد سالب');
-  if (filters.walletFilter === 'positive')          bits.push('رصيد موجب');
-  if (filters.shipmentCountKind === 'zero')         bits.push('صفر شحنات');
-  if (filters.shippedRecency?.startsWith('gte_'))   bits.push(`خامل ${filters.shippedRecency.slice(4)}ي+`);
-  if (filters.signupRecency)                        bits.push(`مسجّل ${filters.signupRecency}ي+`);
-  if (filters.platformStatuses?.length)             bits.push(filters.platformStatuses.join('/'));
-  if (filters.integrationTypes?.length)             bits.push(`ربط ${filters.integrationTypes.join('/')}`);
+  const opPhrase = (p, unit) => {
+    if (p.op === 'gte') return `≥ ${p.value} ${unit}`;
+    if (p.op === 'lte') return `≤ ${p.value} ${unit}`;
+    if (p.op === 'eq')  return `= ${p.value}`;
+    return null;
+  };
+  const debt = parseFacetValue(filters.debtFilter);
+  if (debt.special === 'has_debt') bits.push('عليه دين');
+  if (debt.special === 'no_debt')  bits.push('بدون دين');
+  const debtPhrase = opPhrase(debt, 'ر.س'); if (debtPhrase) bits.push(`دين ${debtPhrase}`);
+
+  const wallet = parseFacetValue(filters.walletFilter);
+  if (wallet.special === 'negative') bits.push('رصيد سالب');
+  if (wallet.special === 'positive') bits.push('رصيد موجب');
+  if (wallet.special === 'zero')     bits.push('رصيد صفر');
+  const walletPhrase = opPhrase(wallet, 'ر.س'); if (walletPhrase) bits.push(`محفظة ${walletPhrase}`);
+
+  const sc = parseFacetValue(filters.shipmentCountKind);
+  if (sc.op === 'eq' && sc.value === 0) bits.push('صفر شحنات');
+  else { const p = opPhrase(sc, 'شحنة'); if (p) bits.push(`شحنات ${p}`); }
+
+  const ship = parseFacetValue(filters.shippedRecency);
+  if (ship.special === 'never') bits.push('لم يشحن');
+  else { const p = opPhrase(ship, 'يوم'); if (p) bits.push(`آخر شحنة ${p}`); }
+
+  const su = parseFacetValue(filters.signupRecency);
+  const suPhrase = opPhrase(su, 'يوم'); if (suPhrase) bits.push(`مسجّل ${suPhrase}`);
+
+  const tu = parseFacetValue(filters.topupRecency);
+  if (tu.special === 'never') bits.push('لم يشحن رصيد');
+  else { const p = opPhrase(tu, 'يوم'); if (p) bits.push(`شحن رصيد ${p}`); }
+
+  if (filters.platformStatuses?.length) bits.push(filters.platformStatuses.join('/'));
+  if (filters.integrationTypes?.length) bits.push(`ربط ${filters.integrationTypes.join('/')}`);
+  if (filters.billingTypes?.length)     bits.push(filters.billingTypes.join('/'));
   return bits.length ? bits.join(' · ') : 'شريحة جديدة';
 }
 
