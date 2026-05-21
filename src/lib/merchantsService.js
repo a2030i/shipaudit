@@ -399,23 +399,50 @@ export async function loadCustomerMerchantLinks() {
 // Skips names that already have a manual link. Returns a Map keyed by
 // customer_name → link result. Persists every result so subsequent
 // runs are cheap and durable.
-export async function autoLinkCustomers(customerNames, merchants, { userId } = {}) {
-  if (!customerNames?.length || !merchants?.length) return new Map();
+//
+// The match itself now runs server-side via bulk_match_customers()
+// RPC — the previous JS path was O(customers × merchants × name²)
+// and locked the browser tab for several seconds at the current row
+// counts (3K × 3K). The RPC uses a pg_trgm GIN index on the
+// normalized store_name so each customer's match becomes O(top-N
+// candidates) regardless of how many merchants exist.
+//
+// The `merchants` argument is kept in the signature for backwards
+// compatibility but is no longer used here — the RPC reads the
+// latest merchants snapshot itself.
+export async function autoLinkCustomers(customerNames, _merchants, { userId } = {}) {
+  if (!customerNames?.length) return new Map();
   const existing = await loadCustomerMerchantLinks();
   const results = new Map();
-  const toUpsert = [];
+  // Filter to names that need fresh matching (don't touch manual
+  // links — operators rely on those staying put across re-runs).
+  const namesToMatch = [];
   for (const name of customerNames) {
     const prior = existing.get(name);
-    // Don't overwrite a manual link — but DO refresh stale auto links
-    // when the user re-uploaded merchants.
     if (prior?.method === 'manual') {
       results.set(name, prior);
       continue;
     }
-    const match = findMerchantForCustomer(name, merchants);
-    const link = match
-      ? { storeId: match.storeId, confidence: match.confidence, method: match.method }
-      : { storeId: null, confidence: 0, method: 'unmatched' };
+    namesToMatch.push(name);
+  }
+  if (!namesToMatch.length) return results;
+
+  // One round-trip for the whole batch. Postgres returns at most one
+  // row per customer (the best match above threshold); names with no
+  // returned row default to `unmatched`.
+  const { data: matches, error } = await supabase.rpc('bulk_match_customers', {
+    p_names:     namesToMatch,
+    p_threshold: 0.78,
+  });
+  if (error) throw error;
+  const matchByName = new Map((matches || []).map(m => [m.customer_name, m]));
+
+  const toUpsert = [];
+  for (const name of namesToMatch) {
+    const m = matchByName.get(name);
+    const link = m
+      ? { storeId: m.store_id, confidence: Number(m.confidence), method: m.method }
+      : { storeId: null,        confidence: 0,                    method: 'unmatched' };
     results.set(name, link);
     toUpsert.push({
       customer_name: name,
@@ -429,10 +456,10 @@ export async function autoLinkCustomers(customerNames, merchants, { userId } = {
   if (toUpsert.length) {
     const CHUNK = 500;
     for (let i = 0; i < toUpsert.length; i += CHUNK) {
-      const { error } = await supabase
+      const { error: e2 } = await supabase
         .from('customer_merchant_links')
         .upsert(toUpsert.slice(i, i + CHUNK), { onConflict: 'customer_name' });
-      if (error) throw error;
+      if (e2) throw e2;
     }
   }
   return results;
