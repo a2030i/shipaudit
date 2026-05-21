@@ -693,6 +693,52 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
     toast(`تم تصدير ${rows.length} صف`, 'success');
   };
 
+  // Slim 3-column WhatsApp campaign export — only for negative_wallet.
+  // Columns map 1:1 to the utility template variables:
+  //   col 1: phone (for sending; not a template variable)
+  //   col 2: store name → {{1}}
+  //   col 3: balance (absolute value, signed in the template text) → {{2}}
+  // Phones are normalized (drop non-digits, prepend 966 if missing) so
+  // the bulk-sender doesn't need to clean them. Rows without a phone
+  // are skipped — the operator gets a count in the toast.
+  const handleExportCampaign = () => {
+    if (kind !== 'negative_wallet') return;
+    const normalizePhone = (raw) => {
+      if (raw == null) return null;
+      let s = String(raw).replace(/\D/g, '');
+      if (!s) return null;
+      if (s.startsWith('00966')) s = s.slice(2);          // 00966… → 966…
+      else if (s.startsWith('0')) s = '966' + s.slice(1); // 05xxx → 9665xxx
+      else if (!s.startsWith('966')) s = '966' + s;       // bare 5xxx → 966 5xxx
+      return s.length >= 11 ? s : null;
+    };
+    const headers = ['رقم الجوال', 'اسم المتجر', 'الرصيد'];
+    const xRows = [];
+    let skipped = 0;
+    for (const r of sorted) {
+      const phone = normalizePhone(r.merchant?.phone);
+      if (!phone) { skipped++; continue; }
+      const name = r.merchant?.storeName || r.name;
+      const bal  = Math.abs(Number(r.merchant?.walletBalance) || 0).toFixed(2);
+      xRows.push([phone, name, bal]);
+    }
+    if (!xRows.length) {
+      toast('لا توجد متاجر بأرقام جوال صالحة', 'warning');
+      return;
+    }
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'حملة');
+    const dateStr = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb, `حملة_رصيد_سالب_${dateStr}.xlsx`);
+    toast(
+      skipped
+        ? `تم تصدير ${xRows.length} متجر · تخطّينا ${skipped} بدون جوال`
+        : `تم تصدير ${xRows.length} متجر للحملة`,
+      'success',
+    );
+  };
+
   return (
     <Modal title={`${meta.label} — ${rows.length} عميل`} onClose={onClose} width={820}>
       {/* Header strip with total + export */}
@@ -717,9 +763,16 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
             {fmt(total)} <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 500 }}>ر.س</span>
           </div>
         </div>
-        <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={handleExport}>
-          تصدير Excel
-        </Btn>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {kind === 'negative_wallet' && (
+            <Btn size="md" variant="primary" icon={<Phone size={13}/>} onClick={handleExportCampaign}>
+              ملف حملة (٣ أعمدة)
+            </Btn>
+          )}
+          <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={handleExport}>
+            تصدير Excel
+          </Btn>
+        </div>
       </div>
 
       {/* Scrollable list */}
