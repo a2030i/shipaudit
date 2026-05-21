@@ -719,7 +719,10 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
       const phone = normalizePhone(r.merchant?.phone);
       if (!phone) { skipped++; continue; }
       const name = r.merchant?.storeName || r.name;
-      const bal  = Math.abs(Number(r.merchant?.walletBalance) || 0).toFixed(2);
+      // Keep the sign — the wallet IS negative and that's the whole
+      // point of this bucket. Excel will render it as -19.00 / -385.40
+      // exactly as it appears on screen.
+      const bal  = (Number(r.merchant?.walletBalance) || 0).toFixed(2);
       xRows.push([phone, name, bal]);
     }
     if (!xRows.length) {
