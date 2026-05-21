@@ -20,12 +20,17 @@ import * as XLSX from 'xlsx';
 import {
   RefreshCw, Filter, Download, Phone, Search, X, Layers,
   Zap, Calendar, Wallet, Activity, ShoppingBag, AlertCircle,
+  Bookmark, Plus, Trash2, Save, Pencil, Check,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, toast, PageHeader, Select,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
 } from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
+import {
+  listSegments, createSegment, updateSegment, deleteSegment,
+} from '../lib/segmentsService.js';
 
 // ── helpers ─────────────────────────────────────────────────────
 const DAY_MS = 86_400_000;
@@ -262,6 +267,7 @@ function matchesFilters(row, f) {
 // ── component ───────────────────────────────────────────────────
 export default function Segments({ isActive = true }) {
   const location = useLocation();
+  const { profile } = useAuth();
   const [loading, setLoading]       = useState(true);
   const [merchants, setMerchants]   = useState([]);
   const [receivables, setReceivables] = useState([]);
@@ -269,16 +275,26 @@ export default function Segments({ isActive = true }) {
   const [filters, setFilters]       = useState(EMPTY_FILTERS);
   const [activePreset, setActivePreset] = useState(null);
 
+  // Saved segments (operator-defined). Counts are recomputed in JS
+  // every time `rows` changes; never stored in the DB. `activeSavedId`
+  // tracks the currently-loaded chip so the strip can highlight it.
+  const [savedSegments, setSavedSegments] = useState([]);
+  const [activeSavedId,  setActiveSavedId]  = useState(null);
+  const [saveOpen,       setSaveOpen]       = useState(false);
+  const [renameTarget,   setRenameTarget]   = useState(null);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [mResult, rResult] = await Promise.all([
+      const [mResult, rResult, segments] = await Promise.all([
         loadLatestMerchants(),
         loadLatestReceivables().catch(() => ({ customers: [] })),
+        listSegments().catch(() => []),
       ]);
       setMerchants(mResult?.merchants || []);
       setReceivables(rResult?.customers || []);
       setSnapshot(mResult?.snapshot || null);
+      setSavedSegments(segments);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -336,10 +352,12 @@ export default function Segments({ isActive = true }) {
   const applyPreset = (preset) => {
     setFilters({ ...EMPTY_FILTERS, ...preset.filters });
     setActivePreset(preset.id);
+    setActiveSavedId(null);
   };
   const setFilter = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
     setActivePreset(null);
+    setActiveSavedId(null);
   };
   const toggleMultiFilter = (key, value) => {
     setFilters(prev => {
@@ -348,10 +366,12 @@ export default function Segments({ isActive = true }) {
       return { ...prev, [key]: next };
     });
     setActivePreset(null);
+    setActiveSavedId(null);
   };
   const resetFilters = () => {
     setFilters(EMPTY_FILTERS);
     setActivePreset(null);
+    setActiveSavedId(null);
   };
   const hasAnyFilter = useMemo(() => {
     return Object.entries(filters).some(([k, v]) => {
@@ -360,6 +380,80 @@ export default function Segments({ isActive = true }) {
       return v != null && v !== '';
     });
   }, [filters]);
+
+  // ── saved-segments handlers ─────────────────────────────────
+  // Per-chip counts: recomputed in JS whenever `rows` or the saved
+  // list changes. Effectively a "refresh all" — pulling fresh source
+  // data also re-derives every chip's count in a single pass.
+  const savedSegmentCounts = useMemo(() => {
+    const out = new Map();
+    for (const s of savedSegments) {
+      // Merge each saved segment over EMPTY_FILTERS so omitted keys
+      // (added later) default to "no constraint" instead of undefined.
+      const f = { ...EMPTY_FILTERS, ...(s.filters || {}) };
+      let n = 0;
+      for (const r of rows) if (matchesFilters(r, f)) n++;
+      out.set(s.id, n);
+    }
+    return out;
+  }, [rows, savedSegments]);
+
+  const loadSavedSegment = (segment) => {
+    setFilters({ ...EMPTY_FILTERS, ...(segment.filters || {}) });
+    setActivePreset(null);
+    setActiveSavedId(segment.id);
+  };
+
+  const handleSave = async (name) => {
+    if (!name?.trim()) { toast('الاسم مطلوب', 'warning'); return; }
+    try {
+      const created = await createSegment({
+        name,
+        filters,
+        userId: profile?.id || null,
+      });
+      setSavedSegments(prev => [...prev, created]);
+      setActiveSavedId(created.id);
+      setSaveOpen(false);
+      toast(`تم حفظ شريحة «${created.name}»`, 'success');
+    } catch (e) {
+      toast(`فشل الحفظ: ${e.message}`, 'error');
+    }
+  };
+
+  const handleRename = async (id, newName) => {
+    if (!newName?.trim()) { toast('الاسم مطلوب', 'warning'); return; }
+    try {
+      const updated = await updateSegment(id, { name: newName });
+      setSavedSegments(prev => prev.map(s => s.id === id ? updated : s));
+      setRenameTarget(null);
+      toast('تم تعديل الاسم', 'success');
+    } catch (e) {
+      toast(`فشل التعديل: ${e.message}`, 'error');
+    }
+  };
+
+  const handleOverwrite = async (id) => {
+    try {
+      const updated = await updateSegment(id, { filters });
+      setSavedSegments(prev => prev.map(s => s.id === id ? updated : s));
+      toast('تم تحديث الشريحة بالفلاتر الحالية', 'success');
+    } catch (e) {
+      toast(`فشل التحديث: ${e.message}`, 'error');
+    }
+  };
+
+  const handleDelete = async (segment) => {
+    if (!confirm(`حذف شريحة «${segment.name}»؟ لا يمكن التراجع.`)) return;
+    try {
+      await deleteSegment(segment.id);
+      setSavedSegments(prev => prev.filter(s => s.id !== segment.id));
+      if (activeSavedId === segment.id) setActiveSavedId(null);
+      toast('تم الحذف', 'success');
+    } catch (e) {
+      toast(`فشل الحذف: ${e.message}`, 'error');
+    }
+  };
 
   // ── exports ────────────────────────────────────────────────
   // Full Excel — every column on every row, no aggregation. Suitable
@@ -465,14 +559,60 @@ export default function Segments({ isActive = true }) {
         icon={<Layers size={22}/>}
         iconColor="#0EA5E9"
         title="شرائح العملاء"
-        subtitle="ابنِ شريحة بفلاتر متعدّدة وصدّر الإكسل أو ملف حملة واتساب"
+        subtitle="ابنِ شريحة بفلاتر متعدّدة، احفظها باسم، وحدّث كل الشرائح بضغطة"
         meta={snapshot ? `آخر تحديث ${new Date(snapshot.uploadedAt).toLocaleDateString('ar-SA')} · ${rows.length} متجر إجمالي` : null}
         actions={
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
-            تحديث
-          </Btn>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {hasAnyFilter && !activeSavedId && (
+              <Btn size="sm" variant="primary" icon={<Save size={13}/>} onClick={() => setSaveOpen(true)}>
+                احفظ كشريحة
+              </Btn>
+            )}
+            {activeSavedId && hasAnyFilter && (
+              <Btn size="sm" variant="ghost" icon={<Save size={13}/>} onClick={() => handleOverwrite(activeSavedId)}>
+                حدّث الشريحة الحالية
+              </Btn>
+            )}
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
+              تحديث الكل
+            </Btn>
+          </div>
         }
       />
+
+      {/* Saved segments strip — chips with live counts. Click a chip
+          to load its filters; counts auto-recompute when "تحديث الكل"
+          pulls fresh source data. */}
+      {savedSegments.length > 0 && (
+        <Card style={{ marginBottom: 16, background: 'var(--surface2)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <Bookmark size={14} color="#0EA5E9"/>
+            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
+              شرائحي المحفوظة
+            </span>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              ({savedSegments.length})
+            </span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {savedSegments.map(s => {
+              const count = savedSegmentCounts.get(s.id) ?? 0;
+              const active = activeSavedId === s.id;
+              return (
+                <SavedChip
+                  key={s.id}
+                  segment={s}
+                  count={count}
+                  active={active}
+                  onLoad={() => loadSavedSegment(s)}
+                  onRename={() => setRenameTarget(s)}
+                  onDelete={() => handleDelete(s)}
+                />
+              );
+            })}
+          </div>
+        </Card>
+      )}
 
       {/* Quick presets */}
       <div style={{ marginBottom: 16 }}>
@@ -617,6 +757,24 @@ export default function Segments({ isActive = true }) {
 
       {/* Results table — capped at 500 rows to keep DOM cheap.
           Export still uses the full filtered set. */}
+      {/* Save / Rename dialogs */}
+      {saveOpen && (
+        <NameDialog
+          title="حفظ شريحة جديدة"
+          initialValue={suggestSegmentName(filters, PRESETS, activePreset)}
+          onCancel={() => setSaveOpen(false)}
+          onSubmit={handleSave}
+        />
+      )}
+      {renameTarget && (
+        <NameDialog
+          title={`تعديل اسم «${renameTarget.name}»`}
+          initialValue={renameTarget.name}
+          onCancel={() => setRenameTarget(null)}
+          onSubmit={(name) => handleRename(renameTarget.id, name)}
+        />
+      )}
+
       {filtered.length === 0 ? (
         <Empty
           icon="🔎"
@@ -731,6 +889,115 @@ function MultiChips({ label, options, selected, onToggle }) {
       </div>
     </div>
   );
+}
+
+function SavedChip({ segment, count, active, onLoad, onRename, onDelete }) {
+  const tint = segment.color || '#0EA5E9';
+  return (
+    <div style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '6px 10px 6px 14px', borderRadius: 999,
+      border: `1.5px solid ${active ? tint : 'var(--border)'}`,
+      background: active ? `color-mix(in srgb, ${tint} 12%, transparent)` : 'var(--surface)',
+      transition: 'all .15s',
+    }}>
+      <button
+        onClick={onLoad}
+        title="افتح الشريحة"
+        style={{
+          background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
+          display: 'inline-flex', alignItems: 'center', gap: 7,
+          fontFamily: 'var(--font-sans)',
+          color: active ? tint : 'var(--text)',
+        }}
+      >
+        <span style={{ fontSize: 12.5, fontWeight: 600 }}>{segment.name}</span>
+        <span style={{
+          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+          background: `color-mix(in srgb, ${tint} 16%, transparent)`,
+          color: tint, fontFamily: 'var(--font-mono)',
+          minWidth: 28, textAlign: 'center',
+        }}>
+          {count.toLocaleString('ar-SA')}
+        </span>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onRename(); }}
+        title="تعديل الاسم"
+        style={{
+          background: 'transparent', border: 'none', padding: 2, cursor: 'pointer',
+          color: 'var(--muted)', display: 'flex',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = tint}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+      >
+        <Pencil size={11}/>
+      </button>
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        title="حذف الشريحة"
+        style={{
+          background: 'transparent', border: 'none', padding: 2, cursor: 'pointer',
+          color: 'var(--muted)', display: 'flex',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+      >
+        <X size={12}/>
+      </button>
+    </div>
+  );
+}
+
+function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
+  const [name, setName] = useState(initialValue);
+  return (
+    <Modal title={title} onClose={onCancel} width={420}>
+      <div style={{ padding: '4px 4px 0' }}>
+        <label style={{ display: 'block', marginBottom: 14 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>
+            اسم الشريحة
+          </span>
+          <input
+            type="text" autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && onSubmit(name)}
+            placeholder="مثال: مديونية + خامل ١٥ يوم"
+            style={inputStyle}
+          />
+        </label>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
+          <Btn size="md" variant="primary" icon={<Check size={13}/>} onClick={() => onSubmit(name)}>
+            حفظ
+          </Btn>
+          <Btn size="md" variant="ghost" onClick={onCancel}>
+            إلغاء
+          </Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// Best-effort suggested name based on what filters are active. The
+// operator can edit it before saving. If a quick-preset was tapped
+// just before clicking save, we propose the preset label as the seed.
+function suggestSegmentName(filters, presets, presetId) {
+  if (presetId) {
+    const p = presets.find(x => x.id === presetId);
+    if (p) return p.label;
+  }
+  const bits = [];
+  if (filters.debtFilter === 'has_debt')            bits.push('عليه دين');
+  if (filters.walletFilter === 'negative')          bits.push('رصيد سالب');
+  if (filters.walletFilter === 'positive')          bits.push('رصيد موجب');
+  if (filters.shipmentCountKind === 'zero')         bits.push('صفر شحنات');
+  if (filters.shippedRecency?.startsWith('gte_'))   bits.push(`خامل ${filters.shippedRecency.slice(4)}ي+`);
+  if (filters.signupRecency)                        bits.push(`مسجّل ${filters.signupRecency}ي+`);
+  if (filters.platformStatuses?.length)             bits.push(filters.platformStatuses.join('/'));
+  if (filters.integrationTypes?.length)             bits.push(`ربط ${filters.integrationTypes.join('/')}`);
+  return bits.length ? bits.join(' · ') : 'شريحة جديدة';
 }
 
 function Stat({ label, value, color, suffix }) {
