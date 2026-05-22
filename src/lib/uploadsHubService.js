@@ -183,6 +183,81 @@ export async function loadUploadsOverview() {
   return results;
 }
 
+// ── Auto-detect the source type from the file's content ──
+// Reads the top ~15 rows and matches against each source's known
+// signatures (title strings, column headers, value formats). Returns
+// { sourceId, confidence, reasons } or null if nothing matches.
+//
+// The detector is intentionally generous — false negatives (asking
+// the operator to pick) are fine; false positives (uploading to the
+// wrong table) are not. So each check has a unique strong signal.
+export function detectFileSource(rows) {
+  if (!rows?.length) return null;
+  const top = rows.slice(0, 15);
+  const allCells = top.flatMap(r => (r || []).map(c => String(c ?? '')));
+  const flatText = allCells.join('\n').toLowerCase();
+  const reasons = [];
+
+  // -- Zoho vendor balance — strongest signature: "اسم المورد" --
+  if (flatText.includes('ملخص أرصدة الموردين') ||
+      flatText.includes('vendor balance') ||
+      allCells.some(c => c.trim() === 'اسم المورد')) {
+    reasons.push('عمود "اسم المورد"');
+    return { sourceId: 'zoho_vendors', confidence: 0.95, reasons };
+  }
+
+  // -- Zoho customer balance — "مبلغ الذمة المدينة" is unique --
+  if (flatText.includes('ملخص أرصدة العملاء') ||
+      flatText.includes('ملخص أرصده العملاء') ||
+      flatText.includes('ملخص التزامات المستفيدين') ||
+      flatText.includes('customer balance') ||
+      allCells.some(c => c.trim() === 'مبلغ الذمة المدينة')) {
+    reasons.push('بصمة تقرير Zoho — العملاء');
+    return { sourceId: 'zoho_customers', confidence: 0.95, reasons };
+  }
+
+  // -- Merchants (stores.xlsx) — needs id + name + an ops column --
+  for (const r of top) {
+    if (!r) continue;
+    const h = r.map(c => String(c || '').toLowerCase());
+    const hasId   = h.some(c => c.includes('رقم المتجر') || c.includes('store id'));
+    const hasName = h.some(c => c.includes('اسم المتجر') || c.includes('store name'));
+    const hasOps  = h.some(c => c.includes('عدد الشحنات') || c.includes('نوع الربط') || c.includes('shipment count'));
+    if (hasId && hasName && hasOps) {
+      reasons.push('أعمدة كشف المتاجر (رقم/اسم/شحنات)');
+      return { sourceId: 'merchants', confidence: 0.9, reasons };
+    }
+  }
+
+  // -- Customer receivables — "تفاصيل" title + اسم العملاء + تاريخ --
+  if (flatText.includes('تفاصيل الفاتورة') || flatText.includes('تفاصيل فواتير')) {
+    reasons.push('عنوان "تفاصيل الفاتورة"');
+    return { sourceId: 'receivables', confidence: 0.9, reasons };
+  }
+  if (allCells.some(c => /اسم\s*العملاء|اسم\s*العميل/.test(c)) &&
+      allCells.some(c => /تاريخ.*فاتورة|تاريخ\s*الفاتوره/i.test(c))) {
+    reasons.push('عمود اسم العملاء + تاريخ الفاتورة');
+    return { sourceId: 'receivables', confidence: 0.85, reasons };
+  }
+
+  // -- Internal store settlement — exactly 2 cols: المتجر + الرصيد,
+  //    NO Zoho keywords, NO date column. Checked last because the
+  //    column names ("المتجر","الرصيد") are too generic to be
+  //    diagnostic by themselves.
+  const firstRow = top.find(r => r && (r[0] || r[1]));
+  if (firstRow) {
+    const cells = firstRow.map(c => String(c || '').trim());
+    const isStoreHeader   = cells[0] === 'المتجر' || /^متجر$/.test(cells[0]);
+    const isBalanceHeader = cells[1] === 'الرصيد' || /^رصيد$/.test(cells[1]);
+    if (isStoreHeader && isBalanceHeader && cells.length <= 4) {
+      reasons.push('عمودان فقط: المتجر + الرصيد (نمط النظام الداخلي)');
+      return { sourceId: 'internal_settlement', confidence: 0.85, reasons };
+    }
+  }
+
+  return null;
+}
+
 // ── Unified upload() — dispatches by source id ──
 // Returns a normalized result: { rowCount, matched, total, message }.
 // All file parsing happens here so the page only has to hand us a
