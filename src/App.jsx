@@ -41,6 +41,7 @@ import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
+import UploadsHub       from './pages/UploadsHub.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -61,6 +62,7 @@ const NAV_ITEMS = [
   // ── Pinned top-level ───────────────────────────────────────────
   { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, pinned: true },
   { id: 'overview',  path: '/overview',  label: 'نظرة عامة',     icon: Activity,        pinned: true },
+  { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true },
 
   // ── Carriers (AP side) ────────────────────────────────────────
   { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers' },
@@ -109,6 +111,7 @@ const NAV_SECTIONS = [
 const PAGE_TITLES = {
   '/dashboard':         'الرئيسية',
   '/overview':          'نظرة عامة',
+  '/uploads':           'مركز الرفع',
   '/hub':               'كشف الشركات',
   '/carrier':           'بروفايل الشركة',
   '/webhook':           'الوارد',
@@ -183,7 +186,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -568,6 +571,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/reconciliation'} scroll>
               <Reconciliation isActive={pathname==='/reconciliation'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/uploads'} scroll>
+              <UploadsHub isActive={pathname==='/uploads'}/>
             </PageSlot>
             <PageSlot active={pathname==='/customers'} scroll>
               <CustomerWatch isActive={pathname==='/customers'}/>

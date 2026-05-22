@@ -1,0 +1,369 @@
+// "مركز الرفع" — one screen to drop any snapshot file.
+//
+// Every snapshot type in the system has its own page (mostly for
+// browsing the data). Operators were complaining they had to hop
+// between 5+ pages every cycle just to upload the periodic files.
+// This page consolidates the upload action — one screen, one
+// upload per card, and a clear "last upload was X days ago" per
+// source so nobody forgets a file.
+//
+// Backed by uploadsHubService.loadUploadsOverview() (one round-trip
+// fan-out across the 5 sources) and uploadFile() (unified dispatcher).
+
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  RefreshCw, Upload, FileSpreadsheet, ExternalLink, Inbox,
+  CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote,
+} from 'lucide-react';
+import {
+  Card, Btn, Spinner, Empty, toast, PageHeader, DropZone,
+} from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
+import { UPLOAD_SOURCES, loadUploadsOverview, uploadFile } from '../lib/uploadsHubService.js';
+
+const fmtRel = (iso) => {
+  if (!iso) return 'لم يُرفع بعد';
+  const days = Math.floor((Date.now() - new Date(iso)) / 86_400_000);
+  if (days <= 0) return 'اليوم';
+  if (days === 1) return 'أمس';
+  if (days < 7)   return `قبل ${days} أيام`;
+  if (days < 30)  return `قبل ${Math.floor(days / 7)} أسابيع`;
+  if (days < 365) return `قبل ${Math.floor(days / 30)} شهور`;
+  return `قبل ${Math.floor(days / 365)} سنوات`;
+};
+const fmtDateTime = (iso) => {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); }
+  catch { return iso; }
+};
+
+export default function UploadsHub({ isActive = true }) {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { profile } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [sources, setSources] = useState([]);
+  const [busy,    setBusy]    = useState({});  // { sourceId: true } while uploading
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try { setSources(await loadUploadsOverview()); }
+    catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  const handleUpload = async (sourceId, file) => {
+    setBusy(b => ({ ...b, [sourceId]: true }));
+    try {
+      const result = await uploadFile({ sourceId, file, userId: profile?.id || null });
+      toast(`✓ ${result.message}`, 'success');
+      await refresh();
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    }
+    setBusy(b => { const n = { ...b }; delete n[sourceId]; return n; });
+  };
+
+  // Summary at top: how many sources are fresh / stale / missing
+  const summary = useMemo(() => {
+    let fresh = 0, stale = 0, missing = 0;
+    for (const s of sources) {
+      if (!s.last)       missing++;
+      else if (s.stale)  stale++;
+      else               fresh++;
+    }
+    return { fresh, stale, missing };
+  }, [sources]);
+
+  if (loading) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+          <Spinner size={28}/>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ padding: '20px 24px 60px', maxWidth: 1320, margin: '0 auto' }}>
+      <PageHeader
+        icon={<Inbox size={22}/>}
+        iconColor="#0EA5E9"
+        title="مركز الرفع"
+        subtitle="ارفع كل الملفات الدورية من مكان واحد — كل بطاقة تعرض آخر رفع وحالته"
+        actions={
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
+            تحديث
+          </Btn>
+        }
+      />
+
+      {/* Summary strip */}
+      <div style={{
+        display: 'grid', gap: 12, marginBottom: 20,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      }}>
+        <SummaryStat
+          label="حديثة"
+          value={summary.fresh}
+          icon={<CheckCircle2 size={16}/>}
+          color="#10B981"
+          hint="رُفعت ضمن الفترة المتوقّعة"
+        />
+        <SummaryStat
+          label="متأخّرة"
+          value={summary.stale}
+          icon={<AlertTriangle size={16}/>}
+          color="#F59E0B"
+          hint="تجاوزت الدورة المعتادة"
+        />
+        <SummaryStat
+          label="لم تُرفع"
+          value={summary.missing}
+          icon={<Upload size={16}/>}
+          color="#DC2626"
+          hint="لا يوجد سجل سابق"
+        />
+        <SummaryStat
+          label="الإجمالي"
+          value={sources.length}
+          icon={<FileSpreadsheet size={16}/>}
+          color="#0EA5E9"
+          hint="أنواع الملفات الدورية"
+        />
+      </div>
+
+      {/* Section: snapshot uploads */}
+      <SectionTitle icon={<FileSpreadsheet size={14}/>} color="#3B82F6">
+        ملفات Snapshot — رفع موحّد
+      </SectionTitle>
+      <div style={{
+        display: 'grid', gap: 14, marginBottom: 24,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+      }}>
+        {sources.map(src => (
+          <UploadSourceCard
+            key={src.id}
+            source={src}
+            busy={!!busy[src.id]}
+            onUpload={(file) => handleUpload(src.id, file)}
+            onNavigate={() => navigate(src.link)}
+          />
+        ))}
+      </div>
+
+      {/* Section: workflow shortcuts (uploads that have their own
+          multi-step pages — not appropriate to inline-upload here). */}
+      <SectionTitle icon={<ExternalLink size={14}/>} color="#8B5CF6">
+        ملفات متخصّصة — لها صفحات خاصة
+      </SectionTitle>
+      <div style={{
+        display: 'grid', gap: 14,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+      }}>
+        <ShortcutCard
+          icon={<FileText size={18}/>}
+          color="#10B981"
+          title="مراجعة فاتورة شركة شحن"
+          subtitle="رفع فاتورة من شركة شحن وتدقيقها مع العقد"
+          onClick={() => navigate('/upload')}
+        />
+        <ShortcutCard
+          icon={<Banknote size={18}/>}
+          color="#F59E0B"
+          title="ملف تحصيل COD"
+          subtitle="رفع ملف تحصيل من شركة شحن أو تحويل بنكي"
+          onClick={() => navigate('/cod-settlements')}
+        />
+        <ShortcutCard
+          icon={<Building2 size={18}/>}
+          color="#0EA5E9"
+          title="كشف بنكي"
+          subtitle="رفع كشف الحساب البنكي لتطبيق على الحركات"
+          onClick={() => navigate('/bank')}
+        />
+        <ShortcutCard
+          icon={<FileText size={18}/>}
+          color="#8B5CF6"
+          title="كشف حساب شركة شحن"
+          subtitle="رفع كشف خارجي من شركة شحن للمطابقة"
+          onClick={() => navigate('/aramex-statements')}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ── subcomponents ─────────────────────────────────────────────
+function SectionTitle({ icon, color, children }) {
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+    }}>
+      <span style={{
+        width: 24, height: 24, borderRadius: 7,
+        background: `color-mix(in srgb, ${color} 14%, transparent)`,
+        color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>{icon}</span>
+      <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{children}</span>
+    </div>
+  );
+}
+
+function SummaryStat({ label, value, icon, color, hint }) {
+  return (
+    <Card style={{
+      padding: 14,
+      background: `color-mix(in srgb, ${color} 5%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${color} 18%, transparent)`,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{
+          width: 28, height: 28, borderRadius: 7,
+          background: `color-mix(in srgb, ${color} 16%, transparent)`,
+          color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>{icon}</span>
+        <span style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', letterSpacing: .4 }}>
+          {label}
+        </span>
+      </div>
+      <div style={{ fontSize: 26, fontWeight: 800, color, fontFamily: 'var(--font-mono)', letterSpacing: -0.5 }}>
+        {value}
+      </div>
+      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>{hint}</div>
+    </Card>
+  );
+}
+
+function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
+  const { last, stale, daysSince, accent } = source;
+  // Status indicator — green/amber/red based on freshness
+  const statusColor = !last ? '#DC2626' : stale ? '#F59E0B' : '#10B981';
+  const statusLabel = !last ? 'لم يُرفع بعد'
+                    : stale ? `متأخّر — ${daysSince} يوم`
+                    : `حديث — ${fmtRel(last.lastAt)}`;
+  return (
+    <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
+        <span style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: `color-mix(in srgb, ${accent} 14%, transparent)`,
+          color: accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <FileSpreadsheet size={16}/>
+        </span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{source.label}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>{source.subtitle}</div>
+        </div>
+        <span style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          padding: '3px 9px', borderRadius: 999, whiteSpace: 'nowrap',
+          background: `color-mix(in srgb, ${statusColor} 14%, transparent)`,
+          color: statusColor, fontSize: 10.5, fontWeight: 700,
+          flexShrink: 0,
+        }}>
+          {!last ? <Upload size={10}/> : stale ? <AlertTriangle size={10}/> : <CheckCircle2 size={10}/>}
+          {statusLabel}
+        </span>
+      </div>
+
+      {/* Last-upload metadata */}
+      {last ? (
+        <div style={{
+          padding: 10, borderRadius: 8,
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+          fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.7,
+        }}>
+          <div>
+            <Calendar size={11} style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
+            {fmtDateTime(last.lastAt)}
+            {last.fileName && (
+              <span style={{ marginInlineStart: 8, color: 'var(--muted2)' }}>·</span>
+            )}
+            {last.fileName && (
+              <span style={{ marginInlineStart: 8, fontFamily: 'var(--font-mono)', fontSize: 10.5 }}>
+                {last.fileName}
+              </span>
+            )}
+          </div>
+          <div style={{ marginTop: 4, color: 'var(--text2)', fontWeight: 600 }}>
+            {last.rowCount.toLocaleString('ar-SA')} صف
+            {last.matchedCount != null && ` · ${last.matchedCount.toLocaleString('ar-SA')} مطابق`}
+            {last.total != null && ` · إجمالي ${Number(last.total).toLocaleString('ar-SA', { maximumFractionDigits: 2 })} ر.س`}
+          </div>
+        </div>
+      ) : (
+        <div style={{
+          padding: 10, borderRadius: 8,
+          background: 'color-mix(in srgb, #DC2626 5%, transparent)',
+          border: '1px dashed color-mix(in srgb, #DC2626 30%, transparent)',
+          fontSize: 11.5, color: '#DC2626', textAlign: 'center', fontWeight: 600,
+        }}>
+          لم يُرفع أي ملف بعد — ابدأ بالرفع الأول
+        </div>
+      )}
+
+      {/* Drop zone */}
+      {busy ? (
+        <div style={{
+          padding: 18, borderRadius: 8, textAlign: 'center',
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+        }}>
+          <Spinner size={20}/>
+          <div style={{ marginTop: 6, fontSize: 11.5, color: 'var(--muted)' }}>جارٍ المعالجة…</div>
+        </div>
+      ) : (
+        <DropZone onFile={onUpload} accept=".xlsx,.xls,.csv">
+          <Upload size={14}/>
+          <span style={{ fontSize: 12 }}>اسحب الملف هنا أو اضغط للاختيار</span>
+        </DropZone>
+      )}
+
+      {/* Drill-in link */}
+      <button
+        onClick={onNavigate}
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '6px 8px', background: 'transparent', border: 'none',
+          color: 'var(--muted)', fontSize: 11, cursor: 'pointer',
+          fontFamily: 'var(--font-sans)', alignSelf: 'flex-start',
+        }}
+        onMouseEnter={(e) => e.currentTarget.style.color = accent}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+      >
+        افتح الصفحة المرتبطة
+        <ChevronLeft size={11}/>
+      </button>
+    </Card>
+  );
+}
+
+function ShortcutCard({ icon, color, title, subtitle, onClick }) {
+  return (
+    <Card
+      onClick={onClick}
+      hover
+      style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', gap: 10 }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <span style={{
+          width: 36, height: 36, borderRadius: 9,
+          background: `color-mix(in srgb, ${color} 14%, transparent)`,
+          color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>{icon}</span>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{title}</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{subtitle}</div>
+        </div>
+        <ChevronLeft size={14} color="var(--muted2)"/>
+      </div>
+    </Card>
+  );
+}
