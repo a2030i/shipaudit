@@ -48,6 +48,7 @@ export default function Reconciliation({ isActive = true }) {
   const [reconcile, setReconcile]   = useState([]);
   const [snapshots, setSnapshots]   = useState([]);
   const [tolerance, setTolerance]   = useState(0.5);
+  const [onlyGaps,  setOnlyGaps]    = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -66,15 +67,67 @@ export default function Reconciliation({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
-  // Buckets for the headline stats
-  const stats = useMemo(() => {
-    let matched = 0, mismatched = 0, totalDiff = 0;
-    for (const r of reconcile) {
-      if (r.maxDiff <= tolerance) matched++;
-      else { mismatched++; totalDiff += r.maxDiff; }
+  // Reframe every row around the INTERNAL anchor. Internal system
+  // is the source of truth; Zoho should match it; receivables is a
+  // secondary cross-check. Each row gets an `action` describing
+  // what needs to be done in Zoho to bring it into agreement.
+  //
+  // Anchor preference: store_settlement (internal aggregate) →
+  // receivables (invoice-level, also internal). If both are zero
+  // and Zoho has a value, that's a "Zoho has phantom entry" gap.
+  const enriched = useMemo(() => reconcile.map(r => {
+    const hasInternal    = Math.abs(r.internal)    > 0.005;
+    const hasReceivables = Math.abs(r.receivables) > 0.005;
+    const anchor = hasInternal ? r.internal
+                 : hasReceivables ? r.receivables
+                 : 0;
+    const anchorSource = hasInternal ? 'internal'
+                      : hasReceivables ? 'receivables'
+                      : 'none';
+    const zohoGap        = r.zoho       - anchor;   // Zoho minus internal
+    const receivablesGap = r.receivables - anchor;  // receivables minus internal (cross-check)
+    const matched        = Math.abs(zohoGap) <= tolerance && Math.abs(receivablesGap) <= tolerance;
+    let action;
+    if (matched) {
+      action = { kind: 'matched', label: 'مطابق', color: '#10B981' };
+    } else if (Math.abs(zohoGap) <= tolerance) {
+      // Zoho matches internal, but receivables doesn't — internal-side inconsistency
+      action = { kind: 'receivables_drift', label: 'فرق في كشف الفواتير', color: '#F59E0B' };
+    } else if (zohoGap < 0) {
+      // Zoho < internal → Zoho is missing entries the internal system has.
+      // The platform didn't push these to Zoho yet.
+      action = { kind: 'zoho_missing', label: `أضف ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: '#DC2626' };
+    } else {
+      // Zoho > internal → Zoho has an entry the internal system doesn't reflect.
+      // Usually a duplicate or unmatched payment in Zoho.
+      action = { kind: 'zoho_extra', label: `راجع زيادة ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: '#F97316' };
     }
-    return { matched, mismatched, totalDiff: +totalDiff.toFixed(2), total: reconcile.length };
-  }, [reconcile, tolerance]);
+    return { ...r, anchor, anchorSource, zohoGap, receivablesGap, matched, action };
+  }), [reconcile, tolerance]);
+
+  // Headline stats from the enriched rows
+  const stats = useMemo(() => {
+    let matched = 0, zohoMissing = 0, zohoExtra = 0, recDrift = 0, gapTotal = 0;
+    for (const r of enriched) {
+      if (r.matched) matched++;
+      else if (r.action.kind === 'zoho_missing')      { zohoMissing++; gapTotal += Math.abs(r.zohoGap); }
+      else if (r.action.kind === 'zoho_extra')        { zohoExtra++;   gapTotal += Math.abs(r.zohoGap); }
+      else if (r.action.kind === 'receivables_drift') recDrift++;
+    }
+    return {
+      total:       enriched.length,
+      matched,
+      zohoMissing,
+      zohoExtra,
+      recDrift,
+      gapTotal:    +gapTotal.toFixed(2),
+    };
+  }, [enriched]);
+
+  const visible = useMemo(
+    () => onlyGaps ? enriched.filter(r => !r.matched) : enriched,
+    [enriched, onlyGaps],
+  );
 
   const latestInternal = snapshots.find(s => s.source === 'internal');
   const latestZoho     = snapshots.find(s => s.source === 'zoho');
@@ -116,28 +169,32 @@ export default function Reconciliation({ isActive = true }) {
     } catch (e) { toast(`فشل الحذف: ${e.message}`, 'error'); }
   };
 
-  // ── Export mismatches to Excel ──
+  // ── Export "what to fix in Zoho" Excel ──
+  // Sheet focuses on rows that need Zoho action, sorted by size.
+  // Each row carries the directional gap + the suggested action so
+  // the operator can hand the file directly to whoever maintains Zoho.
   const exportMismatches = () => {
-    const bad = reconcile.filter(r => r.maxDiff > tolerance);
-    if (!bad.length) { toast('لا توجد فروقات للتصدير', 'info'); return; }
+    const bad = enriched.filter(r => !r.matched);
+    if (!bad.length) { toast('لا توجد فروقات — الكل متطابق', 'info'); return; }
+    bad.sort((a, b) => Math.abs(b.zohoGap) - Math.abs(a.zohoGap));
     const headers = [
       'رقم المتجر', 'اسم المتجر',
-      'الداخلي', 'الفواتير', 'Zoho',
-      'أكبر فرق',
+      'النظام الداخلي (المرجع)', 'كشف الفواتير', 'Zoho الحالي',
+      'الفرق (Zoho − الداخلي)', 'الإجراء المطلوب',
       'الاسم في الداخلي', 'الاسم في Zoho',
     ];
     const xRows = bad.map(r => [
       r.storeId, r.storeName,
-      r.internal, r.receivables, r.zoho,
-      r.maxDiff,
+      r.anchor, r.receivables, r.zoho,
+      r.zohoGap, r.action.label,
       r.internalRawName || '', r.zohoRawName || '',
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'الفروقات');
+    XLSX.utils.book_append_sheet(wb, ws, 'تصحيحات Zoho');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `مطابقة_فروقات_${dateStr}.xlsx`);
-    toast(`تم تصدير ${bad.length} فرق`, 'success');
+    XLSX.writeFile(wb, `تصحيحات_Zoho_${dateStr}.xlsx`);
+    toast(`تم تصدير ${bad.length} حالة تحتاج تحديث في Zoho`, 'success');
   };
 
   if (loading) {
@@ -189,22 +246,46 @@ export default function Reconciliation({ isActive = true }) {
         />
       </div>
 
+      {/* "Internal is the source of truth" banner */}
+      {reconcile.length > 0 && (
+        <Card style={{
+          marginBottom: 14,
+          background: 'color-mix(in srgb, #3B82F6 6%, transparent)',
+          border: '1px solid color-mix(in srgb, #3B82F6 24%, transparent)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Info size={16} color="#3B82F6" style={{ flexShrink: 0 }}/>
+            <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
+              <strong style={{ color: 'var(--text)' }}>النظام الداخلي هو المرجع.</strong>{' '}
+              Zoho يجب أن يطابقه. أي فرق يعني أن النظام الداخلي لم يرحّل العملية بعد إلى Zoho —
+              العمود "الإجراء المطلوب" يخبرك ماذا تضيف/تراجع في Zoho ليطابق المرجع.
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Stats strip */}
       {reconcile.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap' }}>
-            <Stat label="إجمالي المتاجر"   value={stats.total.toLocaleString('ar-SA')}      color="#0EA5E9"/>
-            <Stat label="مطابق"             value={stats.matched.toLocaleString('ar-SA')}    color="#10B981" icon={<CheckCircle2 size={14}/>}/>
-            <Stat label="فروقات"            value={stats.mismatched.toLocaleString('ar-SA')} color="#DC2626" icon={<AlertTriangle size={14}/>}/>
-            <Stat label="إجمالي الفروقات"   value={fmt(stats.totalDiff)} suffix="ر.س"        color="#DC2626"/>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
+            <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('ar-SA')}        color="#0EA5E9"/>
+            <Stat label="مطابق"           value={stats.matched.toLocaleString('ar-SA')}      color="#10B981" icon={<CheckCircle2 size={14}/>}/>
+            <Stat label="Zoho ناقص"       value={stats.zohoMissing.toLocaleString('ar-SA')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
+            <Stat label="Zoho زائد"       value={stats.zohoExtra.toLocaleString('ar-SA')}    color="#F97316"/>
+            <Stat label="فرق في الفواتير" value={stats.recDrift.toLocaleString('ar-SA')}     color="#F59E0B"/>
+            <Stat label="مجموع الفروقات"  value={fmt(stats.gapTotal)} suffix="ر.س"           color="#DC2626"/>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
-              <span style={{ fontSize: 11, color: 'var(--muted)' }}>قبول فرق حتى:</span>
+              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
+                <input type="checkbox" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} style={{ accentColor: '#DC2626' }}/>
+                الفروقات فقط
+              </label>
+              <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 10 }}>قبول فرق حتى:</span>
               <input
                 type="number" step="0.01" min="0"
                 value={tolerance}
                 onChange={(e) => setTolerance(Math.max(0, Number(e.target.value) || 0))}
                 style={{
-                  width: 80, padding: '4px 8px', fontSize: 12,
+                  width: 70, padding: '4px 8px', fontSize: 12,
                   border: '1px solid var(--border)', borderRadius: 6,
                   background: 'var(--surface)', color: 'var(--text)',
                   textAlign: 'center', fontFamily: 'var(--font-mono)',
@@ -212,14 +293,14 @@ export default function Reconciliation({ isActive = true }) {
               />
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
             </div>
-            <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportMismatches} disabled={stats.mismatched === 0}>
-              تصدير الفروقات
+            <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportMismatches} disabled={stats.matched === stats.total}>
+              تصدير تصحيحات Zoho
             </Btn>
           </div>
         </Card>
       )}
 
-      {/* Reconciliation table */}
+      {/* Reconciliation table — anchored on internal (المرجع) */}
       {reconcile.length === 0 ? (
         <Empty
           icon="🧮"
@@ -231,54 +312,51 @@ export default function Reconciliation({ isActive = true }) {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {['#', 'المتجر', 'الداخلي', 'الفواتير', 'Zoho', 'أكبر فرق', 'الحالة'].map(h => (
-                  <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
-                    {h}
-                  </th>
-                ))}
+                <th style={thStyle}>#</th>
+                <th style={thStyle}>المتجر</th>
+                <th style={{...thStyle, color: '#3B82F6'}}>الداخلي (المرجع)</th>
+                <th style={thStyle}>الفواتير</th>
+                <th style={thStyle}>Zoho</th>
+                <th style={thStyle}>Zoho − الداخلي</th>
+                <th style={thStyle}>الإجراء</th>
               </tr>
             </thead>
             <tbody>
-              {reconcile.slice(0, 500).map((r, i) => {
-                const matched = r.maxDiff <= tolerance;
-                return (
-                  <tr key={r.storeId} style={{ borderBottom: '1px solid var(--border)' }}>
-                    <td style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{i + 1}</td>
-                    <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
-                      {r.storeName}
-                      <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
-                        {r.storeId}
-                      </div>
-                    </td>
-                    <BalCell value={r.internal} highlight={!matched}/>
-                    <BalCell value={r.receivables} highlight={!matched}/>
-                    <BalCell value={r.zoho} highlight={!matched}/>
-                    <td style={{
-                      padding: '10px 12px', textAlign: 'left',
-                      fontFamily: 'var(--font-mono)', fontWeight: 700,
-                      color: matched ? 'var(--muted)' : '#DC2626',
-                    }}>
-                      {r.maxDiff > 0.005 ? fmt(r.maxDiff) : '—'}
-                    </td>
-                    <td style={{ padding: '10px 12px' }}>
-                      {matched ? (
-                        <span style={statusPill('#10B981')}>
-                          <CheckCircle2 size={11}/> مطابق
-                        </span>
-                      ) : (
-                        <span style={statusPill('#DC2626')}>
-                          <AlertTriangle size={11}/> فرق
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
+              {visible.slice(0, 500).map((r, i) => (
+                <tr key={r.storeId} style={{
+                  borderBottom: '1px solid var(--border)',
+                  background: r.matched ? 'transparent' : 'color-mix(in srgb, #DC2626 3%, transparent)',
+                }}>
+                  <td style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{i + 1}</td>
+                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
+                    {r.storeName}
+                    <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                      {r.storeId}
+                    </div>
+                  </td>
+                  <BalCell value={r.anchor} anchor/>
+                  <BalCell value={r.receivables} dimmedIfZero/>
+                  <BalCell value={r.zoho} dimmedIfZero/>
+                  <td style={{
+                    padding: '10px 12px', textAlign: 'left',
+                    fontFamily: 'var(--font-mono)', fontWeight: 700,
+                    color: r.matched ? 'var(--muted)' : (r.zohoGap < 0 ? '#DC2626' : '#F97316'),
+                  }}>
+                    {Math.abs(r.zohoGap) > 0.005 ? (r.zohoGap > 0 ? '+' : '−') + fmt(Math.abs(r.zohoGap)) : '—'}
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <span style={statusPill(r.action.color)}>
+                      {r.action.kind === 'matched' ? <CheckCircle2 size={11}/> : <AlertTriangle size={11}/>}
+                      {r.action.label}
+                    </span>
+                  </td>
+                </tr>
+              ))}
             </tbody>
           </table>
-          {reconcile.length > 500 && (
+          {visible.length > 500 && (
             <div style={{ padding: 12, textAlign: 'center', fontSize: 11.5, color: 'var(--muted)', background: 'var(--surface2)' }}>
-              عرض أول ٥٠٠ من {reconcile.length.toLocaleString('ar-SA')} متجر — التصدير يشمل كل الفروقات
+              عرض أول ٥٠٠ من {visible.length.toLocaleString('ar-SA')} متجر — التصدير يشمل كل الفروقات
             </div>
           )}
         </Card>
@@ -294,10 +372,11 @@ export default function Reconciliation({ isActive = true }) {
         <Info size={14} style={{ flexShrink: 0, marginTop: 2 }}/>
         <div>
           <strong style={{ color: 'var(--text2)' }}>كيف تعمل المطابقة:</strong>{' '}
-          عند رفع أي ملف، النظام يطابق كل اسم متجر مع جدول <code>merchants</code> (مطابقة تامة أولاً ثم fuzzy بـ pg_trgm).{' '}
-          من ثم يجلب رصيد الفواتير من آخر snapshot في <code>/receivables</code> عبر روابط <code>customer_merchant_links</code>.{' '}
-          <strong style={{ color: 'var(--text2)' }}>الفرق</strong> = أكبر اختلاف بين أي مصدرين من الثلاثة.{' '}
-          الحد المقبول للفرق قابل للضبط أعلى الجدول (افتراضي 0.50 ر.س).
+          المرجع = النظام الداخلي (ملف الاستحقاق، أو كشف الفواتير كبديل).{' '}
+          <strong style={{ color: '#DC2626' }}>Zoho ناقص</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
+          <strong style={{ color: '#F97316' }}>Zoho زائد</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
+          <strong style={{ color: '#F59E0B' }}>فرق في الفواتير</strong> = Zoho يطابق الداخلي لكن كشف الفواتير المرفوع يختلف — اعتمد المرجع.{' '}
+          الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
       </div>
     </div>
@@ -360,21 +439,27 @@ function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete
   );
 }
 
-function BalCell({ value, highlight }) {
+function BalCell({ value, anchor = false, dimmedIfZero = false }) {
   const zero = Math.abs(value) < 0.01;
   return (
     <td style={{
       padding: '10px 12px', textAlign: 'left',
       fontFamily: 'var(--font-mono)', fontSize: 12,
-      fontWeight: 600,
-      color: zero ? 'var(--muted2)'
-           : value < 0 ? (highlight ? '#DC2626' : 'var(--text2)')
-           : (highlight ? '#047857' : 'var(--text2)'),
+      fontWeight: anchor ? 700 : 600,
+      color: zero
+        ? (dimmedIfZero ? 'var(--muted2)' : 'var(--muted)')
+        : anchor ? '#3B82F6' : 'var(--text2)',
     }}>
       {zero ? '—' : fmt(value)}
     </td>
   );
 }
+
+const thStyle = {
+  padding: '10px 12px', textAlign: 'right',
+  fontSize: 11, fontWeight: 600, color: 'var(--muted)',
+  whiteSpace: 'nowrap',
+};
 
 const statusPill = (color) => ({
   display: 'inline-flex', alignItems: 'center', gap: 4,
