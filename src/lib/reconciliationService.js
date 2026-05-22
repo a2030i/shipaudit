@@ -294,6 +294,97 @@ export async function deleteBalanceSnapshot(id) {
   return { ok: true };
 }
 
+// ── Unmatched rows from the latest snapshot per source ──
+// The balance_reconciliation() RPC hides anything without a
+// store_id (it can't join on null). That makes the operator blind
+// to "Zoho has 3K SAR for X but we don't know which store X is".
+// This loader surfaces those names so they can be linked manually.
+export async function loadUnmatchedBalances() {
+  // Latest snapshot id per source (one query each — only 2 rows total)
+  const [intRes, zohoRes] = await Promise.all([
+    supabase.from('store_balance_snapshots')
+      .select('id').eq('source', 'internal')
+      .order('uploaded_at', { ascending: false }).limit(1),
+    supabase.from('store_balance_snapshots')
+      .select('id').eq('source', 'zoho')
+      .order('uploaded_at', { ascending: false }).limit(1),
+  ]);
+  const ids = [intRes.data?.[0]?.id, zohoRes.data?.[0]?.id].filter(Boolean);
+  if (!ids.length) return [];
+  const { data, error } = await supabase
+    .from('store_balances')
+    .select('source, raw_name, balance, match_method, snapshot_id')
+    .in('snapshot_id', ids)
+    .is('store_id', null)
+    .order('balance', { ascending: false, nullsFirst: false });
+  if (error) throw error;
+  return (data || []).map(r => ({
+    source:    r.source,
+    rawName:   r.raw_name,
+    balance:   Number(r.balance) || 0,
+    method:    r.match_method,
+  }));
+}
+
+// Manually link an unmatched raw_name → store_id. Persists into
+// customer_merchant_links (so future uploads auto-match) AND
+// backfills the existing store_balances rows so the current
+// reconciliation table shows the row immediately without a re-upload.
+export async function linkUnmatchedToStore({ rawName, storeId, userId = null }) {
+  if (!rawName?.trim()) throw new Error('اسم العميل مطلوب');
+  if (!storeId)         throw new Error('اختر متجراً');
+
+  // 1. Write the link (manual = highest priority, never overwritten
+  //    by future auto-link runs)
+  const { error: e1 } = await supabase
+    .from('customer_merchant_links')
+    .upsert({
+      customer_name: rawName,
+      store_id:      storeId,
+      confidence:    1.0,
+      match_method:  'manual',
+      linked_by:     userId,
+      linked_at:     new Date().toISOString(),
+    }, { onConflict: 'customer_name' });
+  if (e1) throw e1;
+
+  // 2. Backfill every store_balances row carrying this raw_name
+  //    that's still unmatched. Future uploads pick up the link
+  //    automatically via the Tier 1 lookup in resolveStoreIds.
+  const { error: e2 } = await supabase
+    .from('store_balances')
+    .update({
+      store_id:         storeId,
+      match_method:     'link-manual',
+      match_confidence: 1.0,
+    })
+    .eq('raw_name', rawName)
+    .is('store_id', null);
+  if (e2) throw e2;
+
+  return { ok: true };
+}
+
+// Searchable list of merchants from the latest snapshot — used by
+// the manual-link picker. We pull the whole snapshot once and let
+// the UI filter client-side (cheap given <3K rows).
+export async function loadMerchantsForPicker() {
+  const { data: latest } = await supabase
+    .from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1);
+  if (!latest?.length) return [];
+  const { data } = await supabase
+    .from('merchants')
+    .select('store_id, store_name, phone, status')
+    .eq('snapshot_id', latest[0].snapshot_id)
+    .order('store_name');
+  return (data || []).map(m => ({
+    storeId:   m.store_id,
+    storeName: m.store_name,
+    phone:     m.phone,
+    status:    m.status,
+  }));
+}
+
 // ── The 3-way reconciliation view ──
 export async function loadReconciliation() {
   const { data, error } = await supabase.rpc('balance_reconciliation');
