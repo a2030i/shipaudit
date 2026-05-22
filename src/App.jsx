@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -40,6 +40,7 @@ import Segments         from './pages/Segments.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import Overview         from './pages/Overview.jsx';
+import Reconciliation   from './pages/Reconciliation.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -90,6 +91,7 @@ const NAV_ITEMS = [
   { id: 'customers',       path: '/customers',       label: 'متابعة العملاء',   icon: Users,       section: 'customers' },
   { id: 'receivables',     path: '/receivables',     label: 'مديونيات العملاء', icon: DollarSign,  section: 'customers' },
   { id: 'merchants',       path: '/merchants',       label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'customers' },
+  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers' },
   { id: 'segments',        path: '/segments',        label: 'شرائح العملاء',    icon: Layers,      section: 'customers' },
 
   // ── System (config + reports — least-touched) ─────────────────
@@ -123,6 +125,7 @@ const PAGE_TITLES = {
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
   '/merchants':         'متاجر المنصّة',
+  '/reconciliation':    'مطابقة أرصدة المتاجر',
   '/segments':          'شرائح العملاء',
   '/carriers':          'إدارة الشركات',
   '/contracts':         'جدول العقود',
@@ -180,7 +183,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -562,6 +565,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/reconciliation'} scroll>
+              <Reconciliation isActive={pathname==='/reconciliation'}/>
             </PageSlot>
             <PageSlot active={pathname==='/customers'} scroll>
               <CustomerWatch isActive={pathname==='/customers'}/>
