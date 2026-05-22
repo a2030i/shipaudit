@@ -47,9 +47,9 @@ export const UPLOAD_SOURCES = [
   },
   {
     id:           'receivables',
-    label:        'مديونيات العملاء',
-    origin:       'lamha',
-    subtitle:     'كشف الفواتير اليومي / الأسبوعي للعملاء',
+    label:        'كشف فواتير العملاء (تفصيلي)',
+    origin:       'zoho',
+    subtitle:     'Reports → الذمم المدينة → تفاصيل الفاتورة',
     accent:       '#10B981',
     cadenceDays:  7,
     link:         '/receivables',
