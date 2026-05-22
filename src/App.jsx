@@ -37,6 +37,8 @@ import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 import Tasks            from './pages/Tasks.jsx';
 import Segments         from './pages/Segments.jsx';
+import CustomerHub      from './pages/CustomerHub.jsx';
+import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import Overview         from './pages/Overview.jsx';
@@ -60,17 +62,22 @@ import UploadsHub       from './pages/UploadsHub.jsx';
 // section header). Currently only the dashboard is pinned.
 const NAV_ITEMS = [
   // ── Pinned top-level ───────────────────────────────────────────
-  { id: 'dashboard', path: '/dashboard', label: 'الرئيسية',      icon: LayoutDashboard, pinned: true },
-  { id: 'overview',  path: '/overview',  label: 'نظرة عامة',     icon: Activity,        pinned: true },
+  // /overview is the canonical home as of 2026-05-22 — /dashboard
+  // was the legacy snapshot view that overlapped 100% with overview.
+  // The /dashboard route still resolves so any deep links keep
+  // working, but it's removed from the nav and the default landing
+  // redirect now goes to /overview.
+  { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true },
   { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true },
 
   // ── Carriers (AP side) ────────────────────────────────────────
+  // /hub now hosts both the cards view and the KPI view as tabs;
+  // /carrier-kpi still resolves but redirects through the workspace.
   { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers' },
   { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers' },
   { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers' },
   { id: 'contracts',    path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'carriers' },
-  { id: 'carrier-kpi',  path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'carriers' },
 
   // ── Audits pipeline ───────────────────────────────────────────
   { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits' },
@@ -90,11 +97,11 @@ const NAV_ITEMS = [
   { id: 'payment-requests',  path: '/payment-requests',  label: 'طلبات السداد',  icon: Inbox,      section: 'finance' },
 
   // ── Customers (AR side) ───────────────────────────────────────
-  { id: 'customers',       path: '/customers',       label: 'متابعة العملاء',   icon: Users,       section: 'customers' },
-  { id: 'receivables',     path: '/receivables',     label: 'مديونيات العملاء', icon: DollarSign,  section: 'customers' },
-  { id: 'merchants',       path: '/merchants',       label: 'متاجر المنصّة',    icon: ShoppingBag, section: 'customers' },
+  // Customers + receivables + segments + merchants merged into
+  // /customer-360 — kept the legacy routes alive in App so any
+  // existing deep links still land on the right tab.
+  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers' },
-  { id: 'segments',        path: '/segments',        label: 'شرائح العملاء',    icon: Layers,      section: 'customers' },
 
   // ── System (config + reports — least-touched) ─────────────────
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system' },
@@ -108,9 +115,16 @@ const NAV_SECTIONS = [
   { id: 'customers', label: 'العملاء والمتاجر', icon: Users,    hint: 'AR والمتابعة' },
   { id: 'system',    label: 'إعدادات النظام', icon: Briefcase, hint: 'الإدارة والسجلات' },
 ];
+// Paths that all render the CustomerHub page (which selects the
+// right tab based on which path was used). Used to scope the
+// PageSlot active check.
+const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/receivables', '/merchants', '/segments'];
+// /hub and /carrier-kpi share the same workspace component.
+const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi'];
+
 const PAGE_TITLES = {
-  '/dashboard':         'الرئيسية',
-  '/overview':          'نظرة عامة',
+  '/overview':          'الرئيسية',
+  '/dashboard':         'الرئيسية (الإصدار القديم)',
   '/uploads':           'مركز الرفع',
   '/hub':               'كشف الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -127,6 +141,7 @@ const PAGE_TITLES = {
   '/aramex-statements': 'كشوف خارجية',
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
+  '/customer-360':      'العملاء',
   '/merchants':         'متاجر المنصّة',
   '/reconciliation':    'مطابقة أرصدة المتاجر',
   '/segments':          'شرائح العملاء',
@@ -186,7 +201,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -220,13 +235,15 @@ function AppInner({ theme, toggleTheme }) {
     });
   };
 
-  // ── Default redirect after login: always go to dashboard ──
+  // ── Default redirect after login: always go to /overview ──
+  // /overview was promoted to be the home page; /dashboard is kept
+  // as a still-reachable legacy alias but no longer the landing.
   useEffect(() => {
     if (!profile) return;
-    if (location.pathname === '/' || location.pathname === '') {
-      navigate('/dashboard', { replace: true });
+    if (location.pathname === '/' || location.pathname === '' || location.pathname === '/dashboard') {
+      navigate('/overview', { replace: true });
     }
-  }, [profile]);
+  }, [profile, location.pathname]);
 
   // ── Load carriers ──
   const reloadCarriers = useCallback(async () => {
@@ -515,8 +532,11 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/dashboard'} scroll>
               <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
             </PageSlot>
-            <PageSlot active={pathname==='/hub'} scroll>
-              <CarriersHub isActive={pathname==='/hub'}/>
+            {/* /hub + /carrier-kpi share the same workspace now,
+                CarriersWorkspace reads ?tab= or the legacy path to
+                pick the right inner tab. */}
+            <PageSlot active={CARRIER_WORKSPACE_PATHS.includes(pathname)} scroll>
+              <CarriersWorkspace isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/carrier'} scroll>
               <CarrierProfile/>
@@ -551,14 +571,12 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/payments'} scroll>
               <Payments isActive={pathname==='/payments'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/receivables'} scroll>
-              <CustomerReceivables isActive={pathname==='/receivables'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/merchants'} scroll>
-              <Merchants isActive={pathname==='/merchants'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/segments'} scroll>
-              <Segments isActive={pathname==='/segments'}/>
+            {/* The 4 legacy customer routes (/receivables, /merchants,
+                /segments, /customers) all funnel into the same hub
+                page. CustomerHub reads the path on mount and selects
+                the matching tab so deep links keep working. */}
+            <PageSlot active={CUSTOMER_HUB_PATHS.includes(pathname)} scroll>
+              <CustomerHub isActive={CUSTOMER_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/periods'} scroll>
               <Periods isActive={pathname==='/periods'}/>
@@ -575,9 +593,6 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/uploads'} scroll>
               <UploadsHub isActive={pathname==='/uploads'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/customers'} scroll>
-              <CustomerWatch isActive={pathname==='/customers'}/>
-            </PageSlot>
             <PageSlot active={pathname==='/payment-requests'} scroll>
               <PaymentRequests isActive={pathname==='/payment-requests'}/>
             </PageSlot>
@@ -586,9 +601,6 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/internal-exports'} scroll>
               <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/carrier-kpi'} scroll>
-              <CarrierKpi isActive={pathname==='/carrier-kpi'}/>
             </PageSlot>
             <PageSlot active={pathname==='/activity-log'} scroll>
               <ActivityLog isActive={pathname==='/activity-log'}/>
