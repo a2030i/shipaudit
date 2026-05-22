@@ -13,16 +13,17 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   RefreshCw, Upload, Download, Trash2, AlertTriangle, CheckCircle2,
-  Scale, Info, ChevronLeft, FileSpreadsheet,
+  Scale, Info, ChevronLeft, FileSpreadsheet, Link2, Search, X,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, toast, PageHeader, DropZone,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseInternalSettlement, parseZohoCustomerBalances,
   uploadBalanceSnapshot, listBalanceSnapshots, deleteBalanceSnapshot,
   loadReconciliation,
+  loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
 } from '../lib/reconciliationService.js';
 
 const fmt = (n) =>
@@ -47,23 +48,43 @@ export default function Reconciliation({ isActive = true }) {
   const [loading, setLoading]       = useState(true);
   const [reconcile, setReconcile]   = useState([]);
   const [snapshots, setSnapshots]   = useState([]);
+  const [unmatched, setUnmatched]   = useState([]);
   const [tolerance, setTolerance]   = useState(0.5);
   const [onlyGaps,  setOnlyGaps]    = useState(false);
+  const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, s] = await Promise.all([
+      const [r, s, u] = await Promise.all([
         loadReconciliation().catch(() => []),
         listBalanceSnapshots().catch(() => []),
+        loadUnmatchedBalances().catch(() => []),
       ]);
       setReconcile(r);
       setSnapshots(s);
+      setUnmatched(u);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
   }, []);
+
+  const handleLinkConfirm = async (storeId) => {
+    if (!linkTarget) return;
+    try {
+      await linkUnmatchedToStore({
+        rawName: linkTarget.rawName,
+        storeId,
+        userId:  profile?.id || null,
+      });
+      toast(`تم ربط «${linkTarget.rawName}» بالمتجر ${storeId}`, 'success');
+      setLinkTarget(null);
+      await refresh();
+    } catch (e) {
+      toast(`فشل الربط: ${e.message}`, 'error');
+    }
+  };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -304,6 +325,80 @@ export default function Reconciliation({ isActive = true }) {
         </Card>
       )}
 
+      {/* Unmatched section — surfaces rows hidden from the main
+          comparison because their store_id couldn't be resolved.
+          Operator can link manually via the merchant picker. */}
+      {unmatched.length > 0 && (
+        <Card style={{
+          padding: 0, overflow: 'hidden', marginBottom: 16,
+          border: '1.5px solid color-mix(in srgb, #F59E0B 35%, transparent)',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 16px',
+            background: 'color-mix(in srgb, #F59E0B 10%, transparent)',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <Link2 size={15} color="#B45309"/>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+              غير مرتبط بمتاجر النظام — {unmatched.length} صف
+            </span>
+            <span style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>
+              ({unmatched.filter(u => u.source === 'internal').length} من الداخلي ·{' '}
+              {unmatched.filter(u => u.source === 'zoho').length} من Zoho)
+            </span>
+            <span style={{
+              marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text2)',
+            }}>
+              مجموع الأرصدة المخفية:&nbsp;
+              <strong style={{
+                fontFamily: 'var(--font-mono)',
+                color: unmatched.reduce((s, u) => s + Math.abs(u.balance), 0) > 0 ? '#DC2626' : 'var(--muted)',
+              }}>
+                {fmt(unmatched.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
+              </strong>
+            </span>
+          </div>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                <th style={thStyle}>المصدر</th>
+                <th style={thStyle}>الاسم في الملف</th>
+                <th style={thStyle}>الرصيد</th>
+                <th style={thStyle}>إجراء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {unmatched.map(u => (
+                <tr key={`${u.source}-${u.rawName}`} style={{ borderBottom: '1px solid var(--border)' }}>
+                  <td style={{ padding: '10px 12px' }}>
+                    <span style={statusPill(u.source === 'internal' ? '#3B82F6' : '#F59E0B')}>
+                      {u.source === 'internal' ? 'الداخلي' : 'Zoho'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '10px 12px', color: 'var(--text)', fontWeight: 500 }}>
+                    {u.rawName}
+                  </td>
+                  <td style={{
+                    padding: '10px 12px', textAlign: 'left',
+                    fontFamily: 'var(--font-mono)', fontWeight: 600,
+                    color: Math.abs(u.balance) > 0.5 ? '#DC2626' : 'var(--muted2)',
+                  }}>
+                    {Math.abs(u.balance) > 0.005 ? fmt(u.balance) : '—'}
+                  </td>
+                  <td style={{ padding: '10px 12px' }}>
+                    <Btn size="sm" variant="ghost" icon={<Link2 size={11}/>}
+                         onClick={() => setLinkTarget({ rawName: u.rawName, source: u.source, balance: u.balance })}>
+                      اربط بمتجر
+                    </Btn>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Card>
+      )}
+
       {/* Reconciliation table — anchored on internal (المرجع) */}
       {reconcile.length === 0 ? (
         <Empty
@@ -364,6 +459,14 @@ export default function Reconciliation({ isActive = true }) {
             </div>
           )}
         </Card>
+      )}
+
+      {linkTarget && (
+        <MerchantPickerModal
+          target={linkTarget}
+          onCancel={() => setLinkTarget(null)}
+          onConfirm={handleLinkConfirm}
+        />
       )}
 
       {/* Educational footer */}
@@ -471,6 +574,176 @@ const statusPill = (color) => ({
   background: `color-mix(in srgb, ${color} 14%, transparent)`,
   color, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
 });
+
+function MerchantPickerModal({ target, onCancel, onConfirm }) {
+  const [merchants, setMerchants] = useState([]);
+  const [loading,   setLoading]   = useState(true);
+  const [search,    setSearch]    = useState('');
+  const [picked,    setPicked]    = useState(null);
+
+  useEffect(() => {
+    loadMerchantsForPicker()
+      .then(setMerchants)
+      .catch((e) => toast(`فشل تحميل المتاجر: ${e.message}`, 'error'))
+      .finally(() => setLoading(false));
+  }, []);
+
+  // Auto-suggest top trigram-similar merchants when the picker first
+  // opens. Cheap heuristic: extract the last dash-separated segment
+  // (e.g. "Konhub LLC - متجر أشكال" → "متجر أشكال") and rank merchants
+  // by substring containment of either side.
+  const suggested = useMemo(() => {
+    const norm = (s) => String(s || '').toLowerCase()
+      .replace(/[ًٌٍَُِّْٰ]/g, '')
+      .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
+    const segs = String(target.rawName || '').split(/[-|]/).map(s => norm(s.trim())).filter(s => s.length >= 2);
+    if (!segs.length) return [];
+    const scored = merchants.map(m => {
+      const mn = norm(m.storeName);
+      let score = 0;
+      for (const seg of segs) {
+        if (mn === seg)            score = Math.max(score, 1.0);
+        else if (mn.includes(seg)) score = Math.max(score, Math.min(seg.length, mn.length) / Math.max(seg.length, mn.length));
+        else if (seg.includes(mn)) score = Math.max(score, Math.min(seg.length, mn.length) / Math.max(seg.length, mn.length));
+      }
+      return { ...m, _score: score };
+    }).filter(m => m._score > 0.3).sort((a, b) => b._score - a._score).slice(0, 5);
+    return scored;
+  }, [merchants, target]);
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    if (!q) return merchants.slice(0, 100);  // cap for perf
+    return merchants.filter(m =>
+      String(m.storeName || '').toLowerCase().includes(q) ||
+      String(m.storeId   || '').toLowerCase().includes(q) ||
+      String(m.phone     || '').toLowerCase().includes(q),
+    ).slice(0, 100);
+  }, [merchants, search]);
+
+  return (
+    <Modal title={`ربط: ${target.rawName}`} onClose={onCancel} width={680}>
+      <form
+        autoComplete="off"
+        onSubmit={(e) => { e.preventDefault(); if (picked) onConfirm(picked.storeId); }}
+        style={{ padding: '4px 4px 0' }}
+      >
+        {/* Banner showing the source + balance */}
+        <div style={{
+          padding: 12, marginBottom: 12, borderRadius: 8,
+          background: target.source === 'internal'
+            ? 'color-mix(in srgb, #3B82F6 8%, transparent)'
+            : 'color-mix(in srgb, #F59E0B 8%, transparent)',
+          border: '1px solid var(--border)',
+          fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 12,
+        }}>
+          <span>
+            <strong style={{ color: 'var(--text)' }}>المصدر:</strong>{' '}
+            {target.source === 'internal' ? 'النظام الداخلي' : 'Zoho'}
+          </span>
+          {Math.abs(target.balance) > 0.005 && (
+            <span>
+              <strong style={{ color: 'var(--text)' }}>الرصيد:</strong>{' '}
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: target.balance < 0 ? '#DC2626' : 'var(--text2)' }}>
+                {fmt(target.balance)} ر.س
+              </span>
+            </span>
+          )}
+        </div>
+
+        {/* Suggested matches */}
+        {suggested.length > 0 && (
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 6 }}>
+              اقتراحات تلقائية
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {suggested.map(m => (
+                <button key={m.storeId} type="button" onClick={() => setPicked(m)} style={{
+                  padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                  border: `1.5px solid ${picked?.storeId === m.storeId ? '#10B981' : 'var(--border)'}`,
+                  background: picked?.storeId === m.storeId ? 'rgba(16,185,129,.12)' : 'transparent',
+                  color: picked?.storeId === m.storeId ? '#047857' : 'var(--text2)',
+                  fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                }}>
+                  {m.storeName}
+                  <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                    #{m.storeId} · {Math.round(m._score * 100)}%
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Search */}
+        <div style={{ position: 'relative', marginBottom: 10 }}>
+          <Search size={14} style={{ position: 'absolute', insetInlineStart: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}/>
+          <input
+            type="text"
+            name="merchant_search"
+            autoComplete="off"
+            spellCheck={false}
+            data-form-type="other"
+            data-lpignore="true"
+            autoFocus
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="ابحث باسم المتجر أو رقمه أو الجوال…"
+            style={{
+              width: '100%', padding: '9px 12px 9px 34px', fontSize: 13,
+              border: '1px solid var(--border)', borderRadius: 8,
+              background: 'var(--surface)', color: 'var(--text)',
+              fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+            }}
+          />
+        </div>
+
+        {/* Results list */}
+        <div style={{
+          border: '1px solid var(--border)', borderRadius: 8,
+          maxHeight: 340, overflowY: 'auto',
+        }}>
+          {loading ? (
+            <div style={{ padding: 24, textAlign: 'center' }}><Spinner size={20}/></div>
+          ) : filtered.length === 0 ? (
+            <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              لا توجد نتائج لـ «{search}»
+            </div>
+          ) : (
+            filtered.map(m => (
+              <div key={m.storeId} onClick={() => setPicked(m)} style={{
+                padding: '10px 14px', cursor: 'pointer',
+                borderBottom: '1px solid var(--border)',
+                background: picked?.storeId === m.storeId ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
+                display: 'flex', alignItems: 'center', gap: 12,
+              }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {m.storeName}
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
+                    #{m.storeId} {m.phone ? `· ${m.phone}` : ''} {m.status ? `· ${m.status}` : ''}
+                  </div>
+                </div>
+                {picked?.storeId === m.storeId && <CheckCircle2 size={16} color="#10B981"/>}
+              </div>
+            ))
+          )}
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
+          <Btn size="md" variant="primary" icon={<Link2 size={13}/>}
+               onClick={() => picked && onConfirm(picked.storeId)} disabled={!picked}>
+            {picked ? `اربط بـ ${picked.storeName}` : 'اختر متجراً'}
+          </Btn>
+          <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 function Stat({ label, value, color, suffix, icon }) {
   return (
