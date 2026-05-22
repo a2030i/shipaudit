@@ -12,15 +12,16 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import {
   RefreshCw, Upload, FileSpreadsheet, ExternalLink, Inbox,
-  CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote,
+  CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle,
 } from 'lucide-react';
 import {
-  Card, Btn, Spinner, Empty, toast, PageHeader, DropZone,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { UPLOAD_SOURCES, loadUploadsOverview, uploadFile } from '../lib/uploadsHubService.js';
+import { UPLOAD_SOURCES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
 
 const fmtRel = (iso) => {
   if (!iso) return 'لم يُرفع بعد';
@@ -45,6 +46,7 @@ export default function UploadsHub({ isActive = true }) {
   const [loading, setLoading] = useState(true);
   const [sources, setSources] = useState([]);
   const [busy,    setBusy]    = useState({});  // { sourceId: true } while uploading
+  const [picker,  setPicker]  = useState(null); // { file, detection } when auto-detect fails
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -65,6 +67,35 @@ export default function UploadsHub({ isActive = true }) {
       toast(`فشل: ${e.message}`, 'error');
     }
     setBusy(b => { const n = { ...b }; delete n[sourceId]; return n; });
+  };
+
+  // Smart drop — runs detector first; if confident, uploads to the
+  // detected source; otherwise opens a picker modal so the operator
+  // can choose manually. The file is read once here so the modal
+  // doesn't need to re-read it on confirmation.
+  const handleSmartDrop = async (file) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const ws     = wb.Sheets[wb.SheetNames[0]];
+      const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+      const detection = detectFileSource(rows);
+      if (detection?.sourceId && detection.confidence >= 0.85) {
+        toast(`اكتُشف نوع الملف: ${UPLOAD_SOURCES.find(s => s.id === detection.sourceId)?.label}`, 'info');
+        await handleUpload(detection.sourceId, file);
+      } else {
+        setPicker({ file, detection });
+      }
+    } catch (e) {
+      toast(`تعذّر فحص الملف: ${e.message}`, 'error');
+    }
+  };
+
+  const handlePickerConfirm = async (sourceId) => {
+    if (!picker) return;
+    const file = picker.file;
+    setPicker(null);
+    await handleUpload(sourceId, file);
   };
 
   // Summary at top: how many sources are fresh / stale / missing
@@ -137,9 +168,43 @@ export default function UploadsHub({ isActive = true }) {
         />
       </div>
 
+      {/* Hero drop zone — auto-detects the file type. The 5 cards
+          below still have their own drop zones for cases where the
+          operator wants to force the type or detection isn't
+          confident. */}
+      <Card style={{
+        marginBottom: 20,
+        background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 8%, transparent), color-mix(in srgb, #8B5CF6 6%, transparent))',
+        border: '2px dashed color-mix(in srgb, #0EA5E9 35%, transparent)',
+        padding: 22,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
+          <span style={{
+            width: 44, height: 44, borderRadius: 12,
+            background: 'color-mix(in srgb, #0EA5E9 16%, transparent)',
+            color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Sparkles size={22}/>
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
+              ارفع أي ملف — النظام يكتشف نوعه تلقائياً
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
+              العملاء (Zoho) · الموردون (Zoho) · متاجر المنصّة · استحقاق المتاجر · كشف فواتير العملاء —
+              ندرّب الكاشف على بصمات الأعمدة والعناوين، ولو ما عرف نسأل عنه.
+            </div>
+          </div>
+        </div>
+        <DropZone onFile={handleSmartDrop} accept=".xlsx,.xls,.csv">
+          <Upload size={16}/>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>اسحب الملف هنا — يكفي ملف واحد</span>
+        </DropZone>
+      </Card>
+
       {/* Section: snapshot uploads */}
       <SectionTitle icon={<FileSpreadsheet size={14}/>} color="#3B82F6">
-        ملفات Snapshot — رفع موحّد
+        ملفات Snapshot — حالة كل نوع
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 14, marginBottom: 24,
@@ -194,7 +259,102 @@ export default function UploadsHub({ isActive = true }) {
           onClick={() => navigate('/aramex-statements')}
         />
       </div>
+
+      {/* Manual type picker — opens when auto-detect couldn't confidently
+          identify the file. The user picks; we upload with their choice. */}
+      {picker && (
+        <TypePickerModal
+          file={picker.file}
+          detection={picker.detection}
+          onCancel={() => setPicker(null)}
+          onConfirm={handlePickerConfirm}
+        />
+      )}
     </div>
+  );
+}
+
+function TypePickerModal({ file, detection, onCancel, onConfirm }) {
+  return (
+    <Modal title="ما عرفنا نوع الملف — اختر النوع بنفسك" onClose={onCancel} width={620}>
+      <div style={{ padding: '4px 4px 0' }}>
+        {/* File info banner */}
+        <div style={{
+          padding: 12, marginBottom: 14, borderRadius: 8,
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+          fontSize: 12, color: 'var(--muted)',
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <FileSpreadsheet size={16} color="#0EA5E9"/>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ color: 'var(--text)', fontWeight: 600, fontFamily: 'var(--font-mono)', fontSize: 12 }}>
+              {file?.name}
+            </div>
+            <div style={{ marginTop: 2 }}>
+              {(file?.size / 1024).toFixed(1)} KB
+              {detection?.sourceId && (
+                <span style={{ marginInlineStart: 10, color: '#F59E0B' }}>
+                  · أقرب احتمال: {UPLOAD_SOURCES.find(s => s.id === detection.sourceId)?.label}
+                  {detection.confidence != null && ` (${Math.round(detection.confidence * 100)}%)`}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
+          <HelpCircle size={12} style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
+          اختر النوع الصحيح وسنرفع الملف للجدول المناسب. إذا الكاشف يكرّر الخطأ على نفس النوع، ابعت لي عيّنة وأضبط البصمة.
+        </div>
+
+        <div style={{ display: 'grid', gap: 8 }}>
+          {UPLOAD_SOURCES.map(src => (
+            <button key={src.id} onClick={() => onConfirm(src.id)} style={{
+              display: 'flex', alignItems: 'center', gap: 12,
+              padding: '12px 14px', cursor: 'pointer',
+              border: `1.5px solid ${detection?.sourceId === src.id ? src.accent : 'var(--border)'}`,
+              borderRadius: 10,
+              background: detection?.sourceId === src.id
+                ? `color-mix(in srgb, ${src.accent} 8%, transparent)`
+                : 'var(--surface)',
+              textAlign: 'right',
+              fontFamily: 'var(--font-sans)',
+              transition: 'all .12s',
+            }}
+            onMouseEnter={(e) => { e.currentTarget.style.borderColor = src.accent; }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.borderColor = detection?.sourceId === src.id ? src.accent : 'var(--border)';
+            }}>
+              <span style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: `color-mix(in srgb, ${src.accent} 14%, transparent)`,
+                color: src.accent, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <FileSpreadsheet size={15}/>
+              </span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{src.label}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{src.subtitle}</div>
+              </div>
+              {detection?.sourceId === src.id && (
+                <span style={{
+                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+                  background: `color-mix(in srgb, ${src.accent} 16%, transparent)`,
+                  color: src.accent,
+                }}>
+                  مقترح
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div style={{ marginTop: 14, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+          <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
