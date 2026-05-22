@@ -22,6 +22,7 @@ import {
   RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
   AlertTriangle, Building2, Users, Banknote, Activity,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
+  Heart, Shield,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, toast, PageHeader,
@@ -292,6 +293,69 @@ export default function Overview({ carriers = [], isActive = true }) {
         )}
       </Card>
 
+      {/* ── Section 4: Carrier health KPIs ── */}
+      {data.carrierHealth.length > 0 && (
+        <>
+          <SectionTitle icon={<Shield size={14}/>} color="#10B981">
+            صحة الناقلين — جودة الفواتير والبيانات
+          </SectionTitle>
+          <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1.4fr repeat(6, 1fr)',
+              background: 'var(--surface2)', borderBottom: '1px solid var(--border)',
+              padding: '10px 0', fontSize: 11, color: 'var(--muted)', fontWeight: 600,
+            }}>
+              <div style={{ padding: '0 14px' }}>الناقل</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>صحة</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>مراجعات</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>الفروق %</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>عدم تطابق %</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>قبول أول مرة</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>متوسط الاعتماد</div>
+            </div>
+            {data.carrierHealth.map(r => (
+              <div
+                key={r.carrierId}
+                onClick={() => navigate(`/carrier?id=${r.carrierId}`)}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1.4fr repeat(6, 1fr)',
+                  borderBottom: '1px solid var(--border)',
+                  padding: '12px 0', fontSize: 12, alignItems: 'center',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ padding: '0 14px', fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8 }}>
+                  {carrierNameById.get(r.carrierId) || r.carrierId}
+                  <ChevronLeft size={12} color="var(--muted2)"/>
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center' }}>
+                  <HealthPill score={r.score}/>
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
+                  {r.auditsApproved}
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.driftPct > 1 ? '#DC2626' : 'var(--text2)' }}>
+                  {r.driftPct.toFixed(1)}%
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.mismatchPct > 1 ? '#F59E0B' : 'var(--text2)' }}>
+                  {r.mismatchPct.toFixed(1)}%
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: r.firstPassRate < 80 ? '#F59E0B' : '#10B981' }}>
+                  {r.firstPassRate.toFixed(0)}%
+                </div>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                  {r.avgApprovalHours < 1 ? '<1س'
+                    : r.avgApprovalHours < 24 ? `${r.avgApprovalHours.toFixed(0)}س`
+                    : `${(r.avgApprovalHours / 24).toFixed(1)}ي`}
+                </div>
+              </div>
+            ))}
+          </Card>
+        </>
+      )}
+
       {/* Footer hint */}
       <div style={{
         marginTop: 14, padding: 14, borderRadius: 10,
@@ -458,6 +522,26 @@ function AgingCell({ label, value, tone, bold = false }) {
         {value > 0.5 ? fmtCompact(value) : '—'}
       </div>
     </div>
+  );
+}
+
+function HealthPill({ score }) {
+  // Three-tier color: green ≥90, amber 70-89, red <70.
+  const tone = score >= 90 ? '#047857'
+             : score >= 70 ? '#B45309'
+             :              '#DC2626';
+  const bg   = score >= 90 ? 'rgba(16,185,129,.14)'
+             : score >= 70 ? 'rgba(245,158,11,.14)'
+             :              'rgba(220,38,38,.14)';
+  return (
+    <span style={{
+      display: 'inline-flex', alignItems: 'center', gap: 4,
+      padding: '3px 9px', borderRadius: 999,
+      background: bg, color: tone,
+      fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
+    }}>
+      <Heart size={9}/> {score}
+    </span>
   );
 }
 
