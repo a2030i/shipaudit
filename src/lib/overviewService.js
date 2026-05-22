@@ -33,12 +33,13 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
     rpc('carrier_spend_concentration', { p_period: thisPeriod }),
     rpc('customer_debt_concentration', { p_limit: topN }),
+    rpc('carrier_health_kpis', {}),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -125,5 +126,33 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       sharePct:     num(r.share_pct),
       rank:         num(r.rank_order),
     })),
+    carrierHealth: healthRaw.map(r => {
+      const driftPct    = num(r.drift_pct);
+      const mismatchPct = num(r.mismatch_pct);
+      const firstPass   = num(r.first_pass_rate);
+      // Health score 0-100 — heavier weight on drift (real money)
+      // and mismatch (data quality) than approval lag/first-pass.
+      // Anything 90+ = green, 70-89 = amber, <70 = red.
+      const score = Math.max(0, Math.round(
+          100
+        - Math.min(driftPct, 30)     * 1.5   // 0..45 penalty
+        - Math.min(mismatchPct, 25)  * 1.2   // 0..30 penalty
+        - Math.max(0, 100 - firstPass) * 0.25 // 0..25 penalty
+      ));
+      return {
+        carrierId:        r.carrier_id,
+        auditsCount:      num(r.audits_count),
+        auditsApproved:   num(r.audits_approved),
+        driftTotal:       num(r.drift_total),
+        totalBilledSum:   num(r.total_billed_sum),
+        driftPct,
+        mismatchTotal:    num(r.mismatch_total),
+        shipmentsTotal:   num(r.shipments_total),
+        mismatchPct,
+        firstPassRate:    firstPass,
+        avgApprovalHours: num(r.avg_approval_hours),
+        score,
+      };
+    }),
   };
 }
