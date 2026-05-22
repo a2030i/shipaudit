@@ -24,6 +24,9 @@ import {
   uploadBalanceSnapshot, listBalanceSnapshots, deleteBalanceSnapshot,
   loadReconciliation,
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
+  parseZohoVendorBalances, uploadVendorBalanceSnapshot,
+  listVendorSnapshots, deleteVendorSnapshot,
+  loadVendorReconciliation, loadVendorOthers,
 } from '../lib/reconciliationService.js';
 
 const fmt = (n) =>
@@ -52,6 +55,9 @@ export default function Reconciliation({ isActive = true }) {
   const [tolerance, setTolerance]   = useState(0.5);
   const [onlyGaps,  setOnlyGaps]    = useState(false);
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
+  // Tab between customer side (المتاجر/العملاء) and vendor side
+  // (شركات الشحن). Each side has its own data + uploads.
+  const [tab, setTab]               = useState('customers');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -237,14 +243,45 @@ export default function Reconciliation({ isActive = true }) {
       <PageHeader
         icon={<Scale size={22}/>}
         iconColor="#8B5CF6"
-        title="مطابقة أرصدة المتاجر"
-        subtitle="قارن أرصدة المتاجر من 3 مصادر: النظام الداخلي · الفواتير · Zoho"
+        title="مطابقة الأرصدة"
+        subtitle={tab === 'customers'
+          ? 'العملاء — قارن من 3 مصادر: النظام الداخلي · الفواتير · Zoho'
+          : 'الموردون — قارن أرصدة شركات الشحن في نظامنا مقابل Zoho'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
           </Btn>
         }
       />
+
+      {/* Tab switcher: customers vs vendors */}
+      <div style={{
+        display: 'flex', gap: 4, marginBottom: 18,
+        borderBottom: '1px solid var(--border)',
+      }}>
+        {[
+          { id: 'customers', label: 'العملاء (المتاجر)', icon: '🏪' },
+          { id: 'vendors',   label: 'الموردون (شركات الشحن)', icon: '🚚' },
+        ].map(t => {
+          const active = tab === t.id;
+          return (
+            <button key={t.id} onClick={() => setTab(t.id)} style={{
+              padding: '10px 18px',
+              border: 'none', background: 'transparent',
+              borderBottom: `2.5px solid ${active ? '#8B5CF6' : 'transparent'}`,
+              color: active ? 'var(--text)' : 'var(--muted)',
+              fontSize: 13, fontWeight: active ? 700 : 500,
+              fontFamily: 'var(--font-sans)', cursor: 'pointer',
+              transition: 'all .15s', marginBottom: -1,
+            }}>
+              {t.icon} {t.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {tab === 'vendors' && <VendorsTab profile={profile}/>}
+      {tab === 'customers' && <>
 
       {/* Upload row */}
       <div style={{
@@ -486,12 +523,309 @@ export default function Reconciliation({ isActive = true }) {
           الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
       </div>
+
+      </>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Vendor reconciliation tab — symmetric to the customer one but
+// against carriers (شركات الشحن) instead of merchants. Internal
+// data comes from our carrier_operations open balance directly
+// (no upload needed); operator only uploads the Zoho vendor file.
+// ─────────────────────────────────────────────────────────────
+function VendorsTab({ profile }) {
+  const [loading, setLoading]       = useState(true);
+  const [reconcile, setReconcile]   = useState([]);
+  const [others, setOthers]         = useState([]);
+  const [snapshots, setSnapshots]   = useState([]);
+  const [tolerance, setTolerance]   = useState(0.5);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, o, s] = await Promise.all([
+        loadVendorReconciliation().catch(() => []),
+        loadVendorOthers().catch(() => []),
+        listVendorSnapshots().catch(() => []),
+      ]);
+      setReconcile(r);
+      setOthers(o);
+      setSnapshots(s);
+    } catch (e) {
+      toast(`فشل التحميل: ${e.message}`, 'error');
+    }
+    setLoading(false);
+  }, []);
+
+  useEffect(() => { refresh(); }, [refresh]);
+
+  const handleUpload = async (file) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const ws     = wb.Sheets[wb.SheetNames[0]];
+      const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+      const parsed = parseZohoVendorBalances(rows);
+      if (parsed.errors.length) { toast(parsed.errors.join('\n'), 'error'); return; }
+      if (!parsed.rows.length)  { toast('لا توجد صفوف صالحة', 'warning'); return; }
+      const result = await uploadVendorBalanceSnapshot({
+        parsed:   parsed.rows,
+        fileName: file.name,
+        userId:   profile?.id || null,
+      });
+      toast(
+        `تم رفع ${result.rowCount} مورّد · ${result.matched} مطابق بشركات الشحن · علينا ${fmt(result.totalWeOwe)} ر.س`,
+        'success',
+      );
+      await refresh();
+    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+  };
+
+  const latestSnap = snapshots[0];
+  const handleDelete = async () => {
+    if (!latestSnap) return;
+    if (!confirm('حذف آخر تحميل لـ Zoho الموردين؟')) return;
+    try { await deleteVendorSnapshot(latestSnap.id); toast('تم الحذف', 'success'); await refresh(); }
+    catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+  };
+
+  // Headline stats — internal = positive when we owe, negative when
+  // carrier owes us. Symmetric for Zoho. "diff" = Zoho - internal.
+  const stats = useMemo(() => {
+    let matched = 0, gaps = 0, totalGap = 0;
+    for (const r of reconcile) {
+      if (Math.abs(r.diff) <= tolerance) matched++;
+      else { gaps++; totalGap += Math.abs(r.diff); }
+    }
+    const otherTotal = others.reduce((s, o) => s + Math.abs(o.balance), 0);
+    return {
+      total: reconcile.length,
+      matched, gaps,
+      totalGap:   +totalGap.toFixed(2),
+      otherCount: others.length,
+      otherTotal: +otherTotal.toFixed(2),
+    };
+  }, [reconcile, others, tolerance]);
+
+  const exportGaps = () => {
+    const bad = reconcile.filter(r => Math.abs(r.diff) > tolerance);
+    if (!bad.length) { toast('لا توجد فروقات', 'info'); return; }
+    bad.sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+    const headers = [
+      'رقم الشركة', 'اسم الشركة',
+      'الأسماء في زوهو',
+      'الرصيد في لمحه', 'الرصيد في زوهو',
+      'فرق الأرصدة',
+    ];
+    const xRows = bad.map(r => [
+      r.carrierId, r.carrierName,
+      (r.zohoRawNames || []).join(' / '),
+      r.internalBalance, r.zohoBalance, r.diff,
+    ]);
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'تصحيحات_موردي_Zoho');
+    XLSX.writeFile(wb, `تصحيحات_موردين_Zoho_${new Date().toISOString().slice(0,10)}.xlsx`);
+    toast(`تم تصدير ${bad.length} حالة`, 'success');
+  };
+
+  if (loading) {
+    return <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={22}/></div>;
+  }
+
+  return (
+    <div>
+      {/* Upload card — single, since internal vendor balance comes from our DB */}
+      <div style={{ marginBottom: 20 }}>
+        <UploadCard
+          title="Zoho — ملخص أرصدة الموردين"
+          subtitle="Reports → الذمم الدائنة → ملخص أرصدة الموردين. Cr = ندفع لهم · Dr = يردّون لنا"
+          color="#F59E0B"
+          icon={<FileSpreadsheet size={18}/>}
+          snapshot={latestSnap}
+          onUpload={handleUpload}
+          onDelete={handleDelete}
+          noun="مورّد"
+        />
+      </div>
+
+      {reconcile.length === 0 && others.length === 0 ? (
+        <Empty
+          icon="🚚"
+          title="ارفع ملف Zoho الموردين لتبدأ المطابقة"
+          sub="رصيد كل شركة شحن في نظامنا (مرجع) يُقارن تلقائياً بما يقوله Zoho."
+        />
+      ) : (
+        <>
+          {/* Banner: internal is source of truth */}
+          <Card style={{
+            marginBottom: 14,
+            background: 'color-mix(in srgb, #3B82F6 6%, transparent)',
+            border: '1px solid color-mix(in srgb, #3B82F6 24%, transparent)',
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <Info size={16} color="#3B82F6" style={{ flexShrink: 0 }}/>
+              <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
+                <strong style={{ color: 'var(--text)' }}>نظامنا الداخلي هو المرجع.</strong>{' '}
+                موجب = ندفع لهم · سالب = يردّون لنا. أي فرق مع Zoho يعني أن نظامنا لم يرحّل عملية بعد.
+              </div>
+            </div>
+          </Card>
+
+          {/* Stats strip */}
+          <Card style={{ marginBottom: 14 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
+              <Stat label="شركات شحن"    value={stats.total.toLocaleString('ar-SA')}   color="#0EA5E9"/>
+              <Stat label="مطابق"         value={stats.matched.toLocaleString('ar-SA')} color="#10B981" icon={<CheckCircle2 size={14}/>}/>
+              <Stat label="فروقات"        value={stats.gaps.toLocaleString('ar-SA')}    color="#DC2626" icon={<AlertTriangle size={14}/>}/>
+              <Stat label="مجموع الفروقات" value={fmt(stats.totalGap)} suffix="ر.س"     color="#DC2626"/>
+              <Stat label="مورّدون آخرون" value={stats.otherCount.toLocaleString('ar-SA')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="#8B5CF6"/>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>قبول فرق حتى:</span>
+                <input
+                  type="number" step="0.01" min="0"
+                  value={tolerance}
+                  onChange={(e) => setTolerance(Math.max(0, Number(e.target.value) || 0))}
+                  style={{
+                    width: 70, padding: '4px 8px', fontSize: 12,
+                    border: '1px solid var(--border)', borderRadius: 6,
+                    background: 'var(--surface)', color: 'var(--text)',
+                    textAlign: 'center', fontFamily: 'var(--font-mono)',
+                  }}
+                />
+                <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              </div>
+              <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportGaps} disabled={stats.gaps === 0}>
+                تصدير الفروقات
+              </Btn>
+            </div>
+          </Card>
+
+          {/* Main comparison table */}
+          {reconcile.length > 0 && (
+            <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={thStyle}>الشركة</th>
+                    <th style={{ ...thStyle, color: '#3B82F6' }}>لمحه (المرجع)</th>
+                    <th style={thStyle}>Zoho</th>
+                    <th style={thStyle}>Zoho − لمحه</th>
+                    <th style={thStyle}>الحالة</th>
+                    <th style={thStyle}>أسماء Zoho المُجَمَّعة</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {reconcile.map(r => {
+                    const matched = Math.abs(r.diff) <= tolerance;
+                    return (
+                      <tr key={r.carrierId} style={{
+                        borderBottom: '1px solid var(--border)',
+                        background: matched ? 'transparent' : 'color-mix(in srgb, #DC2626 3%, transparent)',
+                      }}>
+                        <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
+                          {r.carrierName}
+                          <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
+                            {r.carrierId}
+                          </div>
+                        </td>
+                        <BalCell value={r.internalBalance} anchor/>
+                        <BalCell value={r.zohoBalance} dimmedIfZero/>
+                        <td style={{
+                          padding: '10px 12px', textAlign: 'left',
+                          fontFamily: 'var(--font-mono)', fontWeight: 700,
+                          color: matched ? 'var(--muted)' : (r.diff < 0 ? '#DC2626' : '#F97316'),
+                        }}>
+                          {Math.abs(r.diff) > 0.005 ? (r.diff > 0 ? '+' : '−') + fmt(Math.abs(r.diff)) : '—'}
+                        </td>
+                        <td style={{ padding: '10px 12px' }}>
+                          {matched ? (
+                            <span style={statusPill('#10B981')}>
+                              <CheckCircle2 size={11}/> مطابق
+                            </span>
+                          ) : r.diff < 0 ? (
+                            <span style={statusPill('#DC2626')}>
+                              <AlertTriangle size={11}/> Zoho ناقص {fmtCompact(Math.abs(r.diff))}
+                            </span>
+                          ) : (
+                            <span style={statusPill('#F97316')}>
+                              <AlertTriangle size={11}/> Zoho زائد {fmtCompact(Math.abs(r.diff))}
+                            </span>
+                          )}
+                        </td>
+                        <td style={{ padding: '10px 12px', fontSize: 10.5, color: 'var(--muted)' }}>
+                          {(r.zohoRawNames || []).join(' / ') || '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </Card>
+          )}
+
+          {/* Other vendors (non-carriers) — informational only */}
+          {others.length > 0 && (
+            <Card style={{
+              padding: 0, overflow: 'hidden', marginBottom: 16,
+              border: '1.5px solid color-mix(in srgb, #8B5CF6 30%, transparent)',
+            }}>
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 10,
+                padding: '12px 16px',
+                background: 'color-mix(in srgb, #8B5CF6 8%, transparent)',
+                borderBottom: '1px solid var(--border)',
+              }}>
+                <FileSpreadsheet size={15} color="#8B5CF6"/>
+                <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                  مصاريف أخرى من Zoho — {others.length} مورّد
+                </span>
+                <span style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text2)' }}>
+                  ليست شركات شحن — معروضة للعلم بدون مقارنة
+                </span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                <thead>
+                  <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                    <th style={thStyle}>#</th>
+                    <th style={thStyle}>اسم المورّد</th>
+                    <th style={thStyle}>الرصيد</th>
+                    <th style={thStyle}>الاتجاه</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {others.map(o => (
+                    <tr key={o.rawName} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{o.rank}</td>
+                      <td style={{ padding: '10px 12px', color: 'var(--text)' }}>{o.rawName}</td>
+                      <td style={{
+                        padding: '10px 12px', textAlign: 'left',
+                        fontFamily: 'var(--font-mono)', fontWeight: 700,
+                        color: o.balance < 0 ? '#047857' : '#DC2626',
+                      }}>
+                        {fmt(Math.abs(o.balance))}
+                      </td>
+                      <td style={{ padding: '10px 12px', fontSize: 11 }}>
+                        {o.balance > 0
+                          ? <span style={statusPill('#DC2626')}>ندفع لهم</span>
+                          : <span style={statusPill('#10B981')}>يردّون لنا</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </Card>
+          )}
+        </>
+      )}
     </div>
   );
 }
 
 // ── subcomponents ─────────────────────────────────────────────
-function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete }) {
+function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete, noun = 'متجر' }) {
   return (
     <Card>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
@@ -514,7 +848,7 @@ function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete
             <CheckCircle2 size={14} color="#10B981"/>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
-                {snapshot.row_count} متجر · {snapshot.matched_count} مطابق
+                {snapshot.row_count} {noun} · {snapshot.matched_count} مطابق
               </div>
               <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
                 {fmtDateTime(snapshot.uploaded_at)} · {snapshot.file_name || 'بدون اسم ملف'}
