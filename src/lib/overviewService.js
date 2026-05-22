@@ -33,13 +33,14 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
     rpc('carrier_spend_concentration', { p_period: thisPeriod }),
     rpc('customer_debt_concentration', { p_limit: topN }),
     rpc('carrier_health_kpis', {}),
+    rpc('working_capital_now', {}),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -126,6 +127,20 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       sharePct:     num(r.share_pct),
       rank:         num(r.rank_order),
     })),
+    workingCapital: (() => {
+      const r = wcArr[0] || {};
+      return {
+        dso:                num(r.dso_days),
+        dpo:                num(r.dpo_days),
+        ccc:                num(r.ccc_days),
+        totalAR:            num(r.total_ar),
+        totalAP:            num(r.total_ap),
+        customersWithDebt:  num(r.customers_with_debt),
+        carriersWithDebt:   num(r.carriers_with_debt),
+        topSlowCustomers:   r.top_slow_customers || [],
+        topSlowCarriers:    r.top_slow_carriers  || [],
+      };
+    })(),
     carrierHealth: healthRaw.map(r => {
       const driftPct    = num(r.drift_pct);
       const mismatchPct = num(r.mismatch_pct);
