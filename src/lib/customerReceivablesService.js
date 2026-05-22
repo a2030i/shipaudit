@@ -303,13 +303,23 @@ export async function loadLatestReceivables() {
     c.bucketAmounts = breakdown;
   }
 
-  // Overlay the per-customer status tags so the UI can split between
-  // the main view and the "متابعة خاصة" tab.
-  const statuses = await loadCustomerStatuses();
+  // Overlay the per-customer status tags + credit limits. Each
+  // customer carries:
+  //   creditLimit          — effective ceiling (override or global default)
+  //   creditUsedPct        — total / creditLimit * 100
+  //   overLimit            — boolean, true when current debt > limit
+  //   isCustomLimit        — true when a per-customer override is set
+  const statuses           = await loadCustomerStatuses();
+  const defaultCreditLimit = await loadDefaultCreditLimit();
   for (const c of byCustomer.values()) {
     const s = statuses.get(c.name);
-    c.status = s?.status || 'normal';
-    c.notes  = s?.notes  || null;
+    c.status          = s?.status || 'normal';
+    c.notes           = s?.notes  || null;
+    c.creditLimit     = s?.creditLimit != null ? s.creditLimit : defaultCreditLimit;
+    c.isCustomLimit   = s?.creditLimit != null;
+    c.creditLimitNote = s?.creditLimitNote || null;
+    c.creditUsedPct   = c.creditLimit > 0 ? +((c.total / c.creditLimit) * 100).toFixed(1) : 0;
+    c.overLimit       = c.total > c.creditLimit + 0.01;
   }
 
   // Overlay the merchant directory (if uploaded). Joins via the
@@ -457,17 +467,67 @@ export async function deleteReceivablesSnapshot(snapshotId) {
 export async function loadCustomerStatuses() {
   const { data, error } = await supabase
     .from('customer_settings')
-    .select('customer_name, status, notes, updated_at');
+    .select('customer_name, status, notes, credit_limit_sar, credit_limit_note, updated_at');
   if (error) throw error;
   const map = new Map();
   for (const r of data || []) {
     map.set(r.customer_name, {
-      status:    r.status,
-      notes:     r.notes,
-      updatedAt: r.updated_at,
+      status:           r.status,
+      notes:            r.notes,
+      creditLimit:      r.credit_limit_sar != null ? Number(r.credit_limit_sar) : null,
+      creditLimitNote:  r.credit_limit_note || null,
+      updatedAt:        r.updated_at,
     });
   }
   return map;
+}
+
+// Load the global default credit limit (SAR) from app_settings.
+// Cached in module scope after first read because it's tiny and
+// almost never changes mid-session.
+let _defaultCreditLimit = null;
+export async function loadDefaultCreditLimit() {
+  if (_defaultCreditLimit != null) return _defaultCreditLimit;
+  const { data } = await supabase
+    .from('app_settings').select('value').eq('key', 'default_credit_limit_sar').maybeSingle();
+  _defaultCreditLimit = Number(data?.value) || 10000;
+  return _defaultCreditLimit;
+}
+export async function setDefaultCreditLimit(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 0) throw new Error('قيمة غير صالحة');
+  const { error } = await supabase
+    .from('app_settings')
+    .upsert({ key: 'default_credit_limit_sar', value: String(n), updated_at: new Date().toISOString() },
+            { onConflict: 'key' });
+  if (error) throw error;
+  _defaultCreditLimit = n;
+  return n;
+}
+
+// Per-customer credit limit override. Pass `value = null` to clear
+// the override and fall back to the global default.
+export async function setCustomerCreditLimit({ customerName, value, note = null, userId = null }) {
+  if (!customerName) throw new Error('اسم العميل مطلوب');
+  // Read existing row so we can preserve status/notes on update
+  const { data: existing } = await supabase
+    .from('customer_settings').select('*').eq('customer_name', customerName).maybeSingle();
+  const payload = {
+    customer_name:       customerName,
+    status:              existing?.status   || 'normal',
+    notes:               existing?.notes    || null,
+    credit_limit_sar:    value == null ? null : Number(value),
+    credit_limit_note:   note?.trim() || null,
+    updated_by:          userId || null,
+    updated_at:          new Date().toISOString(),
+  };
+  const { data, error } = await supabase
+    .from('customer_settings')
+    .upsert(payload, { onConflict: 'customer_name' })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
 }
 
 export async function setCustomerStatus({ customerName, status, notes, userId }) {

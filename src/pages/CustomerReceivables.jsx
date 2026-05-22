@@ -742,6 +742,18 @@ export default function CustomerReceivables({ isActive = true }) {
         continue;
       }
     }
+
+    // PASS 3 — credit-limit overflow. Captures EVERY customer whose
+    // total debt exceeded their effective credit limit (10K default
+    // or per-customer override). Run as a separate pass so a
+    // customer can show up in both "prepaid_with_debt" and
+    // "over_credit_limit" simultaneously — they're independent
+    // diagnostic signals.
+    for (const c of data.activeCustomers) {
+      if (c.overLimit && (c.total || 0) > 0.5) {
+        out.push({ ...c, anomaly: 'over_credit_limit' });
+      }
+    }
     return out;
   }, [data, merchants]);
 
@@ -753,6 +765,7 @@ export default function CustomerReceivables({ isActive = true }) {
       active_with_debt:   [],
       postpaid_overdue:   [],
       inactive_with_debt: [],
+      over_credit_limit:  [],
     };
     for (const c of anomalies) {
       if (groups[c.anomaly]) groups[c.anomaly].push(c);
@@ -1612,6 +1625,7 @@ const ANOMALY_META = {
   active_with_debt:    { color: '#F97316', label: '🔥 يشحن الآن وعليه دين',   hint: 'العميل لا يزال يشحن (آخر شحنة خلال 10 أيام) — اتصل عليه اليوم قبل ما يتراكم أكثر' },
   postpaid_overdue:    { color: '#F59E0B', label: '⏰ متأخر +60 يوم',          hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
   inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',        hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
+  over_credit_limit:   { color: '#B91C1C', label: '🛑 تجاوز السقف الائتماني',   hint: 'تجاوز رصيد العميل سقفه الائتماني (الافتراضي 10,000 ر.س) — يحتاج وقف الخدمة أو رفع السقف' },
 };
 function anomalyChip(kind) {
   const m = ANOMALY_META[kind]; if (!m) return {};
