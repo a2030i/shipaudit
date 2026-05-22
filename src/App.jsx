@@ -39,6 +39,7 @@ import Tasks            from './pages/Tasks.jsx';
 import Segments         from './pages/Segments.jsx';
 import CustomerHub      from './pages/CustomerHub.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
+import MoneyHub          from './pages/MoneyHub.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import Overview         from './pages/Overview.jsx';
@@ -90,11 +91,10 @@ const NAV_ITEMS = [
   { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات', icon: FileText, section: 'audits' },
 
   // ── Finance ────────────────────────────────────────────────────
-  { id: 'forecast',          path: '/forecast',          label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance' },
-  { id: 'cod-settlements',   path: '/cod-settlements',   label: 'تسويات COD',   icon: Banknote,   section: 'finance' },
-  { id: 'payments',          path: '/payments',          label: 'الدفعات',       icon: CreditCard, section: 'finance' },
-  { id: 'bank',              path: '/bank',              label: 'كشف بنكي',      icon: Wallet,     section: 'finance' },
-  { id: 'payment-requests',  path: '/payment-requests',  label: 'طلبات السداد',  icon: Inbox,      section: 'finance' },
+  // cod / payments / bank / payment-requests merged into /money
+  // with 4 tabs. Legacy routes still resolve to the matching tab.
+  { id: 'forecast',  path: '/forecast', label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance' },
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance' },
 
   // ── Customers (AR side) ───────────────────────────────────────
   // Customers + receivables + segments + merchants merged into
@@ -121,6 +121,9 @@ const NAV_SECTIONS = [
 const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/receivables', '/merchants', '/segments'];
 // /hub and /carrier-kpi share the same workspace component.
 const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi'];
+// /money hosts cod-settlements / payments / bank / payment-requests
+// as four tabs. Legacy paths land on the right tab automatically.
+const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/payment-requests'];
 
 const PAGE_TITLES = {
   '/overview':          'الرئيسية',
@@ -137,6 +140,7 @@ const PAGE_TITLES = {
   '/weight-billing':    'فوترة الأوزان',
   '/ledger':            'دفتر الشركات',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
+  '/money':             'حركة الأموال',
   '/payments':          'الدفعات',
   '/aramex-statements': 'كشوف خارجية',
   '/bank':              'كشف بنكي',
@@ -201,7 +205,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -556,20 +560,17 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/audits'} scroll>
               <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/bank'} scroll>
-              <BankStatement/>
-            </PageSlot>
             <PageSlot active={pathname==='/aramex-statements'} scroll>
               <CarrierStatements carriers={carriers}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/cod-settlements'} scroll>
-              <CodSettlements isActive={pathname==='/cod-settlements'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/payments'} scroll>
-              <Payments isActive={pathname==='/payments'}/>
+            {/* /cod-settlements + /payments + /bank + /payment-requests
+                all funnel through MoneyHub which selects the right tab
+                based on the path. */}
+            <PageSlot active={MONEY_HUB_PATHS.includes(pathname)} scroll>
+              <MoneyHub isActive={MONEY_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
             {/* The 4 legacy customer routes (/receivables, /merchants,
                 /segments, /customers) all funnel into the same hub
@@ -592,9 +593,6 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/uploads'} scroll>
               <UploadsHub isActive={pathname==='/uploads'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/payment-requests'} scroll>
-              <PaymentRequests isActive={pathname==='/payment-requests'}/>
             </PageSlot>
             <PageSlot active={pathname==='/weight-billing'} scroll>
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
