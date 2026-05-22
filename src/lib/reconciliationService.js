@@ -58,107 +58,181 @@ export function parseInternalSettlement(rows) {
 }
 
 // ── Parse a Zoho Customer Balances export ──
-// Zoho exports vary slightly across editions but the canonical
-// English headers are: "Customer Name", "Closing Balance" /
-// "Outstanding Balance" / "Balance". We accept any of those.
-// If the user's Zoho is Arabic-localized we'll add the
-// translations once we see a sample.
+// Zoho's Arabic export ("ملخص أرصدة العملاء") has its quirks:
+//   1. Row 0 is a multi-line title with the company name + date
+//      range — skip it.
+//   2. The header columns are "اسم العملاء" (plural form, not the
+//      "اسم العميل" we might guess) and "مبلغ الذمة المدينة"
+//      (literally "Receivable amount", not "closing balance").
+//   3. Balance values are formatted as strings like "SAR20,322.59"
+//      with a "SAR" prefix and thousands commas. Numeric parsing
+//      requires stripping both before Number().
+//   4. The last data row is a totals row labelled "الإجمالي" — skip
+//      it or we'll double-count the grand total as a customer.
+//   5. Trailing empty rows at the bottom.
+// English-edition headers (Customer Name + Closing Balance) also
+// accepted for users on the English locale.
+function parseZohoAmount(raw) {
+  if (raw == null) return null;
+  if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
+  // Strip "SAR" / "ر.س" / commas / whitespace / Arabic comma /
+  // surrounding parens (Zoho uses parens for negatives in some
+  // editions).
+  let s = String(raw).trim();
+  const negative = /^\(.*\)$/.test(s);
+  if (negative) s = s.slice(1, -1);
+  s = s.replace(/sar/gi, '')
+       .replace(/ر\.?\s*س\.?/g, '')
+       .replace(/[,،]/g, '')
+       .replace(/\s/g, '')
+       .trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return negative ? -n : n;
+}
+
+const ZOHO_TOTAL_LABELS = ['الإجمالي', 'الاجمالي', 'total', 'grand total', 'المجموع'];
+
 export function parseZohoCustomerBalances(rows) {
   if (!rows?.length) return { rows: [], errors: ['ملف فارغ'] };
-  // Some Zoho exports have a logo/title row at the top. Find the
-  // actual header row by scanning for one that contains the
-  // "Customer Name" column.
+  // Find the header row by scanning the first 15 rows for the
+  // customer-name column (English or Arabic).
   let headerRow = -1;
-  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+  for (let i = 0; i < Math.min(rows.length, 15); i++) {
     const r = (rows[i] || []).map(c => String(c ?? '').toLowerCase());
-    if (r.some(c => c.includes('customer name')) || r.some(c => c.includes('اسم العميل'))) {
+    if (r.some(c => c.includes('customer name'))
+        || r.some(c => c.includes('اسم العميل'))
+        || r.some(c => c.includes('اسم العملاء'))) {
       headerRow = i;
       break;
     }
   }
-  if (headerRow < 0) return { rows: [], errors: ['لم نجد صف العنوان "Customer Name" — تأكّد من التصدير'] };
+  if (headerRow < 0) return { rows: [], errors: ['لم نجد صف العنوان "اسم العملاء" — تأكّد من التصدير'] };
   const head = rows[headerRow] || [];
-  const nameIdx = findIdx(head, ['customer name', 'اسم العميل', 'name']);
-  // Try several balance column names. Zoho also has "Invoice
-  // Balance" which we DON'T want (that's per-invoice).
-  const balIdx  = findIdx(head, ['closing balance', 'outstanding balance', 'الرصيد المتبقي', 'الرصيد الختامي', 'balance']);
+  const nameIdx = findIdx(head, ['customer name', 'اسم العملاء', 'اسم العميل', 'name']);
+  // "مبلغ الذمة المدينة" = Zoho-Arabic for "AR amount" (what we
+  // need). Also accept Closing/Outstanding Balance for English.
+  const balIdx  = findIdx(head, [
+    'مبلغ الذمة المدينة', 'مبلغ الذمم المدينة',
+    'closing balance', 'outstanding balance',
+    'الرصيد المتبقي', 'الرصيد الختامي', 'balance',
+  ]);
   if (nameIdx < 0 || balIdx < 0) {
-    return { rows: [], errors: [`أعمدة مطلوبة غير موجودة. الأعمدة المتاحة: ${head.join(', ')}`] };
+    return { rows: [], errors: [`أعمدة مطلوبة غير موجودة. الأعمدة المتاحة: ${head.filter(Boolean).join(' · ')}`] };
   }
   const out = [];
+  let skippedTotal = 0;
   for (let i = headerRow + 1; i < rows.length; i++) {
     const r = rows[i] || [];
     const name = String(r[nameIdx] ?? '').trim();
-    const bal  = Number(r[balIdx]);
     if (!name) continue;
-    if (!Number.isFinite(bal)) continue;
+    // Skip totals row(s) — they'd otherwise be parsed as a customer
+    // with a huge balance and double-count everything.
+    const nameLower = name.toLowerCase();
+    if (ZOHO_TOTAL_LABELS.some(t => nameLower === t.toLowerCase())) {
+      skippedTotal++;
+      continue;
+    }
+    const bal = parseZohoAmount(r[balIdx]);
+    if (bal == null) continue;
     out.push({ raw_name: name, balance: +bal.toFixed(2) });
   }
   return { rows: out, errors: [] };
 }
 
 // ── Resolve every raw_name to a merchant store_id ──
-// Internal export names mostly match merchants.store_name exactly,
-// but some have whitespace / prefix variations — so we ALSO send the
-// unmatched ones through bulk_match_customers for fuzzy fallback.
+// Three-tier matching, cheapest first:
+//   Tier 1: customer_merchant_links — the operator has already
+//           linked customer_name → store_id from receivables work.
+//           Zoho customer names match receivables names 1:1 in
+//           practice, so this tier covers most rows for free.
+//   Tier 2: exact match against normalize_arabic_name(merchants.
+//           store_name). Catches internal-system files where the
+//           store name IS the platform store name.
+//   Tier 3: bulk_match_customers RPC (pg_trgm + segment splitting)
+//           for anything still unmatched. Threshold 0.78.
 async function resolveStoreIds(parsed) {
   if (!parsed.length) return parsed;
 
-  // Step 1: exact match against latest merchants snapshot, normalized.
-  const { data: latestSnap } = await supabase
-    .from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1);
-  if (!latestSnap?.length) {
-    // No merchants snapshot uploaded — leave all unmatched.
-    return parsed.map(r => ({ ...r, store_id: null, match_method: 'unmatched', match_confidence: 0 }));
-  }
-  const snapshotId = latestSnap[0].snapshot_id;
-
-  // Pull every store name from the latest snapshot
-  const { data: merchants } = await supabase
-    .from('merchants').select('store_id, store_name').eq('snapshot_id', snapshotId);
-
-  // Normalize using the SAME rules pg_trgm uses server-side
-  const norm = (s) => String(s ?? '')
-    .toLowerCase()
-    .replace(/[ًٌٍَُِّْٰ]/g, '')
-    .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
-    .replace(/^\s*(?:متجر|شركة|مؤسسة|مؤسسه|شركه|m1|l1)\s+/i, '')
-    .replace(/[\s\-_|/\\.،,]+/g, ' ')
-    .trim();
-
-  const byNorm = new Map();
-  for (const m of (merchants || [])) {
-    const k = norm(m.store_name);
-    if (k && !byNorm.has(k)) byNorm.set(k, m.store_id);
-  }
+  // ── Tier 1: existing customer_merchant_links ──────────────
+  // Pull all manual + auto links the operator has built. If a Zoho
+  // name has already been resolved before (via the receivables
+  // upload), we trust that mapping. Manual links especially must
+  // never be overridden by a fresh fuzzy pass.
+  const { data: links } = await supabase
+    .from('customer_merchant_links')
+    .select('customer_name, store_id, match_method, confidence')
+    .not('store_id', 'is', null);
+  const linkMap = new Map((links || []).map(l => [l.customer_name, l]));
 
   const resolved = [];
-  const unmatched = [];
+  const remaining = [];
   for (const r of parsed) {
-    const k = norm(r.raw_name);
-    const sid = byNorm.get(k);
-    if (sid) {
-      resolved.push({ ...r, store_id: sid, match_method: 'exact', match_confidence: 1.0 });
+    const link = linkMap.get(r.raw_name);
+    if (link?.store_id) {
+      resolved.push({
+        ...r,
+        store_id:         link.store_id,
+        match_method:     `link-${link.match_method || 'auto'}`,
+        match_confidence: Number(link.confidence) || 1.0,
+      });
     } else {
-      unmatched.push(r);
+      remaining.push(r);
     }
   }
+  if (!remaining.length) return resolved;
 
-  // Step 2: fall back to trigram fuzzy match for the unmatched
-  if (unmatched.length) {
-    const names = unmatched.map(r => r.raw_name);
-    const { data: fuzzy } = await supabase.rpc('bulk_match_customers', {
-      p_names:     names,
-      p_threshold: 0.78,
-    });
-    const fuzzyMap = new Map((fuzzy || []).map(m => [m.customer_name, m]));
-    for (const r of unmatched) {
-      const m = fuzzyMap.get(r.raw_name);
-      if (m) resolved.push({ ...r, store_id: m.store_id, match_method: 'fuzzy', match_confidence: Number(m.confidence) });
-      else   resolved.push({ ...r, store_id: null,         match_method: 'unmatched', match_confidence: 0 });
+  // ── Tier 2: exact match against latest merchants snapshot ──
+  const { data: latestSnap } = await supabase
+    .from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1);
+  if (latestSnap?.length) {
+    const snapshotId = latestSnap[0].snapshot_id;
+    const { data: merchants } = await supabase
+      .from('merchants').select('store_id, store_name').eq('snapshot_id', snapshotId);
+
+    // Normalize using the SAME rules pg_trgm uses server-side
+    const norm = (s) => String(s ?? '')
+      .toLowerCase()
+      .replace(/[ًٌٍَُِّْٰ]/g, '')
+      .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+      .replace(/^\s*(?:متجر|شركة|مؤسسة|مؤسسه|شركه|m1|l1)\s+/i, '')
+      .replace(/[\s\-_|/\\.،,]+/g, ' ')
+      .trim();
+
+    const byNorm = new Map();
+    for (const m of (merchants || [])) {
+      const k = norm(m.store_name);
+      if (k && !byNorm.has(k)) byNorm.set(k, m.store_id);
     }
-  }
 
+    const stillUnmatched = [];
+    for (const r of remaining) {
+      const k = norm(r.raw_name);
+      const sid = byNorm.get(k);
+      if (sid) {
+        resolved.push({ ...r, store_id: sid, match_method: 'exact', match_confidence: 1.0 });
+      } else {
+        stillUnmatched.push(r);
+      }
+    }
+    remaining.length = 0;
+    remaining.push(...stillUnmatched);
+  }
+  if (!remaining.length) return resolved;
+
+  // ── Tier 3: trigram fuzzy match (bulk_match_customers RPC) ──
+  const names = remaining.map(r => r.raw_name);
+  const { data: fuzzy } = await supabase.rpc('bulk_match_customers', {
+    p_names:     names,
+    p_threshold: 0.78,
+  });
+  const fuzzyMap = new Map((fuzzy || []).map(m => [m.customer_name, m]));
+  for (const r of remaining) {
+    const m = fuzzyMap.get(r.raw_name);
+    if (m) resolved.push({ ...r, store_id: m.store_id, match_method: 'fuzzy', match_confidence: Number(m.confidence) });
+    else   resolved.push({ ...r, store_id: null,         match_method: 'unmatched', match_confidence: 0 });
+  }
   return resolved;
 }
 
