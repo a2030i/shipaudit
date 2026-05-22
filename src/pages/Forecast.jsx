@@ -70,18 +70,13 @@ export default function Forecast({ carriers = [], isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
-  if (loading || !data) {
-    return (
-      <div style={{ padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
-          <Spinner size={28}/>
-        </div>
-      </div>
-    );
-  }
-
-  // Group events by ISO date for the timeline display
+  // Group events by ISO date — declared BEFORE the early return so
+  // the hook count stays consistent between the loading and loaded
+  // renders (Rules of Hooks). Without this, React throws
+  // "Rendered more hooks than during the previous render" the
+  // moment `data` arrives and the entire page goes blank.
   const eventsByDate = useMemo(() => {
+    if (!data?.events) return [];
     const groups = new Map();
     for (const e of data.events) {
       const key = e.dueAt
@@ -92,6 +87,16 @@ export default function Forecast({ carriers = [], isActive = true }) {
     }
     return [...groups.entries()];
   }, [data]);
+
+  if (loading || !data) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+          <Spinner size={28}/>
+        </div>
+      </div>
+    );
+  }
 
   const netColor = data.netInHorizon >= 0 ? '#047857' : '#DC2626';
   const horizonLabel = HORIZON_OPTIONS.find(h => h.days === horizon)?.label || `${horizon} يوم`;
