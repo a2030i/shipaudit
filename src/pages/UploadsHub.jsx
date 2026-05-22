@@ -21,7 +21,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { UPLOAD_SOURCES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
+import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
 
 const fmtRel = (iso) => {
   if (!iso) return 'لم يُرفع بعد';
@@ -334,7 +334,18 @@ function TypePickerModal({ file, detection, onCancel, onConfirm }) {
                 <FileSpreadsheet size={15}/>
               </span>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{src.label}</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{src.label}</span>
+                  {ORIGIN_BADGES[src.origin] && (
+                    <span style={{
+                      fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                      background: `color-mix(in srgb, ${ORIGIN_BADGES[src.origin].color} 14%, transparent)`,
+                      color: ORIGIN_BADGES[src.origin].color, letterSpacing: .4,
+                    }}>
+                      من {ORIGIN_BADGES[src.origin].label}
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{src.subtitle}</div>
               </div>
               {detection?.sourceId === src.id && (
@@ -400,12 +411,13 @@ function SummaryStat({ label, value, icon, color, hint }) {
 }
 
 function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
-  const { last, stale, daysSince, accent } = source;
+  const { last, stale, daysSince, accent, origin } = source;
   // Status indicator — green/amber/red based on freshness
   const statusColor = !last ? '#DC2626' : stale ? '#F59E0B' : '#10B981';
   const statusLabel = !last ? 'لم يُرفع بعد'
                     : stale ? `متأخّر — ${daysSince} يوم`
                     : `حديث — ${fmtRel(last.lastAt)}`;
+  const originBadge = ORIGIN_BADGES[origin];
   return (
     <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
       {/* Header */}
@@ -419,7 +431,19 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
           <FileSpreadsheet size={16}/>
         </span>
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{source.label}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{source.label}</span>
+            {originBadge && (
+              <span style={{
+                fontSize: 9.5, fontWeight: 800, padding: '2px 8px', borderRadius: 999,
+                background: `color-mix(in srgb, ${originBadge.color} 14%, transparent)`,
+                color: originBadge.color, letterSpacing: .4,
+                whiteSpace: 'nowrap',
+              }}>
+                من {originBadge.label}
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>{source.subtitle}</div>
         </div>
         <span style={{

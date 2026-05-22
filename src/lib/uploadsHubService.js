@@ -32,10 +32,14 @@ const DAY_MS = 86_400_000;
 // Per-source metadata. `cadenceDays` drives the stale indicator.
 // `link` is where the operator can drill down for richer workflow
 // (the hub itself is fire-and-forget upload, not browse).
+// `origin` drives a small badge on each card so the operator
+// can scan at a glance "هذا من لمحه" vs "هذا من Zoho" without
+// reading the title.
 export const UPLOAD_SOURCES = [
   {
     id:           'internal_settlement',
-    label:        'استحقاق المتاجر (الداخلي)',
+    label:        'استحقاق المتاجر',
+    origin:       'lamha',
     subtitle:     'ملف من المنصة الداخلية: المتجر + الرصيد',
     accent:       '#3B82F6',
     cadenceDays:  7,
@@ -44,6 +48,7 @@ export const UPLOAD_SOURCES = [
   {
     id:           'receivables',
     label:        'مديونيات العملاء',
+    origin:       'lamha',
     subtitle:     'كشف الفواتير اليومي / الأسبوعي للعملاء',
     accent:       '#10B981',
     cadenceDays:  7,
@@ -52,6 +57,7 @@ export const UPLOAD_SOURCES = [
   {
     id:           'merchants',
     label:        'متاجر المنصّة (stores.xlsx)',
+    origin:       'lamha',
     subtitle:     'كشف المتاجر — هاتف، حالة، شحنات، رصيد محفظة',
     accent:       '#8B5CF6',
     cadenceDays:  30,
@@ -59,7 +65,8 @@ export const UPLOAD_SOURCES = [
   },
   {
     id:           'zoho_customers',
-    label:        'Zoho — أرصدة العملاء',
+    label:        'أرصدة العملاء',
+    origin:       'zoho',
     subtitle:     'Reports → الذمم المدينة → ملخص أرصدة العملاء',
     accent:       '#F59E0B',
     cadenceDays:  7,
@@ -67,13 +74,21 @@ export const UPLOAD_SOURCES = [
   },
   {
     id:           'zoho_vendors',
-    label:        'Zoho — أرصدة الموردين',
+    label:        'أرصدة الموردين',
+    origin:       'zoho',
     subtitle:     'Reports → الذمم الدائنة → ملخص أرصدة الموردين',
     accent:       '#F97316',
     cadenceDays:  7,
     link:         '/reconciliation?tab=vendors',
   },
 ];
+
+// Origin badge metadata — used by the UI to render the small
+// "لمحه" / "Zoho" pill on each upload card.
+export const ORIGIN_BADGES = {
+  lamha: { label: 'لمحه', color: '#0EA5E9' },
+  zoho:  { label: 'Zoho', color: '#7C3AED' },
+};
 
 // ── Per-source last-upload loaders ──
 // Each returns { lastAt, fileName, rowCount, matchedCount, total }
