@@ -191,6 +191,104 @@ export default function Overview({ carriers = [], isActive = true }) {
         </Card>
       )}
 
+      {/* ── Section 1.5: Working capital — CFO health metrics ── */}
+      <SectionTitle icon={<TrendingUp size={14}/>} color="#8B5CF6">
+        رأس المال العامل — متوسط أيام التحصيل والسداد
+      </SectionTitle>
+      <div style={{
+        display: 'grid', gap: 12, marginBottom: 12,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+      }}>
+        <BigStat
+          color="#0EA5E9"
+          icon={<Calendar size={18}/>}
+          label="DSO — أيام التحصيل"
+          value={data.workingCapital.dso.toFixed(1)}
+          unit="يوم"
+          hint={`متوسط أيام دفع العملاء · ${data.workingCapital.customersWithDebt} عميل عليه دين`}
+        />
+        <BigStat
+          color="#10B981"
+          icon={<Calendar size={18}/>}
+          label="DPO — أيام السداد"
+          value={data.workingCapital.dpo.toFixed(1)}
+          unit="يوم"
+          hint={`متوسط أيام دفعنا للشركات · ${data.workingCapital.carriersWithDebt} شركة عليها مفتوح`}
+        />
+        <BigStat
+          color={data.workingCapital.ccc <= 0 ? '#047857' : data.workingCapital.ccc < 30 ? '#F59E0B' : '#DC2626'}
+          icon={<Activity size={18}/>}
+          label="CCC — دورة النقد"
+          value={(data.workingCapital.ccc >= 0 ? '+' : '−') + Math.abs(data.workingCapital.ccc).toFixed(1)}
+          unit="يوم"
+          hint={data.workingCapital.ccc <= 0
+            ? '✓ الأعمال تموّل نفسها (نستلم قبل ما ندفع)'
+            : data.workingCapital.ccc < 30
+              ? '⚠ نموّل الفجوة من سيولتنا لكن ضمن المعقول'
+              : '🚨 الفجوة كبيرة — راجع شروط التحصيل أو شروط السداد'}
+          big
+        />
+      </div>
+
+      {/* Top slow payers — both sides */}
+      {(data.workingCapital.topSlowCustomers.length > 0 || data.workingCapital.topSlowCarriers.length > 0) && (
+        <div style={{
+          display: 'grid', gap: 12, marginBottom: 24,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
+        }}>
+          {data.workingCapital.topSlowCustomers.length > 0 && (
+            <Card style={{ padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>
+                أبطأ ٥ عملاء في الدفع (يطيلون DSO)
+              </div>
+              {data.workingCapital.topSlowCustomers.slice(0, 5).map((c, i) => (
+                <div key={c.name} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', minWidth: 18 }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                  <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
+                    {c.days}ي
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', minWidth: 70, textAlign: 'left' }}>
+                    {fmtCompact(c.total)} ر.س
+                  </span>
+                </div>
+              ))}
+            </Card>
+          )}
+          {data.workingCapital.topSlowCarriers.length > 0 && (
+            <Card style={{ padding: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)', marginBottom: 10 }}>
+                أبطأ شركات نسدّد لها (تطيل DPO)
+              </div>
+              {data.workingCapital.topSlowCarriers.slice(0, 5).map((c, i) => (
+                <div key={c.carrier_id} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  padding: '7px 0',
+                  borderTop: i === 0 ? 'none' : '1px solid var(--border)',
+                  cursor: 'pointer',
+                }}
+                onClick={() => navigate(`/carrier?id=${c.carrier_id}`)}>
+                  <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', minWidth: 18 }}>{i + 1}</span>
+                  <span style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>
+                    {carrierNameById.get(c.carrier_id) || c.carrier_id}
+                  </span>
+                  <span style={{ fontSize: 11, color: '#10B981', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
+                    {c.days}ي
+                  </span>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', minWidth: 70, textAlign: 'left' }}>
+                    {fmtCompact(c.total)} ر.س
+                  </span>
+                </div>
+              ))}
+            </Card>
+          )}
+        </div>
+      )}
+
       {/* ── Section 2: Concentration — risk awareness ── */}
       <div style={{
         display: 'grid', gap: 14, marginBottom: 24,
