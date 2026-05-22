@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -40,6 +40,7 @@ import Segments         from './pages/Segments.jsx';
 import CustomerHub      from './pages/CustomerHub.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import MoneyHub          from './pages/MoneyHub.jsx';
+import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import Overview         from './pages/Overview.jsx';
@@ -101,6 +102,7 @@ const NAV_ITEMS = [
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
   { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers' },
+  { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers' },
 
   // ── System (config + reports — least-touched) ─────────────────
@@ -146,6 +148,7 @@ const PAGE_TITLES = {
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
   '/customer-360':      'العملاء',
+  '/collections':       'قائمة التحصيل',
   '/merchants':         'متاجر المنصّة',
   '/reconciliation':    'مطابقة أرصدة المتاجر',
   '/segments':          'شرائح العملاء',
@@ -205,7 +208,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -587,6 +590,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/collections'} scroll>
+              <Collections isActive={pathname==='/collections'}/>
             </PageSlot>
             <PageSlot active={pathname==='/reconciliation'} scroll>
               <Reconciliation isActive={pathname==='/reconciliation'}/>
