@@ -170,24 +170,28 @@ export default function Reconciliation({ isActive = true }) {
   };
 
   // ── Export "what to fix in Zoho" Excel ──
-  // Sheet focuses on rows that need Zoho action, sorted by size.
-  // Each row carries the directional gap + the suggested action so
-  // the operator can hand the file directly to whoever maintains Zoho.
+  // Sheet focuses on rows that need Zoho action, sorted by the
+  // absolute size of the Zoho gap (largest first). Column order
+  // matches the operator's accountant-handoff workflow.
   const exportMismatches = () => {
     const bad = enriched.filter(r => !r.matched);
     if (!bad.length) { toast('لا توجد فروقات — الكل متطابق', 'info'); return; }
     bad.sort((a, b) => Math.abs(b.zohoGap) - Math.abs(a.zohoGap));
     const headers = [
-      'رقم المتجر', 'اسم المتجر',
-      'النظام الداخلي (المرجع)', 'كشف الفواتير', 'Zoho الحالي',
-      'الفرق (Zoho − الداخلي)', 'الإجراء المطلوب',
-      'الاسم في الداخلي', 'الاسم في Zoho',
+      'رقم المتجر',
+      'اسم المتجر',
+      'الاسم في زوهو',
+      'الرصيد في لمحه',
+      'الرصيد في زوهو',
+      'فرق الأرصدة',
     ];
     const xRows = bad.map(r => [
-      r.storeId, r.storeName,
-      r.anchor, r.receivables, r.zoho,
-      r.zohoGap, r.action.label,
-      r.internalRawName || '', r.zohoRawName || '',
+      r.storeId,
+      r.storeName,
+      r.zohoRawName || '',
+      r.anchor,
+      r.zoho,
+      r.zohoGap,
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
     const wb = XLSX.utils.book_new();
