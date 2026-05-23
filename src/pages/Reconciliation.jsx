@@ -94,7 +94,15 @@ export default function Reconciliation({ isActive = true }) {
           zohoRawName:     picked.rawName,
           userId:          profile?.id || null,
         });
-        toast(`تم اقتران «${linkTarget.rawName}» بـ «${picked.rawName}» (المتجر ${r.storeName || r.storeId})`, 'success');
+        // syntheticAnchor=true means no merchant was found and we
+        // created an internal "manual:<uuid>" anchor. The pair still
+        // shows in the reconciliation table (uses raw_name as the
+        // display label). Tell the operator so they can optionally
+        // add the store to /merchants later for a richer name.
+        const tail = r.syntheticAnchor
+          ? ' (بدون متجر في الكشف — ربط يدوي)'
+          : ` (المتجر ${r.storeName || r.storeId})`;
+        toast(`تم اقتران «${linkTarget.rawName}» بـ «${picked.rawName}»${tail}`, 'success');
       } else {
         // picked = { storeId } for a merchant candidate
         await linkUnmatchedToStore({

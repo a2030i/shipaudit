@@ -427,20 +427,31 @@ export async function loadUnmatchedZohoForPicker() {
 }
 
 // Pair an internal-source unmatched row with a Zoho-source unmatched
-// row — the operator's saying "these two ARE the same entity". We
-// still need a store_id to anchor both into the reconciliation, so
-// we fuzzy-match the internal name to a merchant; if found, both
-// rows + a customer_merchant_links entry get the resolved store_id.
-// If no merchant matches we error out — the operator needs to add
-// the store to merchants first.
+// row — the operator's saying "these two ARE the same entity".
+//
+// Two paths:
+//   A) Fuzzy-match the internal name to merchants. If a merchant
+//      resolves at threshold 0.65, anchor both rows on that
+//      merchant.store_id.
+//   B) No merchant matches → generate a SYNTHETIC anchor of the
+//      form "manual:<uuid>". balance_reconciliation() groups by
+//      store_id text equality and LEFT JOINs merchants for the
+//      display name, so a synthetic id reconciles the pair just
+//      fine; the row shows under the raw_name fallback (see
+//      loadReconciliation's storeName coalesce chain).
+//
+// Path B is preferred over erroring because the operator's intent
+// is unambiguous — the two names are the same entity. Forcing them
+// to first add a merchant row would be friction for a customer that
+// genuinely isn't in the platform directory (e.g. one-off cash sales,
+// renamed-but-not-resynced stores).
 export async function linkInternalRowToZohoRow({
   internalRawName, zohoRawName, userId = null,
 }) {
   if (!internalRawName?.trim()) throw new Error('اسم الصف الداخلي مطلوب');
   if (!zohoRawName?.trim())     throw new Error('اسم الصف من Zoho مطلوب');
 
-  // Try fuzzy match the internal name to merchants (uses the same
-  // pg_trgm-backed RPC the customer auto-link already uses).
+  // Path A: fuzzy-match against merchants (pg_trgm-backed RPC).
   const { data: matches } = await supabase.rpc('bulk_match_customers', {
     p_names:     [internalRawName],
     p_threshold: 0.65,    // looser since the operator already
@@ -448,26 +459,41 @@ export async function linkInternalRowToZohoRow({
                           // merchant to anchor on
   });
   const match = (matches || [])[0];
-  if (!match?.store_id) {
-    throw new Error('لم نجد متجراً مطابقاً في كشف /merchants — أضف المتجر هناك أولاً ثم ارجع');
+
+  let storeId, storeName, syntheticAnchor = false;
+  if (match?.store_id) {
+    storeId   = match.store_id;
+    storeName = match.store_name;
+  } else {
+    // Path B: synthetic anchor. crypto.randomUUID() is available in
+    // every browser we support (and in Node 19+) — fall back to a
+    // timestamp-random pair if not.
+    const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+      ? crypto.randomUUID()
+      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    storeId   = `manual:${uid}`;
+    storeName = internalRawName;
+    syntheticAnchor = true;
   }
 
-  const storeId = match.store_id;
-
-  // 1. Write the Zoho-name link (so future uploads auto-match)
+  // 1. Write the Zoho-name link (so future Zoho uploads auto-match
+  //    to the same anchor). Works for both paths — the only
+  //    difference is whether store_id points at a real merchant or
+  //    a synthetic id.
   const { error: e1 } = await supabase
     .from('customer_merchant_links')
     .upsert({
       customer_name: zohoRawName,
       store_id:      storeId,
       confidence:    1.0,
-      match_method:  'manual',
+      match_method:  syntheticAnchor ? 'manual-pair' : 'manual',
       linked_by:     userId,
       linked_at:     new Date().toISOString(),
     }, { onConflict: 'customer_name' });
   if (e1) throw e1;
 
-  // 2. Backfill both rows in store_balances
+  // 2. Backfill both rows in store_balances so the next
+  //    balance_reconciliation() run pairs them up.
   const { error: e2 } = await supabase
     .from('store_balances')
     .update({
@@ -479,7 +505,7 @@ export async function linkInternalRowToZohoRow({
     .is('store_id', null);
   if (e2) throw e2;
 
-  return { ok: true, storeId, storeName: match.store_name };
+  return { ok: true, storeId, storeName, syntheticAnchor };
 }
 
 // ─────────────────────────────────────────────────────────────────
