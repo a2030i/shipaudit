@@ -53,6 +53,7 @@ export default function UploadsHub({ isActive = true }) {
   const [picker,  setPicker]  = useState(null); // { file, detection } when auto-detect fails
   const [intake,  setIntake]  = useState([]);   // pending Zoho intake events
   const [intakeBusy, setIntakeBusy] = useState({}); // { eventId: true }
+  const [bulkBusy,  setBulkBusy]  = useState(false); // "عالج الكل" in flight
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -84,6 +85,40 @@ export default function UploadsHub({ isActive = true }) {
       toast(`فشل المعالجة: ${e.message}`, 'error');
     }
     setIntakeBusy(b => { const n = { ...b }; delete n[event.id]; return n; });
+  };
+
+  // Process every pending event whose source the detector resolved.
+  // Events with detected_source === null still need a manual override
+  // (the dropdown in the row), so we skip them and tell the operator.
+  // Runs sequentially: processIntake() chains downloads + uploadFile()
+  // which writes to the same DB, and serial execution keeps error
+  // recovery simple (a single failed row doesn't abort the rest).
+  const handleProcessAllIntake = async () => {
+    const ready = intake.filter(e => e.detected_source);
+    const skipped = intake.length - ready.length;
+    if (!ready.length) {
+      toast('لا توجد ملفات مكتشفة — حدّد النوع يدوياً لكل ملف', 'info');
+      return;
+    }
+    setBulkBusy(true);
+    let ok = 0, fail = 0;
+    for (const ev of ready) {
+      setIntakeBusy(b => ({ ...b, [ev.id]: true }));
+      try {
+        await processIntake(ev, { sourceOverride: null, userId: profile?.id || null });
+        ok++;
+      } catch (e) {
+        fail++;
+        console.warn('processIntake failed', ev.id, e);
+      }
+      setIntakeBusy(b => { const n = { ...b }; delete n[ev.id]; return n; });
+    }
+    const parts = [`✓ ${ok} ملف`];
+    if (fail)    parts.push(`✗ ${fail} فشل`);
+    if (skipped) parts.push(`${skipped} يحتاج اختيار يدوي`);
+    toast(parts.join(' · '), fail ? 'error' : 'success');
+    setBulkBusy(false);
+    await refresh();
   };
 
   const handleDismissIntake = async (event) => {
@@ -233,6 +268,18 @@ export default function UploadsHub({ isActive = true }) {
                 ملفات وصلت تلقائياً من webhook خاص بـZoho — معالجة بنقرة واحدة
               </div>
             </div>
+            {intake.some(e => e.detected_source) && (
+              <Btn
+                size="sm"
+                variant="primary"
+                icon={bulkBusy ? <Spinner size={12}/> : <Play size={11}/>}
+                disabled={bulkBusy}
+                onClick={handleProcessAllIntake}
+                style={{ background: '#7C3AED', borderColor: '#7C3AED' }}
+              >
+                {bulkBusy ? 'جارٍ المعالجة…' : `عالج الكل (${intake.filter(e => e.detected_source).length})`}
+              </Btn>
+            )}
           </div>
           <div>
             {intake.map(ev => (
