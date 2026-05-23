@@ -238,7 +238,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<FileSpreadsheet size={22}/>}
         title="سحب للنظام الداخلي"
-        subtitle="ملفات Excel جاهزة لإدخالها في النظام المالي / نظام الفوترة الخارجي — كل شحنة تُسحب مرّة واحدة فقط"
+        subtitle="ملفات Excel جاهزة لإدخالها في النظام المالي / نظام الفوترة الخارجي"
         actions={
           <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={anyLoading ? 'spin' : ''}/>} onClick={refresh} disabled={anyLoading}>
             تحديث
@@ -323,7 +323,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                 تحصيلات مُستلَمة جديدة
               </h3>
               <p style={{ fontSize: 12, color: 'var(--muted)', margin: 0, marginTop: 4, lineHeight: 1.6 }}>
-                شحنات وصلت من شركات الشحن ولم تُسجَّل بعد في النظام المالي
+                شحنات وصلت من شركات الشحن وبعدها غير مطابقة — تظهر هنا حتى تُربط بمراجعة
               </p>
             </div>
           </div>
@@ -335,7 +335,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               padding: '32px 20px', textAlign: 'center', fontSize: 13.5, color: 'var(--muted)',
               background: 'rgba(16,185,129,.04)', borderRadius: 12, marginBottom: 14,
             }}>
-              ✓ كل التحصيلات مسحوبة — لا توجد شحنات جديدة
+              ✓ لا توجد تحصيلات بانتظار — كل الشحنات الواردة مطابقة لمراجعاتها
             </div>
           ) : (
             <>
@@ -568,10 +568,11 @@ export default function InternalExports({ carriers = [], isActive = true }) {
         fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.8,
       }}>
         <strong style={{ color: 'var(--text2)' }}>كيف يعمل:</strong>{' '}
-        كل شحنة تُسحب مرّة واحدة فقط — بعد السحب يُحدَّث الـ <code>pulled_at</code>
-        على صف الـ COD أو الـ <code>customer_invoicing_status</code> على المراجعة، وما تظهر مرة ثانية.
-        لو فيه مشكلة في الملف وتحتاج إعادة السحب،
-        تواصل مع المسؤول التقني لإعادة تعيين الحالة على الصفوف المعنية.
+        <strong>تحصيلات COD</strong>: تظل تظهر كل مرة طالما حالتها "مُستلَم بانتظار" (وصلت من الناقل ولم تُطابق مراجعة بعد).
+        فور إنشاء صف <code>out</code> مطابق على نفس AWB (عند اعتماد مراجعة لها) تختفي من تلقاء نفسها.
+        &nbsp;
+        <strong>فواتير العملاء + الأوزان</strong>: كل مراجعة تُسحب مرّة واحدة — يُحدَّث الـ <code>customer_invoicing_status</code>
+        أو <code>weight_billing_status</code> وما تظهر مجدداً.
       </div>
     </div>
   );
