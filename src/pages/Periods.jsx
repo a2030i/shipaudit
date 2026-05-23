@@ -45,7 +45,8 @@ const fmtDateTime = (iso) => {
 
 export default function Periods({ isActive = true }) {
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canClosePeriod = can('system.period_close');
   const [loading, setLoading] = useState(true);
   const [months, setMonths]   = useState([]);   // activity rows
   const [closes, setCloses]   = useState([]);   // period_closes rows
@@ -218,7 +219,11 @@ export default function Periods({ isActive = true }) {
                     )}
                   </td>
                   <td style={tdStyle}>
-                    {r.status === 'closed' ? (
+                    {!canClosePeriod ? (
+                      <span style={{ fontSize: 11, color: 'var(--muted2)', fontFamily: 'var(--font-mono)' }}>
+                        🔒 صلاحية إغلاق الفترات للمدير فقط
+                      </span>
+                    ) : r.status === 'closed' ? (
                       <Btn size="sm" variant="ghost" icon={<Unlock size={12}/>} onClick={() => setActionTarget({ period: r.period, kind: 'reopen' })}>
                         افتح
                       </Btn>

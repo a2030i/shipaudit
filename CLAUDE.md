@@ -112,6 +112,29 @@
 - الهواتف: `toPhoneString` يحوّل number → string بـ `Math.round` لحماية 12 رقم من scientific notation
 - XLSX read: `raw:true` مطلوب لقراءة الهواتف الكبيرة بدقّة
 
+### 1.10 نظام الأدوار والصلاحيات ✅ (Phase 6)
+- **دوران فقط**: `admin` (مدير، يفعل كل شيء) + `accountant` (محاسب، صلاحياته في JSONB)
+- العمود `profiles.permissions JSONB` يحمل المفاتيح الممنوحة `{ "audits.approve": true, ... }`
+- مفاتيح الصلاحيات معرّفة في `src/lib/permissions.js` كـ `PERMISSION_CATALOG` — ~٧٠ مفتاح موزَّعة على ١٤ قسم (overview/uploads/webhook/audits/carriers/cod/receivables/collections/merchants/money/ledger/internal_exports/reconciliation/system)
+- في كل مكوّن: `const { can } = useAuth(); if (!can('audits.approve')) return null;`
+- في `AuthProvider`: يصدّر `can(key)`, `canAny(keys)`, `canAll(keys)`, `isAdmin`
+- إدارة الصلاحيات من `/employees` — كل محاسب له زر "صلاحيات" يفتح modal مع checkboxes مجمَّعة + presets (`بدون / قراءة فقط / محاسب قراءة وكتابة / صلاحيات كاملة`)
+- إجراء "حسّاس" (`sensitive: true`): يُستبعَد من preset "قراءة وكتابة" — مثل `audits.approve`, `audits.delete`, `bank.set_balance`, `system.period_close`
+- **`admin` لا يخضع للـ JSONB** — يمرّ من `can()` بـ `true` دائماً
+- صفحة `/employees` متاحة فقط للـ `admin` بغض النظر عن الصلاحيات
+- FKs المعدَّلة لـ ON DELETE SET NULL (تسمح بحذف موظف): `audits.created_by`, `task_actions.user_id`, `tasks.assigned_to`, `tasks.created_by` — يحتفظ بالسجلات بدون اسم منشئ
+- Edge function `manage-users` v2 — يقبل `permissions` في create، يستخدم `auth.admin.deleteUser` الذي يكاسكد عبر الـ profiles cascade الآن
+- Nav gating في `App.jsx` — كل `NAV_ITEM` له `permKey` يفلتر العنصر للـ accountant
+
+**ملفات نقطة الحقيقة:**
+- `src/lib/permissions.js` — الكتالوج + `can()` + presets
+- `src/lib/auth.jsx` — يعرض `can` في الـ context
+- `src/lib/employeeService.js` — `loadEmployees`, `updateEmployeePermissions`
+- `src/pages/EmployeeManager.jsx` — UI الإدارة الكامل
+- `supabase/functions/manage-users` v2 — CRUD للموظفين
+
+**القاعدة الذهبية:** أي زر يقوم بعملية مالية/حذف/اعتماد يجب أن يكون ملفوفاً بـ `can('key')`. UI الـ gate وحده ليس أمناً — RLS / edge function policies هي الحماية الفعلية.
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)
@@ -299,4 +322,4 @@
 
 ---
 
-**آخر تحديث:** 2026-05-19 — Phase 1–5: دليل المتاجر + تنبيهات المديونيات + حملة التحصيل
+**آخر تحديث:** 2026-05-23 — Phase 6: نظام الأدوار والصلاحيات الدقيق (admin + accountant + permissions JSONB)

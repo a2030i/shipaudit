@@ -51,7 +51,8 @@ const fmtCompact = (n) => {
 export default function Overview({ carriers = [], isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canEditBank = can('bank.set_balance');
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
   const [period, setPeriod]   = useState(currentPeriod());
@@ -126,13 +127,15 @@ export default function Overview({ carriers = [], isActive = true }) {
         }
       />
 
-      {/* ── HERO: Cash position — the headline answer ── */}
+      {/* ── HERO: Cash position — the headline answer ──
+          Edit-bank click only fires for users with bank.set_balance.
+          Read-only viewers still see the tile but it's not clickable. */}
       <CashHero
         cash={data.cashPosition}
-        onEditBank={() => setBankEdit({
+        onEditBank={canEditBank ? () => setBankEdit({
           current: data.cashPosition.bankBalance ?? '',
           notes:   '',
-        })}
+        }) : null}
       />
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
@@ -555,8 +558,8 @@ function CashHero({ cash, onEditBank }) {
           value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
           unit={cash.bankBalance == null ? '' : 'ر.س'}
           hint={fmtRel(cash.bankUpdated)}
-          onClick={onEditBank}
-          editable
+          onClick={onEditBank || undefined}
+          editable={!!onEditBank}
         />
         <CashTile
           icon={<ArrowDownCircle size={18}/>}

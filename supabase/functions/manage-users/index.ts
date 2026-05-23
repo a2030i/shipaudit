@@ -1,3 +1,9 @@
+// manage-users — admin-only CRUD for employee accounts.
+//
+// Roles: 'admin' | 'accountant' (the 3-role accountant1/accountant2
+// split was collapsed; the granular permissions JSONB on profiles
+// replaces the role tiers).
+
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const CORS = {
@@ -16,7 +22,6 @@ Deno.serve(async (req) => {
     const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const anonKey        = Deno.env.get('SUPABASE_ANON_KEY')!;
 
-    // Verify caller is admin
     const userClient = createClient(supabaseUrl, anonKey, {
       global: { headers: { Authorization: authHeader } },
     });
@@ -33,8 +38,12 @@ Deno.serve(async (req) => {
 
     // ── Create ──────────────────────────────────────────────────────────────
     if (action === 'create') {
-      const { email, password, name, role, avatar_color } = body;
+      const { email, password, name, role, avatar_color, permissions } = body;
       if (!email || !password) throw new Error('البريد وكلمة المرور مطلوبان');
+
+      // Normalise legacy role names from any stale UI version still
+      // sending accountant1/accountant2.
+      const safeRole = (role === 'admin') ? 'admin' : 'accountant';
 
       const { data, error } = await adminClient.auth.admin.createUser({
         email,
@@ -48,8 +57,9 @@ Deno.serve(async (req) => {
         id:           data.user.id,
         email,
         name:         name || email,
-        role:         role || 'accountant1',
+        role:         safeRole,
         avatar_color: avatar_color || '#38bdf8',
+        permissions:  (permissions && typeof permissions === 'object') ? permissions : {},
       });
 
       return new Response(JSON.stringify({ success: true, user_id: data.user.id }), {
@@ -62,6 +72,11 @@ Deno.serve(async (req) => {
       const { user_id } = body;
       if (user_id === user.id) throw new Error('لا يمكنك حذف حسابك الحالي');
 
+      // FKs that referenced profiles with ON DELETE NO ACTION used to
+      // block this. The 2026-05-23 migration converted them to ON
+      // DELETE SET NULL, so the auth.users delete now cascades cleanly
+      // through profiles and audits / tasks / task_actions just lose
+      // the user attribution (rows preserved).
       const { error } = await adminClient.auth.admin.deleteUser(user_id);
       if (error) throw error;
 

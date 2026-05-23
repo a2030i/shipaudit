@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from './supabase.js';
+import { can as _can, canAll as _canAll, canAny as _canAny } from './permissions.js';
 
 const AuthContext = createContext(null);
 
@@ -57,8 +58,19 @@ export function AuthProvider({ children }) {
     setProfile(null);
   };
 
+  // Permission helpers. Bound to the current profile so call sites
+  // don't have to thread `profile` through. `can(key)` is the most
+  // common form; `canAny`/`canAll` are for page-level guards.
+  const can    = useCallback((key)  => _can(profile, key),    [profile]);
+  const canAny = useCallback((keys) => _canAny(profile, keys), [profile]);
+  const canAll = useCallback((keys) => _canAll(profile, keys), [profile]);
+  const isAdmin = profile?.role === 'admin';
+
   return (
-    <AuthContext.Provider value={{ user, profile, loading, signIn, signOut }}>
+    <AuthContext.Provider value={{
+      user, profile, loading, signIn, signOut,
+      can, canAny, canAll, isAdmin,
+    }}>
       {children}
     </AuthContext.Provider>
   );

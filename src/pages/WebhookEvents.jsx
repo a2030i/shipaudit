@@ -178,7 +178,8 @@ function blobToBase64(blob) {
 }
 
 export default function WebhookEvents({ carriers, isActive = true }) {
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canDelete = can('webhook.delete');
   const navigate = useNavigate();
   const [events,    setEvents]    = useState([]);
   const [counts,    setCounts]    = useState({});
@@ -370,7 +371,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
         subtitle="الملفات الواصلة عبر Webhook — تُسجَّل تلقائياً وتُربط بالشركة الصحيحة"
         actions={
           <>
-            {selected.size > 0 && (
+            {selected.size > 0 && canDelete && (
               <Btn size="md" variant="danger" icon={<Trash2 size={14}/>} onClick={askBulkDelete}>
                 حذف المحدّد ({selected.size})
               </Btn>
@@ -699,13 +700,15 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                               onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}
                             />
                           )}
-                          <IconBtn
-                            icon={deletingId === e.id ? <Spinner size={13}/> : <Trash2 size={13}/>}
-                            title="حذف الحدث"
-                            danger
-                            onClick={() => askDelete(e)}
-                            disabled={deletingId === e.id}
-                          />
+                          {canDelete && (
+                            <IconBtn
+                              icon={deletingId === e.id ? <Spinner size={13}/> : <Trash2 size={13}/>}
+                              title="حذف الحدث"
+                              danger
+                              onClick={() => askDelete(e)}
+                              disabled={deletingId === e.id}
+                            />
+                          )}
                         </div>
                       </td>
                     </tr>

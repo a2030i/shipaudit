@@ -506,7 +506,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
 
 // ── Main page ──────────────────────────────────────────────────────────────────
 export default function AuditResults({ audit, carriers, onNewAudit }) {
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const navigate = useNavigate();
   const [filter,     setFilter]     = useState('all');
   const [showAI,     setShowAI]     = useState(false);
@@ -755,19 +755,28 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
                     : <>راجع الأسباب أدناه، عدّل المراجعة أو ناقش الشركة، ثم أعد المحاولة.</>}
                 </div>
               </div>
-              <Btn
-                size="md"
-                variant={approvalGate.canApprove ? 'accent' : 'ghost'}
-                onClick={handleApprove}
-                disabled={approving || !approvalGate.canApprove}
-                icon={<CheckCircle2 size={14}/>}
-                title={!approvalGate.canApprove ? approvalGate.errors.map(e => e.message).join(' / ') : ''}
-              >
-                {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
-              </Btn>
-              <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
-                {reviewStatus === 'draft' ? 'تجاهل' : 'رفض'}
-              </Btn>
+              {can('audits.approve') && (
+                <Btn
+                  size="md"
+                  variant={approvalGate.canApprove ? 'accent' : 'ghost'}
+                  onClick={handleApprove}
+                  disabled={approving || !approvalGate.canApprove}
+                  icon={<CheckCircle2 size={14}/>}
+                  title={!approvalGate.canApprove ? approvalGate.errors.map(e => e.message).join(' / ') : ''}
+                >
+                  {approving ? <Spinner size={13}/> : 'اعتماد المراجعة'}
+                </Btn>
+              )}
+              {can('audits.reject') && (
+                <Btn size="md" variant="ghost" onClick={() => setRejectModal(true)} disabled={rejecting} icon={<XCircle size={14}/>}>
+                  {reviewStatus === 'draft' ? 'تجاهل' : 'رفض'}
+                </Btn>
+              )}
+              {!can('audits.approve') && !can('audits.reject') && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', padding: '8px 12px' }}>
+                  ⓘ لا تملك صلاحية الاعتماد/الرفض
+                </div>
+              )}
             </div>
 
             {/* Gate violation list — shown only when approval is blocked */}
@@ -819,9 +828,11 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
                 مؤهَّلة لفوترة الأوزان وربط الدفعات
               </span>
             </div>
-            <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
-              إعادة فتح
-            </Btn>
+            {can('audits.reopen') && (
+              <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
+                إعادة فتح
+              </Btn>
+            )}
           </div>
         )}
         {reviewStatus === 'rejected' && (
@@ -840,9 +851,11 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
                 </span>
               )}
             </div>
-            <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
-              إعادة فتح
-            </Btn>
+            {can('audits.reopen') && (
+              <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>
+                إعادة فتح
+              </Btn>
+            )}
           </div>
         )}
 
