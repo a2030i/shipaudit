@@ -1,4 +1,12 @@
-// zoho-intake v4 — DEDICATED endpoint for Zoho-side report files.
+// zoho-intake v5 — DEDICATED endpoint for Zoho-side report files.
+//
+// v5 changes (over v4):
+//   • Arabic-normalised detector — survives Zoho's spelling drift
+//     (أرصدة vs أرصده, etc). Uses arNorm() to fold hamza variants
+//     and ta-marbouta/ha into a canonical form before substring
+//     matching. Also adds filename-pattern fallback.
+//
+// v4 — DEDICATED endpoint for Zoho-side report files.
 //
 // Separate from /webhook-intake on purpose (that one handles carrier
 // emails → /webhook inbox). This one only ever touches
@@ -63,20 +71,46 @@ function looksLikeBase64(s: string): boolean {
   return /^[A-Za-z0-9+/=\s]+$/.test(s.slice(0, 256));
 }
 
+// Normalize Arabic so detection survives the imperfect spellings Zoho
+// emits (e.g. "أرصده" vs "أرصدة"). Collapse:
+//   أ إ آ ا → ا
+//   ة → ه
+//   ى ي → ي
+//   ؤ ئ → و / ي (rare but cheap)
+//   diacritics removed
+function arNorm(s: string): string {
+  return s
+    .replace(/[ً-ْٰ]/g, "")          // tashkeel + dagger alif
+    .replace(/[إأآا]/g, "ا")
+    .replace(/[ة]/g, "ه")
+    .replace(/[ى]/g, "ي")
+    .replace(/[ؤ]/g, "و")
+    .replace(/[ئ]/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function detectSource(fileName: string, subject: string): { source: string | null; method: string } {
-  const blob = `${fileName} ${subject}`.toLowerCase();
-  if (blob.includes("ملخص أرصدة الموردين") || blob.includes("ملخص ارصدة الموردين")
-   || blob.includes("vendor balance") || blob.includes("vendor balances")) {
+  const blob   = `${fileName} ${subject}`.toLowerCase();
+  const blobAr = arNorm(blob);
+  // Vendor balances summary
+  if (blobAr.includes("ملخص ارصده الموردين")
+   || blob.includes("vendor balance") || blob.includes("vendor balances")
+   || /vendor_balance/i.test(fileName)) {
     return { source: "zoho_vendors", method: "subject" };
   }
-  if (blob.includes("ملخص أرصدة العملاء") || blob.includes("ملخص ارصده العملاء")
-   || blob.includes("ملخص ارصدة العملاء") || blob.includes("ملخص التزامات المستفيدين")
-   || blob.includes("customer balance") || blob.includes("customer balances")) {
+  // Customer balances summary (also: المستفيدين variant)
+  if (blobAr.includes("ملخص ارصده العملاء")
+   || blobAr.includes("ملخص التزامات المستفيدين")
+   || blob.includes("customer balance") || blob.includes("customer balances")
+   || /customer_balance/i.test(fileName)) {
     return { source: "zoho_customers", method: "subject" };
   }
-  if (blob.includes("تفاصيل الفاتورة") || blob.includes("تفاصيل الفواتير")
+  // Invoice details (= receivables snapshot)
+  if (blobAr.includes("تفاصيل الفاتوره") || blobAr.includes("تفاصيل الفواتير")
+   || blobAr.includes("فواتير الشهر")
    || blob.includes("invoice detail") || blob.includes("invoice details")
-   || blob.includes("فواتير الشهر")) {
+   || /invoice_detail/i.test(fileName)) {
     return { source: "receivables", method: "subject" };
   }
   return { source: null, method: "failed" };
