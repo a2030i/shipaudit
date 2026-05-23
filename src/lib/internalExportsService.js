@@ -48,19 +48,35 @@ async function loadAllPaginated(table, columns, filters = {}) {
 //   • pulled_at IS NULL          (not exported to internal yet)
 // Each row carries the carrier's id; we enrich with the human-readable
 // carrier name via the carriers table for the Excel.
-// Schema note: cod_settlement actually has `amount` / `upload_date` /
-// `source_file` (not the amount_actual/amount_expected/settled_at/
-// settlement_source names this helper used to ask for). The mismatched
-// column list made the query 42703-fail silently in the caller's catch,
-// so the operator saw "لا توجد تحصيلات جديدة" even when 22 rows were
-// sitting in the "over_remit" bucket on /cod-settlements waiting.
+// "Pending" now means: still in over_remit status — i.e. the
+// carrier remitted this AWB but our system has no matching audit
+// (`direction='out'`) yet. The export must keep returning these rows
+// every time the operator pulls — once they reconcile the AWB
+// against an audit (an 'out' row appears), it naturally drops out
+// of the result set on its own.
+//
+// Previously we gated on pulled_at IS NULL — "once pulled, never
+// shown again" — but the operator wanted the opposite: as long as
+// the row is sitting in "مُستلَم بانتظار", surface it forever so
+// nothing gets accidentally forgotten between pulls.
 export async function loadPendingCodReceipts() {
-  const rows = await loadAllPaginated(
-    'cod_settlement',
-    'id, awb, amount, carrier_id, upload_date, source_file, created_at',
-    { direction: 'in', pulled_at: null },
+  // Pull every direction='in' row and every direction='out' row's
+  // (carrier_id, awb) key. The "in − out" set difference is the
+  // over_remit list.
+  const [inRows, outKeyRows] = await Promise.all([
+    loadAllPaginated(
+      'cod_settlement',
+      'id, awb, amount, carrier_id, upload_date, source_file, created_at, pulled_at',
+      { direction: 'in' },
+    ),
+    loadAllPaginated('cod_settlement', 'carrier_id, awb', { direction: 'out' }),
+  ]);
+  const outKeys = new Set(
+    outKeyRows.map(r => `${r.carrier_id}__${String(r.awb).trim()}`)
   );
-  const carrierIds = [...new Set(rows.map(r => r.carrier_id).filter(Boolean))];
+  const overRemit = inRows.filter(r => !outKeys.has(`${r.carrier_id}__${String(r.awb).trim()}`));
+
+  const carrierIds = [...new Set(overRemit.map(r => r.carrier_id).filter(Boolean))];
   let carrierNameById = new Map();
   if (carrierIds.length) {
     const { data: carriers } = await supabase
@@ -69,7 +85,7 @@ export async function loadPendingCodReceipts() {
       .in('id', carrierIds);
     carrierNameById = new Map((carriers || []).map(c => [c.id, c.name]));
   }
-  return rows.map(r => ({
+  return overRemit.map(r => ({
     id:         r.id,
     awb:        r.awb,
     amount:     Number(r.amount) || 0,
@@ -77,6 +93,9 @@ export async function loadPendingCodReceipts() {
     carrier:    carrierNameById.get(r.carrier_id) || r.carrier_id || '—',
     settledAt:  r.upload_date || r.created_at,
     sourceFile: r.source_file || null,
+    // pulled_at is still recorded as a "last exported" timestamp
+    // for the audit trail, but it no longer hides the row.
+    lastPulledAt: r.pulled_at || null,
   }));
 }
 
