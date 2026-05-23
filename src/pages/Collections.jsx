@@ -548,6 +548,16 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff 
                style={{ color: '#DC2626', borderColor: 'color-mix(in srgb, #DC2626 30%, transparent)' }}>
             اطلب شطب الدين
           </Btn>
+          <Btn size="md" variant="ghost" icon={<Download size={13}/>}
+               onClick={async () => {
+                 try {
+                   const { exportCustomerSOA } = await import('../lib/soaExport.js');
+                   const r = await exportCustomerSOA(task.customer_name);
+                   toast(`تم تصدير كشف الحساب · رصيد ${r.balance.toLocaleString('ar-SA')} ر.س`, 'success');
+                 } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+               }}>
+            📋 كشف الحساب
+          </Btn>
           <Btn size="md" variant="ghost" onClick={onClose}>إغلاق</Btn>
         </div>
       </div>

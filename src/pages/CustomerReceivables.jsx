@@ -381,6 +381,24 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
         </table>
       </div>
 
+      {/* SOA export — single-button handoff for the accountant. */}
+      <div style={{
+        display: 'flex', gap: 8, justifyContent: 'flex-end',
+        padding: '10px 0', marginTop: 8, marginBottom: 6,
+        borderTop: '1px solid var(--border)',
+      }}>
+        <Btn size="sm" variant="ghost" icon={<Download size={13}/>}
+             onClick={async () => {
+               try {
+                 const { exportCustomerSOA } = await import('../lib/soaExport.js');
+                 const r = await exportCustomerSOA(customer.name);
+                 toast(`تم تصدير كشف الحساب · رصيد ${fmt(r.balance)} ر.س`, 'success');
+               } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+             }}>
+          📋 صدّر كشف الحساب (Excel)
+        </Btn>
+      </div>
+
       {/* CRM activity log — same component used in /customers drill-down */}
       <InteractionsLog
         customerName={customer.name}
