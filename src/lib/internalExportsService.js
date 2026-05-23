@@ -48,10 +48,16 @@ async function loadAllPaginated(table, columns, filters = {}) {
 //   • pulled_at IS NULL          (not exported to internal yet)
 // Each row carries the carrier's id; we enrich with the human-readable
 // carrier name via the carriers table for the Excel.
+// Schema note: cod_settlement actually has `amount` / `upload_date` /
+// `source_file` (not the amount_actual/amount_expected/settled_at/
+// settlement_source names this helper used to ask for). The mismatched
+// column list made the query 42703-fail silently in the caller's catch,
+// so the operator saw "لا توجد تحصيلات جديدة" even when 22 rows were
+// sitting in the "over_remit" bucket on /cod-settlements waiting.
 export async function loadPendingCodReceipts() {
   const rows = await loadAllPaginated(
     'cod_settlement',
-    'id, awb, amount_actual, amount_expected, carrier_id, settled_at, settlement_source, created_at',
+    'id, awb, amount, carrier_id, upload_date, source_file, created_at',
     { direction: 'in', pulled_at: null },
   );
   const carrierIds = [...new Set(rows.map(r => r.carrier_id).filter(Boolean))];
@@ -64,12 +70,13 @@ export async function loadPendingCodReceipts() {
     carrierNameById = new Map((carriers || []).map(c => [c.id, c.name]));
   }
   return rows.map(r => ({
-    id:        r.id,
-    awb:       r.awb,
-    amount:    Number(r.amount_actual ?? r.amount_expected ?? 0),
-    carrierId: r.carrier_id,
-    carrier:   carrierNameById.get(r.carrier_id) || r.carrier_id || '—',
-    settledAt: r.settled_at || r.created_at,
+    id:         r.id,
+    awb:        r.awb,
+    amount:     Number(r.amount) || 0,
+    carrierId:  r.carrier_id,
+    carrier:    carrierNameById.get(r.carrier_id) || r.carrier_id || '—',
+    settledAt:  r.upload_date || r.created_at,
+    sourceFile: r.source_file || null,
   }));
 }
 
