@@ -198,7 +198,33 @@ async function processSingleFile(
     })
     .select()
     .single();
-  if (evErr) return { ok: false, error: "event_insert_failed", detail: evErr.message, filename };
+  if (evErr) {
+    // 23505 = unique_violation. The (carrier, file_hash) index we
+    // added catches duplicates the pre-check couldn't (race window
+    // when forwarders retry on timeout within the same second).
+    // Convert the error into a graceful "duplicate" response so
+    // the caller doesn't keep retrying.
+    const msg = String(evErr.message || "");
+    if (evErr.code === "23505" || msg.includes("duplicate") || msg.includes("unique")) {
+      const { data: existing } = await admin
+        .from("webhook_events")
+        .select("id, status")
+        .eq("file_hash", fileHash)
+        .order("received_at", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      return {
+        ok: true,
+        duplicate: true,
+        event_id:  existing?.id,
+        status:    existing?.status ?? "processed",
+        file_hash: fileHash,
+        filename,
+        message:   "هذا الملف مستلَم سابقاً (تكرار من webhook المرسِل)",
+      };
+    }
+    return { ok: false, error: "event_insert_failed", detail: evErr.message, filename };
+  }
 
   return {
     ok: true,
