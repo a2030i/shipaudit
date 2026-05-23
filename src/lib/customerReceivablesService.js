@@ -525,6 +525,140 @@ export async function setDefaultCreditLimit(value) {
 
 // Per-customer credit limit override. Pass `value = null` to clear
 // the override and fall back to the global default.
+// Statement of Account (كشف حساب) — single-customer financial
+// statement covering the latest receivables snapshot. Returns the
+// data structure the Excel exporter renders against:
+//
+//   header:   customer name, phone, store id, credit limit, dates
+//   lines:    array of { date, description, debit, credit, balance }
+//             ordered oldest first with a running balance column
+//   summary:  total invoices, total written off, effective balance
+//   aging:    bucketed breakdown of the open balance
+//
+// All amounts in SAR. Uses the latest customer_receivables snapshot
+// plus any approved write-offs to date.
+export async function loadCustomerSOA(customerName) {
+  if (!customerName?.trim()) throw new Error('اسم العميل مطلوب');
+
+  // Latest receivables snapshot id
+  const { data: latest } = await supabase
+    .from('customer_receivables').select('snapshot_id')
+    .order('uploaded_at', { ascending: false }).limit(1);
+  const snapshotId = latest?.[0]?.snapshot_id;
+  if (!snapshotId) throw new Error('لا توجد كشوف فواتير مرفوعة');
+
+  // All invoices for this customer in the snapshot
+  const { data: invoices } = await supabase
+    .from('customer_receivables')
+    .select('invoice_date, balance_amount, is_summary')
+    .eq('snapshot_id', snapshotId)
+    .eq('customer_name', customerName);
+  const invoiceLines = (invoices || [])
+    .filter(r => !r.is_summary && r.invoice_date)
+    .map(r => ({
+      date:        r.invoice_date,
+      description: `فاتورة ${r.invoice_date}`,
+      debit:       Number(r.balance_amount) || 0,
+      credit:      0,
+    }));
+
+  // Approved write-offs as credit lines
+  const { data: writeoffs } = await supabase
+    .from('bad_debt_writeoffs')
+    .select('amount, reason, reviewed_at, requested_at')
+    .eq('customer_name', customerName)
+    .eq('status', 'approved')
+    .order('reviewed_at', { ascending: true });
+  const writeoffLines = (writeoffs || []).map(w => ({
+    date:        (w.reviewed_at || w.requested_at)?.slice(0, 10),
+    description: `شطب دين — ${w.reason || ''}`.trim(),
+    debit:       0,
+    credit:      Number(w.amount) || 0,
+  }));
+
+  // Merge + sort by date, then compute running balance
+  const allLines = [...invoiceLines, ...writeoffLines]
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+  let running = 0;
+  for (const ln of allLines) {
+    running += (ln.debit - ln.credit);
+    ln.balance = +running.toFixed(2);
+  }
+
+  // Customer metadata — phone + credit limit from settings/merchants
+  const { data: settingsRow } = await supabase
+    .from('customer_settings')
+    .select('credit_limit_sar, credit_limit_note, status')
+    .eq('customer_name', customerName).maybeSingle();
+  const defaultLimit = await loadDefaultCreditLimit();
+  const creditLimit  = settingsRow?.credit_limit_sar != null
+    ? Number(settingsRow.credit_limit_sar)
+    : defaultLimit;
+
+  // Try to pull phone via the customer_merchant_links → merchants
+  // chain. Best-effort, no hard failure.
+  let phone = null, storeId = null;
+  try {
+    const { data: link } = await supabase
+      .from('customer_merchant_links').select('store_id')
+      .eq('customer_name', customerName).maybeSingle();
+    if (link?.store_id) {
+      storeId = link.store_id;
+      const { data: latestMer } = await supabase
+        .from('merchants').select('snapshot_id')
+        .order('uploaded_at', { ascending: false }).limit(1);
+      if (latestMer?.[0]?.snapshot_id) {
+        const { data: m } = await supabase
+          .from('merchants').select('phone, store_name')
+          .eq('snapshot_id', latestMer[0].snapshot_id)
+          .eq('store_id', link.store_id).maybeSingle();
+        if (m?.phone) phone = m.phone;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // Aging buckets — recompute from the current invoice lines using
+  // the same rules as the receivables overview.
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const aging = { current: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+  for (const ln of invoiceLines) {
+    const d = new Date(ln.date);
+    const days = Math.floor((today - d) / 86_400_000);
+    const amt  = ln.debit;
+    if      (days <= 30) aging.current  += amt;
+    else if (days <= 60) aging.d31_60   += amt;
+    else if (days <= 90) aging.d61_90   += amt;
+    else                 aging.d90_plus += amt;
+  }
+  for (const k of Object.keys(aging)) aging[k] = +aging[k].toFixed(2);
+
+  const totalInvoices  = invoiceLines.reduce((s, r) => s + r.debit, 0);
+  const totalWrittenOff = writeoffLines.reduce((s, r) => s + r.credit, 0);
+  const effectiveBalance = +(totalInvoices - totalWrittenOff).toFixed(2);
+
+  return {
+    header: {
+      customerName,
+      phone,
+      storeId,
+      creditLimit,
+      creditLimitNote: settingsRow?.credit_limit_note || null,
+      asOf:        today.toISOString().slice(0, 10),
+      snapshotId,
+    },
+    lines: allLines,
+    summary: {
+      invoiceCount:     invoiceLines.length,
+      writeoffCount:    writeoffLines.length,
+      totalInvoices:    +totalInvoices.toFixed(2),
+      totalWrittenOff:  +totalWrittenOff.toFixed(2),
+      effectiveBalance,
+      overLimit:        effectiveBalance > creditLimit + 0.01,
+    },
+    aging,
+  };
+}
+
 export async function setCustomerCreditLimit({ customerName, value, note = null, userId = null }) {
   if (!customerName) throw new Error('اسم العميل مطلوب');
   // Read existing row so we can preserve status/notes on update
