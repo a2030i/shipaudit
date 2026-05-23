@@ -98,28 +98,82 @@ function detectSource(fileName: string, subject: string): { source: string | nul
   return { source: null, method: "failed" };
 }
 
-// ── attachment normalizer — same flexibility as webhook-intake ──
-type Attachment = { filename: string; content: string };
-function pickAttachments(payload: any): Attachment[] {
-  const out: Attachment[] = [];
-  // Single-file shape
-  if (payload.file_base64 && payload.file_name) {
-    out.push({ filename: payload.file_name, content: payload.file_base64 });
-  }
-  // Email-envelope: attachments[]
-  const list = payload.attachments ?? payload.Attachments ?? [];
-  for (const a of list) {
-    const filename = a.filename ?? a.name ?? a.fileName ?? a.file_name;
-    const content  = a.content  ?? a.contentBytes ?? a.data ?? a.file_base64;
-    if (filename && content && typeof content === "string") {
-      out.push({ filename, content });
+// ── attachment normalizer — flexible across forwarders ──
+// Common shapes we accept (everything boils down to filename + base64):
+//   { file_base64, file_name }                       — direct API
+//   { attachments: [{ filename, content }] }          — InboxDone / Mailgun JSON
+//   { attachments: [{ name, contentBytes }] }         — Microsoft Graph
+//   { Attachments: [...] }                            — case variant
+//   { data: { attachments: [...] } }                  — Zapier nested
+//   { body: { attachments: [...] } }                  — some webhook proxies
+//   { file_url, file_name }                           — URL pointer (we fetch)
+//   { attachments: [{ url, name }] }                  — URL-based attachment list
+type Attachment = { filename: string; content?: string; url?: string };
+function pickAttachments(payload: any): { items: Attachment[]; foundKeys: string[] } {
+  const items: Attachment[] = [];
+  const foundKeys: string[] = [];
+
+  // Recurse into common envelopes — Zapier wraps under "data", some
+  // proxies wrap under "body". Only one level of unwrap.
+  const envelopes = [payload, payload?.data, payload?.body, payload?.payload].filter(Boolean);
+  for (const env of envelopes) {
+    if (!env || typeof env !== 'object') continue;
+    foundKeys.push(...Object.keys(env));
+
+    // Single-file: base64 inline
+    if (env.file_base64 && env.file_name) {
+      items.push({ filename: String(env.file_name), content: String(env.file_base64) });
+    }
+    // Single-file: URL pointer
+    if (env.file_url && env.file_name) {
+      items.push({ filename: String(env.file_name), url: String(env.file_url) });
+    }
+
+    // attachments[] in any common casing
+    const lists = [env.attachments, env.Attachments, env.attachment, env.Files, env.files];
+    for (const list of lists) {
+      if (!Array.isArray(list)) continue;
+      for (const a of list) {
+        if (!a || typeof a !== 'object') continue;
+        const filename = a.filename ?? a.name ?? a.fileName ?? a.file_name ?? a.title;
+        if (!filename) continue;
+        // Inline content first
+        const content = a.content ?? a.contentBytes ?? a.data ?? a.file_base64 ?? a.base64;
+        if (content && typeof content === 'string') {
+          items.push({ filename: String(filename), content });
+          continue;
+        }
+        // URL-based — we'll fetch later
+        const url = a.url ?? a.file_url ?? a.download_url ?? a.href;
+        if (url && typeof url === 'string') {
+          items.push({ filename: String(filename), url });
+        }
+      }
     }
   }
-  return out;
+
+  // Dedupe by (filename + content/url hash prefix)
+  const seen = new Set<string>();
+  const dedup: Attachment[] = [];
+  for (const a of items) {
+    const key = `${a.filename}::${(a.content || a.url || '').slice(0, 64)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    dedup.push(a);
+  }
+  return { items: dedup, foundKeys: [...new Set(foundKeys)] };
+}
+
+async function fetchAttachmentFromUrl(url: string): Promise<Uint8Array> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`download failed: HTTP ${res.status}`);
+  const buf = await res.arrayBuffer();
+  return new Uint8Array(buf);
 }
 
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
+  if (req.method === "GET")     return json({ ok: true, hint: "POST a JSON or multipart payload — see README" });
   if (req.method !== "POST")    return json({ error: "method-not-allowed" }, 405);
 
   // Auth — when secret is configured, enforce it. When unset (local
@@ -129,16 +183,46 @@ Deno.serve(async (req) => {
     if (incoming !== SHARED_SECRET) return json({ error: "unauthorized" }, 401);
   }
 
-  let payload: any;
-  try { payload = await req.json(); }
-  catch { return json({ error: "invalid-json" }, 400); }
+  const contentType = req.headers.get("content-type") || "";
+  let payload: any = {};
+  let multipartAttachments: Attachment[] = [];
+
+  if (contentType.includes("multipart/form-data")) {
+    // Browser/cURL form upload OR Mailgun's multipart webhook.
+    // Pull every file field + every text field into a flat payload.
+    try {
+      const form = await req.formData();
+      for (const [k, v] of form.entries()) {
+        if (v instanceof File) {
+          const buf = await v.arrayBuffer();
+          const b64 = btoa(String.fromCharCode(...new Uint8Array(buf)));
+          multipartAttachments.push({ filename: v.name || k, content: b64 });
+        } else {
+          payload[k] = v;
+        }
+      }
+    } catch (e) {
+      return json({ error: "invalid-multipart", message: (e as Error).message }, 400);
+    }
+  } else if (contentType.includes("application/json") || contentType === "") {
+    try { payload = await req.json(); }
+    catch { return json({ error: "invalid-json" }, 400); }
+  } else {
+    return json({ error: "unsupported-content-type", got: contentType }, 415);
+  }
 
   const sender  = payload.sender ?? payload.from ?? payload.fromEmail ?? null;
-  const subject = payload.subject ?? "";
-  const attachments = pickAttachments(payload);
+  const subject = payload.subject ?? payload.Subject ?? "";
+  const { items: pickedAttachments, foundKeys } = pickAttachments(payload);
+  const attachments = [...pickedAttachments, ...multipartAttachments];
 
   if (!attachments.length) {
-    return json({ error: "no-attachments", expected: "file_base64 OR attachments[]" }, 400);
+    return json({
+      error: "no-attachments",
+      hint:  "send JSON with attachments[] / file_base64, multipart with a file field, or { file_url, file_name }",
+      received_keys: foundKeys.slice(0, 30),    // help the user debug what they sent
+      content_type:  contentType,
+    }, 400);
   }
 
   const supabase = createClient(SUPABASE_URL, SERVICE_ROLE, {
@@ -156,8 +240,16 @@ Deno.serve(async (req) => {
     }
 
     let bytes: Uint8Array;
-    try { bytes = decodeBase64(att.content); }
-    catch (e) {
+    try {
+      if (att.content) {
+        bytes = decodeBase64(att.content);
+      } else if (att.url) {
+        bytes = await fetchAttachmentFromUrl(att.url);
+      } else {
+        results.push({ filename: att.filename, error: 'no-content-or-url' });
+        continue;
+      }
+    } catch (e) {
       results.push({ filename: att.filename, error: `decode-failed: ${(e as Error).message}` });
       continue;
     }
