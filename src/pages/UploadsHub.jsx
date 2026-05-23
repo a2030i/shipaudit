@@ -16,12 +16,16 @@ import * as XLSX from 'xlsx';
 import {
   RefreshCw, Upload, FileSpreadsheet, ExternalLink, Inbox,
   CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle,
+  Mail, Trash2, Play, X as XIcon,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
+import {
+  INTAKE_STATUS_LABELS, listIntake, processIntake, dismissIntake,
+} from '../lib/zohoIntakeService.js';
 
 const fmtRel = (iso) => {
   if (!iso) return 'لم يُرفع بعد';
@@ -47,13 +51,49 @@ export default function UploadsHub({ isActive = true }) {
   const [sources, setSources] = useState([]);
   const [busy,    setBusy]    = useState({});  // { sourceId: true } while uploading
   const [picker,  setPicker]  = useState(null); // { file, detection } when auto-detect fails
+  const [intake,  setIntake]  = useState([]);   // pending Zoho intake events
+  const [intakeBusy, setIntakeBusy] = useState({}); // { eventId: true }
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setSources(await loadUploadsOverview()); }
+    try {
+      const [src, inbox] = await Promise.all([
+        loadUploadsOverview(),
+        listIntake({ status: 'pending' }).catch(() => []),
+      ]);
+      setSources(src);
+      setIntake(inbox);
+    }
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
+
+  // Process a pending Zoho intake event with one click. Uses the same
+  // uploadFile() the manual hero uses — the file comes from storage
+  // instead of a manual drop.
+  const handleProcessIntake = async (event, sourceOverride = null) => {
+    setIntakeBusy(b => ({ ...b, [event.id]: true }));
+    try {
+      const r = await processIntake(event, {
+        sourceOverride,
+        userId: profile?.id || null,
+      });
+      toast(`✓ تمت المعالجة — ${r.message}`, 'success');
+      await refresh();
+    } catch (e) {
+      toast(`فشل المعالجة: ${e.message}`, 'error');
+    }
+    setIntakeBusy(b => { const n = { ...b }; delete n[event.id]; return n; });
+  };
+
+  const handleDismissIntake = async (event) => {
+    if (!confirm(`تجاهل الملف "${event.file_name}"؟`)) return;
+    try {
+      await dismissIntake(event.id, 'تجاهل يدوي');
+      toast('تم تجاهل الملف', 'info');
+      await refresh();
+    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+  };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -167,6 +207,46 @@ export default function UploadsHub({ isActive = true }) {
           hint="أنواع الملفات الدورية"
         />
       </div>
+
+      {/* Zoho Inbox — files that arrived automatically via the
+          zoho-intake webhook. Only renders when there's at least one
+          pending event so the operator's screen stays uncluttered. */}
+      {intake.length > 0 && (
+        <Card style={{
+          marginBottom: 20,
+          background: 'color-mix(in srgb, #7C3AED 5%, transparent)',
+          border: '1.5px solid color-mix(in srgb, #7C3AED 30%, transparent)',
+          padding: 0, overflow: 'hidden',
+        }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '12px 16px',
+            background: 'color-mix(in srgb, #7C3AED 8%, transparent)',
+            borderBottom: '1px solid var(--border)',
+          }}>
+            <Mail size={16} color="#7C3AED"/>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>
+                صندوق Zoho — {intake.length} ملف بانتظار المعالجة
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                ملفات وصلت تلقائياً من webhook خاص بـZoho — معالجة بنقرة واحدة
+              </div>
+            </div>
+          </div>
+          <div>
+            {intake.map(ev => (
+              <IntakeRow
+                key={ev.id}
+                event={ev}
+                busy={!!intakeBusy[ev.id]}
+                onProcess={(source) => handleProcessIntake(ev, source)}
+                onDismiss={() => handleDismissIntake(ev)}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* Hero drop zone — auto-detects the file type. The 5 cards
           below still have their own drop zones for cases where the
@@ -526,6 +606,86 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
         <ChevronLeft size={11}/>
       </button>
     </Card>
+  );
+}
+
+function IntakeRow({ event, busy, onProcess, onDismiss }) {
+  const [picker, setPicker] = useState(false);   // shows source-picker dropdown
+  const detected = event.detected_source;
+  const detectedMeta = detected && UPLOAD_SOURCES.find(s => s.id === detected);
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: '1fr auto auto auto',
+      gap: 12, padding: '12px 16px', alignItems: 'center',
+      borderBottom: '1px solid var(--border)',
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <FileSpreadsheet size={13} color="#7C3AED"/>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{event.file_name}</span>
+          {detectedMeta && (
+            <span style={{
+              fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+              background: `color-mix(in srgb, ${detectedMeta.accent} 14%, transparent)`,
+              color: detectedMeta.accent,
+            }}>
+              🤖 {detectedMeta.label}
+            </span>
+          )}
+          {!detectedMeta && (
+            <span style={{
+              fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
+              background: 'rgba(220,38,38,.14)', color: '#DC2626',
+            }}>
+              ⚠ نوع غير محدد
+            </span>
+          )}
+        </div>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+          {event.sender && <span>من: {event.sender} · </span>}
+          وصل {fmtRel(event.received_at)} · {event.file_size ? `${(event.file_size / 1024).toFixed(1)} KB` : '—'}
+          {event.subject && <span style={{ display: 'block', marginTop: 2, fontSize: 10.5 }}>📩 {event.subject}</span>}
+        </div>
+      </div>
+      {!detectedMeta && (
+        <select
+          onChange={(e) => {
+            const val = e.target.value;
+            if (val) onProcess(val);
+          }}
+          defaultValue=""
+          style={{
+            padding: '6px 10px', fontSize: 11.5,
+            border: '1px solid var(--border)', borderRadius: 8,
+            background: 'var(--surface)', color: 'var(--text)',
+            fontFamily: 'var(--font-sans)', cursor: 'pointer',
+          }}
+        >
+          <option value="">اختر النوع…</option>
+          {UPLOAD_SOURCES.map(s => (
+            <option key={s.id} value={s.id}>{s.label}</option>
+          ))}
+        </select>
+      )}
+      {busy ? (
+        <Spinner size={18}/>
+      ) : detectedMeta ? (
+        <Btn size="sm" variant="primary" icon={<Play size={11}/>} onClick={() => onProcess()}>
+          عالج
+        </Btn>
+      ) : <span/>}
+      <button onClick={onDismiss} title="تجاهل" style={{
+        background: 'transparent', border: '1px solid var(--border)',
+        padding: 6, borderRadius: 6, cursor: 'pointer',
+        color: 'var(--muted)', display: 'flex',
+      }}
+        onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
+      >
+        <XIcon size={11}/>
+      </button>
+    </div>
   );
 }
 
