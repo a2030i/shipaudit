@@ -920,6 +920,41 @@ const statusPill = (color) => ({
 //
 // In both modes already-linked candidates are hidden — the picker
 // only ever shows fresh pairings.
+// Excel export for the picker — dumps every unlinked candidate so
+// the operator can work on the backlog outside the app. Two shapes:
+//   • pickingZoho=true  → Zoho candidates: name + balance + match method
+//   • pickingZoho=false → Lamha merchants: storeId + name + phone + status
+// The file name reflects which side was being browsed.
+function exportCandidates(list, pickingZoho) {
+  if (!list?.length) return;
+  let headers, rows, sheetName, fileBase;
+  if (pickingZoho) {
+    headers = ['الاسم في Zoho', 'الرصيد (ر.س)', 'طريقة المطابقة'];
+    rows    = list.map(c => [c.rawName, Number(c.balance) || 0, c.method || '—']);
+    sheetName = 'عملاء_Zoho_غير_المربوطين';
+    fileBase  = 'عملاء_Zoho_غير_المربوطين';
+  } else {
+    headers = ['رقم المتجر', 'اسم المتجر', 'الجوال', 'الحالة'];
+    rows    = list.map(m => [m.storeId, m.storeName, m.phone || '', m.status || '']);
+    sheetName = 'متاجر_لمحة_غير_المربوطة';
+    fileBase  = 'متاجر_لمحة_غير_المربوطة';
+  }
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  // RTL view + auto column widths sized to the longest cell.
+  ws['!cols'] = headers.map((h, i) => {
+    const longest = Math.max(
+      String(h).length,
+      ...rows.map(r => String(r[i] ?? '').length),
+    );
+    return { wch: Math.min(40, longest + 2) };
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `${fileBase}_${dateStr}.xlsx`);
+  toast(`✓ تم تصدير ${list.length} سجل`, 'success');
+}
+
 function MerchantPickerModal({ target, onCancel, onConfirm }) {
   // We're picking from the OPPOSITE source.
   const pickingZoho = target.source === 'internal';
@@ -1048,29 +1083,45 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           </div>
         )}
 
-        {/* Search */}
-        <div style={{ position: 'relative', marginBottom: 10 }}>
-          <Search size={14} style={{ position: 'absolute', insetInlineStart: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}/>
-          <input
-            type="text"
-            name="picker_search"
-            autoComplete="off"
-            spellCheck={false}
-            data-form-type="other"
-            data-lpignore="true"
-            autoFocus
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder={pickingZoho
-              ? 'ابحث في عملاء Zoho غير المربوطين…'
-              : 'ابحث باسم المتجر أو رقمه أو الجوال…'}
-            style={{
-              width: '100%', padding: '9px 12px 9px 34px', fontSize: 13,
-              border: '1px solid var(--border)', borderRadius: 8,
-              background: 'var(--surface)', color: 'var(--text)',
-              fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
-            }}
-          />
+        {/* Search + export. The export dumps the FULL candidates list
+            (not just the filtered view) so the operator can work on
+            the unlinked set in Excel — useful when there are hundreds
+            of unlinked merchants to clean up. */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 10, alignItems: 'stretch' }}>
+          <div style={{ position: 'relative', flex: 1 }}>
+            <Search size={14} style={{ position: 'absolute', insetInlineStart: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}/>
+            <input
+              type="text"
+              name="picker_search"
+              autoComplete="off"
+              spellCheck={false}
+              data-form-type="other"
+              data-lpignore="true"
+              autoFocus
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder={pickingZoho
+                ? 'ابحث في عملاء Zoho غير المربوطين…'
+                : 'ابحث باسم المتجر أو رقمه أو الجوال…'}
+              style={{
+                width: '100%', padding: '9px 12px 9px 34px', fontSize: 13,
+                border: '1px solid var(--border)', borderRadius: 8,
+                background: 'var(--surface)', color: 'var(--text)',
+                fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+              }}
+            />
+          </div>
+          <Btn
+            size="sm"
+            variant="ghost"
+            type="button"
+            icon={<Download size={13}/>}
+            onClick={() => exportCandidates(candidates, pickingZoho)}
+            disabled={loading || !candidates.length}
+            title="تصدير القائمة كاملة إلى Excel"
+          >
+            تصدير ({candidates.length})
+          </Btn>
         </div>
 
         {/* Results list */}
