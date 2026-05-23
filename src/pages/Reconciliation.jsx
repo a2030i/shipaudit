@@ -24,6 +24,7 @@ import {
   uploadBalanceSnapshot, listBalanceSnapshots, deleteBalanceSnapshot,
   loadReconciliation,
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
+  loadUnmatchedZohoForPicker, linkInternalRowToZohoRow,
   parseZohoVendorBalances, uploadVendorBalanceSnapshot,
   listVendorSnapshots, deleteVendorSnapshot,
   loadVendorReconciliation, loadVendorOthers,
@@ -76,15 +77,33 @@ export default function Reconciliation({ isActive = true }) {
     setLoading(false);
   }, []);
 
-  const handleLinkConfirm = async (storeId) => {
+  // Picker confirms one of two ways depending on the unmatched
+  // row's source:
+  //   Internal-source row → operator picked a Zoho candidate (rawName).
+  //     We pair the two unmatched rows by fuzzy-matching the internal
+  //     name to a merchant via linkInternalRowToZohoRow().
+  //   Zoho-source row → operator picked a merchant (storeId).
+  //     Straight customer_merchant_links insert + backfill.
+  const handleLinkConfirm = async (picked) => {
     if (!linkTarget) return;
     try {
-      await linkUnmatchedToStore({
-        rawName: linkTarget.rawName,
-        storeId,
-        userId:  profile?.id || null,
-      });
-      toast(`تم ربط «${linkTarget.rawName}» بالمتجر ${storeId}`, 'success');
+      if (linkTarget.source === 'internal') {
+        // picked = { rawName } for a Zoho candidate
+        const r = await linkInternalRowToZohoRow({
+          internalRawName: linkTarget.rawName,
+          zohoRawName:     picked.rawName,
+          userId:          profile?.id || null,
+        });
+        toast(`تم اقتران «${linkTarget.rawName}» بـ «${picked.rawName}» (المتجر ${r.storeName || r.storeId})`, 'success');
+      } else {
+        // picked = { storeId } for a merchant candidate
+        await linkUnmatchedToStore({
+          rawName: linkTarget.rawName,
+          storeId: picked.storeId,
+          userId:  profile?.id || null,
+        });
+        toast(`تم ربط «${linkTarget.rawName}» بالمتجر ${picked.storeId}`, 'success');
+      }
       setLinkTarget(null);
       await refresh();
     } catch (e) {
@@ -889,71 +908,103 @@ const statusPill = (color) => ({
   color, fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
 });
 
+// Source-aware picker:
+//   target.source === 'internal' → operator is linking a Lamha row.
+//     Candidates = UNMATCHED Zoho rows (the missing other side).
+//     onConfirm(picked) called with { rawName }. The page-level
+//     handler then fuzzy-matches the internal name to a merchant
+//     to anchor both rows on a store_id.
+//   target.source === 'zoho' → operator is linking a Zoho row.
+//     Candidates = Lamha merchants NOT already linked to anyone.
+//     onConfirm(picked) called with { storeId, storeName }.
+//
+// In both modes already-linked candidates are hidden — the picker
+// only ever shows fresh pairings.
 function MerchantPickerModal({ target, onCancel, onConfirm }) {
-  const [merchants, setMerchants] = useState([]);
-  const [loading,   setLoading]   = useState(true);
-  const [search,    setSearch]    = useState('');
-  const [picked,    setPicked]    = useState(null);
+  // We're picking from the OPPOSITE source.
+  const pickingZoho = target.source === 'internal';
+  const [candidates, setCandidates] = useState([]);
+  const [loading,    setLoading]    = useState(true);
+  const [search,     setSearch]     = useState('');
+  const [picked,     setPicked]     = useState(null);
 
   useEffect(() => {
-    loadMerchantsForPicker()
-      .then(setMerchants)
-      .catch((e) => toast(`فشل تحميل المتاجر: ${e.message}`, 'error'))
+    setLoading(true);
+    const loader = pickingZoho
+      ? loadUnmatchedZohoForPicker()        // Zoho candidates for an internal row
+      : loadMerchantsForPicker({ includeLinked: false }); // merchants for a Zoho row
+    loader
+      .then(setCandidates)
+      .catch((e) => toast(`فشل التحميل: ${e.message}`, 'error'))
       .finally(() => setLoading(false));
-  }, []);
+  }, [pickingZoho]);
 
-  // Auto-suggest top trigram-similar merchants when the picker first
-  // opens. Cheap heuristic: extract the last dash-separated segment
-  // (e.g. "Konhub LLC - متجر أشكال" → "متجر أشكال") and rank merchants
-  // by substring containment of either side.
+  // Auto-suggest top-similarity candidates by normalized-substring
+  // overlap with the target's raw_name. Works for either side.
   const suggested = useMemo(() => {
     const norm = (s) => String(s || '').toLowerCase()
       .replace(/[ًٌٍَُِّْٰ]/g, '')
       .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه');
     const segs = String(target.rawName || '').split(/[-|]/).map(s => norm(s.trim())).filter(s => s.length >= 2);
-    if (!segs.length) return [];
-    const scored = merchants.map(m => {
-      const mn = norm(m.storeName);
+    if (!segs.length || !candidates.length) return [];
+    const labelOf = (c) => pickingZoho ? c.rawName : c.storeName;
+    return candidates.map(c => {
+      const mn = norm(labelOf(c));
       let score = 0;
       for (const seg of segs) {
         if (mn === seg)            score = Math.max(score, 1.0);
         else if (mn.includes(seg)) score = Math.max(score, Math.min(seg.length, mn.length) / Math.max(seg.length, mn.length));
         else if (seg.includes(mn)) score = Math.max(score, Math.min(seg.length, mn.length) / Math.max(seg.length, mn.length));
       }
-      return { ...m, _score: score };
-    }).filter(m => m._score > 0.3).sort((a, b) => b._score - a._score).slice(0, 5);
-    return scored;
-  }, [merchants, target]);
+      return { ...c, _score: score };
+    }).filter(c => c._score > 0.3).sort((a, b) => b._score - a._score).slice(0, 5);
+  }, [candidates, target, pickingZoho]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return merchants.slice(0, 100);  // cap for perf
-    return merchants.filter(m =>
+    if (pickingZoho) {
+      if (!q) return candidates.slice(0, 100);
+      return candidates.filter(c => String(c.rawName || '').toLowerCase().includes(q)).slice(0, 100);
+    }
+    if (!q) return candidates.slice(0, 100);
+    return candidates.filter(m =>
       String(m.storeName || '').toLowerCase().includes(q) ||
       String(m.storeId   || '').toLowerCase().includes(q) ||
       String(m.phone     || '').toLowerCase().includes(q),
     ).slice(0, 100);
-  }, [merchants, search]);
+  }, [candidates, search, pickingZoho]);
+
+  const isPickedSame = (c) => pickingZoho
+    ? picked?.rawName === c.rawName
+    : picked?.storeId === c.storeId;
+  const pickedLabel = picked && (pickingZoho ? picked.rawName : picked.storeName);
+  const confirmDisabled = !picked;
+  const dialogTitle = pickingZoho
+    ? `ربط مع نظير في Zoho: ${target.rawName}`
+    : `ربط بمتجر لمحة: ${target.rawName}`;
+  const candidateSourceLabel = pickingZoho
+    ? 'يعرض عملاء Zoho غير المربوطين فقط'
+    : 'يعرض متاجر لمحة التي لم تُربط بعد';
 
   return (
-    <Modal title={`ربط: ${target.rawName}`} onClose={onCancel} width={680}>
+    <Modal title={dialogTitle} onClose={onCancel} width={680}>
       <form
         autoComplete="off"
-        onSubmit={(e) => { e.preventDefault(); if (picked) onConfirm(picked.storeId); }}
+        onSubmit={(e) => { e.preventDefault(); if (picked) onConfirm(picked); }}
         style={{ padding: '4px 4px 0' }}
       >
-        {/* Banner showing the source + balance */}
+        {/* Source + balance banner */}
         <div style={{
           padding: 12, marginBottom: 12, borderRadius: 8,
           background: target.source === 'internal'
             ? 'color-mix(in srgb, #3B82F6 8%, transparent)'
             : 'color-mix(in srgb, #F59E0B 8%, transparent)',
           border: '1px solid var(--border)',
-          fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 12,
+          fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 12, flexWrap: 'wrap',
         }}>
           <span>
             <strong style={{ color: 'var(--text)' }}>المصدر:</strong>{' '}
-            {target.source === 'internal' ? 'النظام الداخلي' : 'Zoho'}
+            {target.source === 'internal' ? 'النظام الداخلي (لمحة)' : 'Zoho'}
           </span>
           {Math.abs(target.balance) > 0.005 && (
             <span>
@@ -963,6 +1014,9 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
               </span>
             </span>
           )}
+          <span style={{ marginInlineStart: 'auto', color: 'var(--muted)', fontSize: 11 }}>
+            {candidateSourceLabel}
+          </span>
         </div>
 
         {/* Suggested matches */}
@@ -972,21 +1026,24 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
               اقتراحات تلقائية
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {suggested.map(m => (
-                <button key={m.storeId} type="button" onClick={() => setPicked(m)} style={{
-                  padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
-                  border: `1.5px solid ${picked?.storeId === m.storeId ? '#10B981' : 'var(--border)'}`,
-                  background: picked?.storeId === m.storeId ? 'rgba(16,185,129,.12)' : 'transparent',
-                  color: picked?.storeId === m.storeId ? '#047857' : 'var(--text2)',
-                  fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                }}>
-                  {m.storeName}
-                  <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                    #{m.storeId} · {Math.round(m._score * 100)}%
-                  </span>
-                </button>
-              ))}
+              {suggested.map(c => {
+                const sel = isPickedSame(c);
+                return (
+                  <button key={pickingZoho ? c.rawName : c.storeId} type="button" onClick={() => setPicked(c)} style={{
+                    padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
+                    border: `1.5px solid ${sel ? '#10B981' : 'var(--border)'}`,
+                    background: sel ? 'rgba(16,185,129,.12)' : 'transparent',
+                    color: sel ? '#047857' : 'var(--text2)',
+                    fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
+                    display: 'inline-flex', alignItems: 'center', gap: 6,
+                  }}>
+                    {pickingZoho ? c.rawName : c.storeName}
+                    <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                      {pickingZoho ? '' : `#${c.storeId} · `}{Math.round(c._score * 100)}%
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           </div>
         )}
@@ -996,7 +1053,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           <Search size={14} style={{ position: 'absolute', insetInlineStart: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted)' }}/>
           <input
             type="text"
-            name="merchant_search"
+            name="picker_search"
             autoComplete="off"
             spellCheck={false}
             data-form-type="other"
@@ -1004,7 +1061,9 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
             autoFocus
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="ابحث باسم المتجر أو رقمه أو الجوال…"
+            placeholder={pickingZoho
+              ? 'ابحث في عملاء Zoho غير المربوطين…'
+              : 'ابحث باسم المتجر أو رقمه أو الجوال…'}
             style={{
               width: '100%', padding: '9px 12px 9px 34px', fontSize: 13,
               border: '1px solid var(--border)', borderRadius: 8,
@@ -1023,34 +1082,67 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
             <div style={{ padding: 24, textAlign: 'center' }}><Spinner size={20}/></div>
           ) : filtered.length === 0 ? (
             <div style={{ padding: 24, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>
-              لا توجد نتائج لـ «{search}»
+              {pickingZoho
+                ? (search
+                    ? `لا توجد نتائج لـ «${search}»`
+                    : 'لا توجد عملاء Zoho غير مربوطين — ارفع ملف Zoho أحدث أو راجع الروابط')
+                : (search
+                    ? `لا توجد نتائج لـ «${search}»`
+                    : 'كل المتاجر مربوطة بعملاء بالفعل — لا توجد متاجر مرشّحة')}
             </div>
-          ) : (
-            filtered.map(m => (
-              <div key={m.storeId} onClick={() => setPicked(m)} style={{
-                padding: '10px 14px', cursor: 'pointer',
-                borderBottom: '1px solid var(--border)',
-                background: picked?.storeId === m.storeId ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
-                display: 'flex', alignItems: 'center', gap: 12,
-              }}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {m.storeName}
+          ) : pickingZoho ? (
+            filtered.map(c => {
+              const sel = isPickedSame(c);
+              return (
+                <div key={c.rawName} onClick={() => setPicked(c)} style={{
+                  padding: '10px 14px', cursor: 'pointer',
+                  borderBottom: '1px solid var(--border)',
+                  background: sel ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
+                      {c.rawName}
+                    </div>
+                    {Math.abs(c.balance) > 0.005 && (
+                      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
+                        رصيد Zoho: {fmt(c.balance)} ر.س
+                      </div>
+                    )}
                   </div>
-                  <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
-                    #{m.storeId} {m.phone ? `· ${m.phone}` : ''} {m.status ? `· ${m.status}` : ''}
-                  </div>
+                  {sel && <CheckCircle2 size={16} color="#10B981"/>}
                 </div>
-                {picked?.storeId === m.storeId && <CheckCircle2 size={16} color="#10B981"/>}
-              </div>
-            ))
+              );
+            })
+          ) : (
+            filtered.map(m => {
+              const sel = isPickedSame(m);
+              return (
+                <div key={m.storeId} onClick={() => setPicked(m)} style={{
+                  padding: '10px 14px', cursor: 'pointer',
+                  borderBottom: '1px solid var(--border)',
+                  background: sel ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
+                  display: 'flex', alignItems: 'center', gap: 12,
+                }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {m.storeName}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
+                      #{m.storeId} {m.phone ? `· ${m.phone}` : ''} {m.status ? `· ${m.status}` : ''}
+                    </div>
+                  </div>
+                  {sel && <CheckCircle2 size={16} color="#10B981"/>}
+                </div>
+              );
+            })
           )}
         </div>
 
         <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
           <Btn size="md" variant="primary" icon={<Link2 size={13}/>}
-               onClick={() => picked && onConfirm(picked.storeId)} disabled={!picked}>
-            {picked ? `اربط بـ ${picked.storeName}` : 'اختر متجراً'}
+               onClick={() => picked && onConfirm(picked)} disabled={confirmDisabled}>
+            {picked ? `اربط بـ ${pickedLabel}` : (pickingZoho ? 'اختر عميل Zoho' : 'اختر متجراً')}
           </Btn>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
         </div>

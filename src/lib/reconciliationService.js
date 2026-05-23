@@ -366,23 +366,120 @@ export async function linkUnmatchedToStore({ rawName, storeId, userId = null }) 
 }
 
 // Searchable list of merchants from the latest snapshot — used by
-// the manual-link picker. We pull the whole snapshot once and let
-// the UI filter client-side (cheap given <3K rows).
-export async function loadMerchantsForPicker() {
-  const { data: latest } = await supabase
-    .from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1);
+// the manual-link picker when linking a Zoho-source unmatched row
+// (it needs a Lamha merchant to anchor to). We pull the whole
+// snapshot once and the UI filters client-side. By default we
+// EXCLUDE merchants already linked to a customer (so the operator
+// only sees fresh candidates), but the caller can request the full
+// list if needed.
+export async function loadMerchantsForPicker({ includeLinked = false } = {}) {
+  const [latestRes, linksRes] = await Promise.all([
+    supabase.from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1),
+    supabase.from('customer_merchant_links').select('store_id').not('store_id', 'is', null),
+  ]);
+  const latest = latestRes.data;
   if (!latest?.length) return [];
+
+  const linkedIds = new Set((linksRes.data || []).map(r => r.store_id));
+
   const { data } = await supabase
     .from('merchants')
     .select('store_id, store_name, phone, status')
     .eq('snapshot_id', latest[0].snapshot_id)
     .order('store_name');
-  return (data || []).map(m => ({
-    storeId:   m.store_id,
-    storeName: m.store_name,
-    phone:     m.phone,
-    status:    m.status,
+  return (data || [])
+    .filter(m => includeLinked || !linkedIds.has(m.store_id))
+    .map(m => ({
+      storeId:   m.store_id,
+      storeName: m.store_name,
+      phone:     m.phone,
+      status:    m.status,
+      isLinked:  linkedIds.has(m.store_id),
+    }));
+}
+
+// Unmatched Zoho-side raw names from the latest Zoho snapshot — used
+// as candidates when the operator is linking a Lamha-internal row
+// (the operator picks the Zoho equivalent). Returns just the row's
+// raw_name + balance + store_id (null because unmatched). Excludes
+// rows that are ALREADY matched (have store_id) — those are linked
+// already and shouldn't reappear here.
+export async function loadUnmatchedZohoForPicker() {
+  // Latest Zoho snapshot
+  const { data: latest } = await supabase
+    .from('store_balance_snapshots')
+    .select('id')
+    .eq('source', 'zoho')
+    .order('uploaded_at', { ascending: false })
+    .limit(1);
+  if (!latest?.length) return [];
+  const { data } = await supabase
+    .from('store_balances')
+    .select('raw_name, balance, match_method')
+    .eq('snapshot_id', latest[0].id)
+    .is('store_id', null)
+    .order('raw_name');
+  return (data || []).map(r => ({
+    rawName: r.raw_name,
+    balance: Number(r.balance) || 0,
+    method:  r.match_method,
   }));
+}
+
+// Pair an internal-source unmatched row with a Zoho-source unmatched
+// row — the operator's saying "these two ARE the same entity". We
+// still need a store_id to anchor both into the reconciliation, so
+// we fuzzy-match the internal name to a merchant; if found, both
+// rows + a customer_merchant_links entry get the resolved store_id.
+// If no merchant matches we error out — the operator needs to add
+// the store to merchants first.
+export async function linkInternalRowToZohoRow({
+  internalRawName, zohoRawName, userId = null,
+}) {
+  if (!internalRawName?.trim()) throw new Error('اسم الصف الداخلي مطلوب');
+  if (!zohoRawName?.trim())     throw new Error('اسم الصف من Zoho مطلوب');
+
+  // Try fuzzy match the internal name to merchants (uses the same
+  // pg_trgm-backed RPC the customer auto-link already uses).
+  const { data: matches } = await supabase.rpc('bulk_match_customers', {
+    p_names:     [internalRawName],
+    p_threshold: 0.65,    // looser since the operator already
+                          // confirmed the pair; we just need *a*
+                          // merchant to anchor on
+  });
+  const match = (matches || [])[0];
+  if (!match?.store_id) {
+    throw new Error('لم نجد متجراً مطابقاً في كشف /merchants — أضف المتجر هناك أولاً ثم ارجع');
+  }
+
+  const storeId = match.store_id;
+
+  // 1. Write the Zoho-name link (so future uploads auto-match)
+  const { error: e1 } = await supabase
+    .from('customer_merchant_links')
+    .upsert({
+      customer_name: zohoRawName,
+      store_id:      storeId,
+      confidence:    1.0,
+      match_method:  'manual',
+      linked_by:     userId,
+      linked_at:     new Date().toISOString(),
+    }, { onConflict: 'customer_name' });
+  if (e1) throw e1;
+
+  // 2. Backfill both rows in store_balances
+  const { error: e2 } = await supabase
+    .from('store_balances')
+    .update({
+      store_id:         storeId,
+      match_method:     'link-manual-pair',
+      match_confidence: 1.0,
+    })
+    .in('raw_name', [internalRawName, zohoRawName])
+    .is('store_id', null);
+  if (e2) throw e2;
+
+  return { ok: true, storeId, storeName: match.store_name };
 }
 
 // ─────────────────────────────────────────────────────────────────
