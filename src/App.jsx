@@ -110,12 +110,18 @@ const NAV_ITEMS = [
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system' },
   { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
 ];
+// Each section carries an accent color so the sidebar reads as
+// five visually-distinct zones instead of one flat list. The color
+// shows up on:
+//   1. The section icon (always)
+//   2. The active indicator on items in that section
+//   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  { id: 'carriers',  label: 'شركات الشحن',  icon: Building2, hint: 'الكشوف والعقود' },
-  { id: 'audits',    label: 'المراجعات',     icon: FileCheck, hint: 'دورة الفواتير' },
-  { id: 'finance',   label: 'الحركات المالية', icon: DollarSign, hint: 'COD والدفعات' },
-  { id: 'customers', label: 'العملاء والمتاجر', icon: Users,    hint: 'AR والمتابعة' },
-  { id: 'system',    label: 'إعدادات النظام', icon: Briefcase, hint: 'الإدارة والسجلات' },
+  { id: 'carriers',  label: 'شركات الشحن',     icon: Building2, accent: '#3B82F6', hint: 'الكشوف والعقود' },
+  { id: 'audits',    label: 'المراجعات',        icon: FileCheck, accent: '#10B981', hint: 'دورة الفواتير' },
+  { id: 'finance',   label: 'الحركات المالية',  icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات' },
+  { id: 'customers', label: 'العملاء والمتاجر', icon: Users,     accent: '#EF4444', hint: 'AR والمتابعة' },
+  { id: 'system',    label: 'إعدادات النظام',   icon: Briefcase, accent: '#8B5CF6', hint: 'الإدارة والسجلات' },
 ];
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -372,68 +378,107 @@ function AppInner({ theme, toggleTheme }) {
             ))}
 
             {/* Accordion sections */}
-            {NAV_SECTIONS.map((sec) => {
+            {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
               const isOpen = collapsed ? true : !!openSections[sec.id];
               const sectionHasActive = items.some(n => activeFor(n));
               const SecIcon = sec.icon;
               return (
-                <div key={sec.id} style={{ marginTop: 8 }}>
+                <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
                   {collapsed ? (
+                    // Collapsed mode: just a thin divider tinted with
+                    // the section accent — gives a sense of grouping
+                    // even when labels are hidden.
                     <div style={{
-                      height: 1, margin: '8px 14px',
-                      background: 'rgba(255,255,255,.04)',
+                      height: 2, margin: '10px 12px 8px',
+                      borderRadius: 1,
+                      background: `color-mix(in srgb, ${sec.accent} 30%, transparent)`,
                     }}/>
                   ) : (
-                    <button
-                      onClick={() => toggleSection(sec.id)}
-                      aria-expanded={isOpen}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 10,
-                        width: '100%', padding: '9px 12px',
-                        background: 'transparent', border: 'none',
-                        borderRadius: 10, cursor: 'pointer',
-                        fontFamily: 'var(--font-sans)',
-                        color: sectionHasActive
-                          ? 'var(--nav-text-hover)'
-                          : 'var(--nav-text)',
-                        textAlign: 'right',
-                        transition: 'background .15s, color .15s',
-                      }}
-                      onMouseEnter={e => e.currentTarget.style.background = 'var(--nav-hover-bg)'}
-                      onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
-                    >
-                      <SecIcon size={15} strokeWidth={sectionHasActive ? 2.2 : 1.8} style={{ opacity: sectionHasActive ? 1 : .72, color: sectionHasActive ? 'var(--accent)' : undefined }}/>
-                      <span style={{ flex: 1, fontSize: 13, fontWeight: 600, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {sec.label}
-                      </span>
-                      {sectionHasActive && !isOpen && (
-                        <span style={{
-                          width: 6, height: 6, borderRadius: '50%',
-                          background: 'var(--accent)',
-                          boxShadow: '0 0 8px var(--accent-glow)',
-                          flexShrink: 0,
+                    <>
+                      {/* Thin top divider — except above the very first
+                          section since the pinned items above already
+                          provide visual separation. */}
+                      {idx > 0 && (
+                        <div style={{
+                          height: 1, margin: '0 8px 12px',
+                          background: 'rgba(255,255,255,.04)',
                         }}/>
                       )}
-                      <ChevronDown
-                        size={14}
+                      <button
+                        onClick={() => toggleSection(sec.id)}
+                        aria-expanded={isOpen}
                         style={{
-                          transition: 'transform .22s cubic-bezier(.4,0,.2,1)',
-                          transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                          opacity: .55, flexShrink: 0,
+                          display: 'flex', alignItems: 'center', gap: 9,
+                          width: '100%', padding: '4px 14px 8px',
+                          background: 'transparent', border: 'none',
+                          cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                          textAlign: 'right',
                         }}
-                      />
-                    </button>
+                      >
+                        <SecIcon
+                          size={13}
+                          strokeWidth={2}
+                          style={{
+                            color: sec.accent,
+                            opacity: sectionHasActive ? 1 : 0.7,
+                            flexShrink: 0,
+                          }}
+                        />
+                        <span style={{
+                          flex: 1,
+                          // Smaller, uppercase-style — clearly NOT a
+                          // clickable item, more like a header label.
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          letterSpacing: 1.2,
+                          color: sectionHasActive
+                            ? `color-mix(in srgb, ${sec.accent} 80%, white)`
+                            : 'rgba(255,255,255,.42)',
+                          textTransform: 'uppercase',
+                          minWidth: 0,
+                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                        }}>
+                          {sec.label}
+                        </span>
+                        {sectionHasActive && !isOpen && (
+                          <span style={{
+                            width: 5, height: 5, borderRadius: '50%',
+                            background: sec.accent,
+                            boxShadow: `0 0 8px ${sec.accent}`,
+                            flexShrink: 0,
+                          }}/>
+                        )}
+                        <ChevronDown
+                          size={11}
+                          style={{
+                            transition: 'transform .22s cubic-bezier(.4,0,.2,1)',
+                            transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
+                            opacity: .4,
+                            color: 'rgba(255,255,255,.6)',
+                            flexShrink: 0,
+                          }}
+                        />
+                      </button>
+                    </>
                   )}
                   <div style={{
                     overflow: 'hidden',
                     maxHeight: isOpen ? items.length * 44 + 12 : 0,
                     transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
-                    paddingInlineEnd: collapsed ? 0 : 8,
+                    paddingInlineEnd: collapsed ? 0 : 6,
                   }}>
                     {items.map(n => (
-                      <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)} nested/>
+                      <NavBtn
+                        key={n.id}
+                        n={n}
+                        active={activeFor(n)}
+                        accent={sec.accent}
+                        collapsed={collapsed}
+                        onClick={() => goto(n.path)}
+                        nested
+                      />
                     ))}
                   </div>
                 </div>
@@ -679,18 +724,47 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function NavBtn({ n, active, collapsed, onClick, nested }) {
+function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
   const Icon = n.icon;
+  // Section-tinted active state — when an `accent` prop is passed
+  // (from a sectioned item) the active background, icon and dot all
+  // take the section color. Pinned items (no accent) fall back to
+  // the default green-accent CSS class.
+  const inlineStyle = {
+    ...(nested && !collapsed ? { paddingInlineStart: 22 } : {}),
+  };
+  if (active && accent) {
+    inlineStyle.background    = `color-mix(in srgb, ${accent} 14%, transparent)`;
+    inlineStyle.borderInlineEndColor = accent;  // RTL: shows on the right edge
+    inlineStyle.borderInlineEndWidth = '2.5px';
+    inlineStyle.borderInlineEndStyle = 'solid';
+    inlineStyle.color         = '#fff';
+    inlineStyle.fontWeight    = 600;
+  }
+  const iconColor = active && accent ? accent : undefined;
   return (
     <button
-      className={`nav-item ${active ? 'active' : ''}`}
+      className={`nav-item ${active && !accent ? 'active' : ''}`}
       onClick={onClick}
       title={collapsed ? n.label : undefined}
-      style={nested && !collapsed ? { paddingInlineStart: 28 } : undefined}
+      style={inlineStyle}
     >
-      <Icon size={15} strokeWidth={active ? 2.2 : 1.8} style={{ flexShrink:0 }}/>
-      <span className="nav-label" style={{ flex:1 }}>{n.label}</span>
-      {active && <span className="nav-dot"/>}
+      <Icon
+        size={15}
+        strokeWidth={active ? 2.2 : 1.8}
+        style={{ flexShrink: 0, color: iconColor }}
+      />
+      <span className="nav-label" style={{ flex: 1 }}>{n.label}</span>
+      {active && (
+        <span
+          className={accent ? '' : 'nav-dot'}
+          style={accent ? {
+            width: 6, height: 6, borderRadius: '50%',
+            background: accent, boxShadow: `0 0 8px ${accent}`,
+            flexShrink: 0,
+          } : undefined}
+        />
+      )}
     </button>
   );
 }
