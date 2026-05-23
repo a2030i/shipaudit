@@ -303,14 +303,25 @@ export async function loadLatestReceivables() {
     c.bucketAmounts = breakdown;
   }
 
-  // Overlay the per-customer status tags + credit limits. Each
-  // customer carries:
+  // Overlay the per-customer status tags + credit limits + approved
+  // bad-debt write-offs. Each customer carries:
   //   creditLimit          — effective ceiling (override or global default)
   //   creditUsedPct        — total / creditLimit * 100
   //   overLimit            — boolean, true when current debt > limit
   //   isCustomLimit        — true when a per-customer override is set
+  //   writtenOff           — sum of approved write-offs
+  //   totalGross           — original snapshot total (untouched)
+  //   total                — effective balance = totalGross − writtenOff
   const statuses           = await loadCustomerStatuses();
   const defaultCreditLimit = await loadDefaultCreditLimit();
+  // Write-offs overlay — best-effort, no hard failure if the helper
+  // isn't reachable. Customer-receivables stays usable even when
+  // the write-off table is missing.
+  let writeoffs = new Map();
+  try {
+    const { loadApprovedWriteoffsByCustomer } = await import('./writeoffsService.js');
+    writeoffs = await loadApprovedWriteoffsByCustomer();
+  } catch { /* ignore */ }
   for (const c of byCustomer.values()) {
     const s = statuses.get(c.name);
     c.status          = s?.status || 'normal';
@@ -318,6 +329,13 @@ export async function loadLatestReceivables() {
     c.creditLimit     = s?.creditLimit != null ? s.creditLimit : defaultCreditLimit;
     c.isCustomLimit   = s?.creditLimit != null;
     c.creditLimitNote = s?.creditLimitNote || null;
+    // Apply approved write-offs: keep the original gross total
+    // visible alongside the effective one so the UI can show
+    // "5,000 ر.س مديونية − 3,000 ر.س شطب = 2,000 ر.س متبقي".
+    const writtenOff  = writeoffs.get(c.name) || 0;
+    c.totalGross      = c.total;
+    c.writtenOff      = +writtenOff.toFixed(2);
+    c.total           = +(c.totalGross - writtenOff).toFixed(2);
     c.creditUsedPct   = c.creditLimit > 0 ? +((c.total / c.creditLimit) * 100).toFixed(1) : 0;
     c.overLimit       = c.total > c.creditLimit + 0.01;
   }

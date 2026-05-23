@@ -21,7 +21,7 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   RefreshCw, Phone, CheckCircle2, Clock, X, AlertTriangle, Download,
-  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft,
+  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
@@ -33,6 +33,10 @@ import {
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
 } from '../lib/collectionsService.js';
+import {
+  requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
+  WRITEOFF_STATUS_LABELS,
+} from '../lib/writeoffsService.js';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -85,16 +89,21 @@ export default function Collections({ isActive = true }) {
   const [drawer, setDrawer]     = useState(null);
   const [ptpOpen, setPtpOpen]   = useState(null);
   const [snoozeOpen, setSnoozeOpen] = useState(null);
+  const [writeoffOpen, setWriteoffOpen] = useState(null);   // task being written off
+  const [pendingWriteoffs, setPendingWriteoffs] = useState([]);
+  const [reviewQueueOpen, setReviewQueueOpen]   = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, recs] = await Promise.all([
+      const [t, recs, pending] = await Promise.all([
         listTasks({ includeDone: stageFilter !== 'open' }),
         loadLatestReceivables().catch(() => ({ activeCustomers: [] })),
+        listWriteoffs({ status: 'pending' }).catch(() => []),
       ]);
       setTasks(t);
       setCustomers(recs?.activeCustomers || recs?.customers || []);
+      setPendingWriteoffs(pending);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -232,6 +241,32 @@ export default function Collections({ isActive = true }) {
         <SummaryStat label="وعود متأخّرة"    value={stats.promiseOverdue}   color="#DC2626"/>
       </div>
 
+      {/* Pending write-offs banner — shows when there are requests
+          awaiting admin approval. Admins click to open the review
+          queue. */}
+      {pendingWriteoffs.length > 0 && (
+        <Card
+          style={{
+            marginBottom: 14,
+            background: 'color-mix(in srgb, #F59E0B 8%, transparent)',
+            border: '1.5px solid color-mix(in srgb, #F59E0B 30%, transparent)',
+            cursor: 'pointer',
+          }}
+          onClick={() => setReviewQueueOpen(true)}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <AlertTriangle size={16} color="#F59E0B"/>
+            <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', flex: 1 }}>
+              {pendingWriteoffs.length} طلب شطب دين بانتظار الموافقة
+              <span style={{ marginInlineStart: 10, fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>
+                إجمالي {fmt(pendingWriteoffs.reduce((s, w) => s + Number(w.amount || 0), 0))} ر.س
+              </span>
+            </span>
+            <ChevronLeft size={14} color="var(--muted)"/>
+          </div>
+        </Card>
+      )}
+
       {/* Stage filter chips */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
@@ -342,6 +377,47 @@ export default function Collections({ isActive = true }) {
           onClose={() => setDrawer(null)}
           onRefresh={refresh}
           onPromise={() => { setPtpOpen(drawer); setDrawer(null); }}
+          onWriteoff={() => { setWriteoffOpen(drawer); setDrawer(null); }}
+        />
+      )}
+      {writeoffOpen && (
+        <WriteoffRequestDialog
+          task={writeoffOpen}
+          onCancel={() => setWriteoffOpen(null)}
+          onConfirm={async ({ amount, reason }) => {
+            try {
+              await requestWriteoff({
+                customerName: writeoffOpen.customer_name,
+                amount,
+                reason,
+                taskId: writeoffOpen.id,
+                userId:  profile?.id || null,
+              });
+              toast('تم إرسال طلب الشطب — بانتظار الموافقة', 'success');
+              setWriteoffOpen(null);
+              await refresh();
+            } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+          }}
+        />
+      )}
+      {reviewQueueOpen && (
+        <ReviewQueueModal
+          pending={pendingWriteoffs}
+          onClose={() => setReviewQueueOpen(false)}
+          onApprove={async (id, note) => {
+            try {
+              await approveWriteoff(id, { note, userId: profile?.id || null });
+              toast('تم اعتماد الشطب', 'success');
+              await refresh();
+            } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+          }}
+          onReject={async (id, reason) => {
+            try {
+              await rejectWriteoff(id, { reason, userId: profile?.id || null });
+              toast('تم رفض الطلب', 'info');
+              await refresh();
+            } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+          }}
         />
       )}
       {ptpOpen && (
@@ -431,7 +507,7 @@ function ActionBtn({ title, icon, color, onClick }) {
   );
 }
 
-function TaskDrawer({ task, customer, onClose, onRefresh, onPromise }) {
+function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff }) {
   return (
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
@@ -467,6 +543,10 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise }) {
             onClose(); onRefresh();
           }}>
             مكتملة
+          </Btn>
+          <Btn size="md" variant="ghost" icon={<Trash2 size={13}/>} onClick={onWriteoff}
+               style={{ color: '#DC2626', borderColor: 'color-mix(in srgb, #DC2626 30%, transparent)' }}>
+            اطلب شطب الدين
           </Btn>
           <Btn size="md" variant="ghost" onClick={onClose}>إغلاق</Btn>
         </div>
@@ -561,3 +641,134 @@ const inputStyle = {
   background: 'var(--surface)', color: 'var(--text)',
   fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
 };
+
+function WriteoffRequestDialog({ task, onCancel, onConfirm }) {
+  const [amount, setAmount] = useState(task.debt_at_creation || '');
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title={`طلب شطب دين — ${task.customer_name}`} onClose={onCancel} width={520}>
+      <form autoComplete="off" onSubmit={(e) => { e.preventDefault(); onConfirm({ amount, reason }); }}
+            style={{ padding: '4px 4px 0' }}>
+        <div style={{
+          padding: 12, marginBottom: 12, borderRadius: 8,
+          background: 'color-mix(in srgb, #DC2626 5%, transparent)',
+          border: '1px solid color-mix(in srgb, #DC2626 22%, transparent)',
+          fontSize: 12, color: 'var(--text2)', lineHeight: 1.7,
+        }}>
+          <AlertTriangle size={14} color="#DC2626" style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
+          الطلب سيُرسَل للمدير. بعد الاعتماد يُخصم المبلغ من رصيد العميل المعروض،
+          مع إبقاء أصل الـ snapshot كما هو للمراجعة الخارجية. كل التغييرات تُسجَّل في activity_log.
+        </div>
+        <label style={{ display: 'block', marginBottom: 10 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
+            المبلغ المطلوب شطبه (ر.س)
+          </span>
+          <input type="number" step="0.01" min="0.01" autoFocus value={amount}
+                 onChange={(e) => setAmount(e.target.value)}
+                 style={inputStyle}
+                 name="writeoff_amount" data-form-type="other" data-lpignore="true"/>
+        </label>
+        <label style={{ display: 'block', marginBottom: 14 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
+            السبب (مطلوب)
+          </span>
+          <textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)}
+                    placeholder="مثال: العميل أعلن إفلاسه — قُدّم القانون 5 شهور بدون رد"
+                    style={{ ...inputStyle, resize: 'vertical' }}
+                    name="writeoff_reason" data-form-type="other"/>
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn size="md" variant="primary"
+               style={{ background: '#DC2626', borderColor: '#DC2626' }}
+               icon={<Trash2 size={13}/>}
+               onClick={() => onConfirm({ amount, reason })}
+               disabled={!amount || !reason.trim()}>
+            أرسل الطلب
+          </Btn>
+          <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function ReviewQueueModal({ pending, onClose, onApprove, onReject }) {
+  const [actingOn, setActingOn] = useState(null);  // { id, kind: 'approve'|'reject' }
+  const [note, setNote] = useState('');
+  return (
+    <Modal title={`طلبات شطب الدين بانتظار الموافقة — ${pending.length}`} onClose={onClose} width={780}>
+      <div style={{ padding: '4px 4px 0' }}>
+        {pending.length === 0 ? (
+          <Empty icon="✓" title="لا توجد طلبات بانتظار الموافقة"/>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {pending.map(w => (
+              <Card key={w.id} style={{ padding: 14 }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+                      {w.customer_name}
+                      <span style={{ marginInlineStart: 10, fontSize: 12, color: '#DC2626', fontFamily: 'var(--font-mono)' }}>
+                        {fmt(w.amount)} ر.س
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 6, lineHeight: 1.6 }}>
+                      <strong style={{ color: 'var(--text2)' }}>السبب:</strong> {w.reason}
+                    </div>
+                    <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 4 }}>
+                      طُلب {fmtRel(w.requested_at)}
+                    </div>
+                  </div>
+                  {actingOn?.id === w.id ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6, minWidth: 240 }}>
+                      <textarea rows={2} value={note} onChange={(e) => setNote(e.target.value)}
+                                placeholder={actingOn.kind === 'reject' ? 'سبب الرفض (إلزامي)' : 'ملاحظة (اختيارية)'}
+                                style={{ ...inputStyle, resize: 'vertical', fontSize: 11.5 }}/>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <Btn size="sm" variant={actingOn.kind === 'approve' ? 'primary' : 'ghost'}
+                             style={actingOn.kind === 'approve' ? { background: '#10B981', borderColor: '#10B981' } : {}}
+                             onClick={async () => {
+                               if (actingOn.kind === 'approve') {
+                                 await onApprove(w.id, note);
+                               } else {
+                                 if (!note.trim()) return;
+                                 await onReject(w.id, note);
+                               }
+                               setActingOn(null); setNote('');
+                             }}
+                             disabled={actingOn.kind === 'reject' && !note.trim()}>
+                          أكّد
+                        </Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => { setActingOn(null); setNote(''); }}>
+                          تراجع
+                        </Btn>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <Btn size="sm" variant="primary"
+                           style={{ background: '#10B981', borderColor: '#10B981' }}
+                           icon={<CheckCircle2 size={11}/>}
+                           onClick={() => { setActingOn({ id: w.id, kind: 'approve' }); setNote(''); }}>
+                        اعتماد
+                      </Btn>
+                      <Btn size="sm" variant="ghost"
+                           style={{ color: '#DC2626', borderColor: 'color-mix(in srgb, #DC2626 30%, transparent)' }}
+                           icon={<X size={11}/>}
+                           onClick={() => { setActingOn({ id: w.id, kind: 'reject' }); setNote(''); }}>
+                        رفض
+                      </Btn>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+        <div style={{ marginTop: 14 }}>
+          <Btn size="md" variant="ghost" onClick={onClose}>إغلاق</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
+}
