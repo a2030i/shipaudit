@@ -22,10 +22,12 @@ import {
   RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
   AlertTriangle, Building2, Users, Banknote, Activity,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
-  Heart, Shield,
+  Heart, Shield, Edit3, ArrowRight,
 } from 'lucide-react';
+import { useAuth } from '../lib/auth.jsx';
+import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
 import {
-  Card, Btn, Spinner, Empty, toast, PageHeader,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
 } from '../components/UI.jsx';
 import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
 
@@ -49,9 +51,11 @@ const fmtCompact = (n) => {
 export default function Overview({ carriers = [], isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
   const [period, setPeriod]   = useState(currentPeriod());
+  const [bankEdit, setBankEdit] = useState(null);   // { current, notes } when open
 
   const carrierNameById = useMemo(
     () => new Map((carriers || []).map(c => [c.id, c.name])),
@@ -120,6 +124,15 @@ export default function Overview({ carriers = [], isActive = true }) {
             </Btn>
           </div>
         }
+      />
+
+      {/* ── HERO: Cash position — the headline answer ── */}
+      <CashHero
+        cash={data.cashPosition}
+        onEditBank={() => setBankEdit({
+          current: data.cashPosition.bankBalance ?? '',
+          notes:   '',
+        })}
       />
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
@@ -471,7 +484,231 @@ export default function Overview({ carriers = [], isActive = true }) {
           أعمار الذمم = الفرق بين تاريخ الفاتورة واليوم، للقيود غير المسددة.
         </div>
       </div>
+
+      {/* Bank balance update modal */}
+      {bankEdit && (
+        <BankEditModal
+          current={bankEdit.current}
+          onCancel={() => setBankEdit(null)}
+          onSave={async ({ balance, notes }) => {
+            try {
+              await setBankBalance({ balance, notes, userId: profile?.id || null });
+              toast(`تم تحديث رصيد البنك إلى ${Number(balance).toLocaleString('ar-SA')} ر.س`, 'success');
+              setBankEdit(null);
+              await refresh();
+            } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Cash-position hero ─────────────────────────────────────────
+// Single-screen answer to "كيف وضعنا اليوم؟". Five tiles:
+//   💰 Bank        — manual entry, with last-updated timestamp
+//   📥 AR          — customer debt (from working_capital_now)
+//   📤 AP          — vendor debt (carrier_operations open)
+//   📊 Net no-bank — AR − AP (operational net excluding cash on hand)
+//   🏁 Net total   — bank + AR − AP (the bottom-line cash picture if
+//                    we fully collect AR and pay AP today)
+function CashHero({ cash, onEditBank }) {
+  const fmtRel = (iso) => {
+    if (!iso) return 'غير محدّث';
+    const ms = Date.now() - new Date(iso).getTime();
+    const days = Math.floor(ms / 86_400_000);
+    if (days <= 0) return `حُدّث اليوم`;
+    if (days === 1) return 'حُدّث أمس';
+    if (days < 7)   return `حُدّث قبل ${days} أيام`;
+    return `حُدّث قبل ${Math.floor(days / 7)} أسابيع — قد يكون قديماً`;
+  };
+  const isBankStale = cash.bankUpdated && (Date.now() - new Date(cash.bankUpdated).getTime()) > 7 * 86_400_000;
+  return (
+    <Card style={{
+      padding: 20, marginBottom: 22,
+      background: 'linear-gradient(135deg, color-mix(in srgb, #10B981 5%, var(--surface)) 0%, color-mix(in srgb, #0EA5E9 4%, var(--surface)) 100%)',
+      border: '1.5px solid color-mix(in srgb, #10B981 18%, transparent)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+        <span style={{
+          width: 32, height: 32, borderRadius: 8,
+          background: 'color-mix(in srgb, #10B981 16%, transparent)',
+          color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}><Wallet size={17}/></span>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>نظرة السيولة</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+            البنك + المستحق علينا + المستحق لنا = الوضع النقدي الكامل
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        display: 'grid', gap: 12,
+        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+      }}>
+        {/* Bank balance — editable */}
+        <CashTile
+          icon={<Wallet size={18}/>}
+          color={isBankStale ? '#F59E0B' : '#047857'}
+          label="رصيد البنك"
+          value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
+          unit={cash.bankBalance == null ? '' : 'ر.س'}
+          hint={fmtRel(cash.bankUpdated)}
+          onClick={onEditBank}
+          editable
+        />
+        <CashTile
+          icon={<ArrowDownCircle size={18}/>}
+          color="#10B981"
+          label="مستحق لنا (العملاء)"
+          value={fmt(cash.totalAR)}
+          unit="ر.س"
+          hint="ما يدين به العملاء اليوم"
+        />
+        <CashTile
+          icon={<ArrowUpCircle size={18}/>}
+          color="#DC2626"
+          label="مستحق علينا (الموردون)"
+          value={fmt(cash.totalAP)}
+          unit="ر.س"
+          hint="ما ندين به للشركات"
+        />
+        <CashTile
+          icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
+          color={cash.netNoBank >= 0 ? '#047857' : '#DC2626'}
+          label="الصافي التشغيلي"
+          value={(cash.netNoBank >= 0 ? '+' : '−') + fmt(Math.abs(cash.netNoBank))}
+          unit="ر.س"
+          hint="مستحق لنا − مستحق علينا"
+        />
+        <CashTile
+          icon={<Banknote size={18}/>}
+          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? '#047857' : '#DC2626'}
+          label="الوضع النقدي الكامل"
+          value={cash.net == null ? '—' : (cash.net >= 0 ? '+' : '−') + fmt(Math.abs(cash.net))}
+          unit={cash.net == null ? '' : 'ر.س'}
+          hint={cash.bankBalance == null ? 'حدّث رصيد البنك للحساب' : 'البنك + الصافي التشغيلي'}
+          big
+        />
+      </div>
+
+      {isBankStale && (
+        <div style={{
+          marginTop: 14, padding: '10px 14px', borderRadius: 8,
+          background: 'color-mix(in srgb, #F59E0B 10%, transparent)',
+          border: '1px solid color-mix(in srgb, #F59E0B 30%, transparent)',
+          fontSize: 12, color: '#B45309', display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <AlertTriangle size={14}/>
+          رصيد البنك قديم — اضغط على البطاقة لتحديثه برصيدك الحالي
+        </div>
+      )}
+    </Card>
+  );
+}
+
+function CashTile({ icon, color, label, value, unit, hint, onClick, editable = false, big = false }) {
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        padding: 14, borderRadius: 10,
+        background: 'var(--surface)',
+        border: `1px solid color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)`,
+        cursor: onClick ? 'pointer' : 'default',
+        position: 'relative',
+        transition: 'border-color .15s',
+        ...(big ? { background: `color-mix(in srgb, ${color} 4%, var(--surface))` } : {}),
+      }}
+      onMouseEnter={onClick ? (e) => e.currentTarget.style.borderColor = color : undefined}
+      onMouseLeave={onClick ? (e) => e.currentTarget.style.borderColor = `color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)` : undefined}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+        <span style={{
+          width: 26, height: 26, borderRadius: 7,
+          background: `color-mix(in srgb, ${color} 14%, transparent)`,
+          color, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>{icon}</span>
+        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: .4, flex: 1 }}>
+          {label}
+        </span>
+        {editable && (
+          <Edit3 size={11} color="var(--muted2)"/>
+        )}
+      </div>
+      <div style={{
+        fontSize: big ? 26 : 21, fontWeight: 800,
+        color, fontFamily: 'var(--font-mono)', letterSpacing: -0.5,
+      }}>
+        {value}
+        {unit && <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500, marginInlineStart: 5 }}>{unit}</span>}
+      </div>
+      {hint && (
+        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function BankEditModal({ current, onCancel, onSave }) {
+  const [balance, setBalanceLocal] = useState(current ?? '');
+  const [notes,   setNotes]   = useState('');
+  return (
+    <Modal title="تحديث رصيد البنك" onClose={onCancel} width={460}>
+      <form autoComplete="off"
+            onSubmit={(e) => { e.preventDefault(); if (balance !== '') onSave({ balance, notes }); }}
+            style={{ padding: '4px 4px 0' }}>
+        <div style={{
+          padding: 12, marginBottom: 12, borderRadius: 8,
+          background: 'var(--surface2)', border: '1px solid var(--border)',
+          fontSize: 12, color: 'var(--muted)', lineHeight: 1.7,
+        }}>
+          أدخل رصيد البنك الحالي. كل تحديث يُحفظ كسجل (يبقى التاريخ مرئياً) — فلا داعي لتعديل القيم القديمة.
+        </div>
+        <label style={{ display: 'block', marginBottom: 10 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
+            الرصيد الحالي (ر.س)
+          </span>
+          <input
+            type="number" step="0.01" autoFocus value={balance}
+            onChange={(e) => setBalanceLocal(e.target.value)}
+            name="bank_balance"
+            autoComplete="off" data-form-type="other" data-lpignore="true"
+            style={{
+              width: '100%', padding: '12px 14px', fontSize: 18,
+              border: '1.5px solid var(--border)', borderRadius: 8,
+              background: 'var(--surface)', color: 'var(--text)',
+              fontFamily: 'var(--font-mono)', textAlign: 'center', fontWeight: 700,
+              boxSizing: 'border-box',
+            }}
+          />
+        </label>
+        <label style={{ display: 'block', marginBottom: 14 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
+            ملاحظة (اختيارية)
+          </span>
+          <input
+            type="text" value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="مثال: بعد تحويل سمسا 42K"
+            name="bank_notes" autoComplete="off" data-form-type="other"
+            style={{
+              width: '100%', padding: '8px 12px', fontSize: 13,
+              border: '1px solid var(--border)', borderRadius: 8,
+              background: 'var(--surface)', color: 'var(--text)',
+              fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+            }}
+          />
+        </label>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Btn size="md" variant="primary" disabled={balance === ''} onClick={() => onSave({ balance, notes })}>
+            احفظ
+          </Btn>
+          <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
+        </div>
+      </form>
+    </Modal>
   );
 }
 

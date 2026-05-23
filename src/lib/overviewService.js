@@ -33,7 +33,8 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr] = await Promise.all([
+  const { loadCurrentBalance }   = await import('./bankBalanceService.js');
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -41,6 +42,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     rpc('customer_debt_concentration', { p_limit: topN }),
     rpc('carrier_health_kpis', {}),
     rpc('working_capital_now', {}),
+    loadCurrentBalance().catch(() => null),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -127,6 +129,32 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       sharePct:     num(r.share_pct),
       rank:         num(r.rank_order),
     })),
+    // Cash position — the headline question the operator opens
+    // /overview to answer: "how much in the bank, how much owed
+    // to us, how much we owe, where's the net".
+    cashPosition: (() => {
+      const wc = wcArr[0] || {};
+      const bank = bankBalance?.balance ?? null;
+      const totalAR = num(wc.total_ar);
+      const totalAP = num(wc.total_ap);
+      // COD outstanding from the carriers — money they collected and
+      // haven't remitted yet. Read from the AP aging totals doesn't
+      // capture this; we use the working-capital RPC which already
+      // groups carriers we're net-out (we sent COD they haven't
+      // remitted). For now compute later if we need; the simple
+      // metric below is: AR + Bank − AP.
+      const netNoBank = totalAR - totalAP;
+      const net       = bank == null ? null : bank + netNoBank;
+      return {
+        bankBalance:  bank,
+        bankUpdated:  bankBalance?.recordedAt || null,
+        bankNotes:    bankBalance?.notes || null,
+        totalAR,                         // owed to us (customers)
+        totalAP,                         // we owe (vendors/carriers)
+        netNoBank:    +netNoBank.toFixed(2),
+        net:          net != null ? +net.toFixed(2) : null,
+      };
+    })(),
     workingCapital: (() => {
       const r = wcArr[0] || {};
       return {
