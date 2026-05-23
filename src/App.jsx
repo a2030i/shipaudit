@@ -9,7 +9,6 @@ import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
-import { getNavPermissions } from './lib/permissionsService.js';
 import Dashboard      from './pages/Dashboard.jsx';
 import CarriersHub    from './pages/CarriersHub.jsx';
 import CarrierProfile from './pages/CarrierProfile.jsx';
@@ -62,6 +61,11 @@ import UploadsHub       from './pages/UploadsHub.jsx';
 //
 // `pinned: true` on a NAV_ITEM means it renders above sections (no
 // section header). Currently only the dashboard is pinned.
+// Each item carries a `permKey` linking it to the per-user
+// permission catalog (src/lib/permissions.js). Admin sees everything;
+// accountants see only items whose `permKey` is granted. `adminOnly`
+// items never appear for accountants regardless of permissions —
+// reserved for the meta-admin actions (manage employees themselves).
 const NAV_ITEMS = [
   // ── Pinned top-level ───────────────────────────────────────────
   // /overview is the canonical home as of 2026-05-22 — /dashboard
@@ -69,45 +73,45 @@ const NAV_ITEMS = [
   // The /dashboard route still resolves so any deep links keep
   // working, but it's removed from the nav and the default landing
   // redirect now goes to /overview.
-  { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true },
-  { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true },
+  { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
+  { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true, permKey: 'uploads.view' },
 
   // ── Carriers (AP side) ────────────────────────────────────────
   // /hub now hosts both the cards view and the KPI view as tabs;
   // /carrier-kpi still resolves but redirects through the workspace.
-  { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers' },
-  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers' },
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers' },
-  { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers' },
-  { id: 'contracts',    path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'carriers' },
+  { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
+  { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers', permKey: 'carriers.view' },
+  { id: 'contracts',    path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'carriers', permKey: 'carriers.edit_contract' },
 
   // ── Audits pipeline ───────────────────────────────────────────
-  { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits' },
-  { id: 'tasks',           path: '/tasks',          label: 'مهام الأسبوع',   icon: ListTodo, section: 'audits' },
-  { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits' },
-  { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits' },
+  { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits', permKey: 'webhook.view' },
+  { id: 'tasks',           path: '/tasks',          label: 'مهام الأسبوع',   icon: ListTodo, section: 'audits', permKey: 'audits.view' },
+  { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits', permKey: 'audits.create' },
+  { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits', permKey: 'audits.view' },
   // Note: /weight-billing is reachable from /internal-exports (link
   // in the weights card footer) — removed from sidebar to reduce
   // duplication. The pull workflow lives on /internal-exports.
-  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات', icon: FileText, section: 'audits' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات', icon: FileText, section: 'audits', permKey: 'internal_exports.view' },
 
   // ── Finance ────────────────────────────────────────────────────
   // cod / payments / bank / payment-requests merged into /money
   // with 4 tabs. Legacy routes still resolve to the matching tab.
-  { id: 'forecast',  path: '/forecast', label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance' },
+  { id: 'forecast',  path: '/forecast', label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance', permKey: 'forecast.view' },
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view' },
 
   // ── Customers (AR side) ───────────────────────────────────────
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
-  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers' },
-  { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers' },
-  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers' },
+  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers', permKey: 'receivables.view' },
+  { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
+  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
 
   // ── System (config + reports — least-touched) ─────────────────
-  { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system' },
-  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system' },
+  { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
 ];
 // Each section carries an accent color so the sidebar reads as
@@ -171,7 +175,7 @@ const PAGE_TITLES = {
   '/settings/data':          'الإعدادات — البيانات',
   '/results':                'نتائج التدقيق',
 };
-const ROLE_LABEL = { admin: 'مدير', accountant1: 'محاسب أول', accountant2: 'محاسب ثانٍ' };
+const ROLE_LABEL = { admin: 'مدير', accountant: 'محاسب' };
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {
@@ -208,7 +212,7 @@ function AppShell(props) {
 
 // ── Inner ─────────────────────────────────────────────────────────────────────
 function AppInner({ theme, toggleTheme }) {
-  const { user, profile, loading: authLoading, signOut } = useAuth();
+  const { user, profile, loading: authLoading, signOut, can } = useAuth();
   const navigate  = useNavigate();
   const location  = useLocation();
   const isAdmin   = profile?.role === 'admin';
@@ -219,7 +223,6 @@ function AppInner({ theme, toggleTheme }) {
 
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
-  const [navPerms,        setNavPerms]        = useState(null);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
   // Per-section open/closed state for the accordion. Persists in
@@ -281,11 +284,11 @@ function AppInner({ theme, toggleTheme }) {
     });
   }, [location.pathname]);
 
-  // ── Nav permissions ──
-  useEffect(() => {
-    if (!user) return;
-    getNavPermissions().then(setNavPerms).catch(() => setNavPerms({}));
-  }, [user]);
+  // Nav permissions used to live in a separate JSONB keyed by role
+  // (NAV_PERMISSIONS in app_settings). That model is superseded by
+  // the per-user permissions JSONB on profiles — see
+  // src/lib/permissions.js. The legacy /settings/permissions page is
+  // kept reachable but its nav filter no longer drives anything.
 
   const goto = (path) => {
     navigate(path);
@@ -317,18 +320,18 @@ function AppInner({ theme, toggleTheme }) {
 
   if (!user || !profile) return <LoginPage/>;
 
-  // Filter nav items by role.
+  // Filter nav items by per-user permissions (src/lib/permissions.js).
   //   • admin → everything
-  //   • non-admin with explicit allowlist → only those items
-  //   • non-admin without any permission row yet → everything except admin-only
-  //     (default-open: better than an empty sidebar before someone configures perms)
+  //   • accountant → items whose `permKey` is granted in profile.permissions
+  //   • `adminOnly` items are hidden for accountants regardless of perms
+  // Items without a `permKey` fall through as visible (legacy / global
+  // items like the topbar shortcuts — add a permKey when gating them).
   const visibleNav = isAdmin
     ? NAV_ITEMS
     : NAV_ITEMS.filter(n => {
         if (n.adminOnly) return false;
-        const allowed = navPerms?.[profile.role];
-        if (!allowed || allowed.length === 0) return true;
-        return allowed.includes(n.id);
+        if (!n.permKey)  return true;
+        return can(n.permKey);
       });
 
   const currentTitle = PAGE_TITLES[location.pathname]
@@ -660,6 +663,11 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/tasks'} scroll>
               <Tasks carriers={carriers} isActive={pathname==='/tasks'}/>
             </PageSlot>
+            {/* Employees page is the one truly admin-only page —
+                gated even from accountants who hold every other
+                permission. EmployeeManager itself further checks
+                can('system.manage_employees') / .manage_permissions
+                so wider read access could be granted later. */}
             {isAdmin && (
               <PageSlot active={pathname==='/employees'} scroll>
                 <EmployeeManager/>

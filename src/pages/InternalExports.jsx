@@ -37,7 +37,8 @@ const fmtDate = (iso) => {
 };
 
 export default function InternalExports({ carriers = [], isActive = true }) {
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canPull = can('internal_exports.pull');
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -351,10 +352,11 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                 variant="accent"
                 icon={codPulling ? <Spinner size={16}/> : <Sparkles size={16}/>}
                 onClick={handleCodPull}
-                disabled={codPulling}
+                disabled={codPulling || !canPull}
+                title={canPull ? '' : 'تحتاج صلاحية internal_exports.pull'}
                 style={{ width: '100%', justifyContent: 'center' }}
               >
-                {codPulling ? 'جارٍ السحب…' : 'اسحب التحصيلات الآن'}
+                {codPulling ? 'جارٍ السحب…' : (canPull ? 'اسحب التحصيلات الآن' : '🔒 لا تملك صلاحية السحب')}
               </Btn>
             </>
           )}
@@ -462,11 +464,12 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                   size="lg"
                   variant="primary"
                   onClick={() => handleInvoicingPull('selected')}
-                  disabled={invPulling || !selectedAuditIds.size}
+                  disabled={invPulling || !selectedAuditIds.size || !canPull}
+                  title={canPull ? '' : 'تحتاج صلاحية internal_exports.pull'}
                   icon={invPulling ? <Spinner size={16}/> : <Download size={16}/>}
                   style={{ justifyContent: 'center' }}
                 >
-                  اسحب المحدّد
+                  {canPull ? 'اسحب المحدّد' : '🔒 محظور'}
                 </Btn>
                 <Btn
                   size="lg"

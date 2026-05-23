@@ -81,7 +81,8 @@ const TRIGGER_COLORS = {
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
+  const canApproveWriteoff = can('receivables.approve_writeoff');
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
@@ -244,7 +245,10 @@ export default function Collections({ isActive = true }) {
       {/* Pending write-offs banner — shows when there are requests
           awaiting admin approval. Admins click to open the review
           queue. */}
-      {pendingWriteoffs.length > 0 && (
+      {/* Banner is only clickable for the admin / users with the
+          approve permission — accountants without it still see the
+          count (transparency) but the click does nothing. */}
+      {pendingWriteoffs.length > 0 && canApproveWriteoff && (
         <Card
           style={{
             marginBottom: 14,
