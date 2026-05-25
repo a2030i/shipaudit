@@ -88,20 +88,27 @@ export default function Reconciliation({ isActive = true }) {
     if (!linkTarget) return;
     try {
       if (linkTarget.source === 'internal') {
-        // picked = { rawName } for a Zoho candidate
+        // picked = { rawName, existingStoreId? } for a Zoho candidate.
+        // existingStoreId is set when the picked Zoho row is already
+        // anchored on a merchant — we reuse it instead of creating
+        // a fresh anchor, so the internal row joins that pair.
         const r = await linkInternalRowToZohoRow({
           internalRawName: linkTarget.rawName,
           zohoRawName:     picked.rawName,
+          existingStoreId: picked.existingStoreId || null,
           userId:          profile?.id || null,
         });
-        // syntheticAnchor=true means no merchant was found and we
-        // created an internal "manual:<uuid>" anchor. The pair still
-        // shows in the reconciliation table (uses raw_name as the
-        // display label). Tell the operator so they can optionally
-        // add the store to /merchants later for a richer name.
-        const tail = r.syntheticAnchor
-          ? ' (بدون متجر في الكشف — ربط يدوي)'
-          : ` (المتجر ${r.storeName || r.storeId})`;
+        // Three outcomes:
+        //   reusedExisting → joined an existing pair anchored on
+        //                    a merchant (most common case after the
+        //                    operator already linked the Zoho side).
+        //   syntheticAnchor → no merchant exists, fresh pair on a
+        //                     manual:<uuid> anchor.
+        //   else            → new pair on a fuzzy-matched merchant.
+        let tail;
+        if (r.reusedExisting)        tail = ` (انضمّ للمتجر ${r.storeName || r.storeId})`;
+        else if (r.syntheticAnchor)  tail = ' (بدون متجر في الكشف — ربط يدوي)';
+        else                          tail = ` (المتجر ${r.storeName || r.storeId})`;
         toast(`تم اقتران «${linkTarget.rawName}» بـ «${picked.rawName}»${tail}`, 'success');
       } else {
         // picked = { storeId } for a merchant candidate
@@ -1026,7 +1033,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
     ? `ربط مع نظير في Zoho: ${target.rawName}`
     : `ربط بمتجر لمحة: ${target.rawName}`;
   const candidateSourceLabel = pickingZoho
-    ? 'يعرض عملاء Zoho غير المربوطين فقط'
+    ? 'يعرض كل عملاء Zoho — المربوط منهم سيظهر بشارة'
     : 'يعرض متاجر لمحة التي لم تُربط بعد';
 
   return (
@@ -1109,7 +1116,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={pickingZoho
-                ? 'ابحث في عملاء Zoho غير المربوطين…'
+                ? 'ابحث في عملاء Zoho…'
                 : 'ابحث باسم المتجر أو رقمه أو الجوال…'}
               style={{
                 width: '100%', padding: '9px 12px 9px 34px', fontSize: 13,
@@ -1144,7 +1151,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
               {pickingZoho
                 ? (search
                     ? `لا توجد نتائج لـ «${search}»`
-                    : 'لا توجد عملاء Zoho غير مربوطين — ارفع ملف Zoho أحدث أو راجع الروابط')
+                    : 'لا توجد عملاء Zoho — ارفع ملف Zoho أحدث')
                 : (search
                     ? `لا توجد نتائج لـ «${search}»`
                     : 'كل المتاجر مربوطة بعملاء بالفعل — لا توجد متاجر مرشّحة')}
@@ -1152,6 +1159,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           ) : pickingZoho ? (
             filtered.map(c => {
               const sel = isPickedSame(c);
+              const isLinked = !!c.existingStoreId;
               return (
                 <div key={c.rawName} onClick={() => setPicked(c)} style={{
                   padding: '10px 14px', cursor: 'pointer',
@@ -1160,8 +1168,17 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                   display: 'flex', alignItems: 'center', gap: 12,
                 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-                      {c.rawName}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span>{c.rawName}</span>
+                      {isLinked && (
+                        <span title={`مرتبط بالمتجر ${c.existingStoreId}`} style={{
+                          fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
+                          background: 'color-mix(in srgb, #3B82F6 14%, transparent)',
+                          color: '#1D4ED8', fontFamily: 'var(--font-mono)',
+                        }}>
+                          🔗 مرتبط بـ #{c.existingStoreId}
+                        </span>
+                      )}
                     </div>
                     {Math.abs(c.balance) > 0.005 && (
                       <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
