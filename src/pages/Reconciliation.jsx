@@ -1077,16 +1077,27 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
               {suggested.map(c => {
-                const sel = isPickedSame(c);
                 return (
-                  <button key={pickingZoho ? c.rawName : c.storeId} type="button" onClick={() => setPicked(c)} style={{
+                  <button key={pickingZoho ? c.rawName : c.storeId} type="button" onClick={() => onConfirm(c)} style={{
                     padding: '6px 12px', borderRadius: 999, cursor: 'pointer',
-                    border: `1.5px solid ${sel ? '#10B981' : 'var(--border)'}`,
-                    background: sel ? 'rgba(16,185,129,.12)' : 'transparent',
-                    color: sel ? '#047857' : 'var(--text2)',
+                    border: '1.5px solid var(--border)',
+                    background: 'transparent',
+                    color: 'var(--text2)',
                     fontSize: 12, fontWeight: 600, fontFamily: 'var(--font-sans)',
                     display: 'inline-flex', alignItems: 'center', gap: 6,
-                  }}>
+                    transition: 'all .12s',
+                  }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = 'rgba(16,185,129,.12)';
+                      e.currentTarget.style.borderColor = '#10B981';
+                      e.currentTarget.style.color = '#047857';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.borderColor = 'var(--border)';
+                      e.currentTarget.style.color = 'var(--text2)';
+                    }}
+                  >
                     {pickingZoho ? c.rawName : c.storeName}
                     <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
                       {pickingZoho ? '' : `#${c.storeId} · `}{Math.round(c._score * 100)}%
@@ -1158,15 +1169,21 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
             </div>
           ) : pickingZoho ? (
             filtered.map(c => {
-              const sel = isPickedSame(c);
               const isLinked = !!c.existingStoreId;
+              // One-click: clicking the row IS the link. The
+              // bottom "اربط بـ" button stays as a redundancy in
+              // case the operator wants to scan + select before
+              // committing — they can still set picked via keyboard.
               return (
-                <div key={c.rawName} onClick={() => setPicked(c)} style={{
+                <div key={c.rawName} onClick={() => onConfirm(c)} style={{
                   padding: '10px 14px', cursor: 'pointer',
                   borderBottom: '1px solid var(--border)',
-                  background: sel ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
                   display: 'flex', alignItems: 'center', gap: 12,
-                }}>
+                  transition: 'background .12s',
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, #10B981 8%, transparent)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                       <span>{c.rawName}</span>
@@ -1186,20 +1203,29 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                       </div>
                     )}
                   </div>
-                  {sel && <CheckCircle2 size={16} color="#10B981"/>}
+                  <span style={{
+                    fontSize: 11, color: '#10B981', fontWeight: 700,
+                    fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <Link2 size={12}/>
+                    اربط
+                  </span>
                 </div>
               );
             })
           ) : (
             filtered.map(m => {
-              const sel = isPickedSame(m);
               return (
-                <div key={m.storeId} onClick={() => setPicked(m)} style={{
+                <div key={m.storeId} onClick={() => onConfirm(m)} style={{
                   padding: '10px 14px', cursor: 'pointer',
                   borderBottom: '1px solid var(--border)',
-                  background: sel ? 'color-mix(in srgb, #10B981 10%, transparent)' : 'transparent',
                   display: 'flex', alignItems: 'center', gap: 12,
-                }}>
+                  transition: 'background .12s',
+                }}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, #10B981 8%, transparent)'}
+                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                >
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {m.storeName}
@@ -1208,18 +1234,24 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                       #{m.storeId} {m.phone ? `· ${m.phone}` : ''} {m.status ? `· ${m.status}` : ''}
                     </div>
                   </div>
-                  {sel && <CheckCircle2 size={16} color="#10B981"/>}
+                  <span style={{
+                    fontSize: 11, color: '#10B981', fontWeight: 700,
+                    fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
+                    display: 'flex', alignItems: 'center', gap: 4,
+                  }}>
+                    <Link2 size={12}/>
+                    اربط
+                  </span>
                 </div>
               );
             })
           )}
         </div>
 
-        <div style={{ marginTop: 14, display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="primary" icon={<Link2 size={13}/>}
-               onClick={() => picked && onConfirm(picked)} disabled={confirmDisabled}>
-            {picked ? `اربط بـ ${pickedLabel}` : (pickingZoho ? 'اختر عميل Zoho' : 'اختر متجراً')}
-          </Btn>
+        <div style={{ marginTop: 14, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            💡 اضغط على أي صف للربط مباشرة
+          </div>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
         </div>
       </form>
