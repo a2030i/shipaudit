@@ -427,6 +427,24 @@ export async function loadUnmatchedZohoForPicker() {
   }));
 }
 
+// Backfill every unmatched store_balances row whose raw_name is an
+// EXACT match (after trim) for a merchant.store_name in the latest
+// snapshot. Useful when an internal-settlement file was uploaded
+// BEFORE the merchants snapshot, so the original auto-link pass
+// missed rows that are now trivially linkable.
+//
+// Returns { count, storeIds[] } — the UI shows a toast with the
+// count and refreshes the reconciliation table.
+export async function autolinkBalancesByExactName() {
+  const { data, error } = await supabase.rpc('autolink_balances_by_exact_name');
+  if (error) throw error;
+  const row = (data || [])[0] || { linked_count: 0, store_ids: [] };
+  return {
+    count:    Number(row.linked_count) || 0,
+    storeIds: row.store_ids || [],
+  };
+}
+
 // Pair an internal-source unmatched row with a Zoho-source unmatched
 // row — the operator's saying "these two ARE the same entity".
 //
