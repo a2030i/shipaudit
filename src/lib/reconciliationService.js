@@ -398,14 +398,15 @@ export async function loadMerchantsForPicker({ includeLinked = false } = {}) {
     }));
 }
 
-// Unmatched Zoho-side raw names from the latest Zoho snapshot — used
-// as candidates when the operator is linking a Lamha-internal row
-// (the operator picks the Zoho equivalent). Returns just the row's
-// raw_name + balance + store_id (null because unmatched). Excludes
-// rows that are ALREADY matched (have store_id) — those are linked
-// already and shouldn't reappear here.
+// Zoho-side candidates for the internal-row link picker. Returns
+// BOTH unmatched rows (store_id=null) AND rows already linked to a
+// merchant (store_id set). The already-linked ones get a flag so
+// the UI can show a badge like "مرتبط بمتجر #1537" — clicking them
+// is still legitimate (it means "this internal row is the same
+// entity as this Zoho row, which is anchored on merchant X").
+// linkInternalRowToZohoRow uses the picked row's existing store_id
+// when present instead of generating a synthetic anchor.
 export async function loadUnmatchedZohoForPicker() {
-  // Latest Zoho snapshot
   const { data: latest } = await supabase
     .from('store_balance_snapshots')
     .select('id')
@@ -415,14 +416,14 @@ export async function loadUnmatchedZohoForPicker() {
   if (!latest?.length) return [];
   const { data } = await supabase
     .from('store_balances')
-    .select('raw_name, balance, match_method')
+    .select('raw_name, balance, match_method, store_id')
     .eq('snapshot_id', latest[0].id)
-    .is('store_id', null)
     .order('raw_name');
   return (data || []).map(r => ({
-    rawName: r.raw_name,
-    balance: Number(r.balance) || 0,
-    method:  r.match_method,
+    rawName:        r.raw_name,
+    balance:        Number(r.balance) || 0,
+    method:         r.match_method,
+    existingStoreId: r.store_id || null,   // null = still unmatched
   }));
 }
 
@@ -447,33 +448,48 @@ export async function loadUnmatchedZohoForPicker() {
 // renamed-but-not-resynced stores).
 export async function linkInternalRowToZohoRow({
   internalRawName, zohoRawName, userId = null,
+  // Optional override — when the picker shows an already-linked
+  // Zoho row, the UI passes that row's existing store_id here so
+  // we reuse it instead of creating a new anchor. Without this,
+  // a chain like "Zoho already → merchant #1537, internal pairs
+  // with Zoho" would create a synthetic anchor and the internal
+  // row would NOT appear under #1537 in /reconciliation.
+  existingStoreId = null,
 }) {
   if (!internalRawName?.trim()) throw new Error('اسم الصف الداخلي مطلوب');
   if (!zohoRawName?.trim())     throw new Error('اسم الصف من Zoho مطلوب');
 
-  // Path A: fuzzy-match against merchants (pg_trgm-backed RPC).
-  const { data: matches } = await supabase.rpc('bulk_match_customers', {
-    p_names:     [internalRawName],
-    p_threshold: 0.65,    // looser since the operator already
-                          // confirmed the pair; we just need *a*
-                          // merchant to anchor on
-  });
-  const match = (matches || [])[0];
-
   let storeId, storeName, syntheticAnchor = false;
-  if (match?.store_id) {
-    storeId   = match.store_id;
-    storeName = match.store_name;
+
+  if (existingStoreId) {
+    // Path 0 (preferred): the picked Zoho row is already anchored
+    // on a merchant. Reuse that store_id so the internal row joins
+    // the existing pair under that merchant.
+    storeId = existingStoreId;
+    const { data: merchantRow } = await supabase
+      .from('merchants').select('store_name').eq('store_id', storeId).limit(1).maybeSingle();
+    storeName = merchantRow?.store_name || internalRawName;
   } else {
-    // Path B: synthetic anchor. crypto.randomUUID() is available in
-    // every browser we support (and in Node 19+) — fall back to a
-    // timestamp-random pair if not.
-    const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
-      ? crypto.randomUUID()
-      : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
-    storeId   = `manual:${uid}`;
-    storeName = internalRawName;
-    syntheticAnchor = true;
+    // Path A: fuzzy-match the internal name against merchants
+    // (pg_trgm-backed RPC).
+    const { data: matches } = await supabase.rpc('bulk_match_customers', {
+      p_names:     [internalRawName],
+      p_threshold: 0.65,
+    });
+    const match = (matches || [])[0];
+    if (match?.store_id) {
+      storeId   = match.store_id;
+      storeName = match.store_name;
+    } else {
+      // Path B: synthetic anchor. crypto.randomUUID() is available
+      // in every browser we support (and in Node 19+).
+      const uid = (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      storeId   = `manual:${uid}`;
+      storeName = internalRawName;
+      syntheticAnchor = true;
+    }
   }
 
   // 1. Write the Zoho-name link (so future Zoho uploads auto-match
@@ -492,8 +508,13 @@ export async function linkInternalRowToZohoRow({
     }, { onConflict: 'customer_name' });
   if (e1) throw e1;
 
-  // 2. Backfill both rows in store_balances so the next
-  //    balance_reconciliation() run pairs them up.
+  // 2. Backfill the internal row so it joins the anchor. We DON'T
+  //    filter on store_id IS NULL here for the Path 0 case because
+  //    the Zoho row is already anchored and we just need to bring
+  //    the internal row alongside it. For Paths A/B the internal
+  //    row is unmatched, the Zoho row is unmatched, and both get
+  //    updated; the WHERE-IS-NULL guard from the old version is
+  //    redundant once we pre-checked the picker.
   const { error: e2 } = await supabase
     .from('store_balances')
     .update({
@@ -502,10 +523,10 @@ export async function linkInternalRowToZohoRow({
       match_confidence: 1.0,
     })
     .in('raw_name', [internalRawName, zohoRawName])
-    .is('store_id', null);
+    .is('store_id', null);   // only the still-unmatched side gets touched
   if (e2) throw e2;
 
-  return { ok: true, storeId, storeName, syntheticAnchor };
+  return { ok: true, storeId, storeName, syntheticAnchor, reusedExisting: !!existingStoreId };
 }
 
 // ─────────────────────────────────────────────────────────────────
