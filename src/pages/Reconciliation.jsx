@@ -13,7 +13,7 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   RefreshCw, Upload, Download, Trash2, AlertTriangle, CheckCircle2,
-  Scale, Info, ChevronLeft, FileSpreadsheet, Link2, Search, X,
+  Scale, Info, ChevronLeft, FileSpreadsheet, Link2, Search, X, Zap,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
@@ -25,6 +25,7 @@ import {
   loadReconciliation,
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
   loadUnmatchedZohoForPicker, linkInternalRowToZohoRow,
+  autolinkBalancesByExactName,
   parseZohoVendorBalances, uploadVendorBalanceSnapshot,
   listVendorSnapshots, deleteVendorSnapshot,
   loadVendorReconciliation, loadVendorOthers,
@@ -59,6 +60,29 @@ export default function Reconciliation({ isActive = true }) {
   // Tab between customer side (المتاجر/العملاء) and vendor side
   // (شركات الشحن). Each side has its own data + uploads.
   const [tab, setTab]               = useState('customers');
+  const [autolinkBusy, setAutolinkBusy] = useState(false);
+
+  // One-click backfill for the common case where the store_balances
+  // upload happened before the merchants snapshot, leaving rows
+  // unlinked despite having identical names to existing merchants.
+  // The RPC does the SET on the server in a single transaction.
+  const runAutolinkExactName = async () => {
+    setAutolinkBusy(true);
+    try {
+      const { count, storeIds } = await autolinkBalancesByExactName();
+      if (count === 0) {
+        toast('لا توجد صفوف باسم مطابق — كل المتاجر مربوطة فعلاً', 'info');
+      } else {
+        toast(`✓ تم ربط ${count} متجراً تلقائياً بالأسماء المطابقة`, 'success');
+        await refresh();
+      }
+      return { count, storeIds };
+    } catch (e) {
+      toast(`فشل الربط التلقائي: ${e.message}`, 'error');
+    } finally {
+      setAutolinkBusy(false);
+    }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -429,6 +453,17 @@ export default function Reconciliation({ isActive = true }) {
                 {fmt(unmatched.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
               </strong>
             </span>
+            <Btn
+              size="sm"
+              variant="primary"
+              icon={autolinkBusy ? <Spinner size={12}/> : <Zap size={12}/>}
+              onClick={runAutolinkExactName}
+              disabled={autolinkBusy}
+              title="يربط كل صف اسمه مطابق ١٠٠٪ لاسم متجر في الكشف"
+              style={{ background: '#10B981', borderColor: '#10B981' }}
+            >
+              {autolinkBusy ? 'جارٍ الربط…' : 'ربط تلقائي للأسماء المطابقة'}
+            </Btn>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
