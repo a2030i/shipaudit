@@ -368,11 +368,15 @@ export async function linkUnmatchedToStore({ rawName, storeId, userId = null }) 
 // Searchable list of merchants from the latest snapshot — used by
 // the manual-link picker when linking a Zoho-source unmatched row
 // (it needs a Lamha merchant to anchor to). We pull the whole
-// snapshot once and the UI filters client-side. By default we
-// EXCLUDE merchants already linked to a customer (so the operator
-// only sees fresh candidates), but the caller can request the full
-// list if needed.
-export async function loadMerchantsForPicker({ includeLinked = false } = {}) {
+// snapshot once and the UI filters client-side.
+//
+// Default behaviour: return EVERY merchant, with `isLinked` flagging
+// the ones already attached to another customer. The previous
+// default (hide-already-linked) was wrong — when a Zoho row needs
+// to join an existing pair anchored on a merchant, that merchant
+// must be selectable from the picker. The UI shows a 🔗 badge so
+// the operator knows it's part of an existing pair.
+export async function loadMerchantsForPicker({ includeLinked = true } = {}) {
   const [latestRes, linksRes] = await Promise.all([
     supabase.from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1),
     supabase.from('customer_merchant_links').select('store_id').not('store_id', 'is', null),
