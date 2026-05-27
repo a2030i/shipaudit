@@ -87,6 +87,20 @@ export default function Reconciliation({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      // Auto-run the segment-match auto-linker BEFORE loading the
+      // reconciliation/unmatched lists. Idempotent and fast — only
+      // touches rows where store_id IS NULL. Catches the common
+      // case where a Zoho row's raw_name is the merchant name
+      // prefixed with the legal entity ("مؤسسة X - متجر Y"). Silent
+      // if nothing changed; toast only when rows were actually
+      // linked so the operator sees what happened.
+      try {
+        const r = await autolinkBalancesByExactName();
+        if (r?.count > 0) {
+          toast(`✓ ربطنا ${r.count} متجر تلقائياً (أسماء مطابقة أو متضمنة)`, 'success');
+        }
+      } catch { /* silent — fall through to load anyway */ }
+
       const [r, s, u] = await Promise.all([
         loadReconciliation().catch(() => []),
         listBalanceSnapshots().catch(() => []),
@@ -459,10 +473,10 @@ export default function Reconciliation({ isActive = true }) {
               icon={autolinkBusy ? <Spinner size={12}/> : <Zap size={12}/>}
               onClick={runAutolinkExactName}
               disabled={autolinkBusy}
-              title="يربط كل صف اسمه مطابق ١٠٠٪ لاسم متجر في الكشف"
+              title="يربط كل صف اسمه مطابق أو متضمَّن في اسم متجر بالكشف (يشتغل تلقائياً عند فتح الصفحة — استعمله للتحديث)"
               style={{ background: '#10B981', borderColor: '#10B981' }}
             >
-              {autolinkBusy ? 'جارٍ الربط…' : 'ربط تلقائي للأسماء المطابقة'}
+              {autolinkBusy ? 'جارٍ الربط…' : 'إعادة فحص الربط التلقائي'}
             </Btn>
           </div>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -1017,7 +1031,11 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
     setLoading(true);
     const loader = pickingZoho
       ? loadUnmatchedZohoForPicker()        // Zoho candidates for an internal row
-      : loadMerchantsForPicker({ includeLinked: true });  // ALL merchants; already-linked ones get a 🔗 badge
+      // Hide already-linked merchants from the picker by default —
+      // the auto-linker handles substring matches now, so what's
+      // left in this picker is genuinely orphaned. Operator can
+      // still see the linked list via the export button.
+      : loadMerchantsForPicker({ includeLinked: false });
     loader
       .then(setCandidates)
       .catch((e) => toast(`فشل التحميل: ${e.message}`, 'error'))
@@ -1069,7 +1087,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
     : `ربط بمتجر لمحة: ${target.rawName}`;
   const candidateSourceLabel = pickingZoho
     ? 'يعرض كل عملاء Zoho — المربوط منهم سيظهر بشارة'
-    : 'يعرض كل متاجر لمحة — المربوط منها سيظهر بشارة';
+    : 'يعرض متاجر لمحة التي لم تُربط بعد';
 
   return (
     <Modal title={dialogTitle} onClose={onCancel} width={680}>
@@ -1200,7 +1218,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     : 'لا توجد عملاء Zoho — ارفع ملف Zoho أحدث')
                 : (search
                     ? `لا توجد نتائج لـ «${search}»`
-                    : 'لا توجد متاجر — ارفع كشف المتاجر أولاً')}
+                    : 'كل المتاجر مربوطة بالفعل — لا يوجد متاجر لمحة جديدة لربطها')}
             </div>
           ) : pickingZoho ? (
             filtered.map(c => {
