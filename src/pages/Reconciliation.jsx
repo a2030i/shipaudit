@@ -1017,7 +1017,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
     setLoading(true);
     const loader = pickingZoho
       ? loadUnmatchedZohoForPicker()        // Zoho candidates for an internal row
-      : loadMerchantsForPicker({ includeLinked: false }); // merchants for a Zoho row
+      : loadMerchantsForPicker({ includeLinked: true });  // ALL merchants; already-linked ones get a 🔗 badge
     loader
       .then(setCandidates)
       .catch((e) => toast(`فشل التحميل: ${e.message}`, 'error'))
@@ -1069,7 +1069,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
     : `ربط بمتجر لمحة: ${target.rawName}`;
   const candidateSourceLabel = pickingZoho
     ? 'يعرض كل عملاء Zoho — المربوط منهم سيظهر بشارة'
-    : 'يعرض متاجر لمحة التي لم تُربط بعد';
+    : 'يعرض كل متاجر لمحة — المربوط منها سيظهر بشارة';
 
   return (
     <Modal title={dialogTitle} onClose={onCancel} width={680}>
@@ -1200,7 +1200,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     : 'لا توجد عملاء Zoho — ارفع ملف Zoho أحدث')
                 : (search
                     ? `لا توجد نتائج لـ «${search}»`
-                    : 'كل المتاجر مربوطة بعملاء بالفعل — لا توجد متاجر مرشّحة')}
+                    : 'لا توجد متاجر — ارفع كشف المتاجر أولاً')}
             </div>
           ) : pickingZoho ? (
             filtered.map(c => {
@@ -1262,8 +1262,17 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                      {m.storeName}
+                    <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{m.storeName}</span>
+                      {m.isLinked && (
+                        <span title="هذا المتجر مربوط بصف آخر بالفعل — اضغطه ليُضمّ صف Zoho هذا للزوج الموجود" style={{
+                          fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 4,
+                          background: 'color-mix(in srgb, #3B82F6 14%, transparent)',
+                          color: '#1D4ED8', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                        }}>
+                          🔗 مربوط بالفعل
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>
                       #{m.storeId} {m.phone ? `· ${m.phone}` : ''} {m.status ? `· ${m.status}` : ''}
