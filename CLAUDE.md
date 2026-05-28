@@ -272,6 +272,7 @@
 | محاولة تعديل سعر/شريحة العقد مباشرة في DB | يدمّر تاريخ العقود | استخدم `saveCarrierContractsWithHistory` |
 | تعديل `audits.results` JSONB لإضافة بيانات مهمة | حد TOAST + لن يُحمَّل للـ audits الكبيرة | استخدم `audit_shipments` بدلاً |
 | نسيان `idempotency` على auto-posts | إعادة الاعتماد ينشئ قيود مكررة | استخدم unique partial indexes |
+| `.upsert(op, { onConflict: 'audit_id' })` على `carrier_operations` | الـ unique index على `audit_id` **جزئي** (`WHERE doc_type='INV'`) — PostgREST لا يمرّر الـ predicate فيرفض Postgres الـ ON CONFLICT بـ `42P10`، والخطأ يُبتلَع في try/catch فلا يُكتب أي قيد INV (تسبّب باختفاء 73,952 ر.س من الدفتر — أُصلح 2026-05-29) | استخدم **delete-then-insert** على `(audit_id, doc_type='INV')` بدل الـ upsert. مطبَّق في `approveAudit` |
 | تجاهل `file_kind` عند audit approval | إنشاء قيود غير منطقية | افحص دائماً file_kind قبل الـ auto-extract |
 | قراءة `stores.xlsx` بدون `raw:true` في XLSX.read | الهواتف 12-رقم تصبح `9.66502E+11` (تفقد آخر رقمين) | `sheet_to_json(ws, { raw:true })` + `toPhoneString` يحوّل `number` → `String(Math.round(v))` |
 | auto-link يكتب فوق ربط يدوي | يفقد المستخدم تصنيفه | `autoLinkCustomers` يتخطّى `method='manual'` صراحةً |
@@ -313,7 +314,7 @@
 
 ## 9. مهام معلّقة معروفة (لا تبدأ بدون قراءة سياقها)
 
-- [ ] back-fill قيود ledger للمراجعات الـ 12 السابقة (قبل auto-posting)
+- [x] back-fill قيود ledger للمراجعات السابقة — ✅ 2026-05-29: أُدرجت 8 قيود INV ناقصة (DeliverNow×3، iMile×4، J&T×1 = 73,952.59 ر.س) بعد إصلاح سبب فشل الـ auto-post
 - [ ] تعريف `file_kind` لباقي الشركات (iMile, SMSA, Aramex) — ✅ J&T انتهت
 - [ ] back-fill بصمات Webhook (`email_from`) لباقي الشركات بما فيها J&T
 - [ ] تطوير parser لـ COD remittance لـ iMile — ✅ J&T انتهى
