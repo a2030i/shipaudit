@@ -189,19 +189,11 @@ export default function Reconciliation({ isActive = true }) {
     const anchorSource = (internalPresent || hasInternal) ? 'internal'
                       : hasReceivables ? 'receivables'
                       : 'none';
-    const zohoGap        = r.zoho       - anchor;   // Zoho minus internal
-    const receivablesGap = r.receivables - anchor;  // receivables minus internal (cross-check)
-    // "مطابق" requires Zoho to match internal. Receivables is a secondary
-    // cross-check: only flag it when receivables HAS a value that conflicts.
-    // A store with no receivables entry (0) is not a mismatch.
-    const recConflict = hasReceivables && Math.abs(receivablesGap) > tolerance;
-    const matched     = Math.abs(zohoGap) <= tolerance && !recConflict;
+    const zohoGap = r.zoho - anchor;   // Zoho minus internal
+    const matched = Math.abs(zohoGap) <= tolerance;
     let action;
     if (matched) {
       action = { kind: 'matched', label: 'مطابق', color: '#10B981' };
-    } else if (Math.abs(zohoGap) <= tolerance) {
-      // Zoho matches internal, but receivables has a conflicting non-zero value
-      action = { kind: 'receivables_drift', label: 'فرق في كشف الفواتير', color: '#F59E0B' };
     } else if (zohoGap < 0) {
       // Zoho < internal → Zoho is missing entries the internal system has.
       // The platform didn't push these to Zoho yet.
@@ -211,25 +203,23 @@ export default function Reconciliation({ isActive = true }) {
       // Usually a duplicate or unmatched payment in Zoho.
       action = { kind: 'zoho_extra', label: `راجع زيادة ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: '#F97316' };
     }
-    return { ...r, anchor, anchorSource, zohoGap, receivablesGap, matched, action };
+    return { ...r, anchor, anchorSource, zohoGap, matched, action };
   }), [reconcile, tolerance]);
 
   // Headline stats from the enriched rows
   const stats = useMemo(() => {
-    let matched = 0, zohoMissing = 0, zohoExtra = 0, recDrift = 0, gapTotal = 0;
+    let matched = 0, zohoMissing = 0, zohoExtra = 0, gapTotal = 0;
     for (const r of enriched) {
       if (r.matched) matched++;
-      else if (r.action.kind === 'zoho_missing')      { zohoMissing++; gapTotal += Math.abs(r.zohoGap); }
-      else if (r.action.kind === 'zoho_extra')        { zohoExtra++;   gapTotal += Math.abs(r.zohoGap); }
-      else if (r.action.kind === 'receivables_drift') recDrift++;
+      else if (r.action.kind === 'zoho_missing') { zohoMissing++; gapTotal += Math.abs(r.zohoGap); }
+      else if (r.action.kind === 'zoho_extra')   { zohoExtra++;   gapTotal += Math.abs(r.zohoGap); }
     }
     return {
-      total:       enriched.length,
+      total:    enriched.length,
       matched,
       zohoMissing,
       zohoExtra,
-      recDrift,
-      gapTotal:    +gapTotal.toFixed(2),
+      gapTotal: +gapTotal.toFixed(2),
     };
   }, [enriched]);
 
@@ -414,10 +404,9 @@ export default function Reconciliation({ isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
             <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('ar-SA')}        color="#0EA5E9"/>
             <Stat label="مطابق"           value={stats.matched.toLocaleString('ar-SA')}      color="#10B981" icon={<CheckCircle2 size={14}/>}/>
-            <Stat label="Zoho ناقص"       value={stats.zohoMissing.toLocaleString('ar-SA')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
-            <Stat label="Zoho زائد"       value={stats.zohoExtra.toLocaleString('ar-SA')}    color="#F97316"/>
-            <Stat label="فرق في الفواتير" value={stats.recDrift.toLocaleString('ar-SA')}     color="#F59E0B"/>
-            <Stat label="مجموع الفروقات"  value={fmt(stats.gapTotal)} suffix="ر.س"           color="#DC2626"/>
+            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('ar-SA')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
+            <Stat label="Zoho زائد"      value={stats.zohoExtra.toLocaleString('ar-SA')}    color="#F97316"/>
+            <Stat label="مجموع الفروقات" value={fmt(stats.gapTotal)} suffix="ر.س"           color="#DC2626"/>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
                 <input type="checkbox" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} style={{ accentColor: '#DC2626' }}/>
