@@ -179,10 +179,14 @@ export default function Reconciliation({ isActive = true }) {
   const enriched = useMemo(() => reconcile.map(r => {
     const hasInternal    = Math.abs(r.internal)    > 0.005;
     const hasReceivables = Math.abs(r.receivables) > 0.005;
-    const anchor = hasInternal ? r.internal
+    // If the store IS in the settlement file (internalRawName set), use that
+    // value even when it's 0. Fall back to receivables only for stores
+    // completely absent from the settlement file.
+    const internalPresent = r.internalRawName != null;
+    const anchor = (internalPresent || hasInternal) ? r.internal
                  : hasReceivables ? r.receivables
                  : 0;
-    const anchorSource = hasInternal ? 'internal'
+    const anchorSource = (internalPresent || hasInternal) ? 'internal'
                       : hasReceivables ? 'receivables'
                       : 'none';
     const zohoGap        = r.zoho       - anchor;   // Zoho minus internal
