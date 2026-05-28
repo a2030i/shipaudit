@@ -78,12 +78,16 @@ export function parseInternalSettlement(rows) {
 function parseZohoAmount(raw) {
   if (raw == null) return null;
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
-  // Strip "SAR" / "ر.س" / commas / whitespace / Arabic comma /
-  // surrounding parens (Zoho uses parens for negatives in some
-  // editions).
   let s = String(raw).trim();
-  const negative = /^\(.*\)$/.test(s);
-  if (negative) s = s.slice(1, -1);
+  // Surrounding parens = negative in some Zoho editions: (597.00)
+  const parenNeg = /^\(.*\)$/.test(s);
+  if (parenNeg) s = s.slice(1, -1);
+  // Trailing Dr/Cr suffix (newer Zoho exports: "SAR20,322.59 Dr")
+  // Dr = Debit = customer owes us → positive
+  // Cr = Credit = we owe the customer → negative
+  let sign = parenNeg ? -1 : 1;
+  if (/\bCr\b\s*$/i.test(s)) { sign = -sign; s = s.replace(/\bCr\b\s*$/i, ''); }
+  else                         { s = s.replace(/\bDr\b\s*$/i, ''); }
   s = s.replace(/sar/gi, '')
        .replace(/ر\.?\s*س\.?/g, '')
        .replace(/[,،]/g, '')
@@ -92,7 +96,7 @@ function parseZohoAmount(raw) {
   if (!s) return null;
   const n = Number(s);
   if (!Number.isFinite(n)) return null;
-  return negative ? -n : n;
+  return sign * n;
 }
 
 const ZOHO_TOTAL_LABELS = ['الإجمالي', 'الاجمالي', 'total', 'grand total', 'المجموع'];
