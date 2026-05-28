@@ -54,6 +54,8 @@ export default function Reconciliation({ isActive = true }) {
   const [reconcile, setReconcile]   = useState([]);
   const [snapshots, setSnapshots]   = useState([]);
   const [unmatched, setUnmatched]   = useState([]);
+  // Hide zero-balance rows — no urgency to link until they carry debt.
+  const unmatchedWithBalance = unmatched.filter(u => Math.abs(u.balance) > 0.005);
   const [tolerance, setTolerance]   = useState(0.5);
   const [onlyGaps,  setOnlyGaps]    = useState(false);
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
@@ -224,7 +226,7 @@ export default function Reconciliation({ isActive = true }) {
   }, [enriched]);
 
   const visible = useMemo(
-    () => onlyGaps ? enriched.filter(r => !r.matched) : enriched,
+    () => onlyGaps ? enriched.filter(r => r.action?.kind !== 'matched') : enriched,
     [enriched, onlyGaps],
   );
 
@@ -437,7 +439,7 @@ export default function Reconciliation({ isActive = true }) {
       {/* Unmatched section — surfaces rows hidden from the main
           comparison because their store_id couldn't be resolved.
           Operator can link manually via the merchant picker. */}
-      {unmatched.length > 0 && (
+      {unmatchedWithBalance.length > 0 && (
         <Card style={{
           padding: 0, overflow: 'hidden', marginBottom: 16,
           border: '1.5px solid color-mix(in srgb, #F59E0B 35%, transparent)',
@@ -450,11 +452,11 @@ export default function Reconciliation({ isActive = true }) {
           }}>
             <Link2 size={15} color="#B45309"/>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-              غير مرتبط بمتاجر النظام — {unmatched.length} صف
+              غير مرتبط بمتاجر النظام — {unmatchedWithBalance.length} صف
             </span>
             <span style={{ fontSize: 11, color: '#B45309', fontWeight: 600 }}>
-              ({unmatched.filter(u => u.source === 'internal').length} من الداخلي ·{' '}
-              {unmatched.filter(u => u.source === 'zoho').length} من Zoho)
+              ({unmatchedWithBalance.filter(u => u.source === 'internal').length} من الداخلي ·{' '}
+              {unmatchedWithBalance.filter(u => u.source === 'zoho').length} من Zoho)
             </span>
             <span style={{
               marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text2)',
@@ -462,9 +464,9 @@ export default function Reconciliation({ isActive = true }) {
               مجموع الأرصدة المخفية:&nbsp;
               <strong style={{
                 fontFamily: 'var(--font-mono)',
-                color: unmatched.reduce((s, u) => s + Math.abs(u.balance), 0) > 0 ? '#DC2626' : 'var(--muted)',
+                color: unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0) > 0 ? '#DC2626' : 'var(--muted)',
               }}>
-                {fmt(unmatched.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
+                {fmt(unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
               </strong>
             </span>
             <Btn
@@ -489,7 +491,7 @@ export default function Reconciliation({ isActive = true }) {
               </tr>
             </thead>
             <tbody>
-              {unmatched.map(u => (
+              {unmatchedWithBalance.map(u => (
                 <tr key={`${u.source}-${u.rawName}`} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px' }}>
                     <span style={statusPill(u.source === 'internal' ? '#3B82F6' : '#F59E0B')}>

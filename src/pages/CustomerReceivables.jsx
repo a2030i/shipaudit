@@ -772,7 +772,17 @@ export default function CustomerReceivables({ isActive = true }) {
         out.push({ ...c, anomaly: 'over_credit_limit' });
       }
     }
-    return out;
+    // Merge duplicate entries for the same customer (e.g. postpaid_overdue
+    // from Pass 2 + over_credit_limit from Pass 3) into a single row.
+    const byName = new Map();
+    for (const item of out) {
+      if (!byName.has(item.name)) {
+        byName.set(item.name, { ...item, anomalyExtras: [] });
+      } else {
+        byName.get(item.name).anomalyExtras.push(item.anomaly);
+      }
+    }
+    return [...byName.values()];
   }, [data, merchants]);
 
   // Group anomalies by type for the breakdown banner.
@@ -787,6 +797,9 @@ export default function CustomerReceivables({ isActive = true }) {
     };
     for (const c of anomalies) {
       if (groups[c.anomaly]) groups[c.anomaly].push(c);
+      for (const a of (c.anomalyExtras || [])) {
+        if (groups[a]) groups[a].push(c);
+      }
     }
     return groups;
   }, [anomalies]);
@@ -802,7 +815,7 @@ export default function CustomerReceivables({ isActive = true }) {
         : (data.activeCustomers   || []);
     // Anomaly-card click narrows the pool to one bucket only.
     if (tab === 'anomalies' && anomalyFilter) {
-      pool = pool.filter(c => c.anomaly === anomalyFilter);
+      pool = pool.filter(c => c.anomaly === anomalyFilter || c.anomalyExtras?.includes(anomalyFilter));
     }
     // Text search
     if (search.trim()) {
@@ -1452,12 +1465,17 @@ export default function CustomerReceivables({ isActive = true }) {
                                 )}
                               </>
                             )}
-                            {/* Anomaly badge */}
+                            {/* Anomaly badge(s) — primary + extras in one row */}
                             {c.anomaly && (
                               <span style={anomalyChip(c.anomaly)} title={anomalyHint(c.anomaly)}>
                                 {anomalyLabel(c.anomaly)}
                               </span>
                             )}
+                            {c.anomalyExtras?.map(a => (
+                              <span key={a} style={anomalyChip(a)} title={anomalyHint(a)}>
+                                {anomalyLabel(a)}
+                              </span>
+                            ))}
                             {c.notes && (
                               <span title={c.notes} style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 3,
