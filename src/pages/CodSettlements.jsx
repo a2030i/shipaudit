@@ -235,6 +235,21 @@ export default function CodSettlements({ isActive = true }) {
   const aging      = useMemo(() => ageOutstanding(rows), [rows]);
   const agingOver  = useMemo(() => ageOverRemit(rows), [rows]);
 
+  // Global COD outstanding across ALL carriers (not just the selected one).
+  // The per-carrier hero metrics below are scoped to `carrier`; this banner
+  // surfaces the company-wide figure so the operator sees total uncollected
+  // COD without flipping through every carrier in the dropdown. We sum only
+  // the positive (still-owed-to-us) balances so a carrier that over-remitted
+  // doesn't net away another carrier's genuine outstanding.
+  const globalOutstanding = useMemo(() => {
+    let total = 0, carriersDue = 0;
+    for (const v of outstandingByCarrier.values()) {
+      const n = Number(v) || 0;
+      if (n > 0.5) { total += n; carriersDue++; }
+    }
+    return { total: +total.toFixed(2), carriersDue };
+  }, [outstandingByCarrier]);
+
   const counts = useMemo(() => {
     const c = {
       all: rows.length, outstanding: 0, pending: 0,
@@ -365,6 +380,30 @@ export default function CodSettlements({ isActive = true }) {
         </Card>
       ) : (
         <>
+          {/* Global COD outstanding across all carriers — company-wide view */}
+          {globalOutstanding.total > 0.5 && (
+            <div style={{
+              marginBottom: 14, padding: '12px 16px', borderRadius: 11,
+              background: 'linear-gradient(135deg, rgba(248,113,113,.12), rgba(248,113,113,.04))',
+              border: '1px solid var(--red)',
+              display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            }}>
+              <span style={{ fontSize: 20 }}>🏦</span>
+              <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+                  إجمالي COD المستحق غير المحصَّل — كل الناقلين
+                </div>
+                <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 22, color: 'var(--red)' }}>
+                  {fmt(globalOutstanding.total)} <span style={{ fontSize: 12, color: 'var(--muted)' }}>ر.س</span>
+                </div>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'left', lineHeight: 1.6 }}>
+                موزَّع على <strong style={{ color: 'var(--text)' }}>{globalOutstanding.carriersDue}</strong> ناقل
+                <br/>= متوقَّع (مُغذّى من المراجعات) − مُستلَم فعلياً
+              </div>
+            </div>
+          )}
+
           {/* Headline metrics */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, marginBottom: 16 }}>
             <Hero label="المتبقي عند الناقل" value={fmt(summary.outstandingAmount)}
