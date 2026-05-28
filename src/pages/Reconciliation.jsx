@@ -191,12 +191,16 @@ export default function Reconciliation({ isActive = true }) {
                       : 'none';
     const zohoGap        = r.zoho       - anchor;   // Zoho minus internal
     const receivablesGap = r.receivables - anchor;  // receivables minus internal (cross-check)
-    const matched        = Math.abs(zohoGap) <= tolerance && Math.abs(receivablesGap) <= tolerance;
+    // "مطابق" requires Zoho to match internal. Receivables is a secondary
+    // cross-check: only flag it when receivables HAS a value that conflicts.
+    // A store with no receivables entry (0) is not a mismatch.
+    const recConflict = hasReceivables && Math.abs(receivablesGap) > tolerance;
+    const matched     = Math.abs(zohoGap) <= tolerance && !recConflict;
     let action;
     if (matched) {
       action = { kind: 'matched', label: 'مطابق', color: '#10B981' };
     } else if (Math.abs(zohoGap) <= tolerance) {
-      // Zoho matches internal, but receivables doesn't — internal-side inconsistency
+      // Zoho matches internal, but receivables has a conflicting non-zero value
       action = { kind: 'receivables_drift', label: 'فرق في كشف الفواتير', color: '#F59E0B' };
     } else if (zohoGap < 0) {
       // Zoho < internal → Zoho is missing entries the internal system has.
