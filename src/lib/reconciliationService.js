@@ -49,7 +49,10 @@ export function parseInternalSettlement(rows) {
   for (let i = 1; i < rows.length; i++) {
     const r = rows[i] || [];
     const name = String(r[nameIdx] ?? '').trim();
-    const bal  = Number(r[balIdx]);
+    const rawBal = r[balIdx];
+    const bal = typeof rawBal === 'number'
+      ? rawBal
+      : Number(String(rawBal ?? '').replace(/[,،\s]/g, '').trim());
     if (!name) continue;
     if (!Number.isFinite(bal)) continue;
     out.push({ raw_name: name, balance: +bal.toFixed(2) });
