@@ -544,7 +544,6 @@ export default function Reconciliation({ isActive = true }) {
                 <th style={thStyle}>#</th>
                 <th style={thStyle}>المتجر</th>
                 <th style={{...thStyle, color: '#3B82F6'}}>الداخلي (المرجع)</th>
-                <th style={thStyle}>الفواتير</th>
                 <th style={thStyle}>Zoho</th>
                 <th style={thStyle}>Zoho − الداخلي</th>
                 <th style={thStyle}>الإجراء</th>
@@ -564,7 +563,6 @@ export default function Reconciliation({ isActive = true }) {
                     </div>
                   </td>
                   <BalCell value={r.anchor} anchor/>
-                  <BalCell value={r.receivables} dimmedIfZero/>
                   <BalCell value={r.zoho} dimmedIfZero/>
                   <td style={{
                     padding: '10px 12px', textAlign: 'left',
