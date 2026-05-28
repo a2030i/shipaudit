@@ -826,11 +826,24 @@ export async function approveAudit(auditId, userId) {
         created_at:   nowIso,
         updated_at:   nowIso,
       };
-      // Upsert by audit_id+doc_type so retries don't double-post.
+      // Idempotent post via delete-then-insert. We CANNOT use
+      // `.upsert(op, { onConflict: 'audit_id' })` here: the only unique
+      // index on audit_id is PARTIAL (WHERE doc_type='INV'), and PostgREST
+      // can't pass that predicate, so Postgres rejects the ON CONFLICT with
+      // 42P10 — the post then silently fails inside this try/catch and the
+      // invoice never lands in the ledger. Clearing the prior INV row for
+      // this audit first keeps the same idempotency on re-approval while
+      // leaving any non-INV rows (e.g. RV statement links on the same
+      // audit_id) untouched.
+      await supabase
+        .from('carrier_operations')
+        .delete()
+        .eq('audit_id', updated.id)
+        .eq('doc_type', 'INV');
       const { error: opErr } = await supabase
         .from('carrier_operations')
-        .upsert(op, { onConflict: 'audit_id' });
-      if (opErr && !String(opErr.message).includes('duplicate')) {
+        .insert(op);
+      if (opErr) {
         console.warn('ledger auto-post failed:', opErr.message);
       }
     }
