@@ -31,6 +31,7 @@ import { useAuth } from '../lib/auth.jsx';
 
 // ─── Status meta ───────────────────────────────────────────────────────────
 const STATUS_META = {
+  open:      { label: '📂 مستحقة',          color: 'var(--red)'    },
   pending:   { label: '⏳ معلّقة',          color: 'var(--gold)'   },
   audited:   { label: '✓ معتمدة',          color: 'var(--accent)' },
   paid:      { label: '💰 مسدّدة',          color: 'var(--green)'  },
@@ -44,16 +45,43 @@ const SHIPMENT_LABEL = {
   international_in:   'دولي وارد',
   international_out:  'دولي صادر',
 };
-// Doc-type metadata. RV = invoice (we owe), DR = small debit adjustment
-// (we owe a bit more), DG = credit note (carrier owes us / refund),
+// Doc-type metadata. INV = invoice auto-posted on audit approval (we owe),
+// RV = invoice from an uploaded carrier statement (we owe), DR = small debit
+// adjustment (we owe a bit more), DG = credit note (carrier owes us / refund),
 // AB = adjustment-both (a netted correction). Distinct colors so a glance
 // at the ledger answers "what kind of line is this."
 const DOC_TYPE_META = {
-  RV: { label: 'فاتورة',     icon: '📄', color: '#3b82f6' },
+  INV: { label: 'فاتورة (مراجعة معتمدة)', icon: '🧾', color: '#8b5cf6' },
+  RV: { label: 'فاتورة (كشف مرفوع)', icon: '📄', color: '#3b82f6' },
   DR: { label: 'مدين إضافي', icon: '+',  color: '#f59e0b' },
   DG: { label: 'إشعار دائن', icon: '↩',  color: 'var(--green)' },
   AB: { label: 'تعديل',       icon: '🔄', color: 'var(--muted)' },
 };
+
+// Compact legend strip — maps each doc_type code+icon to its meaning so the
+// ledger's النوع column is self-explanatory. Rendered once above the table.
+function DocTypeLegend() {
+  return (
+    <div style={{
+      display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center',
+      padding: '8px 12px', marginBottom: 10,
+      background: 'var(--surface)', border: '1px solid var(--border)',
+      borderRadius: 9, fontSize: 11,
+    }}>
+      <span style={{ color: 'var(--muted)', fontWeight: 700, marginInlineEnd: 2 }}>دليل الأنواع:</span>
+      {Object.entries(DOC_TYPE_META).map(([code, dm]) => (
+        <span key={code} style={{
+          display: 'inline-flex', alignItems: 'center', gap: 4,
+          background: `${dm.color}18`, border: `1px solid ${dm.color}40`,
+          color: dm.color, padding: '2px 8px', borderRadius: 12,
+          fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
+        }}>
+          {dm.icon} {code} — <span style={{ fontFamily: 'inherit' }}>{dm.label}</span>
+        </span>
+      ))}
+    </div>
+  );
+}
 
 // Visual metadata for the per-row shipment-type badge. `domestic_other` is
 // the Aramex DCF/COD invoice class — we colour it differently so the user
@@ -730,6 +758,9 @@ export default function CarrierLedger({ isActive = true }) {
           </Btn>
         </div>
       )}
+
+      {/* Doc-type legend — explains the النوع column codes */}
+      <DocTypeLegend/>
 
       {/* Operations table */}
       <Card style={{ padding: 0, overflow: 'hidden' }}>

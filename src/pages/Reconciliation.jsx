@@ -317,7 +317,7 @@ export default function Reconciliation({ isActive = true }) {
         iconColor="#8B5CF6"
         title="مطابقة الأرصدة"
         subtitle={tab === 'customers'
-          ? 'العملاء — قارن من 3 مصادر: النظام الداخلي · الفواتير · Zoho'
+          ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
           : 'الموردون — قارن أرصدة شركات الشحن في نظامنا مقابل Zoho'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
@@ -523,7 +523,7 @@ export default function Reconciliation({ isActive = true }) {
         <Empty
           icon="🧮"
           title="لا توجد بيانات للمطابقة"
-          sub="ارفع ملف النظام الداخلي و/أو ملف Zoho لبدء المطابقة. الفواتير تُؤخذ تلقائياً من آخر snapshot في /receivables."
+          sub="ارفع ملف النظام الداخلي و/أو ملف Zoho لبدء المطابقة."
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -596,10 +596,9 @@ export default function Reconciliation({ isActive = true }) {
         <Info size={14} style={{ flexShrink: 0, marginTop: 2 }}/>
         <div>
           <strong style={{ color: 'var(--text2)' }}>كيف تعمل المطابقة:</strong>{' '}
-          المرجع = النظام الداخلي (ملف الاستحقاق، أو كشف الفواتير كبديل).{' '}
+          المرجع = النظام الداخلي (ملف الاستحقاق).{' '}
           <strong style={{ color: '#DC2626' }}>Zoho ناقص</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
           <strong style={{ color: '#F97316' }}>Zoho زائد</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
-          <strong style={{ color: '#F59E0B' }}>فرق في الفواتير</strong> = Zoho يطابق الداخلي لكن كشف الفواتير المرفوع يختلف — اعتمد المرجع.{' '}
           الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
       </div>
