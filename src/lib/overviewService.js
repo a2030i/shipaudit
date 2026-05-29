@@ -34,7 +34,8 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const prevPeriod = prevPeriodOf(thisPeriod);
 
   const { loadCurrentBalance }   = await import('./bankBalanceService.js');
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance] = await Promise.all([
+  const { loadCarrierNetBalances } = await import('./codSettlementService.js');
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -43,6 +44,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     rpc('carrier_health_kpis', {}),
     rpc('working_capital_now', {}),
     loadCurrentBalance().catch(() => null),
+    // Company-wide uncollected COD — carriers that collected cash on our
+    // behalf and haven't remitted it yet (net = SUM(out) − SUM(in) > 0).
+    // Previously only visible per-carrier inside /money; surfaced here.
+    loadCarrierNetBalances().catch(() => new Map()),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -66,6 +71,15 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     ap3160    += num(r.d31_60);
     ap6190    += num(r.d61_90);
     ap90      += num(r.d90_plus);
+  }
+
+  // Uncollected COD across all carriers — mirrors the /money COD-tab
+  // banner: sum the positive per-carrier nets (carrier still owes us)
+  // and count how many carriers are due. codNet is a Map<carrierId,net>.
+  let codOutstandingTotal = 0, codCarriersDue = 0;
+  for (const v of (codNet?.values?.() || [])) {
+    const n = num(v);
+    if (n > 0.5) { codOutstandingTotal += n; codCarriersDue++; }
   }
 
   return {
@@ -96,6 +110,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         num(prevSnap.cod_received) - num(prevSnap.carrier_spend_gross),
       ),
       auditsApproved: delta(thisSnap.audits_approved, prevSnap.audits_approved),
+    },
+    codOutstanding: {
+      total:       +codOutstandingTotal.toFixed(2),
+      carriersDue: codCarriersDue,
     },
     aging: {
       rows:    aging.map(r => ({

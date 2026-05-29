@@ -55,7 +55,17 @@ export default function Overview({ carriers = [], isActive = true }) {
   const canEditBank = can('bank.set_balance');
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
-  const [period, setPeriod]   = useState(currentPeriod());
+  // Selected month persists for the session (sessionStorage) so a
+  // historical month being examined survives a refresh / navigating
+  // away and back — but resets to the current month on a fresh login.
+  const [period, setPeriodRaw] = useState(() => {
+    try { return sessionStorage.getItem('sa-overview-period') || currentPeriod(); }
+    catch { return currentPeriod(); }
+  });
+  const setPeriod = useCallback((p) => {
+    setPeriodRaw(p);
+    try { sessionStorage.setItem('sa-overview-period', p); } catch { /* ignore */ }
+  }, []);
   const [bankEdit, setBankEdit] = useState(null);   // { current, notes } when open
 
   const carrierNameById = useMemo(
@@ -132,6 +142,8 @@ export default function Overview({ carriers = [], isActive = true }) {
           Read-only viewers still see the tile but it's not clickable. */}
       <CashHero
         cash={data.cashPosition}
+        codOutstanding={data.codOutstanding}
+        onOpenCod={() => navigate('/money?tab=cod')}
         onEditBank={canEditBank ? () => setBankEdit({
           current: data.cashPosition.bankBalance ?? '',
           notes:   '',
@@ -515,7 +527,7 @@ export default function Overview({ carriers = [], isActive = true }) {
 //   📊 Net no-bank — AR − AP (operational net excluding cash on hand)
 //   🏁 Net total   — bank + AR − AP (the bottom-line cash picture if
 //                    we fully collect AR and pay AP today)
-function CashHero({ cash, onEditBank }) {
+function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
   const fmtRel = (iso) => {
     if (!iso) return 'غير محدّث';
     const ms = Date.now() - new Date(iso).getTime();
@@ -577,6 +589,17 @@ function CashHero({ cash, onEditBank }) {
           unit="ر.س"
           hint="ما ندين به للشركات"
         />
+        {codOutstanding && codOutstanding.total > 0.5 && (
+          <CashTile
+            icon={<Banknote size={18}/>}
+            color="#F59E0B"
+            label="COD لم يُحصَّل بعد"
+            value={fmt(codOutstanding.total)}
+            unit="ر.س"
+            hint={`${codOutstanding.carriersDue} شركة لم تورّد — اضغط للتفاصيل`}
+            onClick={onOpenCod}
+          />
+        )}
         <CashTile
           icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
           color={cash.netNoBank >= 0 ? '#047857' : '#DC2626'}

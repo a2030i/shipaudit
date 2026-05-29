@@ -80,6 +80,10 @@ const NAV_ITEMS = [
   // /hub now hosts both the cards view and the KPI view as tabs;
   // /carrier-kpi still resolves but redirects through the workspace.
   { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
+  // /carrier-kpi is the second tab of CarriersWorkspace. It used to be
+  // reachable only by discovering the tab once on /hub — surfaced here
+  // as its own nav row so the "أداء الناقلين" lens is visible directly.
+  { id: 'carrier-kpi',  path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'carriers', permKey: 'carriers.view' },
   { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
   { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers', permKey: 'carriers.view' },
@@ -99,13 +103,29 @@ const NAV_ITEMS = [
   // cod / payments / bank / payment-requests merged into /money
   // with 4 tabs. Legacy routes still resolve to the matching tab.
   { id: 'forecast',  path: '/forecast', label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance', permKey: 'forecast.view' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view' },
+  // /money hosts 4 tabs. Listing them as `subTabs` makes each lens
+  // visible & one-click in the sidebar (they used to be discoverable
+  // only by opening /money first). Each navigates to the canonical
+  // ?tab= URL the in-page tab strip also produces.
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
+    subTabs: [
+      { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
+      { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
+      { tabId: 'bank',     label: 'كشف بنكي',     icon: Wallet,     legacy: '/bank' },
+      { tabId: 'requests', label: 'طلبات السداد', icon: Inbox,      legacy: '/payment-requests' },
+    ] },
 
   // ── Customers (AR side) ───────────────────────────────────────
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
-  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers', permKey: 'receivables.view' },
+  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers', permKey: 'receivables.view',
+    subTabs: [
+      { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
+      { tabId: 'receivables', label: 'مديونيات',      icon: DollarSign, legacy: '/receivables' },
+      { tabId: 'segments',    label: 'شرائح',         icon: Layers,     legacy: '/segments' },
+      { tabId: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, legacy: '/merchants' },
+    ] },
   { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
 
@@ -274,7 +294,11 @@ function AppInner({ theme, toggleTheme }) {
   // Auto-open the section that contains the active route. We only
   // open — never auto-close — so manual choices stick.
   useEffect(() => {
-    const item = NAV_ITEMS.find(n => n.path === location.pathname);
+    // Match the exact path, or a hub whose subTab legacy path we're on
+    // (e.g. /receivables → customers section), so deep links open the
+    // right section too.
+    const item = NAV_ITEMS.find(n => n.path === location.pathname)
+      || NAV_ITEMS.find(n => n.subTabs?.some(s => s.legacy === location.pathname));
     if (!item || !item.section) return;
     setOpenSections(prev => {
       if (prev[item.section]) return prev;
@@ -306,10 +330,29 @@ function AppInner({ theme, toggleTheme }) {
   };
 
   const activeFor = (item) => {
+    // A hub item with subTabs never highlights itself — the matching
+    // child sub-row carries the active state instead, so we avoid a
+    // double highlight (parent + child) while inside the hub.
+    if (item.subTabs && subTabOf(item)) return false;
     if (location.pathname === item.path) return true;
     if (item.path === '/upload' && location.pathname === '/results') return true;
     return false;
   };
+
+  // Which subTab of a hub item is currently active, if any. A subTab
+  // is active when we're on the canonical hub path with a matching
+  // ?tab=, on the hub path with no ?tab= (→ first subTab is the
+  // default), or on the subTab's legacy path.
+  const subTabOf = (item) => {
+    if (!item.subTabs) return null;
+    if (location.pathname === item.path) {
+      const cur = new URLSearchParams(location.search).get('tab');
+      const effective = cur || item.subTabs[0].tabId;
+      return item.subTabs.find(s => s.tabId === effective) || null;
+    }
+    return item.subTabs.find(s => s.legacy === location.pathname) || null;
+  };
+  const subTabActive = (item, sub) => subTabOf(item)?.tabId === sub.tabId;
 
   // ── Auth loading ──
   if (authLoading) return (
@@ -468,20 +511,37 @@ function AppInner({ theme, toggleTheme }) {
                   )}
                   <div style={{
                     overflow: 'hidden',
-                    maxHeight: isOpen ? items.length * 44 + 12 : 0,
+                    // Include any expanded subTab rows in the height so
+                    // the accordion animation doesn't clip them.
+                    maxHeight: isOpen
+                      ? (items.reduce((acc, n) => acc + 1 + ((n.subTabs && !collapsed) ? n.subTabs.length : 0), 0)) * 42 + 12
+                      : 0,
                     transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
                     paddingInlineEnd: collapsed ? 0 : 6,
                   }}>
                     {items.map(n => (
-                      <NavBtn
-                        key={n.id}
-                        n={n}
-                        active={activeFor(n)}
-                        accent={sec.accent}
-                        collapsed={collapsed}
-                        onClick={() => goto(n.path)}
-                        nested
-                      />
+                      <div key={n.id}>
+                        <NavBtn
+                          n={n}
+                          active={activeFor(n)}
+                          accent={sec.accent}
+                          collapsed={collapsed}
+                          onClick={() => goto(n.path)}
+                          nested
+                        />
+                        {/* Hub sub-tabs — surfaced as one-click rows so
+                            each lens is visible without opening the hub
+                            first. Hidden in collapsed mode (too narrow). */}
+                        {n.subTabs && !collapsed && n.subTabs.map(sub => (
+                          <NavSubBtn
+                            key={sub.tabId}
+                            sub={sub}
+                            accent={sec.accent}
+                            active={subTabActive(n, sub)}
+                            onClick={() => goto(`${n.path}?tab=${sub.tabId}`)}
+                          />
+                        ))}
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -772,6 +832,44 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
             flexShrink: 0,
           } : undefined}
         />
+      )}
+    </button>
+  );
+}
+
+// Sub-row under a hub NavBtn — smaller, deeper-indented, with a thin
+// connector tick. Highlights with the section accent when its tab is
+// the active one. Purely a navigation shortcut into the hub's tab.
+function NavSubBtn({ sub, accent, active, onClick }) {
+  const Icon = sub.icon;
+  return (
+    <button
+      className="nav-item"
+      onClick={onClick}
+      style={{
+        paddingInlineStart: 38,
+        paddingTop: 5, paddingBottom: 5,
+        minHeight: 0,
+        ...(active ? {
+          background: `color-mix(in srgb, ${accent} 12%, transparent)`,
+          color: '#fff', fontWeight: 600,
+        } : {}),
+      }}
+    >
+      {Icon && (
+        <Icon
+          size={13}
+          strokeWidth={active ? 2.2 : 1.7}
+          style={{ flexShrink: 0, color: active ? accent : undefined, opacity: active ? 1 : 0.75 }}
+        />
+      )}
+      <span className="nav-label" style={{ flex: 1, fontSize: 12.5 }}>{sub.label}</span>
+      {active && (
+        <span style={{
+          width: 5, height: 5, borderRadius: '50%',
+          background: accent, boxShadow: `0 0 8px ${accent}`,
+          flexShrink: 0,
+        }}/>
       )}
     </button>
   );

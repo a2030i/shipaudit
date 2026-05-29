@@ -135,6 +135,21 @@
 
 **القاعدة الذهبية:** أي زر يقوم بعملية مالية/حذف/اعتماد يجب أن يكون ملفوفاً بـ `can('key')`. UI الـ gate وحده ليس أمناً — RLS / edge function policies هي الحماية الفعلية.
 
+### 1.11 تبويبات الـ hubs مرئية في القائمة الجانبية ✅ (UX 2026-05-29)
+- مشكلة سابقة: شاشات الـ hubs (CustomerHub `/customer-360`، MoneyHub `/money`، CarriersWorkspace KPI) كانت تبويبات مخفية بلا مدخل في القائمة الجانبية → معلومات مدفونة.
+- الحل في `App.jsx`:
+  - `NAV_ITEMS` لـ `money` و `customer-hub` تحمل الآن `subTabs: [{ tabId, label, icon, legacy }]`
+  - تُرسَم كصفوف فرعية (`NavSubBtn`) تحت العنصر الأب، تنقل لـ `${path}?tab=${tabId}`
+  - `أداء الناقلين` (`/carrier-kpi`) أُضيف كعنصر مسطّح مستقل في قسم carriers (بدل أن يكون تبويباً مخفياً في `/hub`)
+  - `subTabOf(item)` يحدّد التبويب النشط (canonical `?tab=` أو legacy path أو افتراضي = أول تبويب)
+  - `activeFor` يُخفي تمييز الأب عندما يملك subTabs نشطاً (لا تمييز مزدوج)
+- **القاعدة:** أي hub جديد بتبويبات يجب أن يُعرّف `subTabs` على عنصره في `NAV_ITEMS` ليبقى كل تبويب مرئياً بنقرة واحدة. لا تُخفِ تبويباً خلف الـ hub فقط.
+
+### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
+- `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
+- `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
+- مفتاح الشهر في Overview يُحفظ في `sessionStorage['sa-overview-period']` — يدوم خلال الجلسة (يبقى الشهر التاريخي بعد refresh) ويُصفَّر لـ current عند جلسة جديدة. لا يوجد period عام عبر الصفحات (لا مستهلك حقيقي له — Forecast يستخدم horizon بالأيام، باقي الصفحات all-time)
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)
@@ -323,4 +338,4 @@
 
 ---
 
-**آخر تحديث:** 2026-05-23 — Phase 6: نظام الأدوار والصلاحيات الدقيق (admin + accountant + permissions JSONB)
+**آخر تحديث:** 2026-05-29 — تحسينات UX: تبويبات الـ hubs مرئية في القائمة الجانبية (subTabs) + COD المستحق في Overview + حفظ مفتاح الشهر للجلسة
