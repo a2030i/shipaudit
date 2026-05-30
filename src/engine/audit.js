@@ -96,7 +96,11 @@ const COL_PATTERNS = {
   // "Other Charge" bucket — every carrier we know labels its fuel
   // line one of those three ways.
   fuelSurcharge:   [/fuel.?surcharge/i, /fuel/i, /وقود/i, /other.?charge/i],
-  codAmount:       [/cod.?amount/i, /cash.?on/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i],
+  // NOTE: `/^cod$/i` matches iMile's bare "COD" column (the gross amount
+  // collected) without stealing "COD Service Fee" (→ codFee) — the anchors
+  // keep it from matching anything longer. Without it the COD column went
+  // undetected on iMile fee bills and approval recorded 0 COD received.
+  codAmount:       [/cod.?amount/i, /cash.?on/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i, /^cod$/i],
   // COD service fee — the per-shipment fee carriers charge for handling
   // cash-on-delivery (independent of the COD amount itself). iMile puts
   // this in a dedicated "COD Service Fee" column on the same row as the
