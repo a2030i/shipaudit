@@ -119,6 +119,53 @@ export default function CodSettlements({ isActive = true }) {
     toast(`تم تصدير ${outstanding.length} شحنة`, 'success');
   };
 
+  // Export EVERY carrier's outstanding in ONE sheet, with a leading
+  // "الناقل" column. Loops loadReconciliation per carrier (sequential —
+  // 8 carriers, light queries) so the operator gets the whole "غير
+  // محصَّل" picture in a single file instead of exporting 8 times.
+  const [exportingAll, setExportingAll] = useState(false);
+  const handleExportAllOutstanding = async () => {
+    setExportingAll(true);
+    try {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const all = [];
+      for (const c of carriers) {
+        let data;
+        try { data = await loadReconciliation(c.id); }
+        catch { continue; }  // a single carrier failing must not kill the export
+        for (const r of data.filter(r => r.status === 'outstanding')) {
+          const days = r.firstOutDate
+            ? Math.floor((today - new Date(r.firstOutDate)) / 86_400_000)
+            : '—';
+          all.push([c.label, r.awb, +r.diff.toFixed(2), r.firstOutDate || '—', days]);
+        }
+      }
+      if (!all.length) {
+        toast('لا توجد شحنات متبقّية لدى أي ناقل', 'info');
+        setExportingAll(false);
+        return;
+      }
+      // Group by carrier, then oldest-first within each carrier.
+      all.sort((a, b) =>
+        String(a[0]).localeCompare(String(b[0]), 'ar') ||
+        String(a[3]).localeCompare(String(b[3])));
+      const headers = ['الناقل', 'رقم الشحنة (AWB)', 'المبلغ (ر.س)', 'تاريخ التسوية مع المتجر', 'الأيام منذ التسوية'];
+      const total = all.reduce((s, r) => s + (Number(r[2]) || 0), 0);
+      const carrierCount = new Set(all.map(r => r[0])).size;
+      const totalRow = ['الإجمالي', '', +total.toFixed(2), '', ''];
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...all, [], totalRow]);
+      ws['!cols'] = [{ wch: 22 }, { wch: 24 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'متبقّي كل الناقلين');
+      const dateStr = new Date().toISOString().slice(0, 10);
+      XLSX.writeFile(wb, `متبقي_كل_الناقلين_${dateStr}.xlsx`);
+      toast(`تم تصدير ${all.length} شحنة من ${carrierCount} ناقل`, 'success');
+    } catch (e) {
+      toast(`فشل تصدير الكل: ${e.message}`, 'error');
+    }
+    setExportingAll(false);
+  };
+
   // Export whatever the user is currently looking at — respects both the
   // active tab AND the search filter. Sheet/file names adapt to the tab
   // so the admin can save several exports without overwriting each other.
@@ -343,10 +390,17 @@ export default function CodSettlements({ isActive = true }) {
             {summary.outstandingCount > 0 && (
               <Btn size="md" variant="ghost" icon={<Download size={14}/>}
                 onClick={handleExportOutstanding}
-                title="تصدير المتبقي عند الناقل كـExcel لإرساله لهم">
+                title="تصدير المتبقي عند الناقل المختار فقط">
                 صدّر المتبقي
               </Btn>
             )}
+            <Btn size="md" variant="ghost"
+              icon={exportingAll ? <Spinner size={14}/> : <Download size={14}/>}
+              onClick={handleExportAllOutstanding}
+              disabled={exportingAll}
+              title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
+              {exportingAll ? 'جارٍ التجميع…' : 'صدّر الكل (كل الناقلين)'}
+            </Btn>
             <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
               onClick={() => setUploadModal({ direction: 'out' })}>
               ارفع متوقّع
