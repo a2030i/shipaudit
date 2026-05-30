@@ -288,6 +288,7 @@
 | تعديل `audits.results` JSONB لإضافة بيانات مهمة | حد TOAST + لن يُحمَّل للـ audits الكبيرة | استخدم `audit_shipments` بدلاً |
 | نسيان `idempotency` على auto-posts | إعادة الاعتماد ينشئ قيود مكررة | استخدم unique partial indexes |
 | `.upsert(op, { onConflict: 'audit_id' })` على `carrier_operations` | الـ unique index على `audit_id` **جزئي** (`WHERE doc_type='INV'`) — PostgREST لا يمرّر الـ predicate فيرفض Postgres الـ ON CONFLICT بـ `42P10`، والخطأ يُبتلَع في try/catch فلا يُكتب أي قيد INV (تسبّب باختفاء 73,952 ر.س من الدفتر — أُصلح 2026-05-29) | استخدم **delete-then-insert** على `(audit_id, doc_type='INV')` بدل الـ upsert. مطبَّق في `approveAudit` |
+| `.upsert(op, { onConflict: 'reference_no' })` على `carrier_operations` في `saveSettlementUpload` (مسار COD) | **نفس فخّ الـ 42P10**: الـ index على `reference_no` جزئي (`WHERE doc_type='COD' AND reference_no IS NOT NULL`) فيُرفض الـ ON CONFLICT، والخطأ يُبتلَع في `console.warn` فلا يُكتب أي قيد COD CR (اختفت 361,280.26 ر.س من 11 رفعة تحصيل — أُصلح + back-filled 2026-05-30) | استخدم **delete-then-insert** على `(reference_no=uploadId, doc_type='COD')` + أعِد `ledgerError` في النتيجة بدل ابتلاع الخطأ (لا ترمِ throw — صفوف `cod_settlement` مُدرَجة سلفاً فالـ retry يتخطّاها كـ cross-file dups ولا يصل لكتلة القيد). مطبَّق في `saveSettlementUpload` |
 | تجاهل `file_kind` عند audit approval | إنشاء قيود غير منطقية | افحص دائماً file_kind قبل الـ auto-extract |
 | قراءة `stores.xlsx` بدون `raw:true` في XLSX.read | الهواتف 12-رقم تصبح `9.66502E+11` (تفقد آخر رقمين) | `sheet_to_json(ws, { raw:true })` + `toPhoneString` يحوّل `number` → `String(Math.round(v))` |
 | auto-link يكتب فوق ربط يدوي | يفقد المستخدم تصنيفه | `autoLinkCustomers` يتخطّى `method='manual'` صراحةً |
@@ -330,6 +331,7 @@
 ## 9. مهام معلّقة معروفة (لا تبدأ بدون قراءة سياقها)
 
 - [x] back-fill قيود ledger للمراجعات السابقة — ✅ 2026-05-29: أُدرجت 8 قيود INV ناقصة (DeliverNow×3، iMile×4، J&T×1 = 73,952.59 ر.س) بعد إصلاح سبب فشل الـ auto-post
+- [x] back-fill قيود COD CR الناقصة — ✅ 2026-05-30: أُدرجت 11 قيد COD ناقص (361,280.26 ر.س — aramex×3, smsa×3, jnt×2, delex×2, boleeseh×1) بعد إصلاح نفس فخّ الـ 42P10 في مسار `saveSettlementUpload`
 - [ ] تعريف `file_kind` لباقي الشركات (iMile, SMSA, Aramex) — ✅ J&T انتهت
 - [ ] back-fill بصمات Webhook (`email_from`) لباقي الشركات بما فيها J&T
 - [ ] تطوير parser لـ COD remittance لـ iMile — ✅ J&T انتهى
@@ -338,4 +340,4 @@
 
 ---
 
-**آخر تحديث:** 2026-05-29 — تحسينات UX: تبويبات الـ hubs مرئية في القائمة الجانبية (subTabs) + COD المستحق في Overview + حفظ مفتاح الشهر للجلسة
+**آخر تحديث:** 2026-05-30 — إصلاح فخّ الـ 42P10 في مسار COD (`saveSettlementUpload`): delete-then-insert + `ledgerError` بدل ابتلاع `console.warn` + back-fill لـ 11 قيد COD ناقص (361,280.26 ر.س)

@@ -120,6 +120,7 @@ export async function saveSettlementUpload({
   // doesn't flow through the carrier sub-ledger. One CR row per upload,
   // idempotent via the unique partial index on (reference_no) WHERE
   // doc_type='COD'.
+  let ledgerError = null;
   if (direction === 'in') {
     try {
       const totalCr = +inserts.reduce((s, r) => s + (Number(r.amount) || 0), 0).toFixed(2);
@@ -139,15 +140,32 @@ export async function saveSettlementUpload({
           created_at:   nowIso,
           updated_at:   nowIso,
         };
+        // Idempotent post via delete-then-insert. We CANNOT use
+        // `.upsert(op, { onConflict: 'reference_no' })` here: the only
+        // unique index on reference_no is PARTIAL (WHERE doc_type='COD'),
+        // and PostgREST can't pass that predicate, so Postgres rejects
+        // the ON CONFLICT with 42P10 — the post then silently failed and
+        // NO COD credit ever landed in the ledger (361K SAR of carrier
+        // remittances went unrecorded before this was fixed). Clearing
+        // the prior COD row for this reference first keeps idempotency on
+        // re-upload while leaving other doc_types on the carrier intact.
+        await supabase
+          .from('carrier_operations')
+          .delete()
+          .eq('reference_no', uploadId)
+          .eq('doc_type', 'COD');
         const { error: opErr } = await supabase
           .from('carrier_operations')
-          .upsert(op, { onConflict: 'reference_no' });
-        if (opErr && !String(opErr.message).includes('duplicate')) {
-          console.warn('COD ledger auto-post failed:', opErr.message);
-        }
+          .insert(op);
+        if (opErr) throw opErr;
       }
     } catch (e) {
-      console.warn('COD ledger auto-post threw:', e.message);
+      // Do NOT swallow silently (the old `console.warn` here is exactly
+      // why 361K of COD credits went unrecorded). The settlement rows
+      // are already saved, so we don't abort — but we surface the
+      // failure in the result so the caller can alert the operator.
+      console.error('COD ledger auto-post failed:', e.message);
+      ledgerError = e.message;
     }
   }
 
@@ -157,6 +175,7 @@ export async function saveSettlementUpload({
     inBatchDuplicates: inBatchDupAwbs.length,
     crossFileDuplicates: crossFileDupAwbs.length,
     totalSubmitted: rows.length,
+    ledgerError,
   };
 }
 
