@@ -292,6 +292,7 @@
 | تجاهل `file_kind` عند audit approval | إنشاء قيود غير منطقية | افحص دائماً file_kind قبل الـ auto-extract |
 | قراءة `stores.xlsx` بدون `raw:true` في XLSX.read | الهواتف 12-رقم تصبح `9.66502E+11` (تفقد آخر رقمين) | `sheet_to_json(ws, { raw:true })` + `toPhoneString` يحوّل `number` → `String(Math.round(v))` |
 | auto-link يكتب فوق ربط يدوي | يفقد المستخدم تصنيفه | `autoLinkCustomers` يتخطّى `method='manual'` صراحةً |
+| عمود COD باسم مجرّد `"COD"` لا يُكتَشف كـ `codAmount` | أنماط `codAmount` كانت تتطلّب `cod amount`/`cash on` فقط — فعمود iMile المجرّد `"COD"` ما انكشف، وعند الاعتماد (audit_with_cod) سُجّل **0 تحصيل** بدل 41,533 ر.س صامتاً | أُضيف `/^cod$/i` (مُثبَّت بـ anchors) لأنماط `codAmount` في `COL_PATTERNS` — يلتقط `"COD"` المجرّد بدون سرقة `"COD Service Fee"` (الذي يبقى لـ `codFee`). تحقّق دائماً أن `colMap.codAmount` موجود لملفات audit_with_cod قبل الاعتماد |
 | استدعاء `loadLatestMerchants()` مباشرة في `loadLatestReceivables` كـ hard dep | الـ receivables تفشل لو ما رُفع snapshot للمتاجر | الاستيراد ديناميكي + `.catch(() => [])` — الـ merchant overlay اختياري |
 
 ---
@@ -302,7 +303,7 @@
 |---|---|---|---|---|
 | DeliverNow | `delivernow` | `audit_with_cod` | ✅ 11 ر.س ثابتة، 15% VAT | ✅ `@delivernow.net` |
 | أرامكس | `c_1777506662790` | (غير محدد) | ✅ | ❌ |
-| iMile V1 | `imile` | (غير محدد) | ✅ 17/15kg ثم 1/kg | ❌ |
+| iMile V1 | `imile` | `audit_with_cod` (الـ KSA Fee Bill الإنجليزي = فاتورة + COD معاً، مثل DeliverNow) | ✅ 17 حتى 15kg ثم +1/kg (ceil)، COD fee 1، POS 1% | ❌ |
 | J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
 | سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
 | Boleeseh | `boleeseh` | `audit_and_cod_separate` (وسيط broker — فاتورة + تحصيل منفصل) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
@@ -340,4 +341,4 @@
 
 ---
 
-**آخر تحديث:** 2026-05-30 — إصلاح فخّ الـ 42P10 في مسار COD (`saveSettlementUpload`): delete-then-insert + `ledgerError` بدل ابتلاع `console.warn` + back-fill لـ 11 قيد COD ناقص (361,280.26 ر.س)
+**آخر تحديث:** 2026-05-30 — (1) إصلاح فخّ الـ 42P10 في مسار COD (`saveSettlementUpload`) + back-fill 11 قيد COD (361,280.26 ر.س). (2) إصلاح اكتشاف عمود COD المجرّد: أُضيف `/^cod$/i` لأنماط `codAmount` — كان iMile KSA Fee Bill يُسجّل 0 تحصيل عند الاعتماد رغم 41,533 ر.س محصَّلة (مُتحقَّق عبر تشغيل المحرّك الفعلي على الملف: 316 شحنة OK، 272 شحنة COD = 41,533.49)
