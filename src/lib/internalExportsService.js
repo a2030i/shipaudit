@@ -22,6 +22,92 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 
+const EXPORT_BUCKET = 'internal-exports';
+
+// Supabase Storage rejects non-ASCII object keys (see CLAUDE.md §1.7).
+// The Arabic display name is kept in the DB row; the storage key is
+// sanitized to [A-Za-z0-9._-].
+function asciiKey(kind, fileName) {
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  const safe = String(fileName).replace(/[^A-Za-z0-9._-]/g, '_');
+  return `${kind}/${stamp}_${safe}`;
+}
+
+// Build the workbook ONCE, then (1) persist a copy to Storage + log it in
+// internal_export_pulls so it's re-downloadable from the site later, and
+// (2) trigger the browser download. Storage failure is non-fatal — the
+// download still happens, so a missing bucket never blocks the operator.
+export async function persistAndDownloadExport({ wb, fileName, kind, rowCount, total = null, userId = null }) {
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  const blob = new Blob([buf], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  try {
+    const key = asciiKey(kind, fileName);
+    const { error: upErr } = await supabase.storage.from(EXPORT_BUCKET)
+      .upload(key, blob, { contentType: blob.type, upsert: false });
+    if (upErr) throw upErr;
+    await supabase.from('internal_export_pulls').insert({
+      kind, file_name: fileName, file_path: key,
+      row_count: rowCount, total, pulled_by: userId,
+    });
+  } catch (e) {
+    console.warn('export history save failed (download still proceeds):', e.message);
+  }
+  if (typeof window !== 'undefined') {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fileName;
+    document.body.appendChild(a); a.click();
+    a.remove(); URL.revokeObjectURL(url);
+  }
+}
+
+// Unified pull history for the page — merges the new internal_export_pulls
+// (COD + invoicing) with the existing weight_billing_exports so all three
+// export types show in one "السحبات السابقة" list, newest first.
+export async function loadExportHistory({ limit = 60 } = {}) {
+  const [pullsRes, weightsRes] = await Promise.all([
+    supabase.from('internal_export_pulls')
+      .select('id, kind, file_name, file_path, row_count, total, pulled_at')
+      .order('pulled_at', { ascending: false }).limit(limit),
+    supabase.from('weight_billing_exports')
+      .select('id, file_name, file_path, row_count, created_at')
+      .order('created_at', { ascending: false }).limit(limit),
+  ]);
+  const out = [];
+  for (const r of (pullsRes.data || [])) {
+    out.push({
+      id: r.id, kind: r.kind, bucket: EXPORT_BUCKET,
+      fileName: r.file_name, filePath: r.file_path,
+      rowCount: r.row_count, total: r.total, pulledAt: r.pulled_at,
+    });
+  }
+  for (const r of (weightsRes.data || [])) {
+    out.push({
+      id: r.id, kind: 'weight', bucket: 'weight-billing',
+      fileName: r.file_name, filePath: r.file_path,
+      rowCount: r.row_count, total: null, pulledAt: r.created_at,
+    });
+  }
+  out.sort((a, b) => String(b.pulledAt || '').localeCompare(String(a.pulledAt || '')));
+  return out.slice(0, limit);
+}
+
+// Re-download a past export from Storage. filePath rows whose file_path is
+// null (older weight exports saved before storage was wired) can't be
+// re-downloaded — the caller should disable the button for those.
+export async function downloadExportFile({ bucket, filePath, fileName }) {
+  if (!filePath) throw new Error('هذا الملف لم يُحفَظ في التخزين (سحبة قديمة)');
+  const { data, error } = await supabase.storage.from(bucket || EXPORT_BUCKET).download(filePath);
+  if (error) throw error;
+  const url = URL.createObjectURL(data);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName || filePath.split('/').pop();
+  document.body.appendChild(a); a.click();
+  a.remove(); URL.revokeObjectURL(url);
+}
+
 const PAGE = 1000;
 async function loadAllPaginated(table, columns, filters = {}) {
   const rows = [];
@@ -117,7 +203,11 @@ export async function pullCodReceipts({ userId = null } = {}) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'تحصيلات مُستلَمة');
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `تحصيلات_جديدة_${dateStr}.xlsx`);
+  const codTotal = pending.reduce((s, r) => s + (Number(r.amount) || 0), 0);
+  await persistAndDownloadExport({
+    wb, fileName: `تحصيلات_جديدة_${dateStr}.xlsx`,
+    kind: 'cod', rowCount: pending.length, total: +codTotal.toFixed(2), userId,
+  });
 
   // 2) Mark every pulled id. Chunked to avoid the URL-length cap on
   // bulk .in() updates.
@@ -200,7 +290,10 @@ export async function pullCustomerInvoicing({ userId = null, auditIds = null } =
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'فواتير العملاء');
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `فواتير_عملاء_${dateStr}.xlsx`);
+  await persistAndDownloadExport({
+    wb, fileName: `فواتير_عملاء_${dateStr}.xlsx`,
+    kind: 'invoicing', rowCount: data.length, userId,
+  });
 
   // Mark each target audit as exported.
   const now = new Date().toISOString();

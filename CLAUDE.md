@@ -150,6 +150,17 @@
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
 - مفتاح الشهر في Overview يُحفظ في `sessionStorage['sa-overview-period']` — يدوم خلال الجلسة (يبقى الشهر التاريخي بعد refresh) ويُصفَّر لـ current عند جلسة جديدة. لا يوجد period عام عبر الصفحات (لا مستهلك حقيقي له — Forecast يستخدم horizon بالأيام، باقي الصفحات all-time)
 
+### 1.13 سجلّ السحبات + تخزين ملفات `/internal-exports` ✅ (UX 2026-06-01)
+- مشكلة سابقة: ملفات السحب (تحصيلات/فواتير) كانت تنزل للمتصفّح فقط ولا تُخزَّن — لو ضاعت من Downloads ما فيه طريقة لإعادتها (الأوزان كانت مخزَّنة سلفاً عبر `weight_billing_exports` + bucket `weight-billing`).
+- الحل (يحاكي نمط الأوزان):
+  - bucket `internal-exports` (private) + جدول `internal_export_pulls` (kind/file_name/file_path/row_count/total/pulled_at/pulled_by)
+  - `persistAndDownloadExport({ wb, fileName, kind, rowCount, total, userId })` في `internalExportsService.js`: يبني الـ xlsx مرة → يرفعه للـ storage + يسجّل صف + ينزّله للمتصفّح. **فشل التخزين غير قاتل** (التنزيل يكمّل) — bucket ناقص ما يوقف العملية
+  - مفتاح الـ storage **ASCII فقط** (`asciiKey`) — الاسم العربي يبقى في `file_name`، المفتاح المنظّف في `file_path` (نفس فخّ §1.7)
+  - `pullCodReceipts` (kind='cod') و `pullCustomerInvoicing` (kind='invoicing') يستدعيان الـ helper بدل `XLSX.writeFile`
+  - `loadExportHistory()` يدمج `internal_export_pulls` + `weight_billing_exports` في قائمة موحّدة (لكل سجل `bucket`)؛ `downloadExportFile({ bucket, filePath, fileName })` يعيد التحميل من الـ storage
+  - `InternalExports.jsx`: قسم "السحبات السابقة" (جدول: تاريخ/نوع/ملف/صفوف + زر تحميل). صفوف `file_path=null` (أوزان قديمة قبل التخزين) زرّها معطَّل
+- **القاعدة:** أي تصدير جديد للنظام الخارجي يجب أن يمرّ عبر `persistAndDownloadExport` (تخزين + سجل) لا `XLSX.writeFile` المباشر، ليبقى قابلاً لإعادة التحميل.
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)

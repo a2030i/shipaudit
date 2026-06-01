@@ -19,6 +19,7 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   loadPendingCodReceipts, pullCodReceipts,
   loadPendingInvoicingAudits, pullCustomerInvoicing,
+  loadExportHistory, downloadExportFile,
 } from '../lib/internalExportsService.js';
 import {
   loadPendingAuditsForBilling, exportPendingExcessWeights,
@@ -63,26 +64,45 @@ export default function InternalExports({ carriers = [], isActive = true }) {
   // Master "اسحب الكل" state
   const [pullingAll, setPullingAll] = useState(false);
 
+  // Pull history — past exports saved to storage, re-downloadable.
+  const [history, setHistory] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [downloadingId, setDownloadingId] = useState(null);
+
   const refresh = useCallback(async () => {
     setCodLoading(true);
     setInvLoading(true);
     setWeightLoading(true);
+    setHistoryLoading(true);
     try {
-      const [cod, inv, weight] = await Promise.all([
+      const [cod, inv, weight, hist] = await Promise.all([
         loadPendingCodReceipts(),
         loadPendingInvoicingAudits(),
         loadPendingAuditsForBilling(),
+        loadExportHistory().catch(() => []),
       ]);
       setCodPending(cod);
       setInvPending(inv);
       setWeightPending(weight);
+      setHistory(hist);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setCodLoading(false);
     setInvLoading(false);
     setWeightLoading(false);
+    setHistoryLoading(false);
   }, []);
+
+  const handleDownloadPast = async (rec) => {
+    setDownloadingId(rec.id);
+    try {
+      await downloadExportFile({ bucket: rec.bucket, filePath: rec.filePath, fileName: rec.fileName });
+    } catch (e) {
+      toast(`تعذّر التحميل: ${e.message}`, 'error');
+    }
+    setDownloadingId(null);
+  };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -563,6 +583,61 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           </div>
         </Card>
       </div>
+
+      {/* Pull history — every export is saved to storage so it can be
+          re-downloaded here later (no more "where did my file go"). */}
+      <Card style={{ padding: '20px 24px', marginBottom: 18 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
+          <Download size={18} style={{ color: 'var(--muted)' }}/>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>السحبات السابقة</h3>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+            (كل ملف محفوظ — اضغط لإعادة تحميله)
+          </span>
+        </div>
+        {historyLoading ? (
+          <div style={{ padding: 24, textAlign: 'center' }}><Spinner size={20}/></div>
+        ) : history.length === 0 ? (
+          <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
+            لا توجد سحبات محفوظة بعد — أول ملف تسحبه سيظهر هنا قابلاً لإعادة التحميل.
+          </div>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead>
+                <tr style={{ color: 'var(--muted)', textAlign: 'right', borderBottom: '1px solid var(--border)' }}>
+                  <th style={{ padding: '8px 10px', fontWeight: 600 }}>التاريخ</th>
+                  <th style={{ padding: '8px 10px', fontWeight: 600 }}>النوع</th>
+                  <th style={{ padding: '8px 10px', fontWeight: 600 }}>الملف</th>
+                  <th style={{ padding: '8px 10px', fontWeight: 600 }}>الصفوف</th>
+                  <th style={{ padding: '8px 10px', fontWeight: 600 }}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map(rec => {
+                  const KIND_LABEL = { cod: '💰 تحصيلات', invoicing: '🧾 فواتير عملاء', weight: '⚖️ أوزان' };
+                  return (
+                    <tr key={rec.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                      <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{fmtDate(rec.pulledAt)}</td>
+                      <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{KIND_LABEL[rec.kind] || rec.kind}</td>
+                      <td style={{ padding: '9px 10px', color: 'var(--muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{rec.fileName}</td>
+                      <td style={{ padding: '9px 10px', fontFamily: 'var(--font-mono)' }}>{rec.rowCount ?? '—'}</td>
+                      <td style={{ padding: '9px 10px', textAlign: 'left' }}>
+                        <Btn size="sm" variant="ghost"
+                          icon={downloadingId === rec.id ? <Spinner size={12}/> : <Download size={12}/>}
+                          onClick={() => handleDownloadPast(rec)}
+                          disabled={!rec.filePath || downloadingId === rec.id}
+                          title={rec.filePath ? 'إعادة تحميل الملف' : 'سحبة قديمة غير محفوظة في التخزين'}>
+                          تحميل
+                        </Btn>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
 
       {/* How-it-works strip */}
       <div style={{
