@@ -12,6 +12,7 @@ import {
   findDuplicateSettlementAwbs, loadOutstandingByCarrier,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
+import { loadCarriers } from '../lib/coreService.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
 
 // ─── Status meta ──────────────────────────────────────────────────────────
@@ -61,6 +62,11 @@ export default function CodSettlements({ isActive = true }) {
   // outstandingByCarrier: Map<carrier_id, sar> — drives the dropdown
   // labels so the user can see at a glance which carrier owes the most.
   const [outstandingByCarrier, setOutstandingByCarrier] = useState(new Map());
+  // fileKindById: Map<carrier_id, file_kind>. For audit_with_cod carriers
+  // (iMile/DeliverNow) the audit approval ALREADY creates the received
+  // ('in') rows — so the manual «ارفع تحويل» button is hidden to prevent
+  // double-counting the same COD.
+  const [fileKindById, setFileKindById] = useState(new Map());
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
@@ -232,6 +238,16 @@ export default function CodSettlements({ isActive = true }) {
   };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
+
+  // Load each carrier's file_kind once — lets us hide «ارفع تحويل» for
+  // audit_with_cod carriers (their COD comes from audit approval).
+  useEffect(() => {
+    if (!isActive) return;
+    loadCarriers()
+      .then(list => setFileKindById(
+        new Map((list || []).map(c => [c.id, c.file_signature?.file_kind || null]))))
+      .catch(() => { /* non-fatal — buttons just stay visible */ });
+  }, [isActive]);
 
   // ── Webhook → COD auto-import ───────────────────────────────────
   // When the admin clicks "حفظ كتحصيل" in the Webhook page, the file
@@ -405,10 +421,22 @@ export default function CodSettlements({ isActive = true }) {
               onClick={() => setUploadModal({ direction: 'out' })}>
               ارفع متوقّع
             </Btn>
-            <Btn size="md" variant="accent" icon={<Upload size={14}/>}
-              onClick={() => setUploadModal({ direction: 'in' })}>
-              ارفع تحويل
-            </Btn>
+            {/* audit_with_cod carriers (iMile/DeliverNow): the received COD
+                is auto-created on audit approval, so a manual «ارفع تحويل»
+                would double-count it. Hide the button; show a hint. */}
+            {fileKindById.get(carrier) === 'audit_with_cod' ? (
+              <span style={{
+                fontSize: 11.5, color: 'var(--muted)', maxWidth: 200, lineHeight: 1.5,
+                alignSelf: 'center', padding: '0 6px',
+              }}>
+                💡 التحصيل يُسجَّل تلقائياً عند اعتماد المراجعة لهذا الناقل
+              </span>
+            ) : (
+              <Btn size="md" variant="accent" icon={<Upload size={14}/>}
+                onClick={() => setUploadModal({ direction: 'in' })}>
+                ارفع تحويل
+              </Btn>
+            )}
           </>
         }
       />
