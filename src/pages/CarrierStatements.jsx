@@ -2,16 +2,19 @@ import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles } from 'lucide-react';
 import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
+import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
 import { saveCarrierStatement, loadExistingOpsByDocNos } from '../lib/carrierStatementsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ─── Doc-type & shipment-type labels ──────────────────────────────────────
 const DOC_TYPE_META = {
-  RV: { label: 'فاتورة',       color: 'var(--accent)' },
-  DR: { label: 'مدين إضافي',   color: 'var(--gold)'   },
-  DG: { label: 'إشعار دائن',   color: 'var(--green)'  },
-  AB: { label: 'تعديل',        color: 'var(--muted)'  },
+  RV:  { label: 'فاتورة',       color: 'var(--accent)' },
+  DR:  { label: 'مدين إضافي',   color: 'var(--gold)'   },
+  DG:  { label: 'إشعار دائن',   color: 'var(--green)'  },
+  AB:  { label: 'تعديل',        color: 'var(--muted)'  },
+  COD: { label: 'تحصيل/شحن COD', color: 'var(--accent)' },  // سمسا
+  CM:  { label: 'إشعار دائن',   color: 'var(--green)'  },    // سمسا credit memo
 };
 const SHIPMENT_TYPE_LABEL = {
   domestic:           'محلي',
@@ -65,24 +68,37 @@ export default function CarrierStatements({ carriers = [] }) {
     setErrorMsg('');
     setAiStatus('');
     try {
-      const buf = await file.arrayBuffer();
-      // Always run in auto mode: try the fast deterministic parser first if
-      // the carrier qualifies; fall back to AI if it returns nothing or the
-      // carrier doesn't have a fast parser.
-      const fastEligible = isFastParser(effectiveId) || isFastParser(effectiveName);
+      // Content-sniff which carrier actually issued this PDF so we route to
+      // the right deterministic parser even if the operator picked the
+      // wrong carrier in the dropdown. Falls back to the selected carrier's
+      // id/name when sniffing is inconclusive. (Each parser gets a FRESH
+      // arrayBuffer — pdfjs detaches the one it reads.)
+      const sniff = await sniffStatementCarrier(await file.arrayBuffer());
+      const wantSmsa   = sniff === 'smsa'
+        || /smsa|سمسا/i.test(effectiveId) || /smsa|سمسا/i.test(effectiveName);
+      const wantAramex = sniff === 'aramex'
+        || isFastParser(effectiveId) || isFastParser(effectiveName);
       let parsed, parserUsed;
 
-      if (fastEligible) {
-        parsed = await parseAramexStatement(buf);
+      if (wantSmsa) {
+        parsed = await parseSmsaStatement(await file.arrayBuffer());
+        parserUsed = 'smsa';
+        if (parsed.operations.length === 0) {
+          setAiStatus('✨ قارئ سمسا لم يلتقط شيئاً — يجرّب AI الآن...');
+          parsed = await parseStatementWithAI(await file.arrayBuffer(), { carrierHint: effectiveName });
+          parserUsed = 'ai-fallback';
+        }
+      } else if (wantAramex) {
+        parsed = await parseAramexStatement(await file.arrayBuffer());
         parserUsed = 'aramex';
         if (parsed.operations.length === 0) {
           setAiStatus('✨ القارئ السريع لم يلتقط شيئاً — يجرّب AI الآن...');
-          parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
+          parsed = await parseStatementWithAI(await file.arrayBuffer(), { carrierHint: effectiveName });
           parserUsed = 'ai-fallback';
         }
       } else {
         setAiStatus('✨ AI يقرأ الكشف ويستخرج العمليات...');
-        parsed = await parseStatementWithAI(buf, { carrierHint: effectiveName });
+        parsed = await parseStatementWithAI(await file.arrayBuffer(), { carrierHint: effectiveName });
         parserUsed = 'ai';
       }
 
@@ -295,7 +311,8 @@ export default function CarrierStatements({ carriers = [] }) {
             <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
             <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
             <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-              PDF · ستحلَّل تلقائياً ({(isFastParser(carrierId) || isFastParser(carrierName))
+              PDF · ستحلَّل تلقائياً ({(isFastParser(carrierId) || isFastParser(carrierName)
+                || /smsa|سمسا/i.test(carrierId) || /smsa|سمسا/i.test(carrierName))
                 ? 'قارئ سريع'
                 : <>AI <Sparkles size={11} style={{ display: 'inline' }}/></>})
             </div>

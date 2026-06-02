@@ -98,3 +98,22 @@ Document No | Reference No. | Business Area | Assignment | Doc Date | Due Date |
 
 > **للتعرّف التلقائي (webhook/upload):** سمسا تُعرَف بـ `SMSA Express` + VAT
 > `300057426910003`؛ أرامكس بـ `Aramex Saudi Limited` + بنية `RUH/####-XXX`.
+
+---
+
+## 4. حالة الـ parsers في النظام (2026-06-02)
+
+| الناقل | parser | الحالة |
+|---|---|---|
+| سمسا SMSA | `src/engine/smsaStatementParser.js` (`parseSmsaStatement`) | ✅ **جديد** — مُتحقَّق على العيّنة: 13 عملية، DR/CR من عمود Balance، `SUM(dr-cr)=Total Balance=28,052.87` ✓ |
+| أرامكس Aramex (صيغة DR/CR/Balance) | `aramexStatementParser.js` | ✅ موجود سابقاً |
+| أرامكس Aramex (صيغة عمود Amount واحد + لاحقة `-IBI/-OBI/-DOI`) | — | ⚠️ القارئ السريع يلتقط **0 عملية** لهذه الصيغة → يسقط لـ AI (`parseStatementWithAI`). بناء parser مخصّص لها مهمة مستقبلية |
+
+**التعرّف التلقائي:** `sniffStatementCarrier(arrayBuffer)` في `smsaStatementParser.js`
+يقرأ نص الصفحة الأولى ويُرجِع `'smsa'`/`'aramex'`/`null`. `CarrierStatements.jsx`
+يوجّه للـ parser المطابق حتى لو اختار المستخدم ناقلاً خاطئاً في القائمة.
+
+**ملاحظة DR/CR لسمسا:** المفتاح هو عمود **Balance** (المتبقّي بعد Amount Applied)
+وليس Amount الإجمالي — لأن `Total Balance = SUM(Balance)`. هذا يجعل الدفتر
+يطابق ما تعتبره سمسا مفتوحاً، ويعطي إشارة diff شهرية صحيحة (قيد رصيده ينزل
+لصفر = تمّت تسويته).
