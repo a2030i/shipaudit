@@ -131,6 +131,11 @@ function parseHeader(rows) {
         header.periodTo   = parseDate(m[2]);
       }
     }
+    // V2 layout prints a single "Statement Date 31.05.2026" (no range).
+    if (header.periodTo == null) {
+      const m = text.match(/Statement\s*Date[\s:|]*(\d{1,2}\.\d{1,2}\.\d{4})(?!\s*-)/i);
+      if (m) header.periodTo = parseDate(m[1]);
+    }
 
     // Credit terms 30 days
     if (header.creditTerms == null) {
@@ -242,16 +247,87 @@ function parseTotals(rows) {
   return totals;
 }
 
+// ─── Format V2: "Statement of Account" layout ────────────────────────────────
+// A newer/alternate Aramex statement where each operation is TWO visual
+// lines: an Assignment line (`RUH/<inv>-<IBI|OBI|DOI|DCF>` or a label like
+// "FRDM CHARGES" / "APR_COD Online Fee") above a data line
+// (`<docNo> RUH [<awb>] <docDate> <dueDate> <amount> SAR`). There's a single
+// signed Amount column (no DR/CR/Balance), so we derive dr/cr from the sign
+// — parens = credit. Verified against the operator's sample: 12 ops,
+// SUM(dr-cr) = Total Balance = 42,130.92.
+const V2_SUFFIX = {
+  IBI: 'international_in', OBI: 'international_out',
+  DOI: 'domestic',        DCF: 'domestic_other',
+};
+
+function parseAssignmentV2(text) {
+  const m = text.match(/[A-Z]{2,4}\/(\d+)-([A-Z]{3})/);
+  if (m) return { refInvoice: m[1], suffix: m[2] };
+  if (/FRDM\s*CHARGES/i.test(text))   return { refInvoice: null, suffix: null, label: 'FRDM' };
+  if (/COD\s*Online\s*Fee/i.test(text)) return { refInvoice: null, suffix: null, label: 'COD_FEE' };
+  return null;
+}
+
+function parseDataLineV2(cells, assign) {
+  if (!isDocNo(cells[0])) return null;
+  const dateIdx = [];
+  cells.forEach((c, i) => { if (isDate(c)) dateIdx.push(i); });
+  if (dateIdx.length < 2) return null;
+  const amtTokens = cells.filter(isAmount);
+  if (!amtTokens.length) return null;
+
+  const docNo  = cells[0];
+  const amount = parseAmount(amtTokens[amtTokens.length - 1]);
+  // AWB-like reference: a long digit run between business area and the
+  // first date that isn't the docNo itself. Strips assignment noise that
+  // can cluster onto the same line.
+  const refTok = cells.slice(2, dateIdx[0])
+    .filter(c => /^\d{8,}$/.test(c) && c !== docNo);
+  const referenceNo = refTok[0] || (assign?.refInvoice && assign.refInvoice !== docNo ? assign.refInvoice : null);
+
+  const dr = amount > 0 ? amount : 0;
+  const cr = amount < 0 ? Math.abs(amount) : 0;
+  return {
+    docNo,
+    docType: amount < 0 ? 'DG' : 'RV',   // credit memo vs invoice/charge
+    referenceNo,
+    docDate: parseDate(cells[dateIdx[0]]),
+    dueDate: parseDate(cells[dateIdx[1]]),
+    dr, cr,
+    balance: +(dr - cr).toFixed(2),
+    shipmentType: assign?.suffix ? (V2_SUFFIX[assign.suffix] ?? null) : null,
+  };
+}
+
+function parseOperationsV2(rows) {
+  const ops = [];
+  let lastAssign = null;
+  for (const row of rows) {
+    const cells = row.items.map(i => i.str);
+    const text = cells.join(' ');
+    const asg = parseAssignmentV2(text);
+    if (asg) lastAssign = asg;
+    const op = parseDataLineV2(cells, lastAssign);
+    if (op) { ops.push(op); lastAssign = null; }
+  }
+  return ops;
+}
+
 // ─── Main entry ──────────────────────────────────────────────────────────────
 export async function parseAramexStatement(arrayBuffer) {
   const rows = await getRowsFromPdf(arrayBuffer);
   const header = parseHeader(rows);
 
-  const operations = [];
+  // Format V1 — explicit doc-type column + DR/CR/Balance.
+  let operations = [];
   for (const row of rows) {
-    const cells = row.items.map(i => i.str);
-    const op = parseOperationRow(cells);
+    const op = parseOperationRow(row.items.map(i => i.str));
     if (op) operations.push(op);
+  }
+  // Format V2 — Assignment/Amount layout. Only fall through when V1 found
+  // nothing, so the two never double-count.
+  if (operations.length === 0) {
+    operations = parseOperationsV2(rows);
   }
 
   const totals = parseTotals(rows);
