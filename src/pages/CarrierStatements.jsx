@@ -4,7 +4,7 @@ import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
-import { saveCarrierStatement, loadExistingOpsByDocNos } from '../lib/carrierStatementsService.js';
+import { saveCarrierStatement, loadExistingOpsByDocNos, loadOpenBalance } from '../lib/carrierStatementsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ─── Doc-type & shipment-type labels ──────────────────────────────────────
@@ -48,6 +48,10 @@ export default function CarrierStatements({ carriers = [] }) {
   const [filter, setFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [savedDiff, setSavedDiff] = useState(null); // { added, updated, reviewing, unchanged }
+  // Pre-import ledger balance for this carrier — lets us show the operator
+  // whether the carrier's claimed Total Balance matches what OUR books
+  // computed BEFORE they commit the statement (balance-level reconciliation).
+  const [preBalance, setPreBalance] = useState(null);
   const [aiStatus, setAiStatus] = useState('');
   // Map<doc_no, existing-op> populated after parser finishes. Drives the
   // "new / unchanged / changed" badges so the user sees deltas without
@@ -165,6 +169,7 @@ export default function CarrierStatements({ carriers = [] }) {
   useEffect(() => {
     if (!result?.operations?.length || !result.carrierId) {
       setExistingMap(null);
+      setPreBalance(null);
       return;
     }
     let cancelled = false;
@@ -174,6 +179,11 @@ export default function CarrierStatements({ carriers = [] }) {
       .then(map => { if (!cancelled) setExistingMap(map); })
       .catch(() => { if (!cancelled) setExistingMap(new Map()); })
       .finally(() => { if (!cancelled) setDeltaLoading(false); });
+    // Our current ledger balance for this carrier (pre-import) — for the
+    // statement-vs-books reconciliation banner.
+    loadOpenBalance(result.carrierId)
+      .then(b => { if (!cancelled) setPreBalance(b?.balance ?? null); })
+      .catch(() => { if (!cancelled) setPreBalance(null); });
     return () => { cancelled = true; };
   }, [result]);
 
@@ -365,6 +375,45 @@ export default function CarrierStatements({ carriers = [] }) {
             <Stat label="61 إلى 90 يوم"   value={fmt(result.totals.aging?.d61_90)} suffix="ر.س" color="var(--warn)"/>
             <Stat label="فوق 90 يوم"      value={fmt(result.totals.aging?.over90)} suffix="ر.س" color="var(--red)"/>
           </div>
+
+          {/* Balance reconciliation — statement's claimed total vs our books.
+              Surfaces the gap BEFORE committing so the operator knows whether
+              the carrier's view matches ours. */}
+          {result.totals.totalBalance != null && preBalance != null && (() => {
+            const stmt = Number(result.totals.totalBalance) || 0;
+            const ours = Number(preBalance) || 0;
+            const gap  = +(stmt - ours).toFixed(2);
+            const aligned = Math.abs(gap) <= 0.5;
+            return (
+              <div style={{
+                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px,1fr))', gap: 12,
+                padding: '14px 16px', marginBottom: 14, borderRadius: 12,
+                background: aligned ? 'rgba(16,185,129,.06)' : 'rgba(245,158,11,.06)',
+                border: `1px solid ${aligned ? 'var(--green)' : 'var(--gold)'}`,
+              }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>رصيد الكشف (الناقل)</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmt(stmt)} ر.س</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>رصيد دفترنا (قبل الاستيراد)</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmt(ours)} ر.س</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 600, marginBottom: 3 }}>الفرق</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)', color: aligned ? 'var(--green)' : 'var(--gold)' }}>
+                    {aligned ? '✓ مطابق' : `${gap > 0 ? '+' : ''}${fmt(gap)} ر.س`}
+                  </div>
+                </div>
+                {!aligned && (
+                  <div style={{ gridColumn: '1 / -1', fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6 }}>
+                    الناقل يطالب بـ {fmt(Math.abs(gap))} ر.س {gap > 0 ? 'أكثر' : 'أقل'} مما يحسبه دفترنا.
+                    راجع العمليات أدناه (الملوّنة «جديدة» غير موجودة في دفترنا) قبل الحفظ.
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
