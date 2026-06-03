@@ -10,7 +10,7 @@
 // Backed by uploadsHubService.loadUploadsOverview() (one round-trip
 // fan-out across the 5 sources) and uploadFile() (unified dispatcher).
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
@@ -24,7 +24,7 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
 import {
-  INTAKE_STATUS_LABELS, listIntake, processIntake, dismissIntake,
+  INTAKE_STATUS_LABELS, listIntake, processIntake, dismissIntake, supersedePendingIntake,
 } from '../lib/zohoIntakeService.js';
 
 const fmtRel = (iso) => {
@@ -58,6 +58,9 @@ export default function UploadsHub({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
+      // Snapshots: collapse stale same-type duplicates first so the inbox
+      // shows one-per-type (newest wins). Best-effort — never blocks load.
+      await supersedePendingIntake().catch(() => {});
       const [src, inbox] = await Promise.all([
         loadUploadsOverview(),
         listIntake({ status: 'pending' }).catch(() => []),
@@ -68,6 +71,22 @@ export default function UploadsHub({ isActive = true }) {
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
+
+  // Auto-process pending detected snapshots. These files are deterministic,
+  // auto-detected, and need no human judgment (unlike audits/COD), so the
+  // operator shouldn't have to click "عالج" for each. Undetected-type
+  // events are left for the manual picker. We track attempted ids in a ref
+  // so each event auto-runs at most once — new arrivals process too, but a
+  // failed file isn't retried in a loop (the operator can retry manually).
+  const autoAttempted = useRef(new Set());
+  useEffect(() => {
+    if (!isActive || bulkBusy) return;
+    const fresh = intake.filter(e => e.detected_source && !autoAttempted.current.has(e.id));
+    if (!fresh.length) return;
+    fresh.forEach(e => autoAttempted.current.add(e.id));
+    handleProcessAllIntake();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, intake, bulkBusy]);
 
   // Process a pending Zoho intake event with one click. Uses the same
   // uploadFile() the manual hero uses — the file comes from storage

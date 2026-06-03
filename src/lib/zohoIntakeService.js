@@ -89,6 +89,31 @@ export async function processIntake(event, { sourceOverride = null, userId = nul
   return { sourceId, ...result };
 }
 
+// Every Zoho source is a SNAPSHOT (latest wins) — so when several pending
+// files of the same detected_source are queued, only the NEWEST matters.
+// This auto-dismisses the older duplicates as 'superseded' so the inbox
+// collapses to one-per-type and we never ingest a stale snapshot. Events
+// whose source the detector couldn't resolve are left untouched (they
+// still need a manual type pick). Returns the count superseded.
+export async function supersedePendingIntake() {
+  const pending = await listIntake({ status: 'pending' }); // received_at desc
+  const seen = new Set();
+  const stale = [];
+  for (const ev of pending) {                 // newest first
+    if (!ev.detected_source) continue;        // unknown type → leave for manual
+    if (seen.has(ev.detected_source)) { stale.push(ev); continue; }
+    seen.add(ev.detected_source);
+  }
+  for (const ev of stale) {
+    await supabase.from('zoho_intake_events').update({
+      status:        'dismissed',
+      processed_at:  new Date().toISOString(),
+      error_message: 'مُستبدَل بنسخة أحدث من نفس النوع',
+    }).eq('id', ev.id);
+  }
+  return { superseded: stale.length };
+}
+
 export async function dismissIntake(id, reason = null) {
   const { error } = await supabase
     .from('zoho_intake_events')
