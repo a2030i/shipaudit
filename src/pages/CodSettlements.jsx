@@ -355,10 +355,15 @@ export default function CodSettlements({ isActive = true }) {
 
   const submitAction = async ({ status, notes }) => {
     try {
-      await setReconciliationAction({
-        carrierId: carrier, awb: actionModal.row.awb,
-        status, notes, userId: user?.id,
-      });
+      // A 'note' with empty text = the operator cleared the accounting note.
+      if (status === 'note' && !notes) {
+        await clearReconciliationAction(carrier, actionModal.row.awb);
+      } else {
+        await setReconciliationAction({
+          carrierId: carrier, awb: actionModal.row.awb,
+          status, notes, userId: user?.id,
+        });
+      }
       toast('تم الحفظ', 'success');
       setActionModal(null);
       refresh();
@@ -920,6 +925,7 @@ function Row({ r, onAction, onReopen }) {
             : days > 60 ? 'var(--red)' : days > 30 ? 'var(--gold)' : 'var(--muted)';
           return (
             <div>
+              {r.notes && <NoteLine notes={r.notes}/>}
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>
                 بانتظار التحويل من الناقل
               </div>
@@ -928,42 +934,71 @@ function Row({ r, onAction, onReopen }) {
                   ⏱ {days} يوم منذ التسوية
                 </div>
               )}
+              <NoteBtn r={r} onAction={onAction}/>
             </div>
           );
         })()}
         {r.status === 'over_remit' && (
           <>
+            {r.notes && <NoteLine notes={r.notes}/>}
             <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4, fontFamily: 'var(--font-mono)' }}>
               مرّ {r.daysReceived ?? 0} يوم على الاستلام بدون مقابل
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
               <Btn size="sm" variant="success" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
               <Btn size="sm" variant="ghost"  onClick={() => onAction(r, 'dispute')}>⚠️ اعتراض</Btn>
+              <NoteBtn r={r} onAction={onAction} inline/>
             </div>
           </>
         )}
         {r.status === 'matched' && (
-          <span style={{ fontSize: 11, color: 'var(--green)' }}>—</span>
+          <div>
+            {r.notes ? <NoteLine notes={r.notes}/> : <span style={{ fontSize: 11, color: 'var(--green)' }}>—</span>}
+            <NoteBtn r={r} onAction={onAction}/>
+          </div>
         )}
       </td>
     </tr>
   );
 }
 
+// Inline note display (💬) — shown on any row that carries an accounting note.
+function NoteLine({ notes }) {
+  return (
+    <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4, lineHeight: 1.5 }}>
+      💬 {notes}
+    </div>
+  );
+}
+
+// Neutral "add/edit accounting note" button — attaches a note for the
+// accountant WITHOUT changing the row's reconciliation status.
+function NoteBtn({ r, onAction, inline = false }) {
+  return (
+    <Btn size="sm" variant="ghost" onClick={() => onAction(r, 'note')}
+      style={inline ? undefined : { marginTop: 6 }}>
+      {r.notes ? '✏️ تعديل الملاحظة' : '📝 ملاحظة للمحاسبة'}
+    </Btn>
+  );
+}
+
 // ── ActionModal ────────────────────────────────────────────────────────
 function ActionModal({ row, kind, onClose, onSubmit }) {
-  const initialNotes = (kind === 'edit' || kind === 'resolve') ? (row.notes ?? '') : '';
+  const initialNotes = (kind === 'edit' || kind === 'resolve' || kind === 'note') ? (row.notes ?? '') : '';
   const [notes, setNotes] = useState(initialNotes);
   const titles = {
     approve: 'اعتماد الفرق', dispute: 'فتح اعتراض',
     resolve: 'إغلاق الاعتراض (تم الحل)', edit: 'تحديث ملاحظة الاعتراض',
+    note: 'ملاحظة للمحاسبة',
   };
   const submit = () => {
     let status;
     if (kind === 'approve') status = 'approved';
     else if (kind === 'dispute' || kind === 'edit') status = 'disputed';
     else if (kind === 'resolve') status = 'resolved';
-    if (kind !== 'approve' && !notes.trim()) {
+    else if (kind === 'note') status = 'note';
+    // 'note' may be cleared (empty = remove). Others require text (except approve).
+    if (kind !== 'approve' && kind !== 'note' && !notes.trim()) {
       toast('لازم تكتب ملاحظة', 'error');
       return;
     }
@@ -984,7 +1019,9 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
           ? 'سبب الاعتماد (اختياري)... مثلاً: فرق رسوم تحصيل، سبق مناقشته'
           : kind === 'resolve'
             ? 'وش حصل؟ (مطلوب)... مثلاً: أرامكس صحّحت وحوّلت 10 ر.س الناقصة بتاريخ ...'
-            : 'تفاصيل الاعتراض (مطلوب)... مثلاً: تواصلت مع مدير حساب أرامكس بتاريخ ...'
+            : kind === 'note'
+              ? 'ملاحظة للمحاسبة (اتركها فارغة للحذف)... مثلاً: طُلب التحويل من الناقل بتاريخ ...، أو: راجَعها المحاسب'
+              : 'تفاصيل الاعتراض (مطلوب)... مثلاً: تواصلت مع مدير حساب أرامكس بتاريخ ...'
         }
         rows={5}
         style={{

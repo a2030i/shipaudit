@@ -191,6 +191,7 @@
 - `'in'` = ما استلمناه فعلاً (ملف من الناقل، أو tehweel بنكي)
 - **لا تنشئ 'out' من audit أبداً.** أي ملف من شركة شحن = 'in'
 - **زر «ارفع تحويل» (in) مخفي للناقلين `audit_with_cod`** (iMile/DeliverNow) في `/cod-settlements` — لأن اعتماد المراجعة يُنشئ صفوف 'in' تلقائياً، فالرفع اليدوي يكرّر التحصيل (double-count). يُستبدَل بتلميح "التحصيل يُسجَّل تلقائياً عند اعتماد المراجعة". زر «ارفع متوقّع» (out) يبقى ظاهراً للجميع (مصدره نظام المستخدم الداخلي). الحارس: `fileKindById.get(carrier) === 'audit_with_cod'` في `CodSettlements.jsx`
+- **ملاحظة المحاسبة المحايدة (`status='note'`)**: في `cod_reconciliation_action`، الحالة `'note'` تُرفِق ملاحظة لشحنة **دون تغيير حالتها المالية** (تبقى outstanding/over_remit/matched طبيعية). في `loadReconciliation`: `if (action.status !== 'note') override; else keep natural + attach notes`. زر «📝 ملاحظة للمحاسبة» في `Row` (CodSettlements). ملاحظة فارغة = حذف (تستدعي `clearReconciliationAction`). لا تجعل أي حالة قرار (approved/disputed/resolved) note-only — هي تُلغي الحالة الطبيعية عمداً
 
 ### 2.4 المحاسبة في `carrier_operations`
 - DR = نحن مدينون للشركة (فاتورة شحن)

@@ -533,19 +533,24 @@ export async function loadReconciliation(carrierId) {
     m.received = +m.received.toFixed(2);
     m.diff     = +(m.paid - m.received).toFixed(2);
 
+    // Natural (data-derived) reconciliation status.
+    let natural;
+    if (Math.abs(m.diff) <= TOL)   natural = 'matched';
+    else if (m.hasOut && !m.hasIn) natural = 'outstanding';
+    else if (m.hasIn && !m.hasOut) natural = 'over_remit';
+    else                           natural = 'pending_review';
+
     const action = actionByAwb.get(m.awb);
-    if (action) {
-      m.status     = action.status;        // approved | disputed | resolved
+    if (action && action.status !== 'note') {
+      // A decision (approve | disputed | resolved) overrides the status.
+      m.status     = action.status;
       m.notes      = action.notes;
       m.actionDate = action.updated_at;
-    } else if (Math.abs(m.diff) <= TOL) {
-      m.status = 'matched';
-    } else if (m.hasOut && !m.hasIn) {
-      m.status = 'outstanding';
-    } else if (m.hasIn && !m.hasOut) {
-      m.status = 'over_remit';
     } else {
-      m.status = 'pending_review';
+      // No action, or a NOTE-only action: keep the natural status and just
+      // attach the accounting note (status='note' never changes finances).
+      m.status = natural;
+      if (action) { m.notes = action.notes; m.actionDate = action.updated_at; }
     }
 
     // Days since carrier remitted — only meaningful for over_remit rows,
