@@ -161,6 +161,15 @@
   - `InternalExports.jsx`: قسم "السحبات السابقة" (جدول: تاريخ/نوع/ملف/صفوف + زر تحميل). صفوف `file_path=null` (أوزان قديمة قبل التخزين) زرّها معطَّل
 - **القاعدة:** أي تصدير جديد للنظام الخارجي يجب أن يمرّ عبر `persistAndDownloadExport` (تخزين + سجل) لا `XLSX.writeFile` المباشر، ليبقى قابلاً لإعادة التحميل.
 
+### 1.14 معالجة آلية + استبدال snapshots صندوق Zoho ✅ (UX 2026-06-02)
+- كل مصادر `UPLOAD_SOURCES` (zoho_customers/zoho_vendors/receivables/internal_settlement/merchants) هي **snapshots** — الأحدث يلغي الأقدم.
+- مشكلة سابقة: كل إيميل Zoho يولّد `zoho_intake_events` صف `pending` يحتاج ضغط «عالج» يدوي، وتتراكم نسخ متعددة لنفس النوع (3× أرصدة عملاء…).
+- الحل في `UploadsHub.jsx` + `zohoIntakeService.js`:
+  - `supersedePendingIntake()` يُجمّع الـ pending حسب `detected_source` ويُبقي الأحدث فقط، ويُحوّل الأقدم لـ `dismissed` (السبب: «مُستبدَل بنسخة أحدث»). يُستدعى في `refresh()` قبل عرض الصندوق → الصندوق يتقلّص لواحد-لكل-نوع
+  - **معالجة آلية**: effect في `UploadsHub` يعالج تلقائياً كل حدث `detected_source` (عبر `handleProcessAllIntake`)؛ يتتبّع المعالَج في `autoAttempted` (ref Set) فكل حدث يُعالَج مرة واحدة (الوافد الجديد يُعالَج، والفاشل لا يُعاد في حلقة). الأنواع غير المكتشفة تبقى للاختيار اليدوي
+- **القاعدة:** snapshots = الأحدث يلغي الأقدم. لا تعالج نسخة قديمة من نفس النوع. المعالجة الآلية فقط للـ snapshots المكتشَفة (لا للمراجعات/COD التي تحتاج اعتماداً بشرياً)
+- **معلّق:** المعالجة حالياً client-side (تشتغل عند فتح `/uploads`). المعالجة الكاملة server-side (لحظة وصول الإيميل بلا فتح صفحة) تحتاج نقل parsing لـ edge function — مهمة مستقبلية
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)
