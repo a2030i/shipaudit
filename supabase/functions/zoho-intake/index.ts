@@ -1,4 +1,12 @@
-// zoho-intake v5 — DEDICATED endpoint for Zoho-side report files.
+// zoho-intake v6 — DEDICATED endpoint for Zoho-side report files.
+//
+// v6 changes (over v5):
+//   • Server-side SUPERSEDE: every Zoho source is a snapshot (latest
+//     wins), so the instant a new file of a detected source lands we
+//     auto-dismiss any OLDER still-pending events of the same source
+//     ("مُستبدَل بنسخة أحدث"). The /uploads inbox stays collapsed to
+//     one-per-type without anyone opening the page. (Parsing/ingestion
+//     still runs client-side on the hub — see processIntake.)
 //
 // v5 changes (over v4):
 //   • Arabic-normalised detector — survives Zoho's spelling drift
@@ -331,11 +339,32 @@ Deno.serve(async (req) => {
       continue;
     }
 
+    // Server-side supersede — snapshots: only the newest pending file of
+    // each source matters. Dismiss any OLDER still-pending events of the
+    // same detected source so the inbox auto-collapses on arrival without
+    // anyone opening /uploads. Best-effort; never fails the intake.
+    let supersededCount = 0;
+    if (detection.source) {
+      const { data: sup } = await supabase
+        .from("zoho_intake_events")
+        .update({
+          status:        "dismissed",
+          processed_at:  new Date().toISOString(),
+          error_message: "مُستبدَل بنسخة أحدث من نفس النوع",
+        })
+        .eq("detected_source", detection.source)
+        .eq("status", "pending")
+        .neq("id", ev.id)
+        .select("id");
+      supersededCount = sup?.length ?? 0;
+    }
+
     results.push({
       filename: att.filename,
       id: ev.id,
       detected_source: detection.source,
       detection_method: detection.method,
+      superseded: supersededCount,
     });
   }
 
