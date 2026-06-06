@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
+  UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search, KeyRound,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
   Store, Wallet, BookOpenCheck, Send, GitMerge, Settings,
 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, toast } from '../components/UI.jsx';
 import {
   loadEmployees, createEmployee, updateEmployee, deleteEmployee, updateEmployeePermissions,
+  resetEmployeePassword,
 } from '../lib/employeeService.js';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -423,6 +424,88 @@ function PermissionsModal({ employee, onClose, onSave }) {
   );
 }
 
+// ── Reset Password Modal ──────────────────────────────────────────────────────
+function ResetPasswordModal({ employee, onClose, onConfirm }) {
+  const [password, setPassword] = useState('');
+  const [confirm,  setConfirm]  = useState('');
+  const [vis,      setVis]      = useState(false);
+  const [saving,   setSaving]   = useState(false);
+
+  const handleSave = async () => {
+    if (password.length < 6)   return toast('كلمة المرور 6 أحرف على الأقل', 'error');
+    if (password !== confirm)  return toast('كلمتا المرور غير متطابقتين', 'error');
+    setSaving(true);
+    try {
+      await onConfirm(password);
+      onClose();
+    } catch (e) {
+      toast(e.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputStyle = {
+    width: '100%', boxSizing: 'border-box',
+    background: 'var(--surface)', border: '1px solid var(--border2)',
+    borderRadius: 8, padding: '9px 12px', color: 'var(--text)', fontSize: 13,
+    outline: 'none',
+  };
+
+  return (
+    <Modal title="إعادة تعيين كلمة المرور" onClose={onClose} width={380}>
+      <div style={{ textAlign: 'center', padding: '4px 0 14px' }}>
+        <Avatar name={employee.name} color={employee.avatar_color} size={52}/>
+        <div style={{ marginTop: 12, fontSize: 15, fontWeight: 600 }}>{employee.name}</div>
+        <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{employee.email}</div>
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 5, fontFamily: 'var(--font-mono)' }}>
+          كلمة المرور الجديدة
+        </div>
+        <input
+          type={vis ? 'text' : 'password'}
+          value={password}
+          placeholder="6 أحرف على الأقل"
+          onChange={e => setPassword(e.target.value)}
+          autoComplete="new-password"
+          style={inputStyle}
+        />
+      </div>
+
+      <div style={{ marginBottom: 10 }}>
+        <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 5, fontFamily: 'var(--font-mono)' }}>
+          تأكيد كلمة المرور
+        </div>
+        <input
+          type={vis ? 'text' : 'password'}
+          value={confirm}
+          placeholder="أعد كتابة كلمة المرور"
+          onChange={e => setConfirm(e.target.value)}
+          autoComplete="new-password"
+          style={inputStyle}
+        />
+      </div>
+
+      <label style={{
+        display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer',
+        fontSize: 11, color: 'var(--muted)', marginBottom: 16,
+      }}>
+        <input type="checkbox" checked={vis} onChange={e => setVis(e.target.checked)}/>
+        إظهار كلمة المرور
+      </label>
+
+      <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+        <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+        <Btn onClick={handleSave} disabled={saving}>
+          {saving ? <Spinner size={14}/> : 'تعيين كلمة المرور'}
+        </Btn>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Delete Confirm Modal ──────────────────────────────────────────────────────
 function DeleteConfirm({ employee, onClose, onConfirm }) {
   const [loading, setLoading] = useState(false);
@@ -506,6 +589,11 @@ export default function EmployeeManager() {
     await deleteEmployee(modal.employee.id);
     toast('تم حذف الموظف', 'success');
     await reload();
+  };
+
+  const handleResetPassword = async (password) => {
+    await resetEmployeePassword(modal.employee.id, password);
+    toast('تم تعيين كلمة المرور الجديدة', 'success');
   };
 
   const handleSavePerms = async (permissions) => {
@@ -633,6 +721,20 @@ export default function EmployeeManager() {
                     )}
                     {canManageEmployees && (
                       <button
+                        onClick={() => setModal({ type: 'reset', employee: emp })}
+                        title="إعادة تعيين كلمة المرور"
+                        style={{
+                          background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+                          borderRadius: 7, padding: '6px 9px', cursor: 'pointer',
+                          color: 'var(--accent)', display: 'flex', alignItems: 'center',
+                        }}
+                      >
+                        <KeyRound size={13}/>
+                      </button>
+                    )}
+                    {canManageEmployees && (
+                      <button
                         onClick={() => setModal({ type: 'edit', employee: emp })}
                         title="تعديل"
                         style={{
@@ -675,6 +777,13 @@ export default function EmployeeManager() {
           employee={modal.employee ?? null}
           onClose={() => setModal(null)}
           onSave={handleSave}
+        />
+      )}
+      {modal?.type === 'reset' && (
+        <ResetPasswordModal
+          employee={modal.employee}
+          onClose={() => setModal(null)}
+          onConfirm={handleResetPassword}
         />
       )}
       {modal?.type === 'delete' && (

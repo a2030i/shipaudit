@@ -67,6 +67,23 @@ Deno.serve(async (req) => {
       });
     }
 
+    // ── Reset password ────────────────────────────────────────────────────────
+    // Admin-sets a new password for any account (including their own).
+    // Uses the service-role admin API so it works without the target's
+    // current password.
+    if (action === 'reset_password') {
+      const { user_id, password } = body;
+      if (!user_id || !password) throw new Error('المستخدم وكلمة المرور مطلوبان');
+      if (String(password).length < 6) throw new Error('كلمة المرور 6 أحرف على الأقل');
+
+      const { error } = await adminClient.auth.admin.updateUserById(user_id, { password });
+      if (error) throw error;
+
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { ...CORS, 'Content-Type': 'application/json' },
+      });
+    }
+
     // ── Delete ──────────────────────────────────────────────────────────────
     if (action === 'delete') {
       const { user_id } = body;

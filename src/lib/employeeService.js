@@ -52,6 +52,10 @@ export async function updateEmployeePermissions(id, permissions) {
   if (error) throw error;
 }
 
+export async function resetEmployeePassword(user_id, password) {
+  return callManageUsers({ action: 'reset_password', user_id, password });
+}
+
 export async function deleteEmployee(user_id) {
   return callManageUsers({ action: 'delete', user_id });
 }
