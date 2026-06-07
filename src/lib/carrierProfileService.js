@@ -19,7 +19,11 @@ async function loadAll(table, columns, filters = {}) {
   const rows = [];
   let from = 0;
   while (true) {
-    let q = supabase.from(table).select(columns).range(from, from + PAGE - 1);
+    // STABLE order required — without it Postgres may return overlapping
+    // rows across .range() pages once a table exceeds 1000, double-counting.
+    // 'id' exists on every table passed here (carrier_operations,
+    // cod_settlement, audits, webhook_events).
+    let q = supabase.from(table).select(columns).order('id', { ascending: true }).range(from, from + PAGE - 1);
     for (const [k, v] of Object.entries(filters)) q = q.eq(k, v);
     const { data, error } = await q;
     if (error) throw error;
