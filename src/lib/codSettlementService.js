@@ -328,7 +328,10 @@ export async function loadSettlementUploads({ carrierId } = {}) {
       .from('cod_settlement')
       .select('upload_id, direction, upload_date, source_file, settlement_ref, amount, created_at')
       .eq('carrier_id', carrierId)
+      // upload_date is NOT unique → add id as a stable tiebreaker, else
+      // tied rows reorder between .range() pages and get double-counted.
       .order('upload_date', { ascending: false })
+      .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
     if (error) throw error;
     if (!data?.length) break;
@@ -348,6 +351,7 @@ export async function loadSettlementUploads({ carrierId } = {}) {
       .from('cod_settlement')
       .select('upload_id, direction, awb, amount')
       .eq('carrier_id', carrierId)
+      .order('id', { ascending: true })   // stable order — prevents page overlap → double-count
       .range(from2, from2 + PAGE2 - 1);
     if (error) throw error;
     if (!data?.length) break;
@@ -483,7 +487,12 @@ export async function loadReconciliation(carrierId) {
   while (true) {
     const { data, error: lErr } = await supabase
       .from('cod_settlement')
-      .select('direction, awb, amount, upload_date')
+      .select('id, direction, awb, amount, upload_date')
+      // STABLE order is REQUIRED: without it Postgres doesn't guarantee a
+      // consistent row order across .range() pages, so rows can repeat in
+      // multiple pages → double-counted paid/received → false فروق once a
+      // carrier crosses 1000 rows (SMSA hit this after June uploads).
+      .order('id', { ascending: true })
       .eq('carrier_id', carrierId)
       .range(from, from + PAGE - 1);
     if (lErr) throw lErr;

@@ -113,7 +113,11 @@ async function loadAllPaginated(table, columns, filters = {}) {
   const rows = [];
   let from = 0;
   while (true) {
-    let q = supabase.from(table).select(columns).range(from, from + PAGE - 1);
+    // STABLE order required — without it Postgres may return overlapping
+    // rows across .range() pages once the table exceeds 1000 rows, which
+    // double-counts (cod_settlement is well past 1000). 'id' exists on
+    // every table this helper is called with (cod_settlement, audit_shipments).
+    let q = supabase.from(table).select(columns).order('id', { ascending: true }).range(from, from + PAGE - 1);
     for (const [k, v] of Object.entries(filters)) {
       if (v === null) q = q.is(k, null);
       else            q = q.eq(k, v);

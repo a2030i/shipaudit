@@ -317,6 +317,7 @@
 | auto-link يكتب فوق ربط يدوي | يفقد المستخدم تصنيفه | `autoLinkCustomers` يتخطّى `method='manual'` صراحةً |
 | عمود COD باسم مجرّد `"COD"` لا يُكتَشف كـ `codAmount` | أنماط `codAmount` كانت تتطلّب `cod amount`/`cash on` فقط — فعمود iMile المجرّد `"COD"` ما انكشف، وعند الاعتماد (audit_with_cod) سُجّل **0 تحصيل** بدل 41,533 ر.س صامتاً | أُضيف `/^cod$/i` (مُثبَّت بـ anchors) لأنماط `codAmount` في `COL_PATTERNS` — يلتقط `"COD"` المجرّد بدون سرقة `"COD Service Fee"` (الذي يبقى لـ `codFee`). تحقّق دائماً أن `colMap.codAmount` موجود لملفات audit_with_cod قبل الاعتماد |
 | استدعاء `loadLatestMerchants()` مباشرة في `loadLatestReceivables` كـ hard dep | الـ receivables تفشل لو ما رُفع snapshot للمتاجر | الاستيراد ديناميكي + `.catch(() => [])` — الـ merchant overlay اختياري |
+| `.range(from, to)` للـ pagination **بدون `.order()` ثابت وفريد** | Postgres لا يضمن ترتيباً ثابتاً بين الصفحات، فبمجرد تجاوز الجدول 1000 صف **تتداخل الصفحات** ويتكرّر بعض الصفوف → **مضاعفة المبالغ** في أي aggregate. ظهر في `loadReconciliation` لسمسا (1667 صف): استلمنا = 2× → 399 فرق وهمي. والبيانات سليمة — الخلل في الجلب فقط | أضف `.order('id', { ascending: true })` (أو عمود فريد) قبل كل `.range()` يُكرّر صفحات. `upload_date` وحده لا يكفي (غير فريد) — أضف `id` كـ tiebreaker. أُصلح في `loadReconciliation` + `loadSettlementUploads` + `internalExportsService.loadAllPaginated`. **متبقّي (نفس الفخّ):** الـ `loadAllPaginated` العام في merchantsService/customerReceivablesService/carrierProfileService |
 
 ---
 
