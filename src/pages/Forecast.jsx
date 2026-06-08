@@ -197,6 +197,14 @@ export default function Forecast({ carriers = [], isActive = true }) {
         </div>
       </Card>
 
+      {/* Projected bank balance + daily cashflow chart */}
+      {data.bankBalance != null && (
+        <ProjectedBalance data={data} horizonLabel={horizonLabel}/>
+      )}
+      {data.dailyFlow && data.dailyFlow.length > 0 && (
+        <CashflowChart dailyFlow={data.dailyFlow} bankBalance={data.bankBalance}/>
+      )}
+
       {/* Events timeline grouped by date */}
       {data.events.length === 0 ? (
         <Empty
@@ -233,6 +241,90 @@ export default function Forecast({ carriers = [], isActive = true }) {
 }
 
 // ── subcomponents ──────────────────────────────────────────────
+
+// Projected bank balance: current → after the horizon's net. Warns when
+// the lowest projected point dips below zero (a liquidity gap).
+function ProjectedBalance({ data, horizonLabel }) {
+  const cur = data.bankBalance;
+  const proj = data.projectedBalance;
+  const low = data.minProjected;
+  const risky = (low != null && low < 0) || (proj != null && proj < 0);
+  const projColor = proj >= 0 ? '#047857' : '#DC2626';
+  return (
+    <Card style={{
+      marginBottom: 18, padding: 18,
+      background: risky ? 'color-mix(in srgb, #DC2626 6%, transparent)' : 'color-mix(in srgb, #047857 5%, transparent)',
+      border: `1px solid color-mix(in srgb, ${risky ? '#DC2626' : '#047857'} 20%, transparent)`,
+    }}>
+      <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+        <Banknote size={20} color={risky ? '#DC2626' : '#047857'}/>
+        <div style={{ minWidth: 150 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>الرصيد البنكي الآن</div>
+          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmt(cur)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span></div>
+        </div>
+        <div style={{ fontSize: 20, color: 'var(--muted)' }}>←</div>
+        <div style={{ minWidth: 170 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>المتوقّع بعد {horizonLabel}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: projColor }}>
+            {fmt(proj)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+          </div>
+        </div>
+        {risky && (
+          <div style={{ flex: 1, minWidth: 200, display: 'flex', gap: 8, alignItems: 'center', color: '#DC2626', fontSize: 12.5, fontWeight: 600 }}>
+            <AlertTriangle size={16}/>
+            تنبيه سيولة: أدنى رصيد متوقّع {fmt(low)} ر.س — قد تحتاج تأخير دفعات أو تسريع تحصيل.
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+// Lightweight dependency-free daily cashflow chart: per-day in/out bars +
+// a running-balance line, drawn as inline SVG.
+function CashflowChart({ dailyFlow, bankBalance }) {
+  const W = 720, H = 150, padL = 8, padR = 8, padT = 14, padB = 22;
+  const n = dailyFlow.length;
+  const balances = [bankBalance ?? 0, ...dailyFlow.map(d => d.runningBalance)];
+  const maxBal = Math.max(...balances, 0);
+  const minBal = Math.min(...balances, 0);
+  const span = (maxBal - minBal) || 1;
+  const innerW = W - padL - padR, innerH = H - padT - padB;
+  const x = (i) => padL + (n <= 1 ? innerW / 2 : (i / (n)) * innerW);
+  const y = (v) => padT + innerH - ((v - minBal) / span) * innerH;
+  const zeroY = y(0);
+  // running-balance polyline (start at bankBalance, then each day)
+  const pts = [[padL, y(bankBalance ?? 0)], ...dailyFlow.map((d, i) => [x(i + 1), y(d.runningBalance)])];
+  const path = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(' ');
+  const fmtDay = (iso) => { const d = new Date(iso); return `${d.getDate()}/${d.getMonth() + 1}`; };
+  const barW = Math.max(3, Math.min(16, innerW / (n * 1.6)));
+  return (
+    <Card style={{ marginBottom: 18, padding: '16px 18px' }}>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📈 مسار السيولة المتوقّع</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
+        الأعمدة = داخل (أخضر) / خارج (أحمر) كل يوم · الخط = الرصيد البنكي الجاري المتوقّع
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', height: 'auto', overflow: 'visible' }}>
+        <line x1={padL} y1={zeroY} x2={W - padR} y2={zeroY} stroke="var(--border)" strokeWidth="1" strokeDasharray="3 3"/>
+        {dailyFlow.map((d, i) => {
+          const cx = x(i + 1);
+          const inH = (d.inflow / span) * innerH;
+          const outH = (d.outflow / span) * innerH;
+          return (
+            <g key={d.date}>
+              {d.inflow > 0 && <rect x={cx - barW - 1} y={zeroY - inH} width={barW} height={inH} fill="#10B981" opacity="0.55" rx="1.5"/>}
+              {d.outflow > 0 && <rect x={cx + 1} y={zeroY} width={barW} height={outH} fill="#DC2626" opacity="0.5" rx="1.5"/>}
+              <text x={cx} y={H - 6} textAnchor="middle" fontSize="9" fill="var(--muted)" fontFamily="var(--font-mono)">{fmtDay(d.date)}</text>
+            </g>
+          );
+        })}
+        <path d={path} fill="none" stroke="#0EA5E9" strokeWidth="2" strokeLinejoin="round"/>
+        {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="#0EA5E9"/>)}
+      </svg>
+    </Card>
+  );
+}
+
 function BigStat({ color, icon, label, value, unit, hint, big = false }) {
   return (
     <Card style={{

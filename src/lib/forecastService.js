@@ -62,12 +62,15 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
   const now = new Date();
   const horizonEnd = new Date(now.getTime() + horizonDays * DAY_MS);
 
-  // Pull the four data sources in parallel
-  const [schedules, avgMap, codNet] = await Promise.all([
+  const { loadCurrentBalance } = await import('./bankBalanceService.js');
+  // Pull the data sources in parallel
+  const [schedules, avgMap, codNet, bank] = await Promise.all([
     listSchedules({ activeOnly: true }),
     loadCarrierRemittanceAvg(3),
     loadCarrierNetBalances().catch(() => new Map()),
+    loadCurrentBalance().catch(() => null),
   ]);
+  const bankBalance = bank?.balance ?? null;
 
   const carrierNames = new Map((carriers || []).map(c => [c.id, c.name]));
 
@@ -163,12 +166,46 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
   let codInTransit = 0;
   for (const v of codNet.values()) if (v > 0) codInTransit += v;
 
+  // ── Daily cashflow timeline + projected bank balance ──────────
+  // Bucket every dated, money-bearing event by its due day, then walk
+  // forward from the current bank balance to project the running cash
+  // position. `minProjected` flags the lowest dip in the horizon (a
+  // liquidity warning if it crosses zero).
+  const dayMap = new Map();   // 'YYYY-MM-DD' → { inflow, outflow }
+  for (const e of events) {
+    if (e.estimatedAmount == null || e.direction === 'info' || !e.dueAt) continue;
+    const key = e.dueAt.toISOString().slice(0, 10);
+    const d = dayMap.get(key) || { inflow: 0, outflow: 0 };
+    if (e.direction === 'in')  d.inflow  += e.estimatedAmount;
+    else                       d.outflow += e.estimatedAmount;
+    dayMap.set(key, d);
+  }
+  let running = bankBalance ?? 0;
+  let minProjected = bankBalance;
+  const dailyFlow = [...dayMap.keys()].sort().map((date) => {
+    const d = dayMap.get(date);
+    const net = d.inflow - d.outflow;
+    running += net;
+    if (minProjected == null || running < minProjected) minProjected = running;
+    return {
+      date,
+      inflow:  +d.inflow.toFixed(2),
+      outflow: +d.outflow.toFixed(2),
+      net:     +net.toFixed(2),
+      runningBalance: +running.toFixed(2),
+    };
+  });
+
   return {
     events,
     inflowTotal:   +inflowTotal.toFixed(2),
     outflowTotal:  +outflowTotal.toFixed(2),
     netInHorizon:  +(inflowTotal - outflowTotal).toFixed(2),
     codInTransit:  +codInTransit.toFixed(2),
+    bankBalance:   bankBalance == null ? null : +bankBalance.toFixed(2),
+    projectedBalance: bankBalance == null ? null : +(bankBalance + (inflowTotal - outflowTotal)).toFixed(2),
+    minProjected:  minProjected == null ? null : +minProjected.toFixed(2),
+    dailyFlow,
     horizonDays,
     asOf:          now.toISOString(),
   };
