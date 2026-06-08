@@ -194,12 +194,15 @@ export default function CarrierLedger({ isActive = true }) {
     [filtered, selectedIds],
   );
   const selectedTotal = useMemo(
-    // Use REMAINING (not full owed) so partials show the correct
-    // outstanding amount in the bulk-pay summary.
+    // NET of the selection: debit invoices (remaining, partial-aware)
+    // MINUS credit notes (DG/AB/CM). A credit note has owed < 0 and must
+    // reduce the total — clamping each row to ≥0 (the old behaviour)
+    // silently dropped credits, inflating the "إجمالي" by the credit
+    // amount and risking an overpayment.
     () => selectedOps.reduce((s, o) => {
       const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
-      const remaining = Math.max(0, owed - (Number(o.amount_paid) || 0));
-      return s + remaining;
+      if (owed < 0) return s + owed;   // credit note → reduces the total
+      return s + Math.max(0, owed - (Number(o.amount_paid) || 0));
     }, 0),
     [selectedOps],
   );
@@ -352,37 +355,59 @@ export default function CarrierLedger({ isActive = true }) {
   const markPaidBulk = async (ops, payment_ref) => {
     const paidAtIso = new Date().toISOString();
     const ref = payment_ref || null;
-    // Build allocations from each op's REMAINING amount (so a partial
-    // op gets its remainder paid, not double-billed).
-    const allocations = ops.map(o => {
+    // Split the selection: debit invoices get cash allocations (REMAINING,
+    // partial-aware); credit notes (DG/AB/CM, owed<0) are APPLIED — they
+    // offset the cash, not paid. The recorded cash = debits − credits.
+    const allocations = [];
+    const creditOpIds = [];
+    let creditTotal = 0;
+    for (const o of ops) {
       const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
-      const remaining = +(owed - (Number(o.amount_paid) || 0)).toFixed(2);
-      return { opId: o.id, amount: Math.max(remaining, 0) };
-    }).filter(a => a.amount > 0);
-    const total = allocations.reduce((s, a) => s + a.amount, 0);
-    if (!allocations.length) {
+      if (owed > 0) {
+        const remaining = +(owed - (Number(o.amount_paid) || 0)).toFixed(2);
+        if (remaining > 0) allocations.push({ opId: o.id, amount: remaining });
+      } else if (owed < 0) {
+        creditOpIds.push(o.id);
+        creditTotal += Math.abs(owed);
+      }
+    }
+    if (!allocations.length && !creditOpIds.length) {
       toast('لا توجد مبالغ مستحقة على العمليات المحددة', 'error');
       return;
     }
+    const debitTotal = allocations.reduce((s, a) => s + a.amount, 0);
+    const cash = +Math.max(0, debitTotal - creditTotal).toFixed(2);  // net cash after applying credits
     try {
-      const payment = await createPaymentRecord({
-        carrierId:   carrier,
-        paidAt:      paidAtIso.slice(0, 10),
-        amount:      total,
-        paymentRef:  ref,
-        allocations,
-        userId:      null,
-      });
-      // Update payment_ref on each op for legacy display compatibility.
-      // status + payment_id are already set by recalcOperationPaymentState
-      // inside createPaymentRecord.
-      if (ref) {
-        await Promise.allSettled(
-          allocations.map(a => setOperationStatus(a.opId, { payment_ref: ref })),
-        );
+      let payment = null;
+      if (allocations.length) {
+        payment = await createPaymentRecord({
+          carrierId:   carrier,
+          paidAt:      paidAtIso.slice(0, 10),
+          amount:      cash,                 // net cash (credits already deducted)
+          paymentRef:  ref,
+          allocations,                       // debits fully covered → marked paid
+          userId:      null,
+        });
+        if (ref) {
+          await Promise.allSettled(
+            allocations.map(a => setOperationStatus(a.opId, { payment_ref: ref })),
+          );
+        }
+      }
+      // Applied credit notes → mark consumed (paid) so they leave the open
+      // balance. They carried no cash; they reduced what we paid.
+      if (creditOpIds.length) {
+        await Promise.allSettled(creditOpIds.map(id => setOperationStatus(id, {
+          status:      'paid',
+          paid_at:     paidAtIso,
+          payment_ref: ref,
+          ...(payment ? { payment_id: payment.id } : {}),
+        })));
       }
       toast(
-        `✓ تم تسديد ${allocations.length} عملية ضمن دفعة واحدة (#${payment.id})`,
+        `✓ تسديد ${allocations.length} فاتورة`
+        + (creditOpIds.length ? ` + تطبيق ${creditOpIds.length} إشعار دائن` : '')
+        + ` — صافي ${cash.toFixed(2)} ر.س`,
         'success',
       );
     } catch (e) {
@@ -1020,12 +1045,15 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
             <tbody>
               {ops.map(o => {
                 const amt = (o.amount_dr ?? 0) - (o.amount_cr ?? 0);
+                const isCredit = amt < 0;
                 return (
                   <tr key={o.id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{o.doc_no}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>
+                      {o.doc_no}{isCredit && <span style={{ color: 'var(--green)', fontSize: 9, marginRight: 4 }}> ↩ دائن</span>}
+                    </td>
                     <td style={{ color: 'var(--muted)' }}>{o.doc_date || '—'}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, textAlign: 'left' }}>
-                      {Number(Math.abs(amt)).toFixed(2)}
+                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, textAlign: 'left', color: isCredit ? 'var(--green)' : 'var(--text)' }}>
+                      {isCredit ? '−' : ''}{Number(Math.abs(amt)).toFixed(2)}
                     </td>
                   </tr>
                 );
