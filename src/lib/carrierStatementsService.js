@@ -181,12 +181,24 @@ export async function saveCarrierStatement({ carrierId, carrierName, fileName, f
       Math.abs((prior.amount_dr ?? 0) - op.dr) > TOLERANCE
       || Math.abs((prior.amount_cr ?? 0) - op.cr) > TOLERANCE;
 
-    if (prior.status === 'pending') {
+    if (prior.status === 'paid' || prior.status === 'partial') {
+      // FROZEN — a SETTLED operation is immutable. Once money moved against
+      // it, a re-imported statement must NEVER overwrite its amount or flip
+      // its status (the carrier sometimes re-numbers / re-classifies the
+      // same doc across statement versions, e.g. AB↔DG). We only refresh
+      // last_statement_id so we know it still appears on the statement.
+      updates.push({
+        id: prior.id,
+        patch: { last_statement_id: stmt.id },
+        flagReviewing: false,
+      });
+      diff.unchanged++;
+    } else if (prior.status === 'pending') {
       updates.push({ id: prior.id, patch: base, flagReviewing: false });
       if (amountChanged) diff.updated++;
       else               diff.unchanged++;
     } else if (amountChanged) {
-      // user already touched this op (paid / disputed / etc.) AND amount changed
+      // touched op (disputed / resolved / reviewing) AND amount changed
       updates.push({
         id: prior.id,
         patch: { ...base, status: 'reviewing' },
