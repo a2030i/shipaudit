@@ -43,7 +43,16 @@ const isHawb   = (s) => /^\d{11}$/.test(String(s).trim());
 const isNum    = (s) => /^-?[\d,]+\.\d{2}$/.test(String(s).trim());
 const isWeight = (s) => /^\d+\.\d{3}$/.test(String(s).trim());
 const isProd   = (s) => /^[A-Z]{3}$/.test(String(s).trim());
+const isDate   = (s) => /^\d{4}-\d{2}-\d{2}$/.test(String(s).trim()) || /^\d{1,2}\.\d{1,2}\.\d{4}$/.test(String(s).trim());
 const num      = (s) => parseFloat(String(s).replace(/,/g, '')) || 0;
+
+function parseShipDate(s) {
+  if (!s) return '';
+  const t = String(s).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  const m = t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+  return m ? `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}` : '';
+}
 
 function normDest(raw) {
   const t = String(raw || '').trim();
@@ -101,14 +110,22 @@ export async function parseAramexInvoice(arrayBuffer) {
     let dest = (si >= 0 && pi > si) ? c.slice(si + 1, pi).join(' ').trim() : null;
     dest = normDest(dest);
 
-    // Weight — an X.XXX token on this row, else the row just above.
+    // Weight — an X.XXX token on this row, else the row just above/below
+    // (Aramex prints the chargeable weight on a separate y-line). Weight is
+    // the audit's pricing key, so we look in all three positions.
     let weight = null;
     const wThis = c.find(isWeight);
     if (wThis) weight = num(wThis);
     else {
       const wPrev = (rows[i - 1]?.items || []).map(x => x.s).find(isWeight);
+      const wNext = (rows[i + 1]?.items || []).map(x => x.s).find(isWeight);
       if (wPrev) weight = num(wPrev);
+      else if (wNext) weight = num(wNext);
     }
+
+    // Pickup date + product/service type (PPX / DGG / …).
+    const shipDate    = parseShipDate(c.slice(hi + 1).find(isDate));
+    const serviceType = pi >= 0 ? c[pi] : '';
 
     // Charges — trailing amounts; the LAST is Gross (full billed amount).
     const amts = c.filter(isNum).map(num);
@@ -119,6 +136,7 @@ export async function parseAramexInvoice(arrayBuffer) {
 
     rowsOut.push({
       awb,
+      shipDate,
       dest,
       destCity:        dest,
       weight,
@@ -132,7 +150,7 @@ export async function parseAramexInvoice(arrayBuffer) {
       tax:             vat,
       isCod:           false,
       billingType:     '',
-      serviceType:     '',
+      serviceType,
       signingStatus:   '',
       subCarrier:      '',
       codPaymentMethod: '',
