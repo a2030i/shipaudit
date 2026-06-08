@@ -242,7 +242,7 @@
 | `src/engine/codParsers/*.js` | parsers لملفات تحصيل COD لكل شركة |
 | `src/App.jsx` | Routes + Sidebar + PageSlot |
 | `src/components/UI.jsx` | Btn / Card / Modal / Spinner / toast |
-| `supabase/functions/webhook-intake/index.ts` | Edge function، حالياً v10 |
+| `supabase/functions/webhook-intake/index.ts` | Edge function، حالياً v11 (deployed v12): parsing متسامح — JSON + multipart/form-data + verification ping (جسم فارغ → 200). كان v10 يرفض أي شيء غير JSON صارم بـ `invalid_json` |
 
 ---
 

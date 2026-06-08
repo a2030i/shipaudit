@@ -1,4 +1,8 @@
-// webhook-intake — inbound endpoint for carrier invoice files.
+// webhook-intake v11 — inbound endpoint for carrier invoice files.
+//
+// v11: tolerant request parsing — accepts JSON, multipart/form-data, and
+//      empty/verification-ping bodies (older code 400'd everything that
+//      wasn't strict JSON → "invalid_json" during forwarder wiring).
 //
 // Accepts TWO request shapes:
 //
@@ -46,6 +50,17 @@ function decodeBase64(b64: string): Uint8Array {
   const arr = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
   return arr;
+}
+
+// Chunked base64 encode — avoids the call-stack blowup that
+// `btoa(String.fromCharCode(...bigArray))` hits on large attachments.
+function bytesToB64(bytes: Uint8Array): string {
+  let bin = "";
+  const CH = 0x8000;
+  for (let i = 0; i < bytes.length; i += CH) {
+    bin += String.fromCharCode(...bytes.subarray(i, i + CH));
+  }
+  return btoa(bin);
 }
 
 async function sha256Hex(bytes: Uint8Array): Promise<string> {
@@ -251,9 +266,52 @@ Deno.serve(async (req) => {
   // matching X-Webhook-Secret still get the same treatment — but
   // we no longer reject calls that omit it.
 
-  let body: Record<string, unknown>;
-  try { body = await req.json(); }
-  catch { return json({ error: "invalid_json" }, 400); }
+  // Tolerant body parsing (v11): accept JSON, multipart/form-data, and
+  // empty bodies. Many email forwarders post multipart or send an empty
+  // verification ping when wiring the URL — the old code rejected both
+  // with `invalid_json`, making the wiring step "fail".
+  const contentType = req.headers.get("content-type") || "";
+  let body: Record<string, unknown> = {};
+
+  if (contentType.includes("multipart/form-data")) {
+    try {
+      const form = await req.formData();
+      const atts: Array<Record<string, unknown>> = [];
+      for (const [k, v] of form.entries()) {
+        if (v instanceof File) {
+          const buf = await v.arrayBuffer();
+          atts.push({ filename: v.name || `${k}.bin`, content: bytesToB64(new Uint8Array(buf)) });
+        } else {
+          body[k] = v;
+        }
+      }
+      if (atts.length) body.attachments = atts;
+    } catch (e) {
+      return json({ error: "invalid_multipart", message: (e as Error).message }, 400);
+    }
+  } else {
+    const text = await req.text();
+    if (!text.trim()) {
+      // Empty body = forwarder verification ping. Ack so wiring succeeds.
+      return json({ ok: true, verified: true, message: "ping acknowledged" });
+    }
+    try { body = JSON.parse(text); }
+    catch {
+      return json({
+        error: "invalid_json",
+        hint:  "أرسل JSON بالشكل { file_name, file_base64 } أو { attachments: [...] }، أو multipart/form-data بالمرفقات.",
+        content_type: contentType,
+      }, 400);
+    }
+  }
+
+  // Verification ping payloads (InboxDone/Make/Zapier send a trial body
+  // when wiring): ack with 200 so the wiring step doesn't fail.
+  if ((body.test === true || body.ping === true || body.verify === true
+       || body.hasAttachments === false)
+      && !Array.isArray(body.attachments)) {
+    return json({ ok: true, verified: true, message: "verification ping acknowledged" });
+  }
 
   const sender   = firstString(body, ["sender", "from", "fromEmail"]) || null;
   const subject  = firstString(body, ["subject"]) || null;
