@@ -194,13 +194,17 @@ export default function CarrierStatements({ carriers = [] }) {
     if (!existingMap) return 'unknown';
     const prior = existingMap.get(String(op.docNo));
     if (!prior) return 'new';
+    // Settled ops (paid/partial) are FROZEN — re-importing never alters
+    // them, so they're not "changed" even if the carrier restated the
+    // amount/type across statement versions.
+    if (prior.status === 'paid' || prior.status === 'partial') return 'frozen';
     const drDiff = Math.abs(Number(prior.amount_dr ?? 0) - Number(op.dr ?? 0));
     const crDiff = Math.abs(Number(prior.amount_cr ?? 0) - Number(op.cr ?? 0));
     return (drDiff > 0.01 || crDiff > 0.01) ? 'changed' : 'unchanged';
   }, [existingMap]);
 
   const deltaCounts = useMemo(() => {
-    const c = { all: 0, new: 0, changed: 0, unchanged: 0 };
+    const c = { all: 0, new: 0, changed: 0, unchanged: 0, frozen: 0 };
     if (!result?.operations || !existingMap) return c;
     for (const op of result.operations) {
       c.all++;
@@ -240,6 +244,7 @@ export default function CarrierStatements({ carriers = [] }) {
     else if (filter === 'new'       && existingMap) out = out.filter(o => deltaOf(o) === 'new');
     else if (filter === 'changed'   && existingMap) out = out.filter(o => deltaOf(o) === 'changed');
     else if (filter === 'unchanged' && existingMap) out = out.filter(o => deltaOf(o) === 'unchanged');
+    else if (filter === 'frozen'    && existingMap) out = out.filter(o => deltaOf(o) === 'frozen');
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       out = out.filter(o =>
@@ -496,6 +501,8 @@ export default function CarrierStatements({ carriers = [] }) {
                 ? [{ k: 'changed', l: `🔄 متغيّرة (${deltaCounts.changed})`, accent: 'var(--gold)' }] : []),
               ...(existingMap && deltaCounts.unchanged > 0
                 ? [{ k: 'unchanged', l: `✓ موجودة (${deltaCounts.unchanged})`, accent: 'var(--muted)' }] : []),
+              ...(existingMap && deltaCounts.frozen > 0
+                ? [{ k: 'frozen', l: `🔒 مثبّتة (${deltaCounts.frozen})`, accent: '#0EA5E9' }] : []),
               { k: 'RV',  l: `فواتير (${breakdown.rv})` },
               { k: 'DR',  l: `مدين (${breakdown.dr})` },
               { k: 'DG',  l: `دائن (${breakdown.dg})` },
@@ -558,7 +565,9 @@ export default function CarrierStatements({ carriers = [] }) {
                             ? { label: '🔄 متغيّرة', color: 'var(--gold)' }
                             : delta === 'unchanged'
                               ? { label: '✓ موجودة', color: 'var(--muted)' }
-                              : null;
+                              : delta === 'frozen'
+                                ? { label: '🔒 مثبّتة (مسدّدة)', color: '#0EA5E9' }
+                                : null;
                         return (
                           <tr key={i} style={delta === 'new' ? { background: 'rgba(52,211,153,.04)' } : undefined}>
                             {existingMap && (
