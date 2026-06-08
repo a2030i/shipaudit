@@ -127,12 +127,19 @@ export async function parseAramexInvoice(arrayBuffer) {
     const shipDate    = parseShipDate(c.slice(hi + 1).find(isDate));
     const serviceType = pi >= 0 ? c[pi] : '';
 
-    // Charges — trailing amounts; the LAST is Gross (full billed amount).
+    // Charges — column order: Shipping · Other Transport · Net · VAT Rate ·
+    // VAT Amount · Gross. VAT Rate is an integer so it isn't captured by the
+    // .XX amount filter → amts = [shipping, other, net, vatAmt, gross].
     const amts = c.filter(isNum).map(num);
     if (amts.length < 3 || !dest || !(weight > 0)) continue;
     const gross = amts[amts.length - 1];
-    // VAT amount = 2nd-from-last when present (gross = net + vat).
-    const vat = amts.length >= 2 ? amts[amts.length - 2] : 0;
+    const vat   = amts.length >= 2 ? amts[amts.length - 2] : 0;
+    // Shipping Charges (base) + Other Transport (fuel + RSS, combined by
+    // Aramex) are the first two charge columns. Splitting them out lets the
+    // operator see the fuel/RSS portion. base + other = net (pre-VAT), so the
+    // billed-vs-expected audit total is unchanged from using gross.
+    const base  = amts.length >= 4 ? amts[0] : (gross - vat);
+    const other = amts.length >= 4 ? amts[1] : 0;
 
     rowsOut.push({
       awb,
@@ -140,9 +147,9 @@ export async function parseAramexInvoice(arrayBuffer) {
       dest,
       destCity:        dest,
       weight,
-      deliveryCharges: gross,   // full billed charge (incl fuel+RSS)
+      deliveryCharges: base,    // Shipping Charges (base, pre fuel/RSS)
       rss:             0,
-      fuelSurcharge:   0,
+      fuelSurcharge:   other,   // Other Transport = fuel + RSS (Aramex combines)
       codFee:          0,
       posAmount:       0,
       posFee:          0,
