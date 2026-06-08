@@ -645,7 +645,10 @@ export function summarizeReconciliation(rows) {
 export async function setReconciliationAction({
   carrierId, awb, status, notes, userId,
 }) {
-  if (!['approved', 'disputed', 'resolved'].includes(status)) {
+  // 'note' = neutral accounting note (doesn't change the row's financial
+  // status; loadReconciliation keeps the natural status and just attaches
+  // the note). approved/disputed/resolved are real decisions.
+  if (!['approved', 'disputed', 'resolved', 'note'].includes(status)) {
     throw new Error(`status غير صالح: ${status}`);
   }
   const { error } = await supabase.from('cod_reconciliation_action').upsert({
