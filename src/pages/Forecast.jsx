@@ -54,7 +54,7 @@ const fmtDueLabel = (e) => {
 export default function Forecast({ carriers = [], isActive = true }) {
   const location = useLocation();
   const [loading, setLoading]   = useState(true);
-  const [horizon, setHorizon]   = useState(7);
+  const [horizon, setHorizon]   = useState(30);   // default to the month — fuller forecast view
   const [data, setData]         = useState(null);
 
   const refresh = useCallback(async () => {
