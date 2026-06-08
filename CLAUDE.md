@@ -238,7 +238,8 @@
 | `src/pages/CarriersHub.jsx` | `/hub` — كرت لكل شركة |
 | `src/pages/CarrierProfile.jsx` | `/carrier?id=X` — بروفايل شركة كامل |
 | `src/pages/CarrierLedger.jsx` | `/ledger` — الكشف المحاسبي للشركات |
-| `src/engine/audit.js` | اكتشاف الأعمدة، حساب العقد، buildSummary |
+| `src/pages/MonthlyReport.jsx` + `src/lib/monthlyReportService.js` | `/monthly-report` — تقرير شهري لكل ناقل (مفوتر/تحصيل COD/إشعارات/مدفوعات/صافي + جودة التدقيق). يجمّع `carrier_operations` (حسب `doc_date`) + `audits`. **توحيد alias**: `aramex` → `c_1777506662790` (COD رُفع تحت slug، العمليات تحت الـ id الكامل) عبر `canon()`. تصدير Excel |
+| `src/engine/audit.js` | اكتشاف الأعمدة، حساب العقد، buildSummary. **تدقيق المكوّنات**: `auditRow` يحسب مفوتر/متوقّع/فرق لكل مكوّن (delivery/rss/fuel/codFee/posFee) ويفصل RSS عن الوقود المدموج (سطر ~723: `row.rss===0 && calc.rss>0` → ينسب calc.rss من عمود الوقود). الحالة من الإجمالي فقط (لا per-component) |
 | `src/engine/aramexInvoiceParser.js` | قارئ فاتورة أرامكس التفصيلية **PDF** (per-shipment): `parseAramexInvoice(buf)` → `{header, rows}`. الـ rows جاهزة للتغذية في نفس مسار rawRows+colMap بـ UploadWizard (المستخدم يستقبل PDF فقط، Excel بالطلب). `deliveryCharges` = gross لكل شحنة (شامل وقود+RSS؛ دولي VAT=0 فnet=gross). يُكتشف بامتداد `.pdf` في `handleFile` |
 | `src/engine/codParsers/*.js` | parsers لملفات تحصيل COD لكل شركة |
 | `src/App.jsx` | Routes + Sidebar + PageSlot |
