@@ -186,7 +186,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
             </div>
           </div>
           <div style={{ width: 1, height: 36, background: 'var(--border)' }}/>
-          <div style={{ minWidth: 200 }}>
+          <div style={{ minWidth: 180 }}>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
               COD في الطريق إلينا
             </div>
@@ -194,6 +194,24 @@ export default function Forecast({ carriers = [], isActive = true }) {
               {fmt(data.codInTransit)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
             </div>
           </div>
+          {(data.customerInflow > 0 || data.receivablesOverdue > 0) && (
+            <>
+              <div style={{ width: 1, height: 36, background: 'var(--border)' }}/>
+              <div style={{ minWidth: 200 }}>
+                <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
+                  متوقّع من العملاء (الفترة)
+                </div>
+                <div style={{ fontSize: 14, color: '#0369A1', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                  {fmt(data.customerInflow)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                </div>
+                {data.receivablesOverdue > 0 && (
+                  <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>
+                    + {fmt(data.receivablesOverdue)} متأخّرة قابلة للتحصيل
+                  </div>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </Card>
 
@@ -232,6 +250,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
           <strong style={{ color: 'var(--text2)' }}>كيف تُحسب التوقّعات:</strong>{' '}
           مهام التحصيل → متوسط آخر 3 دفعات استلمناها من نفس الشركة.{' '}
           مهام الفواتير → الرصيد المفتوح الحالي مع الشركة كتقدير لما سندفعه.{' '}
+          تحصيل العملاء → فواتير مفتوحة، تاريخ التحصيل المتوقّع = تاريخ الفاتورة + 30 يوم (المتأخّرة تُعرض منفصلة).{' '}
           الكشوف وتقارير الأوزان مدرجة كأحداث تشغيلية بدون أثر نقدي.{' '}
           الأرقام إرشادية — لا تستخدمها كقيد محاسبي.
         </div>
