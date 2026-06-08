@@ -291,16 +291,16 @@ function DueColumn({ accent, icon, title, hint, rows, empty, carrierNameById, on
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onDone(s); }}
-                title="تم"
+                title="اضغط لتعليم المهمة كمنجَزة — تُعاد جدولتها تلقائياً للموعد الجاي"
                 style={{
-                  background: accent, color: '#fff', border: 'none',
+                  background: 'transparent', color: accent, border: `1.5px solid ${accent}`,
                   padding: '6px 12px', borderRadius: 999,
                   fontSize: 11, fontWeight: 700, cursor: 'pointer',
                   fontFamily: 'inherit', whiteSpace: 'nowrap',
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                 }}
               >
-                <CheckCircle2 size={12}/> تم
+                <CheckCircle2 size={12}/> أنجزتها
               </button>
             </div>
           );
