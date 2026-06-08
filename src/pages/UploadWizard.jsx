@@ -16,6 +16,7 @@ import {
 import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
+import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
@@ -227,7 +228,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
                 اسحب وأفلت ملف Excel هنا
               </div>
               <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>
-                أو اضغط للاختيار · يقبل <code style={{ fontFamily: 'var(--font-mono)' }}>.xlsx</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.xls</code>
+                أو اضغط للاختيار · يقبل <code style={{ fontFamily: 'var(--font-mono)' }}>.xlsx</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.xls</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.pdf</code> (فاتورة أرامكس)
               </div>
               {hasAi && (
                 <div style={{
@@ -243,7 +244,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
               )}
             </>
           )}
-          <input id="fu-input" type="file" accept=".xlsx,.xls" style={{ display: 'none' }}
+          <input id="fu-input" type="file" accept=".xlsx,.xls,.pdf" style={{ display: 'none' }}
             onChange={e => handle(e.target.files[0])}/>
         </div>
 
@@ -555,6 +556,34 @@ export default function UploadWizard({ carriers, onComplete }) {
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        // ── PDF branch: Aramex detailed shipment invoice ──────────
+        // The operator only receives PDF (Excel is on-request). We parse
+        // the per-shipment lines and feed them through the SAME rawRows +
+        // colMap pipeline the xlsx path uses, so preview + audit are
+        // unchanged downstream.
+        const isPdf = /\.pdf$/i.test(file.name || '') || file.type === 'application/pdf';
+        if (isPdf) {
+          setAiStatus('جارٍ قراءة فاتورة PDF...');
+          const { header, rows: ships } = await parseAramexInvoice(e.target.result);
+          if (!ships.length) {
+            toast('PDF غير مدعوم — حالياً فواتير أرامكس التفصيلية فقط', 'error');
+            setUploading(false); return;
+          }
+          const H = { awb: 'رقم الشحنة', dest: 'الوجهة', weight: 'الوزن (كغ)', charge: 'الرسوم (شامل)', tax: 'الضريبة' };
+          const aramexId = (carriers.find(c => /aramex|أرامكس|ارامكس/i.test(c.name))?.id) || 'c_1777506662790';
+          setAllRawRows([Object.values(H), ...ships.map(s => [s.awb, s.dest, s.weight, s.deliveryCharges, s.tax])]);
+          setHeaders(Object.values(H));
+          setRawRows(ships.map(s => ({ [H.awb]: s.awb, [H.dest]: s.dest, [H.weight]: s.weight, [H.charge]: s.deliveryCharges, [H.tax]: s.tax })));
+          setColMap({ awb: H.awb, dest: H.dest, weight: H.weight, deliveryCharges: H.charge, tax: H.tax });
+          setCarrierId(aramexId);
+          setCarrierDetect({ carrierId: aramexId, confidence: 1, method: 'pdf-invoice' });
+          setDetectedRow(1);
+          toast(`فاتورة أرامكس${header.invoiceNo ? ` ${header.invoiceNo}` : ''}: ${ships.length} شحنة${header.total ? ` · ${header.total.toLocaleString('ar-SA')} ر.س` : ''}`, 'success');
+          setStep(3);
+          setUploading(false);
+          return;
+        }
+
         const wb = XLSX.read(e.target.result, { type:'array' });
 
         // ── Pick the right sheet ─────────────────────────────────

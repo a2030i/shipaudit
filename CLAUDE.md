@@ -239,6 +239,7 @@
 | `src/pages/CarrierProfile.jsx` | `/carrier?id=X` — بروفايل شركة كامل |
 | `src/pages/CarrierLedger.jsx` | `/ledger` — الكشف المحاسبي للشركات |
 | `src/engine/audit.js` | اكتشاف الأعمدة، حساب العقد، buildSummary |
+| `src/engine/aramexInvoiceParser.js` | قارئ فاتورة أرامكس التفصيلية **PDF** (per-shipment): `parseAramexInvoice(buf)` → `{header, rows}`. الـ rows جاهزة للتغذية في نفس مسار rawRows+colMap بـ UploadWizard (المستخدم يستقبل PDF فقط، Excel بالطلب). `deliveryCharges` = gross لكل شحنة (شامل وقود+RSS؛ دولي VAT=0 فnet=gross). يُكتشف بامتداد `.pdf` في `handleFile` |
 | `src/engine/codParsers/*.js` | parsers لملفات تحصيل COD لكل شركة |
 | `src/App.jsx` | Routes + Sidebar + PageSlot |
 | `src/components/UI.jsx` | Btn / Card / Modal / Spinner / toast |
