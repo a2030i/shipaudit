@@ -569,12 +569,12 @@ export default function UploadWizard({ carriers, onComplete }) {
             toast('PDF غير مدعوم — حالياً فواتير أرامكس التفصيلية فقط', 'error');
             setUploading(false); return;
           }
-          const H = { awb: 'رقم الشحنة', dest: 'الوجهة', weight: 'الوزن (كغ)', charge: 'الرسوم (شامل)', tax: 'الضريبة' };
+          const H = { awb: 'رقم الشحنة', date: 'تاريخ الالتقاط', dest: 'الوجهة', weight: 'الوزن (كغ)', charge: 'الرسوم (شامل)', tax: 'الضريبة', svc: 'نوع الخدمة' };
           const aramexId = (carriers.find(c => /aramex|أرامكس|ارامكس/i.test(c.name))?.id) || 'c_1777506662790';
-          setAllRawRows([Object.values(H), ...ships.map(s => [s.awb, s.dest, s.weight, s.deliveryCharges, s.tax])]);
+          setAllRawRows([Object.values(H), ...ships.map(s => [s.awb, s.shipDate, s.dest, s.weight, s.deliveryCharges, s.tax, s.serviceType])]);
           setHeaders(Object.values(H));
-          setRawRows(ships.map(s => ({ [H.awb]: s.awb, [H.dest]: s.dest, [H.weight]: s.weight, [H.charge]: s.deliveryCharges, [H.tax]: s.tax })));
-          setColMap({ awb: H.awb, dest: H.dest, weight: H.weight, deliveryCharges: H.charge, tax: H.tax });
+          setRawRows(ships.map(s => ({ [H.awb]: s.awb, [H.date]: s.shipDate, [H.dest]: s.dest, [H.weight]: s.weight, [H.charge]: s.deliveryCharges, [H.tax]: s.tax, [H.svc]: s.serviceType })));
+          setColMap({ awb: H.awb, shipDate: H.date, dest: H.dest, weight: H.weight, deliveryCharges: H.charge, tax: H.tax, serviceType: H.svc });
           setCarrierId(aramexId);
           setCarrierDetect({ carrierId: aramexId, confidence: 1, method: 'pdf-invoice' });
           setDetectedRow(1);
