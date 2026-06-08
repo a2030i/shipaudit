@@ -45,6 +45,55 @@ export async function loadCarrierRemittanceAvg(batches = 3) {
   return map;
 }
 
+// Expected customer-collection inflow within the horizon. For every open
+// invoice in the latest receivables snapshot we estimate its collection
+// date = invoice_date + termsDays (default 30). Invoices whose expected
+// date falls inside the horizon are bucketed by day (forecast inflow);
+// invoices already past their terms are summed as `overdue` (collectable
+// but timing-uncertain — surfaced separately, NOT folded into the running
+// balance so we don't overstate near-term cash).
+async function loadReceivablesInflow(now, horizonEnd, termsDays = 30) {
+  const { data: snapRow } = await supabase
+    .from('customer_receivables')
+    .select('snapshot_id')
+    .order('snapshot_date', { ascending: false })
+    .limit(1);
+  if (!snapRow?.length) return { byDate: new Map(), withinTotal: 0, overdue: 0 };
+  const snapshotId = snapRow[0].snapshot_id;
+
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('customer_receivables')
+      .select('invoice_date, balance_amount')
+      .eq('snapshot_id', snapshotId)
+      .eq('is_summary', false)
+      .gt('balance_amount', 0)
+      .order('id', { ascending: true })
+      .range(from, from + 999);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < 1000) break;
+    from += 1000;
+  }
+
+  const byDate = new Map();
+  let withinTotal = 0, overdue = 0;
+  for (const r of rows) {
+    const amt = Number(r.balance_amount) || 0;
+    if (amt <= 0 || !r.invoice_date) continue;
+    const exp = new Date(new Date(r.invoice_date).getTime() + termsDays * DAY_MS);
+    if (exp < now)         { overdue += amt; continue; }   // past terms → uncertain
+    if (exp > horizonEnd)  continue;                       // beyond horizon
+    const key = exp.toISOString().slice(0, 10);
+    byDate.set(key, (byDate.get(key) || 0) + amt);
+    withinTotal += amt;
+  }
+  return { byDate, withinTotal: +withinTotal.toFixed(2), overdue: +overdue.toFixed(2) };
+}
+
 // One-shot loader for the whole forecast page. Returns:
 //   events:        sorted list of upcoming cash-relevant events
 //   inflowTotal:   sum of positive estimates in the horizon
@@ -155,6 +204,37 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
     });
   }
 
+  // ── Customer receivables expected within the horizon ──────────
+  // invoice_date + terms → bucketed inflow events. Folded into the same
+  // inflow stream (chart + projected balance). Best-effort.
+  const RECEIVABLES_TERMS_DAYS = 30;
+  let receivablesOverdue = 0, customerInflow = 0;
+  try {
+    const rec = await loadReceivablesInflow(now, horizonEnd, RECEIVABLES_TERMS_DAYS);
+    receivablesOverdue = rec.overdue;
+    customerInflow = rec.withinTotal;
+    for (const [dateKey, amt] of rec.byDate) {
+      const dueAt = new Date(`${dateKey}T12:00:00`);
+      events.push({
+        scheduleId: `rec_${dateKey}`,
+        carrierId: null,
+        carrierName: 'العملاء',
+        taskKind: 'customer_collection',
+        taskLabel: 'تحصيل عملاء',
+        taskIcon: '👥',
+        taskColor: '#0EA5E9',
+        dueAt,
+        dueDays: Math.ceil((dueAt.getTime() - now.getTime()) / DAY_MS),
+        isOverdue: false,
+        cadence: null,
+        direction: 'in',
+        estimatedAmount: +amt.toFixed(2),
+        estimationSource: `فواتير عملاء مستحقة (شروط ${RECEIVABLES_TERMS_DAYS} يوم)`,
+      });
+      inflowTotal += amt;
+    }
+  } catch { /* receivables overlay optional */ }
+
   // Sort by dueness — overdue first, then by date asc
   events.sort((a, b) => {
     if (a.isOverdue && !b.isOverdue) return -1;
@@ -202,6 +282,8 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
     outflowTotal:  +outflowTotal.toFixed(2),
     netInHorizon:  +(inflowTotal - outflowTotal).toFixed(2),
     codInTransit:  +codInTransit.toFixed(2),
+    customerInflow,
+    receivablesOverdue,
     bankBalance:   bankBalance == null ? null : +bankBalance.toFixed(2),
     projectedBalance: bankBalance == null ? null : +(bankBalance + (inflowTotal - outflowTotal)).toFixed(2),
     minProjected:  minProjected == null ? null : +minProjected.toFixed(2),
