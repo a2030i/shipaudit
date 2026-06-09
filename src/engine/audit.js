@@ -106,7 +106,7 @@ const COL_PATTERNS = {
   // this in a dedicated "COD Service Fee" column on the same row as the
   // shipment; Aramex breaks it out on a separate ZDCF billing-type row
   // which the engine routes via fuelSurcharge → codFee inside mapRows.
-  codFee:          [/cod.?service.?fee/i, /cod.?service.?charge/i, /cod.?fee/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
+  codFee:          [/cod.?service.?fee/i, /cod.?service.?charge/i, /cod.?fee/i, /cod.?charges?/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
   // POS (electronic payment / card-acquiring) — iMile exposes two
   // related columns: "POS Amount" (cash collected via card) and
   // "POS Fee" (carrier's processing fee, usually a fixed percent of
