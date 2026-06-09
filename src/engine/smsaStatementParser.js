@@ -38,7 +38,15 @@ const KNOWN_DOC_TYPES = new Set(['COD', 'CM', 'INV', 'DN', 'CN', 'RV', 'PV']);
 
 const isDate   = (s) => /^\d{1,2}-\d{1,2}-\d{4}$/.test(String(s).trim());
 const isAmount = (s) => /^-?[\d,]+\.\d{2}$/.test(String(s).trim());
-const isDocType = (s) => /^[A-Z]{2,4}$/.test(String(s).trim());
+// Doc types are usually 2-4 uppercase letters (COD/CM/CDC/INV), but SMSA also
+// prints full words on some lines (e.g. "Invoice"). Normalise those so the row
+// isn't silently dropped — otherwise the parsed sum won't hit Total Balance.
+const DOC_TYPE_ALIASES = { invoice: 'INV', inv: 'INV', credit: 'CM' };
+const normDocType = (s) => {
+  const t = String(s ?? '').trim();
+  return DOC_TYPE_ALIASES[t.toLowerCase()] || (/^[A-Z]{2,4}$/.test(t) ? t : null);
+};
+const isDocType = (s) => normDocType(s) != null;
 
 function parseDate(s) {
   if (!s) return null;
@@ -122,7 +130,7 @@ function parseOperationRow(cells) {
   if (!isDocType(cells[1])) return null;
 
   const docDate = cells[0];
-  const docType = cells[1];
+  const docType = normDocType(cells[1]);
   const docNo   = String(cells[2] ?? '').trim();
   if (!docNo) return null;
 
@@ -145,7 +153,7 @@ function parseOperationRow(cells) {
 
   return {
     docNo,
-    docType: KNOWN_DOC_TYPES.has(docType) ? docType : docType,
+    docType,
     referenceNo,
     docDate: parseDate(docDate),
     dueDate: null,                     // SMSA prints one date; service derives due_date
