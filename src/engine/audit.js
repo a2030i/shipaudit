@@ -741,7 +741,14 @@ export function auditRow(row, contract) {
   // row is a COD shipment.
   const invoicedCodFee = Number(row.codFee || 0);
   const isCodShipment  = invoicedCodFee > 0 || (Number(row.codAmount) || 0) > 0;
-  const expectedCodFee = isCodShipment ? Number(contract?.codFee ?? 0) : 0;
+  // Pass-through mode (contract.codFeePassthrough): the carrier's COD fee
+  // follows no clean rule (e.g. SMSA branches: 30→3, 279→6, 1709→25), so we
+  // can't audit it. Instead we accept it verbatim (expected = invoiced) so it
+  // flows into the gross total — the statement reconciles — without a false
+  // overcharge flag.
+  const expectedCodFee = contract?.codFeePassthrough
+    ? invoicedCodFee
+    : (isCodShipment ? Number(contract?.codFee ?? 0) : 0);
 
   // POS fee (card-acquiring): iMile charges a percentage of POS Amount
   // (typically 1%). Expected = posAmount * contract.posFeePct, rounded
@@ -760,9 +767,12 @@ export function auditRow(row, contract) {
   // gives only a VAT *rate* (e.g. SMSA "VAT%" = 15), derive the amount =
   // pre-tax total × rate/100. Rate 0 (zero-rated export) → tax 0, correctly.
   const taxRate     = Number(row.taxRate) || 0;
+  // Don't round the rate-derived tax per shipment — buildSummary rounds the
+  // SUM once, matching carriers that compute VAT on the period total (SMSA)
+  // rather than per-receipt. (A verbatim Tax Amount from the file is kept as-is.)
   const invoicedTax = (Number(row.tax) || 0) > 0
     ? Number(row.tax)
-    : (taxRate > 0 ? +(preTaxTotal * taxRate / 100).toFixed(2) : 0);
+    : (taxRate > 0 ? preTaxTotal * taxRate / 100 : 0);
 
   const invoiced = {
     delivery: row.deliveryCharges,
