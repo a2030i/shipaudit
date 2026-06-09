@@ -206,11 +206,39 @@ export default function CarrierLedger({ isActive = true }) {
     }, 0),
     [selectedOps],
   );
-  // Rows in the current view that *could* be selected (= unpaid).
-  const selectableInView = useMemo(
-    () => filtered.filter(o => o.status !== 'paid'),
-    [filtered],
+  // Every selected op (ANY status) — used for the "تصدير المحدّد" pull.
+  // (selectedOps above stays unpaid-only because it drives the bulk-PAY.)
+  const selectedAll = useMemo(
+    () => filtered.filter(o => selectedIds.has(o.id)),
+    [filtered, selectedIds],
   );
+  const selectedAllTotal = useMemo(
+    () => selectedAll.reduce((s, o) => s + ((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0)), 0),
+    [selectedAll],
+  );
+
+  // Export the selected operations: رقم المستند · التاريخ · المبلغ.
+  const exportSelected = useCallback(() => {
+    if (!selectedAll.length) return;
+    const aoa = [
+      ['رقم المستند', 'التاريخ', 'المبلغ (ر.س)'],
+      ...selectedAll.map(o => [
+        o.doc_no || '',
+        o.doc_date || '',
+        +(((Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0))).toFixed(2),
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'عمليات محددة');
+    XLSX.writeFile(wb, `عمليات_${carrier || 'ledger'}_${selectedAll.length}.xlsx`);
+    toast(`تم تصدير ${selectedAll.length} عملية`, 'success');
+  }, [selectedAll, carrier]);
+
+  // Rows in the current view that *could* be selected — now ALL rows
+  // (paid ops are selectable too, so they can be pulled into the export).
+  const selectableInView = useMemo(() => filtered, [filtered]);
   const allInViewSelected = selectableInView.length > 0
     && selectableInView.every(o => selectedIds.has(o.id));
 
@@ -747,7 +775,7 @@ export default function CarrierLedger({ isActive = true }) {
 
       {/* Bulk-action bar — only when something is checked. Sticks to the
           top of the table area so it stays visible while scrolling. */}
-      {selectedOps.length > 0 && (
+      {selectedAll.length > 0 && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 5, marginBottom: 10,
           background: 'linear-gradient(135deg, rgba(45,212,191,.14), rgba(45,212,191,.05))',
@@ -761,7 +789,7 @@ export default function CarrierLedger({ isActive = true }) {
               fontFamily: 'var(--font-mono)', fontWeight: 700,
               fontSize: 14, color: 'var(--accent)',
             }}>
-              {selectedOps.length}
+              {selectedAll.length}
             </span>
             <span style={{ fontSize: 12, color: 'var(--muted)' }}>
               عملية محددة · إجمالي
@@ -770,14 +798,19 @@ export default function CarrierLedger({ isActive = true }) {
               fontFamily: 'var(--font-mono)', fontWeight: 700,
               fontSize: 16, color: 'var(--text)',
             }}>
-              {fmt(selectedTotal)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+              {fmt(selectedAllTotal)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
             </span>
           </div>
           <div style={{ flex: 1 }}/>
-          <Btn size="sm" variant="success"
-            onClick={() => setModal({ ops: selectedOps, action: 'bulk-paid', total: selectedTotal })}>
-            💰 تسديد جماعي ({selectedOps.length})
+          <Btn size="sm" variant="primary" onClick={exportSelected}>
+            ⬇️ تصدير المحدّد ({selectedAll.length})
           </Btn>
+          {selectedOps.length > 0 && (
+            <Btn size="sm" variant="success"
+              onClick={() => setModal({ ops: selectedOps, action: 'bulk-paid', total: selectedTotal })}>
+              💰 تسديد جماعي ({selectedOps.length})
+            </Btn>
+          )}
           <Btn size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
             إلغاء التحديد
           </Btn>
@@ -829,14 +862,13 @@ export default function CarrierLedger({ isActive = true }) {
                           <input
                             type="checkbox"
                             checked={checked}
-                            disabled={!selectable}
-                            onChange={() => selectable && toggleSelect(o.id)}
-                            title={selectable ? 'اختر للتسديد الجماعي' : 'العملية مسدّدة'}
+                            onChange={() => toggleSelect(o.id)}
+                            title={selectable ? 'اختر للتسديد أو التصدير' : 'اختر للتصدير (مسدّدة)'}
                             style={{
                               width: 16, height: 16,
-                              cursor: selectable ? 'pointer' : 'not-allowed',
+                              cursor: 'pointer',
                               accentColor: 'var(--accent)',
-                              opacity: selectable ? 1 : 0.35,
+                              opacity: selectable ? 1 : 0.6,
                             }}
                           />
                         </td>
