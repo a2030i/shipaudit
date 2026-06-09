@@ -106,7 +106,23 @@ export default function CarrierStatements({ carriers = [] }) {
         parserUsed = 'ai';
       }
 
-      setResult({ ...parsed, fileName: file.name, file, carrierId: effectiveId, carrierName: effectiveName, parserUsed });
+      // Auto-route by statement account number. A carrier may declare its
+      // account(s) in file_signature.statement_accounts (e.g. SMSA has two:
+      // RX5251 = COD محلي/دولي → "سمسا", RX8668 = الفروع → "سمسا - فروع").
+      // If the parsed account belongs to a DIFFERENT carrier, route there so
+      // the two accounts never merge into one ledger.
+      let routedId = effectiveId, routedName = effectiveName;
+      const acct = parsed?.header?.accountNumber;
+      if (acct && Array.isArray(carriers)) {
+        const match = carriers.find(c =>
+          (c.file_signature?.statement_accounts || []).includes(acct));
+        if (match && match.id !== effectiveId) {
+          routedId = match.id; routedName = match.name;
+          toast(`وُجّه تلقائياً لـ«${match.name}» (حساب ${acct})`, 'info');
+        }
+      }
+
+      setResult({ ...parsed, fileName: file.name, file, carrierId: routedId, carrierName: routedName, parserUsed });
       setState('done');
       toast(`تم استخراج ${parsed.operations.length} عملية` +
         (parserUsed.startsWith('ai') ? ' عبر AI' : ''), 'success');
@@ -116,7 +132,7 @@ export default function CarrierStatements({ carriers = [] }) {
       setState('error');
     }
     setAiStatus('');
-  }, [carrierId, carrierName, customName]);
+  }, [carrierId, carrierName, customName, carriers]);
 
   const handleDrop = (e) => {
     e.preventDefault();
