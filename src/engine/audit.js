@@ -131,6 +131,10 @@ const COL_PATTERNS = {
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
   tax:             [/^tax\s*amount$/i, /^tax$/i, /tax.?amount/i, /^vat$/i, /vat\s*amount/i, /^ضريبة$/, /قيمة\s*مضافة/i],
+  // VAT *rate* column (e.g. SMSA "VAT%" = 15). Some carriers print only the
+  // rate, not the amount. When mapped, auditRow computes the tax amount =
+  // pre-tax total × rate/100 — correct for both 15% domestic and 0% export.
+  taxRate:         [/vat\s*%/i, /vat\s*rate/i, /tax\s*%/i, /tax\s*rate/i, /نسبة.?(?:ال)?ضريبة/i, /نسبة.?الـ?vat/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
   billingType:     [/billing.?type/i],
   // J&T uses "Signing status" to flag returns ("Return Sign" vs
@@ -206,7 +210,7 @@ export const CARRIER_FIELDS = {
     required: ['weight', 'deliveryCharges'],
   },
   smsa: {
-    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'signingStatus'],
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'taxRate', 'signingStatus'],
     required: ['weight', 'deliveryCharges'],
   },
   jt: {
@@ -234,7 +238,7 @@ export const CARRIER_FIELDS = {
 
 // Default schema when the carrier is unknown — show everything.
 export const DEFAULT_FIELD_SCHEMA = {
-  core: ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax', 'serviceType', 'billingType', 'signingStatus'],
+  core: ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax', 'taxRate', 'serviceType', 'billingType', 'signingStatus'],
   required: ['weight', 'deliveryCharges'],
 };
 
@@ -595,6 +599,9 @@ export function mapRows(raw, colMap) {
       // (zero-rated export); ZDOI domestic ≈ 15%; ZDCF COD = 15% of fee.
       // Comparison against the carrier statement uses this directly.
       tax:             parseFloat(row[colMap.tax] ?? 0) || 0,
+      // VAT rate (e.g. 15). Used by auditRow to derive the tax amount when
+      // the file gives only the rate, not the amount.
+      taxRate:         parseFloat(row[colMap.taxRate] ?? 0) || 0,
       codAmount:       parseFloat(row[colMap.codAmount] ?? 0) || 0,
       serviceType:     String(row[colMap.serviceType] ?? '').trim(),
       signingStatus:   String(row[colMap.signingStatus] ?? '').trim(),
@@ -748,17 +755,25 @@ export function auditRow(row, contract) {
     ? +(posAmount * posPct).toFixed(4)
     : 0;
 
+  const preTaxTotal = row.deliveryCharges + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
+  // Tax amount: prefer the verbatim "Tax Amount" from the file. When the file
+  // gives only a VAT *rate* (e.g. SMSA "VAT%" = 15), derive the amount =
+  // pre-tax total × rate/100. Rate 0 (zero-rated export) → tax 0, correctly.
+  const taxRate     = Number(row.taxRate) || 0;
+  const invoicedTax = (Number(row.tax) || 0) > 0
+    ? Number(row.tax)
+    : (taxRate > 0 ? +(preTaxTotal * taxRate / 100).toFixed(2) : 0);
+
   const invoiced = {
     delivery: row.deliveryCharges,
     rss:      invoicedRss,
     fuel:     invoicedFuel,
     codFee:   invoicedCodFee,
     posFee:   invoicedPosFee,
-    total:    row.deliveryCharges + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee,
-    // Pass through whatever Tax Amount the carrier file showed for this
-    // row. We don't audit tax (the carrier's number is authoritative);
-    // we just preserve it so totalTax sums correctly.
-    tax:      Number(row.tax) || 0,
+    total:    preTaxTotal,
+    // We don't audit tax (the carrier's number is authoritative); we just
+    // preserve it so totalTax sums correctly.
+    tax:      invoicedTax,
   };
 
   const expectedCalc = {
