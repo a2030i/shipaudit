@@ -418,7 +418,10 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
-              const sectionHasActive = items.some(n => activeFor(n));
+              // Active = the item itself OR one of its hub subTabs (activeFor
+              // deliberately returns false on the parent when a subTab matches,
+              // so checking it alone would COLLAPSE the section you're inside).
+              const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
               const isOpen = collapsed ? true : (sectionHasActive || peekedSection === sec.id);
               const SecIcon = sec.icon;
               return (
