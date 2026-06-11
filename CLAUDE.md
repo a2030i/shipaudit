@@ -353,7 +353,7 @@
 | أرامكس | `c_1777506662790` | (غير محدد) | ✅ | ❌ |
 | iMile V1 | `imile` | `audit_with_cod` (الـ KSA Fee Bill الإنجليزي = فاتورة + COD معاً، مثل DeliverNow) | ✅ 17 حتى 15kg ثم +1/kg (ceil)، COD fee 1، POS 1% | ❌ |
 | J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
-| سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
+| سمسا SMSA | `smsa` | `audit_and_cod_separate` | ✅ 2 عقود: محلي **13 ر.س حتى 15كغ + 2/كغ، وقود 10%** (صُحِّحت العتبة من 10→15كغ في 2026-06-09 بعد استخراجها من 16,606 شحنة — تطابق 100%) + دولي GCC | ❌ · حسابان: RX5251 (هذا) + RX8668 (سمسا فروع) |
 | Boleeseh | `boleeseh` | `audit_and_cod_separate` (وسيط broker — فاتورة + تحصيل منفصل) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
 | Webek | `webek` | `audit_with_cod` (تحصيل + فاتورة) | ✅ توصيل ثابت 14 ر.س (Zone A، شامل ضريبة) + POS 0.8% من التحصيل | ✅ `@` (webhook) |
 | Aatak | `aatak` | (غير محدد) | ❌ | ❌ |
