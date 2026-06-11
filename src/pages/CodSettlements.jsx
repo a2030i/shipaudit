@@ -60,6 +60,11 @@ export default function CodSettlements({ isActive = true }) {
   const [selectedAwbs, setSelectedAwbs] = useState(() => new Set());
   // 'all' | 'with' | 'without' — filter rows by accounting-note presence.
   const [noteFilter, setNoteFilter] = useState('all');
+  // Bulk search: paste a LIST of AWBs (from Excel / carrier email — any
+  // separator) and filter to exactly those rows. null = inactive.
+  const [bulkSearch, setBulkSearch] = useState(null);     // Set<awb> | null
+  const [bulkModalOpen, setBulkModalOpen] = useState(false);
+  const [bulkText, setBulkText] = useState('');
   const [actionModal, setActionModal] = useState(null);  // { row, kind:'approve'|'dispute'|'edit'|'resolve' }
   const [uploadModal, setUploadModal] = useState(null);  // { direction:'out'|'in' }
   const [uploads, setUploads] = useState([]);
@@ -354,6 +359,7 @@ export default function CodSettlements({ isActive = true }) {
     else if (tab === 'over')     pool = pool.filter(r => r.status === 'over_remit');
     if (noteFilter === 'with')         pool = pool.filter(r => !!r.notes);
     else if (noteFilter === 'without') pool = pool.filter(r => !r.notes);
+    if (bulkSearch) pool = pool.filter(r => bulkSearch.has(String(r.awb).trim()));
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       pool = pool.filter(r => r.awb.toLowerCase().includes(q));
@@ -363,7 +369,7 @@ export default function CodSettlements({ isActive = true }) {
       const o = (r) => r.firstOutDate || '';
       return (o(a) || '').localeCompare(o(b) || '');
     });
-  }, [rows, tab, search, noteFilter]);
+  }, [rows, tab, search, noteFilter, bulkSearch]);
 
   // Incremental render — only the first batch is in the DOM until the
   // operator scrolls near the bottom. Keeps the table snappy as
@@ -767,6 +773,17 @@ export default function CodSettlements({ isActive = true }) {
               <input value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="بحث برقم الشحنة (AWB)..."
                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+              {bulkSearch ? (
+                <Btn size="sm" variant="primary" onClick={() => { setBulkSearch(null); setBulkText(''); }}
+                  title="إلغاء البحث الجماعي">
+                  📋 {bulkSearch.size} رقم · المطابق {filtered.length} ✕
+                </Btn>
+              ) : (
+                <Btn size="sm" variant="ghost" onClick={() => setBulkModalOpen(true)}
+                  title="الصق قائمة أرقام شحنات (من إكسل أو إيميل) للفلترة عليها كلها">
+                  📋 بحث جماعي
+                </Btn>
+              )}
               <Btn
                 size="sm" variant="ghost" icon={<Download size={13}/>}
                 onClick={handleExportCurrentTab}
@@ -895,6 +912,46 @@ export default function CodSettlements({ isActive = true }) {
           onClose={() => setActionModal(null)}
           onSubmit={submitAction}
         />
+      )}
+
+      {bulkModalOpen && (
+        <Modal title="📋 بحث جماعي بأرقام الشحنات" onClose={() => setBulkModalOpen(false)} width={520}>
+          <p style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 0 }}>
+            الصق قائمة أرقام (من إكسل أو إيميل) — أي فاصل يكفي: سطر جديد، مسافة، فاصلة…
+          </p>
+          <textarea
+            value={bulkText}
+            onChange={e => setBulkText(e.target.value)}
+            placeholder={'291588270464\n291593017441\n…'}
+            rows={8}
+            autoFocus
+            style={{
+              width: '100%', padding: 10, borderRadius: 8, fontSize: 12,
+              fontFamily: 'var(--font-mono)', direction: 'ltr',
+              border: '1px solid var(--border)', background: 'var(--bg2)', color: 'var(--text)',
+              resize: 'vertical',
+            }}
+          />
+          {(() => {
+            const tokens = [...new Set(bulkText.split(/[\s,;،]+/).map(t => t.trim()).filter(t => t.length >= 4))];
+            return (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12 }}>
+                <span style={{ fontSize: 12, color: 'var(--muted)', flex: 1 }}>
+                  {tokens.length ? `${tokens.length} رقم مميّز` : 'لم يُلصق شيء بعد'}
+                </span>
+                <Btn variant="primary" disabled={!tokens.length}
+                  onClick={() => {
+                    setBulkSearch(new Set(tokens));
+                    setSearch('');
+                    setBulkModalOpen(false);
+                  }}>
+                  فلترة على {tokens.length || ''} رقم
+                </Btn>
+                <Btn variant="ghost" onClick={() => setBulkModalOpen(false)}>إلغاء</Btn>
+              </div>
+            );
+          })()}
+        </Modal>
       )}
 
       {uploadModal && (
