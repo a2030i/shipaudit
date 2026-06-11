@@ -44,6 +44,7 @@ import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
+import CashAging         from './pages/CashAging.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
@@ -91,6 +92,7 @@ const NAV_ITEMS = [
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
+  { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
   { id: 'carrier-kpi',      path: '/carrier-kpi',      label: 'أداء الناقلين',   icon: BarChart3,     section: 'reports', permKey: 'carriers.view' },
   { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'reports', permKey: 'forecast.view' },
@@ -170,6 +172,7 @@ const PAGE_TITLES = {
   '/internal-exports':  'سحب للنظام الداخلي',
   '/upload':            'مراجعة جديدة',
   '/drop':              'رفع ملف',
+  '/cash-aging':        'النقد والأعمار',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
   '/ledger':            'دفتر الشركات',
@@ -240,7 +243,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -667,6 +670,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/drop'} scroll>
               <SmartDrop carriers={carriers}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/cash-aging'} scroll>
+              <CashAging isActive={pathname==='/cash-aging'}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
