@@ -59,7 +59,7 @@ const COL_PATTERNS = {
   // specific enough to skip clearly-different columns: "Tracking No."
   // for J&T, "Waybill No." for iMile, "AWB" for Aramex/SMSA. The bare
   // /tracking/i also catches things like "Tracking Number" / "Tracking No".
-  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/],
+  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/, /رقم.?ال[أا]مر/i, /order.?(no|num|number|id)/i],
   // Ship date — also accept J&T's "Entry time" / "Signing time".
   shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
   // Origin column — explicit "shipper / origin / from / source" so it
@@ -69,7 +69,7 @@ const COL_PATTERNS = {
   // The bare /country/i is the last resort and only matches when no
   // more-specific pattern hit (origin patterns already consumed the
   // shipper-country column thanks to detectColumns' `used` set).
-  dest:            [/^dest$/i, /destination.?(location|country)?/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/],
+  dest:            [/^dest$/i, /destination.?(location|country)?/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/, /النطاق/i, /^zone$/i],
   destCity:        [/dest.?city/i, /consignee.?city/i, /customer.?city/i, /city/i, /مدين/i],
   // Weight column priority:
   //   • "Settlement weight" — J&T's billed weight (rounded up to next kg)
@@ -80,7 +80,7 @@ const COL_PATTERNS = {
   weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
   // DeliverNow names this "Shipping Service / المجموع الصافي" — neither side
   // contains the word "charge" or "رسوم", so we add explicit patterns.
-  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /shipping.?service/i, /freight.?charge/i, /base.?charge/i, /المجموع.?الصافي/, /رسوم.?الشحن/, /رسوم/i, /توصيل/i],
+  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /shipping.?service/i, /freight.?charge/i, /base.?charge/i, /المجموع.?الصافي/, /قيمة.?التوصيل/, /توصيل/i, /رسوم.?الشحن/, /رسوم/i],
   // RSS = Remote Shipping Surcharge (Aramex). The literal phrase
   // "Remote Area" appears in iMile/iMile-like files as a Yes/No flag,
   // NOT a fee — keep the broad `/remote/i` pattern OUT to avoid the
@@ -189,6 +189,7 @@ const CARRIER_KIND_PATTERNS = [
   { kind: 'jt',         re: /j&?t|jnt|jandt|جي.?اند.?ت|jt.?express/i },
   { kind: 'imile',      re: /imile|آي.?مايل|اي.?مايل|آيمايل|ايمايل/i },
   { kind: 'delivernow', re: /deliver.?now|ديلفر.?ناو|ديليفر|ديلفرناو/i },
+  { kind: 'webek',      re: /webek|ويبك/i },
 ];
 
 export function resolveCarrierKind(carrier) {
@@ -224,6 +225,13 @@ export const CARRIER_FIELDS = {
   delivernow: {
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax'],
     required: ['weight', 'deliveryCharges'],
+  },
+  // Webek — تحصيل + فاتورة في ملف واحد. التوصيل ثابت حسب «النطاق» (يُمرَّر
+  // كـ dest) وشامل الضريبة؛ POS = 0.8% من مبلغ التحصيل. لا وزن مفوتر (flat
+  // per shipment) فالمطلوب dest + deliveryCharges فقط.
+  webek: {
+    core:     ['awb', 'shipDate', 'dest', 'deliveryCharges', 'codAmount', 'posFee'],
+    required: ['deliveryCharges'],
   },
   // بوليصة Boleeseh — broker that issues policies via 4 sub-carriers
   // (smsa / aramex / aymakan / jt_express). The pricing key in the
@@ -628,7 +636,12 @@ export function mapRows(raw, colMap) {
   }
 
   const filtered = allMapped.filter(r => {
-    if (!r.dest || !(r.weight > 0)) return false;
+    // Need a destination, and EITHER a billed weight (weight-tiered carriers)
+    // OR a delivery charge (flat-per-shipment carriers like Webek that don't
+    // bill by weight). Truly-empty rows are still dropped by the totalBilled
+    // check below.
+    if (!r.dest) return false;
+    if (!(r.weight > 0) && !((r.deliveryCharges || 0) > 0)) return false;
     if (!isRealShipmentAwb(r.awb)) return false;
 
     const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
@@ -756,13 +769,28 @@ export function auditRow(row, contract) {
   // no POS amount on the row (the customer paid cash) — even if the
   // contract has a posFeePct, no POS amount = no fee owed.
   const invoicedPosFee = Number(row.posFee || 0);
-  const posAmount      = Number(row.posAmount || 0);
+  // contract.posFeeOnCod (Webek): the card-processing fee is a % of the COD
+  // amount itself (no dedicated "POS Amount" column). Otherwise use the
+  // explicit POS Amount column (iMile).
+  const posAmount      = contract?.posFeeOnCod
+    ? Number(row.codAmount || 0)
+    : Number(row.posAmount || 0);
   const posPct         = Number(contract?.posFeePct ?? 0);
   const expectedPosFee = posAmount > 0 && posPct > 0
     ? +(posAmount * posPct).toFixed(4)
     : 0;
 
-  const preTaxTotal = row.deliveryCharges + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
+  // contract.deliveryInclusiveVat (Webek): the delivery column already
+  // includes 15% VAT. Strip it so the pre-tax comparison matches the
+  // contract's pre-tax price, and surface the VAT portion as tax.
+  let billedDelivery = row.deliveryCharges;
+  let deliveryVat    = 0;
+  if (contract?.deliveryInclusiveVat && billedDelivery > 0) {
+    billedDelivery = +(row.deliveryCharges / 1.15).toFixed(2);
+    deliveryVat    = +(row.deliveryCharges - billedDelivery).toFixed(2);
+  }
+
+  const preTaxTotal = billedDelivery + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
   // Tax amount: prefer the verbatim "Tax Amount" from the file. When the file
   // gives only a VAT *rate* (e.g. SMSA "VAT%" = 15), derive the amount =
   // pre-tax total × rate/100. Rate 0 (zero-rated export) → tax 0, correctly.
@@ -772,10 +800,10 @@ export function auditRow(row, contract) {
   // rather than per-receipt. (A verbatim Tax Amount from the file is kept as-is.)
   const invoicedTax = (Number(row.tax) || 0) > 0
     ? Number(row.tax)
-    : (taxRate > 0 ? preTaxTotal * taxRate / 100 : 0);
+    : (taxRate > 0 ? preTaxTotal * taxRate / 100 : deliveryVat);
 
   const invoiced = {
-    delivery: row.deliveryCharges,
+    delivery: billedDelivery,
     rss:      invoicedRss,
     fuel:     invoicedFuel,
     codFee:   invoicedCodFee,

@@ -222,6 +222,12 @@
 - الـ `codPaymentMethod` يقبل أيضاً عمود "نوع الدفع"
 - بوليصة هي المثال الوحيد حالياً (4 ناقلين فرعيين)
 
+### 2.4c أعلام العقد الخاصة (contract flags)
+- `posFeeOnCod: true` — رسوم POS = نسبة من **مبلغ التحصيل** (codAmount) لا من عمود POS Amount منفصل. (ويبك: 0.8%). `auditRow` يستخدم codAmount كأساس POS.
+- `deliveryInclusiveVat: true` — عمود التوصيل **شامل الضريبة 15%**؛ `auditRow` يقسمه ÷1.15 للمقارنة قبل الضريبة ويُظهر فرق الضريبة كـ tax. (ويبك)
+- `codFeePassthrough: true` — رسوم COD تُقبل كما هي (expected=invoiced) حين لا تتبع قاعدة. (سمسا فروع، ويبك)
+- `posFeePct` / `fuelPct` — نسب. `pricing` بشريحة واحدة مسطّحة `[{upTo:null,price:X}]` = سعر ثابت لكل شحنة بغض النظر عن الوزن (calcDelivery يرجعه حتى لوزن 0 — للناقلين الذين لا يفوترون بالوزن مثل ويبك)
+
 ### 2.5 file_kind القيم المسموحة
 - `'audit_with_cod'` — الفاتورة تشمل COD (DeliverNow)
 - `'audit_and_cod_separate'` — ملفان منفصلان (Aramex)
@@ -349,7 +355,7 @@
 | J&T Express | `jnt` | `audit_and_cod_separate` | ✅ 16/15kg ثم 1/kg، 2% POS | ⚠️ AWB prefix=JTE، doc-pattern=WestBr، email غير محدد |
 | سمسا SMSA | `smsa` | (غير محدد) | ✅ 2 عقود (محلي+دولي) | ❌ |
 | Boleeseh | `boleeseh` | `audit_and_cod_separate` (وسيط broker — فاتورة + تحصيل منفصل) | ✅ تسعير لكل ناقل فرعي (smsa/aramex/aymakan/jt cc/jt cod) | ❌ |
-| Webek | `webek` | (غير محدد) | ❌ | ❌ |
+| Webek | `webek` | `audit_with_cod` (تحصيل + فاتورة) | ✅ توصيل ثابت 14 ر.س (Zone A، شامل ضريبة) + POS 0.8% من التحصيل | ✅ `@` (webhook) |
 | Aatak | `aatak` | (غير محدد) | ❌ | ❌ |
 | Delex | `delex` | (غير محدد) | ❌ | ❌ |
 
