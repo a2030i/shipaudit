@@ -951,6 +951,9 @@ const BADGE_CFG = {
   favorable:   { bg: 'rgba(45,212,191,.12)', color: 'var(--accent)', bd: 'rgba(45,212,191,.32)',  lbl: '↓ لصالحك',    Icon: CheckCircle2 },
   unknown:     { bg: 'rgba(122,130,196,.10)', color: 'var(--muted)',  bd: 'rgba(122,130,196,.28)', lbl: '؟ غير معروف', Icon: HelpCircle },
   no_contract: { bg: 'rgba(251,146,60,.10)', color: 'var(--warn)',   bd: 'rgba(251,146,60,.28)',  lbl: '⚠ لا عقد',   Icon: AlertTriangle },
+  // Inbound return (foreign origin → KSA): pass-through row that feeds the
+  // merchant re-billing report — not price-audited against the contract.
+  inbound:     { bg: 'rgba(217,119,6,.10)',  color: '#D97706',       bd: 'rgba(217,119,6,.30)',   lbl: '🛬 وارد',     Icon: AlertTriangle },
 };
 
 export function Badge({ status, label }) {

@@ -231,6 +231,7 @@
 - `posFeeOnCod: true` — رسوم POS = نسبة من **مبلغ التحصيل** (codAmount) لا من عمود POS Amount منفصل. (ويبك: 0.8%). `auditRow` يستخدم codAmount كأساس POS.
 - `deliveryInclusiveVat: true` — عمود التوصيل **شامل الضريبة 15%**؛ `auditRow` يقسمه ÷1.15 للمقارنة قبل الضريبة ويُظهر فرق الضريبة كـ tax. (ويبك)
 - `codFeePassthrough: true` — رسوم COD تُقبل كما هي (expected=invoiced) حين لا تتبع قاعدة. (سمسا فروع، ويبك)
+- `inboundPassthrough: true` — (أرامكس) الشحنة ذات منشأ **دولة أجنبية معروفة** (`KNOWN_FOREIGN_COUNTRIES`) ووجهة السعودية = **مرتجع وارد**: تمرّ pass-through بحالة `inbound` (لا تُدقَّق سعرياً — لا جدول وارد بالعقد) وتظهر في تقرير منفصل «وارد لفوترة التجار» (`exportInboundReturns` في export.js — يتضمن `shipperRef` = بوليصة الصادر الأصلية، مفتاح تفويت التاجر بالنظام الداخلي الذي يفوتر الصادر فقط). **الشرط على مجموعة دول معروفة لا `origin≠SA`** — أعمدة المنشأ المحلية فيها مدن (Jeddah) لا تتطبّع لـSaudi Arabia فتُصنَّف غلطاً
 - `posFeePct` / `fuelPct` — نسب. `pricing` بشريحة واحدة مسطّحة `[{upTo:null,price:X}]` = سعر ثابت لكل شحنة بغض النظر عن الوزن (calcDelivery يرجعه حتى لوزن 0 — للناقلين الذين لا يفوترون بالوزن مثل ويبك)
 
 ### 2.5 file_kind القيم المسموحة

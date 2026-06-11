@@ -21,6 +21,43 @@ export function exportWeightsForExternalSystem(results, carrierName, period) {
   return true;
 }
 
+/**
+ * Inbound-returns report — the merchant re-billing file. Rows flagged
+ * status='inbound' by the audit engine are RETURNS of earlier outbound
+ * shipments (foreign origin → Saudi Arabia); the carrier bills us full
+ * inbound freight, but the user's internal system invoices merchants on
+ * OUTBOUND AWBs only — so without this file the return cost leaks
+ * unbilled. `shipperRef` holds the ORIGINAL outbound AWB: the key the
+ * internal system uses to find the merchant.
+ */
+export function exportInboundReturns(results, carrierName, period) {
+  const inbound = (results || []).filter(r => r.status === 'inbound');
+  if (!inbound.length) return false;
+  const headers = [
+    'بوليصة الوارد (المرتجع)', 'بوليصة الصادر الأصلية (المرجع)',
+    'من', 'إلى', 'الوزن (كغ)', 'المبلغ قبل الضريبة', 'الضريبة', 'الإجمالي',
+  ];
+  const rows = inbound.map(r => {
+    const net = +Number(r.invoiced?.total ?? 0).toFixed(2);
+    const tax = +Number(r.invoiced?.tax ?? 0).toFixed(2);
+    return [
+      r.awb, r.shipperRef || '—', r.origin || '—', r.dest || '—',
+      +Number(r.weight || 0).toFixed(3), net, tax, +(net + tax).toFixed(2),
+    ];
+  });
+  const totNet = +rows.reduce((s, r) => s + r[5], 0).toFixed(2);
+  const totTax = +rows.reduce((s, r) => s + r[6], 0).toFixed(2);
+  rows.push([]);
+  rows.push(['', '', '', 'الإجمالي:', '', totNet, totTax, +(totNet + totTax).toFixed(2)]);
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+  ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 12 }];
+  XLSX.utils.book_append_sheet(wb, ws, 'وارد لفوترة التجار');
+  const dateStr = new Date().toISOString().slice(0, 10);
+  XLSX.writeFile(wb, `وارد_لفوترة_التجار_${carrierName}_${period}_${dateStr}.xlsx`);
+  return true;
+}
+
 // Returns the standard-weight allowance for a destination from the
 // contract — i.e. the upTo of the first bracket. Above this weight the
 // merchant should be billed for excess. Works with both formats:

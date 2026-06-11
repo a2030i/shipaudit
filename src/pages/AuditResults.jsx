@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { CheckCircle2, XCircle, RotateCcw, AlertCircle } from 'lucide-react';
 import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
-import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights } from '../engine/export.js';
+import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights, exportInboundReturns } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX, loadAuditShipments } from '../lib/coreService.js';
@@ -691,6 +691,14 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     else    toast('لا توجد فروق للتصدير','info');
   };
 
+  // Inbound returns → the merchant re-billing file (original outbound AWB
+  // included so the internal system can route the cost to the merchant).
+  const handleExportInbound = () => {
+    const ok = exportInboundReturns(results, audit.carrierName, audit.period);
+    if (ok) toast('تم تصدير تقرير الوارد لفوترة التجار ✓','success');
+    else    toast('لا توجد شحنات واردة في هذي المراجعة','info');
+  };
+
   const handleExportWeights = () => {
     const ok = exportWeightsForExternalSystem(results, audit.carrierName, audit.period);
     if (ok) toast('تم تصدير ملف الأوزان (AWB + الوزن) ✓','success');
@@ -879,6 +887,11 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
                 تصدير الفروق ({summary.mismatch})
               </Btn>
             )}
+            {summary.inbound>0 && (
+              <Btn size="sm" variant="gold" onClick={handleExportInbound} icon="🛬">
+                وارد لفوترة التجار ({summary.inbound})
+              </Btn>
+            )}
             <Btn size="sm" variant="outline" onClick={handleExportWeights} icon="⚖️">
               تصدير الأوزان
             </Btn>
@@ -898,6 +911,9 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           <StatCard label="✗ فروق" value={summary.mismatch} color="var(--red)" onClick={()=>setFilter('mismatch')}/>
           {summary.favorable > 0 && (
             <StatCard label="↓ لصالحك" value={summary.favorable} color="var(--accent)" onClick={()=>setFilter('favorable')}/>
+          )}
+          {summary.inbound > 0 && (
+            <StatCard label="🛬 وارد (مرتجع)" value={summary.inbound} color="var(--gold, #D97706)" onClick={()=>setFilter('inbound')}/>
           )}
           <StatCard label="؟ غير معروف" value={summary.unknown} color="var(--muted)" onClick={()=>setFilter('unknown')}/>
           <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:11,padding:'13px 18px',
@@ -986,6 +1002,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             { k:'mismatch',  l:`✗ فروق (${summary.mismatch})` },
             { k:'ok',        l:`✓ مطابق (${summary.ok})` },
             ...(summary.favorable > 0 ? [{ k:'favorable', l:`↓ لصالحك (${summary.favorable})` }] : []),
+            ...(summary.inbound > 0 ? [{ k:'inbound', l:`🛬 وارد (${summary.inbound})` }] : []),
             { k:'unknown',   l:`؟ (${summary.unknown})` },
           ].map(t=>(
             <button key={t.k} onClick={()=>setFilter(t.k)} style={{
