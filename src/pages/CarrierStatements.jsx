@@ -34,6 +34,10 @@ const fmt = n => (n == null || Number.isNaN(n))
 const FAST_PARSER_IDS = new Set(['aramex']);
 const isFastParser = (id) => FAST_PARSER_IDS.has(id) || /aramex|أرامكس|ارامكس/i.test(id ?? '');
 
+// Module-level (NOT useRef): PageSlot keeps the page mounted and StrictMode
+// double-fires effects in dev — a ref would reset between mounts (§2.2).
+const CONSUMED_STATEMENT_IMPORTS = new Set();
+
 export default function CarrierStatements({ carriers = [] }) {
   const { user } = useAuth();
   // Default carrier = first one configured by the admin.
@@ -148,6 +152,38 @@ export default function CarrierStatements({ carriers = [] }) {
     }
     setAiStatus('');
   }, [carrierId, carrierName, customName, carriers]);
+
+  // Smart-drop handoff: /drop stashes the statement bytes in sessionStorage
+  // ('statementImport') then navigates here — same stash + pathname-listener
+  // pattern as the webhook imports (§1.5). Module-level consumed-set guards
+  // StrictMode double-fire; location dep because PageSlot keeps us mounted.
+  useEffect(() => {
+    if (location.pathname !== '/aramex-statements') return;
+    let raw;
+    try { raw = sessionStorage.getItem('statementImport'); } catch { return; }
+    if (!raw) return;
+    let payload;
+    try { payload = JSON.parse(raw); } catch { sessionStorage.removeItem('statementImport'); return; }
+    if (!payload?.base64 || !payload?.filename) return;
+    if (CONSUMED_STATEMENT_IMPORTS.has(payload.filename)) return;
+    CONSUMED_STATEMENT_IMPORTS.add(payload.filename);
+    sessionStorage.removeItem('statementImport');
+    try {
+      const bin = atob(payload.base64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      const file = new File([arr], payload.filename, { type: 'application/pdf' });
+      if (payload.carrierId) {
+        const found = carriers.find(c => c.id === payload.carrierId);
+        if (found) { setCarrierId(found.id); setCarrierName(found.name); }
+      }
+      toast(`جارٍ تحليل الكشف: ${payload.filename}`, 'info');
+      processFile(file);
+    } catch (err) {
+      CONSUMED_STATEMENT_IMPORTS.delete(payload.filename);
+      toast(`فشل استيراد الكشف: ${err.message}`, 'error');
+    }
+  }, [location.pathname, processFile, carriers]);
 
   const handleDrop = (e) => {
     e.preventDefault();
