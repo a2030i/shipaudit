@@ -1,5 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
+import { useLocation } from 'react-router-dom';
 import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles } from 'lucide-react';
+import CarrierTabs from '../components/CarrierTabs.jsx';
 import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
@@ -40,6 +42,19 @@ export default function CarrierStatements({ carriers = [] }) {
   const [carrierId,   setCarrierId]   = useState(initialId);
   const [carrierName, setCarrierName] = useState(initialName);
   const [customName,  setCustomName]  = useState('');
+  // Carrier-workspace scoping: /aramex-statements?carrier=X preselects the
+  // carrier and shows the workspace tab bar. Depends on location (not [])
+  // because PageSlot keeps the page mounted across navigations.
+  const location = useLocation();
+  const fromWorkspace = location.pathname === '/aramex-statements'
+    && !!new URLSearchParams(location.search).get('carrier');
+  useEffect(() => {
+    if (location.pathname !== '/aramex-statements') return;
+    const wanted = new URLSearchParams(location.search).get('carrier');
+    if (!wanted) return;
+    const found = carriers.find(c => c.id === wanted);
+    if (found) { setCarrierId(found.id); setCarrierName(found.name); }
+  }, [location.pathname, location.search, carriers]);
   const [state, setState] = useState('idle');     // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);      // { header, operations, totals, fileName, carrierId, carrierName, parserUsed }
@@ -274,6 +289,9 @@ export default function CarrierStatements({ carriers = [] }) {
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1300, margin: '0 auto' }}>
+      {fromWorkspace && (
+        <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
+      )}
       <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
         📑 رفع كشف <span style={{ color: 'var(--accent)' }}>حساب</span>
       </h2>

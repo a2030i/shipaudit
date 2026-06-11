@@ -12,6 +12,7 @@ import {
   Building2, ClipboardList,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, Modal } from '../components/UI.jsx';
+import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   loadCarrierProfile, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
 } from '../lib/carrierProfileService.js';
@@ -632,6 +633,7 @@ export default function CarrierProfile() {
 
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1200 }}>
+      <CarrierTabs carrierId={carrierId} carrierName={carrier.name} active="overview"/>
       <Hero carrier={carrier} onBack={() => navigate('/hub')}/>
 
       {/* Setup warning */}
