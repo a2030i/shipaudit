@@ -60,7 +60,52 @@ function HeaderTotals({ totals, loading }) {
   );
 }
 
-function CarrierCard({ row, onClick, onSetup, onWebhook }) {
+// One compact line per health signal: COD still with the carrier, open
+// un-audited invoices, and how stale the audit trail is. These are the
+// three questions the operator asks per carrier every morning — surfacing
+// them here saves a tour through /cod-settlements + /ledger + /audits.
+function HealthStrip({ row, onCod, onLedger }) {
+  const items = [];
+  if (row.codOutstanding > 0.5) {
+    items.push({
+      key: 'cod', color: '#D97706', onClick: onCod,
+      label: `COD معلّق ${fmtCompact(row.codOutstanding)} ر.س`,
+    });
+  }
+  if (row.unauditedRv.count > 0) {
+    items.push({
+      key: 'rv', color: '#EF4444', onClick: onLedger,
+      label: `${row.unauditedRv.count} فاتورة غير مدقَّقة (${fmtCompact(row.unauditedRv.amount)})`,
+    });
+  }
+  if (row.hasContract) {
+    items.push(row.lastAudit
+      ? { key: 'aud', color: 'var(--muted)', label: `آخر تدقيق: ${row.lastAudit.period || relTime(row.lastAudit.approvedAt)}` }
+      : { key: 'aud', color: '#EF4444',      label: 'لم تُدقَّق أي فاتورة بعد' });
+  }
+  if (!items.length) return null;
+  return (
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
+      {items.map(it => (
+        <span
+          key={it.key}
+          onClick={it.onClick ? (e) => { e.stopPropagation(); it.onClick(); } : undefined}
+          style={{
+            display: 'inline-flex', alignItems: 'center',
+            padding: '4px 10px', borderRadius: 8,
+            background: it.color.startsWith('#') ? `color-mix(in srgb, ${it.color} 10%, transparent)` : 'var(--bg2)',
+            color: it.color, fontSize: 11, fontWeight: 600,
+            cursor: it.onClick ? 'pointer' : 'default', whiteSpace: 'nowrap',
+          }}
+        >
+          {it.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
   const owed = row.balance; // > 0 = we owe them; < 0 = they owe us
   const balanceColor =
     Math.abs(owed) < 0.01 ? 'var(--muted)' :
@@ -153,6 +198,9 @@ function CarrierCard({ row, onClick, onSetup, onWebhook }) {
           <span>تحصيل <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalCr)}</span></span>
         </div>
       </div>
+
+      {/* Health signals — COD held by carrier / unaudited invoices / audit staleness */}
+      <HealthStrip row={row} onCod={onCod} onLedger={onLedger}/>
 
       {/* Setup completeness — horizontal progress bar */}
       <div style={{ marginBottom: 18 }}>
@@ -323,6 +371,8 @@ export default function CarriersHub({ isActive = true }) {
               onClick={() => navigate(`/carrier?id=${row.carrierId}`)}
               onSetup={() => navigate(`/carrier?id=${row.carrierId}`)}
               onWebhook={() => navigate('/webhook')}
+              onCod={() => navigate(`/cod-settlements?carrier=${row.carrierId}`)}
+              onLedger={() => navigate(`/ledger?carrier=${row.carrierId}`)}
             />
           ))}
         </div>

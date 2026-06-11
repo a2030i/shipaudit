@@ -123,8 +123,17 @@ export async function saveSettlementUpload({
   let ledgerError = null;
   if (direction === 'in') {
     try {
+      // Carriers that remit COD as CREDIT NOTES on their account statement
+      // (Aramex: DG docs) must NOT also get a COD CR ledger op — the credit
+      // note row already carries the money, so posting both double-counts
+      // the credit and understates the open balance. Flagged per-carrier via
+      // file_signature.cod_remit_via_credit_note. The per-AWB cod_settlement
+      // rows above are unaffected (reconciliation still works).
+      const { data: carrierRow } = await supabase
+        .from('carriers').select('file_signature').eq('id', carrierId).maybeSingle();
+      const remitViaCreditNote = carrierRow?.file_signature?.cod_remit_via_credit_note === true;
       const totalCr = +inserts.reduce((s, r) => s + (Number(r.amount) || 0), 0).toFixed(2);
-      if (totalCr > 0) {
+      if (totalCr > 0 && !remitViaCreditNote) {
         const nowIso = new Date().toISOString();
         const op = {
           carrier_id:   carrierId,
