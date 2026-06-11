@@ -282,22 +282,9 @@ function AppInner({ theme, toggleTheme }) {
 
   useEffect(() => { reloadCarriers(); }, [reloadCarriers]);
 
-  // Auto-open the section that contains the active route. We only
-  // open — never auto-close — so manual choices stick.
-  useEffect(() => {
-    // Match the exact path, or a hub whose subTab legacy path we're on
-    // (e.g. /receivables → customers section), so deep links open the
-    // right section too.
-    const item = NAV_ITEMS.find(n => n.path === location.pathname)
-      || NAV_ITEMS.find(n => n.subTabs?.some(s => s.legacy === location.pathname));
-    if (!item || !item.section) return;
-    setOpenSections(prev => {
-      if (prev[item.section]) return prev;
-      const next = { ...prev, [item.section]: true };
-      try { localStorage.setItem('sa-nav-sections-v2', JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  }, [location.pathname]);
+  // (The old "auto-open active section" effect is gone — the v3 accordion
+  // derives the open section from the active route on every render, so
+  // there is no state to sync and nothing to persist.)
 
   // Nav permissions used to live in a separate JSONB keyed by role
   // (NAV_PERMISSIONS in app_settings). That model is superseded by
