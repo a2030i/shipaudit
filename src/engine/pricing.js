@@ -10,7 +10,15 @@
  *     price is returned. If weight exceeds the last bracket, `excess` extends the table.
  */
 export function calcDelivery(pricingDef, weight) {
-  if (!pricingDef || weight <= 0) return null;
+  if (!pricingDef) return null;
+  // Flat per-shipment pricing (a single `price` tier with no per-kg part):
+  // charge it regardless of weight — flat carriers like Webek don't bill by
+  // weight, so a 0/empty weight is normal, not a data error.
+  if (Array.isArray(pricingDef) && pricingDef.length === 1
+      && pricingDef[0].price !== undefined && pricingDef[0].pricePerUnit === undefined) {
+    return +Number(pricingDef[0].price).toFixed(4);
+  }
+  if (weight <= 0) return null;
 
   // ── Legacy simple format ──────────────────────────────────────────────────
   if (!Array.isArray(pricingDef) && pricingDef.first !== undefined) {
