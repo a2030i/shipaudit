@@ -43,6 +43,7 @@ import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
+import SmartDrop         from './pages/SmartDrop.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
@@ -75,36 +76,30 @@ const NAV_ITEMS = [
   // working, but it's removed from the nav and the default landing
   // redirect now goes to /overview.
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
+  // الرفع الذكي — ONE drop target for every carrier file (invoice / COD /
+  // statement). Sniffs the content and routes to the right screen, so the
+  // old per-type entry points (/upload etc.) no longer need nav rows.
+  { id: 'drop',      path: '/drop',      label: 'رفع ملف',        icon: Upload,          pinned: true, permKey: 'audits.create' },
+  { id: 'webhook',   path: '/webhook',   label: 'الوارد',         icon: Inbox,           pinned: true, permKey: 'webhook.view' },
   { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true, permKey: 'uploads.view' },
 
-  // ── Carriers (AP side) ────────────────────────────────────────
-  // /hub now hosts both the cards view and the KPI view as tabs;
-  // /carrier-kpi still resolves but redirects through the workspace.
+  // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
+  // (workspace screens; rarely-touched admin moved to system)
   { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
-  // /carrier-kpi is the second tab of CarriersWorkspace. It used to be
-  // reachable only by discovering the tab once on /hub — surfaced here
-  // as its own nav row so the "أداء الناقلين" lens is visible directly.
-  { id: 'carrier-kpi',  path: '/carrier-kpi',       label: 'أداء الناقلين',   icon: BarChart3,     section: 'carriers', permKey: 'carriers.view' },
-  { id: 'monthly-report', path: '/monthly-report',  label: 'التقرير الشهري',  icon: CalendarRange, section: 'carriers', permKey: 'carriers.view' },
+  { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,       section: 'carriers', permKey: 'audits.view' },
   { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
-  { id: 'carriers',     path: '/carriers',          label: 'إدارة الشركات',   icon: Truck,         section: 'carriers', permKey: 'carriers.view' },
-  { id: 'contracts',    path: '/contracts',         label: 'جدول العقود',     icon: ClipboardList, section: 'carriers', permKey: 'carriers.edit_contract' },
+  { id: 'tasks',        path: '/tasks',             label: 'مهام الأسبوع',    icon: ListTodo,      section: 'carriers', permKey: 'audits.view' },
 
-  // ── Audits pipeline ───────────────────────────────────────────
-  { id: 'webhook',         path: '/webhook',        label: 'الوارد',         icon: Inbox,    section: 'audits', permKey: 'webhook.view' },
-  { id: 'tasks',           path: '/tasks',          label: 'مهام الأسبوع',   icon: ListTodo, section: 'audits', permKey: 'audits.view' },
-  { id: 'upload',          path: '/upload',         label: 'مراجعة جديدة',   icon: Upload,   section: 'audits', permKey: 'audits.create' },
-  { id: 'audits',          path: '/audits',         label: 'سجل المراجعات',  icon: History,  section: 'audits', permKey: 'audits.view' },
-  // Note: /weight-billing is reachable from /internal-exports (link
-  // in the weights card footer) — removed from sidebar to reduce
-  // duplication. The pull workflow lives on /internal-exports.
-  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات', icon: FileText, section: 'audits', permKey: 'internal_exports.view' },
+  // ── Reports — قراءة فقط ─────────────────────────────────────────
+  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
+  { id: 'carrier-kpi',      path: '/carrier-kpi',      label: 'أداء الناقلين',   icon: BarChart3,     section: 'reports', permKey: 'carriers.view' },
+  { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'reports', permKey: 'forecast.view' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات',  icon: FileText,      section: 'reports', permKey: 'internal_exports.view' },
 
   // ── Finance ────────────────────────────────────────────────────
   // cod / payments / bank / payment-requests merged into /money
   // with 4 tabs. Legacy routes still resolve to the matching tab.
-  { id: 'forecast',  path: '/forecast', label: 'تنبؤ التدفّق', icon: TrendingUp, section: 'finance', permKey: 'forecast.view' },
   // /money hosts 4 tabs. Listing them as `subTabs` makes each lens
   // visible & one-click in the sidebar (they used to be discoverable
   // only by opening /money first). Each navigates to the canonical
@@ -131,7 +126,9 @@ const NAV_ITEMS = [
   { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
 
-  // ── System (config + reports — least-touched) ─────────────────
+  // ── System (config — least-touched) ───────────────────────────
+  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',  icon: Truck,         section: 'system', permKey: 'carriers.view' },
+  { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',    icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
@@ -143,8 +140,8 @@ const NAV_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  { id: 'carriers',  label: 'شركات الشحن',     icon: Building2, accent: '#3B82F6', hint: 'الكشوف والعقود' },
-  { id: 'audits',    label: 'المراجعات',        icon: FileCheck, accent: '#10B981', hint: 'دورة الفواتير' },
+  { id: 'carriers',  label: 'شركات الشحن',     icon: Building2, accent: '#3B82F6', hint: 'المراجعات والكشوف والدفتر' },
+  { id: 'reports',   label: 'التقارير',          icon: BarChart3, accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
   { id: 'finance',   label: 'الحركات المالية',  icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات' },
   { id: 'customers', label: 'العملاء والمتاجر', icon: Users,     accent: '#EF4444', hint: 'AR والمتابعة' },
   { id: 'system',    label: 'إعدادات النظام',   icon: Briefcase, accent: '#8B5CF6', hint: 'الإدارة والسجلات' },
@@ -170,6 +167,7 @@ const PAGE_TITLES = {
   '/payment-requests':  'طلبات السداد',
   '/internal-exports':  'سحب للنظام الداخلي',
   '/upload':            'مراجعة جديدة',
+  '/drop':              'رفع ملف',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
   '/ledger':            'دفتر الشركات',
@@ -240,7 +238,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -678,6 +676,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/monthly-report'} scroll>
               <MonthlyReport isActive={pathname==='/monthly-report'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/drop'} scroll>
+              <SmartDrop carriers={carriers}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
