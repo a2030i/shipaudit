@@ -38,8 +38,43 @@ import { supabase } from './supabase.js';
 const EMPTY_DOC_COUNTS = { INV: 0, COD: 0, PAY: 0, ADJ: 0, OTHER: 0 };
 
 export async function loadCarriersHub() {
-  const { data, error } = await supabase.rpc('hub_rollup');
+  // Health signals fetched alongside the rollup (all lightweight):
+  //  - codNet:      per-carrier COD still with the carrier (out − in, >0 = owed to us)
+  //  - lastAudit:   most recent APPROVED audit per carrier (period label + when)
+  //  - unauditedRv: open ledger invoices (RV) never linked to an audit —
+  //                 money we're being billed that nobody verified.
+  const [rollup, codNet, audits, openRvs] = await Promise.all([
+    supabase.rpc('hub_rollup'),
+    supabase.rpc('carrier_cod_net_balances').then(r => r.data ?? []).catch(() => []),
+    supabase.from('audits')
+      .select('carrier_id, period, approved_at')
+      .eq('review_status', 'approved')
+      .order('approved_at', { ascending: false })
+      .then(r => r.data ?? []).catch(() => []),
+    supabase.from('carrier_operations')
+      .select('carrier_id, amount_dr, amount_cr')
+      .eq('doc_type', 'RV')
+      .is('audit_id', null)
+      .neq('status', 'paid')
+      .then(r => r.data ?? []).catch(() => []),
+  ]);
+  const { data, error } = rollup;
   if (error) throw error;
+
+  const codByCarrier = new Map(codNet.map(r => [r.carrier_id, Number(r.net) || 0]));
+  const lastAuditByCarrier = new Map();
+  for (const a of audits) {
+    if (!lastAuditByCarrier.has(a.carrier_id)) {
+      lastAuditByCarrier.set(a.carrier_id, { period: a.period || null, approvedAt: a.approved_at });
+    }
+  }
+  const unauditedByCarrier = new Map();
+  for (const op of openRvs) {
+    const cur = unauditedByCarrier.get(op.carrier_id) || { count: 0, amount: 0 };
+    cur.count  += 1;
+    cur.amount += (Number(op.amount_dr) || 0) - (Number(op.amount_cr) || 0);
+    unauditedByCarrier.set(op.carrier_id, cur);
+  }
 
   const rows = (data ?? []).map((r) => {
     const sig = r.file_signature || {};
@@ -78,6 +113,13 @@ export async function loadCarriersHub() {
       fileKind,
       lastActivityAt:   r.last_activity_at || null,
       setupCompleteness,
+      // Health signals
+      codOutstanding:   +(codByCarrier.get(r.carrier_id) || 0).toFixed(2),
+      lastAudit:        lastAuditByCarrier.get(r.carrier_id) || null,
+      unauditedRv:      (() => {
+        const u = unauditedByCarrier.get(r.carrier_id);
+        return u ? { count: u.count, amount: +u.amount.toFixed(2) } : { count: 0, amount: 0 };
+      })(),
     };
   });
 
