@@ -866,13 +866,21 @@ export function auditRow(row, contract) {
     tax:      invoicedTax,
   };
 
+  // contract.fuelPassthrough (Aramex): the fuel surcharge is market-indexed
+  // and changes monthly — the carrier's published table is authoritative
+  // (user's rule: "المعتمد في الجدول صحيح مهما كان"). Accept the billed fuel
+  // as-is (expected = invoiced) so a rate change never flags fake
+  // mismatches; the BASE charge + RSS are still audited strictly against
+  // the contract — that's where real overbilling shows.
+  const expectedFuel = contract?.fuelPassthrough ? invoicedFuel : calc.fuel;
+
   const expectedCalc = {
     delivery: calc.delivery,
     rss:      calc.rss,
-    fuel:     calc.fuel,
+    fuel:     expectedFuel,
     codFee:   expectedCodFee,
     posFee:   expectedPosFee,
-    total:    calc.total + expectedCodFee + expectedPosFee,
+    total:    +(calc.total - calc.fuel + expectedFuel + expectedCodFee + expectedPosFee).toFixed(4),
   };
 
   const diffs = {
