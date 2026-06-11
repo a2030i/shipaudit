@@ -25,7 +25,9 @@ import { imileRemittanceParser }      from './imileRemittance.js';
 export const INTERNAL_PARSER = internalSettlementParser;
 
 export const REMITTANCE_PARSERS = {
-  aramex:     aramexRemittanceParser,
+  // Keys MUST equal each parser's `id` (CodSettlements looks parsers up by
+  // the selected carrier id). Aramex's key is its carriers-table id, not a slug.
+  c_1777506662790: aramexRemittanceParser,
   smsa:       smsaRemittanceParser,
   delivernow: deliverNowRemittanceParser,
   jnt:        jntRemittanceParser,

@@ -12,7 +12,10 @@
 // only Collected* matches a bank credit.
 
 export const aramexRemittanceParser = {
-  id:    'aramex',
+  // MUST equal the carriers-table id (c_1777506662790), NOT a slug. The COD
+  // page uses this id for every cod_settlement query/insert; the old slug
+  // 'aramex' split Aramex's data across two ids (unified 2026-06-09).
+  id:    'c_1777506662790',
   label: 'أرامكس',
   parse(allRows) {
     if (!allRows?.length) throw new Error('الملف فارغ');
