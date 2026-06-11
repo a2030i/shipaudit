@@ -810,7 +810,39 @@ export async function approveAudit(auditId, userId) {
   //    via the unique partial index on (audit_id) WHERE doc_type='INV'.
   try {
     const gross = +((Number(updated.total_billed) || 0) + (Number(updated.total_tax) || 0)).toFixed(2);
+    // Avoid double-counting: if the carrier statement ALREADY produced an
+    // un-audited RV for this exact invoice (same gross, within tolerance),
+    // the audit auto-LINKS to it instead of posting a separate INV — the RV
+    // is the authoritative ledger row. We only auto-link on an EXACT, UNIQUE
+    // amount match (zero or multiple matches → fall back to posting an INV so
+    // nothing is lost / mis-linked). Carriers without statements (J&T, iMile,
+    // DeliverNow…) have no RV, so they always post the INV.
+    let linkedToRv = false;
     if (gross > 0) {
+      try {
+        const { data: openRvs } = await supabase
+          .from('carrier_operations')
+          .select('id, amount_dr, amount_cr')
+          .eq('carrier_id', updated.carrier_id)
+          .eq('doc_type', 'RV')
+          .is('audit_id', null);
+        const matches = (openRvs ?? []).filter(
+          r => Math.abs(((Number(r.amount_dr) || 0) - (Number(r.amount_cr) || 0)) - gross) < 0.5
+        );
+        if (matches.length === 1) {
+          await supabase.from('carrier_operations').update({
+            audit_id: updated.id,
+            status: 'audited',
+            invoice_file_name: updated.file_name || null,
+            updated_at: nowIso,
+          }).eq('id', matches[0].id);
+          linkedToRv = true;
+        }
+      } catch (e) {
+        console.warn('auto-link to statement RV failed:', e.message);
+      }
+    }
+    if (gross > 0 && !linkedToRv) {
       const op = {
         carrier_id:   updated.carrier_id,
         doc_type:     'INV',
