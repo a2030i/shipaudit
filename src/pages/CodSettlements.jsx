@@ -55,6 +55,11 @@ export default function CodSettlements({ isActive = true }) {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('outstanding'); // outstanding|pending|disputed|matched|all
   const [search, setSearch] = useState('');
+  // Bulk note-taking: Set<awb> selected via row checkboxes. Cleared on
+  // carrier/tab change (selection is view-scoped, like the ledger's).
+  const [selectedAwbs, setSelectedAwbs] = useState(() => new Set());
+  // 'all' | 'with' | 'without' — filter rows by accounting-note presence.
+  const [noteFilter, setNoteFilter] = useState('all');
   const [actionModal, setActionModal] = useState(null);  // { row, kind:'approve'|'dispute'|'edit'|'resolve' }
   const [uploadModal, setUploadModal] = useState(null);  // { direction:'out'|'in' }
   const [uploads, setUploads] = useState([]);
@@ -347,6 +352,8 @@ export default function CodSettlements({ isActive = true }) {
     else if (tab === 'disputed') pool = pool.filter(r => r.status === 'disputed');
     else if (tab === 'matched')  pool = pool.filter(r => ['matched','approved','resolved'].includes(r.status));
     else if (tab === 'over')     pool = pool.filter(r => r.status === 'over_remit');
+    if (noteFilter === 'with')         pool = pool.filter(r => !!r.notes);
+    else if (noteFilter === 'without') pool = pool.filter(r => !r.notes);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       pool = pool.filter(r => r.awb.toLowerCase().includes(q));
@@ -356,7 +363,7 @@ export default function CodSettlements({ isActive = true }) {
       const o = (r) => r.firstOutDate || '';
       return (o(a) || '').localeCompare(o(b) || '');
     });
-  }, [rows, tab, search]);
+  }, [rows, tab, search, noteFilter]);
 
   // Incremental render — only the first batch is in the DOM until the
   // operator scrolls near the bottom. Keeps the table snappy as
@@ -367,17 +374,24 @@ export default function CodSettlements({ isActive = true }) {
 
   const submitAction = async ({ status, notes }) => {
     try {
-      // A 'note' with empty text = the operator cleared the accounting note.
-      if (status === 'note' && !notes) {
-        await clearReconciliationAction(carrier, actionModal.row.awb);
-      } else {
-        await setReconciliationAction({
-          carrierId: carrier, awb: actionModal.row.awb,
-          status, notes, userId: user?.id,
-        });
+      // Bulk note: same text applied to every selected AWB. Empty text =
+      // clear the note on all of them (mirrors the single-row semantics).
+      const targets = actionModal.bulkAwbs?.length
+        ? actionModal.bulkAwbs
+        : [actionModal.row.awb];
+      for (const awb of targets) {
+        if (status === 'note' && !notes) {
+          await clearReconciliationAction(carrier, awb);
+        } else {
+          await setReconciliationAction({
+            carrierId: carrier, awb,
+            status, notes, userId: user?.id,
+          });
+        }
       }
-      toast('تم الحفظ', 'success');
+      toast(targets.length > 1 ? `تم الحفظ على ${targets.length} شحنة` : 'تم الحفظ', 'success');
       setActionModal(null);
+      setSelectedAwbs(new Set());
       refresh();
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
@@ -787,6 +801,35 @@ export default function CodSettlements({ isActive = true }) {
           )}
 
           {/* Table */}
+          {/* Note filter + bulk-note bar */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            {[['all','الكل'],['with','📝 عليها ملاحظة'],['without','بدون ملاحظة']].map(([k, l]) => (
+              <button key={k} onClick={() => setNoteFilter(k)}
+                style={{
+                  padding: '5px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
+                  border: '1px solid', borderColor: noteFilter === k ? 'var(--accent)' : 'var(--border)',
+                  background: noteFilter === k ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+                  color: noteFilter === k ? 'var(--accent)' : 'var(--muted)',
+                }}>{l}</button>
+            ))}
+            {selectedAwbs.size > 0 && (
+              <>
+                <span style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 'auto' }}>
+                  {selectedAwbs.size} شحنة محددة
+                </span>
+                <Btn size="sm" variant="primary"
+                  onClick={() => setActionModal({
+                    kind: 'note',
+                    bulkAwbs: [...selectedAwbs],
+                    row: { awb: `${selectedAwbs.size} شحنة محددة`, diff: 0, notes: '' },
+                  })}>
+                  📝 ملاحظة على المحدد
+                </Btn>
+                <Btn size="sm" variant="ghost" onClick={() => setSelectedAwbs(new Set())}>إلغاء</Btn>
+              </>
+            )}
+          </div>
+
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filtered.length === 0
@@ -795,6 +838,17 @@ export default function CodSettlements({ isActive = true }) {
                   <table style={{ fontSize: 12, width: '100%' }}>
                     <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                       <tr>
+                        <th style={{ width: 34, textAlign: 'center' }}>
+                          <input type="checkbox"
+                            checked={visible.length > 0 && visible.every(r => selectedAwbs.has(r.awb))}
+                            onChange={() => setSelectedAwbs(prev => {
+                              const next = new Set(prev);
+                              const all = visible.every(r => next.has(r.awb));
+                              for (const r of visible) { if (all) next.delete(r.awb); else next.add(r.awb); }
+                              return next;
+                            })}
+                            style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
+                        </th>
                         <th style={{ minWidth: 130 }}>AWB</th>
                         <th style={{ minWidth: 110 }}>دفعنا للمتجر</th>
                         <th style={{ minWidth: 110 }}>استلمنا من الناقل</th>
@@ -805,7 +859,15 @@ export default function CodSettlements({ isActive = true }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {visible.map(r => <Row key={r.awb} r={r} onAction={openAction} onReopen={reopenAction}/>)}
+                      {visible.map(r => (
+                        <Row key={r.awb} r={r} onAction={openAction} onReopen={reopenAction}
+                          checked={selectedAwbs.has(r.awb)}
+                          onToggle={() => setSelectedAwbs(prev => {
+                            const next = new Set(prev);
+                            if (next.has(r.awb)) next.delete(r.awb); else next.add(r.awb);
+                            return next;
+                          })}/>
+                      ))}
                       {hasMore && (
                         <tr ref={sentinelRef}>
                           <td colSpan={7} style={{
@@ -867,14 +929,18 @@ export default function CodSettlements({ isActive = true }) {
 }
 
 // ── Row ────────────────────────────────────────────────────────────────
-function Row({ r, onAction, onReopen }) {
+function Row({ r, onAction, onReopen, checked, onToggle }) {
   const meta = STATUS_META[statusKey(r)] ?? STATUS_META.matched;
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const daysOpen = r.actionDate
     ? Math.floor((today - new Date(r.actionDate)) / 86400000)
     : 0;
   return (
-    <tr>
+    <tr style={checked ? { background: 'rgba(45,212,191,.06)' } : undefined}>
+      <td style={{ textAlign: 'center' }}>
+        <input type="checkbox" checked={!!checked} onChange={onToggle}
+          style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
+      </td>
       <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 11 }}>{r.awb}</td>
       <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
         {r.hasOut ? Number(r.paid).toFixed(2) : <span style={{ color: 'var(--muted)' }}>—</span>}
