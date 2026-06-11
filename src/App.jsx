@@ -79,23 +79,22 @@ const NAV_ITEMS = [
   // الرفع الذكي — ONE drop target for every carrier file (invoice / COD /
   // statement). Sniffs the content and routes to the right screen, so the
   // old per-type entry points (/upload etc.) no longer need nav rows.
+  { id: 'tasks',     path: '/tasks',     label: 'المهام',         icon: ListTodo,        pinned: true, permKey: 'audits.view' },
   { id: 'drop',      path: '/drop',      label: 'رفع ملف',        icon: Upload,          pinned: true, permKey: 'audits.create' },
   { id: 'webhook',   path: '/webhook',   label: 'الوارد',         icon: Inbox,           pinned: true, permKey: 'webhook.view' },
-  { id: 'uploads',   path: '/uploads',   label: 'مركز الرفع',     icon: Inbox,           pinned: true, permKey: 'uploads.view' },
 
   // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
   // (workspace screens; rarely-touched admin moved to system)
-  { id: 'hub',          path: '/hub',               label: 'كشف الشركات',    icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
+  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,       section: 'carriers', permKey: 'audits.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف خارجية',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
-  { id: 'tasks',        path: '/tasks',             label: 'مهام الأسبوع',    icon: ListTodo,      section: 'carriers', permKey: 'audits.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
   { id: 'carrier-kpi',      path: '/carrier-kpi',      label: 'أداء الناقلين',   icon: BarChart3,     section: 'reports', permKey: 'carriers.view' },
   { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'reports', permKey: 'forecast.view' },
-  { id: 'internal-exports', path: '/internal-exports', label: 'تصدير الإكسلات',  icon: FileText,      section: 'reports', permKey: 'internal_exports.view' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'ملفات النظام الداخلي', icon: FileText, section: 'reports', permKey: 'internal_exports.view' },
 
   // ── Finance ────────────────────────────────────────────────────
   // cod / payments / bank / payment-requests merged into /money
@@ -104,7 +103,7 @@ const NAV_ITEMS = [
   // visible & one-click in the sidebar (they used to be discoverable
   // only by opening /money first). Each navigates to the canonical
   // ?tab= URL the in-page tab strip also produces.
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
+  { id: 'money',     path: '/money',    label: 'الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
@@ -116,7 +115,7 @@ const NAV_ITEMS = [
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
-  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء (الكل)',   icon: Users,       section: 'customers', permKey: 'receivables.view',
+  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء',   icon: Users,       section: 'customers', permKey: 'receivables.view',
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
       { tabId: 'receivables', label: 'مديونيات',      icon: DollarSign, legacy: '/receivables' },
@@ -129,6 +128,9 @@ const NAV_ITEMS = [
   // ── System (config — least-touched) ───────────────────────────
   { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',  icon: Truck,         section: 'system', permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',    icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
+  // Zoho snapshots are auto-processed on arrival (§1.14) — the inbox is now
+  // a passive log, so it lives with the rarely-touched admin screens.
+  { id: 'uploads',      path: '/uploads',      label: 'ملفات Zoho',     icon: Inbox,         section: 'system', permKey: 'uploads.view' },
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
@@ -140,11 +142,11 @@ const NAV_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  { id: 'carriers',  label: 'شركات الشحن',     icon: Building2, accent: '#3B82F6', hint: 'المراجعات والكشوف والدفتر' },
-  { id: 'reports',   label: 'التقارير',          icon: BarChart3, accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
-  { id: 'finance',   label: 'الحركات المالية',  icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات' },
-  { id: 'customers', label: 'العملاء والمتاجر', icon: Users,     accent: '#EF4444', hint: 'AR والمتابعة' },
-  { id: 'system',    label: 'إعدادات النظام',   icon: Briefcase, accent: '#8B5CF6', hint: 'الإدارة والسجلات' },
+  { id: 'carriers',  label: 'شركات الشحن', icon: Building2, accent: '#3B82F6', hint: 'المراجعات والكشوف والدفتر' },
+  { id: 'finance',   label: 'الأموال',      icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات' },
+  { id: 'customers', label: 'العملاء',      icon: Users,     accent: '#EF4444', hint: 'AR والمتابعة' },
+  { id: 'reports',   label: 'التقارير',     icon: BarChart3, accent: '#10B981', hint: 'شهري · أداء · تنبؤ' },
+  { id: 'system',    label: 'الإعدادات',    icon: Briefcase, accent: '#8B5CF6', hint: 'الإدارة والسجلات' },
 ];
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -249,27 +251,13 @@ function AppInner({ theme, toggleTheme }) {
   // localStorage so the operator's preferred layout survives reloads.
   // Default on first visit: open the carriers section (most-trafficked
   // group) and the section containing the current route.
-  const [openSections, setOpenSections] = useState(() => {
-    try {
-      const saved = JSON.parse(localStorage.getItem('sa-nav-sections-v2') || 'null');
-      if (saved && typeof saved === 'object') {
-        const validIds = new Set(NAV_SECTIONS.map(s => s.id));
-        const cleaned = {};
-        for (const [k, v] of Object.entries(saved)) {
-          if (validIds.has(k)) cleaned[k] = v;
-        }
-        return cleaned;
-      }
-    } catch { /* fall through */ }
-    return { carriers: true };
-  });
-  const toggleSection = (id) => {
-    setOpenSections(prev => {
-      const next = { ...prev, [id]: !prev[id] };
-      try { localStorage.setItem('sa-nav-sections-v2', JSON.stringify(next)); } catch { /* ignore */ }
-      return next;
-    });
-  };
+  // Auto-accordion (v3): a section is open when it CONTAINS the active
+  // route, or when the user explicitly peeked it (not persisted — the
+  // sidebar should always come back short). This keeps the visible list
+  // at ~8 doors + the active door's children, instead of every section
+  // dumped open (the old v2 persisted-map behaviour).
+  const [peekedSection, setPeekedSection] = useState(null);
+  const toggleSection = (id) => setPeekedSection(prev => (prev === id ? null : id));
 
   // ── Default redirect after login: always go to /overview ──
   // /overview was promoted to be the home page; /dashboard is kept
@@ -427,8 +415,8 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
-              const isOpen = collapsed ? true : !!openSections[sec.id];
               const sectionHasActive = items.some(n => activeFor(n));
+              const isOpen = collapsed ? true : (sectionHasActive || peekedSection === sec.id);
               const SecIcon = sec.icon;
               return (
                 <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
