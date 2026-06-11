@@ -127,6 +127,11 @@ const COL_PATTERNS = {
   // Pattern is intentionally narrow — only matches the exact Arabic
   // header so it doesn't false-positive on direct-carrier files.
   subCarrier:       [/^شركة\s*الشحن$/i, /^carrier$/i, /sub.?carrier/i],
+  // "Shipper Reference" — on Aramex INBOUND rows (returns) this holds the
+  // ORIGINAL outbound AWB; the merchant re-billing report keys on it.
+  // Deliberately requires the word "shipper" so it never grabs Aramex's two
+  // generic "Reference" columns (bill references, not shipment references).
+  shipperRef:       [/shipper.?ref/i, /مرجع.?المرسل/i],
   // "Tax Amount" — actual VAT line from the carrier file. Reading this
   // verbatim lets validateAuditLink skip the 15% assumption (which is
   // wrong for ZOBI international exports = zero-rated).
@@ -207,7 +212,11 @@ export function resolveCarrierKind(carrier) {
 // `required` = subset that must map for the audit to be allowed.
 export const CARRIER_FIELDS = {
   aramex: {
-    core:     ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'serviceType', 'billingType'],
+    // origin + shipperRef power the inbound-returns report: an inbound row
+    // (origin≠SA → dest=SA) is a RETURN of an earlier outbound shipment, and
+    // its Shipper Reference holds the ORIGINAL outbound AWB — the key the
+    // user's internal system needs to re-bill the merchant.
+    core:     ['awb', 'shipDate', 'origin', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'serviceType', 'billingType', 'shipperRef'],
     required: ['weight', 'deliveryCharges'],
   },
   smsa: {
@@ -482,6 +491,15 @@ const COUNTRY_ALIASES = {
 // destination doesn't match any contract key.
 const SAUDI_PROVINCE_RE = /\b(riyadh|makkah|mecca|madinah|medina|eastern|qassim|asir|tabuk|najran|jazan|al\s*bahah|al\s*jawf|al\s*jouf|hail|ha'?il)\b/i;
 
+// Foreign countries we can positively recognise. The inbound-returns branch
+// keys on this set — NOT on "origin !== Saudi Arabia" — because domestic rows
+// carry CITY names in the origin column (Jeddah, Mubaraz…) that normalize
+// to themselves, and treating every unrecognised origin as foreign would
+// misclassify domestic shipments as inbound returns.
+const KNOWN_FOREIGN_COUNTRIES = new Set(
+  Object.values(COUNTRY_ALIASES).filter(c => c !== 'Saudi Arabia'),
+);
+
 export function normalizeCountry(raw) {
   if (!raw) return '';
   const str = String(raw).trim();
@@ -618,6 +636,10 @@ export function mapRows(raw, colMap) {
       // pricingKey='subCarrier'. Empty for direct-carrier files.
       subCarrier:      String(row[colMap.subCarrier] ?? '').trim().toLowerCase(),
       codPaymentMethod: String(row[colMap.codPaymentMethod] ?? '').trim().toLowerCase(),
+      // Original-shipment reference (Aramex "Shipper Reference"). On inbound
+      // return rows it holds the original OUTBOUND AWB — the merchant
+      // re-billing key.
+      shipperRef:      String(row[colMap.shipperRef] ?? '').trim(),
     };
   });
 
@@ -719,6 +741,36 @@ export function auditRow(row, contract) {
     else if (diffTotal < 0)               status = 'favorable';
     else                                  status = 'mismatch';
     return { ...row, status, invoiced, expected, diffs, issues };
+  }
+
+  // ── Inbound returns (contract.inboundPassthrough — Aramex) ──
+  // origin = a foreign country and dest = Saudi Arabia ⇒ this is a RETURN
+  // of an earlier outbound shipment coming back into KSA. The contract has
+  // no inbound rate card, so price-auditing is impossible — and these rows
+  // must NOT poison the outbound audit with fake mismatches. They pass
+  // through (expected = invoiced) under their own 'inbound' status so the
+  // UI can list them in a separate merchant re-billing report (the user's
+  // internal system bills merchants on OUTBOUND only; without this report
+  // the inbound return cost leaks unbilled).
+  if (contract?.inboundPassthrough
+      && row.dest === 'Saudi Arabia'
+      && KNOWN_FOREIGN_COUNTRIES.has(row.origin)) {
+    const total = +(row.deliveryCharges + row.rss + row.fuelSurcharge
+      + Number(row.codFee || 0) + Number(row.posFee || 0)).toFixed(2);
+    const breakdown = {
+      delivery: row.deliveryCharges, rss: row.rss, fuel: row.fuelSurcharge,
+      codFee: Number(row.codFee || 0), posFee: Number(row.posFee || 0),
+      total,
+    };
+    return {
+      ...row,
+      status:   'inbound',
+      isInbound: true,
+      invoiced: { ...breakdown, tax: Number(row.tax) || 0 },
+      expected: { ...breakdown },
+      diffs:    { delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0, total: 0 },
+      issues:   [],
+    };
   }
 
   const calc = calcTotal(contract, row.dest, row.weight, row.shipDate, row.serviceType, row.origin);
@@ -1029,6 +1081,12 @@ export function buildSummary(results) {
   const mismatch  = results.filter(r => r.status === 'mismatch').length;
   const favorable = results.filter(r => r.status === 'favorable').length;
   const unknown   = results.filter(r => r.status === 'unknown' || r.status === 'no_contract').length;
+  // Inbound returns (pass-through rows flagged by auditRow). Tracked so the
+  // UI can surface the merchant re-billing report; the pre-VAT inboundTotal
+  // is what Aramex billed us for hauling the returns back.
+  const inboundRows  = results.filter(r => r.status === 'inbound');
+  const inbound      = inboundRows.length;
+  const inboundTotal = +inboundRows.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0).toFixed(2);
 
   // Overcharges only — do not include favorable rows here; the user shouldn't
   // chase money back when the carrier under-billed.
@@ -1087,6 +1145,7 @@ export function buildSummary(results) {
 
   return {
     total, ok, mismatch, favorable, unknown,
+    inbound, inboundTotal,
     totalDiff, deliveryDiff, rssDiff, fuelDiff, favorableDiff,
     totalBilled, totalExpected, totalTax, totalGross,
     // Surfaced for the UI / debugging: how much of totalTax came from a
