@@ -485,13 +485,14 @@ export async function findCrossAuditDuplicates({ carrierId, awbsByClass, exclude
 export async function loadAuditsFromDB(limit = 50) {
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at, review_status, approved_at, rejected_reason')
+    .select('id, carrier_id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at, review_status, approved_at, rejected_reason')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
 
   return (data ?? []).map(row => ({
     id:            row.id,
+    carrierId:     row.carrier_id,
     carrierName:   row.carrier_name,
     contractLabel: row.contract_label,
     fileName:      row.file_name,

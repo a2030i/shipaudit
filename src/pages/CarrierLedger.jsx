@@ -3,6 +3,7 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, RefreshCw, Link2, FileText, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
+import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   loadOperations,
   loadOpenBalance,
@@ -593,6 +594,7 @@ export default function CarrierLedger({ isActive = true }) {
 
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1300 }}>
+      <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>

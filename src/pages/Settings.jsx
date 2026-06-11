@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   Wifi, WifiOff, ExternalLink, Package, History, Search, Filter, Trash2,
   CheckCircle2, AlertTriangle, Calendar, FileText, Truck, X,
@@ -311,6 +312,11 @@ const AUDIT_TYPE_META = {
 // ── Audits History ─────────────────────────────────────────────────────────────
 export function AuditsHistory({ onOpen, isActive = true }) {
   const navigate = useNavigate();
+  // Carrier-workspace scoping: /audits?carrier=X narrows the history to one
+  // carrier and shows the workspace tab bar (CarrierTabs) so the user can hop
+  // between the carrier's screens without losing context.
+  const [historySearchParams] = useSearchParams();
+  const scopedCarrierId = historySearchParams.get('carrier') || null;
   const [audits,  setAudits]  = useState([]);
   const [loading, setLoading] = useState(true);
   const [confirm, setConfirm] = useState(null);
@@ -420,13 +426,23 @@ export function AuditsHistory({ onOpen, isActive = true }) {
     </div>
   );
 
+  const scopedAudits = scopedCarrierId
+    ? audits.filter(a => a.carrierId === scopedCarrierId)
+    : audits;
+  const scopedCarrierName = scopedCarrierId
+    ? (scopedAudits[0]?.carrierName || scopedCarrierId)
+    : null;
+
   return (
     <div style={{ padding: '24px 28px', maxWidth: 1180 }}>
+      {scopedCarrierId && (
+        <CarrierTabs carrierId={scopedCarrierId} carrierName={scopedCarrierName} active="audits"/>
+      )}
       <PageHeader
         icon={<HistoryIcon size={22}/>}
         title="سجل المراجعات"
         subtitle="كل فاتورة تم تدقيقها — بحث، فلترة، فتح، ودمج للأوزان الإضافية"
-        meta={`${audits.length} مراجعة في السجل`}
+        meta={`${scopedAudits.length} مراجعة في السجل`}
       />
 
       {/* Floating bulk-action bar */}
@@ -463,7 +479,7 @@ export function AuditsHistory({ onOpen, isActive = true }) {
         </div>
       )}
 
-      <AuditsFilter audits={audits}>
+      <AuditsFilter audits={scopedAudits}>
         {filtered => filtered.length === 0
           ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
           : (() => {
