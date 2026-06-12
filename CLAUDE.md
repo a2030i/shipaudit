@@ -165,6 +165,10 @@
 - **الرفع الذكي `/drop`** (SmartDrop.jsx): نقطة رفع واحدة لأي ملف — يشمّ المحتوى: PDF كشف (sniffStatementCarrier) → stash `statementImport` → `/aramex-statements`؛ PDF فاتورة أرامكس (looksLikeAramexInvoice) → stash `webhookImport` → `/upload`؛ xlsx فيه deliveryCharges → مراجعة؛ xlsx بـ AWB/مبالغ فقط → تحصيل (يسأل عن الناقل إن لم يُكتشف). نفس نمط stash+pathname-listener (§1.5). مستمع `statementImport` في CarrierStatements بحارس module-level `CONSUMED_STATEMENT_IMPORTS`
 - **القائمة الجانبية**: pinned = الرئيسية + رفع ملف + الوارد + مركز الرفع؛ الأقسام = شركات الشحن (hub/audits/ledger/statements/tasks) · **التقارير** (شهري/KPI/تنبؤ/تصدير — قسم جديد) · الأموال · العملاء · النظام (إدارة الشركات + العقود انتقلتا هنا). عنصر «مراجعة جديدة» حُذف من القائمة (`/upload` ما زال يعمل — يوصَل عبر `/drop`)
 
+### 1.11e سلامة البيانات `/integrity` ✅ (2026-06-12)
+- RPC `integrity_check()` (Postgres): 6 فحوص تناقضات صامتة — مراجعة معتمدة بلا أثر دفتري · سحبة بلا ملف · skipped رغم أوزان · اعتماد بلا تحصيل مستخرَج · قيد COD مزدوج مع إشعارات · RV قديمة (+45ي) بلا تدقيق
+- الصفحة (`IntegrityCheck.jsx` + `integrityService.js`): بطاقة لكل تناقض + عينات + زر فتح، وأول إصلاح آلي `resetWronglySkipped`. **أي فخّ بيانات جديد يُضاف كفحص هنا**
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
