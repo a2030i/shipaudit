@@ -8,7 +8,7 @@ import {
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import { History as HistoryIcon } from 'lucide-react';
 import { loadSettings, saveSettings } from '../data/carriers.js';
-import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers } from '../lib/coreService.js';
+import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers, loadAuditShipments } from '../lib/coreService.js';
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { exportMergedExcessWeights } from '../engine/export.js';
 import { OR_MODELS, testConnection } from '../engine/openrouter.js';
@@ -387,6 +387,20 @@ export function AuditsHistory({ onOpen, isActive = true }) {
         loadCarriers(),
         ...ids.map(id => loadAuditByIdFromDB(id)),
       ]);
+      // Hydrate ALL shipments from audit_shipments — `results` carries only
+      // the issues (§1.8), so a clean audit would contribute ZERO rows and
+      // its excess weights would silently vanish (same trap as the weights
+      // pull, fixed 2026-06-12). Legacy audits with no shipment rows keep
+      // their inline results.
+      for (const a of fullAudits) {
+        const all = [];
+        for (let from = 0; ; from += 1000) {
+          const page = await loadAuditShipments(a.id, { from, limit: 1000 });
+          all.push(...page);
+          if (page.length < 1000) break;
+        }
+        if (all.length) a.results = all;
+      }
       const result = exportMergedExcessWeights(fullAudits, carriers);
       if (result.ok) {
         toast(
