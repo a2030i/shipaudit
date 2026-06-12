@@ -260,6 +260,30 @@ function AppInner({ theme, toggleTheme }) {
   // at ~8 doors + the active door's children, instead of every section
   // dumped open (the old v2 persisted-map behaviour).
   const [peekedSection, setPeekedSection] = useState(null);
+
+  // New-version detection: the SPA shell caches hard, and users repeatedly
+  // hit stale bundles after a deploy (white pages, half-fixed bugs). Poll
+  // index.html and compare the built bundle hash against the one this tab
+  // loaded; on mismatch show a refresh banner. In dev there is no hashed
+  // bundle script, so the effect is a no-op.
+  const [updateAvailable, setUpdateAvailable] = useState(false);
+  useEffect(() => {
+    const current = [...document.querySelectorAll('script[src]')]
+      .map(s => s.src.match(/assets\/index-([\w-]+)\.js/)?.[1])
+      .find(Boolean);
+    if (!current) return;
+    let stop = false;
+    const check = async () => {
+      try {
+        const html = await fetch(`/index.html?nv=${Date.now()}`, { cache: 'no-store' }).then(r => r.text());
+        const latest = html.match(/assets\/index-([\w-]+)\.js/)?.[1];
+        if (!stop && latest && latest !== current) setUpdateAvailable(true);
+      } catch { /* offline / transient — try again next tick */ }
+    };
+    const t = setInterval(check, 90_000);
+    check();
+    return () => { stop = true; clearInterval(t); };
+  }, []);
   const toggleSection = (id) => setPeekedSection(prev => (prev === id ? null : id));
 
   // ── Default redirect after login: always go to /overview ──
@@ -361,6 +385,24 @@ function AppInner({ theme, toggleTheme }) {
   return (
     <>
       {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)}/>}
+
+      {/* New-version banner — one click replaces the stale bundle. */}
+      {updateAvailable && (
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            position: 'fixed', bottom: 18, insetInlineStart: '50%',
+            transform: 'translateX(50%)', zIndex: 9999,
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '10px 18px', borderRadius: 999, border: 'none', cursor: 'pointer',
+            background: 'var(--accent)', color: '#04342C',
+            fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700,
+            boxShadow: '0 8px 24px rgba(0,0,0,.35)',
+          }}
+        >
+          ↻ نسخة جديدة من النظام متاحة — اضغط للتحديث
+        </button>
+      )}
 
       <div className="app-layout">
 
