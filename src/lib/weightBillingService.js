@@ -24,30 +24,42 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
-// Walks an audit's results array and returns every billable shipment
-// in (AWB, total billed weight) form. We DON'T pre-filter by the
-// carrier's first-bracket threshold any more — the external billing
-// system has per-merchant rules (different customers, different
-// thresholds, different per-kg rates) that we don't model here. Better
-// to hand it every shipment and let it decide what to charge for.
+// Returns every billable shipment for an audit in (AWB, billed weight) form.
+// No first-bracket pre-filtering — the external billing system has its own
+// per-merchant thresholds; we hand it every shipment. Dropped rows: no AWB
+// (noise), zero weight (returns), COD-fee-only rows.
 //
-// We still drop rows that can't be billed at all:
-//   • no AWB (data noise)
-//   • zero weight (likely a return; mapRows already filtered most)
-//   • COD-fee-only rows (separate per-shipment fee, not a shipment)
-function billableRowsFor(audit) {
+// Billable shipments come from audit_shipments — NOT audits.results.
+// `results` JSONB holds ONLY the issues (capped, §1.8 scale design), so a
+// clean large audit (e.g. Aramex 1,684 rows all-OK) looks EMPTY through
+// results and used to get silently marked 'skipped', losing its weights.
+// Paginated with a stable .order('id') (§6: pages overlap without it).
+async function billableRowsFor(audit) {
+  const PAGE = 1000;
   const out = [];
-  for (const r of audit.results || []) {
-    if (!r.awb || !(r.weight > 0)) continue;
-    if (r.isCod) continue;
-    out.push({
-      awb:      String(r.awb),
-      weight:   +Number(r.weight).toFixed(2),
-      dest:     r.dest || '',
-      shipDate: r.shipDate || '',
-      carrier:  audit.carrier_name || '',
-      period:   audit.period || '',
-    });
+  let from = 0;
+  for (;;) {
+    const { data, error } = await supabase
+      .from('audit_shipments')
+      .select('awb, weight_kg, dest_country, ship_date, is_cod')
+      .eq('audit_id', audit.id)
+      .gt('weight_kg', 0)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const r of data || []) {
+      if (!r.awb || r.is_cod) continue;
+      out.push({
+        awb:      String(r.awb),
+        weight:   +Number(r.weight_kg).toFixed(2),
+        dest:     r.dest_country || '',
+        shipDate: r.ship_date || '',
+        carrier:  audit.carrier_name || '',
+        period:   audit.period || '',
+      });
+    }
+    if (!data || data.length < PAGE) break;
+    from += PAGE;
   }
   return out;
 }
@@ -59,7 +71,9 @@ export async function loadPendingAuditsForBilling() {
   // numbers yet; rejected = explicitly excluded.
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_id, carrier_name, period, file_name, contract_label, created_at, weight_billing_status, review_status, results, row_count')
+    // NOTE: no `results` here — shipments come from audit_shipments now,
+    // and pulling the issues JSONB for every pending audit was dead weight.
+    .select('id, carrier_id, carrier_name, period, file_name, contract_label, created_at, weight_billing_status, review_status, row_count')
     .eq('weight_billing_status', 'pending')
     .eq('review_status',         'approved')
     .order('created_at', { ascending: false });
@@ -129,7 +143,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   const auditIds = [];
   const skippedIds = []; // audits with no billable rows (COD-only, etc.)
   for (const a of pending) {
-    const rows = billableRowsFor(a);
+    const rows = await billableRowsFor(a);
     if (!rows.length) {
       skippedIds.push(a.id);
       continue;
