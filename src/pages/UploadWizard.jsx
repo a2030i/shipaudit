@@ -785,7 +785,10 @@ export default function UploadWizard({ carriers, onComplete }) {
   const handleConfirm = async () => {
     if (!carrier) return;
     const forDate = `${year}-${String(month).padStart(2,'0')}-01`;
-    const mapped  = mapRows(rawRows, colMap);
+    // Unpriced operational exports (Delex): keep zero-billed delivered rows —
+    // the contract prices them (priceFromContract), not the file.
+    const keepUnbilled = !!carrier?.contracts?.some(c => c.priceFromContract);
+    const mapped  = mapRows(rawRows, colMap, { keepUnbilled });
     const results = auditAll(mapped, carrier, forDate);
     // Cross-month duplicate check — adds issues to AWBs that were already
     // billed in a prior audit for this same carrier + billing class.
