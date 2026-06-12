@@ -337,6 +337,21 @@ const BUILT_IN_CARRIER_RULES = [
     awb_pattern: /^DNL/i,
     weight: 0.85,
   },
+  {
+    // Webek invoice+COD file: Arabic headers, very distinctive trio.
+    kind: 'webek',
+    must_headers: [/قيمة.?التوصيل/, /النطاق/, /نوع.?التحصيل/],
+    awb_pattern: /^\d{12,14}$/,
+    weight: 0.95,
+  },
+  {
+    // Delex «كشف الطلبات» operational export: DLX barcodes + its
+    // unmistakable column set.
+    kind: 'delex',
+    must_headers: [/^barcode$/i, /collection.?amount/i, /net.?cod/i],
+    awb_pattern: /^DLX/i,
+    weight: 0.95,
+  },
 ];
 
 function matchSignatureFromHeaders(headers, signature) {

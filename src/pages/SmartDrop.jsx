@@ -123,15 +123,20 @@ export default function SmartDrop({ carriers = [] }) {
         subtitle="اسحب أي ملف من أي شركة — فاتورة، تحصيل، أو كشف حساب — والنظام يتعرّف ويوجّه"
       />
 
-      <Card
+      {/* Plain div, NOT <Card> — Card swallows unknown props, so the
+          onDragOver/onDrop handlers never reached the DOM and drag-drop
+          silently did nothing. */}
+      <div
         onDragOver={e => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
         onDrop={e => { e.preventDefault(); setDrag(false); analyze(e.dataTransfer.files?.[0]); }}
         onClick={() => document.getElementById('smart-drop-input')?.click()}
         style={{
           padding: 48, textAlign: 'center', cursor: 'pointer',
+          borderRadius: 'var(--r-lg)',
           border: `2px dashed ${drag ? 'var(--accent)' : 'var(--border)'}`,
           background: drag ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : 'var(--card)',
+          boxShadow: 'var(--shadow-sm)',
         }}
       >
         <input id="smart-drop-input" type="file" accept=".xlsx,.xls,.pdf"
@@ -146,7 +151,7 @@ export default function SmartDrop({ carriers = [] }) {
             </div>
           </>
         )}
-      </Card>
+      </div>
 
       {verdict && (
         <Card style={{ marginTop: 16, padding: 20 }}>
