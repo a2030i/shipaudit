@@ -46,6 +46,7 @@ import MonthlyReport     from './pages/MonthlyReport.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
+import Claims            from './pages/Claims.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
@@ -91,6 +92,7 @@ const NAV_ITEMS = [
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,       section: 'carriers', permKey: 'audits.view' },
   { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
+  { id: 'claims',       path: '/claims',            label: 'المطالبات',        icon: Scale,         section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
   { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
@@ -176,6 +178,7 @@ const PAGE_TITLES = {
   '/drop':              'رفع ملف',
   '/cash-aging':        'النقد والأعمار',
   '/integrity':         'سلامة البيانات',
+  '/claims':            'المطالبات',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
   '/ledger':            'دفتر الشركات',
@@ -246,7 +249,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -711,6 +714,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/integrity'} scroll>
               <IntegrityCheck isActive={pathname==='/integrity'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/claims'} scroll>
+              <Claims carriers={carriers} isActive={pathname==='/claims'}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
