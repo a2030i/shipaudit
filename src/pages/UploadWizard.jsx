@@ -479,7 +479,11 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
       <div style={{ display:'flex', gap:9 }}>
         <Btn variant="ghost" onClick={onBack} style={{ flex:1, justifyContent:'center' }}>← رجوع</Btn>
         <Btn variant="primary" onClick={onConfirm}
-          disabled={!carrierId || !colMap.weight || !colMap.deliveryCharges}
+          // Gate on the CARRIER'S OWN required fields (requiredMissing uses
+          // the per-carrier schema) — the old hardcoded weight+delivery pair
+          // blocked flat-priced carriers (Webek: no weight column at all)
+          // and unpriced exports (Delex: no delivery column either).
+          disabled={!carrierId || requiredMissing > 0}
           style={{ flex:2, justifyContent:'center' }}>
           تأكيد وبدء التدقيق ←
         </Btn>
