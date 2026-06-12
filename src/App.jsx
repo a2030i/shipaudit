@@ -45,6 +45,7 @@ import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
+import IntegrityCheck    from './pages/IntegrityCheck.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
@@ -133,6 +134,7 @@ const NAV_ITEMS = [
   // Zoho snapshots are auto-processed on arrival (§1.14) — the inbox is now
   // a passive log, so it lives with the rarely-touched admin screens.
   { id: 'uploads',      path: '/uploads',      label: 'ملفات Zoho',     icon: Inbox,         section: 'system', permKey: 'uploads.view' },
+  { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
@@ -173,6 +175,7 @@ const PAGE_TITLES = {
   '/upload':            'مراجعة جديدة',
   '/drop':              'رفع ملف',
   '/cash-aging':        'النقد والأعمار',
+  '/integrity':         'سلامة البيانات',
   '/audits':            'سجل المراجعات',
   '/weight-billing':    'فوترة الأوزان',
   '/ledger':            'دفتر الشركات',
@@ -243,7 +246,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -705,6 +708,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/cash-aging'} scroll>
               <CashAging isActive={pathname==='/cash-aging'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/integrity'} scroll>
+              <IntegrityCheck isActive={pathname==='/integrity'}/>
             </PageSlot>
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
