@@ -1434,7 +1434,8 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       const data = allRows.slice(headerRow + 1)
         .filter(row => row && row.some(v => v !== null && v !== '' && v !== undefined))
         .map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])));
-      const mapped  = mapRows(data, colMap);
+      const keepUnbilled = !!carrier?.contracts?.some(c => c.priceFromContract);
+      const mapped  = mapRows(data, colMap, { keepUnbilled });
       const forDate = op.doc_date || new Date().toISOString().slice(0, 10);
       const results = auditAll(mapped, carrier, forDate);
       // Cross-audit duplicate check — flags AWBs that have already appeared

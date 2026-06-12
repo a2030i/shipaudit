@@ -59,7 +59,10 @@ const COL_PATTERNS = {
   // specific enough to skip clearly-different columns: "Tracking No."
   // for J&T, "Waybill No." for iMile, "AWB" for Aramex/SMSA. The bare
   // /tracking/i also catches things like "Tracking Number" / "Tracking No".
-  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/, /رقم.?ال[أا]مر/i, /order.?(no|num|number|id)/i],
+  // ^barcode$ BEFORE the broad /tracking/i: Delex files carry both "Barcode"
+  // (the real AWB) and an empty "Third Party Tracking Number" that /tracking/
+  // would otherwise grab first.
+  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /^barcode$/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/, /رقم.?ال[أا]مر/i, /order.?(no|num|number|id)/i],
   // Ship date — also accept J&T's "Entry time" / "Signing time".
   shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
   // Origin column — explicit "shipper / origin / from / source" so it
@@ -69,7 +72,9 @@ const COL_PATTERNS = {
   // The bare /country/i is the last resort and only matches when no
   // more-specific pattern hit (origin patterns already consumed the
   // shipper-country column thanks to detectColumns' `used` set).
-  dest:            [/^dest$/i, /destination.?(location|country)?/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/, /النطاق/i, /^zone$/i],
+  // Anchored "destination(. location|country)" so it can't grab unrelated
+  // "Destination Hub"-style columns (Delex — often empty) ahead of Region.
+  dest:            [/^dest$/i, /^destination(\s*(location|country))?$/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/, /النطاق/i, /^zone$/i, /^region$/i],
   destCity:        [/dest.?city/i, /consignee.?city/i, /customer.?city/i, /city/i, /مدين/i],
   // Weight column priority:
   //   • "Settlement weight" — J&T's billed weight (rounded up to next kg)
@@ -100,7 +105,7 @@ const COL_PATTERNS = {
   // collected) without stealing "COD Service Fee" (→ codFee) — the anchors
   // keep it from matching anything longer. Without it the COD column went
   // undetected on iMile fee bills and approval recorded 0 COD received.
-  codAmount:       [/cod.?amount/i, /cash.?on/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i, /^cod$/i],
+  codAmount:       [/cod.?amount/i, /cash.?on/i, /collection.?amount/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i, /^cod$/i],
   // COD service fee — the per-shipment fee carriers charge for handling
   // cash-on-delivery (independent of the COD amount itself). iMile puts
   // this in a dedicated "COD Service Fee" column on the same row as the
@@ -195,6 +200,7 @@ const CARRIER_KIND_PATTERNS = [
   { kind: 'imile',      re: /imile|آي.?مايل|اي.?مايل|آيمايل|ايمايل/i },
   { kind: 'delivernow', re: /deliver.?now|ديلفر.?ناو|ديليفر|ديلفرناو/i },
   { kind: 'webek',      re: /webek|ويبك/i },
+  { kind: 'delex',      re: /delex|ديلكس/i },
 ];
 
 export function resolveCarrierKind(carrier) {
@@ -241,6 +247,14 @@ export const CARRIER_FIELDS = {
   webek: {
     core:     ['awb', 'shipDate', 'dest', 'deliveryCharges', 'codAmount', 'posFee'],
     required: ['deliveryCharges'],
+  },
+  // Delex — «كشف الطلبات»: سجل تشغيلي بلا أي أسعار (Cost=0 في كل الصفوف).
+  // الأسعار من العقد (priceFromContract): Barcode→awb · Region→dest ·
+  // Collection Amount→codAmount · Status→signingStatus (يسقط المرتجعات).
+  // لا deliveryCharges في الملف إطلاقاً، فالمطلوب awb فقط.
+  delex: {
+    core:     ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'codAmount', 'signingStatus'],
+    required: ['awb'],
   },
   // بوليصة Boleeseh — broker that issues policies via 4 sub-carriers
   // (smsa / aramex / aymakan / jt_express). The pricing key in the
@@ -522,7 +536,10 @@ export function normalizeCountry(raw) {
 // per-shipment 15% tax (which can differ by a few SAR). We filter the row
 // itself out (it isn't a shipment) but preserve the tax amount so the
 // comparison against the carrier statement's gross total stays accurate.
-export function mapRows(raw, colMap) {
+// opts.keepUnbilled — for unpriced operational exports (Delex «كشف الطلبات»:
+// every charge column is 0 because the contract IS the price source). Keeps
+// zero-billed DELIVERED rows in the audit; the returns-drop still applies.
+export function mapRows(raw, colMap, opts = {}) {
   const allMapped = raw.map(row => {
     const awb         = String(row[colMap.awb] ?? '');
     const billingType = String(row[colMap.billingType] ?? '').trim();
@@ -660,10 +677,11 @@ export function mapRows(raw, colMap) {
   const filtered = allMapped.filter(r => {
     // Need a destination, and EITHER a billed weight (weight-tiered carriers)
     // OR a delivery charge (flat-per-shipment carriers like Webek that don't
-    // bill by weight). Truly-empty rows are still dropped by the totalBilled
-    // check below.
+    // bill by weight) — unless the file is a known unpriced export
+    // (keepUnbilled), where neither exists by design. Truly-empty rows are
+    // still dropped by the totalBilled check below.
     if (!r.dest) return false;
-    if (!(r.weight > 0) && !((r.deliveryCharges || 0) > 0)) return false;
+    if (!opts.keepUnbilled && !(r.weight > 0) && !((r.deliveryCharges || 0) > 0)) return false;
     if (!isRealShipmentAwb(r.awb)) return false;
 
     const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
@@ -684,7 +702,10 @@ export function mapRows(raw, colMap) {
     // Per the user's rule: returns don't count toward AP. If the
     // carrier didn't bill anything (and this isn't a COD-fee row that
     // legitimately has a 1 SAR fee waiting to apply), it's a return.
-    if (!r.isCod && totalBilled <= 0.01) return false;
+    // keepUnbilled (unpriced exports) skips this — zero-billed DELIVERED
+    // rows are the normal case there, and returns were already dropped
+    // by the signingStatus check above.
+    if (!opts.keepUnbilled && !r.isCod && totalBilled <= 0.01) return false;
 
     return true;
   });
@@ -783,6 +804,34 @@ export function auditRow(row, contract) {
       expected: null,
       diff: null,
       issues: [`المسار غير موجود في العقد: ${route}${row.serviceType ? ` (${row.serviceType})` : ''}`],
+    };
+  }
+
+  // ── Price-from-contract (contract.priceFromContract — Delex) ──
+  // The uploaded file is an unpriced operational export (every charge column
+  // is 0); the carrier's invoice is a 4-line SUMMARY priced exactly by the
+  // contract. So the audit COMPUTES the expected invoice from the contract
+  // (delivery per delivered shipment + posFeePct × COD collected) and uses it
+  // as both sides — the resulting totals are what the carrier's summary
+  // invoice must equal.
+  if (contract?.priceFromContract) {
+    const codAmt = Number(row.codAmount) || 0;
+    const posPct0 = Number(contract?.posFeePct ?? 0);
+    const posFee0 = codAmt > 0 && posPct0 > 0 ? +(codAmt * posPct0).toFixed(4) : 0;
+    const breakdown = {
+      delivery: calc.delivery, rss: calc.rss, fuel: calc.fuel,
+      codFee: 0, posFee: posFee0,
+      // 4dp, not 2: the carrier computes the % fee on the PERIOD total, so
+      // per-row 2dp rounding would drift the file total by a few halalas.
+      total: +(calc.total + posFee0).toFixed(4),
+    };
+    return {
+      ...row,
+      status:   'ok',
+      invoiced: { ...breakdown, tax: 0 },
+      expected: { ...breakdown },
+      diffs:    { delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0, total: 0 },
+      issues:   [],
     };
   }
 
