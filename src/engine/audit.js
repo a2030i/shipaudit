@@ -76,6 +76,10 @@ const COL_PATTERNS = {
   // "Destination Hub"-style columns (Delex — often empty) ahead of Region.
   dest:            [/^dest$/i, /^destination(\s*(location|country))?$/i, /(consignee|customer).?country/i, /^to$/i, /^to.?country$/i, /country/i, /دولة/i, /^الى$/, /النطاق/i, /^zone$/i, /^region$/i],
   destCity:        [/dest.?city/i, /consignee.?city/i, /customer.?city/i, /city/i, /مدين/i],
+  // Excess-weight FEE (Webek «رسوم الوزن الزائد») — must be declared BEFORE
+  // `weight` in this object: the broad /وزن/i weight pattern would otherwise
+  // grab the fee column on schemas that allow both fields.
+  excessFee:       [/رسوم.?الوزن.?الزائد/i, /excess.?weight.?(fee|charge)/i, /overweight.?(fee|charge)/i],
   // Weight column priority:
   //   • "Settlement weight" — J&T's billed weight (rounded up to next kg)
   //   • "Chargeable weight" — Aramex's billed weight
@@ -245,7 +249,7 @@ export const CARRIER_FIELDS = {
   // كـ dest) وشامل الضريبة؛ POS = 0.8% من مبلغ التحصيل. لا وزن مفوتر (flat
   // per shipment) فالمطلوب dest + deliveryCharges فقط.
   webek: {
-    core:     ['awb', 'shipDate', 'dest', 'deliveryCharges', 'codAmount', 'posFee'],
+    core:     ['awb', 'shipDate', 'dest', 'deliveryCharges', 'excessFee', 'codAmount', 'posFee'],
     required: ['deliveryCharges'],
   },
   // Delex — «كشف الطلبات»: سجل تشغيلي بلا أي أسعار (Cost=0 في كل الصفوف).
@@ -672,6 +676,8 @@ export function mapRows(raw, colMap, opts = {}) {
       // return rows it holds the original OUTBOUND AWB — the merchant
       // re-billing key.
       shipperRef:      String(row[colMap.shipperRef] ?? '').trim(),
+      // Excess-weight fee (Webek) — audited against contract.excessPerKg.
+      excessFee:       parseFloat(row[colMap.excessFee] ?? 0) || 0,
     };
   });
 
@@ -906,6 +912,32 @@ export function auditRow(row, contract) {
     deliveryVat    = +(row.deliveryCharges - billedDelivery).toFixed(2);
   }
 
+  // Excess-weight fee (Webek: «رسوم الوزن الزائد», VAT-inclusive like the
+  // delivery column). The file has NO weight column, so the audit verifies
+  // the fee against contract.excessPerKg (2 SAR/kg over the free allowance):
+  // a clean multiple of the per-kg rate is expected as-billed; otherwise the
+  // expected snaps to the NEAREST multiple and the remainder shows as a
+  // delivery diff. Folded into the delivery component so totals match the
+  // carrier's invoice without a new UI column.
+  let billedExcess = Number(row.excessFee) || 0;
+  let excessAdj    = 0; // expected excess — added to expectedCalc.delivery below
+  if (billedExcess > 0) {
+    if (contract?.deliveryInclusiveVat) {
+      const pre = +(billedExcess / 1.15).toFixed(2);
+      deliveryVat = +(deliveryVat + (billedExcess - pre)).toFixed(2);
+      billedExcess = pre;
+    }
+    // Webek bills fractional kilos (observed 6.8 kg × 2), so validate at
+    // 0.1 kg granularity — integer-kg snapping would manufacture diffs up
+    // to perKg/2 (1.00 SAR) on legitimate fees and breach the tolerance.
+    const perKg = Number(contract?.excessPerKg ?? 0);
+    const unit  = perKg * 0.1;
+    excessAdj = unit > 0
+      ? +(Math.round(billedExcess / unit) * unit).toFixed(2)
+      : billedExcess;
+    billedDelivery = +(billedDelivery + billedExcess).toFixed(2);
+  }
+
   const preTaxTotal = billedDelivery + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
   // Tax amount: prefer the verbatim "Tax Amount" from the file. When the file
   // gives only a VAT *rate* (e.g. SMSA "VAT%" = 15), derive the amount =
@@ -939,12 +971,12 @@ export function auditRow(row, contract) {
   const expectedFuel = contract?.fuelPassthrough ? invoicedFuel : calc.fuel;
 
   const expectedCalc = {
-    delivery: calc.delivery,
+    delivery: +(calc.delivery + excessAdj).toFixed(2),
     rss:      calc.rss,
     fuel:     expectedFuel,
     codFee:   expectedCodFee,
     posFee:   expectedPosFee,
-    total:    +(calc.total - calc.fuel + expectedFuel + expectedCodFee + expectedPosFee).toFixed(4),
+    total:    +(calc.total + excessAdj - calc.fuel + expectedFuel + expectedCodFee + expectedPosFee).toFixed(4),
   };
 
   const diffs = {

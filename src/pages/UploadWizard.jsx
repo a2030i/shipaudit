@@ -45,6 +45,7 @@ const FIELD_META = {
   codPaymentMethod:{ label: 'طريقة دفع COD' },
   posAmount:       { label: 'مبلغ POS' },
   posFee:          { label: 'رسوم POS (بطاقة)' },
+  excessFee:       { label: 'رسوم الوزن الزائد' },
   tax:             { label: 'الضريبة (مبلغ)' },
   taxRate:         { label: 'نسبة الضريبة % (VAT%)' },
   serviceType:     { label: 'نوع الخدمة (Road/Air)' },
