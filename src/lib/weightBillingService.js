@@ -192,7 +192,11 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   // works for the user right now.
   let filePath = null;
   try {
-    const path = `${new Date().toISOString().slice(0, 7)}/${fileName}`;
+    // Storage keys must be ASCII-only (§1.7 — Supabase Storage silently
+    // rejects Arabic keys, which is why every past export had
+    // file_path=null). The Arabic name stays in file_name for display.
+    const asciiName = fileName.replace(/[^A-Za-z0-9._-]/g, '_');
+    const path = `${new Date().toISOString().slice(0, 7)}/${Date.now()}_${asciiName}`;
     const { error: upErr } = await supabase
       .storage
       .from('weight-billing')
@@ -235,8 +239,11 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   }
 
   // Trigger the browser download for the user who clicked the button.
-  // Manual-trigger only — cron runs are silent.
-  if (trigger === 'manual' && typeof window !== 'undefined') {
+  // Every interactive trigger downloads ('manual' from /weight-billing,
+  // 'internal-exports' and 'pull-all' from the pull hub) — the old
+  // manual-only guard silently skipped the download for the pull hub.
+  // Only headless runs ('cron') stay silent.
+  if (trigger !== 'cron' && typeof window !== 'undefined') {
     XLSX.writeFile(wb, fileName);
   }
 
