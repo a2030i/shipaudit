@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, X, Send, RefreshCw, Sparkles, Paperclip, Save } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Spinner, toast } from './UI.jsx';
-import { buildAssistantContext, askAssistant } from '../engine/aiAssistant.js';
+import { buildAssistantContext, askAssistantAgent } from '../engine/aiAssistant.js';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
 import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
@@ -20,11 +20,11 @@ import { useAuth } from '../lib/auth.jsx';
 // ─────────────────────────────────────────────────────────────────────────────
 
 const SUGGESTIONS = [
-  'كم رصيدي الإجمالي؟',
-  'أي شركة لها أكبر مبلغ مستحق؟',
-  'كم فاتورة متأخّرة عن السداد؟',
-  'وش آخر كشف رفعته؟',
-  'كم عملية متنازع عليها؟',
+  'كم عميل دفع مسبق وعليه دين؟ وكم إجماليهم؟',
+  'مين أكبر 5 عملاء عليهم دين؟',
+  'كم متجر محفظته سالبة؟ وكم المبلغ؟',
+  'شغّل فحص سلامة البيانات ولخّص النتائج',
+  'مين عملاء الدفع اللاحق الموقوفين؟',
 ];
 
 export default function AIChat() {
@@ -66,15 +66,11 @@ export default function AIChat() {
     setInput('');
     setBusy(true);
     try {
-      const abort = new AbortController();
-      abortRef.current = abort;
-      const reply = await askAssistant([...messages, userMsg], context, abort.signal);
-      setMessages(m => [...m, { role: 'assistant', content: reply }]);
+      const { answer, queries } = await askAssistantAgent([...messages, userMsg]);
+      setMessages(m => [...m, { role: 'assistant', content: answer, queries }]);
     } catch (e) {
-      if (e.name !== 'AbortError') {
-        toast(`AI: ${e.message}`, 'error');
-        setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }]);
-      }
+      toast(`AI: ${e.message}`, 'error');
+      setMessages(m => [...m, { role: 'assistant', content: `⚠️ ${e.message}` }]);
     }
     setBusy(false);
   };
@@ -290,7 +286,7 @@ export default function AIChat() {
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 700, fontSize: 14, lineHeight: 1.1 }}>المحاسب الذكي</div>
               <div style={{ fontSize: 10, opacity: 0.85, marginTop: 2 }}>
-                {ctxLoading ? 'جارٍ تحميل البيانات...' : 'يرى أرصدتك وعملياتك المحفوظة'}
+                يستعلم بياناتك الحيّة ويحلّلها
               </div>
             </div>
             <button onClick={reset} title="جلسة جديدة" style={{ ...iconBtn }}>
@@ -345,6 +341,11 @@ export default function AIChat() {
                 borderBottomLeftRadius:  m.role === 'user' ? 11 : 3,
               }}>
                 {m.content}
+                {m.role === 'assistant' && m.queries?.length > 0 && (
+                  <div style={{ marginTop: 6, fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                    🔎 {m.queries.length} استعلام على البيانات الحيّة
+                  </div>
+                )}
                 {m.attachment?.kind === 'statement' && (
                   <button onClick={() => saveStatementFromChat(m.attachment)} disabled={busy}
                     style={chatActionBtn}>
