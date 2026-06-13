@@ -192,12 +192,31 @@ export async function uploadReceivablesSnapshot({ parsed, sourceFile, userId }) 
   const total = inserts
     .filter(r => r.is_summary)
     .reduce((s, r) => s + Number(r.balance_amount || 0), 0);
+
+  // Auto-link the new customers to merchants right after upload, so the
+  // overlay + collection campaigns pick them up WITHOUT a manual «ربط
+  // تلقائي» click. autoLinkCustomers skips existing manual links and uses
+  // the segment-aware bulk_match RPC, so compound Zoho names like «مؤسسة X
+  // - متجر Y» link to merchant «متجر Y» correctly. Non-fatal: the snapshot
+  // is already saved; linking is enrichment, so a failure here must not
+  // surface as an upload error. Dynamic import avoids a circular dep.
+  let linkedCount = 0;
+  try {
+    const names = [...new Set(parsed.rows.map(r => r.customer).filter(Boolean))];
+    const { autoLinkCustomers } = await import('./merchantsService.js');
+    const res = await autoLinkCustomers(names, null, { userId });
+    linkedCount = [...res.values()].filter(l => l?.storeId).length;
+  } catch (e) {
+    console.info('[receivables] post-upload auto-link skipped:', e.message);
+  }
+
   return {
     snapshotId,
     snapshotDate,
     customerCount: inserts.filter(r => r.is_summary).length,
     invoiceCount:  inserts.filter(r => !r.is_summary).length,
     total: +total.toFixed(2),
+    linkedCount,
   };
 }
 
