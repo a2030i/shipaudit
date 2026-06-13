@@ -421,7 +421,7 @@ function AppInner({ theme, toggleTheme }) {
               <LamhaMark size={32}/>
             ) : (
               <div style={{ display:'flex', alignItems:'center', width:'100%' }}>
-                <LamhaLogo height={24} color="#fff" accent="#10B981"/>
+                <LamhaLogo height={30}/>
               </div>
             )}
             {mobileOpen && (
