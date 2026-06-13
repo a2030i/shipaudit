@@ -998,9 +998,15 @@ export default function CustomerReceivables({ isActive = true }) {
       return;
     }
     const today = new Date(); today.setHours(0,0,0,0);
+    // When an aging-bucket filter is active, the collection amount must be
+    // the slice WITHIN the selected buckets, not the customer's full
+    // balance — otherwise a "+90 day" campaign shows the whole debt.
+    const bucketActive = bucketFilters.size > 0;
+    const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
+    const amtHeader = bucketActive ? 'المبلغ في الشريحة (ر.س)' : 'الإجمالي (ر.س)';
     const headers = [
       'اسم المتجر', 'هاتف', 'نوع الفوترة', 'الحالة في المنصّة',
-      'الإجمالي (ر.س)', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام',
+      amtHeader, 'عدد الفواتير', 'أقدم فاتورة', 'الأيام',
       'آخر شحنة', 'الأيام منذ آخر شحنة', 'الرصيد في المحفظة',
       'حالة الربط', 'ملاحظة',
     ];
@@ -1014,7 +1020,7 @@ export default function CustomerReceivables({ isActive = true }) {
         m?.phone || '',
         m?.billingType || '',
         m?.platformStatus || '',
-        Number(c.total || 0).toFixed(2),
+        Number(amtOf(c)).toFixed(2),
         c.invoiceCount || 0,
         c.oldestInvoiceDate || '',
         c.daysOutstanding || '',
@@ -1025,7 +1031,7 @@ export default function CustomerReceivables({ isActive = true }) {
         c.notes || '',
       ];
     });
-    const totalDebt = visibleCustomers.reduce((s, c) => s + (c.total || 0), 0);
+    const totalDebt = visibleCustomers.reduce((s, c) => s + amtOf(c), 0);
     const footer = ['الإجمالي', '', '', '', totalDebt.toFixed(2), '', '', '', '', '', '', '', ''];
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], footer]);
     ws['!cols'] = [
@@ -1055,13 +1061,18 @@ export default function CustomerReceivables({ isActive = true }) {
       toast('لا توجد بيانات للتصدير', 'info');
       return;
     }
+    // Aging-bucket aware: a "+90 day" campaign must message the slice
+    // within those buckets, not the customer's whole balance — and skip
+    // customers whose slice is empty even if their total is positive.
+    const bucketActive = bucketFilters.size > 0;
+    const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
     const withPhone = visibleCustomers
-      .filter(c => c.merchant?.phone && (c.total || 0) > 0.5)
+      .filter(c => c.merchant?.phone && amtOf(c) > 0.5)
       .map(c => {
         const phone = String(c.merchant.phone).replace(/[^\d]/g, '');
         // Variable 2: amount — no decimals + thousands separators for
         // a clean WhatsApp render. 5,432 reads better than 5432.00.
-        const amount = Math.round(Number(c.total) || 0).toLocaleString('en-US');
+        const amount = Math.round(amtOf(c)).toLocaleString('en-US');
         // Variable 1: prefer the platform store name (cleaner) over
         // the raw receivables name. Strip any leading dashes/spaces.
         const name = (c.merchant?.storeName || c.name || '').trim();
