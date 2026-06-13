@@ -26,7 +26,12 @@ export async function askAssistantAgent(messages) {
   const clean = (messages || [])
     .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
     .map(m => ({ role: m.role, content: String(m.content) }));
-  const { data, error } = await supabase.functions.invoke('assistant', { body: { messages: clean } });
+  // The website model picker (Settings → AI) drives the assistant too, so
+  // the user has ONE place to choose the model. The KEY stays a Supabase
+  // secret — only the model id (not secret) is passed from the client. If
+  // unset, the edge function falls back to ASSISTANT_MODEL / its default.
+  const model = loadSettings()?.openrouterModel || undefined;
+  const { data, error } = await supabase.functions.invoke('assistant', { body: { messages: clean, model } });
   if (error) throw new Error(error.message);
   if (!data?.ok) throw new Error(data?.error || 'تعذّر تشغيل المساعد');
   return { answer: data.answer || '', queries: data.queries || [] };
