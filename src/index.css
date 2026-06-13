@@ -1,5 +1,12 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* ── Lamha corporate font (PingAR+LT) — same family the internal system uses ── */
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Light.otf')   format('opentype'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Medium.otf')  format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Bold.otf')    format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Heavy.otf')   format('opentype'); font-weight: 800; font-display: swap; }
+
 /* ══════════════════════════════════════════════
    LAMHA BRAND COLORS
    Navy  #1B1E54  – wordmark / primary
@@ -62,7 +69,7 @@
   --nav-label-color: #5a62a3;
 
   --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'Courier New', monospace;
-  --font-sans: 'IBM Plex Sans Arabic', 'Inter', -apple-system, 'Segoe UI', sans-serif;
+  --font-sans: 'PingARLT', 'IBM Plex Sans Arabic', 'Inter', -apple-system, 'Segoe UI', sans-serif;
 
   --sw:   260px;
   --sw-c:  72px;
