@@ -97,14 +97,14 @@
    affiliate.lamha.sa CSS (main-blue #1447E6, off-white #FAFAFA sidebar,
    #FFFFFF cards, #E5E5E5 borders, #737373 muted, 10px radius). */
 [data-theme="light"] {
-  --bg:        #F4F4F4;   /* page canvas — unified with sidebar/header/logo */
-  --bg2:       #ECECEC;   /* muted / alt surface */
-  --surface:   #FFFFFF;   /* cards (white on the #F4F4F4 canvas) */
-  --surface2:  #F8F8F8;   /* hovered cards */
+  --bg:        #FFFFFF;   /* page canvas — Lamha --background (white) */
+  --bg2:       #F5F5F5;   /* muted / alt surface */
+  --surface:   #FFFFFF;   /* cards */
+  --surface2:  #F7F7F7;   /* hovered cards */
   --card:      #FFFFFF;
-  --card2:     #F8F8F8;
-  --sidebar:   #F4F4F4;   /* matches the logo's background so it blends */
-  --sidebar2:  #ECECEC;
+  --card2:     #F7F7F7;
+  --sidebar:   #FFFFFF;   /* white sidebar (logo blends via mix-blend-mode) */
+  --sidebar2:  #F4F4F4;
 
   --border:    #EAECF0;   /* Lamha border-color */
   --border2:   #E5E5E5;   /* Lamha --border / inputs */
@@ -139,7 +139,7 @@
   --nav-active-bg:   #E8EDFB;    /* blue-tinted active pill (visible on #F4F4F4) */
   --nav-active-border: #1447E6;
   --nav-active-text: #1447E6;    /* Lamha sidebar-primary */
-  --nav-hover-bg:    #EAEAEA;    /* subtle hover on the #F4F4F4 sidebar */
+  --nav-hover-bg:    #F4F4F4;    /* subtle hover on the white sidebar */
   --nav-label-color: #A1A1A1;
 
   --shadow-sm: 0 1px 2px rgba(16,24,40,.05);
