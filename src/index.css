@@ -387,6 +387,11 @@ button:active { transform: scale(.97); }
 .page-content {
   flex: 1; overflow: hidden; display: flex; flex-direction: column;
   position: relative;
+  /* The whole page content lives inside one floating white box (Lamha). */
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  box-shadow: var(--shadow-sm);
 }
 
 /* ── Hamburger (mobile only) ── */
