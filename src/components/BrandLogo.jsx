@@ -66,9 +66,9 @@ export function LamhaLogo({ height = 32 }) {
       alt="Lamha"
       height={height}
       onError={() => setBroken(true)}
-      // mixBlendMode 'multiply' melts the logo's near-white background into
-      // the white sidebar so no grey box shows around the artwork.
-      style={{ display: 'block', height, width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply' }}
+      // Sidebar bg now equals the logo's #F4F4F4 background, so the artwork
+      // blends in with no grey box — no blend trick needed.
+      style={{ display: 'block', height, width: 'auto', objectFit: 'contain' }}
     />
   );
 }
