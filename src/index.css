@@ -86,56 +86,59 @@
 /* Light theme — aligned to the Lamha internal-system identity:
    royal-blue accent, cool slate canvas, WHITE right sidebar with a
    blue active state, IBM Plex Sans Arabic, soft elevation. */
+/* Light theme — EXACT Lamha internal-system tokens, extracted from
+   affiliate.lamha.sa CSS (main-blue #1447E6, off-white #FAFAFA sidebar,
+   #FFFFFF cards, #E5E5E5 borders, #737373 muted, 10px radius). */
 [data-theme="light"] {
-  --bg:        #F8FAFC;   /* slate-50 — cool page canvas (Lamha) */
-  --bg2:       #F1F5F9;   /* slate-100 */
+  --bg:        #FAFAFA;   /* page canvas (Lamha off-white) */
+  --bg2:       #F5F5F5;   /* muted / alt surface */
   --surface:   #FFFFFF;   /* cards */
-  --surface2:  #F8FAFC;   /* hovered cards */
+  --surface2:  #F5F5F5;   /* hovered cards */
   --card:      #FFFFFF;
-  --card2:     #F8FAFC;
-  --sidebar:   #FFFFFF;   /* white sidebar (Lamha) */
-  --sidebar2:  #F8FAFC;
+  --card2:     #F5F5F5;
+  --sidebar:   #FAFAFA;   /* off-white sidebar (Lamha — not pure white) */
+  --sidebar2:  #F5F5F5;
 
-  --border:    #EEF2F7;   /* slate-ish, almost invisible */
-  --border2:   #E2E8F0;   /* slate-200 for inputs */
-  --border3:   #CBD5E1;   /* slate-300 for strong dividers */
+  --border:    #EAECF0;   /* Lamha border-color */
+  --border2:   #E5E5E5;   /* Lamha --border / inputs */
+  --border3:   #D4D4D8;
 
-  --accent:    #2477C9;   /* Lamha azure (matches the logo icon) */
-  --accent2:   #1B5FA8;   /* deeper azure for hover/press */
-  --accent3:   #7FC1EC;   /* sky — light end of gradients */
-  --accent-dim:  rgba(36,119,201,.08);
-  --accent-glow: rgba(36,119,201,.16);
+  --accent:    #1447E6;   /* Lamha main interactive blue */
+  --accent2:   #1039C4;   /* darker for hover/press */
+  --accent3:   #3D6ACB;   /* Lamha secondary blue (--main-blue) */
+  --accent-dim:  rgba(20,71,230,.08);
+  --accent-glow: rgba(20,71,230,.16);
 
-  --green:     #10B981;
-  --green2:    #059669;
-  --red:       #EF4444;
-  --red2:      #DC2626;
-  --gold:      #F59E0B;
+  --green:     #009588;   /* Lamha chart-2 teal-green */
+  --green2:    #007a70;
+  --red:       #E40014;   /* Lamha destructive */
+  --red2:      #C1000F;
+  --gold:      #F99C00;   /* Lamha chart amber */
   --gold2:     #D97706;
-  --purple:    #8B5CF6;
+  --purple:    #AC4BFF;   /* Lamha chart purple */
   --purple2:   #7C3AED;
-  --warn:      #F97316;
-  --blue:      #2477C9;
+  --warn:      #F05100;   /* Lamha chart orange */
+  --blue:      #1447E6;
 
-  --text:      #0F172A;   /* slate-900 — readable body (navy via --brand-navy) */
-  --text2:     #334155;   /* slate-700 */
-  --muted:     #64748B;   /* slate-500 */
-  --muted2:    #94A3B8;   /* slate-400 */
-  --muted3:    #CBD5E1;   /* slate-300 */
+  --text:      #0A0A0A;   /* Lamha foreground (near-black) */
+  --text2:     #344054;   /* Lamha primary-text */
+  --muted:     #737373;   /* Lamha muted-foreground */
+  --muted2:    #A1A1A1;
+  --muted3:    #D4D4D8;
 
-  /* Nav on a WHITE sidebar → dark text, blue active */
-  --nav-text:        #64748B;   /* slate-500 */
-  --nav-text-hover:  #1D4ED8;   /* blue-700 */
-  --nav-active-bg:   rgba(37,99,235,.10);
-  --nav-active-border: #2563EB;
-  --nav-active-text: #1B5FA8;    /* azure text on the light-blue active pill */
-  --nav-hover-bg:    rgba(37,99,235,.05);
-  --nav-label-color: #94A3B8;   /* section labels */
+  /* Nav: off-white sidebar, light-gray active pill + blue text & bar */
+  --nav-text:        #525252;   /* readable on off-white */
+  --nav-text-hover:  #1447E6;
+  --nav-active-bg:   #F0F2F8;    /* subtle blue-tinted active pill */
+  --nav-active-border: #1447E6;
+  --nav-active-text: #1447E6;    /* Lamha sidebar-primary */
+  --nav-hover-bg:    #F5F5F5;    /* Lamha sidebar-accent */
+  --nav-label-color: #A1A1A1;
 
-  --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03);
-  --shadow-md: 0 4px 16px rgba(15,23,42,.06), 0 2px 4px rgba(15,23,42,.04);
-  --shadow-lg: 0 12px 40px rgba(15,23,42,.08), 0 4px 12px rgba(15,23,42,.04);
-  --shadow-xl: 0 24px 56px rgba(15,23,42,.10), 0 8px 16px rgba(15,23,42,.05);
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.05);
+  --shadow-md: 0 1px 3px rgba(16,24,40,.10), 0 1px 2px -1px rgba(16,24,40,.10);
+  --shadow-lg: 0 10px 15px -3px rgba(16,24,40,.10), 0 4px 6px -4px rgba(16,24,40,.10);
+  --shadow-xl: 0 20px 25px -5px rgba(16,24,40,.10), 0 8px 10px -6px rgba(16,24,40,.10);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -283,6 +286,8 @@ button:active { transform: scale(.97); }
   /* white on dark sidebar (dark theme) · blue on white sidebar (light) */
   color: var(--nav-active-text, #fff);
   font-weight: 600;
+  /* Lamha-style blue indicator bar on the right (start) inner edge */
+  box-shadow: inset -3px 0 0 0 var(--nav-active-border, var(--accent));
 }
 .nav-item.active svg { color: var(--accent); }
 .nav-item .nav-dot {
