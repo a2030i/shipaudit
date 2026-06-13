@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, X, Send, RefreshCw, Sparkles, Paperclip, Save } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Spinner, toast } from './UI.jsx';
-import { buildAssistantContext, askAssistantAgent } from '../engine/aiAssistant.js';
+import { buildAssistantContext, askAssistantAgent, loadMyChat, saveMyChat, clearMyChat } from '../engine/aiAssistant.js';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
 import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
@@ -27,23 +27,12 @@ const SUGGESTIONS = [
   'مين عملاء الدفع اللاحق الموقوفين؟',
 ];
 
-const CHAT_STORE = 'sa-aichat-history';
-// Restore the visible conversation from localStorage so a page refresh
-// doesn't wipe it. Attachments (File objects) can't be serialized — we
-// keep only role/content/queries; the save buttons of an old attachment
-// won't survive a reload, which is fine (re-attach if needed).
-function loadStoredChat() {
-  try {
-    const raw = localStorage.getItem(CHAT_STORE);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
-}
-
 export default function AIChat() {
   const { user } = useAuth();
   const [open, setOpen]         = useState(false);
-  const [messages, setMessages] = useState(loadStoredChat); // [{ role, content, attachment? }]
+  const [messages, setMessages] = useState([]); // [{ role, content, attachment? }]
+  const loadedRef = useRef(false);   // server chat loaded once per session
+  const saveTimer = useRef(null);
   const [input, setInput]       = useState('');
   const [busy, setBusy]         = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -71,15 +60,23 @@ export default function AIChat() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, busy]);
 
-  // Persist the conversation so a refresh doesn't lose it. Strip
-  // `attachment` (holds a File + parsed payload that can't be serialized
-  // and shouldn't outlive the session); keep the text + query trace.
+  // Load THIS employee's own conversation from the server (RLS-isolated)
+  // the first time the panel opens. Private per-user; survives refresh and
+  // follows them across devices.
   useEffect(() => {
-    try {
-      const slim = messages.map(({ role, content, queries }) => ({ role, content, queries }));
-      localStorage.setItem(CHAT_STORE, JSON.stringify(slim.slice(-50)));
-    } catch { /* quota / private mode — non-fatal */ }
-  }, [messages]);
+    if (!open || loadedRef.current || !user?.id) return;
+    loadedRef.current = true;
+    loadMyChat().then(saved => { if (saved.length) setMessages(saved); }).catch(() => {});
+  }, [open, user]);
+
+  // Persist on change (debounced) to the per-user row — strip `attachment`
+  // (File payload, can't serialize / shouldn't outlive the session).
+  useEffect(() => {
+    if (!loadedRef.current || !user?.id) return;
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveMyChat(user.id, messages).catch(() => {}); }, 600);
+    return () => clearTimeout(saveTimer.current);
+  }, [messages, user]);
 
   const send = async (text) => {
     const trimmed = (text ?? input).trim();
@@ -100,7 +97,7 @@ export default function AIChat() {
 
   const reset = () => {
     setMessages([]);
-    try { localStorage.removeItem(CHAT_STORE); } catch { /* ignore */ }
+    if (user?.id) clearMyChat(user.id).catch(() => {});
     refreshContext();
   };
 

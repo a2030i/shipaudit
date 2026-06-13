@@ -22,6 +22,29 @@ const OR_BASE = 'https://openrouter.ai/api/v1';
 // data (not a static snapshot). Returns { answer, queries }. The edge
 // function loops tool→result→tool internally; we only pass the visible
 // conversation (user/assistant turns, stripped of UI attachments).
+// ── Per-user chat persistence (RLS-isolated) ──
+// Each employee's conversation lives in assistant_chats keyed by their
+// user_id; RLS guarantees no one (not even admin) reads another's via the
+// API. Replaces the shared localStorage cache so private questions stay
+// private and the chat follows the employee across devices.
+export async function loadMyChat() {
+  const { data, error } = await supabase.from('assistant_chats').select('messages').maybeSingle();
+  if (error) return [];
+  return Array.isArray(data?.messages) ? data.messages : [];
+}
+export async function saveMyChat(userId, messages) {
+  if (!userId) return;
+  const slim = (messages || []).map(({ role, content, queries }) => ({ role, content, queries })).slice(-50);
+  await supabase.from('assistant_chats').upsert(
+    { user_id: userId, messages: slim, updated_at: new Date().toISOString() },
+    { onConflict: 'user_id' },
+  );
+}
+export async function clearMyChat(userId) {
+  if (!userId) return;
+  await supabase.from('assistant_chats').delete().eq('user_id', userId);
+}
+
 export async function askAssistantAgent(messages) {
   const clean = (messages || [])
     .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
