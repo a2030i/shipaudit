@@ -420,8 +420,8 @@ function AppInner({ theme, toggleTheme }) {
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
-              <div style={{ display:'flex', alignItems:'center', width:'100%', background:'#f4f4f4', borderRadius:10 }}>
-                <LamhaLogo height={56}/>
+              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', background:'#f4f4f4', borderRadius:10 }}>
+                <LamhaLogo height={68}/>
               </div>
             )}
             {mobileOpen && (
