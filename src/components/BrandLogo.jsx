@@ -66,7 +66,9 @@ export function LamhaLogo({ height = 32 }) {
       alt="Lamha"
       height={height}
       onError={() => setBroken(true)}
-      style={{ display: 'block', height, width: 'auto', objectFit: 'contain' }}
+      // mixBlendMode 'multiply' melts the logo's near-white background into
+      // the white sidebar so no grey box shows around the artwork.
+      style={{ display: 'block', height, width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply' }}
     />
   );
 }
