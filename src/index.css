@@ -239,8 +239,8 @@ button:active { transform: scale(.97); }
   width: 100%;
   overflow: hidden;
   background: var(--bg);
-  padding: 12px;
-  gap: 12px;
+  padding: 14px;
+  gap: 18px;
   box-sizing: border-box;
 }
 
@@ -371,7 +371,7 @@ button:active { transform: scale(.97); }
   flex: 1; min-width: 0; display: flex;
   flex-direction: column; height: 100%; overflow: hidden;
   background: transparent;
-  gap: 12px;
+  gap: 18px;
 }
 
 /* Topbar — floating rounded bar, same #F4F4F4 canvas, white pills inside */
