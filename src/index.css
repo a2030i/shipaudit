@@ -83,25 +83,28 @@
    vibrant emerald accent, generous spacing, soft
    elevation. Inspired by Stripe + Linear + Notion.
 ══════════════════════════════════════════════ */
+/* Light theme — aligned to the Lamha internal-system identity:
+   royal-blue accent, cool slate canvas, WHITE right sidebar with a
+   blue active state, IBM Plex Sans Arabic, soft elevation. */
 [data-theme="light"] {
-  --bg:        #FAFAFA;   /* page canvas (zinc-50) */
-  --bg2:       #F4F4F5;   /* subtle alt (zinc-100) */
+  --bg:        #F8FAFC;   /* slate-50 — cool page canvas (Lamha) */
+  --bg2:       #F1F5F9;   /* slate-100 */
   --surface:   #FFFFFF;   /* cards */
-  --surface2:  #F9FAFB;   /* hovered cards */
+  --surface2:  #F8FAFC;   /* hovered cards */
   --card:      #FFFFFF;
-  --card2:     #F9FAFB;
-  --sidebar:   #0A0A0B;   /* near-black sidebar, modern */
-  --sidebar2:  #18181B;   /* zinc-900 */
+  --card2:     #F8FAFC;
+  --sidebar:   #FFFFFF;   /* white sidebar (Lamha) */
+  --sidebar2:  #F8FAFC;
 
-  --border:    #F4F4F5;   /* zinc-100, almost invisible */
-  --border2:   #E4E4E7;   /* zinc-200 for inputs */
-  --border3:   #D4D4D8;   /* zinc-300 for strong dividers */
+  --border:    #EEF2F7;   /* slate-ish, almost invisible */
+  --border2:   #E2E8F0;   /* slate-200 for inputs */
+  --border3:   #CBD5E1;   /* slate-300 for strong dividers */
 
-  --accent:    #10B981;   /* emerald-500 — vibrant green */
-  --accent2:   #059669;   /* emerald-600 */
-  --accent3:   #047857;   /* emerald-700 */
-  --accent-dim:  rgba(16,185,129,.08);
-  --accent-glow: rgba(16,185,129,.16);
+  --accent:    #2563EB;   /* blue-600 — Lamha royal blue */
+  --accent2:   #1D4ED8;   /* blue-700 */
+  --accent3:   #60A5FA;   /* blue-400 — light end of gradients */
+  --accent-dim:  rgba(37,99,235,.08);
+  --accent-glow: rgba(37,99,235,.16);
 
   --green:     #10B981;
   --green2:    #059669;
@@ -112,25 +115,27 @@
   --purple:    #8B5CF6;
   --purple2:   #7C3AED;
   --warn:      #F97316;
-  --blue:      #3B82F6;
+  --blue:      #2563EB;
 
-  --text:      #18181B;   /* zinc-900 */
-  --text2:     #3F3F46;   /* zinc-700 */
-  --muted:     #71717A;   /* zinc-500 */
-  --muted2:    #A1A1AA;   /* zinc-400 */
-  --muted3:    #D4D4D8;   /* zinc-300 */
+  --text:      #0F172A;   /* slate-900 */
+  --text2:     #334155;   /* slate-700 */
+  --muted:     #64748B;   /* slate-500 */
+  --muted2:    #94A3B8;   /* slate-400 */
+  --muted3:    #CBD5E1;   /* slate-300 */
 
-  --nav-text:        #A1A1AA;   /* zinc-400 on dark sidebar */
-  --nav-text-hover:  #FAFAFA;
-  --nav-active-bg:   rgba(16,185,129,.14);
-  --nav-active-border: rgba(16,185,129,.5);
-  --nav-hover-bg:    rgba(255,255,255,.04);
-  --nav-label-color: #52525B;   /* zinc-600 */
+  /* Nav on a WHITE sidebar → dark text, blue active */
+  --nav-text:        #64748B;   /* slate-500 */
+  --nav-text-hover:  #1D4ED8;   /* blue-700 */
+  --nav-active-bg:   rgba(37,99,235,.10);
+  --nav-active-border: #2563EB;
+  --nav-active-text: #1D4ED8;    /* blue text on the light-blue active pill */
+  --nav-hover-bg:    rgba(37,99,235,.05);
+  --nav-label-color: #94A3B8;   /* section labels */
 
-  --shadow-sm: 0 1px 2px rgba(24,24,27,.04), 0 1px 1px rgba(24,24,27,.04);
-  --shadow-md: 0 4px 16px rgba(24,24,27,.06), 0 2px 4px rgba(24,24,27,.04);
-  --shadow-lg: 0 12px 40px rgba(24,24,27,.10), 0 4px 12px rgba(24,24,27,.04);
-  --shadow-xl: 0 24px 56px rgba(24,24,27,.14), 0 8px 16px rgba(24,24,27,.06);
+  --shadow-sm: 0 1px 2px rgba(15,23,42,.04), 0 1px 1px rgba(15,23,42,.03);
+  --shadow-md: 0 4px 16px rgba(15,23,42,.06), 0 2px 4px rgba(15,23,42,.04);
+  --shadow-lg: 0 12px 40px rgba(15,23,42,.08), 0 4px 12px rgba(15,23,42,.04);
+  --shadow-xl: 0 24px 56px rgba(15,23,42,.10), 0 8px 16px rgba(15,23,42,.05);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -275,7 +280,8 @@ button:active { transform: scale(.97); }
 }
 .nav-item.active {
   background: var(--nav-active-bg);
-  color: #fff;
+  /* white on dark sidebar (dark theme) · blue on white sidebar (light) */
+  color: var(--nav-active-text, #fff);
   font-weight: 600;
 }
 .nav-item.active svg { color: var(--accent); }
@@ -290,14 +296,14 @@ button:active { transform: scale(.97); }
 
 .sidebar-footer {
   padding: 10px 10px;
-  border-top: 1px solid rgba(255,255,255,.06);
+  border-top: 1px solid var(--border);
   flex-shrink: 0;
 }
 
 .sidebar-toggle {
   position: absolute; bottom: 80px; left: -13px;
   width: 26px; height: 26px;
-  background: var(--sidebar2); border: 1px solid rgba(255,255,255,.12);
+  background: var(--surface); border: 1px solid var(--border2);
   border-radius: 50%; display: flex; align-items: center; justify-content: center;
   cursor: pointer; color: var(--nav-text); z-index: 60; transition: all .18s;
 }
