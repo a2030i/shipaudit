@@ -387,8 +387,8 @@ button:active { transform: scale(.97); }
 .page-content {
   flex: 1; overflow: hidden; display: flex; flex-direction: column;
   position: relative;
-  /* The whole page content lives inside one floating white box (Lamha). */
-  background: var(--surface);
+  /* The whole page content lives inside one floating #F4F4F4 box (Lamha). */
+  background: var(--sidebar);   /* #F4F4F4 — same shade as header/sidebar */
   border: 1px solid var(--border2);
   border-radius: 18px;
   box-shadow: var(--shadow-sm);
