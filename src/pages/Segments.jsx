@@ -165,8 +165,10 @@ const FACET_CONFIG = {
     unit: 'ر.س',
     operators: ['any', 'gte', 'lte'],
     specials:  [
-      { value: 'has_debt', label: 'عليه دين (> ٠)' },
-      { value: 'no_debt',  label: 'لا يوجد دين'    },
+      // "debt" = the matched customer's receivables total = unpaid Zoho
+      // invoices. Labels say so explicitly so the toggle is unmistakable.
+      { value: 'has_debt', label: 'عليه فواتير غير مدفوعة (زوهو)' },
+      { value: 'no_debt',  label: 'لا فواتير غير مدفوعة' },
     ],
     defaultValue: 100,
   },
