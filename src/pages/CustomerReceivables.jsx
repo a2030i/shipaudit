@@ -10,7 +10,7 @@ import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
-  Phone, Hash, ShoppingBag, ArrowLeft,
+  Phone, Hash, ShoppingBag, ArrowLeft, MessageCircle,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
@@ -21,6 +21,8 @@ import {
   setCustomerStatus,
 } from '../lib/customerReceivablesService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -628,6 +630,7 @@ export default function CustomerReceivables({ isActive = true }) {
   const [showUpload, setShowUpload] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
+  const [showWhatsApp, setShowWhatsApp] = useState(false);
   // Tab: 'active' = الافتراضي, 'excluded' = متابعة خاصة
   const [tab, setTabRaw] = useState('active');
   // When the user clicks an anomaly card on the alerts tab, this
@@ -1115,6 +1118,35 @@ export default function CustomerReceivables({ isActive = true }) {
     );
   };
 
+  // Bucket label for the campaign name (which aging slice is selected).
+  const BUCKET_LABELS = { d0_30: '0–30 يوم', d31_60: '31–60 يوم', d61_90: '61–90 يوم', d90_plus: '+90 يوم' };
+  const activeBucketLabel = bucketFilters.size > 0
+    ? [...bucketFilters].map(k => BUCKET_LABELS[k] || k).join(' + ')
+    : null;
+
+  // Build the recipient list for the WhatsApp campaign from the currently
+  // visible customers — amount = the slice within the selected aging
+  // bucket (or full balance when no bucket filter), so a "+90 day"
+  // campaign messages the overdue slice, not the whole debt.
+  const buildWhatsAppRecipients = () => {
+    const bucketActive = bucketFilters.size > 0;
+    const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
+    return visibleCustomers
+      .filter(c => c.merchant?.phone && amtOf(c) > 0.5)
+      .map(c => {
+        const amount = amtOf(c);
+        const name   = (c.merchant?.storeName || c.name || '').trim();
+        const count  = c.invoiceCount || 0;
+        return {
+          to:     normalizeSaudiPhone(c.merchant.phone),
+          name, amount, count,
+          // Template body variables in order: {{1}} الاسم · {{2}} المبلغ · {{3}} العدد
+          vars: [name, Math.round(amount).toLocaleString('en-US'), String(count)],
+        };
+      })
+      .sort((a, b) => b.amount - a.amount);
+  };
+
   const handleShowHistory = async () => {
     try {
       const list = await loadReceivablesSnapshots();
@@ -1147,8 +1179,11 @@ export default function CustomerReceivables({ isActive = true }) {
             <Btn size="md" variant="gold" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
               ملف تحصيل
             </Btn>
-            <Btn size="md" variant="success" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
-              رسائل واتساب
+            <Btn size="md" variant="success" icon={<MessageCircle size={14}/>} onClick={() => setShowWhatsApp(true)} disabled={!visibleCustomers.length}>
+              إرسال واتساب
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
+              تصدير واتساب
             </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
@@ -1637,6 +1672,13 @@ export default function CustomerReceivables({ isActive = true }) {
             )}
         </Modal>
       )}
+
+      <WhatsAppSendModal
+        open={showWhatsApp}
+        onClose={() => setShowWhatsApp(false)}
+        recipients={showWhatsApp ? buildWhatsAppRecipients() : []}
+        bucketLabel={activeBucketLabel}
+      />
     </div>
   );
 }
