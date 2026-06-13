@@ -162,85 +162,27 @@ export function parseZohoCustomerBalances(rows) {
 async function resolveStoreIds(parsed) {
   if (!parsed.length) return parsed;
 
-  // ── Tier 1: existing customer_merchant_links ──────────────
-  // Pull all manual + auto links the operator has built. If a Zoho
-  // name has already been resolved before (via the receivables
-  // upload), we trust that mapping. Manual links especially must
-  // never be overridden by a fresh fuzzy pass.
-  const { data: links } = await supabase
-    .from('customer_merchant_links')
-    .select('customer_name, store_id, match_method, confidence')
-    .not('store_id', 'is', null);
-  const linkMap = new Map((links || []).map(l => [l.customer_name, l]));
-
-  const resolved = [];
-  const remaining = [];
-  for (const r of parsed) {
-    const link = linkMap.get(r.raw_name);
-    if (link?.store_id) {
-      resolved.push({
-        ...r,
-        store_id:         link.store_id,
-        match_method:     `link-${link.match_method || 'auto'}`,
-        match_confidence: Number(link.confidence) || 1.0,
-      });
-    } else {
-      remaining.push(r);
-    }
-  }
-  if (!remaining.length) return resolved;
-
-  // ── Tier 2: exact match against latest merchants snapshot ──
-  const { data: latestSnap } = await supabase
-    .from('merchants').select('snapshot_id').order('uploaded_at', { ascending: false }).limit(1);
-  if (latestSnap?.length) {
-    const snapshotId = latestSnap[0].snapshot_id;
-    const { data: merchants } = await supabase
-      .from('merchants').select('store_id, store_name').eq('snapshot_id', snapshotId);
-
-    // Normalize using the SAME rules pg_trgm uses server-side
-    const norm = (s) => String(s ?? '')
-      .toLowerCase()
-      .replace(/[ًٌٍَُِّْٰ]/g, '')
-      .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
-      .replace(/^\s*(?:متجر|شركة|مؤسسة|مؤسسه|شركه|m1|l1)\s+/i, '')
-      .replace(/[\s\-_|/\\.،,]+/g, ' ')
-      .trim();
-
-    const byNorm = new Map();
-    for (const m of (merchants || [])) {
-      const k = norm(m.store_name);
-      if (k && !byNorm.has(k)) byNorm.set(k, m.store_id);
-    }
-
-    const stillUnmatched = [];
-    for (const r of remaining) {
-      const k = norm(r.raw_name);
-      const sid = byNorm.get(k);
-      if (sid) {
-        resolved.push({ ...r, store_id: sid, match_method: 'exact', match_confidence: 1.0 });
-      } else {
-        stillUnmatched.push(r);
-      }
-    }
-    remaining.length = 0;
-    remaining.push(...stillUnmatched);
-  }
-  if (!remaining.length) return resolved;
-
-  // ── Tier 3: trigram fuzzy match (bulk_match_customers RPC) ──
-  const names = remaining.map(r => r.raw_name);
-  const { data: fuzzy } = await supabase.rpc('bulk_match_customers', {
+  // Single source of truth: the resolve_snapshot_names() RPC runs all three
+  // tiers (links → exact via normalize_arabic_name → bulk_match_customers
+  // fuzzy) in Postgres. The SAME RPC is called server-side by the
+  // zoho-intake edge function, so client and server can NEVER drift (the
+  // old client-side 3-tier copy mirrored these rules by hand — §1.14).
+  const names = parsed.map(r => r.raw_name);
+  const { data: matches, error } = await supabase.rpc('resolve_snapshot_names', {
     p_names:     names,
     p_threshold: 0.78,
   });
-  const fuzzyMap = new Map((fuzzy || []).map(m => [m.customer_name, m]));
-  for (const r of remaining) {
-    const m = fuzzyMap.get(r.raw_name);
-    if (m) resolved.push({ ...r, store_id: m.store_id, match_method: 'fuzzy', match_confidence: Number(m.confidence) });
-    else   resolved.push({ ...r, store_id: null,         match_method: 'unmatched', match_confidence: 0 });
-  }
-  return resolved;
+  if (error) throw error;
+  const byName = new Map((matches || []).map(m => [m.raw_name, m]));
+  return parsed.map(r => {
+    const m = byName.get(r.raw_name);
+    return {
+      ...r,
+      store_id:         m?.store_id ?? null,
+      match_method:     m?.match_method || 'unmatched',
+      match_confidence: Number(m?.match_confidence) || 0,
+    };
+  });
 }
 
 // ── Upload helper used by both internal + Zoho paths ──
