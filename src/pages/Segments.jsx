@@ -48,6 +48,17 @@ const fmtCompact = (n) => {
   return n.toFixed(0);
 };
 
+// Money formatter — like fmtCompact for large sums, but NEVER rounds a
+// small amount to a misleading integer (20.58 must show 20.58, not 21).
+const fmtMoney = (n) => {
+  if (n == null || Number.isNaN(n)) return '—';
+  const a = Math.abs(n);
+  if (a >= 1_000_000) return (n / 1_000_000).toFixed(2) + 'م';
+  if (a >= 10_000)    return (n / 1_000).toFixed(1) + 'ك';
+  if (a >= 1_000)     return Math.round(n).toLocaleString('en-US');
+  return n.toFixed(2);          // small amounts: exact, with halalas
+};
+
 // Phone normalizer — same logic as the campaign export so segments
 // can hand off straight to the WhatsApp sender without re-cleaning.
 const normalizePhone = (raw) => {
@@ -943,10 +954,10 @@ export default function Segments({ isActive = true }) {
                       <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>{r._signupDays == null ? '—' : `${r._signupDays}ي`}</td>
                       <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>{r._topupDays == null ? '—' : `قبل ${r._topupDays}ي`}</td>
                       <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.walletBalance < 0 ? '#DC2626' : 'var(--text2)' }}>
-                        {fmtCompact(r.walletBalance)}
+                        {fmtMoney(r.walletBalance)}
                       </td>
                       <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.debt > 0.5 ? '#EF4444' : 'var(--muted)' }}>
-                        {r.debt > 0.5 ? fmtCompact(r.debt) : '—'}
+                        {r.debt > 0.5 ? fmtMoney(r.debt) : '—'}
                       </td>
                     </tr>
                   );
