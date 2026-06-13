@@ -13,8 +13,24 @@
 import { loadSettings } from '../data/carriers.js';
 import { loadCarriersOverview, aggregateOverview, loadRecentActivity } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB } from '../lib/coreService.js';
+import { supabase } from '../lib/supabase.js';
 
 const OR_BASE = 'https://openrouter.ai/api/v1';
+
+// Agentic assistant — calls the `assistant` edge function, which holds the
+// LLM key server-side and answers by writing READ-ONLY SQL over ALL the
+// data (not a static snapshot). Returns { answer, queries }. The edge
+// function loops tool→result→tool internally; we only pass the visible
+// conversation (user/assistant turns, stripped of UI attachments).
+export async function askAssistantAgent(messages) {
+  const clean = (messages || [])
+    .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map(m => ({ role: m.role, content: String(m.content) }));
+  const { data, error } = await supabase.functions.invoke('assistant', { body: { messages: clean } });
+  if (error) throw new Error(error.message);
+  if (!data?.ok) throw new Error(data?.error || 'تعذّر تشغيل المساعد');
+  return { answer: data.answer || '', queries: data.queries || [] };
+}
 
 // Concise SAR formatter for prompts (fewer tokens than locale-aware).
 const fmt = n => (n == null || Number.isNaN(n)) ? '—' : Number(n).toFixed(2);
