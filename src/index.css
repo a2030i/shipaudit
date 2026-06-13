@@ -6,15 +6,15 @@
    Teal  #2DD4BF  – icon / accent
 ══════════════════════════════════════════════ */
 :root {
-  /* ── Brand constants (shared across themes) ───────────────────────────── */
-  --brand-navy:      #1B1E54;
-  --brand-navy-2:    #262A6E;
-  --brand-navy-3:    #0F1235;
-  --brand-teal:      #2DD4BF;
-  --brand-teal-2:    #14B8A6;
-  --brand-teal-3:    #5EEAD4;
-  --brand-gradient:  linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%);
-  --brand-gradient-soft: linear-gradient(135deg, rgba(27,30,84,.85) 0%, rgba(45,212,191,.65) 140%);
+  /* ── Brand constants (Lamha logo: deep navy text + sky-blue icon) ─────── */
+  --brand-navy:      #1B3B6F;   /* «لمحة» navy */
+  --brand-navy-2:    #15406E;
+  --brand-navy-3:    #102A4F;
+  --brand-teal:      #3B9AD9;   /* icon sky-blue (var name kept for reuse) */
+  --brand-teal-2:    #2477C9;   /* mid azure */
+  --brand-teal-3:    #7FC1EC;   /* light sky */
+  --brand-gradient:  linear-gradient(135deg, #1B3B6F 0%, #3B9AD9 130%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(27,59,111,.88) 0%, rgba(59,154,217,.65) 140%);
 }
 
 /* ── DARK THEME (default) ──────────────────────────────────────────────── */
@@ -100,11 +100,11 @@
   --border2:   #E2E8F0;   /* slate-200 for inputs */
   --border3:   #CBD5E1;   /* slate-300 for strong dividers */
 
-  --accent:    #2563EB;   /* blue-600 — Lamha royal blue */
-  --accent2:   #1D4ED8;   /* blue-700 */
-  --accent3:   #60A5FA;   /* blue-400 — light end of gradients */
-  --accent-dim:  rgba(37,99,235,.08);
-  --accent-glow: rgba(37,99,235,.16);
+  --accent:    #2477C9;   /* Lamha azure (matches the logo icon) */
+  --accent2:   #1B5FA8;   /* deeper azure for hover/press */
+  --accent3:   #7FC1EC;   /* sky — light end of gradients */
+  --accent-dim:  rgba(36,119,201,.08);
+  --accent-glow: rgba(36,119,201,.16);
 
   --green:     #10B981;
   --green2:    #059669;
@@ -115,9 +115,9 @@
   --purple:    #8B5CF6;
   --purple2:   #7C3AED;
   --warn:      #F97316;
-  --blue:      #2563EB;
+  --blue:      #2477C9;
 
-  --text:      #0F172A;   /* slate-900 */
+  --text:      #0F172A;   /* slate-900 — readable body (navy via --brand-navy) */
   --text2:     #334155;   /* slate-700 */
   --muted:     #64748B;   /* slate-500 */
   --muted2:    #94A3B8;   /* slate-400 */
@@ -128,7 +128,7 @@
   --nav-text-hover:  #1D4ED8;   /* blue-700 */
   --nav-active-bg:   rgba(37,99,235,.10);
   --nav-active-border: #2563EB;
-  --nav-active-text: #1D4ED8;    /* blue text on the light-blue active pill */
+  --nav-active-text: #1B5FA8;    /* azure text on the light-blue active pill */
   --nav-hover-bg:    rgba(37,99,235,.05);
   --nav-label-color: #94A3B8;   /* section labels */
 
