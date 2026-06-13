@@ -1077,9 +1077,10 @@ export default function CustomerReceivables({ isActive = true }) {
         // — lets the operator cross-check the Excel against a live send
         // while testing.
         const phone = normalizeSaudiPhone(c.merchant.phone);
-        // Variable 2: amount — no decimals + thousands separators for
-        // a clean WhatsApp render. 5,432 reads better than 5432.00.
-        const amount = Math.round(amtOf(c)).toLocaleString('en-US');
+        // Variable 2: amount — EXACT, never rounded. A collection message
+        // must state the real debt (20.58, not 21). Thousands separators +
+        // up to 2 decimals, with no forced .00 on whole numbers.
+        const amount = Number(amtOf(c)).toLocaleString('en-US', { maximumFractionDigits: 2 });
         // Variable 1: prefer the platform store name (cleaner) over
         // the raw receivables name. Strip any leading dashes/spaces.
         const name = (c.merchant?.storeName || c.name || '').trim();
@@ -1145,7 +1146,8 @@ export default function CustomerReceivables({ isActive = true }) {
           to:     normalizeSaudiPhone(c.merchant.phone),
           name, amount, count,
           // Template body variables in order: {{1}} الاسم · {{2}} المبلغ · {{3}} العدد
-          vars: [name, Math.round(amount).toLocaleString('en-US'), String(count)],
+          // المبلغ EXACT (لا تقريب) — رسالة التحصيل تذكر الدين الحقيقي 20.58 لا 21
+          vars: [name, Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(count)],
         };
       })
       .sort((a, b) => b.amount - a.amount);
