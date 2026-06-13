@@ -541,8 +541,8 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
   return (
     <Card style={{
       padding: 20, marginBottom: 22,
-      background: 'linear-gradient(135deg, color-mix(in srgb, #10B981 5%, var(--surface)) 0%, color-mix(in srgb, #0EA5E9 4%, var(--surface)) 100%)',
-      border: '1.5px solid color-mix(in srgb, #10B981 18%, transparent)',
+      background: 'var(--surface)',
+      border: '1px solid var(--border2)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{
@@ -645,7 +645,7 @@ function CashTile({ icon, color, label, value, unit, hint, onClick, editable = f
         cursor: onClick ? 'pointer' : 'default',
         position: 'relative',
         transition: 'border-color .15s',
-        ...(big ? { background: `color-mix(in srgb, ${color} 4%, var(--surface))` } : {}),
+        background: 'var(--surface)',
       }}
       onMouseEnter={onClick ? (e) => e.currentTarget.style.borderColor = color : undefined}
       onMouseLeave={onClick ? (e) => e.currentTarget.style.borderColor = `color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)` : undefined}
@@ -771,8 +771,8 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
   return (
     <Card style={{
       padding: 16,
-      background: `color-mix(in srgb, ${color} ${big ? 8 : 5}%, transparent)`,
-      border:     `1px solid color-mix(in srgb, ${color} ${big ? 28 : 18}%, transparent)`,
+      background: 'var(--surface)',
+      border:     `1px solid var(--border2)`,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span style={{
