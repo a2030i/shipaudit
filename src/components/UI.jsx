@@ -116,7 +116,8 @@ export function Card({ children, style = {}, accent, hover = false, onClick }) {
       onMouseLeave={() => isInteractive && setHovered(false)}
       style={{
         background: 'var(--card)',
-        border: '1px solid transparent',
+        // Lamha cards carry a subtle visible border (not transparent).
+        border: '1px solid var(--border2)',
         borderRadius: 'var(--r-lg)',
         padding: 24,
         cursor: onClick ? 'pointer' : undefined,
