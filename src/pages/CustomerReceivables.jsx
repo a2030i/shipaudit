@@ -1072,7 +1072,11 @@ export default function CustomerReceivables({ isActive = true }) {
     const withPhone = visibleCustomers
       .filter(c => c.merchant?.phone && amtOf(c) > 0.5)
       .map(c => {
-        const phone = String(c.merchant.phone).replace(/[^\d]/g, '');
+        // Same normalization as the direct sender (05…→9665…) so the
+        // exported file's phone column matches exactly what would be sent
+        // — lets the operator cross-check the Excel against a live send
+        // while testing.
+        const phone = normalizeSaudiPhone(c.merchant.phone);
         // Variable 2: amount — no decimals + thousands separators for
         // a clean WhatsApp render. 5,432 reads better than 5432.00.
         const amount = Math.round(amtOf(c)).toLocaleString('en-US');
