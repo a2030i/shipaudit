@@ -592,8 +592,8 @@ function AppInner({ theme, toggleTheme }) {
               <div style={{
                 marginTop:10, display:'flex', alignItems:'center', gap:11,
                 padding:'12px 14px', borderRadius:14,
-                background:'var(--bg2)',
-                border:'1px solid var(--border)',
+                background:'var(--surface)',
+                border:'1px solid var(--border2)',
               }}>
                 <div style={{
                   width:36, height:36, borderRadius:'50%', flexShrink:0,
