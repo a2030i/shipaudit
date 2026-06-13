@@ -136,9 +136,17 @@ export function Card({ children, style = {}, accent, hover = false, onClick }) {
 // Cleaner stat: tiny mono label up top, an optional tinted icon tile on
 // the right, a confident mono number, an optional sub-line. No accent
 // strip — colour shows through the icon tile and the number.
-export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
+// StatCard — Lamha internal-system style: white card, soft border + shadow,
+// icon beside the title (RTL right), big bold number, and an optional
+// red/green change pill («↓ 100% أقل من الشهر السابق»). Props:
+//   changePct  — signed number; renders the Lamha pill (down=red, up=green)
+//   changeLabel— text beside the pill (e.g. «أقل من الشهر السابق»)
+//   trend      — legacy SAR delta (kept for back-compat)
+export function StatCard({ label, value, sub, color, onClick, icon, trend, changePct, changeLabel }) {
   const [hovered, setHovered] = useState(false);
   const tone = color || 'var(--text)';
+  const down = (changePct ?? 0) < 0;
+  const chgColor = down ? 'var(--red)' : 'var(--green)';
   return (
     <div
       onClick={onClick}
@@ -146,9 +154,9 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
       onMouseLeave={() => onClick && setHovered(false)}
       style={{
         background: 'var(--card)',
-        border: `1px solid var(--border)`,
-        borderRadius: 'var(--r-lg)',
-        padding: '16px 20px',
+        border: `1px solid var(--border2)`,
+        borderRadius: 16,
+        padding: '18px 20px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'transform .18s, box-shadow .18s',
         transform: hovered && onClick ? 'translateY(-1px)' : 'none',
@@ -156,33 +164,38 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
         minWidth: 130,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-        <span style={{ color: 'var(--muted)', fontSize: 10.5, fontFamily: 'var(--font-mono)', letterSpacing: 1, textTransform: 'uppercase', fontWeight: 600 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
+          {icon && <span style={{ color: tone, display: 'flex', fontSize: 15 }}>{icon}</span>}
           {label}
         </span>
-        {icon && (
-          <div style={{
-            width: 30, height: 30, borderRadius: 8,
-            background: `color-mix(in srgb, ${tone} 12%, transparent)`,
-            color: tone,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13,
-          }}>
-            {icon}
-          </div>
-        )}
       </div>
-      <div style={{ color: tone, fontSize: 26, fontFamily: 'var(--font-mono)', fontWeight: 700, lineHeight: 1, letterSpacing: -0.5 }}>
+      <div style={{ color: tone, fontSize: 27, fontWeight: 800, lineHeight: 1, letterSpacing: -0.5 }}>
         {value ?? '—'}
       </div>
-      {sub && <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 6 }}>{sub}</div>}
+      {changePct !== undefined && changePct !== null ? (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 11 }}>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 3,
+            padding: '3px 9px', borderRadius: 999,
+            background: `color-mix(in srgb, ${chgColor} 12%, transparent)`,
+            color: chgColor, fontSize: 11.5, fontWeight: 700,
+          }}>
+            {down ? <TrendingDown size={12}/> : <TrendingUp size={12}/>}
+            {Math.abs(changePct)}%
+          </span>
+          {changeLabel && <span style={{ color: 'var(--muted)', fontSize: 11.5 }}>{changeLabel}</span>}
+        </div>
+      ) : sub ? (
+        <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 7 }}>{sub}</div>
+      ) : null}
       {trend !== undefined && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 3, marginTop: 6 }}>
           {trend > 0
             ? <TrendingUp size={11} color="var(--red)"/>
             : <TrendingDown size={11} color="var(--green)"/>
           }
-          <span style={{ color: trend > 0 ? 'var(--red)' : 'var(--green)', fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+          <span style={{ color: trend > 0 ? 'var(--red)' : 'var(--green)', fontSize: 11, fontWeight: 600 }}>
             {trend > 0 ? '+' : ''}{trend.toFixed(2)} ر.س
           </span>
         </div>
@@ -198,7 +211,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend }) {
 // so every page reads the same way.
 export function PageHeader({
   icon, avatar, title, subtitle, actions, meta,
-  iconColor = '#10B981',
+  iconColor = 'var(--accent)',
 }) {
   return (
     <div style={{
