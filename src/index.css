@@ -359,8 +359,8 @@ button:active { transform: scale(.97); }
   color: var(--text);
 }
 [data-theme="light"] .topbar {
-  background: var(--bg);          /* #F4F4F4 — same canvas as page/sidebar */
-  border-color: var(--border);
+  background: var(--sidebar);     /* #F4F4F4 — same shade as the sidebar */
+  border-color: var(--border2);
 }
 [data-theme="light"] .topbar::after {
   background: linear-gradient(90deg, transparent, var(--accent-glow), transparent);
