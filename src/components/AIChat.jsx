@@ -27,10 +27,23 @@ const SUGGESTIONS = [
   'مين عملاء الدفع اللاحق الموقوفين؟',
 ];
 
+const CHAT_STORE = 'sa-aichat-history';
+// Restore the visible conversation from localStorage so a page refresh
+// doesn't wipe it. Attachments (File objects) can't be serialized — we
+// keep only role/content/queries; the save buttons of an old attachment
+// won't survive a reload, which is fine (re-attach if needed).
+function loadStoredChat() {
+  try {
+    const raw = localStorage.getItem(CHAT_STORE);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
 export default function AIChat() {
   const { user } = useAuth();
   const [open, setOpen]         = useState(false);
-  const [messages, setMessages] = useState([]); // [{ role, content, attachment? }]
+  const [messages, setMessages] = useState(loadStoredChat); // [{ role, content, attachment? }]
   const [input, setInput]       = useState('');
   const [busy, setBusy]         = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -58,6 +71,16 @@ export default function AIChat() {
     if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
   }, [messages, busy]);
 
+  // Persist the conversation so a refresh doesn't lose it. Strip
+  // `attachment` (holds a File + parsed payload that can't be serialized
+  // and shouldn't outlive the session); keep the text + query trace.
+  useEffect(() => {
+    try {
+      const slim = messages.map(({ role, content, queries }) => ({ role, content, queries }));
+      localStorage.setItem(CHAT_STORE, JSON.stringify(slim.slice(-50)));
+    } catch { /* quota / private mode — non-fatal */ }
+  }, [messages]);
+
   const send = async (text) => {
     const trimmed = (text ?? input).trim();
     if (!trimmed || busy) return;
@@ -77,6 +100,7 @@ export default function AIChat() {
 
   const reset = () => {
     setMessages([]);
+    try { localStorage.removeItem(CHAT_STORE); } catch { /* ignore */ }
     refreshContext();
   };
 
