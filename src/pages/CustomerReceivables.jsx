@@ -1069,29 +1069,30 @@ export default function CustomerReceivables({ isActive = true }) {
     // customers whose slice is empty even if their total is positive.
     const bucketActive = bucketFilters.size > 0;
     const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
-    const withPhone = visibleCustomers
-      .filter(c => c.merchant?.phone && amtOf(c) > 0.5)
+    // Export EVERY debtor in the view — including those WITHOUT a phone —
+    // per the operator's request: pull them all, blank phone where missing,
+    // and prune the no-phone rows by hand afterwards. The direct sender
+    // still skips no-phone customers (can't message them), but the file
+    // must hide nothing.
+    const allRows = visibleCustomers
+      .filter(c => amtOf(c) > 0.5)
       .map(c => {
-        // Same normalization as the direct sender (05…→9665…) so the
-        // exported file's phone column matches exactly what would be sent
-        // — lets the operator cross-check the Excel against a live send
-        // while testing.
-        const phone = normalizeSaudiPhone(c.merchant.phone);
-        // Variable 2: amount — EXACT, never rounded. A collection message
-        // must state the real debt (20.58, not 21). Thousands separators +
-        // up to 2 decimals, with no forced .00 on whole numbers.
+        // Same normalization as the direct sender (05…→9665…) so the file's
+        // phone column matches exactly what would be sent. Empty when the
+        // customer has no linked merchant phone.
+        const phone = c.merchant?.phone ? normalizeSaudiPhone(c.merchant.phone) : '';
+        // Amount — EXACT, never rounded (20.58, not 21).
         const amount = Number(amtOf(c)).toLocaleString('en-US', { maximumFractionDigits: 2 });
-        // Variable 1: prefer the platform store name (cleaner) over
-        // the raw receivables name. Strip any leading dashes/spaces.
         const name = (c.merchant?.storeName || c.name || '').trim();
         return { phone, name, amount, count: c.invoiceCount || 0, raw: c };
       })
       .sort((a, b) => Number(String(b.amount).replace(/,/g, '')) - Number(String(a.amount).replace(/,/g, '')));
 
-    if (!withPhone.length) {
-      toast('لا يوجد عملاء بأرقام جوال للتصدير', 'warn');
+    if (!allRows.length) {
+      toast('لا يوجد عملاء عليهم دين في العرض الحالي', 'warn');
       return;
     }
+    const noPhone = allRows.filter(r => !r.phone).length;
 
     // Headers match the WhatsApp template variables purely by COLUMN
     // ORDER — A→{{1}}, B→{{2}}, C→{{3}}. Operator removed the
@@ -1102,7 +1103,7 @@ export default function CustomerReceivables({ isActive = true }) {
       'المبلغ',
       'عدد الفواتير',
     ];
-    const rows = withPhone.map(r => [r.phone, r.name, r.amount, r.count]);
+    const rows = allRows.map(r => [r.phone, r.name, r.amount, r.count]);
 
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     ws['!cols'] = [
@@ -1116,9 +1117,8 @@ export default function CustomerReceivables({ isActive = true }) {
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb, `رسائل_واتساب_${dateStr}.xlsx`);
 
-    const skipped = visibleCustomers.length - withPhone.length;
     toast(
-      `تم تصدير ${withPhone.length} رسالة${skipped > 0 ? ` (تم تخطّي ${skipped} بلا رقم جوال)` : ''}`,
+      `تم تصدير ${allRows.length} عميل${noPhone > 0 ? ` (منهم ${noPhone} بلا رقم — احذفهم يدوياً)` : ''}`,
       'success',
     );
   };
