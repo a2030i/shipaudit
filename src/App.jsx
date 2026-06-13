@@ -425,7 +425,7 @@ function AppInner({ theme, toggleTheme }) {
               </div>
             )}
             {mobileOpen && (
-              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'rgba(255,255,255,.55)', cursor:'pointer', marginRight:'auto', padding:4 }}>
+              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', marginRight:'auto', padding:4 }}>
                 <X size={16}/>
               </button>
             )}
@@ -478,7 +478,7 @@ function AppInner({ theme, toggleTheme }) {
                       {idx > 0 && (
                         <div style={{
                           height: 1, margin: '0 8px 12px',
-                          background: 'rgba(255,255,255,.04)',
+                          background: 'var(--border)',
                         }}/>
                       )}
                       <button
@@ -508,9 +508,10 @@ function AppInner({ theme, toggleTheme }) {
                           fontSize: 10.5,
                           fontWeight: 700,
                           letterSpacing: 1.2,
-                          color: sectionHasActive
-                            ? `color-mix(in srgb, ${sec.accent} 80%, white)`
-                            : 'rgba(255,255,255,.42)',
+                          // Theme-aware: section color when active, muted
+                          // label color otherwise. The old rgba(white) was
+                          // invisible on the new white sidebar.
+                          color: sectionHasActive ? sec.accent : 'var(--nav-label-color)',
                           textTransform: 'uppercase',
                           minWidth: 0,
                           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -530,8 +531,8 @@ function AppInner({ theme, toggleTheme }) {
                           style={{
                             transition: 'transform .22s cubic-bezier(.4,0,.2,1)',
                             transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                            opacity: .4,
-                            color: 'rgba(255,255,255,.6)',
+                            opacity: .55,
+                            color: 'var(--muted)',
                             flexShrink: 0,
                           }}
                         />
@@ -591,30 +592,30 @@ function AppInner({ theme, toggleTheme }) {
               <div style={{
                 marginTop:10, display:'flex', alignItems:'center', gap:11,
                 padding:'12px 14px', borderRadius:14,
-                background:'rgba(255,255,255,.03)',
-                border:'1px solid rgba(255,255,255,.06)',
+                background:'var(--bg2)',
+                border:'1px solid var(--border)',
               }}>
                 <div style={{
                   width:36, height:36, borderRadius:'50%', flexShrink:0,
-                  background: profile.avatar_color || 'linear-gradient(135deg,#10B981,#059669)',
+                  background: profile.avatar_color || 'var(--brand-gradient)',
                   display:'flex', alignItems:'center', justifyContent:'center',
                   fontSize:14, fontWeight:700, color:'#fff',
-                  boxShadow:'0 4px 12px rgba(16,185,129,.22)',
+                  boxShadow:'0 4px 12px var(--accent-glow)',
                 }}>
                   {profile.name?.[0] ?? '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:11, color:'rgba(255,255,255,.45)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
+                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
                 <button onClick={signOut} title="تسجيل خروج" style={{
-                  background:'transparent', border:'1px solid rgba(255,255,255,.08)',
-                  color:'rgba(255,255,255,.5)',
+                  background:'transparent', border:'1px solid var(--border2)',
+                  color:'var(--muted)',
                   cursor:'pointer', padding:'6px 7px', borderRadius:8,
                   display:'flex', alignItems:'center', transition:'all .15s',
                 }}
-                  onMouseEnter={e => { e.currentTarget.style.color = '#fff'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.18)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,.5)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)'; }}
+                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'var(--red)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border2)'; }}
                 >
                   <LogOut size={13}/>
                 </button>
