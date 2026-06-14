@@ -14,14 +14,14 @@ import * as XLSX from 'xlsx';
 
 const fmt = (v, suffix = '') => {
   if (v == null || v === '') return '—';
-  if (typeof v === 'number') return `${v.toLocaleString('ar-SA')} ${suffix}`.trim();
+  if (typeof v === 'number') return `${v.toLocaleString('en-US')} ${suffix}`.trim();
   return v;
 };
 const pct = (v) => v == null ? '—' : `${(v * 100).toFixed(1)}%`;
 const fmtDate = (iso) => {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' });
+    return new Date(iso).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' });
   } catch { return iso; }
 };
 const fmtDateOnly = (iso) => iso || '—';

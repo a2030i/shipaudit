@@ -18,7 +18,7 @@ import {
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' }); }
+  try { return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }); }
   catch { return iso; }
 };
 const daysAgo = (iso) => {

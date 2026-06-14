@@ -141,7 +141,7 @@ export default function AIChat() {
       const trimmed = m.slice(0, -1); // drop the loading bubble
       return [...trimmed, {
         role: 'assistant',
-        content: `✅ كشف حساب — ${opCount} عملية\nالفترة: ${period}\nالإجمالي: ${Number(total).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س`,
+        content: `✅ كشف حساب — ${opCount} عملية\nالفترة: ${period}\nالإجمالي: ${Number(total).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س`,
         attachment: { kind: 'statement', file, parsed, carrierId: carrier?.id, carrierName: carrier?.name },
       }];
     });
@@ -217,7 +217,7 @@ export default function AIChat() {
         content:
           `✅ فاتورة ${carrier.name}\n` +
           `${results.length} شحنة · ✓ ${summary.ok} مطابق · ✗ ${summary.mismatch} فرق · ↓ ${summary.favorable} لصالحك\n` +
-          `إجمالي الفروق: ${Number(summary.totalDiff).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س`,
+          `إجمالي الفروق: ${Number(summary.totalDiff).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س`,
         attachment: { kind: 'audit', audit: auditDraft },
       }];
     });

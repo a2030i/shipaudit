@@ -611,7 +611,7 @@ export default function EmployeeManager() {
                   </div>
 
                   <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                    {emp.created_at ? new Date(emp.created_at).toLocaleDateString('ar-SA') : '—'}
+                    {emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '—'}
                   </div>
 
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>

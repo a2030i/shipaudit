@@ -5,7 +5,7 @@ import { loadCarrierKpis } from '../lib/carrierStatementsService.js';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = n => (n == null || Number.isNaN(n)) ? '—' : `${(n * 100).toFixed(0)}%`;
 
 export default function CarrierKpi({ isActive = true }) {

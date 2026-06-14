@@ -38,7 +38,7 @@ const daysAgo = (iso) => (iso ? Math.floor((Date.now() - new Date(iso)) / DAY_MS
 
 const fmt = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
-  return Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
@@ -663,7 +663,7 @@ export default function Segments({ isActive = true }) {
         iconColor="#0EA5E9"
         title="شرائح العملاء"
         subtitle="ابنِ شريحة بفلاتر متعدّدة، احفظها باسم، وحدّث كل الشرائح بضغطة"
-        meta={snapshot ? `آخر تحديث ${new Date(snapshot.uploadedAt).toLocaleDateString('ar-SA')} · ${rows.length} متجر إجمالي` : null}
+        meta={snapshot ? `آخر تحديث ${new Date(snapshot.uploadedAt).toLocaleDateString('en-GB')} · ${rows.length} متجر إجمالي` : null}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
             {hasAnyFilter && !activeSavedId && (
@@ -867,8 +867,8 @@ export default function Segments({ isActive = true }) {
             />
           </div>
           <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Stat label="النتائج"     value={stats.count.toLocaleString('ar-SA')} color="#0EA5E9"/>
-            <Stat label="بأرقام جوال"  value={stats.withPhone.toLocaleString('ar-SA')} color="#10B981"/>
+            <Stat label="النتائج"     value={stats.count.toLocaleString('en-US')} color="#0EA5E9"/>
+            <Stat label="بأرقام جوال"  value={stats.withPhone.toLocaleString('en-US')} color="#10B981"/>
             <Stat label="إجمالي الدين" value={fmt(stats.totalDebt)}    color="#EF4444" suffix="ر.س"/>
             <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? '#DC2626' : '#0EA5E9'} suffix="ر.س"/>
           </div>
@@ -967,7 +967,7 @@ export default function Segments({ isActive = true }) {
           </div>
           {sortedFiltered.length > 500 && (
             <div style={{ padding: 12, textAlign: 'center', fontSize: 11.5, color: 'var(--muted)', background: 'var(--surface2)' }}>
-              عرض أول ٥٠٠ نتيجة من {sortedFiltered.length.toLocaleString('ar-SA')} — التصدير يشمل الكل
+              عرض أول ٥٠٠ نتيجة من {sortedFiltered.length.toLocaleString('en-US')} — التصدير يشمل الكل
             </div>
           )}
         </Card>
@@ -1177,7 +1177,7 @@ function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete 
           color: tint, fontFamily: 'var(--font-mono)',
           minWidth: 28, textAlign: 'center',
         }}>
-          {count.toLocaleString('ar-SA')}
+          {count.toLocaleString('en-US')}
         </span>
       </button>
       {/* Pencil = enter edit mode (load + expand the filter cards).

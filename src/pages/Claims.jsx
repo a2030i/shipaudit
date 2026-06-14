@@ -7,7 +7,7 @@ import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } fr
 import { loadClaims, createClaim, updateClaim, deleteClaim, summarizeClaims, CLAIM_STATUS } from '../lib/claimsService.js';
 import { useAuth } from '../lib/auth.jsx';
 
-const fmt = (n) => Number(n || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmt = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function Claims({ carriers = [], isActive }) {
   const { user } = useAuth();

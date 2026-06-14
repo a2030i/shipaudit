@@ -7,7 +7,7 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.j
 import { loadCashAging } from '../lib/cashAgingService.js';
 
 const fmt = (v) => (v == null || Number.isNaN(v) || Math.abs(v) < 0.005) ? '—'
-  : Number(v).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(v).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const th = { padding: '10px 12px', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap', textAlign: 'right', fontSize: 12 };
 const td = { padding: '10px 12px', fontVariantNumeric: 'tabular-nums', whiteSpace: 'nowrap', fontSize: 12.5 };

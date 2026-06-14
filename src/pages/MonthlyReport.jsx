@@ -12,7 +12,7 @@ import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 
 const fmt = (n) => {
   if (n == null || Number.isNaN(n) || n === 0) return '—';
-  return Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 const monthLabel = (m) => {
   if (!m) return '';

@@ -584,7 +584,7 @@ export default function UploadWizard({ carriers, onComplete }) {
           setCarrierId(aramexId);
           setCarrierDetect({ carrierId: aramexId, confidence: 1, method: 'pdf-invoice' });
           setDetectedRow(1);
-          toast(`فاتورة أرامكس${header.invoiceNo ? ` ${header.invoiceNo}` : ''}: ${ships.length} شحنة${header.total ? ` · ${header.total.toLocaleString('ar-SA')} ر.س` : ''}`, 'success');
+          toast(`فاتورة أرامكس${header.invoiceNo ? ` ${header.invoiceNo}` : ''}: ${ships.length} شحنة${header.total ? ` · ${header.total.toLocaleString('en-US')} ر.س` : ''}`, 'success');
           setStep(3);
           setUploading(false);
           return;

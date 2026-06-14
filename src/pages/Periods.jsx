@@ -39,7 +39,7 @@ const fmtDateTime = (iso) => {
   if (!iso) return '—';
   try {
     const d = new Date(iso);
-    return d.toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' });
+    return d.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' });
   } catch { return iso; }
 };
 
@@ -187,10 +187,10 @@ export default function Periods({ isActive = true }) {
                       </span>
                     )}
                   </td>
-                  <td style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('ar-SA')}</td>
-                  <td style={countCell(r.counts.cod_count)}>{r.counts.cod_count.toLocaleString('ar-SA')}</td>
-                  <td style={countCell(r.counts.audits_count)}>{r.counts.audits_count.toLocaleString('ar-SA')}</td>
-                  <td style={countCell(r.counts.payments_count)}>{r.counts.payments_count.toLocaleString('ar-SA')}</td>
+                  <td style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('en-US')}</td>
+                  <td style={countCell(r.counts.cod_count)}>{r.counts.cod_count.toLocaleString('en-US')}</td>
+                  <td style={countCell(r.counts.audits_count)}>{r.counts.audits_count.toLocaleString('en-US')}</td>
+                  <td style={countCell(r.counts.payments_count)}>{r.counts.payments_count.toLocaleString('en-US')}</td>
                   <td style={{ ...tdStyle, fontSize: 11.5 }}>
                     {r.close ? (
                       <div style={{ color: 'var(--muted)' }}>
@@ -296,10 +296,10 @@ function ActionDialog({ target, row, onCancel, onConfirm }) {
               <strong style={{ color: 'var(--text)' }}>سيُقفل عليه ما يلي:</strong>
             </div>
             <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-              <li>{row.counts.ops_count.toLocaleString('ar-SA')} قيد محاسبي</li>
-              <li>{row.counts.cod_count.toLocaleString('ar-SA')} صف تسوية COD</li>
-              <li>{row.counts.audits_count.toLocaleString('ar-SA')} مراجعة</li>
-              <li>{row.counts.payments_count.toLocaleString('ar-SA')} دفعة</li>
+              <li>{row.counts.ops_count.toLocaleString('en-US')} قيد محاسبي</li>
+              <li>{row.counts.cod_count.toLocaleString('en-US')} صف تسوية COD</li>
+              <li>{row.counts.audits_count.toLocaleString('en-US')} مراجعة</li>
+              <li>{row.counts.payments_count.toLocaleString('en-US')} دفعة</li>
             </ul>
             <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--muted)' }}>
               بعد الإقفال لن يتمكّن أحد من التعديل عليها — حتى أنت — إلا بعد فتح الفترة مجدداً.

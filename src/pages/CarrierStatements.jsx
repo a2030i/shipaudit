@@ -27,7 +27,7 @@ const SHIPMENT_TYPE_LABEL = {
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Carrier IDs that have a deterministic, non-AI parser. We auto-detect AI for
 // every other carrier (or names that look like Aramex but use a different id).

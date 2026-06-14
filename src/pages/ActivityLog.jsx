@@ -14,7 +14,7 @@ const ACTION_META = {
 };
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ActivityLog({ isActive = true }) {
   const [rows, setRows] = useState([]);
@@ -137,10 +137,10 @@ function LogRow({ r }) {
       </div>
       <div style={{ textAlign: 'left' }}>
         <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          {date.toLocaleDateString('ar-SA')}
+          {date.toLocaleDateString('en-GB')}
         </div>
         <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-          {date.toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+          {date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
         </div>
       </div>
     </div>

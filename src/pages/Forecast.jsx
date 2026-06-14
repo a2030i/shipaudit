@@ -35,7 +35,7 @@ const HORIZON_OPTIONS = [
 
 const fmt = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
-  return Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 };
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
@@ -108,7 +108,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
         iconColor="#0EA5E9"
         title="تنبؤ التدفّق النقدي"
         subtitle="ماذا نتوقّع أن يدخل وأن يخرج خلال الفترة القادمة — مبني على مهام التحصيل والفواتير المجدولة"
-        meta={`آخر تحديث ${new Date(data.asOf).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}`}
+        meta={`آخر تحديث ${new Date(data.asOf).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
@@ -381,7 +381,7 @@ function DateGroup({ dateKey, events }) {
   const overdueCount = events.filter(e => e.isOverdue).length;
   const date = dateKey === 'unknown' ? null : new Date(dateKey);
   const dateLabel = date
-    ? date.toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' })
+    ? date.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })
     : 'بدون موعد';
 
   return (

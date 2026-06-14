@@ -26,7 +26,7 @@ import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
@@ -39,7 +39,7 @@ const fmtCompact = (n) => {
 const fmtDate = (iso) => {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch { return iso; }
 };
 
@@ -65,7 +65,7 @@ function Tab({ id, label, count, amount, active, accent, onClick }) {
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         {amount != null && amount > 0 && (
           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: accentColor || 'var(--muted)', fontWeight: 700 }}>
-            {Number(amount).toLocaleString('ar-SA', { maximumFractionDigits: 0 })} ر.س
+            {Number(amount).toLocaleString('en-US', { maximumFractionDigits: 0 })} ر.س
           </span>
         )}
         <span style={{

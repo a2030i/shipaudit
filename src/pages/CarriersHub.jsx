@@ -14,7 +14,7 @@ import { loadCarriersHub } from '../lib/carriersHubService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';

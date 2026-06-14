@@ -37,7 +37,7 @@ function statusKey(r) {
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Module-level guard for COD imports landing from the Webhook page.
 // React 18 StrictMode (dev) runs effects twice and PageSlot keeps the
@@ -440,7 +440,7 @@ export default function CodSettlements({ isActive = true }) {
                 let dueLabel = '';
                 if (Math.abs(due) >= 0.5) {
                   const sign = due > 0 ? '' : '-';
-                  const num = Math.abs(due).toLocaleString('ar-SA', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  const num = Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
                   dueLabel = ` — ${sign}${num} ر.س`;
                 }
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
@@ -892,7 +892,7 @@ export default function CodSettlements({ isActive = true }) {
                             color: 'var(--muted)', fontSize: 11.5,
                             fontFamily: 'var(--font-mono)',
                           }}>
-                            تحميل المزيد… ({count.toLocaleString('ar-SA')} / {total.toLocaleString('ar-SA')})
+                            تحميل المزيد… ({count.toLocaleString('en-US')} / {total.toLocaleString('en-US')})
                           </td>
                         </tr>
                       )}
