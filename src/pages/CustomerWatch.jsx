@@ -28,8 +28,8 @@ import { useAuth } from '../lib/auth.jsx';
 
 // ── Formatters ───────────────────────────────────────────────────
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-const fmtCount = (n) => (n == null) ? '—' : Number(n).toLocaleString('ar-SA');
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtCount = (n) => (n == null) ? '—' : Number(n).toLocaleString('en-US');
 const fmtCompact = (n) => {
   if (n == null) return '—';
   const a = Math.abs(n);
@@ -39,7 +39,7 @@ const fmtCompact = (n) => {
 };
 const fmtDate = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' }); }
+  try { return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }); }
   catch { return iso; }
 };
 const daysAgo = (iso) => {

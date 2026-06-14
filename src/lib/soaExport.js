@@ -17,13 +17,13 @@ import { loadCustomerSOA } from './customerReceivablesService.js';
 
 const fmtMoney = (n) =>
   (n == null || Number.isNaN(n)) ? ''
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const arabicDate = (iso) => {
   if (!iso) return '';
   try {
     const d = new Date(iso);
-    return d.toLocaleDateString('ar-SA', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    return d.toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch { return iso; }
 };
 

@@ -946,21 +946,21 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>مفوتر من الشركة</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
-                {Number(summary.totalBilled || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                {Number(summary.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>قبل الضريبة</div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>المتوقع حسب العقد</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
-                {Number(summary.totalExpected || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                {Number(summary.totalExpected || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>قبل الضريبة</div>
             </div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>الضريبة (15%)</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--gold)' }}>
-                {Number(summary.totalTax || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                {Number(summary.totalTax || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>على إجمالي الفاتورة</div>
             </div>
@@ -972,7 +972,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             }}>
               <div style={{ fontSize: 11, opacity: .8, marginBottom: 4 }}>الإجمالي مع الضريبة</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 20, fontWeight: 800, color: '#fff' }}>
-                {Number(summary.totalGross || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 12, opacity: .7 }}>ر.س</span>
+                {Number(summary.totalGross || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 12, opacity: .7 }}>ر.س</span>
               </div>
               <div style={{ fontSize: 10, opacity: .75, marginTop: 2 }}>طابقه مع كشف الشركة</div>
             </div>

@@ -10,7 +10,7 @@ import {
 } from '../lib/whatsappService.js';
 import { useAuth } from '../lib/auth.jsx';
 
-const fmt = (n) => Number(n || 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 });
+const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 // recipients: [{ to, name, amount, count, vars:[] }]
 export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent }) {

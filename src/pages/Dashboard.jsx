@@ -16,7 +16,7 @@ import { Banknote } from 'lucide-react';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fmtCompact = n => {
   if (n == null) return '—';
@@ -153,7 +153,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
     const expected = ordered.map(a => Number(a.total_expected || a.totalExpected || 0));
     const labels = ordered.map(a => {
       const d = a.created_at ? new Date(a.created_at) : null;
-      return d ? d.toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' }) : '—';
+      return d ? d.toLocaleDateString('en-GB', { month: 'short', day: 'numeric' }) : '—';
     });
     return {
       labels,
@@ -167,7 +167,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   // Greeting that bends with time of day — calmer for night reviewers.
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'صباح الخير' : hour < 18 ? 'مساء الخير' : 'مساء الخير';
-  const todayStr = new Date().toLocaleDateString('ar-SA', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  const todayStr = new Date().toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
   // Aging segments for the donut. We re-derive from totals.aging so
   // both the donut and the existing list-bar can render the same
@@ -642,7 +642,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
                               {r.disputedCount || '—'}
                             </td>
                             <td style={{ fontSize: 11, color: 'var(--muted)' }}>
-                              {r.lastStatementAt ? new Date(r.lastStatementAt).toLocaleDateString('ar-SA') : '—'}
+                              {r.lastStatementAt ? new Date(r.lastStatementAt).toLocaleDateString('en-GB') : '—'}
                             </td>
                             <td>
                               <Btn size="sm" variant="ghost" onClick={() => onNavigate(`ledger?carrier=${r.carrierId}`)} icon={<BookOpen size={12}/>}>

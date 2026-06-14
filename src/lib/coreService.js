@@ -268,7 +268,7 @@ export async function saveAuditToDB(audit, userId) {
     if (existing?.length) {
       const prior = existing[0];
       const date = prior.created_at
-        ? new Date(prior.created_at).toLocaleDateString('ar-SA')
+        ? new Date(prior.created_at).toLocaleDateString('en-GB')
         : '—';
       const label = prior.file_name || `#${String(prior.id).slice(0, 12)}`;
       const err = new Error(

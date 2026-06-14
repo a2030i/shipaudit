@@ -22,7 +22,7 @@ import { useAuth } from '../lib/auth.jsx';
 const fmtDate = (iso) => {
   if (!iso) return '—';
   try {
-    return new Date(iso).toLocaleString('ar-SA', {
+    return new Date(iso).toLocaleString('en-US', {
       year: 'numeric', month: '2-digit', day: '2-digit',
       hour: '2-digit', minute: '2-digit',
     });
@@ -134,7 +134,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
         icon={<Scale size={22}/>}
         title="فوترة الأوزان"
         subtitle="اسحب أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
-        meta={loading ? null : `${pendingStats.audits} مراجعة جديدة · ${pendingStats.rows.toLocaleString('ar-SA')} شحنة · ${pendingStats.carriers} شركة`}
+        meta={loading ? null : `${pendingStats.audits} مراجعة جديدة · ${pendingStats.rows.toLocaleString('en-US')} شحنة · ${pendingStats.carriers} شركة`}
         actions={
           <Btn
             size="md"
@@ -209,7 +209,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
                     </div>
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
-                    {a.row_count?.toLocaleString('ar-SA')} شحنة
+                    {a.row_count?.toLocaleString('en-US')} شحنة
                   </div>
                   <div style={{ color: 'var(--muted)', fontSize: 11 }}>
                     {fmtDate(a.created_at)}

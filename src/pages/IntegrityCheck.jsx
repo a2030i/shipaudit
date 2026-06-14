@@ -15,7 +15,7 @@ const SEV = {
   ok:    { bg: 'rgba(16,185,129,.06)', bd: 'rgba(16,185,129,.25)', color: '#059669' },
 };
 
-const fmt = (n) => Number(n).toLocaleString('ar-SA', { maximumFractionDigits: 2 });
+const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 export default function IntegrityCheck({ isActive }) {
   const navigate = useNavigate();

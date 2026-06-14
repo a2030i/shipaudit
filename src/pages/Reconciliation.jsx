@@ -33,7 +33,7 @@ import {
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   const a = Math.abs(n);
@@ -43,7 +43,7 @@ const fmtCompact = (n) => {
 };
 const fmtDateTime = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); }
+  try { return new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }); }
   catch { return iso; }
 };
 
@@ -402,10 +402,10 @@ export default function Reconciliation({ isActive = true }) {
       {reconcile.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
-            <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('ar-SA')}        color="#0EA5E9"/>
-            <Stat label="مطابق"           value={stats.matched.toLocaleString('ar-SA')}      color="#10B981" icon={<CheckCircle2 size={14}/>}/>
-            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('ar-SA')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
-            <Stat label="Zoho زائد"      value={stats.zohoExtra.toLocaleString('ar-SA')}    color="#F97316"/>
+            <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('en-US')}        color="#0EA5E9"/>
+            <Stat label="مطابق"           value={stats.matched.toLocaleString('en-US')}      color="#10B981" icon={<CheckCircle2 size={14}/>}/>
+            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('en-US')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
+            <Stat label="Zoho زائد"      value={stats.zohoExtra.toLocaleString('en-US')}    color="#F97316"/>
             <Stat label="مجموع الفروقات" value={fmt(stats.gapTotal)} suffix="ر.س"           color="#DC2626"/>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
@@ -572,7 +572,7 @@ export default function Reconciliation({ isActive = true }) {
           </table>
           {visible.length > 500 && (
             <div style={{ padding: 12, textAlign: 'center', fontSize: 11.5, color: 'var(--muted)', background: 'var(--surface2)' }}>
-              عرض أول ٥٠٠ من {visible.length.toLocaleString('ar-SA')} متجر — التصدير يشمل كل الفروقات
+              عرض أول ٥٠٠ من {visible.length.toLocaleString('en-US')} متجر — التصدير يشمل كل الفروقات
             </div>
           )}
         </Card>
@@ -759,11 +759,11 @@ function VendorsTab({ profile }) {
           {/* Stats strip */}
           <Card style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
-              <Stat label="شركات شحن"        value={stats.total.toLocaleString('ar-SA')} color="#0EA5E9"/>
-              <Stat label="لهم (ندفع)"       value={stats.we_owe.toLocaleString('ar-SA')} suffix={`(${fmtCompact(stats.we_owe_sum)})`} color="#DC2626"/>
-              <Stat label="لنا (يردّون)"     value={stats.they_owe.toLocaleString('ar-SA')} suffix={`(${fmtCompact(stats.they_owe_sum)})`} color="#047857"/>
-              <Stat label="صفر"              value={stats.zero.toLocaleString('ar-SA')} color="var(--muted)"/>
-              <Stat label="مورّدون آخرون"    value={stats.otherCount.toLocaleString('ar-SA')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="#8B5CF6"/>
+              <Stat label="شركات شحن"        value={stats.total.toLocaleString('en-US')} color="#0EA5E9"/>
+              <Stat label="لهم (ندفع)"       value={stats.we_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.we_owe_sum)})`} color="#DC2626"/>
+              <Stat label="لنا (يردّون)"     value={stats.they_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.they_owe_sum)})`} color="#047857"/>
+              <Stat label="صفر"              value={stats.zero.toLocaleString('en-US')} color="var(--muted)"/>
+              <Stat label="مورّدون آخرون"    value={stats.otherCount.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="#8B5CF6"/>
               <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportAll} disabled={!reconcile.length} style={{ marginInlineStart: 'auto' }}>
                 تصدير الكل
               </Btn>

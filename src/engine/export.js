@@ -222,7 +222,7 @@ export function exportAuditExcel(results, summary, carrierName, period, contract
   if (!mis.length) return false;
 
   const wb = XLSX.utils.book_new();
-  const today = new Date().toLocaleDateString('ar-SA');
+  const today = new Date().toLocaleDateString('en-GB');
 
   // ── Sheet 1: تفاصيل الفروق ─────────────────────────────────────────────────
   const headers = [

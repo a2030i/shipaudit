@@ -96,7 +96,7 @@ const SHIPMENT_META = {
 };
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function CarrierLedger({ isActive = true }) {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -612,7 +612,7 @@ export default function CarrierLedger({ isActive = true }) {
             >
               {carrierList.map(c => (
                 <option key={c.carrierId} value={c.carrierId}>
-                  {c.carrierName || c.carrierId} · {Number(c.outstanding ?? 0).toLocaleString('ar-SA', { maximumFractionDigits: 0 })} ر.س
+                  {c.carrierName || c.carrierId} · {Number(c.outstanding ?? 0).toLocaleString('en-US', { maximumFractionDigits: 0 })} ر.س
                 </option>
               ))}
             </select>
@@ -664,7 +664,7 @@ export default function CarrierLedger({ isActive = true }) {
                   <span style={{ fontWeight: 600 }}>{s.period_from || '—'} ← {s.period_to || '—'}</span>
                 </div>
                 <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>
-                  {Number(s.total_balance ?? 0).toLocaleString('ar-SA', { maximumFractionDigits: 2 })} ر.س
+                  {Number(s.total_balance ?? 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س
                   {' · '}{s.operations_count} عملية
                 </div>
               </button>
@@ -1061,7 +1061,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
         }}>
           الإجمالي:{' '}
           <span style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 16 }}>
-            {Number(total).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س
+            {Number(total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ر.س
           </span>
         </div>
         <div style={{
@@ -1114,7 +1114,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
               ⚠️ مبلغ كبير — يحتاج تأكيد إضافي
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.6 }}>
-              الإجمالي ({Number(total).toLocaleString('ar-SA', { minimumFractionDigits: 2 })} ر.س) يتجاوز الحد ({HIGH_VALUE_THRESHOLD.toLocaleString('ar-SA')} ر.س).
+              الإجمالي ({Number(total).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س) يتجاوز الحد ({HIGH_VALUE_THRESHOLD.toLocaleString('en-US')} ر.س).
               يرجى التحقق من الرقم قبل التأكيد.
             </div>
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, cursor: 'pointer' }}>
@@ -1626,7 +1626,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                         {matchHint && eligible && <span style={{ marginRight: 8, color: 'var(--accent)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>✦ مطابق</span>}
                       </div>
                       <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2 }}>
-                        {a.carrierName} · {a.period} · {new Date(a.date).toLocaleDateString('ar-SA')}
+                        {a.carrierName} · {a.period} · {new Date(a.date).toLocaleDateString('en-GB')}
                       </div>
                       {!eligible && (
                         <div style={{
@@ -1659,7 +1659,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                         return <>
                           <div style={{ color: 'var(--muted)', fontSize: 9, marginBottom: 2 }}>الإجمالي شامل الضريبة</div>
                           <div style={{ color: 'var(--text)', fontWeight: 700, fontSize: 13 }}>
-                            {gross.toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            {gross.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                           </div>
                           <div style={{ color: 'var(--muted)', fontSize: 9, marginTop: 1 }}>
                             {billed.toFixed(0)} + ضريبة {taxResolved.toFixed(0)}
@@ -1858,7 +1858,7 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
           <div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>تاريخ الفتح</div>
             <div style={{ fontSize: 13 }}>
-              {op.dispute_opened_at ? new Date(op.dispute_opened_at).toLocaleDateString('ar-SA') : '—'}
+              {op.dispute_opened_at ? new Date(op.dispute_opened_at).toLocaleDateString('en-GB') : '—'}
             </div>
           </div>
         </div>
@@ -1895,7 +1895,7 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
                       {meta.label}
                     </span>
                     <span style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
-                      {new Date(n.created_at).toLocaleString('ar-SA')}
+                      {new Date(n.created_at).toLocaleString('en-US')}
                     </span>
                   </div>
                   <div style={{ fontSize: 13, lineHeight: 1.7, marginTop: 4, whiteSpace: 'pre-wrap' }}>
@@ -2038,7 +2038,7 @@ function AgingCard({ label, sub, count, amount, color }) {
         <span style={{ color, fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{count}</span>
       </div>
       <div style={{ color, fontSize: 16, fontFamily: 'var(--font-mono)', fontWeight: 700, marginTop: 3, whiteSpace: 'nowrap' }}>
-        {Number(amount || 0).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        {Number(amount || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
         <span style={{ fontSize: 9, color: 'var(--muted)', marginRight: 4 }}> ر.س</span>
       </div>
       <div style={{ color: 'var(--muted)', fontSize: 9, marginTop: 2 }}>{sub}</div>

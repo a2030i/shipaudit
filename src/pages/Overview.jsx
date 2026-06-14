@@ -39,7 +39,7 @@ const fmtMonth = (period) => {
 };
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   const a = Math.abs(n);
@@ -508,7 +508,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           onSave={async ({ balance, notes }) => {
             try {
               await setBankBalance({ balance, notes, userId: profile?.id || null });
-              toast(`تم تحديث رصيد البنك إلى ${Number(balance).toLocaleString('ar-SA')} ر.س`, 'success');
+              toast(`تم تحديث رصيد البنك إلى ${Number(balance).toLocaleString('en-US')} ر.س`, 'success');
               setBankEdit(null);
               await refresh();
             } catch (e) { toast(`فشل: ${e.message}`, 'error'); }

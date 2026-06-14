@@ -40,7 +40,7 @@ import {
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCompact = (n) => {
   if (n == null || Number.isNaN(n)) return '—';
   const a = Math.abs(n);
@@ -49,7 +49,7 @@ const fmtCompact = (n) => {
 };
 const fmtDate = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('ar-SA', { dateStyle: 'medium' }); }
+  try { return new Date(iso).toLocaleDateString('en-GB', { dateStyle: 'medium' }); }
   catch { return iso; }
 };
 const fmtRel = (iso) => {
@@ -472,7 +472,7 @@ function SummaryStat({ label, value, color }) {
     }}>
       <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, letterSpacing: .3 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color, fontFamily: 'var(--font-mono)', letterSpacing: -0.4 }}>
-        {value.toLocaleString('ar-SA')}
+        {value.toLocaleString('en-US')}
       </div>
     </Card>
   );
@@ -557,7 +557,7 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff 
                  try {
                    const { exportCustomerSOA } = await import('../lib/soaExport.js');
                    const r = await exportCustomerSOA(task.customer_name);
-                   toast(`تم تصدير كشف الحساب · رصيد ${r.balance.toLocaleString('ar-SA')} ر.س`, 'success');
+                   toast(`تم تصدير كشف الحساب · رصيد ${r.balance.toLocaleString('en-US')} ر.س`, 'success');
                  } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
                }}>
             📋 كشف الحساب

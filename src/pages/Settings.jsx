@@ -634,10 +634,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                             <Calendar size={11}/> {a.period}
                           </span>
                           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-                            <Package size={11}/> {(a.rowCount ?? 0).toLocaleString('ar-SA')} شحنة
+                            <Package size={11}/> {(a.rowCount ?? 0).toLocaleString('en-US')} شحنة
                           </span>
                           <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10.5, opacity: .75 }}>
-                            {new Date(a.date).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' })}
+                            {new Date(a.date).toLocaleString('en-US', { dateStyle: 'short', timeStyle: 'short' })}
                           </span>
                         </div>
                       </div>

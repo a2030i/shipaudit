@@ -39,7 +39,7 @@ const fmtRel = (iso) => {
 };
 const fmtDateTime = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); }
+  try { return new Date(iso).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' }); }
   catch { return iso; }
 };
 
@@ -624,9 +624,9 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
             )}
           </div>
           <div style={{ marginTop: 4, color: 'var(--text2)', fontWeight: 600 }}>
-            {last.rowCount.toLocaleString('ar-SA')} صف
-            {last.matchedCount != null && ` · ${last.matchedCount.toLocaleString('ar-SA')} مطابق`}
-            {last.total != null && ` · إجمالي ${Number(last.total).toLocaleString('ar-SA', { maximumFractionDigits: 2 })} ر.س`}
+            {last.rowCount.toLocaleString('en-US')} صف
+            {last.matchedCount != null && ` · ${last.matchedCount.toLocaleString('en-US')} مطابق`}
+            {last.total != null && ` · إجمالي ${Number(last.total).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س`}
           </div>
         </div>
       ) : (

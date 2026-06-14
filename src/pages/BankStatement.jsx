@@ -9,7 +9,7 @@ import { loadCarriers } from '../lib/coreService.js';
 const fmtMoney = n =>
   (n == null || Number.isNaN(n))
     ? '—'
-    : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 // Carrier aliases used for description matching (extends what's in the carrier name field)
 const CARRIER_ALIASES = {

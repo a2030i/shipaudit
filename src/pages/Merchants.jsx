@@ -31,14 +31,14 @@ import { supabase } from '../lib/supabase.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
-  : Number(n).toLocaleString('ar-SA', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const fmtCount = (n) =>
-  (n == null) ? '—' : Number(n).toLocaleString('ar-SA');
+  (n == null) ? '—' : Number(n).toLocaleString('en-US');
 
 const fmtDate = (iso) => {
   if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('ar-SA', { year:'numeric', month:'2-digit', day:'2-digit' }); }
+  try { return new Date(iso).toLocaleDateString('en-GB', { year:'numeric', month:'2-digit', day:'2-digit' }); }
   catch { return iso; }
 };
 

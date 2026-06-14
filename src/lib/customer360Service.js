@@ -70,7 +70,7 @@ export async function loadCustomerWatch() {
     const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
     monthsSeries.push({
       key: monthKey(d),
-      label: d.toLocaleDateString('ar-SA', { month: 'short' }),
+      label: d.toLocaleDateString('en-GB', { month: 'short' }),
       year: d.getFullYear(),
       value: 0,
       count: 0,
