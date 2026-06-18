@@ -226,6 +226,23 @@ function toShipmentRow(auditId, carrierId, r) {
   };
 }
 
+// Soft duplicate guard: existing audits for the SAME carrier + period.
+// Unlike the exact-file hash check (which blocks at save), this warns the
+// operator BEFORE processing — a second invoice for the same month is
+// legitimate (J&T/Aramex bill multiple times), but re-uploading the same
+// month by mistake is the common error. The UI confirms before proceeding.
+export async function findSamePeriodAudits(carrierId, period) {
+  if (!carrierId || !period) return [];
+  const { data, error } = await supabase
+    .from('audits')
+    .select('id, file_name, period, review_status, created_at, row_count')
+    .eq('carrier_id', carrierId)
+    .eq('period', period)
+    .order('created_at', { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
 export async function saveAuditToDB(audit, userId) {
   const summary = audit.summary ?? {};
   const results = audit.results ?? [];
