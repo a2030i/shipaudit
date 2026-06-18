@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -47,6 +47,7 @@ import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
 import Claims            from './pages/Claims.jsx';
+import CommandPalette    from './components/CommandPalette.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
@@ -266,6 +267,19 @@ function AppInner({ theme, toggleTheme }) {
   // at ~8 doors + the active door's children, instead of every section
   // dumped open (the old v2 persisted-map behaviour).
   const [peekedSection, setPeekedSection] = useState(null);
+  // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
+  // screen, so buried sections and carrier-page hopping aren't a chore.
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const onKey = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        setPaletteOpen(o => !o);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
 
   // New-version detection: the SPA shell caches hard, and users repeatedly
   // hit stale bundles after a deploy (white pages, half-fixed bugs). Poll
@@ -409,6 +423,13 @@ function AppInner({ theme, toggleTheme }) {
           ↻ نسخة جديدة من النظام متاحة — اضغط للتحديث
         </button>
       )}
+
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        navItems={visibleNav}
+        carriers={carriers}
+      />
 
       <div className="app-layout">
 
@@ -653,6 +674,22 @@ function AppInner({ theme, toggleTheme }) {
                   Lamha
                 </span>
               )}
+              {/* Quick search / command palette trigger */}
+              <button
+                onClick={() => setPaletteOpen(true)}
+                title="بحث سريع (Ctrl+K)"
+                style={{
+                  marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8,
+                  padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
+                  background: 'var(--surface)', border: '1px solid var(--border2)',
+                  color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontSize: 12.5,
+                  maxWidth: 260, minWidth: 0,
+                }}
+              >
+                <Search size={14}/>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>بحث سريع…</span>
+                <kbd style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 5, padding: '1px 5px', marginInlineStart: 'auto' }}>Ctrl K</kbd>
+              </button>
             </div>
 
             {/* Theme toggle */}
