@@ -541,6 +541,67 @@ button:active { transform: scale(.97); }
   h1 { font-size: 18px !important; }
   h2 { font-size: 16px !important; }
   h3 { font-size: 14px !important; }
+
+  /* ── Neutralize the desktop floating-panel chrome on mobile ──
+     Gaps/padding/rounded boxes waste width on phones. Full-bleed shell:
+     full-width topbar + content; sidebar stays a fixed drawer. */
+  .app-layout { padding: 0 !important; gap: 0 !important; }
+  .app-main   { gap: 0 !important; }
+  .topbar {
+    border-radius: 0 !important;
+    border: none !important;
+    border-bottom: 1px solid var(--border) !important;
+    box-shadow: none !important;
+  }
+  .page-content {
+    border-radius: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: var(--bg) !important;
+  }
+  .app-main, .page-content { max-width: 100vw; overflow-x: hidden; }
+  /* Page roots: tighten padding + never exceed the viewport */
+  .page-content > div > div[style*="padding"] {
+    padding-left: 14px !important;
+    padding-right: 14px !important;
+    padding-top: 16px !important;
+    max-width: 100% !important;
+  }
+  /* Header/toolbar flex rows must wrap, not overflow */
+  .page-content [style*="justify-content: space-between"] { flex-wrap: wrap; }
+
+  /* ── Collapse every multi-column / fixed-px grid to ONE column ──
+     Matched on the VALUE substring (not "grid-template-columns:") so it
+     works regardless of how React serializes the inline style. Covers
+     repeat(N), auto-fit/auto-fill, and fixed-px first columns flagged in
+     the audit (Overview/Ledger/CodSettlements/CarrierManager/Settings/
+     UploadWizard/AuditResults/Reconciliation/CarrierKpi/Segments…). */
+  .page-content [style*="repeat(auto-fit"],
+  .page-content [style*="repeat(auto-fill"],
+  .page-content [style*="repeat(2,"],
+  .page-content [style*="repeat(3,"],
+  .page-content [style*="repeat(4,"],
+  .page-content [style*="1fr 360px"],
+  .page-content [style*="1fr 320px"],
+  .page-content [style*="260px 1fr"],
+  .page-content [style*="200px 1fr"],
+  .page-content [style*="180px 1fr"],
+  .page-content [style*="160px 1fr"],
+  .page-content [style*="160px repeat"],
+  .page-content [style*="80px 1fr"] {
+    grid-template-columns: 1fr !important;
+  }
+
+  /* Wide data tables: wrap in a horizontal scroller instead of breaking
+     the page (global table rule above already does display:block +
+     overflow-x; this caps the parent so the page never widens). */
+  .page-content table { max-width: 100%; }
+
+  /* Any stray fixed-width box can't exceed the viewport */
+  .page-content [style*="width: 3"][style*="px"],
+  .page-content [style*="width: 4"][style*="px"],
+  .page-content [style*="width: 5"][style*="px"],
+  .page-content [style*="width: 6"][style*="px"] { max-width: 100% !important; }
 }
 
 @media (max-width: 480px) {
