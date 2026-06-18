@@ -266,7 +266,13 @@ function AppInner({ theme, toggleTheme }) {
   // sidebar should always come back short). This keeps the visible list
   // at ~8 doors + the active door's children, instead of every section
   // dumped open (the old v2 persisted-map behaviour).
-  const [peekedSection, setPeekedSection] = useState(null);
+  // Sidebar sections are OPEN by default (nothing buried — the #1 nav
+  // complaint). The user may collapse the ones they don't want; that
+  // preference is remembered. Stored as the SET of collapsed section ids.
+  const [collapsedSecs, setCollapsedSecs] = useState(() => {
+    try { return new Set(JSON.parse(localStorage.getItem('sa-nav-collapsed') || '[]')); }
+    catch { return new Set(); }
+  });
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -304,7 +310,12 @@ function AppInner({ theme, toggleTheme }) {
     check();
     return () => { stop = true; clearInterval(t); };
   }, []);
-  const toggleSection = (id) => setPeekedSection(prev => (prev === id ? null : id));
+  const toggleSection = (id) => setCollapsedSecs(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    try { localStorage.setItem('sa-nav-collapsed', JSON.stringify([...next])); } catch { /* ignore */ }
+    return next;
+  });
 
   // ── Default redirect after login: always go to /overview ──
   // /overview was promoted to be the home page; /dashboard is kept
@@ -478,7 +489,9 @@ function AppInner({ theme, toggleTheme }) {
               // deliberately returns false on the parent when a subTab matches,
               // so checking it alone would COLLAPSE the section you're inside).
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              const isOpen = collapsed ? true : (sectionHasActive || peekedSection === sec.id);
+              // Open by default; honor the user's collapse preference. The
+              // active section is forced open so you always see where you are.
+              const isOpen = collapsed ? true : (sectionHasActive || !collapsedSecs.has(sec.id));
               const SecIcon = sec.icon;
               return (
                 <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
