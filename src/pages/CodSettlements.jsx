@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
@@ -49,6 +49,7 @@ const CONSUMED_COD_IMPORTS = new Set();
 export default function CodSettlements({ isActive = true }) {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const carriers = listSupportedCarriers();
   const [carrier, setCarrier] = useState(carriers[0]?.id || 'c_1777506662790');
   const [rows, setRows] = useState([]);
@@ -446,6 +447,11 @@ export default function CodSettlements({ isActive = true }) {
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
               })}
             </select>
+            <Btn size="md" variant="primary" icon={<Upload size={14}/>}
+              onClick={() => navigate(`/upload?carrier=${encodeURIComponent(carrier)}`)}
+              title="رفع مراجعة فاتورة لهذا الناقل (يُختار الناقل مسبقاً)">
+              رفع مراجعة
+            </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
             {summary.outstandingCount > 0 && (
               <Btn size="md" variant="ghost" icon={<Download size={14}/>}

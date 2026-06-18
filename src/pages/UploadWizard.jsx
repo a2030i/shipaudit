@@ -19,7 +19,7 @@ import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildH
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
+import { saveAuditToDB, applyCrossAuditDuplicates, findSamePeriodAudits } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const MONTHS = [
@@ -702,6 +702,15 @@ export default function UploadWizard({ carriers, onComplete }) {
   // The CONSUMED_WEBHOOK_IMPORTS Set (module-level) still prevents
   // double-processing across React StrictMode's double-invocation in
   // dev, and against rapid re-navigation back-and-forth.
+  // Preselect the carrier when arriving via «رفع مراجعة لهذا الناقل»
+  // (e.g. from /cod-settlements?carrier=X → /upload?carrier=X). The file
+  // detector still overrides this if it recognizes a different carrier.
+  useEffect(() => {
+    if (location.pathname !== '/upload') return;
+    const wanted = new URLSearchParams(location.search).get('carrier');
+    if (wanted && carriers?.some(c => c.id === wanted)) setCarrierId(wanted);
+  }, [location.pathname, location.search, carriers]);
+
   useEffect(() => {
     if (location.pathname !== '/upload') return;
     // Diagnostic logging — keep until the flow is rock-solid in prod.
@@ -789,6 +798,22 @@ export default function UploadWizard({ carriers, onComplete }) {
 
   const handleConfirm = async () => {
     if (!carrier) return;
+    // Soft same-carrier+period guard: warn before processing if a review
+    // already exists for this carrier and month (the common "رفعت نفس
+    // الشهر مرتين" mistake). Legitimate multi-invoice months can confirm.
+    try {
+      const priors = await findSamePeriodAudits(carrier.id, period);
+      if (priors.length) {
+        const p = priors[0];
+        const when = p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—';
+        const ok = window.confirm(
+          `⚠️ يوجد ${priors.length} مراجعة سابقة لـ«${carrier.name}» لنفس الفترة (${period}).\n` +
+          `الأحدث: ${p.file_name || p.id} · ${when} · ${p.row_count ?? '—'} شحنة.\n\n` +
+          `إن كانت نفس الفاتورة فلا تكمل (تجنّب التكرار). متأكد تكمل؟`,
+        );
+        if (!ok) return;
+      }
+    } catch { /* non-fatal — never block on the guard query */ }
     const forDate = `${year}-${String(month).padStart(2,'0')}-01`;
     // Unpriced operational exports (Delex): keep zero-billed delivered rows —
     // the contract prices them (priceFromContract), not the file.
