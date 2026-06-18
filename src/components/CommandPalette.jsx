@@ -1,0 +1,156 @@
+// لوحة الأوامر / التنقّل الفوري (Ctrl+K).
+// Flattens every page + carrier sub-screen into one searchable list so the
+// operator jumps anywhere in one keystroke — solves "الأقسام مدفونة" and
+// "أتنقّل كثير بين صفحات الناقل". Pure navigation: read-only.
+
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Search, CornerDownLeft, Truck, FileText } from 'lucide-react';
+
+// The 5 carrier-workspace screens (same set CarrierTabs links).
+const CARRIER_PAGES = [
+  { label: 'نظرة عامة',  to: (id) => `/carrier?id=${id}` },
+  { label: 'المراجعات', to: (id) => `/audits?carrier=${id}` },
+  { label: 'تحصيل COD', to: (id) => `/cod-settlements?carrier=${id}` },
+  { label: 'كشف الحساب', to: (id) => `/aramex-statements?carrier=${id}` },
+  { label: 'الدفتر',     to: (id) => `/ledger?carrier=${id}` },
+];
+
+// Arabic-light normalization so "العملاء" matches "عملاء", "الاموال" etc.
+const norm = (s) => String(s ?? '').toLowerCase()
+  .replace(/[ً-ْ]/g, '')
+  .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+  .replace(/[ـ\s]+/g, ' ').trim();
+
+export default function CommandPalette({ open, onClose, navItems = [], carriers = [] }) {
+  const navigate = useNavigate();
+  const [q, setQ] = useState('');
+  const [sel, setSel] = useState(0);
+  const inputRef = useRef(null);
+  const listRef = useRef(null);
+
+  // Build the full item list once per nav/carriers change.
+  const allItems = useMemo(() => {
+    const items = [];
+    for (const n of navItems) {
+      if (n.path) items.push({ label: n.label, sub: '', path: n.path, group: 'صفحة', icon: FileText });
+      for (const t of (n.subTabs || [])) {
+        items.push({ label: t.label, sub: n.label, path: `${n.path}?tab=${t.tabId}`, group: 'صفحة', icon: FileText });
+      }
+    }
+    for (const c of carriers) {
+      const cname = c.label || c.name || c.id;
+      for (const p of CARRIER_PAGES) {
+        items.push({ label: p.label, sub: cname, path: p.to(c.id), group: 'ناقل', icon: Truck, kw: cname });
+      }
+    }
+    return items;
+  }, [navItems, carriers]);
+
+  const results = useMemo(() => {
+    const nq = norm(q);
+    if (!nq) {
+      // No query → show pages first (top 8) so it's a quick launcher.
+      return allItems.filter(i => i.group === 'صفحة').slice(0, 8);
+    }
+    const scored = [];
+    for (const it of allItems) {
+      const hay = norm(`${it.label} ${it.sub} ${it.kw || ''}`);
+      const idx = hay.indexOf(nq);
+      if (idx >= 0) scored.push({ it, score: (idx === 0 ? 0 : 1) + idx * 0.001 });
+    }
+    scored.sort((a, b) => a.score - b.score);
+    return scored.slice(0, 40).map(s => s.it);
+  }, [q, allItems]);
+
+  useEffect(() => { if (open) { setQ(''); setSel(0); setTimeout(() => inputRef.current?.focus(), 30); } }, [open]);
+  useEffect(() => { setSel(0); }, [q]);
+
+  if (!open) return null;
+
+  const go = (item) => { if (!item) return; onClose(); navigate(item.path); };
+
+  const onKey = (e) => {
+    if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
+    else if (e.key === 'Enter') { e.preventDefault(); go(results[sel]); }
+    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, zIndex: 1000,
+        background: 'rgba(15,23,42,.45)', backdropFilter: 'blur(2px)',
+        display: 'flex', alignItems: 'flex-start', justifyContent: 'center',
+        paddingTop: '12vh',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 'min(560px, calc(100vw - 24px))',
+          background: 'var(--surface)', border: '1px solid var(--border2)',
+          borderRadius: 16, boxShadow: 'var(--shadow-xl)', overflow: 'hidden',
+        }}
+      >
+        {/* Search row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <Search size={18} color="var(--muted)"/>
+          <input
+            ref={inputRef}
+            value={q}
+            onChange={e => setQ(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="ابحث عن صفحة أو ناقل… (مثل: تحصيل سمسا، الدفتر، مديونيات)"
+            style={{
+              flex: 1, border: 'none', outline: 'none', background: 'transparent',
+              color: 'var(--text)', fontSize: 15, fontFamily: 'var(--font-sans)',
+            }}
+          />
+          <kbd style={{ fontSize: 10, color: 'var(--muted)', border: '1px solid var(--border2)', borderRadius: 5, padding: '2px 6px' }}>Esc</kbd>
+        </div>
+
+        {/* Results */}
+        <div ref={listRef} style={{ maxHeight: 420, overflowY: 'auto', padding: 6 }}>
+          {results.length === 0 ? (
+            <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
+              لا نتائج لـ «{q}»
+            </div>
+          ) : results.map((it, i) => {
+            const Icon = it.icon;
+            const active = i === sel;
+            return (
+              <button
+                key={`${it.path}-${i}`}
+                onMouseEnter={() => setSel(i)}
+                onClick={() => go(it)}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 11, width: '100%',
+                  padding: '10px 12px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                  background: active ? 'var(--nav-active-bg)' : 'transparent',
+                  color: 'var(--text)', textAlign: 'right', fontFamily: 'var(--font-sans)',
+                }}
+              >
+                <Icon size={16} color={it.group === 'ناقل' ? 'var(--accent)' : 'var(--muted)'} style={{ flexShrink: 0 }}/>
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {it.sub ? `${it.sub} · ${it.label}` : it.label}
+                  </span>
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0 }}>{it.group}</span>
+                {active && <CornerDownLeft size={13} color="var(--accent)" style={{ flexShrink: 0 }}/>}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Footer hint */}
+        <div style={{ display: 'flex', gap: 14, padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 10.5, color: 'var(--muted)' }}>
+          <span>↑↓ تنقّل</span><span>↵ فتح</span><span>Esc إغلاق</span>
+        </div>
+      </div>
+    </div>
+  );
+}
