@@ -7,7 +7,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Inbox, FileText, CheckCircle2, AlertTriangle,
   TrendingUp, TrendingDown, Building2, Webhook as WebhookIcon,
-  Settings as SettingsIcon, Wallet, ArrowLeft,
+  Settings as SettingsIcon, Wallet, ArrowLeft, BookOpen,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHero, PageHeader } from '../components/UI.jsx';
 import { loadCarriersHub } from '../lib/carriersHubService.js';
@@ -198,6 +198,24 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
           <span>تحصيل <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalCr)}</span></span>
         </div>
       </div>
+
+      {/* Direct entry to the FULL account ledger — the balance above is just
+          the headline; this one click opens every DR/CR line. The card body
+          drills into the profile overview, so this needs stopPropagation. */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onLedger?.(); }}
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
+          width: '100%', marginBottom: 18,
+          padding: '9px 14px', borderRadius: 10,
+          background: 'var(--surface)', border: '1px solid var(--border2)',
+          color: 'var(--accent)', fontSize: 12.5, fontWeight: 600,
+          fontFamily: 'var(--font-sans)', cursor: 'pointer',
+        }}
+        title="افتح كشف الحساب الكامل لهذا الناقل (كل القيود والرصيد)"
+      >
+        <BookOpen size={14}/> الكشف الكامل للحساب
+      </button>
 
       {/* Health signals — COD held by carrier / unaudited invoices / audit staleness */}
       <HealthStrip row={row} onCod={onCod} onLedger={onLedger}/>
