@@ -15,6 +15,7 @@ import { internalSettlementParser }   from './internalSettlement.js';
 import { aramexRemittanceParser }     from './aramexRemittance.js';
 import { deliverNowRemittanceParser } from './deliverNowRemittance.js';
 import { smsaRemittanceParser }       from './smsaRemittance.js';
+import { smsaBranchesRemittanceParser } from './smsaBranchesRemittance.js';
 import { aatakRemittanceParser }      from './aatakRemittance.js';
 import { delexRemittanceParser }      from './delexRemittance.js';
 import { webekRemittanceParser }      from './webekRemittance.js';
@@ -28,7 +29,8 @@ export const REMITTANCE_PARSERS = {
   // Keys MUST equal each parser's `id` (CodSettlements looks parsers up by
   // the selected carrier id). Aramex's key is its carriers-table id, not a slug.
   c_1777506662790: aramexRemittanceParser,
-  smsa:       smsaRemittanceParser,
+  smsa:          smsaRemittanceParser,
+  smsa_branches: smsaBranchesRemittanceParser,
   delivernow: deliverNowRemittanceParser,
   jnt:        jntRemittanceParser,
   imile:      imileRemittanceParser,
