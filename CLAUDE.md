@@ -195,6 +195,17 @@
 - **استبدال server-side**: `zoho-intake` edge function **v6** — فور وصول ملف نوعه مكتشَف، يُحوّل الأحداث الأقدم pending من نفس `detected_source` لـ dismissed («مُستبدَل بنسخة أحدث») فوراً. فالصندوق يتقلّص لواحد-لكل-نوع **بدون فتح أي صفحة**. (الـ parsing/ingestion لا تزال client-side عند فتح `/uploads`)
 - **معلّق (المعالجة الكاملة server-side)**: نقل الـ parsing+matching لـ Deno يكرّر منطق مطابقة مالي (`resolveStoreIds` 3-tier + RPC `bulk_match_customers`) → خطر drift يسبّب أرصدة خاطئة صامتة. الحل الآمن: مصدر واحد مشترك (RPC أو `_shared` module) لا نسخة مكرّرة. مهمة مقصودة منفصلة، تُختبَر بمقارنة ناتج السيرفر مع ناتج الـ client المعروف
 
+### 1.15 كشف البنك المتراكم + الدمج الذكي ✅ (2026-06-20)
+- صفحة `/bank` (BankStatement) كانت **في الذاكرة فقط** — كل رفع يستبدل السابق. الآن العمليات تُحفظ في جدول `bank_transactions` وتتراكم عبر الفترات.
+- `saveBankTransactions` في `bankTransactionsService.js`: كل عملية لها `dedup_key` = `ref:<المرجع البنكي>` إن وُجد، وإلا `auto:<تاريخ|وصف|مدين|دائن>`. الجدول عليه **فهرس فريد كامل (لا جزئي)** على `dedup_key` → `upsert onConflict:'dedup_key'` **آمن من فخّ 42P10** (§6). فرفع فترة متداخلة **يدمج** الصفوف المشتركة (يحدّثها لآخر قيمة) ولا يضاعفها، والصفوف الجديدة تُضاف.
+- النتيجة تُرجِع `{ saved, added, merged }` للعرض. تبويب «الدفتر البنكي المحفوظ» يعرض المتراكم مع بحث/إجماليات/حذف.
+- **القاعدة:** أي مصدر مالي يُرفَع تكراراً (بتداخل فترات) يجب أن يحمل `dedup_key` ثابتاً + فهرس فريد **كامل** ليُدمَج لا يتضاعف. المرجع البنكي هو المفتاح الطبيعي.
+
+### 1.16 سمسا فروع في مُنتقي تحصيل COD ✅ (2026-06-20)
+- مُنتقي الناقلين في `/cod-settlements` يُبنى من `REMITTANCE_PARSERS` (محلّلات ملفات التحصيل) **لا** من جدول الشركات. فأي ناقل بلا parser تحصيل يختفي من الصفحة حتى لو كان شركة كاملة تُدقَّق.
+- `smsa_branches` (RX8668) كان شركة جاهزة بلا parser → اختفى. أُضيف `smsaBranchesRemittanceParser` يعيد استخدام مفاتيح أعمدة سمسا المشتركة (`SMSA_AWB_KEYS`/`SMSA_AMT_KEYS`) بمعرّف `smsa_branches`.
+- زر **تنزيل لكل ملف تسوية** في «الملفات المرفوعة» (`loadUploadShipments` + `handleExportUpload`): يصدّر Excel فيه رقم كل شحنة + حالتها في المطابقة (من تجميع `reconByAwb`).
+
 ---
 
 ## 2. المبادئ الأساسية (Non-Negotiable)
@@ -254,7 +265,8 @@
 | المسار | المسؤولية |
 |---|---|
 | `src/lib/coreService.js` | CRUD للـ audits + carriers، بوابة الاعتماد، auto-posting، loadAuditShipments |
-| `src/lib/codSettlementService.js` | COD reconciliation، syncAuditCodOut، saveSettlementUpload |
+| `src/lib/codSettlementService.js` | COD reconciliation، syncAuditCodOut، saveSettlementUpload، loadUploadShipments |
+| `src/lib/bankTransactionsService.js` | حفظ/تحميل عمليات كشف البنك المتراكمة (دمج ذكي عبر `dedup_key`) |
 | `src/lib/customerReceivablesService.js` | parser + snapshot upload + load latest AR rollup + merchant overlay |
 | `src/lib/merchantsService.js` | merchant directory (snapshot) + Levenshtein fuzzy linker + insights |
 | `src/lib/webhookService.js` | CRUD لـ webhook_events، delete (مع verify) |
@@ -291,6 +303,7 @@
 | `audit_awb_ledger` | للكشف عن تكرار AWB عبر المراجعات |
 | `webhook_events` | الإيميلات الواردة |
 | `cod_settlement` | تسويات COD per-AWB (in/out) |
+| `bank_transactions` | عمليات كشف البنك المتراكمة (دمج ذكي عبر `dedup_key` فريد كامل) |
 | `cod_reconciliation_action` | اعتمادات/اعتراضات على فروق COD |
 | `customer_receivables` | snapshots لمديونيات العملاء (read-only AR view) |
 | `customer_settings` | per-customer tag (excluded/priority) — يدوم عبر snapshots |
@@ -401,4 +414,6 @@
 
 ---
 
-**آخر تحديث:** 2026-05-30 — (1) إصلاح فخّ الـ 42P10 في مسار COD (`saveSettlementUpload`) + back-fill 11 قيد COD (361,280.26 ر.س). (2) إصلاح اكتشاف عمود COD المجرّد: أُضيف `/^cod$/i` لأنماط `codAmount` — كان iMile KSA Fee Bill يُسجّل 0 تحصيل عند الاعتماد رغم 41,533 ر.س محصَّلة (مُتحقَّق عبر تشغيل المحرّك الفعلي على الملف: 316 شحنة OK، 272 شحنة COD = 41,533.49)
+**آخر تحديث:** 2026-06-20 — (1) §1.15 كشف البنك المتراكم: جدول `bank_transactions` + دمج ذكي عبر `dedup_key` (فهرس فريد كامل، آمن من 42P10) — الرفعات المتداخلة تُدمَج لا تتضاعف. (2) §1.16 سمسا فروع في مُنتقي COD (parser يعيد استخدام صيغة سمسا) + زر تنزيل لكل ملف تسوية مع حالة كل شحنة. (3) إصلاح مُنتقي الناقل في «مطالبة جديدة» (Select يقبل children لا `options=`) + زر «الكشف الكامل» بارز في بطاقة `/hub`.
+
+**أسبق:** 2026-05-30 — (1) إصلاح فخّ الـ 42P10 في مسار COD (`saveSettlementUpload`) + back-fill 11 قيد COD (361,280.26 ر.س). (2) إصلاح اكتشاف عمود COD المجرّد: أُضيف `/^cod$/i` لأنماط `codAmount` — كان iMile KSA Fee Bill يُسجّل 0 تحصيل عند الاعتماد رغم 41,533 ر.س محصَّلة (مُتحقَّق عبر تشغيل المحرّك الفعلي على الملف: 316 شحنة OK، 272 شحنة COD = 41,533.49)
