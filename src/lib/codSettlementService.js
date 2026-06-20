@@ -321,6 +321,31 @@ export async function deleteSettlementUpload(uploadId) {
   }
 }
 
+// Every shipment row belonging to ONE uploaded settlement file, for the
+// per-file "download with reconciliation status" export. Ordered by id so
+// the .range() pages never overlap (see loadReconciliation note on why a
+// stable unique order is mandatory once a file crosses 1000 rows).
+export async function loadUploadShipments(uploadId) {
+  if (!uploadId) return [];
+  const PAGE = 1000;
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('cod_settlement')
+      .select('awb, amount, upload_date, direction')
+      .eq('upload_id', uploadId)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return rows;
+}
+
 // List of all settlement uploads for a carrier, aggregated by upload_id
 // so the UI can show one row per uploaded file: date, direction, count,
 // total amount, source filename, settlement ref.
