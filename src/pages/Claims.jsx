@@ -164,8 +164,10 @@ export default function Claims({ carriers = [], isActive }) {
 
       {modal && (
         <Modal title="⚖️ مطالبة جديدة" onClose={() => setModal(false)} width={480}>
-          <Select label="الناقل" value={form.carrierId} onChange={e => setForm(f => ({ ...f, carrierId: e.target.value }))}
-            options={[{ value: '', label: '— اختر —' }, ...carriers.map(c => ({ value: c.id, label: c.name }))]}/>
+          <Select label="الناقل" value={form.carrierId} onChange={e => setForm(f => ({ ...f, carrierId: e.target.value }))}>
+            <option value="">— اختر —</option>
+            {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
           <Input label="عنوان المطالبة" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
             placeholder="مثال: زيادة رسوم وقود — فواتير مايو"/>
           <Input label="المبلغ (ر.س)" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}/>
