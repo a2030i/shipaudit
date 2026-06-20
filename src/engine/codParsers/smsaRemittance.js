@@ -19,23 +19,29 @@ import { makeRemittanceParser } from './genericRemittance.js';
 // Note: amtKeys uses /^cod amount$/-style exact phrasing first so
 // it picks "COD Amount" rather than "COD Amount - Payment" (which
 // would be net after SMSA's fee deduction).
+// Shared column synonyms — the branches account (RX8668) sends the
+// exact same "COD Collection Report" workbook, so smsaBranchesRemittance
+// re-uses these keys (only the id/label differ).
+export const SMSA_AWB_KEYS = [
+  'awb number', 'awb no', 'awb',
+  'tracking number', 'tracking no', 'tracking', 'waybill',
+  'رقم الشحنة', 'رقم البوليصة', 'رقم الشحن',
+];
+export const SMSA_AMT_KEYS = [
+  // Use ONLY specific phrases. The SMSA sheet has a "COD Reference"
+  // column (the batch ID like "COD90837") that would steal the
+  // amount slot if we kept a bare 'cod' fallback — findColumn
+  // returns the first column matching ANY key, and "COD Reference"
+  // appears before "COD Amount" in the header row.
+  'cod amount',
+  'collected amount', 'collection amount',
+  'paid amount', 'net amount',
+  'المبلغ المحصّل', 'قيمة التحصيل', 'المبلغ',
+];
+
 export const smsaRemittanceParser = makeRemittanceParser({
   id:    'smsa',
   label: 'سمسا SMSA',
-  awbKeys: [
-    'awb number', 'awb no', 'awb',
-    'tracking number', 'tracking no', 'tracking', 'waybill',
-    'رقم الشحنة', 'رقم البوليصة', 'رقم الشحن',
-  ],
-  amtKeys: [
-    // Use ONLY specific phrases. The SMSA sheet has a "COD Reference"
-    // column (the batch ID like "COD90837") that would steal the
-    // amount slot if we kept a bare 'cod' fallback — findColumn
-    // returns the first column matching ANY key, and "COD Reference"
-    // appears before "COD Amount" in the header row.
-    'cod amount',
-    'collected amount', 'collection amount',
-    'paid amount', 'net amount',
-    'المبلغ المحصّل', 'قيمة التحصيل', 'المبلغ',
-  ],
+  awbKeys: SMSA_AWB_KEYS,
+  amtKeys: SMSA_AMT_KEYS,
 });
