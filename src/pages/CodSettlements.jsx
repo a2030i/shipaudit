@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
-  loadSettlementUploads, deleteSettlementUpload,
+  loadSettlementUploads, deleteSettlementUpload, loadUploadShipments,
   findDuplicateSettlementAwbs, loadOutstandingByCarrier,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
@@ -107,6 +107,58 @@ export default function CodSettlements({ isActive = true }) {
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
     }
+  };
+
+  // AWB → its aggregate reconciliation row, so a per-file export can stamp
+  // each shipment with its overall status (the file only knows its own
+  // amount; the status comes from matching against the opposite direction).
+  const reconByAwb = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) m.set(String(r.awb).trim(), r);
+    return m;
+  }, [rows]);
+
+  // Download ONE settlement file's shipments, each tagged with its status
+  // in the reconciliation (matched / outstanding / over_remit / …). Works
+  // for both directions — carrier file (in) or internal-system file (out).
+  const [exportingUpload, setExportingUpload] = useState(null);
+  const handleExportUpload = async (u) => {
+    setExportingUpload(u.uploadId);
+    try {
+      const ship = await loadUploadShipments(u.uploadId);
+      if (!ship.length) { toast('لا توجد شحنات في هذا الملف', 'info'); return; }
+      const headers = [
+        'رقم الشحنة (AWB)', 'مبلغ هذا الملف (ر.س)', 'الحالة في المطابقة',
+        'إجمالي متوقّع', 'إجمالي مُستلَم', 'الفرق', 'ملاحظة',
+      ];
+      const data = ship.map(s => {
+        const r = reconByAwb.get(String(s.awb).trim());
+        const statusLabel = r
+          ? (STATUS_META[statusKey(r)]?.label || r.status)
+          : 'غير مطابَق';
+        return [
+          String(s.awb),
+          +Number(s.amount || 0).toFixed(2),
+          statusLabel,
+          r ? r.paid : '',
+          r ? r.received : '',
+          r ? r.diff : '',
+          r?.notes || '',
+        ];
+      });
+      const total = ship.reduce((acc, s) => acc + (Number(s.amount) || 0), 0);
+      const totalRow = ['الإجمالي', +total.toFixed(2), '', '', '', '', ''];
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...data, [], totalRow]);
+      ws['!cols'] = [{ wch: 24 }, { wch: 18 }, { wch: 24 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 30 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, u.direction === 'in' ? 'مُستلَم' : 'متوقّع');
+      const safe = String(u.sourceFile || u.uploadId).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60);
+      XLSX.writeFile(wb, `تسوية_${safe}.xlsx`);
+      toast(`تم تصدير ${ship.length} شحنة مع حالتها`, 'success');
+    } catch (e) {
+      toast(`فشل التصدير: ${e.message}`, 'error');
+    }
+    setExportingUpload(null);
   };
 
   // Export the outstanding (متبقّي) list as Excel — what the carrier still
@@ -619,7 +671,7 @@ export default function CodSettlements({ isActive = true }) {
                 const FileRow = ({ u }) => (
                   <div key={u.uploadId} style={{
                     display: 'grid',
-                    gridTemplateColumns: '1fr auto auto auto',
+                    gridTemplateColumns: '1fr auto auto auto auto',
                     gap: 10, alignItems: 'center',
                     padding: '10px 14px', borderBottom: '1px solid var(--border)22',
                   }}>
@@ -696,6 +748,12 @@ export default function CodSettlements({ isActive = true }) {
                       </div>
                       <div style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</div>
                     </div>
+                    <Btn size="sm" variant="ghost"
+                      onClick={() => handleExportUpload(u)}
+                      disabled={exportingUpload === u.uploadId}
+                      title="تنزيل شحنات هذا الملف مع حالة كل شحنة في المطابقة">
+                      {exportingUpload === u.uploadId ? <Spinner size={12}/> : <Download size={12}/>}
+                    </Btn>
                     <Btn size="sm" variant="ghost" onClick={() => setConfirmDeleteUpload(u)} title="حذف الملف">
                       <Trash2 size={12}/>
                     </Btn>
