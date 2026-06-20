@@ -1,9 +1,11 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
-import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2 } from 'lucide-react';
+import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2, Save, Database } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
+import { saveBankTransactions, loadBankTransactions, deleteBankTransaction } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
+import { useAuth } from '../lib/auth.jsx';
 
 // ── State machine: idle → processing → done | error ──
 const fmtMoney = n =>
@@ -18,6 +20,7 @@ const CARRIER_ALIASES = {
 };
 
 export default function BankStatement() {
+  const { user } = useAuth();
   const [state, setState] = useState('idle');           // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);            // { transactions, summary, hiddenFees, fileName }
@@ -26,6 +29,66 @@ export default function BankStatement() {
   const [carriers, setCarriers] = useState([]);
   const [reconcileOpen, setReconcileOpen] = useState(false);
   const [reconciledTxIds, setReconciledTxIds] = useState(new Set()); // tx index → matched
+
+  // View: the current (in-memory) upload, or the accumulated saved ledger.
+  const [view, setView]               = useState('current'); // current | saved
+  const [saving, setSaving]           = useState(false);
+  const [saved, setSaved]             = useState(null);      // null = not loaded yet
+  const [savedLoading, setSavedLoading] = useState(false);
+  const [savedSearch, setSavedSearch]   = useState('');
+
+  const loadSaved = useCallback(async () => {
+    setSavedLoading(true);
+    try { setSaved(await loadBankTransactions()); }
+    catch (e) { toast(`فشل تحميل الدفتر البنكي: ${e.message}`, 'error'); }
+    setSavedLoading(false);
+  }, []);
+  useEffect(() => { if (view === 'saved' && saved == null) loadSaved(); }, [view, saved, loadSaved]);
+
+  // Persist the parsed statement so uploads accumulate across periods.
+  const handleSave = async () => {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const r = await saveBankTransactions({
+        transactions: result.transactions, summary: result.summary,
+        fileName: result.fileName, userId: user?.id,
+      });
+      toast(`حُفظ ${r.saved} عملية · ${r.added} جديدة · ${r.merged} مدموجة`, 'success');
+      setSaved(null);   // invalidate so the saved view reloads fresh
+      setView('saved');
+    } catch (e) {
+      toast(`فشل الحفظ: ${e.message}`, 'error');
+    }
+    setSaving(false);
+  };
+
+  const savedFiltered = useMemo(() => {
+    if (!saved) return [];
+    const q = savedSearch.trim().toLowerCase();
+    if (!q) return saved;
+    return saved.filter(t =>
+      String(t.reference || '').toLowerCase().includes(q)
+      || String(t.description || '').toLowerCase().includes(q));
+  }, [saved, savedSearch]);
+
+  const savedTotals = useMemo(() => {
+    const list = saved || [];
+    return {
+      count:  list.length,
+      debit:  list.reduce((s, t) => s + (Number(t.debit)  || 0), 0),
+      credit: list.reduce((s, t) => s + (Number(t.credit) || 0), 0),
+      fees:   list.reduce((s, t) => s + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
+    };
+  }, [saved]);
+
+  const handleDeleteSaved = async (id) => {
+    try {
+      await deleteBankTransaction(id);
+      setSaved(prev => (prev || []).filter(t => t.id !== id));
+      toast('حُذفت العملية', 'info');
+    } catch (e) { toast(`فشل الحذف: ${e.message}`, 'error'); }
+  };
 
   // Pull carrier list once so we can detect transfers to them.
   useEffect(() => {
@@ -139,10 +202,19 @@ export default function BankStatement() {
       <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
         💼 كشف <span style={{ color: 'var(--accent)' }}>الحساب</span>
       </h2>
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 24 }}>
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 18 }}>
         ارفع كشف بنكي (Excel) ليتم استخراج العمليات وفصل الرسوم والضريبة عن المبلغ الأساسي.
+        احفظ العمليات لتتراكم عبر الفترات — الرفعات المتداخلة تُدمَج بلا تكرار.
       </p>
 
+      {/* View toggle: this upload vs the accumulated saved ledger */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
+        <ViewTab id="current" label="الرفع الحالي"          active={view} onClick={setView} icon={<Upload size={13}/>}/>
+        <ViewTab id="saved"   label="الدفتر البنكي المحفوظ" active={view} onClick={setView} icon={<Database size={13}/>}
+          count={saved?.length}/>
+      </div>
+
+      {view === 'current' && (<>
       {/* IDLE — drop zone */}
       {state === 'idle' && (
         <div
@@ -233,6 +305,9 @@ export default function BankStatement() {
 
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Btn variant="success" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
+              {saving ? 'جارٍ الحفظ…' : 'حفظ في الدفتر'}
+            </Btn>
             <Btn variant="primary" icon={<Download size={14}/>} onClick={handleExport}>
               تحميل الكشف الصافي
             </Btn>
@@ -316,6 +391,86 @@ export default function BankStatement() {
             </div>
           </Card>
         </>
+      )}
+      </>)}
+
+      {/* SAVED LEDGER — accumulated across every upload */}
+      {view === 'saved' && (
+        savedLoading && saved == null
+          ? <Card style={{ padding: 64, textAlign: 'center' }}><Spinner size={32}/></Card>
+          : !saved || saved.length === 0
+            ? <Card><Empty icon="🏦" title="الدفتر البنكي فارغ" sub="ارفع كشفاً من تبويب «الرفع الحالي» ثم اضغط «حفظ في الدفتر»"/></Card>
+            : (
+              <>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 14 }}>
+                  <StatBlock label="إجمالي العمليات" value={savedTotals.count}           color="var(--accent)" mono/>
+                  <StatBlock label="إجمالي المدين"   value={fmtMoney(savedTotals.debit)}  color="var(--red)"   suffix="ر.س"/>
+                  <StatBlock label="إجمالي الدائن"   value={fmtMoney(savedTotals.credit)} color="var(--green)" suffix="ر.س"/>
+                  <StatBlock label="رسوم + ضريبة"    value={fmtMoney(savedTotals.fees)}   color="var(--gold)"  suffix="ر.س"/>
+                </div>
+
+                <div style={{ position: 'relative', marginBottom: 10 }}>
+                  <Search size={14} style={{ position: 'absolute', right: 12, top: 11, color: 'var(--muted)' }}/>
+                  <input
+                    value={savedSearch}
+                    onChange={e => setSavedSearch(e.target.value)}
+                    placeholder="بحث بالرقم المرجعي أو الوصف في كل الفترات..."
+                    style={{ width: '100%', padding: '9px 36px 9px 12px', borderRadius: 9, fontSize: 13 }}
+                  />
+                </div>
+
+                <Card style={{ padding: 0, overflow: 'hidden' }}>
+                  <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+                    {savedFiltered.length === 0
+                      ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="جرب نص بحث مختلف"/>
+                      : (
+                        <table style={{ fontSize: 12, width: '100%' }}>
+                          <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
+                            <tr>
+                              <th style={{ minWidth: 90 }}>التاريخ</th>
+                              <th style={{ minWidth: 130 }}>الرقم المرجعي</th>
+                              <th>الوصف</th>
+                              <th style={{ minWidth: 90 }}>دائن</th>
+                              <th style={{ minWidth: 90 }}>مدين</th>
+                              <th style={{ minWidth: 70 }}>الرسوم</th>
+                              <th style={{ minWidth: 40 }}></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {savedFiltered.map(t => (
+                              <tr key={t.id}>
+                                <td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.txn_date || '—'}</td>
+                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                                  {t.reference || '—'}
+                                </td>
+                                <td style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {t.description}
+                                </td>
+                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
+                                  {Number(t.credit) ? fmtMoney(t.credit) : ''}
+                                </td>
+                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
+                                  {Number(t.debit) ? fmtMoney(t.debit) : ''}
+                                </td>
+                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
+                                  {Number(t.fees) + Number(t.tax) > 0 ? (Number(t.fees) + Number(t.tax)).toFixed(2) : ''}
+                                </td>
+                                <td>
+                                  <button onClick={() => handleDeleteSaved(t.id)} title="حذف العملية"
+                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
+                                    <Trash2 size={12}/>
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      )
+                    }
+                  </div>
+                </Card>
+              </>
+            )
       )}
 
       {reconcileOpen && (
@@ -480,6 +635,32 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+function ViewTab({ id, label, active, onClick, icon, count }) {
+  const isActive = active === id;
+  return (
+    <button
+      onClick={() => onClick(id)}
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 7,
+        padding: '8px 16px', borderRadius: 10, cursor: 'pointer',
+        border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border2)',
+        background: isActive ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
+        color: isActive ? 'var(--accent)' : 'var(--muted)',
+        fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
+      }}
+    >
+      {icon} {label}
+      {count != null && count > 0 && (
+        <span style={{
+          fontFamily: 'var(--font-mono)', fontSize: 11,
+          background: isActive ? 'var(--accent)' : 'var(--muted)', color: '#fff',
+          borderRadius: 999, padding: '1px 7px',
+        }}>{count}</span>
+      )}
+    </button>
+  );
+}
+
 function StatBlock({ label, value, color, suffix, mono }) {
   return (
     <div style={{
