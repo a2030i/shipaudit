@@ -861,7 +861,7 @@ export default function UploadWizard({ carriers, onComplete }) {
 
       {/* ── STEP INDICATOR ────────────────────────────────────────────── */}
       <Card style={{ padding: '18px 24px', marginBottom: 18 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'nowrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', rowGap: 8 }}>
           {stepLabels.map((s, i) => {
             const done    = step > s.n;
             const current = step === s.n;

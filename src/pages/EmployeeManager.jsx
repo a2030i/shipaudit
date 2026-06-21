@@ -541,7 +541,7 @@ export default function EmployeeManager() {
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         {ROLES.map(r => (
           <div key={r.value} style={{
             flex: 1, padding: '12px 16px', borderRadius: 10,

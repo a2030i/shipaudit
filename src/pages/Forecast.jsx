@@ -185,7 +185,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
               <span style={{ color: '#DC2626' }}>{fmt(data.outflowTotal)} ر.س</span>
             </div>
           </div>
-          <div style={{ width: 1, height: 36, background: 'var(--border)' }}/>
+          <div className="mobile-hide" style={{ width: 1, height: 36, background: 'var(--border)' }}/>
           <div style={{ minWidth: 180 }}>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
               COD في الطريق إلينا
@@ -196,7 +196,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
           </div>
           {(data.customerInflow > 0 || data.receivablesOverdue > 0) && (
             <>
-              <div style={{ width: 1, height: 36, background: 'var(--border)' }}/>
+              <div className="mobile-hide" style={{ width: 1, height: 36, background: 'var(--border)' }}/>
               <div style={{ minWidth: 200 }}>
                 <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
                   متوقّع من العملاء (الفترة)

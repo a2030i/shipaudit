@@ -409,7 +409,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
 
 function Row({ label, value }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
+    <div className="profile-detail-row" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, fontSize: 12 }}>
       <span style={{ color: 'var(--muted)', minWidth: 130 }}>{label}</span>
       <div style={{ flex: 1, textAlign: 'left' }}>{value}</div>
     </div>
