@@ -718,7 +718,7 @@ function ReviewQueueModal({ pending, onClose, onApprove, onReject }) {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {pending.map(w => (
               <Card key={w.id} style={{ padding: 14 }}>
-                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                       {w.customer_name}

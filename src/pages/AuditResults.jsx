@@ -728,7 +728,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:'100%',overflow:'hidden'}}>
 
       {/* Main */}
-      <div style={{overflowY:'auto',padding:'20px 24px'}}>
+      <div className="ar-panel-pad" style={{overflowY:'auto',padding:'20px 24px'}}>
 
         {/* ── Review status banner ─────────────────────────────────── */}
         {(reviewStatus === 'draft' || reviewStatus === 'pending') && (

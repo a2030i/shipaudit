@@ -692,6 +692,23 @@ button:active { transform: scale(.97); }
      NOT collapse globally) — stack it here and make the pull button full. */
   .pull-everything { grid-template-columns: 1fr !important; gap: 14px !important; text-align: center; }
   .pull-everything button { width: 100%; white-space: normal; }
+
+  /* ── Mobile-polish utilities (low-priority fixes) ── */
+  .mobile-hide { display: none !important; }
+
+  /* CarrierProfile detail Row: stack label above value */
+  .profile-detail-row { flex-direction: column !important; align-items: flex-start !important; gap: 2px !important; }
+
+  /* InternalExports export label: allow wrapping */
+  .ie-export-label { white-space: normal !important; max-width: 100% !important; }
+
+  /* AuditResults inner panel: tighten side padding */
+  .ar-panel-pad { padding-left: 14px !important; padding-right: 14px !important; }
+
+  /* CustomerPortal (/portal) renders outside .page-content — scope mobile rules here */
+  .portal-root { padding-left: 14px !important; padding-right: 14px !important; max-width: 100vw; overflow-x: hidden; }
+  .portal-root [style*="repeat(auto-fit"], .portal-root [style*="repeat(auto-fill"], .portal-root [style*="repeat(2,"], .portal-root [style*="repeat(3,"], .portal-root [style*="repeat(4,"] { grid-template-columns: 1fr !important; }
+  .portal-root table { display: block; overflow-x: auto; white-space: nowrap; max-width: 100%; }
 }
 
 @media (max-width: 480px) {

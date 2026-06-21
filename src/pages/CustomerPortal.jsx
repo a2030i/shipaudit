@@ -290,7 +290,7 @@ export default function CustomerPortal() {
   };
 
   return (
-    <div style={{
+    <div className="portal-root" style={{
       minHeight: '100vh', width: '100%',
       background: 'linear-gradient(180deg, #FAFAFA 0%, #F4F4F5 100%)',
       direction: 'rtl', fontFamily: 'var(--font-sans)',

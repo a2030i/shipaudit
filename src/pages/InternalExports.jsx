@@ -467,7 +467,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                         style={{ width: 16, height: 16, accentColor: '#8B5CF6', cursor: 'pointer' }}
                       />
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        <div className="ie-export-label" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                           {a.carrier_name || a.carrier_id || '—'} · {a.period || a.file_name || '—'}
                         </div>
                         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
