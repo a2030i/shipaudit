@@ -54,7 +54,7 @@ export default function CarriersWorkspace({ isActive = true }) {
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <div style={{
-        display: 'flex', gap: 4,
+        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
         padding: '12px 24px 0',
         borderBottom: '1px solid var(--border)',
         background: 'var(--surface)',

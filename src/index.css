@@ -614,7 +614,20 @@ button:active { transform: scale(.97); }
      Browser normalizes minmax(140px,1fr) → "minmax(140px, 1fr)". */
   .page-content [style*="minmax(140px, 1fr) auto"],
   .page-content [style*="minmax(0px, 1fr) minmax(0px, 1fr)"],
-  .page-content [style*="1fr 1fr 2fr"] {
+  .page-content [style*="1fr 1fr 2fr"],
+  /* Audit batch: multi-col action/list rows that overflow at 375px. These
+     all have >=4 columns or a fixed-px first column, so collapsing to one
+     stacked column is the right mobile degrade. Plain "auto 1fr auto" /
+     "1fr auto" (2–3 col label·value·action) are deliberately NOT here —
+     they fit and must stay single-line. */
+  .page-content [style*="1fr auto auto auto"],
+  .page-content [style*="auto 1fr auto auto"],
+  .page-content [style*="auto 1fr 1fr 1fr"],
+  .page-content [style*="1.4fr 1fr auto auto"],
+  .page-content [style*="40px minmax(0, 1fr)"],
+  .page-content [style*="90px 1fr"],
+  .page-content [style*="110px 1fr"],
+  .page-content [style*="120px 1fr"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -641,6 +654,17 @@ button:active { transform: scale(.97); }
   .page-content [style*="width: 4"][style*="px"],
   .page-content [style*="width: 5"][style*="px"],
   .page-content [style*="width: 6"][style*="px"] { max-width: 100% !important; }
+
+  /* CarrierManager: the 260px-list + 1fr-editor split is height:100% +
+     overflow:hidden on desktop. On mobile that clips the contract editor
+     off-screen. Stack it, let the page scroll, cap the list height. */
+  .cm-root { display: block !important; height: auto !important; overflow: visible !important; }
+  .cm-root > div:first-child { height: auto !important; max-height: 42vh; }
+
+  /* InternalExports "PULL EVERYTHING" hero card (auto 1fr auto row that must
+     NOT collapse globally) — stack it here and make the pull button full. */
+  .pull-everything { grid-template-columns: 1fr !important; gap: 14px !important; text-align: center; }
+  .pull-everything button { width: 100%; white-space: normal; }
 }
 
 @media (max-width: 480px) {

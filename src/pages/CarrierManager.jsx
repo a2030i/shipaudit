@@ -828,7 +828,7 @@ export default function CarrierManager({ carriers, setCarriers }) {
   };
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:'260px 1fr',height:'100%',overflow:'hidden'}}>
+    <div className="cm-root" style={{display:'grid',gridTemplateColumns:'260px 1fr',height:'100%',overflow:'hidden'}}>
 
       {/* Sidebar */}
       <div style={{background:'var(--surface)',borderLeft:'1px solid var(--border)',padding:16,overflowY:'auto',height:'100%'}}>

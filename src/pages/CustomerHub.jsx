@@ -77,7 +77,7 @@ export default function CustomerHub({ isActive = true }) {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       {/* Tab strip — sticky-ish, sits right under the topbar */}
       <div style={{
-        display: 'flex', gap: 4,
+        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
         padding: '12px 24px 0',
         borderBottom: '1px solid var(--border)',
         background: 'var(--surface)',
