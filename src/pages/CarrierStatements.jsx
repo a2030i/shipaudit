@@ -609,7 +609,7 @@ export default function CarrierStatements({ carriers = [] }) {
               {filtered.length === 0
                 ? <Empty icon="🔍" title="لا توجد عمليات مطابقة"/>
                 : (
-                  <table style={{ fontSize: 12, width: '100%' }}>
+                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                       <tr>
                         {existingMap && <th style={{ minWidth: 70 }}>الحالة</th>}
@@ -641,7 +641,7 @@ export default function CarrierStatements({ carriers = [] }) {
                         return (
                           <tr key={i} style={delta === 'new' ? { background: 'rgba(52,211,153,.04)' } : undefined}>
                             {existingMap && (
-                              <td>
+                              <td data-label="الحالة">
                                 {deltaMeta && (
                                   <span style={{
                                     background: `${deltaMeta.color}20`,
@@ -655,7 +655,7 @@ export default function CarrierStatements({ carriers = [] }) {
                                 )}
                               </td>
                             )}
-                            <td>
+                            <td data-label="النوع">
                               <span style={{
                                 background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
                                 color: meta.color, fontSize: 10, fontWeight: 700,
@@ -665,25 +665,25 @@ export default function CarrierStatements({ carriers = [] }) {
                                 {o.docType} · {meta.label}
                               </span>
                             </td>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)' }}>
+                            <td data-label="" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)' }}>
                               {o.docNo}
                             </td>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
+                            <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
                               {o.referenceNo}
                             </td>
-                            <td style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.docDate || '—'}</td>
-                            <td style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.dueDate || '—'}</td>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.dr > 0 ? 'var(--red)' : 'var(--muted3)' }}>
+                            <td data-label="تاريخ المستند" style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.docDate || '—'}</td>
+                            <td data-label="تاريخ الاستحقاق" style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.dueDate || '—'}</td>
+                            <td data-label="مدين" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.dr > 0 ? 'var(--red)' : 'var(--muted3)' }}>
                               {o.dr > 0 ? fmt(o.dr) : ''}
                             </td>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.cr < 0 ? 'var(--green)' : 'var(--muted3)' }}>
+                            <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.cr < 0 ? 'var(--green)' : 'var(--muted3)' }}>
                               {o.cr < 0 ? fmt(Math.abs(o.cr)) : ''}
                             </td>
-                            <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(o.balance)}</td>
-                            <td style={{ fontSize: 11 }}>
+                            <td data-label="الرصيد" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(o.balance)}</td>
+                            <td data-label="نوع الشحنة" style={{ fontSize: 11 }}>
                               {o.shipmentType ? SHIPMENT_TYPE_LABEL[o.shipmentType] : '—'}
                             </td>
-                            <td>
+                            <td data-label="الحالة">
                               <Badge status="unknown" label={o.docType === 'RV' ? '⏳ معلّقة' : '—'}/>
                             </td>
                           </tr>

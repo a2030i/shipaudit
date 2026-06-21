@@ -110,7 +110,7 @@ export default function Claims({ carriers = [], isActive }) {
         ? <Card><Empty icon="⚖️" title="لا مطالبات نشطة" sub="سجّل أول مطالبة من زر «مطالبة جديدة» عند اكتشاف فرق"/></Card>
         : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <table style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
+            <table className="m-cards" style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
               <thead>
                 <tr style={{ background: 'var(--bg2)', textAlign: 'right' }}>
                   {['الناقل', 'المطالبة', 'المرجع', 'المبلغ', 'الحالة', 'إجراء'].map(h => (
@@ -123,25 +123,25 @@ export default function Claims({ carriers = [], isActive }) {
                   const st = CLAIM_STATUS[c.status] || CLAIM_STATUS.open;
                   return (
                     <tr key={c.id} style={{ borderTop: '1px solid var(--border)' }}>
-                      <td style={{ padding: '10px 13px', fontWeight: 600, whiteSpace: 'nowrap' }}>{nameById.get(c.carrier_id) || c.carrier_id}</td>
-                      <td style={{ padding: '10px 13px' }}>
+                      <td data-label="" style={{ padding: '10px 13px', fontWeight: 600, whiteSpace: 'nowrap' }}>{nameById.get(c.carrier_id) || c.carrier_id}</td>
+                      <td data-label="المطالبة" style={{ padding: '10px 13px' }}>
                         {c.title}
                         {c.notes && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{c.notes}</div>}
                       </td>
-                      <td style={{ padding: '10px 13px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>{c.reference || '—'}</td>
-                      <td style={{ padding: '10px 13px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                      <td data-label="المرجع" style={{ padding: '10px 13px', fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>{c.reference || '—'}</td>
+                      <td data-label="المبلغ" style={{ padding: '10px 13px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {fmt(c.amount)}
                         {c.status === 'recovered' && Number(c.recovered_amount) !== Number(c.amount) && (
                           <div style={{ fontSize: 10.5, color: '#059669' }}>استُرد {fmt(c.recovered_amount)}</div>
                         )}
                       </td>
-                      <td style={{ padding: '10px 13px' }}>
+                      <td data-label="الحالة" style={{ padding: '10px 13px' }}>
                         <span style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11, fontWeight: 700,
                           background: `color-mix(in srgb, ${st.color} 12%, transparent)`, color: st.color }}>
                           {st.label}
                         </span>
                       </td>
-                      <td style={{ padding: '10px 13px', whiteSpace: 'nowrap' }}>
+                      <td data-label="إجراء" style={{ padding: '10px 13px', whiteSpace: 'nowrap' }}>
                         {c.status === 'open' && <Btn size="sm" variant="primary" onClick={() => move(c, 'submitted')}>📤 أُرسلت للناقل</Btn>}
                         {c.status === 'submitted' && (
                           <>

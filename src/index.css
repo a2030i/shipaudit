@@ -649,6 +649,33 @@ button:active { transform: scale(.97); }
   .page-content table.m-compact td:nth-child(2),
   .page-content table.m-compact th:nth-child(2) { text-align: left; white-space: nowrap; }
 
+  /* `.m-cards`: turn a wide data table into stacked CARDS on mobile — every
+     row becomes a card, every cell a "label: value" line (label from the
+     cell's data-label attr). No horizontal scroll, NO hidden data. A cell
+     with data-label="" becomes the card title (full-width, bold). This is
+     the professional treatment for dense financial tables (ledger/COD/…). */
+  .page-content table.m-cards,
+  .page-content table.m-cards tbody { display: block; min-width: 0 !important; width: 100%; }
+  .page-content table.m-cards thead { display: none; }
+  .page-content table.m-cards tr {
+    display: block; margin: 0 0 10px; padding: 10px 12px;
+    border: 1px solid var(--border); border-radius: 12px; background: var(--card);
+  }
+  .page-content table.m-cards td {
+    display: flex; justify-content: space-between; align-items: center; gap: 14px;
+    padding: 5px 0; border: none !important; white-space: normal !important;
+    text-align: left; min-width: 0;
+  }
+  .page-content table.m-cards td::before {
+    content: attr(data-label); color: var(--muted); font-size: 11px;
+    font-weight: 700; white-space: nowrap; flex-shrink: 0;
+  }
+  .page-content table.m-cards td[data-label=""] {
+    display: block; padding: 0 0 8px; margin-bottom: 4px;
+    border-bottom: 1px solid var(--border) !important; font-weight: 700;
+  }
+  .page-content table.m-cards td[data-label=""]::before { content: none; }
+
   /* Any stray fixed-width box can't exceed the viewport */
   .page-content [style*="width: 3"][style*="px"],
   .page-content [style*="width: 4"][style*="px"],

@@ -295,7 +295,7 @@ export default function Collections({ isActive = true }) {
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                 {['العميل', 'المسبّب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'إجراء'].map(h => (
@@ -314,7 +314,7 @@ export default function Collections({ isActive = true }) {
                     background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, #DC2626 4%, transparent)' : 'transparent',
                     cursor: 'pointer',
                   }} onClick={() => setDrawer(t)}>
-                    <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
+                    <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
                       {t.customer_name}
                       {c?.merchant?.phone && (
                         <div style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right', marginTop: 2 }}>
@@ -322,23 +322,23 @@ export default function Collections({ isActive = true }) {
                         </div>
                       )}
                     </td>
-                    <td style={{ padding: '10px 12px' }}>
+                    <td data-label="المسبّب" style={{ padding: '10px 12px' }}>
                       <span style={pill(TRIGGER_COLORS[t.trigger])}>
                         {TRIGGER_LABELS[t.trigger] || t.trigger}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 12px' }}>
+                    <td data-label="المرحلة" style={{ padding: '10px 12px' }}>
                       <span style={pill(STAGE_COLORS[t.stage])}>
                         {STAGE_LABELS[t.stage] || t.stage}
                       </span>
                     </td>
-                    <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#DC2626' }}>
+                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#DC2626' }}>
                       {fmtCompact(t.debt_at_creation)}
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
+                    <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
                       {t.days_outstanding != null ? `${t.days_outstanding} يوم` : '—'}
                     </td>
-                    <td style={{ padding: '10px 12px', fontSize: 11 }}>
+                    <td data-label="الوعد" style={{ padding: '10px 12px', fontSize: 11 }}>
                       {t.stage === 'promised' ? (
                         <span style={{ color: isPromiseOverdue ? '#DC2626' : '#F59E0B', fontWeight: 600 }}>
                           {fmtCompact(t.promise_amount)} يوم {fmtDate(t.promise_date)}
@@ -351,7 +351,7 @@ export default function Collections({ isActive = true }) {
                         </span>
                       ) : '—'}
                     </td>
-                    <td style={{ padding: '10px 12px' }} onClick={(e) => e.stopPropagation()}>
+                    <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={(e) => e.stopPropagation()}>
                       <QuickActions task={t}
                         onContact={async () => { await updateTaskStage(t.id, 'contacted'); refresh(); }}
                         onPromise={() => setPtpOpen(t)}
