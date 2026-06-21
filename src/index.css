@@ -450,15 +450,26 @@ button:active { transform: scale(.97); }
     z-index: 150;
     width: var(--sw) !important;
     transform: translateX(110%);
-    transition: transform .3s cubic-bezier(.4,0,.2,1);
+    /* `visibility: hidden` while closed is REQUIRED: the drawer is a
+       position:fixed element pushed off-screen, and iOS Safari does NOT
+       clip off-screen fixed elements with body `overflow-x:hidden`, so it
+       becomes horizontally-scrollable empty space ("هامش فاضي على اليسار").
+       Hiding it removes it from the scroll area; visibility flips instantly
+       on open and 0.3s after close so the slide animation is preserved. */
+    visibility: hidden;
+    transition: transform .3s cubic-bezier(.4,0,.2,1), visibility 0s linear .3s;
     box-shadow: var(--shadow-lg);
     overflow-y: auto !important;
     -webkit-overflow-scrolling: touch;
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
-  .sidebar.mobile-open { transform: translateX(0); }
-  .sidebar.collapsed   { width: var(--sw) !important; transform: translateX(110%); }
-  .sidebar.collapsed.mobile-open { transform: translateX(0); }
+  .sidebar.mobile-open {
+    transform: translateX(0);
+    visibility: visible;
+    transition: transform .3s cubic-bezier(.4,0,.2,1), visibility 0s;
+  }
+  .sidebar.collapsed   { width: var(--sw) !important; transform: translateX(110%); visibility: hidden; }
+  .sidebar.collapsed.mobile-open { transform: translateX(0); visibility: visible; }
 
   /* Show all labels in mobile sidebar (never collapsed) */
   .sidebar .nav-label { display: block !important; }
