@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -47,6 +47,7 @@ import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
 // Claims now renders inside CarriersWorkspace (claims tab), not a top-level route.
+import DecisionsBoard   from './pages/DecisionsBoard.jsx';
 import CommandPalette    from './components/CommandPalette.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
@@ -82,6 +83,8 @@ const NAV_ITEMS = [
   // Only the home screen is pinned — every other entry lives under a
   // labelled section, so the always-visible block stays tiny (was 4 rows).
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
+  // "شاشة الصباح" — every decision signal across the app in one screen.
+  { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
 
   // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
   // الشركات hub now hosts 3 lenses as sub-tabs (CarriersWorkspace): cards,
@@ -261,7 +264,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -742,6 +745,9 @@ function AppInner({ theme, toggleTheme }) {
 
             <PageSlot active={pathname==='/dashboard'} scroll>
               <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/decisions'} scroll>
+              <DecisionsBoard isActive={pathname==='/decisions'}/>
             </PageSlot>
             {/* /hub + /carrier-kpi + /claims all render this workspace;
                 CarriersWorkspace reads ?tab= or the legacy path to pick
