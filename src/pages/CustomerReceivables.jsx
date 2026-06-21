@@ -1278,7 +1278,7 @@ export default function CustomerReceivables({ isActive = true }) {
 
           {/* Tabs */}
           <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden' }}>
-            <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)' }}>
+            <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)', flexWrap: 'wrap' }}>
               <Tab
                 id="active" label="المتابعة الافتراضية"
                 count={data.activeCustomers?.length || 0}
@@ -1449,7 +1449,7 @@ export default function CustomerReceivables({ isActive = true }) {
           {/* Table */}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ maxHeight: 600, overflowY: 'auto' }}>
-              <table style={{ fontSize: 12, width: '100%' }}>
+              <table className="m-compact" style={{ fontSize: 12, width: '100%' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>
                     <th onClick={() => handleSort('name')} style={thStyle}>

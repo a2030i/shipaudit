@@ -604,6 +604,19 @@ button:active { transform: scale(.97); }
      overflow-x; this caps the parent so the page never widens). */
   .page-content table { max-width: 100%; }
 
+  /* `.m-compact` tables: progressive disclosure on mobile. Keep only the
+     first two columns (label + key number) so they FIT the screen with no
+     sideways scroll; hide the rest. Rows are tap-to-open (detail modal),
+     so the hidden columns stay reachable. Used on debt/ledger lists where
+     the amount is what matters at a glance. */
+  .page-content table.m-compact { display: table !important; width: 100%; }
+  .page-content table.m-compact th:nth-child(n+3),
+  .page-content table.m-compact td:nth-child(n+3) { display: none !important; }
+  .page-content table.m-compact th:first-child,
+  .page-content table.m-compact td:first-child { white-space: normal; }
+  .page-content table.m-compact td:nth-child(2),
+  .page-content table.m-compact th:nth-child(2) { text-align: left; white-space: nowrap; }
+
   /* Any stray fixed-width box can't exceed the viewport */
   .page-content [style*="width: 3"][style*="px"],
   .page-content [style*="width: 4"][style*="px"],
