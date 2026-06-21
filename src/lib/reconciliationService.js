@@ -742,6 +742,92 @@ export async function loadVendorOthers() {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// COD TREASURY balances — from the Zoho Trial Balance (ميزان المراجعة).
+// Each carrier has a "خزينة <name>" cash account; its balance tells us
+// how much collected COD is sitting un-drained — the accountant-watch
+// signal ("احصل خزاين تحصيل مليانة"). Snapshot model: latest upload wins.
+// ─────────────────────────────────────────────────────────────────
+
+// Treasury account names print as "خزينة سمسا" etc. Branches must be
+// matched BEFORE base smsa. Carriers not in our system (فارنير/ماي جيت/
+// لوجستك/رصيد يدوي) resolve to null and are shown as "خارج النظام".
+function resolveTreasuryCarrier(rawName) {
+  const n = normalizeForVendorMatch(rawName);
+  if (n.includes('سمسا فروع') || n.includes('سمسا فرع')) return 'smsa_branches';
+  if (n.includes('سمسا'))                                return 'smsa';
+  if (n.includes('ايمايل') || n.includes('اي مايل'))     return 'imile';
+  if (n.includes('جي ان تي') || n.includes('جي اند تي')) return 'jnt';
+  if (n.includes('ديلفر ناو') || n.includes('ديليفر ناو')) return 'delivernow';
+  if (n.includes('ديليكس') || n.includes('ديلكس'))       return 'delex';
+  if (n.includes('بوليصه') || n.includes('بوليصة'))      return 'boleeseh';
+  if (n.includes('ويبيك') || n.includes('ويبك'))         return 'webek';
+  if (n.includes('اطاق'))                                return 'aatak';
+  return null;
+}
+
+// Pull the "خزينة …" rows out of a parsed Zoho Trial Balance sheet.
+// Columns: الحساب | رمز | وصف | صافي الرصيد المدين | صافي الرصيد الدائن | …
+export function parseZohoTrialBalanceTreasury(rows) {
+  if (!rows?.length) return { rows: [], errors: ['ملف فارغ'] };
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(rows.length, 20); i++) {
+    const r = (rows[i] || []).map(c => String(c ?? ''));
+    if (r.some(c => c.includes('صافي الرصيد المدين')) || r.some(c => c.trim() === 'الحساب')) {
+      headerRow = i; break;
+    }
+  }
+  if (headerRow < 0) return { rows: [], errors: ['لم نجد صف عنوان ميزان المراجعة (الحساب / صافي الرصيد)'] };
+  const head = rows[headerRow] || [];
+  let debIdx = findIdx(head, ['صافي الرصيد المدين']);
+  let creIdx = findIdx(head, ['صافي الرصيد الدائن']);
+  if (debIdx < 0) debIdx = 3;
+  if (creIdx < 0) creIdx = 4;
+  const out = [];
+  for (let i = headerRow + 1; i < rows.length; i++) {
+    const r = rows[i] || [];
+    const name = String(r[0] ?? '').trim();
+    if (!name.startsWith('خزينة')) continue;
+    const debit  = parseVendorAmount(r[debIdx]) || 0;
+    const credit = parseVendorAmount(r[creIdx]) || 0;
+    out.push({ raw_name: name, debit: +Number(debit).toFixed(2), credit: +Number(credit).toFixed(2) });
+  }
+  return { rows: out, errors: out.length ? [] : ['لم نجد صفوف تبدأ بـ «خزينة …» في الملف'] };
+}
+
+export async function uploadTreasurySnapshot({ parsed, userId = null }) {
+  if (!parsed?.length) throw new Error('لا توجد خزائن في الملف');
+  const snapshotId = (typeof crypto !== 'undefined' && crypto.randomUUID)
+    ? crypto.randomUUID() : `${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  const now = new Date().toISOString();
+  const payload = parsed.map(r => ({
+    snapshot_id: snapshotId,
+    raw_name:    r.raw_name,
+    carrier_id:  resolveTreasuryCarrier(r.raw_name),
+    debit:       r.debit,
+    credit:      r.credit,
+    uploaded_at: now,
+    uploaded_by: userId,
+  }));
+  const { error } = await supabase.from('cod_treasury_balances').insert(payload);
+  if (error) throw error;
+  return { snapshotId, count: payload.length, matched: payload.filter(r => r.carrier_id).length };
+}
+
+export async function loadTreasuryBalances() {
+  const { data: latest, error: e1 } = await supabase
+    .from('cod_treasury_balances').select('snapshot_id, uploaded_at')
+    .order('uploaded_at', { ascending: false }).limit(1);
+  if (e1) throw e1;
+  if (!latest?.length) return { rows: [], uploadedAt: null };
+  const { data, error } = await supabase
+    .from('cod_treasury_balances').select('*')
+    .eq('snapshot_id', latest[0].snapshot_id)
+    .order('id', { ascending: true });
+  if (error) throw error;
+  return { rows: data || [], uploadedAt: latest[0].uploaded_at };
+}
+
+// ─────────────────────────────────────────────────────────────────
 // CUSTOMER reconciliation (existing) — section starts here
 // ─────────────────────────────────────────────────────────────────
 

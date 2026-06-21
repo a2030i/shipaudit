@@ -29,6 +29,7 @@ import {
   parseZohoVendorBalances, uploadVendorBalanceSnapshot,
   listVendorSnapshots, deleteVendorSnapshot,
   loadVendorReconciliation, loadVendorOthers,
+  parseZohoTrialBalanceTreasury, uploadTreasurySnapshot, loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
 
 const fmt = (n) =>
@@ -619,23 +620,40 @@ function VendorsTab({ profile }) {
   const [reconcile, setReconcile]   = useState([]);
   const [others, setOthers]         = useState([]);
   const [snapshots, setSnapshots]   = useState([]);
+  const [treasury, setTreasury]     = useState({ rows: [], uploadedAt: null });
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, o, s] = await Promise.all([
+      const [r, o, s, t] = await Promise.all([
         loadVendorReconciliation().catch(() => []),
         loadVendorOthers().catch(() => []),
         listVendorSnapshots().catch(() => []),
+        loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
       ]);
       setReconcile(r);
       setOthers(o);
       setSnapshots(s);
+      setTreasury(t);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
   }, []);
+
+  const handleTreasuryUpload = async (file) => {
+    try {
+      const buffer = await file.arrayBuffer();
+      const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
+      const ws     = wb.Sheets[wb.SheetNames[0]];
+      const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+      const parsed = parseZohoTrialBalanceTreasury(rows);
+      if (parsed.errors.length) { toast(parsed.errors.join('\n'), 'error'); return; }
+      const result = await uploadTreasurySnapshot({ parsed: parsed.rows, userId: profile?.id || null });
+      toast(`تم رفع ${result.count} خزينة · ${result.matched} مطابقة بناقل`, 'success');
+      await refresh();
+    } catch (e) { toast(`فشل رفع ميزان المراجعة: ${e.message}`, 'error'); }
+  };
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -730,6 +748,68 @@ function VendorsTab({ profile }) {
           noun="مورّد"
         />
       </div>
+
+      {/* ── COD treasury balances — from the Zoho Trial Balance (ميزان المراجعة).
+            Shows how much collected COD sits un-drained per carrier so the
+            operator can watch whether the accountant empties each treasury. ── */}
+      <Card style={{ marginBottom: 20, padding: 0, overflow: 'hidden',
+        border: '1.5px solid color-mix(in srgb, #0EA5E9 30%, transparent)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+          background: 'color-mix(in srgb, #0EA5E9 8%, transparent)',
+          borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 16 }}>💰</span>
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
+            خزائن COD في Zoho — رقابة سحب المحاسب
+          </span>
+          {treasury.uploadedAt && (
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>
+              آخر رفع: {new Date(treasury.uploadedAt).toLocaleDateString('en-GB')}
+            </span>
+          )}
+          <label style={{ marginInlineStart: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6,
+            padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
+            background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--accent)' }}>
+            <Upload size={13}/> رفع ميزان المراجعة
+            <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleTreasuryUpload(f); e.target.value = ''; }}/>
+          </label>
+        </div>
+        {treasury.rows.length === 0 ? (
+          <div style={{ padding: 16, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
+            ارفع تقرير <strong>«ميزان المراجعة»</strong> من Zoho (المحاسب → ميزان المراجعة) لعرض رصيد خزينة كل ناقل —
+            كم تحصيل COD محتجز لم يسحبه المحاسب بعد (حوالة لنا أو سداد فاتورة الناقل).
+          </div>
+        ) : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead>
+              <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
+                <th style={thStyle}>الخزينة</th>
+                <th style={thStyle}>الناقل</th>
+                <th style={thStyle}>مدين</th>
+                <th style={thStyle}>دائن</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[...treasury.rows]
+                .sort((a, b) => Math.max(b.debit, b.credit) - Math.max(a.debit, a.credit))
+                .map(t => (
+                  <tr key={t.id} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>{t.raw_name}</td>
+                    <td style={{ padding: '10px 12px', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
+                      {t.carrier_id || <span style={{ color: 'var(--muted2)' }}>خارج النظام</span>}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'var(--font-mono)', fontWeight: 700, color: Number(t.debit) ? 'var(--text)' : 'var(--muted2)' }}>
+                      {Number(t.debit) ? fmt(t.debit) : '—'}
+                    </td>
+                    <td style={{ padding: '10px 12px', textAlign: 'left', fontFamily: 'var(--font-mono)', fontWeight: 700, color: Number(t.credit) ? '#0EA5E9' : 'var(--muted2)' }}>
+                      {Number(t.credit) ? fmt(t.credit) : '—'}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
+      </Card>
 
       {reconcile.length === 0 && others.length === 0 ? (
         <Empty
