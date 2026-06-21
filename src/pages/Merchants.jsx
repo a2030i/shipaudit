@@ -464,7 +464,7 @@ export default function Merchants({ isActive = true }) {
           {/* Table */}
           <Card style={{ padding:0, overflow:'hidden' }}>
             <div style={{ maxHeight:600, overflowY:'auto' }}>
-              <table style={{ fontSize:12, width:'100%' }}>
+              <table className="m-cards" style={{ fontSize:12, width:'100%' }}>
                 <thead style={{ position:'sticky', top:0, background:'var(--surface)', zIndex:1 }}>
                   <tr>
                     <th style={thStyle}>الاسم</th>
@@ -488,30 +488,30 @@ export default function Merchants({ isActive = true }) {
                                               '#EF4444';
                     return (
                       <tr key={m.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                        <td style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{m.store_name}</td>
-                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)' }}>{m.store_id}</td>
-                        <td style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)', direction:'ltr' }}>
+                        <td data-label="" style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{m.store_name}</td>
+                        <td data-label="ID" style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)' }}>{m.store_id}</td>
+                        <td data-label="الهاتف" style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)', direction:'ltr' }}>
                           {m.phone || '—'}
                         </td>
-                        <td>
+                        <td data-label="نوع الفوترة">
                           {m.billing_type === 'دفع لاحق' ? (
                             <span style={billingChip('#F59E0B')}>📋 دفع لاحق</span>
                           ) : m.billing_type === 'دفع مسبق' ? (
                             <span style={billingChip('#3B82F6')}>💳 دفع مسبق</span>
                           ) : <span style={{ color:'var(--muted)' }}>—</span>}
                         </td>
-                        <td>
+                        <td data-label="الحالة">
                           {m.status === 'نشط' ? (
                             <span style={statusChip('#10B981')}>● نشط</span>
                           ) : (
                             <span style={statusChip('var(--muted)')}>○ غير نشط</span>
                           )}
                         </td>
-                        <td style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontWeight:700 }}>{fmtCount(m.shipment_count)}</td>
-                        <td style={{ fontSize:11, fontFamily:'var(--font-mono)', color: lastColor }}>
+                        <td data-label="الشحنات" style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontWeight:700 }}>{fmtCount(m.shipment_count)}</td>
+                        <td data-label="آخر شحنة" style={{ fontSize:11, fontFamily:'var(--font-mono)', color: lastColor }}>
                           {m.last_shipment_at ? `${fmtDate(m.last_shipment_at)}${lastDays != null ? ` · ${lastDays}ي` : ''}` : '—'}
                         </td>
-                        <td style={{ textAlign:'left', fontFamily:'var(--font-mono)', fontWeight:700, color: (m.wallet_balance||0) > 0 ? 'var(--accent)' : 'var(--muted)' }}>
+                        <td data-label="الرصيد" style={{ textAlign:'left', fontFamily:'var(--font-mono)', fontWeight:700, color: (m.wallet_balance||0) > 0 ? 'var(--accent)' : 'var(--muted)' }}>
                           {(m.wallet_balance || 0) > 0 ? fmt(m.wallet_balance) : '—'}
                         </td>
                       </tr>

@@ -469,7 +469,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table className="m-cards">
               <thead>
                 <tr>
                   <th style={{ width: 36, paddingInline: 8 }}>
@@ -518,7 +518,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                                        && ['audit_and_cod_separate', 'cod_only'].includes(carrierKind);
                   return (
                     <tr key={e.id} style={isSel ? { background: 'rgba(45,212,191,.06)' } : undefined}>
-                      <td style={{ paddingInline: 8 }}>
+                      <td data-label="" style={{ paddingInline: 8 }}>
                         <input
                           type="checkbox"
                           checked={isSel}
@@ -526,10 +526,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           style={{ cursor: 'pointer', accentColor: '#2DD4BF' }}
                         />
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                      <td data-label="التاريخ" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                         {fmtDate(e.received_at)}
                       </td>
-                      <td style={{ fontSize: 12 }}>
+                      <td data-label="" style={{ fontSize: 12 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <Mail size={11} color="var(--muted)"/>
                           <span title={e.sender || ''} style={{
@@ -546,7 +546,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           </div>
                         )}
                       </td>
-                      <td style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)' }}>
+                      <td data-label="الملف" style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <FileText size={11} color="var(--muted)"/>
                           <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
@@ -557,7 +557,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           {fmtSize(e.file_size)}
                         </div>
                       </td>
-                      <td>
+                      <td data-label="نوع الملف">
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 5,
                           padding: '3px 9px', borderRadius: 12,
@@ -570,13 +570,13 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           {chip.label}
                         </span>
                       </td>
-                      <td style={{ fontSize: 12, fontWeight: 600 }}>
+                      <td data-label="الشركة المعرّفة" style={{ fontSize: 12, fontWeight: 600 }}>
                         {e.detected_carrier_id
                           ? <span style={{ color: 'var(--accent)' }}>{cName}</span>
                           : <span style={{ color: 'var(--muted)' }}>—</span>
                         }
                       </td>
-                      <td style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                      <td data-label="طريقة" style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
                         {e.detection_method === 'email_from' && 'بريد'}
                         {e.detection_method === 'filename'   && 'اسم ملف'}
                         {e.detection_method === 'columns'    && 'أعمدة'}
@@ -588,7 +588,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           </span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="الحالة">
                         {e.audit_id ? (
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -626,7 +626,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           </span>
                         )}
                       </td>
-                      <td>
+                      <td data-label="إجراءات">
                         <div style={{
                           display: 'inline-flex', alignItems: 'center', gap: 6,
                           flexWrap: 'nowrap',

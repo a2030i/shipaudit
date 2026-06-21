@@ -916,7 +916,7 @@ export default function CodSettlements({ isActive = true }) {
               {filtered.length === 0
                 ? <Empty icon="✓" title="لا شيء في هذي الحالة" sub="غيّر التبويب أعلاه"/>
                 : (
-                  <table style={{ fontSize: 12, width: '100%' }}>
+                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
                     <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                       <tr>
                         <th style={{ width: 34, textAlign: 'center' }}>
@@ -1058,25 +1058,25 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
     : 0;
   return (
     <tr style={checked ? { background: 'rgba(45,212,191,.06)' } : undefined}>
-      <td style={{ textAlign: 'center' }}>
+      <td data-label="" style={{ textAlign: 'center' }}>
         <input type="checkbox" checked={!!checked} onChange={onToggle}
           style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
       </td>
-      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 11 }}>{r.awb}</td>
-      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+      <td data-label="" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 11 }}>{r.awb}</td>
+      <td data-label="دفعنا للمتجر" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
         {r.hasOut ? Number(r.paid).toFixed(2) : <span style={{ color: 'var(--muted)' }}>—</span>}
       </td>
-      <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
+      <td data-label="استلمنا من الناقل" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>
         {r.hasIn ? Number(r.received).toFixed(2) : <span style={{ color: 'var(--muted)' }}>—</span>}
       </td>
-      <td style={{
+      <td data-label="الفرق" style={{
         fontFamily: 'var(--font-mono)', fontWeight: 700,
         color: Math.abs(r.diff) < 0.01 ? 'var(--green)' : (r.diff > 0 ? 'var(--red)' : 'var(--accent)'),
       }}>
         {r.diff > 0 ? '+' : ''}{Number(r.diff).toFixed(2)}
       </td>
-      <td style={{ fontSize: 11, color: 'var(--muted)' }}>{r.firstOutDate || '—'}</td>
-      <td>
+      <td data-label="تاريخ الصادرة" style={{ fontSize: 11, color: 'var(--muted)' }}>{r.firstOutDate || '—'}</td>
+      <td data-label="الحالة">
         <span style={{
           background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
           color: meta.color, fontSize: 10, fontWeight: 700,
@@ -1089,7 +1089,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
           </div>
         )}
       </td>
-      <td>
+      <td data-label="إجراء / ملاحظات">
         {/* Mismatched diffs awaiting decision */}
         {r.status === 'pending_review' && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>

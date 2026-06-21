@@ -828,7 +828,7 @@ export default function CarrierLedger({ isActive = true }) {
           {filtered.length === 0
             ? <Empty icon="📒" title="لا توجد عمليات" sub="ارفع كشف حساب أرامكس لتعبئة الدفتر"/>
             : (
-              <table style={{ fontSize: 12, width: '100%' }}>
+              <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>
                     <th style={{ width: 36, textAlign: 'center' }}>
@@ -860,7 +860,7 @@ export default function CarrierLedger({ isActive = true }) {
                     const checked = selectedIds.has(o.id);
                     return (
                       <tr key={o.id} style={checked ? { background: 'rgba(45,212,191,.06)' } : undefined}>
-                        <td style={{ textAlign: 'center' }}>
+                        <td data-label="" style={{ textAlign: 'center' }}>
                           <input
                             type="checkbox"
                             checked={checked}
@@ -874,7 +874,7 @@ export default function CarrierLedger({ isActive = true }) {
                             }}
                           />
                         </td>
-                        <td>
+                        <td data-label="الحالة">
                           <span style={{
                             background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
                             color: meta.color, fontSize: 10, fontWeight: 700,
@@ -882,7 +882,7 @@ export default function CarrierLedger({ isActive = true }) {
                             whiteSpace: 'nowrap',
                           }}>{meta.label}</span>
                         </td>
-                        <td>
+                        <td data-label="النوع">
                           {(() => {
                             const dm = DOC_TYPE_META[o.doc_type];
                             if (!dm) return (
@@ -903,11 +903,11 @@ export default function CarrierLedger({ isActive = true }) {
                             );
                           })()}
                         </td>
-                        <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)' }}>{o.doc_no}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>{o.reference_no}</td>
-                        <td style={{ fontSize: 11, color: 'var(--muted)' }}>{o.doc_date || '—'}</td>
-                        <td style={{ fontSize: 11, color: 'var(--muted)' }}>{o.due_date || '—'}</td>
-                        <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: amount > 0 ? 'var(--red)' : 'var(--green)' }}>
+                        <td data-label="" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)' }}>{o.doc_no}</td>
+                        <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>{o.reference_no}</td>
+                        <td data-label="التاريخ" style={{ fontSize: 11, color: 'var(--muted)' }}>{o.doc_date || '—'}</td>
+                        <td data-label="الاستحقاق" style={{ fontSize: 11, color: 'var(--muted)' }}>{o.due_date || '—'}</td>
+                        <td data-label="المبلغ" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: amount > 0 ? 'var(--red)' : 'var(--green)' }}>
                           {fmt(Math.abs(amount))}
                           {(Number(o.amount_paid) || 0) > 0 && amount > 0 && (() => {
                             const paid = Number(o.amount_paid) || 0;
@@ -930,7 +930,7 @@ export default function CarrierLedger({ isActive = true }) {
                             );
                           })()}
                         </td>
-                        <td style={{ fontSize: 11 }}>
+                        <td data-label="نوع الشحنة" style={{ fontSize: 11 }}>
                           {o.shipment_type ? (() => {
                             const sm = SHIPMENT_META[o.shipment_type];
                             if (!sm) return SHIPMENT_LABEL[o.shipment_type] ?? o.shipment_type;
@@ -948,7 +948,7 @@ export default function CarrierLedger({ isActive = true }) {
                             );
                           })() : '—'}
                         </td>
-                        <td>
+                        <td data-label="الإجراء">
                           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                             {/* Link / unlink audit — RV invoices only, but paid
                                 ops are still linkable (post-pay audit trail). */}

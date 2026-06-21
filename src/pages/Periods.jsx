@@ -159,7 +159,7 @@ export default function Periods({ isActive = true }) {
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                 {['الشهر', 'الحالة', 'القيود', 'COD', 'مراجعات', 'دفعات', 'الإقفال / الفتح', 'إجراء'].map(h => (
@@ -170,13 +170,13 @@ export default function Periods({ isActive = true }) {
             <tbody>
               {rows.map(r => (
                 <tr key={r.period} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)' }}>
+                  <td data-label="" style={{ ...tdStyle, fontWeight: 700, color: 'var(--text)' }}>
                     {fmtMonth(r.period)}
                     <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
                       {r.period}
                     </div>
                   </td>
-                  <td style={tdStyle}>
+                  <td data-label="الحالة" style={tdStyle}>
                     {r.status === 'closed' ? (
                       <span style={statusPill('#DC2626')}>
                         <Lock size={11}/> مقفل
@@ -187,11 +187,11 @@ export default function Periods({ isActive = true }) {
                       </span>
                     )}
                   </td>
-                  <td style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('en-US')}</td>
-                  <td style={countCell(r.counts.cod_count)}>{r.counts.cod_count.toLocaleString('en-US')}</td>
-                  <td style={countCell(r.counts.audits_count)}>{r.counts.audits_count.toLocaleString('en-US')}</td>
-                  <td style={countCell(r.counts.payments_count)}>{r.counts.payments_count.toLocaleString('en-US')}</td>
-                  <td style={{ ...tdStyle, fontSize: 11.5 }}>
+                  <td data-label="القيود" style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('en-US')}</td>
+                  <td data-label="COD" style={countCell(r.counts.cod_count)}>{r.counts.cod_count.toLocaleString('en-US')}</td>
+                  <td data-label="مراجعات" style={countCell(r.counts.audits_count)}>{r.counts.audits_count.toLocaleString('en-US')}</td>
+                  <td data-label="دفعات" style={countCell(r.counts.payments_count)}>{r.counts.payments_count.toLocaleString('en-US')}</td>
+                  <td data-label="الإقفال / الفتح" style={{ ...tdStyle, fontSize: 11.5 }}>
                     {r.close ? (
                       <div style={{ color: 'var(--muted)' }}>
                         {r.status === 'closed' ? (
@@ -218,7 +218,7 @@ export default function Periods({ isActive = true }) {
                       <span style={{ color: 'var(--muted2)', fontSize: 11 }}>—</span>
                     )}
                   </td>
-                  <td style={tdStyle}>
+                  <td data-label="إجراء" style={tdStyle}>
                     {!canClosePeriod ? (
                       <span style={{ fontSize: 11, color: 'var(--muted2)', fontFamily: 'var(--font-mono)' }}>
                         🔒 صلاحية إغلاق الفترات للمدير فقط

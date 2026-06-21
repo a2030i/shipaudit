@@ -527,7 +527,7 @@ export default function Reconciliation({ isActive = true }) {
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
                 <th style={thStyle}>#</th>
@@ -544,23 +544,23 @@ export default function Reconciliation({ isActive = true }) {
                   borderBottom: '1px solid var(--border)',
                   background: r.matched ? 'transparent' : 'color-mix(in srgb, #DC2626 3%, transparent)',
                 }}>
-                  <td style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{i + 1}</td>
-                  <td style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
+                  <td data-label="" style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{i + 1}</td>
+                  <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
                     {r.storeName}
                     <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>
                       {r.storeId}
                     </div>
                   </td>
-                  <BalCell value={r.anchor} anchor/>
-                  <BalCell value={r.zoho} dimmedIfZero/>
-                  <td style={{
+                  <BalCell value={r.anchor} anchor label="الداخلي (المرجع)"/>
+                  <BalCell value={r.zoho} dimmedIfZero label="Zoho"/>
+                  <td data-label="Zoho − الداخلي" style={{
                     padding: '10px 12px', textAlign: 'left',
                     fontFamily: 'var(--font-mono)', fontWeight: 700,
                     color: r.matched ? 'var(--muted)' : (r.zohoGap < 0 ? '#DC2626' : '#F97316'),
                   }}>
                     {Math.abs(r.zohoGap) > 0.005 ? (r.zohoGap > 0 ? '+' : '−') + fmt(Math.abs(r.zohoGap)) : '—'}
                   </td>
-                  <td style={{ padding: '10px 12px' }}>
+                  <td data-label="الإجراء" style={{ padding: '10px 12px' }}>
                     <span style={statusPill(r.action.color)}>
                       {r.action.kind === 'matched' ? <CheckCircle2 size={11}/> : <AlertTriangle size={11}/>}
                       {r.action.label}
@@ -939,10 +939,10 @@ function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete
   );
 }
 
-function BalCell({ value, anchor = false, dimmedIfZero = false }) {
+function BalCell({ value, anchor = false, dimmedIfZero = false, label }) {
   const zero = Math.abs(value) < 0.01;
   return (
-    <td style={{
+    <td data-label={label} style={{
       padding: '10px 12px', textAlign: 'left',
       fontFamily: 'var(--font-mono)', fontSize: 12,
       fontWeight: anchor ? 700 : 600,
