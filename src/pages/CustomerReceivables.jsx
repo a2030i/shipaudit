@@ -23,6 +23,7 @@ import {
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+import { computeRisk } from '../lib/customerRisk.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -636,6 +637,9 @@ export default function CustomerReceivables({ isActive = true }) {
   // When the user clicks an anomaly card on the alerts tab, this
   // narrows the table below to only that bucket. null = show all.
   const [anomalyFilter, setAnomalyFilter] = useState(null);
+  // "Stop now" filter — narrows the alerts table to customers who should be
+  // suspended before their debt grows (active post-paid + overdue/over-limit).
+  const [stopOnly, setStopOnly] = useState(false);
   // Changing tab resets the anomaly card filter so the alerts-tab
   // narrowing doesn't carry into the other tabs.
   const setTab = (t) => { setTabRaw(t); setAnomalyFilter(null); };
@@ -785,8 +789,17 @@ export default function CustomerReceivables({ isActive = true }) {
         byName.get(item.name).anomalyExtras.push(item.anomaly);
       }
     }
-    return [...byName.values()];
+    // Attach a 0–100 risk score + "stop now" signal to every flagged customer.
+    return [...byName.values()].map(c => ({ ...c, risk: computeRisk(c) }));
   }, [data, merchants]);
+
+  // The "stop now" list — active post-paid customers whose debt is already
+  // overdue/over-limit and still growing. Highest-leverage collection action.
+  const stopNow = useMemo(
+    () => anomalies.filter(c => c.risk?.shouldStop)
+      .sort((a, b) => (b.risk?.score || 0) - (a.risk?.score || 0)),
+    [anomalies],
+  );
 
   // Group anomalies by type for the breakdown banner.
   const anomalyBreakdown = useMemo(() => {
@@ -819,6 +832,10 @@ export default function CustomerReceivables({ isActive = true }) {
     // Anomaly-card click narrows the pool to one bucket only.
     if (tab === 'anomalies' && anomalyFilter) {
       pool = pool.filter(c => c.anomaly === anomalyFilter || c.anomalyExtras?.includes(anomalyFilter));
+    }
+    // "Stop now" narrows to the suspend-before-it-grows list.
+    if (tab === 'anomalies' && stopOnly) {
+      pool = pool.filter(c => c.risk?.shouldStop);
     }
     // Text search
     if (search.trim()) {
@@ -856,12 +873,19 @@ export default function CustomerReceivables({ isActive = true }) {
     const dir = sortDir === 'asc' ? 1 : -1;
     const totalKey = (c) => bucketFilters.size > 0 ? (c.filteredTotal || 0) : (c.total || 0);
     return [...pool].sort((a, b) => {
+      // In the alerts tab, default ordering is by RISK SCORE (highest first)
+      // so the most urgent customers float to the top — unless the operator
+      // explicitly picks another column or an aging-bucket filter.
+      if (tab === 'anomalies' && sortBy === 'total' && bucketFilters.size === 0) {
+        return ((b.risk?.score || 0) - (a.risk?.score || 0))
+          || ((b.total || 0) - (a.total || 0));
+      }
       if (sortBy === 'name')     return a.name.localeCompare(b.name) * dir;
       if (sortBy === 'oldest')   return ((a.daysOutstanding || 0) - (b.daysOutstanding || 0)) * dir;
       if (sortBy === 'invoices') return ((a.invoiceCount || 0) - (b.invoiceCount || 0)) * dir;
       return (totalKey(a) - totalKey(b)) * dir;
     });
-  }, [data, anomalies, tab, anomalyFilter, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
+  }, [data, anomalies, tab, anomalyFilter, stopOnly, search, minBalance, minDays, bucketFilters, sortBy, sortDir]);
 
   const toggleBucket = (k) => {
     setBucketFilters(prev => {
@@ -1305,6 +1329,38 @@ export default function CustomerReceivables({ isActive = true }) {
               Shows 5 type-tiles in a row, each clickable to filter the
               table to just that anomaly type. Counts + total debt per
               bucket so the operator can triage by financial impact. */}
+          {/* "Stop now" banner — the prevent-accumulation action list. */}
+          {tab === 'anomalies' && stopNow.length > 0 && (
+            <button
+              onClick={() => { setStopOnly(v => !v); setAnomalyFilter(null); }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 12, width: '100%',
+                textAlign: 'right', marginBottom: 14, padding: '12px 16px',
+                borderRadius: 12, cursor: 'pointer',
+                border: `1.5px solid ${stopOnly ? '#DC2626' : 'rgba(220,38,38,.35)'}`,
+                background: stopOnly ? 'rgba(220,38,38,.12)' : 'rgba(220,38,38,.06)',
+              }}
+              title="عملاء نشطون بدفع لاحق ودينهم متأخّر/تجاوز الحد — أوقفهم قبل ما يكبر الدين"
+            >
+              <span style={{ fontSize: 22 }}>🛑</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#DC2626' }}>
+                  يُوقَف الآن — {stopNow.length} عميل نشط يتراكم دينه
+                </div>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                  إجمالي دينهم {fmt(stopNow.reduce((s, c) => s + (Number(c.total) || 0), 0))} ر.س — أوقفهم قبل ما يكبر
+                </div>
+              </div>
+              <span style={{
+                fontSize: 11.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
+                background: stopOnly ? '#DC2626' : 'rgba(220,38,38,.15)',
+                color: stopOnly ? '#fff' : '#DC2626', whiteSpace: 'nowrap',
+              }}>
+                {stopOnly ? '✓ معروضون' : 'اعرضهم'}
+              </span>
+            </button>
+          )}
+
           {tab === 'anomalies' && anomalies.length > 0 && (
             <div style={{
               display: 'grid',
@@ -1498,6 +1554,21 @@ export default function CustomerReceivables({ isActive = true }) {
                           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
                             {isExcluded && <ShieldCheck size={12} color="var(--accent)"/>}
                             <span>{m?.storeName || c.name}</span>
+                            {/* Risk score badge — only on the alerts tab where it's computed */}
+                            {c.risk && (
+                              <span
+                                title={`درجة الخطر ${c.risk.score}/100 — ${c.risk.reasons.map(r => r.label).join('، ')}`}
+                                style={{
+                                  display: 'inline-flex', alignItems: 'center', gap: 3,
+                                  padding: '1px 7px', borderRadius: 9, fontSize: 9.5, fontWeight: 700,
+                                  fontFamily: 'var(--font-mono)',
+                                  background: `color-mix(in srgb, ${c.risk.level.color} 14%, transparent)`,
+                                  color: c.risk.level.color,
+                                  border: `1px solid color-mix(in srgb, ${c.risk.level.color} 35%, transparent)`,
+                                }}>
+                                {c.risk.shouldStop && '🛑 '}خطر {c.risk.score}
+                              </span>
+                            )}
                             {/* Merchant info chips — only when linked */}
                             {m && (
                               <>
