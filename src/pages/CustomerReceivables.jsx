@@ -1073,6 +1073,35 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${visibleCustomers.length} عميل لحملة التحصيل`, 'success');
   };
 
+  // Stop-list export — the 🛑 "suspend before debt grows" customers, with
+  // the risk score + stop reason so the team can action them directly.
+  const handleExportStopList = () => {
+    if (!stopNow.length) { toast('لا توجد قائمة إيقاف', 'info'); return; }
+    const headers = ['اسم المتجر', 'الهاتف', 'الدين (ر.س)', 'الأيام', 'درجة الخطر', 'سبب الإيقاف', 'نوع الفوترة', 'الحالة', 'آخر شحنة'];
+    const rows = stopNow.map(c => {
+      const m = c.merchant;
+      return [
+        m?.storeName || c.name,
+        m?.phone || '',
+        Number(c.total || 0).toFixed(2),
+        c.daysOutstanding || '',
+        c.risk?.score ?? '',
+        c.risk?.stopReason || '',
+        m?.billingType || '',
+        m?.platformStatus || '',
+        m?.lastShipmentAt ? new Date(m.lastShipmentAt).toLocaleDateString('en-CA') : '',
+      ];
+    });
+    const total = stopNow.reduce((s, c) => s + (Number(c.total) || 0), 0);
+    const footer = ['الإجمالي', '', total.toFixed(2), '', '', '', '', '', ''];
+    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows, [], footer]);
+    ws['!cols'] = [{ wch: 40 }, { wch: 16 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 34 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'قائمة الإيقاف');
+    XLSX.writeFile(wb, `قائمة_الإيقاف_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast(`تم تصدير ${stopNow.length} عميل للإيقاف`, 'success');
+  };
+
   // WhatsApp Business template export. Columns match the placeholder
   // order in the template the operator showed us:
   //
@@ -1331,34 +1360,48 @@ export default function CustomerReceivables({ isActive = true }) {
               bucket so the operator can triage by financial impact. */}
           {/* "Stop now" banner — the prevent-accumulation action list. */}
           {tab === 'anomalies' && stopNow.length > 0 && (
-            <button
-              onClick={() => { setStopOnly(v => !v); setAnomalyFilter(null); }}
-              style={{
-                display: 'flex', alignItems: 'center', gap: 12, width: '100%',
-                textAlign: 'right', marginBottom: 14, padding: '12px 16px',
-                borderRadius: 12, cursor: 'pointer',
-                border: `1.5px solid ${stopOnly ? '#DC2626' : 'rgba(220,38,38,.35)'}`,
-                background: stopOnly ? 'rgba(220,38,38,.12)' : 'rgba(220,38,38,.06)',
-              }}
-              title="عملاء نشطون بدفع لاحق ودينهم متأخّر/تجاوز الحد — أوقفهم قبل ما يكبر الدين"
-            >
-              <span style={{ fontSize: 22 }}>🛑</span>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13.5, fontWeight: 700, color: '#DC2626' }}>
-                  يُوقَف الآن — {stopNow.length} عميل نشط يتراكم دينه
+            <div style={{ display: 'flex', alignItems: 'stretch', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              <button
+                onClick={() => { setStopOnly(v => !v); setAnomalyFilter(null); }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 240,
+                  textAlign: 'right', padding: '12px 16px',
+                  borderRadius: 12, cursor: 'pointer',
+                  border: `1.5px solid ${stopOnly ? '#DC2626' : 'rgba(220,38,38,.35)'}`,
+                  background: stopOnly ? 'rgba(220,38,38,.12)' : 'rgba(220,38,38,.06)',
+                }}
+                title="عملاء نشطون بدفع لاحق ودينهم متأخّر/تجاوز الحد — أوقفهم قبل ما يكبر الدين"
+              >
+                <span style={{ fontSize: 22 }}>🛑</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#DC2626' }}>
+                    يُوقَف الآن — {stopNow.length} عميل نشط يتراكم دينه
+                  </div>
+                  <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+                    إجمالي دينهم {fmt(stopNow.reduce((s, c) => s + (Number(c.total) || 0), 0))} ر.س — أوقفهم قبل ما يكبر
+                  </div>
                 </div>
-                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-                  إجمالي دينهم {fmt(stopNow.reduce((s, c) => s + (Number(c.total) || 0), 0))} ر.س — أوقفهم قبل ما يكبر
-                </div>
-              </div>
-              <span style={{
-                fontSize: 11.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
-                background: stopOnly ? '#DC2626' : 'rgba(220,38,38,.15)',
-                color: stopOnly ? '#fff' : '#DC2626', whiteSpace: 'nowrap',
-              }}>
-                {stopOnly ? '✓ معروضون' : 'اعرضهم'}
-              </span>
-            </button>
+                <span style={{
+                  fontSize: 11.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
+                  background: stopOnly ? '#DC2626' : 'rgba(220,38,38,.15)',
+                  color: stopOnly ? '#fff' : '#DC2626', whiteSpace: 'nowrap',
+                }}>
+                  {stopOnly ? '✓ معروضون' : 'اعرضهم'}
+                </span>
+              </button>
+              <button
+                onClick={handleExportStopList}
+                title="تصدير قائمة الإيقاف إلى Excel (الاسم · الهاتف · الدين · الخطر · السبب)"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 7,
+                  padding: '0 16px', borderRadius: 12, cursor: 'pointer',
+                  border: '1.5px solid rgba(220,38,38,.35)', background: 'var(--surface)',
+                  color: '#DC2626', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
+                }}
+              >
+                <Download size={15}/> تصدير القائمة
+              </button>
+            </div>
           )}
 
           {tab === 'anomalies' && anomalies.length > 0 && (
