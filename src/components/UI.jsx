@@ -309,7 +309,7 @@ export function PageHero({
           pointerEvents: 'none', filter: 'blur(8px)',
         }}/>
       )}
-      <div style={{
+      <div className="hero-grid" style={{
         position: 'relative',
         display: 'grid',
         gridTemplateColumns: stats.length ? 'minmax(0,1fr) auto' : 'minmax(0,1fr) auto',
