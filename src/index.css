@@ -581,6 +581,8 @@ button:active { transform: scale(.97); }
   .page-content [style*="repeat(2,"],
   .page-content [style*="repeat(3,"],
   .page-content [style*="repeat(4,"],
+  .page-content [style*="repeat(5,"],
+  .page-content [style*="repeat(6,"],
   .page-content [style*="1fr 360px"],
   .page-content [style*="1fr 320px"],
   .page-content [style*="260px 1fr"],
@@ -588,7 +590,12 @@ button:active { transform: scale(.97); }
   .page-content [style*="180px 1fr"],
   .page-content [style*="160px 1fr"],
   .page-content [style*="160px repeat"],
-  .page-content [style*="80px 1fr"] {
+  .page-content [style*="80px 1fr"],
+  /* Filter rows: search + amount/days inputs (Receivables/Collections).
+     Browser normalizes minmax(140px,1fr) → "minmax(140px, 1fr)". */
+  .page-content [style*="minmax(140px, 1fr) auto"],
+  .page-content [style*="minmax(0px, 1fr) minmax(0px, 1fr)"],
+  .page-content [style*="1fr 1fr 2fr"] {
     grid-template-columns: 1fr !important;
   }
 
