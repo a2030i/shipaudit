@@ -644,7 +644,12 @@ button:active { transform: scale(.97); }
 }
 
 @media (max-width: 480px) {
-  :root { --sw: 100vw; }
+  /* Drawer ~85% width (capped 320px) — a real side drawer that leaves a
+     sliver of dimmed page behind, NOT a full-screen takeover. */
+  :root { --sw: min(85vw, 320px); }
+
+  /* Round the inner (leading) edge so it reads as a floating panel. */
+  .sidebar { border-top-left-radius: 18px; border-bottom-left-radius: 18px; }
 
   .topbar { height: 48px; }
   .hamburger-btn { width: 32px; height: 32px; }
