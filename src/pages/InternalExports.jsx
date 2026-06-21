@@ -271,7 +271,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           when they're catching up on the week. Visible only when
           there's actually something to pull. */}
       {!anyLoading && totalFiles > 0 && (
-        <div style={{
+        <div className="pull-everything" style={{
           padding: '22px 26px', marginBottom: 22,
           background: 'linear-gradient(135deg, #0A0A0B 0%, #18181B 100%)',
           color: '#fff', borderRadius: 'var(--r-xl)',

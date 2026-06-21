@@ -996,7 +996,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         )}
 
         {/* Filters */}
-        <div style={{display:'flex',gap:7,marginBottom:14}}>
+        <div style={{display:'flex',gap:7,marginBottom:14,flexWrap:'wrap',rowGap:7}}>
           {[
             { k:'all',       l:`الكل (${summary.total})` },
             { k:'mismatch',  l:`✗ فروق (${summary.mismatch})` },
