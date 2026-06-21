@@ -537,6 +537,14 @@ button:active { transform: scale(.97); }
     grid-template-columns: 1fr !important;
   }
 
+  /* PageHero: stack title above its stats so the tag/title never collide
+     with the KPI numbers on a narrow screen. */
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+    align-items: stretch !important;
+  }
+
   /* Headings shrink */
   h1 { font-size: 18px !important; }
   h2 { font-size: 16px !important; }
