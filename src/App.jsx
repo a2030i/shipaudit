@@ -79,21 +79,19 @@ const NAV_ITEMS = [
   // The /dashboard route still resolves so any deep links keep
   // working, but it's removed from the nav and the default landing
   // redirect now goes to /overview.
+  // Only the home screen is pinned — every other entry lives under a
+  // labelled section, so the always-visible block stays tiny (was 4 rows).
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
-  // الرفع الذكي — ONE drop target for every carrier file (invoice / COD /
-  // statement). Sniffs the content and routes to the right screen, so the
-  // old per-type entry points (/upload etc.) no longer need nav rows.
-  { id: 'tasks',     path: '/tasks',     label: 'المهام',         icon: ListTodo,        pinned: true, permKey: 'audits.view' },
-  { id: 'drop',      path: '/drop',      label: 'رفع ملف',        icon: Upload,          pinned: true, permKey: 'audits.create' },
-  { id: 'webhook',   path: '/webhook',   label: 'الوارد',         icon: Inbox,           pinned: true, permKey: 'webhook.view' },
 
   // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
-  // (workspace screens; rarely-touched admin moved to system)
-  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,     section: 'carriers', permKey: 'carriers.view' },
-  { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,       section: 'carriers', permKey: 'audits.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,      section: 'carriers', permKey: 'ledger.view' },
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,      section: 'carriers', permKey: 'carriers.upload_statement' },
-  { id: 'claims',       path: '/claims',            label: 'المطالبات',        icon: Scale,         section: 'carriers', permKey: 'ledger.view' },
+  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,  section: 'carriers', permKey: 'carriers.view' },
+  // كشوف الحساب raised to position #2 + a VIEW permission (was upload-only,
+  // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
+  // The upload button inside the page stays gated by carriers.upload_statement.
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
+  { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
+  { id: 'claims',       path: '/claims',            label: 'المطالبات',        icon: Scale,      section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
   { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
@@ -131,12 +129,18 @@ const NAV_ITEMS = [
   { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
 
-  // ── System (config — least-touched) ───────────────────────────
+  // ── الرفع والوارد — كل أبواب إدخال الملفات في مكان واحد ──────────
+  // Was scattered: /drop + /webhook pinned at top, /uploads buried in system.
+  // Grouping every ingest door here is the fix for "مشتتة".
+  { id: 'drop',           path: '/drop',           label: 'رفع ملف ذكي',  icon: Upload, section: 'ingest', permKey: 'audits.create' },
+  { id: 'webhook',        path: '/webhook',        label: 'الوارد',        icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
+  { id: 'uploads',        path: '/uploads',        label: 'ملفات Zoho',    icon: Layers, section: 'ingest', permKey: 'uploads.view' },
+  { id: 'weight-billing', path: '/weight-billing', label: 'فوترة الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
+
+  // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
+  { id: 'tasks',        path: '/tasks',        label: 'المهام',         icon: ListTodo,      section: 'system', permKey: 'audits.view' },
   { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',  icon: Truck,         section: 'system', permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',    icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
-  // Zoho snapshots are auto-processed on arrival (§1.14) — the inbox is now
-  // a passive log, so it lives with the rarely-touched admin screens.
-  { id: 'uploads',      path: '/uploads',      label: 'ملفات Zoho',     icon: Inbox,         section: 'system', permKey: 'uploads.view' },
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
@@ -149,11 +153,12 @@ const NAV_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  { id: 'carriers',  label: 'شركات الشحن', icon: Building2, accent: '#3B82F6', hint: 'المراجعات والكشوف والدفتر' },
-  { id: 'finance',   label: 'الأموال',      icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات' },
-  { id: 'customers', label: 'العملاء',      icon: Users,     accent: '#EF4444', hint: 'AR والمتابعة' },
-  { id: 'reports',   label: 'التقارير',     icon: BarChart3, accent: '#10B981', hint: 'شهري · أداء · تنبؤ' },
-  { id: 'system',    label: 'الإعدادات',    icon: Briefcase, accent: '#8B5CF6', hint: 'الإدارة والسجلات' },
+  { id: 'carriers',  label: 'شركات الشحن',       icon: Building2,  accent: '#3B82F6', hint: 'الكشوف والمراجعات والدفتر' },
+  { id: 'finance',   label: 'الأموال',            icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات والبنك' },
+  { id: 'customers', label: 'العملاء',            icon: Users,      accent: '#EF4444', hint: 'المديونيات والتحصيل' },
+  { id: 'ingest',    label: 'الرفع والوارد',      icon: Upload,     accent: '#06B6D4', hint: 'كل أبواب رفع الملفات' },
+  { id: 'reports',   label: 'التقارير والتصدير',  icon: BarChart3,  accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
+  { id: 'system',    label: 'الإعدادات والنظام',  icon: Briefcase,  accent: '#8B5CF6', hint: 'الإدارة والسجلات والمهام' },
 ];
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -269,9 +274,14 @@ function AppInner({ theme, toggleTheme }) {
   // Sidebar sections are OPEN by default (nothing buried — the #1 nav
   // complaint). The user may collapse the ones they don't want; that
   // preference is remembered. Stored as the SET of collapsed section ids.
+  // v3 key: the reorg made التقارير + الإعدادات/النظام collapsed-by-default
+  // (all occasional/rare) so the resting sidebar is short. Bumping the key
+  // means every user gets the new default once, then their own toggles win.
   const [collapsedSecs, setCollapsedSecs] = useState(() => {
-    try { return new Set(JSON.parse(localStorage.getItem('sa-nav-collapsed') || '[]')); }
-    catch { return new Set(); }
+    try {
+      const stored = localStorage.getItem('sa-nav-collapsed-v3');
+      return new Set(stored ? JSON.parse(stored) : ['reports', 'system']);
+    } catch { return new Set(['reports', 'system']); }
   });
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
@@ -313,7 +323,7 @@ function AppInner({ theme, toggleTheme }) {
   const toggleSection = (id) => setCollapsedSecs(prev => {
     const next = new Set(prev);
     if (next.has(id)) next.delete(id); else next.add(id);
-    try { localStorage.setItem('sa-nav-collapsed', JSON.stringify([...next])); } catch { /* ignore */ }
+    try { localStorage.setItem('sa-nav-collapsed-v3', JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   });
 
@@ -616,7 +626,7 @@ function AppInner({ theme, toggleTheme }) {
           {/* Footer */}
           <div className="sidebar-footer">
             <NavBtn
-              n={{ id:'settings', path:'/settings/ai', label:'الإعدادات', icon:Settings }}
+              n={{ id:'settings', path:'/settings/ai', label:'إعدادات التطبيق', icon:Settings }}
               active={location.pathname.startsWith('/settings')}
               collapsed={collapsed}
               onClick={() => goto('/settings/ai')}
