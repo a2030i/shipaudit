@@ -762,6 +762,9 @@ function resolveTreasuryCarrier(rawName) {
   if (n.includes('بوليصه') || n.includes('بوليصة'))      return 'boleeseh';
   if (n.includes('ويبيك') || n.includes('ويبك'))         return 'webek';
   if (n.includes('اطاق'))                                return 'aatak';
+  if (n.includes('فارنير') || n.includes('فارنر'))       return 'varnier';
+  if (n.includes('ماي جيت') || n.includes('مايجيت'))     return 'mygate';
+  if (n.includes('لوجستك') || n.includes('لوجستيك'))     return 'logistic';
   return null;
 }
 
