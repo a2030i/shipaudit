@@ -493,7 +493,9 @@ export default function CodSettlements({ isActive = true }) {
                 let dueLabel = '';
                 if (Math.abs(due) >= 0.5) {
                   const sign = due > 0 ? '' : '-';
-                  const num = Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+                  // Show the exact halalas (2dp), not rounded — so the dropdown
+                  // matches the «المتبقي عند الناقل» card below it.
+                  const num = Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                   dueLabel = ` — ${sign}${num} ر.س`;
                 }
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
