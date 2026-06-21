@@ -10,22 +10,25 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Building2, BarChart3 } from 'lucide-react';
+import { Building2, BarChart3, Scale } from 'lucide-react';
 
 import CarriersHub from './CarriersHub.jsx';
 import CarrierKpi  from './CarrierKpi.jsx';
+import Claims      from './Claims.jsx';
 
 const TABS = [
-  { id: 'hub', label: 'كشف الشركات', icon: Building2, component: CarriersHub },
-  { id: 'kpi', label: 'أداء الناقلين', icon: BarChart3, component: CarrierKpi },
+  { id: 'hub',    label: 'كشف الشركات',  icon: Building2, component: CarriersHub },
+  { id: 'kpi',    label: 'أداء الناقلين', icon: BarChart3, component: CarrierKpi },
+  { id: 'claims', label: 'المطالبات',     icon: Scale,     component: Claims },
 ];
 
 const LEGACY_PATH_TO_TAB = {
   '/hub':         'hub',
   '/carrier-kpi': 'kpi',
+  '/claims':      'claims',
 };
 
-export default function CarriersWorkspace({ isActive = true }) {
+export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -91,7 +94,7 @@ export default function CarriersWorkspace({ isActive = true }) {
           const active = tab === t.id;
           return (
             <div key={t.id} style={{ display: active ? 'block' : 'none', height: '100%' }}>
-              <Cmp isActive={isActive && active}/>
+              <Cmp isActive={isActive && active} carriers={carriers}/>
             </div>
           );
         })}

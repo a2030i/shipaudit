@@ -46,7 +46,7 @@ import MonthlyReport     from './pages/MonthlyReport.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
-import Claims            from './pages/Claims.jsx';
+// Claims now renders inside CarriersWorkspace (claims tab), not a top-level route.
 import CommandPalette    from './components/CommandPalette.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
@@ -84,19 +84,25 @@ const NAV_ITEMS = [
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
 
   // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
-  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,  section: 'carriers', permKey: 'carriers.view' },
+  // الشركات hub now hosts 3 lenses as sub-tabs (CarriersWorkspace): cards,
+  // carrier KPIs (was /carrier-kpi in reports), claims (was a flat item).
+  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,  section: 'carriers', permKey: 'carriers.view',
+    subTabs: [
+      { tabId: 'hub',    label: 'البطاقات',      icon: Building2 },
+      { tabId: 'kpi',    label: 'أداء الناقلين', icon: BarChart3, legacy: '/carrier-kpi' },
+      { tabId: 'claims', label: 'المطالبات',     icon: Scale,     legacy: '/claims' },
+    ] },
   // كشوف الحساب raised to position #2 + a VIEW permission (was upload-only,
   // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
   // The upload button inside the page stays gated by carriers.upload_statement.
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
   { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
-  { id: 'claims',       path: '/claims',            label: 'المطالبات',        icon: Scale,      section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
   { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
-  { id: 'carrier-kpi',      path: '/carrier-kpi',      label: 'أداء الناقلين',   icon: BarChart3,     section: 'reports', permKey: 'carriers.view' },
+  // (carrier-kpi moved into the الشركات hub as the «أداء الناقلين» sub-tab)
   { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'reports', permKey: 'forecast.view' },
   { id: 'internal-exports', path: '/internal-exports', label: 'ملفات النظام الداخلي', icon: FileText, section: 'reports', permKey: 'internal_exports.view' },
 
@@ -164,8 +170,8 @@ const NAV_SECTIONS = [
 // right tab based on which path was used). Used to scope the
 // PageSlot active check.
 const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/receivables', '/merchants', '/segments'];
-// /hub and /carrier-kpi share the same workspace component.
-const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi'];
+// /hub, /carrier-kpi, /claims all render the CarriersWorkspace (3 tabs).
+const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank / payment-requests
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/payment-requests'];
@@ -737,11 +743,11 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/dashboard'} scroll>
               <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
             </PageSlot>
-            {/* /hub + /carrier-kpi share the same workspace now,
-                CarriersWorkspace reads ?tab= or the legacy path to
-                pick the right inner tab. */}
+            {/* /hub + /carrier-kpi + /claims all render this workspace;
+                CarriersWorkspace reads ?tab= or the legacy path to pick
+                the right inner tab (cards / KPIs / claims). */}
             <PageSlot active={CARRIER_WORKSPACE_PATHS.includes(pathname)} scroll>
-              <CarriersWorkspace isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/>
+              <CarriersWorkspace carriers={carriers} isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/carrier'} scroll>
               <CarrierProfile/>
@@ -776,9 +782,7 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/integrity'} scroll>
               <IntegrityCheck isActive={pathname==='/integrity'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/claims'} scroll>
-              <Claims carriers={carriers} isActive={pathname==='/claims'}/>
-            </PageSlot>
+            {/* /claims now renders inside CarriersWorkspace (claims tab) above */}
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
             </PageSlot>
