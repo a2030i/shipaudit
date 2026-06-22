@@ -683,7 +683,13 @@ export default function UploadWizard({ carriers, onComplete }) {
       setUploading(false);
     };
     reader.readAsArrayBuffer(file);
-  }, []);
+    // MUST depend on `carriers`: with PageSlot the wizard mounts once at app
+    // start (carriers still loading → []), and an empty-deps callback would
+    // freeze that empty list forever, so detectCarrierFromFile(allRows, [])
+    // always returns null ("ما قدرنا نتعرف على الشركة"). Re-create when the
+    // list arrives. The webhook-import effect re-runs harmlessly (guarded by
+    // CONSUMED_WEBHOOK_IMPORTS + sessionStorage clear).
+  }, [carriers]);
 
   // ── Auto-import from /webhook ──────────────────────────────────
   // When the user clicks "حفظ كمراجعة" on the Webhook Events page we
