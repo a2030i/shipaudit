@@ -14,7 +14,7 @@ import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   loadStatuses, loadStages, crmAutoEnroll, loadWatchQueue, ensureCustomerRow,
-  logActivity, loadTimeline, recordPromise, changeStatus, assignOwner,
+  logActivity, loadTimeline, recordPromise, resolvePromise, changeStatus, assignOwner,
   loadTasks, createTask, completeTask, loadDeals, createDeal, moveDeal, loadBoardStats,
 } from '../lib/crmService.js';
 import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
@@ -246,6 +246,13 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.summary || a.kind}{a.disposition ? ` · ${a.disposition}` : ''}</div>
                 {a.body && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{a.body}</div>}
                 {a.kind === 'promise' && <div style={{ fontSize: 11.5, color: '#F59E0B', marginTop: 2 }}>وعد {fmt(a.promise_amount)} ر.س — {fmtDate(a.promised_on)} · {a.promise_status}</div>}
+                {a.kind === 'promise' && a.promise_status === 'open' && can('crm.record_promise') && (
+                  <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
+                    <MiniBtn color="#10B981" label="تم الدفع" onClick={() => act(() => resolvePromise(a.id, { status: 'kept', keptAmount: a.promise_amount }), 'سُجّل الدفع')}/>
+                    <MiniBtn color="#8B5CF6" label="جزئي"    onClick={() => act(() => resolvePromise(a.id, { status: 'partial' }), 'سُجّل جزئياً')}/>
+                    <MiniBtn color="#DC2626" label="مكسور"   onClick={() => act(() => resolvePromise(a.id, { status: 'broken' }), 'وُسِم مكسوراً')}/>
+                  </div>
+                )}
                 <div style={{ fontSize: 11, color: 'var(--muted2,#9CA3AF)', marginTop: 2 }}>{fmtDate(a.occurred_at)}</div>
               </div>
             </div>
@@ -477,3 +484,6 @@ function BoardTab({ active }) {
 function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1120, margin: '0 auto' }}>{children}</div>; }
 function Spin() { return <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>; }
 function Hd({ label, value, color }) { return <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div><div style={{ fontSize: 14, fontWeight: 700, color: color || 'var(--text)' }}>{value}</div></div>; }
+function MiniBtn({ color, label, onClick }) {
+  return <button onClick={onClick} style={{ border: `1px solid ${color}`, background: `${color}15`, color, borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'var(--font-sans)' }}>{label}</button>;
+}

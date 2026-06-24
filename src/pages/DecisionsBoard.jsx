@@ -15,6 +15,7 @@ import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { computeRisk } from '../lib/customerRisk.js';
 import { loadCarrierNetBalances } from '../lib/codSettlementService.js';
 import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconciliationService.js';
+import { loadCrmDecisionSignals } from '../lib/crmService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
@@ -27,11 +28,12 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
         loadVendorReconciliation().catch(() => []),
+        loadCrmDecisionSignals().catch(() => ({ brokenCount: 0, brokenTotal: 0, dueCount: 0, brokenPromises: [], dueFollowups: [] })),
       ]);
 
       // Stop-list: flatten every anomaly customer (dedupe), score, keep the
@@ -66,6 +68,7 @@ export default function DecisionsBoard({ isActive = true }) {
         codOut, codN,
         held, trN, trUploadedAt: treasury.uploadedAt,
         vgaps, vgapTotal,
+        crm,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -112,6 +115,17 @@ export default function DecisionsBoard({ isActive = true }) {
             color="#EF4444" icon="⚠️" title="تنبيهات العملاء" value={d.anomalyCount} unit="عميل"
             sub={`إجمالي المديونيات ${fmt(d.totalDebt)} ر.س`}
             cta="فتح التنبيهات" onClick={() => navigate('/receivables')}
+          />
+          <DecisionCard
+            color="#F59E0B" icon="🤝" title="وعود مكسورة" value={d.crm?.brokenCount || 0} unit="وعد"
+            sub={`بقيمة ${fmt(d.crm?.brokenTotal || 0)} ر.س — تجاوزت تاريخها بلا دفع`}
+            top={(d.crm?.brokenPromises || []).slice(0, 3).map(p => `${p.entity_ref} · ${fmtK(p.promise_amount)} ر.س`)}
+            cta="فتح المتابعة" onClick={() => navigate('/crm?tab=queue')}
+          />
+          <DecisionCard
+            color="#06B6D4" icon="📞" title="متابعات مستحقة اليوم" value={d.crm?.dueCount || 0} unit="عميل"
+            sub="موعدهم اليوم أو بلا إجراء تالٍ مجدوَل"
+            cta="قائمة المتابعة" onClick={() => navigate('/crm?tab=queue')}
           />
         </div>
       )}
