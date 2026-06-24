@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -38,6 +38,7 @@ import Tasks            from './pages/Tasks.jsx';
 import Segments         from './pages/Segments.jsx';
 import CustomerHub      from './pages/CustomerHub.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
+import CrmWorkspace      from './pages/CrmWorkspace.jsx';
 import MoneyHub          from './pages/MoneyHub.jsx';
 import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
@@ -136,6 +137,14 @@ const NAV_ITEMS = [
       { tabId: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, legacy: '/merchants' },
     ] },
   { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
+  { id: 'crm',             path: '/crm',             label: 'المتابعة والمبيعات', icon: Headset,   section: 'customers', permKey: 'crm.view',
+    subTabs: [
+      { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
+      { tabId: 'leads', label: 'جهات خارجية',     icon: ShoppingBag },
+      { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
+      { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
+      { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
+    ] },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
 
   // ── الرفع والوارد — كل أبواب إدخال الملفات في مكان واحد ──────────
@@ -264,7 +273,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -810,6 +819,10 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/forecast'} scroll>
               <Forecast carriers={carriers} isActive={pathname==='/forecast'}/>
+            </PageSlot>
+            {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
+            <PageSlot active={pathname==='/crm'} scroll>
+              <CrmWorkspace isActive={pathname==='/crm'}/>
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>

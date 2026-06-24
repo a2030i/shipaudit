@@ -115,6 +115,23 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'crm', label: 'المتابعة والمبيعات (CRM)', icon: 'Headset', color: '#06B6D4',
+    perms: [
+      { key: 'crm.view',            label: 'عرض قائمة المتابعة والجهات والصفقات' },
+      { key: 'crm.view_all',        label: 'عرض متابعات كل الموظفين (لا المُسنَدة لي فقط)', sensitive: true },
+      { key: 'crm.log_activity',    label: 'تسجيل مكالمة/ملاحظة/إفادة' },
+      { key: 'crm.record_promise',  label: 'تسجيل/إغلاق وعد بالدفع' },
+      { key: 'crm.manage_tasks',    label: 'إنشاء/إغلاق مواعيد ومهام' },
+      { key: 'crm.change_status',   label: 'تغيير حالة المتابعة' },
+      { key: 'crm.manage_deals',    label: 'إنشاء/تحريك صفقات المبيعات' },
+      { key: 'crm.assign',          label: 'إسناد عميل/جهة/صفقة لموظف' },
+      { key: 'crm.upload_leads',    label: 'رفع متاجر/جهات خارجية' },
+      { key: 'crm.convert_lead',    label: 'تحويل جهة إلى عميل' },
+      { key: 'crm.manage_statuses', label: 'تخصيص حالات المتابعة ومراحل البيع', sensitive: true },
+      { key: 'crm.write_off',       label: 'شطب دين (إغلاق غير قابل للتحصيل)', sensitive: true },
+    ],
+  },
+  {
     id: 'merchants', label: 'دليل المتاجر', icon: 'Store', color: '#8B5CF6',
     perms: [
       { key: 'merchants.view',     label: 'عرض دليل المتاجر' },
