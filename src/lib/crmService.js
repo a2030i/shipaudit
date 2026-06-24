@@ -416,3 +416,25 @@ export async function loadBoardStats() {
     dealsOpenCount: dealsOpen.length, pipelineValue, wonValue,
   };
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// إشارات «شاشة الصباح» (/decisions): وعود مكسورة + متابعات مستحقة اليوم
+//   RLS تقيّدها تلقائياً للمُسنَد له (الأدمن يرى الكل).
+// ─────────────────────────────────────────────────────────────────────
+export async function loadCrmDecisionSignals({ graceDays = 3 } = {}) {
+  const endToday = new Date(); endToday.setHours(23, 59, 59, 999);
+  const [broken, watch] = await Promise.all([
+    loadBrokenPromises({ graceDays }),
+    supabase.from('crm_customer_crm').select('customer_name, next_action_at, last_activity_at')
+      .eq('in_watch', true),
+  ]);
+  const rows = watch.data || [];
+  // مستحقة الآن: لها موعد تالٍ مرّ/اليوم، أو بلا أي إجراء تالٍ مجدوَل (Pipedrive activity-first)
+  const dueFollowups = rows.filter(r =>
+    !r.next_action_at || new Date(r.next_action_at).getTime() <= endToday.getTime());
+  const brokenTotal = broken.reduce((s, p) => s + (Number(p.promise_amount) || 0), 0);
+  return {
+    brokenPromises: broken, brokenCount: broken.length, brokenTotal,
+    dueFollowups, dueCount: dueFollowups.length, watchCount: rows.length,
+  };
+}
