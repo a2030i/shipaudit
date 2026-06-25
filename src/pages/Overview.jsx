@@ -728,7 +728,7 @@ function BankEditModal({ current, onCancel, onSave }) {
           />
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="primary" disabled={balance === ''} onClick={() => onSave({ balance, notes })}>
+          <Btn size="md" variant="accent" disabled={balance === ''} onClick={() => onSave({ balance, notes })}>
             احفظ
           </Btn>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>

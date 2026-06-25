@@ -160,7 +160,7 @@ function DecisionCard({ color, icon, title, value, unit, sub, top, cta, onClick 
           ))}
         </div>
       )}
-      <div style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4, color, fontSize: 12, fontWeight: 600 }}>
+      <div role="button" tabIndex={0} style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4, color, fontSize: 12, fontWeight: 600 }}>
         {cta} <ChevronLeft size={14}/>
       </div>
     </Card>

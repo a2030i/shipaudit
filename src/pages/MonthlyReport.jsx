@@ -82,7 +82,7 @@ export default function MonthlyReport({ isActive }) {
             <Btn variant="ghost" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث
             </Btn>
-            <Btn variant="primary" size="sm" onClick={exportXlsx} disabled={!rows.length}>
+            <Btn variant="ghost" size="sm" onClick={exportXlsx} disabled={!rows.length}>
               <Download size={14}/> تصدير Excel
             </Btn>
           </div>

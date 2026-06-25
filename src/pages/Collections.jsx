@@ -482,32 +482,15 @@ function QuickActions({ task, onContact, onPromise, onDone, onSnooze, onCancel }
   return (
     <div style={{ display: 'flex', gap: 4 }}>
       {task.stage === 'todo' && (
-        <ActionBtn title="تواصلت" icon={<MessageSquare size={11}/>} color="#8B5CF6" onClick={onContact}/>
+        <Btn size="sm" variant="ghost" title="تواصلت" icon={<MessageSquare size={11}/>} onClick={onContact}/>
       )}
       {(task.stage === 'todo' || task.stage === 'contacted') && (
-        <ActionBtn title="وعد دفع" icon={<Calendar size={11}/>} color="#F59E0B" onClick={onPromise}/>
+        <Btn size="sm" variant="ghost" title="وعد دفع" icon={<Calendar size={11}/>} onClick={onPromise}/>
       )}
-      <ActionBtn title="مكتملة" icon={<CheckCircle2 size={11}/>} color="#10B981" onClick={onDone}/>
-      <ActionBtn title="أجّل" icon={<Clock size={11}/>} color="#6B7280" onClick={onSnooze}/>
-      <ActionBtn title="ألغ" icon={<X size={11}/>} color="#DC2626" onClick={onCancel}/>
+      <Btn size="sm" variant="ghost" title="مكتملة" icon={<CheckCircle2 size={11}/>} onClick={onDone}/>
+      <Btn size="sm" variant="ghost" title="أجّل" icon={<Clock size={11}/>} onClick={onSnooze}/>
+      <Btn size="sm" variant="danger" title="ألغ" icon={<X size={11}/>} onClick={onCancel}/>
     </div>
-  );
-}
-
-function ActionBtn({ title, icon, color, onClick }) {
-  return (
-    <button onClick={onClick} title={title} style={{
-      width: 26, height: 26, borderRadius: 6, cursor: 'pointer',
-      border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
-      background: `color-mix(in srgb, ${color} 8%, transparent)`,
-      color, display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: 0,
-    }}
-    onMouseEnter={(e) => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 18%, transparent)`; }}
-    onMouseLeave={(e) => { e.currentTarget.style.background = `color-mix(in srgb, ${color} 8%, transparent)`; }}
-    >
-      {icon}
-    </button>
   );
 }
 
@@ -548,8 +531,7 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff 
           }}>
             مكتملة
           </Btn>
-          <Btn size="md" variant="ghost" icon={<Trash2 size={13}/>} onClick={onWriteoff}
-               style={{ color: '#DC2626', borderColor: 'color-mix(in srgb, #DC2626 30%, transparent)' }}>
+          <Btn size="md" variant="danger" icon={<Trash2 size={13}/>} onClick={onWriteoff}>
             اطلب شطب الدين
           </Btn>
           <Btn size="md" variant="ghost" icon={<Download size={13}/>}
@@ -614,7 +596,7 @@ function PromiseDialog({ task, onCancel, onConfirm }) {
                     name="promise_notes" data-form-type="other"/>
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="primary" icon={<CheckCircle2 size={13}/>} onClick={() => onConfirm({ amount, date, notes })}>
+          <Btn size="md" variant="accent" icon={<CheckCircle2 size={13}/>} onClick={() => onConfirm({ amount, date, notes })}>
             سجّل الوعد
           </Btn>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
@@ -639,7 +621,7 @@ function SnoozeDialog({ task, onCancel, onConfirm }) {
           <input type="date" value={until} onChange={(e) => setUntil(e.target.value)} style={inputStyle}/>
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="primary" icon={<Clock size={13}/>} onClick={() => onConfirm(until)}>
+          <Btn size="md" variant="accent" icon={<Clock size={13}/>} onClick={() => onConfirm(until)}>
             أجّل
           </Btn>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
@@ -692,8 +674,7 @@ function WriteoffRequestDialog({ task, onCancel, onConfirm }) {
                     name="writeoff_reason" data-form-type="other"/>
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="primary"
-               style={{ background: '#DC2626', borderColor: '#DC2626' }}
+          <Btn size="md" variant="danger"
                icon={<Trash2 size={13}/>}
                onClick={() => onConfirm({ amount, reason })}
                disabled={!amount || !reason.trim()}>
@@ -739,8 +720,7 @@ function ReviewQueueModal({ pending, onClose, onApprove, onReject }) {
                                 placeholder={actingOn.kind === 'reject' ? 'سبب الرفض (إلزامي)' : 'ملاحظة (اختيارية)'}
                                 style={{ ...inputStyle, resize: 'vertical', fontSize: 11.5 }}/>
                       <div style={{ display: 'flex', gap: 6 }}>
-                        <Btn size="sm" variant={actingOn.kind === 'approve' ? 'primary' : 'ghost'}
-                             style={actingOn.kind === 'approve' ? { background: '#10B981', borderColor: '#10B981' } : {}}
+                        <Btn size="sm" variant={actingOn.kind === 'approve' ? 'accent' : 'danger'}
                              onClick={async () => {
                                if (actingOn.kind === 'approve') {
                                  await onApprove(w.id, note);
@@ -754,20 +734,18 @@ function ReviewQueueModal({ pending, onClose, onApprove, onReject }) {
                           أكّد
                         </Btn>
                         <Btn size="sm" variant="ghost" onClick={() => { setActingOn(null); setNote(''); }}>
-                          تراجع
+                          إلغاء
                         </Btn>
                       </div>
                     </div>
                   ) : (
                     <div style={{ display: 'flex', gap: 6 }}>
-                      <Btn size="sm" variant="primary"
-                           style={{ background: '#10B981', borderColor: '#10B981' }}
+                      <Btn size="sm" variant="accent"
                            icon={<CheckCircle2 size={11}/>}
                            onClick={() => { setActingOn({ id: w.id, kind: 'approve' }); setNote(''); }}>
                         اعتماد
                       </Btn>
-                      <Btn size="sm" variant="ghost"
-                           style={{ color: '#DC2626', borderColor: 'color-mix(in srgb, #DC2626 30%, transparent)' }}
+                      <Btn size="sm" variant="danger"
                            icon={<X size={11}/>}
                            onClick={() => { setActingOn({ id: w.id, kind: 'reject' }); setNote(''); }}>
                         رفض

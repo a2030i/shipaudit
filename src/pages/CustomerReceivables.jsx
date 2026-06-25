@@ -605,7 +605,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
       <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
         <Btn
-          variant={isExclude ? 'accent' : 'gold'}
+          variant="accent"
           icon={isExclude ? <ShieldCheck size={13}/> : <EyeOff size={13}/>}
           onClick={() => onSubmit(notes.trim() || null)}
         >
@@ -1229,22 +1229,22 @@ export default function CustomerReceivables({ isActive = true }) {
         meta={data?.snapshot ? `snapshot ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
         actions={
           <>
-            <Btn size="md" variant="ghost" icon={<ChevronDown size={14}/>} onClick={handleShowHistory}>
+            <Btn size="sm" variant="ghost" icon={<ChevronDown size={14}/>} onClick={handleShowHistory}>
               السجل
             </Btn>
-            <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
               تصدير
             </Btn>
-            <Btn size="md" variant="gold" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
               ملف تحصيل
             </Btn>
-            <Btn size="md" variant="success" icon={<MessageCircle size={14}/>} onClick={() => setShowWhatsApp(true)} disabled={!visibleCustomers.length}>
+            <Btn size="md" variant="accent" icon={<MessageCircle size={14}/>} onClick={() => setShowWhatsApp(true)} disabled={!visibleCustomers.length}>
               إرسال واتساب
             </Btn>
-            <Btn size="md" variant="ghost" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
               تصدير واتساب
             </Btn>
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
             <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
@@ -1271,7 +1271,7 @@ export default function CustomerReceivables({ isActive = true }) {
             sub="ارفع كشف فواتير العملاء من نظامك الخارجي لتشاهد المديونيات + التقادم"
           />
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
-            <Btn variant="accent" icon={<Upload size={13}/>} onClick={() => setShowUpload(true)}>
+            <Btn size="md" variant="accent" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
               ارفع أول كشف
             </Btn>
           </div>
@@ -1389,18 +1389,14 @@ export default function CustomerReceivables({ isActive = true }) {
                   {stopOnly ? '✓ معروضون' : 'اعرضهم'}
                 </span>
               </button>
-              <button
+              <Btn
+                size="sm" variant="ghost"
+                icon={<Download size={15}/>}
                 onClick={handleExportStopList}
                 title="تصدير قائمة الإيقاف إلى Excel (الاسم · الهاتف · الدين · الخطر · السبب)"
-                style={{
-                  display: 'inline-flex', alignItems: 'center', gap: 7,
-                  padding: '0 16px', borderRadius: 12, cursor: 'pointer',
-                  border: '1.5px solid rgba(220,38,38,.35)', background: 'var(--surface)',
-                  color: '#DC2626', fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap',
-                }}
               >
-                <Download size={15}/> تصدير القائمة
-              </button>
+                تصدير القائمة
+              </Btn>
             </div>
           )}
 

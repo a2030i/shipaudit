@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles } from 'lucide-react';
+import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles, RefreshCw } from 'lucide-react';
 import CarrierTabs from '../components/CarrierTabs.jsx';
-import { Card, Btn, Input, Spinner, Empty, Badge, toast } from '../components/UI.jsx';
+import { Card, Btn, Input, Spinner, Empty, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
 import { parseStatementWithAI } from '../engine/aiStatementParser.js';
@@ -328,12 +328,16 @@ export default function CarrierStatements({ carriers = [] }) {
       {fromWorkspace && (
         <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
       )}
-      <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
-        📑 رفع كشف <span style={{ color: 'var(--accent)' }}>حساب</span>
-      </h2>
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 18 }}>
-        اختر الشركة من شركاتك المُعرّفة وارفع ملف PDF.
-      </p>
+      <PageHeader
+        icon={<FileText size={22}/>}
+        title="رفع كشف حساب"
+        subtitle="اختر الشركة من شركاتك المُعرّفة وارفع ملف PDF."
+        actions={
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={reset}>
+            تحديث
+          </Btn>
+        }
+      />
 
       {/* IDLE — carrier picker + drop zone */}
       {state === 'idle' && (
@@ -493,7 +497,7 @@ export default function CarrierStatements({ carriers = [] }) {
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
             {!savedDiff && (
-              <Btn variant="primary" icon={saving ? <Spinner size={12}/> : <Save size={14}/>}
+              <Btn variant="accent" size="md" icon={<Save size={14}/>}
                 onClick={handleSave} disabled={saving}>
                 {saving
                   ? 'جارٍ الحفظ...'
@@ -579,15 +583,15 @@ export default function CarrierStatements({ carriers = [] }) {
               { k: 'AB',  l: `تعديلات (${breakdown.ab})` },
             ].map(t => {
               const active = filter === t.k;
-              const accent = t.accent || 'var(--accent)';
               return (
-                <button key={t.k} onClick={() => setFilter(t.k)} style={{
-                  background: active ? `${accent}20` : 'transparent',
-                  border: `1px solid ${active ? accent : 'var(--border)'}`,
-                  color: active ? accent : 'var(--muted)',
-                  borderRadius: 7, padding: '5px 13px', cursor: 'pointer',
-                  fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 600,
-                }}>{t.l}</button>
+                <Btn
+                  key={t.k}
+                  size="sm"
+                  variant={active ? 'primary' : 'outline'}
+                  onClick={() => setFilter(t.k)}
+                >
+                  {t.l}
+                </Btn>
               );
             })}
           </div>

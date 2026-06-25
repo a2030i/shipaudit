@@ -209,9 +209,12 @@ export default function BankStatement() {
 
       {/* View toggle: this upload vs the accumulated saved ledger */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
-        <ViewTab id="current" label="الرفع الحالي"          active={view} onClick={setView} icon={<Upload size={13}/>}/>
-        <ViewTab id="saved"   label="الدفتر البنكي المحفوظ" active={view} onClick={setView} icon={<Database size={13}/>}
-          count={saved?.length}/>
+        <Btn variant={view === 'current' ? 'primary' : 'outline'} icon={<Upload size={13}/>} onClick={() => setView('current')}>
+          الرفع الحالي
+        </Btn>
+        <Btn variant={view === 'saved' ? 'primary' : 'outline'} icon={<Database size={13}/>} onClick={() => setView('saved')}>
+          الدفتر البنكي المحفوظ{saved?.length ? ` (${saved.length})` : ''}
+        </Btn>
       </div>
 
       {view === 'current' && (<>
@@ -305,11 +308,11 @@ export default function BankStatement() {
 
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Btn variant="success" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
+            <Btn variant="accent" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
               {saving ? 'جارٍ الحفظ…' : 'حفظ في الدفتر'}
             </Btn>
-            <Btn variant="primary" icon={<Download size={14}/>} onClick={handleExport}>
-              تحميل الكشف الصافي
+            <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExport}>
+              تصدير الكشف الصافي
             </Btn>
             {carrierTransfers.length > 0 && (
               <Btn variant="gold" icon={<Link2 size={14}/>} onClick={() => setReconcileOpen(true)}>
@@ -456,10 +459,8 @@ export default function BankStatement() {
                                   {Number(t.fees) + Number(t.tax) > 0 ? (Number(t.fees) + Number(t.tax)).toFixed(2) : ''}
                                 </td>
                                 <td>
-                                  <button onClick={() => handleDeleteSaved(t.id)} title="حذف العملية"
-                                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--muted)', padding: 4 }}>
-                                    <Trash2 size={12}/>
-                                  </button>
+                                  <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
+                                    onClick={() => handleDeleteSaved(t.id)}/>
                                 </td>
                               </tr>
                             ))}
@@ -606,7 +607,7 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
                             </div>
                           ))}
                         </div>
-                        <Btn size="sm" variant="success" disabled={busyIdx === idx} onClick={() => confirm(row, idx)}>
+                        <Btn size="sm" variant="accent" disabled={busyIdx === idx} onClick={() => confirm(row, idx)}>
                           {busyIdx === idx ? <Spinner size={11}/> : <><CheckCircle2 size={12}/> تأكيد</>}
                         </Btn>
                       </div>
@@ -635,32 +636,6 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
-function ViewTab({ id, label, active, onClick, icon, count }) {
-  const isActive = active === id;
-  return (
-    <button
-      onClick={() => onClick(id)}
-      style={{
-        display: 'inline-flex', alignItems: 'center', gap: 7,
-        padding: '8px 16px', borderRadius: 10, cursor: 'pointer',
-        border: '1px solid', borderColor: isActive ? 'var(--accent)' : 'var(--border2)',
-        background: isActive ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
-        color: isActive ? 'var(--accent)' : 'var(--muted)',
-        fontSize: 12.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
-      }}
-    >
-      {icon} {label}
-      {count != null && count > 0 && (
-        <span style={{
-          fontFamily: 'var(--font-mono)', fontSize: 11,
-          background: isActive ? 'var(--accent)' : 'var(--muted)', color: '#fff',
-          borderRadius: 999, padding: '1px 7px',
-        }}>{count}</span>
-      )}
-    </button>
-  );
-}
-
 function StatBlock({ label, value, color, suffix, mono }) {
   return (
     <div style={{

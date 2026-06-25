@@ -303,23 +303,15 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               ].filter(Boolean).join(' · ')}
             </div>
           </div>
-          <button
+          <Btn
+            size="lg"
+            variant="primary"
             onClick={handlePullAll}
             disabled={pullingAll}
-            style={{
-              padding: '16px 28px', borderRadius: 14,
-              background: pullingAll ? 'rgba(16,185,129,.5)' : '#10B981',
-              color: '#fff', border: 'none',
-              fontSize: 15, fontWeight: 700, cursor: pullingAll ? 'wait' : 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 10,
-              fontFamily: 'inherit',
-              boxShadow: '0 8px 24px rgba(16,185,129,.32)',
-              whiteSpace: 'nowrap',
-            }}
+            icon={pullingAll ? <Spinner size={18}/> : <Layers size={18}/>}
           >
-            {pullingAll ? <Spinner size={18}/> : <Layers size={18}/>}
             {pullingAll ? `جارٍ السحب…` : `اسحب الكل (${totalRows.toLocaleString('en-US')} شحنة)`}
-          </button>
+          </Btn>
         </div>
       )}
 
@@ -482,7 +474,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                 <Btn
                   size="lg"
-                  variant="primary"
+                  variant="accent"
                   onClick={() => handleInvoicingPull('selected')}
                   disabled={invPulling || !selectedAuditIds.size || !canPull}
                   title={canPull ? '' : 'تحتاج صلاحية internal_exports.pull'}
@@ -555,7 +547,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               </div>
               <Btn
                 size="lg"
-                variant="gold"
+                variant="accent"
                 icon={weightPulling ? <Spinner size={16}/> : <Sparkles size={16}/>}
                 onClick={handleWeightPull}
                 disabled={weightPulling}
@@ -573,13 +565,9 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           }}>
             <strong style={{ color: 'var(--text2)' }}>الأعمدة المسحوبة:</strong>{' '}
             رقم الشحنة · الوزن (مدمج لكل الشركات){' '}
-            <button onClick={() => navigate('/weight-billing')} style={{
-              background: 'transparent', border: 'none', color: 'var(--accent)',
-              cursor: 'pointer', fontSize: 11, padding: 0, textDecoration: 'underline',
-              fontFamily: 'inherit',
-            }}>
+            <Btn size="sm" variant="ghost" onClick={() => navigate('/weight-billing')}>
               السجل الكامل ↗
-            </button>
+            </Btn>
           </div>
         </Card>
       </div>

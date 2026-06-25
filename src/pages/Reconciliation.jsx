@@ -469,12 +469,11 @@ export default function Reconciliation({ isActive = true }) {
             </span>
             <Btn
               size="sm"
-              variant="primary"
+              variant="accent"
               icon={autolinkBusy ? <Spinner size={12}/> : <Zap size={12}/>}
               onClick={runAutolinkExactName}
               disabled={autolinkBusy}
               title="يربط كل صف اسمه مطابق أو متضمَّن في اسم متجر بالكشف (يشتغل تلقائياً عند فتح الصفحة — استعمله للتحديث)"
-              style={{ background: '#10B981', borderColor: '#10B981' }}
             >
               {autolinkBusy ? 'جارٍ الربط…' : 'إعادة فحص الربط التلقائي'}
             </Btn>
@@ -766,13 +765,14 @@ function VendorsTab({ profile }) {
               آخر رفع: {new Date(treasury.uploadedAt).toLocaleDateString('en-GB')}
             </span>
           )}
-          <label style={{ marginInlineStart: 'auto', display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '6px 12px', borderRadius: 8, cursor: 'pointer', fontSize: 12, fontWeight: 600,
-            background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--accent)' }}>
-            <Upload size={13}/> رفع ميزان المراجعة
-            <input type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
+          <div style={{ marginInlineStart: 'auto' }}>
+            <Btn size="sm" variant="ghost" icon={<Upload size={13}/>}
+              onClick={() => document.getElementById('treasury-upload-input')?.click()}>
+              رفع ميزان المراجعة
+            </Btn>
+            <input id="treasury-upload-input" type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handleTreasuryUpload(f); e.target.value = ''; }}/>
-          </label>
+          </div>
         </div>
         {treasury.rows.length === 0 ? (
           <div style={{ padding: 16, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
@@ -993,15 +993,7 @@ function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete
                 {fmtDateTime(snapshot.uploaded_at)} · {snapshot.file_name || 'بدون اسم ملف'}
               </div>
             </div>
-            <button onClick={onDelete} title="حذف هذا التحميل" style={{
-              background: 'transparent', border: 'none', padding: 4, cursor: 'pointer',
-              color: 'var(--muted)', display: 'flex',
-            }}
-              onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
-              onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
-            >
-              <Trash2 size={12}/>
-            </button>
+            <Btn variant="danger" size="sm" title="حذف هذا التحميل" icon={<Trash2 size={12}/>} onClick={onDelete}/>
           </div>
           <div style={{ marginTop: 10 }}>
             <DropZone onFile={onUpload} accept=".xlsx,.xls,.csv">

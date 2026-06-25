@@ -89,6 +89,8 @@ function HealthStrip({ row, onCod, onLedger }) {
       {items.map(it => (
         <span
           key={it.key}
+          role={it.onClick ? 'button' : undefined}
+          title={it.label}
           onClick={it.onClick ? (e) => { e.stopPropagation(); it.onClick(); } : undefined}
           style={{
             display: 'inline-flex', alignItems: 'center',
@@ -202,20 +204,18 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
       {/* Direct entry to the FULL account ledger — the balance above is just
           the headline; this one click opens every DR/CR line. The card body
           drills into the profile overview, so this needs stopPropagation. */}
-      <button
-        onClick={(e) => { e.stopPropagation(); onLedger?.(); }}
-        style={{
-          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7,
-          width: '100%', marginBottom: 18,
-          padding: '9px 14px', borderRadius: 10,
-          background: 'var(--surface)', border: '1px solid var(--border2)',
-          color: 'var(--accent)', fontSize: 12.5, fontWeight: 600,
-          fontFamily: 'var(--font-sans)', cursor: 'pointer',
-        }}
-        title="افتح كشف الحساب الكامل لهذا الناقل (كل القيود والرصيد)"
-      >
-        <BookOpen size={14}/> الكشف الكامل للحساب
-      </button>
+      <div style={{ marginBottom: 18 }}>
+        <Btn
+          variant="ghost"
+          size="sm"
+          icon={<BookOpen size={14}/>}
+          onClick={(e) => { e.stopPropagation(); onLedger?.(); }}
+          title="افتح كشف الحساب الكامل لهذا الناقل (كل القيود والرصيد)"
+          style={{ width: '100%', justifyContent: 'center' }}
+        >
+          الكشف الكامل للحساب
+        </Btn>
+      </div>
 
       {/* Health signals — COD held by carrier / unaudited invoices / audit staleness */}
       <HealthStrip row={row} onCod={onCod} onLedger={onLedger}/>
@@ -279,17 +279,14 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
           <span style={{ fontSize: 12, color: 'var(--text)', flex: 1 }}>
             ينقصها <span style={{ fontWeight: 600 }}>{setupGaps.join(' · ')}</span>
           </span>
-          <button
+          <Btn
+            variant="danger"
+            size="sm"
             onClick={(e) => { e.stopPropagation(); onSetup?.(); }}
-            style={{
-              background: 'var(--red)', border: 'none',
-              color: '#fff', padding: '5px 14px',
-              fontSize: 11.5, fontFamily: 'var(--font-sans)', fontWeight: 600,
-              borderRadius: 999, cursor: 'pointer', flexShrink: 0,
-            }}
+            style={{ flexShrink: 0 }}
           >
             ضبط
-          </button>
+          </Btn>
         </div>
       )}
     </div>
@@ -355,7 +352,7 @@ export default function CarriersHub({ isActive = true }) {
             <Btn size="md" variant="ghost" icon={<SettingsIcon size={14}/>} onClick={() => navigate('/carriers')}>
               إدارة
             </Btn>
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
           </>
