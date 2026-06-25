@@ -10,7 +10,7 @@ import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
   loadSettlementUploads, deleteSettlementUpload, loadUploadShipments,
-  findDuplicateSettlementAwbs, loadOutstandingByCarrier,
+  findDuplicateSettlementAwbs, loadOutstandingByCarrier, saveConsolidatedExpected,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 import { loadCarriers } from '../lib/coreService.js';
@@ -47,7 +47,7 @@ const fmt = n => (n == null || Number.isNaN(n))
 const CONSUMED_COD_IMPORTS = new Set();
 
 export default function CodSettlements({ isActive = true }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const carriers = listSupportedCarriers();
@@ -68,6 +68,8 @@ export default function CodSettlements({ isActive = true }) {
   const [bulkText, setBulkText] = useState('');
   const [actionModal, setActionModal] = useState(null);  // { row, kind:'approve'|'dispute'|'edit'|'resolve' }
   const [uploadModal, setUploadModal] = useState(null);  // { direction:'out'|'in' }
+  // رفع المتوقّع المجمّع (كل الشركات بملف واحد): null | { busy } | { result }
+  const [consolidated, setConsolidated] = useState(null);
   const [uploads, setUploads] = useState([]);
   const [uploadsOpen, setUploadsOpen] = useState(false);
   const [confirmDeleteUpload, setConfirmDeleteUpload] = useState(null);
@@ -194,6 +196,32 @@ export default function CodSettlements({ isActive = true }) {
   // 8 carriers, light queries) so the operator gets the whole "غير
   // محصَّل" picture in a single file instead of exporting 8 times.
   const [exportingAll, setExportingAll] = useState(false);
+  // رفع «المتوقّع المجمّع» — ملف واحد من النظام الداخلي يوزّع على كل الناقلين.
+  const handleConsolidatedFile = async (file) => {
+    if (!file) return;
+    setConsolidated({ busy: true });
+    try {
+      const buf = await file.arrayBuffer();
+      const wb  = XLSX.read(buf, { type: 'array' });
+      const ws  = wb.Sheets[wb.SheetNames[0]];
+      // §6: أعِد حساب !ref تحسّباً لنطاق قديم من المُصدِّر (وإلا تُفقَد صفوف صامتاً)
+      let mr = 0, mc = 0;
+      for (const k of Object.keys(ws)) {
+        if (k.startsWith('!')) continue;
+        const a = XLSX.utils.decode_cell(k);
+        if (a.r > mr) mr = a.r; if (a.c > mc) mc = a.c;
+      }
+      if (mr > 0 || mc > 0) ws['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: mr, c: mc } });
+      const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
+      const res = await saveConsolidatedExpected({ allRows, fileName: file.name, userId: user?.id });
+      setConsolidated({ result: res });
+      await refresh();
+    } catch (e) {
+      toast(`فشل الرفع المجمّع: ${e.message}`, 'error');
+      setConsolidated(null);
+    }
+  };
+
   const handleExportAllOutstanding = async () => {
     setExportingAll(true);
     try {
@@ -525,6 +553,13 @@ export default function CodSettlements({ isActive = true }) {
               onClick={() => setUploadModal({ direction: 'out' })}>
               ارفع متوقّع
             </Btn>
+            {(!can || can('cod.upload_out')) && (
+              <Btn size="md" variant="primary" icon={<Upload size={14}/>}
+                onClick={() => setConsolidated({ pick: true })}
+                title="ملف واحد من النظام الداخلي يغطّي كل الشركات — يوزّع المتوقّع تلقائياً (تم التوصيل + مبلغ>0)">
+                📦 متوقّع مجمّع
+              </Btn>
+            )}
             {/* audit_with_cod carriers (iMile/DeliverNow): the received COD
                 is auto-created on audit approval, so a manual «ارفع تحويل»
                 would double-count it. Hide the button; show a hint. */}
@@ -1030,6 +1065,63 @@ export default function CodSettlements({ isActive = true }) {
           onDone={() => { setUploadModal(null); refresh(); }}
           userId={user?.id}
         />
+      )}
+
+      {consolidated && (
+        <Modal title="📦 رفع المتوقّع المجمّع — كل الشركات" onClose={() => setConsolidated(null)} width={580}>
+          {consolidated.busy ? (
+            <div style={{ padding: 40, textAlign: 'center' }}>
+              <Spinner size={22}/>
+              <div style={{ marginTop: 10, color: 'var(--muted)', fontSize: 13 }}>جارٍ التوزيع والحفظ لكل ناقل…</div>
+            </div>
+          ) : consolidated.result ? (() => {
+            const { results, unmapped, stats } = consolidated.result;
+            const labelOf = id => carriers.find(c => c.id === id)?.label || id;
+            const totalAdded = results.reduce((s, r) => s + (r.added || 0), 0);
+            const totalDups  = results.reduce((s, r) => s + (r.dups || 0), 0);
+            return (
+              <>
+                <div style={{ background: 'var(--surface2)', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, lineHeight: 1.8, marginBottom: 12 }}>
+                  ✅ <b>تم التوصيل:</b> {stats.delivered} · 🔁 <b>مرتجع متجاهَل:</b> {stats.notDelivered} · 0️⃣ مبلغ صفر: {stats.zeroAmount}<br/>
+                  ➕ <b>أُضيف جديد:</b> {totalAdded} · ⏭ <b>مكرّر متخطّى:</b> {totalDups}
+                </div>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+                  <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
+                    {['الناقل', 'مُسلَّم', 'أُضيف', 'مكرّر', 'القيمة'].map(h => <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)' }}>{h}</th>)}
+                  </tr></thead>
+                  <tbody>
+                    {results.map(r => (
+                      <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
+                        <td style={{ padding: '8px 10px', fontWeight: 600 }}>{labelOf(r.carrierId)}</td>
+                        <td style={{ padding: '8px 10px' }}>{r.submitted}</td>
+                        <td style={{ padding: '8px 10px', color: '#10B981', fontWeight: 700 }}>{r.error ? '—' : r.added}</td>
+                        <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{r.dups || 0}</td>
+                        <td style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{Number(r.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {results.some(r => r.error) && (
+                  <div style={{ color: '#DC2626', fontSize: 12, marginTop: 8 }}>⚠️ أخطاء: {results.filter(r => r.error).map(r => `${labelOf(r.carrierId)}: ${r.error}`).join(' · ')}</div>
+                )}
+                {unmapped.length > 0 && (
+                  <div style={{ background: '#F59E0B15', color: '#B45309', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>
+                    🏷️ شركات بلا ناقل مطابق (تُجوهلت): {unmapped.map(u => `${u.name} (${u.n}/${u.total})`).join(' · ')}
+                  </div>
+                )}
+                <div style={{ marginTop: 14, textAlign: 'left' }}><Btn variant="primary" onClick={() => setConsolidated(null)}>تم</Btn></div>
+              </>
+            );
+          })() : (
+            <>
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
+                ارفع ملف «التحصيل المتوقّع» المجمّع من نظامك الداخلي. النظام يأخذ <b>«تم التوصيل» فقط + مبلغ&gt;0</b>، ويوزّعه على كل ناقل حسب عمود «شركة الشحن». <b>الموجود مسبقاً يُتخطّى تلقائياً</b> (لا تكرار، لا حذف).
+              </div>
+              <DropZone onFile={handleConsolidatedFile} title="اختر ملف Excel المجمّع"
+                hint="يكفي وجود: شركة الشحن · حالة الطلب · المبلغ · رقم الشحنة (مهما كان الترتيب)"/>
+            </>
+          )}
+        </Modal>
       )}
 
       {confirmDeleteUpload && (
