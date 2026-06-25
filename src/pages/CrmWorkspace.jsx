@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Headset, Store, TrendingUp, CalendarClock, BarChart3, RefreshCw,
-  Phone, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload } from 'lucide-react';
+  Phone, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, Empty, Select, Input, Badge, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
@@ -16,6 +16,7 @@ import {
   loadStatuses, loadStages, crmAutoEnroll, loadWatchQueue, ensureCustomerRow,
   logActivity, loadTimeline, recordPromise, resolvePromise, changeStatus, assignOwner,
   loadTasks, createTask, completeTask, loadDeals, createDeal, moveDeal, loadBoardStats,
+  upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
 import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
 
@@ -30,12 +31,15 @@ const TABS = [
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
   { id: 'board', label: 'أداء التحصيل', icon: BarChart3 },
+  { id: 'settings', label: 'الإعدادات', icon: Sliders, perm: 'crm.manage_statuses' },
 ];
 const LEGACY = { '/crm': 'queue' };
 
 export default function CrmWorkspace({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
+  const { can } = useAuth();
+  const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
   const initial = () => {
     const q = new URLSearchParams(location.search).get('tab');
     return (q && TABS.some(t => t.id === q)) ? q : (LEGACY[location.pathname] || 'queue');
@@ -49,7 +53,7 @@ export default function CrmWorkspace({ isActive = true }) {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6, padding: '12px 24px 0',
         borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 5 }}>
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const Icon = t.icon, active = tab === t.id;
           return (
             <button key={t.id} onClick={() => change(t.id)} style={{
@@ -69,6 +73,7 @@ export default function CrmWorkspace({ isActive = true }) {
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}
         {tab === 'tasks' && <TasksTab active={isActive && tab === 'tasks'}/>}
         {tab === 'board' && <BoardTab active={isActive && tab === 'board'}/>}
+        {tab === 'settings' && can('crm.manage_statuses') && <SettingsTab active={isActive && tab === 'settings'}/>}
       </div>
     </div>
   );
@@ -477,6 +482,76 @@ function BoardTab({ active }) {
         ))}
       </div>
     </Pad>
+  );
+}
+
+// ═══════════════ الإعدادات: تحرير الحالات/المراحل ═══════════════
+function SettingsTab({ active }) {
+  const [statuses, setStatuses] = useState([]);
+  const [stages, setStages] = useState([]);
+  const reload = useCallback(async () => {
+    try { const [s, g] = await Promise.all([loadStatuses({ force: true }), loadStages({ force: true })]); setStatuses(s); setStages(g); }
+    catch (e) { toast(e.message, 'error'); }
+  }, []);
+  useEffect(() => { if (active) reload(); }, [active, reload]);
+  return (
+    <Pad>
+      <PageHeader icon={<Sliders size={22}/>} title="إعدادات CRM" subtitle="خصّص حالات المتابعة ومراحل البيع — تظهر فوراً في القوائم"/>
+      <EditorList title="حالات المتابعة" items={statuses} kind="status" onChange={reload}/>
+      <EditorList title="مراحل البيع" items={stages} kind="stage" onChange={reload}/>
+    </Pad>
+  );
+}
+
+function EditorList({ title, items, kind, onChange }) {
+  const upsert = kind === 'status' ? upsertStatus : upsertStage;
+  const del    = kind === 'status' ? deleteStatus : deleteStage;
+  const [add, setAdd] = useState({ label_ar: '', color: '#6B7280' });
+  const doAdd = async () => {
+    if (!add.label_ar.trim()) return;
+    try {
+      await upsert({ key: `custom_${Date.now()}`, label_ar: add.label_ar.trim(), color: add.color, sort_order: (items.length + 1) * 10 });
+      toast('أُضيف', 'success'); setAdd({ label_ar: '', color: '#6B7280' }); onChange();
+    } catch (e) { toast(e.message, 'error'); }
+  };
+  return (
+    <Card style={{ marginBottom: 16, padding: 16 }}>
+      <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>{title}</div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+        {items.map(it => <RowEditor key={it.id} item={it} upsert={upsert} del={del} onChange={onChange}/>)}
+      </div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--border)' }}>
+        <input type="color" value={add.color} onChange={e => setAdd({ ...add, color: e.target.value })} style={{ width: 36, height: 32, border: 'none', background: 'none', cursor: 'pointer' }}/>
+        <input placeholder="اسم جديد…" value={add.label_ar} onChange={e => setAdd({ ...add, label_ar: e.target.value })}
+          style={{ flex: 1, padding: '8px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}/>
+        <Btn size="sm" icon={<Plus size={13}/>} disabled={!add.label_ar.trim()} onClick={doAdd}>إضافة</Btn>
+      </div>
+    </Card>
+  );
+}
+
+function RowEditor({ item, upsert, del, onChange }) {
+  const [v, setV] = useState({ label_ar: item.label_ar, color: item.color, sort_order: item.sort_order });
+  const [busy, setBusy] = useState(false);
+  const dirty = v.label_ar !== item.label_ar || v.color !== item.color || Number(v.sort_order) !== Number(item.sort_order);
+  const save = async () => {
+    setBusy(true);
+    try { await upsert({ ...item, label_ar: v.label_ar, color: v.color, sort_order: Number(v.sort_order) }); toast('حُفظ', 'success'); onChange(); }
+    catch (e) { toast(e.message, 'error'); }
+    setBusy(false);
+  };
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <input type="color" value={v.color} onChange={e => setV({ ...v, color: e.target.value })} style={{ width: 32, height: 30, border: 'none', background: 'none', cursor: 'pointer' }}/>
+      <input value={v.label_ar} onChange={e => setV({ ...v, label_ar: e.target.value })}
+        style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}/>
+      <input type="number" value={v.sort_order} onChange={e => setV({ ...v, sort_order: e.target.value })} title="الترتيب"
+        style={{ width: 64, padding: '7px 8px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-mono)' }}/>
+      {item.is_terminal && <span style={{ fontSize: 10, color: '#DC2626' }}>منتهية</span>}
+      {dirty && <Btn size="sm" disabled={busy} onClick={save}>حفظ</Btn>}
+      <button title="حذف" onClick={async () => { if (!confirm(`حذف «${item.label_ar}»؟`)) return; try { await del(item.id); toast('حُذف', 'success'); onChange(); } catch (e) { toast(e.message, 'error'); } }}
+        style={{ border: 'none', background: 'none', color: '#DC2626', cursor: 'pointer', padding: 4 }}><Trash2 size={14}/></button>
+    </div>
   );
 }
 
