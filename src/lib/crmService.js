@@ -49,6 +49,32 @@ export async function loadStages({ force = false } = {}) {
   return _stageCache;
 }
 
+// تخصيص الحالات/المراحل من الواجهة (crm.manage_statuses)
+export async function upsertStatus(row) {
+  const { data, error } = await supabase.from('crm_statuses').upsert(row).select().single();
+  if (error) throw error;
+  _statusCache = null;
+  return data;
+}
+export async function deleteStatus(id) {
+  const { error } = await supabase.from('crm_statuses').delete().eq('id', id);
+  if (error) throw error;
+  _statusCache = null;
+  return { ok: true };
+}
+export async function upsertStage(row) {
+  const { data, error } = await supabase.from('crm_stages').upsert(row).select().single();
+  if (error) throw error;
+  _stageCache = null;
+  return data;
+}
+export async function deleteStage(id) {
+  const { error } = await supabase.from('crm_stages').delete().eq('id', id);
+  if (error) throw error;
+  _stageCache = null;
+  return { ok: true };
+}
+
 async function defaultStatusId() {
   const s = await loadStatuses();
   return (s.find(x => x.is_default) || s[0])?.id || null;
