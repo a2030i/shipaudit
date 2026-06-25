@@ -152,7 +152,7 @@ const NAV_ITEMS = [
   // Grouping every ingest door here is the fix for "مشتتة".
   { id: 'drop',           path: '/drop',           label: 'رفع ملف ذكي',  icon: Upload, section: 'ingest', permKey: 'audits.create' },
   { id: 'webhook',        path: '/webhook',        label: 'الوارد',        icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
-  { id: 'uploads',        path: '/uploads',        label: 'ملفات Zoho',    icon: Layers, section: 'ingest', permKey: 'uploads.view' },
+  { id: 'uploads',        path: '/uploads',        label: 'مركز الرفع',    icon: Layers, section: 'ingest', permKey: 'uploads.view' },
   { id: 'weight-billing', path: '/weight-billing', label: 'فوترة الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
 
   // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
