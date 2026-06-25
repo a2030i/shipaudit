@@ -762,3 +762,107 @@ export function ageOutstanding(rows) {
   }
   return buckets;
 }
+
+// ═══════════════════════════════════════════════════════════════════════
+// رفع «المتوقّع المجمّع» — ملف واحد من النظام الداخلي يغطّي كل الشركات.
+// يهمّنا 3 أعمدة فقط (مهما كان حجم الملف/ترتيبه/أعمدته الأخرى):
+//   • حالة الطلب = «تم التوصيل» (المرتجع يُتجاهَل — لا يُحصَّل COD)
+//   • المبلغ > 0
+//   • شركة الشحن (للتوزيع) + رقم الشحنة (هوية المطابقة)
+// كل صف يُوزَّع لناقله ويُحفَظ كـ direction='out'. الأمان من saveSettlementUpload:
+// يتخطّى أي AWB موجود مسبقاً (لا تكرار) ولا يكتب قيد دفتر للـout.
+// ═══════════════════════════════════════════════════════════════════════
+const CONSOLIDATED_COLS = {
+  carrier: ['شركة الشحن', 'الناقل', 'shipping company', 'carrier', 'company'],
+  status:  ['حالة الشحن', 'حالة الطلب', 'order status', 'shipment status', 'status'],
+  amount:  ['المبلغ', 'مبلغ الطلب', 'cod amount', 'amount', 'price', 'cod'],
+  awb:     ['رقم الشحنة', 'رقم البوليصة', 'رقم التتبع', 'tracking', 'awb', 'waybill', 'shipment no'],
+};
+const DELIVERED_TOKENS = ['تم التوصيل', 'تم التسليم', 'delivered'];
+
+// اسم شركة الشحن في الملف → معرّف الناقل في النظام (الترتيب مهم: الفروع أولاً)
+function mapConsolidatedCarrier(name) {
+  const s = String(name || '').toLowerCase();
+  if (/smsa|سمسا/.test(s) && /فرع|استلام/.test(s)) return 'smsa_branches';
+  if (/smsa|سمسا/.test(s))                          return 'smsa';
+  if (/imile|اي.?مايل|ايمايل|آي.?مايل/.test(s))     return 'imile';
+  if (/delex|ديلكس/.test(s))                        return 'delex';
+  if (/aramex|ارامكس|أرامكس/.test(s))               return 'c_1777506662790'; // incl. استلام من الفرع
+  if (/\bjt\b|j&?t|jandt|جي.?اند.?تي/.test(s))      return 'jnt';             // JT Express + V2
+  if (/delivery.?now|deliver.?now|ديلفر/.test(s))   return 'delivernow';
+  if (/wepik|webek|ويبك|ويبيك/.test(s))             return 'webek';
+  if (/logisti|لوجستك|لوجستيك/.test(s))             return 'logistic';
+  if (/mygate|my.?gate|ماي.?جيت/.test(s))           return 'mygate';
+  if (/varnier|فارنير/.test(s))                     return 'varnier';
+  if (/aatak|اطاق|أطاق/.test(s))                    return 'aatak';
+  if (/boleeseh|بوليصة|بوليصه/.test(s))             return 'boleeseh';
+  return null; // Aymakan / thabit / غير معروف → unmapped (يُبلَّغ، لا يُكتَب)
+}
+
+function findConsolidatedCol(header, keys) {
+  const norm = (header || []).map(h => String(h ?? '').toLowerCase().trim());
+  for (const k of keys) {
+    const i = norm.findIndex(h => h.includes(k.toLowerCase()));
+    if (i >= 0) return i;
+  }
+  return -1;
+}
+
+export function parseConsolidatedExpected(allRows) {
+  if (!Array.isArray(allRows) || allRows.length < 2) throw new Error('الملف فارغ أو غير معتاد');
+  const header = allRows[0];
+  const cCarr = findConsolidatedCol(header, CONSOLIDATED_COLS.carrier);
+  const cStat = findConsolidatedCol(header, CONSOLIDATED_COLS.status);
+  const cAmt  = findConsolidatedCol(header, CONSOLIDATED_COLS.amount);
+  const cAwb  = findConsolidatedCol(header, CONSOLIDATED_COLS.awb);
+  if (cCarr < 0 || cStat < 0 || cAmt < 0) {
+    throw new Error('يلزم وجود الأعمدة: «شركة الشحن» + «حالة الطلب» + «المبلغ».');
+  }
+  const byCarrier = {}, unmappedMap = {};
+  const stats = { delivered: 0, notDelivered: 0, zeroAmount: 0, unmapped: 0, total: allRows.length - 1 };
+  for (let i = 1; i < allRows.length; i++) {
+    const r = allRows[i]; if (!r) continue;
+    const status = String(r[cStat] ?? '').trim();
+    if (!DELIVERED_TOKENS.some(t => status.includes(t))) { stats.notDelivered++; continue; }
+    const amount = parseFloat(String(r[cAmt] ?? '').replace(/[^0-9.\-]/g, '')) || 0;
+    if (amount <= 0) { stats.zeroAmount++; continue; }
+    stats.delivered++;
+    const carrName = String(r[cCarr] ?? '').trim();
+    const id = mapConsolidatedCarrier(carrName);
+    if (!id) {
+      const k = carrName || '(فارغ)';
+      unmappedMap[k] = unmappedMap[k] || { n: 0, total: 0 };
+      unmappedMap[k].n++; unmappedMap[k].total += amount; stats.unmapped++;
+      continue;
+    }
+    let awb = '';
+    if (cAwb >= 0) awb = typeof r[cAwb] === 'number' ? String(Math.round(r[cAwb])) : String(r[cAwb] ?? '').trim();
+    (byCarrier[id] = byCarrier[id] || []).push({ awb, amount: +amount.toFixed(2) });
+  }
+  const unmapped = Object.entries(unmappedMap)
+    .map(([name, v]) => ({ name, n: v.n, total: +v.total.toFixed(2) }))
+    .sort((a, b) => b.total - a.total);
+  return { byCarrier, unmapped, stats };
+}
+
+// يوزّع ويحفظ لكل ناقل (يعيد استخدام saveSettlementUpload + dedup الآمن)
+export async function saveConsolidatedExpected({ allRows, fileName = null, userId = null }) {
+  const { byCarrier, unmapped, stats } = parseConsolidatedExpected(allRows);
+  const results = [];
+  for (const [carrierId, rows] of Object.entries(byCarrier)) {
+    const total = +rows.reduce((s, r) => s + r.amount, 0).toFixed(2);
+    try {
+      const res = await saveSettlementUpload({
+        direction: 'out', carrierId, rows, sourceFile: fileName, userId,
+      });
+      results.push({
+        carrierId, submitted: rows.length, total,
+        added: res.count, dups: (res.crossFileDuplicates || 0) + (res.inBatchDuplicates || 0),
+      });
+    } catch (e) {
+      results.push({ carrierId, submitted: rows.length, total, error: e.message });
+    }
+  }
+  results.sort((a, b) => (b.total || 0) - (a.total || 0));
+  return { results, unmapped, stats };
+}
