@@ -18,9 +18,12 @@ import { makeRemittanceParser } from './genericRemittance.js';
 export const boleesehRemittanceParser = makeRemittanceParser({
   id:    'boleeseh',
   label: 'بوليصة Boleeseh',
+  // ملاحظة: بوليصة لها صيغتا تصدير — الكشف العربي الكامل (المعرف/رقم التتبع/
+  // المبلغ المحصل/المستحق)، وتصدير مبسّط إنجليزي per-merchant (user-171.xls):
+  // الأعمدة = price · tracking_number · user_id. كلاهما مدعوم هنا.
   awbKeys: [
     'رقم التتبع', 'تتبع',
-    'tracking no', 'tracking', 'awb no', 'awb', 'waybill',
+    'tracking no', 'tracking_number', 'tracking', 'awb no', 'awb', 'waybill',
     'shipment no', 'policy no',
     'رقم الشحنة', 'رقم البوليصة',
   ],
@@ -30,6 +33,8 @@ export const boleesehRemittanceParser = makeRemittanceParser({
     'المبلغ المحصل', 'المبلغ المحصّل', 'المحصل',
     'collected amount', 'collection amount', 'cod amount',
     'قيمة التحصيل', 'المبلغ',
+    // الصيغة المبسّطة (user-171.xls): عمود المبلغ اسمه price
+    'price', 'amount',
   ],
   errorHint:
     'الملف لا يطابق صيغة تحصيل بوليصة — يلزم وجود عمود "رقم التتبع" + ' +
