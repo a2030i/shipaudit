@@ -384,11 +384,11 @@ export default function Merchants({ isActive = true }) {
               </Btn>
             )}
             {unmatchedCount > 0 && (
-              <Btn size="md" variant="gold" icon={<AlertTriangle size={14}/>} onClick={() => setShowUnmatched(true)}>
+              <Btn size="sm" variant="ghost" icon={<AlertTriangle size={14}/>} onClick={() => setShowUnmatched(true)}>
                 غير مرتبطين ({fmtCount(unmatchedCount)})
               </Btn>
             )}
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
             <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
@@ -409,7 +409,7 @@ export default function Merchants({ isActive = true }) {
             sub="ارفع stores.xlsx من النظام الداخلي لتشاهد المتاجر + الإحصاءات"
           />
           <div style={{ display:'flex', justifyContent:'center', marginTop:12 }}>
-            <Btn variant="accent" icon={<Upload size={13}/>} onClick={() => setShowUpload(true)}>
+            <Btn size="md" variant="accent" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
               ارفع أول كشف
             </Btn>
           </div>

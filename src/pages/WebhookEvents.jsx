@@ -93,79 +93,7 @@ function isSpreadsheet(filename) {
 // Compact, consistent, single-line action buttons for the events
 // table. The primary action gets a full label; secondary actions
 // (download, delete) are square icon-only buttons with tooltips.
-function primaryBtnStyle(variant = 'accent') {
-  const variants = {
-    accent: {
-      background: 'linear-gradient(135deg, #14B8A6, #2DD4BF)',
-      color: '#fff',
-      border: '1px solid transparent',
-      boxShadow: '0 2px 8px rgba(45,212,191,.30)',
-    },
-    'accent-soft': {
-      background: 'rgba(45,212,191,.12)',
-      color: 'var(--accent)',
-      border: '1px solid rgba(45,212,191,.40)',
-      boxShadow: 'none',
-    },
-    gold: {
-      background: 'linear-gradient(135deg, #F59E0B, #FBBF24)',
-      color: '#1f2937',
-      border: '1px solid transparent',
-      boxShadow: '0 2px 8px rgba(251,191,36,.30)',
-    },
-    ghost: {
-      background: 'transparent',
-      color: 'var(--muted)',
-      border: '1px solid var(--border2)',
-      boxShadow: 'none',
-    },
-  };
-  return {
-    display: 'inline-flex', alignItems: 'center', gap: 6,
-    padding: '6px 12px',
-    borderRadius: 8,
-    fontFamily: 'var(--font-sans)',
-    fontSize: 12, fontWeight: 600,
-    cursor: 'pointer',
-    height: 30,
-    whiteSpace: 'nowrap',
-    ...(variants[variant] || variants.accent),
-  };
-}
-
-function IconBtn({ icon, title, onClick, disabled, danger }) {
-  return (
-    <button
-      onClick={disabled ? undefined : onClick}
-      title={title}
-      disabled={disabled}
-      style={{
-        width: 30, height: 30,
-        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-        background: 'transparent',
-        color: danger ? 'var(--red)' : 'var(--muted)',
-        border: `1px solid ${danger ? 'rgba(239,68,68,.30)' : 'var(--border2)'}`,
-        borderRadius: 8,
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        opacity: disabled ? .45 : 1,
-        transition: 'all .12s',
-      }}
-      onMouseEnter={e => {
-        if (disabled) return;
-        e.currentTarget.style.borderColor = danger ? 'var(--red)' : 'var(--text)';
-        e.currentTarget.style.color       = danger ? 'var(--red)' : 'var(--text)';
-        e.currentTarget.style.background  = danger ? 'rgba(239,68,68,.06)' : 'var(--surface)';
-      }}
-      onMouseLeave={e => {
-        e.currentTarget.style.borderColor = danger ? 'rgba(239,68,68,.30)' : 'var(--border2)';
-        e.currentTarget.style.color       = danger ? 'var(--red)' : 'var(--muted)';
-        e.currentTarget.style.background  = 'transparent';
-      }}
-    >
-      {icon}
-    </button>
-  );
-}
+// (أُزيل primaryBtnStyle و IconBtn — استُبدلا بمكوّن Btn الموحّد §1.20)
 
 // Convert a Blob to base64 (without the "data:..." prefix).
 function blobToBase64(blob) {
@@ -636,78 +564,52 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                               audit_and_cod_separate carriers (J&T-style)
                               so the admin chooses how to route the file. */}
                           {e.audit_id ? (
-                            <button
-                              onClick={() => openLinkedAudit(e.audit_id)}
+                            <Btn size="sm" variant="ghost" icon={<FileCheck2 size={13}/>}
                               title="فتح المراجعة المرتبطة"
-                              style={primaryBtnStyle('accent-soft')}
-                            >
-                              <FileCheck2 size={13}/>
+                              onClick={() => openLinkedAudit(e.audit_id)}>
                               فتح المراجعة
-                            </button>
+                            </Btn>
                           ) : isCodDone ? (
-                            <button
-                              onClick={() => navigate('/cod-settlements')}
+                            <Btn size="sm" variant="ghost" icon={<FileCheck2 size={13}/>}
                               title="فتح صفحة تسويات COD"
-                              style={primaryBtnStyle('accent-soft')}
-                            >
-                              <FileCheck2 size={13}/>
+                              onClick={() => navigate('/cod-settlements')}>
                               تم استيراده كتحصيل
-                            </button>
+                            </Btn>
                           ) : !e.detected_carrier_id && canImport ? (
-                            <button
-                              onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}
-                              style={primaryBtnStyle('ghost')}
-                            >
-                              <HelpCircle size={13}/>
+                            <Btn size="sm" variant="ghost" icon={<HelpCircle size={13}/>}
+                              onClick={() => { setAssigning(e); setChosenCarrier(''); setLearnSig(true); }}>
                               ربط بشركة
-                            </button>
+                            </Btn>
                           ) : (
                             <>
                               {showAuditBtn && (
-                                <button
-                                  onClick={() => importToAudit(e)}
-                                  disabled={importingId === e.id}
-                                  style={primaryBtnStyle('accent')}
+                                <Btn size="sm" variant="primary" disabled={importingId === e.id}
                                   title="معالجة الملف كفاتورة مراجعة"
-                                >
-                                  {importingId === e.id
-                                    ? <Spinner size={13}/>
-                                    : <UploadIcon size={13}/>}
+                                  icon={importingId === e.id ? <Spinner size={13}/> : <UploadIcon size={13}/>}
+                                  onClick={() => importToAudit(e)}>
                                   حفظ كمراجعة
-                                </button>
+                                </Btn>
                               )}
                               {showCodBtn && (
-                                <button
-                                  onClick={() => importToCod(e)}
-                                  disabled={importingId === e.id}
-                                  style={primaryBtnStyle('gold')}
+                                <Btn size="sm" variant="accent" disabled={importingId === e.id}
                                   title="معالجة الملف كتحصيل COD"
-                                >
-                                  {importingId === e.id
-                                    ? <Spinner size={13}/>
-                                    : <UploadIcon size={13}/>}
+                                  icon={importingId === e.id ? <Spinner size={13}/> : <UploadIcon size={13}/>}
+                                  onClick={() => importToCod(e)}>
                                   حفظ كتحصيل
-                                </button>
+                                </Btn>
                               )}
                             </>
                           )}
 
                           {/* Secondary actions — icon-only squares */}
                           {e.file_path && (
-                            <IconBtn
-                              icon={<Download size={13}/>}
-                              title="تنزيل الملف"
-                              onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}
-                            />
+                            <Btn size="sm" variant="ghost" title="تنزيل الملف" icon={<Download size={13}/>}
+                              onClick={() => downloadEventFile(e).catch(err => toast(err.message,'error'))}/>
                           )}
                           {canDelete && (
-                            <IconBtn
+                            <Btn size="sm" variant="danger" title="حذف الحدث" disabled={deletingId === e.id}
                               icon={deletingId === e.id ? <Spinner size={13}/> : <Trash2 size={13}/>}
-                              title="حذف الحدث"
-                              danger
-                              onClick={() => askDelete(e)}
-                              disabled={deletingId === e.id}
-                            />
+                              onClick={() => askDelete(e)}/>
                           )}
                         </div>
                       </td>
@@ -755,7 +657,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
           </label>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" onClick={() => setAssigning(null)}>تراجع</Btn>
+            <Btn variant="ghost" onClick={() => setAssigning(null)}>إلغاء</Btn>
             <Btn variant="accent" onClick={handleAssign} disabled={!chosenCarrier} icon={<CheckCircle2 size={13}/>}>
               ربط
             </Btn>
@@ -795,7 +697,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>تراجع</Btn>
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)}>إلغاء</Btn>
             <Btn variant="danger" onClick={doDelete} disabled={!!deletingId} icon={<Trash2 size={13}/>}>
               {deletingId ? 'جارٍ الحذف...' : 'حذف نهائي'}
             </Btn>

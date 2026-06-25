@@ -62,19 +62,16 @@ function Hero({ carrier, onBack }) {
       boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
-        <button
+        <Btn
+          variant="ghost"
+          size="sm"
+          icon={<ArrowRight size={14}/>}
           onClick={onBack}
-          style={{
-            background: 'rgba(255,255,255,.12)', border: '1px solid rgba(255,255,255,.20)',
-            color: '#fff', padding: '6px 10px', borderRadius: 8,
-            cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 5,
-            fontSize: 12, fontFamily: 'var(--font-sans)', fontWeight: 600,
-            flexShrink: 0,
-          }}
           title="رجوع لكشف الشركات"
+          style={{ flexShrink: 0 }}
         >
-          <ArrowRight size={14}/> رجوع
-        </button>
+          رجوع
+        </Btn>
         {carrier.logo ? (
           <img src={carrier.logo} alt="" style={{
             width: 56, height: 56, borderRadius: 12, objectFit: 'cover',
@@ -327,7 +324,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                   {saving ? 'جارٍ الحفظ…' : 'حفظ'}
                 </Btn>
                 <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={() => setEditing(false)}>
-                  تراجع
+                  إلغاء
                 </Btn>
               </div>
             </div>
@@ -365,7 +362,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                   {savingEmails ? 'جارٍ الحفظ…' : 'حفظ'}
                 </Btn>
                 <Btn size="sm" variant="ghost" icon={<X size={12}/>} onClick={() => setEditingEmails(false)}>
-                  تراجع
+                  إلغاء
                 </Btn>
               </div>
             </div>
@@ -377,25 +374,18 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                   </span>
                 : <span style={{ color: 'var(--muted)', flex: 1 }}>غير محدد</span>
               }
-              <button
+              <Btn
+                variant="ghost"
+                size="sm"
+                icon={<Edit3 size={11}/>}
                 onClick={() => {
                   setEmailsDraft((signature?.email_from || []).join(', '));
                   setEditingEmails(true);
                 }}
                 title="تعديل بصمة الـ webhook"
-                style={{
-                  background: 'transparent', border: '1px solid var(--border)',
-                  color: 'var(--muted)', cursor: 'pointer',
-                  padding: '4px 8px', borderRadius: 6,
-                  display: 'inline-flex', alignItems: 'center', gap: 4,
-                  fontSize: 11, fontFamily: 'var(--font-sans)',
-                }}
-                onMouseEnter={e => { e.currentTarget.style.color = 'var(--text)'; e.currentTarget.style.borderColor = 'var(--text2)'; }}
-                onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border)'; }}
               >
-                <Edit3 size={11}/>
                 تعديل
-              </button>
+              </Btn>
             </div>
           )
         }/>

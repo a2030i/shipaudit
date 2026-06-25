@@ -145,7 +145,7 @@ export default function Payments({ isActive = true }) {
           <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 22 }}>
             عند تسديد عملية أو مجموعة عمليات من الدفتر، تُسجَّل هنا تلقائياً بإجمالي مفصّل ورقم حوالة وتاريخ.
           </div>
-          <Btn variant="primary" onClick={() => { window.location.href = `/ledger?carrier=${carrier}`; }}>
+          <Btn variant="accent" size="md" onClick={() => { window.location.href = `/ledger?carrier=${carrier}`; }}>
             افتح الدفتر للتسديد →
           </Btn>
         </Card>
@@ -199,7 +199,7 @@ export default function Payments({ isActive = true }) {
             استخدمها فقط إذا الدفعة تم إنشاؤها بالخطأ. لا يمكن التراجع عن الحذف.
           </div>
           <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" onClick={() => setConfirmDelete(null)}>تراجع</Btn>
+            <Btn variant="ghost" onClick={() => setConfirmDelete(null)}>إلغاء</Btn>
             <Btn variant="danger" onClick={() => handleDelete(confirmDelete.id)}>تأكيد الحذف</Btn>
           </div>
         </Modal>

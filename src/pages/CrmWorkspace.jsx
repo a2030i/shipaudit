@@ -190,7 +190,7 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
         {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<Phone size={13}/>} onClick={() => setForm({ mode: 'call', disposition: 'reached', body: '' })}>مكالمة</Btn>}
         {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<StickyNote size={13}/>} onClick={() => setForm({ mode: 'note', body: '' })}>ملاحظة</Btn>}
-        {can('crm.record_promise') && <Btn size="sm" variant="ghost" icon={<HandCoins size={13}/>} onClick={() => setForm({ mode: 'promise', amount: '', date: '' })}>وعد بالدفع</Btn>}
+        {can('crm.record_promise') && <Btn size="sm" variant="accent" icon={<HandCoins size={13}/>} onClick={() => setForm({ mode: 'promise', amount: '', date: '' })}>وعد بالدفع</Btn>}
         {can('crm.change_status') && <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: 'status', statusId: customer.followup_status_id || '' })}>تغيير الحالة</Btn>}
         {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" icon={<CalendarClock size={13}/>} onClick={() => setForm({ mode: 'task', title: '', due: '' })}>موعد</Btn>}
         {can('crm.assign') && <Btn size="sm" variant="ghost" icon={<UserCog size={13}/>} onClick={() => setForm({ mode: 'assign', ownerId: customer.owner_id || '' })}>إسناد</Btn>}
@@ -205,37 +205,37 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
               <option value="promised">وعد بالدفع</option><option value="disputed">نزاع</option><option value="refused">رفض</option>
             </Select>
             <Input label="ملاحظة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
-            <Btn size="sm" disabled={busy} onClick={() => act(() => logActivity({ entityType: 'customer', entityRef: name, kind: 'call', disposition: form.disposition, summary: `مكالمة: ${form.disposition}`, body: form.body, userId: user?.id }), 'سُجّلت المكالمة')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => logActivity({ entityType: 'customer', entityRef: name, kind: 'call', disposition: form.disposition, summary: `مكالمة: ${form.disposition}`, body: form.body, userId: user?.id }), 'سُجّلت المكالمة')}>حفظ</Btn>
           </>}
           {form.mode === 'note' && <>
             <Input label="الإفادة/الملاحظة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
-            <Btn size="sm" disabled={busy || !form.body} onClick={() => act(() => logActivity({ entityType: 'customer', entityRef: name, kind: 'note', summary: form.body.slice(0, 60), body: form.body, userId: user?.id }), 'حُفظت الملاحظة')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy || !form.body} onClick={() => act(() => logActivity({ entityType: 'customer', entityRef: name, kind: 'note', summary: form.body.slice(0, 60), body: form.body, userId: user?.id }), 'حُفظت الملاحظة')}>حفظ</Btn>
           </>}
           {form.mode === 'promise' && <>
             <div style={{ display: 'flex', gap: 8 }}>
               <Input label="المبلغ" type="number" value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}/>
               <Input label="تاريخ الوعد" type="date" value={form.date} onChange={e => setForm({ ...form, date: e.target.value })}/>
             </div>
-            <Btn size="sm" disabled={busy || !form.amount || !form.date} onClick={() => act(() => recordPromise({ entityRef: name, amount: form.amount, date: form.date, userId: user?.id }), 'سُجّل الوعد')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy || !form.amount || !form.date} onClick={() => act(() => recordPromise({ entityRef: name, amount: form.amount, date: form.date, userId: user?.id }), 'سُجّل الوعد')}>حفظ</Btn>
           </>}
           {form.mode === 'status' && <>
             <Select label="الحالة" value={form.statusId} onChange={e => setForm({ ...form, statusId: e.target.value })}>
               <option value="">— اختر —</option>
               {statuses.map(s => <option key={s.id} value={s.id}>{s.label_ar}</option>)}
             </Select>
-            <Btn size="sm" disabled={busy || !form.statusId} onClick={() => act(() => changeStatus({ customerName: name, statusId: form.statusId, userId: user?.id }), 'تغيّرت الحالة')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy || !form.statusId} onClick={() => act(() => changeStatus({ customerName: name, statusId: form.statusId, userId: user?.id }), 'تغيّرت الحالة')}>حفظ</Btn>
           </>}
           {form.mode === 'task' && <>
             <Input label="عنوان الموعد" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}/>
             <Input label="موعد التنفيذ" type="datetime-local" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })}/>
-            <Btn size="sm" disabled={busy || !form.title || !form.due} onClick={() => act(() => createTask({ entityType: 'customer', entityRef: name, title: form.title, dueAt: new Date(form.due).toISOString(), assignedTo: customer.owner_id || user?.id, userId: user?.id }), 'أُنشئ الموعد')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy || !form.title || !form.due} onClick={() => act(() => createTask({ entityType: 'customer', entityRef: name, title: form.title, dueAt: new Date(form.due).toISOString(), assignedTo: customer.owner_id || user?.id, userId: user?.id }), 'أُنشئ الموعد')}>حفظ</Btn>
           </>}
           {form.mode === 'assign' && <>
             <Select label="المُسنَد إليه" value={form.ownerId} onChange={e => setForm({ ...form, ownerId: e.target.value })}>
               <option value="">— اختر موظف —</option>
               {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
             </Select>
-            <Btn size="sm" disabled={busy || !form.ownerId} onClick={() => act(() => assignOwner({ entityType: 'customer', entityRef: name, ownerId: form.ownerId, ownerName: employees.find(e => e.id === form.ownerId)?.name, userId: user?.id }), 'تم الإسناد')}>حفظ</Btn>
+            <Btn size="sm" variant="accent" disabled={busy || !form.ownerId} onClick={() => act(() => assignOwner({ entityType: 'customer', entityRef: name, ownerId: form.ownerId, ownerName: employees.find(e => e.id === form.ownerId)?.name, userId: user?.id }), 'تم الإسناد')}>حفظ</Btn>
           </>}
         </Card>
       )}
@@ -253,9 +253,9 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
                 {a.kind === 'promise' && <div style={{ fontSize: 11.5, color: '#F59E0B', marginTop: 2 }}>وعد {fmt(a.promise_amount)} ر.س — {fmtDate(a.promised_on)} · {a.promise_status}</div>}
                 {a.kind === 'promise' && a.promise_status === 'open' && can('crm.record_promise') && (
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
-                    <MiniBtn color="#10B981" label="تم الدفع" onClick={() => act(() => resolvePromise(a.id, { status: 'kept', keptAmount: a.promise_amount }), 'سُجّل الدفع')}/>
-                    <MiniBtn color="#8B5CF6" label="جزئي"    onClick={() => act(() => resolvePromise(a.id, { status: 'partial' }), 'سُجّل جزئياً')}/>
-                    <MiniBtn color="#DC2626" label="مكسور"   onClick={() => act(() => resolvePromise(a.id, { status: 'broken' }), 'وُسِم مكسوراً')}/>
+                    <Btn size="sm" variant="accent" onClick={() => act(() => resolvePromise(a.id, { status: 'kept', keptAmount: a.promise_amount }), 'سُجّل الدفع')}>تم الدفع</Btn>
+                    <Btn size="sm" variant="ghost" onClick={() => act(() => resolvePromise(a.id, { status: 'partial' }), 'سُجّل جزئياً')}>جزئي</Btn>
+                    <Btn size="sm" variant="danger" onClick={() => act(() => resolvePromise(a.id, { status: 'broken' }), 'وُسِم مكسوراً')}>مكسور</Btn>
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: 'var(--muted2,#9CA3AF)', marginTop: 2 }}>{fmtDate(a.occurred_at)}</div>
@@ -344,7 +344,7 @@ function NewLeadModal({ onClose, onSaved, userId }) {
       <Input label="الجوال" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })}/>
       <Input label="المدينة" value={f.city} onChange={e => setF({ ...f, city: e.target.value })}/>
       <Input label="ملاحظات" value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })}/>
-      <Btn disabled={busy || !f.name} onClick={async () => { setBusy(true); try { await createLead({ ...f, ownerId: userId, userId }); toast('أُضيفت', 'success'); onSaved(); } catch (e) { toast(e.message, 'error'); } setBusy(false); }}>حفظ</Btn>
+      <Btn variant="accent" disabled={busy || !f.name} onClick={async () => { setBusy(true); try { await createLead({ ...f, ownerId: userId, userId }); toast('أُضيفت', 'success'); onSaved(); } catch (e) { toast(e.message, 'error'); } setBusy(false); }}>حفظ</Btn>
     </Modal>
   );
 }
@@ -411,7 +411,7 @@ function NewDealModal({ stages, onClose, onSaved, userId }) {
       <Select label="المرحلة" value={f.stageId} onChange={e => setF({ ...f, stageId: e.target.value })}>
         {stages.map(s => <option key={s.id} value={s.id}>{s.label_ar}</option>)}
       </Select>
-      <Btn disabled={busy || !f.title || !f.entityRef} onClick={async () => { setBusy(true); try { await createDeal({ title: f.title, entityType: 'lead', entityRef: f.entityRef, stageId: f.stageId, value: f.value, ownerId: userId, userId }); toast('أُنشئت الصفقة', 'success'); onSaved(); } catch (e) { toast(e.message, 'error'); } setBusy(false); }}>حفظ</Btn>
+      <Btn variant="accent" disabled={busy || !f.title || !f.entityRef} onClick={async () => { setBusy(true); try { await createDeal({ title: f.title, entityType: 'lead', entityRef: f.entityRef, stageId: f.stageId, value: f.value, ownerId: userId, userId }); toast('أُنشئت الصفقة', 'success'); onSaved(); } catch (e) { toast(e.message, 'error'); } setBusy(false); }}>حفظ</Btn>
     </Modal>
   );
 }
@@ -548,9 +548,8 @@ function RowEditor({ item, upsert, del, onChange }) {
       <input type="number" value={v.sort_order} onChange={e => setV({ ...v, sort_order: e.target.value })} title="الترتيب"
         style={{ width: 64, padding: '7px 8px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-mono)' }}/>
       {item.is_terminal && <span style={{ fontSize: 10, color: '#DC2626' }}>منتهية</span>}
-      {dirty && <Btn size="sm" disabled={busy} onClick={save}>حفظ</Btn>}
-      <button title="حذف" onClick={async () => { if (!confirm(`حذف «${item.label_ar}»؟`)) return; try { await del(item.id); toast('حُذف', 'success'); onChange(); } catch (e) { toast(e.message, 'error'); } }}
-        style={{ border: 'none', background: 'none', color: '#DC2626', cursor: 'pointer', padding: 4 }}><Trash2 size={14}/></button>
+      {dirty && <Btn size="sm" variant="accent" disabled={busy} onClick={save}>حفظ</Btn>}
+      <Btn size="sm" variant="danger" title="حذف" icon={<Trash2 size={14}/>} onClick={async () => { if (!confirm(`حذف «${item.label_ar}»؟`)) return; try { await del(item.id); toast('حُذف', 'success'); onChange(); } catch (e) { toast(e.message, 'error'); } }}/>
     </div>
   );
 }

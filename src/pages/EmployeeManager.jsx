@@ -188,7 +188,7 @@ function EmployeeModal({ employee, onClose, onSave }) {
 
         <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn onClick={handleSave} disabled={saving}>
+          <Btn variant="accent" onClick={handleSave} disabled={saving}>
             {saving ? <Spinner size={14}/> : (isNew ? 'إضافة الموظف' : 'حفظ التعديلات')}
           </Btn>
         </div>
@@ -301,13 +301,9 @@ function PermissionsModal({ employee, onClose, onSave }) {
             تطبيق سريع:
           </span>
           {PRESETS.map(p => (
-            <button key={p.id} type="button" onClick={() => applyPreset(p.keys)} style={{
-              padding: '5px 10px', fontSize: 11, borderRadius: 6, cursor: 'pointer',
-              background: 'var(--surface)', border: '1px solid var(--border2)',
-              color: 'var(--text)', fontFamily: 'var(--font-sans)',
-            }}>
+            <Btn key={p.id} variant="ghost" size="sm" onClick={() => applyPreset(p.keys)}>
               {p.label}
-            </button>
+            </Btn>
           ))}
         </div>
       </div>
@@ -414,7 +410,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn onClick={handleSave} disabled={saving}>
+          <Btn variant="accent" onClick={handleSave} disabled={saving}>
             {saving ? <Spinner size={14}/> : 'حفظ الصلاحيات'}
           </Btn>
         </div>
@@ -616,51 +612,31 @@ export default function EmployeeManager() {
 
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
                     {emp.role === 'accountant' && canManagePermissions && (
-                      <button
-                        onClick={() => setModal({ type: 'perms', employee: emp })}
+                      <Btn
+                        variant="ghost" size="sm"
                         title="إدارة الصلاحيات"
-                        style={{
-                          background: 'color-mix(in srgb, #8B5CF6 10%, transparent)',
-                          border: '1px solid color-mix(in srgb, #8B5CF6 30%, transparent)',
-                          borderRadius: 7, padding: '6px 12px', cursor: 'pointer',
-                          color: '#8B5CF6', display: 'flex', alignItems: 'center', gap: 5,
-                          fontSize: 11.5, fontFamily: 'var(--font-sans)', fontWeight: 600,
-                        }}
+                        icon={<Shield size={12}/>}
+                        onClick={() => setModal({ type: 'perms', employee: emp })}
                       >
-                        <Shield size={12}/>
                         صلاحيات
-                      </button>
+                      </Btn>
                     )}
                     {canManageEmployees && (
-                      <button
-                        onClick={() => setModal({ type: 'edit', employee: emp })}
+                      <Btn
+                        variant="ghost" size="sm"
                         title="تعديل"
-                        style={{
-                          background: 'var(--surface)', border: '1px solid var(--border2)',
-                          borderRadius: 7, padding: '6px 9px', cursor: 'pointer',
-                          color: 'var(--muted)', display: 'flex', alignItems: 'center',
-                        }}
-                      >
-                        <Pencil size={13}/>
-                      </button>
+                        icon={<Pencil size={13}/>}
+                        onClick={() => setModal({ type: 'edit', employee: emp })}
+                      />
                     )}
                     {canManageEmployees && (
-                      <button
-                        onClick={() => !isMe && setModal({ type: 'delete', employee: emp })}
+                      <Btn
+                        variant="danger" size="sm"
                         title={isMe ? 'لا يمكنك حذف حسابك' : 'حذف'}
+                        icon={<Trash2 size={13}/>}
                         disabled={isMe}
-                        style={{
-                          background: isMe ? 'var(--surface)' : 'rgba(248,113,113,.08)',
-                          border: '1px solid rgba(248,113,113,.2)',
-                          borderRadius: 7, padding: '6px 9px',
-                          cursor: isMe ? 'not-allowed' : 'pointer',
-                          color: isMe ? 'var(--border2)' : 'var(--red)',
-                          display: 'flex', alignItems: 'center',
-                          opacity: isMe ? 0.4 : 1,
-                        }}
-                      >
-                        <Trash2 size={13}/>
-                      </button>
+                        onClick={() => !isMe && setModal({ type: 'delete', employee: emp })}
+                      />
                     )}
                   </div>
                 </div>
