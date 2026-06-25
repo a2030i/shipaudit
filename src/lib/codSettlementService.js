@@ -788,7 +788,9 @@ function mapConsolidatedCarrier(name) {
   if (/imile|اي.?مايل|ايمايل|آي.?مايل/.test(s))     return 'imile';
   if (/delex|ديلكس/.test(s))                        return 'delex';
   if (/aramex|ارامكس|أرامكس/.test(s))               return 'c_1777506662790'; // incl. استلام من الفرع
-  if (/\bjt\b|j&?t|jandt|جي.?اند.?تي/.test(s))      return 'jnt';             // JT Express + V2
+  // «JT Express V2» = بوليصة (وسيط يعيد التسمية) — يسبق قاعدة jnt العامة
+  if (/v2/.test(s) && /j&?t|jt|express|jandt/.test(s)) return 'boleeseh';
+  if (/\bjt\b|j&?t|jandt|جي.?اند.?تي/.test(s))      return 'jnt';             // JT Express (بلا V2)
   if (/delivery.?now|deliver.?now|ديلفر/.test(s))   return 'delivernow';
   if (/wepik|webek|ويبك|ويبيك/.test(s))             return 'webek';
   if (/logisti|لوجستك|لوجستيك/.test(s))             return 'logistic';
@@ -796,7 +798,9 @@ function mapConsolidatedCarrier(name) {
   if (/varnier|فارنير/.test(s))                     return 'varnier';
   if (/aatak|اطاق|أطاق/.test(s))                    return 'aatak';
   if (/boleeseh|بوليصة|بوليصه/.test(s))             return 'boleeseh';
-  return null; // Aymakan / thabit / غير معروف → unmapped (يُبلَّغ، لا يُكتَب)
+  if (/thabit|ثابت/.test(s))                        return 'thabit';
+  if (/aymakan|اي.?مكان|أي.?مكان|أيمكان|ايمكان/.test(s)) return 'aymakan';
+  return null; // غير معروف → unmapped (يُبلَّغ، لا يُكتَب)
 }
 
 function findConsolidatedCol(header, keys) {
