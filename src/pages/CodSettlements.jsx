@@ -81,6 +81,8 @@ export default function CodSettlements({ isActive = true }) {
   // ('in') rows — so the manual «ارفع تحويل» button is hidden to prevent
   // double-counting the same COD.
   const [fileKindById, setFileKindById] = useState(new Map());
+  // carrierMeta: كل شركات النظام (id+name) لبناء المنتقي الشامل (لا المحلّلات فقط).
+  const [carrierMeta, setCarrierMeta] = useState([]);
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
@@ -336,8 +338,10 @@ export default function CodSettlements({ isActive = true }) {
   useEffect(() => {
     if (!isActive) return;
     loadCarriers()
-      .then(list => setFileKindById(
-        new Map((list || []).map(c => [c.id, c.file_signature?.file_kind || null]))))
+      .then(list => {
+        setFileKindById(new Map((list || []).map(c => [c.id, c.file_signature?.file_kind || null])));
+        setCarrierMeta(list || []);
+      })
       .catch(() => { /* non-fatal — buttons just stay visible */ });
   }, [isActive]);
 
@@ -415,6 +419,18 @@ export default function CodSettlements({ isActive = true }) {
     }
     return { total: +total.toFixed(2), carriersDue };
   }, [outstandingByCarrier]);
+
+  // المنتقي: كل شركات النظام (سواء لها محلّل تحصيل أو لا) — لا المحلّلات فقط.
+  // مرتّب ديناميكياً: الأعلى مبلغاً (مطلقاً) أولاً، ثم أبجدياً عند التساوي.
+  const pickerCarriers = useMemo(() => {
+    const labelById = new Map();
+    for (const c of carriers)    labelById.set(c.id, c.label);                 // محلّلات التحصيل
+    for (const c of carrierMeta) if (!labelById.has(c.id)) labelById.set(c.id, c.name || c.id); // كل شركات DB
+    for (const id of outstandingByCarrier.keys()) if (!labelById.has(id)) labelById.set(id, id);
+    return [...labelById].map(([id, label]) => ({ id, label, due: outstandingByCarrier.get(id) || 0 }))
+      .sort((a, b) => Math.abs(b.due) - Math.abs(a.due) || String(a.label).localeCompare(String(b.label), 'ar'));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carrierMeta, outstandingByCarrier]);
 
   const counts = useMemo(() => {
     const c = {
@@ -516,8 +532,8 @@ export default function CodSettlements({ isActive = true }) {
                 background: 'var(--surface)', border: '1px solid var(--border2)',
                 color: 'var(--text)', cursor: 'pointer', minWidth: 220,
               }}>
-              {carriers.map(c => {
-                const due = outstandingByCarrier.get(c.id) || 0;
+              {pickerCarriers.map(c => {
+                const due = c.due;
                 let dueLabel = '';
                 if (Math.abs(due) >= 0.5) {
                   const sign = due > 0 ? '' : '-';
