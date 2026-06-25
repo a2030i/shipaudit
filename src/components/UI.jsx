@@ -6,6 +6,15 @@ import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Help
 // lift. Sized for confident touch targets — never tiny pills. Variants
 // keep brand intent (primary, accent, etc.) but the visual weight is
 // rebalanced toward less-but-bigger.
+// ── دلالة الـvariants الموحَّدة (كتالوج الأزرار §1.20 في CLAUDE.md) ──
+// استعملها باتساق في كل كود جديد — لا تخلط الدلالات:
+//   primary (أسود)  = الفعل الرئيسي الواحد للصفحة/السياق (رفع كشف، التالي، تأكيد المعالج)
+//   accent  (أخضر)  = التأكيد/الحفظ/الاعتماد الإيجابي (اعتماد، احفظ، تسديد، ربط)
+//   ghost           = مساعد/ثانوي/تنقّل/إلغاء (تحديث، تصدير ثانوي، فتح، إلغاء)
+//   danger  (أحمر)  = حذف/رفض مدمِّر فقط
+//   gold    (برتقالي) = تنبيه/استثناء فقط (لا للأدوات العامة)
+//   outline         = الحالة المطفأة لزر تبديل (toggle غير نشط)
+//   success / navy  = مهملان (success ≡ accent لونياً، navy ≡ primary) — لا تستعملهما في كود جديد
 const VARIANTS = {
   primary: {
     background: '#18181B',
@@ -69,9 +78,11 @@ const SIZES = {
   sm: { padding: '7px 14px',  fontSize: 12.5, borderRadius: 999, gap: 6 },
   md: { padding: '10px 20px', fontSize: 13.5, borderRadius: 999, gap: 7 },
   lg: { padding: '13px 26px', fontSize: 14.5, borderRadius: 999, gap: 8 },
+  // full-width — يستبدل style overrides اليدوية لأزرار العرض الكامل (المعالج…)
+  full: { padding: '12px 24px', fontSize: 14, borderRadius: 999, gap: 7, width: '100%', justifyContent: 'center' },
 };
 
-export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, style = {} }) {
+export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, style = {} }) {
   const [hovered, setHovered] = useState(false);
   const s = SIZES[size];
   const v = VARIANTS[variant] || VARIANTS.ghost;
@@ -80,6 +91,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
   return (
     <button
       onClick={disabled ? undefined : onClick}
+      title={title}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
@@ -88,6 +100,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
         fontFamily: 'var(--font-sans)', fontWeight: 600,
         borderRadius: s.borderRadius,
         padding: s.padding, fontSize: s.fontSize,
+        width: s.width, justifyContent: s.justifyContent,
         opacity: disabled ? .45 : 1,
         transition: 'all .18s cubic-bezier(.4,0,.2,1)',
         whiteSpace: 'nowrap',
