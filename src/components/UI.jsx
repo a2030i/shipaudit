@@ -101,11 +101,12 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
         borderRadius: s.borderRadius,
         padding: s.padding, fontSize: s.fontSize,
         width: s.width, justifyContent: s.justifyContent,
-        opacity: disabled ? .45 : 1,
         transition: 'all .18s cubic-bezier(.4,0,.2,1)',
         whiteSpace: 'nowrap',
         ...baseV,
         ...hoverStyle,
+        // Phase 5: حالة معطّل دلالية (لون muted) بدل opacity الباهت — أوضح وأقرأ
+        ...(disabled ? { background: 'var(--muted3)', color: 'var(--muted)', border: '1px solid var(--muted3)', boxShadow: 'none', opacity: 1 } : {}),
         ...style,
       }}
     >
