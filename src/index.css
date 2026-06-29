@@ -82,6 +82,15 @@
   --shadow-sm: 0 2px 8px rgba(0,0,0,.28);
   --shadow-md: 0 6px 24px rgba(0,0,0,.34);
   --shadow-lg: 0 16px 48px rgba(0,0,0,.42);
+
+  /* مقياس التباعد (Phase 2) — توكنات أساس تُستهلَك تدريجياً بدل القيم الصلبة */
+  --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
+  --space-5: 20px; --space-6: 24px; --space-7: 28px; --space-8: 32px;
+
+  /* مقياس الطباعة (Phase 3) — أحجام + ارتفاعات سطر (الخط ثابت PingAR) */
+  --fs-xs: 11px; --fs-sm: 12.5px; --fs-md: 13.5px; --fs-lg: 16px;
+  --fs-xl: 20px; --fs-2xl: 24px; --fs-3xl: 28px;
+  --lh-tight: 1.15; --lh-snug: 1.35; --lh-normal: 1.5; --lh-relaxed: 1.7;
 }
 
 /* ══════════════════════════════════════════════

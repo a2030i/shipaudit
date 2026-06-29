@@ -861,7 +861,7 @@ export default function UploadWizard({ carriers, onComplete }) {
 
       <PageHeader
         icon={<UploadIcon size={22}/>}
-        title="مراجعة فاتورة جديدة"
+        title="تدقيق فاتورة جديدة"
         subtitle="ثلاث خطوات لاكتشاف فروق الفاتورة، الأوزان الزائدة، والشحنات المكررة"
       />
 
