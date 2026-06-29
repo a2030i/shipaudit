@@ -1543,7 +1543,7 @@ export default function CustomerReceivables({ isActive = true }) {
 
           {/* Table */}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <div className="m-flow" style={{ maxHeight: 600, overflowY: 'auto' }}>
               <table className="m-compact" style={{ fontSize: 12, width: '100%' }}>
                 <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
                   <tr>

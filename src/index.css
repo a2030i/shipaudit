@@ -649,6 +649,13 @@ button:active { transform: scale(.97); }
   .page-content table.m-compact td:nth-child(2),
   .page-content table.m-compact th:nth-child(2) { text-align: left; white-space: nowrap; }
 
+  /* `.m-flow`: ألغِ التمرير المتداخل على الجوال — حاوية بـmax-height+overflow
+     داخلية تحبس إصبع المستخدم (يمرّر القائمة الداخلية بدل الصفحة) فلا يصل
+     لنتيجة البحث ولا يضغط اسم المتجر. اجعلها تنساب مع تمرير الصفحة الواحد،
+     وأوقف ثبات رأس الجدول (يتداخل مع شريط التبويبات اللاصق). */
+  .page-content .m-flow { max-height: none !important; overflow: visible !important; }
+  .page-content .m-flow thead { position: static !important; }
+
   /* `.m-cards`: turn a wide data table into stacked CARDS on mobile — every
      row becomes a card, every cell a "label: value" line (label from the
      cell's data-label attr). No horizontal scroll, NO hidden data. A cell
