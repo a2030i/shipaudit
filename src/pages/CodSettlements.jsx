@@ -566,14 +566,15 @@ export default function CodSettlements({ isActive = true }) {
               {exportingAll ? 'جارٍ التجميع…' : 'صدّر الكل (كل الناقلين)'}
             </Btn>
             <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-              onClick={() => setUploadModal({ direction: 'out' })}>
-              ارفع متوقّع
+              onClick={() => setUploadModal({ direction: 'out' })}
+              title="تحصيل لمحة — ما يتوقّع نظام لمحة الداخلي تحصيله (لناقل واحد)">
+              تحصيل لمحة
             </Btn>
             {(!can || can('cod.upload_out')) && (
               <Btn size="md" variant="primary" icon={<Upload size={14}/>}
                 onClick={() => setConsolidated({ pick: true })}
-                title="ملف واحد من النظام الداخلي يغطّي كل الشركات — يوزّع المتوقّع تلقائياً (تم التوصيل + مبلغ>0)">
-                📦 متوقّع مجمّع
+                title="تحصيل لمحة المجمّع — ملف واحد يغطّي كل الشركات (تم التوصيل + مبلغ>0)">
+                📦 تحصيل لمحة (مجمّع)
               </Btn>
             )}
             {/* audit_with_cod carriers (iMile/DeliverNow): the received COD
@@ -588,8 +589,9 @@ export default function CodSettlements({ isActive = true }) {
               </span>
             ) : (
               <Btn size="md" variant="accent" icon={<Upload size={14}/>}
-                onClick={() => setUploadModal({ direction: 'in' })}>
-                ارفع تحويل
+                onClick={() => setUploadModal({ direction: 'in' })}
+                title="تحصيل شركة الشحن — المبلغ الذي حوّلته الشركة فعلياً (مُستلَم)">
+                تحصيل شركة الشحن
               </Btn>
             )}
           </>
@@ -608,10 +610,10 @@ export default function CodSettlements({ isActive = true }) {
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
             <Btn variant="primary" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'out' })}>
-              ارفع متوقّع يدوي
+              تحصيل لمحة (يدوي)
             </Btn>
-            <Btn variant="success" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>
-              ارفع تحويل وارد
+            <Btn variant="accent" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>
+              تحصيل شركة الشحن
             </Btn>
           </div>
         </Card>
@@ -1559,8 +1561,8 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
   return (
     <Modal
       title={isIn
-        ? `📥 تحويل وارد · ${carrierLabel}`
-        : `📋 متوقّع يدوياً · ${carrierLabel}`}
+        ? `📥 تحصيل شركة الشحن · ${carrierLabel}`
+        : `📋 تحصيل لمحة · ${carrierLabel}`}
       onClose={onClose} width={560}
     >
       {/* Carrier badge — keeps the destination carrier visible at all
@@ -1576,7 +1578,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
       }}>
         <span style={{ fontSize: 16 }}>{isIn ? '📥' : '📋'}</span>
         <span style={{ color: 'var(--muted)' }}>
-          {isIn ? 'تحويل وارد من' : 'متوقّع لـ'}:
+          {isIn ? 'تحصيل شركة الشحن من' : 'تحصيل لمحة لـ'}:
         </span>
         <strong style={{ color: 'var(--text)', fontSize: 13 }}>{carrierLabel}</strong>
         <span style={{
