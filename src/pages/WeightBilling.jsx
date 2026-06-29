@@ -132,8 +132,8 @@ export default function WeightBilling({ carriers, isActive = true }) {
     <div style={{ padding: '32px 40px 80px', maxWidth: 1280 }}>
       <PageHeader
         icon={<Scale size={22}/>}
-        title="فوترة الأوزان"
-        subtitle="اسحب أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
+        title="تصدير الأوزان الزائدة"
+        subtitle="صدّر أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
         meta={loading ? null : `${pendingStats.audits} مراجعة جديدة · ${pendingStats.rows.toLocaleString('en-US')} شحنة · ${pendingStats.carriers} شركة`}
         actions={
           <Btn
