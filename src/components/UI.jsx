@@ -63,7 +63,7 @@ const VARIANTS = {
     color: 'var(--text2)',
     border: '1px solid var(--border2)',
     boxShadow: 'none',
-    _hover: { background: 'var(--bg2)', borderColor: 'var(--border3)' },
+    _hover: { background: 'var(--bg2)', border: '1px solid var(--border3)' },
   },
   outline: {
     background: 'transparent',

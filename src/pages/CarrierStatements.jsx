@@ -330,8 +330,8 @@ export default function CarrierStatements({ carriers = [] }) {
       )}
       <PageHeader
         icon={<FileText size={22}/>}
-        title="رفع كشف حساب"
-        subtitle="اختر الشركة من شركاتك المُعرّفة وارفع ملف PDF."
+        title="كشوف الحساب الخارجية"
+        subtitle="اختر الشركة من شركاتك المُعرّفة وارفع كشف الحساب (PDF) للمطابقة."
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={reset}>
             تحديث
