@@ -656,6 +656,13 @@ button:active { transform: scale(.97); }
   .page-content .m-flow { max-height: none !important; overflow: visible !important; }
   .page-content .m-flow thead { position: static !important; }
 
+  /* تبويبات الـworkspace (CustomerHub…): الأب flex:1 يقصّ الارتفاع بحجم الشاشة،
+     فحين يُطلِق .m-flow تمرير القائمة الداخلي تفيض القائمة بلا تمرير (لا داخلي
+     ولا PageSlot) → الأسفل غير قابل للوصول. دع المحتوى يتدفّق block فيمرّره
+     PageSlot كصفحة واحدة (يكمّل إصلاح .m-flow أعلاه). */
+  .page-content .ws-tab-body { display: block !important; flex: none !important; min-height: 0 !important; }
+  .page-content .ws-tab-panel { height: auto !important; }
+
   /* `.m-cards`: turn a wide data table into stacked CARDS on mobile — every
      row becomes a card, every cell a "label: value" line (label from the
      cell's data-label attr). No horizontal scroll, NO hidden data. A cell

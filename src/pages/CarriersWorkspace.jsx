@@ -88,12 +88,12 @@ export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
         })}
       </div>
 
-      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {TABS.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
           return (
-            <div key={t.id} style={{ display: active ? 'block' : 'none', height: '100%' }}>
+            <div key={t.id} className="ws-tab-panel" style={{ display: active ? 'block' : 'none', height: '100%' }}>
               <Cmp isActive={isActive && active} carriers={carriers}/>
             </div>
           );
