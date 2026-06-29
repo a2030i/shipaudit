@@ -578,7 +578,7 @@ export default function CodSettlements({ isActive = true }) {
               <Btn size="md" variant="ghost" icon={<Download size={14}/>}
                 onClick={handleExportOutstanding}
                 title="تصدير المتبقي عند الناقل المختار فقط">
-                صدّر المتبقي
+                تحميل المتبقي
               </Btn>
             )}
             <Btn size="md" variant="ghost"
@@ -586,7 +586,7 @@ export default function CodSettlements({ isActive = true }) {
               onClick={handleExportAllOutstanding}
               disabled={exportingAll}
               title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
-              {exportingAll ? 'جارٍ التجميع…' : 'صدّر الكل (كل الناقلين)'}
+              {exportingAll ? 'جارٍ التجميع…' : 'تحميل المتبقي (جميع الناقلين)'}
             </Btn>
             <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
               onClick={() => setUploadModal({ direction: 'out' })}

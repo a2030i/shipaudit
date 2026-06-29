@@ -151,9 +151,9 @@ const NAV_ITEMS = [
   // Was scattered: /drop + /webhook pinned at top, /uploads buried in system.
   // Grouping every ingest door here is the fix for "مشتتة".
   { id: 'drop',           path: '/drop',           label: 'رفع ملف ذكي',  icon: Upload, section: 'ingest', permKey: 'audits.create' },
-  { id: 'webhook',        path: '/webhook',        label: 'الوارد',        icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
+  { id: 'webhook',        path: '/webhook',        label: 'الوارد (Webhook)', icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
   { id: 'uploads',        path: '/uploads',        label: 'مركز الرفع',    icon: Layers, section: 'ingest', permKey: 'uploads.view' },
-  { id: 'weight-billing', path: '/weight-billing', label: 'فوترة الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
+  { id: 'weight-billing', path: '/weight-billing', label: 'تصدير الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
 
   // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
   { id: 'tasks',        path: '/tasks',        label: 'المهام',         icon: ListTodo,      section: 'system', permKey: 'audits.view' },
@@ -197,14 +197,14 @@ const PAGE_TITLES = {
   '/webhook':           'الوارد',
   '/customers':         'متابعة العملاء',
   '/payment-requests':  'طلبات السداد',
-  '/internal-exports':  'سحب للنظام الداخلي',
+  '/internal-exports':  'تصدير للأنظمة الداخلية',
   '/upload':            'مراجعة جديدة',
   '/drop':              'رفع ملف',
   '/cash-aging':        'النقد والأعمار',
   '/integrity':         'سلامة البيانات',
   '/claims':            'المطالبات',
   '/audits':            'سجل المراجعات',
-  '/weight-billing':    'فوترة الأوزان',
+  '/weight-billing':    'تصدير الأوزان الزائدة',
   '/ledger':            'دفتر الشركات',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
   '/money':             'حركة الأموال',
