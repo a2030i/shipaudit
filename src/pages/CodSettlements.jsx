@@ -198,6 +198,29 @@ export default function CodSettlements({ isActive = true }) {
   // 8 carriers, light queries) so the operator gets the whole "غير
   // محصَّل" picture in a single file instead of exporting 8 times.
   const [exportingAll, setExportingAll] = useState(false);
+  // رفع مراجعة فاتورة من صفحة التحصيل مباشرة — يختار الملف هنا، يُخزَّن
+  // (نمط §1.5 webhookImport) ثم يفتح معالج المراجعة جاهزاً على النتائج بلا
+  // إعادة اختيار يدوي. المراجعة معالج متعدّد الخطوات فيُعرَض في /upload.
+  const handleReviewUpload = () => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.xlsx,.xls,.csv,.pdf';
+    input.onchange = async () => {
+      const file = input.files?.[0];
+      if (!file) return;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        let bin = '';
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        sessionStorage.setItem('webhookImport', JSON.stringify({
+          base64: btoa(bin), filename: file.name, carrierId: carrier,
+        }));
+        navigate('/upload');
+      } catch (e) { toast(`فشل قراءة الملف: ${e.message}`, 'error'); }
+    };
+    input.click();
+  };
+
   // رفع «المتوقّع المجمّع» — ملف واحد من النظام الداخلي يوزّع على كل الناقلين.
   const handleConsolidatedFile = async (file) => {
     if (!file) return;
@@ -546,8 +569,8 @@ export default function CodSettlements({ isActive = true }) {
               })}
             </select>
             <Btn size="md" variant="primary" icon={<Upload size={14}/>}
-              onClick={() => navigate(`/upload?carrier=${encodeURIComponent(carrier)}`)}
-              title="رفع مراجعة فاتورة لهذا الناقل (يُختار الناقل مسبقاً)">
+              onClick={handleReviewUpload}
+              title="اختر فاتورة هذا الناقل هنا — تُفتح المراجعة جاهزة على النتائج">
               رفع مراجعة
             </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
