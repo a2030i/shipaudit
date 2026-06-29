@@ -67,7 +67,7 @@ export default function CrmWorkspace({ isActive = true }) {
           );
         })}
       </div>
-      <div style={{ flex: 1, minHeight: 0 }}>
+      <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
         {tab === 'leads' && <LeadsTab active={isActive && tab === 'leads'}/>}
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}

@@ -112,12 +112,12 @@ export default function CustomerHub({ isActive = true }) {
           switching is instant and any in-progress edits / scroll
           positions survive. Only the active one fetches because each
           child guards on isActive. */}
-      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {TABS.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
           return (
-            <div key={t.id} style={{
+            <div key={t.id} className="ws-tab-panel" style={{
               display: active ? 'block' : 'none',
               height: '100%',
             }}>
