@@ -93,10 +93,13 @@ async function terminalStatusIds() {
 function watchReasonFor(c) {
   const flags = new Set([c?.anomaly, ...(c?.anomalyExtras || [])].filter(Boolean));
   const risk = computeRisk(c);
-  if (risk.shouldStop) return 'shouldStop';
-  if (flags.has('inactive_with_debt')) return 'inactive_with_debt';
+  if (risk.shouldStop)                  return 'shouldStop';
+  if (flags.has('inactive_with_debt'))  return 'inactive_with_debt';
+  if (flags.has('prepaid_with_debt'))   return 'prepaid_with_debt';
+  if (flags.has('negative_wallet'))     return 'negative_wallet';
+  if (flags.has('postpaid_overdue'))    return 'postpaid_overdue';
+  if (flags.has('active_with_debt'))    return 'active_with_debt';
   if (c?.merchant?.platformStatus === 'غير نشط' && (Number(c?.total) || 0) > 0.5) return 'inactive_with_debt';
-  if (flags.has('prepaid_with_debt')) return 'prepaid_anomaly';
   return null;
 }
 

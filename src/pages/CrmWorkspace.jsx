@@ -11,6 +11,7 @@ import { Headset, Store, TrendingUp, CalendarClock, BarChart3, RefreshCw,
 import { Card, Btn, Modal, Spinner, Empty, Select, Input, Badge, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
+import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   loadStatuses, loadStages, crmAutoEnroll, loadWatchQueue, ensureCustomerRow,
@@ -90,7 +91,17 @@ function QueueTab({ active }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const { rows: customers } = await loadLatestReceivables();
+      // العملاء المُصنَّفون (شذوذ/متعثّرون) — نفس مصدر لوحة القرارات. وسمهم
+      // بمجموعة الشذوذ ليتعرّف crmAutoEnroll على سبب المتابعة.
+      const watch = await loadCustomerWatch();
+      const seen = new Set(); const customers = [];
+      for (const [group, list] of Object.entries(watch?.anomalies || {})) {
+        for (const c of (list || [])) {
+          if (seen.has(c.name)) continue;
+          seen.add(c.name);
+          customers.push({ ...c, anomaly: c.anomaly || group });
+        }
+      }
       const enr = await crmAutoEnroll({ customers, userId: user?.id });
       if (enr.enrolled) setEnrollMsg(`أُضيف ${enr.enrolled} عميل للمتابعة آلياً`);
       const queue = await loadWatchQueue({ customers });
