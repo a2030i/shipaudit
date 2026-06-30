@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -101,7 +101,7 @@ const NAV_ITEMS = [
   // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
   // The upload button inside the page stays gated by carriers.upload_statement.
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
-  { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق التجهيز (3PL)', icon: Briefcase, section: 'carriers', permKey: 'audits.view' },
+  { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق فواتير التجهيز', icon: Briefcase, section: 'fulfillment', permKey: 'audits.view' },
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
   { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
 
@@ -176,6 +176,7 @@ const NAV_SECTIONS = [
   { id: 'carriers',  label: 'شركات الشحن',       icon: Building2,  accent: '#3B82F6', hint: 'الكشوف والمراجعات والدفتر' },
   { id: 'finance',   label: 'الأموال',            icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات والبنك' },
   { id: 'customers', label: 'العملاء',            icon: Users,      accent: '#EF4444', hint: 'المديونيات والتحصيل' },
+  { id: 'fulfillment', label: 'التجهيز والتخزين', icon: Boxes,      accent: '#8B5CF6', hint: 'تدقيق فواتير شركاء التجهيز (3PL)' },
   { id: 'ingest',    label: 'الرفع والوارد',      icon: Upload,     accent: '#06B6D4', hint: 'كل أبواب رفع الملفات' },
   { id: 'reports',   label: 'التقارير والتصدير',  icon: BarChart3,  accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
   { id: 'system',    label: 'الإعدادات والنظام',  icon: Briefcase,  accent: '#8B5CF6', hint: 'الإدارة والسجلات والمهام' },

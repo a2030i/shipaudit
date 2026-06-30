@@ -162,6 +162,13 @@ export async function loadFulfillmentInvoices({ warehouseId = null } = {}) {
   if (error) throw error; return data || [];
 }
 
+// بنود فاتورة (الطلبات) — للتصدير المحاسبي
+export async function loadInvoiceLines(invoiceId) {
+  const { data, error } = await supabase.from('fulfillment_invoice_lines')
+    .select('*').eq('invoice_id', invoiceId).order('id', { ascending: true });
+  if (error) throw error; return data || [];
+}
+
 export async function deleteFulfillmentInvoice(invoiceId) {
   if (!invoiceId) throw new Error('invoiceId مطلوب');
   await supabase.from('fulfillment_order_ledger').delete().eq('invoice_id', invoiceId);
