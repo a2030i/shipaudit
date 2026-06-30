@@ -8,7 +8,9 @@ export function detectHeaderRow(allRows) {
   let bestIdx  = 0;
   let bestScore = -1;
 
-  for (let i = 0; i < Math.min(15, allRows.length); i++) {
+  // يمسح حتى 30 صفاً: بعض الفواتير (أي مكان) فيها ترويسة شركة متعددة الصفوف
+  // قبل جدول الأعمدة. صفوف البيانات رقمية فلا تتفوّق على الترويسة النصّية.
+  for (let i = 0; i < Math.min(30, allRows.length); i++) {
     const row     = allRows[i];
     const nextRow = allRows[i + 1];
     if (!row || row.length === 0) continue;
@@ -62,7 +64,7 @@ const COL_PATTERNS = {
   // ^barcode$ BEFORE the broad /tracking/i: Delex files carry both "Barcode"
   // (the real AWB) and an empty "Third Party Tracking Number" that /tracking/
   // would otherwise grab first.
-  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /^barcode$/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/, /رقم.?ال[أا]مر/i, /order.?(no|num|number|id)/i],
+  awb:             [/awb/i, /airway.?bill/i, /waybill/i, /^barcode$/i, /tracking/i, /رقم.?الشحن/, /رقم.?التتبع/, /تتبع/, /رقم.?ال[أا]مر/i, /order.?(no|num|number|id)/i, /bill.?number/i],
   // Ship date — also accept J&T's "Entry time" / "Signing time".
   shipDate:        [/ship.?date/i, /pick.?up.?date/i, /entry.?time/i, /signing.?time/i, /created.?date/i, /closed.?date/i, /billing.?date/i, /تاريخ/, /date/i],
   // Origin column — explicit "shipper / origin / from / source" so it
@@ -89,7 +91,7 @@ const COL_PATTERNS = {
   weight:          [/settlement.?weight/i, /chargeable.?weight/i, /charge.?weight/i, /actual.?weight/i, /وزن/i, /^wt$/i, /weight/i],
   // DeliverNow names this "Shipping Service / المجموع الصافي" — neither side
   // contains the word "charge" or "رسوم", so we add explicit patterns.
-  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /shipping.?service/i, /freight.?charge/i, /base.?charge/i, /المجموع.?الصافي/, /قيمة.?التوصيل/, /توصيل/i, /رسوم.?الشحن/, /رسوم/i],
+  deliveryCharges: [/delivery.?charge/i, /delivery.?fee/i, /shipping.?charge/i, /shipping.?service/i, /freight.?charge/i, /base.?charge/i, /tier.?price/i, /المجموع.?الصافي/, /قيمة.?التوصيل/, /توصيل/i, /رسوم.?الشحن/, /رسوم/i],
   // RSS = Remote Shipping Surcharge (Aramex). The literal phrase
   // "Remote Area" appears in iMile/iMile-like files as a Yes/No flag,
   // NOT a fee — keep the broad `/remote/i` pattern OUT to avoid the
@@ -109,19 +111,19 @@ const COL_PATTERNS = {
   // collected) without stealing "COD Service Fee" (→ codFee) — the anchors
   // keep it from matching anything longer. Without it the COD column went
   // undetected on iMile fee bills and approval recorded 0 COD received.
-  codAmount:       [/cod.?amount/i, /cash.?on/i, /collection.?amount/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i, /^cod$/i],
+  codAmount:       [/cod.?amount/i, /cash.?on/i, /cash.?collected/i, /collection.?amount/i, /مبلغ.?التحصيل/i, /قيمة.?التحصيل/i, /^مبلغ.?cod$/i, /^cod$/i],
   // COD service fee — the per-shipment fee carriers charge for handling
   // cash-on-delivery (independent of the COD amount itself). iMile puts
   // this in a dedicated "COD Service Fee" column on the same row as the
   // shipment; Aramex breaks it out on a separate ZDCF billing-type row
   // which the engine routes via fuelSurcharge → codFee inside mapRows.
-  codFee:          [/cod.?service.?fee/i, /cod.?service.?charge/i, /cod.?fee/i, /cod.?charges?/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
+  codFee:          [/cod.?service.?fee/i, /cod.?service.?charge/i, /cod.?fee/i, /cod.?charges?/i, /cod.?cost/i, /رسوم.?cod/i, /رسوم.?الدفع/i],
   // POS (electronic payment / card-acquiring) — iMile exposes two
   // related columns: "POS Amount" (cash collected via card) and
   // "POS Fee" (carrier's processing fee, usually a fixed percent of
   // POS Amount). We audit the fee against contract.posFeePct.
   posAmount:       [/pos.?amount/i, /مبلغ.?pos/i, /مبلغ.?بطاقة/i],
-  posFee:          [/pos.?fee/i, /رسوم.?pos/i, /رسوم.?البطاقة/i],
+  posFee:          [/pos.?fee/i, /pos.?cost/i, /رسوم.?pos/i, /رسوم.?البطاقة/i],
   // COD payment method — J&T tracks how the customer paid the COD
   // amount (Cash / NLCard / empty). When it says NLCard (or any
   // card-equivalent), J&T's "COD service charge" column actually
@@ -205,6 +207,7 @@ const CARRIER_KIND_PATTERNS = [
   { kind: 'delivernow', re: /deliver.?now|ديلفر.?ناو|ديليفر|ديلفرناو/i },
   { kind: 'webek',      re: /webek|ويبك/i },
   { kind: 'delex',      re: /delex|ديلكس/i },
+  { kind: 'aymakan',    re: /aymakan|أي.?مكان|اي.?مكان|أيمكان|ايمكان/i },
 ];
 
 export function resolveCarrierKind(carrier) {
@@ -244,6 +247,12 @@ export const CARRIER_FIELDS = {
   delivernow: {
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax'],
     required: ['weight', 'deliveryCharges'],
+  },
+  aymakan: {
+    // أي مكان: Tier Price (توصيل ثابت 13) + Fuel Cost (7.5%) + Shipment Weight
+    // + Cash Collected/COD Cost/POS Cost (0 للمدفوع مسبقاً) + Tax 15%.
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'fuelSurcharge', 'codAmount', 'codFee', 'posFee', 'tax', 'signingStatus'],
+    required: ['deliveryCharges'],
   },
   // Webek — تحصيل + فاتورة في ملف واحد. التوصيل ثابت حسب «النطاق» (يُمرَّر
   // كـ dest) وشامل الضريبة؛ POS = 0.8% من مبلغ التحصيل. لا وزن مفوتر (flat
@@ -354,6 +363,13 @@ const BUILT_IN_CARRIER_RULES = [
     kind: 'delex',
     must_headers: [/^barcode$/i, /collection.?amount/i, /net.?cod/i],
     awb_pattern: /^DLX/i,
+    weight: 0.95,
+  },
+  {
+    // أي مكان: أعمدة إنجليزية مميّزة (Tier Price/Fuel Cost/Bill Number) + بادئة RP
+    kind: 'aymakan',
+    must_headers: [/tier.?price/i, /bill.?number/i, /fuel.?cost/i],
+    awb_pattern: /^RP\d+/i,
     weight: 0.95,
   },
 ];
