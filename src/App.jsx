@@ -39,6 +39,7 @@ import Segments         from './pages/Segments.jsx';
 import CustomerHub      from './pages/CustomerHub.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import CrmWorkspace      from './pages/CrmWorkspace.jsx';
+import FulfillmentAudit  from './pages/FulfillmentAudit.jsx';
 import MoneyHub          from './pages/MoneyHub.jsx';
 import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
@@ -100,6 +101,7 @@ const NAV_ITEMS = [
   // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
   // The upload button inside the page stays gated by carriers.upload_statement.
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
+  { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق التجهيز (3PL)', icon: Briefcase, section: 'carriers', permKey: 'audits.view' },
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
   { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
 
@@ -273,7 +275,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -823,6 +825,10 @@ function AppInner({ theme, toggleTheme }) {
             {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
             <PageSlot active={pathname==='/crm'} scroll>
               <CrmWorkspace isActive={pathname==='/crm'}/>
+            </PageSlot>
+            {/* تدقيق التجهيز 3PL — مسار منفصل عن تدقيق الشحن */}
+            <PageSlot active={pathname==='/fulfillment'} scroll>
+              <FulfillmentAudit isActive={pathname==='/fulfillment'}/>
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>
