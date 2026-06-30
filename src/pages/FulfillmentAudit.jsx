@@ -6,12 +6,12 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
-import { Boxes, Upload, RefreshCw, Trash2, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Boxes, Upload, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
 import { Card, Btn, Select, Empty, Spinner, toast, PageHeader, DropZone, Badge } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadWarehouses, parseDispatchInvoice, auditFulfillmentInvoice,
-  saveFulfillmentInvoice, loadFulfillmentInvoices, deleteFulfillmentInvoice,
+  saveFulfillmentInvoice, loadFulfillmentInvoices, deleteFulfillmentInvoice, loadInvoiceLines,
 } from '../lib/fulfillmentService.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -45,6 +45,41 @@ export default function FulfillmentAudit({ isActive = true }) {
     setBusy(false);
   };
 
+  // تصدير محاسبي: ملف واحد = ورقة ملخّص (متجر + قيمة الفاتورة للنظام المحاسبي)
+  // + ورقة طلبات لكل متجر (المرفق). يصدّر الفواتير المحفوظة المعروضة.
+  const [exporting, setExporting] = useState(false);
+  const handleAccountingExport = async () => {
+    if (!invoices.length) { toast('لا فواتير محفوظة للتصدير', 'warn'); return; }
+    setExporting(true);
+    try {
+      const wb = XLSX.utils.book_new();
+      const summary = [['المتجر', 'المورّد', 'الفترة', 'عدد الطلبات', 'قيمة الفاتورة', 'الفرق', 'الحالة']];
+      const whName = (id) => warehouses.find((w) => w.id === id)?.name || id;
+      let used = new Set();
+      for (const v of invoices) {
+        summary.push([v.store_name, whName(v.warehouse_id), v.period || '', v.order_count,
+          Number(v.total_invoiced) || 0, Number(v.drift) || 0,
+          Math.abs(Number(v.drift) || 0) <= 0.5 ? 'مطابق' : 'فرق']);
+        // ورقة طلبات لكل متجر
+        const lines = await loadInvoiceLines(v.id).catch(() => []);
+        if (lines.length) {
+          const rows = [['رقم الشحنة', 'المرجع', 'الوجهة', 'الحالة', 'الرسم']];
+          lines.forEach((l) => rows.push([l.awb, l.order_ref, l.dest, l.ship_status, Number(l.invoiced) || 0]));
+          let sn = `${v.store_name}_${v.period || ''}`.replace(/[\\\/\?\*\[\]:]/g, '_').slice(0, 28);
+          while (used.has(sn)) sn = sn.slice(0, 26) + '_' + (used.size);
+          used.add(sn);
+          XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(rows), sn);
+        }
+      }
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'ملخص محاسبي');
+      // ضع الملخّص أولاً
+      wb.SheetNames = ['ملخص محاسبي', ...wb.SheetNames.filter((n) => n !== 'ملخص محاسبي')];
+      XLSX.writeFile(wb, `تجهيز_محاسبي_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast(`صُدِّر ${invoices.length} فاتورة`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+    setExporting(false);
+  };
+
   const save = async () => {
     if (!audit) return;
     setSaving(true);
@@ -62,9 +97,15 @@ export default function FulfillmentAudit({ isActive = true }) {
       <PageHeader icon={<Boxes size={22}/>} title="تدقيق فواتير التجهيز (3PL)"
         subtitle="ارفع فاتورة المورّد → عدّ الطلبات × سعر المتجر مقابل المفوتر + كشف التكرار"
         actions={
-          <Select value={warehouse} onChange={(e) => setWarehouse(e.target.value)} style={{ minWidth: 160 }}>
-            {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
-          </Select>
+          <>
+            <Select value={warehouse} onChange={(e) => setWarehouse(e.target.value)} style={{ minWidth: 150 }}>
+              {warehouses.map((w) => <option key={w.id} value={w.id}>{w.name}</option>)}
+            </Select>
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} disabled={exporting || !invoices.length}
+              onClick={handleAccountingExport} title="ملف Excel: ملخّص قيمة كل متجر + ورقة طلبات لكل متجر">
+              {exporting ? 'جارٍ…' : 'تصدير محاسبي'}
+            </Btn>
+          </>
         }/>
 
       <Card style={{ marginBottom: 16, borderRight: '3px solid #8B5CF6' }}>
