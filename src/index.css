@@ -547,13 +547,11 @@ button:active { transform: scale(.97); }
     grid-template-columns: 1fr !important;
   }
 
-  /* Two-column form rows (e.g. carrier picker, settings) collapse */
+  /* Two-column form rows (e.g. carrier picker, settings) collapse.
+     تحذير: ممنوع اقتباسات مفردة داخل [style*=] — المتصفح لا يسلسل القيم
+     باقتباسات فالمحدّد يصبح ميّتاً (§1.18: تحقّق بـgetComputedStyle). */
   div[style*="grid-template-columns: 1fr 1fr 1fr"],
-  div[style*="grid-template-columns: 1fr 1fr"],
-  div[style*="grid-template-columns: '1fr 1fr 1fr'"],
-  div[style*="grid-template-columns: '1fr 1fr 2fr'"],
-  div[style*="grid-template-columns: '160px"],
-  div[style*="grid-template-columns: '180px"] {
+  div[style*="grid-template-columns: 1fr 1fr"] {
     grid-template-columns: 1fr !important;
   }
 
