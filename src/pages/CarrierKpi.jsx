@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
 import { loadCarrierKpis } from '../lib/carrierStatementsService.js';
+import { carrierScore } from '../lib/carrierScore.js';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -77,22 +78,16 @@ export default function CarrierKpi({ isActive = true }) {
 
 // ── CarrierCard ────────────────────────────────────────────────────────
 function CarrierCard({ k }) {
-  // Health score: a quick 0–100 rating. 30% audit coverage, 30% mismatch
-  // (lower better, inverted), 25% dispute resolution speed (faster better),
-  // 15% payment timeliness. Pure heuristic — meant for a glance.
-  const score = useMemo(() => {
-    const cov   = k.rvOps ? Math.min(1, k.auditCoverage) : 1;
-    const acc   = k.auditsCount ? (1 - k.mismatchRate) : 1;
-    const disp  = k.disputesResolved
-      ? Math.max(0, 1 - k.avgDisputeDays / 60)
-      : 1;
-    const pay   = (k.paidOnTime + k.paidLate)
-      ? Math.max(0, 1 - Math.max(0, k.avgPayDays) / 30)
-      : 1;
-    return Math.round((cov * 0.3 + acc * 0.3 + disp * 0.25 + pay * 0.15) * 100);
-  }, [k]);
+  // الدرجة الموحّدة من carrierScore.js (نفس معادلة جدول «صحة الناقلين» في
+  // الرئيسية) — المكوّن غير المتاح يُستبعَد ويُعاد توزيع وزنه بدل اعتباره كاملاً.
+  const { score, level } = useMemo(() => carrierScore({
+    coverage:       k.rvOps ? k.auditCoverage : null,
+    mismatchPct:    k.auditsCount ? k.mismatchRate * 100 : null,
+    avgDisputeDays: k.disputesResolved ? k.avgDisputeDays : null,
+    avgPayDays:     (k.paidOnTime + k.paidLate) ? k.avgPayDays : null,
+  }), [k]);
 
-  const scoreColor = score >= 80 ? 'var(--green)' : score >= 60 ? 'var(--gold)' : 'var(--red)';
+  const scoreColor = level?.color || 'var(--muted)';
 
   return (
     <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -115,7 +110,7 @@ function CarrierCard({ k }) {
             fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 28,
             color: scoreColor, lineHeight: 1,
           }}>
-            {score}
+            {score ?? '—'}
           </div>
           <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>تقييم</div>
         </div>

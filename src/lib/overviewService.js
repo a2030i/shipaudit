@@ -11,6 +11,7 @@
 // aggregation needed.
 
 import { supabase } from './supabase.js';
+import { carrierScore } from './carrierScore.js';
 
 // 'YYYY-MM' helpers
 export const currentPeriod = () => {
@@ -191,15 +192,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const driftPct    = num(r.drift_pct);
       const mismatchPct = num(r.mismatch_pct);
       const firstPass   = num(r.first_pass_rate);
-      // Health score 0-100 — heavier weight on drift (real money)
-      // and mismatch (data quality) than approval lag/first-pass.
-      // Anything 90+ = green, 70-89 = amber, <70 = red.
-      const score = Math.max(0, Math.round(
-          100
-        - Math.min(driftPct, 30)     * 1.5   // 0..45 penalty
-        - Math.min(mismatchPct, 25)  * 1.2   // 0..30 penalty
-        - Math.max(0, 100 - firstPass) * 0.25 // 0..25 penalty
-      ));
+      // الدرجة الموحّدة من carrierScore.js — نفس المعادلة التي تستخدمها
+      // بطاقات CarrierKpi، فلا يرى المستخدم درجتين متناقضتين لنفس الناقل.
+      const { score } = carrierScore({ driftPct, mismatchPct, firstPassRate: firstPass });
       return {
         carrierId:        r.carrier_id,
         auditsCount:      num(r.audits_count),
