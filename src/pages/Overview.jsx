@@ -30,6 +30,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
 } from '../components/UI.jsx';
 import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
+import { scoreLevel } from '../lib/carrierScore.js';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -887,13 +888,10 @@ function AgingCell({ label, value, tone, bold = false }) {
 }
 
 function HealthPill({ score }) {
-  // Three-tier color: green ≥90, amber 70-89, red <70.
-  const tone = score >= 90 ? 'var(--green2)'
-             : score >= 70 ? 'var(--warn)'
-             :              '#DC2626';
-  const bg   = score >= 90 ? 'rgba(16,185,129,.14)'
-             : score >= 70 ? 'rgba(245,158,11,.14)'
-             :              'rgba(220,38,38,.14)';
+  // العتبات الموحّدة من carrierScore.js (≥85 جيد · 65-84 مقبول · <65 ضعيف)
+  const lvl  = scoreLevel(score ?? 0);
+  const tone = lvl.color;
+  const bg   = lvl.bg;
   return (
     <span style={{
       display: 'inline-flex', alignItems: 'center', gap: 4,
