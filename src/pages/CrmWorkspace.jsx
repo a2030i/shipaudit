@@ -20,6 +20,7 @@ import {
   upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
 import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
+import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -133,7 +134,10 @@ function QueueTab({ active }) {
                 return (
                   <tr key={r.customer_name} onClick={() => setSel(r)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                     <td data-label="العميل" style={{ padding: '10px 12px', fontWeight: 600 }}>{r.merchant?.storeName || r.customer_name}</td>
-                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt(r.total)}</td>
+                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>
+                      {fmt(effectiveDebt(r))}
+                      {walletDebtOf(r) > 0 && <span title="رصيد محفظة سالب (النظام الداخلي)" style={{ color: '#DC2626', fontSize: 10, marginRight: 4 }}>◆</span>}
+                    </td>
                     <td data-label="العمر" style={{ padding: '10px 12px' }}>{r.daysOutstanding || 0} يوم</td>
                     <td data-label="الخطر" style={{ padding: '10px 12px' }}>
                       <span style={{ background: `${r.risk.level.color}20`, color: r.risk.level.color, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700 }}>{r.risk.level.label} {r.risk.score}</span>
@@ -190,12 +194,17 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
   return (
     <Modal title={customer.merchant?.storeName || name} onClose={onClose} width={640}>
       {/* رأس */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 14, fontSize: 13 }}>
-        <Hd label="الدين" value={`${fmt(customer.total)} ر.س`} color="#DC2626"/>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: walletDebtOf(customer) > 0 ? 4 : 14, fontSize: 13 }}>
+        <Hd label="الدين" value={`${fmt(effectiveDebt(customer))} ر.س`} color="#DC2626"/>
         <Hd label="العمر" value={`${customer.daysOutstanding || 0} يوم`}/>
         <Hd label="الخطر" value={`${customer.risk?.level?.label || '—'} (${customer.risk?.score || 0})`} color={customer.risk?.level?.color}/>
         {customer.merchant?.phone && <Hd label="الجوال" value={customer.merchant.phone}/>}
       </div>
+      {walletDebtOf(customer) > 0 && (
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 14 }}>
+          منها فواتير زوهو <b>{fmt(customer.total)}</b> · محفظة سالبة (النظام الداخلي) <b style={{ color: '#DC2626' }}>{fmt(walletDebtOf(customer))}</b>
+        </div>
+      )}
 
       {/* أزرار الإجراء */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
