@@ -604,7 +604,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         audit.isDraft = false;
         // Now flip to approved through the gated path so the ledger
         // entry actually gets created.
-        await approveAudit(audit.id, profile?.id);
+        const _ap1 = await approveAudit(audit.id, profile?.id);
         // Sync the in-memory audit + sessionStorage so navigating away
         // and back, or any parent re-render, sees the approved state.
         audit.reviewStatus = 'approved';
@@ -612,13 +612,15 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
+        if (_ap1?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap1.ledgerPostError} — راجع /integrity`, 'error');
       } else {
-        await approveAudit(audit.id, profile?.id);
+        const _ap2 = await approveAudit(audit.id, profile?.id);
         audit.reviewStatus = 'approved';
         audit.approvedAt   = new Date().toISOString();
         try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
+        if (_ap2?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap2.ledgerPostError} — راجع /integrity`, 'error');
       }
       // If the audit started life as a Webhook event, close the loop:
       // mark that event as 'processed' + linked. The UI then shows

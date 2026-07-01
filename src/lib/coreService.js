@@ -894,12 +894,16 @@ export async function approveAudit(auditId, userId) {
         .from('carrier_operations')
         .insert(op);
       if (opErr) {
+        // M1: لا تبتلع صامتاً — أرفِق الخطأ بالنتيجة ليعرضه المستخدم (نفس صنف
+        // خسائر 73K السابقة: المراجعة تُعتمَد لكن قيد الفاتورة لا يُكتب).
         console.warn('ledger auto-post failed:', opErr.message);
+        updated.ledgerPostError = opErr.message;
       }
     }
   } catch (e) {
     // Approval already landed — surface ledger errors but don't roll back.
     console.warn('ledger auto-post threw:', e.message);
+    updated.ledgerPostError = e.message;
   }
 
   return updated;
