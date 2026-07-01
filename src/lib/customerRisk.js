@@ -18,9 +18,20 @@ export function riskLevel(score) {
   return                  { key: 'low',      label: 'منخفض', color: '#10B981' };
 }
 
+// جزء الدين من المحفظة الداخلية: المحفظة (دفع مسبق) حين تصير سالبة تعني أن
+// التاجر مدين لنا بذلك المبلغ — حتى لو كانت فواتير زوهو صفراً.
+export function walletDebtOf(c) {
+  const w = Number(c?.merchant?.walletBalance) || 0;
+  return w < -0.5 ? +(-w).toFixed(2) : 0;
+}
+// الدين الفعلي = فواتير زوهو غير المسدّدة + الرصيد السالب للمحفظة الداخلية.
+export function effectiveDebt(c) {
+  return +((Number(c?.total) || 0) + walletDebtOf(c)).toFixed(2);
+}
+
 export function computeRisk(c, { now = Date.now() } = {}) {
   const m     = c?.merchant || {};
-  const debt  = Number(c?.total) || 0;
+  const debt  = effectiveDebt(c);   // يشمل الرصيد السالب للمحفظة الداخلية
   const days  = Number(c?.daysOutstanding) || 0;
   const flags = new Set([c?.anomaly, ...(c?.anomalyExtras || [])].filter(Boolean));
 
