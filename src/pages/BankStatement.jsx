@@ -76,7 +76,9 @@ export default function BankStatement() {
     const list = saved || [];
     return {
       count:  list.length,
-      debit:  list.reduce((s, t) => s + (Number(t.debit)  || 0), 0),
+      // المدين الإجمالي = الصافي المخزَّن + الرسوم+الضريبة (= المدين الفعلي من
+      // البنك) — يطابق حساب المعروض قبل الحفظ (كان يعرض الصافي فقط).
+      debit:  list.reduce((s, t) => s + (Number(t.debit) || 0) + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
       credit: list.reduce((s, t) => s + (Number(t.credit) || 0), 0),
       fees:   list.reduce((s, t) => s + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
     };
@@ -162,9 +164,11 @@ export default function BankStatement() {
     const sumCredit      = t.reduce((s, r) => s + (r.credit ?? 0), 0);
     return {
       count:  t.length,
-      debit:  sumDebit + sumFeesRemoved + (result.hiddenFees ?? 0),
+      // الرسوم (والخفية) صارت صفوفاً بـfeesRemoved، فلا نضيف hiddenFees ثانية.
+      // المدين الإجمالي = الصافي + الرسوم المخصومة (= المدين الفعلي من البنك).
+      debit:  sumDebit + sumFeesRemoved,
       credit: sumCredit,
-      fees:   sumFeesRemoved + (result.hiddenFees ?? 0),
+      fees:   sumFeesRemoved,
     };
   }, [result]);
 

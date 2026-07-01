@@ -19,7 +19,9 @@ const CHUNK = 500;
 function dedupKeyOf(t) {
   const ref = String(t.reference ?? '').trim();
   if (ref) return `ref:${ref}`;
-  return `auto:${t.date ?? ''}|${String(t.description ?? '').slice(0, 80)}|${Number(t.debit) || 0}|${Number(t.credit) || 0}`;
+  // fees في المفتاح: صفوف الرسوم الخفية (بلا وصف/مرجع) مدينها 0 والمبلغ في
+  // fees — بدونه تتصادم صفوف رسوم مختلفة بنفس التاريخ فتُدمَج خطأً.
+  return `auto:${t.date ?? ''}|${String(t.description ?? '').slice(0, 80)}|${Number(t.debit) || 0}|${Number(t.credit) || 0}|${Number(t.fees) || 0}`;
 }
 
 // Persist a parsed statement. Returns { saved, added, merged } so the UI can
