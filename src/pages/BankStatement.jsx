@@ -238,6 +238,24 @@ export default function BankStatement() {
   const continuityGap = (openingBalance != null && prevClosing?.closing_balance != null)
     ? +(openingBalance - Number(prevClosing.closing_balance)).toFixed(2) : null;
 
+  // مطابقة البنك: نجمع عملياتنا بأنفسنا ونقارنها بإجماليات البنك المطبوعة
+  // (لا ننسخها). التطابق = إثبات أننا التقطنا كل عملية بلا نقص ولا تكرار.
+  const reconcile = useMemo(() => {
+    if (!result?.summary) return null;
+    const s = result.summary;
+    const t = result.transactions;
+    const ourDeposits  = t.filter(r => (r.credit ?? 0) > 0).length;
+    const ourWithdraws = t.length - ourDeposits;
+    const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 0.01;
+    const checks = [];
+    if (s.bankTotalCredit  != null) checks.push({ label: 'إجمالي الدائن', ours: totals.credit, bank: s.bankTotalCredit, ok: near(totals.credit, s.bankTotalCredit), money: true });
+    if (s.bankTotalDebit   != null) checks.push({ label: 'إجمالي المدين', ours: totals.debit,  bank: s.bankTotalDebit,  ok: near(totals.debit,  s.bankTotalDebit),  money: true });
+    if (s.bankDepositCount != null) checks.push({ label: 'عدد الإيداعات', ours: ourDeposits,  bank: s.bankDepositCount, ok: ourDeposits  === s.bankDepositCount });
+    if (s.bankWithdrawCount!= null) checks.push({ label: 'عدد السحوبات', ours: ourWithdraws, bank: s.bankWithdrawCount, ok: ourWithdraws === s.bankWithdrawCount });
+    if (!checks.length) return null;
+    return { checks, allOk: checks.every(c => c.ok) };
+  }, [result, totals]);
+
   const filtered = useMemo(() => {
     if (!result) return [];
     if (!search.trim()) return result.transactions;
@@ -380,6 +398,50 @@ export default function BankStatement() {
               </div>
             </div>
           </Card>
+
+          {/* لوحة تحقّق المطابقة مع البنك — مجموع عملياتنا مقابل إجماليات البنك */}
+          {reconcile && (
+            <Card style={{
+              marginBottom: 14, padding: '12px 16px',
+              border: `1px solid ${reconcile.allOk ? 'var(--green)' : 'var(--red)'}`,
+              background: reconcile.allOk ? 'rgba(52,211,153,.06)' : 'rgba(220,38,38,.06)',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                {reconcile.allOk
+                  ? <CheckCircle2 size={17} color="#10B981"/>
+                  : <AlertCircle size={17} color="#DC2626"/>}
+                <div style={{ fontWeight: 700, fontSize: 13, color: reconcile.allOk ? '#10B981' : '#DC2626' }}>
+                  {reconcile.allOk
+                    ? '✓ العمليات المستخرَجة مطابقة تماماً لإجماليات البنك'
+                    : '⚠️ فرق بين عملياتنا وإجماليات البنك — قد تكون هناك عمليات ناقصة'}
+                </div>
+                <span style={{ marginRight: 'auto', fontSize: 11, color: 'var(--muted)' }}>
+                  جُمِعت {totals.count} عملية بشكل مستقل، ثم قُورنت بالكشف
+                </span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+                {reconcile.checks.map((c, i) => (
+                  <div key={i} style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
+                    padding: '7px 11px', borderRadius: 9,
+                    background: 'var(--card)', border: `1px solid ${c.ok ? 'var(--border)' : 'var(--red)'}`,
+                  }}>
+                    <span style={{ fontSize: 11, color: 'var(--muted)' }}>{c.label}</span>
+                    <div style={{ textAlign: 'left' }}>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12.5, fontWeight: 700, color: c.ok ? 'var(--text)' : 'var(--red)' }}>
+                        {c.money ? fmtMoney(c.ours) : c.ours}
+                      </span>
+                      {c.ok
+                        ? <CheckCircle2 size={13} color="#10B981" style={{ marginRight: 5, verticalAlign: 'middle' }}/>
+                        : <span style={{ fontSize: 10, color: 'var(--red)', marginRight: 5 }}>
+                            ≠ بنك {c.money ? fmtMoney(c.bank) : c.bank}
+                          </span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
 
           {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 14 }}>

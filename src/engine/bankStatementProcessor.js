@@ -67,6 +67,29 @@ const PERIOD_PATTERNS = [
   /تاريخ.?كشف.?الحساب/i, /statement.?date/i, /statement.?period/i,
   /الفترة/i, /فترة/i, /period/i, /from/i, /إلى/i, /to/i,
 ];
+// إجماليات البنك المطبوعة في الترويسة — تُستخدَم للتحقّق فقط (لا تُنسَخ كأرقامنا):
+// نجمع العمليات بأنفسنا ونقارن الناتج بهذه لإثبات أننا التقطنا كل العملية.
+const TOTAL_CREDIT_PATTERNS  = [/مجموع.?مبلغ.?الا?يداعات/i, /مجموع.?الإيداعات/i, /total.?credit.?amount/i];
+const TOTAL_DEBIT_PATTERNS   = [/مجموع.?مبلغ.?الخصومات/i, /مجموع.?مبلغ.?السحوبات/i, /total.?debit.?amount/i];
+const DEPOSIT_COUNT_PATTERNS  = [/عدد.?الإيداعات/i, /عدد.?الايداعات/i, /number.?of.?deposits/i];
+const WITHDRAW_COUNT_PATTERNS = [/عدد.?السحوبات/i, /number.?of.?withdraw/i];
+
+// القيمة قبل خلية العنوان (RTL: القيمة يسار العنوان = فهرس أقل).
+function valueBeforeLabel(row, patterns, { integer = false } = {}) {
+  let labelIdx = -1;
+  for (let c = 0; c < row.length; c++) {
+    if (patterns.some(p => p.test(String(row[c] ?? '')))) { labelIdx = c; break; }
+  }
+  if (labelIdx <= 0) return null;
+  for (let c = labelIdx - 1; c >= 0; c--) {
+    const n = parseNumber(row[c]);
+    if (n != null && (integer ? Math.abs(n) >= 0 : Math.abs(n) > 0.01)) {
+      if (integer && !Number.isInteger(n)) continue;
+      return n;
+    }
+  }
+  return null;
+}
 
 // Extract every ISO-ish date from a string. Handles "2026-04-01 - 2026-04-30",
 // "01/04/2026 to 30/04/2026", etc.
@@ -114,13 +137,28 @@ function parseNumber(v) {
 }
 
 export function extractSummaryFromRows(rows, headerRowIndex) {
-  const summary = { closingBalance: null, periodFrom: null, periodTo: null };
+  const summary = {
+    closingBalance: null, periodFrom: null, periodTo: null,
+    // إجماليات البنك المطبوعة (مرجع تحقّق فقط)
+    bankTotalCredit: null, bankTotalDebit: null,
+    bankDepositCount: null, bankWithdrawCount: null,
+  };
   const limit = headerRowIndex != null ? headerRowIndex : Math.min(20, rows.length);
 
   for (let i = 0; i < limit; i++) {
     const row = rows[i];
     if (!Array.isArray(row)) continue;
     const joined = row.map(c => String(c ?? '').trim()).join(' | ');
+
+    // إجماليات البنك المطبوعة + العدّادات (للمطابقة مع مجموع عملياتنا)
+    if (summary.bankTotalCredit == null && TOTAL_CREDIT_PATTERNS.some(p => p.test(joined)))
+      summary.bankTotalCredit = valueBeforeLabel(row, TOTAL_CREDIT_PATTERNS);
+    if (summary.bankTotalDebit == null && TOTAL_DEBIT_PATTERNS.some(p => p.test(joined)))
+      summary.bankTotalDebit = valueBeforeLabel(row, TOTAL_DEBIT_PATTERNS);
+    if (summary.bankDepositCount == null && DEPOSIT_COUNT_PATTERNS.some(p => p.test(joined)))
+      summary.bankDepositCount = valueBeforeLabel(row, DEPOSIT_COUNT_PATTERNS, { integer: true });
+    if (summary.bankWithdrawCount == null && WITHDRAW_COUNT_PATTERNS.some(p => p.test(joined)))
+      summary.bankWithdrawCount = valueBeforeLabel(row, WITHDRAW_COUNT_PATTERNS, { integer: true });
 
     // Closing balance — find the cell containing the label, then look in cells
     // *before* it (RTL layouts put the value to the left of the label).
