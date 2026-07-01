@@ -36,6 +36,9 @@ export default function BankStatement() {
   const [saved, setSaved]             = useState(null);      // null = not loaded yet
   const [savedLoading, setSavedLoading] = useState(false);
   const [savedSearch, setSavedSearch]   = useState('');
+  const [savedFrom, setSavedFrom]       = useState('');       // فلتر الفترة: من
+  const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
+  const [savedType, setSavedType]       = useState('all');    // all | debit | credit
 
   const loadSaved = useCallback(async () => {
     setSavedLoading(true);
@@ -73,16 +76,55 @@ export default function BankStatement() {
   };
 
   const savedFiltered = useMemo(() => {
-    if (!saved) return [];
+    let list = saved || [];
     const q = savedSearch.trim().toLowerCase();
-    if (!q) return saved;
-    return saved.filter(t =>
+    if (q) list = list.filter(t =>
       String(t.reference || '').toLowerCase().includes(q)
       || String(t.description || '').toLowerCase().includes(q));
-  }, [saved, savedSearch]);
+    if (savedFrom) list = list.filter(t => t.txn_date && String(t.txn_date).slice(0, 10) >= savedFrom);
+    if (savedTo)   list = list.filter(t => t.txn_date && String(t.txn_date).slice(0, 10) <= savedTo);
+    if (savedType === 'debit')  list = list.filter(t => Number(t.debit) > 0);
+    if (savedType === 'credit') list = list.filter(t => Number(t.credit) > 0);
+    return list;
+  }, [saved, savedSearch, savedFrom, savedTo, savedType]);
+
+  const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all');
+
+  // شرائح الفترات الجاهزة — مشتقّة من فترات الكشوف المرفوعة فعلاً.
+  const savedPeriods = useMemo(() => {
+    const seen = new Map();
+    for (const t of saved || []) {
+      if (t.period_from && t.period_to) {
+        const k = `${t.period_from}→${t.period_to}`;
+        if (!seen.has(k)) seen.set(k, { from: String(t.period_from).slice(0, 10), to: String(t.period_to).slice(0, 10) });
+      }
+    }
+    return [...seen.values()].sort((a, b) => b.to.localeCompare(a.to));
+  }, [saved]);
+
+  // التصدير يتبع المعروض (بعد الفلاتر) — يعيد استخدام صيغة الكشف الصافي.
+  const handleExportSaved = () => {
+    try {
+      const rows = savedFiltered.map(t => ({
+        date: String(t.txn_date || '').slice(0, 10), description: t.description,
+        credit: Number(t.credit) || 0, debit: Number(t.debit) || 0,
+        fees: Number(t.fees) || 0, tax: Number(t.tax) || 0, reference: t.reference,
+      }));
+      const bytes = generateCleanExcel(rows, {});
+      const blob  = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+      const url   = URL.createObjectURL(blob);
+      const a     = document.createElement('a');
+      const range = (savedFrom || savedTo) ? `_${savedFrom || '…'}_${savedTo || '…'}` : '';
+      a.href      = url;
+      a.download  = `الدفتر_البنكي${range}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(`تم تصدير ${rows.length} عملية ✓`, 'success');
+    } catch (e) { toast(`خطأ في التصدير: ${e.message}`, 'error'); }
+  };
 
   const savedTotals = useMemo(() => {
-    const list = saved || [];
+    const list = savedFiltered;
     return {
       count:  list.length,
       // المدين الإجمالي = الصافي المخزَّن + الرسوم+الضريبة (= المدين الفعلي من
@@ -91,7 +133,7 @@ export default function BankStatement() {
       credit: list.reduce((s, t) => s + (Number(t.credit) || 0), 0),
       fees:   list.reduce((s, t) => s + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
     };
-  }, [saved]);
+  }, [savedFiltered]);
 
   const handleDeleteSaved = async (id) => {
     try {
@@ -453,20 +495,73 @@ export default function BankStatement() {
                   <StatBlock label="رسوم + ضريبة"    value={fmtMoney(savedTotals.fees)}   color="var(--gold)"  suffix="ر.س"/>
                 </div>
 
-                <div style={{ position: 'relative', marginBottom: 10 }}>
-                  <Search size={14} style={{ position: 'absolute', right: 12, top: 11, color: 'var(--muted)' }}/>
-                  <input
-                    value={savedSearch}
-                    onChange={e => setSavedSearch(e.target.value)}
-                    placeholder="بحث بالرقم المرجعي أو الوصف في كل الفترات..."
-                    style={{ width: '100%', padding: '9px 36px 9px 12px', borderRadius: 9, fontSize: 13 }}
-                  />
+                {/* شرائح الفترات الجاهزة (من الكشوف المرفوعة) */}
+                {savedPeriods.length > 0 && (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10, alignItems: 'center' }}>
+                    <span style={{ fontSize: 11, color: 'var(--muted)', marginLeft: 4 }}>فترات جاهزة:</span>
+                    {savedPeriods.map((p, i) => {
+                      const active = savedFrom === p.from && savedTo === p.to;
+                      return (
+                        <button key={i} onClick={() => { setSavedFrom(active ? '' : p.from); setSavedTo(active ? '' : p.to); }}
+                          style={{
+                            fontSize: 10.5, fontFamily: 'var(--font-mono)', padding: '4px 9px', borderRadius: 20, cursor: 'pointer',
+                            border: `1px solid ${active ? 'var(--accent)' : 'var(--border2)'}`,
+                            background: active ? 'var(--accent)' : 'transparent',
+                            color: active ? '#fff' : 'var(--muted)', whiteSpace: 'nowrap',
+                          }}>
+                          {p.from} ← {p.to}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* شريط الفلاتر: فترة مخصّصة + نوع + بحث + تصدير */}
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                    <Calendar size={13} style={{ color: 'var(--muted)' }}/>
+                    <input type="date" value={savedFrom} onChange={e => setSavedFrom(e.target.value)}
+                      title="من تاريخ" style={{ padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+                    <span style={{ color: 'var(--muted)', fontSize: 12 }}>←</span>
+                    <input type="date" value={savedTo} onChange={e => setSavedTo(e.target.value)}
+                      title="إلى تاريخ" style={{ padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+                  </div>
+                  <select value={savedType} onChange={e => setSavedType(e.target.value)}
+                    style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12 }}>
+                    <option value="all">كل العمليات</option>
+                    <option value="debit">مدين فقط</option>
+                    <option value="credit">دائن فقط</option>
+                  </select>
+                  <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
+                    <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
+                    <input
+                      value={savedSearch}
+                      onChange={e => setSavedSearch(e.target.value)}
+                      placeholder="بحث بالرقم المرجعي أو الوصف..."
+                      style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 8, fontSize: 13 }}
+                    />
+                  </div>
+                  {filtersActive && (
+                    <Btn variant="ghost" size="sm" onClick={() => { setSavedSearch(''); setSavedFrom(''); setSavedTo(''); setSavedType('all'); }}>
+                      مسح الفلاتر
+                    </Btn>
+                  )}
+                  <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExportSaved} disabled={!savedFiltered.length}>
+                    تصدير المعروض
+                  </Btn>
                 </div>
+
+                {/* عدّاد النتائج تحت الفلترة */}
+                {filtersActive && (
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
+                    عرض <b style={{ color: 'var(--text)' }}>{savedFiltered.length}</b> من {saved.length} عملية
+                  </div>
+                )}
 
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
                   <div style={{ maxHeight: 600, overflowY: 'auto' }}>
                     {savedFiltered.length === 0
-                      ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="جرب نص بحث مختلف"/>
+                      ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="عدّل الفترة أو نوع العملية أو نص البحث"/>
                       : (
                         <table style={{ fontSize: 12, width: '100%' }}>
                           <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
