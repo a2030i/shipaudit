@@ -226,10 +226,16 @@ export function parseAlinmaFormat(rows, colMap) {
     // Skip rows with no money on either side
     if (credit == null && debit == null) continue;
 
-    // Hidden-fees rule: rows with no description (or near-empty) get aggregated
-    // separately and dropped from the displayed table.
+    // Hidden-fees rule: rows with no description (or near-empty) = bank fees
+    // without a label. نخزّنها كصفوف رسوم (لا نُسقِطها) ليبقى المحفوظ مطابقاً
+    // للمعروض ولا يضيع المبلغ عند الحفظ. hiddenFees يبقى للعرض التحذيري فقط.
     if (!desc || desc.length < 3) {
-      hiddenFees += Math.abs((debit ?? 0) || (credit ?? 0));
+      const amt = +Math.abs((debit ?? 0) || (credit ?? 0)).toFixed(2);
+      hiddenFees += amt;
+      transactions.push({
+        date: date ?? '', reference: ref, description: desc || 'رسوم بنكية (بلا وصف)',
+        credit: null, debit: 0, fees: amt, tax: 0, feesRemoved: amt,
+      });
       continue;
     }
 
