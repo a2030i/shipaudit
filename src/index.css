@@ -68,7 +68,9 @@
   --nav-hover-bg:   rgba(255,255,255,.05);
   --nav-label-color: #5a62a3;
 
-  --font-mono: 'IBM Plex Mono', 'JetBrains Mono', 'Courier New', monospace;
+  /* IBM Plex Mono غير مستضاف بعد — فالسلسلة تسقط لخطوط النظام الحديثة
+     (Cascadia/Consolas على ويندوز، SF Mono على ماك) بدل Courier New القديم. */
+  --font-mono: 'IBM Plex Mono', 'Cascadia Mono', 'Consolas', ui-monospace, 'SF Mono', 'Menlo', 'JetBrains Mono', monospace;
   --font-sans: 'PingARLT', 'IBM Plex Sans Arabic', 'Inter', -apple-system, 'Segoe UI', sans-serif;
 
   --sw:   260px;
@@ -82,6 +84,7 @@
   --shadow-sm: 0 2px 8px rgba(0,0,0,.28);
   --shadow-md: 0 6px 24px rgba(0,0,0,.34);
   --shadow-lg: 0 16px 48px rgba(0,0,0,.42);
+  --shadow-xl: 0 24px 64px rgba(0,0,0,.5);   /* كان معرَّفاً في الفاتح فقط — CommandPalette يفقد ظلّه */
 
   /* مقياس التباعد (Phase 2) — توكنات أساس تُستهلَك تدريجياً بدل القيم الصلبة */
   --space-1: 4px;  --space-2: 8px;  --space-3: 12px; --space-4: 16px;
@@ -164,6 +167,8 @@ body {
   font-family: var(--font-sans);
   direction: rtl;
   -webkit-font-smoothing: antialiased;
+  /* أرقام ثابتة العرض في كل التطبيق — الأعمدة المالية تصطفّ رأسياً */
+  font-variant-numeric: tabular-nums;
 }
 #root { height: 100vh; overflow: hidden; display: flex; }
 
