@@ -640,6 +640,14 @@ button:active { transform: scale(.97); }
     grid-template-columns: 1fr !important;
   }
 
+  /* استثناء: بطاقات الإحصاءات الصغيرة (minmax(160px)) عمودان لا عمود واحد —
+     أربع بطاقات KPI مكدّسة = 4 شاشات تمرير بلا داعٍ (كشف البنك/CRM). تأتي
+     بعد قاعدة العمود الواحد لتغلبها بالترتيب (نفس الخصوصية). المتصفح يطبّع
+     minmax(160px,1fr) → "minmax(160px, 1fr)" (مسافة بعد الفاصلة — §1.18). */
+  .page-content [style*="minmax(160px, 1fr)"] {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
   /* Wide data tables: wrap in a horizontal scroller instead of breaking
      the page (global table rule above already does display:block +
      overflow-x; this caps the parent so the page never widens). */

@@ -523,11 +523,11 @@ export default function BankStatement() {
 
           {/* Table */}
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <div className="m-flow" style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filtered.length === 0
                 ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="جرب نص بحث مختلف"/>
                 : (
-                  <table style={{ fontSize: 12, width: '100%' }}>
+                  <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
                     <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                       <tr>
                         <th style={{ minWidth: 90 }}>التاريخ</th>
@@ -542,24 +542,24 @@ export default function BankStatement() {
                     <tbody>
                       {filtered.map((t, i) => (
                         <tr key={i} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
-                          <td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.date || '—'}</td>
-                          <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                          <td data-label="التاريخ" style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.date || '—'}</td>
+                          <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                             {t.reference || '—'}
                           </td>
-                          <td style={{ fontSize: 12, maxWidth: 380, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          <td data-label="" style={{ fontSize: 12, maxWidth: 380, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {t.rejected && <RejBadge/>}
                             {t.description}
                           </td>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
+                          <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                             {t.credit != null ? fmtMoney(t.credit) : ''}
                           </td>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
+                          <td data-label="مدين (صافي)" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
                             {t.debit != null && t.debit !== 0 ? fmtMoney(t.debit) : ''}
                           </td>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
+                          <td data-label="الرسوم" style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
                             {t.fees > 0 ? t.fees.toFixed(2) : ''}
                           </td>
-                          <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                          <td data-label="الضريبة" style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
                             {t.tax > 0 ? t.tax.toFixed(2) : ''}
                           </td>
                         </tr>
@@ -623,7 +623,7 @@ export default function BankStatement() {
 
                 {/* شريط الفلاتر: فترة مخصّصة + نوع + بحث + تصدير */}
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <Calendar size={13} style={{ color: 'var(--muted)' }}/>
                     <input type="date" value={savedFrom} onChange={e => setSavedFrom(e.target.value)}
                       title="من تاريخ" style={{ padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
@@ -664,11 +664,11 @@ export default function BankStatement() {
                 )}
 
                 <Card style={{ padding: 0, overflow: 'hidden' }}>
-                  <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+                  <div className="m-flow" style={{ maxHeight: 600, overflowY: 'auto' }}>
                     {savedFiltered.length === 0
                       ? <Empty icon="🔍" title="لا توجد عمليات مطابقة" sub="عدّل الفترة أو نوع العملية أو نص البحث"/>
                       : (
-                        <table style={{ fontSize: 12, width: '100%' }}>
+                        <table className="m-cards" style={{ fontSize: 12, width: '100%' }}>
                           <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                             <tr>
                               <th style={{ minWidth: 90 }}>التاريخ</th>
@@ -683,24 +683,24 @@ export default function BankStatement() {
                           <tbody>
                             {savedFiltered.map(t => (
                               <tr key={t.id} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
-                                <td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.txn_date || '—'}</td>
-                                <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
+                                <td data-label="التاريخ" style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.txn_date || '—'}</td>
+                                <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                                   {t.reference || '—'}
                                 </td>
-                                <td style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <td data-label="" style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                                   {t.rejected && <RejBadge/>}
                                   {t.description}
                                 </td>
-                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
+                                <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                                   {Number(t.credit) ? fmtMoney(t.credit) : ''}
                                 </td>
-                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
+                                <td data-label="مدين" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
                                   {Number(t.debit) ? fmtMoney(t.debit) : ''}
                                 </td>
-                                <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
+                                <td data-label="الرسوم" style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
                                   {Number(t.fees) + Number(t.tax) > 0 ? (Number(t.fees) + Number(t.tax)).toFixed(2) : ''}
                                 </td>
-                                <td>
+                                <td data-label="حذف">
                                   <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
                                     onClick={() => setConfirmDel(t)}/>
                                 </td>
