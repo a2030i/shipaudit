@@ -39,6 +39,8 @@ export default function BankStatement() {
   const [savedFrom, setSavedFrom]       = useState('');       // فلتر الفترة: من
   const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
   const [savedType, setSavedType]       = useState('all');    // all | debit | credit
+  const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
+  const [deleting, setDeleting]         = useState(false);
 
   const loadSaved = useCallback(async () => {
     setSavedLoading(true);
@@ -700,7 +702,7 @@ export default function BankStatement() {
                                 </td>
                                 <td>
                                   <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
-                                    onClick={() => handleDeleteSaved(t.id)}/>
+                                    onClick={() => setConfirmDel(t)}/>
                                 </td>
                               </tr>
                             ))}
@@ -712,6 +714,38 @@ export default function BankStatement() {
                 </Card>
               </>
             )
+      )}
+
+      {confirmDel && (
+        <Modal title="⚠️ تأكيد حذف العملية" onClose={() => !deleting && setConfirmDel(null)} width={460}>
+          <div style={{ fontSize: 13, marginBottom: 12 }}>
+            سيُحذف هذا القيد نهائياً من الدفتر البنكي المحفوظ. <b style={{ color: 'var(--red)' }}>لا يمكن التراجع.</b>
+          </div>
+          <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 9, padding: 12, marginBottom: 16, fontSize: 12, lineHeight: 1.7 }}>
+            <div><span style={{ color: 'var(--muted)' }}>التاريخ:</span> {confirmDel.txn_date || '—'}</div>
+            <div><span style={{ color: 'var(--muted)' }}>المرجع:</span> <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{confirmDel.reference || '—'}</span></div>
+            <div>
+              <span style={{ color: 'var(--muted)' }}>المبلغ:</span>{' '}
+              <b style={{ color: Number(confirmDel.credit) ? 'var(--green)' : 'var(--red)' }}>
+                {fmtMoney(Number(confirmDel.credit) || Number(confirmDel.debit) || 0)} ر.س
+              </b>{' '}
+              <span style={{ color: 'var(--muted)' }}>({Number(confirmDel.credit) ? 'دائن' : 'مدين'})</span>
+            </div>
+            <div style={{ color: 'var(--muted3)', marginTop: 4, fontSize: 11 }}>{confirmDel.description}</div>
+          </div>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Btn variant="ghost" onClick={() => setConfirmDel(null)} disabled={deleting}>إلغاء</Btn>
+            <Btn variant="danger" icon={deleting ? <Spinner size={13}/> : <Trash2 size={13}/>} disabled={deleting}
+              onClick={async () => {
+                setDeleting(true);
+                await handleDeleteSaved(confirmDel.id);
+                setDeleting(false);
+                setConfirmDel(null);
+              }}>
+              {deleting ? 'جارٍ الحذف…' : 'تأكيد الحذف'}
+            </Btn>
+          </div>
+        </Modal>
       )}
 
       {reconcileOpen && (
