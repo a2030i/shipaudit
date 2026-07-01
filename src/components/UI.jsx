@@ -1062,6 +1062,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
     >
       <div
         className="scale-in"
+        role="dialog"
         style={{
           background: 'var(--card)',
           border: '1px solid var(--border)',

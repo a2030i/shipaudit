@@ -103,7 +103,7 @@ const NAV_ITEMS = [
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
   { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق فواتير التجهيز', icon: Briefcase, section: 'fulfillment', permKey: 'audits.view' },
   { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'الدفتر',           icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
   { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
@@ -119,7 +119,7 @@ const NAV_ITEMS = [
   // visible & one-click in the sidebar (they used to be discoverable
   // only by opening /money first). Each navigates to the canonical
   // ?tab= URL the in-page tab strip also produces.
-  { id: 'money',     path: '/money',    label: 'الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
@@ -152,14 +152,14 @@ const NAV_ITEMS = [
   // ── الرفع والوارد — كل أبواب إدخال الملفات في مكان واحد ──────────
   // Was scattered: /drop + /webhook pinned at top, /uploads buried in system.
   // Grouping every ingest door here is the fix for "مشتتة".
-  { id: 'drop',           path: '/drop',           label: 'رفع ملف ذكي',  icon: Upload, section: 'ingest', permKey: 'audits.create' },
-  { id: 'webhook',        path: '/webhook',        label: 'الوارد (Webhook)', icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
-  { id: 'uploads',        path: '/uploads',        label: 'مركز الرفع',    icon: Layers, section: 'ingest', permKey: 'uploads.view' },
+  { id: 'drop',           path: '/drop',           label: 'رفع ملف',       icon: Upload, section: 'ingest', permKey: 'audits.create' },
+  { id: 'webhook',        path: '/webhook',        label: 'وارد الإيميل',  icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
+  { id: 'uploads',        path: '/uploads',        label: 'وارد Zoho التلقائي', icon: Layers, section: 'ingest', permKey: 'uploads.view' },
   { id: 'weight-billing', path: '/weight-billing', label: 'تصدير الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
 
   // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
   { id: 'tasks',        path: '/tasks',        label: 'المهام',         icon: ListTodo,      section: 'system', permKey: 'audits.view' },
-  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',  icon: Truck,         section: 'system', permKey: 'carriers.view' },
+  { id: 'carriers',     path: '/carriers',     label: 'إعدادات الشركات والعقود', icon: Truck, section: 'system', permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',    icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
@@ -176,7 +176,7 @@ const NAV_SECTIONS = [
   { id: 'carriers',  label: 'شركات الشحن',       icon: Building2,  accent: '#3B82F6', hint: 'الكشوف والمراجعات والدفتر' },
   { id: 'finance',   label: 'الأموال',            icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات والبنك' },
   { id: 'customers', label: 'العملاء',            icon: Users,      accent: '#EF4444', hint: 'المديونيات والتحصيل' },
-  { id: 'fulfillment', label: 'التجهيز والتخزين', icon: Boxes,      accent: '#8B5CF6', hint: 'تدقيق فواتير شركاء التجهيز (3PL)' },
+  { id: 'fulfillment', label: 'التجهيز والتخزين', icon: Boxes,      accent: '#EC4899', hint: 'تدقيق فواتير شركاء التجهيز (3PL)' },
   { id: 'ingest',    label: 'الرفع والوارد',      icon: Upload,     accent: '#06B6D4', hint: 'كل أبواب رفع الملفات' },
   { id: 'reports',   label: 'التقارير والتصدير',  icon: BarChart3,  accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
   { id: 'system',    label: 'الإعدادات والنظام',  icon: Briefcase,  accent: '#8B5CF6', hint: 'الإدارة والسجلات والمهام' },
@@ -194,10 +194,14 @@ const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/p
 const PAGE_TITLES = {
   '/overview':          'الرئيسية',
   '/dashboard':         'الرئيسية (الإصدار القديم)',
-  '/uploads':           'مركز الرفع',
-  '/hub':               'كشف الشركات',
+  '/decisions':         'لوحة القرارات',
+  '/crm':               'المتابعة والمبيعات',
+  '/fulfillment':       'تدقيق فواتير التجهيز',
+  '/monthly-report':    'التقرير الشهري',
+  '/uploads':           'وارد Zoho التلقائي',
+  '/hub':               'الشركات',
   '/carrier':           'بروفايل الشركة',
-  '/webhook':           'الوارد',
+  '/webhook':           'وارد الإيميل',
   '/customers':         'متابعة العملاء',
   '/payment-requests':  'طلبات السداد',
   '/internal-exports':  'تصدير للأنظمة الداخلية',
@@ -212,7 +216,7 @@ const PAGE_TITLES = {
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
   '/money':             'حركة الأموال',
   '/payments':          'الدفعات',
-  '/aramex-statements': 'كشوف خارجية',
+  '/aramex-statements': 'كشوف الحساب',
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
   '/customer-360':      'العملاء',
@@ -220,7 +224,7 @@ const PAGE_TITLES = {
   '/merchants':         'متاجر المنصّة',
   '/reconciliation':    'مطابقة أرصدة المتاجر',
   '/segments':          'شرائح العملاء',
-  '/carriers':          'إدارة الشركات',
+  '/carriers':          'إعدادات الشركات والعقود',
   '/contracts':         'جدول العقود',
   '/carrier-kpi':       'أداء الناقلين',
   '/activity-log':      'سجل النشاط',
