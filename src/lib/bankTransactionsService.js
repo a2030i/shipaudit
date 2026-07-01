@@ -111,3 +111,29 @@ export async function deleteBankUpload(sourceFile) {
   if (error) throw error;
   return data?.length ?? 0;
 }
+
+// ─── استمرارية الرصيد: ملخّص كل كشف (افتتاحي/ختامي/فترة) ───
+// افتتاحي كشف جديد يجب أن يطابق ختامي الكشف السابق بالهللة.
+export async function loadPreviousClosing(periodFrom) {
+  if (!periodFrom) return null;
+  const { data, error } = await supabase
+    .from('bank_statement_summaries')
+    .select('period_from, period_to, closing_balance, file_name')
+    .lt('period_to', periodFrom)
+    .order('period_to', { ascending: false })
+    .limit(1);
+  if (error) return null;
+  return data?.[0] || null;
+}
+
+export async function saveStatementSummary({ periodFrom, periodTo, opening, closing, totalDebit, totalCredit, fileName, userId }) {
+  if (!periodFrom && !periodTo) return { ok: false };
+  const { error } = await supabase.from('bank_statement_summaries').upsert({
+    period_from: periodFrom || null, period_to: periodTo || null,
+    opening_balance: opening ?? null, closing_balance: closing ?? null,
+    total_debit: totalDebit ?? null, total_credit: totalCredit ?? null,
+    file_name: fileName || null, created_by: userId ?? null,
+  }, { onConflict: 'period_from,period_to' });
+  if (error) throw error;
+  return { ok: true };
+}
