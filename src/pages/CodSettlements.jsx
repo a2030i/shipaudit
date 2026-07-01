@@ -1536,6 +1536,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
     setBusy(true);
     let savedCount = 0;
     let skippedCount = 0;
+    let ledgerErr = null;  // M2: التقط فشل قيد COD CR ليُعرَض للمستخدم
     const fileErrors = [];
     try {
       for (const p of previews) {
@@ -1548,6 +1549,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
         });
         savedCount += result.count || 0;
         skippedCount += (result.inBatchDuplicates || 0) + (result.crossFileDuplicates || 0);
+        if (result.ledgerError) ledgerErr = result.ledgerError;
       }
       if (savedCount === 0) {
         toast(`كل الصفوف مكررة — لم يُحفظ شيء (${skippedCount} متجاوَزة)`, 'error');
@@ -1559,6 +1561,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
       if (skippedCount) parts.push(`تم تجاوز ${skippedCount} مكرّر`);
       if (settlementRef) parts.push(`تسوية #${settlementRef.trim()}`);
       toast(parts.join(' · '), skippedCount ? 'info' : 'success');
+      if (ledgerErr) toast(`⚠️ حُفظت الشحنات لكن قيد COD في الدفتر فشل: ${ledgerErr} — راجع /integrity`, 'error');
       // Close the loop on a webhook → COD import: flip the source
       // event to 'processed' so the Webhook page swaps in the
       // "✓ تمت معالجته" badge instead of the import button.
