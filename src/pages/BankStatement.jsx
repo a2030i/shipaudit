@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2, Save, Database } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
-import { parseExcelFile, generateCleanExcel, extractCarrierPayments } from '../engine/bankStatementProcessor.js';
+import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
 import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
@@ -42,7 +42,11 @@ export default function BankStatement() {
 
   const loadSaved = useCallback(async () => {
     setSavedLoading(true);
-    try { setSaved(await loadBankTransactions()); }
+    try {
+      const rows = await loadBankTransactions();
+      annotateRejected(rows);   // علّم أزواج التحويلات المرفوضة (مدين + رفض بنفس المرجع)
+      setSaved(rows);
+    }
     catch (e) { toast(`فشل تحميل الدفتر البنكي: ${e.message}`, 'error'); }
     setSavedLoading(false);
   }, []);
@@ -90,6 +94,11 @@ export default function BankStatement() {
 
   const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all');
 
+  const savedRejectedInfo = useMemo(() => {
+    const returns = (savedFiltered || []).filter(t => t.rejected && (Number(t.credit) || 0) > 0);
+    return { count: returns.length, amount: +returns.reduce((s, t) => s + (Number(t.credit) || 0), 0).toFixed(2) };
+  }, [savedFiltered]);
+
   // شرائح الفترات الجاهزة — مشتقّة من فترات الكشوف المرفوعة فعلاً.
   const savedPeriods = useMemo(() => {
     const seen = new Map();
@@ -106,7 +115,8 @@ export default function BankStatement() {
   const handleExportSaved = () => {
     try {
       const rows = savedFiltered.map(t => ({
-        date: String(t.txn_date || '').slice(0, 10), description: t.description,
+        date: String(t.txn_date || '').slice(0, 10),
+        description: (t.rejected ? '⚠️ مرفوض/مُرجَع — ' : '') + (t.description || ''),
         credit: Number(t.credit) || 0, debit: Number(t.debit) || 0,
         fees: Number(t.fees) || 0, tax: Number(t.tax) || 0, reference: t.reference,
       }));
@@ -237,6 +247,13 @@ export default function BankStatement() {
   }, [result]);
   const continuityGap = (openingBalance != null && prevClosing?.closing_balance != null)
     ? +(openingBalance - Number(prevClosing.closing_balance)).toFixed(2) : null;
+
+  // ملخّص العمليات المرفوضة/المُرجَعة (صافيها صفر — تحويل خرج ثم رُدّ بنفس المرجع)
+  const rejectedInfo = useMemo(() => {
+    const list = result?.transactions || [];
+    const returns = list.filter(t => t.rejected && (t.credit ?? 0) > 0);
+    return { count: returns.length, amount: +returns.reduce((s, t) => s + (t.credit || 0), 0).toFixed(2) };
+  }, [result]);
 
   // مطابقة البنك: نجمع عملياتنا بأنفسنا ونقارنها بإجماليات البنك المطبوعة
   // (لا ننسخها). التطابق = إثبات أننا التقطنا كل عملية بلا نقص ولا تكرار.
@@ -467,6 +484,15 @@ export default function BankStatement() {
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>
               ملف جديد
             </Btn>
+            {rejectedInfo.count > 0 && (
+              <span style={{
+                background: 'rgba(220,38,38,.1)', border: '1px solid rgba(220,38,38,.28)',
+                color: 'var(--red)', fontSize: 11, padding: '4px 10px', borderRadius: 14,
+                fontFamily: 'var(--font-mono)',
+              }}>
+                ↩︎ {rejectedInfo.count} عملية مرفوضة · {fmtMoney(rejectedInfo.amount)} ر.س ذهاباً وإياباً (صافي صفر)
+              </span>
+            )}
             {result.hiddenFees > 0 && (
               <span style={{
                 marginRight: 'auto',
@@ -510,12 +536,13 @@ export default function BankStatement() {
                     </thead>
                     <tbody>
                       {filtered.map((t, i) => (
-                        <tr key={i}>
+                        <tr key={i} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
                           <td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.date || '—'}</td>
                           <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                             {t.reference || '—'}
                           </td>
                           <td style={{ fontSize: 12, maxWidth: 380, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {t.rejected && <RejBadge/>}
                             {t.description}
                           </td>
                           <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
@@ -556,6 +583,17 @@ export default function BankStatement() {
                   <StatBlock label="إجمالي الدائن"   value={fmtMoney(savedTotals.credit)} color="var(--green)" suffix="ر.س"/>
                   <StatBlock label="رسوم + ضريبة"    value={fmtMoney(savedTotals.fees)}   color="var(--gold)"  suffix="ر.س"/>
                 </div>
+
+                {savedRejectedInfo.count > 0 && (
+                  <div style={{
+                    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12,
+                    background: 'rgba(220,38,38,.07)', border: '1px solid rgba(220,38,38,.25)',
+                    borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--red)',
+                  }}>
+                    <span>↩︎</span>
+                    <span><b>{savedRejectedInfo.count}</b> عملية مرفوضة/مُرجَعة ضمن المعروض · {fmtMoney(savedRejectedInfo.amount)} ر.س ذهاباً وإياباً (صافيها صفر — مُعلَّمة بالجدول)</span>
+                  </div>
+                )}
 
                 {/* شرائح الفترات الجاهزة (من الكشوف المرفوعة) */}
                 {savedPeriods.length > 0 && (
@@ -639,12 +677,13 @@ export default function BankStatement() {
                           </thead>
                           <tbody>
                             {savedFiltered.map(t => (
-                              <tr key={t.id}>
+                              <tr key={t.id} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
                                 <td style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.txn_date || '—'}</td>
                                 <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                                   {t.reference || '—'}
                                 </td>
                                 <td style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                  {t.rejected && <RejBadge/>}
                                   {t.description}
                                 </td>
                                 <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
@@ -834,6 +873,16 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────
+function RejBadge() {
+  return (
+    <span title="تحويل مرفوض/مُرجَع — رُدّ بنفس المرجع (صافي صفر)" style={{
+      display: 'inline-block', background: 'var(--red)', color: '#fff',
+      fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
+      marginLeft: 6, verticalAlign: 'middle', whiteSpace: 'nowrap',
+    }}>↩︎ مرفوض</span>
+  );
+}
+
 function StatBlock({ label, value, color, suffix, mono }) {
   return (
     <div style={{

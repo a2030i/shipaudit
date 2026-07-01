@@ -18,7 +18,11 @@ const CHUNK = 500;
 
 function dedupKeyOf(t) {
   const ref = String(t.reference ?? '').trim();
-  if (ref) return `ref:${ref}`;
+  // الاتجاه في المفتاح: التحويل المرفوض يُعاد قيده بنفس الرقم المرجعي (قيد مدين
+  // + قيد دائن بنفس المرجع). بدون تمييز الاتجاه يتصادم القيدان فيُدمَجان ويُفقَد
+  // أحدهما عند الحفظ. `:D` للمدين و`:C` للدائن يفصلهما.
+  const dir = (Number(t.credit) || 0) > 0 ? 'C' : 'D';
+  if (ref) return `ref:${ref}:${dir}`;
   // fees في المفتاح: صفوف الرسوم الخفية (بلا وصف/مرجع) مدينها 0 والمبلغ في
   // fees — بدونه تتصادم صفوف رسوم مختلفة بنفس التاريخ فتُدمَج خطأً.
   return `auto:${t.date ?? ''}|${String(t.description ?? '').slice(0, 80)}|${Number(t.debit) || 0}|${Number(t.credit) || 0}|${Number(t.fees) || 0}`;
