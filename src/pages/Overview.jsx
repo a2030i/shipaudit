@@ -178,7 +178,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint="من ملفات تحصيل الشركات"
         />
         <BigStat
-          color={data.thisMonth.net >= 0 ? '#047857' : '#DC2626'}
+          color={data.thisMonth.net >= 0 ? 'var(--green2)' : '#DC2626'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
           label="صافي الشهر"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
@@ -244,7 +244,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={`متوسط أيام دفعنا للشركات · ${data.workingCapital.carriersWithDebt} شركة عليها مفتوح`}
         />
         <BigStat
-          color={data.workingCapital.ccc <= 0 ? '#047857' : data.workingCapital.ccc < 30 ? '#F59E0B' : '#DC2626'}
+          color={data.workingCapital.ccc <= 0 ? 'var(--green2)' : data.workingCapital.ccc < 30 ? '#F59E0B' : '#DC2626'}
           icon={<Activity size={18}/>}
           label="CCC — دورة النقد"
           value={(data.workingCapital.ccc >= 0 ? '+' : '−') + Math.abs(data.workingCapital.ccc).toFixed(1)}
@@ -548,7 +548,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         <span style={{
           width: 32, height: 32, borderRadius: 8,
           background: 'color-mix(in srgb, #10B981 16%, transparent)',
-          color: '#047857', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'var(--green2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><Wallet size={17}/></span>
         <div style={{ flex: 1 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>نظرة السيولة</div>
@@ -565,7 +565,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         {/* Bank balance — editable */}
         <CashTile
           icon={<Wallet size={18}/>}
-          color={isBankStale ? '#F59E0B' : '#047857'}
+          color={isBankStale ? '#F59E0B' : 'var(--green2)'}
           label="رصيد البنك"
           value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
           unit={cash.bankBalance == null ? '' : 'ر.س'}
@@ -602,7 +602,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         )}
         <CashTile
           icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          color={cash.netNoBank >= 0 ? '#047857' : '#DC2626'}
+          color={cash.netNoBank >= 0 ? 'var(--green2)' : '#DC2626'}
           label="الصافي التشغيلي"
           value={(cash.netNoBank >= 0 ? '+' : '−') + fmt(Math.abs(cash.netNoBank))}
           unit="ر.س"
@@ -610,7 +610,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         />
         <CashTile
           icon={<Banknote size={18}/>}
-          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? '#047857' : '#DC2626'}
+          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? 'var(--green2)' : '#DC2626'}
           label="الوضع النقدي الكامل"
           value={cash.net == null ? '—' : (cash.net >= 0 ? '+' : '−') + fmt(Math.abs(cash.net))}
           unit={cash.net == null ? '' : 'ر.س'}
@@ -624,7 +624,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
           marginTop: 14, padding: '10px 14px', borderRadius: 8,
           background: 'color-mix(in srgb, #F59E0B 10%, transparent)',
           border: '1px solid color-mix(in srgb, #F59E0B 30%, transparent)',
-          fontSize: 12, color: '#B45309', display: 'flex', alignItems: 'center', gap: 8,
+          fontSize: 12, color: 'var(--warn)', display: 'flex', alignItems: 'center', gap: 8,
         }}>
           <AlertTriangle size={14}/>
           رصيد البنك قديم — اضغط على البطاقة لتحديثه برصيدك الحالي
@@ -765,7 +765,7 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
   const deltaUp = delta != null && delta > 0;
   const deltaColor = delta == null
     ? 'var(--muted)'
-    : (deltaUp ? (deltaInverted ? '#DC2626' : '#047857') : (deltaInverted ? '#047857' : '#DC2626'));
+    : (deltaUp ? (deltaInverted ? '#DC2626' : 'var(--green2)') : (deltaInverted ? 'var(--green2)' : '#DC2626'));
   const deltaArrow = delta == null ? '·' : deltaUp ? '↑' : '↓';
 
   return (
@@ -888,8 +888,8 @@ function AgingCell({ label, value, tone, bold = false }) {
 
 function HealthPill({ score }) {
   // Three-tier color: green ≥90, amber 70-89, red <70.
-  const tone = score >= 90 ? '#047857'
-             : score >= 70 ? '#B45309'
+  const tone = score >= 90 ? 'var(--green2)'
+             : score >= 70 ? 'var(--warn)'
              :              '#DC2626';
   const bg   = score >= 90 ? 'rgba(16,185,129,.14)'
              : score >= 70 ? 'rgba(245,158,11,.14)'
