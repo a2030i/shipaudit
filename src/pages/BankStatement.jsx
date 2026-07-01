@@ -3,7 +3,7 @@ import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2,
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
-import { saveBankTransactions, loadBankTransactions, deleteBankTransaction } from '../lib/bankTransactionsService.js';
+import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -54,6 +54,15 @@ export default function BankStatement() {
         transactions: result.transactions, summary: result.summary,
         fileName: result.fileName, userId: user?.id,
       });
+      // خزّن ملخّص الكشف (افتتاحي/ختامي/فترة) لفحص استمرارية الرصيد لاحقاً
+      try {
+        await saveStatementSummary({
+          periodFrom: result.summary?.periodFrom, periodTo: result.summary?.periodTo,
+          opening: openingBalance, closing: result.summary?.closingBalance,
+          totalDebit: totals.debit, totalCredit: totals.credit,
+          fileName: result.fileName, userId: user?.id,
+        });
+      } catch { /* غير قاتل */ }
       toast(`حُفظ ${r.saved} عملية · ${r.added} جديدة · ${r.merged} مدموجة`, 'success');
       setSaved(null);   // invalidate so the saved view reloads fresh
       setView('saved');
@@ -172,6 +181,21 @@ export default function BankStatement() {
     };
   }, [result]);
 
+  // الرصيد الافتتاحي = الختامي − الدائن + المدين (الفعلي). + فحص الاستمرارية:
+  // يجب أن يطابق ختامي الكشف السابق بالهللة.
+  const openingBalance = useMemo(() => {
+    if (!result?.summary || result.summary.closingBalance == null) return null;
+    return +(result.summary.closingBalance - totals.credit + totals.debit).toFixed(2);
+  }, [result, totals]);
+  const [prevClosing, setPrevClosing] = useState(null);
+  useEffect(() => {
+    const pf = result?.summary?.periodFrom;
+    if (pf) loadPreviousClosing(pf).then(setPrevClosing).catch(() => setPrevClosing(null));
+    else setPrevClosing(null);
+  }, [result]);
+  const continuityGap = (openingBalance != null && prevClosing?.closing_balance != null)
+    ? +(openingBalance - Number(prevClosing.closing_balance)).toFixed(2) : null;
+
   const filtered = useMemo(() => {
     if (!result) return [];
     if (!search.trim()) return result.transactions;
@@ -283,6 +307,19 @@ export default function BankStatement() {
                 </div>
               </div>
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', rowGap: 12 }}>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد الافتتاحي</div>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
+                    {openingBalance != null ? fmtMoney(openingBalance) : '—'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                  </div>
+                  {prevClosing && continuityGap != null ? (
+                    <div style={{ fontSize: 10.5, marginTop: 3, fontWeight: 700, color: Math.abs(continuityGap) <= 0.01 ? '#10B981' : '#DC2626' }}>
+                      {Math.abs(continuityGap) <= 0.01 ? '✓ مطابق للكشف السابق' : `⚠️ فجوة ${fmtMoney(continuityGap)} عن السابق`}
+                    </div>
+                  ) : result.summary?.periodFrom ? (
+                    <div style={{ fontSize: 10, marginTop: 3, color: 'var(--muted)' }}>لا كشف سابق محفوظ للمقارنة</div>
+                  ) : null}
+                </div>
                 <div style={{ textAlign: 'center' }}>
                   <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد الختامي</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
