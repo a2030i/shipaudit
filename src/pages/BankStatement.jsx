@@ -114,12 +114,14 @@ export default function BankStatement() {
   // التصدير يتبع المعروض (بعد الفلاتر) — يعيد استخدام صيغة الكشف الصافي.
   const handleExportSaved = () => {
     try {
+      // نمرّر rejected ليحذفها generateCleanExcel (نفس سلوك الكشف الصافي).
       const rows = savedFiltered.map(t => ({
-        date: String(t.txn_date || '').slice(0, 10),
-        description: (t.rejected ? '⚠️ مرفوض/مُرجَع — ' : '') + (t.description || ''),
+        date: String(t.txn_date || '').slice(0, 10), description: t.description || '',
         credit: Number(t.credit) || 0, debit: Number(t.debit) || 0,
         fees: Number(t.fees) || 0, tax: Number(t.tax) || 0, reference: t.reference,
+        rejected: t.rejected,
       }));
+      const kept = rows.filter(r => !r.rejected).length;
       const bytes = generateCleanExcel(rows, {});
       const blob  = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       const url   = URL.createObjectURL(blob);
@@ -129,7 +131,8 @@ export default function BankStatement() {
       a.download  = `الدفتر_البنكي${range}_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      toast(`تم تصدير ${rows.length} عملية ✓`, 'success');
+      const dropped = rows.length - kept;
+      toast(`تم تصدير ${kept} عملية ✓${dropped ? ` · حُذف ${dropped} صف مرفوض/مُرجَع` : ''}`, 'success');
     } catch (e) { toast(`خطأ في التصدير: ${e.message}`, 'error'); }
   };
 
@@ -295,7 +298,7 @@ export default function BankStatement() {
       a.download  = `كشف_حساب_صافي_${new Date().toISOString().slice(0, 10)}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
-      toast('تم تصدير الكشف الصافي ✓', 'success');
+      toast(`تم تصدير الكشف الصافي ✓${rejectedInfo.count ? ` · حُذف ${rejectedInfo.count} تحويل مرفوض (وردّه)` : ''}`, 'success');
     } catch (e) {
       toast(`خطأ في التصدير: ${e.message}`, 'error');
     }

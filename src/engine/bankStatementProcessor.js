@@ -442,7 +442,9 @@ export function generateCleanExcel(transactions, _summary = {}) {
   const wb = XLSX.utils.book_new();
   const headers = ['تاريخ العملية', 'وصف العملية', 'دائن', 'مدين', 'الرسوم', 'الضريبة', 'المرجع'];
   const blankIfZero = v => (v == null || Number(v) === 0) ? '' : Number(v);
-  const rows = transactions.map(t => [
+  // التحويلات المرفوضة/المُرجَعة (قيد مدين + رفض بنفس المرجع) تُحذف من الكشف
+  // الصافي — صافيها صفر ولا قيمة لها في النظام المحاسبي الخارجي.
+  const rows = transactions.filter(t => !t.rejected).map(t => [
     t.date        ?? '',
     t.description ?? '',
     blankIfZero(t.credit),
