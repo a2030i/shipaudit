@@ -140,7 +140,7 @@ export default function FinancialPosition({ isActive = true }) {
   const profitable = net >= 0;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1080, margin: '0 auto' }}>
+    <div style={{ padding: '20px 26px 70px', maxWidth: 1300, margin: '0 auto' }}>
       <PageHeader
         icon={<Wallet size={22}/>} iconColor="var(--green)"
         title="الوضع المالي"
@@ -200,20 +200,25 @@ export default function FinancialPosition({ isActive = true }) {
           </div>
         </Card>
 
+        {/* عمودان على العريض (شكوى «الهوامش عالية»): الشلال وفحوص الفجوة
+            يميناً، الاتجاه/الأرباع/الحركات يساراً — يلتفّان عمودياً على الضيّق */}
+        <div style={{ display: 'flex', gap: 16, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+        <div style={{ flex: '1.4 1 480px', minWidth: 0 }}>
+
         {/* ── فوترنا × وحصّلنا — من مرايا فواتير/دفعات زوهو (مزامنة دلتا) ── */}
         {invCol?.hasData && (
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div style={{ flex: 1, minWidth: 165, background: 'var(--card)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>🧾 فوترنا هذا الشهر ({invCol.invCount} فاتورة)</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3 }}>{fmt(invCol.invoiced)} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span></div>
             </div>
-            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+            <div style={{ flex: 1, minWidth: 165, background: 'var(--card)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>💰 وحصّلنا من العملاء ({invCol.payCount} دفعة)</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: 'var(--green)' }}>{fmt(invCol.collected)} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span></div>
             </div>
-            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+            <div style={{ flex: 1, minWidth: 165, background: 'var(--card)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '12px 16px' }}>
               <div style={{ fontSize: 11, color: 'var(--muted)' }}>⏳ الباقي عند العملاء من فواتير الشهر</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: invCol.invoiced - invCol.collected > 0.5 ? 'var(--gold)' : 'var(--green)' }}>
@@ -281,8 +286,11 @@ export default function FinancialPosition({ isActive = true }) {
           </Card>
         )}
 
-        {/* ── الاتجاه + الأرباع ── */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 16 }}>
+        </div>{/* نهاية العمود الرئيسي */}
+        <div style={{ flex: '1 1 320px', minWidth: 0 }}>
+
+        {/* ── الاتجاه + الأرباع (العمود الجانبي) ── */}
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 14, marginBottom: 16 }}>
           <Card>
             <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 14 }}>📈 صافي الربح — آخر {trend.length} أشهر</div>
             <TrendBars data={trend} onPick={setSel} sel={sel}/>
@@ -338,8 +346,11 @@ export default function FinancialPosition({ isActive = true }) {
           </Card>
         )}
 
+        </div>{/* نهاية العمود الجانبي */}
+        </div>{/* نهاية صف العمودين */}
+
         {/* القاعدة الثابتة */}
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center' }}>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center', marginTop: 4 }}>
           💡 تحصيل COD ليس دخلاً — أمانة التجار تمرّ عبرنا. الدخل هنا = ما نفوتره نحن للعملاء (أرقام زوهو الرسمية).
         </div>
       </>)}
