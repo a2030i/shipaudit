@@ -307,16 +307,17 @@ function AppInner({ theme, toggleTheme }) {
   // v3 key: the reorg made التقارير + الإعدادات/النظام collapsed-by-default
   // (all occasional/rare) so the resting sidebar is short. Bumping the key
   // means every user gets the new default once, then their own toggles win.
-  // v4 (2026-07-02، قرار المستخدم): أكورديون قسم-واحد — فتح قسم يقفل البقية
-  // («لو فتحت قسم مفروض يقفل قسم حتى يكون سلس»). الافتراضي: كله مقفل عدا
-  // شركات الشحن (الأكثر استخداماً). المفتاح الجديد يطبّق الافتراض مرة واحدة.
+  // v5 (2026-07-02، قرار المستخدم): أكورديون قسم-واحد — فتح قسم يقفل البقية
+  // («لو فتحت قسم مفروض يقفل قسم حتى يكون سلس»). الافتراضي: **كل الأقسام
+  // مقفلة** بما فيها شركات الشحن («الأفضل حتى قسم شركات الشحن افتراضياً
+  // مقفل») — الجانبية تفتح دائماً على رؤوس الأقسام فقط + المثبّتين.
+  // المفتاح الجديد يطبّق الافتراض مرة واحدة ثم تفضيل المستخدم يفوز.
   const ALL_SECTION_IDS = NAV_SECTIONS.map(s => s.id);
   const [collapsedSecs, setCollapsedSecs] = useState(() => {
-    const dflt = ALL_SECTION_IDS.filter(id => id !== 'carriers');
     try {
-      const stored = localStorage.getItem('sa-nav-collapsed-v4');
-      return new Set(stored ? JSON.parse(stored) : dflt);
-    } catch { return new Set(dflt); }
+      const stored = localStorage.getItem('sa-nav-collapsed-v5');
+      return new Set(stored ? JSON.parse(stored) : ALL_SECTION_IDS);
+    } catch { return new Set(ALL_SECTION_IDS); }
   });
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
@@ -361,7 +362,7 @@ function AppInner({ theme, toggleTheme }) {
     const wasCollapsed = prev.has(id);
     const next = new Set(ALL_SECTION_IDS);
     if (wasCollapsed) next.delete(id);
-    try { localStorage.setItem('sa-nav-collapsed-v4', JSON.stringify([...next])); } catch { /* ignore */ }
+    try { localStorage.setItem('sa-nav-collapsed-v5', JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   });
 
