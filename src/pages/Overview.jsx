@@ -429,13 +429,14 @@ export default function Overview({ carriers = [], isActive = true }) {
           <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1.4fr repeat(6, 1fr)',
+              gridTemplateColumns: '1.4fr repeat(7, 1fr)',
               background: 'var(--surface2)', borderBottom: '1px solid var(--border)',
               padding: '10px 0', fontSize: 11, color: 'var(--muted)', fontWeight: 600,
             }}>
               <div style={{ padding: '0 14px' }}>الناقل</div>
               <div style={{ padding: '0 8px', textAlign: 'center' }}>صحة</div>
               <div style={{ padding: '0 8px', textAlign: 'center' }}>مراجعات</div>
+              <div style={{ padding: '0 8px', textAlign: 'center' }}>تكلفة/شحنة</div>
               <div style={{ padding: '0 8px', textAlign: 'center' }}>الفروق %</div>
               <div style={{ padding: '0 8px', textAlign: 'center' }}>عدم تطابق %</div>
               <div style={{ padding: '0 8px', textAlign: 'center' }}>قبول أول مرة</div>
@@ -447,7 +448,7 @@ export default function Overview({ carriers = [], isActive = true }) {
                 onClick={() => navigate(`/carrier?id=${r.carrierId}`)}
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '1.4fr repeat(6, 1fr)',
+                  gridTemplateColumns: '1.4fr repeat(7, 1fr)',
                   borderBottom: '1px solid var(--border)',
                   padding: '12px 0', fontSize: 12, alignItems: 'center',
                   cursor: 'pointer',
@@ -462,6 +463,10 @@ export default function Overview({ carriers = [], isActive = true }) {
                 </div>
                 <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--text2)' }}>
                   {r.auditsApproved}
+                </div>
+                {/* تكلفة الشحنة الواحدة — رقم المفاوضة الأول مع الناقل */}
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)' }}>
+                  {r.shipmentsTotal > 0 ? (r.totalBilledSum / r.shipmentsTotal).toFixed(2) : '—'}
                 </div>
                 <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.driftPct > 1 ? '#DC2626' : 'var(--text2)' }}>
                   {r.driftPct.toFixed(1)}%
