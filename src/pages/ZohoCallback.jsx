@@ -30,10 +30,23 @@ export default function ZohoCallback({ isActive = true }) {
     try { window.history.replaceState({}, '', '/zoho-callback'); } catch { /* غير قاتل */ }
 
     (async () => {
+      // invoke يضع ردود non-2xx (مثل 409 already_connected) في error.context
+      // بلا data — نفكّ الجسم لنقرأ رسالة الدالة الفعلية.
+      const invokeZoho = async (payload) => {
+        const res = await supabase.functions.invoke('zoho-sync', { body: payload });
+        if (res.error?.context) {
+          try { const body = await res.error.context.json(); if (body) return { data: body, error: null }; }
+          catch { /* جسم غير JSON */ }
+        }
+        return res;
+      };
       try {
-        const { data, error } = await supabase.functions.invoke('zoho-sync', {
-          body: { action: 'exchange_web', code },
-        });
+        let { data, error } = await invokeZoho({ action: 'exchange_web', code });
+        // ربط قائم + المستخدم ضغط موافقة جديدة (توسيع صلاحيات) → استبدال صريح.
+        // آمن: exchange_web للمدير فقط، والنقرة على شاشة موافقة زوهو قصدٌ كافٍ.
+        if (data?.error && String(data.error).includes('already_connected')) {
+          ({ data, error } = await invokeZoho({ action: 'exchange_web', code, force: true }));
+        }
         if (error) throw new Error(error.message);
         if (data?.ok) {
           setDetail(data.orgName ? `مؤسسة: ${data.orgName}` : '');

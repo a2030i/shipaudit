@@ -47,6 +47,7 @@ import MonthlyReport     from './pages/MonthlyReport.jsx';
 import ReportsCenter     from './pages/ReportsCenter.jsx';
 import ZohoCallback      from './pages/ZohoCallback.jsx';
 import FinancialPosition from './pages/FinancialPosition.jsx';
+import ZohoData          from './pages/ZohoData.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
@@ -124,6 +125,7 @@ const NAV_ITEMS = [
   // ?tab= URL the in-page tab strip also produces.
   // «هل نربح؟» — قائمة الدخل الرسمية من Zoho Books مترجمة لغير المالي
   { id: 'pnl',       path: '/pnl',      label: 'الوضع المالي',  icon: TrendingUp, section: 'finance', permKey: 'money.pnl' },
+  { id: 'zoho-data', path: '/zoho-data', label: 'سجلات زوهو',  icon: BookOpen,   section: 'finance', permKey: 'money.pnl' },
   { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
@@ -209,6 +211,7 @@ const PAGE_TITLES = {
   '/reports':           'مركز التقارير',
   '/zoho-callback':     'ربط زوهو',
   '/pnl':               'الوضع المالي',
+  '/zoho-data':         'سجلات زوهو',
   '/uploads':           'وارد Zoho التلقائي',
   '/hub':               'الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -291,7 +294,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -802,6 +805,9 @@ function AppInner({ theme, toggleTheme }) {
             {/* هبوط موافقة زوهو OAuth — بلا عنصر قائمة */}
             <PageSlot active={pathname==='/zoho-callback'} scroll>
               <ZohoCallback isActive={pathname==='/zoho-callback'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/zoho-data'} scroll>
+              <ZohoData isActive={pathname==='/zoho-data'}/>
             </PageSlot>
             <PageSlot active={pathname==='/pnl'} scroll>
               <FinancialPosition isActive={pathname==='/pnl'}/>

@@ -99,6 +99,42 @@ export async function loadZohoEvents(limit = 10) {
   return data || [];
 }
 
+// سجلات زوهو القابلة للتصفح (صفحة /zoho-data) — مرآة لكل كيان
+export const ZOHO_MIRRORS = {
+  invoices:        { table: 'zoho_invoices',        label: '🧾 فواتير العملاء',  amount: 'total' },
+  payments:        { table: 'zoho_payments',        label: '💰 دفعات العملاء',   amount: 'amount' },
+  expenses:        { table: 'zoho_expenses',        label: '📋 المصاريف',        amount: 'total' },
+  bills:           { table: 'zoho_bills',           label: '📄 فواتير الموردين', amount: 'total' },
+  vendor_payments: { table: 'zoho_vendor_payments', label: '💸 دفعات الموردين',  amount: 'amount' },
+  journals:        { table: 'zoho_journals',        label: '📒 القيود اليومية',  amount: 'total' },
+};
+
+// صفوف مرآة لشهر (أو الكل إن null) — paginated بترتيب فريد (قاعدة §6)
+export async function loadZohoMirror(type, { period = null } = {}) {
+  const cfg = ZOHO_MIRRORS[type];
+  if (!cfg) return [];
+  const rows = [];
+  let f = 0;
+  while (true) {
+    let q = supabase.from(cfg.table).select('*')
+      .order('date', { ascending: false })
+      .order('zoho_id', { ascending: true })
+      .range(f, f + 999);
+    if (period) {
+      const [y, m] = period.split('-').map(Number);
+      q = q.gte('date', `${period}-01`)
+           .lte('date', `${period}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`);
+    }
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < 1000 || rows.length >= 5000) break;
+    f += 1000;
+  }
+  return rows;
+}
+
 // حالة الربط (لبانر «غير مربوط» إن انقطع).
 export async function loadZohoStatus() {
   const { data, error } = await supabase.functions.invoke('zoho-sync', {

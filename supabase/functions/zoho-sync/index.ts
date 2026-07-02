@@ -249,56 +249,83 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'sync') {
-      // مزامنة دلتا: invoices + customerpayments — canPnl مفروضة أعلاه
+      // v8: مزامنة شاملة عبر سجلّ كيانات — دلتا بـlast_modified_time.
+      // متسامحة: كيان يفشل (scope ناقص قبل إعادة الموافقة) لا يوقف البقية.
       const { token, apiDomain, orgId } = await accessToken(db);
-      const results: Record<string, number> = {};
-      for (const ent of ['invoices', 'customerpayments'] as const) {
-        const table = ent === 'invoices' ? 'zoho_invoices' : 'zoho_payments';
-        const { data: st } = await db.from('zoho_sync_state').select('last_sync').eq('entity', ent).maybeSingle();
-        const since = st?.last_sync ? new Date(st.last_sync).getTime() : null;
-        let page = 1, saved = 0, more = true;
-        while (more && page <= 25) {
-          const qs = new URLSearchParams({
-            organization_id: orgId, per_page: '200', page: String(page),
-            sort_column: 'last_modified_time', sort_order: 'D',
-          });
-          const r = await fetch(`${apiDomain}/books/v3/${ent}?${qs}`, {
-            headers: { Authorization: `Zoho-oauthtoken ${token}` },
-          });
-          const j = await r.json();
-          if (j.code !== 0) return json({ error: `zoho ${ent}: ${j.message || JSON.stringify(j)}` }, 400);
-          const rows: Record<string, unknown>[] = ent === 'invoices' ? (j.invoices || []) : (j.customerpayments || []);
-          let reachedOld = false;
-          const mapped: Record<string, unknown>[] = [];
-          for (const it of rows) {
-            const lm = it.last_modified_time ? new Date(it.last_modified_time as string).getTime() : null;
-            if (since && lm && lm <= since) { reachedOld = true; break; }
-            mapped.push(ent === 'invoices' ? {
-              zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
-              date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
-              status: it.status || null,
-              last_modified: lm ? new Date(lm).toISOString() : null, synced_at: new Date().toISOString(),
-            } : {
-              zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
-              amount: Number(it.amount) || 0, mode: it.payment_mode || null,
-              invoice_numbers: (it.invoice_numbers as string) || '',
-              last_modified: lm ? new Date(lm).toISOString() : null, synced_at: new Date().toISOString(),
+      const ENTITIES: { ent: string; listKey: string; table: string;
+        map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
+        { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
+          zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
+          date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
+          status: it.status || null, last_modified: lm, synced_at: now }) },
+        { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
+          zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
+          amount: Number(it.amount) || 0, mode: it.payment_mode || null,
+          invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
+        { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', map: (it, lm, now) => ({
+          zoho_id: it.expense_id, date: it.date || null,
+          account_name: it.account_name || null, vendor_name: it.vendor_name || null,
+          total: Number(it.total) || 0, status: it.status || null,
+          description: (it.description as string) || null,
+          reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
+        { ent: 'bills', listKey: 'bills', table: 'zoho_bills', map: (it, lm, now) => ({
+          zoho_id: it.bill_id, bill_number: it.bill_number || null, vendor_name: it.vendor_name || null,
+          date: it.date || null, due_date: it.due_date || null,
+          total: Number(it.total) || 0, balance: Number(it.balance) || 0,
+          status: it.status || null, last_modified: lm, synced_at: now }) },
+        { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', map: (it, lm, now) => ({
+          zoho_id: it.payment_id, vendor_name: it.vendor_name || null, date: it.date || null,
+          amount: Number(it.amount) || 0, mode: it.payment_mode || null,
+          reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
+        { ent: 'journals', listKey: 'journals', table: 'zoho_journals', map: (it, lm, now) => ({
+          zoho_id: it.journal_id, entry_number: (it.entry_number as string) || null,
+          reference_number: (it.reference_number as string) || null,
+          date: it.journal_date || it.date || null,
+          notes: (it.notes as string) || null, total: Number(it.total) || 0,
+          status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
+      ];
+      const results: Record<string, number | string> = {};
+      for (const cfg of ENTITIES) {
+        try {
+          const { data: st } = await db.from('zoho_sync_state').select('last_sync').eq('entity', cfg.ent).maybeSingle();
+          const since = st?.last_sync ? new Date(st.last_sync).getTime() : null;
+          let page = 1, saved = 0, more = true, entErr: string | null = null;
+          while (more && page <= 25) {
+            const qs = new URLSearchParams({
+              organization_id: orgId, per_page: '200', page: String(page),
+              sort_column: 'last_modified_time', sort_order: 'D',
             });
+            const r = await fetch(`${apiDomain}/books/v3/${cfg.ent}?${qs}`, {
+              headers: { Authorization: `Zoho-oauthtoken ${token}` },
+            });
+            const j = await r.json();
+            if (j.code !== 0) { entErr = j.message || `code ${j.code}`; break; }   // scope ناقص؟ تخطَّ الكيان
+            const rows: Record<string, unknown>[] = j[cfg.listKey] || [];
+            let reachedOld = false;
+            const now = new Date().toISOString();
+            const mapped: Record<string, unknown>[] = [];
+            for (const it of rows) {
+              const lmMs = it.last_modified_time ? new Date(it.last_modified_time as string).getTime() : null;
+              if (since && lmMs && lmMs <= since) { reachedOld = true; break; }
+              const row = cfg.map(it, lmMs ? new Date(lmMs).toISOString() : null, now);
+              if (row.zoho_id) mapped.push(row);
+            }
+            if (mapped.length) {
+              const { error } = await db.from(cfg.table).upsert(mapped);   // PK كامل zoho_id
+              if (error) { entErr = `save: ${error.message}`; break; }
+              saved += mapped.length;
+            }
+            more = !reachedOld && !!(j.page_context?.has_more_page);
+            page++;
           }
-          if (mapped.length) {
-            const { error } = await db.from(table).upsert(mapped);   // PK كامل zoho_id
-            if (error) return json({ error: `save ${ent}: ${error.message}` }, 500);
-            saved += mapped.length;
-          }
-          more = !reachedOld && !!(j.page_context?.has_more_page);
-          page++;
-        }
-        await db.from('zoho_sync_state').upsert({
-          entity: ent, last_sync: new Date().toISOString(), last_count: saved, updated_at: new Date().toISOString(),
-        });
-        results[ent] = saved;
+          if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
+          await db.from('zoho_sync_state').upsert({
+            entity: cfg.ent, last_sync: new Date().toISOString(), last_count: saved, updated_at: new Date().toISOString(),
+          });
+          results[cfg.ent] = saved;
+        } catch (e) { results[cfg.ent] = `خطأ: ${String((e as Error).message || e)}`; }
       }
-      return json({ ok: true, ...results });
+      return json({ ok: true, results });
     }
 
     return json({ error: 'unknown action' }, 400);
