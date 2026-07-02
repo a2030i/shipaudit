@@ -113,7 +113,7 @@ export default function InteractionsLog({ customerName, storeId }) {
         }}>
           {openPromise ? (
             <>
-              <Calendar size={16} color={promiseOverdue ? 'var(--red)' : '#F59E0B'}/>
+              <Calendar size={16} color={promiseOverdue ? 'var(--red)' : 'var(--gold)'}/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
                   {promiseOverdue ? 'وعد متأخّر · انقضى تاريخه' : 'وعد بالدفع'}
@@ -273,7 +273,7 @@ export default function InteractionsLog({ customerName, storeId }) {
                       <span style={{
                         fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
                         background: isOverdue ? 'rgba(239,68,68,.14)' : 'rgba(245,158,11,.12)',
-                        color: isOverdue ? 'var(--red)' : '#F59E0B',
+                        color: isOverdue ? 'var(--red)' : 'var(--gold)',
                         fontFamily: 'var(--font-mono)', fontWeight: 700,
                       }}>
                         {isOverdue ? 'متأخّر · ' : 'يستحق · '}{fmtDate(it.due_date)}

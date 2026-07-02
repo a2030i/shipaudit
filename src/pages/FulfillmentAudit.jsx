@@ -135,8 +135,8 @@ export default function FulfillmentAudit({ isActive = true }) {
                   <td data-label="الفترة" style={{ padding: '9px 12px' }}>{v.period || '—'}</td>
                   <td data-label="طلبات" style={{ padding: '9px 12px' }}>{v.order_count}</td>
                   <td data-label="المفوتر" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)' }}>{fmt(v.total_invoiced)}</td>
-                  <td data-label="الفرق" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', color: Math.abs(v.drift || 0) > 0.5 ? '#DC2626' : '#10B981' }}>{fmt(v.drift)}</td>
-                  <td data-label="تكرار" style={{ padding: '9px 12px', color: v.dup_count ? '#DC2626' : 'var(--muted)' }}>{v.dup_count || 0}</td>
+                  <td data-label="الفرق" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', color: Math.abs(v.drift || 0) > 0.5 ? 'var(--red)' : 'var(--green)' }}>{fmt(v.drift)}</td>
+                  <td data-label="تكرار" style={{ padding: '9px 12px', color: v.dup_count ? 'var(--red)' : 'var(--muted)' }}>{v.dup_count || 0}</td>
                   <td style={{ padding: '9px 12px' }}>
                     {can('audits.delete') && <Btn size="sm" variant="danger" icon={<Trash2 size={13}/>} title="حذف"
                       onClick={async () => { if (!confirm(`حذف فاتورة ${v.store_name}؟`)) return; await deleteFulfillmentInvoice(v.id); refresh(); }}/>}
@@ -154,7 +154,7 @@ export default function FulfillmentAudit({ isActive = true }) {
 function AuditResult({ audit, onSave, saving, canSave }) {
   const matched = audit.diff != null && Math.abs(audit.diff) <= 0.5;
   return (
-    <Card style={{ marginBottom: 16, borderRight: `3px solid ${audit.missingContract ? '#F59E0B' : matched ? '#10B981' : '#DC2626'}` }}>
+    <Card style={{ marginBottom: 16, borderRight: `3px solid ${audit.missingContract ? 'var(--gold)' : matched ? 'var(--green)' : 'var(--red)'}` }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 15, fontWeight: 700 }}>{audit.store || 'متجر غير معروف'} · {audit.period || '—'}</div>
@@ -166,16 +166,16 @@ function AuditResult({ audit, onSave, saving, canSave }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginTop: 14 }}>
         <Stat label="الطلبات" value={audit.orders}/>
         <Stat label="سعر الطلب" value={audit.rate != null ? `${fmt(audit.rate)} ر.س` : '—'}/>
-        <Stat label="المتوقّع (+ضريبة)" value={`${fmt(audit.expectedWithVat)} ر.س`} color="#10B981"/>
+        <Stat label="المتوقّع (+ضريبة)" value={`${fmt(audit.expectedWithVat)} ر.س`} color="var(--green)"/>
         <Stat label="المفوتر" value={audit.billed != null ? `${fmt(audit.billed)} ر.س` : '—'}/>
-        <Stat label="الفرق" value={audit.diff != null ? `${fmt(audit.diff)} ر.س` : '—'} color={matched ? '#10B981' : '#DC2626'}/>
-        <Stat label="تكرار" value={audit.dupCount} color={audit.dupCount ? '#DC2626' : undefined}/>
+        <Stat label="الفرق" value={audit.diff != null ? `${fmt(audit.diff)} ر.س` : '—'} color={matched ? 'var(--green)' : 'var(--red)'}/>
+        <Stat label="تكرار" value={audit.dupCount} color={audit.dupCount ? 'var(--red)' : undefined}/>
       </div>
 
       <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
         {matched
-          ? <span style={{ color: '#10B981', fontSize: 13, fontWeight: 600 }}><CheckCircle2 size={14} style={{ verticalAlign: -2 }}/> مطابق — الحساب صحيح</span>
-          : audit.diff != null && <span style={{ color: '#DC2626', fontSize: 13, fontWeight: 600 }}><AlertTriangle size={14} style={{ verticalAlign: -2 }}/> فرق {fmt(audit.diff)} ر.س — راجع</span>}
+          ? <span style={{ color: 'var(--green)', fontSize: 13, fontWeight: 600 }}><CheckCircle2 size={14} style={{ verticalAlign: -2 }}/> مطابق — الحساب صحيح</span>
+          : audit.diff != null && <span style={{ color: 'var(--red)', fontSize: 13, fontWeight: 600 }}><AlertTriangle size={14} style={{ verticalAlign: -2 }}/> فرق {fmt(audit.diff)} ر.س — راجع</span>}
         <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>
           الحالات: {Object.entries(audit.byStatus).map(([k, v]) => `${k}: ${v}`).join(' · ')}
         </span>

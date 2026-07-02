@@ -147,7 +147,7 @@ function QueueTab({ active }) {
                     <td data-label="العميل" style={{ padding: '10px 12px', fontWeight: 600 }}>{r.merchant?.storeName || r.customer_name}</td>
                     <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>
                       {fmt(effectiveDebt(r))}
-                      {walletDebtOf(r) > 0 && <span title="رصيد محفظة سالب (النظام الداخلي)" style={{ color: '#DC2626', fontSize: 10, marginRight: 4 }}>◆</span>}
+                      {walletDebtOf(r) > 0 && <span title="رصيد محفظة سالب (النظام الداخلي)" style={{ color: 'var(--red)', fontSize: 10, marginRight: 4 }}>◆</span>}
                     </td>
                     <td data-label="العمر" style={{ padding: '10px 12px' }}>{r.daysOutstanding || 0} يوم</td>
                     <td data-label="الخطر" style={{ padding: '10px 12px' }}>
@@ -156,7 +156,7 @@ function QueueTab({ active }) {
                     <td data-label="الحالة" style={{ padding: '10px 12px' }}>
                       {r.status && <span style={{ background: `${r.status.color}20`, color: r.status.color, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600 }}>{r.status.label_ar}</span>}
                     </td>
-                    <td data-label="آخر لمسة" style={{ padding: '10px 12px', color: stale > 7 ? '#DC2626' : 'var(--muted)' }}>{stale == null ? '—' : `${stale}ي`}</td>
+                    <td data-label="آخر لمسة" style={{ padding: '10px 12px', color: stale > 7 ? 'var(--red)' : 'var(--muted)' }}>{stale == null ? '—' : `${stale}ي`}</td>
                     <td data-label="الإجراء التالي" style={{ padding: '10px 12px', color: 'var(--muted)' }}>{fmtDate(r.next_action_at)}</td>
                   </tr>
                 );
@@ -206,7 +206,7 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
     <Modal title={customer.merchant?.storeName || name} onClose={onClose} width={640}>
       {/* رأس */}
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 4, fontSize: 13 }}>
-        <Hd label="الدين" value={`${fmt(effectiveDebt(customer))} ر.س`} color="#DC2626"/>
+        <Hd label="الدين" value={`${fmt(effectiveDebt(customer))} ر.س`} color="var(--red)"/>
         <Hd label="العمر" value={`${customer.daysOutstanding || 0} يوم`}/>
         {customer.risk && <Hd label="الخطر" value={`${customer.risk?.level?.label || '—'} (${customer.risk?.score || 0})`} color={customer.risk?.level?.color}/>}
         {customer.merchant?.phone && <Hd label="الجوال" value={<PhoneLink phone={customer.merchant.phone}/>}/>}
@@ -218,14 +218,14 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
           <Hd label="آخر شحنة" value={fmtDate(customer.merchant.lastShipmentAt)}/>
           {customer.merchant.billingType && <Hd label="الدفع" value={customer.merchant.billingType}/>}
           {customer.merchant.platformStatus && <Hd label="المنصّة" value={customer.merchant.platformStatus}
-            color={customer.merchant.platformStatus === 'نشط' ? 'var(--green2)' : '#DC2626'}/>}
+            color={customer.merchant.platformStatus === 'نشط' ? 'var(--green2)' : 'var(--red)'}/>}
           {customer.merchant.walletBalance != null && <Hd label="المحفظة" value={fmt(customer.merchant.walletBalance)}
-            color={Number(customer.merchant.walletBalance) < 0 ? '#DC2626' : undefined}/>}
+            color={Number(customer.merchant.walletBalance) < 0 ? 'var(--red)' : undefined}/>}
         </div>
       )}
       {walletDebtOf(customer) > 0 && (
         <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
-          منها فواتير زوهو <b>{fmt(customer.total)}</b> · محفظة سالبة (النظام الداخلي) <b style={{ color: '#DC2626' }}>{fmt(walletDebtOf(customer))}</b>
+          منها فواتير زوهو <b>{fmt(customer.total)}</b> · محفظة سالبة (النظام الداخلي) <b style={{ color: 'var(--red)' }}>{fmt(walletDebtOf(customer))}</b>
         </div>
       )}
       {/* لماذا هذه الدرجة؟ — computeRisk يرجع الأسباب وكانت تُهمَل */}
@@ -303,7 +303,7 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600 }}>{a.summary || a.kind}{a.disposition ? ` · ${a.disposition}` : ''}</div>
                 {a.body && <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>{a.body}</div>}
-                {a.kind === 'promise' && <div style={{ fontSize: 11.5, color: '#F59E0B', marginTop: 2 }}>وعد {fmt(a.promise_amount)} ر.س — {fmtDate(a.promised_on)} · {a.promise_status}</div>}
+                {a.kind === 'promise' && <div style={{ fontSize: 11.5, color: 'var(--gold)', marginTop: 2 }}>وعد {fmt(a.promise_amount)} ر.س — {fmtDate(a.promised_on)} · {a.promise_status}</div>}
                 {a.kind === 'promise' && a.promise_status === 'open' && can('crm.record_promise') && (
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                     <Btn size="sm" variant="accent" onClick={() => act(() => resolvePromise(a.id, { status: 'kept', keptAmount: a.promise_amount }), 'سُجّل الدفع')}>تم الدفع</Btn>
@@ -415,7 +415,7 @@ function SalesTab({ active }) {
                       {fmtDate(listId === 'signup' ? m.created_at_platform : m.last_shipment_at)}
                     </td>
                     <td data-label="شحناته" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(m.shipment_count)}</td>
-                    <td data-label="المحفظة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: Number(m.wallet_balance) < 0 ? '#DC2626' : 'var(--text2)' }}>
+                    <td data-label="المحفظة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: Number(m.wallet_balance) < 0 ? 'var(--red)' : 'var(--text2)' }}>
                       {fmt(m.wallet_balance)}
                     </td>
                     <td data-label="الدفع" style={{ padding: '10px 12px', fontSize: 12, color: 'var(--muted)' }}>{m.billing_type || '—'}</td>
@@ -621,10 +621,10 @@ function TasksTab({ active }) {
           {tasks.map(t => {
             const overdue = new Date(t.due_at).getTime() < now;
             return (
-              <Card key={t.id} style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderRight: `3px solid ${overdue ? '#DC2626' : '#06B6D4'}` }}>
+              <Card key={t.id} style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderRight: `3px solid ${overdue ? 'var(--red)' : '#06B6D4'}` }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
-                  <div style={{ fontSize: 11.5, color: overdue ? '#DC2626' : 'var(--muted)' }}>{t.entity_ref} · {fmtDate(t.due_at)} {overdue ? '· متأخّر' : ''}</div>
+                  <div style={{ fontSize: 11.5, color: overdue ? 'var(--red)' : 'var(--muted)' }}>{t.entity_ref} · {fmtDate(t.due_at)} {overdue ? '· متأخّر' : ''}</div>
                 </div>
                 {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" onClick={async () => { await completeTask(t.id, user?.id); refresh(); }}>إنهاء</Btn>}
               </Card>
@@ -645,9 +645,9 @@ function BoardTab({ active }) {
   if (!s) return <Pad><Spin/></Pad>;
   const cards = [
     { l: 'لمسات هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
-    { l: 'وعود نشطة', v: s.promisesOpen, c: '#F59E0B' },
-    { l: 'وعود محقّقة', v: s.promisesKept, c: '#10B981' },
-    { l: 'وعود مكسورة', v: s.promisesBroken, c: '#DC2626' },
+    { l: 'وعود نشطة', v: s.promisesOpen, c: 'var(--gold)' },
+    { l: 'وعود محقّقة', v: s.promisesKept, c: 'var(--green)' },
+    { l: 'وعود مكسورة', v: s.promisesBroken, c: 'var(--red)' },
     { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: '#8B5CF6' },
     { l: 'قيمة الـpipeline', v: `${fmt0(s.pipelineValue)} ر.س`, c: '#3B82F6' },
   ];
@@ -728,7 +728,7 @@ function RowEditor({ item, upsert, del, onChange }) {
         style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13 }}/>
       <input type="number" value={v.sort_order} onChange={e => setV({ ...v, sort_order: e.target.value })} title="الترتيب"
         style={{ width: 64, padding: '7px 8px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-mono)' }}/>
-      {item.is_terminal && <span style={{ fontSize: 10, color: '#DC2626' }}>منتهية</span>}
+      {item.is_terminal && <span style={{ fontSize: 10, color: 'var(--red)' }}>منتهية</span>}
       {dirty && <Btn size="sm" variant="accent" disabled={busy} onClick={save}>حفظ</Btn>}
       <Btn size="sm" variant="danger" title="حذف" icon={<Trash2 size={14}/>} onClick={async () => { if (!confirm(`حذف «${item.label_ar}»؟`)) return; try { await del(item.id); toast('حُذف', 'success'); onChange(); } catch (e) { toast(e.message, 'error'); } }}/>
     </div>

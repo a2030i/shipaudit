@@ -178,11 +178,11 @@ export default function Periods({ isActive = true }) {
                   </td>
                   <td data-label="الحالة" style={tdStyle}>
                     {r.status === 'closed' ? (
-                      <span style={statusPill('#DC2626')}>
+                      <span style={statusPill('var(--red)')}>
                         <Lock size={11}/> مقفل
                       </span>
                     ) : (
-                      <span style={statusPill('#10B981')}>
+                      <span style={statusPill('var(--green)')}>
                         <Unlock size={11}/> مفتوح
                       </span>
                     )}
@@ -287,12 +287,12 @@ function ActionDialog({ target, row, onCancel, onConfirm }) {
         {isClose && row && (
           <div style={{
             padding: 12, marginBottom: 14, borderRadius: 10,
-            background: 'color-mix(in srgb, #F59E0B 8%, transparent)',
-            border: '1px solid color-mix(in srgb, #F59E0B 24%, transparent)',
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--gold) 24%, transparent)',
             fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.6,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-              <AlertTriangle size={14} color="#F59E0B"/>
+              <AlertTriangle size={14} color="var(--gold)"/>
               <strong style={{ color: 'var(--text)' }}>سيُقفل عليه ما يلي:</strong>
             </div>
             <ul style={{ margin: 0, paddingInlineStart: 18 }}>

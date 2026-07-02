@@ -282,7 +282,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             width: 56, height: 56, borderRadius: 16,
             background: 'rgba(16,185,129,.18)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#10B981', flexShrink: 0,
+            color: 'var(--green)', flexShrink: 0,
           }}><Layers size={26}/></div>
           <div style={{ minWidth: 0 }}>
             <div style={{
@@ -325,7 +325,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12,
-              background: 'rgba(16,185,129,.10)', color: '#10B981',
+              background: 'rgba(16,185,129,.10)', color: 'var(--green)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}><Banknote size={20}/></div>
             <div>
@@ -355,9 +355,9 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16,
               }}>
-                <BigStat label="شحنة جديدة" value={fmt(codPending.length).replace('.00', '')} color="#10B981"/>
-                <BigStat label="إجمالي المبالغ" value={`${fmt(codTotal)} ر.س`} color="#10B981"/>
-                <BigStat label="شركات الشحن" value={codCarriers} color="#10B981"/>
+                <BigStat label="شحنة جديدة" value={fmt(codPending.length).replace('.00', '')} color="var(--green)"/>
+                <BigStat label="إجمالي المبالغ" value={`${fmt(codTotal)} ر.س`} color="var(--green)"/>
+                <BigStat label="شركات الشحن" value={codCarriers} color="var(--green)"/>
               </div>
               <Btn
                 size="lg"
@@ -512,7 +512,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12,
-              background: 'rgba(245,158,11,.10)', color: '#F59E0B',
+              background: 'rgba(245,158,11,.10)', color: 'var(--gold)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}><Scale size={20}/></div>
             <div>
@@ -542,8 +542,8 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14,
               }}>
-                <BigStat label="مراجعة جاهزة" value={weightPending.length} color="#F59E0B"/>
-                <BigStat label="إجمالي شحنات" value={fmt(weightShipments).replace('.00', '')} color="#F59E0B"/>
+                <BigStat label="مراجعة جاهزة" value={weightPending.length} color="var(--gold)"/>
+                <BigStat label="إجمالي شحنات" value={fmt(weightShipments).replace('.00', '')} color="var(--gold)"/>
               </div>
               <Btn
                 size="lg"

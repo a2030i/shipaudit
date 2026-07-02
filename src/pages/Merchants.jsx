@@ -69,9 +69,9 @@ function Hero({ insights, snapshot }) {
 // ── Insight cards ──────────────────────────────────────────────
 function InsightGrid({ insights }) {
   const cards = [
-    { k:'newLast30',     label:'جدد آخر 30 يوم',   value: insights.newLast30,     icon: TrendingUp,  color:'#10B981' },
+    { k:'newLast30',     label:'جدد آخر 30 يوم',   value: insights.newLast30,     icon: TrendingUp,  color:'var(--green)' },
     { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب funnel' },
-    { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'#F59E0B' },
+    { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'var(--gold)' },
     { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'#7A82C4', hint: 'مرشحون لإعادة الاسترداد' },
     { k:'walletPiles',   label:'محافظ راكدة (+60ي)', value: `${fmtCount(insights.walletPilesUp)} · ${fmt(insights.walletPilesAmount)} ر.س`, icon: Wallet, color:'#F97316', raw: true, hint: 'رصيد دون نشاط' },
     { k:'walletTotal',   label:'إجمالي أرصدة المحافظ', value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'#3B82F6', raw: true },
@@ -117,7 +117,7 @@ function MerchantInsightsPanels({ insights }) {
     }}>
       <MiniMerchantTable
         icon={TrendingUp}
-        accent="#10B981"
+        accent="var(--green)"
         title={`أعلى ${insights.topByVolume?.length || 0} متجراً بالشحنات`}
         sub="فرص نموّ + علاقات استراتيجية"
         rows={insights.topByVolume || []}
@@ -482,8 +482,8 @@ export default function Merchants({ isActive = true }) {
                     const lastDays = daysAgo(m.last_shipment_at);
                     const lastColor =
                       lastDays == null     ? 'var(--muted)' :
-                      lastDays <= 7        ? '#10B981' :
-                      lastDays <= 30       ? '#F59E0B' :
+                      lastDays <= 7        ? 'var(--green)' :
+                      lastDays <= 30       ? 'var(--gold)' :
                       lastDays <= 60       ? '#F97316' :
                                               '#EF4444';
                     return (
@@ -495,14 +495,14 @@ export default function Merchants({ isActive = true }) {
                         </td>
                         <td data-label="نوع الفوترة">
                           {m.billing_type === 'دفع لاحق' ? (
-                            <span style={billingChip('#F59E0B')}>📋 دفع لاحق</span>
+                            <span style={billingChip('var(--gold)')}>📋 دفع لاحق</span>
                           ) : m.billing_type === 'دفع مسبق' ? (
                             <span style={billingChip('#3B82F6')}>💳 دفع مسبق</span>
                           ) : <span style={{ color:'var(--muted)' }}>—</span>}
                         </td>
                         <td data-label="الحالة">
                           {m.status === 'نشط' ? (
-                            <span style={statusChip('#10B981')}>● نشط</span>
+                            <span style={statusChip('var(--green)')}>● نشط</span>
                           ) : (
                             <span style={statusChip('var(--muted)')}>○ غير نشط</span>
                           )}
@@ -614,7 +614,7 @@ function UnmatchedModal({ merchants, userId, onClose, onLinkSaved }) {
         borderRadius:9, fontSize:12, lineHeight:1.7,
         color:'var(--text)',
       }}>
-        <strong style={{ color:'#F59E0B' }}>⚠ هؤلاء العملاء بأسماء لم يستطع الـ auto-linker مطابقتها مع المتاجر.</strong>
+        <strong style={{ color:'var(--gold)' }}>⚠ هؤلاء العملاء بأسماء لم يستطع الـ auto-linker مطابقتها مع المتاجر.</strong>
         <div style={{ color:'var(--muted)', marginTop:3 }}>
           اختر المتجر الصحيح من القائمة (بحث بالاسم أو ID) — الربط اليدوي محمي ولن يُعاد كتابته في الرفعات القادمة.
           أو اضغط "تجاهل" لو العميل لا يطابق أي متجر.
@@ -691,7 +691,7 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
             </span>
           )}
           {row.daysOutstanding > 0 && (
-            <span style={{ color: row.daysOutstanding > 60 ? '#F59E0B' : 'var(--muted)' }}>
+            <span style={{ color: row.daysOutstanding > 60 ? 'var(--gold)' : 'var(--muted)' }}>
               {row.daysOutstanding}ي متأخر
             </span>
           )}

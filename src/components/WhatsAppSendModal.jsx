@@ -75,8 +75,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
         // ── Results view ──
         <div>
           <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
-            <ResultStat label="نجحت" value={results.sent || 0} color="#059669"/>
-            <ResultStat label="فشلت" value={results.failed || 0} color={results.failed ? '#DC2626' : '#6B7280'}/>
+            <ResultStat label="نجحت" value={results.sent || 0} color="var(--green2)"/>
+            <ResultStat label="فشلت" value={results.failed || 0} color={results.failed ? 'var(--red)' : '#6B7280'}/>
             <ResultStat label="الإجمالي" value={results.total || valid.length} color="#3B82F6"/>
           </div>
           {Array.isArray(results.results) && results.results.some(x => !x.success) && (
@@ -84,7 +84,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
               {results.results.filter(x => !x.success).map((x, i) => (
                 <div key={i} style={{ padding: '7px 11px', borderTop: i ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr' }}>{x.to}</span>
-                  <span style={{ color: '#DC2626' }}>{x.error || 'فشل'}</span>
+                  <span style={{ color: 'var(--red)' }}>{x.error || 'فشل'}</span>
                 </div>
               ))}
             </div>
@@ -110,8 +110,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <Btn size="sm" variant="ghost" onClick={doVerify} disabled={verifying}>
               <ShieldCheck size={14}/> {verifying ? 'جارٍ التحقق…' : 'تحقّق من المفتاح'}
             </Btn>
-            {verified === true  && <span style={{ color: '#059669', fontSize: 12 }}><CheckCircle2 size={13}/> المفتاح يعمل</span>}
-            {verified === false && <span style={{ color: '#DC2626', fontSize: 12 }}><X size={13}/> فشل — راجع المفتاح/الخطة</span>}
+            {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/> المفتاح يعمل</span>}
+            {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/> فشل — راجع المفتاح/الخطة</span>}
           </div>
 
           {/* Preview */}
@@ -123,7 +123,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           {overLimit && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: '#DC2626', fontSize: 12, marginBottom: 10 }}>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>
               <AlertTriangle size={15}/> {valid.length} مستلِم — الحد 200 لكل دفعة. صفِّ القائمة أكثر.
             </div>
           )}

@@ -118,7 +118,7 @@ export default function ReportsCenter({ isActive = true }) {
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 26 }}>
         {/* التقرير الشهري */}
-        <ReportCard icon={<CalendarRange size={18}/>} color="#10B981"
+        <ReportCard icon={<CalendarRange size={18}/>} color="var(--green)"
           title="التقرير الشهري للناقلين"
           desc="مفوتر · تحصيل COD · إشعارات · مدفوعات · صافي — لكل ناقل في الشهر المختار">
           <Select value={pMonth} onChange={e => setPMonth(e.target.value)}>
@@ -142,7 +142,7 @@ export default function ReportsCenter({ isActive = true }) {
         </ReportCard>
 
         {/* المطابقة البنكية */}
-        <ReportCard icon={<Landmark size={18}/>} color="#F59E0B"
+        <ReportCard icon={<Landmark size={18}/>} color="var(--gold)"
           title="المطابقة البنكية (بنك × دفتر)"
           desc="3 أوراق: مطابَق · خرج من البنك بلا قيد سداد (الخطر) · قيد بلا أثر بنكي">
           <Select value={pReconMonth} onChange={e => setPReconMonth(e.target.value)}>

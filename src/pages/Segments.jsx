@@ -78,7 +78,7 @@ function statusPillTone(rawStatus, shipDays) {
   const isSuspended = /موقوف|محذوف|إيقاف|stopped|deleted|disabled/i.test(s);
   const isInactive  = /غير\s*نشط|غير\s*مفعّل|غير\s*مفعل|inactive/i.test(s);
   const isActive    = /^نشط$|active|مفعّل/i.test(s);
-  if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: '#DC2626', label: s || 'موقوف' };
+  if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: 'var(--red)', label: s || 'موقوف' };
   if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
   if (isActive) {
     if (shipDays != null && shipDays > 30) return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط — خامل' };
@@ -782,7 +782,7 @@ export default function Segments({ isActive = true }) {
         marginBottom: 18,
       }}>
         <Card>
-          <FacetTitle icon={<Activity size={14}/>} color="#10B981">نشاط الشحن</FacetTitle>
+          <FacetTitle icon={<Activity size={14}/>} color="var(--green)">نشاط الشحن</FacetTitle>
           <NumericFacet
             label="آخر شحنة منذ"
             facetKey="shippedRecency"
@@ -832,7 +832,7 @@ export default function Segments({ isActive = true }) {
         </Card>
 
         <Card>
-          <FacetTitle icon={<Wallet size={14}/>} color="#F59E0B">المال والربط</FacetTitle>
+          <FacetTitle icon={<Wallet size={14}/>} color="var(--gold)">المال والربط</FacetTitle>
           <NumericFacet
             label="المديونية"
             facetKey="debtFilter"
@@ -869,9 +869,9 @@ export default function Segments({ isActive = true }) {
           </div>
           <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
             <Stat label="النتائج"     value={stats.count.toLocaleString('en-US')} color="#0EA5E9"/>
-            <Stat label="بأرقام جوال"  value={stats.withPhone.toLocaleString('en-US')} color="#10B981"/>
+            <Stat label="بأرقام جوال"  value={stats.withPhone.toLocaleString('en-US')} color="var(--green)"/>
             <Stat label="إجمالي الدين" value={fmt(stats.totalDebt)}    color="#EF4444" suffix="ر.س"/>
-            <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? '#DC2626' : '#0EA5E9'} suffix="ر.س"/>
+            <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? 'var(--red)' : '#0EA5E9'} suffix="ر.س"/>
           </div>
           <div style={{ display: 'flex', gap: 8, marginInlineStart: 'auto' }}>
             <Btn size="md" variant="primary" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
@@ -954,7 +954,7 @@ export default function Segments({ isActive = true }) {
                       <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>{r._shipDays == null ? '—' : `قبل ${r._shipDays}ي`}</td>
                       <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>{r._signupDays == null ? '—' : `${r._signupDays}ي`}</td>
                       <td style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>{r._topupDays == null ? '—' : `قبل ${r._topupDays}ي`}</td>
-                      <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.walletBalance < 0 ? '#DC2626' : 'var(--text2)' }}>
+                      <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.walletBalance < 0 ? 'var(--red)' : 'var(--text2)' }}>
                         {fmtMoney(r.walletBalance)}
                       </td>
                       <td style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.debt > 0.5 ? '#EF4444' : 'var(--muted)' }}>
@@ -1206,7 +1206,7 @@ function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete 
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
         title="حذف الشريحة"
         style={iconBtnStyle}
-        onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--red)'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
       >
         <X size={12}/>

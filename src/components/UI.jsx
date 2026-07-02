@@ -24,11 +24,11 @@ const VARIANTS = {
     _hover: { background: '#000', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(0,0,0,.12)' },
   },
   accent: {
-    background: '#10B981',
+    background: 'var(--green)',
     color: '#fff',
     border: '1px solid #10B981',
     boxShadow: '0 1px 2px rgba(16,185,129,.18), inset 0 1px 0 rgba(255,255,255,.16)',
-    _hover: { background: '#059669', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(16,185,129,.28)' },
+    _hover: { background: 'var(--green2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(16,185,129,.28)' },
   },
   navy: {
     background: '#0A0A0B',
@@ -42,17 +42,17 @@ const VARIANTS = {
     color: '#fff',
     border: '1px solid #EF4444',
     boxShadow: '0 1px 2px rgba(239,68,68,.20)',
-    _hover: { background: '#DC2626', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(239,68,68,.32)' },
+    _hover: { background: 'var(--red)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(239,68,68,.32)' },
   },
   success: {
-    background: '#10B981',
+    background: 'var(--green)',
     color: '#fff',
     border: '1px solid #10B981',
     boxShadow: '0 1px 2px rgba(16,185,129,.20)',
-    _hover: { background: '#059669', transform: 'translateY(-1px)' },
+    _hover: { background: 'var(--green2)', transform: 'translateY(-1px)' },
   },
   gold: {
-    background: '#F59E0B',
+    background: 'var(--gold)',
     color: '#fff',
     border: '1px solid #F59E0B',
     boxShadow: '0 1px 2px rgba(245,158,11,.20)',
@@ -298,7 +298,7 @@ export function PageHeader({
 export function PageHero({
   tag, title, subtitle,
   stats = [], actions, variant = 'white',
-  meta, icon, accent = '#10B981',
+  meta, icon, accent = 'var(--green)',
 }) {
   const dark = variant === 'dark';
   return (
@@ -462,7 +462,7 @@ export function StatTile({ label, value, hint, color, big, dark }) {
 export function SpotlightCard({
   tag, title, value, suffix,
   delta, sparkline, side, stats = [],
-  accent = '#10B981',
+  accent = 'var(--green)',
 }) {
   return (
     <div style={{

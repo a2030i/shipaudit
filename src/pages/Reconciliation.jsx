@@ -195,11 +195,11 @@ export default function Reconciliation({ isActive = true }) {
     const matched = Math.abs(zohoGap) <= tolerance;
     let action;
     if (matched) {
-      action = { kind: 'matched', label: 'مطابق', color: '#10B981' };
+      action = { kind: 'matched', label: 'مطابق', color: 'var(--green)' };
     } else if (zohoGap < 0) {
       // Zoho < internal → Zoho is missing entries the internal system has.
       // The platform didn't push these to Zoho yet.
-      action = { kind: 'zoho_missing', label: `أضف ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: '#DC2626' };
+      action = { kind: 'zoho_missing', label: `أضف ${fmtCompact(Math.abs(zohoGap))} في Zoho`, color: 'var(--red)' };
     } else {
       // Zoho > internal → Zoho has an entry the internal system doesn't reflect.
       // Usually a duplicate or unmatched payment in Zoho.
@@ -374,7 +374,7 @@ export default function Reconciliation({ isActive = true }) {
         <UploadCard
           title="Zoho Books"
           subtitle="Customer Balances Summary — Customer Name + Closing Balance"
-          color="#F59E0B"
+          color="var(--gold)"
           icon={<FileSpreadsheet size={18}/>}
           snapshot={latestZoho}
           onUpload={(f) => handleUpload(f, 'zoho')}
@@ -405,13 +405,13 @@ export default function Reconciliation({ isActive = true }) {
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
             <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('en-US')}        color="#0EA5E9"/>
-            <Stat label="مطابق"           value={stats.matched.toLocaleString('en-US')}      color="#10B981" icon={<CheckCircle2 size={14}/>}/>
-            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('en-US')}  color="#DC2626" icon={<AlertTriangle size={14}/>}/>
+            <Stat label="مطابق"           value={stats.matched.toLocaleString('en-US')}      color="var(--green)" icon={<CheckCircle2 size={14}/>}/>
+            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('en-US')}  color="var(--red)" icon={<AlertTriangle size={14}/>}/>
             <Stat label="Zoho زائد"      value={stats.zohoExtra.toLocaleString('en-US')}    color="#F97316"/>
-            <Stat label="مجموع الفروقات" value={fmt(stats.gapTotal)} suffix="ر.س"           color="#DC2626"/>
+            <Stat label="مجموع الفروقات" value={fmt(stats.gapTotal)} suffix="ر.س"           color="var(--red)"/>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
-                <input type="checkbox" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} style={{ accentColor: '#DC2626' }}/>
+                <input type="checkbox" checked={onlyGaps} onChange={e => setOnlyGaps(e.target.checked)} style={{ accentColor: 'var(--red)' }}/>
                 الفروقات فقط
               </label>
               <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 10 }}>قبول فرق حتى:</span>
@@ -441,12 +441,12 @@ export default function Reconciliation({ isActive = true }) {
       {unmatchedWithBalance.length > 0 && (
         <Card style={{
           padding: 0, overflow: 'hidden', marginBottom: 16,
-          border: '1.5px solid color-mix(in srgb, #F59E0B 35%, transparent)',
+          border: '1.5px solid color-mix(in srgb, var(--gold) 35%, transparent)',
         }}>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 10,
             padding: '12px 16px',
-            background: 'color-mix(in srgb, #F59E0B 10%, transparent)',
+            background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
             borderBottom: '1px solid var(--border)',
           }}>
             <Link2 size={15} color="#B45309"/>
@@ -463,7 +463,7 @@ export default function Reconciliation({ isActive = true }) {
               مجموع الأرصدة المخفية:&nbsp;
               <strong style={{
                 fontFamily: 'var(--font-mono)',
-                color: unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0) > 0 ? '#DC2626' : 'var(--muted)',
+                color: unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0) > 0 ? 'var(--red)' : 'var(--muted)',
               }}>
                 {fmt(unmatchedWithBalance.reduce((s, u) => s + Math.abs(u.balance), 0))} ر.س
               </strong>
@@ -492,7 +492,7 @@ export default function Reconciliation({ isActive = true }) {
               {unmatchedWithBalance.map(u => (
                 <tr key={`${u.source}-${u.rawName}`} style={{ borderBottom: '1px solid var(--border)' }}>
                   <td style={{ padding: '10px 12px' }}>
-                    <span style={statusPill(u.source === 'internal' ? '#3B82F6' : '#F59E0B')}>
+                    <span style={statusPill(u.source === 'internal' ? '#3B82F6' : 'var(--gold)')}>
                       {u.source === 'internal' ? 'الداخلي' : 'Zoho'}
                     </span>
                   </td>
@@ -502,7 +502,7 @@ export default function Reconciliation({ isActive = true }) {
                   <td style={{
                     padding: '10px 12px', textAlign: 'left',
                     fontFamily: 'var(--font-mono)', fontWeight: 600,
-                    color: Math.abs(u.balance) > 0.5 ? '#DC2626' : 'var(--muted2)',
+                    color: Math.abs(u.balance) > 0.5 ? 'var(--red)' : 'var(--muted2)',
                   }}>
                     {Math.abs(u.balance) > 0.005 ? fmt(u.balance) : '—'}
                   </td>
@@ -543,7 +543,7 @@ export default function Reconciliation({ isActive = true }) {
               {visible.slice(0, 500).map((r, i) => (
                 <tr key={r.storeId} style={{
                   borderBottom: '1px solid var(--border)',
-                  background: r.matched ? 'transparent' : 'color-mix(in srgb, #DC2626 3%, transparent)',
+                  background: r.matched ? 'transparent' : 'color-mix(in srgb, var(--red) 3%, transparent)',
                 }}>
                   <td data-label="" style={{ padding: '10px 12px', color: 'var(--muted2)', fontSize: 10, fontFamily: 'var(--font-mono)' }}>{i + 1}</td>
                   <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
@@ -557,7 +557,7 @@ export default function Reconciliation({ isActive = true }) {
                   <td data-label="Zoho − الداخلي" style={{
                     padding: '10px 12px', textAlign: 'left',
                     fontFamily: 'var(--font-mono)', fontWeight: 700,
-                    color: r.matched ? 'var(--muted)' : (r.zohoGap < 0 ? '#DC2626' : '#F97316'),
+                    color: r.matched ? 'var(--muted)' : (r.zohoGap < 0 ? 'var(--red)' : '#F97316'),
                   }}>
                     {Math.abs(r.zohoGap) > 0.005 ? (r.zohoGap > 0 ? '+' : '−') + fmt(Math.abs(r.zohoGap)) : '—'}
                   </td>
@@ -598,7 +598,7 @@ export default function Reconciliation({ isActive = true }) {
         <div>
           <strong style={{ color: 'var(--text2)' }}>كيف تعمل المطابقة:</strong>{' '}
           المرجع = النظام الداخلي (ملف الاستحقاق).{' '}
-          <strong style={{ color: '#DC2626' }}>Zoho ناقص</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
+          <strong style={{ color: 'var(--red)' }}>Zoho ناقص</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
           <strong style={{ color: '#F97316' }}>Zoho زائد</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
           الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
@@ -740,7 +740,7 @@ function VendorsTab({ profile }) {
         <UploadCard
           title="Zoho — ملخص أرصدة الموردين"
           subtitle="Reports → الذمم الدائنة → ملخص أرصدة الموردين. Cr = ندفع لهم · Dr = يردّون لنا"
-          color="#F59E0B"
+          color="var(--gold)"
           icon={<FileSpreadsheet size={18}/>}
           snapshot={latestSnap}
           onUpload={handleUpload}
@@ -830,7 +830,7 @@ function VendorsTab({ profile }) {
               <Info size={16} color="#0EA5E9" style={{ flexShrink: 0 }}/>
               <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
                 هذي قائمة الموردين كما يراها Zoho. الاتجاه فقط:&nbsp;
-                <strong style={{ color: '#DC2626' }}>لهم</strong> = ندفع لهم ·&nbsp;
+                <strong style={{ color: 'var(--red)' }}>لهم</strong> = ندفع لهم ·&nbsp;
                 <strong style={{ color: '#047857' }}>لنا</strong> = يردّون لنا ·&nbsp;
                 <strong style={{ color: 'var(--muted)' }}>صفر</strong> = منتهية. لا توجد مقارنة مرجعية لأن نظامنا لا يحتفظ بكشف موردين موازٍ.
               </div>
@@ -841,7 +841,7 @@ function VendorsTab({ profile }) {
           <Card style={{ marginBottom: 14 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
               <Stat label="شركات شحن"        value={stats.total.toLocaleString('en-US')} color="#0EA5E9"/>
-              <Stat label="لهم (ندفع)"       value={stats.we_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.we_owe_sum)})`} color="#DC2626"/>
+              <Stat label="لهم (ندفع)"       value={stats.we_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.we_owe_sum)})`} color="var(--red)"/>
               <Stat label="لنا (يردّون)"     value={stats.they_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.they_owe_sum)})`} color="#047857"/>
               <Stat label="صفر"              value={stats.zero.toLocaleString('en-US')} color="var(--muted)"/>
               <Stat label="مورّدون آخرون"    value={stats.otherCount.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="#8B5CF6"/>
@@ -878,7 +878,7 @@ function VendorsTab({ profile }) {
                         <td style={{
                           padding: '10px 12px', textAlign: 'left',
                           fontFamily: 'var(--font-mono)', fontWeight: 700,
-                          color: isZero ? 'var(--muted2)' : v > 0 ? '#DC2626' : '#047857',
+                          color: isZero ? 'var(--muted2)' : v > 0 ? 'var(--red)' : '#047857',
                         }}>
                           {isZero ? '—' : fmt(Math.abs(v))}
                         </td>
@@ -886,7 +886,7 @@ function VendorsTab({ profile }) {
                           {isZero ? (
                             <span style={statusPill('var(--muted)')}>صفر</span>
                           ) : v > 0 ? (
-                            <span style={statusPill('#DC2626')}>
+                            <span style={statusPill('var(--red)')}>
                               ⬆ لهم {fmtCompact(v)} ر.س
                             </span>
                           ) : (
@@ -943,14 +943,14 @@ function VendorsTab({ profile }) {
                       <td style={{
                         padding: '10px 12px', textAlign: 'left',
                         fontFamily: 'var(--font-mono)', fontWeight: 700,
-                        color: o.balance < 0 ? '#047857' : '#DC2626',
+                        color: o.balance < 0 ? '#047857' : 'var(--red)',
                       }}>
                         {fmt(Math.abs(o.balance))}
                       </td>
                       <td style={{ padding: '10px 12px', fontSize: 11 }}>
                         {o.balance > 0
-                          ? <span style={statusPill('#DC2626')}>ندفع لهم</span>
-                          : <span style={statusPill('#10B981')}>يردّون لنا</span>}
+                          ? <span style={statusPill('var(--red)')}>ندفع لهم</span>
+                          : <span style={statusPill('var(--green)')}>يردّون لنا</span>}
                       </td>
                     </tr>
                   ))}
@@ -985,7 +985,7 @@ function UploadCard({ title, subtitle, color, icon, snapshot, onUpload, onDelete
           background: 'var(--surface2)', border: '1px solid var(--border)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <CheckCircle2 size={14} color="#10B981"/>
+            <CheckCircle2 size={14} color="var(--green)"/>
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
                 {snapshot.row_count} {noun} · {snapshot.matched_count} مطابق
@@ -1170,7 +1170,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           padding: 12, marginBottom: 12, borderRadius: 8,
           background: target.source === 'internal'
             ? 'color-mix(in srgb, #3B82F6 8%, transparent)'
-            : 'color-mix(in srgb, #F59E0B 8%, transparent)',
+            : 'color-mix(in srgb, var(--gold) 8%, transparent)',
           border: '1px solid var(--border)',
           fontSize: 12, color: 'var(--text2)', display: 'flex', gap: 12, flexWrap: 'wrap',
         }}>
@@ -1181,7 +1181,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
           {Math.abs(target.balance) > 0.005 && (
             <span>
               <strong style={{ color: 'var(--text)' }}>الرصيد:</strong>{' '}
-              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: target.balance < 0 ? '#DC2626' : 'var(--text2)' }}>
+              <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: target.balance < 0 ? 'var(--red)' : 'var(--text2)' }}>
                 {fmt(target.balance)} ر.س
               </span>
             </span>
@@ -1211,7 +1211,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                   }}
                     onMouseEnter={(e) => {
                       e.currentTarget.style.background = 'rgba(16,185,129,.12)';
-                      e.currentTarget.style.borderColor = '#10B981';
+                      e.currentTarget.style.borderColor = 'var(--green)';
                       e.currentTarget.style.color = '#047857';
                     }}
                     onMouseLeave={(e) => {
@@ -1303,7 +1303,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                   display: 'flex', alignItems: 'center', gap: 12,
                   transition: 'background .12s',
                 }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, #10B981 8%, transparent)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--green) 8%, transparent)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1326,7 +1326,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     )}
                   </div>
                   <span style={{
-                    fontSize: 11, color: '#10B981', fontWeight: 700,
+                    fontSize: 11, color: 'var(--green)', fontWeight: 700,
                     fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>
@@ -1345,7 +1345,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                   display: 'flex', alignItems: 'center', gap: 12,
                   transition: 'background .12s',
                 }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, #10B981 8%, transparent)'}
+                  onMouseEnter={(e) => e.currentTarget.style.background = 'color-mix(in srgb, var(--green) 8%, transparent)'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                 >
                   <div style={{ flex: 1, minWidth: 0 }}>
@@ -1366,7 +1366,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
                     </div>
                   </div>
                   <span style={{
-                    fontSize: 11, color: '#10B981', fontWeight: 700,
+                    fontSize: 11, color: 'var(--green)', fontWeight: 700,
                     fontFamily: 'var(--font-sans)', whiteSpace: 'nowrap',
                     display: 'flex', alignItems: 'center', gap: 4,
                   }}>

@@ -73,7 +73,7 @@ function fileTypeChip(filename) {
   const M = {
     xlsx: { label: 'XLSX', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
     xlsm: { label: 'XLSM', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
-    xls:  { label: 'XLS',  color: '#10B981', bg: 'rgba(16,185,129,.10)', Icon: FileSpreadsheet },
+    xls:  { label: 'XLS',  color: 'var(--green)', bg: 'rgba(16,185,129,.10)', Icon: FileSpreadsheet },
     csv:  { label: 'CSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
     tsv:  { label: 'TSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
     pdf:  { label: 'PDF',  color: '#EF4444', bg: 'rgba(239,68,68,.10)',  Icon: FileType2 },
@@ -535,7 +535,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             padding: '3px 9px', borderRadius: 12,
                             background: 'rgba(251,191,36,.14)',
-                            color: '#F59E0B',
+                            color: 'var(--gold)',
                             border: '1px solid rgba(251,191,36,.40)',
                             fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
                             whiteSpace: 'nowrap',

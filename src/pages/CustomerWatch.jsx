@@ -64,7 +64,7 @@ function statusPillTone(rawStatus, shipDays) {
   const isSuspended = /موقوف|محذوف|إيقاف|stopped|deleted|disabled/i.test(s);
   const isInactive  = /غير\s*نشط|غير\s*مفعّل|غير\s*مفعل|inactive/i.test(s);
   const isActive    = /^نشط$|active|مفعّل/i.test(s);
-  if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: '#DC2626', label: s || 'موقوف' };
+  if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: 'var(--red)', label: s || 'موقوف' };
   if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
   if (isActive) {
     if (shipDays != null && shipDays > 30) {
@@ -76,10 +76,10 @@ function statusPillTone(rawStatus, shipDays) {
 }
 
 const ANOMALY_META = {
-  negative_wallet:    { color: '#DC2626', icon: AlertOctagon, label: 'رصيد محفظة سالب',     hint: 'دفع مسبق ورصيده ناقص — خطأ تقني' },
+  negative_wallet:    { color: 'var(--red)', icon: AlertOctagon, label: 'رصيد محفظة سالب',     hint: 'دفع مسبق ورصيده ناقص — خطأ تقني' },
   prepaid_with_debt:  { color: '#EF4444', icon: AlertTriangle, label: 'دفع مسبق وعليه دين', hint: 'يدفع من المحفظة لكن عليه فواتير' },
   active_with_debt:   { color: '#F97316', icon: Flame,         label: 'يشحن الآن وعليه دين', hint: 'آخر شحنة خلال 10 أيام — اتصل اليوم' },
-  postpaid_overdue:   { color: '#F59E0B', icon: Clock,         label: 'متأخر +60 يوم',       hint: 'مرشّح للإيقاف بعد تنبيه' },
+  postpaid_overdue:   { color: 'var(--gold)', icon: Clock,         label: 'متأخر +60 يوم',       hint: 'مرشّح للإيقاف بعد تنبيه' },
   inactive_with_debt: { color: '#7A82C4', icon: Moon,          label: 'موقوف وعليه دين',     hint: 'حصّل قبل الإغلاق النهائي' },
 };
 
@@ -170,7 +170,7 @@ export default function CustomerWatch({ isActive = true }) {
     return {
       labels: data.monthsSeries.map(m => m.label),
       series: [
-        { data: data.monthsSeries.map(m => m.value), color: '#10B981', label: 'مبلغ الفواتير' },
+        { data: data.monthsSeries.map(m => m.value), color: 'var(--green)', label: 'مبلغ الفواتير' },
       ],
     };
   }, [data]);
@@ -226,7 +226,7 @@ export default function CustomerWatch({ isActive = true }) {
             title="إجمالي ما تم إصداره من فواتير هذا الشهر"
             value={fmt(t.monthlyInvoiced)}
             suffix="ر.س"
-            accent="#10B981"
+            accent="var(--green)"
             sparkline={sparkline}
             delta={t.monthlyDelta != null ? {
               value: t.monthlyDelta,
@@ -323,7 +323,7 @@ export default function CustomerWatch({ isActive = true }) {
               <SectionTitle
                 tag="TREND · 12 MONTHS"
                 title="تطوّر الفوترة الشهرية"
-                color="#10B981"
+                color="var(--green)"
               />
               <AreaChart series={chartData.series} labels={chartData.labels} height={240}/>
             </Card>
@@ -335,7 +335,7 @@ export default function CustomerWatch({ isActive = true }) {
               <SectionTitle
                 tag="DAILY PRIORITIES"
                 title="اليوم تحتاج"
-                color="#F59E0B"
+                color="var(--gold)"
                 action={
                   <Btn size="sm" variant="ghost" onClick={() => navigate('/receivables')}>
                     كل التنبيهات
@@ -402,12 +402,12 @@ export default function CustomerWatch({ isActive = true }) {
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
             gap: 12, marginBottom: 28,
           }}>
-            <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="#10B981"/>
-            <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="#10B981"/>
+            <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
+            <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
             <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="#3B82F6"/>
             <QuickStat icon={<ZapOff/>}       label="لم يشحن أبداً"        value={fmtCount(t.neverShipped)} hint="تسرّب funnel" color="#EF4444"/>
-            <QuickStat icon={<Wallet/>}       label="أرصدة موجبة"          value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="#10B981"/>
-            <QuickStat icon={<Wallet/>}       label="أرصدة سالبة"          value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="#DC2626"/>
+            <QuickStat icon={<Wallet/>}       label="أرصدة موجبة"          value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
+            <QuickStat icon={<Wallet/>}       label="أرصدة سالبة"          value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
           </div>
 
           {/* ── ANOMALIES — five tiles, click to drill into receivables ── */}
@@ -512,7 +512,7 @@ export default function CustomerWatch({ isActive = true }) {
             />
             <TopList
               icon={<TrendingUp size={14}/>}
-              accent="#10B981"
+              accent="var(--green)"
               title="أنشط المتاجر شحناً"
               sub="الأكثر استخداماً للمنصّة"
               rows={data.top.byShipments}
@@ -552,7 +552,7 @@ export default function CustomerWatch({ isActive = true }) {
             />
             <TopList
               icon={<AlertOctagon size={14}/>}
-              accent="#DC2626"
+              accent="var(--red)"
               title="محافظ بأرصدة سالبة"
               sub="خطأ تقني — يحتاج تحقيق"
               rows={data.top.walletDebtors}
@@ -845,7 +845,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
                     {shipDays != null && (
                       <span title={`آخر شحنة: ${m.lastShipmentAt.slice(0,10)}`}>
                         🚚 <span style={{
-                          color: shipDays <= 10 ? '#10B981' : shipDays <= 30 ? '#F59E0B' : 'var(--muted)',
+                          color: shipDays <= 10 ? 'var(--green)' : shipDays <= 30 ? 'var(--gold)' : 'var(--muted)',
                           fontWeight: 600,
                         }}>{shipDays === 0 ? 'اليوم' : `قبل ${shipDays}ي`}</span>
                       </span>
@@ -853,7 +853,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
                     {topupDays != null && (
                       <span title={`آخر شحن رصيد: ${m.lastTopupAt.slice(0,10)}`}>
                         💰 <span style={{
-                          color: topupDays <= 30 ? '#10B981' : topupDays <= 90 ? '#F59E0B' : 'var(--muted)',
+                          color: topupDays <= 30 ? 'var(--green)' : topupDays <= 90 ? 'var(--gold)' : 'var(--muted)',
                           fontWeight: 600,
                         }}>قبل {topupDays}ي</span>
                       </span>
@@ -862,7 +862,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
                       <span title="رصيد المحفظة الحالي">
                         رصيد المحفظة:{' '}
                         <span style={{
-                          color: Number(m.walletBalance) < 0 ? '#DC2626' : 'var(--text2)',
+                          color: Number(m.walletBalance) < 0 ? 'var(--red)' : 'var(--text2)',
                           fontWeight: 700, fontFamily: 'var(--font-mono)',
                         }}>{fmtCompact(Number(m.walletBalance))}</span>
                       </span>
@@ -1040,10 +1040,10 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
       {/* Status chips */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {m?.billingType && (
-          <Chip color={m.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B'} label={m.billingType}/>
+          <Chip color={m.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)'} label={m.billingType}/>
         )}
         {m?.platformStatus && (
-          <Chip color={m.platformStatus === 'نشط' ? '#10B981' : '#71717A'} label={`المنصّة: ${m.platformStatus}`}/>
+          <Chip color={m.platformStatus === 'نشط' ? 'var(--green)' : '#71717A'} label={`المنصّة: ${m.platformStatus}`}/>
         )}
         {m?.integrationType && (
           <Chip color="#8B5CF6" label={m.integrationType}/>
@@ -1125,8 +1125,8 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
           }}>
             {siblings.map((s, i) => {
               const sm = s.merchant;
-              const billingColor = sm.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B';
-              const statusColor  = sm.platformStatus === 'نشط' ? '#10B981' : '#71717A';
+              const billingColor = sm.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)';
+              const statusColor  = sm.platformStatus === 'نشط' ? 'var(--green)' : '#71717A';
               return (
                 <div
                   key={sm.storeId}

@@ -98,7 +98,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
     );
   }
 
-  const netColor = data.netInHorizon >= 0 ? '#047857' : '#DC2626';
+  const netColor = data.netInHorizon >= 0 ? '#047857' : 'var(--red)';
   const horizonLabel = HORIZON_OPTIONS.find(h => h.days === horizon)?.label || `${horizon} يوم`;
 
   return (
@@ -142,7 +142,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       }}>
         <BigStat
-          color="#10B981"
+          color="var(--green)"
           icon={<ArrowDownCircle size={20}/>}
           label="متوقّع داخل"
           value={fmt(data.inflowTotal)}
@@ -150,7 +150,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
           hint={`من ${data.events.filter(e => e.direction === 'in').length} مهمة تحصيل ${horizonLabel}`}
         />
         <BigStat
-          color="#DC2626"
+          color="var(--red)"
           icon={<ArrowUpCircle size={20}/>}
           label="متوقّع خارج"
           value={fmt(data.outflowTotal)}
@@ -182,7 +182,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
             </div>
             <div style={{ fontSize: 14, color: 'var(--text)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
               مجموع الأرصدة المفتوحة في الفواتير المجدولة ضمن الفترة:&nbsp;
-              <span style={{ color: '#DC2626' }}>{fmt(data.outflowTotal)} ر.س</span>
+              <span style={{ color: 'var(--red)' }}>{fmt(data.outflowTotal)} ر.س</span>
             </div>
           </div>
           <div className="mobile-hide" style={{ width: 1, height: 36, background: 'var(--border)' }}/>
@@ -268,15 +268,15 @@ function ProjectedBalance({ data, horizonLabel }) {
   const proj = data.projectedBalance;
   const low = data.minProjected;
   const risky = (low != null && low < 0) || (proj != null && proj < 0);
-  const projColor = proj >= 0 ? '#047857' : '#DC2626';
+  const projColor = proj >= 0 ? '#047857' : 'var(--red)';
   return (
     <Card style={{
       marginBottom: 18, padding: 18,
-      background: risky ? 'color-mix(in srgb, #DC2626 6%, transparent)' : 'color-mix(in srgb, #047857 5%, transparent)',
-      border: `1px solid color-mix(in srgb, ${risky ? '#DC2626' : '#047857'} 20%, transparent)`,
+      background: risky ? 'color-mix(in srgb, var(--red) 6%, transparent)' : 'color-mix(in srgb, #047857 5%, transparent)',
+      border: `1px solid color-mix(in srgb, ${risky ? 'var(--red)' : '#047857'} 20%, transparent)`,
     }}>
       <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Banknote size={20} color={risky ? '#DC2626' : '#047857'}/>
+        <Banknote size={20} color={risky ? 'var(--red)' : '#047857'}/>
         <div style={{ minWidth: 150 }}>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>الرصيد البنكي الآن</div>
           <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmt(cur)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span></div>
@@ -289,7 +289,7 @@ function ProjectedBalance({ data, horizonLabel }) {
           </div>
         </div>
         {risky && (
-          <div style={{ flex: 1, minWidth: 200, display: 'flex', gap: 8, alignItems: 'center', color: '#DC2626', fontSize: 12.5, fontWeight: 600 }}>
+          <div style={{ flex: 1, minWidth: 200, display: 'flex', gap: 8, alignItems: 'center', color: 'var(--red)', fontSize: 12.5, fontWeight: 600 }}>
             <AlertTriangle size={16}/>
             تنبيه سيولة: أدنى رصيد متوقّع {fmt(low)} ر.س — قد تحتاج تأخير دفعات أو تسريع تحصيل.
           </div>
@@ -331,8 +331,8 @@ function CashflowChart({ dailyFlow, bankBalance }) {
           const outH = (d.outflow / span) * innerH;
           return (
             <g key={d.date}>
-              {d.inflow > 0 && <rect x={cx - barW - 1} y={zeroY - inH} width={barW} height={inH} fill="#10B981" opacity="0.55" rx="1.5"/>}
-              {d.outflow > 0 && <rect x={cx + 1} y={zeroY} width={barW} height={outH} fill="#DC2626" opacity="0.5" rx="1.5"/>}
+              {d.inflow > 0 && <rect x={cx - barW - 1} y={zeroY - inH} width={barW} height={inH} fill="var(--green)" opacity="0.55" rx="1.5"/>}
+              {d.outflow > 0 && <rect x={cx + 1} y={zeroY} width={barW} height={outH} fill="var(--red)" opacity="0.5" rx="1.5"/>}
               <text x={cx} y={H - 6} textAnchor="middle" fontSize="9" fill="var(--muted)" fontFamily="var(--font-mono)">{fmtDay(d.date)}</text>
             </g>
           );
@@ -390,18 +390,18 @@ function DateGroup({ dateKey, events }) {
         display: 'flex', alignItems: 'center', gap: 10,
         padding: '12px 16px',
         background: overdueCount > 0
-          ? 'color-mix(in srgb, #DC2626 6%, var(--surface2))'
+          ? 'color-mix(in srgb, var(--red) 6%, var(--surface2))'
           : 'var(--surface2)',
         borderBottom: '1px solid var(--border)',
       }}>
-        <Calendar size={14} color={overdueCount > 0 ? '#DC2626' : 'var(--muted)'}/>
+        <Calendar size={14} color={overdueCount > 0 ? 'var(--red)' : 'var(--muted)'}/>
         <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
           {dateLabel}
         </span>
         {overdueCount > 0 && (
           <span style={{
             fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-            background: 'rgba(220,38,38,.14)', color: '#DC2626',
+            background: 'rgba(220,38,38,.14)', color: 'var(--red)',
           }}>
             {overdueCount} متأخّر
           </span>
@@ -419,7 +419,7 @@ function DateGroup({ dateKey, events }) {
 
 function EventRow({ e, last }) {
   const directionColor = e.direction === 'in'  ? '#047857'
-                       : e.direction === 'out' ? '#DC2626'
+                       : e.direction === 'out' ? 'var(--red)'
                        : 'var(--muted)';
   const sign = e.direction === 'in' ? '+' : e.direction === 'out' ? '−' : '';
   return (
@@ -460,7 +460,7 @@ function EventRow({ e, last }) {
         )}
       </div>
       {e.isOverdue && (
-        <AlertTriangle size={14} color="#DC2626"/>
+        <AlertTriangle size={14} color="var(--red)"/>
       )}
     </div>
   );

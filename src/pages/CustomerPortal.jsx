@@ -303,7 +303,7 @@ export default function CustomerPortal() {
         boxShadow: '0 4px 12px rgba(0,0,0,.08)',
       }}>
         <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <LamhaLogo height={24} color="#fff" accent="#10B981"/>
+          <LamhaLogo height={24} color="#fff" accent="var(--green)"/>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
             CUSTOMER PORTAL
           </span>
@@ -322,7 +322,7 @@ export default function CustomerPortal() {
               {stages.map((s, i) => (
                 <div key={s} style={{
                   width: 10, height: 10, borderRadius: '50%',
-                  background: i <= idx ? '#10B981' : '#E4E4E7',
+                  background: i <= idx ? 'var(--green)' : '#E4E4E7',
                   transition: 'background .2s',
                 }}/>
               ))}
@@ -341,7 +341,7 @@ export default function CustomerPortal() {
               width: 56, height: 56, borderRadius: 16, margin: '0 auto 18px',
               background: 'rgba(16,185,129,.10)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#10B981',
+              color: 'var(--green)',
             }}><Phone size={26}/></div>
             <h1 style={{ fontSize: 24, fontWeight: 800, color: '#18181B', margin: 0, letterSpacing: -0.5 }}>
               بوابة سداد فواتير الشحن
@@ -370,7 +370,7 @@ export default function CustomerPortal() {
                 disabled={loading}
                 style={{
                   padding: '14px 22px', borderRadius: 12,
-                  background: '#10B981', color: '#fff', border: 'none',
+                  background: 'var(--green)', color: '#fff', border: 'none',
                   fontSize: 14.5, fontWeight: 600, cursor: loading ? 'wait' : 'pointer',
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   boxShadow: '0 1px 2px rgba(16,185,129,.22)',
@@ -429,8 +429,8 @@ export default function CustomerPortal() {
                     {multiMode && (
                       <div style={{
                         width: 22, height: 22, borderRadius: 6,
-                        background: checked ? '#10B981' : '#fff',
-                        border: `2px solid ${checked ? '#10B981' : '#D4D4D8'}`,
+                        background: checked ? 'var(--green)' : '#fff',
+                        border: `2px solid ${checked ? 'var(--green)' : '#D4D4D8'}`,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
                         color: '#fff', fontWeight: 700, fontSize: 14,
                         transition: 'all .15s', flexShrink: 0,
@@ -440,7 +440,7 @@ export default function CustomerPortal() {
                     )}
                     <div style={{
                       width: 44, height: 44, borderRadius: 12,
-                      background: 'rgba(16,185,129,.10)', color: '#10B981',
+                      background: 'rgba(16,185,129,.10)', color: 'var(--green)',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}><ShoppingBag size={20}/></div>
                     <div style={{ minWidth: 0 }}>
@@ -482,7 +482,7 @@ export default function CustomerPortal() {
                   onClick={() => { setPayMode('full'); setPartialAmount(''); setStep('invoices'); }}
                   style={{
                     padding: '14px 24px', borderRadius: 12,
-                    background: '#10B981', color: '#fff', border: 'none',
+                    background: 'var(--green)', color: '#fff', border: 'none',
                     fontSize: 14.5, fontWeight: 700, cursor: 'pointer',
                     fontFamily: 'inherit',
                   }}
@@ -510,7 +510,7 @@ export default function CustomerPortal() {
               <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                 <div style={{
                   width: 44, height: 44, borderRadius: 12,
-                  background: 'rgba(16,185,129,.10)', color: '#10B981',
+                  background: 'rgba(16,185,129,.10)', color: 'var(--green)',
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
                 }}><Building2 size={20}/></div>
                 <div style={{ minWidth: 0, flex: 1 }}>
@@ -557,7 +557,7 @@ export default function CustomerPortal() {
                         borderTop: si > 0 ? '1px solid #F4F4F5' : 'none',
                         display: 'flex', alignItems: 'center', gap: 8,
                       }}>
-                        <ShoppingBag size={13} color="#10B981"/>
+                        <ShoppingBag size={13} color="var(--green)"/>
                         {s.store_name}
                         <span style={{ color: '#A1A1AA', fontWeight: 500, marginInlineStart: 6 }}>
                           · {(s.invoices || []).length} فاتورة
@@ -601,7 +601,7 @@ export default function CustomerPortal() {
                   onClick={() => setPayMode('full')}
                   style={{
                     padding: '14px 14px', borderRadius: 12, textAlign: 'center',
-                    border: `2px solid ${payMode === 'full' ? '#10B981' : '#E4E4E7'}`,
+                    border: `2px solid ${payMode === 'full' ? 'var(--green)' : '#E4E4E7'}`,
                     background: payMode === 'full' ? 'rgba(16,185,129,.06)' : '#fff',
                     cursor: 'pointer', fontFamily: 'inherit',
                   }}
@@ -609,7 +609,7 @@ export default function CustomerPortal() {
                   <div style={{ fontSize: 12, color: '#71717A', fontWeight: 600, marginBottom: 4 }}>
                     سداد الكل
                   </div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: payMode === 'full' ? '#10B981' : '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: payMode === 'full' ? 'var(--green)' : '#18181B', fontFamily: 'var(--font-mono)', letterSpacing: -0.3 }}>
                     {fmt(selectedTotalDue)} <span style={{ fontSize: 11, color: '#A1A1AA' }}>ر.س</span>
                   </div>
                 </button>
@@ -617,7 +617,7 @@ export default function CustomerPortal() {
                   onClick={() => setPayMode('partial')}
                   style={{
                     padding: '12px 14px', borderRadius: 12, textAlign: 'center',
-                    border: `2px solid ${payMode === 'partial' ? '#10B981' : '#E4E4E7'}`,
+                    border: `2px solid ${payMode === 'partial' ? 'var(--green)' : '#E4E4E7'}`,
                     background: payMode === 'partial' ? 'rgba(16,185,129,.06)' : '#fff',
                     cursor: 'pointer', fontFamily: 'inherit',
                   }}
@@ -661,7 +661,7 @@ export default function CustomerPortal() {
                   disabled={submitting || paymentAmount <= 0}
                   style={{
                     padding: '16px', borderRadius: 14,
-                    background: '#10B981', color: '#fff', border: 'none',
+                    background: 'var(--green)', color: '#fff', border: 'none',
                     fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
                     fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
                     alignItems: 'center', gap: 4,
@@ -728,7 +728,7 @@ export default function CustomerPortal() {
               width: 72, height: 72, borderRadius: 24, margin: '0 auto 22px',
               background: 'rgba(16,185,129,.12)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
-              color: '#10B981',
+              color: 'var(--green)',
             }}><CheckCircle2 size={36}/></div>
             <h1 style={{ fontSize: 22, fontWeight: 800, color: '#18181B', margin: 0, letterSpacing: -0.4 }}>
               تم استلام طلبك بنجاح
@@ -744,7 +744,7 @@ export default function CustomerPortal() {
               <div style={{ fontSize: 13, color: '#3F3F46' }}>
                 {submitResult.store_name}
               </div>
-              <div style={{ fontSize: 22, fontWeight: 700, color: '#10B981', fontFamily: 'var(--font-mono)', marginTop: 4, letterSpacing: -0.4 }}>
+              <div style={{ fontSize: 22, fontWeight: 700, color: 'var(--green)', fontFamily: 'var(--font-mono)', marginTop: 4, letterSpacing: -0.4 }}>
                 {fmt(submitResult.amount_total)} <span style={{ fontSize: 13, color: '#71717A', fontWeight: 500 }}>ر.س</span>
               </div>
               <div style={{ fontSize: 12, color: '#71717A', marginTop: 2 }}>
@@ -815,9 +815,9 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
       <button
         onClick={() => copyToClipboard(value, copyKey)}
         style={{
-          background: copied === copyKey ? '#10B981' : '#fff',
+          background: copied === copyKey ? 'var(--green)' : '#fff',
           color: copied === copyKey ? '#fff' : '#3F3F46',
-          border: `1px solid ${copied === copyKey ? '#10B981' : '#E4E4E7'}`,
+          border: `1px solid ${copied === copyKey ? 'var(--green)' : '#E4E4E7'}`,
           padding: '6px 12px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
           cursor: 'pointer', fontFamily: 'inherit', transition: 'all .15s',
         }}
@@ -881,7 +881,7 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
               background: 'rgba(16,185,129,.08)', border: '1px solid rgba(16,185,129,.28)',
               display: 'flex', alignItems: 'center', gap: 12,
             }}>
-              <CheckCircle2 size={20} color="#10B981"/>
+              <CheckCircle2 size={20} color="var(--green)"/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 600, color: '#18181B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {file.name}
@@ -900,7 +900,7 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
               onFile={setFile}
               accept=".jpg,.jpeg,.png,.webp,.pdf"
               title="ارفع إيصال التحويل"
-              hint={<>صورة أو PDF · حتى 10 ميجا<br/>اسحب الملف أو <span style={{ color: '#10B981', fontWeight: 600 }}>اضغط للاختيار</span></>}
+              hint={<>صورة أو PDF · حتى 10 ميجا<br/>اسحب الملف أو <span style={{ color: 'var(--green)', fontWeight: 600 }}>اضغط للاختيار</span></>}
             />
           )}
         </div>
@@ -911,7 +911,7 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
           disabled={submitting || !file}
           style={{
             width: '100%', padding: '14px', borderRadius: 12,
-            background: !file ? '#E4E4E7' : '#10B981',
+            background: !file ? '#E4E4E7' : 'var(--green)',
             color: !file ? '#A1A1AA' : '#fff', border: 'none',
             fontSize: 14.5, fontWeight: 700, cursor: (!file || submitting) ? 'not-allowed' : 'pointer',
             fontFamily: 'inherit', display: 'inline-flex',
@@ -989,13 +989,13 @@ function MoyasarStep({ request, publishableKey, onPaid, onSkip }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 14 }}>
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: 'rgba(16,185,129,.10)', color: '#10B981',
+            background: 'rgba(16,185,129,.10)', color: 'var(--green)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}><CreditCard size={20}/></div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: '#18181B' }}>الدفع الإلكتروني</div>
             <div style={{ fontSize: 12, color: '#71717A', marginTop: 2 }}>
-              {request.invoice_count} فاتورة · إجمالي <strong style={{ color: '#10B981', fontFamily: 'var(--font-mono)' }}>{fmt(request.amount_total)}</strong> ر.س
+              {request.invoice_count} فاتورة · إجمالي <strong style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(request.amount_total)}</strong> ر.س
             </div>
           </div>
         </div>
@@ -1006,7 +1006,7 @@ function MoyasarStep({ request, publishableKey, onPaid, onSkip }) {
           background: 'rgba(16,185,129,.06)', borderRadius: 10,
           fontSize: 11.5, color: '#3F3F46',
         }}>
-          <ShieldCheck size={14} color="#10B981"/>
+          <ShieldCheck size={14} color="var(--green)"/>
           الدفع مؤمَّن عبر Moyasar — يدعم mada و Apple Pay و Visa و Mastercard
         </div>
 

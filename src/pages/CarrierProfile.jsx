@@ -415,9 +415,9 @@ function AuditsList({ audits, onOpen }) {
     <div style={{ display: 'grid', gap: 8 }}>
       {audits.slice(0, 8).map(a => {
         const drift = Math.abs(Number(a.drift_pre_tax) || 0);
-        const driftColor = drift < 0.50 ? 'var(--accent)' : drift < 5 ? '#F59E0B' : 'var(--red)';
+        const driftColor = drift < 0.50 ? 'var(--accent)' : drift < 5 ? 'var(--gold)' : 'var(--red)';
         const stChip = {
-          pending:  { color: '#F59E0B', label: 'قيد الانتظار' },
+          pending:  { color: 'var(--gold)', label: 'قيد الانتظار' },
           draft:    { color: 'var(--muted)', label: 'مسودة' },
           approved: { color: 'var(--accent)', label: 'معتمدة' },
           rejected: { color: 'var(--red)', label: 'مرفوضة' },
@@ -660,7 +660,7 @@ export default function CarrierProfile() {
           label="COD متبقّي من الناقل"
           value={`${fmt(summary.codOutstanding)} ر.س`}
           sub={`${summary.codOutCount} متوقّعة − ${summary.codInCount} مستلَمة`}
-          color={summary.codOutstanding > 0 ? '#F59E0B' : 'var(--muted)'}
+          color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--muted)'}
         />
         <StatCard
           icon={Building2}
@@ -680,7 +680,7 @@ export default function CarrierProfile() {
           label="ملفات Webhook"
           value={summary.webhooks}
           sub={summary.webhookPending > 0 ? `${summary.webhookPending} بانتظار` : 'كلها معالَجة'}
-          color={summary.webhookPending > 0 ? '#F59E0B' : 'var(--muted)'}
+          color={summary.webhookPending > 0 ? 'var(--gold)' : 'var(--muted)'}
         />
         <StatCard
           icon={CheckCircle2}
@@ -699,7 +699,7 @@ export default function CarrierProfile() {
           <SectionCard
             title="آخر المراجعات"
             action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate('/audits')}>كل المراجعات</Btn>}
-            accent="#F59E0B"
+            accent="var(--gold)"
           >
             <AuditsList audits={audits} onOpen={() => navigate('/audits')}/>
           </SectionCard>

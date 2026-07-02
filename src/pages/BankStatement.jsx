@@ -395,7 +395,7 @@ export default function BankStatement() {
                     {openingBalance != null ? fmtMoney(openingBalance) : '—'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
                   </div>
                   {prevClosing && continuityGap != null ? (
-                    <div style={{ fontSize: 10.5, marginTop: 3, fontWeight: 700, color: Math.abs(continuityGap) <= 0.01 ? '#10B981' : '#DC2626' }}>
+                    <div style={{ fontSize: 10.5, marginTop: 3, fontWeight: 700, color: Math.abs(continuityGap) <= 0.01 ? 'var(--green)' : 'var(--red)' }}>
                       {Math.abs(continuityGap) <= 0.01 ? '✓ مطابق للكشف السابق' : `⚠️ فجوة ${fmtMoney(continuityGap)} عن السابق`}
                     </div>
                   ) : result.summary?.periodFrom ? (
@@ -430,9 +430,9 @@ export default function BankStatement() {
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
                 {reconcile.allOk
-                  ? <CheckCircle2 size={17} color="#10B981"/>
-                  : <AlertCircle size={17} color="#DC2626"/>}
-                <div style={{ fontWeight: 700, fontSize: 13, color: reconcile.allOk ? '#10B981' : '#DC2626' }}>
+                  ? <CheckCircle2 size={17} color="var(--green)"/>
+                  : <AlertCircle size={17} color="var(--red)"/>}
+                <div style={{ fontWeight: 700, fontSize: 13, color: reconcile.allOk ? 'var(--green)' : 'var(--red)' }}>
                   {reconcile.allOk
                     ? '✓ العمليات المستخرَجة مطابقة تماماً لإجماليات البنك'
                     : '⚠️ فرق بين عملياتنا وإجماليات البنك — قد تكون هناك عمليات ناقصة'}
@@ -454,7 +454,7 @@ export default function BankStatement() {
                         {c.money ? fmtMoney(c.ours) : c.ours}
                       </span>
                       {c.ok
-                        ? <CheckCircle2 size={13} color="#10B981" style={{ marginRight: 5, verticalAlign: 'middle' }}/>
+                        ? <CheckCircle2 size={13} color="var(--green)" style={{ marginRight: 5, verticalAlign: 'middle' }}/>
                         : <span style={{ fontSize: 10, color: 'var(--red)', marginRight: 5 }}>
                             ≠ بنك {c.money ? fmtMoney(c.bank) : c.bank}
                           </span>}
