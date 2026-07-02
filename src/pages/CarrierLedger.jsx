@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, RefreshCw, Link2, FileText, Upload } from 'lucide-react';
+import { Search, RefreshCw, Link2, FileText, Upload, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
@@ -619,7 +619,21 @@ export default function CarrierLedger({ isActive = true }) {
             </select>
           )}
         </div>
-        <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {/* كشف حساب رسمي (Excel منسّق برصيد جارٍ) — مستند النزاع/المطالبة */}
+          {carrier && (
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={async () => {
+              try {
+                const { exportCarrierSOA } = await import('../lib/carrierSoaExport.js');
+                const r = await exportCarrierSOA({ carrierId: carrier, carrierName: currentCarrierName });
+                toast(`صدر كشف الحساب — ${r.rowCount} حركة · الرصيد ${Number(r.balance).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س`, 'success');
+              } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+            }}>
+              كشف حساب رسمي
+            </Btn>
+          )}
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+        </div>
       </div>
 
       {/* Balance summary */}
