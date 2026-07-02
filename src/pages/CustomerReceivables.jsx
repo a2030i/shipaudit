@@ -111,8 +111,8 @@ function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
 // ── Aging cards ────────────────────────────────────────────────
 function AgingGrid({ aging, total }) {
   const cells = [
-    { key: 'd0_30',    label: '0–30 يوم',  amount: aging.d0_30,    color: '#10B981' },
-    { key: 'd31_60',   label: '31–60 يوم', amount: aging.d31_60,   color: '#F59E0B' },
+    { key: 'd0_30',    label: '0–30 يوم',  amount: aging.d0_30,    color: 'var(--green)' },
+    { key: 'd31_60',   label: '31–60 يوم', amount: aging.d31_60,   color: 'var(--gold)' },
     { key: 'd61_90',   label: '61–90 يوم', amount: aging.d61_90,   color: '#F97316' },
     { key: 'd90_plus', label: '+90 يوم',   amount: aging.d90_plus, color: '#EF4444' },
   ];
@@ -225,7 +225,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                 <span style={{
                   fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
                   background: m.billingType === 'دفع مسبق' ? 'rgba(59,130,246,.14)' : 'rgba(245,158,11,.14)',
-                  color: m.billingType === 'دفع مسبق' ? '#3B82F6' : '#F59E0B',
+                  color: m.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)',
                   fontWeight: 600,
                 }}>{m.billingType}</span>
               )}
@@ -233,7 +233,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                 <span style={{
                   fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
                   background: m.platformStatus === 'نشط' ? 'rgba(16,185,129,.14)' : 'rgba(113,113,122,.14)',
-                  color: m.platformStatus === 'نشط' ? '#10B981' : 'var(--muted)',
+                  color: m.platformStatus === 'نشط' ? 'var(--green)' : 'var(--muted)',
                   fontWeight: 600,
                 }}>{m.platformStatus}</span>
               )}
@@ -282,8 +282,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
           }}>
             {siblings.map((s, i) => {
               const sm = s.merchant;
-              const billingColor = sm.billing_type === 'دفع مسبق' ? '#3B82F6' : '#F59E0B';
-              const statusColor  = sm.status === 'نشط' ? '#10B981' : '#71717A';
+              const billingColor = sm.billing_type === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)';
+              const statusColor  = sm.status === 'نشط' ? 'var(--green)' : '#71717A';
               return (
                 <div
                   key={sm.store_id}
@@ -369,8 +369,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                   days == null ? 'var(--muted)' :
                   days > 90    ? '#EF4444' :   // red — critically overdue
                   days > 60    ? '#F97316' :   // orange — chase
-                  days > 30    ? '#F59E0B' :   // yellow — past due
-                                 '#10B981';    // green — current
+                  days > 30    ? 'var(--gold)' :   // yellow — past due
+                                 'var(--green)';    // green — current
                 return (
                   <tr key={inv.id}>
                     <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{fmtDate(inv.date)}</td>
@@ -1368,14 +1368,14 @@ export default function CustomerReceivables({ isActive = true }) {
                   display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 240,
                   textAlign: 'right', padding: '12px 16px',
                   borderRadius: 12, cursor: 'pointer',
-                  border: `1.5px solid ${stopOnly ? '#DC2626' : 'rgba(220,38,38,.35)'}`,
+                  border: `1.5px solid ${stopOnly ? 'var(--red)' : 'rgba(220,38,38,.35)'}`,
                   background: stopOnly ? 'rgba(220,38,38,.12)' : 'rgba(220,38,38,.06)',
                 }}
                 title="عملاء نشطون بدفع لاحق ودينهم متأخّر/تجاوز الحد — أوقفهم قبل ما يكبر الدين"
               >
                 <span style={{ fontSize: 22 }}>🛑</span>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#DC2626' }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: 'var(--red)' }}>
                     يُوقَف الآن — {stopNow.length} عميل نشط يتراكم دينه
                   </div>
                   <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
@@ -1384,8 +1384,8 @@ export default function CustomerReceivables({ isActive = true }) {
                 </div>
                 <span style={{
                   fontSize: 11.5, fontWeight: 700, padding: '5px 12px', borderRadius: 999,
-                  background: stopOnly ? '#DC2626' : 'rgba(220,38,38,.15)',
-                  color: stopOnly ? '#fff' : '#DC2626', whiteSpace: 'nowrap',
+                  background: stopOnly ? 'var(--red)' : 'rgba(220,38,38,.15)',
+                  color: stopOnly ? '#fff' : 'var(--red)', whiteSpace: 'nowrap',
                 }}>
                   {stopOnly ? '✓ معروضون' : 'اعرضهم'}
                 </span>
@@ -1497,8 +1497,8 @@ export default function CustomerReceivables({ isActive = true }) {
               </div>
               <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
                 {[
-                  { k: 'd0_30',    l: '0–30',  c: '#10B981' },
-                  { k: 'd31_60',   l: '31–60', c: '#F59E0B' },
+                  { k: 'd0_30',    l: '0–30',  c: 'var(--green)' },
+                  { k: 'd31_60',   l: '31–60', c: 'var(--gold)' },
                   { k: 'd61_90',   l: '61–90', c: '#F97316' },
                   { k: 'd90_plus', l: '+90',   c: '#EF4444' },
                 ].map(b => {
@@ -1570,8 +1570,8 @@ export default function CustomerReceivables({ isActive = true }) {
                       c.daysOutstanding == null ? 'var(--muted)'
                       : c.daysOutstanding > 90 ? '#EF4444'
                       : c.daysOutstanding > 60 ? '#F97316'
-                      : c.daysOutstanding > 30 ? '#F59E0B'
-                      : '#10B981';
+                      : c.daysOutstanding > 30 ? 'var(--gold)'
+                      : 'var(--green)';
                     const isExcluded = c.status === 'excluded';
                     const m = c.merchant;
                     // Pick a tinted row background based on anomaly tag.
@@ -1613,7 +1613,7 @@ export default function CustomerReceivables({ isActive = true }) {
                             {m && (
                               <>
                                 {m.billingType === 'دفع لاحق' && (
-                                  <span style={miniChip('#F59E0B')} title="نوع الفوترة">📋 لاحق</span>
+                                  <span style={miniChip('var(--gold)')} title="نوع الفوترة">📋 لاحق</span>
                                 )}
                                 {m.billingType === 'دفع مسبق' && (
                                   <span style={miniChip('#3B82F6')} title="نوع الفوترة">💳 مسبق</span>
@@ -1826,10 +1826,10 @@ function miniChip(color) {
 }
 
 const ANOMALY_META = {
-  negative_wallet:     { color: '#DC2626', label: '💥 رصيد محفظة سالب',       hint: 'متجر دفع مسبق ورصيده ناقص — خطأ تقني، سُمح بشحن على الـ credit بدون رصيد' },
+  negative_wallet:     { color: 'var(--red)', label: '💥 رصيد محفظة سالب',       hint: 'متجر دفع مسبق ورصيده ناقص — خطأ تقني، سُمح بشحن على الـ credit بدون رصيد' },
   prepaid_with_debt:   { color: '#EF4444', label: '🚨 دفع مسبق وعليه دين',    hint: 'متجر يدفع من المحفظة لكن عليه فواتير — احتمال خطأ تقني، يحتاج تحقق' },
   active_with_debt:    { color: '#F97316', label: '🔥 يشحن الآن وعليه دين',   hint: 'العميل لا يزال يشحن (آخر شحنة خلال 10 أيام) — اتصل عليه اليوم قبل ما يتراكم أكثر' },
-  postpaid_overdue:    { color: '#F59E0B', label: '⏰ متأخر +60 يوم',          hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
+  postpaid_overdue:    { color: 'var(--gold)', label: '⏰ متأخر +60 يوم',          hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
   inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',        hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
   over_credit_limit:   { color: '#B91C1C', label: '🛑 تجاوز السقف الائتماني',   hint: 'تجاوز رصيد العميل سقفه الائتماني (الافتراضي 10,000 ر.س) — يحتاج وقف الخدمة أو رفع السقف' },
 };

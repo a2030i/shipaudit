@@ -82,7 +82,7 @@ export default function Claims({ carriers = [], isActive }) {
         {[
           { label: 'مكتشفة (بانتظار الإرسال)', v: sum.openTotal,      n: sum.open,      color: '#D97706' },
           { label: 'قيد المطالبة عند الناقل',   v: sum.submittedTotal, n: sum.submitted, color: '#3B82F6' },
-          { label: 'استُردت فعلاً ✓',           v: sum.recoveredTotal, n: sum.recovered, color: '#059669' },
+          { label: 'استُردت فعلاً ✓',           v: sum.recoveredTotal, n: sum.recovered, color: 'var(--green2)' },
         ].map(k => (
           <Card key={k.label} style={{ padding: '13px 16px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 5 }}>{k.label} ({k.n})</div>
@@ -132,7 +132,7 @@ export default function Claims({ carriers = [], isActive }) {
                       <td data-label="المبلغ" style={{ padding: '10px 13px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {fmt(c.amount)}
                         {c.status === 'recovered' && Number(c.recovered_amount) !== Number(c.amount) && (
-                          <div style={{ fontSize: 10.5, color: '#059669' }}>استُرد {fmt(c.recovered_amount)}</div>
+                          <div style={{ fontSize: 10.5, color: 'var(--green2)' }}>استُرد {fmt(c.recovered_amount)}</div>
                         )}
                       </td>
                       <td data-label="الحالة" style={{ padding: '10px 13px' }}>

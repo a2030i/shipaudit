@@ -90,7 +90,7 @@ export default function DecisionsBoard({ isActive = true }) {
       ) : !d ? null : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))', gap: 14 }}>
           <DecisionCard
-            color="#DC2626" icon="🛑" title="يُوقَف الآن" value={d.stopList.length} unit="عميل نشط"
+            color="var(--red)" icon="🛑" title="يُوقَف الآن" value={d.stopList.length} unit="عميل نشط"
             sub={`دينهم ${fmt(d.stopTotal)} ر.س — أوقفهم قبل ما يتراكم`}
             top={d.stopList.slice(0, 3).map(c => `${c.merchant?.storeName || c.name} · ${fmtK(c.total)} ر.س`)}
             cta="فتح المديونيات" onClick={() => navigate('/receivables')}
@@ -117,7 +117,7 @@ export default function DecisionsBoard({ isActive = true }) {
             cta="فتح التنبيهات" onClick={() => navigate('/receivables')}
           />
           <DecisionCard
-            color="#F59E0B" icon="🤝" title="وعود مكسورة" value={d.crm?.brokenCount || 0} unit="وعد"
+            color="var(--gold)" icon="🤝" title="وعود مكسورة" value={d.crm?.brokenCount || 0} unit="وعد"
             sub={`بقيمة ${fmt(d.crm?.brokenTotal || 0)} ر.س — تجاوزت تاريخها بلا دفع`}
             top={(d.crm?.brokenPromises || []).slice(0, 3).map(p => `${p.entity_ref} · ${fmtK(p.promise_amount)} ر.س`)}
             cta="فتح المتابعة" onClick={() => navigate('/crm?tab=queue')}

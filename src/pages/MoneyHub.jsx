@@ -77,7 +77,7 @@ export default function MoneyHub({ isActive = true }) {
               style={{
                 padding: '10px 18px',
                 border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? '#10B981' : 'transparent'}`,
+                borderBottom: `2.5px solid ${active ? 'var(--green)' : 'transparent'}`,
                 color: active ? 'var(--text)' : 'var(--muted)',
                 fontSize: 13, fontWeight: active ? 700 : 500,
                 fontFamily: 'var(--font-sans)', cursor: 'pointer',

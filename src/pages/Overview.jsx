@@ -160,7 +160,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       }}>
         <BigStat
-          color="#DC2626"
+          color="var(--red)"
           icon={<ArrowUpCircle size={18}/>}
           label="إنفاق على الشركات"
           value={fmt(data.thisMonth.carrierSpend)}
@@ -170,7 +170,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={`${data.thisMonth.auditsApproved} مراجعة معتمدة هذا الشهر`}
         />
         <BigStat
-          color="#10B981"
+          color="var(--green)"
           icon={<ArrowDownCircle size={18}/>}
           label="COD مُستلَم"
           value={fmt(data.thisMonth.codReceived)}
@@ -179,7 +179,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint="من ملفات تحصيل الشركات"
         />
         <BigStat
-          color={data.thisMonth.net >= 0 ? 'var(--green2)' : '#DC2626'}
+          color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
           label="صافي الشهر"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
@@ -203,15 +203,15 @@ export default function Overview({ carriers = [], isActive = true }) {
         <Card
           style={{
             marginBottom: 18,
-            background: 'color-mix(in srgb, #F59E0B 8%, transparent)',
-            border: '1px solid color-mix(in srgb, #F59E0B 24%, transparent)',
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--gold) 24%, transparent)',
             cursor: 'pointer',
           }}
           hover
           onClick={() => navigate('/audits')}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <AlertTriangle size={16} color="#F59E0B"/>
+            <AlertTriangle size={16} color="var(--gold)"/>
             <span style={{ fontSize: 13, color: 'var(--text)', flex: 1 }}>
               <strong>{data.thisMonth.auditsPending}</strong> مراجعة بانتظار اعتمادك — افتح القائمة
             </span>
@@ -237,7 +237,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={`متوسط أيام دفع العملاء · ${data.workingCapital.customersWithDebt} عميل عليه دين`}
         />
         <BigStat
-          color="#10B981"
+          color="var(--green)"
           icon={<Calendar size={18}/>}
           label="DPO — أيام السداد"
           value={data.workingCapital.dpo.toFixed(1)}
@@ -245,7 +245,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={`متوسط أيام دفعنا للشركات · ${data.workingCapital.carriersWithDebt} شركة عليها مفتوح`}
         />
         <BigStat
-          color={data.workingCapital.ccc <= 0 ? 'var(--green2)' : data.workingCapital.ccc < 30 ? '#F59E0B' : '#DC2626'}
+          color={data.workingCapital.ccc <= 0 ? 'var(--green2)' : data.workingCapital.ccc < 30 ? 'var(--gold)' : 'var(--red)'}
           icon={<Activity size={18}/>}
           label="CCC — دورة النقد"
           value={(data.workingCapital.ccc >= 0 ? '+' : '−') + Math.abs(data.workingCapital.ccc).toFixed(1)}
@@ -278,7 +278,7 @@ export default function Overview({ carriers = [], isActive = true }) {
                 }}>
                   <span style={{ fontSize: 10, fontWeight: 700, color: 'var(--muted)', minWidth: 18 }}>{i + 1}</span>
                   <span style={{ flex: 1, fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                  <span style={{ fontSize: 11, color: '#DC2626', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
+                  <span style={{ fontSize: 11, color: 'var(--red)', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
                     {c.days}ي
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', minWidth: 70, textAlign: 'left' }}>
@@ -305,7 +305,7 @@ export default function Overview({ carriers = [], isActive = true }) {
                   <span style={{ flex: 1, fontSize: 12, color: 'var(--text)' }}>
                     {carrierNameById.get(c.carrier_id) || c.carrier_id}
                   </span>
-                  <span style={{ fontSize: 11, color: '#10B981', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
+                  <span style={{ fontSize: 11, color: 'var(--green)', fontFamily: 'var(--font-mono)', fontWeight: 700, minWidth: 50, textAlign: 'left' }}>
                     {c.days}ي
                   </span>
                   <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', minWidth: 70, textAlign: 'left' }}>
@@ -375,7 +375,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       </div>
 
       {/* ── Section 3: AP aging ── */}
-      <SectionTitle icon={<Wallet size={14}/>} color="#F59E0B">
+      <SectionTitle icon={<Wallet size={14}/>} color="var(--gold)">
         أعمار الذمم الدائنة — ما علينا للشركات
       </SectionTitle>
       <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
@@ -385,10 +385,10 @@ export default function Overview({ carriers = [], isActive = true }) {
           gridTemplateColumns: 'repeat(5, 1fr)',
           background: 'var(--surface2)', borderBottom: '1px solid var(--border)',
         }}>
-          <AgingCell label="حديث (0–30ي)"  value={data.aging.totals.current} tone="#10B981"/>
-          <AgingCell label="31–60 يوم"      value={data.aging.totals.d31_60}  tone="#F59E0B"/>
+          <AgingCell label="حديث (0–30ي)"  value={data.aging.totals.current} tone="var(--green)"/>
+          <AgingCell label="31–60 يوم"      value={data.aging.totals.d31_60}  tone="var(--gold)"/>
           <AgingCell label="61–90 يوم"      value={data.aging.totals.d61_90}  tone="#F97316"/>
-          <AgingCell label="+90 يوم"        value={data.aging.totals.d90}     tone="#DC2626"/>
+          <AgingCell label="+90 يوم"        value={data.aging.totals.d90}     tone="var(--red)"/>
           <AgingCell label="المجموع"        value={data.aging.totals.total}   tone="var(--text)" bold/>
         </div>
         {/* Per-carrier rows */}
@@ -409,10 +409,10 @@ export default function Overview({ carriers = [], isActive = true }) {
                   {carrierNameById.get(r.carrierId) || r.carrierId}
                   <ChevronLeft size={12} color="var(--muted2)"/>
                 </div>
-                <AmtCell value={r.current} active={r.current > 0.5} tone="#10B981"/>
-                <AmtCell value={r.d31_60}  active={r.d31_60 > 0.5}  tone="#F59E0B"/>
+                <AmtCell value={r.current} active={r.current > 0.5} tone="var(--green)"/>
+                <AmtCell value={r.d31_60}  active={r.d31_60 > 0.5}  tone="var(--gold)"/>
                 <AmtCell value={r.d61_90}  active={r.d61_90 > 0.5}  tone="#F97316"/>
-                <AmtCell value={r.d90}     active={r.d90 > 0.5}     tone="#DC2626"/>
+                <AmtCell value={r.d90}     active={r.d90 > 0.5}     tone="var(--red)"/>
                 <AmtCell value={r.total}   active                  tone="var(--text)" bold/>
               </div>
             ))}
@@ -423,7 +423,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       {/* ── Section 4: Carrier health KPIs ── */}
       {data.carrierHealth.length > 0 && (
         <>
-          <SectionTitle icon={<Shield size={14}/>} color="#10B981">
+          <SectionTitle icon={<Shield size={14}/>} color="var(--green)">
             صحة الناقلين — جودة الفواتير والبيانات
           </SectionTitle>
           <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
@@ -468,13 +468,13 @@ export default function Overview({ carriers = [], isActive = true }) {
                 <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: 'var(--text)' }}>
                   {r.shipmentsTotal > 0 ? (r.totalBilledSum / r.shipmentsTotal).toFixed(2) : '—'}
                 </div>
-                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.driftPct > 1 ? '#DC2626' : 'var(--text2)' }}>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.driftPct > 1 ? 'var(--red)' : 'var(--text2)' }}>
                   {r.driftPct.toFixed(1)}%
                 </div>
-                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.mismatchPct > 1 ? '#F59E0B' : 'var(--text2)' }}>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', fontWeight: 600, color: r.mismatchPct > 1 ? 'var(--gold)' : 'var(--text2)' }}>
                   {r.mismatchPct.toFixed(1)}%
                 </div>
-                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: r.firstPassRate < 80 ? '#F59E0B' : '#10B981' }}>
+                <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: r.firstPassRate < 80 ? 'var(--gold)' : 'var(--green)' }}>
                   {r.firstPassRate.toFixed(0)}%
                 </div>
                 <div style={{ padding: '0 8px', textAlign: 'center', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
@@ -553,7 +553,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
         <span style={{
           width: 32, height: 32, borderRadius: 8,
-          background: 'color-mix(in srgb, #10B981 16%, transparent)',
+          background: 'color-mix(in srgb, var(--green) 16%, transparent)',
           color: 'var(--green2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
         }}><Wallet size={17}/></span>
         <div style={{ flex: 1 }}>
@@ -571,7 +571,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         {/* Bank balance — تلقائي من ختامي آخر كشف مرفوع، واليدوي بينهما */}
         <CashTile
           icon={<Wallet size={18}/>}
-          color={isBankStale ? '#F59E0B' : 'var(--green2)'}
+          color={isBankStale ? 'var(--gold)' : 'var(--green2)'}
           label={cash.bankSource === 'statement' ? 'رصيد البنك (آخر كشف)' : 'رصيد البنك'}
           value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
           unit={cash.bankBalance == null ? '' : 'ر.س'}
@@ -581,7 +581,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         />
         <CashTile
           icon={<ArrowDownCircle size={18}/>}
-          color="#10B981"
+          color="var(--green)"
           label="مستحق لنا (العملاء)"
           value={fmt(cash.totalAR)}
           unit="ر.س"
@@ -589,7 +589,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         />
         <CashTile
           icon={<ArrowUpCircle size={18}/>}
-          color="#DC2626"
+          color="var(--red)"
           label="مستحق علينا (الموردون)"
           value={fmt(cash.totalAP)}
           unit="ر.س"
@@ -598,7 +598,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         {codOutstanding && codOutstanding.total > 0.5 && (
           <CashTile
             icon={<Banknote size={18}/>}
-            color="#F59E0B"
+            color="var(--gold)"
             label="COD لم يُحصَّل بعد"
             value={fmt(codOutstanding.total)}
             unit="ر.س"
@@ -608,7 +608,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         )}
         <CashTile
           icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          color={cash.netNoBank >= 0 ? 'var(--green2)' : '#DC2626'}
+          color={cash.netNoBank >= 0 ? 'var(--green2)' : 'var(--red)'}
           label="الصافي التشغيلي"
           value={(cash.netNoBank >= 0 ? '+' : '−') + fmt(Math.abs(cash.netNoBank))}
           unit="ر.س"
@@ -616,7 +616,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         />
         <CashTile
           icon={<Banknote size={18}/>}
-          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? 'var(--green2)' : '#DC2626'}
+          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           label="الوضع النقدي الكامل"
           value={cash.net == null ? '—' : (cash.net >= 0 ? '+' : '−') + fmt(Math.abs(cash.net))}
           unit={cash.net == null ? '' : 'ر.س'}
@@ -628,8 +628,8 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
       {isBankStale && (
         <div style={{
           marginTop: 14, padding: '10px 14px', borderRadius: 8,
-          background: 'color-mix(in srgb, #F59E0B 10%, transparent)',
-          border: '1px solid color-mix(in srgb, #F59E0B 30%, transparent)',
+          background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
           fontSize: 12, color: 'var(--warn)', display: 'flex', alignItems: 'center', gap: 8,
         }}>
           <AlertTriangle size={14}/>
@@ -771,7 +771,7 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
   const deltaUp = delta != null && delta > 0;
   const deltaColor = delta == null
     ? 'var(--muted)'
-    : (deltaUp ? (deltaInverted ? '#DC2626' : 'var(--green2)') : (deltaInverted ? 'var(--green2)' : '#DC2626'));
+    : (deltaUp ? (deltaInverted ? 'var(--red)' : 'var(--green2)') : (deltaInverted ? 'var(--green2)' : 'var(--red)'));
   const deltaArrow = delta == null ? '·' : deltaUp ? '↑' : '↓';
 
   return (
@@ -836,13 +836,13 @@ function ConcentrationBars({ rows, valueUnit, warnAtPct, tint }) {
               }}>{r.rank}</span>
               <span style={{
                 fontSize: 12.5, fontWeight: 600,
-                color: warn ? '#DC2626' : 'var(--text)',
+                color: warn ? 'var(--red)' : 'var(--text)',
                 flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
               }}>{r.name}</span>
               <span style={{ fontSize: 11, color: 'var(--muted)' }}>{r.meta}</span>
               <span style={{
                 fontSize: 11.5, fontWeight: 700,
-                color: warn ? '#DC2626' : tint,
+                color: warn ? 'var(--red)' : tint,
                 fontFamily: 'var(--font-mono)',
               }}>
                 {r.share.toFixed(1)}%
@@ -857,7 +857,7 @@ function ConcentrationBars({ rows, valueUnit, warnAtPct, tint }) {
                 position: 'absolute', insetInlineEnd: 0, top: 0, bottom: 0,
                 width: `${widthPct}%`,
                 background: warn
-                  ? 'linear-gradient(to left, #DC2626, color-mix(in srgb, #DC2626 60%, transparent))'
+                  ? 'linear-gradient(to left, #DC2626, color-mix(in srgb, var(--red) 60%, transparent))'
                   : `linear-gradient(to left, ${tint}, color-mix(in srgb, ${tint} 60%, transparent))`,
                 borderRadius: 3,
               }}/>

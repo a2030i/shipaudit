@@ -129,7 +129,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
               onEdit={openEditor}
             />
             <DueColumn
-              accent="#F59E0B"
+              accent="var(--gold)"
               icon={<Clock size={16}/>}
               title="مستحق هذا الأسبوع"
               hint="استعد لاستلامها"
@@ -140,7 +140,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
               onEdit={openEditor}
             />
             <DueColumn
-              accent="#10B981"
+              accent="var(--green)"
               icon={<Calendar size={16}/>}
               title="لاحقاً"
               hint="ضمن الأسبوعين القادمين"

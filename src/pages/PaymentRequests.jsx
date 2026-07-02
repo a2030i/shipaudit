@@ -230,14 +230,14 @@ export default function PaymentRequests({ isActive = true }) {
                     {r.payment_type === 'online' && (
                       <span title="دفع أون لاين" style={{
                         fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
-                        background: 'rgba(16,185,129,.14)', color: '#10B981',
+                        background: 'rgba(16,185,129,.14)', color: 'var(--green)',
                         fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
                       }}>💳 أون لاين</span>
                     )}
                     {r.is_partial && (
                       <span title="سداد جزئي" style={{
                         fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
-                        background: 'rgba(245,158,11,.14)', color: '#F59E0B',
+                        background: 'rgba(245,158,11,.14)', color: 'var(--gold)',
                         fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
                       }}>جزئي</span>
                     )}
@@ -414,7 +414,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
             <div style={{
               width: 28, height: 28, borderRadius: 8,
-              background: 'rgba(16,185,129,.16)', color: '#10B981',
+              background: 'rgba(16,185,129,.16)', color: 'var(--green)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>💳</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
@@ -430,7 +430,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
             display: 'inline-flex', alignItems: 'center', gap: 6,
             marginTop: 10, marginInlineStart: 38,
             padding: '6px 12px', borderRadius: 999,
-            background: '#10B981', color: '#fff',
+            background: 'var(--green)', color: '#fff',
             fontSize: 11.5, fontWeight: 600, textDecoration: 'none',
           }}>
             افتح في لوحة Moyasar ↗

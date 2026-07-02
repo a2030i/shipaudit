@@ -1136,7 +1136,7 @@ export default function CodSettlements({ isActive = true }) {
                       <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: '8px 10px', fontWeight: 600 }}>{labelOf(r.carrierId)}</td>
                         <td style={{ padding: '8px 10px' }}>{r.submitted}</td>
-                        <td style={{ padding: '8px 10px', color: '#10B981', fontWeight: 700 }}>{r.error ? '—' : r.added}</td>
+                        <td style={{ padding: '8px 10px', color: 'var(--green)', fontWeight: 700 }}>{r.error ? '—' : r.added}</td>
                         <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{r.dups || 0}</td>
                         <td style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{Number(r.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       </tr>
@@ -1144,7 +1144,7 @@ export default function CodSettlements({ isActive = true }) {
                   </tbody>
                 </table>
                 {results.some(r => r.error) && (
-                  <div style={{ color: '#DC2626', fontSize: 12, marginTop: 8 }}>⚠️ أخطاء: {results.filter(r => r.error).map(r => `${labelOf(r.carrierId)}: ${r.error}`).join(' · ')}</div>
+                  <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>⚠️ أخطاء: {results.filter(r => r.error).map(r => `${labelOf(r.carrierId)}: ${r.error}`).join(' · ')}</div>
                 )}
                 {unmapped.length > 0 && (
                   <div style={{ background: '#F59E0B15', color: '#B45309', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>

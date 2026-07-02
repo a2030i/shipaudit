@@ -66,16 +66,16 @@ const fmtRel = (iso) => {
 const STAGE_COLORS = {
   todo:      '#0EA5E9',
   contacted: '#8B5CF6',
-  promised:  '#F59E0B',
-  done:      '#10B981',
+  promised:  'var(--gold)',
+  done:      'var(--green)',
   snoozed:   '#6B7280',
   cancelled: '#9CA3AF',
 };
 const TRIGGER_COLORS = {
   over_credit_limit:  '#B91C1C',
-  aged_90:            '#DC2626',
+  aged_90:            'var(--red)',
   aged_60:            '#F97316',
-  aged_30:            '#F59E0B',
+  aged_30:            'var(--gold)',
   prepaid_with_debt:  '#EF4444',
   manual:             '#0EA5E9',
 };
@@ -238,9 +238,9 @@ export default function Collections({ isActive = true }) {
         <SummaryStat label="مفتوحة"        value={stats.open}             color="#0EA5E9"/>
         <SummaryStat label="جديدة"          value={stats.todo}             color="#0EA5E9"/>
         <SummaryStat label="بانتظار الردّ"   value={stats.contacted}        color="#8B5CF6"/>
-        <SummaryStat label="وعود فعّالة"     value={stats.promised}         color="#F59E0B"/>
-        <SummaryStat label="وعود اليوم"      value={stats.promiseDueToday}  color="#10B981"/>
-        <SummaryStat label="وعود متأخّرة"    value={stats.promiseOverdue}   color="#DC2626"/>
+        <SummaryStat label="وعود فعّالة"     value={stats.promised}         color="var(--gold)"/>
+        <SummaryStat label="وعود اليوم"      value={stats.promiseDueToday}  color="var(--green)"/>
+        <SummaryStat label="وعود متأخّرة"    value={stats.promiseOverdue}   color="var(--red)"/>
       </div>
 
       {/* Pending write-offs banner — shows when there are requests
@@ -253,14 +253,14 @@ export default function Collections({ isActive = true }) {
         <Card
           style={{
             marginBottom: 14,
-            background: 'color-mix(in srgb, #F59E0B 8%, transparent)',
-            border: '1.5px solid color-mix(in srgb, #F59E0B 30%, transparent)',
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+            border: '1.5px solid color-mix(in srgb, var(--gold) 30%, transparent)',
             cursor: 'pointer',
           }}
           onClick={() => setReviewQueueOpen(true)}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <AlertTriangle size={16} color="#F59E0B"/>
+            <AlertTriangle size={16} color="var(--gold)"/>
             <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', flex: 1 }}>
               {pendingWriteoffs.length} طلب شطب دين بانتظار الموافقة
               <span style={{ marginInlineStart: 10, fontSize: 11.5, color: 'var(--muted)', fontWeight: 500 }}>
@@ -279,7 +279,7 @@ export default function Collections({ isActive = true }) {
             padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
             border: `1.5px solid ${stageFilter === s ? '#EF4444' : 'var(--border)'}`,
             background: stageFilter === s ? 'rgba(239,68,68,.12)' : 'transparent',
-            color: stageFilter === s ? '#DC2626' : 'var(--text2)',
+            color: stageFilter === s ? 'var(--red)' : 'var(--text2)',
             fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
           }}>
             {s === 'open' ? 'كل المفتوحة' : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
@@ -312,7 +312,7 @@ export default function Collections({ isActive = true }) {
                 return (
                   <tr key={t.id} style={{
                     borderBottom: '1px solid var(--border)',
-                    background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, #DC2626 4%, transparent)' : 'transparent',
+                    background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, var(--red) 4%, transparent)' : 'transparent',
                     cursor: 'pointer',
                   }} onClick={() => setDrawer(t)}>
                     <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
@@ -333,7 +333,7 @@ export default function Collections({ isActive = true }) {
                         {STAGE_LABELS[t.stage] || t.stage}
                       </span>
                     </td>
-                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: '#DC2626' }}>
+                    <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)' }}>
                       {fmtCompact(t.debt_at_creation)}
                     </td>
                     <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
@@ -341,12 +341,12 @@ export default function Collections({ isActive = true }) {
                     </td>
                     <td data-label="الوعد" style={{ padding: '10px 12px', fontSize: 11 }}>
                       {t.stage === 'promised' ? (
-                        <span style={{ color: isPromiseOverdue ? '#DC2626' : '#F59E0B', fontWeight: 600 }}>
+                        <span style={{ color: isPromiseOverdue ? 'var(--red)' : 'var(--gold)', fontWeight: 600 }}>
                           {fmtCompact(t.promise_amount)} يوم {fmtDate(t.promise_date)}
                           {isPromiseOverdue && ' ⚠'}
                         </span>
                       ) : t.stage === 'snoozed' ? (
-                        <span style={{ color: isOverdueSnooze ? '#DC2626' : 'var(--muted)' }}>
+                        <span style={{ color: isOverdueSnooze ? 'var(--red)' : 'var(--muted)' }}>
                           مؤجّلة حتى {fmtDate(t.snooze_until)}
                           {isOverdueSnooze && ' ⚠'}
                         </span>
@@ -648,11 +648,11 @@ function WriteoffRequestDialog({ task, onCancel, onConfirm }) {
             style={{ padding: '4px 4px 0' }}>
         <div style={{
           padding: 12, marginBottom: 12, borderRadius: 8,
-          background: 'color-mix(in srgb, #DC2626 5%, transparent)',
-          border: '1px solid color-mix(in srgb, #DC2626 22%, transparent)',
+          background: 'color-mix(in srgb, var(--red) 5%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--red) 22%, transparent)',
           fontSize: 12, color: 'var(--text2)', lineHeight: 1.7,
         }}>
-          <AlertTriangle size={14} color="#DC2626" style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
+          <AlertTriangle size={14} color="var(--red)" style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
           الطلب سيُرسَل للمدير. بعد الاعتماد يُخصم المبلغ من رصيد العميل المعروض،
           مع إبقاء أصل الـ snapshot كما هو للمراجعة الخارجية. كل التغييرات تُسجَّل في activity_log.
         </div>
@@ -704,7 +704,7 @@ function ReviewQueueModal({ pending, onClose, onApprove, onReject }) {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                       {w.customer_name}
-                      <span style={{ marginInlineStart: 10, fontSize: 12, color: '#DC2626', fontFamily: 'var(--font-mono)' }}>
+                      <span style={{ marginInlineStart: 10, fontSize: 12, color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>
                         {fmt(w.amount)} ر.س
                       </span>
                     </div>

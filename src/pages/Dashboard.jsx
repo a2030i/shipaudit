@@ -158,7 +158,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
     return {
       labels,
       series: [
-        { data: billed,   color: '#10B981', label: 'المفوتر فعلياً' },
+        { data: billed,   color: 'var(--green)', label: 'المفوتر فعلياً' },
         { data: expected, color: '#8B5CF6', label: 'المتوقّع تعاقدياً' },
       ],
     };
@@ -173,8 +173,8 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
   // both the donut and the existing list-bar can render the same
   // numbers in different shapes.
   const agingSegments = useMemo(() => ([
-    { value: totals.aging?.d0_30   || 0, color: '#10B981', label: 'حتى 30 يوم' },
-    { value: totals.aging?.d31_60  || 0, color: '#F59E0B', label: '31 إلى 60' },
+    { value: totals.aging?.d0_30   || 0, color: 'var(--green)', label: 'حتى 30 يوم' },
+    { value: totals.aging?.d31_60  || 0, color: 'var(--gold)', label: '31 إلى 60' },
     { value: totals.aging?.d61_90  || 0, color: '#F97316', label: '61 إلى 90' },
     { value: totals.aging?.over90  || 0, color: '#EF4444', label: 'فوق 90 يوم' },
   ]), [totals]);
@@ -227,7 +227,7 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
         value={fmt(totals.outstanding)}
         suffix="ر.س"
         sparkline={trendData}
-        accent="#10B981"
+        accent="var(--green)"
         stats={[
           { label: 'متأخر السداد',  value: `${fmtCompact(totals.overdueAmount)} ر.س`, color: '#FCD34D' },
           { label: 'مسدّد سابقاً',   value: `${fmtCompact(totals.paidTotal)} ر.س`,    color: '#6EE7B7' },
@@ -347,11 +347,11 @@ export default function Dashboard({ carriers, onNavigate, isActive = true }) {
                 title="توزيع العمليات"
               />
               <StatusRail items={[
-                { label: 'معلّقة',    n: totals.pendingCount,   color: '#F59E0B', icon: <Clock size={14}/> },
+                { label: 'معلّقة',    n: totals.pendingCount,   color: 'var(--gold)', icon: <Clock size={14}/> },
                 { label: 'معتمدة',    n: totals.auditedCount,   color: '#14B8A6', icon: <FileText size={14}/> },
                 { label: 'تحت المراجعة', n: totals.reviewingCount, color: '#7C3AED', icon: <RefreshCw size={14}/> },
                 { label: 'متنازع',    n: totals.disputedCount,  color: '#EF4444', icon: <AlertOctagon size={14}/> },
-                { label: 'مسدّدة',     n: totals.paidCount,      color: '#10B981', icon: <TrendingDown size={14}/> },
+                { label: 'مسدّدة',     n: totals.paidCount,      color: 'var(--green)', icon: <TrendingDown size={14}/> },
               ]}/>
             </Card>
           </div>

@@ -112,14 +112,14 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
   const balanceColor =
     Math.abs(owed) < 0.01 ? 'var(--muted)' :
     owed > 0              ? '#EF4444'      : // we owe → red
-                            '#10B981';        // they owe → green
+                            'var(--green)';        // they owe → green
   const balanceLabel =
     Math.abs(owed) < 0.01 ? 'صفر' :
     owed > 0              ? 'لها علينا' :
                             'لنا عليها';
   const setupColor =
-    row.setupCompleteness >= 100 ? '#10B981' :
-    row.setupCompleteness >= 50  ? '#F59E0B' :
+    row.setupCompleteness >= 100 ? 'var(--green)' :
+    row.setupCompleteness >= 50  ? 'var(--gold)' :
                                    '#EF4444';
 
   const actionsCount = row.pendingAudits + row.webhookPending;
@@ -160,8 +160,8 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
         ) : (
           <div style={{
             width: 44, height: 44, borderRadius: 12,
-            background: `color-mix(in srgb, ${row.color || '#10B981'} 14%, transparent)`,
-            color: row.color || '#10B981',
+            background: `color-mix(in srgb, ${row.color || 'var(--green)'} 14%, transparent)`,
+            color: row.color || 'var(--green)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontWeight: 700, fontFamily: 'var(--font-sans)', fontSize: 18,
           }}>
@@ -246,7 +246,7 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
         display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center',
       }}>
         {row.pendingAudits > 0 && (
-          <ActionPill icon={<FileText size={11}/>} label={`${row.pendingAudits} مراجعة بانتظار الاعتماد`} color="#F59E0B"/>
+          <ActionPill icon={<FileText size={11}/>} label={`${row.pendingAudits} مراجعة بانتظار الاعتماد`} color="var(--gold)"/>
         )}
         {row.webhookPending > 0 && (
           <ActionPill
@@ -257,7 +257,7 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
           />
         )}
         {actionsCount === 0 && (
-          <ActionPill icon={<CheckCircle2 size={11}/>} label="لا عمل معلّق" color="#10B981"/>
+          <ActionPill icon={<CheckCircle2 size={11}/>} label="لا عمل معلّق" color="var(--green)"/>
         )}
         {row.approvedAudits > 0 && (
           <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 'auto' }}>

@@ -57,7 +57,7 @@ export default function CashAging({ isActive }) {
         {[
           { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: '#D97706' },
           { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },
-          { label: 'منه متأخر عن الاستحقاق', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? '#DC2626' : 'var(--muted)' },
+          { label: 'منه متأخر عن الاستحقاق', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
         ].map(k => (
           <Card key={k.label} style={{ padding: '14px 16px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
@@ -75,15 +75,15 @@ export default function CashAging({ isActive }) {
         {(data?.cod || []).map(r => (
           <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
             <td style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
-            <td style={{ ...td, color: r.avgDays == null ? 'var(--muted)' : r.avgDays > 14 ? '#DC2626' : '#059669', fontWeight: 700 }}>
+            <td style={{ ...td, color: r.avgDays == null ? 'var(--muted)' : r.avgDays > 14 ? 'var(--red)' : 'var(--green2)', fontWeight: 700 }}>
               {r.avgDays == null ? 'لا تحويلات بعد' : r.avgDays <= 0 ? '≤ يوم' : `${r.avgDays} يوم`}
             </td>
             <td style={td}>{fmt(r.buckets[0])}</td>
             <td style={{ ...td, color: r.buckets[1] > 0.5 ? '#D97706' : 'inherit' }}>{fmt(r.buckets[1])}</td>
-            <td style={{ ...td, color: r.buckets[2] > 0.5 ? '#DC2626' : 'inherit' }}>{fmt(r.buckets[2])}</td>
-            <td style={{ ...td, color: r.buckets[3] > 0.5 ? '#DC2626' : 'inherit', fontWeight: r.buckets[3] > 0.5 ? 700 : 400 }}>{fmt(r.buckets[3])}</td>
+            <td style={{ ...td, color: r.buckets[2] > 0.5 ? 'var(--red)' : 'inherit' }}>{fmt(r.buckets[2])}</td>
+            <td style={{ ...td, color: r.buckets[3] > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.buckets[3] > 0.5 ? 700 : 400 }}>{fmt(r.buckets[3])}</td>
             <td style={{ ...td, fontWeight: 700 }}>{fmt(r.outTotal)}</td>
-            <td style={{ ...td, color: r.oldestDays > 30 ? '#DC2626' : 'var(--muted)' }}>{r.oldestDays ? `${r.oldestDays} يوم` : '—'}</td>
+            <td style={{ ...td, color: r.oldestDays > 30 ? 'var(--red)' : 'var(--muted)' }}>{r.oldestDays ? `${r.oldestDays} يوم` : '—'}</td>
           </tr>
         ))}
       </SectionTable>
@@ -96,11 +96,11 @@ export default function CashAging({ isActive }) {
         footer={data?.ap?.length ? (
           <tfoot><tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
             <td style={td}>الإجمالي</td>
-            <td style={{ ...td, color: '#DC2626' }}>{fmt(data.ap.reduce((s, r) => s + r.overdue, 0))}</td>
+            <td style={{ ...td, color: 'var(--red)' }}>{fmt(data.ap.reduce((s, r) => s + r.overdue, 0))}</td>
             <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.d0_30, 0))}</td>
             <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.d31_60, 0))}</td>
             <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.over60, 0))}</td>
-            <td style={{ ...td, color: '#059669' }}>{fmt(data.ap.reduce((s, r) => s + r.credits, 0))}</td>
+            <td style={{ ...td, color: 'var(--green2)' }}>{fmt(data.ap.reduce((s, r) => s + r.credits, 0))}</td>
             <td style={td}>{fmt(data.apTotal)}</td>
           </tr></tfoot>
         ) : null}
@@ -110,11 +110,11 @@ export default function CashAging({ isActive }) {
           : data.ap.map(r => (
             <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
               <td style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
-              <td style={{ ...td, color: r.overdue > 0.5 ? '#DC2626' : 'inherit', fontWeight: r.overdue > 0.5 ? 700 : 400 }}>{fmt(r.overdue)}</td>
+              <td style={{ ...td, color: r.overdue > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.overdue > 0.5 ? 700 : 400 }}>{fmt(r.overdue)}</td>
               <td style={td}>{fmt(r.d0_30)}</td>
               <td style={td}>{fmt(r.d31_60)}</td>
               <td style={td}>{fmt(r.over60)}</td>
-              <td style={{ ...td, color: r.credits < -0.5 ? '#059669' : 'inherit' }}>{fmt(r.credits)}</td>
+              <td style={{ ...td, color: r.credits < -0.5 ? 'var(--green2)' : 'inherit' }}>{fmt(r.credits)}</td>
               <td style={{ ...td, fontWeight: 700 }}>{fmt(r.total)}</td>
             </tr>
           ))}

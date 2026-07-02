@@ -135,15 +135,15 @@ export default function MonthlyReport({ isActive }) {
             <button key={m} onClick={() => setMonth(m)}
               style={{
                 padding: '6px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
-                border: '1px solid', borderColor: m === month ? '#10B981' : 'var(--border)',
-                background: m === month ? 'color-mix(in srgb,#10B981 14%,transparent)' : 'var(--card)',
-                color: m === month ? '#10B981' : 'var(--text)',
+                border: '1px solid', borderColor: m === month ? 'var(--green)' : 'var(--border)',
+                background: m === month ? 'color-mix(in srgb,var(--green) 14%,transparent)' : 'var(--card)',
+                color: m === month ? 'var(--green)' : 'var(--text)',
                 textAlign: 'center',
               }}>
               {monthLabel(m)}
               {/* صافي الشهر مصغّراً — يعطي شكل الاتجاه قبل النقر */}
               <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 500, marginTop: 1,
-                color: m === month ? '#10B981' : 'var(--muted)' }}>
+                color: m === month ? 'var(--green)' : 'var(--muted)' }}>
                 {monthNets.has(m) ? `${fmtCompact(monthNets.get(m))} صافي` : ''}
               </div>
             </button>
@@ -174,7 +174,7 @@ export default function MonthlyReport({ isActive }) {
                       {r.carrierName}
                       {warn && (
                         <span title="المفوتر زاد عن الشهر السابق ولا توجد أي مراجعة معتمدة — فروقات محتملة تتراكم بصمت"
-                          style={{ marginRight: 6, background: 'rgba(220,38,38,.1)', color: '#DC2626',
+                          style={{ marginRight: 6, background: 'rgba(220,38,38,.1)', color: 'var(--red)',
                             fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 8, whiteSpace: 'nowrap' }}>
                           ⚠ زاد ولم يُدقَّق
                         </span>
@@ -182,13 +182,13 @@ export default function MonthlyReport({ isActive }) {
                     </td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.billed)}</td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontSize: 12,
-                      color: delta == null ? 'var(--muted2)' : delta > 20 ? '#DC2626' : delta < 0 ? '#059669' : 'var(--muted)' }}>
+                      color: delta == null ? 'var(--muted2)' : delta > 20 ? 'var(--red)' : delta < 0 ? 'var(--green2)' : 'var(--muted)' }}>
                       {delta == null ? '—' : `${delta > 0 ? '▲' : '▼'} ${Math.abs(delta)}%`}
                     </td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.cod ? '#059669' : 'inherit' }}>{fmt(r.cod)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.creditNotes ? '#059669' : 'inherit' }}>{fmt(r.creditNotes)}</td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.cod ? 'var(--green2)' : 'inherit' }}>{fmt(r.cod)}</td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: r.creditNotes ? 'var(--green2)' : 'inherit' }}>{fmt(r.creditNotes)}</td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(r.payments)}</td>
-                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.net > 0 ? 'var(--text)' : '#059669' }}>{fmt(r.net)}</td>
+                    <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', fontWeight: 700, color: r.net > 0 ? 'var(--text)' : 'var(--green2)' }}>{fmt(r.net)}</td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums' }}>{r.auditCount || '—'}</td>
                     <td style={{ padding: '11px 14px', fontVariantNumeric: 'tabular-nums', color: Math.abs(r.auditDiff) > 0.5 ? '#dc2626' : 'inherit' }}>
                       {fmt(r.auditDiff)}{r.mismatch ? <span style={{ fontSize: 11, color: '#dc2626' }}> · {r.mismatch} فرق</span> : ''}
@@ -202,8 +202,8 @@ export default function MonthlyReport({ isActive }) {
                   <td style={{ padding: '12px 14px' }}>الإجمالي ({rows.length})</td>
                   <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.billed)}</td>
                   <td style={{ padding: '12px 14px' }}></td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: '#059669' }}>{fmt(totals.cod)}</td>
-                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: '#059669' }}>{fmt(totals.creditNotes)}</td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}>{fmt(totals.cod)}</td>
+                  <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums', color: 'var(--green2)' }}>{fmt(totals.creditNotes)}</td>
                   <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.payments)}</td>
                   <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.net)}</td>
                   <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{totals.auditCount || '—'}</td>

@@ -10,9 +10,9 @@ import { Card, Btn, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import { loadIntegrityChecks, FIXES } from '../lib/integrityService.js';
 
 const SEV = {
-  red:   { bg: 'rgba(239,68,68,.07)',  bd: 'rgba(239,68,68,.35)',  color: '#DC2626' },
+  red:   { bg: 'rgba(239,68,68,.07)',  bd: 'rgba(239,68,68,.35)',  color: 'var(--red)' },
   amber: { bg: 'rgba(217,119,6,.07)',  bd: 'rgba(217,119,6,.35)',  color: '#D97706' },
-  ok:    { bg: 'rgba(16,185,129,.06)', bd: 'rgba(16,185,129,.25)', color: '#059669' },
+  ok:    { bg: 'rgba(16,185,129,.06)', bd: 'rgba(16,185,129,.25)', color: 'var(--green2)' },
 };
 
 const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 });

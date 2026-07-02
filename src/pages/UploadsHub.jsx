@@ -264,21 +264,21 @@ export default function UploadsHub({ isActive = true }) {
           label="حديثة"
           value={summary.fresh}
           icon={<CheckCircle2 size={16}/>}
-          color="#10B981"
+          color="var(--green)"
           hint="رُفعت ضمن الفترة المتوقّعة"
         />
         <SummaryStat
           label="متأخّرة"
           value={summary.stale}
           icon={<AlertTriangle size={16}/>}
-          color="#F59E0B"
+          color="var(--gold)"
           hint="تجاوزت الدورة المعتادة"
         />
         <SummaryStat
           label="لم تُرفع"
           value={summary.missing}
           icon={<Upload size={16}/>}
-          color="#DC2626"
+          color="var(--red)"
           hint="لا يوجد سجل سابق"
         />
         <SummaryStat
@@ -423,14 +423,14 @@ export default function UploadsHub({ isActive = true }) {
       }}>
         <ShortcutCard
           icon={<FileText size={18}/>}
-          color="#10B981"
+          color="var(--green)"
           title="مراجعة فاتورة شركة شحن"
           subtitle="رفع فاتورة من شركة شحن وتدقيقها مع العقد"
           onClick={() => navigate('/upload')}
         />
         <ShortcutCard
           icon={<Banknote size={18}/>}
-          color="#F59E0B"
+          color="var(--gold)"
           title="ملف تحصيل COD"
           subtitle="رفع ملف تحصيل من شركة شحن أو تحويل بنكي"
           onClick={() => navigate('/cod-settlements')}
@@ -480,7 +480,7 @@ export default function UploadsHub({ isActive = true }) {
                       <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
                         <td style={{ padding: '8px 10px', fontWeight: 600 }}>{AR[r.carrierId] || r.carrierId}</td>
                         <td style={{ padding: '8px 10px' }}>{r.submitted}</td>
-                        <td style={{ padding: '8px 10px', color: '#10B981', fontWeight: 700 }}>{r.error ? '—' : r.added}</td>
+                        <td style={{ padding: '8px 10px', color: 'var(--green)', fontWeight: 700 }}>{r.error ? '—' : r.added}</td>
                         <td style={{ padding: '8px 10px', color: 'var(--muted)' }}>{r.dups || 0}</td>
                         <td style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{Number(r.total).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                       </tr>
@@ -530,7 +530,7 @@ function TypePickerModal({ file, detection, onCancel, onConfirm }) {
             <div style={{ marginTop: 2 }}>
               {(file?.size / 1024).toFixed(1)} KB
               {detection?.sourceId && (
-                <span style={{ marginInlineStart: 10, color: '#F59E0B' }}>
+                <span style={{ marginInlineStart: 10, color: 'var(--gold)' }}>
                   · أقرب احتمال: {UPLOAD_SOURCES.find(s => s.id === detection.sourceId)?.label}
                   {detection.confidence != null && ` (${Math.round(detection.confidence * 100)}%)`}
                 </span>
@@ -650,7 +650,7 @@ function SummaryStat({ label, value, icon, color, hint }) {
 function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
   const { last, stale, daysSince, accent, origin } = source;
   // Status indicator — green/amber/red based on freshness
-  const statusColor = !last ? '#DC2626' : stale ? '#F59E0B' : '#10B981';
+  const statusColor = !last ? 'var(--red)' : stale ? 'var(--gold)' : 'var(--green)';
   const statusLabel = !last ? 'لم يُرفع بعد'
                     : stale ? `متأخّر — ${daysSince} يوم`
                     : `حديث — ${fmtRel(last.lastAt)}`;
@@ -723,9 +723,9 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
       ) : (
         <div style={{
           padding: 10, borderRadius: 8,
-          background: 'color-mix(in srgb, #DC2626 5%, transparent)',
-          border: '1px dashed color-mix(in srgb, #DC2626 30%, transparent)',
-          fontSize: 11.5, color: '#DC2626', textAlign: 'center', fontWeight: 600,
+          background: 'color-mix(in srgb, var(--red) 5%, transparent)',
+          border: '1px dashed color-mix(in srgb, var(--red) 30%, transparent)',
+          fontSize: 11.5, color: 'var(--red)', textAlign: 'center', fontWeight: 600,
         }}>
           لم يُرفع أي ملف بعد — ابدأ بالرفع الأول
         </div>
@@ -793,7 +793,7 @@ function IntakeRow({ event, busy, onProcess, onDismiss }) {
           {!detectedMeta && (
             <span style={{
               fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-              background: 'rgba(220,38,38,.14)', color: '#DC2626',
+              background: 'rgba(220,38,38,.14)', color: 'var(--red)',
             }}>
               ⚠ نوع غير محدد
             </span>
@@ -837,7 +837,7 @@ function IntakeRow({ event, busy, onProcess, onDismiss }) {
         padding: 6, borderRadius: 6, cursor: 'pointer',
         color: 'var(--muted)', display: 'flex',
       }}
-        onMouseEnter={(e) => e.currentTarget.style.color = '#DC2626'}
+        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--red)'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
       >
         <XIcon size={11}/>
