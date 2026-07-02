@@ -568,14 +568,14 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         display: 'grid', gap: 12,
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       }}>
-        {/* Bank balance — editable */}
+        {/* Bank balance — تلقائي من ختامي آخر كشف مرفوع، واليدوي بينهما */}
         <CashTile
           icon={<Wallet size={18}/>}
           color={isBankStale ? '#F59E0B' : 'var(--green2)'}
-          label="رصيد البنك"
+          label={cash.bankSource === 'statement' ? 'رصيد البنك (آخر كشف)' : 'رصيد البنك'}
           value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
           unit={cash.bankBalance == null ? '' : 'ر.س'}
-          hint={fmtRel(cash.bankUpdated)}
+          hint={cash.bankSource === 'statement' ? (cash.bankNotes || fmtRel(cash.bankUpdated)) : fmtRel(cash.bankUpdated)}
           onClick={onEditBank || undefined}
           editable={!!onEditBank}
         />
