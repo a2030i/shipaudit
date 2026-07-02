@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { RefreshCw, CalendarRange, Download, TrendingUp } from 'lucide-react';
+import { RefreshCw, CalendarRange, Download, TrendingUp, Printer } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 
@@ -108,20 +108,29 @@ export default function MonthlyReport({ isActive }) {
         title="التقرير الشهري للناقلين"
         subtitle="مفوتر · تحصيل · إشعارات · صافي · جودة التدقيق — لكل ناقل شهرياً"
         actions={
-          <div style={{ display: 'flex', gap: 8 }}>
+          <div className="no-print" style={{ display: 'flex', gap: 8 }}>
             <Btn variant="ghost" size="sm" onClick={refresh} disabled={loading}>
               <RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث
             </Btn>
             <Btn variant="ghost" size="sm" onClick={exportXlsx} disabled={!rows.length}>
               <Download size={14}/> تصدير Excel
             </Btn>
+            {/* ورقة الإدارة/الشريك — @media print يخفي كل ما عدا التقرير */}
+            <Btn variant="ghost" size="sm" onClick={() => window.print()} disabled={!rows.length}>
+              <Printer size={14}/> طباعة
+            </Btn>
           </div>
         }
       />
 
+      {/* سطر يظهر في الطباعة فقط — عنوان الورقة المطبوعة */}
+      <div style={{ display: 'none' }} className="print-only-title">
+        التقرير الشهري للناقلين — {monthLabel(month)} · أُنشئ {new Date().toISOString().slice(0, 10)}
+      </div>
+
       {/* Month selector */}
       {data?.months?.length > 0 && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
+        <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
           {data.months.map(m => (
             <button key={m} onClick={() => setMonth(m)}
               style={{
