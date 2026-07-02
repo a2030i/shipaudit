@@ -64,6 +64,13 @@ export default function ZohoData({ isActive = true }) {
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState('');       // فلتر الحالة
+  const [amtMin, setAmtMin] = useState('');        // نطاق المبلغ
+  const [amtMax, setAmtMax] = useState('');
+  const [sort, setSort] = useState({ col: 'date', dir: 'desc' });
+
+  // إعادة ضبط الفلاتر عند تغيير النوع (الحالات تختلف)
+  useEffect(() => { setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' }); }, [type]);
 
   const load = useCallback(async (t, p) => {
     setRows(null);
@@ -84,16 +91,45 @@ export default function ZohoData({ isActive = true }) {
     setBusy(false);
   };
 
-  const filtered = useMemo(() => {
-    if (!rows) return [];
-    const s = q.trim().toLowerCase();
-    if (!s) return rows;
-    return rows.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s)));
-  }, [rows, q]);
-
   const cfg = ZOHO_MIRRORS[type];
   const cols = COLS[type];
+
+  // الحالات المتاحة فعلياً في البيانات المحمّلة (ديناميكي لكل نوع)
+  const statuses = useMemo(() => {
+    if (!rows) return [];
+    return [...new Set(rows.map(r => r.status).filter(Boolean))].sort();
+  }, [rows]);
+
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    let list = rows;
+    const s = q.trim().toLowerCase();
+    if (s) list = list.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s)));
+    if (status) list = list.filter(r => r.status === status);
+    const min = amtMin === '' ? null : Number(amtMin);
+    const max = amtMax === '' ? null : Number(amtMax);
+    if (min != null || max != null) {
+      list = list.filter(r => {
+        const v = Number(r[cfg.amount]) || 0;
+        return (min == null || v >= min) && (max == null || v <= max);
+      });
+    }
+    // الترتيب بالعمود المختار (نصّي أو رقمي)
+    const { col, dir } = sort;
+    const numeric = ['total', 'amount', 'balance'].includes(col);
+    return [...list].sort((a, b) => {
+      let av = a[col], bv = b[col];
+      if (numeric) { av = Number(av) || 0; bv = Number(bv) || 0; }
+      else { av = String(av ?? ''); bv = String(bv ?? ''); }
+      const cmp = numeric ? av - bv : av.localeCompare(bv, 'ar');
+      return dir === 'asc' ? cmp : -cmp;
+    });
+  }, [rows, q, status, amtMin, amtMax, sort, cfg]);
+
+  const filtersActive = !!(q.trim() || status || amtMin || amtMax);
+  const toggleSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'date' ? 'desc' : 'asc' });
   const total = useMemo(() => +filtered.reduce((s, r) => s + (Number(r[cfg.amount]) || 0), 0).toFixed(2), [filtered, cfg]);
+  const totalBalance = useMemo(() => +filtered.reduce((s, r) => s + (Number(r.balance) || 0), 0).toFixed(2), [filtered]);
 
   const exportXlsx = () => {
     if (!filtered.length) return;
@@ -136,26 +172,48 @@ export default function ZohoData({ isActive = true }) {
       </div>
 
       {/* الفلاتر */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        <select value={period} onChange={e => setPeriod(e.target.value)}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
+        <select value={period} onChange={e => setPeriod(e.target.value)} title="الفترة"
           style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value="">كل الفترات (حتى 5000)</option>
           {monthOptions().map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
         </select>
-        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+        {statuses.length > 0 && (
+          <select value={status} onChange={e => setStatus(e.target.value)} title="الحالة"
+            style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+            <option value="">كل الحالات</option>
+            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+          </select>
+        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <input value={amtMin} onChange={e => setAmtMin(e.target.value)} type="number" placeholder="مبلغ من"
+            style={{ width: 90, padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+          <span style={{ color: 'var(--muted)', fontSize: 12 }}>—</span>
+          <input value={amtMax} onChange={e => setAmtMax(e.target.value)} type="number" placeholder="إلى"
+            style={{ width: 90, padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
+        </div>
+        <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
           <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث في كل الحقول…"
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث بالعميل/المورد/الرقم/أي حقل…"
             style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 8, fontSize: 13 }}/>
         </div>
+        {filtersActive && (
+          <Btn size="sm" variant="ghost" onClick={() => { setQ(''); setStatus(''); setAmtMin(''); setAmtMax(''); }}>
+            مسح الفلاتر
+          </Btn>
+        )}
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>
           تصدير
         </Btn>
-        {rows != null && (
-          <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-            {filtered.length} سجل · الإجمالي <b style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{fmt(total)}</b> ر.س
-          </span>
-        )}
       </div>
+      {rows != null && (
+        <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+          عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b>{filtersActive ? ` من ${rows.length}` : ''} سجل ·
+          الإجمالي <b style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>{fmt(total)}</b> ر.س
+          {cfg.amount === 'balance' || COLS[type].some(c => c[1] === 'balance')
+            ? <> · المتبقي <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(totalBalance)}</b> ر.س</> : null}
+        </div>
+      )}
 
       {rows == null ? <Card style={{ padding: 50, textAlign: 'center' }}><Spinner size={24}/></Card>
         : !filtered.length ? (
@@ -166,7 +224,16 @@ export default function ZohoData({ isActive = true }) {
             <div className="m-flow" style={{ maxHeight: 640, overflowY: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
-                  <tr>{cols.map(c => <th key={c[0]} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{c[0]}</th>)}</tr>
+                  <tr>{cols.map(c => {
+                    const active = sort.col === c[1];
+                    return (
+                      <th key={c[0]} onClick={() => toggleSort(c[1])} title="ترتيب"
+                        style={{ padding: '10px 12px', fontSize: 11, color: active ? 'var(--accent)' : 'var(--muted)',
+                          whiteSpace: 'nowrap', cursor: 'pointer', userSelect: 'none' }}>
+                        {c[0]}{active ? (sort.dir === 'asc' ? ' ▲' : ' ▼') : ''}
+                      </th>
+                    );
+                  })}</tr>
                 </thead>
                 <tbody>
                   {filtered.slice(0, 800).map(r => (
