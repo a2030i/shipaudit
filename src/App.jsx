@@ -45,6 +45,7 @@ import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
 import ReportsCenter     from './pages/ReportsCenter.jsx';
+import ZohoCallback      from './pages/ZohoCallback.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
@@ -203,6 +204,7 @@ const PAGE_TITLES = {
   '/fulfillment':       'تدقيق فواتير التجهيز',
   '/monthly-report':    'التقرير الشهري',
   '/reports':           'مركز التقارير',
+  '/zoho-callback':     'ربط زوهو',
   '/uploads':           'وارد Zoho التلقائي',
   '/hub':               'الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -285,7 +287,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -793,6 +795,10 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/reports'} scroll>
               <ReportsCenter isActive={pathname==='/reports'}/>
+            </PageSlot>
+            {/* هبوط موافقة زوهو OAuth — بلا عنصر قائمة */}
+            <PageSlot active={pathname==='/zoho-callback'} scroll>
+              <ZohoCallback isActive={pathname==='/zoho-callback'}/>
             </PageSlot>
             <PageSlot active={pathname==='/monthly-report'} scroll>
               <MonthlyReport isActive={pathname==='/monthly-report'}/>
