@@ -139,8 +139,17 @@ export default function Collections({ isActive = true }) {
     } else if (stageFilter !== 'all') {
       pool = pool.filter(t => t.stage === stageFilter);
     }
+    // حاجز احتياطي: مهمة واحدة لكل عميل (الأكثر تقدّماً) — يمنع أي تكرار
+    // متبقٍ من بيانات قديمة قبل إصلاح regenerateTasks.
+    const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
+    const byCustomer = new Map();
+    for (const t of pool) {
+      const cur = byCustomer.get(t.customer_name);
+      if (!cur || (rank[t.stage] || 0) > (rank[cur.stage] || 0)) byCustomer.set(t.customer_name, t);
+    }
+    const deduped = [...byCustomer.values()];
     // Sort: snoozed-overdue first, then by debt desc, then by created
-    return [...pool].sort((a, b) => {
+    return deduped.sort((a, b) => {
       const aOverdueSnooze = a.stage === 'snoozed' && a.snooze_until && new Date(a.snooze_until) < new Date();
       const bOverdueSnooze = b.stage === 'snoozed' && b.snooze_until && new Date(b.snooze_until) < new Date();
       if (aOverdueSnooze !== bOverdueSnooze) return aOverdueSnooze ? -1 : 1;

@@ -220,11 +220,17 @@ export default function FinancialPosition({ isActive = true }) {
             </div>
             <div style={{ flex: 1, minWidth: 165, background: 'var(--card)', border: '1px solid var(--border)',
               borderRadius: 12, padding: '12px 16px' }}>
-              <div style={{ fontSize: 11, color: 'var(--muted)' }}>⏳ الباقي عند العملاء من فواتير الشهر</div>
-              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: invCol.invoiced - invCol.collected > 0.5 ? 'var(--gold)' : 'var(--green)' }}>
-                {fmt(Math.max(0, +(invCol.invoiced - invCol.collected).toFixed(2)))} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>⏳ الباقي على فواتير هذا الشهر</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: (invCol.remaining || 0) > 0.5 ? 'var(--gold)' : 'var(--green)' }}>
+                {fmt(invCol.remaining || 0)} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span>
               </div>
+              <div style={{ fontSize: 9.5, color: 'var(--muted2)', marginTop: 2 }}>رصيدها الفعلي — لا يتأثر بدفعات أشهر أخرى</div>
             </div>
+          </div>
+        )}
+        {invCol?.hasData && invCol.collected > invCol.invoiced + 1 && (
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -8, marginBottom: 14 }}>
+            💡 «حصّلنا» أكبر من «فوترنا» لأن بعض الدفعات هذا الشهر تخصّ فواتير أشهر سابقة — طبيعي.
           </div>
         )}
 
