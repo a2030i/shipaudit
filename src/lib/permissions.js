@@ -143,6 +143,7 @@ export const PERMISSION_CATALOG = [
   {
     id: 'money', label: 'النقد والمدفوعات', icon: 'Wallet', color: '#F59E0B',
     perms: [
+      { key: 'money.pnl',          label: 'الوضع المالي — قائمة الدخل من زوهو (أرباح/خسائر)' },
       { key: 'bank.view',          label: 'عرض رصيد البنك وسجل التحديثات' },
       { key: 'bank.set_balance',   label: 'تحديث رصيد البنك يدوياً', sensitive: true },
       { key: 'payments.view',      label: 'عرض الدفعات' },
