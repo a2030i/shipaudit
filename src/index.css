@@ -799,6 +799,24 @@ button:active { transform: scale(.97); }
   .bottom-nav { display: none; }
 }
 
+/* ── الطباعة (A4) — أول وجود حقيقي للطباعة في النظام ──
+   يطبع محتوى الصفحة النشطة فقط: القائمة/الشريط العلوي/السفلي/المساعد تُخفى.
+   PageSlot يخفي غير النشط بـvisibility:hidden فلا يُطبَع أصلاً. */
+@media print {
+  .sidebar, .topbar, .bottom-nav, .sidebar-backdrop,
+  .ai-chat-fab, .ai-chat-panel, .sidebar-toggle, .hamburger-btn,
+  .no-print { display: none !important; }
+  .app-main { margin: 0 !important; }
+  .page-content { padding: 0 !important; overflow: visible !important; height: auto !important; }
+  body { background: #fff !important; }
+  table { font-size: 11px !important; }
+  .card, [class*="card"] { box-shadow: none !important; border: 1px solid #ddd !important; }
+  .print-only-title {
+    display: block !important;
+    font-size: 15px; font-weight: 800; margin-bottom: 12px;
+  }
+}
+
 /* ── Login page responsive ── */
 .login-left-panel  { display: flex; }
 .login-mobile-logo { display: none; }
