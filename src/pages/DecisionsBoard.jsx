@@ -82,7 +82,7 @@ export default function DecisionsBoard({ isActive = true }) {
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
   return (
-    <div style={{ padding: '28px 32px 80px', maxWidth: 1120, margin: '0 auto' }}>
+    <div style={{ padding: '22px 28px 70px', maxWidth: 1360, margin: '0 auto' }}>
       <PageHeader
         icon={<Gauge size={22}/>}
         title="لوحة القرارات"
@@ -178,7 +178,7 @@ export default function DecisionsBoard({ isActive = true }) {
               ? `🔔 ${decisionsCount} إشارة تحتاج قرارك اليوم`
               : '✨ لا قرارات معلّقة اليوم — كل الإشارات هادئة'}
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))', gap: 14 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(295px, 1fr))', gap: 12 }}>
             {activeCards.map(c => <DecisionCard key={c.key} {...c.props}/>)}
           </div>
           {/* الإشارات الهادئة — سطر مضغوط بدل بطاقات صفرية تشتّت */}
@@ -199,35 +199,37 @@ export default function DecisionsBoard({ isActive = true }) {
 }
 
 function DecisionCard({ color, icon, title, value, unit, sub, top, cta, onClick }) {
+  // مضغوطة (شكوى «الهوامش عالية»): حشوة أخف، قيمة 22، رأس بسطر واحد —
+  // 3-4 بطاقات في الصف على الشاشات العريضة بدل عمود فارغ.
   return (
     <Card
       onClick={onClick}
       style={{
-        cursor: 'pointer', borderTop: `3px solid ${color}`,
-        display: 'flex', flexDirection: 'column', gap: 8, minHeight: 150,
+        cursor: 'pointer', borderTop: `3px solid ${color}`, padding: '14px 16px',
+        display: 'flex', flexDirection: 'column', gap: 6, minHeight: 118,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span style={{ fontSize: 18 }}>{icon}</span>
-        <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+        <span style={{ fontSize: 16 }}>{icon}</span>
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>{title}</span>
+        <span style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 3, color, fontSize: 11, fontWeight: 600, whiteSpace: 'nowrap' }}>
+          {cta} <ChevronLeft size={12}/>
+        </span>
       </div>
       <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
-        <span style={{ fontSize: 26, fontWeight: 800, color, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{value}</span>
-        <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{unit}</span>
+        <span style={{ fontSize: 22, fontWeight: 800, color, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{value}</span>
+        <span style={{ fontSize: 11, color: 'var(--muted)' }}>{unit}</span>
       </div>
-      <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6 }}>{sub}</div>
+      <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.55 }}>{sub}</div>
       {top && top.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginTop: 2 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
           {top.map((t, i) => (
-            <div key={i} style={{ fontSize: 11, color: 'var(--text2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <div key={i} style={{ fontSize: 10.5, color: 'var(--text2)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               • {t}
             </div>
           ))}
         </div>
       )}
-      <div role="button" tabIndex={0} style={{ marginTop: 'auto', display: 'flex', alignItems: 'center', gap: 4, color, fontSize: 12, fontWeight: 600 }}>
-        {cta} <ChevronLeft size={14}/>
-      </div>
     </Card>
   );
 }
