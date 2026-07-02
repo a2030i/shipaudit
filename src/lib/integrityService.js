@@ -37,6 +37,11 @@ export const CHECK_META = {
     desc:  'فواتير في الدفتر تجاوزت ٤٥ يوماً دون ربطها بمراجعة — قد تُسدَّد دون تحقق.',
     severity: 'amber', goto: '/ledger',
   },
+  pay_no_bank_trace: {
+    label: 'قيد سداد بلا أثر بنكي',
+    desc:  'قيد PAY في الدفتر لا يقابله أي تحويل بنكي بنفس المبلغ (±0.5 ر.س، ±3 أيام) ضمن فترة كشوف البنك — سداد وهمي أو مكرر؟ فصّله من تقرير «المطابقة البنكية» في مركز التقارير.',
+    severity: 'red', goto: '/reports',
+  },
 };
 
 export async function loadIntegrityChecks() {
