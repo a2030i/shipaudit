@@ -204,6 +204,16 @@
 
 **القاعدة:** أي زر/تسمية/لون جديد يُقاس على هذا الكتالوج. لا تُدخِل variant مهملاً ولا مصطلحاً مبهماً.
 
+### 1.21 حزمة «الوضوح والسلاسة» — موجات تحليل الوكلاء ✅ (2026-07-02)
+من workflow تحليل 6 محاور (IA/ثيم/جوال/أرقام/تقارير/CRM) — أبرز الثوابت الجديدة:
+- **مركز التقارير `/reports`** (ReportsCenter.jsx): كتالوج بمعاملات (شهر/ناقل) — شهري + كشف ناقل رسمي (`carrierSoaExport.js`، رصيد جارٍ §2.4 + COD معلّق) + **مطابقة بنكية** (`bankReconReport.js`: bank_transactions × قيود PAY، ±0.5 ر.س ±3 أيام، يستبعد المرفوض §1.15، 3 أوراق). **كل توليد يمرّ عبر `persistAndDownloadExport`** (kinds: monthly/carrier_soa/bank_recon) — قاعدة §1.13 مطبَّقة.
+- **درجة صحة الناقل الموحّدة** `carrierScore.js` — لا معادلات محلية (كانت Overview وCarrierKpi متناقضتين).
+- **RTL لكل تصدير Excel** عبر `xlsxRtl.js` (31 نقطة) — الاستثناء الوحيد `generateCleanExcel` (§1.15).
+- **شريط تنقّل سفلي للجوال** (`.bottom-nav` في App.jsx، ≤768px): الرئيسية/القرارات/رفع/الوارد/القائمة — طبقة جوال منفصلة لا تخالف §1.11f. زر المساعد مرفوع فوقه.
+- **CRM قوائم المبيعات** (`/crm?tab=sales`): 3 قوائم من merchants (سجّل وما شحن · توقّف · نشط وخامل +45ي) + `PhoneLink` (tel/wa.me) + بطاقة العميل تعرض جانب المبيعات و`effectiveDebt` (زوهو + محفظة سالبة — `customerRisk.js`).
+- **التقرير الشهري**: عمود التغيّر شهر-بشهر + شارة «⚠ زاد ولم يُدقَّق» (مفوتر +10% بلا مراجعة) + طباعة A4 (`@media print` عام — `.no-print` يخفي، `.print-only-title` يظهر).
+- **قاعدة المودالات**: `role="dialog"` على Modal — لا تنشئ مودالاً بلا هذا الدور (قواعد الجوال تعتمد عليه).
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
