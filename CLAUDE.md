@@ -337,6 +337,8 @@
 | `src/engine/audit.js` | اكتشاف الأعمدة، حساب العقد، buildSummary. **تدقيق المكوّنات**: `auditRow` يحسب مفوتر/متوقّع/فرق لكل مكوّن (delivery/rss/fuel/codFee/posFee) ويفصل RSS عن الوقود المدموج (سطر ~723: `row.rss===0 && calc.rss>0` → ينسب calc.rss من عمود الوقود). الحالة من الإجمالي فقط (لا per-component) |
 | `src/engine/aramexInvoiceParser.js` | قارئ فاتورة أرامكس التفصيلية **PDF** (per-shipment): `parseAramexInvoice(buf)` → `{header, rows}`. الـ rows جاهزة للتغذية في نفس مسار rawRows+colMap بـ UploadWizard (المستخدم يستقبل PDF فقط، Excel بالطلب). `deliveryCharges` = gross لكل شحنة (شامل وقود+RSS؛ دولي VAT=0 فnet=gross). يُكتشف بامتداد `.pdf` في `handleFile` |
 | `src/engine/codParsers/*.js` | parsers لملفات تحصيل COD لكل شركة |
+| `src/lib/carrierScore.js` | **درجة صحة الناقل الموحّدة** (0–100) — نقطة الحقيقة الوحيدة (Overview + CarrierKpi). مكوّنات موزونة، الغائب يُستبعَد ويُعاد توزيع وزنه. عتبات: ≥85/65. لا تعيد معادلة صحة محلية في أي صفحة |
+| `src/lib/xlsxRtl.js` | `rtl(wb)` — كل تصدير Excel جديد يلفّ المصنّف به قبل الكتابة (وضع RTL). استثناء وحيد: `generateCleanExcel` (بنية مثبّتة لنظام خارجي §1.15) |
 | `src/App.jsx` | Routes + Sidebar + PageSlot |
 | `src/components/UI.jsx` | Btn / Card / Modal / Spinner / toast |
 | `supabase/functions/webhook-intake/index.ts` | Edge function، حالياً v11 (deployed v12): parsing متسامح — JSON + multipart/form-data + verification ping (جسم فارغ → 200). كان v10 يرفض أي شيء غير JSON صارم بـ `invalid_json` |
