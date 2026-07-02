@@ -142,6 +142,7 @@ const NAV_ITEMS = [
   { id: 'crm',             path: '/crm',             label: 'المتابعة والمبيعات', icon: Headset,   section: 'customers', permKey: 'crm.view',
     subTabs: [
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
+      { tabId: 'sales', label: 'قوائم المبيعات',  icon: Phone },
       { tabId: 'leads', label: 'جهات خارجية',     icon: ShoppingBag },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },

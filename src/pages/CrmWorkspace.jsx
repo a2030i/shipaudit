@@ -4,10 +4,10 @@
 // أداء التحصيل. بطاقة العميل (drawer) تجمع الـtimeline + الإجراءات السريعة.
 // نمط CarriersWorkspace (§1.11f): تبويبات تقرأ ?tab=، داخل PageSlot.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Headset, Store, TrendingUp, CalendarClock, BarChart3, RefreshCw,
-  Phone, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2 } from 'lucide-react';
+  Phone, PhoneCall, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, Empty, Select, Input, Badge, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
@@ -21,6 +21,7 @@ import {
 } from '../lib/crmService.js';
 import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
+import { loadLatestMerchants } from '../lib/merchantsService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -29,6 +30,7 @@ const daysAgo = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_
 
 const TABS = [
   { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
+  { id: 'sales', label: 'قوائم المبيعات', icon: PhoneCall },
   { id: 'leads', label: 'الجهات الخارجية', icon: Store },
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
@@ -71,6 +73,7 @@ export default function CrmWorkspace({ isActive = true }) {
       </div>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
+        {tab === 'sales' && <SalesTab active={isActive && tab === 'sales'}/>}
         {tab === 'leads' && <LeadsTab active={isActive && tab === 'leads'}/>}
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}
         {tab === 'tasks' && <TasksTab active={isActive && tab === 'tasks'}/>}
@@ -194,17 +197,39 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
   return (
     <Modal title={customer.merchant?.storeName || name} onClose={onClose} width={640}>
       {/* رأس */}
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: walletDebtOf(customer) > 0 ? 4 : 14, fontSize: 13 }}>
+      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 4, fontSize: 13 }}>
         <Hd label="الدين" value={`${fmt(effectiveDebt(customer))} ر.س`} color="#DC2626"/>
         <Hd label="العمر" value={`${customer.daysOutstanding || 0} يوم`}/>
-        <Hd label="الخطر" value={`${customer.risk?.level?.label || '—'} (${customer.risk?.score || 0})`} color={customer.risk?.level?.color}/>
-        {customer.merchant?.phone && <Hd label="الجوال" value={customer.merchant.phone}/>}
+        {customer.risk && <Hd label="الخطر" value={`${customer.risk?.level?.label || '—'} (${customer.risk?.score || 0})`} color={customer.risk?.level?.color}/>}
+        {customer.merchant?.phone && <Hd label="الجوال" value={<PhoneLink phone={customer.merchant.phone}/>}/>}
       </div>
+      {/* جانب المبيعات — كان في customer.merchant دون عرض: نشاط المتجر بنظرة */}
+      {customer.merchant && (
+        <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', marginBottom: 4, fontSize: 13 }}>
+          <Hd label="شحناته" value={fmt0(customer.merchant.shipmentCount ?? 0)}/>
+          <Hd label="آخر شحنة" value={fmtDate(customer.merchant.lastShipmentAt)}/>
+          {customer.merchant.billingType && <Hd label="الدفع" value={customer.merchant.billingType}/>}
+          {customer.merchant.platformStatus && <Hd label="المنصّة" value={customer.merchant.platformStatus}
+            color={customer.merchant.platformStatus === 'نشط' ? 'var(--green2)' : '#DC2626'}/>}
+          {customer.merchant.walletBalance != null && <Hd label="المحفظة" value={fmt(customer.merchant.walletBalance)}
+            color={Number(customer.merchant.walletBalance) < 0 ? '#DC2626' : undefined}/>}
+        </div>
+      )}
       {walletDebtOf(customer) > 0 && (
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 14 }}>
+        <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
           منها فواتير زوهو <b>{fmt(customer.total)}</b> · محفظة سالبة (النظام الداخلي) <b style={{ color: '#DC2626' }}>{fmt(walletDebtOf(customer))}</b>
         </div>
       )}
+      {/* لماذا هذه الدرجة؟ — computeRisk يرجع الأسباب وكانت تُهمَل */}
+      {customer.risk?.reasons?.length > 0 && (
+        <details style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
+          <summary style={{ cursor: 'pointer' }}>لماذا درجة الخطر {customer.risk.score}؟</summary>
+          <div style={{ marginTop: 6, display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {customer.risk.reasons.map((r, i) => <div key={i}>• {r.label} <span style={{ color: 'var(--muted2)' }}>(+{r.points})</span></div>)}
+          </div>
+        </details>
+      )}
+      <div style={{ marginBottom: 10 }}/>
 
       {/* أزرار الإجراء */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
@@ -288,6 +313,131 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
   );
 }
 
+// ═══════════════ قوائم عمل المبيعات ═══════════════
+// «مين محتمل ومين وقف ومين سجّل ما اشتغل» — ثلاث قوائم اتصال جاهزة من بيانات
+// merchants الموجودة (بلا جداول جديدة). النقر يفتح بطاقة العميل نفسها
+// (timeline + مكالمة + موعد) — نفس أدوات التحصيل تخدم المبيعات.
+const DAY_MS = 86_400_000;
+const SALES_LISTS = [
+  { id: 'signup',  label: '🆕 سجّل وما شحن',      hint: 'متجر نشط بلا أي شحنة — مكالمة تفعيل',            dateLabel: 'سجّل' },
+  { id: 'churned', label: '📴 توقّف عن الشحن',     hint: 'موقوف بالمنصّة وكان يشحن — مكالمة استرجاع',       dateLabel: 'آخر شحنة' },
+  { id: 'dormant', label: '😴 نشط وخامل +45ي',    hint: 'نشط لكن آخر شحنة قبل +45 يوم — مكالمة إنعاش',     dateLabel: 'آخر شحنة' },
+];
+function SalesTab({ active }) {
+  const { can } = useAuth();
+  const [merchants, setMerchants] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [listId, setListId] = useState('signup');
+  const [sel, setSel] = useState(null);
+
+  const refresh = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await loadLatestMerchants();
+      setMerchants(res?.merchants || []);
+    } catch (e) { toast(`فشل تحميل المتاجر: ${e.message}`, 'error'); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { if (active && merchants == null) refresh(); }, [active, merchants, refresh]);
+
+  const lists = useMemo(() => {
+    const rows = merchants || [];
+    const now = Date.now();
+    return {
+      signup: rows
+        .filter(m => (m.shipment_count || 0) === 0 && m.status === 'نشط')
+        .sort((a, b) => new Date(b.created_at_platform || 0) - new Date(a.created_at_platform || 0)),
+      churned: rows
+        .filter(m => m.status === 'غير نشط' && (m.shipment_count || 0) > 0)
+        .sort((a, b) => new Date(b.last_shipment_at || 0) - new Date(a.last_shipment_at || 0)),
+      dormant: rows
+        .filter(m => m.status === 'نشط' && (m.shipment_count || 0) > 0 && m.last_shipment_at
+          && (now - new Date(m.last_shipment_at).getTime()) > 45 * DAY_MS)
+        .sort((a, b) => (b.shipment_count || 0) - (a.shipment_count || 0)),
+    };
+  }, [merchants]);
+
+  if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
+  const meta = SALES_LISTS.find(l => l.id === listId);
+  const rows = lists[listId] || [];
+
+  // يفتح بطاقة العميل بكائن merchant مركَّب — نفس شكل c.merchant في المتابعة
+  const openCard = (m) => setSel({
+    customer_name: m.store_name,
+    total: 0, daysOutstanding: 0,
+    merchant: {
+      storeId: m.store_id, storeName: m.store_name, phone: m.phone,
+      billingType: m.billing_type, platformStatus: m.status,
+      shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at,
+      walletBalance: m.wallet_balance,
+    },
+  });
+
+  return (
+    <Pad>
+      <PageHeader icon={<PhoneCall size={22}/>} title="قوائم المبيعات"
+        subtitle="قوائم اتصال جاهزة من كشف المتاجر — تفعيل · استرجاع · إنعاش"
+        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
+
+      {/* مبدّل القوائم مع عدّاداتها */}
+      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+        {SALES_LISTS.map(l => (
+          <Btn key={l.id} size="sm" variant={listId === l.id ? 'primary' : 'outline'} onClick={() => setListId(l.id)}>
+            {l.label} ({(lists[l.id] || []).length})
+          </Btn>
+        ))}
+      </div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12 }}>{meta.hint}</div>
+
+      {loading && merchants == null ? <Spin/> : !rows.length
+        ? <Empty icon="✅" title="القائمة فارغة" sub={merchants?.length ? 'لا متاجر في هذا التصنيف' : 'ارفع كشف المتاجر من صفحة العملاء ← متاجر المنصّة'}/>
+        : (
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
+                {['المتجر', 'الجوال', meta.dateLabel, 'شحناته', 'المحفظة', 'الدفع', ''].map(h =>
+                  <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {rows.slice(0, 300).map(m => (
+                  <tr key={m.store_id} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, cursor: 'pointer' }} onClick={() => openCard(m)}>{m.store_name}</td>
+                    <td data-label="الجوال" style={{ padding: '10px 12px' }}><PhoneLink phone={m.phone}/></td>
+                    <td data-label={meta.dateLabel} style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
+                      {fmtDate(listId === 'signup' ? m.created_at_platform : m.last_shipment_at)}
+                    </td>
+                    <td data-label="شحناته" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(m.shipment_count)}</td>
+                    <td data-label="المحفظة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: Number(m.wallet_balance) < 0 ? '#DC2626' : 'var(--text2)' }}>
+                      {fmt(m.wallet_balance)}
+                    </td>
+                    <td data-label="الدفع" style={{ padding: '10px 12px', fontSize: 12, color: 'var(--muted)' }}>{m.billing_type || '—'}</td>
+                    <td style={{ padding: '10px 12px' }}>
+                      <Btn size="sm" variant="ghost" icon={<Phone size={13}/>} onClick={() => openCard(m)}>سجّل تواصلاً</Btn>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {rows.length > 300 && <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--muted)' }}>عرض أول 300 من {rows.length} — القوائم مرتّبة بالأولوية</div>}
+          </Card>
+        )}
+      {sel && <CustomerDrawer customer={sel} onClose={() => setSel(null)} onChanged={() => {}}/>}
+    </Pad>
+  );
+}
+
+// جوال قابل للنقر: اتصال مباشر + واتساب
+function PhoneLink({ phone }) {
+  if (!phone) return '—';
+  const digits = String(phone).replace(/\D/g, '');
+  return (
+    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
+      <a href={`tel:+${digits}`} style={{ color: 'var(--accent)', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{phone}</a>
+      <a href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="واتساب" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none' }}>💬</a>
+    </span>
+  );
+}
+
 // ═══════════════ الجهات الخارجية (leads) ═══════════════
 function LeadsTab({ active }) {
   const { user, can } = useAuth();
@@ -336,7 +486,10 @@ function LeadsTab({ active }) {
                   <td data-label="الجهة" style={{ padding: '10px 12px', fontWeight: 600 }}>{l.name}</td>
                   <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{l.phone || '—'}</td>
                   <td data-label="المدينة" style={{ padding: '10px 12px' }}>{l.city || '—'}</td>
-                  <td data-label="الحالة" style={{ padding: '10px 12px' }}><Badge status={l.status === 'converted' ? 'ok' : 'pending'} label={l.status}/></td>
+                  <td data-label="الحالة" style={{ padding: '10px 12px' }}>
+                    <Badge status={l.status === 'converted' ? 'ok' : 'pending'}
+                      label={{ new: 'جديد', contacted: 'تم التواصل', qualified: 'مؤهّل', converted: 'تحوّل لعميل', lost: 'مفقود' }[l.status] || l.status}/>
+                  </td>
                   <td style={{ padding: '10px 12px' }}>
                     {l.status !== 'converted' && can('crm.convert_lead') &&
                       <Btn size="sm" variant="ghost" onClick={async () => { await convertLead(l.id, { customerName: l.name }); toast('حُوّلت لعميل', 'success'); refresh(); }}>تحويل لعميل</Btn>}
@@ -389,7 +542,7 @@ function DealsTab({ active }) {
   const openStages = stages.filter(s => !s.is_won && !s.is_lost);
   return (
     <Pad>
-      <PageHeader icon={<TrendingUp size={22}/>} title="صفقات المبيعات" subtitle="pipeline الفرص — اسحب الصفقة بين المراحل"
+      <PageHeader icon={<TrendingUp size={22}/>} title="صفقات المبيعات" subtitle="pipeline الفرص — انقل الصفقة عبر قائمة المرحلة داخل البطاقة"
         actions={can('crm.manage_deals') && <Btn size="sm" icon={<Plus size={14}/>} onClick={() => setModal(true)}>صفقة جديدة</Btn>}/>
       {loading && !deals.length ? <Spin/> : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(openStages.length, 1)}, minmax(180px, 1fr))`, gap: 10, overflowX: 'auto' }}>
