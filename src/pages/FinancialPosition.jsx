@@ -15,6 +15,7 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.j
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadPnlSnapshots, refreshPnlMonth, currentPnlPeriod, prevPnlPeriod, quarterTotals,
+  syncZohoDocs, loadInvoicedVsCollected, loadSyncState, loadZohoEvents,
 } from '../lib/pnlService.js';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 
@@ -36,6 +37,8 @@ export default function FinancialPosition({ isActive = true }) {
   const [sel, setSel] = useState(currentPnlPeriod());
   const [busy, setBusy] = useState(false);
   const [billedByMonth, setBilledByMonth] = useState(new Map());   // دفترنا (فحص الفجوة)
+  const [invCol, setInvCol] = useState(null);                      // فوترنا/حصّلنا للشهر المحدد
+  const [events, setEvents] = useState(null);                      // آخر الحركات (webhooks)
 
   const reload = useCallback(async () => {
     try { setSnaps(await loadPnlSnapshots()); }
@@ -68,6 +71,33 @@ export default function FinancialPosition({ isActive = true }) {
       setBilledByMonth(m);
     }).catch(() => {});
   }, [isActive, billedByMonth]);
+
+  // مزامنة الفواتير/الدفعات تلقائياً إن قدُمت (+6 ساعات) ثم تحميل شريط
+  // «فوترنا/حصّلنا» للشهر المحدد + آخر الأحداث الفورية
+  useEffect(() => {
+    if (!isActive) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const st = await loadSyncState();
+        const last = st.get('invoices')?.last_sync;
+        if (!last || Date.now() - new Date(last).getTime() > STALE_MS) {
+          await syncZohoDocs().catch(() => {});   // غير قاتل — المرايا الموجودة تكفي
+        }
+      } catch { /* تجاهل */ }
+      if (cancelled) return;
+      loadZohoEvents(10).then(e => { if (!cancelled) setEvents(e); }).catch(() => {});
+    })();
+    return () => { cancelled = true; };
+  }, [isActive]);
+  useEffect(() => {
+    if (!isActive || !sel) return;
+    let cancelled = false;
+    loadInvoicedVsCollected(sel)
+      .then(r => { if (!cancelled) setInvCol(r); })
+      .catch(() => { if (!cancelled) setInvCol(null); });
+    return () => { cancelled = true; };
+  }, [isActive, sel]);
 
   const refresh = async (period) => {
     setBusy(true);
@@ -170,6 +200,29 @@ export default function FinancialPosition({ isActive = true }) {
           </div>
         </Card>
 
+        {/* ── فوترنا × وحصّلنا — من مرايا فواتير/دفعات زوهو (مزامنة دلتا) ── */}
+        {invCol?.hasData && (
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>🧾 فوترنا هذا الشهر ({invCol.invCount} فاتورة)</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3 }}>{fmt(invCol.invoiced)} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span></div>
+            </div>
+            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>💰 وحصّلنا من العملاء ({invCol.payCount} دفعة)</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: 'var(--green)' }}>{fmt(invCol.collected)} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span></div>
+            </div>
+            <div style={{ flex: 1, minWidth: 220, background: 'var(--card)', border: '1px solid var(--border)',
+              borderRadius: 12, padding: '12px 16px' }}>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>⏳ الباقي عند العملاء من فواتير الشهر</div>
+              <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 17, marginTop: 3, color: invCol.invoiced - invCol.collected > 0.5 ? 'var(--gold)' : 'var(--green)' }}>
+                {fmt(Math.max(0, +(invCol.invoiced - invCol.collected).toFixed(2)))} <span style={{ fontSize: 10, color: 'var(--muted)' }}>ر.س</span>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ── الشلال — 4 سطور بلغة بشرية ── */}
         <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 16 }}>
           <WaterRow label="دخلنا من العملاء" hint="كل ما فوترناه هذا الشهر (بوليصات + مبيعات + رسوم)"
@@ -256,6 +309,34 @@ export default function FinancialPosition({ isActive = true }) {
             </div>
           </Card>
         </div>
+
+        {/* ── آخر الحركات (أحداث فورية من زوهو) — نبض فقط، لا تدخل الربح ── */}
+        {events?.length > 0 && (
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 12 }}>⚡ آخر الحركات — لحظياً من زوهو</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              {events.map(e => (
+                <div key={e.id} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12.5,
+                  padding: '8px 10px', background: 'var(--surface2)', borderRadius: 9 }}>
+                  <span style={{ fontSize: 15 }}>{e.event_type === 'payment_received' ? '💰' : e.event_type === 'invoice_created' ? '🧾' : '📄'}</span>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {e.event_type === 'payment_received' ? 'دفعة من' : e.event_type === 'invoice_created' ? 'فاتورة لـ' : 'حدث —'} <b>{e.contact_name || '—'}</b>
+                    {e.ref_number ? <span style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 11 }}> · {e.ref_number}</span> : null}
+                  </span>
+                  {e.amount != null && (
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700,
+                      color: e.event_type === 'payment_received' ? 'var(--green)' : 'var(--text)' }}>
+                      {fmt(e.amount)}
+                    </span>
+                  )}
+                  <span style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    {e.received_at ? new Date(e.received_at).toLocaleString('ar-SA', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+        )}
 
         {/* القاعدة الثابتة */}
         <div style={{ fontSize: 11.5, color: 'var(--muted)', textAlign: 'center' }}>

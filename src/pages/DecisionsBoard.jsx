@@ -92,58 +92,108 @@ export default function DecisionsBoard({ isActive = true }) {
 
       {!d && loading ? (
         <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div>
-      ) : !d ? null : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))', gap: 14 }}>
-          {d.pnl && (
-            <DecisionCard
-              color={Number(d.pnl.net) >= 0 ? 'var(--green)' : 'var(--red)'}
-              icon={Number(d.pnl.net) >= 0 ? '✅' : '🔻'}
-              title="ربح الشهر (زوهو)"
-              value={`${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`} unit="ر.س"
-              sub={`قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`}
-              cta="الوضع المالي" onClick={() => navigate('/pnl')}
-            />
+      ) : !d ? null : (() => {
+        // البطاقات الصامتة (لا قرار فيها اليوم) تنزل لشريط «تمام» مضغوط —
+        // الشاشة تعرض فقط ما يحتاج فعلاً + عدّاد بالأعلى (تحسين 2026-07-02).
+        const cards = [
+          d.pnl && {
+            key: 'pnl', active: true, info: true,
+            props: {
+              color: Number(d.pnl.net) >= 0 ? 'var(--green)' : 'var(--red)',
+              icon: Number(d.pnl.net) >= 0 ? '✅' : '🔻',
+              title: 'ربح الشهر (زوهو)',
+              value: `${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`, unit: 'ر.س',
+              sub: `قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`,
+              cta: 'الوضع المالي', onClick: () => navigate('/pnl'),
+            },
+          },
+          {
+            key: 'stop', active: d.stopList.length > 0, okLabel: 'لا عملاء يحتاجون إيقافاً',
+            props: {
+              color: 'var(--red)', icon: '🛑', title: 'يُوقَف الآن', value: d.stopList.length, unit: 'عميل نشط',
+              sub: `دينهم ${fmt(d.stopTotal)} ر.س — أوقفهم قبل ما يتراكم`,
+              top: d.stopList.slice(0, 3).map(c => `${c.merchant?.storeName || c.name} · ${fmtK(c.total)} ر.س`),
+              cta: 'فتح المديونيات', onClick: () => navigate('/receivables'),
+            },
+          },
+          {
+            key: 'cod', active: d.codOut > 0.5, okLabel: 'كل COD محصَّل',
+            props: {
+              color: '#D97706', icon: '📥', title: 'COD لم يُحصَّل', value: fmt(d.codOut), unit: 'ر.س',
+              sub: `موزّع على ${d.codN} ناقل — تابع تحويلهم`,
+              cta: 'تسويات COD', onClick: () => navigate('/money?tab=cod'),
+            },
+          },
+          {
+            key: 'held', active: d.held > 0.5, okLabel: 'لا خزائن COD محتجزة',
+            props: {
+              color: '#0EA5E9', icon: '💰', title: 'خزائن COD محتجزة', value: fmt(d.held), unit: 'ر.س',
+              sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'ارفع ميزان المراجعة لتظهر',
+              cta: 'رقابة الخزائن', onClick: () => navigate('/reconciliation'),
+            },
+          },
+          {
+            key: 'vgap', active: d.vgapTotal > 1, okLabel: 'أرصدة الموردين مطابقة لزوهو',
+            props: {
+              color: '#8B5CF6', icon: '🧾', title: 'فجوة تسجيل Zoho', value: fmt(d.vgapTotal), unit: 'ر.س',
+              sub: `${d.vgaps.length} ناقل يختلف رصيدهم عن Zoho`,
+              top: d.vgaps.slice(0, 3).map(v => `${v.carrierName} · ${fmtK(v.diff)} ر.س`),
+              cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation'),
+            },
+          },
+          {
+            key: 'anom', active: d.anomalyCount > 0, okLabel: 'لا تنبيهات عملاء',
+            props: {
+              color: 'var(--red)', icon: '⚠️', title: 'تنبيهات العملاء', value: d.anomalyCount, unit: 'عميل',
+              sub: `إجمالي المديونيات ${fmt(d.totalDebt)} ر.س`,
+              cta: 'فتح التنبيهات', onClick: () => navigate('/receivables'),
+            },
+          },
+          {
+            key: 'broken', active: (d.crm?.brokenCount || 0) > 0, okLabel: 'لا وعود مكسورة',
+            props: {
+              color: 'var(--gold)', icon: '🤝', title: 'وعود مكسورة', value: d.crm?.brokenCount || 0, unit: 'وعد',
+              sub: `بقيمة ${fmt(d.crm?.brokenTotal || 0)} ر.س — تجاوزت تاريخها بلا دفع`,
+              top: (d.crm?.brokenPromises || []).slice(0, 3).map(p => `${p.entity_ref} · ${fmtK(p.promise_amount)} ر.س`),
+              cta: 'فتح المتابعة', onClick: () => navigate('/crm?tab=queue'),
+            },
+          },
+          {
+            key: 'due', active: (d.crm?.dueCount || 0) > 0, okLabel: 'لا متابعات مستحقة اليوم',
+            props: {
+              color: '#06B6D4', icon: '📞', title: 'متابعات مستحقة اليوم', value: d.crm?.dueCount || 0, unit: 'عميل',
+              sub: 'موعدهم اليوم أو بلا إجراء تالٍ مجدوَل',
+              cta: 'قائمة المتابعة', onClick: () => navigate('/crm?tab=queue'),
+            },
+          },
+        ].filter(Boolean);
+        const activeCards = cards.filter(c => c.active);
+        const okCards = cards.filter(c => !c.active && c.okLabel);
+        const decisionsCount = activeCards.filter(c => !c.info).length;
+        return (<>
+          {/* عدّاد اليوم */}
+          <div style={{ fontSize: 13, marginBottom: 14, fontWeight: 700,
+            color: decisionsCount ? 'var(--text)' : 'var(--green)' }}>
+            {decisionsCount
+              ? `🔔 ${decisionsCount} إشارة تحتاج قرارك اليوم`
+              : '✨ لا قرارات معلّقة اليوم — كل الإشارات هادئة'}
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(265px, 1fr))', gap: 14 }}>
+            {activeCards.map(c => <DecisionCard key={c.key} {...c.props}/>)}
+          </div>
+          {/* الإشارات الهادئة — سطر مضغوط بدل بطاقات صفرية تشتّت */}
+          {okCards.length > 0 && (
+            <div style={{
+              marginTop: 16, padding: '10px 14px', borderRadius: 12, fontSize: 12,
+              background: 'color-mix(in srgb, var(--green) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--green) 25%, transparent)',
+              color: 'var(--green2)', display: 'flex', flexWrap: 'wrap', gap: '6px 16px',
+            }}>
+              {okCards.map(c => <span key={c.key}>✓ {c.okLabel}</span>)}
+            </div>
           )}
-          <DecisionCard
-            color="var(--red)" icon="🛑" title="يُوقَف الآن" value={d.stopList.length} unit="عميل نشط"
-            sub={`دينهم ${fmt(d.stopTotal)} ر.س — أوقفهم قبل ما يتراكم`}
-            top={d.stopList.slice(0, 3).map(c => `${c.merchant?.storeName || c.name} · ${fmtK(c.total)} ر.س`)}
-            cta="فتح المديونيات" onClick={() => navigate('/receivables')}
-          />
-          <DecisionCard
-            color="#D97706" icon="📥" title="COD لم يُحصَّل" value={fmt(d.codOut)} unit="ر.س"
-            sub={`موزّع على ${d.codN} ناقل — تابع تحويلهم`}
-            cta="تسويات COD" onClick={() => navigate('/money?tab=cod')}
-          />
-          <DecisionCard
-            color="#0EA5E9" icon="💰" title="خزائن COD محتجزة" value={fmt(d.held)} unit="ر.س"
-            sub={d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'ارفع ميزان المراجعة لتظهر'}
-            cta="رقابة الخزائن" onClick={() => navigate('/reconciliation')}
-          />
-          <DecisionCard
-            color="#8B5CF6" icon="🧾" title="فجوة تسجيل Zoho" value={fmt(d.vgapTotal)} unit="ر.س"
-            sub={`${d.vgaps.length} ناقل يختلف رصيدهم عن Zoho`}
-            top={d.vgaps.slice(0, 3).map(v => `${v.carrierName} · ${fmtK(v.diff)} ر.س`)}
-            cta="مطابقة الموردين" onClick={() => navigate('/reconciliation')}
-          />
-          <DecisionCard
-            color="#EF4444" icon="⚠️" title="تنبيهات العملاء" value={d.anomalyCount} unit="عميل"
-            sub={`إجمالي المديونيات ${fmt(d.totalDebt)} ر.س`}
-            cta="فتح التنبيهات" onClick={() => navigate('/receivables')}
-          />
-          <DecisionCard
-            color="var(--gold)" icon="🤝" title="وعود مكسورة" value={d.crm?.brokenCount || 0} unit="وعد"
-            sub={`بقيمة ${fmt(d.crm?.brokenTotal || 0)} ر.س — تجاوزت تاريخها بلا دفع`}
-            top={(d.crm?.brokenPromises || []).slice(0, 3).map(p => `${p.entity_ref} · ${fmtK(p.promise_amount)} ر.س`)}
-            cta="فتح المتابعة" onClick={() => navigate('/crm?tab=queue')}
-          />
-          <DecisionCard
-            color="#06B6D4" icon="📞" title="متابعات مستحقة اليوم" value={d.crm?.dueCount || 0} unit="عميل"
-            sub="موعدهم اليوم أو بلا إجراء تالٍ مجدوَل"
-            cta="قائمة المتابعة" onClick={() => navigate('/crm?tab=queue')}
-          />
-        </div>
-      )}
+        </>);
+      })()}
     </div>
   );
 }
