@@ -306,11 +306,16 @@ function AppInner({ theme, toggleTheme }) {
   // v3 key: the reorg made التقارير + الإعدادات/النظام collapsed-by-default
   // (all occasional/rare) so the resting sidebar is short. Bumping the key
   // means every user gets the new default once, then their own toggles win.
+  // v4 (2026-07-02، قرار المستخدم): أكورديون قسم-واحد — فتح قسم يقفل البقية
+  // («لو فتحت قسم مفروض يقفل قسم حتى يكون سلس»). الافتراضي: كله مقفل عدا
+  // شركات الشحن (الأكثر استخداماً). المفتاح الجديد يطبّق الافتراض مرة واحدة.
+  const ALL_SECTION_IDS = NAV_SECTIONS.map(s => s.id);
   const [collapsedSecs, setCollapsedSecs] = useState(() => {
+    const dflt = ALL_SECTION_IDS.filter(id => id !== 'carriers');
     try {
-      const stored = localStorage.getItem('sa-nav-collapsed-v3');
-      return new Set(stored ? JSON.parse(stored) : ['reports', 'system']);
-    } catch { return new Set(['reports', 'system']); }
+      const stored = localStorage.getItem('sa-nav-collapsed-v4');
+      return new Set(stored ? JSON.parse(stored) : dflt);
+    } catch { return new Set(dflt); }
   });
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
@@ -350,9 +355,12 @@ function AppInner({ theme, toggleTheme }) {
     return () => { stop = true; clearInterval(t); };
   }, []);
   const toggleSection = (id) => setCollapsedSecs(prev => {
-    const next = new Set(prev);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    try { localStorage.setItem('sa-nav-collapsed-v3', JSON.stringify([...next])); } catch { /* ignore */ }
+    // أكورديون: القسم المفتوح واحد فقط — فتح قسم يقفل كل البقية،
+    // وإغلاق المفتوح يقفل الجميع.
+    const wasCollapsed = prev.has(id);
+    const next = new Set(ALL_SECTION_IDS);
+    if (wasCollapsed) next.delete(id);
+    try { localStorage.setItem('sa-nav-collapsed-v4', JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   });
 
@@ -402,10 +410,9 @@ function AppInner({ theme, toggleTheme }) {
   };
 
   const activeFor = (item) => {
-    // A hub item with subTabs never highlights itself — the matching
-    // child sub-row carries the active state instead, so we avoid a
-    // double highlight (parent + child) while inside the hub.
-    if (item.subTabs && subTabOf(item)) return false;
+    // الصفوف الفرعية أُزيلت من الجانبية (v4) — الأب يحمل التمييز حين يكون
+    // أي تبويب من تبويباته نشطاً (بما فيها المسارات القديمة legacy).
+    if (item.subTabs && subTabOf(item)) return true;
     if (location.pathname === item.path) return true;
     if (item.path === '/upload' && location.pathname === '/results') return true;
     return false;
@@ -424,7 +431,6 @@ function AppInner({ theme, toggleTheme }) {
     }
     return item.subTabs.find(s => s.legacy === location.pathname) || null;
   };
-  const subTabActive = (item, sub) => subTabOf(item)?.tabId === sub.tabId;
 
   // ── Auth loading ──
   if (authLoading) return (
@@ -614,37 +620,24 @@ function AppInner({ theme, toggleTheme }) {
                   )}
                   <div style={{
                     overflow: 'hidden',
-                    // Include any expanded subTab rows in the height so
-                    // the accordion animation doesn't clip them.
-                    maxHeight: isOpen
-                      ? (items.reduce((acc, n) => acc + 1 + ((n.subTabs && !collapsed) ? n.subTabs.length : 0), 0)) * 42 + 12
-                      : 0,
+                    maxHeight: isOpen ? items.length * 42 + 12 : 0,
                     transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
                     paddingInlineEnd: collapsed ? 0 : 6,
                   }}>
+                    {/* v4 (قرار المستخدم 2026-07-02): لا صفوف فرعية للتبويبات
+                        في الجانبية — التبويبات داخل الصفحات هي المبدّل الوحيد
+                        («القائمة موجودة داخلياً وجانبياً ليش؟»). subTabs تبقى
+                        في NAV_ITEMS كبيانات لتمييز الأب والمسارات القديمة. */}
                     {items.map(n => (
-                      <div key={n.id}>
-                        <NavBtn
-                          n={n}
-                          active={activeFor(n)}
-                          accent={sec.accent}
-                          collapsed={collapsed}
-                          onClick={() => goto(n.path)}
-                          nested
-                        />
-                        {/* Hub sub-tabs — surfaced as one-click rows so
-                            each lens is visible without opening the hub
-                            first. Hidden in collapsed mode (too narrow). */}
-                        {n.subTabs && !collapsed && n.subTabs.map(sub => (
-                          <NavSubBtn
-                            key={sub.tabId}
-                            sub={sub}
-                            accent={sec.accent}
-                            active={subTabActive(n, sub)}
-                            onClick={() => goto(`${n.path}?tab=${sub.tabId}`)}
-                          />
-                        ))}
-                      </div>
+                      <NavBtn
+                        key={n.id}
+                        n={n}
+                        active={activeFor(n)}
+                        accent={sec.accent}
+                        collapsed={collapsed}
+                        onClick={() => goto(n.path)}
+                        nested
+                      />
                     ))}
                   </div>
                 </div>
@@ -1009,40 +1002,6 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
   );
 }
 
-// Sub-row under a hub NavBtn — smaller, deeper-indented, with a thin
-// connector tick. Highlights with the section accent when its tab is
-// the active one. Purely a navigation shortcut into the hub's tab.
-function NavSubBtn({ sub, accent, active, onClick }) {
-  const Icon = sub.icon;
-  return (
-    <button
-      className="nav-item"
-      onClick={onClick}
-      style={{
-        paddingInlineStart: 38,
-        paddingTop: 5, paddingBottom: 5,
-        minHeight: 0,
-        ...(active ? {
-          background: `color-mix(in srgb, ${accent} 12%, transparent)`,
-          color: '#fff', fontWeight: 600,
-        } : {}),
-      }}
-    >
-      {Icon && (
-        <Icon
-          size={13}
-          strokeWidth={active ? 2.2 : 1.7}
-          style={{ flexShrink: 0, color: active ? accent : undefined, opacity: active ? 1 : 0.75 }}
-        />
-      )}
-      <span className="nav-label" style={{ flex: 1, fontSize: 12.5 }}>{sub.label}</span>
-      {active && (
-        <span style={{
-          width: 5, height: 5, borderRadius: '50%',
-          background: accent, boxShadow: `0 0 8px ${accent}`,
-          flexShrink: 0,
-        }}/>
-      )}
-    </button>
-  );
-}
+// NavSubBtn (الصفوف الفرعية للتبويبات) حُذف في v4 — قرار المستخدم 2026-07-02:
+// التبويبات داخل الصفحات هي المبدّل الوحيد؛ subTabs بقيت بيانات في NAV_ITEMS
+// لتمييز الأب (activeFor→subTabOf) وللمسارات القديمة legacy.
