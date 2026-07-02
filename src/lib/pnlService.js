@@ -71,16 +71,52 @@ export async function loadInvoicedVsCollected(period) {
     }
     return rows;
   };
-  const [invs, pays] = await Promise.all([
-    page('zoho_invoices', 'total'),
-    page('zoho_payments', 'amount'),
-  ]);
+  // نجلب balance أيضاً — «الباقي» الحقيقي = رصيد فواتير هذا الشهر غير المسدّد
+  // (لا invoiced−collected؛ فالدفعات قد تكون لفواتير أشهر سابقة — ملاحظة
+  // المستخدم الصحيحة). الرصيد يعكس ما تبقّى فعلاً على فواتير هذا الشهر تحديداً.
+  const pageInv = async () => {
+    const rows = [];
+    let f = 0;
+    while (true) {
+      const { data, error } = await supabase.from('zoho_invoices')
+        .select('total, balance, date')
+        .gte('date', from).lte('date', to)
+        .order('zoho_id', { ascending: true }).range(f, f + 999);
+      if (error) throw error;
+      if (!data?.length) break;
+      rows.push(...data);
+      if (data.length < 1000) break;
+      f += 1000;
+    }
+    return rows;
+  };
+  const [invs, pays] = await Promise.all([pageInv(), page('zoho_payments', 'amount')]);
   return {
     invoiced:  +invs.reduce((s, r) => s + (Number(r.total) || 0), 0).toFixed(2),
     collected: +pays.reduce((s, r) => s + (Number(r.amount) || 0), 0).toFixed(2),
+    // الباقي على فواتير هذا الشهر (رصيدها الفعلي) — لا يتأثر بدفعات أشهر أخرى
+    remaining: +invs.reduce((s, r) => s + (Number(r.balance) || 0), 0).toFixed(2),
     invCount: invs.length, payCount: pays.length,
     hasData: invs.length > 0 || pays.length > 0,
   };
+}
+
+// إجمالي رصيد العملاء الحالي من زوهو (كل الفواتير المفتوحة) — الرقم الحقيقي
+// لمطابقة أرصدة العملاء، مستقلّ عن الشهر.
+export async function loadZohoArTotal() {
+  const rows = [];
+  let f = 0;
+  while (true) {
+    const { data, error } = await supabase.from('zoho_invoices')
+      .select('balance').gt('balance', 0.5)
+      .order('zoho_id', { ascending: true }).range(f, f + 999);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < 1000) break;
+    f += 1000;
+  }
+  return { total: +rows.reduce((s, r) => s + (Number(r.balance) || 0), 0).toFixed(2), openInvoices: rows.length };
 }
 
 // حالة المزامنة (لقرار «هل نزامن تلقائياً؟»)

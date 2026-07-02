@@ -62,10 +62,14 @@ export async function listTasks({ stage = null, customer = null, includeDone = f
 // loadLatestReceivables). Skips customers that already have an open
 // task with the same trigger thanks to the partial unique index —
 // the upsert returns ON CONFLICT DO NOTHING silently.
+// أولوية الأسباب (الأسوأ أولاً) — مهمة واحدة لكل عميل بأسوأ سبب فقط، فلا
+// يتكرّر العميل في قائمة التحصيل (كان trigger منفصلاً يُنشئ صفاً لكل سبب).
+const TRIGGER_PRIORITY = ['over_credit_limit', 'aged_90', 'aged_60', 'aged_30', 'prepaid_with_debt'];
+
 export async function regenerateTasks({ customers, userId = null }) {
   if (!Array.isArray(customers)) return { created: 0, byTrigger: {} };
-  const today = new Date();
   const candidates = [];
+  const worstByCustomer = new Map();   // customer_name → أسوأ trigger
   for (const c of customers) {
     const total = Number(c.total) || 0;
     if (total <= 0.5) continue;
@@ -75,22 +79,30 @@ export async function regenerateTasks({ customers, userId = null }) {
     if (days > 90)                  triggers.push('aged_90');
     else if (days > 60)             triggers.push('aged_60');
     else if (days > 30)             triggers.push('aged_30');
-    // Prepaid-with-debt — a technical anomaly worth chasing
-    if (c.merchant?.billingType === 'دفع مسبق' && total > 0.5) {
-      triggers.push('prepaid_with_debt');
-    }
-    for (const t of triggers) {
-      candidates.push({
-        customer_name:     c.name,
-        trigger:           t,
-        debt_at_creation:  +total.toFixed(2),
-        credit_limit:      c.creditLimit ?? null,
-        days_outstanding:  days,
-        assigned_to:       userId,
-      });
-    }
+    if (c.merchant?.billingType === 'دفع مسبق' && total > 0.5) triggers.push('prepaid_with_debt');
+    if (!triggers.length) continue;
+    // أسوأ سبب واحد فقط لكل عميل
+    const worst = TRIGGER_PRIORITY.find(t => triggers.includes(t)) || triggers[0];
+    worstByCustomer.set(c.name, worst);
+    candidates.push({
+      customer_name:     c.name,
+      trigger:           worst,
+      debt_at_creation:  +total.toFixed(2),
+      credit_limit:      c.creditLimit ?? null,
+      days_outstanding:  days,
+      assigned_to:       userId,
+    });
   }
   if (!candidates.length) return { created: 0, byTrigger: {} };
+
+  // ألغِ أي مهمة مفتوحة لعميل بسبب لم يعد الأسوأ (تجنّب تراكم مكرّرات حين
+  // ينتقل العميل من متأخر-60 لمتأخر-90 مثلاً) — يبقى صفّ واحد لكل عميل.
+  for (const [name, worst] of worstByCustomer) {
+    await supabase.from('collection_tasks')
+      .update({ stage: 'cancelled', notes: 'دمج مكرّر — أُبقيت مهمة الأسوأ', updated_at: new Date().toISOString() })
+      .eq('customer_name', name).neq('trigger', worst)
+      .in('stage', ['todo', 'contacted', 'snoozed']);   // لا نلغِ promised (فيه وعد فعّال)
+  }
 
   // INSERT ... ON CONFLICT DO NOTHING using the partial unique
   // index. We can't use upsert() with a partial index cleanly via
