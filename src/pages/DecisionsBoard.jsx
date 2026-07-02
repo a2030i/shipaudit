@@ -100,7 +100,7 @@ export default function DecisionsBoard({ isActive = true }) {
               icon={Number(d.pnl.net) >= 0 ? '✅' : '🔻'}
               title="ربح الشهر (زوهو)"
               value={`${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`} unit="ر.س"
-              sub="قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل"
+              sub={`قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`}
               cta="الوضع المالي" onClick={() => navigate('/pnl')}
             />
           )}
