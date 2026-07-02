@@ -762,17 +762,41 @@ button:active { transform: scale(.97); }
   /* Tighter table cells */
   th, td { padding: 6px 8px; font-size: 10.5px; }
 
-  /* AI chat: smaller floating button + nearly full-screen panel */
+  /* AI chat: smaller floating button + nearly full-screen panel.
+     مرفوع فوق شريط التنقّل السفلي (64px + أمان iOS). */
   .ai-chat-fab {
     width: 50px !important; height: 50px !important;
-    bottom: 16px !important; left: 16px !important;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; left: 16px !important;
   }
   .ai-chat-panel {
-    bottom: 12px !important; left: 12px !important;
+    bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; left: 12px !important;
     width: calc(100vw - 24px) !important;
-    height: calc(100vh - 80px) !important;
-    max-height: calc(100vh - 80px) !important;
+    height: calc(100vh - 150px) !important;
+    max-height: calc(100vh - 150px) !important;
   }
+
+  /* ── شريط التنقّل السفلي (جوال فقط) ── */
+  .bottom-nav {
+    display: flex;
+    position: fixed; bottom: 0; right: 0; left: 0; z-index: 60;
+    background: var(--surface);
+    border-top: 1px solid var(--border);
+    padding-bottom: env(safe-area-inset-bottom, 0px);   /* نوتش iOS */
+    box-shadow: 0 -4px 16px rgba(0,0,0,.06);
+  }
+  .bottom-nav-btn {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    padding: 9px 4px 7px; border: none; background: none; cursor: pointer;
+    color: var(--muted); font-family: var(--font-sans); font-size: 10px; font-weight: 600;
+  }
+  .bottom-nav-btn.active { color: var(--accent); }
+  /* مساحة أسفل المحتوى كي لا يغطّي الشريط آخر صفوف الصفحة */
+  .page-content { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
+}
+
+/* الشريط السفلي للجوال فقط — مخفي على الحاسب */
+@media (min-width: 769px) {
+  .bottom-nav { display: none; }
 }
 
 /* ── Login page responsive ── */

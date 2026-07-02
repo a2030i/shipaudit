@@ -892,6 +892,32 @@ function AppInner({ theme, toggleTheme }) {
         </main>
       </div>
 
+      {/* ── شريط التنقّل السفلي (جوال فقط ≤768px، مخفي بالـCSS على الحاسب) ──
+          يختصر التنقّل اليومي من نقرتين عبر الدرج إلى نقرة واحدة. طبقة جوال
+          منفصلة عن الدرج — لا تخالف قاعدة «لا تثبيت عناصر جديدة» (§1.11f). */}
+      <nav className="bottom-nav">
+        {[
+          { path: '/overview',  label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
+          { path: '/decisions', label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
+          { path: '/drop',      label: 'رفع',      icon: Upload,          permKey: 'audits.create' },
+          { path: '/webhook',   label: 'الوارد',   icon: Inbox,           permKey: 'webhook.view' },
+        ].filter(it => isAdmin || can(it.permKey)).map(it => {
+          const Icon = it.icon;
+          const active = location.pathname === it.path;
+          return (
+            <button key={it.path} onClick={() => goto(it.path)}
+              className={`bottom-nav-btn ${active ? 'active' : ''}`}>
+              <Icon size={19}/>
+              <span>{it.label}</span>
+            </button>
+          );
+        })}
+        <button className="bottom-nav-btn" onClick={() => setMobileOpen(true)}>
+          <Menu size={19}/>
+          <span>القائمة</span>
+        </button>
+      </nav>
+
       {/* Floating AI assistant — always available once logged in */}
       <AIChat/>
     </>
