@@ -36,7 +36,13 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
 
   const { loadCurrentBalance }   = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet] = await Promise.all([
+  // الرصيد الختامي لآخر كشف بنكي مرفوع (bank_statement_summaries §1.15) —
+  // المصدر التلقائي للرصيد؛ الإدخال اليدوي يبقى للتحديث بين الكشوف.
+  const latestClosingQ = supabase.from('bank_statement_summaries')
+    .select('period_to, closing_balance, file_name')
+    .order('period_to', { ascending: false }).limit(1)
+    .then(r => r.data?.[0] || null).catch(() => null);
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -49,6 +55,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // behalf and haven't remitted it yet (net = SUM(out) − SUM(in) > 0).
     // Previously only visible per-carrier inside /money; surfaced here.
     loadCarrierNetBalances().catch(() => new Map()),
+    latestClosingQ,
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -153,7 +160,14 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // to us, how much we owe, where's the net".
     cashPosition: (() => {
       const wc = wcArr[0] || {};
-      const bank = bankBalance?.balance ?? null;
+      // مصدران للرصيد: الختامي التلقائي لآخر كشف مرفوع (موثوق، بتاريخ نهاية
+      // فترته) + الإدخال اليدوي (bank_balance_log — للتحديث بين الكشوف).
+      // الأحدث تاريخاً يفوز؛ نُظهر المصدر للمستخدم.
+      const manualDate    = bankBalance?.recordedAt ? new Date(bankBalance.recordedAt).getTime() : -1;
+      const statementDate = latestClosing?.period_to ? new Date(latestClosing.period_to).getTime() : -1;
+      const useStatement  = latestClosing && statementDate >= manualDate;
+      const bank = useStatement ? (Number(latestClosing.closing_balance) || 0)
+                 : (bankBalance?.balance ?? null);
       const totalAR = num(wc.total_ar);
       const totalAP = num(wc.total_ap);
       // COD outstanding from the carriers — money they collected and
@@ -166,8 +180,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const net       = bank == null ? null : bank + netNoBank;
       return {
         bankBalance:  bank,
-        bankUpdated:  bankBalance?.recordedAt || null,
-        bankNotes:    bankBalance?.notes || null,
+        bankUpdated:  useStatement ? latestClosing.period_to : (bankBalance?.recordedAt || null),
+        bankSource:   useStatement ? 'statement' : (bankBalance ? 'manual' : null),
+        bankNotes:    useStatement ? `الرصيد الختامي لكشف ${latestClosing.period_to}` : (bankBalance?.notes || null),
         totalAR,                         // owed to us (customers)
         totalAP,                         // we owe (vendors/carriers)
         netNoBank:    +netNoBank.toFixed(2),
