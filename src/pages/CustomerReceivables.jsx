@@ -6,6 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
@@ -1012,7 +1013,7 @@ export default function CustomerReceivables({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'مديونيات العملاء');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `مديونيات_العملاء_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `مديونيات_العملاء_${dateStr}.xlsx`);
     toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success');
   };
 
@@ -1069,7 +1070,7 @@ export default function CustomerReceivables({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'حملة تحصيل');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `حملة_تحصيل_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `حملة_تحصيل_${dateStr}.xlsx`);
     toast(`تم تصدير ${visibleCustomers.length} عميل لحملة التحصيل`, 'success');
   };
 
@@ -1098,7 +1099,7 @@ export default function CustomerReceivables({ isActive = true }) {
     ws['!cols'] = [{ wch: 40 }, { wch: 16 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 34 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'قائمة الإيقاف');
-    XLSX.writeFile(wb, `قائمة_الإيقاف_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(rtl(wb), `قائمة_الإيقاف_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast(`تم تصدير ${stopNow.length} عميل للإيقاف`, 'success');
   };
 
@@ -1168,7 +1169,7 @@ export default function CustomerReceivables({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'WhatsApp');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `رسائل_واتساب_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `رسائل_واتساب_${dateStr}.xlsx`);
 
     toast(
       `تم تصدير ${allRows.length} عميل${noPhone > 0 ? ` (منهم ${noPhone} بلا رقم — احذفهم يدوياً)` : ''}`,

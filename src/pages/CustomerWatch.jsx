@@ -12,6 +12,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Users, TrendingUp, TrendingDown, Wallet,
   ShoppingBag, AlertTriangle, UserPlus, ZapOff, Phone,
@@ -182,7 +183,7 @@ export default function CustomerWatch({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, listName.slice(0, 28));
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `${listName}_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `${listName}_${dateStr}.xlsx`);
     toast(`تم تصدير ${rows.length} صف`, 'success');
   };
 
@@ -689,7 +690,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, meta.label.slice(0, 28));
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `${meta.label}_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `${meta.label}_${dateStr}.xlsx`);
     toast(`تم تصدير ${rows.length} صف`, 'success');
   };
 
@@ -733,7 +734,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'حملة');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `حملة_رصيد_سالب_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `حملة_رصيد_سالب_${dateStr}.xlsx`);
     toast(
       skipped
         ? `تم تصدير ${xRows.length} متجر · تخطّينا ${skipped} بدون جوال`

@@ -7,6 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Phone, ShoppingBag, Receipt, CheckCircle2, XCircle,
   Clock, MessageSquare, Trash2, Filter, X, Download, Info,
@@ -108,7 +109,7 @@ export default function PaymentRequests({ isActive = true }) {
     const sheetName = statusFilter === 'paid' ? 'السدادات' : 'طلبات السداد';
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `${sheetName}_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `${sheetName}_${dateStr}.xlsx`);
     toast(`تم تصدير ${rows.length} سطر`, 'success');
   };
 

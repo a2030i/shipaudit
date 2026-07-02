@@ -19,6 +19,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Phone, CheckCircle2, Clock, X, AlertTriangle, Download,
   Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2,
@@ -192,7 +193,7 @@ export default function Collections({ isActive = true }) {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'قائمة التحصيل');
-    XLSX.writeFile(wb, `قائمة_التحصيل_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(rtl(wb), `قائمة_التحصيل_${new Date().toISOString().slice(0, 10)}.xlsx`);
     toast(`تم تصدير ${visibleTasks.length} مهمة`, 'success');
   };
 

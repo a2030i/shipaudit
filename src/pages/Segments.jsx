@@ -17,6 +17,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Download, Phone, Search, X, Layers,
   Wallet, Activity, ShoppingBag,
@@ -593,7 +594,7 @@ export default function Segments({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'شريحة');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `شريحة_${filtered.length}متجر_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `شريحة_${filtered.length}متجر_${dateStr}.xlsx`);
     toast(`تم تصدير ${filtered.length} متجر`, 'success');
   };
 
@@ -624,7 +625,7 @@ export default function Segments({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'حملة');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `حملة_${xRows.length}متجر_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `حملة_${xRows.length}متجر_${dateStr}.xlsx`);
     toast(
       skipped
         ? `تم تصدير ${xRows.length} للحملة · تخطّينا ${skipped} بدون جوال`

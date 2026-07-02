@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { Search, RefreshCw, Link2, FileText, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
@@ -233,7 +234,7 @@ export default function CarrierLedger({ isActive = true }) {
     ws['!cols'] = [{ wch: 16 }, { wch: 14 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'عمليات محددة');
-    XLSX.writeFile(wb, `عمليات_${carrier || 'ledger'}_${selectedAll.length}.xlsx`);
+    XLSX.writeFile(rtl(wb), `عمليات_${carrier || 'ledger'}_${selectedAll.length}.xlsx`);
     toast(`تم تصدير ${selectedAll.length} عملية`, 'success');
   }, [selectedAll, carrier]);
 

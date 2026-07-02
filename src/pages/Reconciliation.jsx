@@ -11,6 +11,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Upload, Download, Trash2, AlertTriangle, CheckCircle2,
   Scale, Info, ChevronLeft, FileSpreadsheet, Link2, Search, X, Zap,
@@ -297,7 +298,7 @@ export default function Reconciliation({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'تصحيحات Zoho');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `تصحيحات_Zoho_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `تصحيحات_Zoho_${dateStr}.xlsx`);
     toast(`تم تصدير ${bad.length} حالة تحتاج تحديث في Zoho`, 'success');
   };
 
@@ -724,7 +725,7 @@ function VendorsTab({ profile }) {
     const ws = XLSX.utils.aoa_to_sheet([headers, ...xRows]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'موردو_Zoho');
-    XLSX.writeFile(wb, `موردو_Zoho_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(rtl(wb), `موردو_Zoho_${new Date().toISOString().slice(0,10)}.xlsx`);
     toast(`تم تصدير ${reconcile.length} مورّد`, 'success');
   };
 
@@ -1083,7 +1084,7 @@ function exportCandidates(list, pickingZoho) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `${fileBase}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `${fileBase}_${dateStr}.xlsx`);
   toast(`✓ تم تصدير ${list.length} سجل`, 'success');
 }
 

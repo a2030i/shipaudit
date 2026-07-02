@@ -20,6 +20,7 @@
 //                                          → Excel + marks exported
 
 import * as XLSX from 'xlsx';
+import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
 
 const EXPORT_BUCKET = 'internal-exports';
@@ -38,7 +39,7 @@ function asciiKey(kind, fileName) {
 // (2) trigger the browser download. Storage failure is non-fatal — the
 // download still happens, so a missing bucket never blocks the operator.
 export async function persistAndDownloadExport({ wb, fileName, kind, rowCount, total = null, userId = null }) {
-  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  const buf = XLSX.write(rtl(wb), { type: 'array', bookType: 'xlsx' });
   const blob = new Blob([buf], {
     type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   });

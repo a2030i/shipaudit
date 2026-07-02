@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import { Banknote } from 'lucide-react';
@@ -157,7 +158,7 @@ export default function CodSettlements({ isActive = true }) {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, u.direction === 'in' ? 'مُستلَم' : 'متوقّع');
       const safe = String(u.sourceFile || u.uploadId).replace(/[\\/:*?"<>|]+/g, '_').slice(0, 60);
-      XLSX.writeFile(wb, `تسوية_${safe}.xlsx`);
+      XLSX.writeFile(rtl(wb), `تسوية_${safe}.xlsx`);
       toast(`تم تصدير ${ship.length} شحنة مع حالتها`, 'success');
     } catch (e) {
       toast(`فشل التصدير: ${e.message}`, 'error');
@@ -189,7 +190,7 @@ export default function CodSettlements({ isActive = true }) {
     ws['!cols'] = [{ wch: 24 }, { wch: 16 }, { wch: 22 }, { wch: 18 }];
     XLSX.utils.book_append_sheet(wb, ws, 'متبقّي عند الناقل');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `متبقي_عند_الناقل_${carrier}_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `متبقي_عند_الناقل_${carrier}_${dateStr}.xlsx`);
     toast(`تم تصدير ${outstanding.length} شحنة`, 'success');
   };
 
@@ -281,7 +282,7 @@ export default function CodSettlements({ isActive = true }) {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'متبقّي كل الناقلين');
       const dateStr = new Date().toISOString().slice(0, 10);
-      XLSX.writeFile(wb, `متبقي_كل_الناقلين_${dateStr}.xlsx`);
+      XLSX.writeFile(rtl(wb), `متبقي_كل_الناقلين_${dateStr}.xlsx`);
       toast(`تم تصدير ${all.length} شحنة من ${carrierCount} ناقل`, 'success');
     } catch (e) {
       toast(`فشل تصدير الكل: ${e.message}`, 'error');
@@ -350,7 +351,7 @@ export default function CodSettlements({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, tabName.slice(0, 28)); // sheet name limit ≈ 31 chars
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(wb, `${tabName}_${carrier}_${dateStr}.xlsx`);
+    XLSX.writeFile(rtl(wb), `${tabName}_${carrier}_${dateStr}.xlsx`);
     toast(`تم تصدير ${filtered.length} شحنة من قسم «${tabName}»`, 'success');
   };
 

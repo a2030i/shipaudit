@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import { Boxes, Upload, RefreshCw, Trash2, CheckCircle2, AlertTriangle, Download } from 'lucide-react';
 import { Card, Btn, Select, Empty, Spinner, toast, PageHeader, DropZone, Badge } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -74,7 +75,7 @@ export default function FulfillmentAudit({ isActive = true }) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(summary), 'ملخص محاسبي');
       // ضع الملخّص أولاً
       wb.SheetNames = ['ملخص محاسبي', ...wb.SheetNames.filter((n) => n !== 'ملخص محاسبي')];
-      XLSX.writeFile(wb, `تجهيز_محاسبي_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      XLSX.writeFile(rtl(wb), `تجهيز_محاسبي_${new Date().toISOString().slice(0, 10)}.xlsx`);
       toast(`صُدِّر ${invoices.length} فاتورة`, 'success');
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
     setExporting(false);
