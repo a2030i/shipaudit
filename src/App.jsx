@@ -45,6 +45,7 @@ import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
+import ReportsCenter     from './pages/ReportsCenter.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
@@ -106,6 +107,7 @@ const NAV_ITEMS = [
   { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
+  { id: 'reports',          path: '/reports',          label: 'مركز التقارير',   icon: FileText,      section: 'reports', permKey: 'carriers.view' },
   { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
   // (carrier-kpi moved into the الشركات hub as the «أداء الناقلين» sub-tab)
@@ -199,6 +201,7 @@ const PAGE_TITLES = {
   '/crm':               'المتابعة والمبيعات',
   '/fulfillment':       'تدقيق فواتير التجهيز',
   '/monthly-report':    'التقرير الشهري',
+  '/reports':           'مركز التقارير',
   '/uploads':           'وارد Zoho التلقائي',
   '/hub':               'الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -281,7 +284,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -792,6 +795,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/aramex-statements'} scroll>
               <CarrierStatements carriers={carriers}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/reports'} scroll>
+              <ReportsCenter isActive={pathname==='/reports'}/>
             </PageSlot>
             <PageSlot active={pathname==='/monthly-report'} scroll>
               <MonthlyReport isActive={pathname==='/monthly-report'}/>

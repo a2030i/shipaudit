@@ -47,7 +47,7 @@ async function loadAllOps(carrierId) {
   return rows;
 }
 
-export async function exportCarrierSOA({ carrierId, carrierName }) {
+export async function exportCarrierSOA({ carrierId, carrierName, persist = false, userId = null }) {
   // loadCarrierNetBalances يرجع Map<carrier_id, net> (لا مصفوفة)
   const [ops, codBalances] = await Promise.all([
     loadAllOps(carrierId),
@@ -130,7 +130,15 @@ export async function exportCarrierSOA({ carrierId, carrierName }) {
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'كشف الحساب');
   const safeName = String(carrierName || carrierId).replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
-  XLSX.writeFile(rtl(wb), `كشف_حساب_ناقل_${safeName}_${today}.xlsx`);
+  const fileName = `كشف_حساب_ناقل_${safeName}_${today}.xlsx`;
+
+  if (persist) {
+    // من مركز التقارير: تخزين + سجل + تنزيل (قاعدة §1.13)
+    const { persistAndDownloadExport } = await import('./internalExportsService.js');
+    await persistAndDownloadExport({ wb, fileName, kind: 'carrier_soa', rowCount: ops.length, total: balance, userId });
+  } else {
+    XLSX.writeFile(rtl(wb), fileName);
+  }
 
   return { rowCount: ops.length, balance };
 }
