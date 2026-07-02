@@ -63,7 +63,10 @@ export function quarterTotals(snaps) {
     row.income += Number(s.income) || 0;
     row.months.push(s.period);
   }
+  // «مكتمل» = 3 أشهر وليس بينها الشهر الجاري (شهر جارٍ = الربع ما زال يكبر)
+  const cur = currentPnlPeriod();
   return [...q.values()]
-    .map(r => ({ ...r, net: +r.net.toFixed(2), income: +r.income.toFixed(2), complete: r.months.length === 3 }))
+    .map(r => ({ ...r, net: +r.net.toFixed(2), income: +r.income.toFixed(2),
+      complete: r.months.length === 3 && !r.months.includes(cur) }))
     .sort((a, b) => b.quarter.localeCompare(a.quarter));
 }

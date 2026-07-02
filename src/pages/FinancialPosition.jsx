@@ -86,13 +86,19 @@ export default function FinancialPosition({ isActive = true }) {
   const quarters = useMemo(() => quarterTotals(snaps), [snaps]);
   const trend = useMemo(() => (snaps || []).slice(0, 6).reverse(), [snaps]);   // الأقدم→الأحدث للأعمدة
 
-  // فجوة التسجيل: دفترنا يعرف فواتير ناقلين × بينما زوهو سجّل تكلفة ص
+  // فجوة التسجيل: دفترنا (شامل ضريبة 15%) مقابل cogs زوهو (قبل الضريبة) —
+  // من فحص الوكلاء: المقارنة المباشرة تصنع فجوة وهمية ~15% دائمة، فنقسم
+  // دفترنا ÷1.15 (تقريب مُعلَن — الشحن الدولي VAT=0 يُبخَس قليلاً) ونستخدم
+  // عتبة نسبية 5% لا رقماً ثابتاً.
   const gap = useMemo(() => {
     if (!snap) return null;
-    const billed = billedByMonth.get(sel);
-    if (billed == null) return null;
-    const diff = +(billed - (Number(snap.cogs) || 0)).toFixed(2);
-    return { billed, cogs: Number(snap.cogs) || 0, diff };
+    const grossBilled = billedByMonth.get(sel);
+    if (grossBilled == null) return null;
+    const billedPreTax = +(grossBilled / 1.15).toFixed(2);
+    const cogs = Number(snap.cogs) || 0;
+    const diff = +(billedPreTax - cogs).toFixed(2);
+    const threshold = Math.max(1000, billedPreTax * 0.05);
+    return { billedPreTax, grossBilled, cogs, diff, threshold };
   }, [snap, billedByMonth, sel]);
 
   if (!can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
@@ -189,20 +195,34 @@ export default function FinancialPosition({ isActive = true }) {
           </div>
         </Card>
 
-        {/* ── فحص فجوة التسجيل — دفترنا × زوهو ── */}
-        {gap && gap.diff > 1000 && (
+        {/* ── فحص فجوة التسجيل — دفترنا × زوهو (مقارنة قبل الضريبة) ── */}
+        {gap && gap.diff > gap.threshold && (
           <Card style={{ marginBottom: 16, border: '1px solid var(--red)', background: 'color-mix(in srgb, var(--red) 5%, transparent)' }}>
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <AlertTriangle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
               <div style={{ flex: 1, fontSize: 13, lineHeight: 1.8 }}>
-                <b style={{ color: 'var(--red)' }}>فجوة تسجيل: {fmt(gap.diff)} ر.س فواتير ناقلين لم تدخل زوهو بعد</b>
+                <b style={{ color: 'var(--red)' }}>فجوة تسجيل: ~{fmt(gap.diff)} ر.س فواتير ناقلين لم تدخل زوهو بعد</b>
                 <div style={{ color: 'var(--muted)', fontSize: 12 }}>
-                  دفترنا يعرف فواتير ناقلين بـ{fmt(gap.billed)} ر.س لشهر {monthLabel(sel)}، بينما زوهو سجّل {fmt(gap.cogs)} فقط —
-                  الربح المعروض أعلاه <b>أعلى من الحقيقة</b> حتى يسجّلها المحاسب.
+                  دفترنا يعرف فواتير ناقلين بـ{fmt(gap.billedPreTax)} ر.س قبل الضريبة لشهر {monthLabel(sel)}
+                  (الإجمالي الشامل {fmt(gap.grossBilled)} ÷ 1.15)، بينما زوهو سجّل {fmt(gap.cogs)} فقط —
+                  الربح المعروض أعلاه <b>أعلى من الحقيقة</b> حتى يسجّلها المحاسب. المقارنة تقريبية قبل الضريبة.
                 </div>
                 <Btn size="sm" variant="ghost" style={{ marginTop: 6 }} onClick={() => navigate('/ledger')}>
                   فتح دفتر الشركات <ChevronLeft size={12}/>
                 </Btn>
+              </div>
+            </div>
+          </Card>
+        )}
+        {gap && gap.diff < -gap.threshold && (
+          <Card style={{ marginBottom: 16, border: '1px solid var(--gold)', background: 'color-mix(in srgb, var(--gold) 6%, transparent)' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+              <AlertTriangle size={18} color="var(--gold)" style={{ flexShrink: 0, marginTop: 2 }}/>
+              <div style={{ fontSize: 13, lineHeight: 1.8 }}>
+                <b style={{ color: 'var(--gold)' }}>زوهو سجّل تكاليف ناقلين ~{fmt(Math.abs(gap.diff))} ر.س أكثر مما يعرفه دفترنا</b>
+                <div style={{ color: 'var(--muted)', fontSize: 12 }}>
+                  فواتير دخلت المحاسبة ولم تُدقَّق عندنا؟ ({fmt(gap.cogs)} في زوهو مقابل {fmt(gap.billedPreTax)} قبل الضريبة بدفترنا)
+                </div>
               </div>
             </div>
           </Card>

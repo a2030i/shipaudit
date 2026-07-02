@@ -26,6 +26,8 @@ export default function ZohoCallback({ isActive = true }) {
     if (!code) { setState('error'); setDetail('لا يوجد كود في الرابط — افتح رابط الموافقة من جديد'); return; }
     if (CONSUMED_ZOHO_CODES.has(code)) return;
     CONSUMED_ZOHO_CODES.add(code);
+    // امسح الكود من شريط العنوان فوراً — لا يبقى في تاريخ المتصفح/الـReferer
+    try { window.history.replaceState({}, '', '/zoho-callback'); } catch { /* غير قاتل */ }
 
     (async () => {
       try {

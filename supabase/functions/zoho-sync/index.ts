@@ -1,27 +1,53 @@
-// zoho-sync v5 — + pnl_month: جلب قائمة دخل شهر من زوهو، تحليلها لأرقام
-// موحّدة (income/cogs/opex/net + lines)، وتخزينها في pnl_snapshots (كاش).
-// التحليل بمطابقة الأسماء (عربي + إنجليزي fallback) — لا مواقع ثابتة.
-//
-// النشر عبر MCP (deploy_edge_function) — هذا الملف نسخة الريبو المرجعية؛
-// أي تعديل هنا يجب أن يُنشر أيضاً.
+// zoho-sync v6 — إصلاحات فحص الوكلاء العدائي (2026-07-02):
+//   1) مصادقة داخلية: verify_jwt يقبل anon العام، فالحماية هنا — getUser()
+//      إلزامي لكل action، وقراءة الأرقام تتطلب admin أو صلاحية money.pnl،
+//      وexchange_web تتطلب admin (كانت الأرقام تُسرَّب واختطاف الربط ممكناً).
+//   2) قفل إعادة الربط: ربط قائم لا يُدهَس إلا بـforce صريح من admin.
+//   3) برشر/TTL سيرفري: pnl_month يرجع الكاش إن جُلب خلال 10 دقائق —
+//      لا استنزاف لحصة زوهو (100/دقيقة) ولا تلويث كاش.
+//   4) تصلّب pnl_month: period بصيغة صارمة، from/to تُشتق منه فقط.
+//   5) المحلّل: مطابقة على عمق ≤1، «غير التشغيلي» قبل «التشغيلي»، أول
+//      مطابقة تفوز، لا نزول داخل قسم مُلتقط — والصافي من قسم «صافي» بالاسم
+//      أو محسوباً (لا آخر-قسم-أعمى).
+//   6) CORS مقيّد بدومين التطبيق.
+// النشر عبر MCP — هذا الملف النسخة المرجعية.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
+const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
-  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Origin': APP_ORIGIN,
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
-const REDIRECT_URI = 'https://shipaudit-five.vercel.app/zoho-callback';
+const REDIRECT_URI = `${APP_ORIGIN}/zoho-callback`;
+const PNL_TTL_MS = 10 * 60_000;   // الشهر المجلوب خلال 10 دقائق يُخدَم من الكاش
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-const supa = () => createClient(
+const svc = () => createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-async function accessToken(db: ReturnType<typeof supa>) {
+// ── المصادقة الداخلية (نمط manage-users): مستخدم حقيقي + صلاحية ──
+async function requireUser(req: Request, db: ReturnType<typeof svc>) {
+  const authHeader = req.headers.get('Authorization') || '';
+  const userClient = createClient(
+    Deno.env.get('SUPABASE_URL')!,
+    Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } },
+  );
+  const { data: { user } } = await userClient.auth.getUser();
+  if (!user) return null;                       // anon key وحده → لا مستخدم
+  const { data: profile } = await db.from('profiles')
+    .select('role, permissions').eq('id', user.id).maybeSingle();
+  return { user, role: profile?.role || null, permissions: profile?.permissions || {} };
+}
+const canPnl = (a: { role: string | null; permissions: Record<string, unknown> }) =>
+  a.role === 'admin' || a.permissions?.['money.pnl'] === true;
+
+async function accessToken(db: ReturnType<typeof svc>) {
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
   if (!data?.refresh_token) throw new Error('لا ربط بعد');
   const r = await fetch(`https://${data.accounts_domain}/oauth/v2/token`, {
@@ -39,7 +65,7 @@ async function accessToken(db: ReturnType<typeof supa>) {
   return { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string };
 }
 
-async function saveGrant(db: ReturnType<typeof supa>, j: Record<string, unknown>, dc: string) {
+async function saveGrant(db: ReturnType<typeof svc>, j: Record<string, unknown>, dc: string) {
   const apiDomain = (j.api_domain as string) || `https://www.zohoapis.${dc}`;
   let orgId: string | null = null, orgName: string | null = null;
   try {
@@ -59,41 +85,58 @@ async function saveGrant(db: ReturnType<typeof supa>, j: Record<string, unknown>
   return { orgId, orgName, dc };
 }
 
-// مطابقة أسماء أقسام قائمة الدخل (زوهو يُرجعها بلغة المؤسسة)
-const SEC = {
-  income:        [/الدخل التشغيلي/, /operating income/i],
-  cogs:          [/تكلفة السلع/, /cost of goods/i],
-  opex:          [/المصروفات التشغيلية/, /operating expense/i],
-  other_income:  [/الدخل غير التشغيلي/, /non.?operating income/i],
-  other_expense: [/المصروفات غير التشغيلية/, /non.?operating expense/i],
-};
+// ── محلّل قائمة الدخل — مقاوم للأسماء المتشابهة والمؤسسات الإنجليزية ──
+// «غير التشغيلي» قبل «التشغيلي» (وإلا طابق non-operating income نمطَ income
+// وكتب فوقه)، أول مطابقة لكل مفتاح تفوز، المطابقة على عمق ≤1 فقط، ولا
+// نزول داخل قسم مُلتقط (أبناؤه حسابات وليست أقساماً).
+const SEC_ORDERED: [string, RegExp[]][] = [
+  ['other_income',  [/الدخل غير التشغيلي/, /non.?operating income/i]],
+  ['other_expense', [/المصروفات غير التشغيلية/, /non.?operating expense/i]],
+  ['income',        [/الدخل التشغيلي/, /operating income/i]],
+  ['cogs',          [/تكلفة السلع/, /cost of goods/i]],
+  ['opex',          [/المصروفات التشغيلية/, /operating expense/i]],
+];
+const NET_PATTERNS = [/صافي الأرباح/, /صافي الربح/, /net profit/i, /net income/i];
 type Sec = { name?: string; total?: number; total_label?: string; account_transactions?: Sec[] };
 function parsePnl(pl: Sec[]) {
   const out: Record<string, number> = { income: 0, cogs: 0, opex: 0, other_income: 0, other_expense: 0 };
+  const seen = new Set<string>();
   const lines: { group: string; accounts: { name: string; total: number }[] }[] = [];
-  const walk = (secs: Sec[]) => {
+  let namedNet: number | null = null;
+
+  const matchKey = (nm: string): string | null => {
+    for (const [key, pats] of SEC_ORDERED) {
+      if (pats.some(p => p.test(nm))) return key;
+    }
+    return null;
+  };
+  const walk = (secs: Sec[], depth: number) => {
     for (const s of secs || []) {
       const nm = s.name || '';
-      for (const [key, pats] of Object.entries(SEC)) {
-        if (pats.some(p => p.test(nm))) {
-          out[key] = Number(s.total) || 0;
-          lines.push({
-            group: nm,
-            accounts: (s.account_transactions || [])
-              .filter(a => a.name)
-              .map(a => ({ name: a.name!, total: Number(a.total) || 0 })),
-          });
-        }
+      if (namedNet == null && NET_PATTERNS.some(p => p.test(nm))) {
+        const v = Number(s.total);
+        if (Number.isFinite(v)) namedNet = v;
       }
-      if (s.account_transactions?.length) walk(s.account_transactions);
+      const key = depth <= 1 ? matchKey(nm) : null;
+      if (key && !seen.has(key)) {
+        seen.add(key);
+        out[key] = Number(s.total) || 0;
+        lines.push({
+          group: nm,
+          accounts: (s.account_transactions || [])
+            .filter(a => a.name)
+            .map(a => ({ name: a.name!, total: Number(a.total) || 0 })),
+        });
+        continue;   // لا تنزل داخل قسم مُلتقط
+      }
+      if (s.account_transactions?.length && depth < 2) walk(s.account_transactions, depth + 1);
     }
   };
-  walk(pl);
-  // الصافي = آخر قسم علوي (صافي الأرباح/الخسائر) — وإن غاب نحسبه
-  const lastTop = Array.isArray(pl) && pl.length ? Number(pl[pl.length - 1]?.total) : NaN;
-  const computed = out.income - out.cogs - out.opex + out.other_income - out.other_expense;
-  const net = Number.isFinite(lastTop) ? lastTop : +computed.toFixed(2);
-  return { ...out, net, lines, computed_net: +computed.toFixed(2) };
+  walk(pl, 0);
+  const computed = +(out.income - out.cogs - out.opex + out.other_income - out.other_expense).toFixed(2);
+  // الصافي: قسم «صافي» بالاسم إن وُجد واتّسق (±0.05 مع المحسوب)، وإلا المحسوب
+  const net = (namedNet != null && Math.abs(namedNet - computed) <= 0.05) ? namedNet : computed;
+  return { ...out, net, lines, computed_net: computed };
 }
 
 const lastDay = (period: string) => {
@@ -107,15 +150,25 @@ Deno.serve(async (req) => {
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* بلا جسم */ }
   const action = (body.action as string) || url.searchParams.get('action') || 'status';
-  const db = supa();
+  const db = svc();
 
   try {
+    // ── حارس المصادقة لكل شيء (الإصلاح 1) ──
+    const auth = await requireUser(req, db);
+    if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
+
     if (action === 'exchange_web') {
+      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
       const id = Deno.env.get('ZOHO_CLIENT_ID');
       const secret = Deno.env.get('ZOHO_CLIENT_SECRET');
       const code = body.code as string;
       if (!id || !secret) return json({ error: 'missing_secrets' }, 400);
       if (!code) return json({ error: 'missing_code' }, 400);
+      // قفل إعادة الربط (الإصلاح 2): لا دهس لربط قائم إلا بطلب صريح
+      const { data: existing } = await db.from('zoho_auth').select('refresh_token, org_id').eq('id', 1).maybeSingle();
+      if (existing?.refresh_token && body.force !== true) {
+        return json({ error: 'already_connected — الربط قائم؛ أعد الربط بـforce:true إن كنت تقصد استبداله', org_id: existing.org_id }, 409);
+      }
       const errors: Record<string, string> = {};
       for (const dc of ['sa', 'com', 'eu', 'in']) {
         try {
@@ -135,6 +188,9 @@ Deno.serve(async (req) => {
       return json({ error: 'exchange_failed', details: errors }, 400);
     }
 
+    // بقية الـactions أرقام مالية — تتطلب money.pnl أو admin
+    if (!canPnl(auth)) return json({ error: 'forbidden — تحتاج صلاحية «الوضع المالي»' }, 403);
+
     if (action === 'status') {
       const { data } = await db.from('zoho_auth')
         .select('accounts_domain, api_domain, org_id, updated_at').eq('id', 1).maybeSingle();
@@ -151,11 +207,24 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'pnl' || action === 'pnl_month') {
+      let from: string, to: string, period: string | undefined;
+      if (action === 'pnl_month') {
+        // تصلّب (الإصلاح 4): period صارم وfrom/to تُشتق منه فقط — لا تلويث كاش
+        period = body.period as string;
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period || '')) return json({ error: 'bad period — YYYY-MM' }, 400);
+        from = `${period}-01`; to = lastDay(period!);
+        // TTL سيرفري (الإصلاح 3): جُلب حديثاً؟ أرجع الكاش بلا ضرب زوهو
+        const { data: cached } = await db.from('pnl_snapshots').select('*').eq('period', period).maybeSingle();
+        if (cached && Date.now() - new Date(cached.fetched_at).getTime() < PNL_TTL_MS) {
+          return json({ ok: true, snapshot: cached, cached: true });
+        }
+      } else {
+        from = body.from as string; to = body.to as string;
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(from || '') || !/^\d{4}-\d{2}-\d{2}$/.test(to || '')) {
+          return json({ error: 'bad from/to — YYYY-MM-DD' }, 400);
+        }
+      }
       const { token, apiDomain, orgId } = await accessToken(db);
-      const period = body.period as string | undefined;             // 'YYYY-MM' لـpnl_month
-      const from = (body.from as string) || (period ? `${period}-01` : null);
-      const to = (body.to as string) || (period ? lastDay(period) : null);
-      if (!from || !to) return json({ error: 'missing from/to أو period' }, 400);
       const qs = new URLSearchParams({ organization_id: orgId, from_date: from, to_date: to, cash_based: 'false' });
       const r = await fetch(`${apiDomain}/books/v3/reports/profitandloss?${qs}`, {
         headers: { Authorization: `Zoho-oauthtoken ${token}` },
@@ -163,7 +232,6 @@ Deno.serve(async (req) => {
       const j = await r.json();
       if (j.code !== 0) return json({ error: `zoho: ${j.message || JSON.stringify(j)}`, code: j.code }, 400);
       if (action === 'pnl') return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j });
-      // pnl_month: حلّل + خزّن في الكاش
       const parsed = parsePnl(j.profit_and_loss || []);
       const row = {
         period,
