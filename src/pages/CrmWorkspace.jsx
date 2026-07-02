@@ -22,6 +22,7 @@ import {
 import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
+import Collections from './Collections.jsx';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -29,6 +30,10 @@ const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ar-SA', { year: 'nume
 const daysAgo = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
 
 const TABS = [
+  // قائمة التحصيل دُمجت تبويباً أول (موافقة المستخدم 2026-07-02) — كل عمل
+  // العملاء (تحصيل + متابعة + مبيعات) في مساحة واحدة. /collections القديم
+  // يهبط عليها عبر LEGACY.
+  { id: 'collections', label: 'قائمة التحصيل', icon: Phone, perm: 'collections.view' },
   { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
   { id: 'sales', label: 'قوائم المبيعات', icon: PhoneCall },
   { id: 'leads', label: 'الجهات الخارجية', icon: Store },
@@ -37,7 +42,7 @@ const TABS = [
   { id: 'board', label: 'أداء التحصيل', icon: BarChart3 },
   { id: 'settings', label: 'الإعدادات', icon: Sliders, perm: 'crm.manage_statuses' },
 ];
-const LEGACY = { '/crm': 'queue' };
+const LEGACY = { '/crm': 'collections', '/collections': 'collections' };
 
 export default function CrmWorkspace({ isActive = true }) {
   const location = useLocation();
@@ -46,7 +51,9 @@ export default function CrmWorkspace({ isActive = true }) {
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
   const initial = () => {
     const q = new URLSearchParams(location.search).get('tab');
-    return (q && TABS.some(t => t.id === q)) ? q : (LEGACY[location.pathname] || 'queue');
+    const want = (q && TABS.some(t => t.id === q)) ? q : (LEGACY[location.pathname] || 'collections');
+    // محاسب بلا صلاحية التبويب المطلوب → أول تبويب مرئي له
+    return visibleTabs.some(t => t.id === want) ? want : (visibleTabs[0]?.id || 'queue');
   };
   const [tab, setTab] = useState(initial);
   useEffect(() => { if (isActive) setTab(initial()); /* eslint-disable-next-line */ }, [location.search, isActive]);
@@ -72,6 +79,7 @@ export default function CrmWorkspace({ isActive = true }) {
         })}
       </div>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
+        {tab === 'collections' && <Collections isActive={isActive && tab === 'collections'}/>}
         {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
         {tab === 'sales' && <SalesTab active={isActive && tab === 'sales'}/>}
         {tab === 'leads' && <LeadsTab active={isActive && tab === 'leads'}/>}
