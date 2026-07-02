@@ -13,6 +13,7 @@
 // spreadsheet tool.
 
 import * as XLSX from 'xlsx';
+import { rtl } from './xlsxRtl.js';
 import { loadCustomerSOA } from './customerReceivablesService.js';
 
 const fmtMoney = (n) =>
@@ -98,7 +99,7 @@ export async function exportCustomerSOA(customerName) {
   XLSX.utils.book_append_sheet(wb, ws, 'كشف الحساب');
   const safeName = customerName.replace(/[\\/:*?"<>|]/g, '_').slice(0, 40);
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `كشف_حساب_${safeName}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `كشف_حساب_${safeName}_${dateStr}.xlsx`);
 
   return { rowCount: soa.lines.length, balance: soa.summary.effectiveBalance };
 }

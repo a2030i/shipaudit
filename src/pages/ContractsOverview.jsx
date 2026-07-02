@@ -11,6 +11,7 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.j
 import { ClipboardList } from 'lucide-react';
 import { loadAllContractsOverview, loadContractHistory } from '../lib/contractHistoryService.js';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 
 const fmt = (v, suffix = '') => {
   if (v == null || v === '') return '—';
@@ -101,7 +102,7 @@ export default function ContractsOverview({ isActive = true }) {
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'العقود');
-    XLSX.writeFile(wb, `جدول_العقود_${new Date().toISOString().slice(0,10)}.xlsx`);
+    XLSX.writeFile(rtl(wb), `جدول_العقود_${new Date().toISOString().slice(0,10)}.xlsx`);
     toast('تم تصدير الجدول', 'success');
   };
 

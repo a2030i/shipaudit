@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import { getActiveContract } from '../data/carriers.js';
 
 /**
@@ -17,7 +18,7 @@ export function exportWeightsForExternalSystem(results, carrierName, period) {
   XLSX.utils.book_append_sheet(wb, ws, 'AWB + الوزن');
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `أوزان_${carrierName}_${period}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `أوزان_${carrierName}_${period}_${dateStr}.xlsx`);
   return true;
 }
 
@@ -54,7 +55,7 @@ export function exportInboundReturns(results, carrierName, period) {
   ws['!cols'] = [{ wch: 22 }, { wch: 26 }, { wch: 18 }, { wch: 14 }, { wch: 10 }, { wch: 16 }, { wch: 10 }, { wch: 12 }];
   XLSX.utils.book_append_sheet(wb, ws, 'وارد لفوترة التجار');
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `وارد_لفوترة_التجار_${carrierName}_${period}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `وارد_لفوترة_التجار_${carrierName}_${period}_${dateStr}.xlsx`);
   return true;
 }
 
@@ -124,7 +125,7 @@ export function exportExcessWeights(results, contract, carrierName, period) {
   XLSX.utils.book_append_sheet(wb, ws, 'أوزان إضافية');
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `أوزان_إضافية_${carrierName}_${period}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `أوزان_إضافية_${carrierName}_${period}_${dateStr}.xlsx`);
   return { ok: true, count: excess.length };
 }
 
@@ -206,7 +207,7 @@ export function exportMergedExcessWeights(audits, carriers) {
   XLSX.utils.book_append_sheet(wb, ws, 'أوزان إضافية مجمعة');
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `أوزان_إضافية_مجمعة_${audits.length}مراجعة_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `أوزان_إضافية_مجمعة_${audits.length}مراجعة_${dateStr}.xlsx`);
   return {
     ok: true,
     count: rows.length,
@@ -332,6 +333,6 @@ export function exportAuditExcel(results, summary, carrierName, period, contract
   }
 
   const dateStr = new Date().toISOString().slice(0, 10);
-  XLSX.writeFile(wb, `فروق_${carrierName}_${period}_${dateStr}.xlsx`);
+  XLSX.writeFile(rtl(wb), `فروق_${carrierName}_${period}_${dateStr}.xlsx`);
   return true;
 }

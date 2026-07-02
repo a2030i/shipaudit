@@ -6,6 +6,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
 import { RefreshCw, CalendarRange, Download, TrendingUp } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
@@ -65,7 +66,7 @@ export default function MonthlyReport({ isActive }) {
     ws['!cols'] = [{wch:18},{wch:13},{wch:13},{wch:14},{wch:12},{wch:13},{wch:11},{wch:12},{wch:13}];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, monthLabel(month).replace(/\s/g,'_').slice(0,28));
-    XLSX.writeFile(wb, `تقرير_شهري_${month}.xlsx`);
+    XLSX.writeFile(rtl(wb), `تقرير_شهري_${month}.xlsx`);
     toast('تم تصدير التقرير', 'success');
   }, [rows, totals, month]);
 

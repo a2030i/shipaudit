@@ -21,6 +21,7 @@
 // "what does the excess Excel look like".
 
 import * as XLSX from 'xlsx';
+import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -183,7 +184,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
 
   const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
   const fileName = `أوزان_للفوترة_${rows.length}شحنة_${ts}.xlsx`;
-  const xlsxBuf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' });
+  const xlsxBuf = XLSX.write(rtl(wb), { type: 'array', bookType: 'xlsx' });
   const fileSize = xlsxBuf.byteLength;
 
   // Upload to storage so the file is durable + downloadable later
@@ -244,7 +245,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   // manual-only guard silently skipped the download for the pull hub.
   // Only headless runs ('cron') stay silent.
   if (trigger !== 'cron' && typeof window !== 'undefined') {
-    XLSX.writeFile(wb, fileName);
+    XLSX.writeFile(rtl(wb), fileName);
   }
 
   return {
