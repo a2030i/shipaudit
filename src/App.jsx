@@ -41,7 +41,6 @@ import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import CrmWorkspace      from './pages/CrmWorkspace.jsx';
 import FulfillmentAudit  from './pages/FulfillmentAudit.jsx';
 import MoneyHub          from './pages/MoneyHub.jsx';
-import Collections       from './pages/Collections.jsx';
 import Periods          from './pages/Periods.jsx';
 import Forecast         from './pages/Forecast.jsx';
 import MonthlyReport     from './pages/MonthlyReport.jsx';
@@ -140,9 +139,11 @@ const NAV_ITEMS = [
       { tabId: 'segments',    label: 'شرائح',         icon: Layers,     legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, legacy: '/merchants' },
     ] },
-  { id: 'collections',     path: '/collections',     label: 'قائمة التحصيل',    icon: Phone,       section: 'customers', permKey: 'collections.view' },
-  { id: 'crm',             path: '/crm',             label: 'المتابعة والمبيعات', icon: Headset,   section: 'customers', permKey: 'crm.view',
+  // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
+  // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
+  { id: 'crm',             path: '/crm',             label: 'التحصيل والمبيعات', icon: Headset,   section: 'customers', permKey: 'crm.view',
     subTabs: [
+      { tabId: 'collections', label: 'قائمة التحصيل', icon: Phone, legacy: '/collections' },
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'sales', label: 'قوائم المبيعات',  icon: Phone },
       { tabId: 'leads', label: 'جهات خارجية',     icon: ShoppingBag },
@@ -198,7 +199,7 @@ const PAGE_TITLES = {
   '/overview':          'الرئيسية',
   '/dashboard':         'الرئيسية (الإصدار القديم)',
   '/decisions':         'لوحة القرارات',
-  '/crm':               'المتابعة والمبيعات',
+  '/crm':               'التحصيل والمبيعات',
   '/fulfillment':       'تدقيق فواتير التجهيز',
   '/monthly-report':    'التقرير الشهري',
   '/reports':           'مركز التقارير',
@@ -828,8 +829,9 @@ function AppInner({ theme, toggleTheme }) {
               <Forecast carriers={carriers} isActive={pathname==='/forecast'}/>
             </PageSlot>
             {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
-            <PageSlot active={pathname==='/crm'} scroll>
-              <CrmWorkspace isActive={pathname==='/crm'}/>
+            {/* /collections القديم يهبط على تبويب «قائمة التحصيل» داخل CRM */}
+            <PageSlot active={pathname==='/crm' || pathname==='/collections'} scroll>
+              <CrmWorkspace isActive={pathname==='/crm' || pathname==='/collections'}/>
             </PageSlot>
             {/* تدقيق التجهيز 3PL — مسار منفصل عن تدقيق الشحن */}
             <PageSlot active={pathname==='/fulfillment'} scroll>
@@ -837,9 +839,6 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/collections'} scroll>
-              <Collections isActive={pathname==='/collections'}/>
             </PageSlot>
             <PageSlot active={pathname==='/reconciliation'} scroll>
               <Reconciliation isActive={pathname==='/reconciliation'}/>
