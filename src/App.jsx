@@ -538,13 +538,12 @@ function AppInner({ theme, toggleTheme }) {
             {NAV_SECTIONS.map((sec, idx) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
-              // Active = the item itself OR one of its hub subTabs (activeFor
-              // deliberately returns false on the parent when a subTab matches,
-              // so checking it alone would COLLAPSE the section you're inside).
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              // Open by default; honor the user's collapse preference. The
-              // active section is forced open so you always see where you are.
-              const isOpen = collapsed ? true : (sectionHasActive || !collapsedSecs.has(sec.id));
+              // v5: تفضيل المستخدم يحكم وحده — لا فرض فتح للقسم النشط (كان
+              // sectionHasActive يمنع إقفال قسمٍ أنت داخل إحدى صفحاته —
+              // «فتحت قسم شركات الشحن ما يقفل»). المؤشر النقطي أدناه يدلّ
+              // على موقعك حين يكون قسمك مقفلاً.
+              const isOpen = collapsed ? true : !collapsedSecs.has(sec.id);
               const SecIcon = sec.icon;
               return (
                 <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
