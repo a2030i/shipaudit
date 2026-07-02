@@ -181,11 +181,11 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          label="صافي الشهر"
+          label="صافي حركة النقد مع الناقلين"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
           unit="ر.س"
           delta={data.deltas.net}
-          hint="COD مُستلَم − إنفاق على الشركات"
+          hint="COD مُستلَم − إنفاق — تدفّق نقدي وليس ربحاً (الربح في «الوضع المالي»)"
           big
         />
         <BigStat
