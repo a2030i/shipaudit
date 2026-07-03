@@ -234,8 +234,8 @@ export default function CustomerWatch({ isActive = true }) {
               label: 'مقارنة بالشهر السابق',
             } : null}
             stats={[
-              { label: 'إجمالي المديونيات', value: `${fmtCompact(t.totalDebt)} ر.س`, color: '#FCA5A5' },
-              { label: 'عملاء عليهم دين',    value: fmtCount(t.customerCount) },
+              { label: 'إجمالي المديونيات (الكشف الداخلي)', value: `${fmtCompact(t.totalDebt)} ر.س`, color: '#FCA5A5' },
+              { label: 'عملاء عليهم دين',    value: fmtCount(t.debtorsCount ?? t.customerCount) },
               { label: 'تنبيهات نشطة',       value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? '#FCD34D' : '#86EFAC' },
               { label: 'إجمالي المحافظ',     value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? '#FCA5A5' : '#5EEAD4' },
             ]}

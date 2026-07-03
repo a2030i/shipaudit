@@ -351,7 +351,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         {/* Top customers by debt */}
         <Card>
           <SectionTitle icon={<Users size={14}/>} color="#EF4444" inline>
-            العملاء — تركّز المديونيات
+            العملاء — تركّز المديونيات{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
           {data.customerConcentration.length === 0 ? (
             <Empty icon="📭" title="لا مديونيات حالياً" sub="ارفع snapshot من /receivables"/>
@@ -364,7 +364,9 @@ export default function Overview({ carriers = [], isActive = true }) {
                 share:      r.sharePct,
                 rank:       r.rank,
                 meta:       `${r.invoiceCount} فاتورة`,
-                onClick:    () => navigate('/receivables'),
+                // زوهو حي → «فلوسي عند العملاء» (العميل موجود هناك حتماً —
+                // كان النقر ينقل لـ/receivables وقد يكون العميل مستبعداً منها)
+                onClick:    () => navigate(data.arSource === 'zoho' ? '/customer-money' : '/receivables'),
               }))}
               valueUnit="ر.س"
               warnAtPct={25}
@@ -582,10 +584,10 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         <CashTile
           icon={<ArrowDownCircle size={18}/>}
           color="var(--green)"
-          label="مستحق لنا (العملاء)"
+          label={cash.arSource === 'zoho' ? 'مستحق لنا (العملاء) · زوهو حي' : 'مستحق لنا (العملاء)'}
           value={fmt(cash.totalAR)}
           unit="ر.س"
-          hint="ما يدين به العملاء اليوم"
+          hint={cash.arSource === 'zoho' ? 'فواتير زوهو المفتوحة — نفس رقم «فلوسي عند العملاء»' : 'من آخر كشف داخلي مرفوع'}
         />
         <CashTile
           icon={<ArrowUpCircle size={18}/>}
