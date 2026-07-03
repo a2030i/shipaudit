@@ -1,4 +1,4 @@
-// zoho-apply-credits v5 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v6 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -10,6 +10,8 @@
 // v5: كل تطبيق مُقيَّد بالرصيد الحيّ (capAlloc) لتفادي رفض زوهو «المبلغ أكثر من
 //     الرصيد المستحق» عند حدود التقريب/بعد الإشعارات؛ قائمة الدفعة موحّدة بلا
 //     تكرار فاتورة؛ كل مصدر ملفوف بـtry فلا يُسقِط فشلٌ واحدٌ الدفعة كلها (500).
+// v6: جلب الفواتير المفتوحة بالرصيد>0 (يشمل «overdue») لا بفلتر status=unpaid —
+//     كان يُسقِط الفواتير المتأخرة فتظهر «لا فواتير مفتوحة» لعميل دينه كله متأخر.
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -55,22 +57,41 @@ async function accessToken(db: ReturnType<typeof svc>) {
   return { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string };
 }
 
+// الفواتير المفتوحة للعميل (رصيد>0، الأقدم أولاً) — **بالرصيد لا بالحالة**.
+// فلتر status=unpaid في زوهو يُسقِط الفواتير «overdue» (المتأخرة تُصنَّف حالة
+// منفصلة) فيظهر «لا فواتير مفتوحة» لعميل دينه كله متأخر. نجلب كل الصفحات
+// ونستبعد المسودّة/الملغاة فقط.
+async function fetchOpenInvoices(token: string, apiDomain: string, orgId: string, contactId: string) {
+  const H = { Authorization: `Zoho-oauthtoken ${token}` };
+  const out: any[] = [];
+  for (let page = 1; page <= 20; page++) {
+    const qs = new URLSearchParams({ organization_id: orgId, customer_id: contactId, sort_column: 'date', sort_order: 'A', per_page: '200', page: String(page) });
+    const r = await fetch(`${apiDomain}/books/v3/invoices?${qs}`, { headers: H });
+    const j = await r.json();
+    if (j.code !== 0) throw new Error(`invoices: ${j.message || j.code}`);
+    for (const i of (j.invoices || [])) {
+      const st = String(i.status || '').toLowerCase();
+      if (Number(i.balance) > 0.001 && st !== 'draft' && st !== 'void') {
+        out.push({ invoice_id: i.invoice_id, number: i.invoice_number, date: i.date, balance: Number(i.balance) });
+      }
+    }
+    if (!j.page_context?.has_more_page) break;
+  }
+  return out;
+}
+
 // يبني خطة التطبيق مجمّعة حسب المصدر (إشعار/دفعة) — الأقدم من الفواتير أولاً.
 async function buildPlan(token: string, apiDomain: string, orgId: string, contactId: string) {
   const H = { Authorization: `Zoho-oauthtoken ${token}` };
   const qs = (o: Record<string, string>) => new URLSearchParams({ organization_id: orgId, ...o }).toString();
 
-  // الطلبات الثلاثة متوازية (كانت تسلسلية = بطء 3×).
-  const [invRes, cnRes, payRes] = await Promise.all([
-    fetch(`${apiDomain}/books/v3/invoices?${qs({ customer_id: contactId, status: 'unpaid', sort_column: 'date', sort_order: 'A', per_page: '200' })}`, { headers: H }),
+  // الفواتير المفتوحة (تشمل المتأخرة) + الإشعارات + الدفعات — بالتوازي.
+  const [invoices, cnRes, payRes] = await Promise.all([
+    fetchOpenInvoices(token, apiDomain, orgId, contactId),
     fetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
     fetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
   ]);
-  const [invJ, cnJ, payJ] = await Promise.all([invRes.json(), cnRes.json(), payRes.json()]);
-  if (invJ.code !== 0) throw new Error(`invoices: ${invJ.message || invJ.code}`);
-  const invoices = (invJ.invoices || [])
-    .filter((i: any) => Number(i.balance) > 0.001)
-    .map((i: any) => ({ invoice_id: i.invoice_id, number: i.invoice_number, date: i.date, balance: Number(i.balance) }));
+  const [cnJ, payJ] = await Promise.all([cnRes.json(), payRes.json()]);
   const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
     .map((c: any) => ({ creditnote_id: c.creditnote_id, number: c.creditnote_number, avail: Number(c.balance) }))
     .filter((c: any) => c.avail > 0.001);
@@ -161,10 +182,8 @@ Deno.serve(async (req) => {
       // «المبلغ أكثر من الرصيد المستحق» (حدود التقريب + تغيّر الرصيد بعد الإشعارات).
       const liveBal = new Map<string, number>();
       try {
-        const fr = await fetch(`${apiDomain}/books/v3/invoices?${new URLSearchParams({ organization_id: orgId, customer_id: contactId, status: 'unpaid', per_page: '200' })}`,
-          { headers: { Authorization: `Zoho-oauthtoken ${token}` } });
-        const fj = await fr.json();
-        for (const i of (fj.invoices || [])) liveBal.set(i.invoice_id, Number(i.balance));
+        const openInv = await fetchOpenInvoices(token, apiDomain, orgId, contactId);
+        for (const i of openInv) liveBal.set(i.invoice_id, i.balance);
       } catch { /* لو فشل الجلب نكمل بلا cap (سيرفض زوهو الزائد بأمان) */ }
 
       // يقصّ قائمة تطبيقات على الرصيد الحيّ، ويُنقص المتبقّي. يرجع القائمة المقصوصة ومجموعها.
