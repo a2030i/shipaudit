@@ -249,6 +249,13 @@
 - **COD المُستلَم الشهري** = `cod_settlement direction='in'` (حسب upload_date) — **لا قيود COD الدفترية** (كانت تختلف 655K مقابل 588K). monthlyReportService يقرأ cod_settlement مثل الرئيسية.
 - **«صافي الحركة مع الناقلين»** = `COD − billed` (نفس `monthly_financial_snapshot`: cod_received − carrier_spend_gross). التقرير الشهري وُحِّد عليها (كان billed−crTotal معكوس الإشارة). **قاعدة §1.22: لا رقمان باسم «صافي» بدلالتين.**
 
+### 1.26 كتابة زوهو المحدودة — تطبيق الأرصدة الدائنة + منح صلاحية داخلي ✅ (2026-07-03)
+- **الكتابة الوحيدة المسموحة في زوهو**: تطبيق رصيد دائن **موجود** على فاتورة **موجودة**. **ممنوع منعاً باتاً**: إنشاء/حذف فواتير، أي POST/PUT/DELETE آخر، أي صلاحية حسّاسة (DELETE/banking/settings.UPDATE). قاعدة المستخدم الصريحة.
+- **الـendpoints الصحيحة (مثبتة في مؤسسة المستخدم .com)**: `POST /invoices/{id}/credits` **يُرفَض** «not authorized» في هذه المؤسسة. المستعملان الناجحان (من كود Deluge للمستخدم): **الدفعات الزائدة → `PUT /customerpayments/{id}` مع `{invoices:[...]}`** (اجلب التطبيقات القائمة عبر GET وضمّها حتى لا يدهسها الـPUT) · **الإشعارات الدائنة → `POST /creditnotes/{id}/invoices`** (إضافي آمن). دالة `zoho-apply-credits` v3.
+- **كشف الأرصدة** (قراءة): RPC `zoho_customer_unused_credits()` من `zoho_contacts` (unused_credits_receivable>0.5 + دين) — قسم في `/customer-money` + رابط زوهو مباشر لكل عميل. `loadZohoUnusedCredits`/`planZohoApplyCredits`/`applyZohoCredits` في pnlService.
+- **منح الصلاحية داخل النظام**: دالة `zoho-authurl` (admin) تبني رابط موافقة بالنطاق الموسّع = قراءة كل الوحدات + **UPDATE فقط على invoices/creditnotes/customerpayments/contacts** (صفر DELETE/CREATE/banking). الموافقة تعود لـ`/zoho-callback` الذي يستبدل التوكن (exchange_web force). **«not authorized» في زوهو = خطأ endpoint/طريقة، لا خطأ scope** (لو scope لقال invalid_scope).
+- **تكامل مع Deluge المستخدم**: كوده يعالج الدفعات الزائدة الجديدة (trigger عند الإنشاء). نظامنا يكمّل: **الإشعارات الدائنة + المتراكم** (ما يتخطّاه كوده). لا ازدواج (كل مصدر يُطبَّق مرة).
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
