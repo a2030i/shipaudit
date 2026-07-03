@@ -10,7 +10,10 @@ import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
-  loadZohoInvoiceDashboard, zohoStatusAr } from '../lib/pnlService.js';
+  loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign } from '../lib/pnlService.js';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -59,9 +62,60 @@ const COLS = {
 };
 
 export default function ZohoData({ isActive = true }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [type, setType] = useState('invoices');
   const [dash, setDash] = useState(null);
+  const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
+  const [waOpen, setWaOpen] = useState(false);
+
+  // حملة تحصيل المتأخرين — من zoho_overdue_campaign (هواتف من دليل المتاجر)
+  const loadCampaign = async () => {
+    if (campaign) return campaign;
+    const rows = await loadZohoOverdueCampaign();
+    setCampaign(rows);
+    return rows;
+  };
+  const openWhatsApp = async () => {
+    try {
+      const rows = await loadCampaign();
+      if (!rows.length) { toast('لا فواتير متأخرة حالياً 🎉', 'info'); return; }
+      setWaOpen(true);
+    } catch (e) { toast(`فشل تجهيز الحملة: ${e.message}`, 'error'); }
+  };
+  const exportCampaign = async () => {
+    try {
+      const rows = await loadCampaign();
+      if (!rows.length) { toast('لا فواتير متأخرة حالياً 🎉', 'info'); return; }
+      const aoa = [
+        ['حملة تحصيل — فواتير زوهو المتأخرة', '', '', new Date().toISOString().slice(0, 10)],
+        [],
+        ['العميل (زوهو)', 'المتجر', 'الهاتف', 'المستحق', 'عدد الفواتير', 'أقدم فاتورة', 'العمر (يوم)', 'الفواتير (رقم + مبلغ)'],
+        ...rows.map(r => [r.customerName, r.storeName || '', r.phone || '', r.owed, r.invCount, r.oldest || '', r.ageDays, r.invoiceList]),
+        [],
+        ['الإجمالي', '', '', +rows.reduce((s, r) => s + r.owed, 0).toFixed(2), rows.reduce((s, r) => s + r.invCount, 0)],
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = [{ wch: 32 }, { wch: 24 }, { wch: 14 }, { wch: 12 }, { wch: 9 }, { wch: 11 }, { wch: 9 }, { wch: 60 }];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'حملة تحصيل');
+      await persistAndDownloadExport({
+        wb: rtl(wb), fileName: `حملة_تحصيل_زوهو_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'zoho_campaign', rowCount: rows.length,
+        total: +rows.reduce((s, r) => s + r.owed, 0).toFixed(2), userId: user?.id || null,
+      });
+      toast(`صُدّرت حملة لـ${rows.length} عميلاً متأخراً ✓`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+  };
+  const waRecipients = useMemo(() => (campaign || [])
+    .filter(r => r.phone && r.owed > 0.5)
+    .map(r => {
+      const name = (r.storeName || r.customerName || '').trim();
+      return {
+        to: normalizeSaudiPhone(r.phone), name, amount: r.owed, count: r.invCount,
+        // متغيّرات القالب: {{1}} الاسم · {{2}} المبلغ · {{3}} عدد الفواتير
+        vars: [name, Number(r.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(r.invCount)],
+      };
+    }), [campaign]);
   const [period, setPeriod] = useState(currentPnlPeriod());
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
@@ -181,8 +235,21 @@ export default function ZohoData({ isActive = true }) {
         ))}
       </div>
 
-      {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين */}
-      {type === 'invoices' && dash && <InvoiceDashboard dash={dash} onPick={setQ}/>}
+      {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
+      {type === 'invoices' && dash && (
+        <>
+          <InvoiceDashboard dash={dash} onPick={setQ}/>
+          {dash.overdueCnt > 0 && can('collections.view') && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '-4px 0 12px' }}>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
+                حملة تحصيل للمتأخرين ({dash.overdueCnt} فاتورة):
+              </span>
+              <Btn size="sm" variant="accent" onClick={openWhatsApp}>📲 حملة واتساب</Btn>
+              <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportCampaign}>📞 ملف الحملة (Excel)</Btn>
+            </div>
+          )}
+        </>
+      )}
 
       {/* الفلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
@@ -286,6 +353,13 @@ export default function ZohoData({ isActive = true }) {
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12, textAlign: 'center' }}>
         قراءة فقط — أي تعديل يتم في Zoho Books نفسه ثم «مزامنة». الرواتب: نوع «المصاريف» ← حساب «أجور الموظفين».
       </div>
+
+      <WhatsAppSendModal
+        open={waOpen}
+        onClose={() => setWaOpen(false)}
+        recipients={waOpen ? waRecipients : []}
+        bucketLabel="فواتير زوهو المتأخرة"
+      />
     </div>
   );
 }

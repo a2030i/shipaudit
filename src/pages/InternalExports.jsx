@@ -602,7 +602,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               </thead>
               <tbody>
                 {history.map(rec => {
-                  const KIND_LABEL = { cod: '💰 تحصيلات', invoicing: '🧾 فواتير عملاء', weight: '⚖️ أوزان' };
+                  const KIND_LABEL = { cod: '💰 تحصيلات', invoicing: '🧾 فواتير عملاء', weight: '⚖️ أوزان', monthly: '📅 تقرير شهري', carrier_soa: '📄 كشف ناقل', bank_recon: '🏦 مطابقة بنكية', zoho_campaign: '📞 حملة تحصيل زوهو' };
                   return (
                     <tr key={rec.id} style={{ borderBottom: '1px solid var(--border)' }}>
                       <td style={{ padding: '9px 10px', whiteSpace: 'nowrap' }}>{fmtDate(rec.pulledAt)}</td>
