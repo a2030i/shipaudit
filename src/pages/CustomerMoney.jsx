@@ -8,10 +8,11 @@ import { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr } from '../lib/pnlService.js';
-import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
+  previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
@@ -34,6 +35,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [sortBy, setSortBy] = useState('owed');    // owed | oldest
   const [waOpen, setWaOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [briefOpen, setBriefOpen] = useState(false);
 
   const refresh = async () => {
     setBusy(true);
@@ -96,9 +98,14 @@ export default function CustomerMoney({ isActive = true }) {
         title="فلوسي عند العملاء"
         subtitle="زوهو المرجع — كم لك بالخارج وكيف تحصّله الآن (نفس أرقام سجلات زوهو)"
         actions={
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>
-            تحديث
-          </Btn>
+          <>
+            <Btn size="sm" variant="ghost" onClick={() => setBriefOpen(true)} title="رسالة واتساب يومية بأرقام هذه الشاشة">
+              🌅 ملخّص الصباح
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>
+              تحديث
+            </Btn>
+          </>
         }/>
 
       {/* ── البطل: كم لك بالخارج ── */}
@@ -196,7 +203,97 @@ export default function CustomerMoney({ isActive = true }) {
       <WhatsAppSendModal open={waOpen} onClose={() => setWaOpen(false)}
         recipients={waOpen ? waRecipients : []}
         bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'فلوسي عند العملاء'}/>
+
+      {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
     </div>
+  );
+}
+
+// إعداد ملخّص الصباح — رسالة واتساب يومية 7:15 صباحاً بأرقام هذه الشاشة
+function MorningBriefModal({ onClose }) {
+  const [cfg, setCfg] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => { loadMorningBriefConfig().then(setCfg).catch(() => setCfg({ enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '' })); }, []);
+
+  const save = async (next) => {
+    setCfg(next); setSaving(true);
+    try { await saveMorningBriefConfig(next); } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); }
+    setSaving(false);
+  };
+  const doPreview = async () => {
+    setPreview('...');
+    const r = await previewMorningBrief();
+    setPreview(r?.ok ? r.vars : `خطأ: ${r?.error || 'غير معروف'}`);
+  };
+  const doSendNow = async () => {
+    setSending(true);
+    const r = await sendMorningBriefNow();
+    setSending(false);
+    if (r?.ok && !r.skipped) toast(`أُرسل الملخّص ✓ (نجح ${r.sent ?? 1})`, 'success');
+    else if (r?.skipped) toast('الملخّص معطَّل — فعّله واحفظ أولاً', 'warn');
+    else toast(`فشل الإرسال: ${r?.error || 'غير معروف'}`, 'error');
+  };
+
+  const VAR_LABELS = ['التاريخ', 'لك عند العملاء', 'منها متأخرة', 'حصّلنا هذا الشهر', 'أكبر 3 مدينين', 'فواتير تنتظر نظرتك'];
+
+  return (
+    <Modal title="🌅 ملخّص الصباح — واتساب يومي" onClose={onClose} width={540}>
+      {!cfg ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div> : (
+        <div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
+            رسالة تصلك كل يوم <b>7:15 صباحاً</b> بأرقام هذه الشاشة: المستحق، المتأخر، التحصيل،
+            أكبر المدينين، والفواتير المنتظرة. تحتاج قالباً معتمداً في Respondly بستة متغيّرات.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+            <input type="checkbox" checked={cfg.enabled} onChange={e => save({ ...cfg, enabled: e.target.checked })}/>
+            تفعيل الإرسال اليومي
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            <Input label="رقم المستلِم (05… أو 9665…)" value={cfg.phone}
+              onChange={e => setCfg({ ...cfg, phone: e.target.value })}
+              onBlur={() => save(cfg)} placeholder="05XXXXXXXX"/>
+            <Input label="اسم القالب المعتمد" value={cfg.templateName}
+              onChange={e => setCfg({ ...cfg, templateName: e.target.value })}
+              onBlur={() => save(cfg)} placeholder="morning_brief"/>
+            <Input label="لغة القالب" value={cfg.templateLanguage}
+              onChange={e => setCfg({ ...cfg, templateLanguage: e.target.value })}
+              onBlur={() => save(cfg)} placeholder="ar"/>
+            <Input label="معرّف القناة (اختياري)" value={cfg.channelId}
+              onChange={e => setCfg({ ...cfg, channelId: e.target.value })}
+              onBlur={() => save(cfg)}/>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted2)', margin: '8px 0 12px' }}>
+            متغيّرات القالب بالترتيب: {VAR_LABELS.map((l, i) => `{{${i + 1}}} ${l}`).join(' · ')}
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <Btn size="sm" variant="ghost" onClick={doPreview}>معاينة الأرقام</Btn>
+            <Btn size="sm" variant="accent" onClick={doSendNow} disabled={sending || !cfg.enabled || !cfg.phone || !cfg.templateName}>
+              {sending ? <Spinner size={13}/> : 'أرسل الآن (تجربة)'}
+            </Btn>
+            {saving && <span style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>يحفظ…</span>}
+          </div>
+
+          {Array.isArray(preview) && (
+            <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 12 }}>
+              {preview.map((v, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0' }}>
+                  <span style={{ color: 'var(--muted)', minWidth: 120 }}>{VAR_LABELS[i]}</span>
+                  <b>{v}</b>
+                </div>
+              ))}
+            </div>
+          )}
+          {typeof preview === 'string' && preview !== '...' && (
+            <div style={{ color: 'var(--red)', fontSize: 12 }}>{preview}</div>
+          )}
+          {preview === '...' && <Spinner size={16}/>}
+        </div>
+      )}
+    </Modal>
   );
 }
 
