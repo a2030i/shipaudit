@@ -241,6 +241,14 @@
   - `loadEffectiveBankBalance()` في bankBalanceService = نقطة الحقيقة لرصيد البنك (ختامي آخر كشف أو اليدوي — الأحدث يفوز)؛ Forecast وOverview كلاهما عليها
 - **متبقٍ موثَّق**: تناقضات الناقلين (رصيد /hub شامل المسدَّد · PAY لا يكتبها أحد · صافي معكوس الإشارة · COD الشهري بمصدرين) في task #40، وازدواجية حملة /receivables في #41
 
+### 1.25 توحيد أرقام الناقلين — نقاط الحقيقة الواحدة ✅ (2026-07-03، فحص وكلاء)
+من فحص إعادة البناء (62 وكيلاً): 5 تناقضات مؤكدة لنفس المفهوم عبر صفحات مختلفة، كلها وُحِّدت ومُتحقَّقة بالـSQL الحي.
+- **رصيد الناقل** = `SUM(DR−CR) FILTER (status≠'paid')` — نقطة الحقيقة `carrier_open_balance` (/ledger). `hub_rollup` يُرجِع الآن `open_balance` بنفسها (/hub و/carrier)، وcarrierProfileService يستبعد المسدَّد. **ممنوع حساب balance = totalDr−totalCr الخام** (كان أرامكس يظهر 164,003 وهو مسدَّد بالكامل). total_dr/total_cr للعرض فقط.
+- **المدفوعات للناقلين** = جدول `payments` (حسب paid_at) — **لا قيود `doc_type='PAY'`** (لا يكتبها أحد؛ createPaymentRecord يكتب في payments + يقلب status فقط). مطبَّق في: monthlyReportService · bankReconReport (loadPayOps يُطبِّع حقول payments لأسماء القيد) · `monthly_financial_snapshot.carrier_paid`. أي تقرير مدفوعات جديد يقرأ payments لا PAY.
+- **مستحق علينا للناقلين (AP)** = `SUM(net) per carrier HAVING net>0.5` (المدينون فقط) — نقطة الحقيقة `ap_aging_by_carrier`. وُحِّد عليها `working_capital_now.total_ap` وcashAgingService. الأرصدة الدائنة (COD محتجز: سمسا/J&T…) **تُعرَض منفصلة** لا تُطرَح (كان −558K مضلِّلاً يخلط COD بالفواتير).
+- **COD المُستلَم الشهري** = `cod_settlement direction='in'` (حسب upload_date) — **لا قيود COD الدفترية** (كانت تختلف 655K مقابل 588K). monthlyReportService يقرأ cod_settlement مثل الرئيسية.
+- **«صافي الحركة مع الناقلين»** = `COD − billed` (نفس `monthly_financial_snapshot`: cod_received − carrier_spend_gross). التقرير الشهري وُحِّد عليها (كان billed−crTotal معكوس الإشارة). **قاعدة §1.22: لا رقمان باسم «صافي» بدلالتين.**
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
