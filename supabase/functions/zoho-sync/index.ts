@@ -1,4 +1,6 @@
-// zoho-sync v11 — + كيان contacts (أرصدة العملاء/الموردين المباشرة شاملة
+// zoho-sync v12 — + كيان creditnotes (مرآة الإشعارات الدائنة) + unused_amount
+// للدفعات — أساس بناء «خطة تطبيق الرصيد» من المرآة بلا استدعاء زوهو حيّ.
+// v11 — + كيان contacts (أرصدة العملاء/الموردين المباشرة شاملة
 // السلف والإشعارات الدائنة — تُغني عن ملف «أرصدة الموردين» الإيميلي).
 // v10 — expenses: فرز date + سحب كامل (زوهو لا يدعم فرز
 // last_modified_time لهذه القائمة). v9: هوية آلية pg_cron (X-Cron-Key).
@@ -247,8 +249,13 @@ Deno.serve(async (req) => {
           status: it.status || null, last_modified: lm, synced_at: now }) },
         { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
-          amount: Number(it.amount) || 0, mode: it.payment_mode || null,
+          amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
+        // الإشعارات الدائنة — مرآة (أساس خطة تطبيق الرصيد؛ لم تكن مُرآةً)
+        { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', map: (it, lm, now) => ({
+          zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number, customer_name: it.customer_name,
+          date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
+          status: it.status || null, last_modified: lm, synced_at: now }) },
         // expenses: زوهو لا يدعم فرز last_modified_time لهذه القائمة → فرز
         // date + سحب كامل بلا early-stop — upsert يمتص التكرار.
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
