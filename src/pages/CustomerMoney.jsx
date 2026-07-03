@@ -10,7 +10,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr } from '../lib/pnlService.js';
+import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -36,6 +36,8 @@ export default function CustomerMoney({ isActive = true }) {
   const [waOpen, setWaOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
+  const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
+  const [creditsOpen, setCreditsOpen] = useState(false);
 
   const refresh = async () => {
     setBusy(true);
@@ -44,6 +46,11 @@ export default function CustomerMoney({ isActive = true }) {
     setBusy(false);
   };
   useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
+  // أرصدة دائنة غير مستخدمة (تحميل كسول مرة واحدة)
+  useEffect(() => {
+    if (!isActive || credits != null) return;
+    loadZohoUnusedCredits().then(setCredits).catch(() => setCredits({ rows: [], totalApplicable: 0, clearsCount: 0 }));
+  }, [isActive, credits]);
 
   const filtered = useMemo(() => {
     if (!d) return [];
@@ -168,6 +175,59 @@ export default function CustomerMoney({ isActive = true }) {
           </div>
         </div>
       </Card>
+
+      {/* ── أرصدة دائنة غير مستخدمة — طبّقها في زوهو لتصفير الدين ── */}
+      {credits && credits.rows.length > 0 && (
+        <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden',
+          border: '1.5px solid color-mix(in srgb, var(--green) 30%, var(--border))' }}>
+          <button onClick={() => setCreditsOpen(o => !o)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+              background: 'color-mix(in srgb, var(--green) 7%, transparent)', border: 'none', cursor: 'pointer', textAlign: 'right' }}>
+            <span style={{ fontSize: 17 }}>💳</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13, fontWeight: 800 }}>
+                {credits.rows.length} عميل لهم أرصدة دائنة غير مستخدمة — يمكن تطبيقها لتصفير جزء من دينهم
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                قابل للتطبيق: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س ·
+                {credits.clearsCount} منهم يُصفَّر رصيدهم بالكامل · التطبيق يتم في زوهو بنقرة
+              </div>
+            </div>
+            <ChevronDown size={16} style={{ transform: creditsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: 'var(--muted)' }}/>
+          </button>
+          {creditsOpen && (
+            <div className="m-flow" style={{ maxHeight: 340, overflowY: 'auto', borderTop: '1px solid var(--border)' }}>
+              <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+                <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)', zIndex: 1 }}>
+                  <tr>{['العميل', 'الدين', 'رصيد غير مستخدم', 'يُطبَّق', 'يبقى', ''].map(h => (
+                    <th key={h} style={{ padding: '8px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody>
+                  {credits.rows.map(r => (
+                    <tr key={r.zohoId} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td data-label="" style={{ padding: '8px 12px', fontWeight: 700, maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</td>
+                      <td data-label="الدين" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{fmt(r.outstanding)}</td>
+                      <td data-label="رصيد غير مستخدم" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', color: 'var(--green)', whiteSpace: 'nowrap' }}>{fmt(r.unusedCredit)}</td>
+                      <td data-label="يُطبَّق" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(r.applicable)}</td>
+                      <td data-label="يبقى" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                        color: r.clearsFully ? 'var(--green)' : 'var(--gold)' }}>{r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)}</td>
+                      <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                        {r.zohoUrl
+                          ? <a href={r.zohoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>افتح في زوهو ↗</a>
+                          : <span style={{ fontSize: 11, color: 'var(--muted2)' }}>—</span>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--muted2)', borderTop: '1px solid var(--border)' }}>
+                افتح العميل في زوهو → «الرصيد الدائن» → «تطبيق على الفواتير المستحقة». النظام يقرأ فقط ولا يُعدّل زوهو.
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ── أدوات القائمة ── */}
       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>

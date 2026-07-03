@@ -250,6 +250,39 @@ export async function loadZohoOpenInvoices(customerName) {
   return data || [];
 }
 
+// عملاء لهم أرصدة دائنة غير مستخدمة يمكن تطبيقها على فواتيرهم لتصفير الدين.
+// قراءة فقط من مرآة zoho_contacts — التطبيق الفعلي يتم في زوهو (رابط مباشر).
+// orgId + dc لبناء رابط جهة الاتصال في Zoho Books.
+export async function loadZohoUnusedCredits() {
+  const [{ data, error }, authRes] = await Promise.all([
+    supabase.rpc('zoho_customer_unused_credits'),
+    supabase.from('zoho_auth').select('org_id, api_domain').eq('id', 1).maybeSingle(),
+  ]);
+  if (error) throw error;
+  // مركز البيانات من api_domain (zohoapis.com → books.zoho.com، .sa → .sa …)
+  const dom = authRes?.data?.api_domain || '';
+  const dc = /\.sa\b/.test(dom) ? 'sa' : /\.eu\b/.test(dom) ? 'eu' : /\.in\b/.test(dom) ? 'in' : 'com';
+  const orgId = authRes?.data?.org_id || '';
+  const zohoLink = (id) => orgId
+    ? `https://books.zoho.${dc}/app/${orgId}#/contacts/${id}`
+    : null;
+  const rows = (data || []).map(r => ({
+    zohoId:         r.zoho_id,
+    name:           r.contact_name,
+    outstanding:    Number(r.outstanding) || 0,
+    unusedCredit:   Number(r.unused_credit) || 0,
+    applicable:     Number(r.applicable) || 0,
+    remainingAfter: Number(r.remaining_after) || 0,
+    clearsFully:    !!r.clears_fully,
+    zohoUrl:        zohoLink(r.zoho_id),
+  }));
+  return {
+    rows,
+    totalApplicable: +rows.reduce((s, r) => s + r.applicable, 0).toFixed(2),
+    clearsCount:     rows.filter(r => r.clearsFully).length,
+  };
+}
+
 // تعريب حالات مستندات زوهو (فواتير/فواتير موردين). المفتاح lower-case.
 export const ZOHO_STATUS_AR = {
   paid: 'مدفوعة', unpaid: 'غير مدفوعة', overdue: 'متأخرة', draft: 'مسودة',
