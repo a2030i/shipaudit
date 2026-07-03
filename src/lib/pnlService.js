@@ -283,6 +283,25 @@ export async function loadZohoUnusedCredits() {
   };
 }
 
+// خطة تطبيق الأرصدة الدائنة لعميل (قراءة فقط — لا كتابة). ترجع الفواتير
+// وأي رصيد يُطبَّق على كلٍّ منها. عبر edge function zoho-apply-credits.
+export async function planZohoApplyCredits(contactId) {
+  const { data, error } = await supabase.functions.invoke('zoho-apply-credits', {
+    body: { action: 'plan', contact_id: contactId },
+  });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+// تنفيذ الخطة فعلياً في زوهو (كتابة — admin + صلاحية invoices.UPDATE).
+// العملية الوحيدة: تطبيق رصيد موجود على فاتورة موجودة. لا إنشاء/حذف.
+export async function applyZohoCredits(contactId) {
+  const { data, error } = await supabase.functions.invoke('zoho-apply-credits', {
+    body: { action: 'apply', contact_id: contactId },
+  });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 // تعريب حالات مستندات زوهو (فواتير/فواتير موردين). المفتاح lower-case.
 export const ZOHO_STATUS_AR = {
   paid: 'مدفوعة', unpaid: 'غير مدفوعة', overdue: 'متأخرة', draft: 'مسودة',

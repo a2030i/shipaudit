@@ -10,7 +10,8 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits } from '../lib/pnlService.js';
+import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
+  planZohoApplyCredits, applyZohoCredits } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -28,7 +29,8 @@ const BUCKETS = [
 ];
 
 export default function CustomerMoney({ isActive = true }) {
-  const { can, user } = useAuth();
+  const { can, user, isAdmin } = useAuth();
+  const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
   const [q, setQ] = useState('');
   const [bucket, setBucket] = useState('');        // '' | b0..b3
@@ -212,9 +214,16 @@ export default function CustomerMoney({ isActive = true }) {
                       <td data-label="يُطبَّق" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(r.applicable)}</td>
                       <td data-label="يبقى" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
                         color: r.clearsFully ? 'var(--green)' : 'var(--gold)' }}>{r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)}</td>
-                      <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>
+                      <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
+                        {isAdmin && (
+                          <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name })}
+                            style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 12%, transparent)',
+                              border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
+                            طبّق تلقائياً
+                          </button>
+                        )}
                         {r.zohoUrl
-                          ? <a href={r.zohoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>افتح في زوهو ↗</a>
+                          ? <a href={r.zohoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>زوهو ↗</a>
                           : <span style={{ fontSize: 11, color: 'var(--muted2)' }}>—</span>}
                       </td>
                     </tr>
@@ -265,7 +274,76 @@ export default function CustomerMoney({ isActive = true }) {
         bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'فلوسي عند العملاء'}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
+      {applyTarget && (
+        <ApplyCreditsModal target={applyTarget}
+          onClose={() => setApplyTarget(null)}
+          onDone={() => { setApplyTarget(null); setCredits(null); refresh(); }}/>
+      )}
     </div>
+  );
+}
+
+// مودال تطبيق الأرصدة الدائنة — معاينة (قراءة) ثم تأكيد التطبيق (كتابة في زوهو)
+function ApplyCreditsModal({ target, onClose, onDone }) {
+  const [plan, setPlan] = useState(null);   // null=جارٍ · {ok,...} · {error}
+  const [applying, setApplying] = useState(false);
+  const [done, setDone] = useState(null);
+
+  useEffect(() => {
+    planZohoApplyCredits(target.zohoId).then(setPlan).catch(e => setPlan({ ok: false, error: String(e) }));
+  }, [target.zohoId]);
+
+  const doApply = async () => {
+    setApplying(true);
+    const r = await applyZohoCredits(target.zohoId);
+    setApplying(false);
+    if (r?.ok) { setDone(r); if (!r.results?.some(x => !x.ok)) toast(`تم تطبيق ${fmt(r.applied)} ر.س ✓`, 'success'); }
+    else toast(`فشل التطبيق: ${r?.error || 'غير معروف'}`, 'error');
+  };
+
+  return (
+    <Modal title={`تطبيق الرصيد الدائن — ${target.name}`} onClose={onClose} width={560}>
+      {plan == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
+        : !plan.ok ? <div style={{ color: 'var(--red)', fontSize: 13, padding: 12 }}>خطأ: {plan.error}</div>
+        : done ? (
+          <div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--green)', marginBottom: 10 }}>
+              ✓ طُبِّق {fmt(done.applied)} ر.س على {done.count} فاتورة
+            </div>
+            {done.results?.filter(x => !x.ok).map((x, i) => (
+              <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>فاتورة {x.invoice}: {x.error}</div>
+            ))}
+            <div style={{ marginTop: 14, textAlign: 'left' }}><Btn variant="primary" onClick={onDone}>تم</Btn></div>
+          </div>
+        ) : !plan.plan?.length ? (
+          <div style={{ fontSize: 13, color: 'var(--muted)', padding: 12 }}>لا فواتير مفتوحة لتطبيق الرصيد عليها.</div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
+              سيُطبَّق <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(plan.total_applied)}</b> ر.س
+              من الرصيد الدائن على <b>{plan.plan.length}</b> فاتورة (الأقدم أولاً). **هذه العملية تكتب في Zoho Books** —
+              تطبيق رصيد موجود فقط، لا تُنشئ ولا تحذف أي فاتورة.
+            </div>
+            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+              {plan.plan.map((p, i) => (
+                <div key={p.invoice_id} style={{ padding: '9px 12px', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)' }}>{p.number} · {p.date}</span>
+                    <span>يُطبَّق <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(p.applied)}</b>{p.remaining > 0.5 ? ` · يبقى ${fmt(p.remaining)}` : ' · يُصفَّر ✓'}</span>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 2 }}>{(p.detail || []).join(' · ')}</div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16, justifyContent: 'flex-start' }}>
+              <Btn variant="accent" onClick={doApply} disabled={applying}>
+                {applying ? <><Spinner size={13}/> جارٍ التطبيق في زوهو…</> : `أكّد التطبيق في زوهو (${fmt(plan.total_applied)} ر.س)`}
+              </Btn>
+              <Btn variant="ghost" onClick={onClose} disabled={applying}>إلغاء</Btn>
+            </div>
+          </div>
+        )}
+    </Modal>
   );
 }
 
