@@ -231,6 +231,16 @@
 - **عدّاد الاسترداد** في `/pnl`: شريط تراكمي من `audit_claims` (`summarizeClaims`) — استُرد فعلاً/قيد المطالبة/مكتشفة، ينقل لـ`/hub?tab=claims`
 - **تمرير الجوال في المودالات**: أي حاوية `overflowY:auto` داخل Modal تحمل `className="m-flow"` (وإلا حبست إصبع iOS — §1.18). مودال الجوال padding=16
 
+### 1.24 «فلوسي عند العملاء» + ملخّص الصباح + توحيد مرجع الدين ✅ (2026-07-03)
+- **`/customer-money`** (CustomerMoney.jsx): شاشة التحصيل الأولى، جوال أولاً — RPC `customer_money_dashboard()` (مستحق/متأخر/أعمار 4 شرائح/تحصيل شهري بحدّين + 56 عميلاً بهواتفهم وآخر دفعة). بطاقة العميل: 📞 tel: + 💬 wa.me + فواتيره بنقرة (`loadZohoOpenInvoices`). حملة واتساب للقائمة المفلترة. في شريط الجوال السفلي («فلوسي» بدل «رفع»)
+- **ملخّص الصباح**: edge function `morning-brief` v1 + pg_cron `morning-brief-daily` (7:15 KSA) بهوية X-Cron-Key (نمط zoho-sync). الإعداد في `app_settings['morning_brief']` من زر 🌅 في `/customer-money` (تفعيل/رقم/قالب/معاينة/إرسال تجريبي). 6 متغيرات قالب Respondly. معطَّل افتراضياً — الكرون آمن دائماً
+- **قاعدة مرجع دين العملاء = زوهو الحي** (فحص 20 وكيلاً، 14 تناقضاً مؤكداً — التقرير في CLAUDE أدناه وtasks #40/#41):
+  - `portal_lookup` (بوابة العميل) يقرأ **فواتير زوهو الحيّة** (balance>0.5) لا snapshot — كان يطالب عميلاً سدّد (79.96 حقيقي) بـ6,201.42 مجمّدة. **ممنوع إرجاعه للـ snapshot**
+  - الرئيسية: «مستحق لنا (العملاء)» و«تركّز المديونيات» من `zoho_invoice_dashboard` + شارة «زوهو حي» + fallback صامت للـ snapshot؛ النقر ينقل لـ`/customer-money`
+  - شاشات «المتابعة الداخلية» (Watch/receivables/CRM) تبقى على الـ snapshot المفلتر لكن **موسومة** «الكشف الداخلي» — لا رقم بلا مصدر معلن
+  - `loadEffectiveBankBalance()` في bankBalanceService = نقطة الحقيقة لرصيد البنك (ختامي آخر كشف أو اليدوي — الأحدث يفوز)؛ Forecast وOverview كلاهما عليها
+- **متبقٍ موثَّق**: تناقضات الناقلين (رصيد /hub شامل المسدَّد · PAY لا يكتبها أحد · صافي معكوس الإشارة · COD الشهري بمصدرين) في task #40، وازدواجية حملة /receivables في #41
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
