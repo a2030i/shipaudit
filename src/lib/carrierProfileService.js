@@ -64,16 +64,20 @@ export async function loadCarrierProfile(carrierId) {
   ]);
 
   // ── Financial sub-ledger ───────────────────────────────────────
-  let totalDr = 0, totalCr = 0;
+  let totalDr = 0, totalCr = 0, openBalance = 0;
   const docCounts = { INV: 0, COD: 0, PAY: 0, ADJ: 0, OTHER: 0 };
   for (const o of ops) {
-    totalDr += Number(o.amount_dr) || 0;
-    totalCr += Number(o.amount_cr) || 0;
+    const dr = Number(o.amount_dr) || 0, cr = Number(o.amount_cr) || 0;
+    totalDr += dr;
+    totalCr += cr;
+    // الرصيد المفتوح يستبعد المسدَّد — نفس معادلة carrier_open_balance
+    // و/hub (توحيد فحص الوكلاء #7). كان يعرض المسدَّد فيتضخّم للأبد.
+    if (o.status !== 'paid') openBalance += dr - cr;
     const dt = (o.doc_type || 'OTHER').toUpperCase();
     if (docCounts[dt] != null) docCounts[dt]++;
     else                        docCounts.OTHER++;
   }
-  const balance = +(totalDr - totalCr).toFixed(2);
+  const balance = +openBalance.toFixed(2);
 
   // ── COD outstanding (out unmatched by in) ──────────────────────
   // We don't try to be too clever here: net = sum(out) − sum(in).
