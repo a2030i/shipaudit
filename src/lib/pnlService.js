@@ -212,6 +212,44 @@ export async function loadZohoOverdueCampaign() {
   }));
 }
 
+// «فلوسي عند العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
+// مستحق/متأخر/أعمار/تحصيل شهري + عملاء بهواتفهم وآخر دفعة.
+export async function loadCustomerMoneyDashboard() {
+  const { data, error } = await supabase.rpc('customer_money_dashboard');
+  if (error) throw error;
+  const d = data || {};
+  return {
+    outstanding:    Number(d.outstanding) || 0,
+    outstandingCnt: Number(d.outstanding_cnt) || 0,
+    overdueAmt:     Number(d.overdue_amt) || 0,
+    aging: {
+      b0: Number(d.aging?.b0_30) || 0,  b1: Number(d.aging?.b31_60) || 0,
+      b2: Number(d.aging?.b61_90) || 0, b3: Number(d.aging?.b90p) || 0,
+    },
+    collectedThisMonth: Number(d.collected_this_month) || 0,
+    collectedPrevMonth: Number(d.collected_prev_month) || 0,
+    monthlyCollected: Array.isArray(d.monthly_collected) ? d.monthly_collected : [],
+    customers: (Array.isArray(d.customers) ? d.customers : []).map(c => ({
+      name: c.name, storeName: c.store_name, phone: c.phone,
+      owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
+      invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
+      b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
+      lastPaymentDate: c.last_payment_date, lastPaymentAmount: Number(c.last_payment_amount) || 0,
+    })),
+  };
+}
+
+// الفواتير المفتوحة لعميل واحد (drill-down في بطاقة العميل)
+export async function loadZohoOpenInvoices(customerName) {
+  const { data, error } = await supabase.from('zoho_invoices')
+    .select('invoice_number, date, total, balance, status')
+    .eq('customer_name', customerName)
+    .gt('balance', 0.5)
+    .order('date', { ascending: true });
+  if (error) throw error;
+  return data || [];
+}
+
 // تعريب حالات مستندات زوهو (فواتير/فواتير موردين). المفتاح lower-case.
 export const ZOHO_STATUS_AR = {
   paid: 'مدفوعة', unpaid: 'غير مدفوعة', overdue: 'متأخرة', draft: 'مسودة',
