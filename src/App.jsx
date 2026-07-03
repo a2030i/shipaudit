@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
@@ -48,6 +48,7 @@ import ReportsCenter     from './pages/ReportsCenter.jsx';
 import ZohoCallback      from './pages/ZohoCallback.jsx';
 import FinancialPosition from './pages/FinancialPosition.jsx';
 import ZohoData          from './pages/ZohoData.jsx';
+import CustomerMoney     from './pages/CustomerMoney.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
@@ -138,6 +139,8 @@ const NAV_ITEMS = [
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
+  // «فلوسي عند العملاء» — شاشة التحصيل الأولى (زوهو المرجع)، أول عنصر بالقسم
+  { id: 'customer-money',  path: '/customer-money',  label: 'فلوسي عند العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
   { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء',   icon: Users,       section: 'customers', permKey: 'receivables.view',
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
@@ -212,6 +215,7 @@ const PAGE_TITLES = {
   '/zoho-callback':     'ربط زوهو',
   '/pnl':               'الوضع المالي',
   '/zoho-data':         'سجلات زوهو',
+  '/customer-money':    'فلوسي عند العملاء',
   '/uploads':           'وارد Zoho التلقائي',
   '/hub':               'الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -294,7 +298,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data'];
+  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -805,6 +809,9 @@ function AppInner({ theme, toggleTheme }) {
             {/* هبوط موافقة زوهو OAuth — بلا عنصر قائمة */}
             <PageSlot active={pathname==='/zoho-callback'} scroll>
               <ZohoCallback isActive={pathname==='/zoho-callback'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/customer-money'} scroll>
+              <CustomerMoney isActive={pathname==='/customer-money'}/>
             </PageSlot>
             <PageSlot active={pathname==='/zoho-data'} scroll>
               <ZohoData isActive={pathname==='/zoho-data'}/>
