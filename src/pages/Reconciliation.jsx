@@ -27,6 +27,7 @@ import {
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
   loadUnmatchedZohoForPicker, linkInternalRowToZohoRow,
   autolinkBalancesByExactName,
+  loadCustomerBalanceRecon,
   parseZohoVendorBalances, uploadVendorBalanceSnapshot,
   listVendorSnapshots, deleteVendorSnapshot,
   loadVendorReconciliation, loadVendorOthers,
@@ -63,7 +64,7 @@ export default function Reconciliation({ isActive = true }) {
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
   // Tab between customer side (المتاجر/العملاء) and vendor side
   // (شركات الشحن). Each side has its own data + uploads.
-  const [tab, setTab]               = useState('customers');
+  const [tab, setTab]               = useState('zoho_live');
   const [autolinkBusy, setAutolinkBusy] = useState(false);
 
   // One-click backfill for the common case where the store_balances
@@ -320,6 +321,8 @@ export default function Reconciliation({ isActive = true }) {
         title="مطابقة الأرصدة"
         subtitle={tab === 'customers'
           ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
+          : tab === 'zoho_live'
+          ? 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر كشف داخلي، بلا أي رفع'
           : 'الموردون — قارن أرصدة شركات الشحن في نظامنا مقابل Zoho'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
@@ -334,7 +337,8 @@ export default function Reconciliation({ isActive = true }) {
         borderBottom: '1px solid var(--border)',
       }}>
         {[
-          { id: 'customers', label: 'العملاء (المتاجر)', icon: '🏪' },
+          { id: 'zoho_live', label: 'العملاء — زوهو المرجع (حيّ)', icon: '⚡' },
+          { id: 'customers', label: 'العملاء (ملفات مرفوعة)', icon: '🏪' },
           { id: 'vendors',   label: 'الموردون (شركات الشحن)', icon: '🚚' },
         ].map(t => {
           const active = tab === t.id;
@@ -355,6 +359,7 @@ export default function Reconciliation({ isActive = true }) {
       </div>
 
       {tab === 'vendors' && <VendorsTab profile={profile}/>}
+      {tab === 'zoho_live' && <ZohoLiveTab isActive={isActive}/>}
       {tab === 'customers' && <>
 
       {/* Upload row */}
@@ -615,6 +620,170 @@ export default function Reconciliation({ isActive = true }) {
 // data comes from our carrier_operations open balance directly
 // (no upload needed); operator only uploads the Zoho vendor file.
 // ─────────────────────────────────────────────────────────────
+// ── تبويب «زوهو المرجع (حيّ)» ──────────────────────────────────────
+// مطابقة بلا رفع: فواتير زوهو المفتوحة (المرآة الحيّة) مقابل آخر كشف
+// مديونيات داخلي، بمرساة store_id/الاسم المطبَّع. المحفظة محور مستقل.
+const RECON_STATUS_META = {
+  matched:             { label: 'مطابق للهللة',      color: 'var(--green)', icon: '✓' },
+  needs_investigation: { label: 'يحتاج تحقيقاً',      color: 'var(--red)',   icon: '⚠' },
+  internal_only:       { label: 'داخلي فقط (رصيد قديم)', color: 'var(--gold)', icon: '◐' },
+  zoho_only:           { label: 'زوهو فقط',           color: '#8B5CF6',      icon: '◑' },
+};
+
+function ZohoLiveTab({ isActive = true }) {
+  const [rows, setRows]     = useState(null);
+  const [q, setQ]           = useState('');
+  const [st, setSt]         = useState('');
+
+  useEffect(() => {
+    if (!isActive) return;
+    let live = true;
+    loadCustomerBalanceRecon()
+      .then(r => { if (live) setRows(r); })
+      .catch(e => { toast(`فشل التحميل: ${e.message}`, 'error'); if (live) setRows([]); });
+    return () => { live = false; };
+  }, [isActive]);
+
+  const filtered = useMemo(() => {
+    if (!rows) return [];
+    let list = rows;
+    if (st) list = list.filter(r => r.status === st);
+    const s = q.trim().toLowerCase();
+    if (s) list = list.filter(r =>
+      [r.storeName, r.phone, ...(r.zohoNames || []), ...(r.internalNames || [])]
+        .some(v => String(v ?? '').toLowerCase().includes(s)));
+    return list;
+  }, [rows, q, st]);
+
+  const kpi = useMemo(() => {
+    const by = (status) => (rows || []).filter(r => r.status === status);
+    return {
+      matched:  by('matched'),
+      invest:   by('needs_investigation'),
+      internal: by('internal_only'),
+      zoho:     by('zoho_only'),
+      zohoTot:  (rows || []).reduce((s, r) => s + r.zoho, 0),
+      intTot:   (rows || []).reduce((s, r) => s + r.internal, 0),
+    };
+  }, [rows]);
+
+  const exportXlsx = () => {
+    if (!filtered.length) return;
+    const aoa = [
+      ['مطابقة أرصدة العملاء — زوهو المرجع (حيّ)', '', '', new Date().toISOString().slice(0, 10)],
+      [],
+      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'الداخلي', 'الفرق', 'المحفظة', 'الحالة', 'أسماء زوهو', 'أسماء الكشف الداخلي'],
+      ...filtered.map(r => [
+        r.storeName, r.phone || '', r.billingType || '', r.platformStatus || '',
+        r.zoho, r.zohoOpenCnt, r.zohoOldest || '', r.internal, r.diff, r.wallet,
+        RECON_STATUS_META[r.status]?.label || r.status,
+        (r.zohoNames || []).join(' | '), (r.internalNames || []).join(' | '),
+      ]),
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    ws['!cols'] = [{ wch: 30 }, { wch: 14 }, { wch: 11 }, { wch: 10 }, { wch: 12 }, { wch: 8 }, { wch: 11 }, { wch: 12 }, { wch: 12 }, { wch: 11 }, { wch: 18 }, { wch: 34 }, { wch: 34 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'مطابقة العملاء');
+    XLSX.writeFile(rtl(wb), `مطابقة_عملاء_زوهو_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    toast(`صُدّر ${filtered.length} عميلاً ✓`, 'success');
+  };
+
+  if (rows == null) return <Card style={{ padding: 50, textAlign: 'center' }}><Spinner size={26}/></Card>;
+
+  return (
+    <>
+      {/* KPI strip */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 14 }}>
+        {[
+          { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: '#8B5CF6' },
+          { k: '', label: 'الكشف الداخلي', val: kpi.intTot, sub: 'آخر snapshot', color: '#3B82F6' },
+          { k: 'matched', label: 'مطابق للهللة', val: kpi.matched.reduce((s, r) => s + r.zoho, 0), sub: `${kpi.matched.length} عميلاً`, color: 'var(--green)' },
+          { k: 'needs_investigation', label: 'يحتاج تحقيقاً', val: kpi.invest.reduce((s, r) => s + Math.abs(r.diff), 0), sub: `${kpi.invest.length} عميل — فرق`, color: 'var(--red)' },
+          { k: 'internal_only', label: 'داخلي فقط', val: kpi.internal.reduce((s, r) => s + r.internal, 0), sub: `${kpi.internal.length} — أرصدة قديمة بلا فاتورة زوهو`, color: 'var(--gold)' },
+        ].map(c => (
+          <button key={c.label} onClick={() => c.k && setSt(st === c.k ? '' : c.k)}
+            style={{ textAlign: 'right', padding: '10px 12px', borderRadius: 10, cursor: c.k ? 'pointer' : 'default',
+              background: st && st === c.k ? `color-mix(in srgb, ${c.color} 10%, var(--card))` : 'var(--card)',
+              border: `1px solid ${st && st === c.k ? c.color : 'var(--border)'}` }}>
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{c.label}</div>
+            <div style={{ fontSize: 16.5, fontWeight: 800, fontFamily: 'var(--font-mono)', color: c.color }}>{fmt(c.val)}</div>
+            <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>{c.sub}</div>
+          </button>
+        ))}
+      </div>
+
+      {/* شريط الفلاتر */}
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+        <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
+          <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
+          <input value={q} onChange={e => setQ(e.target.value)} placeholder="بحث بالعميل/المتجر/الهاتف…"
+            style={{ width: '100%', padding: '8px 36px 8px 12px', borderRadius: 8, fontSize: 13 }}/>
+        </div>
+        <select value={st} onChange={e => setSt(e.target.value)} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+          <option value="">كل الحالات</option>
+          {Object.entries(RECON_STATUS_META).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+        </select>
+        <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
+        عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {rows.length} —
+        المرجع = فواتير زوهو المفتوحة الحيّة (تُحدَّث بالمزامنة كل 6 ساعات) · «داخلي فقط» غالباً أرصدة افتتاحية قديمة لم تُنشأ لها فواتير في زوهو
+      </div>
+
+      {/* الجدول */}
+      {!filtered.length ? <Card><Empty icon="📭" title="لا نتائج" sub="جرّب فلتراً آخر"/></Card> : (
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <div className="m-flow" style={{ maxHeight: 620, overflowY: 'auto' }}>
+            <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
+              <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
+                <tr>
+                  {['العميل / المتجر', 'زوهو (مفتوح)', 'الداخلي', 'الفرق', 'المحفظة', 'الحالة'].map(h => (
+                    <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(r => {
+                  const m = RECON_STATUS_META[r.status] || {};
+                  return (
+                    <tr key={r.anchor} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td data-label="" style={{ padding: '9px 12px', maxWidth: 300 }}>
+                        <div style={{ fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.storeName}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted2)', display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          {r.phone && <span style={{ fontFamily: 'var(--font-mono)' }}>{r.phone}</span>}
+                          {r.billingType && <span>{r.billingType}</span>}
+                          {r.platformStatus && <span>{r.platformStatus}</span>}
+                          {r.zohoOpenCnt > 0 && <span>{r.zohoOpenCnt} فاتورة{r.zohoOldest ? ` · أقدمها ${r.zohoOldest}` : ''}</span>}
+                        </div>
+                      </td>
+                      <td data-label="زوهو" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap', color: r.zoho > 0.5 ? 'var(--text)' : 'var(--muted2)' }}>{fmt(r.zoho)}</td>
+                      <td data-label="الداخلي" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap', color: r.internal ? 'var(--text)' : 'var(--muted2)' }}>{fmt(r.internal)}</td>
+                      <td data-label="الفرق" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
+                        color: Math.abs(r.diff) <= 1 ? 'var(--muted2)' : r.diff > 0 ? 'var(--gold)' : 'var(--red)' }}>
+                        {Math.abs(r.diff) <= 1 ? '—' : fmt(r.diff)}
+                      </td>
+                      <td data-label="المحفظة" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                        color: r.wallet < -0.5 ? 'var(--red)' : r.wallet > 0.5 ? 'var(--green)' : 'var(--muted2)' }}>
+                        {Math.abs(r.wallet) > 0.5 ? fmt(r.wallet) : '—'}
+                      </td>
+                      <td data-label="الحالة" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}>
+                        <span style={{ display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                          color: m.color, background: `color-mix(in srgb, ${m.color} 13%, transparent)` }}>
+                          {m.icon} {m.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+    </>
+  );
+}
+
 function VendorsTab({ profile }) {
   const [loading, setLoading]       = useState(true);
   const [reconcile, setReconcile]   = useState([]);

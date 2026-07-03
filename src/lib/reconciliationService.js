@@ -831,6 +831,37 @@ export async function loadTreasuryBalances() {
 }
 
 // ─────────────────────────────────────────────────────────────────
+// CUSTOMER balances — Zoho live (المرجع) × الداخلي × المتاجر
+// ─────────────────────────────────────────────────────────────────
+// RPC customer_balance_recon_zoho(): يجمع فواتير زوهو المفتوحة (المرآة
+// الحيّة zoho_invoices، balance>0.5) مقابل آخر snapshot مديونيات داخلي
+// (صفوف is_summary) — المرساة store_id عبر customer_merchant_links ثم
+// الاسم المطبَّع. المحفظة محور مستقل (لا تُطرح من الدين — قاعدة CRM).
+// recon_status: matched (±1) · internal_only (رصيد قديم بلا فاتورة زوهو
+// حيّة — غالباً أرصدة افتتاحية) · zoho_only · needs_investigation.
+export async function loadCustomerBalanceRecon() {
+  const { data, error } = await supabase.rpc('customer_balance_recon_zoho');
+  if (error) throw error;
+  return (data || []).map(r => ({
+    anchor:         r.anchor,
+    storeId:        r.store_id,
+    storeName:      r.store_name || (r.zoho_names || [])[0] || (r.internal_names || [])[0] || r.anchor,
+    phone:          r.phone,
+    billingType:    r.billing_type,
+    platformStatus: r.platform_status,
+    wallet:         Number(r.wallet_balance) || 0,
+    zoho:           Number(r.zoho_balance) || 0,
+    zohoOpenCnt:    Number(r.zoho_open_cnt) || 0,
+    zohoOldest:     r.zoho_oldest,
+    zohoNames:      r.zoho_names || [],
+    internal:       Number(r.internal_balance) || 0,
+    internalNames:  r.internal_names || [],
+    diff:           Number(r.diff) || 0,
+    status:         r.recon_status,
+  }));
+}
+
+// ─────────────────────────────────────────────────────────────────
 // CUSTOMER reconciliation (existing) — section starts here
 // ─────────────────────────────────────────────────────────────────
 
