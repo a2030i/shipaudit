@@ -17,6 +17,7 @@ import { loadCarrierNetBalances } from '../lib/codSettlementService.js';
 import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconciliationService.js';
 import { loadCrmDecisionSignals } from '../lib/crmService.js';
 import { loadPnlSnapshots, currentPnlPeriod } from '../lib/pnlService.js';
+import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
@@ -29,13 +30,14 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
         loadVendorReconciliation().catch(() => []),
         loadCrmDecisionSignals().catch(() => ({ brokenCount: 0, brokenTotal: 0, dueCount: 0, brokenPromises: [], dueFollowups: [] })),
         loadPnlSnapshots().catch(() => []),
+        loadInvoicesAwaitingReview().catch(() => []),
       ]);
       // ربح الشهر الجاري من كاش زوهو (§1.19: أي إشارة قرار = بطاقة هنا)
       const pnlCur = (pnlSnaps || []).find(s => s.period === currentPnlPeriod()) || null;
@@ -74,6 +76,7 @@ export default function DecisionsBoard({ isActive = true }) {
         vgaps, vgapTotal,
         crm,
         pnl: pnlCur,
+        awaiting,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -105,6 +108,15 @@ export default function DecisionsBoard({ isActive = true }) {
               value: `${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`, unit: 'ر.س',
               sub: `قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`,
               cta: 'الوضع المالي', onClick: () => navigate('/pnl'),
+            },
+          },
+          {
+            key: 'awaiting', active: (d.awaiting?.length || 0) > 0, okLabel: 'لا فواتير تنتظر مراجعة في الوارد',
+            props: {
+              color: '#F97316', icon: '🧾', title: 'فواتير تنتظر نظرتك', value: d.awaiting?.length || 0, unit: 'ملف في الوارد',
+              sub: `أقدمها منذ ${Math.max(...(d.awaiting || []).map(a => a.ageDays), 0)} يوماً — استوردها أو اعتمدها بنقرة ⚡`,
+              top: (d.awaiting || []).slice(0, 3).map(a => `${a.carrierName || a.sender || '؟'} · ${a.fileName || a.subject || ''} · ${a.ageDays}ي`),
+              cta: 'فتح الوارد', onClick: () => navigate('/webhook'),
             },
           },
           {

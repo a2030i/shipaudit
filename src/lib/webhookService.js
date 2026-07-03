@@ -207,6 +207,34 @@ export async function loadEventFileBlob(event) {
   return data;
 }
 
+// «فواتير تنتظر نظرتك» — أحداث الوارد التي وصلت بنجاح لكن لم تُستورَد
+// (لا مراجعة ولا تحصيل): processed_at IS NULL و audit_id IS NULL.
+// تُغذّي بطاقة لوحة القرارات؛ العمر بالأيام يقود الاستعجال.
+export async function loadInvoicesAwaitingReview({ limit = 50 } = {}) {
+  const [{ data, error }, carriersRes] = await Promise.all([
+    supabase.from('webhook_events')
+      .select('id, received_at, sender, subject, file_name, detected_carrier_id')
+      .is('processed_at', null)
+      .is('audit_id', null)
+      .neq('status', 'failed')
+      .order('received_at', { ascending: true })
+      .limit(limit),
+    supabase.from('carriers').select('id, name'),
+  ]);
+  if (error) throw error;
+  const nameById = new Map((carriersRes.data || []).map(c => [c.id, c.name]));
+  const now = Date.now();
+  return (data || []).map(e => ({
+    id:          e.id,
+    receivedAt:  e.received_at,
+    ageDays:     Math.floor((now - new Date(e.received_at).getTime()) / 86400000),
+    carrierId:   e.detected_carrier_id,
+    carrierName: nameById.get(e.detected_carrier_id) || null,
+    subject:     e.subject,
+    fileName:    e.file_name,
+  }));
+}
+
 // Construct the webhook endpoint URL for display in the UI (so the
 // user knows what to point their automation at).
 export function getWebhookEndpoint() {
