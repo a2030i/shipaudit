@@ -9,7 +9,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Download, Webhook, Mail, FileText, CheckCircle2,
   AlertCircle, HelpCircle, Copy, ExternalLink, FileSpreadsheet, FileType2,
-  FileX2, FileQuestion, Upload as UploadIcon, Trash2, FileCheck2,
+  FileX2, FileQuestion, Upload as UploadIcon, Trash2, FileCheck2, Zap,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader } from '../components/UI.jsx';
 import { Inbox } from 'lucide-react';
@@ -160,7 +160,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
   // sessionStorage as base64, then navigate to /upload. The Upload
   // Wizard reads the stashed file on mount and treats it as if the
   // user dropped it in manually.
-  const importToAudit = async (event) => {
+  // autoApprove (فواتير-1): يمرّر العلم عبر نفس المسار — المعالج يشغّل
+  // التأكيد آلياً، وAuditResults يعتمد وحده **فقط إذا اجتازت بوابة الهللة**
+  // (§1.2). أي فشل/فرق = تتوقف للمراجعة اليدوية بسبب واضح. لا مسار مالي جديد.
+  const importToAudit = async (event, { autoApprove = false } = {}) => {
     if (!event?.file_path) {
       toast('الملف غير موجود في المخزن', 'error');
       return;
@@ -177,9 +180,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
         eventId:   event.id,
         filename:  event.file_name,
         carrierId: event.detected_carrier_id || null,
+        autoApprove,
         base64,
       }));
-      toast('جارٍ فتح المعالج…', 'success');
+      toast(autoApprove ? 'جارٍ التدقيق والاعتماد الآلي…' : 'جارٍ فتح المعالج…', 'success');
       navigate('/upload');
     } catch (err) {
       toast(`فشل الاستيراد: ${err.message}`, 'error');
@@ -588,6 +592,16 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                                   icon={importingId === e.id ? <Spinner size={13}/> : <UploadIcon size={13}/>}
                                   onClick={() => importToAudit(e)}>
                                   حفظ كمراجعة
+                                </Btn>
+                              )}
+                              {/* اعتماد بنقرة: نفس المسار + اعتماد آلي إذا
+                                  اجتازت بوابة الهللة — وإلا تتوقف للمراجعة */}
+                              {showAuditBtn && e.detected_carrier_id && (
+                                <Btn size="sm" variant="accent" disabled={importingId === e.id}
+                                  title="تدقيق واعتماد آلي — يعتمد فقط إذا كانت مطابقة بالهللة، وإلا يتوقف لمراجعتك"
+                                  icon={importingId === e.id ? <Spinner size={13}/> : <Zap size={13}/>}
+                                  onClick={() => importToAudit(e, { autoApprove: true })}>
+                                  ⚡ دقّق واعتمد
                                 </Btn>
                               )}
                               {showCodBtn && (

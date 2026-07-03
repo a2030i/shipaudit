@@ -9,6 +9,10 @@ import { markEventProcessed } from '../lib/webhookService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
 
+// اعتماد بنقرة (فواتير-1): حارس على مستوى الـmodule — الاعتماد الآلي
+// يشتعل مرة واحدة لكل مسودة مهما تكرر الرندر/StrictMode (§2.2).
+const AUTO_APPROVED_AUDITS = new Set();
+
 // ── AI Panel ──────────────────────────────────────────────────────────────────
 function AIPanel({ audit, carriers }) {
   const [msgs,      setMsgs]      = useState([]);
@@ -589,8 +593,9 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     if (!approvalGate.canApprove) {
       const top = approvalGate.errors[0]?.message || 'تعذّر الاعتماد';
       toast(top, 'error');
-      return;
+      return false;
     }
+    let ok = false;   // يُرجَع للمسار الآلي (فواتير-1) ليقرر العودة للوارد
     setApproving(true);
     try {
       if (reviewStatus === 'draft' || audit.isDraft) {
@@ -633,6 +638,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           console.warn('webhook event mark-processed failed:', err.message);
         }
       }
+      ok = true;
     } catch (e) {
       if (e.code === 'APPROVAL_BLOCKED') {
         const reasons = (e.errors || []).map(x => '• ' + x.message).join('\n') || e.message;
@@ -644,7 +650,31 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       }
     }
     setApproving(false);
+    return ok;
   };
+
+  // ── اعتماد بنقرة (فواتير-1): مسودة موسومة autoApprove ────────────────
+  // نفس handleApprove اليدوي حرفياً (بوابة الهللة + النشر + وسم الحدث) —
+  // الفرق الوحيد: يشتعل وحده. البوابة فاشلة → يتوقف بسبب واضح ويبقى
+  // للمراجعة اليدوية. الحارس module-level (§2.2 StrictMode).
+  useEffect(() => {
+    if (!audit?.autoApprove || !audit.isDraft || reviewStatus !== 'draft') return;
+    if (AUTO_APPROVED_AUDITS.has(audit.id)) return;
+    AUTO_APPROVED_AUDITS.add(audit.id);
+    if (!approvalGate.canApprove) {
+      const why = approvalGate.errors[0]?.message || 'البوابة رفضت';
+      toast(`⛔ لم تُعتمد آلياً: ${why} — تحتاج نظرتك`, 'warn');
+      return;
+    }
+    (async () => {
+      const ok = await handleApprove();
+      if (ok) {
+        toast('⚡ اعتُمدت آلياً — رجوع لصندوق الوارد', 'success');
+        navigate('/webhook');
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audit, reviewStatus, approvalGate]);
   const handleReject = async () => {
     setRejecting(true);
     try {
