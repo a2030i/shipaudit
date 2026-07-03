@@ -718,7 +718,68 @@ export async function deleteVendorSnapshot(id) {
   return { ok: true };
 }
 
+// ── الموردون من المرآة الحيّة (zoho_contacts، v11) ─────────────────
+// الرصيد الصافي للمورد = المستحق علينا − السلف/الإشعارات الدائنة لنا —
+// نفس دلالة إشارة ملف «أرصدة الموردين» الإيميلي (موجب = ندين له).
+// مُتحقَّق 2026-07-03: 36/37 مورداً مطابق بالريال مع آخر ملف؛ الوحيد
+// المختلف سببه أن الملف أقدم من الحي. يجعل الملف الإيميلي قابلاً للإيقاف.
+let VENDOR_LIVE_CACHE = null; // { at, rows } — يخدم recon+others معاً
+async function loadVendorContactsLive() {
+  if (VENDOR_LIVE_CACHE && Date.now() - VENDOR_LIVE_CACHE.at < 60_000) return VENDOR_LIVE_CACHE.rows;
+  const { data, error } = await supabase
+    .from('zoho_contacts')
+    .select('contact_name, outstanding_payable, unused_credits_payable')
+    .eq('contact_type', 'vendor');
+  if (error) throw error;
+  const rows = (data || []).map(r => ({
+    raw_name: r.contact_name,
+    balance:  +((Number(r.outstanding_payable) || 0) - (Number(r.unused_credits_payable) || 0)).toFixed(2),
+  }));
+  VENDOR_LIVE_CACHE = { at: Date.now(), rows };
+  return rows;
+}
+
 export async function loadVendorReconciliation() {
+  // المرآة الحيّة أولاً؛ إن كانت فارغة (مزامنة لم تجرِ بعد) → snapshot RPC
+  try {
+    const vendors = await loadVendorContactsLive();
+    if (vendors.length) {
+      const [resolved, intRes] = await Promise.all([
+        resolveCarrierIds(vendors),
+        supabase.rpc('carrier_internal_balances'),
+      ]);
+      const internal = new Map((intRes.data || []).map(r => [r.carrier_id, {
+        name: r.carrier_name, bal: Number(r.internal_balance) || 0,
+      }]));
+      // تجميع أرصدة زوهو حسب الناقل المطابَق
+      const byCarrier = new Map();
+      for (const v of resolved) {
+        if (!v.carrier_id) continue;
+        const cur = byCarrier.get(v.carrier_id) || { bal: 0, names: [] };
+        cur.bal += v.balance;
+        cur.names.push(v.raw_name);
+        byCarrier.set(v.carrier_id, cur);
+      }
+      const ids = new Set([...byCarrier.keys(), ...internal.keys()]);
+      const out = [...ids].map(id => {
+        const z = byCarrier.get(id);
+        const i = internal.get(id);
+        const zohoBalance = +((z?.bal) || 0).toFixed(2);
+        const internalBalance = +((i?.bal) || 0).toFixed(2);
+        return {
+          carrierId: id,
+          carrierName: i?.name || id,
+          internalBalance,
+          zohoBalance,
+          diff: +(zohoBalance - internalBalance).toFixed(2),
+          zohoRawNames: z?.names || [],
+          source: 'zoho_live',
+        };
+      }).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
+      return out;
+    }
+  } catch (e) { console.info('vendor live recon fallback:', e.message); }
+
   const { data, error } = await supabase.rpc('vendor_reconciliation');
   if (error) throw error;
   return (data || []).map(r => ({
@@ -728,10 +789,23 @@ export async function loadVendorReconciliation() {
     zohoBalance:     Number(r.zoho_balance) || 0,
     diff:            Number(r.diff) || 0,
     zohoRawNames:    r.zoho_raw_names || [],
+    source:          'snapshot',
   }));
 }
 
 export async function loadVendorOthers() {
+  // الموردون غير الناقلين — من المرآة الحيّة أولاً (نفس fallback أعلاه)
+  try {
+    const vendors = await loadVendorContactsLive();
+    if (vendors.length) {
+      const resolved = await resolveCarrierIds(vendors);
+      return resolved
+        .filter(v => !v.carrier_id && Math.abs(v.balance) > 0.5)
+        .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance))
+        .map((v, i) => ({ rawName: v.raw_name, balance: v.balance, rank: i + 1 }));
+    }
+  } catch (e) { console.info('vendor others live fallback:', e.message); }
+
   const { data, error } = await supabase.rpc('vendor_balance_others');
   if (error) throw error;
   return (data || []).map(r => ({
