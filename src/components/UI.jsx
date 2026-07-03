@@ -1155,11 +1155,15 @@ const TOAST_COLORS = {
   warn:    { color: 'var(--warn)',    icon: <AlertTriangle size={15}/> },
 };
 
+// م10 (فحص عدائي): Date.now() يتصادم لتوستين بنفس المللي ثانية (مفتاح React
+// مكرر + إزالة مزدوجة) — عدّاد تزايدي بسيط يضمن التفرّد.
+let TOAST_SEQ = 0;
+
 export function ToastContainer() {
   const [toasts, setToasts] = useState([]);
 
   setToastFn((msg, type = 'info') => {
-    const id = Date.now();
+    const id = ++TOAST_SEQ;
     setToasts(t => [...t, { id, msg, type }]);
     setTimeout(() => setToasts(t => t.filter(x => x.id !== id)), 4200);
   });
