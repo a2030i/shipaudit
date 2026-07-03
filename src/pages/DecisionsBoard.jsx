@@ -157,7 +157,7 @@ export default function DecisionsBoard({ isActive = true }) {
             key: 'anom', active: d.anomalyCount > 0, okLabel: 'لا تنبيهات عملاء',
             props: {
               color: 'var(--red)', icon: '⚠️', title: 'تنبيهات العملاء', value: d.anomalyCount, unit: 'عميل',
-              sub: `إجمالي المديونيات ${fmt(d.totalDebt)} ر.س`,
+              sub: `إجمالي المديونيات ${fmt(d.totalDebt)} ر.س (الكشف الداخلي)`,
               cta: 'فتح التنبيهات', onClick: () => navigate('/receivables'),
             },
           },

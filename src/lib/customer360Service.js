@@ -292,6 +292,9 @@ export async function loadCustomerWatch() {
     totals: {
       // Customer-side
       customerCount: customers.length,
+      // «عملاء عليهم دين» الحقيقيون (debt>0.5) — customerCount يشمل من دينه
+      // صفر بعد السداد/الشطب فكانت الشارة تعدّ 81 بدل الفعليين (فحص وكلاء)
+      debtorsCount:  debtByCustomer.length,
       totalDebt:     +totalDebt.toFixed(2),
       monthlyInvoiced:     +monthlyInvoiced.toFixed(2),
       lastMonthInvoiced:   +lastMonthInvoiced.toFixed(2),

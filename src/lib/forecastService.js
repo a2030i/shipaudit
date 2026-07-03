@@ -111,13 +111,15 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
   const now = new Date();
   const horizonEnd = new Date(now.getTime() + horizonDays * DAY_MS);
 
-  const { loadCurrentBalance } = await import('./bankBalanceService.js');
+  // الرصيد الفعّال الموحّد (كشف-أو-يدوي، الأحدث يفوز) — كان يقرأ اليدوي فقط
+  // (فارغ) فيختفي التنبؤ رغم وجود ختامي كشف (فحص وكلاء 2026-07-03)
+  const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   // Pull the data sources in parallel
   const [schedules, avgMap, codNet, bank] = await Promise.all([
     listSchedules({ activeOnly: true }),
     loadCarrierRemittanceAvg(3),
     loadCarrierNetBalances().catch(() => new Map()),
-    loadCurrentBalance().catch(() => null),
+    loadEffectiveBankBalance().catch(() => null),
   ]);
   const bankBalance = bank?.balance ?? null;
 

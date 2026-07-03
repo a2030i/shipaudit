@@ -31,6 +31,33 @@ export async function loadCurrentBalance() {
   };
 }
 
+// الرصيد الفعّال — نقطة الحقيقة الوحيدة (فحص وكلاء 2026-07-03: الرئيسية
+// كانت تحسم كشف-مقابل-يدوي بينما /forecast يقرأ اليدوي فقط — وهو فارغ —
+// فيختفي التنبؤ رغم وجود ختامي كشف). المنطق: الأحدث تاريخاً يفوز بين
+// ختامي آخر كشف مرفوع (bank_statement_summaries) والإدخال اليدوي.
+// يرجع { balance, source: 'statement'|'manual', asOf, notes } أو null.
+export async function loadEffectiveBankBalance() {
+  const [manual, stmtRes] = await Promise.all([
+    loadCurrentBalance().catch(() => null),
+    supabase.from('bank_statement_summaries')
+      .select('period_to, closing_balance, file_name')
+      .order('period_to', { ascending: false }).limit(1)
+      .then(r => r.data?.[0] || null).catch(() => null),
+  ]);
+  const manualDate = manual?.recordedAt ? new Date(manual.recordedAt).getTime() : -1;
+  const stmtDate   = stmtRes?.period_to ? new Date(stmtRes.period_to).getTime() : -1;
+  if (stmtRes && stmtDate >= manualDate) {
+    return {
+      balance: Number(stmtRes.closing_balance) || 0,
+      source:  'statement',
+      asOf:    stmtRes.period_to,
+      notes:   `الرصيد الختامي لكشف ${stmtRes.period_to}`,
+    };
+  }
+  if (manual) return { balance: manual.balance, source: 'manual', asOf: manual.recordedAt, notes: manual.notes };
+  return null;
+}
+
 export async function setBalance({ balance, notes = null, userId = null }) {
   const n = Number(balance);
   if (!Number.isFinite(n)) throw new Error('قيمة الرصيد غير صالحة');
