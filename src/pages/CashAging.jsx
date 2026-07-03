@@ -58,6 +58,10 @@ export default function CashAging({ isActive }) {
           { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: '#D97706' },
           { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },
           { label: 'منه متأخر عن الاستحقاق', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
+          // أرصدة دائنة (COD محتجز لم يُورَّد) — منفصلة عن الذمم حتى لا تُطرَح مضلِّلةً
+          ...(Math.abs(data?.apCreditTotal || 0) > 0.5
+            ? [{ label: 'أرصدة لصالحنا (COD محتجز)', value: fmt(Math.abs(data.apCreditTotal)), color: '#0EA5E9' }]
+            : []),
         ].map(k => (
           <Card key={k.label} style={{ padding: '14px 16px' }}>
             <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
