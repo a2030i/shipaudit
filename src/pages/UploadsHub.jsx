@@ -10,22 +10,18 @@
 // Backed by uploadsHubService.loadUploadsOverview() (one round-trip
 // fan-out across the 5 sources) and uploadFile() (unified dispatcher).
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   RefreshCw, Upload, FileSpreadsheet, ExternalLink, Inbox,
   CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle,
-  Mail, Trash2, Play, X as XIcon,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectFileSource } from '../lib/uploadsHubService.js';
-import {
-  INTAKE_STATUS_LABELS, listIntake, processIntake, dismissIntake, supersedePendingIntake,
-} from '../lib/zohoIntakeService.js';
 import { saveConsolidatedExpected } from '../lib/codSettlementService.js';
 
 const fmtRel = (iso) => {
@@ -54,103 +50,15 @@ export default function UploadsHub({ isActive = true }) {
   const [sources, setSources] = useState([]);
   const [busy,    setBusy]    = useState({});  // { sourceId: true } while uploading
   const [picker,  setPicker]  = useState(null); // { file, detection } when auto-detect fails
-  const [intake,  setIntake]  = useState([]);   // pending Zoho intake events
-  const [intakeBusy, setIntakeBusy] = useState({}); // { eventId: true }
-  const [bulkBusy,  setBulkBusy]  = useState(false); // "عالج الكل" in flight
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      // Snapshots: collapse stale same-type duplicates first so the inbox
-      // shows one-per-type (newest wins). Best-effort — never blocks load.
-      await supersedePendingIntake().catch(() => {});
-      const [src, inbox] = await Promise.all([
-        loadUploadsOverview(),
-        listIntake({ status: 'pending' }).catch(() => []),
-      ]);
-      setSources(src);
-      setIntake(inbox);
+      setSources(await loadUploadsOverview());
     }
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
-
-  // Auto-process pending detected snapshots. These files are deterministic,
-  // auto-detected, and need no human judgment (unlike audits/COD), so the
-  // operator shouldn't have to click "عالج" for each. Undetected-type
-  // events are left for the manual picker. We track attempted ids in a ref
-  // so each event auto-runs at most once — new arrivals process too, but a
-  // failed file isn't retried in a loop (the operator can retry manually).
-  const autoAttempted = useRef(new Set());
-  useEffect(() => {
-    if (!isActive || bulkBusy) return;
-    const fresh = intake.filter(e => e.detected_source && !autoAttempted.current.has(e.id));
-    if (!fresh.length) return;
-    fresh.forEach(e => autoAttempted.current.add(e.id));
-    handleProcessAllIntake();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isActive, intake, bulkBusy]);
-
-  // Process a pending Zoho intake event with one click. Uses the same
-  // uploadFile() the manual hero uses — the file comes from storage
-  // instead of a manual drop.
-  const handleProcessIntake = async (event, sourceOverride = null) => {
-    setIntakeBusy(b => ({ ...b, [event.id]: true }));
-    try {
-      const r = await processIntake(event, {
-        sourceOverride,
-        userId: profile?.id || null,
-      });
-      toast(`✓ تمت المعالجة — ${r.message}`, 'success');
-      await refresh();
-    } catch (e) {
-      toast(`فشل المعالجة: ${e.message}`, 'error');
-    }
-    setIntakeBusy(b => { const n = { ...b }; delete n[event.id]; return n; });
-  };
-
-  // Process every pending event whose source the detector resolved.
-  // Events with detected_source === null still need a manual override
-  // (the dropdown in the row), so we skip them and tell the operator.
-  // Runs sequentially: processIntake() chains downloads + uploadFile()
-  // which writes to the same DB, and serial execution keeps error
-  // recovery simple (a single failed row doesn't abort the rest).
-  const handleProcessAllIntake = async () => {
-    const ready = intake.filter(e => e.detected_source);
-    const skipped = intake.length - ready.length;
-    if (!ready.length) {
-      toast('لا توجد ملفات مكتشفة — حدّد النوع يدوياً لكل ملف', 'info');
-      return;
-    }
-    setBulkBusy(true);
-    let ok = 0, fail = 0;
-    for (const ev of ready) {
-      setIntakeBusy(b => ({ ...b, [ev.id]: true }));
-      try {
-        await processIntake(ev, { sourceOverride: null, userId: profile?.id || null });
-        ok++;
-      } catch (e) {
-        fail++;
-        console.warn('processIntake failed', ev.id, e);
-      }
-      setIntakeBusy(b => { const n = { ...b }; delete n[ev.id]; return n; });
-    }
-    const parts = [`✓ ${ok} ملف`];
-    if (fail)    parts.push(`✗ ${fail} فشل`);
-    if (skipped) parts.push(`${skipped} يحتاج اختيار يدوي`);
-    toast(parts.join(' · '), fail ? 'error' : 'success');
-    setBulkBusy(false);
-    await refresh();
-  };
-
-  const handleDismissIntake = async (event) => {
-    if (!confirm(`تجاهل الملف "${event.file_name}"؟`)) return;
-    try {
-      await dismissIntake(event.id, 'تجاهل يدوي');
-      toast('تم تجاهل الملف', 'info');
-      await refresh();
-    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
-  };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -289,58 +197,6 @@ export default function UploadsHub({ isActive = true }) {
           hint="أنواع الملفات الدورية"
         />
       </div>
-
-      {/* Zoho Inbox — files that arrived automatically via the
-          zoho-intake webhook. Only renders when there's at least one
-          pending event so the operator's screen stays uncluttered. */}
-      {intake.length > 0 && (
-        <Card style={{
-          marginBottom: 20,
-          background: 'color-mix(in srgb, #7C3AED 5%, transparent)',
-          border: '1.5px solid color-mix(in srgb, #7C3AED 30%, transparent)',
-          padding: 0, overflow: 'hidden',
-        }}>
-          <div style={{
-            display: 'flex', alignItems: 'center', gap: 10,
-            padding: '12px 16px',
-            background: 'color-mix(in srgb, #7C3AED 8%, transparent)',
-            borderBottom: '1px solid var(--border)',
-          }}>
-            <Mail size={16} color="#7C3AED"/>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>
-                صندوق Zoho — {intake.length} ملف بانتظار المعالجة
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                ملفات وصلت تلقائياً من webhook خاص بـZoho — معالجة بنقرة واحدة
-              </div>
-            </div>
-            {intake.some(e => e.detected_source) && (
-              <Btn
-                size="sm"
-                variant="primary"
-                icon={bulkBusy ? <Spinner size={12}/> : <Play size={11}/>}
-                disabled={bulkBusy}
-                onClick={handleProcessAllIntake}
-                style={{ background: '#7C3AED', borderColor: '#7C3AED' }}
-              >
-                {bulkBusy ? 'جارٍ المعالجة…' : `عالج الكل (${intake.filter(e => e.detected_source).length})`}
-              </Btn>
-            )}
-          </div>
-          <div>
-            {intake.map(ev => (
-              <IntakeRow
-                key={ev.id}
-                event={ev}
-                busy={!!intakeBusy[ev.id]}
-                onProcess={(source) => handleProcessIntake(ev, source)}
-                onDismiss={() => handleDismissIntake(ev)}
-              />
-            ))}
-          </div>
-        </Card>
-      )}
 
       {/* Hero drop zone — auto-detects the file type. The 5 cards
           below still have their own drop zones for cases where the
@@ -763,86 +619,6 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
         <ChevronLeft size={11}/>
       </button>
     </Card>
-  );
-}
-
-function IntakeRow({ event, busy, onProcess, onDismiss }) {
-  const [picker, setPicker] = useState(false);   // shows source-picker dropdown
-  const detected = event.detected_source;
-  const detectedMeta = detected && UPLOAD_SOURCES.find(s => s.id === detected);
-  return (
-    <div style={{
-      display: 'grid',
-      gridTemplateColumns: '1fr auto auto auto',
-      gap: 12, padding: '12px 16px', alignItems: 'center',
-      borderBottom: '1px solid var(--border)',
-    }}>
-      <div style={{ minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <FileSpreadsheet size={13} color="#7C3AED"/>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12 }}>{event.file_name}</span>
-          {detectedMeta && (
-            <span style={{
-              fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-              background: `color-mix(in srgb, ${detectedMeta.accent} 14%, transparent)`,
-              color: detectedMeta.accent,
-            }}>
-              🤖 {detectedMeta.label}
-            </span>
-          )}
-          {!detectedMeta && (
-            <span style={{
-              fontSize: 10.5, fontWeight: 700, padding: '2px 8px', borderRadius: 999,
-              background: 'rgba(220,38,38,.14)', color: 'var(--red)',
-            }}>
-              ⚠ نوع غير محدد
-            </span>
-          )}
-        </div>
-        <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
-          {event.sender && <span>من: {event.sender} · </span>}
-          وصل {fmtRel(event.received_at)} · {event.file_size ? `${(event.file_size / 1024).toFixed(1)} KB` : '—'}
-          {event.subject && <span style={{ display: 'block', marginTop: 2, fontSize: 10.5 }}>📩 {event.subject}</span>}
-        </div>
-      </div>
-      {!detectedMeta && (
-        <select
-          onChange={(e) => {
-            const val = e.target.value;
-            if (val) onProcess(val);
-          }}
-          defaultValue=""
-          style={{
-            padding: '6px 10px', fontSize: 11.5,
-            border: '1px solid var(--border)', borderRadius: 8,
-            background: 'var(--surface)', color: 'var(--text)',
-            fontFamily: 'var(--font-sans)', cursor: 'pointer',
-          }}
-        >
-          <option value="">اختر النوع…</option>
-          {UPLOAD_SOURCES.map(s => (
-            <option key={s.id} value={s.id}>{s.label}</option>
-          ))}
-        </select>
-      )}
-      {busy ? (
-        <Spinner size={18}/>
-      ) : detectedMeta ? (
-        <Btn size="sm" variant="primary" icon={<Play size={11}/>} onClick={() => onProcess()}>
-          عالج
-        </Btn>
-      ) : <span/>}
-      <button onClick={onDismiss} title="تجاهل" style={{
-        background: 'transparent', border: '1px solid var(--border)',
-        padding: 6, borderRadius: 6, cursor: 'pointer',
-        color: 'var(--muted)', display: 'flex',
-      }}
-        onMouseEnter={(e) => e.currentTarget.style.color = 'var(--red)'}
-        onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
-      >
-        <XIcon size={11}/>
-      </button>
-    </div>
   );
 }
 
