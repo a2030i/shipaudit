@@ -19,6 +19,7 @@ import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // شرائح الأعمار — الترتيب من الأطزج للأخطر
 const BUCKETS = [
@@ -340,6 +341,7 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
   const [done, setDone] = useState(false);
   const [idx, setIdx] = useState(0);
   const [log, setLog] = useState([]);   // [{name, ok, applied, error}]
+  const [rateHit, setRateHit] = useState(false);   // توقّف بسبب حصة زوهو
   const totalPlanned = rows.reduce((s, r) => s + r.applicable, 0);
   const appliedSum = log.filter(l => l.ok).reduce((s, l) => s + (l.applied || 0), 0);
   const authFailed = log.some(l => !l.ok && /authoriz|صلاح/i.test(l.error || ''));
@@ -350,6 +352,8 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
       setIdx(i + 1);
       const r = rows[i];
       const res = await applyZohoCredits(r.zohoId);
+      // تجاوز حصة زوهو → أوقف واعرض بانر (يُكمل المستخدم لاحقاً بأمان)
+      if (res?.rate_limited) { setRateHit(true); break; }
       const entry = res?.ok
         ? { name: r.name, ok: !(res.results || []).some(x => !x.ok), applied: res.applied,
             error: (res.results || []).find(x => !x.ok)?.error || null }
@@ -357,6 +361,8 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
       setLog(prev => [...prev, entry]);
       // أوقف فوراً لو المشكلة صلاحية (لا فائدة من إكمال البقية)
       if (!entry.ok && /authoriz|صلاح/i.test(entry.error || '')) break;
+      // مباعدة بسيطة لتفادي ضرب حصة زوهو (~100 طلب/دقيقة)
+      await sleep(1200);
     }
     setRunning(false);
     setDone(true);
@@ -412,6 +418,11 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
               توقّف بسبب رفض صلاحية الكتابة. <Btn size="sm" variant="accent" onClick={onGrant} style={{ marginInlineStart: 8 }}>🔑 منح الصلاحية</Btn>
             </div>
           )}
+          {rateHit && (
+            <div style={{ marginTop: 10, padding: '9px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.7, background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)' }}>
+              توقّف مؤقتاً — حصة زوهو ممتلئة (~100 طلب/دقيقة). انتظر دقيقة و«طبّق للكل» مجدداً؛ ما طُبِّق محفوظ والباقي يُكمَّل بأمان (لا ازدواج).
+            </div>
+          )}
           {done && (
             <div style={{ marginTop: 14, textAlign: 'left' }}>
               <Btn variant="primary" onClick={onDone}>تم</Btn>
@@ -437,6 +448,7 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
     setApplying(true);
     const r = await applyZohoCredits(target.zohoId);
     setApplying(false);
+    if (r?.rate_limited) { toast('حصة زوهو ممتلئة مؤقتاً — انتظر دقيقة وأعد المحاولة', 'info'); if (r.applied > 0) setDone(r); return; }
     if (r?.ok) { setDone(r); if (!r.results?.some(x => !x.ok)) toast(`تم تطبيق ${fmt(r.applied)} ر.س ✓`, 'success'); }
     else toast(`فشل التطبيق: ${r?.error || 'غير معروف'}`, 'error');
   };

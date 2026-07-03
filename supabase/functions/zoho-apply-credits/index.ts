@@ -1,4 +1,4 @@
-// zoho-apply-credits v6 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v7 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -12,6 +12,9 @@
 //     تكرار فاتورة؛ كل مصدر ملفوف بـtry فلا يُسقِط فشلٌ واحدٌ الدفعة كلها (500).
 // v6: جلب الفواتير المفتوحة بالرصيد>0 (يشمل «overdue») لا بفلتر status=unpaid —
 //     كان يُسقِط الفواتير المتأخرة فتظهر «لا فواتير مفتوحة» لعميل دينه كله متأخر.
+// v7: حصة زوهو (~100/دقيقة): إعادة محاولة تصاعدية على 429 (zfetch)، إعادة
+//     استخدام فواتير buildPlan كأرصدة حيّة (جلب أقل)، ورسالة «الحصة ممتلئة»
+//     ودّية (rate_limited) بدل 500 — الواجهة تنتظر دقيقة وتُكمل بأمان.
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -26,6 +29,21 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const authErr = (m: string) => /authoriz|permission|scope/i.test(m || '');
+// كشف تجاوز حصة زوهو (~100 طلب/دقيقة للمؤسسة).
+const rateLimited = (m: string) => /rate.?limit|too many requests|per minute|exceeded.*(calls|requests)|\b429\b/i.test(m || '');
+const sleep = (ms: number) => new Promise((res) => setTimeout(res, ms));
+
+// fetch مع إعادة محاولة تصاعدية على 429 (حصة زوهو) — النافذة دقيقة متدحرجة
+// فبضع ثوانٍ كافية غالباً لتحرّر جزء من الحصة. لا نعيد على أخطاء أخرى.
+async function zfetch(url: string, opts: RequestInit = {}) {
+  const backoff = [1500, 3000, 6000, 9000];
+  let r = await fetch(url, opts);
+  for (let i = 0; r.status === 429 && i < backoff.length; i++) {
+    await sleep(backoff[i]);
+    r = await fetch(url, opts);
+  }
+  return r;
+}
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -66,7 +84,8 @@ async function fetchOpenInvoices(token: string, apiDomain: string, orgId: string
   const out: any[] = [];
   for (let page = 1; page <= 20; page++) {
     const qs = new URLSearchParams({ organization_id: orgId, customer_id: contactId, sort_column: 'date', sort_order: 'A', per_page: '200', page: String(page) });
-    const r = await fetch(`${apiDomain}/books/v3/invoices?${qs}`, { headers: H });
+    const r = await zfetch(`${apiDomain}/books/v3/invoices?${qs}`, { headers: H });
+    if (r.status === 429) throw new Error('rate_limit: حصة زوهو');
     const j = await r.json();
     if (j.code !== 0) throw new Error(`invoices: ${j.message || j.code}`);
     for (const i of (j.invoices || [])) {
@@ -88,8 +107,8 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
   // الفواتير المفتوحة (تشمل المتأخرة) + الإشعارات + الدفعات — بالتوازي.
   const [invoices, cnRes, payRes] = await Promise.all([
     fetchOpenInvoices(token, apiDomain, orgId, contactId),
-    fetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
-    fetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
+    zfetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
+    zfetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
   ]);
   const [cnJ, payJ] = await Promise.all([cnRes.json(), payRes.json()]);
   const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
@@ -141,6 +160,7 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
   }
   return {
     invoices_count: invoices.length, credit_available: creditAvailable, total_applied: totalApplied, plan,
+    open_invoices: invoices,   // نعيد استخدامها في apply كأرصدة حيّة (بلا جلب ثانٍ)
     creditnote_apps: [...cnApps.entries()].map(([id, v]) => ({ creditnote_id: id, ...v })),
     payment_apps: [...payApps.entries()].map(([id, v]) => ({ payment_id: id, ...v })),
   };
@@ -178,13 +198,11 @@ Deno.serve(async (req) => {
       const results: any[] = [];
       let appliedTotal = 0;
 
-      // الأرصدة الحيّة للفواتير المفتوحة — نقيّد كل تطبيق بها لتفادي رفض زوهو
-      // «المبلغ أكثر من الرصيد المستحق» (حدود التقريب + تغيّر الرصيد بعد الإشعارات).
+      // الأرصدة الحيّة للفواتير المفتوحة — من نتيجة buildPlan نفسها (بلا جلب
+      // ثانٍ، لتقليل استهلاك حصة زوهو). نقيّد كل تطبيق بها لتفادي رفض «المبلغ
+      // أكثر من الرصيد المستحق» (حدود التقريب + تغيّر الرصيد بعد الإشعارات).
       const liveBal = new Map<string, number>();
-      try {
-        const openInv = await fetchOpenInvoices(token, apiDomain, orgId, contactId);
-        for (const i of openInv) liveBal.set(i.invoice_id, i.balance);
-      } catch { /* لو فشل الجلب نكمل بلا cap (سيرفض زوهو الزائد بأمان) */ }
+      for (const i of (result.open_invoices || [])) liveBal.set(i.invoice_id, i.balance);
 
       // يقصّ قائمة تطبيقات على الرصيد الحيّ، ويُنقص المتبقّي. يرجع القائمة المقصوصة ومجموعها.
       const capAlloc = (invs: any[]) => {
@@ -204,7 +222,7 @@ Deno.serve(async (req) => {
         try {
           const { list, sum } = capAlloc(app.invoices);
           if (!list.length) { results.push({ source: `إشعار ${app.number}`, applied: 0, ok: true }); continue; }
-          const r = await fetch(`${apiDomain}/books/v3/creditnotes/${app.creditnote_id}/invoices?organization_id=${orgId}`, {
+          const r = await zfetch(`${apiDomain}/books/v3/creditnotes/${app.creditnote_id}/invoices?organization_id=${orgId}`, {
             method: 'POST', headers: H, body: JSON.stringify({ invoices: list }),
           });
           const j = await r.json().catch(() => ({}));
@@ -212,6 +230,7 @@ Deno.serve(async (req) => {
           if (ok) appliedTotal = r2(appliedTotal + sum); else refund(list);
           const err = ok ? null : (j.message || `code ${j.code}`);
           results.push({ source: `إشعار ${app.number}`, applied: ok ? sum : 0, ok, error: err });
+          if (!ok && (r.status === 429 || rateLimited(err))) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true });
           if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
         } catch (e) {
           results.push({ source: `إشعار ${app.number}`, applied: 0, ok: false, error: String((e as Error).message || e) });
@@ -224,7 +243,7 @@ Deno.serve(async (req) => {
         try {
           const existing = new Map<string, number>();
           try {
-            const gp = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
+            const gp = await zfetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
             const gj = await gp.json();
             for (const x of (gj?.payment?.invoices || [])) existing.set(x.invoice_id, r2((existing.get(x.invoice_id) || 0) + Number(x.amount_applied)));
           } catch { /* لو فشل الجلب، نطبّق الجديد فقط */ }
@@ -235,7 +254,7 @@ Deno.serve(async (req) => {
           for (const x of newList) m.set(x.invoice_id, r2((m.get(x.invoice_id) || 0) + x.amount_applied));
           const merged = [...m].map(([invoice_id, amount_applied]) => ({ invoice_id, amount_applied }));
 
-          const r = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, {
+          const r = await zfetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, {
             method: 'PUT', headers: H, body: JSON.stringify({ invoices: merged }),
           });
           const j = await r.json().catch(() => ({}));
@@ -243,6 +262,7 @@ Deno.serve(async (req) => {
           if (ok) appliedTotal = r2(appliedTotal + sum); else refund(newList);
           const err = ok ? null : (j.message || `code ${j.code}`);
           results.push({ source: `دفعة ${app.ref}`, applied: ok ? sum : 0, ok, error: err });
+          if (!ok && (r.status === 429 || rateLimited(err))) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true });
           if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
         } catch (e) {
           results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: false, error: String((e as Error).message || e) });
@@ -254,6 +274,9 @@ Deno.serve(async (req) => {
 
     return json({ error: 'action غير معروف (plan | apply)' }, 400);
   } catch (e) {
-    return json({ error: String((e as Error).message || e) }, 500);
+    const msg = String((e as Error).message || e);
+    // تجاوز حصة زوهو → رسالة ودّية (200) بدل 500 حتى تعرضها الواجهة بوضوح.
+    if (rateLimited(msg)) return json({ ok: false, rate_limited: true, error: 'حصة زوهو ممتلئة مؤقتاً (~100 طلب/دقيقة). انتظر دقيقة وأعد المحاولة.' });
+    return json({ error: msg }, 500);
   }
 });
