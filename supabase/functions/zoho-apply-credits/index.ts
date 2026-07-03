@@ -177,7 +177,14 @@ Deno.serve(async (req) => {
         const j = await r.json().catch(() => ({}));
         const ok = j.code === 0;
         if (ok) appliedTotal = r2(appliedTotal + p.applied);
-        results.push({ invoice: p.number, applied: p.applied, ok, error: ok ? null : (j.message || `code ${j.code}`) });
+        const errMsg = ok ? null : (j.message || `code ${j.code}`);
+        results.push({ invoice: p.number, applied: p.applied, ok, error: errMsg });
+        // توقّف فوراً عند رفض الصلاحية/الدور — لا فائدة من تكرار 33 محاولة
+        // فاشلة (كانت العملية تطول جداً). الخطأ نفسه لبقية الفواتير.
+        if (!ok && /authoriz|permission|scope/i.test(errMsg || '')) {
+          return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length,
+            results, role_error: true });
+        }
       }
       return json({ ok: true, applied: appliedTotal, count: results.filter(r => r.ok).length, results });
     }
