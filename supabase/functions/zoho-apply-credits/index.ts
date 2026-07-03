@@ -1,4 +1,4 @@
-// zoho-apply-credits v3 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v5 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -6,6 +6,10 @@
 //   • الدفعات الزائدة → PUT /customerpayments/{id} (طريقة المستخدم في Deluge).
 //     نجلب تطبيقاتها القائمة ونضمّها حتى لا يدهسها الـPUT.
 //   • الإشعارات الدائنة → POST /creditnotes/{id}/invoices (إضافي، آمن).
+// v4: buildPlan يجلب الفواتير+الإشعارات+الدفعات بالتوازي (Promise.all) — بطء أقل.
+// v5: كل تطبيق مُقيَّد بالرصيد الحيّ (capAlloc) لتفادي رفض زوهو «المبلغ أكثر من
+//     الرصيد المستحق» عند حدود التقريب/بعد الإشعارات؛ قائمة الدفعة موحّدة بلا
+//     تكرار فاتورة؛ كل مصدر ملفوف بـtry فلا يُسقِط فشلٌ واحدٌ الدفعة كلها (500).
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -153,40 +157,77 @@ Deno.serve(async (req) => {
       const results: any[] = [];
       let appliedTotal = 0;
 
+      // الأرصدة الحيّة للفواتير المفتوحة — نقيّد كل تطبيق بها لتفادي رفض زوهو
+      // «المبلغ أكثر من الرصيد المستحق» (حدود التقريب + تغيّر الرصيد بعد الإشعارات).
+      const liveBal = new Map<string, number>();
+      try {
+        const fr = await fetch(`${apiDomain}/books/v3/invoices?${new URLSearchParams({ organization_id: orgId, customer_id: contactId, status: 'unpaid', per_page: '200' })}`,
+          { headers: { Authorization: `Zoho-oauthtoken ${token}` } });
+        const fj = await fr.json();
+        for (const i of (fj.invoices || [])) liveBal.set(i.invoice_id, Number(i.balance));
+      } catch { /* لو فشل الجلب نكمل بلا cap (سيرفض زوهو الزائد بأمان) */ }
+
+      // يقصّ قائمة تطبيقات على الرصيد الحيّ، ويُنقص المتبقّي. يرجع القائمة المقصوصة ومجموعها.
+      const capAlloc = (invs: any[]) => {
+        const list: any[] = []; let sum = 0;
+        for (const x of invs) {
+          const live = liveBal.has(x.invoice_id) ? liveBal.get(x.invoice_id)! : Number(x.amount_applied);
+          const amt = r2(Math.min(Number(x.amount_applied), live));
+          if (amt > 0.001) { list.push({ invoice_id: x.invoice_id, amount_applied: amt }); sum = r2(sum + amt); liveBal.set(x.invoice_id, r2(live - amt)); }
+        }
+        return { list, sum };
+      };
+      // يعيد الرصيد المقتطع عند فشل التطبيق (حتى يستفيد منه مصدر لاحق)
+      const refund = (list: any[]) => { for (const x of list) liveBal.set(x.invoice_id, r2((liveBal.get(x.invoice_id) || 0) + x.amount_applied)); };
+
       // 1) الإشعارات الدائنة → POST /creditnotes/{id}/invoices (إضافي، آمن)
       for (const app of result.creditnote_apps) {
-        const r = await fetch(`${apiDomain}/books/v3/creditnotes/${app.creditnote_id}/invoices?organization_id=${orgId}`, {
-          method: 'POST', headers: H, body: JSON.stringify({ invoices: app.invoices }),
-        });
-        const j = await r.json().catch(() => ({}));
-        const ok = j.code === 0;
-        const sum = r2(app.invoices.reduce((s: number, x: any) => s + x.amount_applied, 0));
-        if (ok) appliedTotal = r2(appliedTotal + sum);
-        const err = ok ? null : (j.message || `code ${j.code}`);
-        results.push({ source: `إشعار ${app.number}`, applied: sum, ok, error: err });
-        if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+        try {
+          const { list, sum } = capAlloc(app.invoices);
+          if (!list.length) { results.push({ source: `إشعار ${app.number}`, applied: 0, ok: true }); continue; }
+          const r = await fetch(`${apiDomain}/books/v3/creditnotes/${app.creditnote_id}/invoices?organization_id=${orgId}`, {
+            method: 'POST', headers: H, body: JSON.stringify({ invoices: list }),
+          });
+          const j = await r.json().catch(() => ({}));
+          const ok = j.code === 0;
+          if (ok) appliedTotal = r2(appliedTotal + sum); else refund(list);
+          const err = ok ? null : (j.message || `code ${j.code}`);
+          results.push({ source: `إشعار ${app.number}`, applied: ok ? sum : 0, ok, error: err });
+          if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+        } catch (e) {
+          results.push({ source: `إشعار ${app.number}`, applied: 0, ok: false, error: String((e as Error).message || e) });
+        }
       }
 
       // 2) الدفعات الزائدة → PUT /customerpayments/{id} مع ضمّ التطبيقات القائمة
+      //    (الجديد مُقيَّد بالرصيد الحيّ، والقائمة موحّدة بلا تكرار فاتورة)
       for (const app of result.payment_apps) {
-        // اجلب تطبيقات الدفعة القائمة حتى لا يدهسها الـPUT
-        let existing: any[] = [];
         try {
-          const gp = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
-          const gj = await gp.json();
-          existing = (gj?.payment?.invoices || []).map((x: any) => ({ invoice_id: x.invoice_id, amount_applied: Number(x.amount_applied) }));
-        } catch { /* لو فشل الجلب، نطبّق الجديد فقط */ }
-        const merged = [...existing, ...app.invoices];
-        const r = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, {
-          method: 'PUT', headers: H, body: JSON.stringify({ invoices: merged }),
-        });
-        const j = await r.json().catch(() => ({}));
-        const ok = j.code === 0;
-        const sum = r2(app.invoices.reduce((s: number, x: any) => s + x.amount_applied, 0));
-        if (ok) appliedTotal = r2(appliedTotal + sum);
-        const err = ok ? null : (j.message || `code ${j.code}`);
-        results.push({ source: `دفعة ${app.ref}`, applied: sum, ok, error: err });
-        if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+          const existing = new Map<string, number>();
+          try {
+            const gp = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
+            const gj = await gp.json();
+            for (const x of (gj?.payment?.invoices || [])) existing.set(x.invoice_id, r2((existing.get(x.invoice_id) || 0) + Number(x.amount_applied)));
+          } catch { /* لو فشل الجلب، نطبّق الجديد فقط */ }
+
+          const { list: newList, sum } = capAlloc(app.invoices);
+          if (!newList.length) { results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: true }); continue; }
+          const m = new Map(existing);
+          for (const x of newList) m.set(x.invoice_id, r2((m.get(x.invoice_id) || 0) + x.amount_applied));
+          const merged = [...m].map(([invoice_id, amount_applied]) => ({ invoice_id, amount_applied }));
+
+          const r = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, {
+            method: 'PUT', headers: H, body: JSON.stringify({ invoices: merged }),
+          });
+          const j = await r.json().catch(() => ({}));
+          const ok = j.code === 0;
+          if (ok) appliedTotal = r2(appliedTotal + sum); else refund(newList);
+          const err = ok ? null : (j.message || `code ${j.code}`);
+          results.push({ source: `دفعة ${app.ref}`, applied: ok ? sum : 0, ok, error: err });
+          if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+        } catch (e) {
+          results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: false, error: String((e as Error).message || e) });
+        }
       }
 
       return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results });
