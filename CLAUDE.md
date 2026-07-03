@@ -223,6 +223,14 @@
 - **قاعدتان ثابتتان**: تحصيل COD **ليس دخلاً** (أمانة التجار). «صافي الشهر» بالرئيسية اسمه «صافي حركة النقد مع الناقلين» — **لا رقمان باسم «صافي/ربح» بدلالتين**؛ الربح من `/pnl` حصراً.
 - مصدر الدالة المرجعي: `supabase/functions/zoho-sync/index.ts` — أي تعديل يُنشر عبر MCP أيضاً.
 
+### 1.23 حزمة فواتير+زوهو (لوحة الفواتير · المطابقة الحيّة · حملة المتأخرين) ✅ (2026-07-03)
+- **لوحة فواتير `/zoho-data`**: التبويب الافتراضي `invoices`. RPC `zoho_invoice_dashboard()` (خفيف — لا يحمّل 4884 صفاً): open_ar/overdue/draft + شهرياً (remaining=SUM(balance)) + أعلى 20 مديناً؛ نقرة المدين تفلتر (`onPick=setQ`). تعريب الحالات عبر `zohoStatusAr`/`ZOHO_STATUS_AR` (pnlService) — شارات `StatusPill` ملوّنة في الجدول والفلتر والتصدير. **لا تعرض حالة زوهو إنجليزية خام في UI جديد**
+- **مطابقة أرصدة العملاء الحيّة**: تبويب `zoho_live` (الافتراضي) في `/reconciliation` — RPC `customer_balance_recon_zoho()`: فواتير زوهو المفتوحة (حيّة) × آخر snapshot داخلي (صفوف `is_summary` فقط — الإجمالي per-customer) × دليل المتاجر. المرساة: `customer_merchant_links` → اسم مطبَّع → `'n:'||norm`. الحالات: `matched` (±1) / `needs_investigation` / `internal_only` (أرصدة افتتاحية قديمة — **ليست خطأ ربط**) / `zoho_only`. المحفظة محور مستقل لا تُطرح. نتيجة أول تشغيل: 54 مطابقاً بالهللة (246,376.97) · 25 داخلي-فقط (57,882) · 2 تحقيق (6,156)
+- **حملة المتأخرين**: RPC `zoho_overdue_campaign()` (overdue مجمَّعة بالعميل + هاتف من المتاجر + قائمة فواتير) → زر «📲 حملة واتساب» (WhatsAppSendModal/Respondly — تأكيد صريح قبل الإرسال، بوابة `collections.view`) + «📞 ملف الحملة» Excel عبر `persistAndDownloadExport` بـ `kind='zoho_campaign'`
+- **بطاقة «فواتير تنتظر نظرتك»** في `/decisions`: `loadInvoicesAwaitingReview` (webhookService) = أحداث `processed_at IS NULL AND audit_id IS NULL AND status≠failed` مع عمر بالأيام — تنقل لـ`/webhook` حيث ⚡ دقّق واعتمد
+- **عدّاد الاسترداد** في `/pnl`: شريط تراكمي من `audit_claims` (`summarizeClaims`) — استُرد فعلاً/قيد المطالبة/مكتشفة، ينقل لـ`/hub?tab=claims`
+- **تمرير الجوال في المودالات**: أي حاوية `overflowY:auto` داخل Modal تحمل `className="m-flow"` (وإلا حبست إصبع iOS — §1.18). مودال الجوال padding=16
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
