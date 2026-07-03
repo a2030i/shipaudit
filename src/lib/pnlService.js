@@ -171,6 +171,37 @@ export async function loadZohoMirror(type, { period = null } = {}) {
   return rows;
 }
 
+// لوحة فواتير العملاء: باقٍ غير مدفوع/مسودة/متأخّر شهرياً + أعلى المدينين (RPC خفيف).
+export async function loadZohoInvoiceDashboard() {
+  const { data, error } = await supabase.rpc('zoho_invoice_dashboard');
+  if (error) throw error;
+  const d = data || {};
+  return {
+    openAr:     Number(d.open_ar) || 0,
+    openCnt:    Number(d.open_cnt) || 0,
+    draftCnt:   Number(d.draft_cnt) || 0,
+    draftTotal: Number(d.draft_total) || 0,
+    overdueCnt: Number(d.overdue_cnt) || 0,
+    overdueAmt: Number(d.overdue_amt) || 0,
+    totalCnt:   Number(d.total_cnt) || 0,
+    monthly:    Array.isArray(d.monthly) ? d.monthly : [],
+    debtors:    Array.isArray(d.debtors) ? d.debtors : [],
+  };
+}
+
+// تعريب حالات مستندات زوهو (فواتير/فواتير موردين). المفتاح lower-case.
+export const ZOHO_STATUS_AR = {
+  paid: 'مدفوعة', unpaid: 'غير مدفوعة', overdue: 'متأخرة', draft: 'مسودة',
+  sent: 'مُرسَلة', partially_paid: 'مدفوعة جزئياً', void: 'ملغاة', voided: 'ملغاة',
+  viewed: 'تمت المشاهدة', open: 'مفتوحة', pending: 'معلّقة', pending_approval: 'بانتظار الاعتماد',
+  approved: 'معتمدة', declined: 'مرفوضة', stopped: 'موقوفة', expired: 'منتهية',
+  partiallypaid: 'مدفوعة جزئياً', partially_refunded: 'مُستردّة جزئياً',
+};
+export const zohoStatusAr = (s) => {
+  if (!s) return '—';
+  return ZOHO_STATUS_AR[String(s).toLowerCase().trim()] || s;
+};
+
 // حالة الربط (لبانر «غير مربوط» إن انقطع).
 export async function loadZohoStatus() {
   const { data, error } = await supabase.functions.invoke('zoho-sync', {
