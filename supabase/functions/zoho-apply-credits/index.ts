@@ -1,4 +1,4 @@
-// zoho-apply-credits v7 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v8 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -15,6 +15,8 @@
 // v7: حصة زوهو (~100/دقيقة): إعادة محاولة تصاعدية على 429 (zfetch)، إعادة
 //     استخدام فواتير buildPlan كأرصدة حيّة (جلب أقل)، ورسالة «الحصة ممتلئة»
 //     ودّية (rate_limited) بدل 500 — الواجهة تنتظر دقيقة وتُكمل بأمان.
+// v8: تقليل طلبات زوهو أكثر: كاش رمز الوصول (ساعة) فلا تحديث كل استدعاء،
+//     وكاش خطة قصير (90ث) فيعيد apply استخدام قراءات المعاينة بدل تكرارها.
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -57,7 +59,12 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   return { user, role: p?.role || null, permissions: p?.permissions || {} };
 }
 
+// كاش رمز الوصول على مستوى الـinstance — توكن زوهو يدوم ساعة، فلا داعي
+// لتحديثه كل استدعاء (يقلّل طلبات زوهو ويسرّع). best-effort (قد يُعاد تدوير
+// الـinstance فيُعاد التحديث — لا ضرر).
+let tokenCache: { token: string; apiDomain: string; orgId: string; exp: number } | null = null;
 async function accessToken(db: ReturnType<typeof svc>) {
+  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache;
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
   if (!data?.refresh_token) throw new Error('لا ربط بعد');
   const r = await fetch(`https://${data.accounts_domain}/oauth/v2/token`, {
@@ -72,7 +79,8 @@ async function accessToken(db: ReturnType<typeof svc>) {
   });
   const j = await r.json();
   if (!j.access_token) throw new Error(`refresh failed: ${JSON.stringify(j)}`);
-  return { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string };
+  tokenCache = { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string, exp: Date.now() + 55 * 60 * 1000 };
+  return tokenCache;
 }
 
 // الفواتير المفتوحة للعميل (رصيد>0، الأقدم أولاً) — **بالرصيد لا بالحالة**.
@@ -166,6 +174,19 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
   };
 }
 
+// كاش خطة قصير (best-effort) — المعاينة (plan) تحسبها، ثم يعيد التطبيق (apply)
+// استخدامها بدل جلبها ثانية من زوهو (3 قراءات أقل لكل تطبيق تفاعلي). TTL قصير
+// حتى تبقى الأرصدة طازجة؛ capAlloc يحمي من أي تغيّر خلال النافذة. مفتاح = العميل.
+const planCache = new Map<string, { result: any; ts: number }>();
+const PLAN_TTL = 90_000;
+async function getPlan(token: string, apiDomain: string, orgId: string, contactId: string) {
+  const c = planCache.get(contactId);
+  if (c && Date.now() - c.ts < PLAN_TTL) return c.result;
+  const result = await buildPlan(token, apiDomain, orgId, contactId);
+  planCache.set(contactId, { result, ts: Date.now() });
+  return result;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const db = svc();
@@ -185,13 +206,14 @@ Deno.serve(async (req) => {
     const { token, apiDomain, orgId } = await accessToken(db);
 
     if (action === 'plan') {
-      const result = await buildPlan(token, apiDomain, orgId, contactId);
+      const result = await getPlan(token, apiDomain, orgId, contactId);
       return json({ ok: true, ...result });
     }
 
     if (action === 'apply') {
       if (!isAdmin) return json({ error: 'forbidden — التطبيق للمدير فقط' }, 403);
-      const result = await buildPlan(token, apiDomain, orgId, contactId);
+      const result = await getPlan(token, apiDomain, orgId, contactId);
+      planCache.delete(contactId);   // الأرصدة ستتغيّر بالكتابة — أبطِل الكاش
       if (!result.plan.length) return json({ ok: true, applied: 0, results: [], note: 'لا شيء للتطبيق' });
 
       const H = { Authorization: `Zoho-oauthtoken ${token}`, 'Content-Type': 'application/json' };
