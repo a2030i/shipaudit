@@ -1,18 +1,12 @@
-// zoho-apply-credits v1 — مهمة واحدة محدّدة فقط: تطبيق أرصدة العميل الدائنة
-// الموجودة (إشعارات دائنة + دفعات زائدة) على فواتيره المفتوحة الموجودة.
+// zoho-apply-credits v3 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
-// ⚠️ حدود صارمة (قيد المستخدم 2026-07-03):
-//   • لا يُنشئ فاتورة · لا يحذف فاتورة · لا يعدّل أي شيء آخر.
-//   • العملية الوحيدة المسموحة: POST /invoices/{id}/credits (تطبيق رصيد
-//     موجود على فاتورة موجودة). لا يوجد في هذا الملف أي POST/PUT/DELETE آخر.
-//   • الصلاحية الدنيا = ZohoBooks.invoices.UPDATE (لا CREATE ولا DELETE).
-//
-// إجراءان:
-//   plan  → قراءة فقط: يحسب خطة التطبيق (أي رصيد → أي فاتورة → كم) بلا كتابة.
-//           يعمل بصلاحيات القراءة الحالية. (متاح لمن يملك money.pnl/admin)
-//   apply → كتابة: ينفّذ الخطة عبر POST /invoices/{id}/credits. admin فقط.
-//
-// المصادقة الداخلية: نفس نمط zoho-sync (verify_jwt يقبل anon، فالحماية هنا).
+// v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
+//     كان يُرفَض «not authorized»):
+//   • الدفعات الزائدة → PUT /customerpayments/{id} (طريقة المستخدم في Deluge).
+//     نجلب تطبيقاتها القائمة ونضمّها حتى لا يدهسها الـPUT.
+//   • الإشعارات الدائنة → POST /creditnotes/{id}/invoices (إضافي، آمن).
+// الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -25,6 +19,7 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const r2 = (n: number) => Math.round(n * 100) / 100;
+const authErr = (m: string) => /authoriz|permission|scope/i.test(m || '');
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
@@ -56,28 +51,24 @@ async function accessToken(db: ReturnType<typeof svc>) {
   return { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string };
 }
 
-// READ-ONLY: افتح فواتير العميل + أرصدته الدائنة، وابنِ خطة تطبيق (الأقدم أولاً).
+// يبني خطة التطبيق مجمّعة حسب المصدر (إشعار/دفعة) — الأقدم من الفواتير أولاً.
 async function buildPlan(token: string, apiDomain: string, orgId: string, contactId: string) {
   const H = { Authorization: `Zoho-oauthtoken ${token}` };
   const qs = (o: Record<string, string>) => new URLSearchParams({ organization_id: orgId, ...o }).toString();
 
-  // 1) الفواتير المفتوحة (الأقدم أولاً)
   const invRes = await fetch(`${apiDomain}/books/v3/invoices?${qs({ customer_id: contactId, status: 'unpaid', sort_column: 'date', sort_order: 'A', per_page: '200' })}`, { headers: H });
   const invJ = await invRes.json();
   if (invJ.code !== 0) throw new Error(`invoices: ${invJ.message || invJ.code}`);
-  // "unpaid" في زوهو يشمل partially_paid أيضاً؛ نأخذ ما له رصيد > 0
   const invoices = (invJ.invoices || [])
     .filter((i: any) => Number(i.balance) > 0.001)
     .map((i: any) => ({ invoice_id: i.invoice_id, number: i.invoice_number, date: i.date, balance: Number(i.balance) }));
 
-  // 2) الإشعارات الدائنة المتاحة
   const cnRes = await fetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H });
   const cnJ = await cnRes.json();
   const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
     .map((c: any) => ({ creditnote_id: c.creditnote_id, number: c.creditnote_number, avail: Number(c.balance) }))
     .filter((c: any) => c.avail > 0.001);
 
-  // 3) الدفعات الزائدة (المبلغ غير المستخدم)
   const payRes = await fetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H });
   const payJ = await payRes.json();
   const excessPays = (payJ.code === 0 ? (payJ.customerpayments || []) : [])
@@ -89,45 +80,45 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
     excessPays.reduce((s: number, p: any) => s + p.avail, 0),
   );
 
-  // خطة: لكل فاتورة (الأقدم أولاً) اسحب من الإشعارات ثم الدفعات الزائدة حتى تُسدَّد.
+  // تجميع حسب المصدر: لكل إشعار/دفعة → أي فواتير وبكم.
+  const cnApps = new Map<string, { number: string; invoices: any[] }>();
+  const payApps = new Map<string, { ref: string; invoices: any[] }>();
+  const plan: any[] = [];
   const cn = creditNotes.map((c: any) => ({ ...c }));
   const px = excessPays.map((p: any) => ({ ...p }));
-  const plan: any[] = [];
   let totalApplied = 0;
+
   for (const inv of invoices) {
     let need = inv.balance;
-    const useCn: any[] = [], usePay: any[] = [];
+    const detail: string[] = [];
     for (const c of cn) {
       if (need <= 0.001) break;
       if (c.avail <= 0.001) continue;
       const take = r2(Math.min(need, c.avail));
       c.avail = r2(c.avail - take); need = r2(need - take);
-      useCn.push({ creditnote_id: c.creditnote_id, number: c.number, amount_applied: take });
+      if (!cnApps.has(c.creditnote_id)) cnApps.set(c.creditnote_id, { number: c.number, invoices: [] });
+      cnApps.get(c.creditnote_id)!.invoices.push({ invoice_id: inv.invoice_id, amount_applied: take });
+      detail.push(`إشعار ${c.number}: ${take}`);
     }
     for (const p of px) {
       if (need <= 0.001) break;
       if (p.avail <= 0.001) continue;
       const take = r2(Math.min(need, p.avail));
       p.avail = r2(p.avail - take); need = r2(need - take);
-      usePay.push({ payment_id: p.payment_id, ref: p.ref, amount_applied: take });
+      if (!payApps.has(p.payment_id)) payApps.set(p.payment_id, { ref: p.ref, invoices: [] });
+      payApps.get(p.payment_id)!.invoices.push({ invoice_id: inv.invoice_id, amount_applied: take });
+      detail.push(`دفعة ${p.ref}: ${take}`);
     }
     const applied = r2(inv.balance - need);
     if (applied > 0.001) {
       totalApplied = r2(totalApplied + applied);
-      plan.push({
-        invoice_id: inv.invoice_id, number: inv.number, date: inv.date,
-        balance: inv.balance, applied, remaining: r2(need),
-        apply_creditnotes: useCn.map(({ creditnote_id, amount_applied }) => ({ creditnote_id, amount_applied })),
-        apply_customer_payments: usePay.map(({ payment_id, amount_applied }) => ({ payment_id, amount_applied })),
-        detail: [...useCn.map((c) => `إشعار ${c.number}: ${c.amount_applied}`), ...usePay.map((p) => `دفعة ${p.ref}: ${p.amount_applied}`)],
-      });
+      plan.push({ invoice_id: inv.invoice_id, number: inv.number, date: inv.date, balance: inv.balance, applied, remaining: r2(need), detail });
     }
   }
   return {
-    invoices_count: invoices.length,
-    credit_available: creditAvailable,
-    total_applied: totalApplied,
-    plan,
+    invoices_count: invoices.length, credit_available: creditAvailable, total_applied: totalApplied, plan,
+    creditnote_apps: [...cnApps.entries()].map(([id, v]) => ({ creditnote_id: id, ...v })),
+    payment_apps: [...payApps.entries()].map(([id, v]) => ({ payment_id: id, ...v })),
   };
 }
 
@@ -149,13 +140,11 @@ Deno.serve(async (req) => {
   try {
     const { token, apiDomain, orgId } = await accessToken(db);
 
-    // ── plan: قراءة فقط ──
     if (action === 'plan') {
       const result = await buildPlan(token, apiDomain, orgId, contactId);
       return json({ ok: true, ...result });
     }
 
-    // ── apply: كتابة — admin فقط، العملية الوحيدة المسموحة ──
     if (action === 'apply') {
       if (!isAdmin) return json({ error: 'forbidden — التطبيق للمدير فقط' }, 403);
       const result = await buildPlan(token, apiDomain, orgId, contactId);
@@ -164,29 +153,44 @@ Deno.serve(async (req) => {
       const H = { Authorization: `Zoho-oauthtoken ${token}`, 'Content-Type': 'application/json' };
       const results: any[] = [];
       let appliedTotal = 0;
-      for (const p of result.plan) {
-        // العملية الوحيدة: تطبيق رصيد موجود على فاتورة موجودة. لا إنشاء ولا حذف.
-        const r = await fetch(`${apiDomain}/books/v3/invoices/${p.invoice_id}/credits?organization_id=${orgId}`, {
-          method: 'POST',
-          headers: H,
-          body: JSON.stringify({
-            apply_creditnotes: p.apply_creditnotes,
-            apply_customer_payments: p.apply_customer_payments,
-          }),
+
+      // 1) الإشعارات الدائنة → POST /creditnotes/{id}/invoices (إضافي، آمن)
+      for (const app of result.creditnote_apps) {
+        const r = await fetch(`${apiDomain}/books/v3/creditnotes/${app.creditnote_id}/invoices?organization_id=${orgId}`, {
+          method: 'POST', headers: H, body: JSON.stringify({ invoices: app.invoices }),
         });
         const j = await r.json().catch(() => ({}));
         const ok = j.code === 0;
-        if (ok) appliedTotal = r2(appliedTotal + p.applied);
-        const errMsg = ok ? null : (j.message || `code ${j.code}`);
-        results.push({ invoice: p.number, applied: p.applied, ok, error: errMsg });
-        // توقّف فوراً عند رفض الصلاحية/الدور — لا فائدة من تكرار 33 محاولة
-        // فاشلة (كانت العملية تطول جداً). الخطأ نفسه لبقية الفواتير.
-        if (!ok && /authoriz|permission|scope/i.test(errMsg || '')) {
-          return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length,
-            results, role_error: true });
-        }
+        const sum = r2(app.invoices.reduce((s: number, x: any) => s + x.amount_applied, 0));
+        if (ok) appliedTotal = r2(appliedTotal + sum);
+        const err = ok ? null : (j.message || `code ${j.code}`);
+        results.push({ source: `إشعار ${app.number}`, applied: sum, ok, error: err });
+        if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
       }
-      return json({ ok: true, applied: appliedTotal, count: results.filter(r => r.ok).length, results });
+
+      // 2) الدفعات الزائدة → PUT /customerpayments/{id} مع ضمّ التطبيقات القائمة
+      for (const app of result.payment_apps) {
+        // اجلب تطبيقات الدفعة القائمة حتى لا يدهسها الـPUT
+        let existing: any[] = [];
+        try {
+          const gp = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
+          const gj = await gp.json();
+          existing = (gj?.payment?.invoices || []).map((x: any) => ({ invoice_id: x.invoice_id, amount_applied: Number(x.amount_applied) }));
+        } catch { /* لو فشل الجلب، نطبّق الجديد فقط */ }
+        const merged = [...existing, ...app.invoices];
+        const r = await fetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, {
+          method: 'PUT', headers: H, body: JSON.stringify({ invoices: merged }),
+        });
+        const j = await r.json().catch(() => ({}));
+        const ok = j.code === 0;
+        const sum = r2(app.invoices.reduce((s: number, x: any) => s + x.amount_applied, 0));
+        if (ok) appliedTotal = r2(appliedTotal + sum);
+        const err = ok ? null : (j.message || `code ${j.code}`);
+        results.push({ source: `دفعة ${app.ref}`, applied: sum, ok, error: err });
+        if (!ok && authErr(err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+      }
+
+      return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results });
     }
 
     return json({ error: 'action غير معروف (plan | apply)' }, 400);
