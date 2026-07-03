@@ -921,10 +921,10 @@ function AppInner({ theme, toggleTheme }) {
           منفصلة عن الدرج — لا تخالف قاعدة «لا تثبيت عناصر جديدة» (§1.11f). */}
       <nav className="bottom-nav">
         {[
-          { path: '/overview',  label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
-          { path: '/decisions', label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
-          { path: '/drop',      label: 'رفع',      icon: Upload,          permKey: 'audits.create' },
-          { path: '/webhook',   label: 'الوارد',   icon: Inbox,           permKey: 'webhook.view' },
+          { path: '/overview',       label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
+          { path: '/decisions',      label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
+          { path: '/customer-money', label: 'فلوسي',    icon: HandCoins,       permKey: 'receivables.view' },
+          { path: '/webhook',        label: 'الوارد',   icon: Inbox,           permKey: 'webhook.view' },
         ].filter(it => isAdmin || can(it.permKey)).map(it => {
           const Icon = it.icon;
           const active = location.pathname === it.path;

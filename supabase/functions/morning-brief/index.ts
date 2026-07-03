@@ -1,0 +1,115 @@
+// morning-brief v1 — ملخّص الصباح واتساب عبر Respondly.
+// يُستدعى من pg_cron يومياً 7:15 KSA (هوية X-Cron-Key — نفس نمط zoho-sync v9)
+// أو يدوياً من التطبيق (مستخدم admin أو معه money.pnl/receivables.view).
+//
+// يقرأ الإعداد من app_settings key='morning_brief' (JSON):
+//   { enabled, phone, template_name, template_language, channel_id }
+// enabled=false أو غياب الإعداد → يرجع skip بلا إرسال.
+//
+// الأرقام من مصدر الحقيقة الواحد: RPC customer_money_dashboard() +
+// عدّاد «فواتير تنتظر نظرتك» (webhook_events غير المستوردة).
+// متغيّرات القالب بالترتيب:
+//   {{1}} التاريخ · {{2}} لك عند العملاء · {{3}} منها متأخرة
+//   {{4}} حصّلنا هذا الشهر · {{5}} أكبر 3 مدينين · {{6}} فواتير تنتظر
+
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
+const RESPONDLY_BASE = 'https://respondly.chat/api/v1';
+const CORS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const json = (body: unknown, status = 200) =>
+  new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
+const fmt = (n: number) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+
+async function requireUser(req: Request, db: any) {
+  const auth = req.headers.get('Authorization') || '';
+  const token = auth.replace(/^Bearer\s+/i, '');
+  if (!token) return null;
+  const { data } = await db.auth.getUser(token);
+  const user = data?.user;
+  if (!user) return null;
+  const { data: prof } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
+  if (!prof) return null;
+  const perms = prof.permissions || {};
+  if (prof.role !== 'admin' && !perms['money.pnl'] && !perms['receivables.view']) return null;
+  return { user, role: prof.role };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+
+  const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // ── الهوية: cron (X-Cron-Key ضد zoho_auth.cron_key) أو مستخدم مخوَّل ──
+  let authed = false;
+  const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
+  if (cronKey) {
+    const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
+    if (za?.cron_key && za.cron_key === cronKey) authed = true;
+  }
+  if (!authed) authed = !!(await requireUser(req, db));
+  if (!authed) return json({ error: 'unauthorized' }, 401);
+
+  let payload: any = {};
+  try { payload = await req.json(); } catch { /* جسم فارغ مسموح */ }
+  const dryRun = payload?.action === 'preview';
+
+  // ── الإعداد ──
+  const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'morning_brief').maybeSingle();
+  let cfg: any = null;
+  try { cfg = cfgRow?.value ? JSON.parse(cfgRow.value) : null; } catch { cfg = null; }
+  if (!cfg?.enabled && !dryRun) return json({ ok: true, skipped: 'disabled' });
+  if (!cfg?.phone && !dryRun) return json({ ok: false, error: 'لا رقم مستلِم في الإعداد' });
+
+  // ── الأرقام (مصدر الحقيقة الواحد) ──
+  const { data: dash, error: dashErr } = await db.rpc('customer_money_dashboard');
+  if (dashErr) return json({ ok: false, error: `dashboard: ${dashErr.message}` });
+  const { count: awaiting } = await db.from('webhook_events')
+    .select('id', { count: 'exact', head: true })
+    .is('processed_at', null).is('audit_id', null).neq('status', 'failed');
+
+  const customers: any[] = Array.isArray(dash?.customers) ? dash.customers : [];
+  const top3 = customers.slice(0, 3)
+    .map((c: any) => `${(c.store_name || c.name || '').slice(0, 22)} ${fmt(c.owed)}`)
+    .join(' · ') || 'لا مدينين';
+
+  const today = new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
+  const vars = [
+    today,
+    `${fmt(dash?.outstanding)} ر.س (${dash?.outstanding_cnt || 0} عميل)`,
+    `${fmt(dash?.overdue_amt)} ر.س`,
+    `${fmt(dash?.collected_this_month)} ر.س`,
+    top3,
+    String(awaiting || 0),
+  ];
+
+  if (dryRun) return json({ ok: true, preview: true, vars, cfg: { enabled: !!cfg?.enabled, phone: cfg?.phone || null, template_name: cfg?.template_name || null } });
+
+  // ── الإرسال عبر Respondly (قالب معتمد) ──
+  const apiKey = Deno.env.get('RESPONDLY_API_KEY');
+  if (!apiKey) return json({ ok: false, error: 'RESPONDLY_API_KEY غير مُعدّ' });
+  if (!cfg.template_name) return json({ ok: false, error: 'template_name غير مُعدّ في الإعداد' });
+
+  const body: any = {
+    template_name: cfg.template_name,
+    template_language: cfg.template_language || 'ar',
+    items: [{ to: cfg.phone, vars }],
+  };
+  if (cfg.channel_id) body.channel_id = cfg.channel_id;
+
+  try {
+    const r = await fetch(`${RESPONDLY_BASE}/messages/bulk-send`, {
+      method: 'POST',
+      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
+      body: JSON.stringify(body),
+    });
+    const result = await r.json().catch(() => ({}));
+    if (!r.ok) return json({ ok: false, status: r.status, error: result?.error || result?.message || 'فشل الإرسال' });
+    return json({ ok: true, sent: result?.sent, failed: result?.failed, vars });
+  } catch (e) {
+    return json({ ok: false, error: String((e as any)?.message || e) });
+  }
+});

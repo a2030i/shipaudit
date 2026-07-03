@@ -68,6 +68,52 @@ export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'a
   return data;
 }
 
+// ── ملخّص الصباح — إعداد + معاينة + إرسال فوري ──────────────────────
+// الإعداد في app_settings key='morning_brief' (تقرؤه edge function
+// morning-brief التي يستدعيها pg_cron يومياً 7:15 صباحاً KSA).
+const BRIEF_KEY = 'morning_brief';
+export const DEFAULT_BRIEF_CONFIG = {
+  enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '',
+};
+
+export async function loadMorningBriefConfig() {
+  const { data } = await supabase.from('app_settings').select('value').eq('key', BRIEF_KEY).maybeSingle();
+  if (!data?.value) return { ...DEFAULT_BRIEF_CONFIG };
+  try {
+    const v = JSON.parse(data.value);
+    return {
+      enabled: !!v.enabled, phone: v.phone || '',
+      templateName: v.template_name || '', templateLanguage: v.template_language || 'ar',
+      channelId: v.channel_id || '',
+    };
+  } catch { return { ...DEFAULT_BRIEF_CONFIG }; }
+}
+
+export async function saveMorningBriefConfig(cfg) {
+  const value = JSON.stringify({
+    enabled: !!cfg.enabled,
+    phone: normalizeSaudiPhone(cfg.phone),
+    template_name: cfg.templateName?.trim() || '',
+    template_language: cfg.templateLanguage?.trim() || 'ar',
+    channel_id: cfg.channelId?.trim() || '',
+  });
+  const { error } = await supabase.from('app_settings')
+    .upsert({ key: BRIEF_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
+}
+
+// معاينة نص الرسالة (بلا إرسال) / إرسال الآن يدوياً
+export async function previewMorningBrief() {
+  const { data, error } = await supabase.functions.invoke('morning-brief', { body: { action: 'preview' } });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+export async function sendMorningBriefNow() {
+  const { data, error } = await supabase.functions.invoke('morning-brief', { body: {} });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 export async function loadWhatsAppCampaigns({ limit = 50 } = {}) {
   const { data, error } = await supabase
     .from('whatsapp_campaigns').select('*')
