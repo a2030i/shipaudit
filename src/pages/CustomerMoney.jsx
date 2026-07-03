@@ -340,7 +340,7 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
               </div>
             )}
             {done.results?.filter(x => !x.ok).map((x, i) => (
-              <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>فاتورة {x.invoice}: {x.error}</div>
+              <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>{x.source || x.invoice}: {x.error}</div>
             ))}
             {(done.role_error || done.results?.some(x => !x.ok && /authoriz|scope|permission|صلاح/i.test(x.error || ''))) && (
               <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.75,
