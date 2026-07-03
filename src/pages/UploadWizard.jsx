@@ -671,7 +671,11 @@ export default function UploadWizard({ carriers, onComplete }) {
             return obj;
           });
 
-        if (!data.length) { toast('لم يتم العثور على بيانات في الملف', 'error'); setUploading(false); return; }
+        if (!data.length) {
+          toast('لم يتم العثور على بيانات في الملف', 'error');
+          setAutoApproveFlag(false);   // م1: فشل القراءة يطفئ الآلية
+          setUploading(false); return;
+        }
 
         setDetectedRow(hdrIdx + 1);
         setHeaders(hdrs);
@@ -684,6 +688,7 @@ export default function UploadWizard({ carriers, onComplete }) {
         setStep(3);
       } catch (err) {
         toast(`خطأ في قراءة الملف: ${err.message}`, 'error');
+        setAutoApproveFlag(false);   // م1: فشل القراءة يطفئ الآلية
       }
       setUploading(false);
     };
@@ -753,6 +758,9 @@ export default function UploadWizard({ carriers, onComplete }) {
     const key = payload.eventId || `${payload.filename}_${payload.base64.length}`;
     if (CONSUMED_WEBHOOK_IMPORTS.has(key)) {
       console.info('[webhook-import] already consumed in this session:', key);
+      // م8 (فحص عدائي): لا تترك الـpayload عالقاً ولا المستخدم بلا تفسير
+      sessionStorage.removeItem('webhookImport');
+      toast('هذا الحدث استُورد سابقاً في هذه الجلسة — افتح سجل المراجعات إن لم تجده', 'info');
       return;
     }
     CONSUMED_WEBHOOK_IMPORTS.add(key);
@@ -775,6 +783,11 @@ export default function UploadWizard({ carriers, onComplete }) {
       if (payload.eventId)   setSourceWebhookEventId(payload.eventId);
       setAutoApproveFlag(!!payload.autoApprove);
       autoConfirmFiredRef.current = false;
+      // م3 (فحص عدائي): الفترة كانت تعلق على آخر اختيار يدوي (PageSlot لا
+      // يفصل §2.1) — فاتورة واردة اليوم تُعاد فترتها لتاريخ اليوم دائماً.
+      const nowD = new Date();
+      setMonth(nowD.getMonth() + 1);
+      setYear(nowD.getFullYear());
       setStep(2);
       toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
       // Synchronous call so handleFile starts immediately. Internally
@@ -833,7 +846,14 @@ export default function UploadWizard({ carriers, onComplete }) {
         );
         if (!ok) return;
       }
-    } catch { /* non-fatal — never block on the guard query */ }
+    } catch {
+      // م12 (فحص عدائي): يدوياً الفشل غير قاتل؛ آلياً حارس معطّل = لا أتمتة
+      if (autoApproveFlag) {
+        setAutoApproveFlag(false);
+        toast('تعذّر فحص المراجعات السابقة — أُوقف الاعتماد الآلي، أكمل يدوياً', 'warn');
+        return;
+      }
+    }
     const forDate = `${year}-${String(month).padStart(2,'0')}-01`;
     // Unpriced operational exports (Delex): keep zero-billed delivered rows —
     // the contract prices them (priceFromContract), not the file.
@@ -959,7 +979,12 @@ export default function UploadWizard({ carriers, onComplete }) {
       )}
       {step === 2 && (
         <Step2 carrierName={carrier?.name || 'سنحدّدها من الملف'} carrierLogo={carrier?.logo} period={period}
-          onUpload={handleFile} onBack={() => setStep(1)}
+          onUpload={(f) => {
+            // م1 (فحص عدائي): إسقاط يدوي = إلغاء أي علم آلي عالق من محاولة
+            // فاشلة — وإلا اعتُمد ملف يدوي لم يطلب أحد أتمتته.
+            setAutoApproveFlag(false);
+            handleFile(f);
+          }} onBack={() => setStep(1)}
           uploading={uploading} aiStatus={aiStatus}/>
       )}
       {step === 3 && (

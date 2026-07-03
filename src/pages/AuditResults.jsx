@@ -595,7 +595,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       toast(top, 'error');
       return false;
     }
-    let ok = false;   // يُرجَع للمسار الآلي (فواتير-1) ليقرر العودة للوارد
+    let ok = false;          // يُرجَع للمسار الآلي (فواتير-1) ليقرر العودة للوارد
+    let ledgerErr = null;    // م4: فشل قيد الدفتر يمنع الترحيل الآلي
     setApproving(true);
     try {
       if (reviewStatus === 'draft' || audit.isDraft) {
@@ -617,7 +618,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
-        if (_ap1?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap1.ledgerPostError} — راجع /integrity`, 'error');
+        if (_ap1?.ledgerPostError) { ledgerErr = _ap1.ledgerPostError; } if (_ap1?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap1.ledgerPostError} — راجع /integrity`, 'error');
       } else {
         const _ap2 = await approveAudit(audit.id, profile?.id);
         audit.reviewStatus = 'approved';
@@ -625,7 +626,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
         setReviewStatus('approved');
         toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
-        if (_ap2?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap2.ledgerPostError} — راجع /integrity`, 'error');
+        if (_ap2?.ledgerPostError) { ledgerErr = _ap2.ledgerPostError; } if (_ap2?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap2.ledgerPostError} — راجع /integrity`, 'error');
       }
       // If the audit started life as a Webhook event, close the loop:
       // mark that event as 'processed' + linked. The UI then shows
@@ -650,7 +651,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       }
     }
     setApproving(false);
-    return ok;
+    return { ok, ledgerErr };
   };
 
   // ── اعتماد بنقرة (فواتير-1): مسودة موسومة autoApprove ────────────────
@@ -661,16 +662,26 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     if (!audit?.autoApprove || !audit.isDraft || reviewStatus !== 'draft') return;
     if (AUTO_APPROVED_AUDITS.has(audit.id)) return;
     AUTO_APPROVED_AUDITS.add(audit.id);
+    // م2 (فحص عدائي): استهلاك العلم دائماً في sessionStorage أيضاً — الحارس
+    // الذاكري يُمسح بالـreload فكانت المسودة الموسومة تعيد الاشتعال وحدها.
+    audit.autoApprove = false;
+    try { sessionStorage.setItem('lastAudit', JSON.stringify(audit)); } catch { /* ignore */ }
     if (!approvalGate.canApprove) {
       const why = approvalGate.errors[0]?.message || 'البوابة رفضت';
       toast(`⛔ لم تُعتمد آلياً: ${why} — تحتاج نظرتك`, 'warn');
       return;
     }
     (async () => {
-      const ok = await handleApprove();
-      if (ok) {
-        toast('⚡ اعتُمدت آلياً — رجوع لصندوق الوارد', 'success');
+      const res = await handleApprove();
+      if (res?.ok && !res.ledgerErr) {
+        // م9: التحذيرات (ضريبة ≤1 ر.س...) كانت تُبتلع آلياً — أظهرها
+        const warns = approvalGate.warnings?.length
+          ? ` · ⚠ ${approvalGate.warnings[0].message}` : '';
+        toast(`⚡ اعتُمدت آلياً — رجوع لصندوق الوارد${warns}`, 'success');
         navigate('/webhook');
+      } else if (res?.ok && res.ledgerErr) {
+        // م4: اعتماد نجح لكن قيد الدفتر فشل — لا ترحيل؛ ابقَ أمام المشكلة
+        toast('⚠️ اعتُمدت لكن قيد الدفتر فشل — لم نغادر الصفحة، راجع /integrity', 'error');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps

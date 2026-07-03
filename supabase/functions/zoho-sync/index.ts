@@ -157,7 +157,18 @@ Deno.serve(async (req) => {
 
   try {
     // ── حارس المصادقة لكل شيء (الإصلاح 1) ──
-    const auth = await requireUser(req, db);
+    // هوية آلية (pg_cron — v9): X-Cron-Key يُقارن بـzoho_auth.cron_key
+    // (جدول service-only) — تسمح بـsync/pnl_month فقط، لا exchange ولا
+    // قراءة خام. البشر يمرّون بـrequireUser كالمعتاد.
+    let auth: Awaited<ReturnType<typeof requireUser>> = null;
+    const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
+    if (cronKey && (action === 'sync' || action === 'pnl_month')) {
+      const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
+      if (za?.cron_key && za.cron_key === cronKey) {
+        auth = { user: null as never, role: 'admin', permissions: {} };
+      }
+    }
+    if (!auth) auth = await requireUser(req, db);
     if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
 
     if (action === 'exchange_web') {
@@ -253,6 +264,7 @@ Deno.serve(async (req) => {
       // متسامحة: كيان يفشل (scope ناقص قبل إعادة الموافقة) لا يوقف البقية.
       const { token, apiDomain, orgId } = await accessToken(db);
       const ENTITIES: { ent: string; listKey: string; table: string;
+        sortColumn?: string; noDelta?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
           zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
@@ -262,7 +274,10 @@ Deno.serve(async (req) => {
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', map: (it, lm, now) => ({
+        // expenses: زوهو لا يدعم الفرز بـlast_modified_time لهذه القائمة →
+        // فرز بالتاريخ + سحب كامل بلا early-stop (noDelta) — upsert يمتص التكرار.
+        { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
+          map: (it, lm, now) => ({
           zoho_id: it.expense_id, date: it.date || null,
           account_name: it.account_name || null, vendor_name: it.vendor_name || null,
           total: Number(it.total) || 0, status: it.status || null,
@@ -288,12 +303,12 @@ Deno.serve(async (req) => {
       for (const cfg of ENTITIES) {
         try {
           const { data: st } = await db.from('zoho_sync_state').select('last_sync').eq('entity', cfg.ent).maybeSingle();
-          const since = st?.last_sync ? new Date(st.last_sync).getTime() : null;
+          const since = cfg.noDelta ? null : (st?.last_sync ? new Date(st.last_sync).getTime() : null);
           let page = 1, saved = 0, more = true, entErr: string | null = null;
           while (more && page <= 25) {
             const qs = new URLSearchParams({
               organization_id: orgId, per_page: '200', page: String(page),
-              sort_column: 'last_modified_time', sort_order: 'D',
+              sort_column: cfg.sortColumn || 'last_modified_time', sort_order: 'D',
             });
             const r = await fetch(`${apiDomain}/books/v3/${cfg.ent}?${qs}`, {
               headers: { Authorization: `Zoho-oauthtoken ${token}` },
