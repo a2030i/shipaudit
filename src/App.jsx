@@ -9,33 +9,22 @@ import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
-import Dashboard      from './pages/Dashboard.jsx';
-import CarriersHub    from './pages/CarriersHub.jsx';
 import CarrierProfile from './pages/CarrierProfile.jsx';
-import CustomerReceivables from './pages/CustomerReceivables.jsx';
-import CustomerWatch from './pages/CustomerWatch.jsx';
 import CustomerPortal from './pages/CustomerPortal.jsx';
-import PaymentRequests from './pages/PaymentRequests.jsx';
 import InternalExports from './pages/InternalExports.jsx';
-import Merchants from './pages/Merchants.jsx';
 import CarrierManager from './pages/CarrierManager.jsx';
 import UploadWizard   from './pages/UploadWizard.jsx';
 import AuditResults   from './pages/AuditResults.jsx';
 import { SettingsPage, AuditsHistory } from './pages/Settings.jsx';
 import LoginPage      from './pages/LoginPage.jsx';
 import EmployeeManager from './pages/EmployeeManager.jsx';
-import BankStatement   from './pages/BankStatement.jsx';
 import CarrierStatements from './pages/CarrierStatements.jsx';
 import CarrierLedger     from './pages/CarrierLedger.jsx';
-import CodSettlements    from './pages/CodSettlements.jsx';
-import Payments          from './pages/Payments.jsx';
-import CarrierKpi        from './pages/CarrierKpi.jsx';
 import ActivityLog       from './pages/ActivityLog.jsx';
 import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 import Tasks            from './pages/Tasks.jsx';
-import Segments         from './pages/Segments.jsx';
 import CustomerHub      from './pages/CustomerHub.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import CrmWorkspace      from './pages/CrmWorkspace.jsx';
@@ -206,7 +195,6 @@ const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/p
 
 const PAGE_TITLES = {
   '/overview':          'الرئيسية',
-  '/dashboard':         'الرئيسية (الإصدار القديم)',
   '/decisions':         'لوحة القرارات',
   '/crm':               'التحصيل والمبيعات',
   '/fulfillment':       'تدقيق فواتير التجهيز',
@@ -251,7 +239,6 @@ const PAGE_TITLES = {
   '/forecast':          'تنبؤ التدفّق النقدي',
   '/employees':         'الموظفون',
   '/settings/ai':            'الإعدادات — الذكاء الاصطناعي',
-  '/settings/permissions':   'الإعدادات — الصلاحيات',
   '/settings/data':          'الإعدادات — البيانات',
   '/results':                'نتائج التدقيق',
 };
@@ -298,7 +285,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/dashboard','/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -384,7 +371,7 @@ function AppInner({ theme, toggleTheme }) {
   // as a still-reachable legacy alias but no longer the landing.
   useEffect(() => {
     if (!profile) return;
-    if (location.pathname === '/' || location.pathname === '' || location.pathname === '/dashboard') {
+    if (location.pathname === '/' || location.pathname === '') {
       navigate('/overview', { replace: true });
     }
   }, [profile, location.pathname]);
@@ -724,15 +711,13 @@ function AppInner({ theme, toggleTheme }) {
               }}>
                 {currentTitle}
               </span>
-              {location.pathname !== '/dashboard' && (
-                <span style={{
-                  color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)',
-                  letterSpacing:1.5, textTransform:'uppercase', fontWeight:600,
-                  marginInlineStart:6,
-                }}>
-                  Lamha
-                </span>
-              )}
+              <span style={{
+                color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)',
+                letterSpacing:1.5, textTransform:'uppercase', fontWeight:600,
+                marginInlineStart:6,
+              }}>
+                Lamha
+              </span>
               {/* Quick search / command palette trigger */}
               <button
                 onClick={() => setPaletteOpen(true)}
@@ -770,9 +755,6 @@ function AppInner({ theme, toggleTheme }) {
               prevents CSS animations from replaying on every navigation */}
           <div className="page-content">
 
-            <PageSlot active={pathname==='/dashboard'} scroll>
-              <Dashboard carriers={carriers} onNavigate={(p) => navigate(`/${p}`)}/>
-            </PageSlot>
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
             </PageSlot>
@@ -908,7 +890,7 @@ function AppInner({ theme, toggleTheme }) {
             {/* Unknown paths → redirect */}
             {!isKnownPath && !isSettingsPath && (
               <Routes>
-                <Route path="*" element={<Navigate to="/dashboard" replace/>}/>
+                <Route path="*" element={<Navigate to="/overview" replace/>}/>
               </Routes>
             )}
 
