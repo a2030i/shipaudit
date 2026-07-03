@@ -234,7 +234,7 @@ export default function CustomerMoney({ isActive = true }) {
                         color: r.clearsFully ? 'var(--green)' : 'var(--gold)' }}>{r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)}</td>
                       <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
                         {isAdmin && (
-                          <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name })}
+                          <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name, zohoUrl: r.zohoUrl })}
                             style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 12%, transparent)',
                               border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
                             طبّق تلقائياً
@@ -342,12 +342,18 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
             {done.results?.filter(x => !x.ok).map((x, i) => (
               <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>فاتورة {x.invoice}: {x.error}</div>
             ))}
-            {done.results?.some(x => !x.ok && /authoriz|scope|permission|صلاح/i.test(x.error || '')) && (
-              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.7,
+            {(done.role_error || done.results?.some(x => !x.ok && /authoriz|scope|permission|صلاح/i.test(x.error || ''))) && (
+              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.75,
                 background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)' }}>
-                الربط الحالي «قراءة فقط» فرفض زوهو التطبيق. امنح صلاحية التطبيق مرة واحدة (تبقى القراءة كما هي):
-                <div style={{ marginTop: 8 }}>
-                  <Btn size="sm" variant="accent" onClick={onGrant}>🔑 منح صلاحية التطبيق</Btn>
+                زوهو رفض التطبيق الآلي (صلاحية OAuth للكتابة لم تُمنَح رغم إعادة الموافقة).
+                <b> الأضمن: طبّقه يدوياً في زوهو بنقرة</b> — بحسابك الذي يملك الصلاحية كاملة:
+                <div style={{ marginTop: 8, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  {target.zohoUrl && (
+                    <a href={target.zohoUrl} target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                      <Btn size="sm" variant="accent">افتح العميل في زوهو ↗</Btn>
+                    </a>
+                  )}
+                  <Btn size="sm" variant="ghost" onClick={onGrant}>🔑 إعادة منح الصلاحية</Btn>
                 </div>
               </div>
             )}
