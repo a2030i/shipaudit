@@ -1,30 +1,19 @@
-// zoho-sync v7 — + action=sync: مزامنة دلتا للفواتير والدفعات (zoho_invoices/
-// zoho_payments) — القوائم مرتّبة بـlast_modified_time تنازلياً فنتوقف عند
-// أول عنصر أقدم من آخر مزامنة (zoho_sync_state). سقف 25 صفحة×200.
-// v6 — إصلاحات فحص الوكلاء العدائي (2026-07-02):
-//   1) مصادقة داخلية: verify_jwt يقبل anon العام، فالحماية هنا — getUser()
-//      إلزامي لكل action، وقراءة الأرقام تتطلب admin أو صلاحية money.pnl،
-//      وexchange_web تتطلب admin (كانت الأرقام تُسرَّب واختطاف الربط ممكناً).
-//   2) قفل إعادة الربط: ربط قائم لا يُدهَس إلا بـforce صريح من admin.
-//   3) برشر/TTL سيرفري: pnl_month يرجع الكاش إن جُلب خلال 10 دقائق —
-//      لا استنزاف لحصة زوهو (100/دقيقة) ولا تلويث كاش.
-//   4) تصلّب pnl_month: period بصيغة صارمة، from/to تُشتق منه فقط.
-//   5) المحلّل: مطابقة على عمق ≤1، «غير التشغيلي» قبل «التشغيلي»، أول
-//      مطابقة تفوز، لا نزول داخل قسم مُلتقط — والصافي من قسم «صافي» بالاسم
-//      أو محسوباً (لا آخر-قسم-أعمى).
-//   6) CORS مقيّد بدومين التطبيق.
-// النشر عبر MCP — هذا الملف النسخة المرجعية.
+// zoho-sync v11 — + كيان contacts (أرصدة العملاء/الموردين المباشرة شاملة
+// السلف والإشعارات الدائنة — تُغني عن ملف «أرصدة الموردين» الإيميلي).
+// v10 — expenses: فرز date + سحب كامل (زوهو لا يدعم فرز
+// last_modified_time لهذه القائمة). v9: هوية آلية pg_cron (X-Cron-Key).
+// v8: sync شامل 6 كيانات. v6/v7: مصادقة داخلية + TTL + محلّل + CORS.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
   'Access-Control-Allow-Origin': APP_ORIGIN,
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
   'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
 };
 const REDIRECT_URI = `${APP_ORIGIN}/zoho-callback`;
-const PNL_TTL_MS = 10 * 60_000;   // الشهر المجلوب خلال 10 دقائق يُخدَم من الكاش
+const PNL_TTL_MS = 10 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -33,7 +22,6 @@ const svc = () => createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-// ── المصادقة الداخلية (نمط manage-users): مستخدم حقيقي + صلاحية ──
 async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   const authHeader = req.headers.get('Authorization') || '';
   const userClient = createClient(
@@ -42,7 +30,7 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
     { global: { headers: { Authorization: authHeader } } },
   );
   const { data: { user } } = await userClient.auth.getUser();
-  if (!user) return null;                       // anon key وحده → لا مستخدم
+  if (!user) return null;
   const { data: profile } = await db.from('profiles')
     .select('role, permissions').eq('id', user.id).maybeSingle();
   return { user, role: profile?.role || null, permissions: profile?.permissions || {} };
@@ -88,10 +76,6 @@ async function saveGrant(db: ReturnType<typeof svc>, j: Record<string, unknown>,
   return { orgId, orgName, dc };
 }
 
-// ── محلّل قائمة الدخل — مقاوم للأسماء المتشابهة والمؤسسات الإنجليزية ──
-// «غير التشغيلي» قبل «التشغيلي» (وإلا طابق non-operating income نمطَ income
-// وكتب فوقه)، أول مطابقة لكل مفتاح تفوز، المطابقة على عمق ≤1 فقط، ولا
-// نزول داخل قسم مُلتقط (أبناؤه حسابات وليست أقساماً).
 const SEC_ORDERED: [string, RegExp[]][] = [
   ['other_income',  [/الدخل غير التشغيلي/, /non.?operating income/i]],
   ['other_expense', [/المصروفات غير التشغيلية/, /non.?operating expense/i]],
@@ -130,14 +114,13 @@ function parsePnl(pl: Sec[]) {
             .filter(a => a.name)
             .map(a => ({ name: a.name!, total: Number(a.total) || 0 })),
         });
-        continue;   // لا تنزل داخل قسم مُلتقط
+        continue;
       }
       if (s.account_transactions?.length && depth < 2) walk(s.account_transactions, depth + 1);
     }
   };
   walk(pl, 0);
   const computed = +(out.income - out.cogs - out.opex + out.other_income - out.other_expense).toFixed(2);
-  // الصافي: قسم «صافي» بالاسم إن وُجد واتّسق (±0.05 مع المحسوب)، وإلا المحسوب
   const net = (namedNet != null && Math.abs(namedNet - computed) <= 0.05) ? namedNet : computed;
   return { ...out, net, lines, computed_net: computed };
 }
@@ -156,10 +139,8 @@ Deno.serve(async (req) => {
   const db = svc();
 
   try {
-    // ── حارس المصادقة لكل شيء (الإصلاح 1) ──
-    // هوية آلية (pg_cron — v9): X-Cron-Key يُقارن بـzoho_auth.cron_key
-    // (جدول service-only) — تسمح بـsync/pnl_month فقط، لا exchange ولا
-    // قراءة خام. البشر يمرّون بـrequireUser كالمعتاد.
+    // هوية آلية (pg_cron — v9): X-Cron-Key يُقارن بـzoho_auth.cron_key —
+    // تسمح بـsync/pnl_month فقط. البشر يمرّون بـrequireUser كالمعتاد.
     let auth: Awaited<ReturnType<typeof requireUser>> = null;
     const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
     if (cronKey && (action === 'sync' || action === 'pnl_month')) {
@@ -178,7 +159,6 @@ Deno.serve(async (req) => {
       const code = body.code as string;
       if (!id || !secret) return json({ error: 'missing_secrets' }, 400);
       if (!code) return json({ error: 'missing_code' }, 400);
-      // قفل إعادة الربط (الإصلاح 2): لا دهس لربط قائم إلا بطلب صريح
       const { data: existing } = await db.from('zoho_auth').select('refresh_token, org_id').eq('id', 1).maybeSingle();
       if (existing?.refresh_token && body.force !== true) {
         return json({ error: 'already_connected — الربط قائم؛ أعد الربط بـforce:true إن كنت تقصد استبداله', org_id: existing.org_id }, 409);
@@ -202,7 +182,6 @@ Deno.serve(async (req) => {
       return json({ error: 'exchange_failed', details: errors }, 400);
     }
 
-    // بقية الـactions أرقام مالية — تتطلب money.pnl أو admin
     if (!canPnl(auth)) return json({ error: 'forbidden — تحتاج صلاحية «الوضع المالي»' }, 403);
 
     if (action === 'status') {
@@ -223,11 +202,9 @@ Deno.serve(async (req) => {
     if (action === 'pnl' || action === 'pnl_month') {
       let from: string, to: string, period: string | undefined;
       if (action === 'pnl_month') {
-        // تصلّب (الإصلاح 4): period صارم وfrom/to تُشتق منه فقط — لا تلويث كاش
         period = body.period as string;
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period || '')) return json({ error: 'bad period — YYYY-MM' }, 400);
         from = `${period}-01`; to = lastDay(period!);
-        // TTL سيرفري (الإصلاح 3): جُلب حديثاً؟ أرجع الكاش بلا ضرب زوهو
         const { data: cached } = await db.from('pnl_snapshots').select('*').eq('period', period).maybeSingle();
         if (cached && Date.now() - new Date(cached.fetched_at).getTime() < PNL_TTL_MS) {
           return json({ ok: true, snapshot: cached, cached: true });
@@ -254,14 +231,12 @@ Deno.serve(async (req) => {
         net: parsed.net, lines: parsed.lines,
         fetched_at: new Date().toISOString(),
       };
-      const { error } = await db.from('pnl_snapshots').upsert(row);   // PK كامل — لا فخّ 42P10
+      const { error } = await db.from('pnl_snapshots').upsert(row);
       if (error) return json({ error: `save failed: ${error.message}` }, 500);
       return json({ ok: true, snapshot: row, computed_net: parsed.computed_net });
     }
 
     if (action === 'sync') {
-      // v8: مزامنة شاملة عبر سجلّ كيانات — دلتا بـlast_modified_time.
-      // متسامحة: كيان يفشل (scope ناقص قبل إعادة الموافقة) لا يوقف البقية.
       const { token, apiDomain, orgId } = await accessToken(db);
       const ENTITIES: { ent: string; listKey: string; table: string;
         sortColumn?: string; noDelta?: boolean;
@@ -274,8 +249,8 @@ Deno.serve(async (req) => {
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        // expenses: زوهو لا يدعم الفرز بـlast_modified_time لهذه القائمة →
-        // فرز بالتاريخ + سحب كامل بلا early-stop (noDelta) — upsert يمتص التكرار.
+        // expenses: زوهو لا يدعم فرز last_modified_time لهذه القائمة → فرز
+        // date + سحب كامل بلا early-stop — upsert يمتص التكرار.
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
           map: (it, lm, now) => ({
           zoho_id: it.expense_id, date: it.date || null,
@@ -298,6 +273,19 @@ Deno.serve(async (req) => {
           date: it.journal_date || it.date || null,
           notes: (it.notes as string) || null, total: Number(it.total) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
+        // contacts (v11): الرصيد المستحق لكل عميل/مورد مباشرة من زوهو —
+        // يشمل السلف والإشعارات الدائنة (unused_credits) التي لا تظهر في
+        // zoho_bills أبداً (مورد دائن بـ−198K كان غائباً كلياً عن المرايا).
+        // الأرصدة تتغير دون تعديل جهة الاتصال → سحب كامل بلا دلتا.
+        { ent: 'contacts', listKey: 'contacts', table: 'zoho_contacts', sortColumn: 'contact_name', noDelta: true,
+          map: (it, lm, now) => ({
+          zoho_id: it.contact_id, contact_name: (it.contact_name as string) || null,
+          contact_type: (it.contact_type as string) || null,
+          outstanding_receivable: Number(it.outstanding_receivable_amount) || 0,
+          outstanding_payable: Number(it.outstanding_payable_amount) || 0,
+          unused_credits_receivable: Number(it.unused_credits_receivable_amount) || 0,
+          unused_credits_payable: Number(it.unused_credits_payable_amount) || 0,
+          status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
       ];
       const results: Record<string, number | string> = {};
       for (const cfg of ENTITIES) {
@@ -314,7 +302,7 @@ Deno.serve(async (req) => {
               headers: { Authorization: `Zoho-oauthtoken ${token}` },
             });
             const j = await r.json();
-            if (j.code !== 0) { entErr = j.message || `code ${j.code}`; break; }   // scope ناقص؟ تخطَّ الكيان
+            if (j.code !== 0) { entErr = j.message || `code ${j.code}`; break; }
             const rows: Record<string, unknown>[] = j[cfg.listKey] || [];
             let reachedOld = false;
             const now = new Date().toISOString();
@@ -326,7 +314,7 @@ Deno.serve(async (req) => {
               if (row.zoho_id) mapped.push(row);
             }
             if (mapped.length) {
-              const { error } = await db.from(cfg.table).upsert(mapped);   // PK كامل zoho_id
+              const { error } = await db.from(cfg.table).upsert(mapped);
               if (error) { entErr = `save: ${error.message}`; break; }
               saved += mapped.length;
             }
