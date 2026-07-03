@@ -283,6 +283,15 @@ export async function loadZohoUnusedCredits() {
   };
 }
 
+// رابط موافقة زوهو بالصلاحيات الموسّعة (قراءة كاملة + invoices.UPDATE) —
+// لتفعيل «تطبيق الرصيد الدائن». admin فقط. يُفتح في نافذة، والموافقة تعود
+// لـ/zoho-callback الذي يستبدل التوكن (force). لا يمسّ التطبيق الداخلي.
+export async function getZohoWriteAuthUrl() {
+  const { data, error } = await supabase.functions.invoke('zoho-authurl', { body: {} });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 // خطة تطبيق الأرصدة الدائنة لعميل (قراءة فقط — لا كتابة). ترجع الفواتير
 // وأي رصيد يُطبَّق على كلٍّ منها. عبر edge function zoho-apply-credits.
 export async function planZohoApplyCredits(contactId) {

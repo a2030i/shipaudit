@@ -11,7 +11,7 @@ import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
-  planZohoApplyCredits, applyZohoCredits } from '../lib/pnlService.js';
+  planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -53,6 +53,14 @@ export default function CustomerMoney({ isActive = true }) {
     if (!isActive || credits != null) return;
     loadZohoUnusedCredits().then(setCredits).catch(() => setCredits({ rows: [], totalApplicable: 0, clearsCount: 0 }));
   }, [isActive, credits]);
+  // منح صلاحية الكتابة (invoices.UPDATE) لمرة واحدة — يفتح موافقة زوهو
+  const grantWriteAccess = async () => {
+    const r = await getZohoWriteAuthUrl();
+    if (r?.ok && r.url) {
+      toast('تُفتح صفحة موافقة زوهو — اضغط Accept. القراءة تبقى كما هي + صلاحية تطبيق فقط.', 'info');
+      window.open(r.url, '_blank', 'noopener');
+    } else toast(`تعذّر فتح الموافقة: ${r?.error || 'غير معروف'}`, 'error');
+  };
 
   const filtered = useMemo(() => {
     if (!d) return [];
@@ -230,8 +238,17 @@ export default function CustomerMoney({ isActive = true }) {
                   ))}
                 </tbody>
               </table>
-              <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--muted2)', borderTop: '1px solid var(--border)' }}>
-                افتح العميل في زوهو → «الرصيد الدائن» → «تطبيق على الفواتير المستحقة». النظام يقرأ فقط ولا يُعدّل زوهو.
+              <div style={{ padding: '8px 14px', fontSize: 10.5, color: 'var(--muted2)', borderTop: '1px solid var(--border)', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+                <span style={{ flex: 1, minWidth: 180 }}>
+                  «طبّق تلقائياً» يُطبّق الرصيد في زوهو (تطبيق فقط — لا إنشاء/حذف). أو افتح «زوهو ↗» وطبّق يدوياً.
+                </span>
+                {isAdmin && (
+                  <button onClick={grantWriteAccess}
+                    style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', background: 'transparent',
+                      border: '1px solid var(--border)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    🔑 منح صلاحية التطبيق (مرة واحدة)
+                  </button>
+                )}
               </div>
             </div>
           )}
@@ -275,7 +292,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
       {applyTarget && (
-        <ApplyCreditsModal target={applyTarget}
+        <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}
           onClose={() => setApplyTarget(null)}
           onDone={() => { setApplyTarget(null); setCredits(null); refresh(); }}/>
       )}
@@ -284,7 +301,7 @@ export default function CustomerMoney({ isActive = true }) {
 }
 
 // مودال تطبيق الأرصدة الدائنة — معاينة (قراءة) ثم تأكيد التطبيق (كتابة في زوهو)
-function ApplyCreditsModal({ target, onClose, onDone }) {
+function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
   const [plan, setPlan] = useState(null);   // null=جارٍ · {ok,...} · {error}
   const [applying, setApplying] = useState(false);
   const [done, setDone] = useState(null);
@@ -307,12 +324,23 @@ function ApplyCreditsModal({ target, onClose, onDone }) {
         : !plan.ok ? <div style={{ color: 'var(--red)', fontSize: 13, padding: 12 }}>خطأ: {plan.error}</div>
         : done ? (
           <div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--green)', marginBottom: 10 }}>
-              ✓ طُبِّق {fmt(done.applied)} ر.س على {done.count} فاتورة
-            </div>
+            {done.applied > 0 && (
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--green)', marginBottom: 10 }}>
+                ✓ طُبِّق {fmt(done.applied)} ر.س على {done.count} فاتورة
+              </div>
+            )}
             {done.results?.filter(x => !x.ok).map((x, i) => (
               <div key={i} style={{ fontSize: 12, color: 'var(--red)' }}>فاتورة {x.invoice}: {x.error}</div>
             ))}
+            {done.results?.some(x => !x.ok && /authoriz|scope|permission|صلاح/i.test(x.error || '')) && (
+              <div style={{ marginTop: 10, padding: '10px 12px', borderRadius: 8, fontSize: 12, lineHeight: 1.7,
+                background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)' }}>
+                الربط الحالي «قراءة فقط» فرفض زوهو التطبيق. امنح صلاحية التطبيق مرة واحدة (تبقى القراءة كما هي):
+                <div style={{ marginTop: 8 }}>
+                  <Btn size="sm" variant="accent" onClick={onGrant}>🔑 منح صلاحية التطبيق</Btn>
+                </div>
+              </div>
+            )}
             <div style={{ marginTop: 14, textAlign: 'left' }}><Btn variant="primary" onClick={onDone}>تم</Btn></div>
           </div>
         ) : !plan.plan?.length ? (
