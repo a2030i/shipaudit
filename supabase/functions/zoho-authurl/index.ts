@@ -15,12 +15,20 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 // الصلاحيات الموسّعة: كل قراءات الوحدات المستخدَمة + كتابة الفواتير فقط.
+// حزمة الصلاحيات: قراءة كاملة + كتابة UPDATE فقط على الوحدات غير الحسّاسة
+// (فواتير/إشعارات/دفعات/جهات اتصال). **صفر DELETE · صفر banking · صفر
+// settings.UPDATE · صفر CREATE**. تطبيق الرصيد يستهلك الإشعار+الدفعة فيحتاج
+// UPDATE عليهما (رفض invoices.UPDATE وحدها أثبته زوهو عملياً 2026-07-03).
+// الكتابة تغطّي: تطبيق الرصيد · تحويل مسودّة→مرسَلة · إرسال ZATCA (كلها
+// invoices.UPDATE) · حدود ائتمان العميل (contacts.UPDATE).
 const SCOPE = [
   'ZohoBooks.invoices.READ', 'ZohoBooks.invoices.UPDATE',
-  'ZohoBooks.creditnotes.READ', 'ZohoBooks.customerpayments.READ',
-  'ZohoBooks.contacts.READ', 'ZohoBooks.expenses.READ',
-  'ZohoBooks.bills.READ', 'ZohoBooks.vendorpayments.READ',
-  'ZohoBooks.accountants.READ', 'ZohoBooks.settings.READ', 'ZohoBooks.reports.READ',
+  'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE',
+  'ZohoBooks.customerpayments.READ', 'ZohoBooks.customerpayments.UPDATE',
+  'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
+  'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ',
+  'ZohoBooks.vendorpayments.READ', 'ZohoBooks.accountants.READ',
+  'ZohoBooks.settings.READ', 'ZohoBooks.reports.READ',
 ].join(',');
 
 Deno.serve(async (req) => {
