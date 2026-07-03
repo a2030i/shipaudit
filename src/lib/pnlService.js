@@ -189,6 +189,23 @@ export async function loadZohoInvoiceDashboard() {
   };
 }
 
+// حملة تحصيل من فواتير زوهو المتأخرة (status=overdue) — مجمَّعة بالعميل
+// مع هاتفه من دليل المتاجر (روابط ثم اسم مطبَّع) وقائمة أرقام الفواتير.
+export async function loadZohoOverdueCampaign() {
+  const { data, error } = await supabase.rpc('zoho_overdue_campaign');
+  if (error) throw error;
+  return (data || []).map(r => ({
+    customerName: r.customer_name,
+    storeName:    r.store_name,
+    phone:        r.phone,
+    owed:         Number(r.owed) || 0,
+    invCount:     Number(r.inv_count) || 0,
+    oldest:       r.oldest,
+    ageDays:      Number(r.oldest_age_days) || 0,
+    invoiceList:  r.invoice_list || '',
+  }));
+}
+
 // تعريب حالات مستندات زوهو (فواتير/فواتير موردين). المفتاح lower-case.
 export const ZOHO_STATUS_AR = {
   paid: 'مدفوعة', unpaid: 'غير مدفوعة', overdue: 'متأخرة', draft: 'مسودة',
