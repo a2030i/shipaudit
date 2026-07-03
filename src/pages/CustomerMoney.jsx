@@ -190,21 +190,31 @@ export default function CustomerMoney({ isActive = true }) {
       {credits && credits.rows.length > 0 && (
         <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden',
           border: '1.5px solid color-mix(in srgb, var(--green) 30%, var(--border))' }}>
-          <button onClick={() => setCreditsOpen(o => !o)}
-            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
-              background: 'color-mix(in srgb, var(--green) 7%, transparent)', border: 'none', cursor: 'pointer', textAlign: 'right' }}>
-            <span style={{ fontSize: 17 }}>💳</span>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 13, fontWeight: 800 }}>
-                {credits.rows.length} عميل لهم أرصدة دائنة غير مستخدمة — يمكن تطبيقها لتصفير جزء من دينهم
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px', flexWrap: 'wrap',
+            background: 'color-mix(in srgb, var(--green) 7%, transparent)' }}>
+            <button onClick={() => setCreditsOpen(o => !o)}
+              style={{ flex: 1, minWidth: 200, display: 'flex', alignItems: 'center', gap: 10,
+                background: 'transparent', border: 'none', cursor: 'pointer', textAlign: 'right', padding: 0 }}>
+              <span style={{ fontSize: 17 }}>💳</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, fontWeight: 800 }}>
+                  {credits.rows.length} عميل لهم أرصدة دائنة غير مستخدمة — يمكن تطبيقها لتصفير جزء من دينهم
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                  قابل للتطبيق: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س ·
+                  {credits.clearsCount} منهم يُصفَّر رصيدهم بالكامل · افتح للتفاصيل والتطبيق
+                </div>
               </div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                قابل للتطبيق: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س ·
-                {credits.clearsCount} منهم يُصفَّر رصيدهم بالكامل · التطبيق يتم في زوهو بنقرة
-              </div>
-            </div>
-            <ChevronDown size={16} style={{ transform: creditsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: 'var(--muted)' }}/>
-          </button>
+              <ChevronDown size={16} style={{ transform: creditsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: 'var(--muted)' }}/>
+            </button>
+            {isAdmin && (
+              <button onClick={grantWriteAccess} title="مرة واحدة — يفعّل زر «طبّق تلقائياً»"
+                style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--card)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                🔑 منح صلاحية التطبيق
+              </button>
+            )}
+          </div>
           {creditsOpen && (
             <div className="m-flow" style={{ maxHeight: 340, overflowY: 'auto', borderTop: '1px solid var(--border)' }}>
               <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
