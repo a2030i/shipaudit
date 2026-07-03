@@ -914,9 +914,21 @@ export function auditRow(row, contract) {
     ? Number(row.codAmount || 0)
     : Number(row.posAmount || 0);
   const posPct         = Number(contract?.posFeePct ?? 0);
-  const expectedPosFee = posAmount > 0 && posPct > 0
-    ? +(posAmount * posPct).toFixed(4)
-    : 0;
+  // Split payment (card + cash, e.g. J&T "NLCard Cash"): the carrier bills
+  // 2% on the CARD portion only — cash is free — and the file gives NO
+  // card/cash breakdown, so posAmount here is the FULL COD (mapRows can't
+  // split it). Applying the % to the full COD over-estimates and produces
+  // phantom "favorable" diffs (verified June: JTE…521999 COD 307, J&T fee
+  // 0.14 = 2%×7 card, our 2%×307 = 6.14 → fake −6.00). We can't derive the
+  // card portion, so accept the billed fee as authoritative (passthrough) —
+  // same principle as fuel/codFee passthrough. The base delivery + weight
+  // stay strictly audited, where real overbilling would surface.
+  const pm = String(row.codPaymentMethod || '');
+  const isSplitPay = /(?:cash|نقد|كاش)/i.test(pm)
+    && /(?:card|بطاق|nlcard|mada|مدى|apple|visa|master|شبكة)/i.test(pm);
+  const expectedPosFee = isSplitPay
+    ? invoicedPosFee
+    : (posAmount > 0 && posPct > 0 ? +(posAmount * posPct).toFixed(4) : 0);
 
   // contract.deliveryInclusiveVat (Webek): the delivery column already
   // includes 15% VAT. Strip it so the pre-tax comparison matches the
