@@ -519,6 +519,11 @@ export default function UploadWizard({ carriers, onComplete }) {
   // carry the originating webhook_events row id so AuditResults can
   // mark it processed + linked after the user approves.
   const [sourceWebhookEventId, setSourceWebhookEventId] = useState(null);
+  // اعتماد بنقرة (فواتير-1): علم من الوارد — يشغّل «تأكيد» خطوة 3 آلياً
+  // ويوسم المسودة ليعتمدها AuditResults إذا اجتازت البوابة. أي عائق
+  // (أعمدة ناقصة/مراجعة سابقة لنفس الفترة) يطفئ العلم ويترك المسار يدوياً.
+  const [autoApproveFlag, setAutoApproveFlag] = useState(false);
+  const autoConfirmFiredRef = useRef(false);
 
   const carrier = carriers.find(c => c.id === carrierId);
   const period  = buildPeriod(month, year);
@@ -768,6 +773,8 @@ export default function UploadWizard({ carriers, onComplete }) {
 
       if (payload.carrierId) setCarrierId(payload.carrierId);
       if (payload.eventId)   setSourceWebhookEventId(payload.eventId);
+      setAutoApproveFlag(!!payload.autoApprove);
+      autoConfirmFiredRef.current = false;
       setStep(2);
       toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
       // Synchronous call so handleFile starts immediately. Internally
@@ -810,6 +817,13 @@ export default function UploadWizard({ carriers, onComplete }) {
     try {
       const priors = await findSamePeriodAudits(carrier.id, period);
       if (priors.length) {
+        // في الوضع الآلي: مراجعة سابقة لنفس الفترة = خطر تكرار → أوقف
+        // الآلية فوراً واترك القرار للإنسان (لا window.confirm بلا مستخدم).
+        if (autoApproveFlag) {
+          setAutoApproveFlag(false);
+          toast(`⚠️ توجد ${priors.length} مراجعة سابقة لنفس الفترة — أُوقف الاعتماد الآلي، راجع يدوياً`, 'warn');
+          return;
+        }
         const p = priors[0];
         const when = p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—';
         const ok = window.confirm(
@@ -845,10 +859,32 @@ export default function UploadWizard({ carriers, onComplete }) {
       // If we came from the Webhook page, carry the source event id
       // so AuditResults can flip it to 'processed' on approval.
       sourceWebhookEventId,
+      // اعتماد بنقرة: AuditResults يعتمد آلياً فقط إذا اجتازت البوابة
+      autoApprove: autoApproveFlag,
     };
     toast(`جاهز للمراجعة — ${results.length} شحنة`, 'success');
     onComplete(audit);
   };
+
+  // ── الاعتماد بنقرة: تشغيل «تأكيد» خطوة 3 آلياً ─────────────────────
+  // يشتعل مرة واحدة (ref) حين تجهز الخطوة بعلَم autoApprove. شرط السلامة:
+  // عمود مبلغ موجود (أو العقد يسعّر priceFromContract) وعمود AWB — وإلا
+  // يطفأ العلم ويُترك المسار يدوياً. نفس handleConfirm اليدوي حرفياً.
+  useEffect(() => {
+    if (!autoApproveFlag || step !== 3 || autoConfirmFiredRef.current) return;
+    if (!carrier || !rawRows.length || uploading) return;
+    const priced = colMap?.deliveryCharges != null
+      || carrier.contracts?.some(c => c.priceFromContract);
+    if (colMap?.awb == null || !priced) {
+      setAutoApproveFlag(false);
+      toast('الأعمدة غير مكتملة للاعتماد الآلي — راجع الخريطة يدوياً', 'warn');
+      return;
+    }
+    autoConfirmFiredRef.current = true;
+    toast('⚡ تدقيق آلي جارٍ…', 'info');
+    handleConfirm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoApproveFlag, step, carrier, rawRows.length, colMap, uploading]);
 
   const stepLabels = [
     { n: 1, title: 'اختر الشركة', sub: 'الناقل والفترة'   },
