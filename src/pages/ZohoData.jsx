@@ -64,6 +64,7 @@ const COLS = {
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const [type, setType] = useState('invoices');
+  const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
   const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
   const [waOpen, setWaOpen] = useState(false);
@@ -128,12 +129,18 @@ export default function ZohoData({ isActive = true }) {
   // إعادة ضبط الفلاتر عند تغيير النوع (الحالات تختلف)
   useEffect(() => { setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' }); }, [type]);
 
-  const load = useCallback(async (t, p) => {
+  const load = useCallback(async (t, pFrom, pTo) => {
     setRows(null);
-    try { setRows(await loadZohoMirror(t, { period: p || null })); }
+    try {
+      // «من» فقط = شهر واحد · «من+إلى» = نطاق · كلاهما فارغ = كل الفترات
+      setRows(await loadZohoMirror(t, {
+        periodFrom: pFrom || null,
+        periodTo:   (pTo || pFrom) || null,
+      }));
+    }
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setRows([]); }
   }, []);
-  useEffect(() => { if (isActive) load(type, period); }, [isActive, type, period, load]);
+  useEffect(() => { if (isActive) load(type, period, periodTo); }, [isActive, type, period, periodTo, load]);
 
   // لوحة الفواتير (كل الأشهر) — تُحمَّل مرة عند دخول تبويب الفواتير
   useEffect(() => {
@@ -150,7 +157,7 @@ export default function ZohoData({ isActive = true }) {
       const parts = Object.entries(r.results || r).filter(([k]) => k !== 'ok')
         .map(([k, v]) => `${ZOHO_MIRRORS[k === 'customerpayments' ? 'payments' : k === 'vendorpayments' ? 'vendor_payments' : k]?.label?.replace(/^[^\s]+\s/, '') || k}: ${v}`);
       toast(`مزامنة: ${parts.join(' · ')}`, 'success');
-      load(type, period);
+      load(type, period, periodTo);
     } catch (e) { toast(`فشل المزامنة: ${e.message}`, 'error'); }
     setBusy(false);
   };
@@ -198,7 +205,7 @@ export default function ZohoData({ isActive = true }) {
   const exportXlsx = () => {
     if (!filtered.length) return;
     const aoa = [
-      [`سجلات زوهو — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}` : ''}`],
+      [`سجلات زوهو — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}${periodTo && periodTo !== period ? ` حتى ${monthLabel(periodTo)}` : ''}` : ''}`],
       [],
       cols.map(c => c[0]),
       ...filtered.map(r => cols.map(c => c[1] === 'status' ? zohoStatusAr(r[c[1]]) : (r[c[1]] ?? ''))),
@@ -237,27 +244,35 @@ export default function ZohoData({ isActive = true }) {
 
       {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
       {type === 'invoices' && dash && (
-        <>
-          <InvoiceDashboard dash={dash} onPick={setQ}/>
-          {dash.overdueCnt > 0 && can('collections.view') && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', margin: '-4px 0 12px' }}>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>
-                حملة تحصيل للمتأخرين ({dash.overdueCnt} فاتورة):
-              </span>
-              <Btn size="sm" variant="accent" onClick={openWhatsApp}>📲 حملة واتساب</Btn>
-              <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportCampaign}>📞 ملف الحملة (Excel)</Btn>
-            </div>
-          )}
-        </>
+        <InvoiceDashboard dash={dash} onPick={setQ}
+          onShowOverdue={() => {
+            // المتأخرات موزّعة على أشهر قديمة — افتح كل الفترات وفلترها
+            setPeriod(''); setPeriodTo(''); setStatus('overdue'); setQ('');
+          }}
+          campaign={dash.overdueCnt > 0 && can('collections.view') ? {
+            onWhatsApp: openWhatsApp, onExport: exportCampaign,
+          } : null}/>
       )}
 
       {/* الفلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
-        <select value={period} onChange={e => setPeriod(e.target.value)} title="الفترة"
-          style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
-          <option value="">كل الفترات (حتى 5000)</option>
-          {monthOptions().map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <select value={period} onChange={e => { setPeriod(e.target.value); if (!e.target.value) setPeriodTo(''); }} title="من شهر"
+            style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+            <option value="">كل الفترات (حتى 5000)</option>
+            {monthOptions().map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+          </select>
+          {period && (
+            <>
+              <span style={{ color: 'var(--muted)', fontSize: 12 }}>حتى</span>
+              <select value={periodTo} onChange={e => setPeriodTo(e.target.value)} title="إلى شهر (اختياري — لنطاق عدة أشهر)"
+                style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+                <option value="">نفس الشهر</option>
+                {monthOptions().filter(m => m >= period).map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
+              </select>
+            </>
+          )}
+        </div>
         {statuses.length > 0 && (
           <select value={status} onChange={e => setStatus(e.target.value)} title="الحالة"
             style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
@@ -381,25 +396,36 @@ function StatusPill({ status }) {
   );
 }
 
-// لوحة نظرة عامة على فواتير العملاء
-function InvoiceDashboard({ dash, onPick }) {
+// لوحة نظرة عامة على فواتير العملاء — أرقامها كل الفترات (مستقلة عن الفلاتر أدناه)
+function InvoiceDashboard({ dash, onPick, onShowOverdue, campaign }) {
   const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
   const ml = (ym) => { const [y, m] = String(ym).split('-'); return `${names[+m - 1] || m} ${y}`; };
   const kpis = [
     { label: 'إجمالي غير المدفوع (باقٍ)', val: dash.openAr, sub: `${dash.openCnt} فاتورة مفتوحة`, tone: 'gold' },
-    { label: 'متأخّرة عن السداد', val: dash.overdueAmt, sub: `${dash.overdueCnt} فاتورة`, tone: 'red' },
+    { label: 'متأخّرة عن السداد', val: dash.overdueAmt, sub: `${dash.overdueCnt} فاتورة — اضغط لعرضها`, tone: 'red', onClick: onShowOverdue, isOverdue: true },
     { label: 'مسودّات', val: dash.draftTotal, sub: `${dash.draftCnt} فاتورة لم تُرسَل`, tone: 'muted' },
   ];
   const toneCol = { gold: 'var(--gold)', red: 'var(--red)', muted: 'var(--muted)' };
   return (
     <Card style={{ padding: 14, marginBottom: 12 }}>
+      <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginBottom: 8 }}>
+        نظرة عامة — <b>كل الفترات</b> (لا تتأثر بفلاتر الجدول أدناه)
+      </div>
       {/* KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 14 }}>
         {kpis.map(k => (
-          <div key={k.label} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+          <div key={k.label} onClick={k.onClick}
+            style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)',
+              cursor: k.onClick ? 'pointer' : 'default' }}>
             <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{k.label}</div>
             <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: toneCol[k.tone] }}>{fmt(k.val)}</div>
             <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 2 }}>{k.sub}</div>
+            {k.isOverdue && campaign && (
+              <div style={{ display: 'flex', gap: 6, marginTop: 8, flexWrap: 'wrap' }} onClick={e => e.stopPropagation()}>
+                <Btn size="sm" variant="accent" onClick={campaign.onWhatsApp}>📲 حملة واتساب</Btn>
+                <Btn size="sm" variant="ghost" onClick={campaign.onExport}>📞 ملف الحملة</Btn>
+              </div>
+            )}
           </div>
         ))}
       </div>

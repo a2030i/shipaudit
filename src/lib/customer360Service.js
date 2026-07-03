@@ -29,13 +29,18 @@
 
 import { loadLatestReceivables } from './customerReceivablesService.js';
 import { loadLatestMerchants } from './merchantsService.js';
+import { supabase } from './supabase.js';
 
 const DAY = 86_400_000;
 
 export async function loadCustomerWatch() {
-  const [receivablesResult, merchantsResult] = await Promise.all([
+  const [receivablesResult, merchantsResult, zohoDash] = await Promise.all([
     loadLatestReceivables().catch(() => null),
     loadLatestMerchants().catch(() => ({ snapshot: null, merchants: [] })),
+    // «فوترنا شهرياً» من مرآة زوهو الحيّة (كل الفواتير — المدفوعة وغيرها).
+    // الـ snapshot الداخلي يحوي المفتوحة فقط فيُظهر 0 للشهر الجاري بعد السداد
+    // (شكوى «الصفحات غير مترابطة» 2026-07-03). فشل الجلب صامت — fallback للـ snapshot.
+    supabase.rpc('zoho_invoice_dashboard').then(r => r.data).catch(() => null),
   ]);
   const customers = receivablesResult?.activeCustomers || [];
   const merchants = merchantsResult?.merchants || [];
@@ -232,6 +237,22 @@ export async function loadCustomerWatch() {
       .slice(0, 10),
   };
 
+  // مصدر الحقيقة للفوترة الشهرية = مرآة زوهو (إن توفّرت): تشمل المدفوعة،
+  // بينما snapshot المديونيات يحوي المفتوحة فقط (الشهر الجاري يظهر 0 زوراً).
+  let invoicedSource = 'snapshot';
+  if (Array.isArray(zohoDash?.monthly) && zohoDash.monthly.length) {
+    const byYm = new Map(zohoDash.monthly.map(m => [m.ym, m]));
+    for (const bucket of monthsSeries) {
+      const zm = byYm.get(bucket.key);
+      if (zm) { bucket.value = Number(zm.total) || 0; bucket.count = Number(zm.cnt) || 0; }
+    }
+    const curKey  = monthKey(monthStart);
+    const prevKey = monthKey(lastMonthStart);
+    monthlyInvoiced    = Number(byYm.get(curKey)?.total)  || 0;
+    lastMonthInvoiced  = Number(byYm.get(prevKey)?.total) || 0;
+    invoicedSource = 'zoho';
+  }
+
   // Monthly invoicing delta — used by the spotlight's delta pill.
   let monthlyDelta = null;
   if (lastMonthInvoiced > 0) {
@@ -275,6 +296,7 @@ export async function loadCustomerWatch() {
       monthlyInvoiced:     +monthlyInvoiced.toFixed(2),
       lastMonthInvoiced:   +lastMonthInvoiced.toFixed(2),
       monthlyDelta,
+      invoicedSource,       // 'zoho' = من المرآة الحيّة · 'snapshot' = fallback
       // Merchant-side
       merchantsCount: merchants.length,
       activeCount,

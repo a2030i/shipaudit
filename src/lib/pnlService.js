@@ -145,10 +145,19 @@ export const ZOHO_MIRRORS = {
   journals:        { table: 'zoho_journals',        label: '📒 القيود اليومية',  amount: 'total' },
 };
 
-// صفوف مرآة لشهر (أو الكل إن null) — paginated بترتيب فريد (قاعدة §6)
-export async function loadZohoMirror(type, { period = null } = {}) {
+// آخر يوم في شهر 'YYYY-MM'
+const monthEnd = (p) => {
+  const [y, m] = p.split('-').map(Number);
+  return `${p}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+};
+
+// صفوف مرآة لفترة — paginated بترتيب فريد (قاعدة §6).
+// period = شهر واحد · أو نطاق {periodFrom, periodTo} (شهور YYYY-MM شاملة).
+export async function loadZohoMirror(type, { period = null, periodFrom = null, periodTo = null } = {}) {
   const cfg = ZOHO_MIRRORS[type];
   if (!cfg) return [];
+  const from = periodFrom || period;
+  const to   = periodTo   || period;
   const rows = [];
   let f = 0;
   while (true) {
@@ -156,11 +165,8 @@ export async function loadZohoMirror(type, { period = null } = {}) {
       .order('date', { ascending: false })
       .order('zoho_id', { ascending: true })
       .range(f, f + 999);
-    if (period) {
-      const [y, m] = period.split('-').map(Number);
-      q = q.gte('date', `${period}-01`)
-           .lte('date', `${period}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`);
-    }
+    if (from) q = q.gte('date', `${from}-01`);
+    if (to)   q = q.lte('date', monthEnd(to));
     const { data, error } = await q;
     if (error) throw error;
     if (!data?.length) break;

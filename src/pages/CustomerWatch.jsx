@@ -222,8 +222,8 @@ export default function CustomerWatch({ isActive = true }) {
         <>
           {/* ── SPOTLIGHT: monthly invoiced (the headline number) ── */}
           <SpotlightCard
-            tag="INVOICED THIS MONTH"
-            title="إجمالي ما تم إصداره من فواتير هذا الشهر"
+            tag={t.invoicedSource === 'zoho' ? 'INVOICED THIS MONTH · ZOHO LIVE' : 'INVOICED THIS MONTH'}
+            title={`إجمالي ما تم إصداره من فواتير هذا الشهر${t.invoicedSource === 'zoho' ? ' (من زوهو مباشرة — يشمل المدفوعة)' : ''}`}
             value={fmt(t.monthlyInvoiced)}
             suffix="ر.س"
             accent="var(--green)"
