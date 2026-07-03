@@ -38,7 +38,7 @@ async function loadAll(table, columns) {
 const n = (v) => Number(v) || 0;
 
 export async function loadMonthlyReport() {
-  const [ops, audits, carriers, payments] = await Promise.all([
+  const [ops, audits, carriers, payments, codSettle] = await Promise.all([
     loadAll('carrier_operations', 'id, carrier_id, doc_type, amount_dr, amount_cr, doc_date, created_at'),
     loadAll('audits', 'id, carrier_id, carrier_name, period, created_at, total_expected, total_billed, diff, mismatch_count, review_status'),
     supabase.from('carriers').select('id, name').then(r => r.data || []),
@@ -46,6 +46,10 @@ export async function loadMonthlyReport() {
     // carrier_operations (لا يكتبها أحد — كان العمود يظهر 0 رغم دفعات
     // أرامكس 164,003؛ فحص الوكلاء #9). جدول payments = المصدر الوحيد.
     loadAll('payments', 'id, carrier_id, amount, paid_at, created_at'),
+    // COD من cod_settlement (نفس مصدر الرئيسية monthly_financial_snapshot،
+    // حسب upload_date) لا قيود COD الدفترية — كانا يختلفان (655K مقابل 588K
+    // يونيو؛ فحص الوكلاء #5). المصدر الواحد = cod_settlement direction='in'.
+    loadAll('cod_settlement', 'id, carrier_id, amount, direction, upload_date'),
   ]);
 
   const nameById = new Map(carriers.map(c => [c.id, c.name]));
@@ -74,21 +78,25 @@ export async function loadMonthlyReport() {
     const dr = n(op.amount_dr), cr = n(op.amount_cr);
     r.billed   += dr;
     r.crTotal  += cr;
-    if (op.doc_type === 'COD')                       r.cod         += cr;
-    else if (op.doc_type === 'DG' || op.doc_type === 'AB') r.creditNotes += cr;
-    else if (op.doc_type === 'PAY')                  r.payments    += cr;
+    // COD يأتي من cod_settlement أدناه (توحيد #5) لا من قيود COD الدفترية.
+    if (op.doc_type === 'DG' || op.doc_type === 'AB') r.creditNotes += cr;
   }
 
-  // ── Payments (from the payments table — the real source) ──
-  // نضيفها للعمود وللـcrTotal (فتدخل «صافي الحركة») تماماً كما كانت قيود
-  // PAY ستفعل لو كانت تُكتَب. المصدر واحد فلا ازدواج (لا قيود PAY تُكتَب).
+  // ── COD المُستلَم (من cod_settlement — نفس مصدر الرئيسية، حسب upload_date) ──
+  for (const s of codSettle) {
+    if (s.direction !== 'in') continue;
+    const month = monthOf(s.upload_date);
+    if (!month) continue;
+    const r = get(month, canon(s.carrier_id));
+    r.cod += n(s.amount);
+  }
+
+  // ── المدفوعات (من جدول payments — المصدر الفعلي، حسب paid_at) ──
   for (const p of payments) {
     const month = monthOf(p.paid_at || p.created_at);
     if (!month) continue;
     const r = get(month, canon(p.carrier_id));
-    const amt = n(p.amount);
-    r.payments += amt;
-    r.crTotal  += amt;
+    r.payments += n(p.amount);
   }
 
   // ── Audits (quality: how much was reviewed + diffs) ──
@@ -106,7 +114,10 @@ export async function loadMonthlyReport() {
 
   const rows = [...cell.values()].map(r => ({
     ...r,
-    net: +(r.billed - r.crTotal).toFixed(2),
+    // «صافي الحركة» = COD المُستلَم − المفوتر — نفس معادلة الرئيسية
+    // (monthly_financial_snapshot: cod_received − carrier_spend_gross)
+    // فلا رقمان باسم «صافي» بدلالتين (قاعدة §1.22، فحص الوكلاء #11).
+    net: +(r.cod - r.billed).toFixed(2),
     billed: +r.billed.toFixed(2),
     cod: +r.cod.toFixed(2),
     creditNotes: +r.creditNotes.toFixed(2),

@@ -70,11 +70,18 @@ export async function loadCashAging() {
     .filter(r => Math.abs(r.total) > 0.5)
     .sort((a, b) => b.total - a.total);
 
+  // «مستحق علينا للناقلين» = المدينون فقط (net موجب) — مطابق
+  // ap_aging_by_carrier وworking_capital (توحيد فحص الوكلاء #8). كان
+  // apTotal يجمع الكل شامل الأرصدة الدائنة (−558K مضلِّل: يخلط COD المحتجز
+  // بفواتير الشحن). الدائن (COD لم يُورَّد) يُعرَض منفصلاً.
+  const apDebtors = apRows.filter(r => r.total > 0.5);
+  const apCredit  = apRows.filter(r => r.total < -0.5);
   return {
     cod: codRows,
     codTotal: +codRows.reduce((s, r) => s + r.outTotal, 0).toFixed(2),
     ap: apRows,
-    apTotal: +apRows.reduce((s, r) => s + r.total, 0).toFixed(2),
-    apOverdue: +apRows.reduce((s, r) => s + r.overdue, 0).toFixed(2),
+    apTotal: +apDebtors.reduce((s, r) => s + r.total, 0).toFixed(2),
+    apOverdue: +apDebtors.reduce((s, r) => s + r.overdue, 0).toFixed(2),
+    apCreditTotal: +apCredit.reduce((s, r) => s + r.total, 0).toFixed(2),
   };
 }
