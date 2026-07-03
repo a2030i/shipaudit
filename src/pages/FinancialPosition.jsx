@@ -39,6 +39,15 @@ export default function FinancialPosition({ isActive = true }) {
   const [billedByMonth, setBilledByMonth] = useState(new Map());   // دفترنا (فحص الفجوة)
   const [invCol, setInvCol] = useState(null);                      // فوترنا/حصّلنا للشهر المحدد
   const [events, setEvents] = useState(null);                      // آخر الحركات (webhooks)
+  const [claims, setClaims] = useState(null);                      // عدّاد الاسترداد التراكمي
+
+  // عدّاد الاسترداد — تحميل كسول مرة واحدة (المطالبات قليلة)
+  useEffect(() => {
+    if (!isActive || claims != null) return;
+    import('../lib/claimsService.js')
+      .then(m => m.loadClaims().then(list => setClaims(m.summarizeClaims(list))))
+      .catch(() => setClaims({ recoveredTotal: 0, openTotal: 0, submittedTotal: 0, recovered: 0 }));
+  }, [isActive, claims]);
 
   const reload = useCallback(async () => {
     try { setSnaps(await loadPnlSnapshots()); }
@@ -231,6 +240,29 @@ export default function FinancialPosition({ isActive = true }) {
         {invCol?.hasData && invCol.collected > invCol.invoiced + 1 && (
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: -8, marginBottom: 14 }}>
             💡 «حصّلنا» أكبر من «فوترنا» لأن بعض الدفعات هذا الشهر تخصّ فواتير أشهر سابقة — طبيعي.
+          </div>
+        )}
+
+        {/* ── عدّاد الاسترداد — أثر التدقيق التراكمي من سجل المطالبات ── */}
+        {claims && (claims.recoveredTotal > 0.5 || claims.openTotal > 0.5 || claims.submittedTotal > 0.5) && (
+          <div onClick={() => navigate('/hub?tab=claims')} style={{
+            display: 'flex', gap: 14, flexWrap: 'wrap', alignItems: 'center', cursor: 'pointer',
+            padding: '11px 16px', borderRadius: 12, marginBottom: 16,
+            background: 'color-mix(in srgb, var(--green) 6%, var(--card))',
+            border: '1px solid color-mix(in srgb, var(--green) 25%, var(--border))',
+          }}>
+            <span style={{ fontSize: 12, fontWeight: 700 }}>🏆 عدّاد الاسترداد (تراكمي)</span>
+            <span style={{ fontSize: 12 }}>
+              استردَدنا فعلاً <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{fmt(claims.recoveredTotal)}</b> ر.س
+              ({claims.recovered} مطالبة)
+            </span>
+            {claims.submittedTotal > 0.5 && (
+              <span style={{ fontSize: 12 }}>· قيد المطالبة <b style={{ fontFamily: 'var(--font-mono)', color: '#3B82F6' }}>{fmt(claims.submittedTotal)}</b></span>
+            )}
+            {claims.openTotal > 0.5 && (
+              <span style={{ fontSize: 12 }}>· مكتشفة لم تُطالَب <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>{fmt(claims.openTotal)}</b></span>
+            )}
+            <span style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--muted)' }}>سجل المطالبات ←</span>
           </div>
         )}
 
