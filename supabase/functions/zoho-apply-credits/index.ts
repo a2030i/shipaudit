@@ -1,4 +1,4 @@
-// zoho-apply-credits v9 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v10 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -20,6 +20,9 @@
 // v9: عند رفض «المبلغ أكثر من الرصيد» (سباق Deluce/تقادم الكاش) نعيد جلب
 //     الأرصدة الطازجة مرة واحدة، نعيد القصّ عليها، ونحاول مرة أخيرة — للإشعارات
 //     والدفعات معاً. الجلب الطازج فقط عند الرفض (لا يُثقِل الحصة عادةً).
+// v10: المحاولة الثانية تنطلق على **أي** فشل (لا نطابق نص عربي هشّاً)، ونعيد
+//      جلب تطبيقات الدفعة القائمة الطازجة (قد يغيّرها Deluge)، مع console.error
+//      للاستجابة الخام لتشخيص الرفض المتبقّي.
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -280,14 +283,16 @@ Deno.serve(async (req) => {
           if (!list.length) { results.push({ source: `إشعار ${app.number}`, applied: 0, ok: true }); continue; }
           let res1 = await doPost(list);
 
-          // رفض «أكثر من الرصيد» → رصيدنا قديم؛ أعِد الجلب الطازج وأعد القصّ ومرّة أخيرة
-          if (!res1.ok && overBalance(res1.err)) {
+          // أي فشل غير الصلاحية/الحصة → أعِد الجلب الطازج وأعد القصّ ومرّة أخيرة
+          if (!res1.ok && !authErr(res1.err) && !rateLimited(res1.err) && res1.r.status !== 429) {
+            console.error('[apply cn fail#1]', JSON.stringify({ cn: app.creditnote_id, num: app.number, tried: list, err: res1.err }));
             refund(list);
             const fresh = await getFresh();
             const recap = capOn(fresh, app.invoices);
             list = recap.list; sum = recap.sum;
             if (!list.length) { results.push({ source: `إشعار ${app.number}`, applied: 0, ok: true, note: 'لا رصيد متبقٍّ' }); continue; }
             res1 = await doPost(list);
+            if (!res1.ok) console.error('[apply cn fail#2]', JSON.stringify({ cn: app.creditnote_id, tried: list, err: res1.err }));
           }
 
           const ok = res1.ok;
@@ -327,14 +332,23 @@ Deno.serve(async (req) => {
           if (!newList.length) { results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: true }); continue; }
           let res2 = await doPut(newList);
 
-          // رفض «أكثر من الرصيد» → رصيدنا قديم؛ أعِد الجلب الطازج وأعد القصّ ومرّة أخيرة
-          if (!res2.ok && overBalance(res2.err)) {
+          // أي فشل غير الصلاحية/الحصة → رصيدنا المرجعي غالباً قديم؛ أعِد جلب
+          // الرصيد والتطبيقات القائمة الطازجة، أعد القصّ، وحاول مرة أخيرة.
+          if (!res2.ok && !authErr(res2.err) && !rateLimited(res2.err) && res2.r.status !== 429) {
+            console.error('[apply pay fail#1]', JSON.stringify({ pay: app.payment_id, ref: app.ref, tried: newList, err: res2.err }));
             refund(newList);
+            try {
+              const gp2 = await zfetch(`${apiDomain}/books/v3/customerpayments/${app.payment_id}?organization_id=${orgId}`, { headers: H });
+              const gj2 = await gp2.json();
+              existing.clear();
+              for (const x of (gj2?.payment?.invoices || [])) existing.set(x.invoice_id, r2((existing.get(x.invoice_id) || 0) + Number(x.amount_applied)));
+            } catch { /* أبقِ القائمة القديمة */ }
             const fresh = await getFresh();
             const recap = capOn(fresh, app.invoices);
             newList = recap.list; sum = recap.sum;
             if (!newList.length) { results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: true, note: 'لا رصيد متبقٍّ' }); continue; }
             res2 = await doPut(newList);
+            if (!res2.ok) console.error('[apply pay fail#2]', JSON.stringify({ pay: app.payment_id, tried: newList, existing: [...existing], err: res2.err }));
           }
 
           const ok = res2.ok;
