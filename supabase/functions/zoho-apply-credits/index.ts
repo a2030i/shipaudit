@@ -56,21 +56,20 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
   const H = { Authorization: `Zoho-oauthtoken ${token}` };
   const qs = (o: Record<string, string>) => new URLSearchParams({ organization_id: orgId, ...o }).toString();
 
-  const invRes = await fetch(`${apiDomain}/books/v3/invoices?${qs({ customer_id: contactId, status: 'unpaid', sort_column: 'date', sort_order: 'A', per_page: '200' })}`, { headers: H });
-  const invJ = await invRes.json();
+  // الطلبات الثلاثة متوازية (كانت تسلسلية = بطء 3×).
+  const [invRes, cnRes, payRes] = await Promise.all([
+    fetch(`${apiDomain}/books/v3/invoices?${qs({ customer_id: contactId, status: 'unpaid', sort_column: 'date', sort_order: 'A', per_page: '200' })}`, { headers: H }),
+    fetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
+    fetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
+  ]);
+  const [invJ, cnJ, payJ] = await Promise.all([invRes.json(), cnRes.json(), payRes.json()]);
   if (invJ.code !== 0) throw new Error(`invoices: ${invJ.message || invJ.code}`);
   const invoices = (invJ.invoices || [])
     .filter((i: any) => Number(i.balance) > 0.001)
     .map((i: any) => ({ invoice_id: i.invoice_id, number: i.invoice_number, date: i.date, balance: Number(i.balance) }));
-
-  const cnRes = await fetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H });
-  const cnJ = await cnRes.json();
   const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
     .map((c: any) => ({ creditnote_id: c.creditnote_id, number: c.creditnote_number, avail: Number(c.balance) }))
     .filter((c: any) => c.avail > 0.001);
-
-  const payRes = await fetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H });
-  const payJ = await payRes.json();
   const excessPays = (payJ.code === 0 ? (payJ.customerpayments || []) : [])
     .map((p: any) => ({ payment_id: p.payment_id, ref: p.reference_number || p.payment_number, avail: Number(p.unused_amount) }))
     .filter((p: any) => p.avail > 0.001);
