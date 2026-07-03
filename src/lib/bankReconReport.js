@@ -28,16 +28,19 @@ const daysBetween = (a, b) => {
   return Math.abs(Math.round((da - db) / dayMs));
 };
 
+// المدفوعات مصدرها جدول payments (createPaymentRecord) لا قيود PAY في
+// carrier_operations (لا يكتبها أحد — فحص الوكلاء #9: كل تحويل بنكي كان
+// يظهر «بلا قيد»). نُطبِّع الحقول لأسماء القيد (amount_cr/doc_date/doc_no)
+// فيبقى منطق المطابقة أدناه بلا تغيير.
 async function loadPayOps(month) {
   const PAGE = 1000; const rows = []; let from = 0;
   while (true) {
-    let q = supabase.from('carrier_operations')
-      .select('id, carrier_id, doc_date, doc_no, reference_no, description, amount_cr')
-      .eq('doc_type', 'PAY')
-      .order('doc_date', { ascending: true, nullsFirst: true })
+    let q = supabase.from('payments')
+      .select('id, carrier_id, paid_at, payment_ref, notes, amount')
+      .order('paid_at', { ascending: true, nullsFirst: true })
       .order('id', { ascending: true })          // قاعدة §6: ترتيب فريد قبل range
       .range(from, from + PAGE - 1);
-    if (month) q = q.gte('doc_date', `${month}-01`).lte('doc_date', `${month}-31`);
+    if (month) q = q.gte('paid_at', `${month}-01`).lte('paid_at', `${month}-31`);
     const { data, error } = await q;
     if (error) throw error;
     if (!data?.length) break;
@@ -45,7 +48,11 @@ async function loadPayOps(month) {
     if (data.length < PAGE) break;
     from += PAGE;
   }
-  return rows;
+  return rows.map(p => ({
+    id: p.id, carrier_id: p.carrier_id,
+    doc_date: p.paid_at, doc_no: p.payment_ref, reference_no: p.payment_ref,
+    description: p.notes, amount_cr: Number(p.amount) || 0,
+  }));
 }
 
 // month = 'YYYY-MM' أو null (كل الفترات). يرجع ملخّصاً + يولّد Excel مؤرشفاً.

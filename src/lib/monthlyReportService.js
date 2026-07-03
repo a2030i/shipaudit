@@ -38,10 +38,14 @@ async function loadAll(table, columns) {
 const n = (v) => Number(v) || 0;
 
 export async function loadMonthlyReport() {
-  const [ops, audits, carriers] = await Promise.all([
+  const [ops, audits, carriers, payments] = await Promise.all([
     loadAll('carrier_operations', 'id, carrier_id, doc_type, amount_dr, amount_cr, doc_date, created_at'),
     loadAll('audits', 'id, carrier_id, carrier_name, period, created_at, total_expected, total_billed, diff, mismatch_count, review_status'),
     supabase.from('carriers').select('id, name').then(r => r.data || []),
+    // المدفوعات مصدرها جدول payments (createPaymentRecord) لا قيود PAY في
+    // carrier_operations (لا يكتبها أحد — كان العمود يظهر 0 رغم دفعات
+    // أرامكس 164,003؛ فحص الوكلاء #9). جدول payments = المصدر الوحيد.
+    loadAll('payments', 'id, carrier_id, amount, paid_at, created_at'),
   ]);
 
   const nameById = new Map(carriers.map(c => [c.id, c.name]));
@@ -73,6 +77,18 @@ export async function loadMonthlyReport() {
     if (op.doc_type === 'COD')                       r.cod         += cr;
     else if (op.doc_type === 'DG' || op.doc_type === 'AB') r.creditNotes += cr;
     else if (op.doc_type === 'PAY')                  r.payments    += cr;
+  }
+
+  // ── Payments (from the payments table — the real source) ──
+  // نضيفها للعمود وللـcrTotal (فتدخل «صافي الحركة») تماماً كما كانت قيود
+  // PAY ستفعل لو كانت تُكتَب. المصدر واحد فلا ازدواج (لا قيود PAY تُكتَب).
+  for (const p of payments) {
+    const month = monthOf(p.paid_at || p.created_at);
+    if (!month) continue;
+    const r = get(month, canon(p.carrier_id));
+    const amt = n(p.amount);
+    r.payments += amt;
+    r.crTotal  += amt;
   }
 
   // ── Audits (quality: how much was reviewed + diffs) ──

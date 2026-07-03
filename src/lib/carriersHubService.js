@@ -83,7 +83,9 @@ export async function loadCarriersHub() {
     const fileKind          = sig.file_kind || null;
     const totalDr           = Number(r.total_dr) || 0;
     const totalCr           = Number(r.total_cr) || 0;
-    const balance           = totalDr - totalCr;
+    // الرصيد المفتوح (يستبعد المسدَّد) — نفس معادلة carrier_open_balance
+    // في /ledger (توحيد فحص الوكلاء #7). total_dr/total_cr للعرض فقط.
+    const balance           = Number(r.open_balance) || 0;
 
     // Setup completeness — gauges how "ready" each carrier is. The Hub
     // surfaces this so the admin sees at a glance which carriers still
