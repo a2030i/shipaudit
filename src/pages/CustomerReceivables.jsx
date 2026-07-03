@@ -16,6 +16,7 @@ import {
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import {
   parseReceivablesFile, uploadReceivablesSnapshot,
   loadLatestReceivables, loadReceivablesSnapshots, deleteReceivablesSnapshot,
@@ -1017,10 +1018,11 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success');
   };
 
-  // Collection-campaign export — contact info + debt summary for the
-  // call-center team. Includes phone, billing type, days outstanding,
-  // last-shipment date. Works on whatever is currently filtered.
-  const handleCollectionExport = () => {
+  // تصدير «الكشف الداخلي» — قائمة فرز داخلية من الـsnapshot المرفوع (هاتف/نوع
+  // فوترة/تقادم/آخر شحنة) للفريق. ليست «حملة تحصيل» — الحملة الوحيدة من زوهو
+  // الحيّ في /customer-money (قاعدة §1.24: مرجع الدين = زوهو). يمرّ عبر
+  // persistAndDownloadExport (تخزين + سجل، §1.13) بدل XLSX.writeFile المباشر.
+  const handleCollectionExport = async () => {
     if (!visibleCustomers.length) {
       toast('لا توجد بيانات للتصدير', 'info');
       return;
@@ -1068,10 +1070,16 @@ export default function CustomerReceivables({ isActive = true }) {
       { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'حملة تحصيل');
+    XLSX.utils.book_append_sheet(wb, ws, 'الكشف الداخلي');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(rtl(wb), `حملة_تحصيل_${dateStr}.xlsx`);
-    toast(`تم تصدير ${visibleCustomers.length} عميل لحملة التحصيل`, 'success');
+    try {
+      await persistAndDownloadExport({
+        wb, fileName: `الكشف_الداخلي_${dateStr}.xlsx`,
+        kind: 'internal_watchlist', rowCount: visibleCustomers.length,
+        total: +totalDebt.toFixed(2), userId: user?.id || null,
+      });
+      toast(`صُدّر ${visibleCustomers.length} عميل (الكشف الداخلي — snapshot، محفوظ في السجل)`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
   // Stop-list export — the 🛑 "suspend before debt grows" customers, with
@@ -1236,8 +1244,9 @@ export default function CustomerReceivables({ isActive = true }) {
             <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
               تصدير
             </Btn>
-            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}>
-              ملف تحصيل
+            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}
+              title="قائمة فرز داخلية من الكشف المرفوع (snapshot). حملة التحصيل الفعلية من زوهو الحيّ في «فلوسي عند العملاء»">
+              الكشف الداخلي
             </Btn>
             <Btn size="md" variant="accent" icon={<MessageCircle size={14}/>} onClick={() => setShowWhatsApp(true)} disabled={!visibleCustomers.length}>
               إرسال واتساب

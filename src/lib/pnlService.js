@@ -235,6 +235,9 @@ export async function loadCustomerMoneyDashboard() {
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
       lastPaymentDate: c.last_payment_date, lastPaymentAmount: Number(c.last_payment_amount) || 0,
+      // سياق المتجر (من كشف المتاجر) — لملف الحملة
+      billingType: c.billing_type || '', platformStatus: c.platform_status || '',
+      walletBalance: Number(c.wallet_balance) || 0, lastShipmentAt: c.last_shipment_at || null,
     })),
   };
 }

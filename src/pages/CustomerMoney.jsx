@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { RefreshCw, Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { rtl } from '../lib/xlsxRtl.js';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
@@ -84,23 +84,34 @@ export default function CustomerMoney({ isActive = true }) {
       };
     }), [filtered]);
 
-  const exportXlsx = () => {
+  // ملف الحملة — زوهو المرجع للدين + سياق المتجر (هاتف/نوع فوترة/حالة/محفظة/آخر
+  // شحنة) للفريق. يمرّ عبر persistAndDownloadExport (تخزين + سجل السحبات، §1.13).
+  const exportXlsx = async () => {
     if (!filtered.length) return;
+    const headers = ['العميل', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
+      'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها'];
     const aoa = [
       ['فلوسي عند العملاء — زوهو المرجع', '', new Date().toISOString().slice(0, 10)],
       [],
-      ['العميل', 'المتجر', 'الهاتف', 'المستحق', 'متأخر', 'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'آخر دفعة', 'مبلغها'],
-      ...filtered.map(c => [c.name, c.storeName || '', c.phone || '', c.owed, c.overdue, c.invCnt,
-        c.oldestDays, c.b0, c.b1, c.b2, c.b3, c.lastPaymentDate || '', c.lastPaymentAmount || '']),
+      headers,
+      ...filtered.map(c => [c.name, c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
+        c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3,
+        c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
+        c.lastPaymentDate || '', c.lastPaymentAmount || '']),
       [],
-      ['الإجمالي', '', '', filteredTotal],
+      ['الإجمالي', '', '', '', '', filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = aoa[2].map((_, i) => ({ wch: i === 0 ? 32 : 12 }));
+    ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 32 : (i === 1 ? 24 : 12) }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'فلوسي عند العملاء');
-    XLSX.writeFile(rtl(wb), `فلوسي_عند_العملاء_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast(`صُدّر ${filtered.length} عميلاً ✓`, 'success');
+    try {
+      await persistAndDownloadExport({
+        wb, fileName: `فلوسي_عند_العملاء_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'zoho_campaign', rowCount: filtered.length, total: +filteredTotal.toFixed(2), userId: user?.id || null,
+      });
+      toast(`صُدّر ${filtered.length} عميلاً ✓ (محفوظ في سجل السحبات)`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
   if (!can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض المديونيات»"/></div>;
