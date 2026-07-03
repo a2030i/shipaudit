@@ -12,12 +12,10 @@ import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers,
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { exportMergedExcessWeights } from '../engine/export.js';
 import { OR_MODELS, testConnection } from '../engine/openrouter.js';
-import { getNavPermissions, saveNavPermissions } from '../lib/permissionsService.js';
 
 const TABS = [
   { id: 'ai',          label: '✨ الذكاء الاصطناعي' },
   { id: 'payments',    label: '💳 الدفع الإلكتروني' },
-  { id: 'permissions', label: '🔐 صلاحيات التنقل' },
   { id: 'data',        label: '🗄️ البيانات' },
 ];
 
@@ -88,7 +86,6 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
       {tab === 'payments' && <PaymentsTab/>}
 
       {/* Nav Permissions tab */}
-      {tab === 'permissions' && <NavPermissionsTab/>}
 
       {/* Data tab */}
       <div style={{display: tab==='data' ? 'block' : 'none'}}>
@@ -183,119 +180,6 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
       </Card>
       </>}
     </div>
-  );
-}
-
-// ── Nav Permissions Tab ────────────────────────────────────────────────────────
-const NAV_ITEMS = [
-  { id: 'dashboard',        label: 'الرئيسية'           },
-  { id: 'carriers',         label: 'شركات الشحن'        },
-  { id: 'upload',           label: 'مراجعة جديدة'       },
-  { id: 'audits',           label: 'السجل'              },
-  { id: 'ledger',           label: 'الدفتر'             },
-  { id: 'aramex-stmt',      label: 'رفع كشف'            },
-  { id: 'cod-settlements',  label: 'تسويات COD'         },
-  { id: 'payments',         label: 'الدفعات'            },
-  { id: 'carrier-kpi',      label: 'أداء الناقلين'      },
-  { id: 'activity-log',     label: 'سجل النشاط'         },
-  { id: 'employees',        label: 'الموظفون'           },
-];
-const ROLES_CONFIG = [
-  { id: 'accountant1', label: 'محاسب أول',  color: 'var(--green)' },
-  { id: 'accountant2', label: 'محاسب ثانٍ', color: 'var(--gold)'  },
-];
-
-function NavPermissionsTab() {
-  const [perms,   setPerms]   = useState(null);
-  const [saving,  setSaving]  = useState(false);
-
-  useEffect(() => {
-    getNavPermissions().then(setPerms);
-  }, []);
-
-  const toggle = (role, pageId) => {
-    setPerms(prev => {
-      const current = prev[role] ?? [];
-      const next = current.includes(pageId)
-        ? current.filter(x => x !== pageId)
-        : [...current, pageId];
-      return { ...prev, [role]: next };
-    });
-  };
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await saveNavPermissions(perms);
-      toast('تم حفظ الصلاحيات ✓', 'success');
-    } catch (e) { toast(e.message, 'error'); }
-    setSaving(false);
-  };
-
-  if (!perms) return <div style={{padding:40,textAlign:'center'}}><Spinner size={22}/></div>;
-
-  return (
-    <Card>
-      <h3 style={{fontSize:14,fontWeight:700,marginBottom:4}}>🔐 صلاحيات التنقل</h3>
-      <p style={{fontSize:12,color:'var(--muted)',marginBottom:20}}>
-        تحكم في الصفحات التي يراها كل موظف في القائمة الجانبية. المدير يرى كل شيء دائماً.
-      </p>
-
-      <div style={{display:'grid',gridTemplateColumns:'160px repeat(2,1fr)',gap:0,borderRadius:10,overflow:'hidden',border:'1px solid var(--border)'}}>
-        {/* Header */}
-        <div style={{padding:'10px 14px',background:'var(--surface)',fontSize:11,color:'var(--muted)',fontWeight:600}}>الصفحة</div>
-        {ROLES_CONFIG.map(r => (
-          <div key={r.id} style={{padding:'10px 14px',background:'var(--surface)',fontSize:12,fontWeight:700,color:r.color,textAlign:'center'}}>
-            {r.label}
-          </div>
-        ))}
-
-        {/* Rows */}
-        {NAV_ITEMS.map((item, i) => (
-          <>
-            <div key={`lbl-${item.id}`} style={{
-              padding:'12px 14px',
-              background: i%2===0 ? 'var(--bg)' : 'var(--card)',
-              fontSize:13, borderTop:'1px solid var(--border)',
-            }}>
-              {item.label}
-            </div>
-            {ROLES_CONFIG.map(r => {
-              const on = item.id === 'mail' || (perms[r.id] ?? ['mail']).includes(item.id);
-              const locked = item.id === 'mail';
-              return (
-                <div key={`${r.id}-${item.id}`} style={{
-                  padding:'12px 14px', textAlign:'center',
-                  background: i%2===0 ? 'var(--bg)' : 'var(--card)',
-                  borderTop:'1px solid var(--border)',
-                }}>
-                  <button
-                    onClick={() => !locked && toggle(r.id, item.id)}
-                    title={locked ? 'لا يمكن إيقاف البريد' : ''}
-                    style={{
-                      width:32,height:32,borderRadius:8,cursor: locked ? 'not-allowed' : 'pointer',
-                      border:`1px solid ${on ? r.color+'60' : 'var(--border2)'}`,
-                      background: on ? `color-mix(in srgb,${r.color} 15%,transparent)` : 'var(--surface)',
-                      color: on ? r.color : 'var(--muted)',
-                      fontSize:15, transition:'all .15s',
-                      opacity: locked ? 0.5 : 1,
-                    }}
-                  >
-                    {on ? '✓' : '–'}
-                  </button>
-                </div>
-              );
-            })}
-          </>
-        ))}
-      </div>
-
-      <div style={{marginTop:16,display:'flex',justifyContent:'flex-end'}}>
-        <Btn onClick={handleSave} disabled={saving}>
-          {saving ? <Spinner size={14}/> : 'حفظ الصلاحيات'}
-        </Btn>
-      </div>
-    </Card>
   );
 }
 

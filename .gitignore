@@ -6,3 +6,16 @@ dist
 .env.*.local
 *.log
 .DS_Store
+
+# ── تنظيف إعادة البناء 2026-07-03 ──
+# ملفات عمل محلية ومخرجات تحقيقات لمرة واحدة — لا تدخل المستودع
+exports/
+scripts/
+*.xlsx
+LOGO.png
+# خطوط غير مستخدمة رُفعت بالخطأ (الخط الرسمي PingARLT في public/fonts/*.otf يبقى)
+public/fonts/IBMPlexSansArabic-*.woff2
+public/fonts/ReadexPro-*.woff2
+public/fonts/Tajawal-*.woff2
+# إعدادات صلاحيات محلية خاصة بالجهاز
+.claude/settings.local.json

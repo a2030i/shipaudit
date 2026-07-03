@@ -10,7 +10,7 @@
 
 import { useState } from 'react';
 
-// Official artwork uploaded as logo.webp; the mark-only file is optional
+// Official artwork served from public/lamha-logo.png
 // (collapsed sidebar falls back to the SVG mark below).
 const FULL_LOGO_SRC = '/lamha-logo.png';
 const MARK_SRC      = '/lamha-mark.png';

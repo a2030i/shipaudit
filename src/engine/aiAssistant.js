@@ -7,7 +7,6 @@
 //
 //  Public API:
 //    buildAssistantContext()   →  { snapshot, contextText }
-//    askAssistant(messages, contextText, signal)  →  string
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { loadSettings } from '../data/carriers.js';
@@ -149,52 +148,4 @@ export async function buildAssistantContext() {
     contextText: lines.join('\n'),
   };
 }
-
-const SYSTEM_PROMPT = `أنت مساعد مالي ذكي اسمه "محاسب" داخل نظام ShipAudit Pro.
-تساعد مدير الحسابات على فهم الالتزامات تجاه شركات الشحن والإجابة عن أي سؤال متعلق بالأرصدة والعمليات والفواتير والتدقيق.
-
-قواعد الجواب:
-- استخدم البيانات الفعلية من السياق المعطى أدناه فقط — لا تخمّن أرقاماً.
-- لو السؤال يحتاج معلومة مش موجودة في السياق، اعتذر بوضوح وأخبر المستخدم وين يلقاها في النظام.
-- أجوبة قصيرة ومباشرة بالعربية، الأرقام بصيغة سعودية مع "ر.س".
-- لو في معلومة مهمة (مثلاً متأخرات أو مبالغ كبيرة)، نبّه المستخدم بإيموجي مناسب (⚠️ ✅ 💰).
-- لو السؤال غير مالي (طبخ، رياضة...)، بأدب أعد المستخدم لتركيز النظام.
-
-السياق الحالي للنظام:
-{{CONTEXT}}`;
-
-export async function askAssistant(messages, contextText, signal) {
-  const settings = loadSettings();
-  if (!settings.openrouterKey) {
-    throw new Error('أدخل OpenRouter API Key في الإعدادات أولاً.');
-  }
-  const model = settings.openrouterModel || 'google/gemini-2.0-flash-001';
-  const system = SYSTEM_PROMPT.replace('{{CONTEXT}}', contextText || '(لا يوجد سياق)');
-
-  const res = await fetch(`${OR_BASE}/chat/completions`, {
-    method: 'POST',
-    signal,
-    headers: {
-      'Authorization': `Bearer ${settings.openrouterKey}`,
-      'Content-Type':  'application/json',
-      'HTTP-Referer':  'https://shipaudit.local',
-      'X-Title':       'ShipAudit Pro · AI Assistant',
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 700,
-      temperature: 0.3,
-      messages: [
-        { role: 'system', content: system },
-        ...messages,
-      ],
-    }),
-  });
-  if (!res.ok) {
-    let body = '';
-    try { body = (await res.json())?.error?.message; } catch {}
-    throw new Error(`AI خطأ ${res.status}: ${body || ''}`.trim());
-  }
-  const data = await res.json();
-  return data?.choices?.[0]?.message?.content ?? '';
-}
+
