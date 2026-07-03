@@ -9,7 +9,8 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod } from '../lib/pnlService.js';
+import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
+  loadZohoInvoiceDashboard, zohoStatusAr } from '../lib/pnlService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -59,7 +60,8 @@ const COLS = {
 
 export default function ZohoData({ isActive = true }) {
   const { can } = useAuth();
-  const [type, setType] = useState('expenses');
+  const [type, setType] = useState('invoices');
+  const [dash, setDash] = useState(null);
   const [period, setPeriod] = useState(currentPnlPeriod());
   const [rows, setRows] = useState(null);
   const [q, setQ] = useState('');
@@ -78,6 +80,14 @@ export default function ZohoData({ isActive = true }) {
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setRows([]); }
   }, []);
   useEffect(() => { if (isActive) load(type, period); }, [isActive, type, period, load]);
+
+  // لوحة الفواتير (كل الأشهر) — تُحمَّل مرة عند دخول تبويب الفواتير
+  useEffect(() => {
+    if (!isActive || type !== 'invoices') { setDash(null); return; }
+    let live = true;
+    loadZohoInvoiceDashboard().then(d => { if (live) setDash(d); }).catch(() => {});
+    return () => { live = false; };
+  }, [isActive, type]);
 
   const doSync = async () => {
     setBusy(true);
@@ -137,7 +147,7 @@ export default function ZohoData({ isActive = true }) {
       [`سجلات زوهو — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}` : ''}`],
       [],
       cols.map(c => c[0]),
-      ...filtered.map(r => cols.map(c => r[c[1]] ?? '')),
+      ...filtered.map(r => cols.map(c => c[1] === 'status' ? zohoStatusAr(r[c[1]]) : (r[c[1]] ?? ''))),
       [],
       ['الإجمالي', ...Array(cols.length - 2).fill(''), total],
     ];
@@ -171,6 +181,9 @@ export default function ZohoData({ isActive = true }) {
         ))}
       </div>
 
+      {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين */}
+      {type === 'invoices' && dash && <InvoiceDashboard dash={dash} onPick={setQ}/>}
+
       {/* الفلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         <select value={period} onChange={e => setPeriod(e.target.value)} title="الفترة"
@@ -182,7 +195,7 @@ export default function ZohoData({ isActive = true }) {
           <select value={status} onChange={e => setStatus(e.target.value)} title="الحالة"
             style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
             <option value="">كل الحالات</option>
-            {statuses.map(s => <option key={s} value={s}>{s}</option>)}
+            {statuses.map(s => <option key={s} value={s}>{zohoStatusAr(s)}</option>)}
           </select>
         )}
         <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -252,7 +265,9 @@ export default function ZohoData({ isActive = true }) {
                             } : {}),
                             ...(key === 'description' || key === 'notes' ? { maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}),
                           }}>
-                          {kind?.startsWith('money') ? fmt(r[key]) : (r[key] ?? '—')}
+                          {kind?.startsWith('money') ? fmt(r[key])
+                            : key === 'status' ? <StatusPill status={r[key]}/>
+                            : (r[key] ?? '—')}
                         </td>
                       ))}
                     </tr>
@@ -272,5 +287,88 @@ export default function ZohoData({ isActive = true }) {
         قراءة فقط — أي تعديل يتم في Zoho Books نفسه ثم «مزامنة». الرواتب: نوع «المصاريف» ← حساب «أجور الموظفين».
       </div>
     </div>
+  );
+}
+
+// شارة حالة ملوّنة معرّبة
+const STATUS_TONE = {
+  paid: 'green', unpaid: 'gold', overdue: 'red', draft: 'muted',
+  sent: 'accent', partially_paid: 'gold', partiallypaid: 'gold', void: 'muted', voided: 'muted',
+};
+function StatusPill({ status }) {
+  if (!status) return <span style={{ color: 'var(--muted2)' }}>—</span>;
+  const tone = STATUS_TONE[String(status).toLowerCase().trim()] || 'muted';
+  const col = { green: 'var(--green)', gold: 'var(--gold)', red: 'var(--red)', accent: 'var(--accent)', muted: 'var(--muted)' }[tone];
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 9px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+      color: col, background: `color-mix(in srgb, ${col} 13%, transparent)`, whiteSpace: 'nowrap',
+    }}>{zohoStatusAr(status)}</span>
+  );
+}
+
+// لوحة نظرة عامة على فواتير العملاء
+function InvoiceDashboard({ dash, onPick }) {
+  const names = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
+  const ml = (ym) => { const [y, m] = String(ym).split('-'); return `${names[+m - 1] || m} ${y}`; };
+  const kpis = [
+    { label: 'إجمالي غير المدفوع (باقٍ)', val: dash.openAr, sub: `${dash.openCnt} فاتورة مفتوحة`, tone: 'gold' },
+    { label: 'متأخّرة عن السداد', val: dash.overdueAmt, sub: `${dash.overdueCnt} فاتورة`, tone: 'red' },
+    { label: 'مسودّات', val: dash.draftTotal, sub: `${dash.draftCnt} فاتورة لم تُرسَل`, tone: 'muted' },
+  ];
+  const toneCol = { gold: 'var(--gold)', red: 'var(--red)', muted: 'var(--muted)' };
+  return (
+    <Card style={{ padding: 14, marginBottom: 12 }}>
+      {/* KPIs */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 14 }}>
+        {kpis.map(k => (
+          <div key={k.label} style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{k.label}</div>
+            <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: toneCol[k.tone] }}>{fmt(k.val)}</div>
+            <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 2 }}>{k.sub}</div>
+          </div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(280px,1fr))', gap: 16 }}>
+        {/* شهرياً */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>غير المدفوع شهرياً</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {dash.monthly.slice(0, 7).map(m => {
+              const rem = Number(m.remaining) || 0, tot = Number(m.total) || 1;
+              const pct = Math.min(100, Math.round((rem / tot) * 100));
+              return (
+                <div key={m.ym} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 11.5 }}>
+                  <span style={{ width: 78, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{ml(m.ym)}</span>
+                  <div style={{ flex: 1, height: 8, borderRadius: 4, background: 'var(--surface2)', overflow: 'hidden' }}>
+                    <div style={{ width: `${pct}%`, height: '100%', background: rem > 0.5 ? 'var(--gold)' : 'var(--green)' }}/>
+                  </div>
+                  <span style={{ width: 78, textAlign: 'left', fontFamily: 'var(--font-mono)', fontWeight: 700,
+                    color: rem > 0.5 ? 'var(--gold)' : 'var(--muted2)' }}>{fmt(rem)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        {/* أعلى المدينين */}
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>أكثر العملاء ديناً (غير مسدّد)</div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            {dash.debtors.slice(0, 8).map((d, i) => (
+              <button key={d.cust} onClick={() => onPick(d.cust)} title="اعرض فواتير هذا العميل"
+                style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 6px', border: 'none',
+                  background: 'transparent', cursor: 'pointer', textAlign: 'right', borderRadius: 6, width: '100%' }}
+                onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                <span style={{ width: 16, color: 'var(--muted2)', fontSize: 11 }}>{i + 1}</span>
+                <span style={{ flex: 1, fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{d.cust}</span>
+                <span style={{ fontSize: 10, color: 'var(--muted2)' }}>{d.open_cnt}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12, color: 'var(--gold)', whiteSpace: 'nowrap' }}>{fmt(d.owed)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
   );
 }

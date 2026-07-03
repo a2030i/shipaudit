@@ -545,6 +545,8 @@ button:active { transform: scale(.97); }
     max-width: 100vw !important;
     max-height: calc(100vh - 24px) !important;
     margin: 12px !important;
+    padding: 16px !important;                 /* بدل 28 — مساحة أكبر للمحتوى + تمرير أسهل */
+    -webkit-overflow-scrolling: touch;         /* تمرير زخمي على iOS */
   }
 
   /* Force the dashboard / page hero grids to single column */

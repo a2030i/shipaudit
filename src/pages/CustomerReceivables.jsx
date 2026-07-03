@@ -276,7 +276,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
               هذا الرقم يدير {siblings.length + 1} متاجر — اتصال واحد يكفي
             </div>
           </div>
-          <div style={{
+          <div className="m-flow" style={{
             border: '1px solid var(--border)', borderRadius: 12,
             maxHeight: 220, overflowY: 'auto',
           }}>
@@ -348,7 +348,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
       )}
 
       {/* Invoices table */}
-      <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 20 }}>
+      <div className="m-flow" style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 9, marginBottom: 20 }}>
         <table style={{ fontSize: 12, width: '100%' }}>
           <thead style={{ position: 'sticky', top: 0, background: 'var(--surface)' }}>
             <tr>
