@@ -40,6 +40,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [briefOpen, setBriefOpen] = useState(false);
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
 
   const refresh = async () => {
     setBusy(true);
@@ -208,11 +209,18 @@ export default function CustomerMoney({ isActive = true }) {
               <ChevronDown size={16} style={{ transform: creditsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: 'var(--muted)' }}/>
             </button>
             {isAdmin && (
-              <button onClick={grantWriteAccess} title="مرة واحدة — يفعّل زر «طبّق تلقائياً»"
-                style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--card)',
-                  border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                🔑 منح صلاحية التطبيق
-              </button>
+              <>
+                <button onClick={() => setBulkOpen(true)} title="يطبّق أرصدة كل العملاء في القائمة دفعة واحدة"
+                  style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--card)', background: 'var(--green)',
+                    border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  ⚡ طبّق للكل ({credits.rows.length})
+                </button>
+                <button onClick={grantWriteAccess} title="مرة واحدة — يفعّل التطبيق"
+                  style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--card)',
+                    border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  🔑 منح صلاحية
+                </button>
+              </>
             )}
           </div>
           {creditsOpen && (
@@ -301,12 +309,106 @@ export default function CustomerMoney({ isActive = true }) {
         bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'فلوسي عند العملاء'}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
+      {bulkOpen && credits && (
+        <BulkApplyModal rows={credits.rows} onGrant={grantWriteAccess}
+          onClose={() => setBulkOpen(false)}
+          onDone={() => { setBulkOpen(false); setCredits(null); refresh(); }}/>
+      )}
       {applyTarget && (
         <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}
           onClose={() => setApplyTarget(null)}
           onDone={() => { setApplyTarget(null); setCredits(null); refresh(); }}/>
       )}
     </div>
+  );
+}
+
+// مودال «طبّق للكل» — تطبيق أرصدة كل العملاء تسلسلياً مع تقدّم حيّ
+function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
+  const [running, setRunning] = useState(false);
+  const [done, setDone] = useState(false);
+  const [idx, setIdx] = useState(0);
+  const [log, setLog] = useState([]);   // [{name, ok, applied, error}]
+  const totalPlanned = rows.reduce((s, r) => s + r.applicable, 0);
+  const appliedSum = log.filter(l => l.ok).reduce((s, l) => s + (l.applied || 0), 0);
+  const authFailed = log.some(l => !l.ok && /authoriz|صلاح/i.test(l.error || ''));
+
+  const run = async () => {
+    setRunning(true);
+    for (let i = 0; i < rows.length; i++) {
+      setIdx(i + 1);
+      const r = rows[i];
+      const res = await applyZohoCredits(r.zohoId);
+      const entry = res?.ok
+        ? { name: r.name, ok: !(res.results || []).some(x => !x.ok), applied: res.applied,
+            error: (res.results || []).find(x => !x.ok)?.error || null }
+        : { name: r.name, ok: false, applied: 0, error: res?.error || 'فشل' };
+      setLog(prev => [...prev, entry]);
+      // أوقف فوراً لو المشكلة صلاحية (لا فائدة من إكمال البقية)
+      if (!entry.ok && /authoriz|صلاح/i.test(entry.error || '')) break;
+    }
+    setRunning(false);
+    setDone(true);
+  };
+
+  const okCount = log.filter(l => l.ok).length;
+  const failCount = log.filter(l => !l.ok).length;
+
+  return (
+    <Modal title={`تطبيق أرصدة كل العملاء (${rows.length})`} onClose={running ? undefined : onClose} width={560}>
+      {!running && !done ? (
+        <div>
+          <div style={{ fontSize: 13, lineHeight: 1.8, marginBottom: 14 }}>
+            سيُطبَّق الرصيد الدائن على فواتير <b>{rows.length}</b> عميلاً دفعة واحدة — إجمالي متوقّع
+            <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}> {fmt(totalPlanned)}</b> ر.س.
+            <br/><span style={{ fontSize: 12, color: 'var(--muted)' }}>
+              عملية آمنة: تطبيق رصيد موجود على فاتورة موجودة فقط — لا إنشاء ولا حذف. تُكتب في Zoho Books.
+            </span>
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
+            <Btn variant="accent" onClick={run}>⚡ ابدأ تطبيق الكل ({rows.length})</Btn>
+            <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+          </div>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+            {running && <Spinner size={16}/>}
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              {running ? `جارٍ… ${idx}/${rows.length}` : `انتهى — ✓ ${okCount} نجح${failCount ? ` · ✗ ${failCount} فشل` : ''}`}
+            </div>
+            <div style={{ marginInlineStart: 'auto', fontSize: 13, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--green)' }}>
+              {fmt(appliedSum)} ر.س
+            </div>
+          </div>
+          {/* شريط تقدّم */}
+          <div style={{ height: 6, borderRadius: 3, background: 'var(--surface2)', overflow: 'hidden', marginBottom: 12 }}>
+            <div style={{ width: `${(log.length / rows.length) * 100}%`, height: '100%', background: 'var(--green)', transition: 'width .2s' }}/>
+          </div>
+          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>
+            {log.map((l, i) => (
+              <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 10px', borderTop: i ? '1px solid var(--border)' : 'none' }}>
+                <span>{l.ok ? '✓' : '✗'}</span>
+                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{l.name}</span>
+                <span style={{ fontFamily: 'var(--font-mono)', color: l.ok ? 'var(--green)' : 'var(--red)' }}>
+                  {l.ok ? fmt(l.applied) : (l.error || 'فشل').slice(0, 40)}
+                </span>
+              </div>
+            ))}
+          </div>
+          {authFailed && (
+            <div style={{ marginTop: 10, padding: '9px 12px', borderRadius: 8, fontSize: 12, background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)' }}>
+              توقّف بسبب رفض صلاحية الكتابة. <Btn size="sm" variant="accent" onClick={onGrant} style={{ marginInlineStart: 8 }}>🔑 منح الصلاحية</Btn>
+            </div>
+          )}
+          {done && (
+            <div style={{ marginTop: 14, textAlign: 'left' }}>
+              <Btn variant="primary" onClick={onDone}>تم</Btn>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
   );
 }
 
