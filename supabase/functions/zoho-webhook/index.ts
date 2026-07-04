@@ -29,8 +29,22 @@ Deno.serve(async (req) => {
   const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
   if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
 
+  // زوهو قد يرسل الجسم بترويسة Content-Type ليست application/json (نص/form)
+  // فـreq.json() يرفضه (كان يرجع 400). نقرأ النص الخام ونحلّله بمرونة.
   let body: any = {};
-  try { body = await req.json(); } catch { return new Response('bad json', { status: 400 }); }
+  let raw = '';
+  try {
+    raw = await req.text();
+    body = JSON.parse(raw);
+  } catch {
+    try {  // ربما form-urlencoded (قد يحمل الحمولة تحت JSONString أو أزواج مسطّحة)
+      const p = new URLSearchParams(raw);
+      const o: Record<string, string> = {};
+      for (const [k, v] of p) o[k] = v;
+      body = o.JSONString ? JSON.parse(o.JSONString) : o;
+    } catch { body = {}; }
+  }
+  if (!body || typeof body !== 'object') body = {};
 
   // زوهو قد يلفّ الكيان تحت مفتاح، أو يرسله في الجذر
   const inv = body.invoice || (body.invoice_id ? body : null);
@@ -61,6 +75,8 @@ Deno.serve(async (req) => {
         invoice_numbers: s(pay.invoice_numbers) || '', last_modified: now, synced_at: now });
       updated = 'payment';
     }
+    // لم نتعرّف على الكيان → سجّل الخام لتشخيص شكل حمولة زوهو
+    if (updated === 'none') console.error('[zoho-webhook shape]', raw.slice(0, 800));
     return new Response(JSON.stringify({ ok: true, updated }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('[zoho-webhook]', String((e as Error)?.message || e));
