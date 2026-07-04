@@ -253,12 +253,14 @@ export async function loadZohoOpenInvoices(customerName) {
   return data || [];
 }
 
-// عملاء لهم أرصدة دائنة غير مستخدمة يمكن تطبيقها على فواتيرهم لتصفير الدين.
-// قراءة فقط من مرآة zoho_contacts — التطبيق الفعلي يتم في زوهو (رابط مباشر).
-// orgId + dc لبناء رابط جهة الاتصال في Zoho Books.
+// عملاء لهم رصيد دائن **قابل للتطبيق فعلاً** = min(الرصيد المتاح, الفواتير
+// المفتوحة) من المرآة المحلية (zoho_applicable_credits). يستبعد من له رصيد
+// لكن بلا فواتير مفتوحة (لا شيء يُطبَّق عليه) — كان المصدر القديم (contacts)
+// يعرضهم فيسبّب رفض «أكثر من الرصيد» عند محاولة تطبيق على فواتير مسدَّدة.
+// التطبيق الفعلي يتم في زوهو (رابط مباشر). orgId + dc لبناء رابط جهة الاتصال.
 export async function loadZohoUnusedCredits() {
   const [{ data, error }, authRes] = await Promise.all([
-    supabase.rpc('zoho_customer_unused_credits'),
+    supabase.rpc('zoho_applicable_credits'),
     supabase.from('zoho_auth').select('org_id, api_domain').eq('id', 1).maybeSingle(),
   ]);
   if (error) throw error;
@@ -266,19 +268,23 @@ export async function loadZohoUnusedCredits() {
   const dom = authRes?.data?.api_domain || '';
   const dc = /\.sa\b/.test(dom) ? 'sa' : /\.eu\b/.test(dom) ? 'eu' : /\.in\b/.test(dom) ? 'in' : 'com';
   const orgId = authRes?.data?.org_id || '';
-  const zohoLink = (id) => orgId
+  const zohoLink = (id) => (orgId && id)
     ? `https://books.zoho.${dc}/app/${orgId}#/contacts/${id}`
     : null;
-  const rows = (data || []).map(r => ({
-    zohoId:         r.zoho_id,
-    name:           r.contact_name,
-    outstanding:    Number(r.outstanding) || 0,
-    unusedCredit:   Number(r.unused_credit) || 0,
-    applicable:     Number(r.applicable) || 0,
-    remainingAfter: Number(r.remaining_after) || 0,
-    clearsFully:    !!r.clears_fully,
-    zohoUrl:        zohoLink(r.zoho_id),
-  }));
+  const rows = (data || []).map(r => {
+    const openInv = Number(r.open_invoices) || 0;
+    const applicable = Number(r.applicable) || 0;
+    return {
+      zohoId:         r.zoho_id,
+      name:           r.customer_name,
+      outstanding:    openInv,                        // الفواتير المفتوحة (ما يُطبَّق عليه)
+      unusedCredit:   Number(r.available_credit) || 0,
+      applicable,
+      remainingAfter: +(openInv - applicable).toFixed(2),
+      clearsFully:    !!r.clears_fully,
+      zohoUrl:        zohoLink(r.zoho_id),
+    };
+  });
   return {
     rows,
     totalApplicable: +rows.reduce((s, r) => s + r.applicable, 0).toFixed(2),
