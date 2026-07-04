@@ -337,7 +337,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
           </div>
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            flex: '1 1 480px', minWidth: 280,
+            flex: '1 1 320px', minWidth: 0,
             padding: '10px 14px',
             background: 'var(--bg2)',
             border: '1px solid var(--border2)',
