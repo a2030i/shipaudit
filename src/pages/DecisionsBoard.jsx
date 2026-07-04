@@ -18,6 +18,7 @@ import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconcili
 import { loadCrmDecisionSignals } from '../lib/crmService.js';
 import { loadPnlSnapshots, currentPnlPeriod } from '../lib/pnlService.js';
 import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
+import { loadLegalDashboard } from '../lib/legalService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
@@ -30,7 +31,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -38,6 +39,7 @@ export default function DecisionsBoard({ isActive = true }) {
         loadCrmDecisionSignals().catch(() => ({ brokenCount: 0, brokenTotal: 0, dueCount: 0, brokenPromises: [], dueFollowups: [] })),
         loadPnlSnapshots().catch(() => []),
         loadInvoicesAwaitingReview().catch(() => []),
+        loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
       ]);
       // ربح الشهر الجاري من كاش زوهو (§1.19: أي إشارة قرار = بطاقة هنا)
       const pnlCur = (pnlSnaps || []).find(s => s.period === currentPnlPeriod()) || null;
@@ -67,6 +69,19 @@ export default function DecisionsBoard({ isActive = true }) {
         .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
       const vgapTotal = vgaps.reduce((s, v) => s + Math.abs(Number(v.diff) || 0), 0);
 
+      // تحويلات قانونية: تجاوز 90 يوم (زوهو) + دفع مسبق برصيد سالب (المنصّة).
+      const over90 = legal.overdue90 || [], negWal = legal.prepaidNegative || [];
+      const legalTop = [
+        ...over90.slice(0, 2).map(r => `${r.storeName || r.name} · ${fmtK(r.amount90)} · +90ي`),
+        ...negWal.slice(0, 1).map(r => `${r.storeName} · ${fmtK(r.wallet)} · محفظة سالبة`),
+      ];
+      const legalSig = {
+        count: over90.length + negWal.length, over90N: over90.length, negN: negWal.length,
+        over90Amt: over90.reduce((s, r) => s + (Number(r.amount90) || 0), 0),
+        negAmt: negWal.reduce((s, r) => s + Math.abs(Number(r.wallet) || 0), 0),
+        top: legalTop,
+      };
+
       setD({
         stopList, stopTotal,
         anomalyCount: watch?.totals?.anomalyCount || 0,
@@ -77,6 +92,7 @@ export default function DecisionsBoard({ isActive = true }) {
         crm,
         pnl: pnlCur,
         awaiting,
+        legal: legalSig,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -126,6 +142,15 @@ export default function DecisionsBoard({ isActive = true }) {
               sub: `دينهم ${fmt(d.stopTotal)} ر.س — أوقفهم قبل ما يتراكم`,
               top: d.stopList.slice(0, 3).map(c => `${c.merchant?.storeName || c.name} · ${fmtK(c.total)} ر.س`),
               cta: 'فتح المديونيات', onClick: () => navigate('/receivables'),
+            },
+          },
+          {
+            key: 'legal', active: (d.legal?.count || 0) > 0, okLabel: 'لا تحويلات قانونية',
+            props: {
+              color: 'var(--red)', icon: '⚖️', title: 'تحويلات قانونية', value: d.legal?.count || 0, unit: 'حالة',
+              sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} محفظة سالبة (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
+              top: d.legal?.top || [],
+              cta: 'الصفحة القانونية', onClick: () => navigate('/legal'),
             },
           },
           {
