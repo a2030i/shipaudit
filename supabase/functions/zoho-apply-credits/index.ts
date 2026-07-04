@@ -1,4 +1,4 @@
-// zoho-apply-credits v10 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v11 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -23,6 +23,9 @@
 // v10: المحاولة الثانية تنطلق على **أي** فشل (لا نطابق نص عربي هشّاً)، ونعيد
 //      جلب تطبيقات الدفعة القائمة الطازجة (قد يغيّرها Deluge)، مع console.error
 //      للاستجابة الخام لتشخيص الرفض المتبقّي.
+// v11: بناء الخطة من **المرآة المحلية** (zoho_invoices/creditnotes/payments)
+//      بلا استدعاء زوهو حيّ — صفر قراءات في الحالة الطبيعية (فكرة المستخدم:
+//      احفظ الأرقام). fallback حيّ عند فراغ المرآة؛ getFresh يصحّح التقادم.
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -116,31 +119,13 @@ async function fetchOpenInvoices(token: string, apiDomain: string, orgId: string
   return out;
 }
 
-// يبني خطة التطبيق مجمّعة حسب المصدر (إشعار/دفعة) — الأقدم من الفواتير أولاً.
-async function buildPlan(token: string, apiDomain: string, orgId: string, contactId: string) {
-  const H = { Authorization: `Zoho-oauthtoken ${token}` };
-  const qs = (o: Record<string, string>) => new URLSearchParams({ organization_id: orgId, ...o }).toString();
-
-  // الفواتير المفتوحة (تشمل المتأخرة) + الإشعارات + الدفعات — بالتوازي.
-  const [invoices, cnRes, payRes] = await Promise.all([
-    fetchOpenInvoices(token, apiDomain, orgId, contactId),
-    zfetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
-    zfetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
-  ]);
-  const [cnJ, payJ] = await Promise.all([cnRes.json(), payRes.json()]);
-  const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
-    .map((c: any) => ({ creditnote_id: c.creditnote_id, number: c.creditnote_number, avail: Number(c.balance) }))
-    .filter((c: any) => c.avail > 0.001);
-  const excessPays = (payJ.code === 0 ? (payJ.customerpayments || []) : [])
-    .map((p: any) => ({ payment_id: p.payment_id, ref: p.reference_number || p.payment_number, avail: Number(p.unused_amount) }))
-    .filter((p: any) => p.avail > 0.001);
-
+// يخصّص الأرصدة الدائنة على الفواتير (الأقدم أولاً) — منطق مشترك بين المرآة والحيّ.
+// invoices: [{invoice_id, number, date, balance}] · creditNotes/excessPays: [{..., avail}]
+function allocate(invoices: any[], creditNotes: any[], excessPays: any[]) {
   const creditAvailable = r2(
     creditNotes.reduce((s: number, c: any) => s + c.avail, 0) +
     excessPays.reduce((s: number, p: any) => s + p.avail, 0),
   );
-
-  // تجميع حسب المصدر: لكل إشعار/دفعة → أي فواتير وبكم.
   const cnApps = new Map<string, { number: string; invoices: any[] }>();
   const payApps = new Map<string, { ref: string; invoices: any[] }>();
   const plan: any[] = [];
@@ -177,21 +162,59 @@ async function buildPlan(token: string, apiDomain: string, orgId: string, contac
   }
   return {
     invoices_count: invoices.length, credit_available: creditAvailable, total_applied: totalApplied, plan,
-    open_invoices: invoices,   // نعيد استخدامها في apply كأرصدة حيّة (بلا جلب ثانٍ)
+    open_invoices: invoices,
     creditnote_apps: [...cnApps.entries()].map(([id, v]) => ({ creditnote_id: id, ...v })),
     payment_apps: [...payApps.entries()].map(([id, v]) => ({ payment_id: id, ...v })),
   };
 }
 
-// كاش خطة قصير (best-effort) — المعاينة (plan) تحسبها، ثم يعيد التطبيق (apply)
-// استخدامها بدل جلبها ثانية من زوهو (3 قراءات أقل لكل تطبيق تفاعلي). TTL قصير
-// حتى تبقى الأرصدة طازجة؛ capAlloc يحمي من أي تغيّر خلال النافذة. مفتاح = العميل.
+// خطة من المرآة المحلية (بلا استدعاء زوهو حيّ) — الأساس السريع الموفّر للحصة.
+// يرجع null إن لم تتوفّر بيانات المرآة (اسم غير موجود/فواتير فارغة) فيسقط
+// المتصل تلقائياً للحيّ (احتمال عدم تطابق الاسم أو مرآة لم تُزامَن بعد).
+async function buildPlanFromMirror(db: ReturnType<typeof svc>, contactId: string) {
+  const { data: contact } = await db.from('zoho_contacts').select('contact_name').eq('zoho_id', contactId).maybeSingle();
+  const name = contact?.contact_name;
+  if (!name) return null;
+  const [invR, cnR, payR] = await Promise.all([
+    db.from('zoho_invoices').select('zoho_id, invoice_number, date, balance').eq('customer_name', name).gt('balance', 0.5).order('date', { ascending: true }),
+    db.from('zoho_creditnotes').select('zoho_id, creditnote_number, balance').eq('customer_name', name).gt('balance', 0.5),
+    db.from('zoho_payments').select('zoho_id, unused_amount').eq('customer_name', name).gt('unused_amount', 0.5),
+  ]);
+  const invoices = (invR.data || []).map((i: any) => ({ invoice_id: i.zoho_id, number: i.invoice_number, date: i.date, balance: Number(i.balance) }));
+  if (!invoices.length) return null;   // مرآة فارغة → للحيّ (لا نطبّق بلا فواتير مؤكدة)
+  const creditNotes = (cnR.data || []).map((c: any) => ({ creditnote_id: c.zoho_id, number: c.creditnote_number, avail: Number(c.balance) }));
+  const excessPays = (payR.data || []).map((p: any) => ({ payment_id: p.zoho_id, ref: p.zoho_id, avail: Number(p.unused_amount) }));
+  return { ...allocate(invoices, creditNotes, excessPays), source: 'mirror' };
+}
+
+// خطة حيّة من زوهو (fallback عند فراغ المرآة) — نفس منطق v3..v10.
+async function buildPlanLive(token: string, apiDomain: string, orgId: string, contactId: string) {
+  const H = { Authorization: `Zoho-oauthtoken ${token}` };
+  const qs = (o: Record<string, string>) => new URLSearchParams({ organization_id: orgId, ...o }).toString();
+  const [invoices, cnRes, payRes] = await Promise.all([
+    fetchOpenInvoices(token, apiDomain, orgId, contactId),
+    zfetch(`${apiDomain}/books/v3/creditnotes?${qs({ customer_id: contactId, status: 'open', per_page: '200' })}`, { headers: H }),
+    zfetch(`${apiDomain}/books/v3/customerpayments?${qs({ customer_id: contactId, per_page: '200' })}`, { headers: H }),
+  ]);
+  const [cnJ, payJ] = await Promise.all([cnRes.json(), payRes.json()]);
+  const creditNotes = (cnJ.code === 0 ? (cnJ.creditnotes || []) : [])
+    .map((c: any) => ({ creditnote_id: c.creditnote_id, number: c.creditnote_number, avail: Number(c.balance) }))
+    .filter((c: any) => c.avail > 0.001);
+  const excessPays = (payJ.code === 0 ? (payJ.customerpayments || []) : [])
+    .map((p: any) => ({ payment_id: p.payment_id, ref: p.reference_number || p.payment_number, avail: Number(p.unused_amount) }))
+    .filter((p: any) => p.avail > 0.001);
+  return { ...allocate(invoices, creditNotes, excessPays), source: 'live' };
+}
+
+// كاش خطة قصير (best-effort). المصدر: المرآة أولاً (صفر استدعاء زوهو) ثم الحيّ
+// عند فراغها. capAlloc + getFresh (في apply) يحميان من تقادم أرصدة المرآة.
 const planCache = new Map<string, { result: any; ts: number }>();
 const PLAN_TTL = 90_000;
-async function getPlan(token: string, apiDomain: string, orgId: string, contactId: string) {
+async function getPlan(db: ReturnType<typeof svc>, token: string, apiDomain: string, orgId: string, contactId: string) {
   const c = planCache.get(contactId);
   if (c && Date.now() - c.ts < PLAN_TTL) return c.result;
-  const result = await buildPlan(token, apiDomain, orgId, contactId);
+  let result = await buildPlanFromMirror(db, contactId).catch(() => null);
+  if (!result) result = await buildPlanLive(token, apiDomain, orgId, contactId);
   planCache.set(contactId, { result, ts: Date.now() });
   return result;
 }
@@ -215,13 +238,13 @@ Deno.serve(async (req) => {
     const { token, apiDomain, orgId } = await accessToken(db);
 
     if (action === 'plan') {
-      const result = await getPlan(token, apiDomain, orgId, contactId);
+      const result = await getPlan(db, token, apiDomain, orgId, contactId);
       return json({ ok: true, ...result });
     }
 
     if (action === 'apply') {
       if (!isAdmin) return json({ error: 'forbidden — التطبيق للمدير فقط' }, 403);
-      const result = await getPlan(token, apiDomain, orgId, contactId);
+      const result = await getPlan(db, token, apiDomain, orgId, contactId);
       planCache.delete(contactId);   // الأرصدة ستتغيّر بالكتابة — أبطِل الكاش
       if (!result.plan.length) return json({ ok: true, applied: 0, results: [], note: 'لا شيء للتطبيق' });
 
