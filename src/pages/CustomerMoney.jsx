@@ -122,6 +122,10 @@ export default function CustomerMoney({ isActive = true }) {
   const colDelta = d.collectedPrevMonth > 0
     ? Math.round(((d.collectedThisMonth - d.collectedPrevMonth) / d.collectedPrevMonth) * 100) : null;
 
+  // أرصدة دائنة: قابل للتطبيق (رصيد + فاتورة مفتوحة) مقابل «رصيد قائم» (بلا فواتير)
+  const applicableRows = (credits?.rows || []).filter(r => r.applicable > 0.5);
+  const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
+
   return (
     <div style={{ padding: '18px 20px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
@@ -211,22 +215,27 @@ export default function CustomerMoney({ isActive = true }) {
               <span style={{ fontSize: 17 }}>💳</span>
               <div style={{ flex: 1 }}>
                 <div style={{ fontSize: 13, fontWeight: 800 }}>
-                  {credits.rows.length} عميل لهم أرصدة دائنة غير مستخدمة — يمكن تطبيقها لتصفير جزء من دينهم
+                  {credits.rows.length} عميل لهم أرصدة دائنة في زوهو
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                  قابل للتطبيق: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س ·
-                  {credits.clearsCount} منهم يُصفَّر رصيدهم بالكامل · افتح للتفاصيل والتطبيق
+                  {applicableRows.length > 0
+                    ? <>قابل للتطبيق الآن: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س على {applicableRows.length} عميل · </>
+                    : <>لا شيء قابل للتطبيق حالياً · </>}
+                  {standingCount > 0 && <>{standingCount} رصيد قائم بلا فواتير مفتوحة · </>}
+                  افتح للتفاصيل
                 </div>
               </div>
               <ChevronDown size={16} style={{ transform: creditsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s', color: 'var(--muted)' }}/>
             </button>
             {isAdmin && (
               <>
-                <button onClick={() => setBulkOpen(true)} title="يطبّق أرصدة كل العملاء في القائمة دفعة واحدة"
-                  style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--card)', background: 'var(--green)',
-                    border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
-                  ⚡ طبّق للكل ({credits.rows.length})
-                </button>
+                {applicableRows.length > 0 && (
+                  <button onClick={() => setBulkOpen(true)} title="يطبّق الأرصدة القابلة للتطبيق (لها فواتير مفتوحة) دفعة واحدة"
+                    style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--card)', background: 'var(--green)',
+                      border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                    ⚡ طبّق للكل ({applicableRows.length})
+                  </button>
+                )}
                 <button onClick={grantWriteAccess} title="مرة واحدة — يفعّل التطبيق"
                   style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--card)',
                     border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -251,15 +260,18 @@ export default function CustomerMoney({ isActive = true }) {
                       <td data-label="رصيد غير مستخدم" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', color: 'var(--green)', whiteSpace: 'nowrap' }}>{fmt(r.unusedCredit)}</td>
                       <td data-label="يُطبَّق" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(r.applicable)}</td>
                       <td data-label="يبقى" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
-                        color: r.clearsFully ? 'var(--green)' : 'var(--gold)' }}>{r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)}</td>
+                        color: r.applicable > 0.5 ? (r.clearsFully ? 'var(--green)' : 'var(--gold)') : 'var(--muted2)' }}>
+                        {r.applicable > 0.5 ? (r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)) : 'رصيد قائم'}
+                      </td>
                       <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {isAdmin && (
+                        {isAdmin && r.applicable > 0.5 && (
                           <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name, zohoUrl: r.zohoUrl })}
                             style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 12%, transparent)',
                               border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
                             طبّق تلقائياً
                           </button>
                         )}
+                        {r.applicable <= 0.5 && <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>لا فواتير مفتوحة</span>}
                         {r.zohoUrl
                           ? <a href={r.zohoUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', textDecoration: 'none' }}>زوهو ↗</a>
                           : <span style={{ fontSize: 11, color: 'var(--muted2)' }}>—</span>}
@@ -322,7 +334,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
       {bulkOpen && credits && (
-        <BulkApplyModal rows={credits.rows} onGrant={grantWriteAccess}
+        <BulkApplyModal rows={applicableRows} onGrant={grantWriteAccess}
           onClose={() => setBulkOpen(false)}
           onDone={() => { setBulkOpen(false); setCredits(null); refresh(); }}/>
       )}
