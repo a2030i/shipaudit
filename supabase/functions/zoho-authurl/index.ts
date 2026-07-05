@@ -14,16 +14,17 @@ const CORS = {
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-// الصلاحيات الموسّعة: كل قراءات الوحدات المستخدَمة + كتابة الفواتير فقط.
-// حزمة الصلاحيات: قراءة كاملة + كتابة UPDATE فقط على الوحدات غير الحسّاسة
-// (فواتير/إشعارات/دفعات/جهات اتصال). **صفر DELETE · صفر banking · صفر
-// settings.UPDATE · صفر CREATE**. تطبيق الرصيد يستهلك الإشعار+الدفعة فيحتاج
-// UPDATE عليهما (رفض invoices.UPDATE وحدها أثبته زوهو عملياً 2026-07-03).
-// الكتابة تغطّي: تطبيق الرصيد · تحويل مسودّة→مرسَلة · إرسال ZATCA (كلها
-// invoices.UPDATE) · حدود ائتمان العميل (contacts.UPDATE).
+// الصلاحيات الموسّعة: قراءة كاملة + كتابة محدودة على الوحدات غير الحسّاسة.
+// **صفر DELETE · صفر banking · صفر settings.UPDATE.**
+// تطبيق الرصيد: الدفعة الزائدة = PUT customerpayments (UPDATE)؛ والإشعار الدائن
+// = POST /creditnotes/{id}/invoices الذي يعتبره زوهو CREATE فيحتاج
+// **creditnotes.CREATE** (بدونها «not authorized» — مُثبَت على Tine 2026-07-06).
+// creditnotes.CREATE تسمح تقنياً بإنشاء إشعارات، لكن الكود يطبّق فقط ولا يُنشئ
+// مستنداً أبداً (لا استدعاء POST /creditnotes). قرار المستخدم صراحةً: المصدر
+// (إشعار/دفعة) يجب ألّا يفرّق في التسديد.
 const SCOPE = [
   'ZohoBooks.invoices.READ', 'ZohoBooks.invoices.UPDATE',
-  'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE',
+  'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE', 'ZohoBooks.creditnotes.CREATE',
   'ZohoBooks.customerpayments.READ', 'ZohoBooks.customerpayments.UPDATE',
   'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
   'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ',
