@@ -75,8 +75,8 @@ Deno.serve(async (req) => {
         invoice_numbers: s(pay.invoice_numbers) || '', last_modified: now, synced_at: now });
       updated = 'payment';
     }
-    // لم نتعرّف على الكيان → سجّل الخام لتشخيص شكل حمولة زوهو
-    if (updated === 'none') console.error('[zoho-webhook shape]', raw.slice(0, 800));
+    // سجل تشخيصي مؤقت: نخزّن الخام + النتيجة لأول تحقّق أن الـwebhook يُحدّث فعلاً
+    try { await db.from('zoho_webhook_log').insert({ updated, raw: raw.slice(0, 4000) }); } catch { /* غير قاتل */ }
     return new Response(JSON.stringify({ ok: true, updated }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('[zoho-webhook]', String((e as Error)?.message || e));
