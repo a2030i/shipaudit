@@ -11,7 +11,7 @@ import {
   Upload, RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
-  Phone, Hash, ShoppingBag, ArrowLeft, MessageCircle,
+  Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
@@ -23,8 +23,6 @@ import {
   setCustomerStatus,
 } from '../lib/customerReceivablesService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
-import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
-import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { computeRisk } from '../lib/customerRisk.js';
 
 const fmt = (n) =>
@@ -633,7 +631,6 @@ export default function CustomerReceivables({ isActive = true }) {
   const [showUpload, setShowUpload] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
-  const [showWhatsApp, setShowWhatsApp] = useState(false);
   // Tab: 'active' = الافتراضي, 'excluded' = متابعة خاصة
   const [tab, setTabRaw] = useState('active');
   // When the user clicks an anomaly card on the alerts tab, this
@@ -1111,109 +1108,6 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${stopNow.length} عميل للإيقاف`, 'success');
   };
 
-  // WhatsApp Business template export. Columns match the placeholder
-  // order in the template the operator showed us:
-  //
-  //   إشعار مستحقات : {{1}}
-  //   تجاوزت مديونيتكم {{2}} ر.س بعدد {{3}} فاتورة، أقدمها بتاريخ {{4}}
-  //   نرجو السداد خلال 5 أيام عمل لتفادي إيقاف الخدمة.
-  //
-  // Phone column first (the bulk-sender uses it as the recipient
-  // key), then variables 1..4 in the exact template order. Customers
-  // without phone are skipped — we can't message them.
-  const handleWhatsAppExport = () => {
-    if (!visibleCustomers.length) {
-      toast('لا توجد بيانات للتصدير', 'info');
-      return;
-    }
-    // Aging-bucket aware: a "+90 day" campaign must message the slice
-    // within those buckets, not the customer's whole balance — and skip
-    // customers whose slice is empty even if their total is positive.
-    const bucketActive = bucketFilters.size > 0;
-    const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
-    // Export EVERY debtor in the view — including those WITHOUT a phone —
-    // per the operator's request: pull them all, blank phone where missing,
-    // and prune the no-phone rows by hand afterwards. The direct sender
-    // still skips no-phone customers (can't message them), but the file
-    // must hide nothing.
-    const allRows = visibleCustomers
-      .filter(c => amtOf(c) > 0.5)
-      .map(c => {
-        // Same normalization as the direct sender (05…→9665…) so the file's
-        // phone column matches exactly what would be sent. Empty when the
-        // customer has no linked merchant phone.
-        const phone = c.merchant?.phone ? normalizeSaudiPhone(c.merchant.phone) : '';
-        // Amount — EXACT, never rounded (20.58, not 21).
-        const amount = Number(amtOf(c)).toLocaleString('en-US', { maximumFractionDigits: 2 });
-        const name = (c.merchant?.storeName || c.name || '').trim();
-        return { phone, name, amount, count: c.invoiceCount || 0, raw: c };
-      })
-      .sort((a, b) => Number(String(b.amount).replace(/,/g, '')) - Number(String(a.amount).replace(/,/g, '')));
-
-    if (!allRows.length) {
-      toast('لا يوجد عملاء عليهم دين في العرض الحالي', 'warn');
-      return;
-    }
-    const noPhone = allRows.filter(r => !r.phone).length;
-
-    // Headers match the WhatsApp template variables purely by COLUMN
-    // ORDER — A→{{1}}, B→{{2}}, C→{{3}}. Operator removed the
-    // {{4}} date variable from the template, so we drop that column.
-    const headers = [
-      'رقم الجوال',
-      'اسم العميل',
-      'المبلغ',
-      'عدد الفواتير',
-    ];
-    const rows = allRows.map(r => [r.phone, r.name, r.amount, r.count]);
-
-    const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-    ws['!cols'] = [
-      { wch: 16 },  // phone
-      { wch: 40 },  // name
-      { wch: 14 },  // amount
-      { wch: 12 },  // count
-    ];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'WhatsApp');
-    const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(rtl(wb), `رسائل_واتساب_${dateStr}.xlsx`);
-
-    toast(
-      `تم تصدير ${allRows.length} عميل${noPhone > 0 ? ` (منهم ${noPhone} بلا رقم — احذفهم يدوياً)` : ''}`,
-      'success',
-    );
-  };
-
-  // Bucket label for the campaign name (which aging slice is selected).
-  const BUCKET_LABELS = { d0_30: '0–30 يوم', d31_60: '31–60 يوم', d61_90: '61–90 يوم', d90_plus: '+90 يوم' };
-  const activeBucketLabel = bucketFilters.size > 0
-    ? [...bucketFilters].map(k => BUCKET_LABELS[k] || k).join(' + ')
-    : null;
-
-  // Build the recipient list for the WhatsApp campaign from the currently
-  // visible customers — amount = the slice within the selected aging
-  // bucket (or full balance when no bucket filter), so a "+90 day"
-  // campaign messages the overdue slice, not the whole debt.
-  const buildWhatsAppRecipients = () => {
-    const bucketActive = bucketFilters.size > 0;
-    const amtOf = (c) => bucketActive ? (c.filteredTotal || 0) : (c.total || 0);
-    return visibleCustomers
-      .filter(c => c.merchant?.phone && amtOf(c) > 0.5)
-      .map(c => {
-        const amount = amtOf(c);
-        const name   = (c.merchant?.storeName || c.name || '').trim();
-        const count  = c.invoiceCount || 0;
-        return {
-          to:     normalizeSaudiPhone(c.merchant.phone),
-          name, amount, count,
-          // Template body variables in order: {{1}} الاسم · {{2}} المبلغ · {{3}} العدد
-          // المبلغ EXACT (لا تقريب) — رسالة التحصيل تذكر الدين الحقيقي 20.58 لا 21
-          vars: [name, Number(amount).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(count)],
-        };
-      })
-      .sort((a, b) => b.amount - a.amount);
-  };
 
   const handleShowHistory = async () => {
     try {
@@ -1247,12 +1141,6 @@ export default function CustomerReceivables({ isActive = true }) {
             <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}
               title="قائمة فرز داخلية من الكشف المرفوع (snapshot). حملة التحصيل الفعلية من زوهو الحيّ في «فلوسي عند العملاء»">
               الكشف الداخلي
-            </Btn>
-            <Btn size="md" variant="accent" icon={<MessageCircle size={14}/>} onClick={() => setShowWhatsApp(true)} disabled={!visibleCustomers.length}>
-              إرسال واتساب
-            </Btn>
-            <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleWhatsAppExport} disabled={!visibleCustomers.length}>
-              تصدير واتساب
             </Btn>
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
@@ -1799,12 +1687,6 @@ export default function CustomerReceivables({ isActive = true }) {
         </Modal>
       )}
 
-      <WhatsAppSendModal
-        open={showWhatsApp}
-        onClose={() => setShowWhatsApp(false)}
-        recipients={showWhatsApp ? buildWhatsAppRecipients() : []}
-        bucketLabel={activeBucketLabel}
-      />
     </div>
   );
 }
