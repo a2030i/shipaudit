@@ -1,5 +1,7 @@
-// zoho-webhook v1 — يستقبل Webhooks زوهو ويحدّث المرآة المحلية فوراً (0 استدعاء
+// zoho-webhook v4 — يستقبل Webhooks زوهو ويحدّث المرآة المحلية فوراً (0 استدعاء
 // زوهو). يُلغي نافذة تقادم الـ30 دقيقة: أي تغيّر في فاتورة/إشعار/دفعة يصل لحظياً.
+// مُتحقَّق حيّاً 2026-07-06: زوهو يرسل {invoice:{…}}/{payment:{…}} (وفيه
+// unused_amount) → المرآة تتحدّث لحظياً. نبضة صحة في zoho_auth.webhook_last_at.
 //
 // الأمان: verify_jwt=false (زوهو لا يرسل JWT). التحقّق بسرّ في الرابط
 //   (?key=) أو ترويسة x-webhook-key، يُقارن بـ zoho_auth.webhook_key.
@@ -75,8 +77,8 @@ Deno.serve(async (req) => {
         invoice_numbers: s(pay.invoice_numbers) || '', last_modified: now, synced_at: now });
       updated = 'payment';
     }
-    // سجل تشخيصي مؤقت: نخزّن الخام + النتيجة لأول تحقّق أن الـwebhook يُحدّث فعلاً
-    try { await db.from('zoho_webhook_log').insert({ updated, raw: raw.slice(0, 4000) }); } catch { /* غير قاتل */ }
+    // نبضة خفيفة (بلا حمولات): آخر وصول webhook ونوعه — لمؤشر الصحة
+    if (updated !== 'none') { try { await db.from('zoho_auth').update({ webhook_last_at: now, webhook_last_kind: updated }).eq('id', 1); } catch { /* غير قاتل */ } }
     return new Response(JSON.stringify({ ok: true, updated }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('[zoho-webhook]', String((e as Error)?.message || e));
