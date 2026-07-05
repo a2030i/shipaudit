@@ -1,4 +1,4 @@
-// zoho-webhook v4 — يستقبل Webhooks زوهو ويحدّث المرآة المحلية فوراً (0 استدعاء
+// zoho-webhook v6 — يستقبل Webhooks زوهو ويحدّث المرآة المحلية فوراً (0 استدعاء
 // زوهو). يُلغي نافذة تقادم الـ30 دقيقة: أي تغيّر في فاتورة/إشعار/دفعة يصل لحظياً.
 // مُتحقَّق حيّاً 2026-07-06: زوهو يرسل {invoice:{…}}/{payment:{…}} (وفيه
 // unused_amount) → المرآة تتحدّث لحظياً. نبضة صحة في zoho_auth.webhook_last_at.
@@ -57,8 +57,9 @@ Deno.serve(async (req) => {
 
   try {
     if (inv?.invoice_id) {
-      // حالة الفاتورة الإلكترونية (زاتكا) — أسماء حقول محتملة (تحقّق من الخام)
-      const ein = s(inv.einvoice_details?.status ?? inv.einvoice_status ?? inv.zatca_status ?? inv.einvoice_details?.einvoice_status);
+      // حالة الفاتورة الإلكترونية (زاتكا) — الحقل المؤكَّد: einvoice_details.status
+      // (القيم: pushed = أُرسلت لزاتكا · فارغ/failed = لم تُدفع بعد). المسودّات لا تُدفع أصلاً.
+      const ein = s(inv.einvoice_details?.status ?? inv.einvoice_status ?? inv.zatca_status);
       await db.from('zoho_invoices').upsert({
         zoho_id: s(inv.invoice_id), invoice_number: s(inv.invoice_number),
         customer_name: s(inv.customer_name), date: inv.date || null,
@@ -81,8 +82,6 @@ Deno.serve(async (req) => {
     }
     // نبضة خفيفة: آخر وصول webhook ونوعه — لمؤشر الصحة
     if (updated !== 'none') { try { await db.from('zoho_auth').update({ webhook_last_at: now, webhook_last_kind: updated }).eq('id', 1); } catch { /* غير قاتل */ } }
-    // التقاط مؤقت لحمولة الفاتورة فقط — لتحديد اسم حقل حالة زاتكا بدقّة (يُزال بعد)
-    if (updated === 'invoice') { try { await db.from('zoho_webhook_log').insert({ updated, raw: raw.slice(0, 6000) }); } catch { /* */ } }
     return new Response(JSON.stringify({ ok: true, updated }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('[zoho-webhook]', String((e as Error)?.message || e));
