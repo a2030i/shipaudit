@@ -12,7 +12,7 @@ import { useNavigate } from 'react-router-dom';
 import { RefreshCw, Gauge, ChevronLeft } from 'lucide-react';
 import { Card, Spinner, Btn, PageHeader, toast } from '../components/UI.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
-import { computeRisk } from '../lib/customerRisk.js';
+import { loadCreditStopList, stopReasonAr } from '../lib/collectionsService.js';
 import { loadCarrierNetBalances } from '../lib/codSettlementService.js';
 import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconciliationService.js';
 import { loadCrmDecisionSignals } from '../lib/crmService.js';
@@ -31,7 +31,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -40,20 +40,10 @@ export default function DecisionsBoard({ isActive = true }) {
         loadPnlSnapshots().catch(() => []),
         loadInvoicesAwaitingReview().catch(() => []),
         loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
+        loadCreditStopList().catch(() => null),
       ]);
       // ربح الشهر الجاري من كاش زوهو (§1.19: أي إشارة قرار = بطاقة هنا)
       const pnlCur = (pnlSnaps || []).find(s => s.period === currentPnlPeriod()) || null;
-
-      // Stop-list: flatten every anomaly customer (dedupe), score, keep the
-      // "suspend before it grows" ones, highest risk first.
-      const seen = new Set(); const anom = [];
-      for (const list of Object.values(watch?.anomalies || {})) {
-        for (const c of (list || [])) { if (!seen.has(c.name)) { seen.add(c.name); anom.push(c); } }
-      }
-      const stopList = anom.map(c => ({ ...c, risk: computeRisk(c) }))
-        .filter(c => c.risk.shouldStop)
-        .sort((a, b) => b.risk.score - a.risk.score);
-      const stopTotal = stopList.reduce((s, c) => s + (Number(c.total) || 0), 0);
 
       // COD owed to us (positive nets only).
       let codOut = 0, codN = 0;
@@ -83,7 +73,7 @@ export default function DecisionsBoard({ isActive = true }) {
       };
 
       setD({
-        stopList, stopTotal,
+        creditStop: creditStop || { activeCount: 0, activeTotal: 0, count: 0, total: 0, limit: 10000, rows: [] },
         anomalyCount: watch?.totals?.anomalyCount || 0,
         totalDebt:    watch?.totals?.totalDebt || 0,
         codOut, codN,
@@ -136,12 +126,13 @@ export default function DecisionsBoard({ isActive = true }) {
             },
           },
           {
-            key: 'stop', active: d.stopList.length > 0, okLabel: 'لا عملاء يحتاجون إيقافاً',
+            key: 'stop', active: (d.creditStop?.activeCount || 0) > 0, okLabel: 'لا تاجر تجاوز الحدّ الائتماني',
             props: {
-              color: 'var(--red)', icon: '🛑', title: 'يُوقَف الآن', value: d.stopList.length, unit: 'عميل نشط',
-              sub: `دينهم ${fmt(d.stopTotal)} ر.س — أوقفهم قبل ما يتراكم`,
-              top: d.stopList.slice(0, 3).map(c => `${c.merchant?.storeName || c.name} · ${fmtK(c.total)} ر.س`),
-              cta: 'فتح المديونيات', onClick: () => navigate('/receivables'),
+              color: 'var(--red)', icon: '🛑', title: 'تجاوزوا الحدّ الائتماني', value: d.creditStop?.activeCount || 0, unit: 'تاجر نشط',
+              sub: `دينهم ${fmt(d.creditStop?.activeTotal || 0)} ر.س فوق حدّ ${fmtK(d.creditStop?.limit || 10000)} — أوقِف شحنهم قبل التراكم`,
+              top: (d.creditStop?.rows || []).filter(r => r.active).slice(0, 3)
+                .map(r => `${r.storeName || r.customerName} · ${fmtK(r.totalOpen)} ر.س · ${stopReasonAr(r.reason)}`),
+              cta: 'قائمة التحصيل', onClick: () => navigate('/crm?tab=collections'),
             },
           },
           {

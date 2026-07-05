@@ -211,3 +211,40 @@ export async function deleteTask(id) {
   if (error) throw error;
   return { ok: true };
 }
+
+// ── قائمة الإيقاف الائتماني (دين زوهو الحيّ) ──────────────────────────────
+// قاعدة الحقيقة الواحدة لإشارة «تجاوز الحدّ» — عملاء دفع-لاحق (لهم فواتير زوهو
+// مفتوحة) تجاوزوا الحدّ (افتراضياً 10,000 ر.س) أو لهم فاتورة تجاوزت 30 يوماً.
+// المصدر = دين زوهو الحيّ (§1.24) عبر RPC credit_stop_list — لا snapshot داخلي
+// (بخلاف regenerateTasks أعلاه الذي يقرأ الكشف الداخلي). «نشط» = ما زال يشحن،
+// فإيقافه يمنع تراكم الدين. تُستهلَك في بطاقة /decisions + شاشة التحصيل.
+export async function loadCreditStopList({ limit = 10000, overdueDays = 30 } = {}) {
+  const { data, error } = await supabase.rpc('credit_stop_list', { p_limit: limit, p_overdue: overdueDays });
+  if (error) throw error;
+  const d = data || {};
+  const s = d.summary || {};
+  return {
+    limit: Number(d.limit) || limit,
+    overdueDays: Number(d.overdue_days) || overdueDays,
+    count: Number(s.count) || 0,
+    total: Number(s.total) || 0,
+    activeCount: Number(s.active_count) || 0,
+    activeTotal: Number(s.active_total) || 0,
+    rows: (Array.isArray(d.rows) ? d.rows : []).map(r => ({
+      customerName: r.customer_name, storeName: r.store_name || '', storeId: r.store_id || null,
+      phone: r.phone || '', billingType: r.billing_type || '', status: r.status || '',
+      active: !!r.active,
+      totalOpen: Number(r.total_open) || 0, overdueAmount: Number(r.overdue_amount) || 0,
+      oldestDays: Number(r.oldest_days) || 0, invCnt: Number(r.inv_cnt) || 0,
+      reason: r.reason || '',
+    })),
+  };
+}
+
+// تسمية سبب تجاوز الحدّ بالعربي (للبطاقات والجداول).
+export function stopReasonAr(reason) {
+  if (reason === 'both') return 'فوق الحدّ +متأخّر';
+  if (reason === 'over_limit') return 'فوق الحدّ';
+  if (reason === 'overdue') return '+30 يوم';
+  return '';
+}
