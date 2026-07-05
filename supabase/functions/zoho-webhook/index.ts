@@ -57,11 +57,13 @@ Deno.serve(async (req) => {
 
   try {
     if (inv?.invoice_id) {
+      // حالة الفاتورة الإلكترونية (زاتكا) — أسماء حقول محتملة (تحقّق من الخام)
+      const ein = s(inv.einvoice_details?.status ?? inv.einvoice_status ?? inv.zatca_status ?? inv.einvoice_details?.einvoice_status);
       await db.from('zoho_invoices').upsert({
         zoho_id: s(inv.invoice_id), invoice_number: s(inv.invoice_number),
         customer_name: s(inv.customer_name), date: inv.date || null,
         total: num(inv.total), balance: balOf(inv.status, inv.balance), status: s(inv.status),
-        last_modified: now, synced_at: now });
+        einvoice_status: ein, last_modified: now, synced_at: now });
       updated = 'invoice';
     } else if (cn?.creditnote_id) {
       await db.from('zoho_creditnotes').upsert({
@@ -77,8 +79,10 @@ Deno.serve(async (req) => {
         invoice_numbers: s(pay.invoice_numbers) || '', last_modified: now, synced_at: now });
       updated = 'payment';
     }
-    // نبضة خفيفة (بلا حمولات): آخر وصول webhook ونوعه — لمؤشر الصحة
+    // نبضة خفيفة: آخر وصول webhook ونوعه — لمؤشر الصحة
     if (updated !== 'none') { try { await db.from('zoho_auth').update({ webhook_last_at: now, webhook_last_kind: updated }).eq('id', 1); } catch { /* غير قاتل */ } }
+    // التقاط مؤقت لحمولة الفاتورة فقط — لتحديد اسم حقل حالة زاتكا بدقّة (يُزال بعد)
+    if (updated === 'invoice') { try { await db.from('zoho_webhook_log').insert({ updated, raw: raw.slice(0, 6000) }); } catch { /* */ } }
     return new Response(JSON.stringify({ ok: true, updated }), { status: 200, headers: { 'Content-Type': 'application/json' } });
   } catch (e) {
     console.error('[zoho-webhook]', String((e as Error)?.message || e));
