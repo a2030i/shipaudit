@@ -178,6 +178,20 @@ export async function loadZohoMirror(type, { period = null, periodFrom = null, p
 }
 
 // لوحة فواتير العملاء: باقٍ غير مدفوع/مسودة/متأخّر شهرياً + أعلى المدينين (RPC خفيف).
+// صحة مزامنة زوهو: آخر إشعار webhook (لحظي) + آخر مزامنة دورية (30د) — لمؤشر
+// يطمئن أن المرآة حيّة. RPC آمن يكشف حقول النبضة فقط (لا السرّ/التوكن).
+export async function loadZohoWebhookHealth() {
+  const { data, error } = await supabase.rpc('zoho_webhook_health');
+  if (error) return null;
+  const d = data || {};
+  return {
+    webhookLastAt:   d.webhook_last_at || null,
+    webhookLastKind: d.webhook_last_kind || null,
+    webhookReady:    !!d.webhook_ready,
+    lastSyncAt:      d.last_sync_at || null,
+  };
+}
+
 export async function loadZohoInvoiceDashboard() {
   const { data, error } = await supabase.rpc('zoho_invoice_dashboard');
   if (error) throw error;

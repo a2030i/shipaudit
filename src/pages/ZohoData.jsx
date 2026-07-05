@@ -10,7 +10,7 @@ import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
-  loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign } from '../lib/pnlService.js';
+  loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth } from '../lib/pnlService.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -61,11 +61,23 @@ const COLS = {
   ],
 };
 
+// «منذ X» بالعربية من طابع زمني ISO
+function agoAr(iso) {
+  if (!iso) return null;
+  const sec = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (sec < 60) return 'الآن';
+  if (sec < 3600) return `منذ ${Math.floor(sec / 60)} دقيقة`;
+  if (sec < 86400) return `منذ ${Math.floor(sec / 3600)} ساعة`;
+  return `منذ ${Math.floor(sec / 86400)} يوم`;
+}
+const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إشعار دائن' };
+
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const [type, setType] = useState('invoices');
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
+  const [health, setHealth] = useState(null);       // صحة مزامنة زوهو (webhook + دوري)
   const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
   const [waOpen, setWaOpen] = useState(false);
 
@@ -149,6 +161,16 @@ export default function ZohoData({ isActive = true }) {
     loadZohoInvoiceDashboard().then(d => { if (live) setDash(d); }).catch(() => {});
     return () => { live = false; };
   }, [isActive, type]);
+
+  // صحة المزامنة (نبضة الـwebhook + آخر مزامنة دورية) — تحديث عند الدخول + كل دقيقة
+  useEffect(() => {
+    if (!isActive) return;
+    let live = true;
+    const tick = () => loadZohoWebhookHealth().then(h => { if (live) setHealth(h); }).catch(() => {});
+    tick();
+    const iv = setInterval(tick, 60_000);
+    return () => { live = false; clearInterval(iv); };
+  }, [isActive]);
 
   const doSync = async () => {
     setBusy(true);
@@ -241,6 +263,34 @@ export default function ZohoData({ isActive = true }) {
           </Btn>
         ))}
       </div>
+
+      {/* ── مؤشر صحة المزامنة: نبضة webhook اللحظية + آخر مزامنة دورية ── */}
+      {health && (() => {
+        const wAgo = agoAr(health.webhookLastAt);
+        const fresh = health.webhookLastAt && (Date.now() - new Date(health.webhookLastAt).getTime()) < 6 * 3600_000;
+        const col = fresh ? 'var(--green)' : (health.webhookReady ? 'var(--gold)' : 'var(--muted)');
+        return (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 14,
+            padding: '8px 12px', borderRadius: 9, fontSize: 11.5,
+            background: `color-mix(in srgb, ${col} 7%, transparent)`,
+            border: `1px solid color-mix(in srgb, ${col} 28%, var(--border))` }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: col, flexShrink: 0 }}/>
+            <span style={{ fontWeight: 700, color: col }}>
+              {health.webhookLastAt ? 'مزامنة لحظية نشطة' : 'بانتظار أول إشعار'}
+            </span>
+            <span style={{ color: 'var(--muted)' }}>
+              {health.webhookLastAt
+                ? <>آخر إشعار زوهو: <b style={{ color: 'var(--text)' }}>{wAgo}</b>{health.webhookLastKind ? ` (${KIND_AR[health.webhookLastKind] || health.webhookLastKind})` : ''}</>
+                : 'فعّل Webhooks في زوهو ليتحدّث فوراً'}
+            </span>
+            {health.lastSyncAt && (
+              <span style={{ marginInlineStart: 'auto', color: 'var(--muted2)' }}>
+                مزامنة دورية: {agoAr(health.lastSyncAt)}
+              </span>
+            )}
+          </div>
+        );
+      })()}
 
       {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
       {type === 'invoices' && dash && (
