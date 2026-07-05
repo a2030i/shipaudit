@@ -1,4 +1,6 @@
-// zoho-apply-credits v11 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v12 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// v12: كاش التوكن يُبطَل فور إعادة المنح (يقارن zoho_auth.updated_at) — فالنطاق
+//      الجديد (creditnotes.CREATE) يسري لحظياً لا بعد 55 دقيقة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
 //
 // v3: الـendpoints الصحيحة المثبتة في مؤسسة المستخدم (POST /invoices/{}/credits
@@ -74,9 +76,14 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
 // كاش رمز الوصول على مستوى الـinstance — توكن زوهو يدوم ساعة، فلا داعي
 // لتحديثه كل استدعاء (يقلّل طلبات زوهو ويسرّع). best-effort (قد يُعاد تدوير
 // الـinstance فيُعاد التحديث — لا ضرر).
-let tokenCache: { token: string; apiDomain: string; orgId: string; exp: number } | null = null;
+let tokenCache: { token: string; apiDomain: string; orgId: string; exp: number; grantAt: number } | null = null;
 async function accessToken(db: ReturnType<typeof svc>) {
-  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache;
+  if (tokenCache && tokenCache.exp > Date.now()) {
+    // تأكّد أن الربط لم يُعَد منحه (updated_at) — وإلا أبطِل الكاش لأخذ النطاق الجديد فوراً
+    const { data: chk } = await db.from('zoho_auth').select('updated_at').eq('id', 1).maybeSingle();
+    if (!chk?.updated_at || new Date(chk.updated_at).getTime() <= tokenCache.grantAt) return tokenCache;
+    tokenCache = null;   // أُعيد المنح → توكن جديد بالنطاق الجديد
+  }
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
   if (!data?.refresh_token) throw new Error('لا ربط بعد');
   const r = await fetch(`https://${data.accounts_domain}/oauth/v2/token`, {
@@ -91,7 +98,8 @@ async function accessToken(db: ReturnType<typeof svc>) {
   });
   const j = await r.json();
   if (!j.access_token) throw new Error(`refresh failed: ${JSON.stringify(j)}`);
-  tokenCache = { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string, exp: Date.now() + 55 * 60 * 1000 };
+  tokenCache = { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string,
+    exp: Date.now() + 55 * 60 * 1000, grantAt: data.updated_at ? new Date(data.updated_at).getTime() : Date.now() };
   return tokenCache;
 }
 
