@@ -1,4 +1,6 @@
-// zoho-sync v12 — + كيان creditnotes (مرآة الإشعارات الدائنة) + unused_amount
+// zoho-sync v13 — الإشعارات الدائنة صارت سحباً كاملاً (noDelta): تطبيق الإشعار
+// على فاتورة لا يُحرّك last_modified_time فالدلتا تتركه عالقاً برصيد وهمي.
+// v12 — + كيان creditnotes (مرآة الإشعارات الدائنة) + unused_amount
 // للدفعات — أساس بناء «خطة تطبيق الرصيد» من المرآة بلا استدعاء زوهو حيّ.
 // v11 — + كيان contacts (أرصدة العملاء/الموردين المباشرة شاملة
 // السلف والإشعارات الدائنة — تُغني عن ملف «أرصدة الموردين» الإيميلي).
@@ -241,7 +243,7 @@ Deno.serve(async (req) => {
     if (action === 'sync') {
       const { token, apiDomain, orgId } = await accessToken(db);
       const ENTITIES: { ent: string; listKey: string; table: string;
-        sortColumn?: string; noDelta?: boolean;
+        sortColumn?: string; noDelta?: boolean; reconcileDeletes?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
           zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
@@ -251,8 +253,11 @@ Deno.serve(async (req) => {
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        // الإشعارات الدائنة — مرآة (أساس خطة تطبيق الرصيد؛ لم تكن مُرآةً)
-        { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', map: (it, lm, now) => ({
+        // الإشعارات الدائنة — مرآة. **سحب كامل بلا دلتا**: تطبيق الإشعار على فاتورة
+        // في زوهو (POST …/invoices) لا يُحرّك last_modified_time للإشعار نفسه، فالدلتا
+        // تتركه عالقاً برصيد وهمي (CN-00029 بقي open/1000 وهو مطبَّق فعلاً ورصيد
+        // العميل الحيّ صفر). full يصحّح الرصيد كل دورة. الجدول صغير (عشرات الصفوف).
+        { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true, reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
@@ -299,6 +304,7 @@ Deno.serve(async (req) => {
         try {
           const { data: st } = await db.from('zoho_sync_state').select('last_sync').eq('entity', cfg.ent).maybeSingle();
           const since = cfg.noDelta ? null : (st?.last_sync ? new Date(st.last_sync).getTime() : null);
+          const runStart = new Date().toISOString();
           let page = 1, saved = 0, more = true, entErr: string | null = null;
           while (more && page <= 25) {
             const qs = new URLSearchParams({
@@ -329,6 +335,12 @@ Deno.serve(async (req) => {
             page++;
           }
           if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
+          // مصالحة الحذف: المزامنة upsert فقط فلا تلتقط ما حُذف/أُلغي في زوهو (يبقى
+          // عالقاً برصيد وهمي). آمنة حصراً لكيان كامل (noDelta) اكتمل سحبه (more=false،
+          // لم يُقصّ بحدّ الصفحات). أحذف ما لم يُلمَس هذه الدورة (synced_at قبل البداية).
+          if (cfg.reconcileDeletes && !more) {
+            await db.from(cfg.table).delete().lt('synced_at', runStart);
+          }
           await db.from('zoho_sync_state').upsert({
             entity: cfg.ent, last_sync: new Date().toISOString(), last_count: saved, updated_at: new Date().toISOString(),
           });
