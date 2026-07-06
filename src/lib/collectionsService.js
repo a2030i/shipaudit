@@ -249,6 +249,21 @@ export function stopReasonAr(reason) {
   return '';
 }
 
+// ── مستويات التصعيد (dunning) حسب عمر أقدم فاتورة ─────────────────────────────
+// التصعيد بالأولوية والإيقاع لا بنصوص مختلفة (القالب المعتمد في واتساب واحد).
+// قاعدة المستخدم: متأخّر = تجاوز 30 يوم. الحدود تراكمية (≤ max).
+export const DUNNING_LEVELS = [
+  { key: 'current', label: 'جارٍ',         color: 'var(--muted)', max: 30 },
+  { key: 'remind',  label: 'تذكير',        color: 'var(--gold)',  max: 45 },
+  { key: 'firm',    label: 'حازم',         color: '#F97316',      max: 60 },
+  { key: 'urgent',  label: 'تحذير إيقاف',  color: 'var(--red)',   max: 90 },
+  { key: 'legal',   label: 'تصعيد قانوني', color: '#B91C1C',      max: Infinity },
+];
+export function dunningLevel(days) {
+  const d = Number(days) || 0;
+  return DUNNING_LEVELS.find(l => d <= l.max) || DUNNING_LEVELS[DUNNING_LEVELS.length - 1];
+}
+
 // ── مرشّحو التحصيل من دين زوهو الحيّ (توحيد طابور التحصيل) ────────────────────
 // يُغذّي regenerateTasks بنفس مصدر بطاقة الإيقاف (RPC customer_money_dashboard =
 // فواتير زوهو المفتوحة §1.24) بدل الكشف الداخلي (snapshot) — فطابور /crm?tab=
