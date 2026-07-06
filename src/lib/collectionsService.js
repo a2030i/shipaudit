@@ -248,3 +248,34 @@ export function stopReasonAr(reason) {
   if (reason === 'overdue') return '+30 يوم';
   return '';
 }
+
+// ── مرشّحو التحصيل من دين زوهو الحيّ (توحيد طابور التحصيل) ────────────────────
+// يُغذّي regenerateTasks بنفس مصدر بطاقة الإيقاف (RPC customer_money_dashboard =
+// فواتير زوهو المفتوحة §1.24) بدل الكشف الداخلي (snapshot) — فطابور /crm?tab=
+// collections يعكس نفس أرقام /decisions و/customer-money (رقم واحد لكل مفهوم).
+// الشكل يطابق ما يتوقّعه regenerateTasks: name/total/daysOutstanding/overLimit/
+// creditLimit/merchant.billingType. الحدّ الافتراضي 10,000 (قاعدة المستخدم).
+export async function loadCollectionCandidates({ creditLimit = 10000 } = {}) {
+  const { data, error } = await supabase.rpc('customer_money_dashboard');
+  if (error) throw error;
+  const rows = Array.isArray(data?.customers) ? data.customers : [];
+  return rows.map(c => {
+    const total = Number(c.owed) || 0;
+    return {
+      name: c.name,
+      total,
+      overdue: Number(c.overdue) || 0,
+      daysOutstanding: Number(c.oldest_days) || 0,
+      overLimit: total > creditLimit,
+      creditLimit,
+      phone: c.phone || '',
+      merchant: {
+        billingType: c.billing_type || '',
+        storeName: c.store_name || '',
+        phone: c.phone || '',
+        walletBalance: Number(c.wallet_balance) || 0,
+        platformStatus: c.platform_status || '',
+      },
+    };
+  });
+}

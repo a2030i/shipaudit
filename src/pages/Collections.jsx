@@ -28,11 +28,11 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
 import {
   TRIGGER_LABELS, STAGE_LABELS,
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
+  loadCollectionCandidates,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -100,11 +100,11 @@ export default function Collections({ isActive = true }) {
     try {
       const [t, recs, pending] = await Promise.all([
         listTasks({ includeDone: stageFilter !== 'open' }),
-        loadLatestReceivables().catch(() => ({ activeCustomers: [] })),
+        loadCollectionCandidates().catch(() => []),   // دين زوهو الحيّ (كان snapshot)
         listWriteoffs({ status: 'pending' }).catch(() => []),
       ]);
       setTasks(t);
-      setCustomers(recs?.activeCustomers || recs?.customers || []);
+      setCustomers(recs || []);
       setPendingWriteoffs(pending);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
