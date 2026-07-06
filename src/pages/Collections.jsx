@@ -32,7 +32,7 @@ import {
   TRIGGER_LABELS, STAGE_LABELS,
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
-  loadCollectionCandidates,
+  loadCollectionCandidates, dunningLevel, DUNNING_LEVELS,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -181,6 +181,22 @@ export default function Collections({ isActive = true }) {
     };
   }, [tasks]);
 
+  // صحة أعمار الذمم + توزيع مستويات التصعيد (من دين زوهو الحيّ — بند ب+ج).
+  // متوسط عمر الدين = مرجّح بالمبلغ (مؤشّر DSO مبسّط، دائماً محسوب بلا مبيعات).
+  const arHealth = useMemo(() => {
+    const withDebt = customers.filter(c => (Number(c.total) || 0) > 0.5);
+    const totalDebt = withDebt.reduce((s, c) => s + (Number(c.total) || 0), 0);
+    const wAge = totalDebt
+      ? withDebt.reduce((s, c) => s + (Number(c.total) || 0) * (Number(c.daysOutstanding) || 0), 0) / totalDebt
+      : 0;
+    const byLevel = new Map(DUNNING_LEVELS.map(l => [l.key, { ...l, count: 0, total: 0 }]));
+    for (const c of withDebt) {
+      const e = byLevel.get(dunningLevel(c.daysOutstanding).key);
+      e.count++; e.total += Number(c.total) || 0;
+    }
+    return { avgAge: Math.round(wAge), levels: [...byLevel.values()], totalDebt, count: withDebt.length };
+  }, [customers]);
+
   const exportTasks = () => {
     if (!visibleTasks.length) { toast('لا توجد مهام', 'info'); return; }
     const headers = [
@@ -250,7 +266,25 @@ export default function Collections({ isActive = true }) {
         <SummaryStat label="وعود فعّالة"     value={stats.promised}         color="var(--gold)"/>
         <SummaryStat label="وعود اليوم"      value={stats.promiseDueToday}  color="var(--green)"/>
         <SummaryStat label="وعود متأخّرة"    value={stats.promiseOverdue}   color="var(--red)"/>
+        <SummaryStat label="متوسط عمر الدين" value={`${arHealth.avgAge} يوم`} color="#F97316"/>
       </div>
+
+      {/* مستويات التصعيد — توزيع الدين الحيّ (زوهو) على مراحل المطالبة (ب+ج).
+          التصعيد بالأولوية: الأقدم يُلاحَق أولاً وبنبرة أشدّ. */}
+      {arHealth.totalDebt > 0.5 && (
+        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
+          {arHealth.levels.filter(l => l.count > 0).map(l => (
+            <div key={l.key} title={`${l.count} عميل · ${fmt(l.total)} ر.س`} style={{
+              display: 'flex', alignItems: 'center', gap: 8, padding: '7px 12px', borderRadius: 10,
+              border: `1px solid ${l.color}`, background: `color-mix(in srgb, ${l.color} 8%, transparent)`,
+            }}>
+              <span style={{ width: 8, height: 8, borderRadius: 999, background: l.color, flexShrink: 0 }}/>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>{l.label}</span>
+              <span style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{l.count} · {fmtCompact(l.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* Pending write-offs banner — shows when there are requests
           awaiting admin approval. Admins click to open the review
@@ -346,7 +380,20 @@ export default function Collections({ isActive = true }) {
                       {fmtCompact(t.debt_at_creation)}
                     </td>
                     <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
-                      {t.days_outstanding != null ? `${t.days_outstanding} يوم` : '—'}
+                      {(() => {
+                        // العمر الحيّ من دين زوهو (candidate) لا المخزَّن عند الإنشاء
+                        const days = c?.daysOutstanding ?? t.days_outstanding;
+                        if (days == null) return '—';
+                        const lv = dunningLevel(days);
+                        return (<>
+                          {`${days} يوم`}
+                          <div style={{ marginTop: 3, display: 'inline-flex', padding: '1px 7px', borderRadius: 999,
+                            fontSize: 9.5, fontWeight: 700, color: lv.color,
+                            background: `color-mix(in srgb, ${lv.color} 12%, transparent)` }}>
+                            {lv.label}
+                          </div>
+                        </>);
+                      })()}
                     </td>
                     <td data-label="الوعد" style={{ padding: '10px 12px', fontSize: 11 }}>
                       {t.stage === 'promised' ? (
