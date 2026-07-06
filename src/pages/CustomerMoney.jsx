@@ -658,6 +658,16 @@ function CustomerCard({ c, highlight }) {
         {c.lastPaymentDate
           ? <Chip color="var(--green)">آخر دفعة {c.lastPaymentDate} ({fmtK(c.lastPaymentAmount)})</Chip>
           : <Chip color="var(--red)">لم يدفع شيئاً بعد</Chip>}
+        {/* محفظة المنصّة — تُعرَض هنا حتى لا يحتاج المشغّل صفحة أخرى.
+            دفع مسبق برصيد موجب يغطّي الدين = «خصم من المحفظة» لا تحصيل. */}
+        {(c.walletBalance || 0) > 0.5 && (
+          <Chip color="var(--green)">
+            💰 محفظة +{fmt(c.walletBalance)}{c.walletBalance >= c.owed ? ' — تغطّي الدين' : ''}
+          </Chip>
+        )}
+        {(c.walletBalance || 0) < -0.5 && (
+          <Chip color="var(--red)">محفظة {fmt(c.walletBalance)} (دفع مسبق سالب)</Chip>
+        )}
       </div>
 
       {/* شريط أعمار مصغّر */}
