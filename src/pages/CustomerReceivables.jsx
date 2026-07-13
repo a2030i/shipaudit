@@ -8,17 +8,16 @@ import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
-  Upload, RefreshCw, Download, Search, Users, AlertTriangle,
+  RefreshCw, Download, Search, Users, AlertTriangle,
   CheckCircle2, Trash2, ChevronDown, ChevronLeft, FileText, Building2,
   ShieldCheck, Eye, EyeOff, MessageSquare, Filter, X,
   Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import {
-  parseReceivablesFile, uploadReceivablesSnapshot,
   loadLatestReceivables, loadReceivablesSnapshots, deleteReceivablesSnapshot,
   setCustomerStatus,
 } from '../lib/customerReceivablesService.js';
@@ -436,114 +435,6 @@ function StatPill({ label, value, color }) {
   );
 }
 
-// ── Upload modal ───────────────────────────────────────────────
-function UploadModal({ onClose, onDone, userId }) {
-  const [file,    setFile]    = useState(null);
-  const [parsed,  setParsed]  = useState(null);
-  const [busy,    setBusy]    = useState(false);
-  const [error,   setError]   = useState(null);
-
-  const handleFile = async (f) => {
-    if (!f) return;
-    setFile(f);
-    setError(null);
-    setParsed(null);
-    setBusy(true);
-    try {
-      const buf = await f.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null, raw: false });
-      const out = parseReceivablesFile(rows);
-      setParsed(out);
-    } catch (e) {
-      setError(e.message);
-    }
-    setBusy(false);
-  };
-
-  const handleSave = async () => {
-    if (!parsed) return;
-    setBusy(true);
-    try {
-      const res = await uploadReceivablesSnapshot({
-        parsed,
-        sourceFile: file?.name || null,
-        userId,
-      });
-      toast(`تم رفع ${res.customerCount} عميل / ${res.invoiceCount} فاتورة · ${fmt(res.total)} ر.س`, 'success');
-      onDone();
-    } catch (e) {
-      toast(`فشل الحفظ: ${e.message}`, 'error');
-    }
-    setBusy(false);
-  };
-
-  const summaryCount = parsed?.rows?.filter(r => r.isSummary).length || 0;
-  const detailCount  = parsed?.rows?.filter(r => !r.isSummary).length || 0;
-  const totalAmount  = parsed?.rows?.filter(r => r.isSummary).reduce((s, r) => s + r.balance, 0) || 0;
-
-  return (
-    <Modal title="رفع كشف مديونيات عملاء" onClose={onClose} width={520}>
-      {!file && (
-        <DropZone
-          onFile={handleFile}
-          title="اسحب ملف Excel هنا"
-          hint={<>الملف لازم يحتوي على عنوان «تفاصيل الفاتورة» + رأس فيه «اسم العملاء» و«الرصيد».<br/>اسحب الملف أو <span style={{ color: 'var(--accent)', fontWeight: 600 }}>اضغط للاختيار</span></>}
-        />
-      )}
-
-      {busy && <div style={{ display: 'flex', justifyContent: 'center', padding: 18 }}><Spinner size={22}/></div>}
-
-      {error && (
-        <div style={{
-          marginTop: 12, padding: '10px 14px',
-          background: 'rgba(239,68,68,.10)',
-          border: '1px solid rgba(239,68,68,.35)',
-          borderRadius: 9, fontSize: 12, color: 'var(--red)',
-        }}>
-          ⚠ {error}
-        </div>
-      )}
-
-      {parsed && !busy && !error && (
-        <>
-          <div style={{
-            marginTop: 12, padding: '12px 14px',
-            background: 'rgba(45,212,191,.08)',
-            border: '1px solid rgba(45,212,191,.35)',
-            borderRadius: 9, fontSize: 12, lineHeight: 1.8,
-          }}>
-            <div style={{ fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>✓ تم تحليل الملف</div>
-            <Row label="الملف"        value={file?.name}/>
-            <Row label="الفترة"       value={parsed.periodFrom ? `${fmtDate(parsed.periodFrom)} → ${fmtDate(parsed.periodTo)}` : '—'}/>
-            <Row label="العملاء"     value={summaryCount}/>
-            <Row label="الفواتير"    value={detailCount}/>
-            <Row label="إجمالي"      value={`${fmt(totalAmount)} ر.س`} accent/>
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
-            <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-            <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ كلقطة
-            </Btn>
-          </div>
-        </>
-      )}
-    </Modal>
-  );
-}
-
-function Row({ label, value, accent }) {
-  return (
-    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
-      <span style={{ color: 'var(--muted)' }}>{label}</span>
-      <span style={{ fontWeight: accent ? 800 : 600, color: accent ? 'var(--accent)' : 'var(--text)', fontFamily: 'var(--font-mono)' }}>
-        {value}
-      </span>
-    </div>
-  );
-}
-
 // ── Tag (exclude / restore) modal ──────────────────────────────
 function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
   const [notes, setNotes] = useState(customer.notes || '');
@@ -638,7 +529,6 @@ export default function CustomerReceivables({ isActive = true }) {
   const [search,  setSearch]  = useState('');
   const [sortBy,  setSortBy]  = useState('total');     // total | oldest | invoices | name
   const [sortDir, setSortDir] = useState('desc');
-  const [showUpload, setShowUpload] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
   const [syncingZoho, setSyncingZoho] = useState(false);
@@ -1175,9 +1065,6 @@ export default function CustomerReceivables({ isActive = true }) {
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
-            <Btn size="sm" variant="ghost" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
-              رفع Excel قديم
-            </Btn>
             <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={handleSyncZoho} disabled={syncingZoho || loading}>
               مزامنة زوهو
             </Btn>
@@ -1199,7 +1086,7 @@ export default function CustomerReceivables({ isActive = true }) {
           <Empty
             icon="💰"
             title="لا توجد فواتير مفتوحة"
-            sub="زامن Zoho Books أولاً. رفع Excel القديم متاح فقط كخطة رجوع."
+            sub="زامن Zoho Books أولاً. مديونيات العملاء تأتي من زوهو API فقط."
           />
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
             <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={handleSyncZoho} disabled={syncingZoho}>
@@ -1644,15 +1531,6 @@ export default function CustomerReceivables({ isActive = true }) {
         onSelect={(c) => setOpenCustomer(c)}
         onClose={() => setOpenCustomer(null)}
       />
-
-      {/* Upload modal */}
-      {showUpload && (
-        <UploadModal
-          userId={user?.id}
-          onClose={() => setShowUpload(false)}
-          onDone={() => { setShowUpload(false); refresh(); }}
-        />
-      )}
 
       {/* Tag modal — exclude / restore + optional note */}
       {tagModal && (

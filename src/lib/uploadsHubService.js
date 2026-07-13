@@ -10,10 +10,7 @@
 //
 // Manual / fallback snapshot sources covered:
 //   internal_settlement   — استحقاق المتاجر (الداخلي)
-//   receivables           — مديونيات العملاء
 //   merchants             — متاجر المنصّة (stores.xlsx)
-//   zoho_customers        — Zoho legacy customer balance export
-//   zoho_vendors          — Zoho legacy vendor balance export
 //
 // Each source declares its "expected cadence" (in days) so the
 // hub can flag stale data without hard-coding thresholds in the UI.
@@ -21,10 +18,8 @@
 import { supabase }                       from './supabase.js';
 import * as XLSX                          from 'xlsx';
 import {
-  parseInternalSettlement, parseZohoCustomerBalances, parseZohoVendorBalances,
-  uploadBalanceSnapshot, uploadVendorBalanceSnapshot,
+  parseInternalSettlement, uploadBalanceSnapshot,
 } from './reconciliationService.js';
-import { parseReceivablesFile, uploadReceivablesSnapshot } from './customerReceivablesService.js';
 import { parseStoresFile,      uploadMerchantsSnapshot   } from './merchantsService.js';
 
 const DAY_MS = 86_400_000;
@@ -32,9 +27,9 @@ const DAY_MS = 86_400_000;
 // Per-source metadata. `cadenceDays` drives the stale indicator.
 // `link` is where the operator can drill down for richer workflow
 // (the hub itself is fire-and-forget upload, not browse).
-// `origin` drives a small badge on each card so the operator
-// can scan at a glance "هذا من لمحه" vs "هذا من Zoho Legacy" without
-// reading the title.
+// `origin` drives a small badge on each card so the operator can scan
+// the file owner without reading the title. Zoho is intentionally not
+// listed here anymore: Books data comes through the API.
 export const UPLOAD_SOURCES = [
   {
     id:           'internal_settlement',
@@ -46,15 +41,6 @@ export const UPLOAD_SOURCES = [
     link:         '/reconciliation',
   },
   {
-    id:           'receivables',
-    label:        'مديونيات العملاء (ملف احتياطي)',
-    origin:       'zoho',
-    subtitle:     'استخدمه فقط عند الحاجة؛ المرجع اليومي في زوهو API',
-    accent:       '#10B981',
-    cadenceDays:  7,
-    link:         '/receivables',
-  },
-  {
     id:           'merchants',
     label:        'دليل المتاجر (stores.xlsx)',
     origin:       'lamha',
@@ -63,31 +49,12 @@ export const UPLOAD_SOURCES = [
     cadenceDays:  30,
     link:         '/merchants',
   },
-  {
-    id:           'zoho_customers',
-    label:        'أرصدة العملاء القديمة',
-    origin:       'zoho',
-    subtitle:     'مرآة Excel قديمة للمطابقة التاريخية، وليست وارد API',
-    accent:       '#F59E0B',
-    cadenceDays:  7,
-    link:         '/reconciliation',
-  },
-  {
-    id:           'zoho_vendors',
-    label:        'أرصدة الموردين القديمة',
-    origin:       'zoho',
-    subtitle:     'مرآة Excel قديمة للمطابقة التاريخية، وليست وارد API',
-    accent:       '#F97316',
-    cadenceDays:  7,
-    link:         '/reconciliation?tab=vendors',
-  },
 ];
 
 // Origin badge metadata — used by the UI to render the small
-// "لمحه" / "Zoho Legacy" pill on each upload card.
+// "لمحه" pill on each upload card.
 export const ORIGIN_BADGES = {
   lamha: { label: 'لمحه', color: '#0EA5E9' },
-  zoho:  { label: 'Zoho Legacy', color: '#7C3AED' },
 };
 
 // ── Per-source last-upload loaders ──
@@ -106,57 +73,6 @@ async function lastInternal() {
     rowCount:     r.row_count,
     matchedCount: r.matched_count,
     total:        Number(r.total_balance) || 0,
-  };
-}
-async function lastZohoCustomers() {
-  const { data } = await supabase
-    .from('store_balance_snapshots').select('*')
-    .eq('source', 'zoho')
-    .order('uploaded_at', { ascending: false }).limit(1);
-  if (!data?.length) return null;
-  const r = data[0];
-  return {
-    lastAt:       r.uploaded_at,
-    fileName:     r.file_name,
-    rowCount:     r.row_count,
-    matchedCount: r.matched_count,
-    total:        Number(r.total_balance) || 0,
-  };
-}
-async function lastZohoVendors() {
-  const { data } = await supabase
-    .from('vendor_balance_snapshots').select('*')
-    .order('uploaded_at', { ascending: false }).limit(1);
-  if (!data?.length) return null;
-  const r = data[0];
-  return {
-    lastAt:       r.uploaded_at,
-    fileName:     r.file_name,
-    rowCount:     r.row_count,
-    matchedCount: r.matched_count,
-    total:        Number(r.total_we_owe) || 0,
-  };
-}
-async function lastReceivables() {
-  // customer_receivables doesn't have a snapshots-header table,
-  // so we read directly: latest uploaded_at + row count from that
-  // snapshot.
-  const { data: meta } = await supabase
-    .from('customer_receivables')
-    .select('snapshot_id, source_file, uploaded_at')
-    .order('uploaded_at', { ascending: false }).limit(1);
-  if (!meta?.length) return null;
-  const top = meta[0];
-  const { count } = await supabase
-    .from('customer_receivables')
-    .select('id', { count: 'exact', head: true })
-    .eq('snapshot_id', top.snapshot_id);
-  return {
-    lastAt:       top.uploaded_at,
-    fileName:     top.source_file,
-    rowCount:     count || 0,
-    matchedCount: null,
-    total:        null,
   };
 }
 async function lastMerchants() {
@@ -180,10 +96,7 @@ async function lastMerchants() {
 
 const LOADERS = {
   internal_settlement: lastInternal,
-  receivables:         lastReceivables,
   merchants:           lastMerchants,
-  zoho_customers:      lastZohoCustomers,
-  zoho_vendors:        lastZohoVendors,
 };
 
 // ── Overview API for the hub page ──
@@ -213,22 +126,47 @@ export function detectFileSource(rows) {
   const flatText = allCells.join('\n').toLowerCase();
   const reasons = [];
 
-  // -- Zoho vendor balance — strongest signature: "اسم المورد" --
+  // Zoho Excel exports are deliberately blocked here. Books is an API
+  // source now; allowing a manual Excel path silently reintroduces two
+  // sources of truth.
   if (flatText.includes('ملخص أرصدة الموردين') ||
       flatText.includes('vendor balance') ||
       allCells.some(c => c.trim() === 'اسم المورد')) {
     reasons.push('عمود "اسم المورد"');
-    return { sourceId: 'zoho_vendors', confidence: 0.95, reasons };
+    return {
+      blocked: true,
+      confidence: 0.99,
+      label: 'ملف زوهو Excel',
+      message: 'تم إيقاف رفع Excel زوهو. افتح صفحة زوهو API واضغط مزامنة من زوهو.',
+      reasons,
+    };
   }
 
-  // -- Zoho customer balance — "مبلغ الذمة المدينة" is unique --
   if (flatText.includes('ملخص أرصدة العملاء') ||
       flatText.includes('ملخص أرصده العملاء') ||
       flatText.includes('ملخص التزامات المستفيدين') ||
       flatText.includes('customer balance') ||
       allCells.some(c => c.trim() === 'مبلغ الذمة المدينة')) {
     reasons.push('بصمة تقرير Zoho — العملاء');
-    return { sourceId: 'zoho_customers', confidence: 0.95, reasons };
+    return {
+      blocked: true,
+      confidence: 0.99,
+      label: 'ملف زوهو Excel',
+      message: 'تم إيقاف رفع Excel زوهو. افتح صفحة زوهو API واضغط مزامنة من زوهو.',
+      reasons,
+    };
+  }
+  if (flatText.includes('تفاصيل الفاتورة') || flatText.includes('تفاصيل فواتير') ||
+      (allCells.some(c => /اسم\s*العملاء|اسم\s*العميل/.test(c)) &&
+       allCells.some(c => /تاريخ.*فاتورة|تاريخ\s*الفاتوره/i.test(c)))) {
+    reasons.push('بصمة تقرير فواتير Zoho');
+    return {
+      blocked: true,
+      confidence: 0.92,
+      label: 'ملف فواتير زوهو Excel',
+      message: 'مديونيات العملاء تُقرأ من زوهو API. لا ترفع ملف Excel زوهو هنا.',
+      reasons,
+    };
   }
 
   // -- Merchants (stores.xlsx) — needs id + name + an ops column --
@@ -242,17 +180,6 @@ export function detectFileSource(rows) {
       reasons.push('أعمدة كشف المتاجر (رقم/اسم/شحنات)');
       return { sourceId: 'merchants', confidence: 0.9, reasons };
     }
-  }
-
-  // -- Customer receivables — "تفاصيل" title + اسم العملاء + تاريخ --
-  if (flatText.includes('تفاصيل الفاتورة') || flatText.includes('تفاصيل فواتير')) {
-    reasons.push('عنوان "تفاصيل الفاتورة"');
-    return { sourceId: 'receivables', confidence: 0.9, reasons };
-  }
-  if (allCells.some(c => /اسم\s*العملاء|اسم\s*العميل/.test(c)) &&
-      allCells.some(c => /تاريخ.*فاتورة|تاريخ\s*الفاتوره/i.test(c))) {
-    reasons.push('عمود اسم العملاء + تاريخ الفاتورة');
-    return { sourceId: 'receivables', confidence: 0.85, reasons };
   }
 
   // -- Internal store settlement — exactly 2 cols: المتجر + الرصيد,
@@ -280,6 +207,9 @@ export function detectFileSource(rows) {
 export async function uploadFile({ sourceId, file, userId }) {
   if (!file)     throw new Error('لا يوجد ملف');
   if (!sourceId) throw new Error('نوع المصدر مطلوب');
+  if (['zoho_customers', 'zoho_vendors', 'receivables'].includes(sourceId)) {
+    throw new Error('تم إيقاف رفع Excel زوهو. المصدر المعتمد الآن هو زوهو API.');
+  }
 
   const buffer = await file.arrayBuffer();
   const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
@@ -292,25 +222,6 @@ export async function uploadFile({ sourceId, file, userId }) {
       if (parsed.errors.length) throw new Error(parsed.errors.join(' · '));
       const r = await uploadBalanceSnapshot({ source: 'internal', parsed: parsed.rows, fileName: file.name, userId });
       return { rowCount: r.rowCount, matched: r.matched, total: r.totalBalance, message: `${r.rowCount} متجر · ${r.matched} مطابق` };
-    }
-    case 'zoho_customers': {
-      const parsed = parseZohoCustomerBalances(rows);
-      if (parsed.errors.length) throw new Error(parsed.errors.join(' · '));
-      const r = await uploadBalanceSnapshot({ source: 'zoho', parsed: parsed.rows, fileName: file.name, userId });
-      return { rowCount: r.rowCount, matched: r.matched, total: r.totalBalance, message: `${r.rowCount} عميل · ${r.matched} مطابق` };
-    }
-    case 'zoho_vendors': {
-      const parsed = parseZohoVendorBalances(rows);
-      if (parsed.errors.length) throw new Error(parsed.errors.join(' · '));
-      const r = await uploadVendorBalanceSnapshot({ parsed: parsed.rows, fileName: file.name, userId });
-      return { rowCount: r.rowCount, matched: r.matched, total: r.totalWeOwe, message: `${r.rowCount} مورّد · ${r.matched} مطابق` };
-    }
-    case 'receivables': {
-      // parseReceivablesFile expects raw rows (header detection inside)
-      const parsed = parseReceivablesFile(rows);
-      if (parsed.errors?.length) throw new Error(parsed.errors.join(' · '));
-      const r = await uploadReceivablesSnapshot({ parsed, sourceFile: file.name, userId });
-      return { rowCount: r.invoiceCount, matched: r.customerCount, total: r.total, message: `${r.customerCount} عميل · ${r.invoiceCount} فاتورة · ${r.total} ر.س` };
     }
     case 'merchants': {
       const parsed = parseStoresFile(rows);

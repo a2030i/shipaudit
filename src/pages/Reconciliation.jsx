@@ -1,7 +1,7 @@
-// "مطابقة أرصدة المتاجر" — three-way reconciliation:
+// "مطابقة أرصدة المتاجر" — reconciliation workspace:
 //   1. Internal platform export (استحقاق المتاجر)
-//   2. Zoho Books — Customer Balances Summary
-//   3. Our customer_receivables (auto, no upload needed)
+//   2. Zoho Books API live balances
+//   3. Our customer_receivables (auto, no Zoho upload needed)
 //
 // Each row in the result table shows the same store from all three
 // angles + the largest pairwise discrepancy. Rows sort by max diff
@@ -21,17 +21,15 @@ import {
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
-  parseInternalSettlement, parseZohoCustomerBalances,
+  parseInternalSettlement,
   uploadBalanceSnapshot, listBalanceSnapshots, deleteBalanceSnapshot,
   loadReconciliation,
   loadUnmatchedBalances, linkUnmatchedToStore, loadMerchantsForPicker,
   loadUnmatchedZohoForPicker, linkInternalRowToZohoRow,
   autolinkBalancesByExactName,
   loadCustomerBalanceRecon,
-  parseZohoVendorBalances, uploadVendorBalanceSnapshot,
-  listVendorSnapshots, deleteVendorSnapshot,
   loadVendorReconciliation, loadVendorOthers,
-  parseZohoTrialBalanceTreasury, uploadTreasurySnapshot, loadTreasuryBalances,
+  loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
 
 const fmt = (n) =>
@@ -239,22 +237,19 @@ export default function Reconciliation({ isActive = true }) {
   );
 
   const latestInternal = snapshots.find(s => s.source === 'internal');
-  const latestZoho     = snapshots.find(s => s.source === 'zoho');
 
   // ── upload handlers ──
-  const handleUpload = async (file, source) => {
+  const handleUpload = async (file) => {
     try {
       const buffer = await file.arrayBuffer();
       const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
       const ws     = wb.Sheets[wb.SheetNames[0]];
       const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-      const parsed = source === 'internal'
-        ? parseInternalSettlement(rows)
-        : parseZohoCustomerBalances(rows);
+      const parsed = parseInternalSettlement(rows);
       if (parsed.errors.length) { toast(parsed.errors.join('\n'), 'error'); return; }
       if (!parsed.rows.length)  { toast('لا توجد صفوف صالحة في الملف', 'warning'); return; }
       const result = await uploadBalanceSnapshot({
-        source,
+        source:   'internal',
         parsed:   parsed.rows,
         fileName: file.name,
         userId:   profile?.id || null,
@@ -269,8 +264,8 @@ export default function Reconciliation({ isActive = true }) {
     }
   };
 
-  const handleDeleteSnapshot = async (id, source) => {
-    if (!confirm(`حذف آخر تحميل ${source === 'internal' ? 'داخلي' : 'Zoho'}؟`)) return;
+  const handleDeleteSnapshot = async (id) => {
+    if (!confirm('حذف آخر تحميل داخلي؟')) return;
     try {
       await deleteBalanceSnapshot(id);
       toast('تم الحذف', 'success');
@@ -344,9 +339,9 @@ export default function Reconciliation({ isActive = true }) {
         borderBottom: '1px solid var(--border)',
       }}>
         {[
-          { id: 'zoho_live', label: 'العملاء — زوهو المرجع (حيّ)', icon: '⚡' },
-          { id: 'customers', label: 'العملاء (ملفات مرفوعة)', icon: '🏪' },
-          { id: 'vendors',   label: 'الموردون (شركات الشحن)', icon: '🚚' },
+          { id: 'zoho_live', label: 'العملاء — زوهو API', icon: '⚡' },
+          { id: 'customers', label: 'مطابقة لمحة الداخلية', icon: '🏪' },
+          { id: 'vendors',   label: 'الموردون — زوهو API', icon: '🚚' },
         ].map(t => {
           const active = tab === t.id;
           return (
@@ -365,7 +360,7 @@ export default function Reconciliation({ isActive = true }) {
         })}
       </div>
 
-      {tab === 'vendors' && <VendorsTab profile={profile}/>}
+      {tab === 'vendors' && <VendorsTab/>}
       {tab === 'zoho_live' && <ZohoLiveTab isActive={isActive}/>}
       {tab === 'customers' && <>
 
@@ -380,18 +375,30 @@ export default function Reconciliation({ isActive = true }) {
           color="#3B82F6"
           icon={<FileSpreadsheet size={18}/>}
           snapshot={latestInternal}
-          onUpload={(f) => handleUpload(f, 'internal')}
-          onDelete={() => handleDeleteSnapshot(latestInternal.id, 'internal')}
+          onUpload={handleUpload}
+          onDelete={() => handleDeleteSnapshot(latestInternal.id)}
         />
-        <UploadCard
-          title="Zoho Books"
-          subtitle="Customer Balances Summary — Customer Name + Closing Balance"
-          color="var(--gold)"
-          icon={<FileSpreadsheet size={18}/>}
-          snapshot={latestZoho}
-          onUpload={(f) => handleUpload(f, 'zoho')}
-          onDelete={() => handleDeleteSnapshot(latestZoho.id, 'zoho')}
-        />
+        <Card style={{
+          border: '1px solid color-mix(in srgb, #0EA5E9 24%, var(--border))',
+          background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 7%, var(--surface)), var(--surface))',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <span style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: 'color-mix(in srgb, #0EA5E9 14%, transparent)',
+              color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}>
+              <Zap size={18}/>
+            </span>
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو من API فقط</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
+                لا يوجد رفع Customer Balances من Excel. استخدم تبويب “العملاء — زوهو API” للمطابقة الحيّة.
+              </div>
+            </div>
+          </div>
+        </Card>
       </div>
 
       {/* "Internal is the source of truth" banner */}
@@ -536,7 +543,7 @@ export default function Reconciliation({ isActive = true }) {
         <Empty
           icon="🧮"
           title="لا توجد بيانات للمطابقة"
-          sub="ارفع ملف النظام الداخلي و/أو ملف Zoho لبدء المطابقة."
+          sub="ارفع ملف النظام الداخلي فقط. بيانات زوهو تأتي من API في التبويب الحي."
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -791,25 +798,22 @@ function ZohoLiveTab({ isActive = true }) {
   );
 }
 
-function VendorsTab({ profile }) {
+function VendorsTab() {
   const [loading, setLoading]       = useState(true);
   const [reconcile, setReconcile]   = useState([]);
   const [others, setOthers]         = useState([]);
-  const [snapshots, setSnapshots]   = useState([]);
   const [treasury, setTreasury]     = useState({ rows: [], uploadedAt: null });
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, o, s, t] = await Promise.all([
+      const [r, o, t] = await Promise.all([
         loadVendorReconciliation().catch(() => []),
         loadVendorOthers().catch(() => []),
-        listVendorSnapshots().catch(() => []),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
       ]);
       setReconcile(r);
       setOthers(o);
-      setSnapshots(s);
       setTreasury(t);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
@@ -817,51 +821,7 @@ function VendorsTab({ profile }) {
     setLoading(false);
   }, []);
 
-  const handleTreasuryUpload = async (file) => {
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const ws     = wb.Sheets[wb.SheetNames[0]];
-      const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-      const parsed = parseZohoTrialBalanceTreasury(rows);
-      if (parsed.errors.length) { toast(parsed.errors.join('\n'), 'error'); return; }
-      const result = await uploadTreasurySnapshot({ parsed: parsed.rows, userId: profile?.id || null });
-      toast(`تم رفع ${result.count} خزينة · ${result.matched} مطابقة بناقل`, 'success');
-      await refresh();
-    } catch (e) { toast(`فشل رفع ميزان المراجعة: ${e.message}`, 'error'); }
-  };
-
   useEffect(() => { refresh(); }, [refresh]);
-
-  const handleUpload = async (file) => {
-    try {
-      const buffer = await file.arrayBuffer();
-      const wb     = XLSX.read(buffer, { type: 'array', cellDates: true });
-      const ws     = wb.Sheets[wb.SheetNames[0]];
-      const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
-      const parsed = parseZohoVendorBalances(rows);
-      if (parsed.errors.length) { toast(parsed.errors.join('\n'), 'error'); return; }
-      if (!parsed.rows.length)  { toast('لا توجد صفوف صالحة', 'warning'); return; }
-      const result = await uploadVendorBalanceSnapshot({
-        parsed:   parsed.rows,
-        fileName: file.name,
-        userId:   profile?.id || null,
-      });
-      toast(
-        `تم رفع ${result.rowCount} مورّد · ${result.matched} مطابق بشركات الشحن · علينا ${fmt(result.totalWeOwe)} ر.س`,
-        'success',
-      );
-      await refresh();
-    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
-  };
-
-  const latestSnap = snapshots[0];
-  const handleDelete = async () => {
-    if (!latestSnap) return;
-    if (!confirm('حذف آخر تحميل لـ Zoho الموردين؟')) return;
-    try { await deleteVendorSnapshot(latestSnap.id); toast('تم الحذف', 'success'); await refresh(); }
-    catch (e) { toast(`فشل: ${e.message}`, 'error'); }
-  };
 
   // Vendors don't have a "reference" upload like the customer side
   // does — the carrier_operations open balance is sparse and not
@@ -911,19 +871,27 @@ function VendorsTab({ profile }) {
 
   return (
     <div>
-      {/* Upload card — single, since internal vendor balance comes from our DB */}
-      <div style={{ marginBottom: 20 }}>
-        <UploadCard
-          title="Zoho — ملخص أرصدة الموردين"
-          subtitle="Reports → الذمم الدائنة → ملخص أرصدة الموردين. Cr = ندفع لهم · Dr = يردّون لنا"
-          color="var(--gold)"
-          icon={<FileSpreadsheet size={18}/>}
-          snapshot={latestSnap}
-          onUpload={handleUpload}
-          onDelete={handleDelete}
-          noun="مورّد"
-        />
-      </div>
+      <Card style={{
+        marginBottom: 20,
+        border: '1px solid color-mix(in srgb, #0EA5E9 24%, var(--border))',
+        background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 7%, var(--surface)), var(--surface))',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{
+            width: 38, height: 38, borderRadius: 10,
+            background: 'color-mix(in srgb, #0EA5E9 14%, transparent)',
+            color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            <Zap size={18}/>
+          </span>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>أرصدة الموردين من زوهو API</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
+              تم إيقاف رفع Vendor Balances من Excel. هذه الصفحة تعرض المتاح من المزامنة، وأي فجوة API ستظهر في خطة التطوير.
+            </div>
+          </div>
+        </div>
+      </Card>
 
       {/* ── COD treasury balances — from the Zoho Trial Balance (ميزان المراجعة).
             Shows how much collected COD sits un-drained per carrier so the
@@ -939,22 +907,13 @@ function VendorsTab({ profile }) {
           </span>
           {treasury.uploadedAt && (
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
-              آخر رفع: {new Date(treasury.uploadedAt).toLocaleDateString('en-GB')}
+              آخر تحديث محفوظ: {new Date(treasury.uploadedAt).toLocaleDateString('en-GB')}
             </span>
           )}
-          <div style={{ marginInlineStart: 'auto' }}>
-            <Btn size="sm" variant="ghost" icon={<Upload size={13}/>}
-              onClick={() => document.getElementById('treasury-upload-input')?.click()}>
-              رفع ميزان المراجعة
-            </Btn>
-            <input id="treasury-upload-input" type="file" accept=".xls,.xlsx" style={{ display: 'none' }}
-              onChange={e => { const f = e.target.files?.[0]; if (f) handleTreasuryUpload(f); e.target.value = ''; }}/>
-          </div>
         </div>
         {treasury.rows.length === 0 ? (
           <div style={{ padding: 16, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
-            ارفع تقرير <strong>«ميزان المراجعة»</strong> من Zoho (المحاسب → ميزان المراجعة) لعرض رصيد خزينة كل ناقل —
-            كم تحصيل COD محتجز لم يسحبه المحاسب بعد (حوالة لنا أو سداد فاتورة الناقل).
+            رفع ميزان المراجعة من Excel متوقف. المطلوب في المرحلة التالية ربط خزائن COD من Zoho API مباشرة حتى تظهر أرصدة كل ناقل بلا ملفات.
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -991,8 +950,8 @@ function VendorsTab({ profile }) {
       {reconcile.length === 0 && others.length === 0 ? (
         <Empty
           icon="🚚"
-          title="ارفع ملف Zoho الموردين لتبدأ"
-          sub="كل مورّد يُربط بشركة شحن في نظامنا، ونعرض رصيده بالاتجاه: لهم / لنا / صفر."
+          title="لا توجد أرصدة موردين من زوهو API"
+          sub="رفع Excel الموردين متوقف. المطلوب مزامنة الموردين من API ليظهر الاتجاه: لهم / لنا / صفر."
         />
       ) : (
         <>
@@ -1460,7 +1419,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
               {pickingZoho
                 ? (search
                     ? `لا توجد نتائج لـ «${search}»`
-                    : 'لا توجد عملاء Zoho — ارفع ملف Zoho أحدث')
+                    : 'لا توجد عملاء Zoho من المزامنة الحيّة')
                 : (search
                     ? `لا توجد نتائج لـ «${search}»`
                     : 'كل المتاجر مربوطة بالفعل — لا يوجد متاجر لمحة جديدة لربطها')}
