@@ -24,6 +24,7 @@ import {
   SpotlightCard, PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
+import { syncZohoDocs } from '../lib/pnlService.js';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -87,9 +88,10 @@ const ANOMALY_META = {
 export default function CustomerWatch({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { profile } = useAuth();
+  const { profile, can } = useAuth();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [syncingZoho, setSyncingZoho] = useState(false);
   const [search, setSearch] = useState('');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
@@ -105,16 +107,23 @@ export default function CustomerWatch({ isActive = true }) {
     setLoading(false);
   }, []);
 
+  const syncZohoAndRefresh = useCallback(async () => {
+    setSyncingZoho(true);
+    try {
+      const r = await syncZohoDocs();
+      const invoices = r?.results?.invoices ?? r?.invoices ?? 0;
+      const payments = r?.results?.customerpayments ?? r?.customerpayments ?? 0;
+      toast(`تم تحديث زوهو: ${invoices} فاتورة · ${payments} دفعة`, 'success');
+      await refresh();
+    } catch (e) {
+      toast(`فشل تحديث زوهو: ${e.message}`, 'error');
+    }
+    setSyncingZoho(false);
+  }, [refresh]);
+
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
   const t = data?.totals;
-
-  // Sparkline of monthly invoicing — picks the values from the 12-month
-  // series for the spotlight's mini trend.
-  const sparkline = useMemo(() => {
-    if (!data?.monthsSeries?.length) return [];
-    return data.monthsSeries.map(m => m.value);
-  }, [data]);
 
   // Cross-customer + merchant search — searches name, store_id, phone.
   // Returns up to 12 results, customer-first, then merchants without
@@ -198,11 +207,16 @@ export default function CustomerWatch({ isActive = true }) {
           : null}
         actions={
           <>
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
-              تحديث
+            {can?.('money.pnl') && (
+              <Btn size="md" variant="accent" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={syncZohoAndRefresh} disabled={syncingZoho || loading}>
+                تحديث زوهو
+              </Btn>
+            )}
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading || syncingZoho}>
+              تحديث العرض
             </Btn>
-            <Btn size="md" variant="primary" onClick={() => navigate('/receivables')}>
-              عرض كامل المديونيات
+            <Btn size="md" variant="primary" onClick={() => navigate('/customer-360?tab=receivables')}>
+              فتح المديونيات
             </Btn>
           </>
         }
@@ -222,22 +236,24 @@ export default function CustomerWatch({ isActive = true }) {
         <>
           {/* ── SPOTLIGHT: monthly invoiced (the headline number) ── */}
           <SpotlightCard
+            tone="soft"
+            compact
             tag={t.invoicedSource === 'zoho' ? 'INVOICED THIS MONTH · ZOHO LIVE' : 'INVOICED THIS MONTH'}
             title={`إجمالي ما تم إصداره من فواتير هذا الشهر${t.invoicedSource === 'zoho' ? ' (من زوهو مباشرة — يشمل المدفوعة)' : ''}`}
             value={fmt(t.monthlyInvoiced)}
             suffix="ر.س"
             accent="var(--green)"
-            sparkline={sparkline}
+            sparkline={null}
             delta={t.monthlyDelta != null ? {
               value: t.monthlyDelta,
               positive: t.monthlyDelta >= 0,
               label: 'مقارنة بالشهر السابق',
             } : null}
             stats={[
-              { label: 'إجمالي المديونيات (الكشف الداخلي)', value: `${fmtCompact(t.totalDebt)} ر.س`, color: '#FCA5A5' },
+              { label: 'إجمالي المديونيات (الكشف الداخلي)', value: `${fmtCompact(t.totalDebt)} ر.س`, color: 'var(--red)' },
               { label: 'عملاء عليهم دين',    value: fmtCount(t.debtorsCount ?? t.customerCount) },
-              { label: 'تنبيهات نشطة',       value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? '#FCD34D' : '#86EFAC' },
-              { label: 'إجمالي المحافظ',     value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? '#FCA5A5' : '#5EEAD4' },
+              { label: 'تنبيهات نشطة',       value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? 'var(--gold)' : 'var(--green)' },
+              { label: 'إجمالي المحافظ',     value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? 'var(--red)' : 'var(--green)' },
             ]}
           />
 
