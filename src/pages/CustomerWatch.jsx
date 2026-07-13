@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast,
-  SpotlightCard, PageHeader, SectionTitle, AreaChart,
+  PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
@@ -49,6 +49,115 @@ const daysAgo = (iso) => {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso)) / 86_400_000);
 };
+
+function CustomerPulseSummary({ t }) {
+  const delta = t.monthlyDelta;
+  const deltaIsPositive = delta == null ? null : delta >= 0;
+  const metrics = [
+    { label: 'المديونيات الداخلية', value: `${fmtCompact(t.totalDebt)} ر.س`, color: 'var(--red)' },
+    { label: 'عملاء عليهم دين', value: fmtCount(t.debtorsCount ?? t.customerCount), color: 'var(--text)' },
+    { label: 'تنبيهات نشطة', value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? 'var(--gold)' : 'var(--green)' },
+    { label: 'إجمالي المحافظ', value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? 'var(--red)' : 'var(--green)' },
+  ];
+
+  return (
+    <Card style={{ padding: '18px 20px', marginBottom: 18 }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'minmax(260px, 1.35fr) repeat(4, minmax(120px, 1fr))',
+        gap: 12,
+        alignItems: 'stretch',
+      }} className="customer-pulse-grid">
+        <div style={{
+          border: '1px solid color-mix(in srgb, var(--green) 24%, var(--border))',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--green) 9%, var(--surface)), var(--surface))',
+          borderRadius: 12,
+          padding: '16px 18px',
+          minHeight: 128,
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '5px 10px',
+              borderRadius: 999,
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              color: 'var(--muted)',
+              fontSize: 10.5,
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 800,
+              textTransform: 'uppercase',
+            }}>
+              <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--green)' }}/>
+              {t.invoicedSource === 'zoho' ? 'ZOHO LIVE' : 'MONTHLY INVOICED'}
+            </div>
+            <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.6 }}>
+              إجمالي فواتير هذا الشهر{t.invoicedSource === 'zoho' ? ' من زوهو مباشرة، شامل المدفوعة' : ''}
+            </div>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{
+              color: 'var(--text)',
+              fontFamily: 'var(--font-mono)',
+              fontWeight: 900,
+              fontSize: 'clamp(28px, 3vw, 42px)',
+              lineHeight: 1,
+            }}>{fmt(t.monthlyInvoiced)}</div>
+            <div style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)', fontSize: 13, marginBottom: 3 }}>ر.س</div>
+            {delta != null && (
+              <span style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 5,
+                padding: '5px 9px',
+                borderRadius: 999,
+                background: deltaIsPositive ? 'rgba(16,185,129,.12)' : 'rgba(239,68,68,.12)',
+                color: deltaIsPositive ? 'var(--green)' : 'var(--red)',
+                fontSize: 11.5,
+                fontFamily: 'var(--font-mono)',
+                fontWeight: 800,
+                marginBottom: 2,
+              }}>
+                {deltaIsPositive ? <TrendingUp size={12}/> : <TrendingDown size={12}/>}
+                {Math.abs(delta).toFixed(1)}%
+              </span>
+            )}
+          </div>
+        </div>
+
+        {metrics.map((m) => (
+          <div key={m.label} style={{
+            border: '1px solid var(--border)',
+            borderRadius: 12,
+            padding: '14px 14px',
+            background: 'var(--surface)',
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: 7,
+            minHeight: 128,
+          }}>
+            <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>{m.label}</div>
+            <div style={{
+              color: m.color,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 22,
+              lineHeight: 1.1,
+              fontWeight: 900,
+              direction: 'ltr',
+              textAlign: 'right',
+            }}>{m.value}</div>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
 
 // Map a platform status string + last-shipment recency to a colored
 // pill. The platform mostly emits "نشط" / "موقوف" / "محذوف" / "غير
@@ -247,28 +356,7 @@ export default function CustomerWatch({ isActive = true }) {
         </Card>
       ) : (
         <>
-          {/* ── SPOTLIGHT: monthly invoiced (the headline number) ── */}
-          <SpotlightCard
-            tone="soft"
-            compact
-            tag={t.invoicedSource === 'zoho' ? 'INVOICED THIS MONTH · ZOHO LIVE' : 'INVOICED THIS MONTH'}
-            title={`إجمالي ما تم إصداره من فواتير هذا الشهر${t.invoicedSource === 'zoho' ? ' (من زوهو مباشرة — يشمل المدفوعة)' : ''}`}
-            value={fmt(t.monthlyInvoiced)}
-            suffix="ر.س"
-            accent="var(--green)"
-            sparkline={null}
-            delta={t.monthlyDelta != null ? {
-              value: t.monthlyDelta,
-              positive: t.monthlyDelta >= 0,
-              label: 'مقارنة بالشهر السابق',
-            } : null}
-            stats={[
-              { label: 'إجمالي المديونيات (الكشف الداخلي)', value: `${fmtCompact(t.totalDebt)} ر.س`, color: 'var(--red)' },
-              { label: 'عملاء عليهم دين',    value: fmtCount(t.debtorsCount ?? t.customerCount) },
-              { label: 'تنبيهات نشطة',       value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? 'var(--gold)' : 'var(--green)' },
-              { label: 'إجمالي المحافظ',     value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? 'var(--red)' : 'var(--green)' },
-            ]}
-          />
+          <CustomerPulseSummary t={t} />
 
           {/* ── SEARCH BAR ─────────────────────────────────────── */}
           <Card style={{ padding: '12px 16px', marginBottom: 24, position: 'relative' }}>
