@@ -1,4 +1,4 @@
-// "حركة الأموال" — workspace consolidating the four cash-movement
+// "النقد والمدفوعات" — workspace consolidating the four cash-movement
 // surfaces that used to be separate routes:
 //   /cod-settlements   → tab: تسويات COD     (CodSettlements)
 //   /payments          → tab: الدفعات         (Payments)

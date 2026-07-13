@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
-import { LamhaLogo, LamhaMark } from './components/BrandLogo.jsx';
+import { LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { loadCarriers } from './lib/coreService.js';
@@ -85,7 +85,7 @@ const NAV_ITEMS = [
   // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
   // الشركات hub now hosts 3 lenses as sub-tabs (CarriersWorkspace): cards,
   // carrier KPIs (was /carrier-kpi in reports), claims (was a flat item).
-  { id: 'hub',          path: '/hub',               label: 'الشركات',         icon: Building2,  section: 'carriers', permKey: 'carriers.view',
+  { id: 'hub',          path: '/hub',               label: 'حالة الناقلين',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
     subTabs: [
       { tabId: 'hub',    label: 'البطاقات',      icon: Building2 },
       { tabId: 'kpi',    label: 'أداء الناقلين', icon: BarChart3, legacy: '/carrier-kpi' },
@@ -94,18 +94,19 @@ const NAV_ITEMS = [
   // كشوف الحساب raised to position #2 + a VIEW permission (was upload-only,
   // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
   // The upload button inside the page stays gated by carriers.upload_statement.
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الحساب',     icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف ومطابقات',   icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
   { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق فواتير التجهيز', icon: Briefcase, section: 'fulfillment', permKey: 'audits.view' },
-  { id: 'audits',       path: '/audits',            label: 'سجل المراجعات',  icon: History,    section: 'carriers', permKey: 'audits.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'دفتر الشركات',    icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
+  { id: 'audits',       path: '/audits',            label: 'مراجعات الفواتير', icon: History,   section: 'carriers', permKey: 'audits.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'دفتر الناقلين',    icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
 
   // ── Reports — قراءة فقط ─────────────────────────────────────────
-  { id: 'reports',          path: '/reports',          label: 'مركز التقارير',   icon: FileText,      section: 'reports', permKey: 'carriers.view' },
-  { id: 'cash-aging',       path: '/cash-aging',       label: 'النقد والأعمار',  icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
+  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',  icon: FileText,      section: 'reports', permKey: 'carriers.view' },
+  { id: 'cash-aging',       path: '/cash-aging',       label: 'أعمار النقد',     icon: Wallet,        section: 'reports', permKey: 'ledger.view' },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
   // (carrier-kpi moved into the الشركات hub as the «أداء الناقلين» sub-tab)
   { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'reports', permKey: 'forecast.view' },
-  { id: 'internal-exports', path: '/internal-exports', label: 'ملفات النظام الداخلي', icon: FileText, section: 'reports', permKey: 'internal_exports.view' },
+  { id: 'weight-billing',   path: '/weight-billing',   label: 'الأوزان الزائدة', icon: Scale,         section: 'reports', permKey: 'internal_exports.view' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'التصدير الداخلي', icon: FileText,      section: 'reports', permKey: 'internal_exports.view' },
 
   // ── Finance ────────────────────────────────────────────────────
   // cod / payments / bank / payment-requests merged into /money
@@ -115,9 +116,8 @@ const NAV_ITEMS = [
   // only by opening /money first). Each navigates to the canonical
   // ?tab= URL the in-page tab strip also produces.
   // «هل نربح؟» — قائمة الدخل الرسمية من Zoho Books مترجمة لغير المالي
-  { id: 'pnl',       path: '/pnl',      label: 'الوضع المالي',  icon: TrendingUp, section: 'finance', permKey: 'money.pnl' },
-  { id: 'zoho-data', path: '/zoho-data', label: 'سجلات زوهو',  icon: BookOpen,   section: 'finance', permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
+  { id: 'pnl',       path: '/pnl',      label: 'الربحية',        icon: TrendingUp, section: 'finance', permKey: 'money.pnl' },
+  { id: 'money',     path: '/money',    label: 'النقد والمدفوعات', icon: Banknote, section: 'finance', permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
@@ -129,10 +129,10 @@ const NAV_ITEMS = [
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
-  // «فلوسي عند العملاء» — شاشة التحصيل الأولى (زوهو المرجع)، أول عنصر بالقسم
-  { id: 'customer-money',  path: '/customer-money',  label: 'فلوسي عند العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
+  // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
+  { id: 'customer-money',  path: '/customer-money',  label: 'تحصيل العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
   { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'receivables.view' },
-  { id: 'customer-hub',    path: '/customer-360',    label: 'العملاء',   icon: Users,       section: 'customers', permKey: 'receivables.view',
+  { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view',
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
       { tabId: 'receivables', label: 'مديونيات',      icon: DollarSign, legacy: '/receivables' },
@@ -141,7 +141,7 @@ const NAV_ITEMS = [
     ] },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'التحصيل والمبيعات', icon: Headset,   section: 'customers', permKey: 'crm.view',
+  { id: 'crm',             path: '/crm',             label: 'CRM العملاء', icon: Headset,   section: 'customers', permKey: 'crm.view',
     subTabs: [
       { tabId: 'collections', label: 'قائمة التحصيل', icon: Phone, legacy: '/collections' },
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
@@ -151,24 +151,25 @@ const NAV_ITEMS = [
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
     ] },
-  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة الأرصدة',   icon: GitCompare,  section: 'customers', permKey: 'reconciliation.view' },
+  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو ولمحة', icon: GitCompare, section: 'customers', permKey: 'reconciliation.view' },
 
-  // ── الرفع والوارد — كل أبواب إدخال الملفات في مكان واحد ──────────
-  // Was scattered: /drop + /webhook pinned at top, /uploads buried in system.
-  // Grouping every ingest door here is the fix for "مشتتة".
-  { id: 'drop',           path: '/drop',           label: 'رفع ملف',       icon: Upload, section: 'ingest', permKey: 'audits.create' },
-  { id: 'webhook',        path: '/webhook',        label: 'وارد الإيميل',  icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
-  { id: 'uploads',        path: '/uploads',        label: 'وارد Zoho التلقائي', icon: Layers, section: 'ingest', permKey: 'uploads.view' },
-  { id: 'weight-billing', path: '/weight-billing', label: 'تصدير الأوزان', icon: Scale,  section: 'ingest', permKey: 'internal_exports.view' },
+  // ── الاستقبال والرفع — أبواب دخول الملفات اليدوية فقط ──────────
+  // Zoho moved out of this section: it is API-synced data now, not an inbox file.
+  { id: 'drop',           path: '/drop',           label: 'رفع ذكي',      icon: Upload, section: 'ingest', permKey: 'audits.create' },
+  { id: 'webhook',        path: '/webhook',        label: 'وارد الإيميل', icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
+
+  // ── مصادر البيانات — صحة الربط والمرايا التي تغذي الأرقام ───────
+  { id: 'zoho-data',      path: '/zoho-data',      label: 'زوهو API',     icon: BookOpen, section: 'data', permKey: 'money.pnl' },
+  { id: 'uploads',        path: '/uploads',        label: 'صحة المصادر',  icon: Layers,   section: 'data', permKey: 'uploads.view' },
 
   // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
-  { id: 'tasks',        path: '/tasks',        label: 'المهام',         icon: ListTodo,      section: 'system', permKey: 'audits.view' },
-  { id: 'carriers',     path: '/carriers',     label: 'إعدادات الشركات والعقود', icon: Truck, section: 'system', permKey: 'carriers.view' },
-  { id: 'contracts',    path: '/contracts',    label: 'جدول العقود',    icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
-  { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
-  { id: 'periods',      path: '/periods',      label: 'إقفال الفترات', icon: Lock,     section: 'system', permKey: 'system.period_close' },
-  { id: 'activity-log', path: '/activity-log', label: 'سجل النشاط', icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
-  { id: 'employees',    path: '/employees',    label: 'الموظفون',    icon: UserCog,  section: 'system', adminOnly: true },
+  { id: 'tasks',        path: '/tasks',        label: 'مهام التشغيل',     icon: ListTodo,      section: 'system', permKey: 'audits.view' },
+  { id: 'carriers',     path: '/carriers',     label: 'إعداد الناقلين',   icon: Truck, section: 'system', permKey: 'carriers.view' },
+  { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',  icon: ClipboardList, section: 'system', permKey: 'carriers.edit_contract' },
+  { id: 'integrity',    path: '/integrity',    label: 'فحص سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
+  { id: 'periods',      path: '/periods',      label: 'إقفال مالي',       icon: Lock,     section: 'system', permKey: 'system.period_close' },
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',       icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
+  { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات', icon: UserCog,  section: 'system', adminOnly: true },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -177,13 +178,14 @@ const NAV_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  { id: 'carriers',  label: 'شركات الشحن',       icon: Building2,  accent: '#3B82F6', hint: 'الكشوف والمراجعات والدفتر' },
-  { id: 'finance',   label: 'الأموال',            icon: DollarSign, accent: '#F59E0B', hint: 'COD والدفعات والبنك' },
-  { id: 'customers', label: 'العملاء',            icon: Users,      accent: '#EF4444', hint: 'المديونيات والتحصيل' },
-  { id: 'fulfillment', label: 'التجهيز والتخزين', icon: Boxes,      accent: '#EC4899', hint: 'تدقيق فواتير شركاء التجهيز (3PL)' },
-  { id: 'ingest',    label: 'الرفع والوارد',      icon: Upload,     accent: '#06B6D4', hint: 'كل أبواب رفع الملفات' },
-  { id: 'reports',   label: 'التقارير والتصدير',  icon: BarChart3,  accent: '#10B981', hint: 'شهري · أداء · تنبؤ · تصدير' },
-  { id: 'system',    label: 'الإعدادات والنظام',  icon: Briefcase,  accent: '#8B5CF6', hint: 'الإدارة والسجلات والمهام' },
+  { id: 'carriers',    label: 'عمليات الناقلين', icon: Building2,  accent: '#3B82F6', hint: 'فواتير · COD · دفتر' },
+  { id: 'finance',     label: 'المال والربحية',   icon: DollarSign, accent: '#F59E0B', hint: 'ربح · بنك · مدفوعات' },
+  { id: 'customers',   label: 'العملاء والتحصيل', icon: Users,      accent: '#EF4444', hint: 'مديونيات · إيقاف · متابعة' },
+  { id: 'fulfillment', label: 'التجهيز',          icon: Boxes,      accent: '#EC4899', hint: 'فواتير شركاء 3PL' },
+  { id: 'ingest',      label: 'الاستقبال والرفع', icon: Upload,     accent: '#06B6D4', hint: 'رفع ذكي · وارد الإيميل' },
+  { id: 'data',        label: 'مصادر البيانات',   icon: Layers,     accent: '#0EA5E9', hint: 'زوهو API · صحة الربط' },
+  { id: 'reports',     label: 'التقارير',         icon: BarChart3,  accent: '#10B981', hint: 'شهري · أداء · تصدير' },
+  { id: 'system',      label: 'الإدارة والنظام',  icon: Briefcase,  accent: '#8B5CF6', hint: 'صلاحيات · إعدادات · سجل' },
 ];
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -203,19 +205,19 @@ const PAGE_TITLES = {
   '/monthly-report':    'التقرير الشهري',
   '/reports':           'مركز التقارير',
   '/zoho-callback':     'ربط زوهو',
-  '/pnl':               'الوضع المالي',
-  '/zoho-data':         'سجلات زوهو',
-  '/customer-money':    'فلوسي عند العملاء',
+  '/pnl':               'الربحية',
+  '/zoho-data':         'زوهو API',
+  '/customer-money':    'تحصيل العملاء',
   '/legal':             'التصعيد القانوني',
-  '/uploads':           'وارد Zoho التلقائي',
-  '/hub':               'الشركات',
+  '/uploads':           'صحة مصادر البيانات',
+  '/hub':               'حالة الناقلين',
   '/carrier':           'بروفايل الشركة',
   '/webhook':           'وارد الإيميل',
   '/customers':         'متابعة العملاء',
   '/payment-requests':  'طلبات السداد',
   '/internal-exports':  'تصدير للأنظمة الداخلية',
   '/upload':            'مراجعة جديدة',
-  '/drop':              'رفع ملف',
+  '/drop':              'رفع ذكي',
   '/cash-aging':        'النقد والأعمار',
   '/integrity':         'سلامة البيانات',
   '/claims':            'المطالبات',
@@ -223,15 +225,15 @@ const PAGE_TITLES = {
   '/weight-billing':    'تصدير الأوزان الزائدة',
   '/ledger':            'دفتر الشركات',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
-  '/money':             'حركة الأموال',
+  '/money':             'النقد والمدفوعات',
   '/payments':          'الدفعات',
   '/aramex-statements': 'كشوف الحساب',
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
-  '/customer-360':      'العملاء',
+  '/customer-360':      'ملف العملاء',
   '/collections':       'قائمة التحصيل',
   '/merchants':         'متاجر المنصّة',
-  '/reconciliation':    'مطابقة أرصدة المتاجر',
+  '/reconciliation':    'مطابقة زوهو ولمحة',
   '/segments':          'شرائح العملاء',
   '/carriers':          'إعدادات الشركات والعقود',
   '/contracts':         'جدول العقود',
@@ -514,8 +516,22 @@ function AppInner({ theme, toggleTheme }) {
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
-              <div style={{ display:'flex', alignItems:'center', justifyContent:'center', width:'100%', background:'#f4f4f4', borderRadius:10 }}>
-                <LamhaLogo height={102}/>
+              <div style={{
+                display:'grid', gridTemplateColumns:'auto 1fr', alignItems:'center',
+                gap:12, width:'100%',
+              }}>
+                <div style={{
+                  width:48, height:48, borderRadius:14,
+                  background:'#fff',
+                  display:'flex', alignItems:'center', justifyContent:'center',
+                  boxShadow:'0 10px 24px rgba(2,8,23,.24)',
+                }}>
+                  <LamhaMark size={32}/>
+                </div>
+                <div style={{ minWidth:0 }}>
+                  <div style={{ color:'#fff', fontSize:15, fontWeight:800, lineHeight:1.2 }}>ShipAudit Pro</div>
+                  <div style={{ color:'rgba(199,210,254,.72)', fontSize:11, marginTop:3 }}>Lamha finance ops</div>
+                </div>
               </div>
             )}
             {mobileOpen && (
@@ -596,23 +612,33 @@ function AppInner({ theme, toggleTheme }) {
                             flexShrink: 0,
                           }}
                         />
-                        <span style={{
+                        <div style={{
                           flex: 1,
-                          // Smaller, uppercase-style — clearly NOT a
-                          // clickable item, more like a header label.
-                          fontSize: 10.5,
-                          fontWeight: 700,
-                          letterSpacing: 1.2,
-                          // Theme-aware: section color when active, muted
-                          // label color otherwise. The old rgba(white) was
-                          // invisible on the new white sidebar.
-                          color: sectionHasActive ? sec.accent : 'var(--nav-label-color)',
-                          textTransform: 'uppercase',
                           minWidth: 0,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          overflow: 'hidden',
                         }}>
-                          {sec.label}
-                        </span>
+                          <div style={{
+                            fontSize: 11.5,
+                            fontWeight: 800,
+                            letterSpacing: 0,
+                            color: sectionHasActive ? sec.accent : 'var(--nav-label-color)',
+                            minWidth: 0,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {sec.label}
+                          </div>
+                          <div style={{
+                            fontSize: 9.8,
+                            fontWeight: 600,
+                            letterSpacing: 0,
+                            color: 'rgba(199,210,254,.58)',
+                            marginTop: 2,
+                            minWidth: 0,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                          }}>
+                            {sec.hint}
+                          </div>
+                        </div>
                         {sectionHasActive && !isOpen && (
                           <span style={{
                             width: 5, height: 5, borderRadius: '50%',
@@ -674,8 +700,8 @@ function AppInner({ theme, toggleTheme }) {
               <div style={{
                 marginTop:10, display:'flex', alignItems:'center', gap:11,
                 padding:'12px 14px', borderRadius:14,
-                background:'var(--surface)',
-                border:'1px solid var(--border2)',
+                background:'rgba(255,255,255,.08)',
+                border:'1px solid rgba(255,255,255,.10)',
               }}>
                 <div style={{
                   width:36, height:36, borderRadius:'50%', flexShrink:0,
@@ -687,17 +713,17 @@ function AppInner({ theme, toggleTheme }) {
                   {profile.name?.[0] ?? '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'var(--text)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:11, color:'var(--muted)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
+                  <div style={{ fontSize:11, color:'rgba(199,210,254,.72)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
                 <button onClick={signOut} title="تسجيل خروج" style={{
-                  background:'transparent', border:'1px solid var(--border2)',
-                  color:'var(--muted)',
+                  background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)',
+                  color:'rgba(199,210,254,.82)',
                   cursor:'pointer', padding:'6px 7px', borderRadius:8,
                   display:'flex', alignItems:'center', transition:'all .15s',
                 }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'var(--red)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--muted)'; e.currentTarget.style.borderColor = 'var(--border2)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(199,210,254,.82)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.12)'; }}
                 >
                   <LogOut size={13}/>
                 </button>
@@ -722,7 +748,7 @@ function AppInner({ theme, toggleTheme }) {
             <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
               <span style={{
                 fontFamily:'var(--font-sans)', fontSize:15, fontWeight:800,
-                color:'var(--text)', whiteSpace:'nowrap', letterSpacing:-0.2,
+                color:'var(--text)', whiteSpace:'nowrap', letterSpacing:0,
               }}>
                 {currentTitle}
               </span>
@@ -739,15 +765,16 @@ function AppInner({ theme, toggleTheme }) {
                 title="بحث سريع (Ctrl+K)"
                 style={{
                   marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '7px 12px', borderRadius: 999, cursor: 'pointer',
-                  background: 'var(--surface)', border: '1px solid var(--border2)',
-                  color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontSize: 12.5,
-                  maxWidth: 260, minWidth: 0,
+                  padding: '8px 12px', borderRadius: 12, cursor: 'pointer',
+                  background: '#FFFFFF', border: '1px solid var(--border2)',
+                  color: 'var(--text2)', fontFamily: 'var(--font-sans)', fontSize: 12.5,
+                  maxWidth: 320, minWidth: 220,
+                  boxShadow: '0 1px 2px rgba(15,23,42,.04)',
                 }}
               >
-                <Search size={14}/>
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>بحث سريع…</span>
-                <kbd style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 5, padding: '1px 5px', marginInlineStart: 'auto' }}>Ctrl K</kbd>
+                <Search size={15}/>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>اذهب إلى صفحة أو ناقل…</span>
+                <kbd style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 6, padding: '2px 6px', marginInlineStart: 'auto', color:'var(--muted)' }}>Ctrl K</kbd>
               </button>
             </div>
 
@@ -923,7 +950,7 @@ function AppInner({ theme, toggleTheme }) {
         {[
           { path: '/overview',       label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
           { path: '/decisions',      label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
-          { path: '/customer-money', label: 'فلوسي',    icon: HandCoins,       permKey: 'receivables.view' },
+          { path: '/drop',           label: 'رفع',      icon: Upload,          permKey: 'audits.create' },
           { path: '/webhook',        label: 'الوارد',   icon: Inbox,           permKey: 'webhook.view' },
         ].filter(it => isAdmin || can(it.permKey)).map(it => {
           const Icon = it.icon;

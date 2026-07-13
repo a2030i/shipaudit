@@ -1,11 +1,8 @@
-// "مركز الرفع" — one screen to drop any snapshot file.
+// "صحة مصادر البيانات" — one screen to monitor manual sources.
 //
-// Every snapshot type in the system has its own page (mostly for
-// browsing the data). Operators were complaining they had to hop
-// between 5+ pages every cycle just to upload the periodic files.
-// This page consolidates the upload action — one screen, one
-// upload per card, and a clear "last upload was X days ago" per
-// source so nobody forgets a file.
+// Zoho Books now has its own API-backed page. This page remains for
+// sources that are still file-based or used as historical fallback
+// snapshots, with a clear "last updated was X days ago" per source.
 //
 // Backed by uploadsHubService.loadUploadsOverview() (one round-trip
 // fan-out across the 5 sources) and uploadFile() (unified dispatcher).
@@ -14,8 +11,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
-  RefreshCw, Upload, FileSpreadsheet, ExternalLink, Inbox,
-  CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle,
+  RefreshCw, Upload, FileSpreadsheet, ExternalLink,
+  CheckCircle2, AlertTriangle, Calendar, ChevronLeft, Building2, FileText, Banknote, Sparkles, HelpCircle, Layers,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone,
@@ -25,7 +22,7 @@ import { UPLOAD_SOURCES, ORIGIN_BADGES, loadUploadsOverview, uploadFile, detectF
 import { saveConsolidatedExpected } from '../lib/codSettlementService.js';
 
 const fmtRel = (iso) => {
-  if (!iso) return 'لم يُرفع بعد';
+  if (!iso) return 'لا يوجد تحديث';
   const days = Math.floor((Date.now() - new Date(iso)) / 86_400_000);
   if (days <= 0) return 'اليوم';
   if (days === 1) return 'أمس';
@@ -152,10 +149,10 @@ export default function UploadsHub({ isActive = true }) {
   return (
     <div style={{ padding: '20px 24px 60px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
-        icon={<Inbox size={22}/>}
+        icon={<Layers size={22}/>}
         iconColor="#0EA5E9"
-        title="مركز الرفع"
-        subtitle="ارفع كل الملفات الدورية من مكان واحد — كل بطاقة تعرض آخر رفع وحالته"
+        title="صحة مصادر البيانات"
+        subtitle="زوهو يعمل عبر API مباشر؛ هنا تتابع الملفات اليدوية والمرايا الاحتياطية فقط"
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
@@ -163,13 +160,42 @@ export default function UploadsHub({ isActive = true }) {
         }
       />
 
+      <Card style={{
+        marginBottom: 18,
+        padding: 16,
+        border: '1px solid color-mix(in srgb, #0EA5E9 24%, var(--border))',
+        background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 8%, var(--surface)), var(--surface))',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 14,
+        flexWrap: 'wrap',
+      }}>
+        <span style={{
+          width: 38, height: 38, borderRadius: 10,
+          background: 'color-mix(in srgb, #0EA5E9 16%, transparent)',
+          color: '#0EA5E9', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Sparkles size={19}/>
+        </span>
+        <div style={{ flex: 1, minWidth: 260 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو API هو المصدر الحي للأرقام</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
+            الفواتير والدفعات والمصاريف تُقرأ من زوهو مباشرة. هذه الصفحة تبقى للملفات اليدوية مثل stores.xlsx واللقطات الاحتياطية عند الحاجة.
+          </div>
+        </div>
+        <Btn size="sm" variant="primary" icon={<ExternalLink size={13}/>} onClick={() => navigate('/zoho-data')}>
+          افتح زوهو API
+        </Btn>
+      </Card>
+
       {/* Summary strip */}
       <div style={{
         display: 'grid', gap: 12, marginBottom: 20,
         gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
       }}>
         <SummaryStat
-          label="حديثة"
+          label="محدّثة"
           value={summary.fresh}
           icon={<CheckCircle2 size={16}/>}
           color="var(--green)"
@@ -183,18 +209,18 @@ export default function UploadsHub({ isActive = true }) {
           hint="تجاوزت الدورة المعتادة"
         />
         <SummaryStat
-          label="لم تُرفع"
+          label="بلا تحديث"
           value={summary.missing}
           icon={<Upload size={16}/>}
           color="var(--red)"
-          hint="لا يوجد سجل سابق"
+          hint="لا توجد لقطة محفوظة"
         />
         <SummaryStat
           label="الإجمالي"
           value={sources.length}
           icon={<FileSpreadsheet size={16}/>}
           color="#0EA5E9"
-          hint="أنواع الملفات الدورية"
+          hint="مصادر البيانات المتابعة"
         />
       </div>
 
@@ -218,17 +244,17 @@ export default function UploadsHub({ isActive = true }) {
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
-              ارفع أي ملف — النظام يكتشف نوعه تلقائياً
+              افحص أي ملف يدوي — النظام يكتشف مصدره
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-              العملاء (Zoho) · الموردون (Zoho) · متاجر المنصّة · استحقاق المتاجر · كشف فواتير العملاء —
-              ندرّب الكاشف على بصمات الأعمدة والعناوين، ولو ما عرف نسأل عنه.
+              متاجر المنصّة · استحقاق المتاجر · كشف فواتير العملاء الاحتياطي · مرايا زوهو القديمة عند الحاجة —
+              الكاشف يقرأ بصمات الأعمدة والعناوين، ولو لم يتأكد يطلب تحديد المصدر.
             </div>
           </div>
         </div>
         <DropZone onFile={handleSmartDrop} accept=".xlsx,.xls,.csv">
           <Upload size={16}/>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>اسحب الملف هنا — يكفي ملف واحد</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>اسحب الملف هنا للفحص</span>
         </DropZone>
       </Card>
 
@@ -249,9 +275,9 @@ export default function UploadsHub({ isActive = true }) {
         </DropZone>
       </Card>
 
-      {/* Section: snapshot uploads */}
+      {/* Section: manual and fallback source snapshots */}
       <SectionTitle icon={<FileSpreadsheet size={14}/>} color="#3B82F6">
-        ملفات Snapshot — حالة كل نوع
+        مصادر يدوية ومرايا احتياطية
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 14, marginBottom: 24,
@@ -271,7 +297,7 @@ export default function UploadsHub({ isActive = true }) {
       {/* Section: workflow shortcuts (uploads that have their own
           multi-step pages — not appropriate to inline-upload here). */}
       <SectionTitle icon={<ExternalLink size={14}/>} color="#8B5CF6">
-        ملفات متخصّصة — لها صفحات خاصة
+        مسارات تشغيل متخصصة
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 14,
@@ -507,9 +533,9 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
   const { last, stale, daysSince, accent, origin } = source;
   // Status indicator — green/amber/red based on freshness
   const statusColor = !last ? 'var(--red)' : stale ? 'var(--gold)' : 'var(--green)';
-  const statusLabel = !last ? 'لم يُرفع بعد'
+  const statusLabel = !last ? 'لا توجد لقطة'
                     : stale ? `متأخّر — ${daysSince} يوم`
-                    : `حديث — ${fmtRel(last.lastAt)}`;
+                    : `محدّث — ${fmtRel(last.lastAt)}`;
   const originBadge = ORIGIN_BADGES[origin];
   return (
     <Card style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -583,7 +609,7 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
           border: '1px dashed color-mix(in srgb, var(--red) 30%, transparent)',
           fontSize: 11.5, color: 'var(--red)', textAlign: 'center', fontWeight: 600,
         }}>
-          لم يُرفع أي ملف بعد — ابدأ بالرفع الأول
+          لا توجد لقطة محفوظة — حدّث المصدر عند الحاجة
         </div>
       )}
 
@@ -599,7 +625,7 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
       ) : (
         <DropZone onFile={onUpload} accept=".xlsx,.xls,.csv">
           <Upload size={14}/>
-          <span style={{ fontSize: 12 }}>اسحب الملف هنا أو اضغط للاختيار</span>
+          <span style={{ fontSize: 12 }}>حدّث هذا المصدر بملف</span>
         </DropZone>
       )}
 

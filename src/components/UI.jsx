@@ -17,53 +17,53 @@ import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Help
 //   success / navy  = مهملان (success ≡ accent لونياً، navy ≡ primary) — لا تستعملهما في كود جديد
 const VARIANTS = {
   primary: {
-    background: '#18181B',
-    color: '#FAFAFA',
-    border: '1px solid #18181B',
-    boxShadow: '0 1px 2px rgba(0,0,0,.06), inset 0 1px 0 rgba(255,255,255,.08)',
-    _hover: { background: '#000', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(0,0,0,.12)' },
+    background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
+    color: '#fff',
+    border: '1px solid var(--accent2)',
+    boxShadow: '0 8px 18px rgba(37,99,235,.20), inset 0 1px 0 rgba(255,255,255,.18)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' },
   },
   accent: {
-    background: 'var(--green)',
+    background: 'linear-gradient(135deg, var(--green), var(--green2))',
     color: '#fff',
-    border: '1px solid #10B981',
-    boxShadow: '0 1px 2px rgba(16,185,129,.18), inset 0 1px 0 rgba(255,255,255,.16)',
-    _hover: { background: 'var(--green2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(16,185,129,.28)' },
+    border: '1px solid var(--green2)',
+    boxShadow: '0 8px 18px rgba(5,150,105,.18), inset 0 1px 0 rgba(255,255,255,.18)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(5,150,105,.26)' },
   },
   navy: {
-    background: '#0A0A0B',
+    background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
     color: '#fff',
-    border: '1px solid #0A0A0B',
-    boxShadow: '0 1px 2px rgba(0,0,0,.18)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 8px 18px rgba(0,0,0,.18)' },
+    border: '1px solid var(--accent2)',
+    boxShadow: '0 8px 18px rgba(37,99,235,.20)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' },
   },
   danger: {
-    background: '#EF4444',
+    background: 'linear-gradient(135deg, #EF4444, var(--red2))',
     color: '#fff',
-    border: '1px solid #EF4444',
-    boxShadow: '0 1px 2px rgba(239,68,68,.20)',
-    _hover: { background: 'var(--red)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(239,68,68,.32)' },
+    border: '1px solid var(--red2)',
+    boxShadow: '0 8px 18px rgba(220,38,38,.18)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(220,38,38,.28)' },
   },
   success: {
-    background: 'var(--green)',
+    background: 'linear-gradient(135deg, var(--green), var(--green2))',
     color: '#fff',
-    border: '1px solid #10B981',
-    boxShadow: '0 1px 2px rgba(16,185,129,.20)',
-    _hover: { background: 'var(--green2)', transform: 'translateY(-1px)' },
+    border: '1px solid var(--green2)',
+    boxShadow: '0 8px 18px rgba(5,150,105,.18)',
+    _hover: { transform: 'translateY(-1px)' },
   },
   gold: {
-    background: 'var(--gold)',
+    background: 'linear-gradient(135deg, #F59E0B, var(--gold2))',
     color: '#fff',
-    border: '1px solid #F59E0B',
-    boxShadow: '0 1px 2px rgba(245,158,11,.20)',
-    _hover: { background: '#D97706', transform: 'translateY(-1px)' },
+    border: '1px solid var(--gold2)',
+    boxShadow: '0 8px 18px rgba(217,119,6,.18)',
+    _hover: { transform: 'translateY(-1px)' },
   },
   ghost: {
-    background: 'transparent',
+    background: 'var(--surface)',
     color: 'var(--text2)',
     border: '1px solid var(--border2)',
-    boxShadow: 'none',
-    _hover: { background: 'var(--bg2)', border: '1px solid var(--border3)' },
+    boxShadow: '0 1px 2px rgba(15,23,42,.04)',
+    _hover: { background: 'var(--surface2)', border: '1px solid var(--border3)' },
   },
   outline: {
     background: 'transparent',
@@ -75,11 +75,11 @@ const VARIANTS = {
 };
 
 const SIZES = {
-  sm: { padding: '7px 14px',  fontSize: 12.5, borderRadius: 999, gap: 6 },
-  md: { padding: '10px 20px', fontSize: 13.5, borderRadius: 999, gap: 7 },
-  lg: { padding: '13px 26px', fontSize: 14.5, borderRadius: 999, gap: 8 },
+  sm: { padding: '7px 12px',  fontSize: 12.5, borderRadius: 9, gap: 6 },
+  md: { padding: '10px 16px', fontSize: 13.5, borderRadius: 10, gap: 7 },
+  lg: { padding: '12px 22px', fontSize: 14.5, borderRadius: 12, gap: 8 },
   // full-width — يستبدل style overrides اليدوية لأزرار العرض الكامل (المعالج…)
-  full: { padding: '12px 24px', fontSize: 14, borderRadius: 999, gap: 7, width: '100%', justifyContent: 'center' },
+  full: { padding: '12px 24px', fontSize: 14, borderRadius: 12, gap: 7, width: '100%', justifyContent: 'center' },
 };
 
 export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, style = {} }) {
@@ -101,12 +101,13 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
         borderRadius: s.borderRadius,
         padding: s.padding, fontSize: s.fontSize,
         width: s.width, justifyContent: s.justifyContent,
-        transition: 'all .18s cubic-bezier(.4,0,.2,1)',
+        minHeight: 34,
+        transition: 'transform .16s cubic-bezier(.4,0,.2,1), box-shadow .16s, background .16s, border-color .16s',
         whiteSpace: 'nowrap',
         ...baseV,
         ...hoverStyle,
         // Phase 5: حالة معطّل دلالية (لون muted) بدل opacity الباهت — أوضح وأقرأ
-        ...(disabled ? { background: 'var(--muted3)', color: 'var(--muted)', border: '1px solid var(--muted3)', boxShadow: 'none', opacity: 1 } : {}),
+        ...(disabled ? { background: 'var(--muted3)', color: 'var(--muted)', border: '1px solid var(--muted3)', boxShadow: 'none', opacity: 1, transform: 'none' } : {}),
         ...style,
       }}
     >
@@ -135,7 +136,7 @@ export function Card({ children, style = {}, accent, hover = false, onClick }) {
         borderRadius: 'var(--r-lg)',
         padding: 24,
         cursor: onClick ? 'pointer' : undefined,
-        transition: 'transform .18s, box-shadow .18s',
+        transition: 'transform .18s, box-shadow .18s, border-color .18s',
         transform: hovered && isInteractive ? 'translateY(-2px)' : 'none',
         boxShadow: hovered && isInteractive ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         ...(accent ? { borderTop: `3px solid ${accent}` } : {}),
@@ -170,7 +171,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
       style={{
         background: 'var(--card)',
         border: `1px solid var(--border2)`,
-        borderRadius: 16,
+        borderRadius: 'var(--r-lg)',
         padding: '18px 20px',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'transform .18s, box-shadow .18s',
@@ -185,7 +186,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
           {label}
         </span>
       </div>
-      <div style={{ color: tone, fontSize: 27, fontWeight: 800, lineHeight: 1, letterSpacing: -0.5 }}>
+      <div style={{ color: tone, fontSize: 27, fontWeight: 800, lineHeight: 1, letterSpacing: 0 }}>
         {value ?? '—'}
       </div>
       {changePct !== undefined && changePct !== null ? (
@@ -193,7 +194,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
           <span style={{
             display: 'inline-flex', alignItems: 'center', gap: 3,
             padding: '3px 9px', borderRadius: 999,
-            background: `color-mix(in srgb, ${chgColor} 12%, transparent)`,
+            background: `color-mix(in srgb, ${chgColor} 10%, transparent)`,
             color: chgColor, fontSize: 11.5, fontWeight: 700,
           }}>
             {down ? <TrendingDown size={12}/> : <TrendingUp size={12}/>}
@@ -236,26 +237,27 @@ export function PageHeader({
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
         {avatar !== undefined ? (
           <div style={{
-            width: 48, height: 48, borderRadius: '50%', flexShrink: 0,
+            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
             background: avatar?.bg || 'linear-gradient(135deg,#10B981,#059669)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontSize: 19, fontWeight: 700, color: '#fff',
-            boxShadow: '0 4px 14px rgba(16,185,129,.22)',
+            boxShadow: 'var(--shadow-sm)',
           }}>
             {avatar?.letter || '?'}
           </div>
         ) : icon && (
           <div style={{
-            width: 48, height: 48, borderRadius: 14, flexShrink: 0,
-            background: `color-mix(in srgb, ${iconColor} 12%, transparent)`,
+            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+            background: `color-mix(in srgb, ${iconColor} 10%, transparent)`,
             color: iconColor,
+            border: `1px solid color-mix(in srgb, ${iconColor} 18%, transparent)`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>{icon}</div>
         )}
         <div style={{ minWidth: 0 }}>
           <h1 style={{
             fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700,
-            color: 'var(--text)', margin: 0, lineHeight: 1.2, letterSpacing: -0.4,
+            color: 'var(--text)', margin: 0, lineHeight: 1.2, letterSpacing: 0,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>{title}</h1>
           {subtitle && (
@@ -305,13 +307,15 @@ export function PageHero({
     <div style={{
       position: 'relative',
       borderRadius: 'var(--r-xl)',
-      padding: dark ? '32px 36px' : '28px 32px',
+      padding: dark ? '30px 34px' : '24px 28px',
       marginBottom: 24,
-      background: dark ? '#0A0A0B' : 'var(--card)',
+      background: dark
+        ? 'linear-gradient(135deg, #101828 0%, #172033 100%)'
+        : 'linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)',
       color: dark ? '#fff' : 'var(--text)',
-      border: dark ? 'none' : '1px solid transparent',
+      border: dark ? '1px solid rgba(255,255,255,.08)' : '1px solid var(--border)',
       boxShadow: dark
-        ? '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)'
+        ? '0 18px 42px rgba(15,23,42,.18), 0 4px 12px rgba(15,23,42,.08)'
         : 'var(--shadow-sm)',
       overflow: 'hidden',
     }}>
@@ -333,7 +337,7 @@ export function PageHero({
         <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 18 }}>
           {icon && (
             <div style={{
-              width: 52, height: 52, borderRadius: 14, flexShrink: 0,
+              width: 48, height: 48, borderRadius: 12, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: dark ? 'rgba(255,255,255,.06)' : `color-mix(in srgb, ${accent} 12%, transparent)`,
               color: dark ? '#fff' : accent,
@@ -345,7 +349,7 @@ export function PageHero({
               dark ? (
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
-                  padding: '5px 12px', borderRadius: 999,
+                  padding: '5px 12px', borderRadius: 10,
                   background: 'rgba(255,255,255,.06)',
                   border: '1px solid rgba(255,255,255,.10)',
                   fontSize: 10.5, fontFamily: 'var(--font-mono)',
@@ -371,7 +375,7 @@ export function PageHero({
             <h1 style={{
               fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 700,
               color: dark ? '#fff' : 'var(--text)',
-              margin: 0, lineHeight: 1.15, letterSpacing: -0.5,
+              margin: 0, lineHeight: 1.15, letterSpacing: 0,
             }}>{title}</h1>
             {subtitle && (
               <div style={{
@@ -432,7 +436,7 @@ export function StatTile({ label, value, hint, color, big, dark }) {
       <div style={{
         fontSize: big ? 24 : 20, fontWeight: 700,
         color: valueColor, fontFamily: 'var(--font-mono)',
-        whiteSpace: 'nowrap', letterSpacing: -0.4, lineHeight: 1,
+        whiteSpace: 'nowrap', letterSpacing: 0, lineHeight: 1,
       }}>{value ?? '—'}</div>
       {hint && (
         <div style={{
@@ -526,7 +530,7 @@ export function SpotlightCard({
         }}>
           <div style={{
             fontSize: 'clamp(48px, 7vw, 88px)', fontWeight: 700, lineHeight: 1,
-            fontFamily: 'var(--font-mono)', letterSpacing: -3,
+            fontFamily: 'var(--font-mono)', letterSpacing: 0,
             color: '#fff',
           }}>
             {value ?? '—'}
@@ -590,7 +594,7 @@ export function SpotlightCard({
               }}>{s.label}</div>
               <div style={{
                 fontSize: 22, fontWeight: 700, color: s.color || '#fff',
-                fontFamily: 'var(--font-mono)', letterSpacing: -0.5,
+                fontFamily: 'var(--font-mono)', letterSpacing: 0,
                 lineHeight: 1, whiteSpace: 'nowrap',
               }}>{s.value ?? '—'}</div>
               {s.hint && (
@@ -887,7 +891,7 @@ export function SectionTitle({ tag, title, action, color = 'var(--accent)' }) {
         )}
         <h2 style={{
           fontFamily: 'var(--font-sans)', fontSize: 18, fontWeight: 800,
-          color: 'var(--text)', margin: 0, letterSpacing: -0.3,
+          color: 'var(--text)', margin: 0, letterSpacing: 0,
         }}>{title}</h2>
       </div>
       {action && <div>{action}</div>}
@@ -940,16 +944,27 @@ export function DropZone({ onFile, accept = '.xlsx,.xls,.csv', title = 'اختر
       onDragEnter={handleDragOver}
       onDragLeave={handleDragLeave}
       style={{
-        padding: 32, textAlign: 'center', cursor: 'pointer',
-        border: `2px dashed ${dragOver ? accent : 'var(--border2)'}`,
-        background: dragOver ? 'var(--accent-dim)' : 'var(--surface)',
-        borderRadius: 14,
-        transition: 'border-color .15s, background .15s, transform .15s',
+        padding: 34, textAlign: 'center', cursor: 'pointer',
+        border: `1.5px dashed ${dragOver ? accent : 'var(--border2)'}`,
+        background: dragOver
+          ? 'linear-gradient(180deg, var(--accent-dim), #fff)'
+          : 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+        borderRadius: 'var(--r-xl)',
+        boxShadow: dragOver ? '0 14px 34px rgba(37,99,235,.14)' : 'inset 0 1px 0 rgba(255,255,255,.8)',
+        transition: 'border-color .15s, background .15s, transform .15s, box-shadow .15s',
         transform: dragOver ? 'scale(1.01)' : 'none',
         position: 'relative',
       }}
     >
-      <Icon size={30} color={accent} style={{ marginBottom: 10, opacity: dragOver ? 1 : .9 }}/>
+      <div style={{
+        width: 52, height: 52, margin: '0 auto 12px',
+        borderRadius: 14,
+        background: `color-mix(in srgb, ${accent} 10%, transparent)`,
+        border: `1px solid color-mix(in srgb, ${accent} 18%, transparent)`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}>
+        <Icon size={25} color={accent} style={{ opacity: dragOver ? 1 : .95 }}/>
+      </div>
       <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>
         {dragOver ? 'أفلت الملف هنا' : title}
       </div>
@@ -1074,7 +1089,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-          <h3 style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 800, letterSpacing: -0.2 }}>
+          <h3 style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 800, letterSpacing: 0 }}>
             {title}
           </h3>
           <button

@@ -36,12 +36,12 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'uploads', label: 'مركز الرفع', icon: 'Inbox', color: '#0EA5E9',
+    id: 'uploads', label: 'مصادر البيانات', icon: 'Layers', color: '#0EA5E9',
     perms: [
-      { key: 'uploads.view',         label: 'فتح مركز الرفع' },
-      { key: 'uploads.upload_file',  label: 'رفع ملف يدوياً (أي مصدر)' },
-      { key: 'uploads.process_zoho', label: 'معالجة ملفات صندوق Zoho' },
-      { key: 'uploads.dismiss_zoho', label: 'تجاهل/حذف ملفات صندوق Zoho', sensitive: true },
+      { key: 'uploads.view',         label: 'فتح صحة مصادر البيانات' },
+      { key: 'uploads.upload_file',  label: 'تحديث مصدر يدوي بملف' },
+      { key: 'uploads.process_zoho', label: 'معالجة مرايا Zoho القديمة' },
+      { key: 'uploads.dismiss_zoho', label: 'تجاهل/حذف مرايا Zoho القديمة', sensitive: true },
     ],
   },
   {
