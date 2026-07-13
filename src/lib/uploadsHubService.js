@@ -1,19 +1,19 @@
-// Central uploads-hub service.
+// Central data-sources health service.
 //
 // Single API for the /uploads page that:
-//   1. Reports the last-upload status of every supported snapshot
+//   1. Reports the last-update status of every supported snapshot
 //      source (filename, when, row counts, freshness flag).
 //   2. Exposes one unified upload() function that picks the right
 //      parser + persister based on the source id, so the page can
 //      drop any file into any card without duplicating per-source
 //      logic.
 //
-// Snapshot sources covered:
+// Manual / fallback snapshot sources covered:
 //   internal_settlement   — استحقاق المتاجر (الداخلي)
 //   receivables           — مديونيات العملاء
 //   merchants             — متاجر المنصّة (stores.xlsx)
-//   zoho_customers        — Zoho ملخص أرصدة العملاء
-//   zoho_vendors          — Zoho ملخص أرصدة الموردين
+//   zoho_customers        — Zoho legacy customer balance export
+//   zoho_vendors          — Zoho legacy vendor balance export
 //
 // Each source declares its "expected cadence" (in days) so the
 // hub can flag stale data without hard-coding thresholds in the UI.
@@ -33,30 +33,30 @@ const DAY_MS = 86_400_000;
 // `link` is where the operator can drill down for richer workflow
 // (the hub itself is fire-and-forget upload, not browse).
 // `origin` drives a small badge on each card so the operator
-// can scan at a glance "هذا من لمحه" vs "هذا من Zoho" without
+// can scan at a glance "هذا من لمحه" vs "هذا من Zoho Legacy" without
 // reading the title.
 export const UPLOAD_SOURCES = [
   {
     id:           'internal_settlement',
     label:        'استحقاق المتاجر',
     origin:       'lamha',
-    subtitle:     'ملف من المنصة الداخلية: المتجر + الرصيد',
+    subtitle:     'مصدر يدوي من منصة لمحة: المتجر + الرصيد',
     accent:       '#3B82F6',
     cadenceDays:  7,
     link:         '/reconciliation',
   },
   {
     id:           'receivables',
-    label:        'كشف فواتير العملاء (تفصيلي)',
+    label:        'مديونيات العملاء (ملف احتياطي)',
     origin:       'zoho',
-    subtitle:     'Reports → الذمم المدينة → تفاصيل الفاتورة',
+    subtitle:     'استخدمه فقط عند الحاجة؛ المرجع اليومي في زوهو API',
     accent:       '#10B981',
     cadenceDays:  7,
     link:         '/receivables',
   },
   {
     id:           'merchants',
-    label:        'متاجر المنصّة (stores.xlsx)',
+    label:        'دليل المتاجر (stores.xlsx)',
     origin:       'lamha',
     subtitle:     'كشف المتاجر — هاتف، حالة، شحنات، رصيد محفظة',
     accent:       '#8B5CF6',
@@ -65,18 +65,18 @@ export const UPLOAD_SOURCES = [
   },
   {
     id:           'zoho_customers',
-    label:        'أرصدة العملاء',
+    label:        'أرصدة العملاء القديمة',
     origin:       'zoho',
-    subtitle:     'Reports → الذمم المدينة → ملخص أرصدة العملاء',
+    subtitle:     'مرآة Excel قديمة للمطابقة التاريخية، وليست وارد API',
     accent:       '#F59E0B',
     cadenceDays:  7,
     link:         '/reconciliation',
   },
   {
     id:           'zoho_vendors',
-    label:        'أرصدة الموردين',
+    label:        'أرصدة الموردين القديمة',
     origin:       'zoho',
-    subtitle:     'Reports → الذمم الدائنة → ملخص أرصدة الموردين',
+    subtitle:     'مرآة Excel قديمة للمطابقة التاريخية، وليست وارد API',
     accent:       '#F97316',
     cadenceDays:  7,
     link:         '/reconciliation?tab=vendors',
@@ -84,10 +84,10 @@ export const UPLOAD_SOURCES = [
 ];
 
 // Origin badge metadata — used by the UI to render the small
-// "لمحه" / "Zoho" pill on each upload card.
+// "لمحه" / "Zoho Legacy" pill on each upload card.
 export const ORIGIN_BADGES = {
   lamha: { label: 'لمحه', color: '#0EA5E9' },
-  zoho:  { label: 'Zoho', color: '#7C3AED' },
+  zoho:  { label: 'Zoho Legacy', color: '#7C3AED' },
 };
 
 // ── Per-source last-upload loaders ──

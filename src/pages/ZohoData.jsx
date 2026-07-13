@@ -1,4 +1,4 @@
-// «سجلات زوهو» /zoho-data — تصفّح احترافي لكل مرايا Zoho Books:
+// «زوهو API» /zoho-data — تصفّح احترافي لكل مرايا Zoho Books:
 // فواتير/دفعات العملاء · المصاريف (فيها الرواتب بحساب «أجور الموظفين») ·
 // فواتير/دفعات الموردين · القيود اليومية. قراءة فقط — المرايا تتغذى من
 // zoho-sync (دلتا) ولا تُعدَّل هنا أبداً.
@@ -227,7 +227,7 @@ export default function ZohoData({ isActive = true }) {
   const exportXlsx = () => {
     if (!filtered.length) return;
     const aoa = [
-      [`سجلات زوهو — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}${periodTo && periodTo !== period ? ` حتى ${monthLabel(periodTo)}` : ''}` : ''}`],
+      [`زوهو API — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}${periodTo && periodTo !== period ? ` حتى ${monthLabel(periodTo)}` : ''}` : ''}`],
       [],
       cols.map(c => c[0]),
       ...filtered.map(r => cols.map(c => c[1] === 'status' ? zohoStatusAr(r[c[1]]) : (r[c[1]] ?? ''))),
@@ -247,8 +247,8 @@ export default function ZohoData({ isActive = true }) {
   return (
     <div style={{ padding: '20px 26px 70px', maxWidth: 1360, margin: '0 auto' }}>
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
-        title="سجلات زوهو"
-        subtitle="كل ما يقرؤه الربط من Zoho Books — فواتير · دفعات · مصاريف (فيها الرواتب) · قيود"
+        title="زوهو API"
+        subtitle="مزامنة مباشرة من Zoho Books — فواتير · دفعات · مصاريف · قيود"
         actions={
           <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} disabled={busy} onClick={doSync}>
             مزامنة من زوهو

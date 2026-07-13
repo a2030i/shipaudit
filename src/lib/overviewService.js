@@ -186,7 +186,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const useStatement  = latestClosing && statementDate >= manualDate;
       const bank = useStatement ? (Number(latestClosing.closing_balance) || 0)
                  : (bankBalance?.balance ?? null);
-      // AR من زوهو الحي إن توفّر (نفس رقم «فلوسي عند العملاء» و/zoho-data) —
+      // AR من زوهو الحي إن توفّر (نفس رقم «تحصيل العملاء» و/zoho-data) —
       // كان من snapshot غير مفلتر (314K) يخالف /receivables (191K) وزوهو (250K)
       const zohoAr  = Number(zohoDash?.open_ar);
       const arFromZoho = Number.isFinite(zohoAr) && zohoAr > 0;

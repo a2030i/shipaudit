@@ -13,7 +13,7 @@ import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
-import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Select, Spinner, Badge, toast, PageHero } from '../components/UI.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
@@ -103,12 +103,12 @@ function DetailRow({ label, value, mono }) {
 // ── Step 1 — Period only (carrier is auto-detected from the uploaded file) ───
 function Step1({ month, setMonth, year, setYear, onNext }) {
   return (
-    <Card style={{ maxWidth: 580, margin: '0 auto', padding: 28 }}>
+    <Card style={{ maxWidth: 620, margin: '0 auto', padding: 30, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
         <div style={{
-          width: 36, height: 36, borderRadius: 10,
-          background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(45,212,191,.06))',
-          border: '1px solid rgba(45,212,191,.32)',
+          width: 40, height: 40, borderRadius: 12,
+          background: 'var(--accent-dim)',
+          border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0,
         }}>
@@ -135,9 +135,9 @@ function Step1({ month, setMonth, year, setYear, onNext }) {
 
       <div style={{
         padding: '12px 14px', marginBottom: 18,
-        background: 'rgba(45,212,191,.06)',
-        border: '1px solid rgba(45,212,191,.22)',
-        borderRadius: 9,
+        background: 'linear-gradient(180deg, var(--accent-dim), #fff)',
+        border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)',
+        borderRadius: 12,
         display: 'flex', gap: 10,
       }}>
         <Sparkles size={16} color="var(--accent)" style={{ flexShrink: 0, marginTop: 2 }}/>
@@ -146,7 +146,7 @@ function Step1({ month, setMonth, year, setYear, onNext }) {
         </div>
       </div>
 
-      <Btn variant="primary" onClick={onNext} style={{ width: '100%', justifyContent: 'center', padding: '11px 20px', fontSize: 14 }}>
+      <Btn variant="primary" size="full" onClick={onNext}>
         التالي <ArrowLeft size={15}/>
       </Btn>
     </Card>
@@ -161,17 +161,18 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
   const hasAi = !!settings.openrouterKey;
 
   return (
-    <Card style={{ maxWidth: 720, margin: '0 auto', padding: 0, overflow: 'hidden' }}>
+    <Card style={{ maxWidth: 760, margin: '0 auto', padding: 0, overflow: 'hidden', boxShadow: 'var(--shadow-md)' }}>
       {/* Header */}
       <div style={{
         padding: '18px 24px',
         borderBottom: '1px solid var(--border)',
-        background: 'color-mix(in srgb, var(--accent) 5%, transparent)',
+        background: 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
         display: 'flex', alignItems: 'center', gap: 12,
       }}>
         <div style={{
-          width: 40, height: 40, borderRadius: 11,
-          background: '#0A0A0B',
+          width: 42, height: 42, borderRadius: 12,
+          background: 'var(--accent-dim)',
+          border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           flexShrink: 0, fontSize: 18,
         }}>
@@ -195,16 +196,17 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
           onDrop={e => { e.preventDefault(); setDrag(false); handle(e.dataTransfer.files[0]); }}
           onClick={() => !uploading && document.getElementById('fu-input').click()}
           style={{
-            border: `2px dashed ${drag ? 'var(--accent)' : uploading ? 'var(--border2)' : 'var(--border2)'}`,
-            borderRadius: 14,
+            border: `1.5px dashed ${drag ? 'var(--accent)' : uploading ? 'var(--border2)' : 'var(--border2)'}`,
+            borderRadius: 16,
             padding: '52px 24px',
             textAlign: 'center',
             cursor: uploading ? 'wait' : 'pointer',
             background: drag
-              ? 'rgba(45,212,191,.08)'
+              ? 'var(--accent-dim)'
               : uploading
                 ? 'var(--surface)'
-                : 'linear-gradient(180deg, var(--surface) 0%, var(--card) 100%)',
+                : 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+            boxShadow: drag ? '0 14px 34px rgba(37,99,235,.14)' : 'inset 0 1px 0 rgba(255,255,255,.8)',
             transition: 'all .2s',
           }}
         >
@@ -220,8 +222,8 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
               <div style={{
                 width: 64, height: 64, margin: '0 auto 14px',
                 borderRadius: 16,
-                background: 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(27,30,84,.12))',
-                border: '1px solid rgba(45,212,191,.32)',
+                background: 'var(--accent-dim)',
+                border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
               }}>
                 <Upload size={28} color="var(--accent)"/>
@@ -236,9 +238,9 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
                 <div style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   marginTop: 14, padding: '5px 11px',
-                  background: 'rgba(45,212,191,.10)',
-                  border: '1px solid rgba(45,212,191,.28)',
-                  borderRadius: 20,
+                  background: 'var(--accent-dim)',
+                  border: '1px solid color-mix(in srgb, var(--accent) 18%, transparent)',
+                  borderRadius: 10,
                   fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 600,
                 }}>
                   <Sparkles size={11}/> AI يتعرف على الأعمدة تلقائياً
@@ -276,7 +278,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
           ))}
         </div>
 
-        <Btn variant="ghost" onClick={onBack} style={{ width: '100%', justifyContent: 'center', padding: '10px 20px' }}>
+        <Btn variant="ghost" size="full" onClick={onBack}>
           <ArrowRight size={14}/> رجوع
         </Btn>
       </div>
@@ -913,16 +915,22 @@ export default function UploadWizard({ carriers, onComplete }) {
   ];
 
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1100, margin: '0 auto' }}>
+    <div style={{ padding: '32px 42px 80px', maxWidth: 1180, margin: '0 auto' }}>
 
-      <PageHeader
+      <PageHero
+        tag="Audit workflow"
         icon={<UploadIcon size={22}/>}
         title="تدقيق فاتورة جديدة"
-        subtitle="ثلاث خطوات لاكتشاف فروق الفاتورة، الأوزان الزائدة، والشحنات المكررة"
+        subtitle="ارفع الفاتورة، دع النظام يقرأ الناقل والأعمدة، ثم اعتمد المراجعة بثقة"
+        accent="var(--accent)"
+        stats={[
+          { label: 'الخطوة', value: `${step}/3`, hint: step === 1 ? 'الفترة' : step === 2 ? 'الرفع' : 'المراجعة', color: 'var(--accent)' },
+          { label: 'الفترة', value: period, hint: 'قابلة للتعديل', color: 'var(--text)' },
+        ]}
       />
 
       {/* ── STEP INDICATOR ────────────────────────────────────────────── */}
-      <Card style={{ padding: '18px 24px', marginBottom: 18 }}>
+      <Card style={{ padding: '16px 18px', marginBottom: 22, maxWidth: 760, marginInline: 'auto', border: '1px solid var(--border)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', rowGap: 8 }}>
           {stepLabels.map((s, i) => {
             const done    = step > s.n;
@@ -931,18 +939,18 @@ export default function UploadWizard({ carriers, onComplete }) {
               <div key={s.n} style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, minWidth: 0 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 11, minWidth: 0 }}>
                   <div style={{
-                    width: 38, height: 38, borderRadius: '50%',
+                    width: 36, height: 36, borderRadius: 12,
                     background: done
-                      ? 'linear-gradient(135deg, #14B8A6, #2DD4BF)'
+                      ? 'linear-gradient(135deg, var(--green), var(--green2))'
                       : current
-                        ? '#0F1235'
+                        ? 'linear-gradient(135deg, var(--accent), var(--accent2))'
                         : 'var(--surface)',
                     border: `2px solid ${done || current ? 'transparent' : 'var(--border2)'}`,
                     color: done || current ? '#fff' : 'var(--muted)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
                     fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 14,
                     flexShrink: 0,
-                    boxShadow: current ? '0 4px 16px rgba(45,212,191,.32)' : 'none',
+                    boxShadow: current ? '0 10px 24px rgba(37,99,235,.20)' : 'none',
                     transition: 'all .25s',
                   }}>
                     {done ? <CheckCircle2 size={18}/> : s.n}

@@ -354,7 +354,7 @@ export default function Overview({ carriers = [], isActive = true }) {
             العملاء — تركّز المديونيات{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
           {data.customerConcentration.length === 0 ? (
-            <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة فلوسي عند العملاء"/>
+            <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة تحصيل العملاء"/>
           ) : (
             <ConcentrationBars
               rows={data.customerConcentration.map(r => ({
@@ -364,7 +364,7 @@ export default function Overview({ carriers = [], isActive = true }) {
                 share:      r.sharePct,
                 rank:       r.rank,
                 meta:       `${r.invoiceCount} فاتورة`,
-                // زوهو حي → «فلوسي عند العملاء» (العميل موجود هناك حتماً —
+                // زوهو حي → «تحصيل العملاء» (العميل موجود هناك حتماً —
                 // كان النقر ينقل لـ/receivables وقد يكون العميل مستبعداً منها)
                 onClick:    () => navigate(
                   data.arSource === 'zoho'
@@ -591,7 +591,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
           label={cash.arSource === 'zoho' ? 'مستحق لنا (العملاء) · زوهو حي' : 'مستحق لنا (العملاء)'}
           value={fmt(cash.totalAR)}
           unit="ر.س"
-          hint={cash.arSource === 'zoho' ? 'فواتير زوهو المفتوحة — نفس رقم «فلوسي عند العملاء»' : 'من آخر كشف داخلي مرفوع'}
+          hint={cash.arSource === 'zoho' ? 'فواتير زوهو المفتوحة — نفس رقم «تحصيل العملاء»' : 'من آخر كشف داخلي مرفوع'}
         />
         <CashTile
           icon={<ArrowUpCircle size={18}/>}

@@ -1,4 +1,4 @@
-// «فلوسي عند العملاء» — شاشة التحصيل الأولى (زوهو المرجع، جوال أولاً).
+// «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع، جوال أولاً).
 // سؤال واحد تجيبه: كم لي بالخارج، وعند مَن، وكيف أحصّله الآن؟
 // مصدر الحقيقة الواحد: RPC customer_money_dashboard() (قاعدة «رقم واحد
 // لكل مفهوم» 2026-07-03) — نفس أرقام /zoho-data ومتابعة العملاء.
@@ -99,7 +99,7 @@ export default function CustomerMoney({ isActive = true }) {
     const headers = ['العميل', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
       'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها'];
     const aoa = [
-      ['فلوسي عند العملاء — زوهو المرجع', '', new Date().toISOString().slice(0, 10)],
+      ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       [],
       headers,
       ...filtered.map(c => [c.name, c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
@@ -112,10 +112,10 @@ export default function CustomerMoney({ isActive = true }) {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 32 : (i === 1 ? 24 : 12) }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'فلوسي عند العملاء');
+    XLSX.utils.book_append_sheet(wb, ws, 'تحصيل العملاء');
     try {
       await persistAndDownloadExport({
-        wb, fileName: `فلوسي_عند_العملاء_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        wb, fileName: `تحصيل_العملاء_${new Date().toISOString().slice(0, 10)}.xlsx`,
         kind: 'zoho_campaign', rowCount: filtered.length, total: +filteredTotal.toFixed(2), userId: user?.id || null,
       });
       toast(`صُدّر ${filtered.length} عميلاً ✓ (محفوظ في سجل السحبات)`, 'success');
@@ -136,8 +136,8 @@ export default function CustomerMoney({ isActive = true }) {
   return (
     <div style={{ padding: '18px 20px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
-        title="فلوسي عند العملاء"
-        subtitle="زوهو المرجع — كم لك بالخارج وكيف تحصّله الآن (نفس أرقام سجلات زوهو)"
+        title="تحصيل العملاء"
+        subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"
         actions={
           <>
             <Btn size="sm" variant="ghost" onClick={() => setBriefOpen(true)} title="رسالة واتساب يومية بأرقام هذه الشاشة">
@@ -337,7 +337,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       <WhatsAppSendModal open={waOpen} onClose={() => setWaOpen(false)}
         recipients={waOpen ? waRecipients : []}
-        bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'فلوسي عند العملاء'}/>
+        bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'تحصيل العملاء'}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
       {bulkOpen && credits && (

@@ -135,7 +135,7 @@ export async function loadZohoEvents(limit = 10) {
   return data || [];
 }
 
-// سجلات زوهو القابلة للتصفح (صفحة /zoho-data) — مرآة لكل كيان
+// زوهو API القابل للتصفح (صفحة /zoho-data) — مرآة لكل كيان
 export const ZOHO_MIRRORS = {
   invoices:        { table: 'zoho_invoices',        label: '🧾 فواتير العملاء',  amount: 'total' },
   payments:        { table: 'zoho_payments',        label: '💰 دفعات العملاء',   amount: 'amount' },
@@ -226,7 +226,7 @@ export async function loadZohoOverdueCampaign() {
   }));
 }
 
-// «فلوسي عند العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
+// «تحصيل العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
 // مستحق/متأخر/أعمار/تحصيل شهري + عملاء بهواتفهم وآخر دفعة.
 export async function loadCustomerMoneyDashboard() {
   const { data, error } = await supabase.rpc('customer_money_dashboard');
