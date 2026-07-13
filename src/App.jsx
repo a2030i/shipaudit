@@ -8,7 +8,7 @@ import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
-import { loadCarriers } from './lib/coreService.js';
+import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 import CarrierProfile from './pages/CarrierProfile.jsx';
 import CustomerPortal from './pages/CustomerPortal.jsx';
 import InternalExports from './pages/InternalExports.jsx';
@@ -801,7 +801,7 @@ function AppInner({ theme, toggleTheme }) {
                 }}
               >
                 <Search size={15}/>
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>اذهب إلى صفحة أو ناقل…</span>
+                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>عميل، فاتورة، AWB، صفحة…</span>
                 <kbd style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 6, padding: '2px 6px', marginInlineStart: 'auto', color:'var(--muted)' }}>Ctrl K</kbd>
               </button>
             </div>
@@ -1007,19 +1007,36 @@ function AppInner({ theme, toggleTheme }) {
 function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
   const [audit, setAudit] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
 
   useEffect(() => {
     if (!isActive) return;
+    let live = true;
     if (auditFromState) {
       setAudit(auditFromState);
       return;
+    }
+    const auditId = new URLSearchParams(location.search).get('audit');
+    if (auditId) {
+      setAudit(null);
+      loadAuditByIdFromDB(auditId)
+        .then(a => {
+          if (!live) return;
+          try { sessionStorage.setItem('lastAudit', JSON.stringify(a)); } catch { /* ignore */ }
+          setAudit(a);
+        })
+        .catch(() => {
+          if (live) navigate('/audits', { replace: true });
+        });
+      return () => { live = false; };
     }
     try {
       const data = JSON.parse(sessionStorage.getItem('lastAudit') || 'null');
       if (data) { setAudit(data); }
       else { navigate('/upload', { replace: true }); }
     } catch { navigate('/upload', { replace: true }); }
-  }, [isActive, auditFromState, navigate]);
+    return () => { live = false; };
+  }, [isActive, auditFromState, navigate, location.search]);
 
   if (!audit) return null;
   return <AuditResults audit={audit} carriers={carriers} onNewAudit={onNewAudit}/>;

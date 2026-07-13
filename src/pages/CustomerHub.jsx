@@ -69,7 +69,9 @@ export default function CustomerHub({ isActive = true }) {
     // Always canonicalize to /customer-360 — legacy paths get
     // rewritten as soon as the operator touches the tabs.
     if (location.pathname !== '/customer-360' || new URLSearchParams(location.search).get('tab') !== newTab) {
-      navigate(`/customer-360?tab=${newTab}`, { replace: true });
+      const params = new URLSearchParams(location.search);
+      params.set('tab', newTab);
+      navigate(`/customer-360?${params.toString()}`, { replace: true });
     }
   };
 

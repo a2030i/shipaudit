@@ -4,6 +4,7 @@
 // zoho-sync (دلتا) ولا تُعدَّل هنا أبداً.
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import { RefreshCw, Search, Database, Download } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -74,6 +75,7 @@ const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إ�
 
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
+  const location = useLocation();
   const [type, setType] = useState('invoices');
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
@@ -137,6 +139,18 @@ export default function ZohoData({ isActive = true }) {
   const [amtMin, setAmtMin] = useState('');        // نطاق المبلغ
   const [amtMax, setAmtMax] = useState('');
   const [sort, setSort] = useState({ col: 'date', dir: 'desc' });
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const requestedType = params.get('type');
+    const incomingQ = params.get('q');
+    if (requestedType && ZOHO_MIRRORS[requestedType]) setType(requestedType);
+    if (incomingQ) {
+      setQ(incomingQ);
+      setPeriod('');
+      setPeriodTo('');
+    }
+  }, [location.search]);
 
   // إعادة ضبط الفلاتر عند تغيير النوع (الحالات تختلف)
   useEffect(() => { setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' }); }, [type]);
