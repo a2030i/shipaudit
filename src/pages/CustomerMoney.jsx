@@ -5,6 +5,7 @@
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
 import { useState, useEffect, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { RefreshCw, Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -31,6 +32,7 @@ const BUCKETS = [
 
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
+  const [searchParams] = useSearchParams();
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
   const [q, setQ] = useState('');
@@ -42,6 +44,11 @@ export default function CustomerMoney({ isActive = true }) {
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
+
+  useEffect(() => {
+    const customer = searchParams.get('customer');
+    if (customer) setQ(customer);
+  }, [searchParams]);
 
   const refresh = async () => {
     setBusy(true);

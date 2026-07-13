@@ -73,6 +73,7 @@ function InsightGrid({ insights }) {
     { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب funnel' },
     { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'var(--gold)' },
     { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'#7A82C4', hint: 'مرشحون لإعادة الاسترداد' },
+    { k:'verified',      label:'متاجر موثقة', value: `${fmtCount(insights.verified || 0)} · زاتكا ${fmtCount(insights.zatcaDone || 0)}`, icon: CheckCircle2, color:'var(--green)', raw: true },
     { k:'walletPiles',   label:'محافظ راكدة (+60ي)', value: `${fmtCount(insights.walletPilesUp)} · ${fmt(insights.walletPilesAmount)} ر.س`, icon: Wallet, color:'#F97316', raw: true, hint: 'رصيد دون نشاط' },
     { k:'walletTotal',   label:'إجمالي أرصدة المحافظ', value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'#3B82F6', raw: true },
   ];
@@ -225,6 +226,10 @@ function UploadModal({ onClose, onDone, userId }) {
       prepaid:  parsed.rows.filter(r => r.billingType === 'دفع مسبق').length,
       postpaid: parsed.rows.filter(r => r.billingType === 'دفع لاحق').length,
       active:   parsed.rows.filter(r => r.status === 'نشط').length,
+      profileDone: parsed.rows.filter(r => r.profileStatus === 'مكتمل').length,
+      vatRegistered: parsed.rows.filter(r => r.vatRegistered).length,
+      zatcaDone: parsed.rows.filter(r => r.zatcaCompleted).length,
+      verified: parsed.rows.filter(r => r.verificationStatus === 'موثق').length,
     };
   }, [parsed]);
 
@@ -264,11 +269,15 @@ function UploadModal({ onClose, onDone, userId }) {
             <Row label="دفع مسبق" value={fmtCount(counts.prepaid)}/>
             <Row label="دفع لاحق" value={fmtCount(counts.postpaid)}/>
             <Row label="نشط حالياً" value={fmtCount(counts.active)}/>
+            <Row label="ملف مكتمل" value={fmtCount(counts.profileDone)}/>
+            <Row label="مسجل في الضريبة" value={fmtCount(counts.vatRegistered)}/>
+            <Row label="زاتكا مكتملة" value={fmtCount(counts.zatcaDone)}/>
+            <Row label="موثق" value={fmtCount(counts.verified)}/>
           </div>
           <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
             <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ كـ snapshot
+              حفظ كلقطة
             </Btn>
           </div>
         </>
@@ -488,7 +497,10 @@ export default function Merchants({ isActive = true }) {
                                               '#EF4444';
                     return (
                       <tr key={m.id} style={{ borderBottom:'1px solid var(--border)' }}>
-                        <td data-label="" style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>{m.store_name}</td>
+                        <td data-label="" style={{ fontSize:12, color:'var(--text)', fontWeight:600 }}>
+                          {m.store_name}
+                          <MerchantMetaChips merchant={m}/>
+                        </td>
                         <td data-label="ID" style={{ textAlign:'center', fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)' }}>{m.store_id}</td>
                         <td data-label="الهاتف" style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--muted)', direction:'ltr' }}>
                           {m.phone || '—'}
@@ -770,6 +782,42 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
   );
 }
 
+function MerchantMetaChips({ merchant }) {
+  const chips = [];
+  if (merchant.profile_status) {
+    chips.push({
+      key: 'profile',
+      label: merchant.profile_status,
+      color: merchant.profile_status === 'مكتمل' ? 'var(--green)' : 'var(--gold)',
+      title: 'حالة الملف الشخصي',
+    });
+  }
+  if (merchant.vat_registered === true) {
+    chips.push({ key: 'vat', label: 'ضريبة', color: '#3B82F6', title: 'مسجل في الضريبة' });
+  }
+  if (merchant.zatca_completed === true) {
+    chips.push({ key: 'zatca', label: 'زاتكا', color: 'var(--accent)', title: 'مكمل بيانات زاتكا' });
+  }
+  if (merchant.verification_status) {
+    chips.push({
+      key: 'verify',
+      label: merchant.verification_status,
+      color: merchant.verification_status === 'موثق' ? 'var(--green)' : 'var(--muted)',
+      title: 'حالة التوثيق',
+    });
+  }
+  if (!chips.length) return null;
+  return (
+    <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
+      {chips.map(c => (
+        <span key={c.key} title={c.title} style={miniMetaChip(c.color)}>
+          {c.label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 const thStyle = {
   textAlign: 'right',
   padding: '8px 12px',
@@ -789,6 +837,17 @@ function statusChip(color) {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '2px 8px', borderRadius: 10,
     color, fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
+  };
+}
+function miniMetaChip(color) {
+  return {
+    display: 'inline-flex', alignItems: 'center',
+    padding: '1px 6px', borderRadius: 9,
+    background: `color-mix(in srgb, ${color} 12%, transparent)`,
+    color,
+    border: `1px solid color-mix(in srgb, ${color} 30%, transparent)`,
+    fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
+    lineHeight: 1.5, whiteSpace: 'nowrap',
   };
 }
 

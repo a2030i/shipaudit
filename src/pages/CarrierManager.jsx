@@ -512,7 +512,7 @@ function ContractForm({ contract, onSave, onClose }) {
 
             {/* Apply */}
             <div style={{padding:'10px 14px',borderTop:'1px solid var(--border)',display:'flex',justifyContent:'flex-end'}}>
-              <Btn variant="success" onClick={applyParsed} style={{gap:7,justifyContent:'center'}}>
+              <Btn variant="accent" onClick={applyParsed} style={{gap:7,justifyContent:'center'}}>
                 ✅ تطبيق على العقد
               </Btn>
             </div>
@@ -880,7 +880,7 @@ export default function CarrierManager({ carriers, setCarriers }) {
               {/* Contracts */}
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
                 <span style={{fontFamily:'var(--font-mono)',fontSize:13,color:'var(--accent)'}}>📄 العقود</span>
-                <Btn size="sm" variant="success" onClick={()=>{setEditContract(null);setShowContract(true);}}>+ عقد جديد</Btn>
+                <Btn size="sm" variant="accent" onClick={()=>{setEditContract(null);setShowContract(true);}}>+ عقد جديد</Btn>
               </div>
 
               {(!carrier.contracts||carrier.contracts.length===0)

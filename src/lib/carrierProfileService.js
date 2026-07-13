@@ -1,7 +1,7 @@
 // Carrier Profile aggregation — one round-trip that returns EVERYTHING
 // the CarrierProfile page needs about a single carrier:
 //   • base row (name, logo, contracts, file_signature)
-//   • financial balance (sum DR − sum CR from carrier_operations)
+//   • open payable balance from carrier_operations (remaining after partial payments)
 //   • COD outstanding (sum of 'out' rows minus 'in' rows in cod_settlement
 //     for this carrier)
 //   • last N audits with review status
@@ -57,7 +57,7 @@ export async function loadCarrierProfile(carrierId) {
 
   // Run the rest in parallel
   const [ops, codRows, audits, webhooks] = await Promise.all([
-    loadAll('carrier_operations', 'id, doc_type, doc_no, doc_date, amount_dr, amount_cr, status, audit_id, payment_id, due_date, paid_at, notes, created_at, updated_at', { carrier_id: carrierId }),
+    loadAll('carrier_operations', 'id, doc_type, doc_no, doc_date, amount_dr, amount_cr, amount_paid, status, audit_id, payment_id, due_date, paid_at, notes, created_at, updated_at', { carrier_id: carrierId }),
     loadAll('cod_settlement',     'id, direction, awb, amount, upload_date, source_file, upload_id, created_at',                                                                       { carrier_id: carrierId }),
     loadAll('audits',             'id, file_name, period, row_count, issue_count, total_billed, total_tax, diff, mismatch_count, drift_pre_tax, drift_tax, audit_type, review_status, approved_at, rejected_at, rejected_reason, created_at', { carrier_id: carrierId }),
     loadAll('webhook_events',     'id, sender, subject, file_name, file_size, status, audit_id, received_at, file_path',                                                              { detected_carrier_id: carrierId }),
@@ -70,9 +70,13 @@ export async function loadCarrierProfile(carrierId) {
     const dr = Number(o.amount_dr) || 0, cr = Number(o.amount_cr) || 0;
     totalDr += dr;
     totalCr += cr;
-    // الرصيد المفتوح يستبعد المسدَّد — نفس معادلة carrier_open_balance
-    // و/hub (توحيد فحص الوكلاء #7). كان يعرض المسدَّد فيتضخّم للأبد.
-    if (o.status !== 'paid') openBalance += dr - cr;
+    // الرصيد المفتوح = المتبقي بعد المدفوعات الجزئية. كان بروفايل الناقل
+    // يحسب عمليات partial بكاملها، فيُظهر رقماً أعلى من الدفتر.
+    if (o.status !== 'paid') {
+      const gross = dr - cr;
+      const paid = Number(o.amount_paid) || 0;
+      openBalance += gross >= 0 ? Math.max(0, gross - paid) : gross;
+    }
     const dt = (o.doc_type || 'OTHER').toUpperCase();
     if (docCounts[dt] != null) docCounts[dt]++;
     else                        docCounts.OTHER++;

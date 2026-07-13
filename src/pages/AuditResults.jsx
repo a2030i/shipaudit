@@ -926,7 +926,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
               {showDetail ? '📊 ملخص' : '🔬 تفاصيل'}
             </Btn>
             {summary.mismatch>0 && (
-              <Btn size="sm" variant="success" onClick={handleExport} icon="⬇️">
+              <Btn size="sm" variant="accent" onClick={handleExport} icon="⬇️">
                 تصدير الفروق ({summary.mismatch})
               </Btn>
             )}
@@ -1094,7 +1094,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13, marginBottom: 16 }}
           />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" onClick={() => setRejectModal(false)}>تراجع</Btn>
+            <Btn variant="ghost" onClick={() => setRejectModal(false)}>إلغاء</Btn>
             <Btn variant="danger" onClick={handleReject} disabled={rejecting}>
               {rejecting ? <Spinner size={12}/> : 'تأكيد الرفض'}
             </Btn>

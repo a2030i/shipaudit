@@ -7,7 +7,7 @@
 //   • bank reference present  → `ref:<reference>`   (the natural unique id)
 //   • no reference            → `auto:<date>|<desc>|<debit>|<credit>`
 // A FULL unique index on dedup_key lets us upsert onConflict='dedup_key'
-// safely (a PARTIAL index would trigger the 42P10 trap — see CLAUDE.md §6).
+// safely (a PARTIAL index would trigger the 42P10 trap — see AGENTS.md §6).
 // So re-uploading a period that overlaps a previous one merges the shared
 // rows instead of duplicating them; genuinely new rows are added.
 
@@ -79,7 +79,7 @@ export async function saveBankTransactions({ transactions, summary, fileName, us
 
 // All saved transactions, newest first. Paginated with a stable (txn_date,id)
 // order so .range() pages never overlap once the table crosses 1000 rows
-// (the double-count trap from CLAUDE.md §6).
+// (the double-count trap from AGENTS.md §6).
 export async function loadBankTransactions({ limit = 5000 } = {}) {
   const PAGE = 1000;
   const rows = [];

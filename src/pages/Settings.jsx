@@ -162,7 +162,7 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
             حفظ الإعدادات
           </Btn>
           <Btn
-            variant={testOk===true?'success':testOk===false?'danger':'ghost'}
+            variant={testOk===true?'accent':testOk===false?'danger':'ghost'}
             onClick={handleTest}
             disabled={testing||!s.openrouterKey}
             style={{minWidth:130,justifyContent:'center',gap:7}}

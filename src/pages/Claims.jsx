@@ -145,7 +145,7 @@ export default function Claims({ carriers = [], isActive }) {
                         {c.status === 'open' && <Btn size="sm" variant="primary" onClick={() => move(c, 'submitted')}>📤 أُرسلت للناقل</Btn>}
                         {c.status === 'submitted' && (
                           <>
-                            <Btn size="sm" variant="success" onClick={() => move(c, 'recovered')}>💰 استُردت</Btn>{' '}
+                            <Btn size="sm" variant="accent" onClick={() => move(c, 'recovered')}>💰 استُردت</Btn>{' '}
                             <Btn size="sm" variant="ghost" onClick={() => move(c, 'waived')}>تنازل</Btn>
                           </>
                         )}

@@ -5,7 +5,7 @@
 // source identifies automatically.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Download, Webhook, Mail, FileText, CheckCircle2,
   AlertCircle, HelpCircle, Copy, ExternalLink, FileSpreadsheet, FileType2,
@@ -109,6 +109,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
   const { profile, can } = useAuth();
   const canDelete = can('webhook.delete');
   const navigate = useNavigate();
+  const location = useLocation();
   const [events,    setEvents]    = useState([]);
   const [counts,    setCounts]    = useState({});
   const [loading,   setLoading]   = useState(true);
@@ -135,10 +136,13 @@ export default function WebhookEvents({ carriers, isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
+  const carrierScope = new URLSearchParams(location.search).get('carrier') || '';
   const filtered = useMemo(() => {
-    if (filter === 'all') return events;
-    return events.filter(e => e.status === filter);
-  }, [events, filter]);
+    let list = events;
+    if (carrierScope) list = list.filter(e => e.detected_carrier_id === carrierScope);
+    if (filter !== 'all') list = list.filter(e => e.status === filter);
+    return list;
+  }, [events, filter, carrierScope]);
 
   const handleAssign = async () => {
     if (!assigning || !chosenCarrier) return;

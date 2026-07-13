@@ -25,7 +25,7 @@ import { supabase } from './supabase.js';
 
 const EXPORT_BUCKET = 'internal-exports';
 
-// Supabase Storage rejects non-ASCII object keys (see CLAUDE.md §1.7).
+// Supabase Storage rejects non-ASCII object keys (see AGENTS.md §1.7).
 // The Arabic display name is kept in the DB row; the storage key is
 // sanitized to [A-Za-z0-9._-].
 function asciiKey(kind, fileName) {

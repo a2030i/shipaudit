@@ -53,8 +53,10 @@ export default function MoneyHub({ isActive = true }) {
 
   const handleTabChange = (newTab) => {
     setTab(newTab);
-    if (location.pathname !== '/money' || new URLSearchParams(location.search).get('tab') !== newTab) {
-      navigate(`/money?tab=${newTab}`, { replace: true });
+    const params = new URLSearchParams(location.search);
+    if (location.pathname !== '/money' || params.get('tab') !== newTab) {
+      params.set('tab', newTab);
+      navigate(`/money?${params.toString()}`, { replace: true });
     }
   };
 

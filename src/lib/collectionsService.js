@@ -264,6 +264,22 @@ export function dunningLevel(days) {
   return DUNNING_LEVELS.find(l => d <= l.max) || DUNNING_LEVELS[DUNNING_LEVELS.length - 1];
 }
 
+// ── حركة أعمار الذمم شهر-بشهر (roll-rate) ───────────────────────────────────
+// يلتقط لقطة الشهر الجاري (upsert، يبني التاريخ عضوياً بلا كرون) ثم يقرأ آخر
+// الشهور. roll-rate الحقيقي يحتاج ≥2 شهر — قبلها الواجهة تعرض «قيد التجميع».
+export async function loadAgingTrend() {
+  await supabase.rpc('capture_ar_aging_snapshot').catch(() => {});
+  const { data, error } = await supabase.rpc('ar_aging_trend', { p_months: 6 });
+  if (error) throw error;
+  const rows = (Array.isArray(data) ? data : []).map(r => ({
+    period: r.period,
+    b0_30: Number(r.b0_30) || 0, b31_60: Number(r.b31_60) || 0,
+    b61_90: Number(r.b61_90) || 0, b90p: Number(r.b90p) || 0, total: Number(r.total) || 0,
+  }));
+  const n = rows.length;
+  return { rows, cur: n ? rows[n - 1] : null, prev: n >= 2 ? rows[n - 2] : null, hasHistory: n >= 2 };
+}
+
 // ── مرشّحو التحصيل من دين زوهو الحيّ (توحيد طابور التحصيل) ────────────────────
 // يُغذّي regenerateTasks بنفس مصدر بطاقة الإيقاف (RPC customer_money_dashboard =
 // فواتير زوهو المفتوحة §1.24) بدل الكشف الداخلي (snapshot) — فطابور /crm?tab=

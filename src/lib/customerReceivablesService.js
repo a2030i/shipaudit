@@ -1,8 +1,8 @@
 // Customer receivables (AR) service.
 //
-// READ-ONLY view layered over snapshots the user uploads from their
-// external billing system. The app does NOT bill — it just shows the
-// uploaded snapshot's aggregates + lets the CFO drill in.
+// READ-ONLY view over the Zoho Books mirror. Legacy uploaded snapshots
+// remain supported as a fallback/import tool, but Zoho is the source of
+// truth for customer receivables now.
 //
 // When the merchants directory has been imported AND the customer→
 // store map has been populated (see merchantsService.autoLinkCustomers),
@@ -247,8 +247,241 @@ function ageBucket(days) {
   return 'd90_plus';
 }
 
-// Returns the LATEST snapshot rolled up per customer + aging totals.
+function emptyReceivables() {
+  return {
+    snapshot: null,
+    customers: [],
+    activeCustomers: [],
+    excludedCustomers: [],
+    aging: { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 },
+    total: 0,
+    customerCount: 0,
+    excludedTotal: 0,
+  };
+}
+
+async function loadOpenZohoInvoices() {
+  const rows = [];
+  let from = 0;
+  while (true) {
+    const { data, error } = await supabase
+      .from('zoho_invoices')
+      .select('zoho_id, invoice_number, customer_name, date, total, balance, status, synced_at')
+      .gt('balance', 0.5)
+      .order('zoho_id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    if (!data?.length) break;
+    rows.push(...data);
+    if (data.length < PAGE) break;
+    from += PAGE;
+  }
+  return rows;
+}
+
+async function latestZohoInvoicesSyncAt() {
+  const { data } = await supabase
+    .from('zoho_sync_state')
+    .select('last_sync')
+    .eq('entity', 'invoices')
+    .maybeSingle();
+  return data?.last_sync || null;
+}
+
+async function buildReceivablesFromRows({ all, snapshot }) {
+  if (!all?.length) return emptyReceivables();
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const byCustomer = new Map();
+  for (const r of all) {
+    const name = r.customer_name;
+    if (!name) continue;
+    if (!byCustomer.has(name)) {
+      byCustomer.set(name, {
+        name,
+        total: 0,
+        invoiceCount: 0,
+        oldestInvoiceDate: null,
+        daysOutstanding: 0,
+        invoices: [],
+      });
+    }
+    const c = byCustomer.get(name);
+    if (r.is_summary) {
+      c.total = Number(r.balance_amount) || 0;
+    } else {
+      c.invoiceCount++;
+      c.invoices.push({
+        id: r.id,
+        date: r.invoice_date,
+        amount: Number(r.balance_amount) || 0,
+        invoiceNumber: r.invoice_number || null,
+        status: r.status || null,
+      });
+      if (r.invoice_date && (!c.oldestInvoiceDate || r.invoice_date < c.oldestInvoiceDate)) {
+        c.oldestInvoiceDate = r.invoice_date;
+      }
+    }
+  }
+
+  for (const c of byCustomer.values()) {
+    if (!c.total && c.invoices.length) {
+      c.total = +c.invoices.reduce((s, i) => s + i.amount, 0).toFixed(2);
+    }
+    if (c.oldestInvoiceDate) {
+      const oldest = new Date(c.oldestInvoiceDate);
+      c.daysOutstanding = Math.floor((today - oldest) / 86_400_000);
+      c.agingBucket = ageBucket(c.daysOutstanding);
+    }
+    c.invoices.sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+    const breakdown = { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+    for (const inv of c.invoices) {
+      if (!inv.date) continue;
+      const d = Math.floor((today - new Date(inv.date)) / 86_400_000);
+      breakdown[ageBucket(d)] += Number(inv.amount) || 0;
+    }
+    for (const k of Object.keys(breakdown)) breakdown[k] = +breakdown[k].toFixed(2);
+    c.bucketAmounts = breakdown;
+  }
+
+  const statuses           = await loadCustomerStatuses();
+  const defaultCreditLimit = await loadDefaultCreditLimit();
+  let writeoffs = new Map();
+  try {
+    const { loadApprovedWriteoffsByCustomer } = await import('./writeoffsService.js');
+    writeoffs = await loadApprovedWriteoffsByCustomer();
+  } catch { /* ignore */ }
+
+  for (const c of byCustomer.values()) {
+    const s = statuses.get(c.name);
+    c.status          = s?.status || 'normal';
+    c.notes           = s?.notes  || null;
+    c.creditLimit     = s?.creditLimit != null ? s.creditLimit : defaultCreditLimit;
+    c.isCustomLimit   = s?.creditLimit != null;
+    c.creditLimitNote = s?.creditLimitNote || null;
+    const writtenOff  = writeoffs.get(c.name) || 0;
+    c.totalGross      = c.total;
+    c.writtenOff      = +writtenOff.toFixed(2);
+    c.total           = +(c.totalGross - writtenOff).toFixed(2);
+    c.creditUsedPct   = c.creditLimit > 0 ? +((c.total / c.creditLimit) * 100).toFixed(1) : 0;
+    c.overLimit       = c.total > c.creditLimit + 0.01;
+  }
+
+  try {
+    const [{ data: linkRows }, merchantsResult] = await Promise.all([
+      supabase.from('customer_merchant_links').select('customer_name, store_id, confidence, match_method'),
+      loadLatestMerchants(),
+    ]);
+    const latestMerchants = merchantsResult?.merchants || [];
+    const linkByName = new Map((linkRows || []).map(r => [r.customer_name, r]));
+    const merchantById = new Map(latestMerchants.map(m => [m.store_id, m]));
+    for (const c of byCustomer.values()) {
+      const link = linkByName.get(c.name);
+      if (!link?.store_id) {
+        c.merchant = null;
+        c.merchantMatch = link ? { method: link.match_method, confidence: link.confidence } : null;
+        continue;
+      }
+      const m = merchantById.get(link.store_id);
+      if (!m) {
+        c.merchant = null;
+        c.merchantMatch = { method: link.match_method, confidence: link.confidence };
+        continue;
+      }
+      c.merchant = {
+        storeId:           m.store_id,
+        storeName:         m.store_name,
+        phone:             m.phone,
+        billingType:       m.billing_type,
+        platformStatus:    m.status,
+        profileStatus:     m.profile_status,
+        vatRegistered:     m.vat_registered === true,
+        zatcaCompleted:    m.zatca_completed === true,
+        verificationStatus:m.verification_status,
+        integrationType:   m.integration_type,
+        shipmentCount:     m.shipment_count,
+        lastShipmentAt:    m.last_shipment_at,
+        createdAtPlatform: m.created_at_platform,
+        lastTopupAt:       m.last_topup_at,
+        walletBalance:     Number(m.wallet_balance) || 0,
+      };
+      c.merchantMatch = { method: link.match_method, confidence: link.confidence };
+    }
+  } catch (e) {
+    console.info('[receivables] merchant overlay skipped:', e.message);
+  }
+
+  const customers = [...byCustomer.values()].sort((a, b) => b.total - a.total);
+  const activeCustomers   = customers.filter(c => c.status !== 'excluded');
+  const excludedCustomers = customers.filter(c => c.status === 'excluded');
+  const total = +activeCustomers.reduce((s, c) => s + c.total, 0).toFixed(2);
+  const excludedNameSet = new Set(excludedCustomers.map(c => c.name));
+  const aging = { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+  for (const r of all) {
+    if (r.is_summary || !r.invoice_date) continue;
+    if (excludedNameSet.has(r.customer_name)) continue;
+    const days = Math.floor((today - new Date(r.invoice_date)) / 86_400_000);
+    aging[ageBucket(days)] += Number(r.balance_amount) || 0;
+  }
+  for (const k of Object.keys(aging)) aging[k] = +aging[k].toFixed(2);
+
+  return {
+    snapshot,
+    customers,
+    activeCustomers,
+    excludedCustomers,
+    aging,
+    total,
+    customerCount: activeCustomers.length,
+    excludedTotal: +excludedCustomers.reduce((s, c) => s + c.total, 0).toFixed(2),
+  };
+}
+
+async function loadZohoReceivables() {
+  const invoices = await loadOpenZohoInvoices();
+  const all = invoices
+    .filter(r => r.customer_name)
+    .map(r => ({
+      id: r.zoho_id,
+      customer_name: r.customer_name,
+      invoice_date: r.date,
+      balance_amount: Number(r.balance) || 0,
+      is_summary: false,
+      invoice_number: r.invoice_number,
+      status: r.status,
+    }));
+  if (!all.length) return emptyReceivables();
+  const syncAt = await latestZohoInvoicesSyncAt();
+  const rowsSyncAt = invoices.reduce((max, r) => (
+    !r.synced_at || (max && r.synced_at <= max) ? max : r.synced_at
+  ), null);
+  return buildReceivablesFromRows({
+    all,
+    snapshot: {
+      id: 'zoho_live',
+      date: new Date().toISOString().slice(0, 10),
+      periodFrom: null,
+      periodTo: null,
+      sourceFile: 'Zoho Books API',
+      uploadedAt: syncAt || rowsSyncAt || new Date().toISOString(),
+      source: 'zoho',
+    },
+  });
+}
+
+// Returns open customer receivables rolled up per customer + aging totals.
+// Zoho mirror is tried first; uploaded snapshots are a fallback only.
 export async function loadLatestReceivables() {
+  try {
+    const live = await loadZohoReceivables();
+    if (live.customerCount > 0) return live;
+  } catch (e) {
+    console.info('[receivables] Zoho mirror unavailable, falling back to legacy snapshot:', e.message);
+  }
+  return loadLegacySnapshotReceivables();
+}
+
+// Returns the LATEST legacy snapshot rolled up per customer + aging totals.
+async function loadLegacySnapshotReceivables() {
   // 1) Find the most-recent snapshot_id
   const { data: latest, error: e1 } = await supabase
     .from('customer_receivables')
@@ -257,7 +490,7 @@ export async function loadLatestReceivables() {
     .limit(1);
   if (e1) throw e1;
   if (!latest?.length) {
-    return { snapshot: null, customers: [], aging: { d0_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 }, total: 0, customerCount: 0 };
+    return emptyReceivables();
   }
   const snap = latest[0];
 
@@ -401,6 +634,10 @@ export async function loadLatestReceivables() {
         phone:             m.phone,
         billingType:       m.billing_type,
         platformStatus:    m.status,
+        profileStatus:     m.profile_status,
+        vatRegistered:     m.vat_registered === true,
+        zatcaCompleted:    m.zatca_completed === true,
+        verificationStatus:m.verification_status,
         integrationType:   m.integration_type,
         shipmentCount:     m.shipment_count,
         lastShipmentAt:    m.last_shipment_at,
@@ -447,6 +684,7 @@ export async function loadLatestReceivables() {
       periodTo:   snap.period_to,
       sourceFile: snap.source_file,
       uploadedAt: snap.uploaded_at,
+      source:     'legacy_snapshot',
     },
     customers,
     activeCustomers,
@@ -557,32 +795,54 @@ export async function setDefaultCreditLimit(value) {
 //   summary:  total invoices, total written off, effective balance
 //   aging:    bucketed breakdown of the open balance
 //
-// All amounts in SAR. Uses the latest customer_receivables snapshot
-// plus any approved write-offs to date.
+// All amounts in SAR. Uses Zoho open invoices plus any approved write-offs
+// to date, with a legacy snapshot fallback for old environments.
 export async function loadCustomerSOA(customerName) {
   if (!customerName?.trim()) throw new Error('اسم العميل مطلوب');
 
-  // Latest receivables snapshot id
-  const { data: latest } = await supabase
-    .from('customer_receivables').select('snapshot_id')
-    .order('uploaded_at', { ascending: false }).limit(1);
-  const snapshotId = latest?.[0]?.snapshot_id;
-  if (!snapshotId) throw new Error('لا توجد كشوف فواتير مرفوعة');
+  let snapshotId = 'zoho_live';
+  let invoiceLines = [];
+  try {
+    const { data: zohoInvoices, error: zohoError } = await supabase
+      .from('zoho_invoices')
+      .select('invoice_number, date, balance')
+      .eq('customer_name', customerName)
+      .gt('balance', 0.5)
+      .order('date', { ascending: true });
+    if (zohoError) throw zohoError;
+    invoiceLines = (zohoInvoices || [])
+      .filter(r => r.date)
+      .map(r => ({
+        date:        r.date,
+        description: `فاتورة ${r.invoice_number || r.date}`,
+        debit:       Number(r.balance) || 0,
+        credit:      0,
+      }));
+  } catch (e) {
+    console.info('[receivables] SOA Zoho invoices unavailable, falling back to legacy snapshot:', e.message);
+  }
 
-  // All invoices for this customer in the snapshot
-  const { data: invoices } = await supabase
-    .from('customer_receivables')
-    .select('invoice_date, balance_amount, is_summary')
-    .eq('snapshot_id', snapshotId)
-    .eq('customer_name', customerName);
-  const invoiceLines = (invoices || [])
-    .filter(r => !r.is_summary && r.invoice_date)
-    .map(r => ({
-      date:        r.invoice_date,
-      description: `فاتورة ${r.invoice_date}`,
-      debit:       Number(r.balance_amount) || 0,
-      credit:      0,
-    }));
+  if (!invoiceLines.length) {
+    const { data: latest } = await supabase
+      .from('customer_receivables').select('snapshot_id')
+      .order('uploaded_at', { ascending: false }).limit(1);
+    snapshotId = latest?.[0]?.snapshot_id;
+    if (!snapshotId) throw new Error('لا توجد فواتير مفتوحة في زوهو ولا كشوف فواتير مرفوعة');
+
+    const { data: invoices } = await supabase
+      .from('customer_receivables')
+      .select('invoice_date, balance_amount, is_summary')
+      .eq('snapshot_id', snapshotId)
+      .eq('customer_name', customerName);
+    invoiceLines = (invoices || [])
+      .filter(r => !r.is_summary && r.invoice_date)
+      .map(r => ({
+        date:        r.invoice_date,
+        description: `فاتورة ${r.invoice_date}`,
+        debit:       Number(r.balance_amount) || 0,
+        credit:      0,
+      }));
+  }
 
   // Approved write-offs as credit lines
   const { data: writeoffs } = await supabase

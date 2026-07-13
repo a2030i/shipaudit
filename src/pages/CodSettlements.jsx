@@ -382,12 +382,16 @@ export default function CodSettlements({ isActive = true }) {
   // Carrier-workspace scoping: /cod-settlements?carrier=X selects that
   // carrier and shows the workspace tab bar. location.search as dep (not
   // empty deps) because PageSlot keeps the page mounted across visits.
+  // MoneyHub links use /money?tab=cod&carrier=X, so accept that canonical
+  // route too.
   useEffect(() => {
-    if (location.pathname !== '/cod-settlements') return;
+    const isCodRoute = location.pathname === '/cod-settlements'
+      || (location.pathname === '/money' && new URLSearchParams(location.search).get('tab') === 'cod');
+    if (!isCodRoute) return;
     const wanted = new URLSearchParams(location.search).get('carrier');
     if (wanted) setCarrier(wanted);
   }, [location.pathname, location.search]);
-  const fromWorkspace = location.pathname === '/cod-settlements'
+  const fromWorkspace = (location.pathname === '/cod-settlements' || location.pathname === '/money')
     && !!new URLSearchParams(location.search).get('carrier');
 
   useEffect(() => {
@@ -569,7 +573,7 @@ export default function CodSettlements({ isActive = true }) {
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
               })}
             </select>
-            <Btn size="md" variant="primary" icon={<Upload size={14}/>}
+            <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
               onClick={handleReviewUpload}
               title="اختر فاتورة هذا الناقل هنا — تُفتح المراجعة جاهزة على النتائج">
               رفع مراجعة
@@ -579,7 +583,7 @@ export default function CodSettlements({ isActive = true }) {
               <Btn size="md" variant="ghost" icon={<Download size={14}/>}
                 onClick={handleExportOutstanding}
                 title="تصدير المتبقي عند الناقل المختار فقط">
-                تحميل المتبقي
+                تصدير المتبقي
               </Btn>
             )}
             <Btn size="md" variant="ghost"
@@ -587,7 +591,7 @@ export default function CodSettlements({ isActive = true }) {
               onClick={handleExportAllOutstanding}
               disabled={exportingAll}
               title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
-              {exportingAll ? 'جارٍ التجميع…' : 'تحميل المتبقي (جميع الناقلين)'}
+              {exportingAll ? 'جارٍ التجميع…' : 'تصدير المتبقي (جميع الناقلين)'}
             </Btn>
             <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
               onClick={() => setUploadModal({ direction: 'out' })}
@@ -595,7 +599,7 @@ export default function CodSettlements({ isActive = true }) {
               تحصيل لمحة
             </Btn>
             {(!can || can('cod.upload_out')) && (
-              <Btn size="md" variant="primary" icon={<Upload size={14}/>}
+              <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
                 onClick={() => setConsolidated({ pick: true })}
                 title="تحصيل لمحة المجمّع — ملف واحد يغطّي كل الشركات (تم التوصيل + مبلغ>0)">
                 📦 تحصيل لمحة (مجمّع)
@@ -633,7 +637,7 @@ export default function CodSettlements({ isActive = true }) {
             وعند وصول التحويل، ارفع ملف التحويل كـ«مُستلَم». النظام يُطابق رقم الشحنة (AWB) ويعرض الفرق.
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <Btn variant="primary" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'out' })}>
+            <Btn variant="ghost" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'out' })}>
               تحصيل لمحة (يدوي)
             </Btn>
             <Btn variant="accent" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>
@@ -935,7 +939,7 @@ export default function CodSettlements({ isActive = true }) {
                   ? `تصدير ${filtered.length} شحنة من القسم الحالي إلى Excel`
                   : 'لا توجد شحنات في القسم الحالي'}
               >
-                📥 صدّر القسم الحالي ({filtered.length})
+                📥 تصدير القسم الحالي ({filtered.length})
               </Btn>
             </div>
           </Card>
@@ -1229,7 +1233,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
         {/* Mismatched diffs awaiting decision */}
         {r.status === 'pending_review' && (
           <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-            <Btn size="sm" variant="success" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
+            <Btn size="sm" variant="accent" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
             <Btn size="sm" variant="ghost"  onClick={() => onAction(r, 'dispute')}>⚠️ اعتراض</Btn>
           </div>
         )}
@@ -1242,7 +1246,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
               </div>
             )}
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <Btn size="sm" variant="success" onClick={() => onAction(r, 'resolve')}>✓ تم الحل</Btn>
+              <Btn size="sm" variant="accent" onClick={() => onAction(r, 'resolve')}>✓ تم الحل</Btn>
               <Btn size="sm" variant="ghost"  onClick={() => onAction(r, 'edit')}>✏️ تحديث</Btn>
             </div>
           </>
@@ -1287,7 +1291,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
               مرّ {r.daysReceived ?? 0} يوم على الاستلام بدون مقابل
             </div>
             <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              <Btn size="sm" variant="success" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
+              <Btn size="sm" variant="accent" onClick={() => onAction(r, 'approve')}>✓ اعتماد</Btn>
               <Btn size="sm" variant="ghost"  onClick={() => onAction(r, 'dispute')}>⚠️ اعتراض</Btn>
               <NoteBtn r={r} onAction={onAction} inline/>
             </div>
@@ -1373,7 +1377,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
       />
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-        <Btn variant={kind === 'approve' || kind === 'resolve' ? 'success' : 'primary'}
+        <Btn variant={kind === 'approve' || kind === 'resolve' ? 'accent' : 'primary'}
           onClick={submit}>تأكيد</Btn>
       </div>
     </Modal>
@@ -1808,7 +1812,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
         {previews.length > 0 && (
-          <Btn variant="success" onClick={handleSave} disabled={busy || grandRows === 0}>
+          <Btn variant="accent" onClick={handleSave} disabled={busy || grandRows === 0}>
             {busy ? <Spinner size={13}/> : `تأكيد حفظ ${grandRows} صف${previews.length > 1 ? ` من ${previews.length} ملف` : ''}`}
           </Btn>
         )}

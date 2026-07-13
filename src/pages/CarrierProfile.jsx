@@ -101,12 +101,24 @@ function Hero({ carrier, onBack }) {
   );
 }
 
-function StatCard({ label, value, sub, color, icon: Icon }) {
+function StatCard({ label, value, sub, color, icon: Icon, onClick, title }) {
   return (
-    <div style={{
+    <div
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      title={title}
+      onClick={onClick}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
+      style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 'var(--r-lg)', padding: '14px 18px',
       display: 'flex', flexDirection: 'column', gap: 4,
+      cursor: onClick ? 'pointer' : 'default',
     }}>
       <div style={{
         fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
@@ -652,8 +664,10 @@ export default function CarrierProfile() {
           icon={BookOpen}
           label={balLabel}
           value={`${fmt(Math.abs(summary.balance))} ر.س`}
-          sub={`فواتير ${fmtCompact(summary.totalDr)} − تحصيل ${fmtCompact(summary.totalCr)}`}
+          sub={`الرصيد المفتوح بعد المدفوعات الجزئية · فواتير ${fmtCompact(summary.totalDr)}`}
           color={balColor}
+          title="فتح دفتر الناقل"
+          onClick={() => navigate(`/ledger?carrier=${carrierId}`)}
         />
         <StatCard
           icon={Banknote}
@@ -661,19 +675,25 @@ export default function CarrierProfile() {
           value={`${fmt(summary.codOutstanding)} ر.س`}
           sub={`${summary.codOutCount} متوقّعة − ${summary.codInCount} مستلَمة`}
           color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--muted)'}
+          title="فتح تحصيل COD لهذا الناقل"
+          onClick={() => navigate(`/money?tab=cod&carrier=${carrierId}`)}
         />
         <StatCard
           icon={Building2}
-          label="الصافي المتوقع"
+          label="صافي موقف الناقل"
           value={`${fmt(Math.abs(summary.netPosition))} ر.س`}
-          sub={summary.netPosition > 0 ? 'مدينون لها صافياً' : summary.netPosition < 0 ? 'مدينة لنا صافياً' : 'متعادل'}
+          sub={summary.netPosition > 0 ? 'بعد خصم COD: مدينون لها' : summary.netPosition < 0 ? 'بعد خصم COD: مدينة لنا' : 'متعادل'}
           color={netColor}
+          title="فتح الدفتر لمراجعة الصافي"
+          onClick={() => navigate(`/ledger?carrier=${carrierId}`)}
         />
         <StatCard
           icon={FileText}
           label="المراجعات"
           value={summary.audits}
           sub={`${summary.auditsByStatus.approved} معتمدة · ${summary.auditsByStatus.pending} معلّقة`}
+          title="فتح مراجعات هذا الناقل"
+          onClick={() => navigate(`/audits?carrier=${carrierId}`)}
         />
         <StatCard
           icon={Inbox}
@@ -681,6 +701,8 @@ export default function CarrierProfile() {
           value={summary.webhooks}
           sub={summary.webhookPending > 0 ? `${summary.webhookPending} بانتظار` : 'كلها معالَجة'}
           color={summary.webhookPending > 0 ? 'var(--gold)' : 'var(--muted)'}
+          title="فتح وارد هذا الناقل"
+          onClick={() => navigate(`/webhook?carrier=${carrierId}`)}
         />
         <StatCard
           icon={CheckCircle2}
@@ -698,14 +720,14 @@ export default function CarrierProfile() {
         <div>
           <SectionCard
             title="آخر المراجعات"
-            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate('/audits')}>كل المراجعات</Btn>}
+            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/audits?carrier=${carrierId}`)}>كل المراجعات</Btn>}
             accent="var(--gold)"
           >
-            <AuditsList audits={audits} onOpen={() => navigate('/audits')}/>
+            <AuditsList audits={audits} onOpen={() => navigate(`/audits?carrier=${carrierId}`)}/>
           </SectionCard>
           <SectionCard
             title="آخر ملفات الـ Webhook"
-            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate('/webhook')}>صندوق الوارد</Btn>}
+            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/webhook?carrier=${carrierId}`)}>صندوق الوارد</Btn>}
             accent="#3B82F6"
           >
             <WebhookList webhooks={webhooks}/>

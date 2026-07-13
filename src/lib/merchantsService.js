@@ -66,15 +66,51 @@ const HEADER_KEYS = {
   lastShipmentAt:     ['تاريخ اخر شحنة', 'تاريخ آخر شحنة', 'last shipment'],
   integrationType:    ['نوع الربط', 'integration'],
   billingType:        ['نوع الفاتورة', 'billing type'],
-  status:             ['حالة المتجر', 'status'],
+  status:             ['حالة المتجر', 'store status', 'merchant status'],
+  profileStatus:      ['حالة الملف الشخصي', 'profile status'],
+  vatRegistered:      ['مسجل في الضريبة', 'مسجل بالضريبة', 'vat registered', 'tax registered'],
+  zatcaCompleted:     ['مكمل بيانات زاتكا', 'بيانات زاتكا', 'zatca'],
+  verificationStatus: ['حالة التوثيق', 'verification status', 'verified status'],
   createdAtPlatform:  ['تاريخ الانشاء', 'تاريخ الإنشاء', 'created'],
-  lastTopupAt:        ['تاريخ اخر شحن رصيد', 'last topup'],
+  lastTopupAt:        ['تاريخ اخر شحن رصيد', 'تاريخ آخر شحن رصيد', 'last topup'],
   walletBalance:      ['الرصيد الحالي', 'wallet', 'balance'],
 };
 
+function normalizeHeader(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[ـًٌٍَُِّْ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function findHeaderIdx(headerRow, keys) {
-  const lc = (s) => String(s ?? '').toLowerCase().trim();
-  return headerRow.findIndex(cell => keys.some(k => lc(cell).includes(lc(k))));
+  const normKeys = keys.map(normalizeHeader);
+  return headerRow.findIndex(cell => {
+    const h = normalizeHeader(cell);
+    return normKeys.some(k => h.includes(k));
+  });
+}
+
+function detectStoresHeaderRow(allRows) {
+  const scan = allRows.slice(0, 10);
+  let best = { idx: -1, score: 0, cols: {} };
+  for (let i = 0; i < scan.length; i++) {
+    const row = scan[i] || [];
+    const cols = {};
+    let score = 0;
+    for (const [field, keys] of Object.entries(HEADER_KEYS)) {
+      cols[field] = findHeaderIdx(row, keys);
+      if (cols[field] >= 0) score++;
+    }
+    if (cols.storeId >= 0 && cols.storeName >= 0 && score > best.score) {
+      best = { idx: i, score, cols };
+    }
+  }
+  return best;
 }
 
 function toIsoDate(v) {
@@ -98,15 +134,45 @@ function toPhoneString(v) {
   return s || null;
 }
 
+function toNum(v, fallback = 0) {
+  if (v == null || v === '') return fallback;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : fallback;
+  const n = parseFloat(String(v).replace(/,/g, '').trim());
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function toText(v) {
+  const s = String(v ?? '').trim();
+  return s || null;
+}
+
+function isYes(v) {
+  const s = normalizeHeader(v);
+  if (!s) return false;
+  return ['نعم', 'yes', 'y', 'true', '1', 'مسجل', 'مكتمل', 'موثق'].includes(s);
+}
+
+function stripMerchantNewColumns(row) {
+  const {
+    profile_status,
+    vat_registered,
+    zatca_completed,
+    verification_status,
+    ...legacy
+  } = row;
+  return legacy;
+}
+
+function isMissingMerchantColumnError(error) {
+  const msg = String(error?.message || '');
+  return /profile_status|vat_registered|zatca_completed|verification_status|schema cache|column/i.test(msg);
+}
+
 export function parseStoresFile(allRows) {
   if (!Array.isArray(allRows) || allRows.length < 2) {
     throw new Error('الملف فارغ أو غير معتاد');
   }
-  const header = allRows[0];
-  const cols = {};
-  for (const [field, keys] of Object.entries(HEADER_KEYS)) {
-    cols[field] = findHeaderIdx(header, keys);
-  }
+  const { idx: headerIdx, cols } = detectStoresHeaderRow(allRows);
   if (cols.storeId < 0 || cols.storeName < 0) {
     throw new Error(
       'الملف لا يطابق صيغة كشف المتاجر — يلزم وجود رأس فيه ' +
@@ -115,7 +181,7 @@ export function parseStoresFile(allRows) {
   }
 
   const rows = [];
-  for (let i = 1; i < allRows.length; i++) {
+  for (let i = headerIdx + 1; i < allRows.length; i++) {
     const r = allRows[i];
     if (!r) continue;
     const storeId = String(r[cols.storeId] ?? '').trim();
@@ -131,12 +197,16 @@ export function parseStoresFile(allRows) {
       integrationType:     cols.integrationType >= 0 ? String(r[cols.integrationType] ?? '').trim() || null : null,
       billingType:         cols.billingType >= 0     ? String(r[cols.billingType] ?? '').trim() || null     : null,
       status:              cols.status >= 0          ? String(r[cols.status] ?? '').trim() || null          : null,
+      profileStatus:       cols.profileStatus >= 0   ? toText(r[cols.profileStatus])             : null,
+      vatRegistered:       cols.vatRegistered >= 0   ? isYes(r[cols.vatRegistered])              : false,
+      zatcaCompleted:      cols.zatcaCompleted >= 0  ? isYes(r[cols.zatcaCompleted])             : false,
+      verificationStatus:  cols.verificationStatus >= 0 ? toText(r[cols.verificationStatus])     : null,
       createdAtPlatform:   cols.createdAtPlatform >= 0 ? toIsoDate(r[cols.createdAtPlatform])    : null,
       lastTopupAt:         cols.lastTopupAt >= 0     ? toIsoDate(r[cols.lastTopupAt])            : null,
-      walletBalance:       cols.walletBalance >= 0   ? (parseFloat(r[cols.walletBalance]) || 0) : 0,
+      walletBalance:       cols.walletBalance >= 0   ? toNum(r[cols.walletBalance])              : 0,
     });
   }
-  return { rows };
+  return { rows, headerRow: headerIdx, detectedColumns: cols };
 }
 
 export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
@@ -154,6 +224,10 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     integration_type:     r.integrationType,
     billing_type:         r.billingType,
     status:               r.status,
+    profile_status:       r.profileStatus,
+    vat_registered:       r.vatRegistered,
+    zatca_completed:      r.zatcaCompleted,
+    verification_status:  r.verificationStatus,
     created_at_platform:  r.createdAtPlatform,
     last_topup_at:        r.lastTopupAt,
     wallet_balance:       r.walletBalance,
@@ -161,16 +235,24 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
   }));
   const CHUNK = 500;
   for (let i = 0; i < inserts.length; i += CHUNK) {
-    const { error } = await supabase.from('merchants').insert(inserts.slice(i, i + CHUNK));
+    const chunk = inserts.slice(i, i + CHUNK);
+    let { error } = await supabase.from('merchants').insert(chunk);
+    if (error && isMissingMerchantColumnError(error)) {
+      ({ error } = await supabase.from('merchants').insert(chunk.map(stripMerchantNewColumns)));
+    }
     if (error) throw error;
   }
   return {
     snapshotId,
     snapshotDate,
     count: inserts.length,
-    prepaid:  inserts.filter(r => r.billing_type === 'دفع مسبق').length,
-    postpaid: inserts.filter(r => r.billing_type === 'دفع لاحق').length,
-    active:   inserts.filter(r => r.status === 'نشط').length,
+    prepaid:       inserts.filter(r => r.billing_type === 'دفع مسبق').length,
+    postpaid:      inserts.filter(r => r.billing_type === 'دفع لاحق').length,
+    active:        inserts.filter(r => r.status === 'نشط').length,
+    profileDone:   inserts.filter(r => r.profile_status === 'مكتمل').length,
+    vatRegistered: inserts.filter(r => r.vat_registered).length,
+    zatcaDone:     inserts.filter(r => r.zatca_completed).length,
+    verified:      inserts.filter(r => r.verification_status === 'موثق').length,
   };
 }
 
@@ -186,10 +268,19 @@ export async function loadLatestMerchants() {
   if (e1) throw e1;
   if (!latest?.length) return { snapshot: null, merchants: [] };
   const snap = latest[0];
-  const merchants = await loadAll('merchants',
-    'id, store_id, store_name, phone, shipment_count, last_shipment_at, integration_type, billing_type, status, created_at_platform, last_topup_at, wallet_balance',
-    { snapshot_id: snap.snapshot_id },
-  );
+  let merchants;
+  try {
+    merchants = await loadAll('merchants',
+      'id, store_id, store_name, phone, shipment_count, last_shipment_at, integration_type, billing_type, status, profile_status, vat_registered, zatca_completed, verification_status, created_at_platform, last_topup_at, wallet_balance',
+      { snapshot_id: snap.snapshot_id },
+    );
+  } catch (e) {
+    if (!isMissingMerchantColumnError(e)) throw e;
+    merchants = await loadAll('merchants',
+      'id, store_id, store_name, phone, shipment_count, last_shipment_at, integration_type, billing_type, status, created_at_platform, last_topup_at, wallet_balance',
+      { snapshot_id: snap.snapshot_id },
+    );
+  }
   return {
     snapshot: {
       id:         snap.snapshot_id,
@@ -493,6 +584,7 @@ export function computeMerchantInsights(merchants, today = new Date()) {
       total: 0, prepaid: 0, postpaid: 0, active: 0, inactive: 0,
       newLast30: 0, newLast90: 0, neverShipped: 0,
       dormantActive: 0, walletPilesUp: 0,
+      profileDone: 0, vatRegistered: 0, zatcaDone: 0, verified: 0,
       walletTotal: 0, topByVolume: [],
     };
   }
@@ -500,6 +592,7 @@ export function computeMerchantInsights(merchants, today = new Date()) {
   let prepaid = 0, postpaid = 0, active = 0, inactive = 0;
   let newLast30 = 0, newLast90 = 0, neverShipped = 0;
   let dormantActive = 0, walletPilesUp = 0;
+  let profileDone = 0, vatRegistered = 0, zatcaDone = 0, verified = 0;
   let walletTotal = 0;
   let totalShipments = 0;
   const churnedList = [];     // status=inactive but had shipments → real customers we lost
@@ -509,6 +602,10 @@ export function computeMerchantInsights(merchants, today = new Date()) {
     if (m.billing_type === 'دفع لاحق') postpaid++;
     if (m.status === 'نشط') active++;
     if (m.status === 'غير نشط') inactive++;
+    if (m.profile_status === 'مكتمل') profileDone++;
+    if (m.vat_registered === true) vatRegistered++;
+    if (m.zatca_completed === true) zatcaDone++;
+    if (m.verification_status === 'موثق') verified++;
     if (m.created_at_platform && days(m.created_at_platform, today) <= 30) newLast30++;
     if (m.created_at_platform && days(m.created_at_platform, today) <= 90) newLast90++;
     if ((m.shipment_count || 0) === 0) neverShipped++;
@@ -540,6 +637,7 @@ export function computeMerchantInsights(merchants, today = new Date()) {
   return {
     total: merchants.length, prepaid, postpaid, active, inactive,
     newLast30, newLast90, neverShipped, dormantActive, walletPilesUp,
+    profileDone, vatRegistered, zatcaDone, verified,
     walletTotal: +walletTotal.toFixed(2),
     walletPilesAmount: +walletPilesAmount.toFixed(2),
     churned: churnedList.length,
