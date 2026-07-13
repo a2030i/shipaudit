@@ -133,7 +133,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
       <PageHeader
         icon={<Scale size={22}/>}
         title="تصدير الأوزان الزائدة"
-        subtitle="صدّر أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
+        subtitle="تصدير أوزان كل الشحنات في المراجعات المعتمدة بضغطة واحدة. الملف بعمودين (رقم + الوزن) ونظامك يحسب الفرق"
         meta={loading ? null : `${pendingStats.audits} مراجعة جديدة · ${pendingStats.rows.toLocaleString('en-US')} شحنة · ${pendingStats.carriers} شركة`}
         actions={
           <Btn
@@ -333,7 +333,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
             />
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" onClick={() => setVoiding(null)}>تراجع</Btn>
+            <Btn variant="ghost" onClick={() => setVoiding(null)}>إلغاء</Btn>
             <Btn variant="danger" onClick={handleVoidConfirm}>تأكيد الإلغاء</Btn>
           </div>
         </Modal>

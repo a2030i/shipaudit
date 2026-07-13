@@ -295,6 +295,7 @@ function AppInner({ theme, toggleTheme }) {
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
+  const [pendingAudit,    setPendingAudit]    = useState(null);
   // Per-section open/closed state for the accordion. Persists in
   // localStorage so the operator's preferred layout survives reloads.
   // Default on first visit: open the carriers section (most-trafficked
@@ -404,13 +405,24 @@ function AppInner({ theme, toggleTheme }) {
     setMobileOpen(false);
   };
 
-  // ── Audit results: use sessionStorage so data survives navigation ──
+  // ── Audit results: keep the fresh draft in memory. sessionStorage is
+  // best-effort only: large audits can exceed the browser quota, and that
+  // must never block navigation to /results.
+  const rememberAudit = (audit) => {
+    setPendingAudit(audit);
+    try {
+      sessionStorage.setItem('lastAudit', JSON.stringify(audit));
+    } catch (e) {
+      console.info('[audit-results] skipped sessionStorage cache:', e.message);
+      try { sessionStorage.removeItem('lastAudit'); } catch { /* ignore */ }
+    }
+  };
   const handleAuditComplete = (audit) => {
-    sessionStorage.setItem('lastAudit', JSON.stringify(audit));
+    rememberAudit(audit);
     navigate('/results');
   };
   const handleOpenAudit = (audit) => {
-    sessionStorage.setItem('lastAudit', JSON.stringify(audit));
+    rememberAudit(audit);
     navigate('/results');
   };
 
@@ -780,7 +792,7 @@ function AppInner({ theme, toggleTheme }) {
               <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>
             </PageSlot>
             <PageSlot active={pathname==='/results'}>
-              <AuditResultsPage carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
+              <AuditResultsPage auditFromState={pendingAudit} carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
             </PageSlot>
             <PageSlot active={pathname==='/audits'} scroll>
               <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
@@ -937,18 +949,22 @@ function AppInner({ theme, toggleTheme }) {
 }
 
 // ── AuditResults wrapper (reads from sessionStorage when activated) ──────────
-function AuditResultsPage({ carriers, onNewAudit, isActive }) {
+function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
   const [audit, setAudit] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
     if (!isActive) return;
+    if (auditFromState) {
+      setAudit(auditFromState);
+      return;
+    }
     try {
       const data = JSON.parse(sessionStorage.getItem('lastAudit') || 'null');
       if (data) { setAudit(data); }
       else { navigate('/upload', { replace: true }); }
     } catch { navigate('/upload', { replace: true }); }
-  }, [isActive]);
+  }, [isActive, auditFromState, navigate]);
 
   if (!audit) return null;
   return <AuditResults audit={audit} carriers={carriers} onNewAudit={onNewAudit}/>;

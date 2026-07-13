@@ -354,7 +354,7 @@ export default function Overview({ carriers = [], isActive = true }) {
             العملاء — تركّز المديونيات{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
           {data.customerConcentration.length === 0 ? (
-            <Empty icon="📭" title="لا مديونيات حالياً" sub="ارفع snapshot من /receivables"/>
+            <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة فلوسي عند العملاء"/>
           ) : (
             <ConcentrationBars
               rows={data.customerConcentration.map(r => ({
@@ -366,7 +366,11 @@ export default function Overview({ carriers = [], isActive = true }) {
                 meta:       `${r.invoiceCount} فاتورة`,
                 // زوهو حي → «فلوسي عند العملاء» (العميل موجود هناك حتماً —
                 // كان النقر ينقل لـ/receivables وقد يكون العميل مستبعداً منها)
-                onClick:    () => navigate(data.arSource === 'zoho' ? '/customer-money' : '/receivables'),
+                onClick:    () => navigate(
+                  data.arSource === 'zoho'
+                    ? `/customer-money?customer=${encodeURIComponent(r.customerName)}`
+                    : `/receivables?customer=${encodeURIComponent(r.customerName)}`
+                ),
               }))}
               valueUnit="ر.س"
               warnAtPct={25}
@@ -503,7 +507,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           الإنفاق = مجموع <code>amount_dr</code> في <code>carrier_operations</code> بتاريخ ضمن الشهر.{' '}
           COD المُستلَم = ما رُفع من ملفات تحصيل الشركات بـ <code>direction='in'</code>.{' '}
           الفروق = مجموع <code>drift_pre_tax</code> للمراجعات المعتمدة هذا الشهر — سالب يعني وفّرنا، موجب يعني ندفع زيادة.
-          تركّز العملاء يأتي من آخر snapshot مديونيات.{' '}
+          تركّز العملاء يأتي من فواتير زوهو المفتوحة عند توفرها، مع fallback للكشوف القديمة.{' '}
           أعمار الذمم = الفرق بين تاريخ الفاتورة واليوم، للقيود غير المسددة.
         </div>
       </div>
@@ -653,7 +657,6 @@ function CashTile({ icon, color, label, value, unit, hint, onClick, editable = f
         cursor: onClick ? 'pointer' : 'default',
         position: 'relative',
         transition: 'border-color .15s',
-        background: 'var(--surface)',
       }}
       onMouseEnter={onClick ? (e) => e.currentTarget.style.borderColor = color : undefined}
       onMouseLeave={onClick ? (e) => e.currentTarget.style.borderColor = `color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)` : undefined}

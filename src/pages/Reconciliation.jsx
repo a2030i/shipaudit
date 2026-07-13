@@ -64,8 +64,15 @@ export default function Reconciliation({ isActive = true }) {
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
   // Tab between customer side (المتاجر/العملاء) and vendor side
   // (شركات الشحن). Each side has its own data + uploads.
-  const [tab, setTab]               = useState('zoho_live');
+  const [tab, setTab]               = useState(() => new URLSearchParams(location.search).get('tab') || 'zoho_live');
   const [autolinkBusy, setAutolinkBusy] = useState(false);
+
+  useEffect(() => {
+    const wanted = new URLSearchParams(location.search).get('tab');
+    if (wanted && ['zoho_live', 'customers', 'vendors'].includes(wanted) && wanted !== tab) {
+      setTab(wanted);
+    }
+  }, [location.search, tab]);
 
   // One-click backfill for the common case where the store_balances
   // upload happened before the merchants snapshot, leaving rows

@@ -32,7 +32,7 @@ import {
   TRIGGER_LABELS, STAGE_LABELS,
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
-  loadCollectionCandidates, dunningLevel, DUNNING_LEVELS,
+  loadCollectionCandidates, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -94,18 +94,21 @@ export default function Collections({ isActive = true }) {
   const [writeoffOpen, setWriteoffOpen] = useState(null);   // task being written off
   const [pendingWriteoffs, setPendingWriteoffs] = useState([]);
   const [reviewQueueOpen, setReviewQueueOpen]   = useState(false);
+  const [agingTrend, setAgingTrend] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, recs, pending] = await Promise.all([
+      const [t, recs, pending, trend] = await Promise.all([
         listTasks({ includeDone: stageFilter !== 'open' }),
         loadCollectionCandidates().catch(() => []),   // دين زوهو الحيّ (كان snapshot)
         listWriteoffs({ status: 'pending' }).catch(() => []),
+        loadAgingTrend().catch(() => null),
       ]);
       setTasks(t);
       setCustomers(recs || []);
       setPendingWriteoffs(pending);
+      setAgingTrend(trend);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -284,6 +287,43 @@ export default function Collections({ isActive = true }) {
             </div>
           ))}
         </div>
+      )}
+
+      {/* حركة الأعمار شهر-بشهر (roll-rate) — ج. قبل توفّر شهرين: قيد التجميع. */}
+      {agingTrend && (
+        !agingTrend.hasHistory ? (
+          <div style={{ marginBottom: 16, fontSize: 11.5, color: 'var(--muted)', padding: '8px 12px',
+            borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+            📈 حركة الأعمار (roll-rate) — قيد التجميع؛ التُقطت لقطة {agingTrend.cur?.period || ''}. تظهر المقارنة الشهر القادم.
+          </div>
+        ) : (() => {
+          const { cur, prev } = agingTrend;
+          const buckets = [
+            { key: 'b0_30', label: '0–30' }, { key: 'b31_60', label: '31–60' },
+            { key: 'b61_90', label: '61–90' }, { key: 'b90p', label: '+90' },
+          ];
+          const roll90 = (cur.b90p || 0) - (prev.b90p || 0);
+          return (
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16,
+              fontSize: 11.5, padding: '8px 12px', borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+              <span style={{ fontWeight: 700, color: 'var(--text)' }}>📈 حركة الأعمار {prev.period}→{cur.period}:</span>
+              {buckets.map(b => {
+                const delta = (cur[b.key] || 0) - (prev[b.key] || 0);
+                const worse = (b.key === 'b61_90' || b.key === 'b90p') && delta > 0;
+                const col = Math.abs(delta) < 0.5 ? 'var(--muted)' : worse ? 'var(--red)' : delta < 0 ? 'var(--green)' : 'var(--muted)';
+                return (
+                  <span key={b.key} style={{ color: 'var(--text2)' }}>
+                    {b.label}: <b style={{ color: col, fontFamily: 'var(--font-mono)' }}>{delta >= 0 ? '▲' : '▼'} {fmtCompact(Math.abs(delta))}</b>
+                  </span>
+                );
+              })}
+              <span style={{ marginInlineStart: 'auto', fontWeight: 700,
+                color: roll90 > 0.5 ? 'var(--red)' : roll90 < -0.5 ? 'var(--green)' : 'var(--muted)' }}>
+                صافي المتدحرج إلى +90: {roll90 >= 0 ? '+' : '−'}{fmtCompact(Math.abs(roll90))} ر.س
+              </span>
+            </div>
+          );
+        })()
       )}
 
       {/* Pending write-offs banner — shows when there are requests

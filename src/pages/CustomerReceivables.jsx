@@ -1,10 +1,10 @@
-// CustomerReceivables — uploaded snapshots of unpaid invoices per
-// customer. Single-page CFO view: hero totals → aging buckets →
+// CustomerReceivables — Zoho open invoices per customer. Single-page CFO view:
+// hero totals → aging buckets →
 // sortable customer table → click row to inspect their invoices.
-// READ-ONLY: the app doesn't bill, it only reflects what was uploaded.
+// READ-ONLY: the app doesn't bill, it reflects the Zoho Books mirror.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -24,6 +24,7 @@ import {
 } from '../lib/customerReceivablesService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import { computeRisk } from '../lib/customerRisk.js';
+import { syncZohoDocs } from '../lib/pnlService.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -42,6 +43,14 @@ const fmtDate = (iso) => {
   try {
     return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: '2-digit', day: '2-digit' });
   } catch { return iso; }
+};
+const isZohoSnapshot = (snapshot) => snapshot?.source === 'zoho';
+const receivablesSourceLabel = (snapshot) => isZohoSnapshot(snapshot) ? 'Zoho Books API' : 'لقطة Excel قديمة';
+const receivablesMeta = (snapshot) => {
+  if (!snapshot) return null;
+  if (isZohoSnapshot(snapshot)) return `Zoho Books API · آخر مزامنة ${fmtDate(snapshot.uploadedAt)}`;
+  return `لقطة ${snapshot.id} · رُفعت ${fmtDate(snapshot.uploadedAt)}` +
+    (snapshot.periodFrom ? ` · الفترة ${fmtDate(snapshot.periodFrom)} → ${fmtDate(snapshot.periodTo)}` : '');
 };
 
 // ── Tab pill ────────────────────────────────────────────────────
@@ -89,10 +98,7 @@ function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
       icon={<Users size={22}/>}
       tag="LAMHA · CUSTOMER RECEIVABLES"
       title="مديونيات العملاء"
-      meta={snapshot
-        ? `snapshot ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` +
-          (snapshot.periodFrom ? ` · الفترة ${fmtDate(snapshot.periodFrom)} → ${fmtDate(snapshot.periodTo)}` : '')
-        : null}
+      meta={receivablesMeta(snapshot)}
       stats={[
         { label: 'إجمالي المستحقّات', value: `${fmt(total)} ر.س`, big: true },
         { label: 'المتجاوز 30 يوم',   value: `${fmt(overdueTotal)} ر.س`, color: '#FBBF24' },
@@ -358,7 +364,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
           </thead>
           <tbody>
             {customer.invoices.length === 0
-              ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>لا توجد تفاصيل فواتير في هذا الـ snapshot</td></tr>
+              ? <tr><td colSpan={3} style={{ textAlign: 'center', color: 'var(--muted)', padding: 16 }}>لا توجد تفاصيل فواتير مفتوحة لهذا العميل</td></tr>
               : customer.invoices.map(inv => {
                 const today = new Date(); today.setHours(0, 0, 0, 0);
                 const days = inv.date
@@ -372,7 +378,10 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                                  'var(--green)';    // green — current
                 return (
                   <tr key={inv.id}>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{fmtDate(inv.date)}</td>
+                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>
+                      <div>{fmtDate(inv.date)}</div>
+                      {inv.invoiceNumber && <div style={{ color: 'var(--muted)', marginTop: 2 }}>{inv.invoiceNumber}</div>}
+                    </td>
                     <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'left' }}>{fmt(inv.amount)} ر.س</td>
                     <td style={{ fontFamily: 'var(--font-mono)', textAlign: 'center', color }}>
                       {days != null ? `${days} يوم` : '—'}
@@ -398,7 +407,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                  toast(`تم تصدير كشف الحساب · رصيد ${fmt(r.balance)} ر.س`, 'success');
                } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
              }}>
-          📋 صدّر كشف الحساب (Excel)
+          📋 تصدير كشف الحساب
         </Btn>
       </div>
 
@@ -515,7 +524,7 @@ function UploadModal({ onClose, onDone, userId }) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 14 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
             <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ كـ snapshot
+              حفظ كلقطة
             </Btn>
           </div>
         </>
@@ -621,6 +630,7 @@ export default function CustomerReceivables({ isActive = true }) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [data,    setData]    = useState(null);
   const [merchants, setMerchants] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -631,6 +641,7 @@ export default function CustomerReceivables({ isActive = true }) {
   const [showUpload, setShowUpload] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [history, setHistory] = useState([]);
+  const [syncingZoho, setSyncingZoho] = useState(false);
   // Tab: 'active' = الافتراضي, 'excluded' = متابعة خاصة
   const [tab, setTabRaw] = useState('active');
   // When the user clicks an anomaly card on the alerts tab, this
@@ -669,6 +680,13 @@ export default function CustomerReceivables({ isActive = true }) {
   }, []);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  useEffect(() => {
+    const customer = searchParams.get('customer');
+    if (customer) setSearch(customer);
+    const wantedTab = searchParams.get('tab');
+    if (['active', 'anomalies', 'excluded'].includes(wantedTab)) setTab(wantedTab);
+  }, [searchParams]);
 
   const oldestDays = useMemo(() => {
     if (!data?.customers?.length) return null;
@@ -1015,10 +1033,8 @@ export default function CustomerReceivables({ isActive = true }) {
     toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success');
   };
 
-  // تصدير «الكشف الداخلي» — قائمة فرز داخلية من الـsnapshot المرفوع (هاتف/نوع
-  // فوترة/تقادم/آخر شحنة) للفريق. ليست «حملة تحصيل» — الحملة الوحيدة من زوهو
-  // الحيّ في /customer-money (قاعدة §1.24: مرجع الدين = زوهو). يمرّ عبر
-  // persistAndDownloadExport (تخزين + سجل، §1.13) بدل XLSX.writeFile المباشر.
+  // تصدير ملف متابعة مبني على مرجع الدين الحالي (Zoho) + دليل المتاجر.
+  // يمرّ عبر persistAndDownloadExport (تخزين + سجل، §1.13) بدل XLSX.writeFile المباشر.
   const handleCollectionExport = async () => {
     if (!visibleCustomers.length) {
       toast('لا توجد بيانات للتصدير', 'info');
@@ -1067,15 +1083,15 @@ export default function CustomerReceivables({ isActive = true }) {
       { wch: 14 }, { wch: 12 }, { wch: 14 }, { wch: 22 }, { wch: 30 },
     ];
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'الكشف الداخلي');
+    XLSX.utils.book_append_sheet(wb, ws, 'متابعة العملاء');
     const dateStr = new Date().toISOString().slice(0, 10);
     try {
       await persistAndDownloadExport({
-        wb, fileName: `الكشف_الداخلي_${dateStr}.xlsx`,
+        wb, fileName: `متابعة_مديونيات_العملاء_${dateStr}.xlsx`,
         kind: 'internal_watchlist', rowCount: visibleCustomers.length,
         total: +totalDebt.toFixed(2), userId: user?.id || null,
       });
-      toast(`صُدّر ${visibleCustomers.length} عميل (الكشف الداخلي — snapshot، محفوظ في السجل)`, 'success');
+      toast(`صُدّر ${visibleCustomers.length} عميل من مرجع زوهو/المتاجر، محفوظ في السجل`, 'success');
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
@@ -1119,6 +1135,20 @@ export default function CustomerReceivables({ isActive = true }) {
     }
   };
 
+  const handleSyncZoho = async () => {
+    setSyncingZoho(true);
+    try {
+      const res = await syncZohoDocs();
+      const count = res?.results?.invoices;
+      toast(count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
+      await refresh();
+    } catch (e) {
+      toast(`فشلت مزامنة زوهو: ${e.message}`, 'error');
+    } finally {
+      setSyncingZoho(false);
+    }
+  };
+
   return (
     <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
       <PageHeader
@@ -1127,26 +1157,29 @@ export default function CustomerReceivables({ isActive = true }) {
         subtitle={loading
           ? 'جارٍ التحميل…'
           : data?.customerCount
-            ? `${data.customerCount} عميل في الـ snapshot الحالي`
+            ? `${data.customerCount} عميل من ${receivablesSourceLabel(data.snapshot)}`
             : 'لا توجد بيانات بعد'}
-        meta={data?.snapshot ? `snapshot ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
+        meta={receivablesMeta(data?.snapshot)}
         actions={
           <>
             <Btn size="sm" variant="ghost" icon={<ChevronDown size={14}/>} onClick={handleShowHistory}>
-              السجل
+              سجل الرفعات القديمة
             </Btn>
             <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleExport} disabled={!visibleCustomers.length}>
               تصدير
             </Btn>
             <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={handleCollectionExport} disabled={!visibleCustomers.length}
-              title="قائمة فرز داخلية من الكشف المرفوع (snapshot). حملة التحصيل الفعلية من زوهو الحيّ في «فلوسي عند العملاء»">
-              الكشف الداخلي
+              title="قائمة فرز مبنية على نفس مرجع مديونيات العملاء الحالي">
+              ملف الحملة
             </Btn>
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
               تحديث
             </Btn>
-            <Btn size="md" variant="primary" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
-              رفع كشف
+            <Btn size="sm" variant="ghost" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
+              رفع Excel قديم
+            </Btn>
+            <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={handleSyncZoho} disabled={syncingZoho || loading}>
+              مزامنة زوهو
             </Btn>
           </>
         }
@@ -1165,12 +1198,12 @@ export default function CustomerReceivables({ isActive = true }) {
         <Card>
           <Empty
             icon="💰"
-            title="لم يُرفع أي كشف بعد"
-            sub="ارفع كشف فواتير العملاء من نظامك الخارجي لتشاهد المديونيات + التقادم"
+            title="لا توجد فواتير مفتوحة"
+            sub="زامن Zoho Books أولاً. رفع Excel القديم متاح فقط كخطة رجوع."
           />
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 12 }}>
-            <Btn size="md" variant="accent" icon={<Upload size={14}/>} onClick={() => setShowUpload(true)}>
-              ارفع أول كشف
+            <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={handleSyncZoho} disabled={syncingZoho}>
+              مزامنة زوهو
             </Btn>
           </div>
         </Card>
@@ -1637,9 +1670,9 @@ export default function CustomerReceivables({ isActive = true }) {
 
       {/* Snapshot history modal */}
       {showHistory && (
-        <Modal title="سجل الـ snapshots" onClose={() => setShowHistory(false)} width={620}>
+      <Modal title="سجل الرفعات القديمة" onClose={() => setShowHistory(false)} width={620}>
           {history.length === 0
-            ? <Empty icon="📁" title="لا يوجد snapshots بعد"/>
+            ? <Empty icon="📁" title="لا توجد رفعات قديمة بعد"/>
             : (
               <div style={{ maxHeight: 420, overflowY: 'auto' }}>
                 {history.map(s => (
@@ -1673,7 +1706,7 @@ export default function CustomerReceivables({ isActive = true }) {
                       onClick={async () => {
                         try {
                           await deleteReceivablesSnapshot(s.snapshotId);
-                          toast('تم حذف الـ snapshot', 'success');
+                          toast('تم حذف اللقطة', 'success');
                           handleShowHistory();
                           refresh();
                         } catch (e) { toast(e.message, 'error'); }

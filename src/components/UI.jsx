@@ -6,7 +6,7 @@ import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Help
 // lift. Sized for confident touch targets — never tiny pills. Variants
 // keep brand intent (primary, accent, etc.) but the visual weight is
 // rebalanced toward less-but-bigger.
-// ── دلالة الـvariants الموحَّدة (كتالوج الأزرار §1.20 في CLAUDE.md) ──
+// ── دلالة الـvariants الموحَّدة (كتالوج الأزرار §1.20 في AGENTS.md) ──
 // استعملها باتساق في كل كود جديد — لا تخلط الدلالات:
 //   primary (أسود)  = الفعل الرئيسي الواحد للصفحة/السياق (رفع كشف، التالي، تأكيد المعالج)
 //   accent  (أخضر)  = التأكيد/الحفظ/الاعتماد الإيجابي (اعتماد، احفظ، تسديد، ربط)

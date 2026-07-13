@@ -133,7 +133,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="success" onClick={doSend} disabled={sending || !valid.length || overLimit}>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !valid.length || overLimit}>
               {sending ? <><Spinner size={14}/> جارٍ الإرسال…</> : <><Send size={14}/> إرسال الآن ({valid.length})</>}
             </Btn>
             <Btn variant="ghost" onClick={onClose} disabled={sending}>إلغاء</Btn>

@@ -157,7 +157,7 @@ export default function DecisionsBoard({ isActive = true }) {
             props: {
               color: '#0EA5E9', icon: '💰', title: 'خزائن COD محتجزة', value: fmt(d.held), unit: 'ر.س',
               sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'ارفع ميزان المراجعة لتظهر',
-              cta: 'رقابة الخزائن', onClick: () => navigate('/reconciliation'),
+              cta: 'رقابة الخزائن', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
           },
           {
@@ -166,7 +166,7 @@ export default function DecisionsBoard({ isActive = true }) {
               color: '#8B5CF6', icon: '🧾', title: 'فجوة تسجيل Zoho', value: fmt(d.vgapTotal), unit: 'ر.س',
               sub: `${d.vgaps.length} ناقل يختلف رصيدهم عن Zoho`,
               top: d.vgaps.slice(0, 3).map(v => `${v.carrierName} · ${fmtK(v.diff)} ر.س`),
-              cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation'),
+              cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
           },
           {
@@ -174,7 +174,7 @@ export default function DecisionsBoard({ isActive = true }) {
             props: {
               color: 'var(--red)', icon: '⚠️', title: 'تنبيهات العملاء', value: d.anomalyCount, unit: 'عميل',
               sub: `إجمالي المديونيات ${fmt(d.totalDebt)} ر.س (الكشف الداخلي)`,
-              cta: 'فتح التنبيهات', onClick: () => navigate('/receivables'),
+              cta: 'فتح التنبيهات', onClick: () => navigate('/receivables?tab=anomalies'),
             },
           },
           {

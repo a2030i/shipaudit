@@ -385,7 +385,7 @@ export default function CarriersHub({ isActive = true }) {
               row={row}
               onClick={() => navigate(`/carrier?id=${row.carrierId}`)}
               onSetup={() => navigate(`/carrier?id=${row.carrierId}`)}
-              onWebhook={() => navigate('/webhook')}
+              onWebhook={() => navigate(`/webhook?carrier=${row.carrierId}`)}
               onCod={() => navigate(`/cod-settlements?carrier=${row.carrierId}`)}
               onLedger={() => navigate(`/ledger?carrier=${row.carrierId}`)}
             />

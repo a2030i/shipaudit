@@ -823,7 +823,7 @@ export default function CarrierLedger({ isActive = true }) {
             ⬇️ تصدير المحدّد ({selectedAll.length})
           </Btn>
           {selectedOps.length > 0 && (
-            <Btn size="sm" variant="success"
+            <Btn size="sm" variant="accent"
               onClick={() => setModal({ ops: selectedOps, action: 'bulk-paid', total: selectedTotal })}>
               💰 تسديد جماعي ({selectedOps.length})
             </Btn>
@@ -979,7 +979,7 @@ export default function CarrierLedger({ isActive = true }) {
                             )}
                             {/* Pay */}
                             {o.status !== 'paid' && (
-                              <Btn size="sm" variant="success" onClick={() => setModal({ op: o, action: 'paid' })}>
+                              <Btn size="sm" variant="accent" onClick={() => setModal({ op: o, action: 'paid' })}>
                                 💰 تسديد
                               </Btn>
                             )}
@@ -1144,7 +1144,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
 
         <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn variant="success"
+          <Btn variant="accent"
             disabled={isHighValue && notes !== '__hv_ok__'}
             onClick={() => onPaidBulk(ops, paymentRef)}>
             تأكيد تسديد {ops.length} عملية
@@ -1244,7 +1244,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
       )}
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 18 }}>
         <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-        <Btn variant={isPay ? 'success' : 'primary'}
+        <Btn variant={isPay ? 'accent' : 'primary'}
           disabled={isPay && isPartialMode && !(partialAmount > 0)}
           onClick={() => isPay
             ? onPaid(modal.op, paymentRef, isPartialMode ? partialAmount : null)
@@ -1719,7 +1719,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
             تقدر تلغي الربط لاحقاً من نفس الصف.
           </div>
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" size="sm" onClick={() => setOverrideAudit(null)}>تراجع</Btn>
+            <Btn variant="ghost" size="sm" onClick={() => setOverrideAudit(null)}>إلغاء</Btn>
             <Btn variant="primary" size="sm"
               onClick={async () => {
                 const a = overrideAudit.audit;
@@ -2007,8 +2007,8 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
             }}
           />
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 10, flexWrap: 'wrap' }}>
-            <Btn size="sm" variant="ghost" onClick={() => setResolveOpen(false)}>تراجع</Btn>
-            <Btn size="sm" variant="success"
+            <Btn size="sm" variant="ghost" onClick={() => setResolveOpen(false)}>إلغاء</Btn>
+            <Btn size="sm" variant="accent"
               onClick={() => handleResolve(selectedCredit ? 'credit_received' : 'accepted')}
               disabled={busy}>
               {busy ? <Spinner size={12}/> :
@@ -2022,7 +2022,7 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
       <div style={{ display: 'flex', gap: 8, justifyContent: 'space-between', flexWrap: 'wrap' }}>
         <div>
           {op.status === 'disputed' && !resolveOpen && (
-            <Btn size="sm" variant="success" onClick={() => setResolveOpen(true)}>
+            <Btn size="sm" variant="accent" onClick={() => setResolveOpen(true)}>
               ✓ إغلاق النزاع
             </Btn>
           )}

@@ -467,7 +467,8 @@ function LeadsTab({ active }) {
       const wb = XLSX.read(buf, { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
       const parsed = parseLeadsRows(rows);
-      const custNames = (await loadLatestReceivables().catch(() => ({ rows: [] }))).rows.map(c => c.name);
+      const receivables = await loadLatestReceivables().catch(() => ({ customers: [] }));
+      const custNames = (receivables.customers || receivables.rows || []).map(c => c.name);
       const res = await uploadLeadsSnapshot({ rows: parsed, userId: user?.id, existingCustomerNames: custNames });
       toast(`أُضيف ${res.added} جهة · تُخطّي ${res.skipped} (مكرّر/عميل موجود)`, 'success');
       setModal(null); refresh();
