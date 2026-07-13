@@ -1,11 +1,13 @@
-// لوحة الأوامر / التنقّل الفوري (Ctrl+K).
-// Flattens every page + carrier sub-screen into one searchable list so the
-// operator jumps anywhere in one keystroke — solves "الأقسام مدفونة" and
-// "أتنقّل كثير بين صفحات الناقل". Pure navigation: read-only.
+// لوحة الأوامر / التنقل الفوري (Ctrl+K).
+// صارت بوابة وصول للكيانات كذلك: صفحات، نواقل، متاجر، فواتير زوهو، و AWB.
 
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, CornerDownLeft, Truck, FileText } from 'lucide-react';
+import {
+  Search, CornerDownLeft, Truck, FileText, ShoppingBag,
+  ReceiptText, PackageSearch, Loader2,
+} from 'lucide-react';
+import { searchGlobalEntities } from '../lib/globalSearchService.js';
 
 // The 5 carrier-workspace screens (same set CarrierTabs links).
 const CARRIER_PAGES = [
@@ -16,9 +18,17 @@ const CARRIER_PAGES = [
   { label: 'الدفتر',     to: (id) => `/ledger?carrier=${id}` },
 ];
 
-// Arabic-light normalization so "العملاء" matches "عملاء", "الاموال" etc.
+const ICONS = {
+  page: FileText,
+  carrier: Truck,
+  merchant: ShoppingBag,
+  invoice: ReceiptText,
+  awb: PackageSearch,
+};
+
+// Arabic-light normalization so search tolerates alef/ya/ta drift.
 const norm = (s) => String(s ?? '').toLowerCase()
-  .replace(/[ً-ْ]/g, '')
+  .replace(/[\u064B-\u0652]/g, '')
   .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
   .replace(/[ـ\s]+/g, ' ').trim();
 
@@ -26,6 +36,8 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
   const navigate = useNavigate();
   const [q, setQ] = useState('');
   const [sel, setSel] = useState(0);
+  const [remoteItems, setRemoteItems] = useState([]);
+  const [remoteLoading, setRemoteLoading] = useState(false);
   const inputRef = useRef(null);
   const listRef = useRef(null);
 
@@ -33,25 +45,24 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
   const allItems = useMemo(() => {
     const items = [];
     for (const n of navItems) {
-      if (n.path) items.push({ label: n.label, sub: '', path: n.path, group: 'صفحة', icon: FileText });
+      if (n.path) items.push({ label: n.label, sub: '', path: n.path, group: 'صفحة', kind: 'page' });
       for (const t of (n.subTabs || [])) {
-        items.push({ label: t.label, sub: n.label, path: `${n.path}?tab=${t.tabId}`, group: 'صفحة', icon: FileText });
+        items.push({ label: t.label, sub: n.label, path: `${n.path}?tab=${t.tabId}`, group: 'صفحة', kind: 'page' });
       }
     }
     for (const c of carriers) {
       const cname = c.label || c.name || c.id;
       for (const p of CARRIER_PAGES) {
-        items.push({ label: p.label, sub: cname, path: p.to(c.id), group: 'ناقل', icon: Truck, kw: cname });
+        items.push({ label: p.label, sub: cname, path: p.to(c.id), group: 'ناقل', kind: 'carrier', kw: cname });
       }
     }
     return items;
   }, [navItems, carriers]);
 
-  const results = useMemo(() => {
+  const localResults = useMemo(() => {
     const nq = norm(q);
     if (!nq) {
-      // No query → show pages first (top 8) so it's a quick launcher.
-      return allItems.filter(i => i.group === 'صفحة').slice(0, 8);
+      return allItems.filter(i => i.kind === 'page').slice(0, 8);
     }
     const scored = [];
     for (const it of allItems) {
@@ -63,18 +74,77 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
     return scored.slice(0, 40).map(s => s.it);
   }, [q, allItems]);
 
-  useEffect(() => { if (open) { setQ(''); setSel(0); setTimeout(() => inputRef.current?.focus(), 30); } }, [open]);
-  useEffect(() => { setSel(0); }, [q]);
+  useEffect(() => {
+    const nq = norm(q);
+    if (!open || nq.length < 2) {
+      setRemoteItems([]);
+      setRemoteLoading(false);
+      return undefined;
+    }
+
+    let live = true;
+    const timer = setTimeout(async () => {
+      setRemoteLoading(true);
+      try {
+        const rows = await searchGlobalEntities(q);
+        if (live) setRemoteItems(rows);
+      } catch (e) {
+        if (live) setRemoteItems([]);
+        console.warn('global search failed:', e.message);
+      } finally {
+        if (live) setRemoteLoading(false);
+      }
+    }, 220);
+
+    return () => {
+      live = false;
+      clearTimeout(timer);
+    };
+  }, [open, q]);
+
+  const results = useMemo(() => {
+    if (!norm(q)) return localResults;
+    const seen = new Set();
+    return [...remoteItems, ...localResults].filter(item => {
+      const key = `${item.kind || item.group}:${item.path}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    }).slice(0, 40);
+  }, [q, remoteItems, localResults]);
+
+  useEffect(() => {
+    if (open) {
+      setQ('');
+      setSel(0);
+      setRemoteItems([]);
+      setTimeout(() => inputRef.current?.focus(), 30);
+    }
+  }, [open]);
+  useEffect(() => { setSel(0); }, [q, remoteItems]);
 
   if (!open) return null;
 
-  const go = (item) => { if (!item) return; onClose(); navigate(item.path); };
+  const go = (item) => {
+    if (!item) return;
+    onClose();
+    navigate(item.path);
+  };
 
   const onKey = (e) => {
-    if (e.key === 'ArrowDown') { e.preventDefault(); setSel(s => Math.min(s + 1, results.length - 1)); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setSel(s => Math.max(s - 1, 0)); }
-    else if (e.key === 'Enter') { e.preventDefault(); go(results[sel]); }
-    else if (e.key === 'Escape') { e.preventDefault(); onClose(); }
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSel(s => Math.min(s + 1, Math.max(results.length - 1, 0)));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSel(s => Math.max(s - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      go(results[sel]);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+    }
   };
 
   return (
@@ -90,12 +160,11 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
       <div
         onClick={e => e.stopPropagation()}
         style={{
-          width: 'min(560px, calc(100vw - 24px))',
+          width: 'min(640px, calc(100vw - 24px))',
           background: 'var(--surface)', border: '1px solid var(--border2)',
           borderRadius: 16, boxShadow: 'var(--shadow-xl)', overflow: 'hidden',
         }}
       >
-        {/* Search row */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
           <Search size={18} color="var(--muted)"/>
           <input
@@ -103,7 +172,7 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
             value={q}
             onChange={e => setQ(e.target.value)}
             onKeyDown={onKey}
-            placeholder="ابحث عن صفحة أو ناقل… (مثل: تحصيل سمسا، الدفتر، مديونيات)"
+            placeholder="ابحث عن عميل، متجر، فاتورة، AWB، صفحة أو ناقل..."
             style={{
               flex: 1, border: 'none', outline: 'none', background: 'transparent',
               color: 'var(--text)', fontSize: 15, fontFamily: 'var(--font-sans)',
@@ -112,15 +181,22 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
           <kbd style={{ fontSize: 10, color: 'var(--muted)', border: '1px solid var(--border2)', borderRadius: 5, padding: '2px 6px' }}>Esc</kbd>
         </div>
 
-        {/* Results */}
-        <div ref={listRef} style={{ maxHeight: 420, overflowY: 'auto', padding: 6 }}>
+        <div ref={listRef} style={{ maxHeight: 460, overflowY: 'auto', padding: 6 }}>
+          {remoteLoading && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
+              <Loader2 size={14} className="spin"/>
+              يبحث في العملاء والمتاجر وزوهو والشحنات...
+            </div>
+          )}
+
           {results.length === 0 ? (
             <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
               لا نتائج لـ «{q}»
             </div>
           ) : results.map((it, i) => {
-            const Icon = it.icon;
+            const Icon = it.icon || ICONS[it.kind] || FileText;
             const active = i === sel;
+            const accentIcon = ['carrier', 'merchant', 'invoice', 'awb'].includes(it.kind);
             return (
               <button
                 key={`${it.path}-${i}`}
@@ -133,11 +209,16 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
                   color: 'var(--text)', textAlign: 'right', fontFamily: 'var(--font-sans)',
                 }}
               >
-                <Icon size={16} color={it.group === 'ناقل' ? 'var(--accent)' : 'var(--muted)'} style={{ flexShrink: 0 }}/>
-                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <span style={{ fontSize: 13.5, fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                    {it.sub ? `${it.sub} · ${it.label}` : it.label}
+                <Icon size={16} color={accentIcon ? 'var(--accent)' : 'var(--muted)'} style={{ flexShrink: 0 }}/>
+                <span style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span style={{ fontSize: 13.5, fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {it.label}
                   </span>
+                  {it.sub && (
+                    <span style={{ fontSize: 11.5, color: 'var(--muted)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                      {it.sub}
+                    </span>
+                  )}
                 </span>
                 <span style={{ fontSize: 10, color: 'var(--muted)', flexShrink: 0 }}>{it.group}</span>
                 {active && <CornerDownLeft size={13} color="var(--accent)" style={{ flexShrink: 0 }}/>}
@@ -146,7 +227,6 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
           })}
         </div>
 
-        {/* Footer hint */}
         <div style={{ display: 'flex', gap: 14, padding: '8px 14px', borderTop: '1px solid var(--border)', fontSize: 10.5, color: 'var(--muted)' }}>
           <span>↑↓ تنقّل</span><span>↵ فتح</span><span>Esc إغلاق</span>
         </div>

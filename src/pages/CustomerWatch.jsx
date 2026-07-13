@@ -123,6 +123,12 @@ export default function CustomerWatch({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const incoming = params.get('customer') || params.get('q');
+    if (incoming) setSearch(incoming);
+  }, [location.search]);
+
   const t = data?.totals;
 
   // Cross-customer + merchant search — searches name, store_id, phone.
