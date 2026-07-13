@@ -14,6 +14,7 @@ import {
   Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -518,7 +519,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
 
 // ── Main ───────────────────────────────────────────────────────
 export default function CustomerReceivables({ isActive = true }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -1062,14 +1063,19 @@ export default function CustomerReceivables({ isActive = true }) {
               title="قائمة فرز مبنية على نفس مرجع مديونيات العملاء الحالي">
               ملف الحملة
             </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
-              تحديث
-            </Btn>
-            <Btn size="md" variant="primary" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={handleSyncZoho} disabled={syncingZoho || loading}>
-              مزامنة زوهو
-            </Btn>
           </>
         }
+      />
+      <DataConfidenceBar
+        active={isActive}
+        sourceLabel={receivablesSourceLabel(data?.snapshot)}
+        snapshotMeta={receivablesMeta(data?.snapshot)}
+        canSync={can?.('money.pnl')}
+        syncing={syncingZoho}
+        refreshing={loading}
+        onSync={handleSyncZoho}
+        onRefresh={refresh}
+        sourcePath="/zoho-data?type=invoices"
       />
       <Hero
         total={data?.total || 0}

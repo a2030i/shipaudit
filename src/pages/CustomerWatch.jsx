@@ -14,7 +14,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
-  RefreshCw, Users, TrendingUp, TrendingDown, Wallet,
+  Users, TrendingUp, TrendingDown, Wallet,
   ShoppingBag, AlertTriangle, UserPlus, ZapOff, Phone,
   ArrowLeft, AlertOctagon, Flame, Clock, Moon, Search, X,
   Download, Activity, Calendar, Hash,
@@ -23,6 +23,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast,
   SpotlightCard, PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
+import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
 import InteractionsLog from '../components/InteractionsLog.jsx';
@@ -213,19 +214,25 @@ export default function CustomerWatch({ isActive = true }) {
           : null}
         actions={
           <>
-            {can?.('money.pnl') && (
-              <Btn size="md" variant="accent" icon={<RefreshCw size={14} className={syncingZoho ? 'spin' : ''}/>} onClick={syncZohoAndRefresh} disabled={syncingZoho || loading}>
-                تحديث زوهو
-              </Btn>
-            )}
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading || syncingZoho}>
-              تحديث العرض
-            </Btn>
             <Btn size="md" variant="primary" onClick={() => navigate('/customer-360?tab=receivables')}>
               فتح المديونيات
             </Btn>
           </>
         }
+      />
+
+      <DataConfidenceBar
+        active={isActive}
+        sourceLabel="Zoho Books API + دليل المتاجر"
+        snapshotMeta={data?.snapshot?.receivables
+          ? `فواتير ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · متاجر ${data.snapshot.merchants.id}` : ''}`
+          : null}
+        canSync={can?.('money.pnl')}
+        syncing={syncingZoho}
+        refreshing={loading}
+        onSync={syncZohoAndRefresh}
+        onRefresh={refresh}
+        sourcePath="/zoho-data?type=invoices"
       />
 
       {loading && !data ? (

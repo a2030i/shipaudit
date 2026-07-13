@@ -6,13 +6,14 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { RefreshCw, Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
+import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
+import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
-  planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl } from '../lib/pnlService.js';
+  planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl, syncZohoDocs } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -40,6 +41,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [sortBy, setSortBy] = useState('owed');    // owed | oldest
   const [waOpen, setWaOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [syncingZoho, setSyncingZoho] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
   const [creditsOpen, setCreditsOpen] = useState(false);
@@ -55,6 +57,20 @@ export default function CustomerMoney({ isActive = true }) {
     try { setD(await loadCustomerMoneyDashboard()); }
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setD(prev => prev || { customers: [], aging: {} }); }
     setBusy(false);
+  };
+  const handleSyncZoho = async () => {
+    setSyncingZoho(true);
+    try {
+      const res = await syncZohoDocs();
+      const count = res?.results?.invoices;
+      toast(count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
+      setCredits(null);
+      await refresh();
+    } catch (e) {
+      toast(`فشلت مزامنة زوهو: ${e.message}`, 'error');
+    } finally {
+      setSyncingZoho(false);
+    }
   };
   useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
   // أرصدة دائنة غير مستخدمة (تحميل كسول مرة واحدة)
@@ -143,12 +159,19 @@ export default function CustomerMoney({ isActive = true }) {
             <Btn size="sm" variant="ghost" onClick={() => setBriefOpen(true)} title="رسالة واتساب يومية بأرقام هذه الشاشة">
               🌅 ملخّص الصباح
             </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>}
-              onClick={() => { setCredits(null); refresh(); }} disabled={busy}>
-              تحديث
-            </Btn>
           </>
         }/>
+
+      <DataConfidenceBar
+        active={isActive}
+        sourceLabel="Zoho Books API"
+        canSync={can?.('money.pnl')}
+        syncing={syncingZoho}
+        refreshing={busy}
+        onSync={handleSyncZoho}
+        onRefresh={() => { setCredits(null); refresh(); }}
+        sourcePath="/zoho-data?type=invoices"
+      />
 
       {/* ── البطل: كم لك بالخارج ── */}
       <Card style={{ padding: '18px 20px', marginBottom: 12 }}>
