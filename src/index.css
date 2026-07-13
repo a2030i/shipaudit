@@ -1043,3 +1043,253 @@ tr:hover td {
   .page-content { border-radius: 0; background: var(--bg); }
   .sidebar { border-radius: 0 0 0 24px; }
 }
+
+/* ══════════════════════════════════════════════
+   ShipAudit Interface Upgrade — 2026-07-13
+   ينتقل النظام من "لوحة بطاقات" إلى واجهة تشغيل هادئة:
+   جانبية فاتحة، أيقونات موحّدة، جداول أوضح، وبطاقات أقل صخباً.
+══════════════════════════════════════════════ */
+[data-theme="light"] {
+  --bg:        #F3F6FA;
+  --bg2:       #EAF0F7;
+  --surface:   #FFFFFF;
+  --surface2:  #F7FAFD;
+  --card:      #FFFFFF;
+  --card2:     #F7FAFD;
+  --sidebar:   #FFFFFF;
+  --sidebar2:  #F7FAFC;
+
+  --border:    #E4EAF2;
+  --border2:   #D7E0EA;
+  --border3:   #B9C7D8;
+
+  --accent:    #155EEF;
+  --accent2:   #0B4BD3;
+  --accent3:   #5AA7FF;
+  --accent-dim:  rgba(21,94,239,.08);
+  --accent-glow: rgba(21,94,239,.16);
+
+  --green:     #008A78;
+  --green2:    #00715F;
+  --red:       #D92D20;
+  --red2:      #B42318;
+  --gold:      #DC8A00;
+  --gold2:     #B66D00;
+  --purple:    #6E56CF;
+  --purple2:   #573BB7;
+  --warn:      #E05F16;
+
+  --text:      #101828;
+  --text2:     #344054;
+  --muted:     #667085;
+  --muted2:    #98A2B3;
+  --muted3:    #EAECF0;
+
+  --nav-text:        #475467;
+  --nav-text-hover:  #101828;
+  --nav-active-bg:   #EEF4FF;
+  --nav-active-border: #155EEF;
+  --nav-active-text: #101828;
+  --nav-hover-bg:    #F4F7FB;
+  --nav-label-color: #667085;
+  --nav-hint-color:  #98A2B3;
+
+  --sidebar-brand-text: #101828;
+  --sidebar-brand-muted: #667085;
+  --sidebar-logo-tile-bg: #F4F7FB;
+  --sidebar-logo-shadow: inset 0 0 0 1px #E4EAF2;
+  --sidebar-user-bg: #F8FAFC;
+  --sidebar-user-border: #E4EAF2;
+  --sidebar-logout-bg: #FFFFFF;
+  --sidebar-logout-border: #D7E0EA;
+  --sidebar-logout-color: #667085;
+
+  --shadow-sm: 0 1px 2px rgba(16,24,40,.04);
+  --shadow-md: 0 8px 20px rgba(16,24,40,.08), 0 1px 3px rgba(16,24,40,.05);
+  --shadow-lg: 0 18px 44px rgba(16,24,40,.12), 0 4px 10px rgba(16,24,40,.05);
+  --shadow-xl: 0 28px 76px rgba(16,24,40,.16);
+}
+
+[data-theme="light"] body {
+  background: linear-gradient(180deg, #FBFCFE 0%, var(--bg) 52%, #EDF2F8 100%);
+}
+
+.app-layout {
+  padding: 12px;
+  gap: 14px;
+}
+
+.sidebar {
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--sidebar) 96%, #FFFFFF) 0%, var(--sidebar2) 100%);
+  border: 1px solid color-mix(in srgb, var(--border2) 92%, transparent);
+  border-radius: 18px;
+  box-shadow: 0 16px 44px rgba(16,24,40,.10);
+}
+
+.sidebar-logo {
+  min-height: 98px;
+  padding: 16px 16px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.sidebar-nav {
+  padding: 10px 9px;
+}
+
+.section-label {
+  color: var(--nav-label-color);
+  letter-spacing: 0;
+  font-size: 11px;
+  font-weight: 800;
+  padding: 12px 11px 6px;
+}
+
+.nav-divider {
+  background: var(--border);
+}
+
+.nav-item {
+  min-height: 44px;
+  gap: 10px;
+  padding: 7px 8px;
+  margin-bottom: 4px;
+  border-radius: 12px;
+  color: var(--nav-text);
+  border: 1px solid transparent;
+}
+
+.nav-item:hover {
+  background: var(--nav-hover-bg);
+  color: var(--nav-text-hover);
+}
+
+.nav-icon {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  flex: 0 0 30px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: color-mix(in srgb, var(--item-accent, var(--accent)) 75%, var(--nav-text));
+  background: color-mix(in srgb, var(--item-accent, var(--accent)) 9%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--item-accent, var(--accent)) 14%, transparent);
+}
+
+.nav-item.active {
+  background:
+    linear-gradient(135deg,
+      color-mix(in srgb, var(--item-accent, var(--accent)) 13%, var(--surface)),
+      color-mix(in srgb, var(--item-accent, var(--accent)) 5%, var(--surface)));
+  border-color: color-mix(in srgb, var(--item-accent, var(--accent)) 24%, var(--border));
+  color: var(--nav-active-text);
+  box-shadow: inset -3px 0 0 var(--item-accent, var(--nav-active-border)), 0 8px 18px rgba(16,24,40,.06);
+}
+
+.nav-item.active .nav-icon {
+  color: #FFFFFF;
+  background: linear-gradient(135deg, var(--item-accent, var(--accent)), color-mix(in srgb, var(--item-accent, var(--accent)) 72%, #0B1220));
+  border-color: transparent;
+  box-shadow: 0 8px 18px color-mix(in srgb, var(--item-accent, var(--accent)) 22%, transparent);
+}
+
+.nav-item .nav-dot {
+  width: 7px;
+  height: 7px;
+  background: var(--item-accent, var(--accent));
+  box-shadow: none;
+}
+
+.sidebar.collapsed .nav-icon {
+  flex-basis: 32px;
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  padding: 10px;
+}
+
+.sidebar-toggle {
+  background: #FFFFFF;
+  color: var(--text2);
+  border-color: var(--border2);
+  box-shadow: var(--shadow-md);
+}
+
+.topbar {
+  height: 58px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border2) 92%, transparent);
+  border-radius: 16px;
+  box-shadow: 0 10px 28px rgba(16,24,40,.07);
+}
+
+[data-theme="light"] .topbar {
+  background: rgba(255,255,255,.82);
+}
+
+.page-content {
+  background: color-mix(in srgb, var(--surface) 54%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border2) 92%, transparent);
+  border-radius: 16px;
+  box-shadow: 0 18px 48px rgba(16,24,40,.07);
+}
+
+table {
+  border-collapse: separate !important;
+  border-spacing: 0;
+  background: var(--surface);
+}
+
+thead {
+  box-shadow: inset 0 -1px 0 var(--border);
+}
+
+th {
+  background: color-mix(in srgb, var(--surface2) 92%, var(--surface)) !important;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+td {
+  padding: 13px 16px;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 72%, transparent);
+}
+
+tbody tr:hover td {
+  background: var(--surface2);
+}
+
+tbody tr:last-child td {
+  border-bottom-color: transparent;
+}
+
+input, select, textarea {
+  border-radius: 9px;
+  background: var(--surface);
+  border-color: var(--border2);
+}
+
+button {
+  letter-spacing: 0;
+}
+
+@media (max-width: 768px) {
+  .app-layout { padding: 0; }
+  .sidebar {
+    border-radius: 0 0 0 22px;
+    background: #FFFFFF;
+  }
+  .topbar {
+    height: 56px;
+    border-radius: 0;
+  }
+  .page-content {
+    border-radius: 0;
+    background: var(--bg);
+  }
+}
