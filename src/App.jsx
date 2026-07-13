@@ -522,15 +522,15 @@ function AppInner({ theme, toggleTheme }) {
               }}>
                 <div style={{
                   width:48, height:48, borderRadius:14,
-                  background:'#fff',
+                  background:'var(--sidebar-logo-tile-bg, #fff)',
                   display:'flex', alignItems:'center', justifyContent:'center',
-                  boxShadow:'0 10px 24px rgba(2,8,23,.24)',
+                  boxShadow:'var(--sidebar-logo-shadow, 0 10px 24px rgba(2,8,23,.24))',
                 }}>
                   <LamhaMark size={32}/>
                 </div>
                 <div style={{ minWidth:0 }}>
-                  <div style={{ color:'#fff', fontSize:15, fontWeight:800, lineHeight:1.2 }}>ShipAudit Pro</div>
-                  <div style={{ color:'rgba(199,210,254,.72)', fontSize:11, marginTop:3 }}>Lamha finance ops</div>
+                  <div style={{ color:'var(--sidebar-brand-text, #fff)', fontSize:15, fontWeight:800, lineHeight:1.2 }}>ShipAudit Pro</div>
+                  <div style={{ color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', fontSize:11, marginTop:3 }}>Lamha finance ops</div>
                 </div>
               </div>
             )}
@@ -631,7 +631,7 @@ function AppInner({ theme, toggleTheme }) {
                             fontSize: 9.8,
                             fontWeight: 600,
                             letterSpacing: 0,
-                            color: 'rgba(199,210,254,.58)',
+                            color: 'var(--nav-hint-color, rgba(199,210,254,.58))',
                             marginTop: 2,
                             minWidth: 0,
                             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
@@ -700,8 +700,8 @@ function AppInner({ theme, toggleTheme }) {
               <div style={{
                 marginTop:10, display:'flex', alignItems:'center', gap:11,
                 padding:'12px 14px', borderRadius:14,
-                background:'rgba(255,255,255,.08)',
-                border:'1px solid rgba(255,255,255,.10)',
+                background:'var(--sidebar-user-bg, rgba(255,255,255,.08))',
+                border:'1px solid var(--sidebar-user-border, rgba(255,255,255,.10))',
               }}>
                 <div style={{
                   width:36, height:36, borderRadius:'50%', flexShrink:0,
@@ -713,17 +713,17 @@ function AppInner({ theme, toggleTheme }) {
                   {profile.name?.[0] ?? '?'}
                 </div>
                 <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#fff', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:11, color:'rgba(199,210,254,.72)', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
+                  <div style={{ fontSize:13, fontWeight:600, color:'var(--sidebar-brand-text, #fff)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
+                  <div style={{ fontSize:11, color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
                 <button onClick={signOut} title="تسجيل خروج" style={{
-                  background:'rgba(255,255,255,.06)', border:'1px solid rgba(255,255,255,.12)',
-                  color:'rgba(199,210,254,.82)',
+                  background:'var(--sidebar-logout-bg, rgba(255,255,255,.06))', border:'1px solid var(--sidebar-logout-border, rgba(255,255,255,.12))',
+                  color:'var(--sidebar-logout-color, rgba(199,210,254,.82))',
                   cursor:'pointer', padding:'6px 7px', borderRadius:8,
                   display:'flex', alignItems:'center', transition:'all .15s',
                 }}
                   onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'var(--red)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'rgba(199,210,254,.82)'; e.currentTarget.style.borderColor = 'rgba(255,255,255,.12)'; }}
+                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--sidebar-logout-color, rgba(199,210,254,.82))'; e.currentTarget.style.borderColor = 'var(--sidebar-logout-border, rgba(255,255,255,.12))'; }}
                 >
                   <LogOut size={13}/>
                 </button>
@@ -1020,29 +1020,27 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
   // take the section color. Pinned items (no accent) fall back to
   // the default green-accent CSS class.
   const inlineStyle = {
-    ...(nested && !collapsed ? { paddingInlineStart: 22 } : {}),
+    ...(nested && !collapsed ? { marginInlineStart: 10 } : {}),
+    ...(active && accent ? { '--item-accent': accent } : {}),
   };
   if (active && accent) {
-    inlineStyle.background    = `color-mix(in srgb, ${accent} 14%, transparent)`;
-    inlineStyle.borderInlineEndColor = accent;  // RTL: shows on the right edge
-    inlineStyle.borderInlineEndWidth = '2.5px';
-    inlineStyle.borderInlineEndStyle = 'solid';
-    inlineStyle.color         = '#fff';
-    inlineStyle.fontWeight    = 600;
+    inlineStyle.color      = 'var(--text)';
+    inlineStyle.fontWeight = 700;
   }
   const iconColor = active && accent ? accent : undefined;
   return (
     <button
-      className={`nav-item ${active && !accent ? 'active' : ''}`}
+      className={`nav-item ${active ? 'active' : ''} ${accent ? 'section-nav' : ''}`}
       onClick={onClick}
       title={collapsed ? n.label : undefined}
       style={inlineStyle}
     >
-      <Icon
-        size={15}
-        strokeWidth={active ? 2.2 : 1.8}
-        style={{ flexShrink: 0, color: iconColor }}
-      />
+      <span className="nav-icon" style={iconColor ? { color: iconColor } : undefined}>
+        <Icon
+          size={15}
+          strokeWidth={active ? 2.2 : 1.8}
+        />
+      </span>
       <span className="nav-label" style={{ flex: 1 }}>{n.label}</span>
       {active && (
         <span
