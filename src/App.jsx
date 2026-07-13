@@ -132,7 +132,7 @@ const NAV_ITEMS = [
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
   { id: 'customer-money',  path: '/customer-money',  label: 'تحصيل العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
   { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'receivables.view' },
-  { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view',
+  { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view', showSubTabsInNav: true,
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
       { tabId: 'receivables', label: 'مديونيات',      icon: DollarSign, legacy: '/receivables' },
@@ -372,6 +372,22 @@ function AppInner({ theme, toggleTheme }) {
     return next;
   });
 
+  useEffect(() => {
+    const activeItem = NAV_ITEMS.find(n => {
+      if (!n.section) return false;
+      if (location.pathname === n.path) return true;
+      return n.subTabs?.some(s => s.legacy === location.pathname);
+    });
+    if (!activeItem?.section) return;
+    setCollapsedSecs(prev => {
+      if (!prev.has(activeItem.section)) return prev;
+      const next = new Set(ALL_SECTION_IDS);
+      next.delete(activeItem.section);
+      try { localStorage.setItem('sa-nav-collapsed-v5', JSON.stringify([...next])); } catch { /* ignore */ }
+      return next;
+    });
+  }, [location.pathname]);
+
   // ── Default redirect after login: always go to /overview ──
   // /overview was promoted to be the home page; /dashboard is kept
   // as a still-reachable legacy alias but no longer the landing.
@@ -564,10 +580,11 @@ function AppInner({ theme, toggleTheme }) {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              // v5: تفضيل المستخدم يحكم وحده — لا فرض فتح للقسم النشط (كان
-              // sectionHasActive يمنع إقفال قسمٍ أنت داخل إحدى صفحاته —
-              // «فتحت قسم شركات الشحن ما يقفل»). المؤشر النقطي أدناه يدلّ
-              // على موقعك حين يكون قسمك مقفلاً.
+              const rowCount = items.reduce((sum, n) => (
+                sum + 1 + (!collapsed && n.showSubTabsInNav && n.subTabs ? n.subTabs.length : 0)
+              ), 0);
+              // Accordion remains one-section-at-a-time. Navigation opens
+              // the active section so action links are not hidden.
               const isOpen = collapsed ? true : !collapsedSecs.has(sec.id);
               const SecIcon = sec.icon;
               return (
@@ -662,25 +679,36 @@ function AppInner({ theme, toggleTheme }) {
                   )}
                   <div style={{
                     overflow: 'hidden',
-                    maxHeight: isOpen ? items.length * 42 + 12 : 0,
+                    maxHeight: isOpen ? rowCount * 42 + 12 : 0,
                     transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
                     paddingInlineEnd: collapsed ? 0 : 6,
                   }}>
-                    {/* v4 (قرار المستخدم 2026-07-02): لا صفوف فرعية للتبويبات
-                        في الجانبية — التبويبات داخل الصفحات هي المبدّل الوحيد
-                        («القائمة موجودة داخلياً وجانبياً ليش؟»). subTabs تبقى
-                        في NAV_ITEMS كبيانات لتمييز الأب والمسارات القديمة. */}
-                    {items.map(n => (
-                      <NavBtn
-                        key={n.id}
-                        n={n}
-                        active={activeFor(n)}
-                        accent={sec.accent}
-                        collapsed={collapsed}
-                        onClick={() => goto(n.path)}
-                        nested
-                      />
-                    ))}
+                    {/* بعض عناصر الـhub تعرض اختصارات فرعية عند الحاجة العملية للوصول السريع. */}
+                    {items.map(n => {
+                      const activeSubTab = subTabOf(n);
+                      const showSubTabs = !collapsed && n.showSubTabsInNav && n.subTabs?.length;
+                      return (
+                        <div key={n.id}>
+                          <NavBtn
+                            n={n}
+                            active={activeFor(n)}
+                            accent={sec.accent}
+                            collapsed={collapsed}
+                            onClick={() => goto(n.path)}
+                            nested
+                          />
+                          {showSubTabs && n.subTabs.map(t => (
+                            <NavSubBtn
+                              key={t.tabId}
+                              tab={t}
+                              active={activeSubTab?.tabId === t.tabId}
+                              accent={sec.accent}
+                              onClick={() => goto(`${n.path}?tab=${t.tabId}`)}
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -1056,6 +1084,59 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
   );
 }
 
-// NavSubBtn (الصفوف الفرعية للتبويبات) حُذف في v4 — قرار المستخدم 2026-07-02:
-// التبويبات داخل الصفحات هي المبدّل الوحيد؛ subTabs بقيت بيانات في NAV_ITEMS
-// لتمييز الأب (activeFor→subTabOf) وللمسارات القديمة legacy.
+// NavSubBtn: اختصارات فرعية خفيفة لعناصر محددة فقط.
+// نستخدمها عندما يكون الوصول للتاب نفسه جزءاً من العمل اليومي، مثل ملف العملاء.
+function NavSubBtn({ tab, active, accent, onClick }) {
+  const Icon = tab.icon || ChevronLeft;
+  return (
+    <button
+      onClick={onClick}
+      className={`nav-sub-item ${active ? 'active' : ''}`}
+      style={{
+        width: 'calc(100% - 18px)',
+        minHeight: 32,
+        margin: '1px 14px 1px 4px',
+        padding: '6px 10px',
+        border: 'none',
+        borderRadius: 9,
+        display: 'flex',
+        alignItems: 'center',
+        gap: 8,
+        cursor: 'pointer',
+        fontFamily: 'var(--font-sans)',
+        background: active ? `color-mix(in srgb, ${accent} 12%, transparent)` : 'transparent',
+        color: active ? accent : 'var(--nav-label-color)',
+        fontSize: 11.5,
+        fontWeight: active ? 800 : 650,
+        textAlign: 'right',
+      }}
+    >
+      <span style={{
+        width: 20,
+        height: 20,
+        borderRadius: 7,
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: active ? accent : 'var(--muted)',
+        background: active ? `color-mix(in srgb, ${accent} 10%, transparent)` : 'transparent',
+        flexShrink: 0,
+      }}>
+        <Icon size={12} strokeWidth={active ? 2.2 : 1.8}/>
+      </span>
+      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        {tab.label}
+      </span>
+      {active && (
+        <span style={{
+          width: 5,
+          height: 5,
+          borderRadius: '50%',
+          background: accent,
+          boxShadow: `0 0 8px ${accent}`,
+          flexShrink: 0,
+        }}/>
+      )}
+    </button>
+  );
+}

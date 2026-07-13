@@ -467,45 +467,60 @@ export function SpotlightCard({
   tag, title, value, suffix,
   delta, sparkline, side, stats = [],
   accent = 'var(--green)',
+  tone = 'dark',
+  compact = false,
 }) {
+  const soft = tone === 'soft';
+  const textColor = soft ? 'var(--text)' : '#fff';
+  const mutedColor = soft ? 'var(--muted)' : 'rgba(255,255,255,.6)';
+  const faintColor = soft ? 'var(--muted2)' : 'rgba(255,255,255,.45)';
+  const borderColor = soft ? 'var(--border)' : 'rgba(255,255,255,.08)';
+  const cardBg = soft
+    ? 'linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, var(--accent) 6%), var(--surface))'
+    : '#0A0A0B';
   return (
     <div style={{
       position: 'relative',
-      background: '#0A0A0B',
-      borderRadius: 24,
-      padding: '40px 44px',
-      color: '#fff',
+      background: cardBg,
+      border: soft ? '1px solid var(--border)' : 'none',
+      borderRadius: soft ? 18 : 24,
+      padding: compact ? '24px 28px' : '40px 44px',
+      color: textColor,
       overflow: 'hidden',
-      boxShadow: '0 24px 56px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.06)',
-      marginBottom: 28,
+      boxShadow: soft ? 'var(--shadow-md)' : '0 24px 56px rgba(0,0,0,.14), 0 8px 16px rgba(0,0,0,.06)',
+      marginBottom: compact ? 20 : 28,
     }}>
       {/* Decorative glow blobs — modern saas vibe */}
-      <div style={{
-        position: 'absolute', top: -120, right: -60, width: 380, height: 380,
-        background: `radial-gradient(closest-side, ${accent}26, transparent)`,
-        pointerEvents: 'none', filter: 'blur(8px)',
-      }}/>
-      <div style={{
-        position: 'absolute', bottom: -100, left: -40, width: 280, height: 280,
-        background: 'radial-gradient(closest-side, rgba(139,92,246,.18), transparent)',
-        pointerEvents: 'none', filter: 'blur(8px)',
-      }}/>
+      {!soft && (
+        <>
+          <div style={{
+            position: 'absolute', top: -120, right: -60, width: 380, height: 380,
+            background: `radial-gradient(closest-side, ${accent}26, transparent)`,
+            pointerEvents: 'none', filter: 'blur(8px)',
+          }}/>
+          <div style={{
+            position: 'absolute', bottom: -100, left: -40, width: 280, height: 280,
+            background: 'radial-gradient(closest-side, rgba(139,92,246,.18), transparent)',
+            pointerEvents: 'none', filter: 'blur(8px)',
+          }}/>
+        </>
+      )}
 
       {/* Top row: tag + side action */}
       <div style={{
         position: 'relative',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        marginBottom: 28, gap: 16, flexWrap: 'wrap',
+        marginBottom: compact ? 18 : 28, gap: 16, flexWrap: 'wrap',
       }}>
         {tag && (
           <div style={{
             display: 'inline-flex', alignItems: 'center', gap: 8,
             padding: '6px 14px', borderRadius: 999,
-            background: 'rgba(255,255,255,.06)',
-            border: '1px solid rgba(255,255,255,.10)',
+            background: soft ? 'color-mix(in srgb, var(--surface2) 82%, transparent)' : 'rgba(255,255,255,.06)',
+            border: `1px solid ${soft ? 'var(--border)' : 'rgba(255,255,255,.10)'}`,
             fontSize: 11, fontFamily: 'var(--font-mono)',
-            letterSpacing: 1.5, textTransform: 'uppercase',
-            color: 'rgba(255,255,255,.7)', fontWeight: 600,
+            letterSpacing: compact ? .8 : 1.5, textTransform: 'uppercase',
+            color: soft ? 'var(--text2)' : 'rgba(255,255,255,.7)', fontWeight: 600,
           }}>
             <span style={{
               width: 6, height: 6, borderRadius: '50%',
@@ -521,7 +536,7 @@ export function SpotlightCard({
       <div style={{ position: 'relative', marginBottom: 12 }}>
         {title && (
           <div style={{
-            fontSize: 14, color: 'rgba(255,255,255,.6)',
+            fontSize: 14, color: mutedColor,
             marginBottom: 14, fontWeight: 500,
           }}>{title}</div>
         )}
@@ -529,15 +544,15 @@ export function SpotlightCard({
           display: 'flex', alignItems: 'baseline', gap: 14, flexWrap: 'wrap',
         }}>
           <div style={{
-            fontSize: 'clamp(48px, 7vw, 88px)', fontWeight: 700, lineHeight: 1,
+            fontSize: compact ? 'clamp(34px, 5vw, 58px)' : 'clamp(48px, 7vw, 88px)', fontWeight: 700, lineHeight: 1,
             fontFamily: 'var(--font-mono)', letterSpacing: 0,
-            color: '#fff',
+            color: textColor,
           }}>
             {value ?? '—'}
           </div>
           {suffix && (
             <div style={{
-              fontSize: 22, fontWeight: 500, color: 'rgba(255,255,255,.5)',
+              fontSize: compact ? 16 : 22, fontWeight: 500, color: soft ? 'var(--muted)' : 'rgba(255,255,255,.5)',
               fontFamily: 'var(--font-mono)',
             }}>{suffix}</div>
           )}
@@ -547,7 +562,9 @@ export function SpotlightCard({
               padding: '6px 14px', borderRadius: 999,
               background: delta.positive ? 'rgba(16,185,129,.18)' : 'rgba(239,68,68,.18)',
               border: `1px solid ${delta.positive ? 'rgba(16,185,129,.4)' : 'rgba(239,68,68,.4)'}`,
-              color: delta.positive ? '#6EE7B7' : '#FCA5A5',
+              color: soft
+                ? (delta.positive ? 'var(--green)' : 'var(--red)')
+                : (delta.positive ? '#6EE7B7' : '#FCA5A5'),
               fontFamily: 'var(--font-mono)', fontSize: 13, fontWeight: 700,
               marginInlineStart: 6,
             }}>
@@ -556,7 +573,7 @@ export function SpotlightCard({
                 : <TrendingDown size={14}/>}
               {delta.value > 0 ? '+' : ''}{delta.value}%
               {delta.label && (
-                <span style={{ color: 'rgba(255,255,255,.5)', fontWeight: 500, marginInlineStart: 6 }}>
+                <span style={{ color: soft ? 'var(--muted)' : 'rgba(255,255,255,.5)', fontWeight: 500, marginInlineStart: 6 }}>
                   {delta.label}
                 </span>
               )}
@@ -567,8 +584,8 @@ export function SpotlightCard({
 
       {/* Sparkline */}
       {sparkline && sparkline.length > 1 && (
-        <div style={{ position: 'relative', marginTop: 24, marginBottom: 4 }}>
-          <Sparkline data={sparkline} color={accent} width={320} height={56}/>
+        <div style={{ position: 'relative', marginTop: compact ? 16 : 24, marginBottom: 4 }}>
+          <Sparkline data={sparkline} color={accent} width={compact ? 240 : 320} height={compact ? 44 : 56}/>
         </div>
       )}
 
@@ -578,28 +595,28 @@ export function SpotlightCard({
           position: 'relative',
           display: 'grid',
           gridTemplateColumns: `repeat(${Math.min(stats.length, 4)}, 1fr)`,
-          gap: 0, marginTop: 32,
-          paddingTop: 24,
-          borderTop: '1px solid rgba(255,255,255,.08)',
+          gap: 0, marginTop: compact ? 22 : 32,
+          paddingTop: compact ? 18 : 24,
+          borderTop: `1px solid ${borderColor}`,
         }}>
           {stats.map((s, i) => (
             <div key={i} style={{
-              paddingInline: 20,
-              borderInlineStart: i > 0 ? '1px solid rgba(255,255,255,.08)' : 'none',
+              paddingInline: compact ? 14 : 20,
+              borderInlineStart: i > 0 ? `1px solid ${borderColor}` : 'none',
             }}>
               <div style={{
                 fontSize: 11, fontFamily: 'var(--font-sans)',
-                letterSpacing: .2, color: 'rgba(255,255,255,.55)',
+                letterSpacing: .2, color: soft ? 'var(--muted)' : 'rgba(255,255,255,.55)',
                 fontWeight: 500, marginBottom: 6,
               }}>{s.label}</div>
               <div style={{
-                fontSize: 22, fontWeight: 700, color: s.color || '#fff',
+                fontSize: compact ? 18 : 22, fontWeight: 700, color: s.color || textColor,
                 fontFamily: 'var(--font-mono)', letterSpacing: 0,
                 lineHeight: 1, whiteSpace: 'nowrap',
               }}>{s.value ?? '—'}</div>
               {s.hint && (
                 <div style={{
-                  fontSize: 11, color: 'rgba(255,255,255,.45)', marginTop: 6,
+                  fontSize: 11, color: faintColor, marginTop: 6,
                 }}>{s.hint}</div>
               )}
             </div>
