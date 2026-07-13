@@ -1284,6 +1284,19 @@ button {
   letter-spacing: 0;
 }
 
+.customer-pulse-grid {
+  grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(120px, 1fr));
+}
+
+@media (max-width: 1180px) {
+  .customer-pulse-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .customer-pulse-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+}
+
 @media (max-width: 768px) {
   .app-layout { padding: 0; }
   .sidebar {
@@ -1297,5 +1310,8 @@ button {
   .page-content {
     border-radius: 0;
     background: var(--bg);
+  }
+  .customer-pulse-grid {
+    grid-template-columns: 1fr !important;
   }
 }
