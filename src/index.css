@@ -1236,6 +1236,12 @@ tr:hover td {
   box-shadow: 0 18px 48px rgba(16,24,40,.07);
 }
 
+.page-slot > div:first-child,
+.page-slot > main:first-child,
+.page-slot > section:first-child {
+  width: 100%;
+}
+
 table {
   border-collapse: separate !important;
   border-spacing: 0;

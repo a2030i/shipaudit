@@ -1000,12 +1000,12 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
 // ── PageSlot: keeps page mounted, hides without triggering CSS animations ─────
 function PageSlot({ active, scroll = false, children }) {
   return (
-    <div style={{
+    <div className="page-slot" style={{
       position: 'absolute', inset: 0,
       overflow: scroll ? 'auto' : 'hidden',
       visibility: active ? 'visible' : 'hidden',
       pointerEvents: active ? 'auto' : 'none',
-      display: 'flex', flexDirection: 'column',
+      display: 'flex', flexDirection: 'column', alignItems: 'stretch',
     }}>
       {children}
     </div>
