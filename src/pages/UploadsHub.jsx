@@ -1,11 +1,10 @@
 // "صحة مصادر البيانات" — one screen to monitor manual sources.
 //
 // Zoho Books now has its own API-backed page. This page remains for
-// sources that are still file-based or used as historical fallback
-// snapshots, with a clear "last updated was X days ago" per source.
+// sources that are still file-based, with a clear "last updated was X
+// days ago" per source. Zoho Excel exports are intentionally blocked.
 //
-// Backed by uploadsHubService.loadUploadsOverview() (one round-trip
-// fan-out across the 5 sources) and uploadFile() (unified dispatcher).
+// Backed by uploadsHubService.loadUploadsOverview() and uploadFile().
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
@@ -107,6 +106,10 @@ export default function UploadsHub({ isActive = true }) {
       const ws     = wb.Sheets[wb.SheetNames[0]];
       const rows   = XLSX.utils.sheet_to_json(ws, { header: 1, raw: true, defval: '' });
       const detection = detectFileSource(rows);
+      if (detection?.blocked) {
+        toast(detection.message || 'هذا الملف لا يُرفع من هنا', 'warning');
+        return;
+      }
       if (detection?.sourceId && detection.confidence >= 0.85) {
         toast(`اكتُشف نوع الملف: ${UPLOAD_SOURCES.find(s => s.id === detection.sourceId)?.label}`, 'info');
         await handleUpload(detection.sourceId, file);
@@ -152,7 +155,7 @@ export default function UploadsHub({ isActive = true }) {
         icon={<Layers size={22}/>}
         iconColor="#0EA5E9"
         title="صحة مصادر البيانات"
-        subtitle="زوهو يعمل عبر API مباشر؛ هنا تتابع الملفات اليدوية والمرايا الاحتياطية فقط"
+        subtitle="زوهو يعمل عبر API مباشر؛ هنا تتابع الملفات اليدوية غير المرتبطة بزوهـو"
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
@@ -181,7 +184,7 @@ export default function UploadsHub({ isActive = true }) {
         <div style={{ flex: 1, minWidth: 260 }}>
           <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو API هو المصدر الحي للأرقام</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-            الفواتير والدفعات والمصاريف تُقرأ من زوهو مباشرة. هذه الصفحة تبقى للملفات اليدوية مثل stores.xlsx واللقطات الاحتياطية عند الحاجة.
+            الفواتير والدفعات والمصاريف والمديونيات تُقرأ من زوهو مباشرة. لا ترفع Excel زوهو هنا؛ استخدم المزامنة من صفحة زوهو API.
           </div>
         </div>
         <Btn size="sm" variant="primary" icon={<ExternalLink size={13}/>} onClick={() => navigate('/zoho-data')}>
@@ -224,10 +227,8 @@ export default function UploadsHub({ isActive = true }) {
         />
       </div>
 
-      {/* Hero drop zone — auto-detects the file type. The 5 cards
-          below still have their own drop zones for cases where the
-          operator wants to force the type or detection isn't
-          confident. */}
+      {/* Hero drop zone — auto-detects the file type. Zoho Excel files
+          are rejected because Books is API-backed now. */}
       <Card style={{
         marginBottom: 20,
         background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 8%, transparent), color-mix(in srgb, #8B5CF6 6%, transparent))',
@@ -244,11 +245,10 @@ export default function UploadsHub({ isActive = true }) {
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 15, fontWeight: 800, color: 'var(--text)' }}>
-              افحص أي ملف يدوي — النظام يكتشف مصدره
+              افحص أي ملف يدوي — غير زوهو
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-              متاجر المنصّة · استحقاق المتاجر · كشف فواتير العملاء الاحتياطي · مرايا زوهو القديمة عند الحاجة —
-              الكاشف يقرأ بصمات الأعمدة والعناوين، ولو لم يتأكد يطلب تحديد المصدر.
+              متاجر المنصّة · استحقاق المتاجر · التحصيل المتوقّع المجمّع. أي ملف Excel من زوهو سيتم رفضه وتوجيهك إلى زوهو API.
             </div>
           </div>
         </div>
@@ -275,9 +275,9 @@ export default function UploadsHub({ isActive = true }) {
         </DropZone>
       </Card>
 
-      {/* Section: manual and fallback source snapshots */}
+      {/* Section: manual source snapshots */}
       <SectionTitle icon={<FileSpreadsheet size={14}/>} color="#3B82F6">
-        مصادر يدوية ومرايا احتياطية
+        مصادر يدوية فقط
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 14, marginBottom: 24,
@@ -423,7 +423,7 @@ function TypePickerModal({ file, detection, onCancel, onConfirm }) {
 
         <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
           <HelpCircle size={12} style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
-          اختر النوع الصحيح وسنرفع الملف للجدول المناسب. إذا الكاشف يكرّر الخطأ على نفس النوع، ابعت لي عيّنة وأضبط البصمة.
+          اختر النوع الصحيح وسنحدّث المصدر المناسب. ملفات زوهو Excel موقوفة لأن زوهو يعمل عبر API.
         </div>
 
         <div style={{ display: 'grid', gap: 8 }}>

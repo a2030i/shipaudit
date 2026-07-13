@@ -156,7 +156,7 @@ export default function DecisionsBoard({ isActive = true }) {
             key: 'held', active: d.held > 0.5, okLabel: 'لا خزائن COD محتجزة',
             props: {
               color: '#0EA5E9', icon: '💰', title: 'خزائن COD محتجزة', value: fmt(d.held), unit: 'ر.س',
-              sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'ارفع ميزان المراجعة لتظهر',
+              sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'خزائن COD تحتاج ربط Zoho API',
               cta: 'رقابة الخزائن', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
           },
