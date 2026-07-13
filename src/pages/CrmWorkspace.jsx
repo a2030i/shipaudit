@@ -7,10 +7,10 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Headset, Store, TrendingUp, CalendarClock, BarChart3, RefreshCw,
-  Phone, PhoneCall, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2 } from 'lucide-react';
+  Phone, PhoneCall, StickyNote, HandCoins, UserCog, Plus, ChevronLeft, Upload, Sliders, Trash2,
+  Search, AlertTriangle, CheckCircle2, ExternalLink } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, Empty, Select, Input, Badge, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
@@ -19,7 +19,10 @@ import {
   loadTasks, createTask, completeTask, loadDeals, createDeal, moveDeal, loadBoardStats,
   upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
-import { loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot } from '../lib/crmLeadsService.js';
+import {
+  loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot,
+  updateLead, loadLeadStats, loadLeadOptions,
+} from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import Collections from './Collections.jsx';
@@ -36,7 +39,7 @@ const TABS = [
   { id: 'collections', label: 'قائمة التحصيل', icon: Phone, perm: 'collections.view' },
   { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
   { id: 'sales', label: 'قوائم المبيعات', icon: PhoneCall },
-  { id: 'leads', label: 'الجهات الخارجية', icon: Store },
+  { id: 'leads', label: 'ليسوا عملاء لنا', icon: Store },
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
   { id: 'board', label: 'أداء التحصيل', icon: BarChart3 },
@@ -450,70 +453,397 @@ function PhoneLink({ phone }) {
 function LeadsTab({ active }) {
   const { user, can } = useAuth();
   const [leads, setLeads] = useState([]);
+  const [count, setCount] = useState(0);
+  const [stats, setStats] = useState(null);
+  const [options, setOptions] = useState({ categories: [], platforms: [], statuses: [] });
+  const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // 'upload' | 'new'
+  const [sel, setSel] = useState(null);
+  const [filters, setFilters] = useState({
+    q: '',
+    status: '',
+    ownerId: '',
+    category: '',
+    platform: '',
+    duplicateOnly: false,
+    matchedOnly: false,
+    unassignedOnly: false,
+    page: 0,
+  });
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setLeads(await loadLeads()); } catch (e) { toast(e.message, 'error'); }
+    try {
+      const [list, leadStats, leadOptions, emp] = await Promise.all([
+        loadLeads(filters),
+        loadLeadStats().catch(() => null),
+        loadLeadOptions().catch(() => ({ categories: [], platforms: [], statuses: [] })),
+        loadEmployees().catch(() => []),
+      ]);
+      setLeads(list.rows || []);
+      setCount(list.count || 0);
+      setStats(leadStats);
+      setOptions(leadOptions);
+      setEmployees(emp);
+    } catch (e) { toast(e.message, 'error'); }
     setLoading(false);
-  }, []);
+  }, [filters]);
   useEffect(() => { if (active) refresh(); }, [active, refresh]);
 
-  const onFile = async (file) => {
-    try {
-      const XLSX = await import('xlsx');
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
-      const parsed = parseLeadsRows(rows);
-      const receivables = await loadLatestReceivables().catch(() => ({ customers: [] }));
-      const custNames = (receivables.customers || receivables.rows || []).map(c => c.name);
-      const res = await uploadLeadsSnapshot({ rows: parsed, userId: user?.id, existingCustomerNames: custNames });
-      toast(`أُضيف ${res.added} جهة · تُخطّي ${res.skipped} (مكرّر/عميل موجود)`, 'success');
-      setModal(null); refresh();
-    } catch (e) { toast(`فشل الرفع: ${e.message}`, 'error'); }
+  const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
+
+  const assignLead = async (lead, ownerId) => {
+    await updateLead(lead.id, { owner_id: ownerId || null });
+    toast(ownerId ? 'تم إسناد الـlead' : 'أزيل الإسناد', 'success');
+    refresh();
   };
 
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
+  const totalPages = Math.max(1, Math.ceil(count / 500));
   return (
     <Pad>
-      <PageHeader icon={<Store size={22}/>} title="الجهات الخارجية" subtitle="متاجر/جهات للتواصل والمبيعات — خارج العملاء الحاليين"
+      <PageHeader icon={<Store size={22}/>} title="ليسوا عملاء لنا" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
         actions={<>
-          {can('crm.upload_leads') && <Btn size="sm" variant="ghost" icon={<Upload size={14}/>} onClick={() => setModal('upload')}>رفع ملف</Btn>}
+          <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+          {can('crm.upload_leads') && <Btn size="sm" variant="primary" icon={<Upload size={14}/>} onClick={() => setModal('upload')}>رفع وتنظيف Excel</Btn>}
           {can('crm.upload_leads') && <Btn size="sm" icon={<Plus size={14}/>} onClick={() => setModal('new')}>جهة جديدة</Btn>}
         </>}/>
-      {loading && !leads.length ? <Spin/> : !leads.length ? <Empty icon="🏪" title="لا جهات" sub="ارفع ملف متاجر أو أضف جهة يدوياً"/> : (
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 12 }}>
+        <CrmKpi label="إجمالي الـleads" value={fmt0(stats?.total || count)} color="#06B6D4"/>
+        <CrmKpi label="جديدة" value={fmt0(stats?.newCount || 0)} color="var(--green)"/>
+        <CrmKpi label="أرقام مكررة" value={fmt0(stats?.duplicateRows || 0)} color="var(--gold)"/>
+        <CrmKpi label="طلعوا عملاء لدينا" value={fmt0(stats?.existingCustomers || 0)} color="#8B5CF6"/>
+        <CrmKpi label="بدون موظف" value={fmt0(stats?.unassigned || 0)} color="var(--red)"/>
+      </div>
+
+      <Card style={{ padding: 12, marginBottom: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr))', gap: 8 }} className="crm-lead-filters">
+          <div style={{ position: 'relative' }}>
+            <Search size={14} style={{ position: 'absolute', top: 11, insetInlineStart: 11, color: 'var(--muted)' }}/>
+            <input value={filters.q} onChange={e => setFilter({ q: e.target.value })}
+              placeholder="ابحث باسم، رقم 966، بريد، قسم..."
+              style={{ width: '100%', padding: '9px 34px 9px 12px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)' }}/>
+          </div>
+          <Select value={filters.status} onChange={e => setFilter({ status: e.target.value })}>
+            <option value="">كل الحالات</option>
+            {LEAD_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </Select>
+          <Select value={filters.ownerId} onChange={e => setFilter({ ownerId: e.target.value, unassignedOnly: false })}>
+            <option value="">كل الموظفين</option>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+          </Select>
+          <Select value={filters.category} onChange={e => setFilter({ category: e.target.value })}>
+            <option value="">كل الأقسام</option>
+            {options.categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </Select>
+          <Select value={filters.platform} onChange={e => setFilter({ platform: e.target.value })}>
+            <option value="">كل المنصات</option>
+            {options.platforms.map(p => <option key={p} value={p}>{p}</option>)}
+          </Select>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+            <input type="checkbox" checked={filters.duplicateOnly} onChange={e => setFilter({ duplicateOnly: e.target.checked })}/> أرقام مكررة فقط
+          </label>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+            <input type="checkbox" checked={filters.matchedOnly} onChange={e => setFilter({ matchedOnly: e.target.checked })}/> عملاء موجودون في المنصّة
+          </label>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+            <input type="checkbox" checked={filters.unassignedOnly} onChange={e => setFilter({ unassignedOnly: e.target.checked, ownerId: '' })}/> بدون موظف
+          </label>
+          <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>
+            عرض {leads.length} من {fmt0(count)} lead
+          </span>
+        </div>
+      </Card>
+
+      {loading && !leads.length ? <Spin/> : !leads.length ? <Empty icon="🏪" title="لا جهات" sub="ارفع ملف متاجر أو خفف الفلاتر الحالية"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-              {['الجهة', 'الجوال', 'المدينة', 'الحالة', ''].map(h => <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
+              {['المتجر', 'الرقم', 'القسم/المنصة', 'التحقق', 'الموظف', 'الحالة', ''].map(h => <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {leads.map(l => (
-                <tr key={l.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td data-label="الجهة" style={{ padding: '10px 12px', fontWeight: 600 }}>{l.name}</td>
-                  <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{l.phone || '—'}</td>
-                  <td data-label="المدينة" style={{ padding: '10px 12px' }}>{l.city || '—'}</td>
-                  <td data-label="الحالة" style={{ padding: '10px 12px' }}>
-                    <Badge status={l.status === 'converted' ? 'ok' : 'pending'}
-                      label={{ new: 'جديد', contacted: 'تم التواصل', qualified: 'مؤهّل', converted: 'تحوّل لعميل', lost: 'مفقود' }[l.status] || l.status}/>
+                <tr key={l.id} onClick={() => setSel(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
+                  <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
+                    <div>{l.name}</div>
+                    {l.name_en && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{l.name_en}</div>}
+                    {l.matched_store_name && <div style={{ fontSize: 11, color: '#8B5CF6', marginTop: 3 }}>لدينا: {l.matched_store_name}</div>}
                   </td>
-                  <td style={{ padding: '10px 12px' }}>
+                  <td data-label="الرقم" style={{ padding: '10px 12px' }}><PhoneLink phone={l.phone_normalized || l.phone}/></td>
+                  <td data-label="القسم/المنصة" style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
+                    <div>{l.category || '—'}</div>
+                    {l.platform && <div style={{ marginTop: 2 }}>{l.platform}</div>}
+                  </td>
+                  <td data-label="التحقق" style={{ padding: '10px 12px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {l.matched_store_id
+                        ? <MiniPill color="#8B5CF6" icon={<CheckCircle2 size={11}/>} label="عميل لدينا"/>
+                        : <MiniPill color="var(--green)" label="خارج المنصّة"/>}
+                      {Number(l.duplicate_count) > 1 && <MiniPill color="var(--gold)" icon={<AlertTriangle size={11}/>} label={`${l.duplicate_count} بنفس الرقم`}/>}
+                    </div>
+                  </td>
+                  <td data-label="الموظف" style={{ padding: '10px 12px', minWidth: 150 }} onClick={e => e.stopPropagation()}>
+                    {can('crm.assign') ? (
+                      <Select value={l.owner_id || ''} onChange={e => assignLead(l, e.target.value)}>
+                        <option value="">— بدون —</option>
+                        {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+                      </Select>
+                    ) : (employees.find(e => e.id === l.owner_id)?.name || '—')}
+                  </td>
+                  <td data-label="الحالة" style={{ padding: '10px 12px' }}>
+                    <LeadStatusBadge status={l.status}/>
+                  </td>
+                  <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                     {l.status !== 'converted' && can('crm.convert_lead') &&
-                      <Btn size="sm" variant="ghost" onClick={async () => { await convertLead(l.id, { customerName: l.name }); toast('حُوّلت لعميل', 'success'); refresh(); }}>تحويل لعميل</Btn>}
+                      <Btn size="sm" variant="ghost" onClick={async () => { await convertLead(l.id, { customerName: l.matched_store_name || l.name, storeId: l.matched_store_id }); toast('حُوّلت لعميل', 'success'); refresh(); }}>تحويل</Btn>}
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          <div style={{ padding: '10px 12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '1px solid var(--border)' }}>
+            <Btn size="sm" variant="ghost" disabled={filters.page <= 0} onClick={() => setFilter({ page: Math.max(0, filters.page - 1) })}>السابق</Btn>
+            <span style={{ fontSize: 12, color: 'var(--muted)' }}>صفحة {filters.page + 1} من {totalPages}</span>
+            <Btn size="sm" variant="ghost" disabled={filters.page + 1 >= totalPages} onClick={() => setFilter({ page: filters.page + 1 })}>التالي</Btn>
+          </div>
         </Card>
       )}
-      {modal === 'upload' && <Modal title="رفع متاجر/جهات" onClose={() => setModal(null)} width={460}>
-        <DropZone onFile={onFile} title="اختر ملف Excel" hint="أعمدة: الاسم/المتجر · الجوال · المدينة · ملاحظات"/>
-      </Modal>}
+      {modal === 'upload' && <LeadUploadModal employees={employees} userId={user?.id} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }}/>}
       {modal === 'new' && <NewLeadModal onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }} userId={user?.id}/>}
+      {sel && <LeadDrawer lead={sel} employees={employees} onClose={() => setSel(null)} onChanged={refresh}/>}
     </Pad>
+  );
+}
+
+const LEAD_STATUS_OPTIONS = [
+  { id: 'new', label: 'جديد' },
+  { id: 'contacted', label: 'تم التواصل' },
+  { id: 'qualified', label: 'مؤهّل' },
+  { id: 'existing_customer', label: 'عميل لدينا' },
+  { id: 'converted', label: 'تحوّل لعميل' },
+  { id: 'lost', label: 'غير مناسب' },
+];
+
+function leadStatusLabel(status) {
+  return LEAD_STATUS_OPTIONS.find(s => s.id === status)?.label || status || '—';
+}
+
+function LeadStatusBadge({ status }) {
+  const color = status === 'converted' ? 'var(--green)'
+    : status === 'existing_customer' ? '#8B5CF6'
+    : status === 'lost' ? 'var(--red)'
+    : status === 'qualified' ? '#3B82F6'
+    : 'var(--gold)';
+  return <span style={{ background: `${color}18`, color, padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>{leadStatusLabel(status)}</span>;
+}
+
+function MiniPill({ color, label, icon = null }) {
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content', background: `${color}15`, color, border: `1px solid ${color}33`, padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800 }}>{icon}{label}</span>;
+}
+
+function CrmKpi({ label, value, color }) {
+  return <Card style={{ padding: '12px 14px', borderTop: `3px solid ${color}` }}>
+    <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{label}</div>
+    <div style={{ fontSize: 24, fontWeight: 900, color, fontFamily: 'var(--font-mono)', marginTop: 4 }}>{value}</div>
+  </Card>;
+}
+
+function LeadUploadModal({ employees, userId, onClose, onSaved }) {
+  const [fileName, setFileName] = useState('');
+  const [parsed, setParsed] = useState(null);
+  const [assignMode, setAssignMode] = useState('me');
+  const [ownerId, setOwnerId] = useState(userId || '');
+  const [busy, setBusy] = useState(false);
+
+  const onFile = async (file) => {
+    setBusy(true);
+    try {
+      const XLSX = await import('xlsx');
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: 'array' });
+      const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
+      setParsed(parseLeadsRows(rows));
+      setFileName(file.name);
+    } catch (e) { toast(`فشل قراءة الملف: ${e.message}`, 'error'); }
+    setBusy(false);
+  };
+
+  const save = async () => {
+    if (!parsed?.rows?.length) return;
+    setBusy(true);
+    try {
+      const assigneeIds = assignMode === 'round_robin' ? employees.map(e => e.id).filter(Boolean) : [];
+      const targetOwner = assignMode === 'none' ? null : (assignMode === 'specific' ? ownerId : userId);
+      const res = await uploadLeadsSnapshot({
+        rows: parsed,
+        userId,
+        ownerId: targetOwner,
+        assigneeIds,
+      });
+      toast(`أضيف ${res.added} lead · تخطي ${res.skipped} · عملاء لدينا ${res.matchedPlatform}`, 'success');
+      onSaved();
+    } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
+    setBusy(false);
+  };
+
+  const s = parsed?.stats;
+  return (
+    <Modal title="رفع وتنظيف متاجر خارجية" onClose={onClose} width={680}>
+      <div className="m-flow" style={{ maxHeight: '72vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
+        <DropZone onFile={onFile} title={fileName || 'اختر ملف Excel'} hint="يدعم ملف معروف: القسم، أسماء المتجر، أرقام الجوال/واتساب، الموقع، Salla/Zid، وروابط السوشيال"/>
+        {busy && <div style={{ padding: 16, textAlign: 'center' }}><Spinner/></div>}
+        {s && (
+          <>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 14 }}>
+              <CrmKpi label="صفوف مقروءة" value={fmt0(s.totalRows)} color="#06B6D4"/>
+              <CrmKpi label="بأرقام صالحة" value={fmt0(s.withPhone)} color="var(--green)"/>
+              <CrmKpi label="أرقام غير صالحة" value={fmt0(s.invalidPhone)} color="var(--red)"/>
+              <CrmKpi label="أرقام مكررة" value={fmt0(s.duplicateRows)} color="var(--gold)"/>
+            </div>
+            {s.duplicateRows > 0 && (
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'rgba(245,158,11,.10)', color: 'var(--gold)', fontSize: 12 }}>
+                يوجد {fmt0(s.duplicatePhones)} رقم مستخدم في أكثر من متجر. لن نحذفها، سنحفظها مع وسم “نفس الرقم” لتراجعها المبيعات.
+              </div>
+            )}
+            <Card style={{ padding: 12, marginTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>إسناد الـleads بعد الرفع</div>
+              <Select value={assignMode} onChange={e => setAssignMode(e.target.value)}>
+                <option value="me">إسناد لي</option>
+                <option value="specific">إسناد لموظف محدد</option>
+                <option value="round_robin">توزيع بالتساوي على كل الموظفين</option>
+                <option value="none">بدون إسناد</option>
+              </Select>
+              {assignMode === 'specific' && (
+                <Select style={{ marginTop: 8 }} value={ownerId} onChange={e => setOwnerId(e.target.value)}>
+                  <option value="">— اختر موظف —</option>
+                  {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+                </Select>
+              )}
+            </Card>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
+              <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+              <Btn variant="accent" disabled={busy || !parsed.rows.length || (assignMode === 'specific' && !ownerId)} onClick={save}>
+                اعتماد التنظيف وحفظ {fmt0(parsed.rows.length)} lead
+              </Btn>
+            </div>
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function LeadDrawer({ lead, employees, onClose, onChanged }) {
+  const { user, can } = useAuth();
+  const [timeline, setTimeline] = useState([]);
+  const [form, setForm] = useState({ mode: null });
+  const [busy, setBusy] = useState(false);
+  const reload = useCallback(async () => {
+    try { setTimeline(await loadTimeline({ entityType: 'lead', entityRef: lead.id })); }
+    catch (e) { toast(e.message, 'error'); }
+  }, [lead.id]);
+  useEffect(() => { reload(); }, [reload]);
+
+  const act = async (fn, ok) => {
+    setBusy(true);
+    try { await fn(); toast(ok, 'success'); setForm({ mode: null }); await reload(); onChanged?.(); }
+    catch (e) { toast(e.message, 'error'); }
+    setBusy(false);
+  };
+
+  return (
+    <Modal title={lead.name} onClose={onClose} width={680}>
+      <div className="m-flow" style={{ maxHeight: '76vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
+          <Hd label="الجوال" value={<PhoneLink phone={lead.phone_normalized || lead.phone}/>}/>
+          <Hd label="القسم" value={lead.category || '—'}/>
+          <Hd label="المنصة" value={lead.platform || '—'}/>
+          <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>
+          {lead.duplicate_count > 1 && <Hd label="تكرار الرقم" value={`${lead.duplicate_count} متاجر`} color="var(--gold)"/>}
+        </div>
+        {(lead.website || lead.store_url || lead.social_links?.instagram) && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {lead.website && <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => window.open(lead.website, '_blank')}>الموقع</Btn>}
+            {lead.store_url && <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => window.open(lead.store_url, '_blank')}>رابط المتجر</Btn>}
+            {lead.social_links?.instagram && <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => window.open(lead.social_links.instagram, '_blank')}>إنستجرام</Btn>}
+          </div>
+        )}
+        {lead.matched_store_id && (
+          <Card style={{ padding: 12, background: 'rgba(139,92,246,.08)', borderColor: 'rgba(139,92,246,.22)', marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, color: '#8B5CF6', marginBottom: 6 }}>هذا الرقم موجود عندنا في المنصّة</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+              <Hd label="اسم المنصّة" value={lead.matched_store_name}/>
+              <Hd label="الحالة" value={lead.matched_store_status || '—'}/>
+              <Hd label="الدفع" value={lead.matched_store_billing_type || '—'}/>
+              <Hd label="الشحنات" value={fmt0(lead.matched_store_shipments || 0)}/>
+              <Hd label="آخر شحنة" value={fmtDate(lead.matched_store_last_shipment_at)}/>
+              <Hd label="المحفظة" value={fmt(lead.matched_store_wallet || 0)}/>
+            </div>
+          </Card>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
+          {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<Phone size={13}/>} onClick={() => setForm({ mode: 'call', body: '' })}>مكالمة</Btn>}
+          {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<StickyNote size={13}/>} onClick={() => setForm({ mode: 'note', body: '' })}>ملاحظة</Btn>}
+          {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" icon={<CalendarClock size={13}/>} onClick={() => setForm({ mode: 'task', title: '', due: '' })}>جدولة</Btn>}
+          {can('crm.assign') && <Btn size="sm" variant="ghost" icon={<UserCog size={13}/>} onClick={() => setForm({ mode: 'assign', ownerId: lead.owner_id || '' })}>إسناد</Btn>}
+          <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: 'status', status: lead.status || 'new' })}>تغيير الحالة</Btn>
+        </div>
+
+        {form.mode && (
+          <Card style={{ padding: 12, background: 'var(--surface2)', marginBottom: 12 }}>
+            {form.mode === 'call' && <>
+              <Input label="ملخص المكالمة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
+              <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(async () => {
+                await logActivity({ entityType: 'lead', entityRef: lead.id, kind: 'call', summary: form.body || 'مكالمة مبيعات', body: form.body, userId: user?.id });
+                await updateLead(lead.id, { status: lead.status === 'new' ? 'contacted' : lead.status });
+              }, 'تم تسجيل المكالمة')}>حفظ المكالمة</Btn>
+            </>}
+            {form.mode === 'note' && <>
+              <Input label="الملاحظة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
+              <Btn size="sm" variant="accent" disabled={busy || !form.body} onClick={() => act(() => logActivity({ entityType: 'lead', entityRef: lead.id, kind: 'note', summary: form.body, body: form.body, userId: user?.id }), 'تم حفظ الملاحظة')}>حفظ</Btn>
+            </>}
+            {form.mode === 'task' && <>
+              <Input label="عنوان الموعد" value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}/>
+              <Input label="تاريخ/وقت الموعد" type="datetime-local" value={form.due} onChange={e => setForm({ ...form, due: e.target.value })}/>
+              <Btn size="sm" variant="accent" disabled={busy || !form.title || !form.due} onClick={() => act(() => createTask({ entityType: 'lead', entityRef: lead.id, title: form.title, dueAt: new Date(form.due).toISOString(), assignedTo: lead.owner_id || user?.id, userId: user?.id }), 'تمت الجدولة')}>جدولة</Btn>
+            </>}
+            {form.mode === 'assign' && <>
+              <Select label="الموظف" value={form.ownerId} onChange={e => setForm({ ...form, ownerId: e.target.value })}>
+                <option value="">— بدون —</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+              </Select>
+              <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => assignOwner({ entityType: 'lead', entityRef: lead.id, ownerId: form.ownerId || null, ownerName: employees.find(e => e.id === form.ownerId)?.name, userId: user?.id }), 'تم الإسناد')}>حفظ</Btn>
+            </>}
+            {form.mode === 'status' && <>
+              <Select label="الحالة" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                {LEAD_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </Select>
+              <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => updateLead(lead.id, { status: form.status }), 'تم تحديث الحالة')}>حفظ</Btn>
+            </>}
+          </Card>
+        )}
+
+        <div style={{ fontSize: 13, fontWeight: 900, margin: '12px 0 8px' }}>سجل التواصل</div>
+        {!timeline.length ? <Empty icon="🗒️" title="لا يوجد تواصل بعد" sub="سجّل أول مكالمة أو ملاحظة"/> : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {timeline.map(t => (
+              <div key={t.id} style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 10 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                  <b>{t.summary || t.kind}</b>
+                  <span style={{ color: 'var(--muted)', fontSize: 11 }}>{fmtDate(t.occurred_at)}</span>
+                </div>
+                {t.body && <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>{t.body}</div>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
@@ -641,21 +971,37 @@ function TasksTab({ active }) {
 function BoardTab({ active }) {
   const { can } = useAuth();
   const [s, setS] = useState(null);
-  useEffect(() => { if (active) loadBoardStats().then(setS).catch(e => toast(e.message, 'error')); }, [active]);
+  const [employees, setEmployees] = useState([]);
+  const refresh = useCallback(async () => {
+    try {
+      const [stats, emp] = await Promise.all([loadBoardStats(), loadEmployees().catch(() => [])]);
+      setS(stats);
+      setEmployees(emp);
+    } catch (e) { toast(e.message, 'error'); }
+  }, []);
+  useEffect(() => { if (active) refresh(); }, [active, refresh]);
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
   if (!s) return <Pad><Spin/></Pad>;
   const cards = [
     { l: 'لمسات هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
+    { l: 'Leads مفتوحة', v: s.leadsOpen, c: 'var(--green)' },
+    { l: 'أرقام مكررة', v: s.leadsDuplicateRows, c: 'var(--gold)' },
+    { l: 'عملاء لدينا داخل القائمة', v: s.leadsExistingCustomers, c: '#8B5CF6' },
     { l: 'وعود نشطة', v: s.promisesOpen, c: 'var(--gold)' },
     { l: 'وعود محقّقة', v: s.promisesKept, c: 'var(--green)' },
     { l: 'وعود مكسورة', v: s.promisesBroken, c: 'var(--red)' },
     { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: '#8B5CF6' },
     { l: 'قيمة الـpipeline', v: `${fmt0(s.pipelineValue)} ر.س`, c: '#3B82F6' },
   ];
+  const employeeName = (id) => id
+    ? (employees.find(e => e.id === id)?.name || employees.find(e => e.id === id)?.email || 'موظف')
+    : 'بدون إسناد';
   return (
     <Pad>
-      <PageHeader icon={<BarChart3 size={22}/>} title="أداء التحصيل والمبيعات"/>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
+      <PageHeader icon={<BarChart3 size={22}/>} title="أداء المبيعات والمتابعة"
+        subtitle="من عنده leads؟ من تواصل؟ ومن عنده مهام مفتوحة؟"
+        actions={<Btn size="sm" variant="ghost" onClick={refresh}><RefreshCw size={14}/></Btn>}/>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
         {cards.map(c => (
           <Card key={c.l} style={{ borderTop: `3px solid ${c.c}` }}>
             <div style={{ fontSize: 12, color: 'var(--muted)' }}>{c.l}</div>
@@ -663,6 +1009,32 @@ function BoardTab({ active }) {
           </Card>
         ))}
       </div>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 15, fontWeight: 900 }}>أداء الموظفين</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>الأرقام تعتمد على leads المسندة، أنشطة الأسبوع، المهام، والصفقات</div>
+        </div>
+        <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+          <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
+            {['الموظف', 'Leads', 'مفتوحة', 'لمسات أسبوعية', 'مهام مفتوحة', 'مهام منجزة', 'صفقات مفتوحة', 'ربح فعلي'].map(h =>
+              <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {(s.byOwner || []).map(row => (
+              <tr key={row.ownerId || 'none'} style={{ borderTop: '1px solid var(--border)' }}>
+                <td data-label="الموظف" style={{ padding: '10px 12px', fontWeight: 800 }}>{employeeName(row.ownerId)}</td>
+                <td data-label="Leads" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.assignedLeads)}</td>
+                <td data-label="مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.openLeads ? 'var(--green)' : 'var(--muted)' }}>{fmt0(row.openLeads)}</td>
+                <td data-label="لمسات أسبوعية" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.touchesThisWeek ? '#06B6D4' : 'var(--muted)' }}>{fmt0(row.touchesThisWeek)}</td>
+                <td data-label="مهام مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.tasksOpen ? 'var(--gold)' : 'var(--muted)' }}>{fmt0(row.tasksOpen)}</td>
+                <td data-label="مهام منجزة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.tasksDoneThisWeek)}</td>
+                <td data-label="صفقات مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.dealsOpen)}</td>
+                <td data-label="ربح فعلي" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.wonValue ? 'var(--green)' : 'var(--muted)' }}>{fmt0(row.wonValue)} ر.س</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </Card>
     </Pad>
   );
 }

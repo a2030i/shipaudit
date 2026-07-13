@@ -1,118 +1,514 @@
-// crmLeadsService.js — الجهات/المتاجر الخارجية (leads) للتواصل والمبيعات.
+// crmLeadsService.js — external ecommerce leads for sales CRM.
 //
-// يحاكي نمط snapshot المتاجر (merchantsService): الصفحة تقرأ الـxlsx →
-// تمرّر allRows هنا → parseLeadsRows → uploadLeadsSnapshot (مع كشف تكرار
-// عبر normalizeName + تخطّي العملاء الموجودين سلفاً). التحويل لعميل يضع
-// أثراً (converted_*) بلا تكرار صف receivables.
+// This importer is intentionally stricter than the old upload:
+// - Phones are normalized to the Saudi international form: 966...
+// - Exact repeated leads are skipped, but same-phone/different-store rows
+//   are kept and clearly flagged for the sales team.
+// - Leads whose phone already exists in the platform merchants snapshot
+//   are retained with matched_store_* metadata instead of being hidden.
 
 import { supabase } from './supabase.js';
 import { normalizeName } from './crmService.js';
+import { loadLatestMerchants } from './merchantsService.js';
 
-function toPhoneString(v) {
-  if (v == null) return null;
-  if (typeof v === 'number') return String(Math.round(v)); // حماية 12-رقم من scientific notation
-  const s = String(v).trim();
+const PAGE = 500;
+const SUPABASE_PAGE = 1000;
+const LEAD_COLUMNS = [
+  'id', 'name', 'name_normalized', 'name_en',
+  'phone', 'phone_normalized', 'whatsapp', 'whatsapp_normalized', 'email',
+  'city', 'category', 'address', 'website', 'platform', 'store_url',
+  'social_links', 'notes', 'source', 'snapshot_id', 'status',
+  'owner_id', 'created_by', 'created_at', 'updated_at',
+  'duplicate_key', 'duplicate_count', 'duplicate_names',
+  'matched_store_id', 'matched_store_name', 'matched_store_status',
+  'matched_store_billing_type', 'matched_store_shipments',
+  'matched_store_last_shipment_at', 'matched_store_wallet',
+].join(',');
+
+async function selectAllRows(makeQuery, pageSize = SUPABASE_PAGE) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    if (error) throw error;
+    const chunk = data || [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+  }
+  return rows;
+}
+
+function toText(v) {
+  const s = String(v ?? '').trim();
   return s || null;
 }
 
-// مفاتيح أعمدة مرنة (عربي/إنجليزي)
+function toPhoneString(v) {
+  if (v == null || v === '') return null;
+  if (typeof v === 'number') return String(Math.round(v));
+  return String(v).trim() || null;
+}
+
+function toAsciiDigits(s) {
+  return String(s ?? '')
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)));
+}
+
+export function normalizeSaudiPhone(v) {
+  let s = toAsciiDigits(toPhoneString(v) || '').replace(/\D/g, '');
+  if (!s) return null;
+  if (s.startsWith('00')) s = s.slice(2);
+  if (s.startsWith('9660')) s = `966${s.slice(4)}`;
+  else if (s.startsWith('0')) s = `966${s.slice(1)}`;
+  else if (!s.startsWith('966')) s = `966${s}`;
+  // Keep common Saudi phone forms only. This accepts mobile, landline,
+  // and unified numbers after country prefix, while rejecting short junk.
+  if (!/^966\d{8,10}$/.test(s)) return null;
+  return s;
+}
+
+function pickFirstPhone(...values) {
+  for (const v of values) {
+    const p = normalizeSaudiPhone(v);
+    if (p) return p;
+  }
+  return null;
+}
+
+function normalizeHeader(s) {
+  return String(s ?? '')
+    .toLowerCase()
+    .replace(/[أإآ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[ـًٌٍُِّْ]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 const HEADER_KEYS = {
-  name:     ['الاسم', 'اسم المتجر', 'المتجر', 'الجهة', 'name', 'store', 'store name', 'merchant'],
-  phone:    ['الجوال', 'الهاتف', 'رقم الجوال', 'phone', 'mobile', 'tel'],
-  whatsapp: ['واتساب', 'whatsapp', 'wa'],
-  email:    ['الايميل', 'البريد', 'email', 'e-mail'],
-  city:     ['المدينة', 'city'],
-  notes:    ['ملاحظات', 'notes', 'note'],
+  rowNo:        ['#', 'م', 'serial', 'no'],
+  category:     ['القسم', 'التصنيف', 'category'],
+  name:         ['اسم المتجر - عربي', 'اسم المتجر', 'المتجر', 'الجهة', 'name', 'store name', 'merchant'],
+  nameEn:       ['اسم المتجر - انجليزي', 'اسم المتجر - إنجليزي', 'english name', 'name en'],
+  phone:        ['رقم الجوال', 'الجوال', 'mobile'],
+  phoneAlt:     ['رقم الهاتف', 'الهاتف', 'phone', 'tel'],
+  unifiedPhone: ['الرقم الموحد', 'unified'],
+  whatsapp:     ['رقم واتس آب', 'رقم واتساب', 'whatsapp number'],
+  whatsappLink: ['رابط واتساب', 'رابط واتس آب', 'whatsapp link'],
+  address:      ['عنوان المتجر', 'العنوان', 'address'],
+  email:        ['البريد الإلكتروني', 'الايميل', 'الإيميل', 'email', 'e-mail'],
+  website:      ['الموقع الإلكتروني', 'الموقع الالكتروني', 'website', 'site'],
+  platform:     ['salla / zid', 'salla/zid', 'سلة / زد', 'منصة', 'platform'],
+  instagram:    ['إنستجرام', 'انستجرام', 'instagram'],
+  facebook:     ['فيس بوك', 'facebook'],
+  twitter:      ['تويتر', 'twitter', 'x'],
+  telegram:     ['تليجرام', 'telegram'],
+  googlePlay:   ['رابط التطبيق جوجل بلاي', 'google play'],
+  appStore:     ['رابط التطبيق آبل ستور', 'app store', 'apple store'],
+  storeUrl:     ['رابط المتجر', 'store url', 'store link'],
+  notes:        ['ملاحظات', 'notes', 'note'],
 };
 
 function findIdx(header, keys) {
-  const norm = header.map(h => String(h || '').toLowerCase().trim());
-  for (const k of keys) {
-    const i = norm.findIndex(h => h === k.toLowerCase() || h.includes(k.toLowerCase()));
-    if (i >= 0) return i;
+  const norm = header.map(normalizeHeader);
+  for (const key of keys) {
+    const k = normalizeHeader(key);
+    const exact = norm.findIndex(h => h === k);
+    if (exact >= 0) return exact;
+    const loose = norm.findIndex(h => h.includes(k));
+    if (loose >= 0) return loose;
   }
   return -1;
 }
 
-export function parseLeadsRows(allRows) {
-  if (!Array.isArray(allRows) || allRows.length < 2) throw new Error('الملف فارغ أو غير معتاد');
-  const header = allRows[0];
-  const cols = {};
-  for (const [f, keys] of Object.entries(HEADER_KEYS)) cols[f] = findIdx(header, keys);
-  if (cols.name < 0) throw new Error('لم يُعثر على عمود الاسم/المتجر');
-  const out = [];
-  for (let i = 1; i < allRows.length; i++) {
-    const r = allRows[i]; if (!r) continue;
-    const name = String(r[cols.name] ?? '').trim();
-    if (!name) continue;
-    out.push({
-      name,
-      phone:    cols.phone    >= 0 ? toPhoneString(r[cols.phone])    : null,
-      whatsapp: cols.whatsapp >= 0 ? toPhoneString(r[cols.whatsapp]) : null,
-      email:    cols.email    >= 0 ? String(r[cols.email] ?? '').trim() || null : null,
-      city:     cols.city     >= 0 ? String(r[cols.city] ?? '').trim() || null : null,
-      notes:    cols.notes    >= 0 ? String(r[cols.notes] ?? '').trim() || null : null,
-    });
+function detectHeaderRow(allRows) {
+  let best = { idx: -1, score: 0, cols: {} };
+  for (let i = 0; i < Math.min(10, allRows.length); i++) {
+    const row = allRows[i] || [];
+    const cols = {};
+    let score = 0;
+    for (const [field, keys] of Object.entries(HEADER_KEYS)) {
+      cols[field] = findIdx(row, keys);
+      if (cols[field] >= 0) score++;
+    }
+    if (cols.name >= 0 && score > best.score) best = { idx: i, score, cols };
+  }
+  return best;
+}
+
+function cell(row, idx) {
+  return idx >= 0 ? row[idx] : null;
+}
+
+function rawObject(header, row) {
+  const out = {};
+  for (let i = 0; i < header.length; i++) {
+    const key = String(header[i] ?? '').trim();
+    if (!key) continue;
+    const v = row[i];
+    if (v == null || v === '') continue;
+    out[key] = v;
   }
   return out;
 }
 
-// رفع snapshot — يكشف التكرار (داخل الرفعة + مقابل leads موجودة) ويتخطّى
-// المتاجر التي هي أصلاً عملاء (تطابق الاسم المطبّع مع customer_receivables).
-export async function uploadLeadsSnapshot({ rows, userId = null, existingCustomerNames = [] } = {}) {
-  if (!Array.isArray(rows) || !rows.length) return { added: 0, skipped: 0 };
-  const snapshotId = `lead_${Date.now()}`;
-  const custNorm = new Set((existingCustomerNames || []).map(normalizeName));
-
-  // leads موجودة بالفعل (لتفادي التكرار عبر الرفعات)
-  const { data: existing } = await supabase.from('crm_leads').select('name_normalized');
-  const seen = new Set((existing || []).map(r => r.name_normalized));
-
-  const toInsert = []; let skipped = 0;
+function duplicateDiagnostics(rows) {
+  const byPhone = new Map();
   for (const r of rows) {
-    const norm = normalizeName(r.name);
-    if (!norm) { skipped++; continue; }
-    if (seen.has(norm) || custNorm.has(norm)) { skipped++; continue; } // مكرّر أو عميل موجود
-    seen.add(norm);
+    if (!r.phoneNormalized) continue;
+    if (!byPhone.has(r.phoneNormalized)) byPhone.set(r.phoneNormalized, []);
+    byPhone.get(r.phoneNormalized).push(r);
+  }
+  for (const r of rows) {
+    const peers = r.phoneNormalized ? byPhone.get(r.phoneNormalized) || [] : [];
+    r.duplicateKey = peers.length > 1 ? r.phoneNormalized : null;
+    r.duplicateCount = Math.max(1, peers.length);
+    r.duplicateNames = peers.length > 1
+      ? [...new Set(peers.map(x => x.name).filter(Boolean))].slice(0, 12)
+      : [];
+  }
+  return {
+    duplicatePhones: [...byPhone.values()].filter(list => list.length > 1).length,
+    duplicateRows: [...byPhone.values()].filter(list => list.length > 1).reduce((s, list) => s + list.length, 0),
+  };
+}
+
+export function parseLeadsRows(allRows) {
+  if (!Array.isArray(allRows) || allRows.length < 2) throw new Error('الملف فارغ أو غير معتاد');
+  const { idx: headerIdx, cols } = detectHeaderRow(allRows);
+  if (headerIdx < 0 || cols.name < 0) throw new Error('لم يُعثر على عمود اسم المتجر');
+
+  const header = allRows[headerIdx] || [];
+  const rows = [];
+  let invalidPhone = 0;
+  let blankName = 0;
+
+  for (let i = headerIdx + 1; i < allRows.length; i++) {
+    const r = allRows[i];
+    if (!r) continue;
+    const name = toText(cell(r, cols.name));
+    if (!name) { blankName++; continue; }
+
+    const whatsappNorm = normalizeSaudiPhone(cell(r, cols.whatsapp));
+    const phoneNorm = pickFirstPhone(
+      cell(r, cols.whatsapp),
+      cell(r, cols.phone),
+      cell(r, cols.phoneAlt),
+      cell(r, cols.unifiedPhone),
+    );
+    if (!phoneNorm) invalidPhone++;
+
+    rows.push({
+      rowNumber: i + 1,
+      name,
+      nameNormalized: normalizeName(name),
+      nameEn: toText(cell(r, cols.nameEn)),
+      category: toText(cell(r, cols.category)),
+      phone: phoneNorm,
+      phoneNormalized: phoneNorm,
+      whatsapp: whatsappNorm || phoneNorm,
+      whatsappNormalized: whatsappNorm || phoneNorm,
+      email: toText(cell(r, cols.email)),
+      city: null,
+      address: toText(cell(r, cols.address)),
+      website: toText(cell(r, cols.website)),
+      platform: toText(cell(r, cols.platform)),
+      storeUrl: toText(cell(r, cols.storeUrl)),
+      socialLinks: {
+        whatsapp: toText(cell(r, cols.whatsappLink)),
+        instagram: toText(cell(r, cols.instagram)),
+        facebook: toText(cell(r, cols.facebook)),
+        twitter: toText(cell(r, cols.twitter)),
+        telegram: toText(cell(r, cols.telegram)),
+        googlePlay: toText(cell(r, cols.googlePlay)),
+        appStore: toText(cell(r, cols.appStore)),
+      },
+      notes: toText(cell(r, cols.notes)),
+      rawPayload: rawObject(header, r),
+    });
+  }
+
+  const duplicateStats = duplicateDiagnostics(rows);
+  const categories = [...new Set(rows.map(r => r.category).filter(Boolean))].sort();
+  const platforms = [...new Set(rows.map(r => r.platform).filter(Boolean))].sort();
+
+  return {
+    rows,
+    headerRow: headerIdx,
+    detectedColumns: cols,
+    ignoredColumns: header.filter((_, idx) => !Object.values(cols).includes(idx)).map(String),
+    stats: {
+      totalRows: rows.length,
+      blankName,
+      invalidPhone,
+      withPhone: rows.filter(r => r.phoneNormalized).length,
+      categories: categories.length,
+      platforms: platforms.length,
+      ...duplicateStats,
+    },
+    categories,
+    platforms,
+  };
+}
+
+function matchPlatformByPhone(rows, merchants = []) {
+  const byPhone = new Map();
+  for (const m of merchants || []) {
+    const phone = normalizeSaudiPhone(m.phone);
+    if (!phone || byPhone.has(phone)) continue;
+    byPhone.set(phone, m);
+  }
+  let matched = 0;
+  for (const r of rows) {
+    const m = r.phoneNormalized ? byPhone.get(r.phoneNormalized) : null;
+    if (!m) continue;
+    matched++;
+    r.matchedStore = {
+      storeId: m.store_id,
+      storeName: m.store_name,
+      status: m.status,
+      billingType: m.billing_type,
+      shipmentCount: Number(m.shipment_count) || 0,
+      lastShipmentAt: m.last_shipment_at,
+      walletBalance: Number(m.wallet_balance) || 0,
+    };
+  }
+  return matched;
+}
+
+function asParsed(input) {
+  return Array.isArray(input) ? { rows: input, stats: {} } : (input || { rows: [], stats: {} });
+}
+
+function cleanSocialLinks(v) {
+  const obj = v && typeof v === 'object' ? v : {};
+  return Object.fromEntries(Object.entries(obj).filter(([, val]) => val != null && val !== ''));
+}
+
+// Upload a cleaned snapshot. Exact duplicate identity = same normalized
+// phone + same normalized name. Same phone with different names is not
+// removed; it is inserted with duplicate_count so the team can decide.
+export async function uploadLeadsSnapshot({
+  rows,
+  userId = null,
+  ownerId = null,
+  assigneeIds = [],
+  platformMerchants = null,
+} = {}) {
+  const parsed = asParsed(rows);
+  const inputRows = parsed.rows || [];
+  if (!inputRows.length) return { added: 0, skipped: 0, skippedExact: 0, skippedInvalidPhone: 0, matchedPlatform: 0 };
+
+  const snapshotId = `lead_${Date.now()}`;
+  const merchants = platformMerchants || (await loadLatestMerchants().catch(() => ({ merchants: [] }))).merchants || [];
+  const matchedPlatform = matchPlatformByPhone(inputRows, merchants);
+
+  const existing = await selectAllRows(() => supabase
+    .from('crm_leads')
+    .select('name_normalized, phone, phone_normalized')
+    .order('created_at', { ascending: true }));
+  const existingIdentities = new Set();
+  const existingPhones = new Map();
+  for (const r of existing || []) {
+    const phone = normalizeSaudiPhone(r.phone_normalized || r.phone);
+    const norm = r.name_normalized || '';
+    if (phone && norm) existingIdentities.add(`${phone}|${norm}`);
+    if (phone) existingPhones.set(phone, (existingPhones.get(phone) || 0) + 1);
+  }
+
+  const owners = Array.isArray(assigneeIds) && assigneeIds.length
+    ? assigneeIds.filter(Boolean)
+    : [ownerId || userId].filter(Boolean);
+
+  const toInsert = [];
+  let skippedExact = 0;
+  let skippedInvalidPhone = 0;
+  let skippedNoName = 0;
+  const batchSeen = new Set();
+
+  for (const r of inputRows) {
+    const nameNorm = r.nameNormalized || normalizeName(r.name);
+    if (!nameNorm) { skippedNoName++; continue; }
+    if (!r.phoneNormalized) { skippedInvalidPhone++; continue; }
+    const identity = `${r.phoneNormalized}|${nameNorm}`;
+    if (existingIdentities.has(identity) || batchSeen.has(identity)) { skippedExact++; continue; }
+    batchSeen.add(identity);
+
+    const owner = owners.length ? owners[toInsert.length % owners.length] : null;
+    const priorPhoneCount = existingPhones.get(r.phoneNormalized) || 0;
+    const duplicateCount = Math.max(Number(r.duplicateCount) || 1, priorPhoneCount + Number(r.duplicateCount || 1));
+    const matched = r.matchedStore || null;
     toInsert.push({
-      name: r.name, name_normalized: norm, phone: r.phone, whatsapp: r.whatsapp,
-      email: r.email, city: r.city, notes: r.notes,
-      source: 'upload', snapshot_id: snapshotId, status: 'new',
+      name: r.name,
+      name_normalized: nameNorm,
+      name_en: r.nameEn || null,
+      phone: r.phoneNormalized,
+      phone_normalized: r.phoneNormalized,
+      whatsapp: r.whatsappNormalized || r.phoneNormalized,
+      whatsapp_normalized: r.whatsappNormalized || r.phoneNormalized,
+      email: r.email || null,
+      city: r.city || null,
+      category: r.category || null,
+      address: r.address || null,
+      website: r.website || null,
+      platform: r.platform || null,
+      store_url: r.storeUrl || null,
+      social_links: cleanSocialLinks(r.socialLinks),
+      raw_payload: r.rawPayload || {},
+      notes: r.notes || null,
+      source: 'external_directory',
+      snapshot_id: snapshotId,
+      source_row_number: r.rowNumber || null,
+      duplicate_key: duplicateCount > 1 ? r.phoneNormalized : null,
+      duplicate_count: duplicateCount,
+      duplicate_names: duplicateCount > 1 ? (r.duplicateNames || []).slice(0, 12) : [],
+      matched_store_id: matched?.storeId || null,
+      matched_store_name: matched?.storeName || null,
+      matched_store_status: matched?.status || null,
+      matched_store_billing_type: matched?.billingType || null,
+      matched_store_shipments: matched?.shipmentCount ?? null,
+      matched_store_last_shipment_at: matched?.lastShipmentAt || null,
+      matched_store_wallet: matched?.walletBalance ?? null,
+      status: matched ? 'existing_customer' : 'new',
+      owner_id: owner,
       created_by: userId,
     });
   }
+
   let added = 0;
   for (let i = 0; i < toInsert.length; i += 200) {
     const chunk = toInsert.slice(i, i + 200);
     const { error } = await supabase.from('crm_leads').insert(chunk);
-    if (!error) added += chunk.length;
+    if (error) throw error;
+    added += chunk.length;
   }
-  return { added, skipped, snapshotId };
+
+  return {
+    added,
+    skipped: skippedExact + skippedInvalidPhone + skippedNoName,
+    skippedExact,
+    skippedInvalidPhone,
+    skippedNoName,
+    matchedPlatform,
+    duplicatePhones: parsed.stats?.duplicatePhones || 0,
+    duplicateRows: parsed.stats?.duplicateRows || 0,
+    snapshotId,
+  };
 }
 
-export async function loadLeads({ status = null, ownerId = null } = {}) {
-  let q = supabase.from('crm_leads').select('*').order('created_at', { ascending: false });
-  if (status) q = q.eq('status', status);
-  if (ownerId) q = q.eq('owner_id', ownerId);
-  const { data, error } = await q;
+export async function loadLeads({
+  status = null,
+  ownerId = null,
+  q = '',
+  category = '',
+  platform = '',
+  duplicateOnly = false,
+  matchedOnly = false,
+  unassignedOnly = false,
+  page = 0,
+  limit = PAGE,
+} = {}) {
+  const from = Math.max(0, page) * limit;
+  const to = from + limit - 1;
+  let query = supabase
+    .from('crm_leads')
+    .select(LEAD_COLUMNS, { count: 'exact' })
+    .order('updated_at', { ascending: false })
+    .range(from, to);
+
+  if (status) query = query.eq('status', status);
+  if (ownerId) query = query.eq('owner_id', ownerId);
+  if (unassignedOnly) query = query.is('owner_id', null);
+  if (category) query = query.eq('category', category);
+  if (platform) query = query.eq('platform', platform);
+  if (duplicateOnly) query = query.gt('duplicate_count', 1);
+  if (matchedOnly) query = query.not('matched_store_id', 'is', null);
+  const term = q.trim();
+  if (term) {
+    const phone = normalizeSaudiPhone(term);
+    query = phone
+      ? query.or(`phone_normalized.eq.${phone},whatsapp_normalized.eq.${phone}`)
+      : query.or(`name.ilike.%${term}%,name_en.ilike.%${term}%,email.ilike.%${term}%,category.ilike.%${term}%`);
+  }
+
+  const { data, error, count } = await query;
   if (error) throw error;
-  return data || [];
+  return { rows: data || [], count: count || 0, page, limit };
 }
 
-export async function createLead({ name, phone = null, whatsapp = null, email = null, city = null, notes = null, ownerId = null, userId = null }) {
+export async function loadLeadOptions() {
+  const data = await selectAllRows(() => supabase
+    .from('crm_leads')
+    .select('category, platform, status')
+    .order('created_at', { ascending: false }));
+  return {
+    categories: [...new Set((data || []).map(r => r.category).filter(Boolean))].sort(),
+    platforms: [...new Set((data || []).map(r => r.platform).filter(Boolean))].sort(),
+    statuses: [...new Set((data || []).map(r => r.status).filter(Boolean))].sort(),
+  };
+}
+
+export async function loadLeadStats() {
+  const data = await selectAllRows(() => supabase
+    .from('crm_leads')
+    .select('status, owner_id, duplicate_count, matched_store_id, created_at')
+    .order('created_at', { ascending: false }));
+  const rows = data || [];
+  return {
+    total: rows.length,
+    newCount: rows.filter(r => r.status === 'new').length,
+    existingCustomers: rows.filter(r => r.matched_store_id || r.status === 'existing_customer').length,
+    duplicateRows: rows.filter(r => Number(r.duplicate_count) > 1).length,
+    unassigned: rows.filter(r => !r.owner_id).length,
+    converted: rows.filter(r => r.status === 'converted').length,
+  };
+}
+
+export async function createLead({
+  name, nameEn = null, phone = null, whatsapp = null, email = null, city = null,
+  category = null, website = null, platform = null, notes = null,
+  ownerId = null, userId = null,
+}) {
   if (!name?.trim()) throw new Error('الاسم مطلوب');
+  const phoneNorm = normalizeSaudiPhone(phone);
+  const waNorm = normalizeSaudiPhone(whatsapp) || phoneNorm;
   const { data, error } = await supabase.from('crm_leads').insert({
-    name: name.trim(), name_normalized: normalizeName(name), phone, whatsapp, email, city, notes,
-    source: 'manual', status: 'new', owner_id: ownerId, created_by: userId,
-  }).select().single();
+    name: name.trim(),
+    name_normalized: normalizeName(name),
+    name_en: nameEn || null,
+    phone: phoneNorm,
+    phone_normalized: phoneNorm,
+    whatsapp: waNorm,
+    whatsapp_normalized: waNorm,
+    email,
+    city,
+    category,
+    website,
+    platform,
+    notes,
+    source: 'manual',
+    status: 'new',
+    owner_id: ownerId,
+    created_by: userId,
+  }).select(LEAD_COLUMNS).single();
   if (error) throw error;
   return data;
 }
 
 export async function updateLead(id, patch) {
   if (!id) throw new Error('id مطلوب');
+  const normalized = { ...patch, updated_at: new Date().toISOString() };
+  if ('phone' in normalized) {
+    normalized.phone_normalized = normalizeSaudiPhone(normalized.phone);
+    normalized.phone = normalized.phone_normalized;
+  }
+  if ('whatsapp' in normalized) {
+    normalized.whatsapp_normalized = normalizeSaudiPhone(normalized.whatsapp);
+    normalized.whatsapp = normalized.whatsapp_normalized;
+  }
   const { data, error } = await supabase.from('crm_leads')
-    .update({ ...patch, updated_at: new Date().toISOString() }).eq('id', id).select().single();
+    .update(normalized).eq('id', id).select(LEAD_COLUMNS).single();
   if (error) throw error;
   return data;
 }
@@ -121,12 +517,13 @@ export async function updateLeadStatus(id, status) {
   return updateLead(id, { status });
 }
 
-// تحويل جهة → عميل: أثر بلا تكرار (converted_*). إن طوبق متجر/عميل نمرّره.
 export async function convertLead(id, { customerName = null, storeId = null } = {}) {
   if (!id) throw new Error('id مطلوب');
   return updateLead(id, {
-    status: 'converted', converted_at: new Date().toISOString(),
-    converted_customer: customerName, converted_store_id: storeId,
+    status: 'converted',
+    converted_at: new Date().toISOString(),
+    converted_customer: customerName,
+    converted_store_id: storeId,
   });
 }
 

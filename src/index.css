@@ -1288,12 +1288,19 @@ button {
   grid-template-columns: minmax(260px, 1.35fr) repeat(4, minmax(120px, 1fr));
 }
 
+.crm-lead-filters {
+  grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr));
+}
+
 @media (max-width: 1180px) {
   .customer-pulse-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
   .customer-pulse-grid > :first-child {
     grid-column: 1 / -1;
+  }
+  .crm-lead-filters {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
 
@@ -1312,6 +1319,9 @@ button {
     background: var(--bg);
   }
   .customer-pulse-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .crm-lead-filters {
     grid-template-columns: 1fr !important;
   }
 }
