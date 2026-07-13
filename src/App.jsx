@@ -146,7 +146,7 @@ const NAV_ITEMS = [
       { tabId: 'collections', label: 'قائمة التحصيل', icon: Phone, legacy: '/collections' },
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'sales', label: 'قوائم المبيعات',  icon: Phone },
-      { tabId: 'leads', label: 'جهات خارجية',     icon: ShoppingBag },
+      { tabId: 'leads', label: 'ليسوا عملاء لنا', icon: ShoppingBag },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
