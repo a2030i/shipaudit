@@ -65,6 +65,50 @@ export async function listTasks({ stage = null, customer = null, includeDone = f
 // أولوية الأسباب (الأسوأ أولاً) — مهمة واحدة لكل عميل بأسوأ سبب فقط، فلا
 // يتكرّر العميل في قائمة التحصيل (كان trigger منفصلاً يُنشئ صفاً لكل سبب).
 const TRIGGER_PRIORITY = ['over_credit_limit', 'aged_90', 'aged_60', 'aged_30', 'prepaid_with_debt'];
+const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
+
+export async function reconcileStaleOpenTasks({ customers = [], userId = null } = {}) {
+  if (!Array.isArray(customers) || customers.length === 0) return { closed: 0, customers: [] };
+  const liveNames = new Set(
+    (customers || [])
+      .filter(c => (Number(c.total) || 0) > 0.5)
+      .map(c => c.name)
+      .filter(Boolean),
+  );
+
+  const { data, error } = await supabase
+    .from('collection_tasks')
+    .select('id, customer_name, trigger, stage, notes')
+    .in('stage', OPEN_STAGES);
+  if (error) throw error;
+
+  const stale = (data || []).filter(t =>
+    t.trigger !== 'manual' &&
+    !liveNames.has(t.customer_name),
+  );
+  if (!stale.length) return { closed: 0, customers: [] };
+
+  const now = new Date().toISOString();
+  const reason = 'أُغلقت تلقائياً: لا يوجد رصيد مفتوح في زوهو';
+  let closed = 0;
+
+  for (const task of stale) {
+    const notes = task.notes ? `${task.notes} · ${reason}` : reason;
+    const { error: updateError } = await supabase
+      .from('collection_tasks')
+      .update({
+        stage: 'done',
+        done_at: now,
+        done_by: userId,
+        notes,
+        updated_at: now,
+      })
+      .eq('id', task.id);
+    if (!updateError) closed++;
+  }
+
+  return { closed, customers: stale.map(t => t.customer_name) };
+}
 
 export async function regenerateTasks({ customers, userId = null }) {
   if (!Array.isArray(customers)) return { created: 0, byTrigger: {} };
@@ -93,7 +137,8 @@ export async function regenerateTasks({ customers, userId = null }) {
       assigned_to:       userId,
     });
   }
-  if (!candidates.length) return { created: 0, byTrigger: {} };
+  const staleResult = await reconcileStaleOpenTasks({ customers, userId });
+  if (!candidates.length) return { created: 0, byTrigger: {}, closed: staleResult.closed };
 
   // ألغِ أي مهمة مفتوحة لعميل بسبب لم يعد الأسوأ (تجنّب تراكم مكرّرات حين
   // ينتقل العميل من متأخر-60 لمتأخر-90 مثلاً) — يبقى صفّ واحد لكل عميل.
@@ -134,7 +179,7 @@ export async function regenerateTasks({ customers, userId = null }) {
       }
     }
   }
-  return { created, byTrigger };
+  return { created, byTrigger, closed: staleResult.closed };
 }
 
 export async function updateTaskStage(id, stage, patch = {}) {
