@@ -143,7 +143,8 @@ export default function CustomerMoney({ isActive = true }) {
             <Btn size="sm" variant="ghost" onClick={() => setBriefOpen(true)} title="رسالة واتساب يومية بأرقام هذه الشاشة">
               🌅 ملخّص الصباح
             </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>}
+              onClick={() => { setCredits(null); refresh(); }} disabled={busy}>
               تحديث
             </Btn>
           </>
