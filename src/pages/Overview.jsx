@@ -22,7 +22,8 @@ import {
   RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
   AlertTriangle, Building2, Users, Banknote, Activity,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
-  Heart, Shield, Edit3, ArrowRight,
+  Heart, Shield, Edit3, ArrowRight, Target, Database, Clock3,
+  CheckCircle2, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
@@ -113,8 +114,8 @@ export default function Overview({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<Activity size={22}/>}
         iconColor="#0EA5E9"
-        title="نظرة عامة"
-        subtitle={`الوضع المالي العام للشركة — ${fmtMonth(period)}`}
+        title="غرفة العمليات"
+        subtitle={`قرارات اليوم ومصدر كل رقم — ${fmtMonth(period)}`}
         meta={`مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
           <div style={{ display: 'flex', gap: 6 }}>
@@ -136,6 +137,14 @@ export default function Overview({ carriers = [], isActive = true }) {
             </Btn>
           </div>
         }
+      />
+
+      <OperationsCommand
+        data={data}
+        period={period}
+        carrierNameById={carrierNameById}
+        onNavigate={navigate}
+        onRefresh={refresh}
       />
 
       {/* ── HERO: Cash position — the headline answer ──
@@ -528,6 +537,360 @@ export default function Overview({ carriers = [], isActive = true }) {
         />
       )}
     </div>
+  );
+}
+
+function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefresh }) {
+  const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
+  const codDue = Number(data.codOutstanding?.total) || 0;
+  const ap90 = Number(data.aging?.totals?.d90) || 0;
+  const drift = Number(data.thisMonth?.driftTotal) || 0;
+  const topCustomer = data.customerConcentration?.[0] || null;
+  const topCarrier = data.carrierConcentration?.[0] || null;
+  const net = data.cashPosition?.net;
+  const netPositive = net == null ? null : net >= 0;
+  const customerPath = topCustomer
+    ? (data.arSource === 'zoho'
+        ? `/customer-money?customer=${encodeURIComponent(topCustomer.customerName)}`
+        : `/receivables?customer=${encodeURIComponent(topCustomer.customerName)}`)
+    : '/customer-money';
+
+  const missions = [
+    pendingAudits > 0 && {
+      icon: <Clock3 size={18}/>,
+      tone: '#F59E0B',
+      title: 'تدقيق ينتظر قرارك',
+      value: `${pendingAudits}`,
+      unit: 'مراجعة',
+      body: 'اعتمادها أو رفضها يغيّر دفتر الناقلين فوراً.',
+      action: 'افتح المراجعات',
+      path: '/audits',
+    },
+    codDue > 0.5 && {
+      icon: <Banknote size={18}/>,
+      tone: '#0EA5E9',
+      title: 'COD عند شركات الشحن',
+      value: fmtCompact(codDue),
+      unit: 'ر.س',
+      body: `${data.codOutstanding.carriersDue} شركة ما زالت لم تورّد.`,
+      action: 'تابع التحصيل',
+      path: '/money?tab=cod',
+    },
+    topCustomer && Number(topCustomer.debt) > 0.5 && {
+      icon: <Users size={18}/>,
+      tone: '#EF4444',
+      title: 'عميل يضغط السيولة',
+      value: fmtCompact(topCustomer.debt),
+      unit: 'ر.س',
+      body: `${topCustomer.customerName} · ${topCustomer.invoiceCount} فاتورة مفتوحة.`,
+      action: 'افتح العميل',
+      path: customerPath,
+    },
+    ap90 > 0.5 && {
+      icon: <Building2 size={18}/>,
+      tone: '#DC2626',
+      title: 'ذمم ناقلين قديمة',
+      value: fmtCompact(ap90),
+      unit: 'ر.س',
+      body: 'مبالغ تجاوزت 90 يوم وتحتاج إغلاق أو مراجعة.',
+      action: 'افتح الدفتر',
+      path: '/ledger',
+    },
+    Math.abs(drift) > 0.5 && {
+      icon: <Target size={18}/>,
+      tone: '#7C3AED',
+      title: drift < 0 ? 'استرداد مكتشف' : 'فرق يحتاج تفسير',
+      value: fmtCompact(Math.abs(drift)),
+      unit: 'ر.س',
+      body: drift < 0 ? 'فروقات لصالحك ظهرت من التدقيق.' : 'هناك مبالغ ناقصة أو غير متوقعة.',
+      action: 'افتح المطالبات',
+      path: '/hub?tab=claims',
+    },
+  ].filter(Boolean).slice(0, 4);
+
+  if (missions.length === 0) {
+    missions.push({
+      icon: <CheckCircle2 size={18}/>,
+      tone: '#059669',
+      title: 'لا يوجد قرار عاجل',
+      value: 'مستقر',
+      unit: '',
+      body: 'الأرقام الحرجة لا تحتاج إجراء فورياً الآن.',
+      action: 'راجع القرارات',
+      path: '/decisions',
+    });
+  }
+
+  const sourceChips = [
+    {
+      label: 'دين العملاء',
+      value: data.cashPosition?.arSource === 'zoho' ? 'Zoho API مباشر' : 'Snapshot داخلي',
+      tone: data.cashPosition?.arSource === 'zoho' ? '#059669' : '#F59E0B',
+    },
+    {
+      label: 'رصيد البنك',
+      value: data.cashPosition?.bankSource === 'statement'
+        ? 'آخر كشف بنكي'
+        : data.cashPosition?.bankSource === 'manual'
+          ? 'إدخال يدوي'
+          : 'غير محدد',
+      tone: data.cashPosition?.bankSource ? '#0EA5E9' : '#EF4444',
+    },
+    {
+      label: 'دفتر الناقلين',
+      value: 'قيود النظام',
+      tone: '#6366F1',
+    },
+    {
+      label: 'الفترة',
+      value: fmtMonth(period),
+      tone: '#64748B',
+    },
+  ];
+
+  const stages = [
+    {
+      label: 'الناقل الأعلى',
+      value: topCarrier ? (carrierNameById.get(topCarrier.carrierId) || topCarrier.carrierId) : 'لا ضغط',
+      icon: <Database size={15}/>,
+      path: topCarrier ? `/carrier?id=${topCarrier.carrierId}` : '/hub',
+      active: topCarrier && Number(topCarrier.sharePct) >= 50,
+    },
+    { label: 'التدقيق', value: pendingAudits ? `${pendingAudits} عالق` : 'مغلق', icon: <Target size={15}/>, path: '/audits', active: pendingAudits > 0 },
+    { label: 'التحصيل', value: codDue > 0.5 ? `${fmtCompact(codDue)} ر.س` : 'مستقر', icon: <Banknote size={15}/>, path: '/money?tab=cod', active: codDue > 0.5 },
+    { label: 'العملاء', value: topCustomer ? `${fmtCompact(topCustomer.debt)} ر.س` : 'بلا ضغط', icon: <Users size={15}/>, path: customerPath, active: topCustomer && Number(topCustomer.debt) > 0.5 },
+  ];
+
+  return (
+    <section style={{
+      marginBottom: 24,
+      border: '1px solid color-mix(in srgb, var(--accent) 18%, var(--border))',
+      borderRadius: 16,
+      overflow: 'hidden',
+      background: 'linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--accent) 7%, var(--surface)) 52%, color-mix(in srgb, #F59E0B 8%, var(--surface)) 100%)',
+      boxShadow: '0 18px 46px rgba(15, 23, 42, .08)',
+    }}>
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
+        gap: 18,
+        padding: 18,
+      }}>
+        <div style={{
+          minHeight: 260,
+          borderRadius: 14,
+          padding: 18,
+          background: 'color-mix(in srgb, var(--surface) 82%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--text) 8%, transparent)',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'space-between',
+        }}>
+          <div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 8,
+              padding: '6px 10px',
+              borderRadius: 999,
+              background: 'color-mix(in srgb, #0EA5E9 12%, transparent)',
+              color: '#0369A1',
+              fontSize: 12,
+              fontWeight: 800,
+            }}>
+              <Zap size={14}/>
+              نبض التشغيل الآن
+            </div>
+            <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>
+              الوضع النقدي الكامل
+            </div>
+            <div style={{
+              marginTop: 6,
+              fontFamily: 'var(--font-mono)',
+              fontSize: 34,
+              lineHeight: 1.05,
+              fontWeight: 900,
+              color: net == null ? 'var(--muted)' : netPositive ? '#047857' : '#DC2626',
+            }}>
+              {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
+              {net != null && <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginInlineStart: 6 }}>ر.س</span>}
+            </div>
+            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.8 }}>
+              هذا الرقم لا يعيش وحده: البنك + دين العملاء من زوهو + ما علينا للناقلين.
+            </div>
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: 8,
+              marginTop: 18,
+            }}>
+              {[
+                { label: 'البنك', value: data.cashPosition?.bankBalance == null ? '—' : fmtCompact(data.cashPosition.bankBalance), tone: '#0EA5E9' },
+                { label: 'العملاء', value: fmtCompact(data.cashPosition?.totalAR || 0), tone: '#059669' },
+                { label: 'الناقلين', value: fmtCompact(data.cashPosition?.totalAP || 0), tone: '#EF4444' },
+              ].map((item) => (
+                <div
+                  key={item.label}
+                  style={{
+                    padding: '10px 8px',
+                    borderRadius: 10,
+                    background: `color-mix(in srgb, ${item.tone} 9%, var(--surface))`,
+                    border: `1px solid color-mix(in srgb, ${item.tone} 16%, transparent)`,
+                  }}
+                >
+                  <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 800 }}>{item.label}</div>
+                  <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', color: item.tone, fontSize: 15, fontWeight: 900 }}>
+                    {item.value}
+                    {item.value !== '—' && <span style={{ fontSize: 9.5, color: 'var(--muted)', marginInlineStart: 3 }}>ر.س</span>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
+            <Btn size="sm" variant="primary" icon={<Target size={14}/>} onClick={() => onNavigate('/decisions')}>
+              قرارات اليوم
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<ArrowRight size={14}/>} onClick={() => onNavigate('/drop')}>
+              مركز الإدخال
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={onRefresh}>
+              تحديث
+            </Btn>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
+            gap: 10,
+          }}>
+            {missions.map((m) => (
+              <button
+                key={m.title}
+                type="button"
+                onClick={() => onNavigate(m.path)}
+                style={{
+                  border: `1px solid color-mix(in srgb, ${m.tone} 24%, var(--border))`,
+                  background: 'color-mix(in srgb, var(--surface) 90%, transparent)',
+                  borderRadius: 12,
+                  padding: 14,
+                  textAlign: 'start',
+                  minHeight: 146,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: 10,
+                  boxShadow: '0 10px 24px rgba(15, 23, 42, .05)',
+                }}
+              >
+                <span style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: m.tone,
+                  background: `color-mix(in srgb, ${m.tone} 13%, transparent)`,
+                }}>
+                  {m.icon}
+                </span>
+                <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{m.title}</span>
+                <span style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 900, color: m.tone }}>{m.value}</span>
+                  {m.unit && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>{m.unit}</span>}
+                </span>
+                <span style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.55 }}>{m.body}</span>
+                <span style={{ marginTop: 'auto', fontSize: 11.5, color: m.tone, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+                  {m.action}
+                  <ChevronLeft size={13}/>
+                </span>
+              </button>
+            ))}
+          </div>
+
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+            gap: 8,
+            padding: 10,
+            borderRadius: 12,
+            background: 'color-mix(in srgb, var(--surface) 78%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--text) 8%, transparent)',
+          }}>
+            {stages.map((s, idx) => (
+              <button
+                key={s.label}
+                type="button"
+                onClick={() => onNavigate(s.path)}
+                style={{
+                  position: 'relative',
+                  border: '0',
+                  borderRadius: 10,
+                  padding: '11px 12px',
+                  textAlign: 'start',
+                  cursor: 'pointer',
+                  background: s.active
+                    ? 'color-mix(in srgb, #0EA5E9 13%, var(--surface))'
+                    : 'transparent',
+                  color: 'var(--text)',
+                }}
+              >
+                {idx > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    insetInlineEnd: -8,
+                    top: '50%',
+                    width: 8,
+                    height: 1,
+                    background: 'var(--border)',
+                  }}/>
+                )}
+                <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: s.active ? '#0369A1' : 'var(--muted)' }}>
+                  {s.icon}
+                  <span style={{ fontSize: 11, fontWeight: 800 }}>{s.label}</span>
+                </span>
+                <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--text)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {s.value}
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{
+        display: 'flex',
+        gap: 8,
+        flexWrap: 'wrap',
+        padding: '0 18px 18px',
+      }}>
+        {sourceChips.map((s) => (
+          <span
+            key={s.label}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 7,
+              padding: '7px 10px',
+              borderRadius: 999,
+              background: `color-mix(in srgb, ${s.tone} 10%, var(--surface))`,
+              border: `1px solid color-mix(in srgb, ${s.tone} 18%, transparent)`,
+              color: 'var(--text)',
+              fontSize: 11.5,
+              fontWeight: 700,
+            }}
+          >
+            <span style={{ width: 7, height: 7, borderRadius: 99, background: s.tone }}/>
+            <span style={{ color: 'var(--muted)' }}>{s.label}</span>
+            <span>{s.value}</span>
+          </span>
+        ))}
+      </div>
+    </section>
   );
 }
 
