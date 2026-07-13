@@ -32,7 +32,7 @@ import {
   TRIGGER_LABELS, STAGE_LABELS,
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
-  loadCollectionCandidates, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
+  loadCollectionCandidates, reconcileStaleOpenTasks, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -79,6 +79,7 @@ const TRIGGER_COLORS = {
   prepaid_with_debt:  '#EF4444',
   manual:             '#0EA5E9',
 };
+const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
@@ -95,25 +96,37 @@ export default function Collections({ isActive = true }) {
   const [pendingWriteoffs, setPendingWriteoffs] = useState([]);
   const [reviewQueueOpen, setReviewQueueOpen]   = useState(false);
   const [agingTrend, setAgingTrend] = useState(null);
+  const [candidatesReady, setCandidatesReady] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [t, recs, pending, trend] = await Promise.all([
-        listTasks({ includeDone: stageFilter !== 'open' }),
-        loadCollectionCandidates().catch(() => []),   // دين زوهو الحيّ (كان snapshot)
+      let candidatesOk = true;
+      const [recs, pending, trend] = await Promise.all([
+        loadCollectionCandidates().catch((e) => {
+          candidatesOk = false;
+          console.warn('Failed to load live collection candidates', e);
+          return null;
+        }),   // دين زوهو الحيّ (كان snapshot)
         listWriteoffs({ status: 'pending' }).catch(() => []),
         loadAgingTrend().catch(() => null),
       ]);
+      const liveCustomers = Array.isArray(recs) ? recs : [];
+      const stale = candidatesOk
+        ? await reconcileStaleOpenTasks({ customers: liveCustomers, userId: profile?.id || null }).catch(() => null)
+        : null;
+      const t = await listTasks({ includeDone: stageFilter !== 'open' });
+      if (stale?.closed > 0) toast(`أُغلقت ${stale.closed} مهمة مدفوعة في زوهو تلقائياً`, 'success');
       setTasks(t);
-      setCustomers(recs || []);
+      setCustomers(liveCustomers);
+      setCandidatesReady(candidatesOk);
       setPendingWriteoffs(pending);
       setAgingTrend(trend);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, [stageFilter]);
+  }, [stageFilter, profile?.id]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -121,6 +134,15 @@ export default function Collections({ isActive = true }) {
     () => new Map(customers.map(c => [c.name, c])),
     [customers],
   );
+  const isLiveTask = useCallback((task) => {
+    if (!candidatesReady) return true;
+    if (!OPEN_STAGES.includes(task.stage) || task.trigger === 'manual') return true;
+    return (Number(customerByName.get(task.customer_name)?.total) || 0) > 0.5;
+  }, [candidatesReady, customerByName]);
+  const taskDebt = useCallback((task) => {
+    const live = Number(customerByName.get(task.customer_name)?.total);
+    return Number.isFinite(live) && live > 0.5 ? live : (Number(task.debt_at_creation) || 0);
+  }, [customerByName]);
 
   const handleRegenerate = async () => {
     try {
@@ -138,10 +160,11 @@ export default function Collections({ isActive = true }) {
   const visibleTasks = useMemo(() => {
     let pool = tasks;
     if (stageFilter === 'open') {
-      pool = pool.filter(t => ['todo','contacted','promised','snoozed'].includes(t.stage));
+      pool = pool.filter(t => OPEN_STAGES.includes(t.stage));
     } else if (stageFilter !== 'all') {
       pool = pool.filter(t => t.stage === stageFilter);
     }
+    pool = pool.filter(isLiveTask);
     // حاجز احتياطي: مهمة واحدة لكل عميل (الأكثر تقدّماً) — يمنع أي تكرار
     // متبقٍ من بيانات قديمة قبل إصلاح regenerateTasks.
     const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
@@ -156,13 +179,13 @@ export default function Collections({ isActive = true }) {
       const aOverdueSnooze = a.stage === 'snoozed' && a.snooze_until && new Date(a.snooze_until) < new Date();
       const bOverdueSnooze = b.stage === 'snoozed' && b.snooze_until && new Date(b.snooze_until) < new Date();
       if (aOverdueSnooze !== bOverdueSnooze) return aOverdueSnooze ? -1 : 1;
-      return (b.debt_at_creation || 0) - (a.debt_at_creation || 0);
+      return taskDebt(b) - taskDebt(a);
     });
-  }, [tasks, stageFilter]);
+  }, [tasks, stageFilter, isLiveTask, taskDebt]);
 
   const stats = useMemo(() => {
-    const open    = tasks.filter(t => ['todo','contacted','promised','snoozed'].includes(t.stage));
-    const promised = tasks.filter(t => t.stage === 'promised');
+    const open    = tasks.filter(t => OPEN_STAGES.includes(t.stage) && isLiveTask(t));
+    const promised = open.filter(t => t.stage === 'promised');
     const promiseDueToday = promised.filter(t => {
       if (!t.promise_date) return false;
       const d = new Date(t.promise_date);
@@ -180,9 +203,9 @@ export default function Collections({ isActive = true }) {
       promised: promised.length,
       promiseDueToday: promiseDueToday.length,
       promiseOverdue: promiseOverdue.length,
-      totalDebt: +open.reduce((s, t) => s + (Number(t.debt_at_creation) || 0), 0).toFixed(2),
+      totalDebt: +open.reduce((s, t) => s + taskDebt(t), 0).toFixed(2),
     };
-  }, [tasks]);
+  }, [tasks, isLiveTask, taskDebt]);
 
   // صحة أعمار الذمم + توزيع مستويات التصعيد (من دين زوهو الحيّ — بند ب+ج).
   // متوسط عمر الدين = مرجّح بالمبلغ (مؤشّر DSO مبسّط، دائماً محسوب بلا مبيعات).
@@ -211,7 +234,7 @@ export default function Collections({ isActive = true }) {
       t.customer_name,
       TRIGGER_LABELS[t.trigger] || t.trigger,
       STAGE_LABELS[t.stage] || t.stage,
-      t.debt_at_creation,
+      taskDebt(t),
       t.days_outstanding,
       t.promise_amount || '',
       t.promise_date || '',
@@ -417,7 +440,7 @@ export default function Collections({ isActive = true }) {
                       </span>
                     </td>
                     <td data-label="الدين" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)' }}>
-                      {fmtCompact(t.debt_at_creation)}
+                      {fmtCompact(taskDebt(t))}
                     </td>
                     <td data-label="عمر الدين" style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)' }}>
                       {(() => {
