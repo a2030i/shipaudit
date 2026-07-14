@@ -78,13 +78,15 @@ export async function loadRetargetingFollowupStats() {
 
 // الداشبورد: ملخّص + توزيعات + التقاط التغيّر (الحالي مقابل الرفعة السابقة).
 export async function loadRetargetingDashboard() {
+  // ملاحظة: supabase.rpc() يرجّع builder (thenable) لا Promise — لا .catch عليه.
+  // ويحلّ إلى { data, error } دون رفض، فنعالج الخطأ من الحقل لا بـ try/catch.
   const [sumRes, changeRes] = await Promise.all([
     supabase.rpc('crm_retargeting_summary'),
-    supabase.rpc('capture_retargeting_summary').catch(() => ({ data: null })),
+    supabase.rpc('capture_retargeting_summary'),
   ]);
   if (sumRes.error) throw sumRes.error;
   const s = sumRes.data || {};
-  const change = changeRes?.data || {};
+  const change = (changeRes && !changeRes.error && changeRes.data) ? changeRes.data : {};
   const cur = change.current || s.stats || {};
   const prev = change.previous || null;
   // فروق الرفعة (current − previous) لكل مؤشّر + نسبة مئوية

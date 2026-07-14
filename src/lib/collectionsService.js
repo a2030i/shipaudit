@@ -313,7 +313,8 @@ export function dunningLevel(days) {
 // يلتقط لقطة الشهر الجاري (upsert، يبني التاريخ عضوياً بلا كرون) ثم يقرأ آخر
 // الشهور. roll-rate الحقيقي يحتاج ≥2 شهر — قبلها الواجهة تعرض «قيد التجميع».
 export async function loadAgingTrend() {
-  await supabase.rpc('capture_ar_aging_snapshot').catch(() => {});
+  // supabase.rpc() builder لا يملك .catch — نلفّه بـ try (الالتقاط غير قاتل)
+  try { await supabase.rpc('capture_ar_aging_snapshot'); } catch { /* غير قاتل */ }
   const { data, error } = await supabase.rpc('ar_aging_trend', { p_months: 6 });
   if (error) throw error;
   const rows = (Array.isArray(data) ? data : []).map(r => ({
