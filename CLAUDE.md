@@ -282,6 +282,13 @@
 - **`hatif-webhook`** (`verify_jwt=false`، بوابة `?key=` ضد `zoho_auth.webhook_key` — نمط §1.26b): يحدّث `status/delivered_at/read_at/error_reason` + أول `replied_at`/`reply_body`، بالمطابقة على `conversation_id` ثم `contact_id` لأحدث إرسال. يرجع 200 دائماً. **إعداد Hatif خطوة المستخدم**: Settings → API Connect → Webhook URL = `…/functions/v1/hatif-webhook?key=<webhook_key>`.
 - **القاعدة**: أي حملة واتساب جديدة تمرّ عبر `WhatsAppSendModal`/`sendWhatsAppCampaign` (تُسجَّل آلياً). لا تُرسِل قالباً خارج هذا المسار (وإلا فقدت التتبّع). القناة لا تُدخَل يدوياً في كود جديد.
 
+### 1.30 حارس زاتكا — الإرسال التلقائي في زوهو + تنبيه نفس اليوم ✅ (2026-07-15)
+- **القاعدة الجوهرية**: الإرسال لبوابة فاتورة (زاتكا) **فعل زوهو لا فعل نظامنا**. الحل الجذري = تفعيل الدفع التلقائي في زوهو (Settings → Integrations → e-Invoicing → **Create, Push and Send**) فتُرسَل كل فاتورة لحظة إنشائها (يستحيل تجاوز مهلة منتصف الليل). **ممنوع أن يرسل نظامنا لزاتكا** (فعل امتثالي، يحتاج scope كتابة جديد، يخالف قاعدة «لا نعدّل مستندات زوهو»). نظامنا = **حارس/تنبيه فقط**.
+- **الإشارة**: `zoho_invoices.einvoice_status` (تُمرآ عبر zoho-sync كل 30د) = `pushed` / `yet_to_be_pushed` / null (قديمة). RPC **`zatca_pending_today()`** (بتوقيت `Asia/Riyadh`): `today_count`/`today_total` (المهلة الليلة) + `overdue_count`/`overdue_total` (تجاوزت المهلة — خلل امتثال مستمر).
+- **بطاقة في `/decisions`**: «فواتير لم تُرسَل لزاتكا» (أحمر، حسّاسة للوقت) — عدد اليوم + المتأخرة، تنقل لـ`/zoho-data?tab=invoices`. `loadZatcaPending` في pnlService.
+- **تنبيه مسائي `zatca-alert`** (`verify_jwt=false`، X-Cron-Key ضد `zoho_auth.cron_key` — نمط morning-brief): cron `zatca-evening-alert` (jobid 5، `0 18 * * *` = 21:00 KSA) يرسل واتساب Hatif بعدد فواتير اليوم المعلّقة. الإعداد `app_settings['zatca_alert']` (`enabled`/`phone`/`template_name`) من صفحة «إعدادات واتساب» — **معطَّل افتراضياً** (لا يرسل بلا تفعيل، ولا يرسل إن كان عدد اليوم صفراً). متغيّرات القالب: `{{1}}` عدد اليوم · `{{2}}` إجماليها ر.س · `{{3}}` المتأخرة.
+- **القاعدة**: أي إشارة امتثال/مهلة زمنية جديدة → بطاقة `/decisions` + (اختياري) تنبيه cron مسائي. لا تبنِ كتابة زاتكا في نظامنا.
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`

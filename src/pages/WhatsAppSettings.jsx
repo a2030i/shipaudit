@@ -5,7 +5,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Trash2 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
+  loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow } from '../lib/whatsappService.js';
 
 export default function WhatsAppSettings({ isActive = true }) {
   const { can } = useAuth();
@@ -15,10 +16,16 @@ export default function WhatsAppSettings({ isActive = true }) {
   const [saving, setSaving] = useState(false);
   const [verifying, setVerifying] = useState(false);
   const [verified, setVerified] = useState(null);
+  const [zatca, setZatca] = useState(null);        // إعداد تنبيه زاتكا المسائي
+  const [zBusy, setZBusy] = useState(false);
+  const [zPrev, setZPrev] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setCfg(await loadWhatsAppConfig()); } catch (e) { toast(e.message, 'error'); }
+    try {
+      const [c, z] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null)]);
+      setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' });
+    } catch (e) { toast(e.message, 'error'); }
     setLoading(false);
   }, []);
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
@@ -50,6 +57,26 @@ export default function WhatsAppSettings({ isActive = true }) {
     setVerified(!!r.ok);
     toast(r.ok ? 'الاتصال بـHatif يعمل ✓' : `فشل التحقّق: ${r.error || ''}`, r.ok ? 'success' : 'error');
     setVerifying(false);
+  };
+
+  const zSave = async () => {
+    setZBusy(true);
+    try { await saveZatcaAlertConfig(zatca); toast('تم حفظ تنبيه زاتكا', 'success'); }
+    catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
+    setZBusy(false);
+  };
+  const zPreviewRun = async () => {
+    setZBusy(true); setZPrev(null);
+    const r = await previewZatcaAlert();
+    setZPrev(r);
+    if (!r?.ok) toast(`تعذّرت المعاينة: ${r?.error || ''}`, 'error');
+    setZBusy(false);
+  };
+  const zSendTest = async () => {
+    setZBusy(true);
+    const r = await sendZatcaAlertNow();
+    toast(r?.ok ? (r.sent ? 'أُرسل التنبيه التجريبي ✓' : `تخطّي: ${r.skipped || ''}`) : `فشل: ${r?.error || ''}`, r?.ok ? 'success' : 'error');
+    setZBusy(false);
   };
 
   return (
@@ -108,6 +135,47 @@ export default function WhatsAppSettings({ isActive = true }) {
             • اسم القالب <b>حسّاس لحالة الأحرف</b> ويجب أن يطابق المعتمد في لوحة هاتف تماماً.<br/>
             • ملخّص الصباح له إعداده الخاص (زر 🌅 في فلوسي عند العملاء).
           </div>
+        </Card>
+      )}
+
+      {/* ── تنبيه زاتكا المسائي — واتساب 9م بتوقيت السعودية بالفواتير التي لم تُرسَل ── */}
+      {zatca && (
+        <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>🧾 تنبيه زاتكا المسائي</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
+            رسالة واتساب يومية <b>9 مساءً</b> بتوقيت السعودية بعدد الفواتير التي <b>لم تُرسَل لزاتكا اليوم</b> —
+            لتُرسلها من زوهو قبل منتصف الليل. لا تُرسَل إن لم توجد فواتير معلّقة اليوم.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!zatca.enabled} onChange={e => setZatca({ ...zatca, enabled: e.target.checked })}/>
+            تفعيل التنبيه
+          </label>
+          <Input label="رقم المستلِم (المسؤول)" value={zatca.phone || ''}
+            onChange={e => setZatca({ ...zatca, phone: e.target.value })} placeholder="05XXXXXXXX"/>
+          <div>
+            <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>قالب التنبيه</div>
+            {(cfg?.templates || []).length ? (
+              <select value={zatca.templateName || ''} onChange={e => setZatca({ ...zatca, templateName: e.target.value })}
+                style={{ fontSize: 12.5, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', width: '100%' }}>
+                <option value="">— اختر قالباً —</option>
+                {(cfg.templates || []).map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            ) : <div style={{ fontSize: 11.5, color: 'var(--red)' }}>أضف قالباً في الأعلى أولاً</div>}
+            <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
+              متغيّرات هذا القالب: <code>{'{{1}}'}</code> عدد فواتير اليوم · <code>{'{{2}}'}</code> إجماليها ر.س · <code>{'{{3}}'}</code> عدد المتأخرة سابقاً.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+            <Btn variant="accent" icon={<Save size={14}/>} onClick={zSave} disabled={zBusy}>حفظ</Btn>
+            <Btn variant="ghost" onClick={zPreviewRun} disabled={zBusy}>معاينة الأرقام</Btn>
+            <Btn variant="ghost" onClick={zSendTest} disabled={zBusy}>إرسال تجريبي الآن</Btn>
+          </div>
+          {zPrev?.ok && (
+            <div style={{ fontSize: 12, color: 'var(--muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '9px 12px' }}>
+              اليوم: <b style={{ color: 'var(--text)' }}>{zPrev.todayCount}</b> فاتورة ({Number(zPrev.todayTotal || 0).toLocaleString('en-US')} ر.س) ·
+              متأخرة سابقاً: <b style={{ color: 'var(--red)' }}>{zPrev.overdueCount}</b>
+            </div>
+          )}
         </Card>
       )}
     </div>

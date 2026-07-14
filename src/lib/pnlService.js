@@ -267,6 +267,19 @@ export async function loadZohoOpenInvoices(customerName) {
   return data || [];
 }
 
+// فواتير زوهو لم تُرسَل لبوابة فاتورة (زاتكا) بعد — إشارة حارس نفس اليوم.
+// today = فواتير اليوم (المهلة منتصف الليل توقيت السعودية) · overdue = أيام سابقة
+// ما زالت معلّقة (تجاوزت المهلة). المصدر مرآة zoho_invoices (تُزامَن كل 30د).
+export async function loadZatcaPending() {
+  const { data, error } = await supabase.rpc('zatca_pending_today');
+  if (error || !data) return { todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [], saudiDate: null };
+  return {
+    todayCount:  data.today_count   || 0, todayTotal:   Number(data.today_total)   || 0,
+    overdueCount: data.overdue_count || 0, overdueTotal: Number(data.overdue_total) || 0,
+    saudiDate: data.saudi_date, invoices: Array.isArray(data.invoices) ? data.invoices : [],
+  };
+}
+
 // عملاء لهم رصيد دائن **قابل للتطبيق فعلاً** = min(الرصيد المتاح, الفواتير
 // المفتوحة) من المرآة المحلية (zoho_applicable_credits). يستبعد من له رصيد
 // لكن بلا فواتير مفتوحة (لا شيء يُطبَّق عليه) — كان المصدر القديم (contacts)
