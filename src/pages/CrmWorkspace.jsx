@@ -449,6 +449,67 @@ function PhoneLink({ phone }) {
   );
 }
 
+function externalUrl(value, kind = 'web') {
+  const raw = String(value || '').trim();
+  if (!raw) return null;
+  if (/^https?:\/\//i.test(raw)) return raw;
+  if (kind === 'instagram') {
+    const handle = raw.replace(/^@/, '').replace(/^instagram\.com\//i, '').replace(/^www\.instagram\.com\//i, '');
+    if (!handle) return null;
+    return `https://instagram.com/${handle.replace(/^\/+/, '')}`;
+  }
+  return `https://${raw.replace(/^\/+/, '')}`;
+}
+
+function compactUrlLabel(value, kind = 'web') {
+  const raw = String(value || '').trim();
+  if (!raw) return '—';
+  if (kind === 'instagram') {
+    const handle = raw
+      .replace(/^https?:\/\/(www\.)?instagram\.com\//i, '')
+      .replace(/^@/, '')
+      .replace(/\/$/, '');
+    return handle ? `@${handle}` : 'إنستجرام';
+  }
+  return raw
+    .replace(/^https?:\/\//i, '')
+    .replace(/^www\./i, '')
+    .replace(/\/$/, '');
+}
+
+function LeadLink({ value, kind = 'web', empty = '—' }) {
+  const href = externalUrl(value, kind);
+  if (!href) return empty;
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      onClick={e => e.stopPropagation()}
+      style={{ color: 'var(--blue)', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 5, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      title={String(value || '')}
+    >
+      <ExternalLink size={12}/>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{compactUrlLabel(value, kind)}</span>
+    </a>
+  );
+}
+
+function EmailLink({ email }) {
+  const v = String(email || '').trim();
+  if (!v) return '—';
+  return (
+    <a
+      href={`mailto:${v}`}
+      onClick={e => e.stopPropagation()}
+      style={{ color: 'var(--blue)', fontWeight: 700, display: 'inline-block', maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}
+      title={v}
+    >
+      {v}
+    </a>
+  );
+}
+
 // ═══════════════ الجهات الخارجية (leads) ═══════════════
 function LeadsTab({ active }) {
   const { user, can } = useAuth();
@@ -500,7 +561,7 @@ function LeadsTab({ active }) {
   };
 
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
-  const totalPages = Math.max(1, Math.ceil(count / 500));
+  const totalPages = Math.max(1, Math.ceil(count / 50));  // = PAGE في crmLeadsService
   return (
     <Pad>
       <PageHeader icon={<Store size={22}/>} title="ليسوا عملاء لنا" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
