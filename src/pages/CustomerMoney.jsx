@@ -595,7 +595,7 @@ function MorningBriefModal({ onClose }) {
         <div>
           <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
             رسالة تصلك كل يوم <b>7:15 صباحاً</b> بأرقام هذه الشاشة: المستحق، المتأخر، التحصيل،
-            أكبر المدينين، والفواتير المنتظرة. تحتاج قالباً معتمداً في Respondly بستة متغيّرات.
+            أكبر المدينين، والفواتير المنتظرة. تحتاج قالباً معتمداً في Hatif بستة متغيّرات.
           </div>
           <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
             <input type="checkbox" checked={cfg.enabled} onChange={e => save({ ...cfg, enabled: e.target.checked })}/>

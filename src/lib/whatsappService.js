@@ -1,5 +1,5 @@
-// واتساب عبر Respondly — يستدعي edge function whatsapp-send فقط.
-// المفتاح (x-api-key) لا يلمس المتصفح إطلاقاً؛ يبقى سرّاً في الدالة.
+// واتساب عبر Hatif/Voxa — يستدعي edge function hatif-send فقط (استُبدل Respondly).
+// الأسرار (client_id/secret) لا تلمس المتصفح إطلاقاً؛ تبقى في الدالة.
 // الإعدادات (channel/template) في app_settings (key/value).
 
 import { supabase } from './supabase.js';
@@ -7,14 +7,13 @@ import { supabase } from './supabase.js';
 const CFG_KEY = 'whatsapp_config';
 
 export const DEFAULT_WA_CONFIG = {
-  provider:         'respondly',   // 'respondly' | 'hatif' — مزوّد الإرسال
   channelId:        '',
   templateName:     '',
   templateLanguage: 'ar',
 };
 
-// اسم دالة الحافة حسب المزوّد (نفس الواجهة action verify|send).
-const waFn = (provider) => (provider === 'hatif' ? 'hatif-send' : 'whatsapp-send');
+// كل إرسال واتساب عبر Hatif/Voxa (استُبدل Respondly كلياً).
+const WA_FN = 'hatif-send';
 
 export async function loadWhatsAppConfig() {
   const { data } = await supabase.from('app_settings').select('value').eq('key', CFG_KEY).maybeSingle();
@@ -25,7 +24,6 @@ export async function loadWhatsAppConfig() {
 
 export async function saveWhatsAppConfig(cfg) {
   const value = JSON.stringify({
-    provider:         cfg.provider === 'hatif' ? 'hatif' : 'respondly',
     channelId:        cfg.channelId?.trim() || '',
     templateName:     cfg.templateName?.trim() || '',
     templateLanguage: cfg.templateLanguage?.trim() || 'ar',
@@ -50,18 +48,16 @@ export function normalizeSaudiPhone(raw) {
 
 // Verify the stored key works (and the plan allows API). Returns
 // { ok, org } | { ok:false, error }.
-export async function verifyWhatsAppKey(provider) {
-  const p = provider || (await loadWhatsAppConfig()).provider;
-  const { data, error } = await supabase.functions.invoke(waFn(p), { body: { action: 'verify' } });
+export async function verifyWhatsAppKey() {
+  const { data, error } = await supabase.functions.invoke(WA_FN, { body: { action: 'verify' } });
   if (error) return { ok: false, error: error.message };
   return data;
 }
 
 // Send a template campaign. items: [{ to, vars:[], name, amount }].
 // Returns { ok, total, sent, failed, results, campaignId } | { ok:false, error }.
-export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'ar', channelId, items, campaign = {}, provider }) {
-  const p = provider || (await loadWhatsAppConfig()).provider;
-  const { data, error } = await supabase.functions.invoke(waFn(p), {
+export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'ar', channelId, items, campaign = {} }) {
+  const { data, error } = await supabase.functions.invoke(WA_FN, {
     body: {
       action: 'send',
       template_name: templateName,
