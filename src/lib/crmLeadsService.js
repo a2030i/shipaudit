@@ -81,6 +81,16 @@ export function normalizeSaudiPhone(v) {
   return s;
 }
 
+// جوال سعودي حقيقي لصفحة «ليسوا عملاء لنا»: يجب أن يبدأ بـ 9665 ثم 8 أرقام
+// (12 رقماً إجمالاً)، ويرفض الأرقام الوهمية (كل أرقام المشترك متطابقة مثل
+// 966500000000 / 966555555555). يُستخدَم في الرفع والإضافة والتعديل.
+export function isRealSaudiMobile(v) {
+  const s = normalizeSaudiPhone(v);
+  if (!s || !/^9665\d{8}$/.test(s)) return false;   // 9665 + 8 أرقام
+  if (/^(\d)\1{7}$/.test(s.slice(4))) return false; // أرقام المشترك كلها متطابقة = وهمي
+  return true;
+}
+
 function pickFirstPhone(...values) {
   for (const v of values) {
     const p = normalizeSaudiPhone(v);
@@ -205,12 +215,14 @@ export function parseLeadsRows(allRows) {
     if (!name) { blankName++; continue; }
 
     const whatsappNorm = normalizeSaudiPhone(cell(r, cols.whatsapp));
-    const phoneNorm = pickFirstPhone(
+    let phoneNorm = pickFirstPhone(
       cell(r, cols.whatsapp),
       cell(r, cols.phone),
       cell(r, cols.phoneAlt),
       cell(r, cols.unifiedPhone),
     );
+    // يُقبل فقط جوال سعودي حقيقي (9665+8 أرقام، لا وهمي) — غيره يُتخطّى عند الرفع
+    if (phoneNorm && !isRealSaudiMobile(phoneNorm)) phoneNorm = null;
     if (!phoneNorm) invalidPhone++;
 
     rows.push({
@@ -561,6 +573,7 @@ export async function createLead({
   ownerId = null, userId = null,
 }) {
   if (!name?.trim()) throw new Error('الاسم مطلوب');
+  if (!isRealSaudiMobile(phone)) throw new Error('رقم الجوال غير صالح — يجب أن يبدأ بـ 9665 ويتكوّن من 12 رقماً (9665 ثم 8 أرقام)، وألّا يكون رقماً وهمياً');
   const phoneNorm = normalizeSaudiPhone(phone);
   const waNorm = normalizeSaudiPhone(whatsapp) || phoneNorm;
   const links = cleanSocialLinks({ ...(socialLinks || {}), instagram });
@@ -594,6 +607,7 @@ export async function updateLead(id, patch) {
   if (!id) throw new Error('id مطلوب');
   const normalized = { ...patch, updated_at: new Date().toISOString() };
   if ('phone' in normalized) {
+    if (!isRealSaudiMobile(normalized.phone)) throw new Error('رقم الجوال غير صالح — يجب أن يبدأ بـ 9665 ويتكوّن من 12 رقماً، وألّا يكون رقماً وهمياً');
     normalized.phone_normalized = normalizeSaudiPhone(normalized.phone);
     normalized.phone = normalized.phone_normalized;
   }
