@@ -19,7 +19,7 @@ import { useLocation } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
-  RefreshCw, Download, Phone, Search, X, Layers,
+  RefreshCw, Download, Phone, Search, X, Layers, MessageCircle,
   Wallet, Activity, ShoppingBag,
   Bookmark, Save, Pencil, Check, SlidersHorizontal, Type,
 } from 'lucide-react';
@@ -28,6 +28,7 @@ import {
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
 import {
   listSegments, createSegment, updateSegment, deleteSegment,
@@ -347,6 +348,7 @@ export default function Segments({ isActive = true }) {
   // every time `rows` changes; never stored in the DB. `activeSavedId`
   // tracks the currently-loaded chip so the strip can highlight it.
   const [savedSegments, setSavedSegments] = useState([]);
+  const [waOpen, setWaOpen] = useState(false);   // مودال إرسال حملة واتساب
   const [activeSavedId,  setActiveSavedId]  = useState(null);
   const [saveOpen,       setSaveOpen]       = useState(false);
   const [renameTarget,   setRenameTarget]   = useState(null);
@@ -596,6 +598,21 @@ export default function Segments({ isActive = true }) {
     const dateStr = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(rtl(wb), `شريحة_${filtered.length}متجر_${dateStr}.xlsx`);
     toast(`تم تصدير ${filtered.length} متجر`, 'success');
+  };
+
+  // مستلِمو حملة واتساب من الشريحة الحالية — المودال يتيح اختيار عملاء محدّدين
+  // (الكل افتراضياً). vars: {{1}} اسم المتجر · {{2}} القيمة (دين/محفظة/شحنات).
+  const buildWaRecipients = () => {
+    const out = [];
+    for (const r of sortedFiltered) {
+      const phone = normalizePhone(r.phone);
+      if (!phone) continue;
+      const value = r.debt > 0.5 ? r.debt.toFixed(2)
+        : Math.abs(r.walletBalance) > 0.01 ? r.walletBalance.toFixed(2)
+          : String(r.shipmentCount);
+      out.push({ to: phone, name: r.storeName, amount: Number(r.debt) || 0, vars: [r.storeName, value] });
+    }
+    return out;
   };
 
   // 3-column WhatsApp campaign — phone / name / value. The 3rd column
@@ -873,12 +890,15 @@ export default function Segments({ isActive = true }) {
             <Stat label="إجمالي الدين" value={fmt(stats.totalDebt)}    color="#EF4444" suffix="ر.س"/>
             <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? 'var(--red)' : '#0EA5E9'} suffix="ر.س"/>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginInlineStart: 'auto' }}>
-            <Btn size="md" variant="primary" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
-              ملف حملة (٣ أعمدة)
+          <div style={{ display: 'flex', gap: 8, marginInlineStart: 'auto', flexWrap: 'wrap' }}>
+            <Btn size="md" variant="primary" icon={<MessageCircle size={13}/>} onClick={() => setWaOpen(true)} disabled={!filtered.length}>
+              إرسال حملة واتساب
+            </Btn>
+            <Btn size="md" variant="ghost" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
+              ملف حملة
             </Btn>
             <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={exportFull} disabled={!filtered.length}>
-              تصدير Excel كامل
+              تصدير Excel
             </Btn>
           </div>
         </div>
@@ -972,6 +992,15 @@ export default function Segments({ isActive = true }) {
             </div>
           )}
         </Card>
+      )}
+      {waOpen && (
+        <WhatsAppSendModal
+          open={waOpen}
+          onClose={() => setWaOpen(false)}
+          recipients={buildWaRecipients()}
+          bucketLabel={savedSegments.find(s => s.id === activeSavedId)?.name || null}
+          onSent={() => setWaOpen(false)}
+        />
       )}
     </div>
   );
