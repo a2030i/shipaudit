@@ -63,16 +63,31 @@ export async function setRetargetingFollowup(phone, { status = null, ownerId = n
   return data;
 }
 
-// أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح.
+// أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح + العودة الآلية.
 export async function loadRetargetingCampaign() {
-  const { data, error } = await supabase.rpc('crm_retargeting_campaign_stats');
-  if (error) throw error;
-  const d = data || {};
+  const [campRes, reactRes] = await Promise.all([
+    supabase.rpc('crm_retargeting_campaign_stats'),
+    supabase.rpc('crm_retargeting_reactivations'),
+  ]);
+  if (campRes.error) throw campRes.error;
+  const d = campRes.data || {};
+  const r = (reactRes && !reactRes.error && reactRes.data) ? reactRes.data : {};
   return {
     funnel: d.funnel || { universe: 0, worked: 0, contacted: 0, interested: 0, returned: 0, lost: 0, blocked: 0 },
     byStatus: d.by_status || {},
     byOwner: Array.isArray(d.by_owner) ? d.by_owner : [],
     bySegment: Array.isArray(d.by_segment) ? d.by_segment : [],
+    // العودة الآلية: مقارنة الشحنات بين أحدث رفعتين (موضوعية، بلا تعليم يدوي)
+    reactivations: {
+      hasPrevious: !!r.has_previous,
+      previousDate: r.previous_date || null,
+      currentDate: r.current_date || null,
+      allReactivated: Number(r.all_reactivated) || 0,
+      allShipments: Number(r.all_shipments_generated) || 0,
+      workedReactivated: Number(r.worked_reactivated) || 0,
+      workedShipments: Number(r.worked_shipments_generated) || 0,
+      workedTotal: Number(r.worked_total) || 0,
+    },
   };
 }
 
