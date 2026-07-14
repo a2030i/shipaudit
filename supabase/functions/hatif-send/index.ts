@@ -65,7 +65,7 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   const { data: { user } } = await uc.auth.getUser();
   if (!user) return null;
   const { data: p } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
-  return { role: p?.role || null, permissions: p?.permissions || {} };
+  return { id: user.id, role: p?.role || null, permissions: p?.permissions || {} };
 }
 
 async function sendTemplate(token: string, o: { channelId: string; templateName: string; language: string; to: string; vars: unknown[] }) {
@@ -78,8 +78,8 @@ async function sendTemplate(token: string, o: { channelId: string; templateName:
   const r = await fetch(SEND_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
   const j = await r.json().catch(() => ({}));
   const ok = r.ok && (j.status === 'accepted' || !!j.contactId || !!j.conversationEventId);
-  return { ok, id: j.conversationEventId || j.contactId || null, status: j.status || null,
-           error: ok ? null : (j.message || j.title || j.error || `http ${r.status}`) };
+  return { ok, id: j.conversationEventId || j.contactId || null, contactId: j.contactId || null, conversationId: j.conversationId || null,
+           status: j.status || null, error: ok ? null : (j.message || j.title || j.error || `http ${r.status}`) };
 }
 
 Deno.serve(async (req) => {
@@ -121,6 +121,7 @@ Deno.serve(async (req) => {
     const items = Array.isArray(body.items) ? body.items as { to: string; vars?: unknown[] }[] : [];
     const templateName = String(body.template_name || '');
     const language = String(body.template_language || 'ar');
+    const campaign = (body.campaign && typeof body.campaign === 'object') ? body.campaign as Record<string, unknown> : {};
     if (!templateName) return json({ ok: false, error: 'template_name مطلوب' });
     if (!items.length) return json({ ok: false, error: 'لا مستلمين' });
     let token: string;
@@ -129,6 +130,8 @@ Deno.serve(async (req) => {
     if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
     if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
     const results: unknown[] = []; let sent = 0, failed = 0;
+    const logRows: Record<string, unknown>[] = [];
+    const sentAt = new Date().toISOString();
     for (const it of items) {
       const to = norm(it.to);
       if (!to || to.length < 11) { results.push({ to: it.to, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
@@ -136,10 +139,19 @@ Deno.serve(async (req) => {
         const res = await sendTemplate(token, { channelId, templateName, language, to, vars: it.vars || [] });
         if (res.ok) sent++; else failed++;
         results.push({ to, ok: res.ok, id: res.id, error: res.error });
+        if (res.ok) logRows.push({
+          phone: to, name: (it as Record<string, unknown>).name || null,
+          template_name: templateName, channel_id: channelId,
+          contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
+          campaign_name: campaign.name || null, campaign_bucket: campaign.bucket || null,
+          amount: (it as Record<string, unknown>).amount ?? null,
+          status: res.status || 'accepted', sent_at: sentAt, sent_by: auth.id,
+        });
       } catch (e) { failed++; results.push({ to, ok: false, error: String((e as Error).message || e) }); }
     }
+    if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* لا يُفشل الإرسال */ } }
     return json({ ok: true, total: items.length, sent, failed, results, provider: 'hatif' });
   }
 
-  return json({ error: 'unknown action (probe|verify|send)' }, 400);
+  return json({ error: 'unknown action (probe|verify|channels|send)' }, 400);
 });
