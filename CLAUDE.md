@@ -274,6 +274,7 @@
 
 ### 1.29 حملات واتساب Hatif — قوالب متعددة + قناة آلية + تتبّع الردود/السداد ✅ (2026-07-15)
 - **المزوّد Hatif/Voxa حصراً** (استُبدل Respondly كلياً §1.24). الأسرار `client_id`/`secret` في أسرار Supabase فقط. اللغة **ثابتة `ar`**.
+- **فخّ التوكن (2026-07-15)**: طلب `POST api.voxa.sa/connect/token` **يجب أن يحمل `scope=VoxaAPI`** (مع grant_type/client_id/client_secret). بدونه يصدر التوكن (فـ`verify` ينجح لأنه يجلب التوكن فقط) لكنه **مرفوض 401 عند sendTemplate**. مطبَّق في الدوال الثلاث: hatif-send · morning-brief · zatca-alert. **أي دالة تجلب توكن Hatif تُضيف `scope:'VoxaAPI'`.**
 - **القناة تُجلَب آلياً**: `hatif-send v2` يستدعي `GET /v1/channels/service-account` (كاش ساعة) إن لم يُمرَّر `channel_id` ولا `HATIF_CHANNEL_ID`. **حُذف حقل ChannelId من الواجهة** (الإعدادات + المودال). لتثبيت قناة بعينها: سرّ `HATIF_CHANNEL_ID`. إجراء `channels` يسرد القنوات.
 - **قوالب متعددة**: `whatsapp_config.templates` = مصفوفة أسماء قوالب معتمدة (بدل `templateName` المفرد — يُرحَّل آلياً عند التحميل). `WhatsAppSettings` يديرها (إضافة/حذف/تعيين افتراضي بـradio). `WhatsAppSendModal` فيه **مُنتقي قالب `<select>`** يُختار لحظة الإطلاق (افتراضه `templateName`). **رتّب متغيّرات القالب في هاتف بنفس الترتيب: `{{1}}` الاسم · `{{2}}` المبلغ · `{{3}}` عدد الفواتير**.
 - **زر «حملة واتساب» على بطاقة العميل** (`/customer-money`): يطلق حملة قالب **لعميل واحد** (`onWa(c)` → مودال بمستلِم واحد). محادثة wa.me الحرّة بقيت كأيقونة 💬 ثانوية فقط.

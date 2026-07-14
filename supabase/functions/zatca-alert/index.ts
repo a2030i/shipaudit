@@ -64,7 +64,7 @@ Deno.serve(async (req) => {
   try {
     const tr = await fetch('https://api.voxa.sa/connect/token', {
       method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: csec }),
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: csec, scope: 'VoxaAPI' }),
     });
     const tj = await tr.json();
     if (!tj.access_token) return json({ ok: false, error: 'فشل توكن Hatif' });

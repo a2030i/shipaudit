@@ -35,7 +35,7 @@ async function accessToken() {
   const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
   if (!id || !secret) throw new Error('أسرار Hatif غير مضبوطة (client_id/secret)');
   const r = await fetch(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret }) });
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret, scope: 'VoxaAPI' }) });
   const j = await r.json();
   if (!j.access_token) throw new Error('token failed: ' + JSON.stringify(j));
   tokenCache = { token: j.access_token, exp: Date.now() + ((Number(j.expires_in) || 3600) * 1000) - 60000 };
