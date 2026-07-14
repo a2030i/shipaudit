@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark } from './components/BrandLogo.jsx';
@@ -40,6 +40,7 @@ import ZohoData          from './pages/ZohoData.jsx';
 import CustomerMoney     from './pages/CustomerMoney.jsx';
 import LegalEscalation   from './pages/LegalEscalation.jsx';
 import Retargeting       from './pages/Retargeting.jsx';
+import WhatsAppSettings   from './pages/WhatsAppSettings.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
@@ -170,6 +171,7 @@ const NAV_ITEMS = [
   { id: 'integrity',    path: '/integrity',    label: 'فحص سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'periods',      path: '/periods',      label: 'إقفال مالي',       icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',       icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
+  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'إعدادات واتساب', icon: MessageCircle, section: 'system', permKey: 'collections.view' },
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات', icon: UserCog,  section: 'system', adminOnly: true },
 ];
 // Each section carries an accent color so the sidebar reads as
@@ -211,6 +213,7 @@ const PAGE_TITLES = {
   '/customer-money':    'تحصيل العملاء',
   '/legal':             'التصعيد القانوني',
   '/retargeting':       'إعادة الاستهداف',
+  '/whatsapp-settings': 'إعدادات واتساب',
   '/uploads':           'صحة مصادر البيانات',
   '/hub':               'حالة الناقلين',
   '/carrier':           'بروفايل الشركة',
@@ -292,7 +295,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -872,6 +875,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/retargeting'} scroll>
               <Retargeting isActive={pathname==='/retargeting'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/whatsapp-settings'} scroll>
+              <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
             </PageSlot>
             <PageSlot active={pathname==='/zoho-data'} scroll>
               <ZohoData isActive={pathname==='/zoho-data'}/>
