@@ -11,8 +11,10 @@ import { supabase } from './supabase.js';
 import { normalizeName } from './crmService.js';
 import { loadLatestMerchants } from './merchantsService.js';
 
-const PAGE = 500;
+const PAGE = 50;   // كان 500 — جلب/رسم 500 صفّ×33 عمود = بطء شديد على 51 ألف
 const SUPABASE_PAGE = 1000;
+const CACHE_TTL_MS = 2 * 60 * 1000;
+const META_CACHE_TTL_MS = 5 * 60 * 1000;
 const LEAD_COLUMNS = [
   'id', 'name', 'name_normalized', 'name_en',
   'phone', 'phone_normalized', 'whatsapp', 'whatsapp_normalized', 'email',
@@ -24,6 +26,18 @@ const LEAD_COLUMNS = [
   'matched_store_billing_type', 'matched_store_shipments',
   'matched_store_last_shipment_at', 'matched_store_wallet',
 ].join(',');
+
+const listCache = new Map();
+let metaCache = { at: 0, data: null, promise: null };
+
+function cacheKey(parts) {
+  return JSON.stringify(parts || {});
+}
+
+export function invalidateLeadCaches() {
+  listCache.clear();
+  metaCache = { at: 0, data: null, promise: null };
+}
 
 async function selectAllRows(makeQuery, pageSize = SUPABASE_PAGE) {
   const rows = [];
@@ -383,6 +397,7 @@ export async function uploadLeadsSnapshot({
     if (error) throw error;
     added += chunk.length;
   }
+  if (added) invalidateLeadCaches();
 
   return {
     added,
@@ -408,7 +423,12 @@ export async function loadLeads({
   unassignedOnly = false,
   page = 0,
   limit = PAGE,
+  force = false,
 } = {}) {
+  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, unassignedOnly, page, limit });
+  const cached = listCache.get(key);
+  if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
+
   const from = Math.max(0, page) * limit;
   const to = from + limit - 1;
   let query = supabase
@@ -429,15 +449,84 @@ export async function loadLeads({
     const phone = normalizeSaudiPhone(term);
     query = phone
       ? query.or(`phone_normalized.eq.${phone},whatsapp_normalized.eq.${phone}`)
-      : query.or(`name.ilike.%${term}%,name_en.ilike.%${term}%,email.ilike.%${term}%,category.ilike.%${term}%`);
+      : query.or(`name.ilike.%${term}%,name_en.ilike.%${term}%,email.ilike.%${term}%,category.ilike.%${term}%,platform.ilike.%${term}%,website.ilike.%${term}%,store_url.ilike.%${term}%`);
   }
 
   const { data, error, count } = await query;
   if (error) throw error;
-  return { rows: data || [], count: count || 0, page, limit };
+  const result = { rows: data || [], count: count || 0, page, limit };
+  listCache.set(key, { at: Date.now(), data: result });
+  return result;
 }
 
-export async function loadLeadOptions() {
+function normalizeMeta(data) {
+  const payload = data || {};
+  return {
+    stats: {
+      total: Number(payload.stats?.total) || 0,
+      newCount: Number(payload.stats?.newCount) || 0,
+      existingCustomers: Number(payload.stats?.existingCustomers) || 0,
+      duplicateRows: Number(payload.stats?.duplicateRows) || 0,
+      unassigned: Number(payload.stats?.unassigned) || 0,
+      converted: Number(payload.stats?.converted) || 0,
+    },
+    options: {
+      categories: Array.isArray(payload.options?.categories) ? payload.options.categories : [],
+      platforms: Array.isArray(payload.options?.platforms) ? payload.options.platforms : [],
+      statuses: Array.isArray(payload.options?.statuses) ? payload.options.statuses : [],
+    },
+  };
+}
+
+async function loadLeadMeta({ force = false } = {}) {
+  if (!force && metaCache.data && Date.now() - metaCache.at < META_CACHE_TTL_MS) return metaCache.data;
+  if (!force && metaCache.promise) return metaCache.promise;
+
+  metaCache.promise = (async () => {
+    const { data, error } = await supabase.rpc('crm_leads_dashboard_meta');
+    if (error) throw error;
+    const normalized = normalizeMeta(data);
+    metaCache = { at: Date.now(), data: normalized, promise: null };
+    return normalized;
+  })().catch(async (rpcError) => {
+    metaCache.promise = null;
+    console.warn('crm_leads_dashboard_meta failed, falling back to client aggregation', rpcError);
+    const rows = await selectAllRows(() => supabase
+      .from('crm_leads')
+      .select('status, owner_id, duplicate_count, matched_store_id, category, platform')
+      .order('created_at', { ascending: false }));
+    const fallback = normalizeMeta({
+      stats: {
+        total: rows.length,
+        newCount: rows.filter(r => r.status === 'new').length,
+        existingCustomers: rows.filter(r => r.matched_store_id || r.status === 'existing_customer').length,
+        duplicateRows: rows.filter(r => Number(r.duplicate_count) > 1).length,
+        unassigned: rows.filter(r => !r.owner_id).length,
+        converted: rows.filter(r => r.status === 'converted').length,
+      },
+      options: {
+        categories: [...new Set((rows || []).map(r => r.category).filter(Boolean))].sort(),
+        platforms: [...new Set((rows || []).map(r => r.platform).filter(Boolean))].sort(),
+        statuses: [...new Set((rows || []).map(r => r.status).filter(Boolean))].sort(),
+      },
+    });
+    metaCache = { at: Date.now(), data: fallback, promise: null };
+    return fallback;
+  });
+  return metaCache.promise;
+}
+
+export async function loadLeadOptions(options = {}) {
+  const meta = await loadLeadMeta(options);
+  return meta.options;
+}
+
+export async function loadLeadStats(options = {}) {
+  const meta = await loadLeadMeta(options);
+  return meta.stats;
+}
+
+export async function loadLeadOptionsLegacy() {
   const data = await selectAllRows(() => supabase
     .from('crm_leads')
     .select('category, platform, status')
@@ -449,7 +538,7 @@ export async function loadLeadOptions() {
   };
 }
 
-export async function loadLeadStats() {
+export async function loadLeadStatsLegacy() {
   const data = await selectAllRows(() => supabase
     .from('crm_leads')
     .select('status, owner_id, duplicate_count, matched_store_id, created_at')
@@ -467,12 +556,14 @@ export async function loadLeadStats() {
 
 export async function createLead({
   name, nameEn = null, phone = null, whatsapp = null, email = null, city = null,
-  category = null, website = null, platform = null, notes = null,
+  category = null, website = null, platform = null, storeUrl = null,
+  instagram = null, socialLinks = null, notes = null,
   ownerId = null, userId = null,
 }) {
   if (!name?.trim()) throw new Error('الاسم مطلوب');
   const phoneNorm = normalizeSaudiPhone(phone);
   const waNorm = normalizeSaudiPhone(whatsapp) || phoneNorm;
+  const links = cleanSocialLinks({ ...(socialLinks || {}), instagram });
   const { data, error } = await supabase.from('crm_leads').insert({
     name: name.trim(),
     name_normalized: normalizeName(name),
@@ -486,6 +577,8 @@ export async function createLead({
     category,
     website,
     platform,
+    store_url: storeUrl || null,
+    social_links: links,
     notes,
     source: 'manual',
     status: 'new',
@@ -493,6 +586,7 @@ export async function createLead({
     created_by: userId,
   }).select(LEAD_COLUMNS).single();
   if (error) throw error;
+  invalidateLeadCaches();
   return data;
 }
 
@@ -510,6 +604,7 @@ export async function updateLead(id, patch) {
   const { data, error } = await supabase.from('crm_leads')
     .update(normalized).eq('id', id).select(LEAD_COLUMNS).single();
   if (error) throw error;
+  invalidateLeadCaches();
   return data;
 }
 
@@ -531,5 +626,6 @@ export async function deleteLead(id) {
   if (!id) throw new Error('id مطلوب');
   const { error } = await supabase.from('crm_leads').delete().eq('id', id);
   if (error) throw error;
+  invalidateLeadCaches();
   return { ok: true };
 }
