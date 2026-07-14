@@ -17,6 +17,7 @@ const env = (...names: string[]) => { for (const n of names) { const v = Deno.en
 
 const TOKEN_URL = 'https://api.voxa.sa/connect/token';
 const SEND_URL  = 'https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate';
+const CHANNELS_URL = 'https://api.voxa.sa/v1/channels/service-account';
 
 function norm(raw: unknown) {
   let d = String(raw || '').replace(/\D/g, '');
@@ -39,6 +40,23 @@ async function accessToken() {
   if (!j.access_token) throw new Error('token failed: ' + JSON.stringify(j));
   tokenCache = { token: j.access_token, exp: Date.now() + ((Number(j.expires_in) || 3600) * 1000) - 60000 };
   return tokenCache.token;
+}
+
+// جلب القنوات — لإلغاء الحاجة لإدخال ChannelId يدوياً.
+let channelCache: { id: string; exp: number } | null = null;
+async function fetchChannels(token: string) {
+  const r = await fetch(CHANNELS_URL, { headers: { Authorization: `Bearer ${token}` } });
+  const j = await r.json().catch(() => ({}));
+  return Array.isArray(j.items) ? j.items : [];
+}
+async function getChannelId(token: string) {
+  const fixed = env('hatif_channel_id', 'HATIF_CHANNEL_ID');
+  if (fixed) return fixed;
+  if (channelCache && channelCache.exp > Date.now()) return channelCache.id;
+  const items = await fetchChannels(token);
+  const id = items[0]?.id || '';
+  if (id) channelCache = { id, exp: Date.now() + 3600_000 };
+  return id;
 }
 
 async function requireUser(req: Request, db: ReturnType<typeof svc>) {
@@ -91,16 +109,25 @@ Deno.serve(async (req) => {
     catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
   }
 
+  if (action === 'channels') {
+    try {
+      const t = await accessToken();
+      const items = await fetchChannels(t);
+      return json({ ok: true, channels: items.map((c: Record<string, any>) => ({ id: c.id, name: c.name, number: c.phoneNumber?.number || null })) });
+    } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  }
+
   if (action === 'send') {
     const items = Array.isArray(body.items) ? body.items as { to: string; vars?: unknown[] }[] : [];
-    const channelId = String(body.channel_id || env('hatif_channel_id', 'HATIF_CHANNEL_ID') || '');
     const templateName = String(body.template_name || '');
     const language = String(body.template_language || 'ar');
-    if (!channelId) return json({ ok: false, error: 'channel_id (ChannelId) مطلوب' });
     if (!templateName) return json({ ok: false, error: 'template_name مطلوب' });
     if (!items.length) return json({ ok: false, error: 'لا مستلمين' });
     let token: string;
     try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    let channelId = String(body.channel_id || '');
+    if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
+    if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
     const results: unknown[] = []; let sent = 0, failed = 0;
     for (const it of items) {
       const to = norm(it.to);
