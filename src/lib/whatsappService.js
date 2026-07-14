@@ -96,6 +96,19 @@ export async function loadWhatsAppCampaignStatus() {
   return map;
 }
 
+// سجل الحملات المرجعي — كل رسالة مع اسم المُرسِل والحالة. phone لتاريخ عميل واحد.
+export async function loadWhatsAppLog({ phone = null, limit = 300 } = {}) {
+  const { data, error } = await supabase.rpc('whatsapp_campaign_log', { p_phone: phone, p_limit: limit });
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({
+    id: r.id, phone: r.phone, name: r.name, template: r.template_name,
+    campaign: r.campaign_name, bucket: r.campaign_bucket, amount: r.amount,
+    status: r.status, sentAt: r.sent_at, sentBy: r.sent_by_name,
+    deliveredAt: r.delivered_at, readAt: r.read_at, repliedAt: r.replied_at,
+    replyBody: r.reply_body, error: r.error_reason,
+  }));
+}
+
 // ── تنبيه زاتكا المسائي — إعداد + معاينة + إرسال تجريبي ──────────────
 // app_settings['zatca_alert'] تقرؤه edge function zatca-alert (cron 21:00 KSA).
 const ZATCA_ALERT_KEY = 'zatca_alert';

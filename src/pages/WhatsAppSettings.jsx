@@ -6,7 +6,9 @@ import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Tra
 import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
-  loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow } from '../lib/whatsappService.js';
+  loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
+  loadWhatsAppLog } from '../lib/whatsappService.js';
+import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 
 export default function WhatsAppSettings({ isActive = true }) {
   const { can } = useAuth();
@@ -19,6 +21,7 @@ export default function WhatsAppSettings({ isActive = true }) {
   const [zatca, setZatca] = useState(null);        // إعداد تنبيه زاتكا المسائي
   const [zBusy, setZBusy] = useState(false);
   const [zPrev, setZPrev] = useState(null);
+  const [tab, setTab] = useState('settings');      // settings | campaigns
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -80,13 +83,26 @@ export default function WhatsAppSettings({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '20px 24px 60px', maxWidth: 660, margin: '0 auto' }}>
+    <div style={{ padding: '20px 24px 60px', maxWidth: tab === 'campaigns' ? 1100 : 660, margin: '0 auto' }}>
       <PageHeader icon={<MessageCircle size={22}/>} iconColor="#22C55E"
-        title="إعدادات واتساب"
-        subtitle="الإرسال عبر Hatif · هاتف (Voxa) — قالب معتمد + قناة"
+        title="واتساب"
+        subtitle="الإرسال عبر Hatif · هاتف (Voxa) — إعدادات القوالب + سجل الحملات"
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
       />
-      {!cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
+
+      {/* مبدّل: الإعدادات / سجل الحملات */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات']].map(([v, lbl]) => (
+          <button key={v} onClick={() => setTab(v)} style={{
+            padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+            border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
+            background: tab === v ? 'color-mix(in srgb, #22C55E 12%, transparent)' : 'transparent', color: 'var(--text)',
+          }}>{lbl}</button>
+        ))}
+      </div>
+
+      {tab === 'campaigns' ? <CampaignsTab/> :
+      !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', lineHeight: 1.7 }}>
             📡 المزوّد: <b style={{ color: 'var(--text)' }}>Hatif · هاتف (Voxa)</b> · اللغة: <b>ar</b> (ثابتة) · الأسرار
@@ -178,6 +194,77 @@ export default function WhatsAppSettings({ isActive = true }) {
           )}
         </Card>
       )}
+    </div>
+  );
+}
+
+// تاب سجل الحملات — كل رسالة أُرسلت: المستلِم/القالب/الحملة/المُرسِل/الوقت/الحالة + فلاتر.
+function CampaignsTab() {
+  const [rows, setRows] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [q, setQ] = useState('');
+  const [tpl, setTpl] = useState('');
+  const [status, setStatus] = useState('');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try { setRows(await loadWhatsAppLog({ limit: 500 })); } catch { setRows([]); }
+    setLoading(false);
+  }, []);
+  useEffect(() => { load(); }, [load]);
+
+  const templates = [...new Set((rows || []).map(r => r.template).filter(Boolean))];
+  const filtered = (rows || []).filter(r => {
+    if (tpl && r.template !== tpl) return false;
+    if (status) {
+      const s = r.repliedAt ? 'replied' : (r.status === 'Failed' || r.error) ? 'failed' : r.readAt ? 'read' : r.deliveredAt ? 'delivered' : 'sent';
+      if (s !== status) return false;
+    }
+    if (q) { const s = q.trim().toLowerCase(); if (![r.name, r.phone, r.campaign].some(v => String(v ?? '').toLowerCase().includes(s))) return false; }
+    return true;
+  });
+
+  const stats = {
+    total: (rows || []).length,
+    delivered: (rows || []).filter(r => r.deliveredAt || r.readAt).length,
+    read: (rows || []).filter(r => r.readAt).length,
+    replied: (rows || []).filter(r => r.repliedAt).length,
+    failed: (rows || []).filter(r => r.status === 'Failed' || r.error).length,
+  };
+  const selStyle = { padding: '8px 10px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontSize: 12 };
+
+  if (rows == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* مؤشّرات */}
+      <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
+        <span>الإجمالي <b style={{ fontFamily: 'var(--font-mono)' }}>{stats.total}</b></span>
+        <span>وصلت <b style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{stats.delivered}</b></span>
+        <span>قُرئت <b style={{ color: 'var(--green2)', fontFamily: 'var(--font-mono)' }}>{stats.read}</b></span>
+        <span>ردّوا <b style={{ color: '#3B82F6', fontFamily: 'var(--font-mono)' }}>{stats.replied}</b></span>
+        <span>فشل <b style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>{stats.failed}</b></span>
+        <Btn size="sm" variant="ghost" style={{ marginInlineStart: 'auto' }} onClick={load} disabled={loading}><RefreshCw size={13} className={loading ? 'spin' : ''}/> تحديث</Btn>
+      </div>
+      {/* فلاتر */}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <input value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالاسم/الجوال/الحملة…"
+          style={{ ...selStyle, flex: 1, minWidth: 180 }}/>
+        <select value={tpl} onChange={e => setTpl(e.target.value)} style={selStyle}>
+          <option value="">كل القوالب</option>
+          {templates.map(t => <option key={t} value={t}>{t}</option>)}
+        </select>
+        <select value={status} onChange={e => setStatus(e.target.value)} style={selStyle}>
+          <option value="">كل الحالات</option>
+          <option value="sent">أُرسلت</option>
+          <option value="delivered">وصلت</option>
+          <option value="read">قُرئت</option>
+          <option value="replied">ردّ</option>
+          <option value="failed">فشل</option>
+        </select>
+      </div>
+      <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>عرض {filtered.length} من {stats.total} رسالة</div>
+      <CampaignLogTable rows={filtered}/>
     </div>
   );
 }

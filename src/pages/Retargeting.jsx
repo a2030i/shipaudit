@@ -3,7 +3,7 @@
 // الشرائح/الأولوية/الربط + فلاتر كاملة + جدول فرص مُرقّم. يقرأ محرّك التصنيف
 // (v_crm_retargeting) عبر retargetingService — عميل فريد بالهاتف.
 import { useState, useEffect, useCallback } from 'react';
-import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
+import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search, Send } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -12,10 +12,19 @@ import {
   loadRetargetingCampaign, loadRetargetingStatusChanges,
   SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
+import { loadWhatsAppCampaignStatus, normalizeSaudiPhone } from '../lib/whatsappService.js';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
+const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
+// عميل → مستلِم حملة: متغيّرات القالب {{1}} اسم المتجر · {{2}} عدد الشحنات · {{3}} أيام آخر شحنة
+const leadToRecipient = (l) => ({
+  to: normalizeSaudiPhone(l.phone), name: l.storeName, amount: null,
+  vars: [l.storeName || '', String(l.totalShipments || 0), l.daysSinceLast == null ? '—' : `${l.daysSinceLast} يوم`],
+});
 const waLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `https://wa.me/${d}` : null; };
 const telLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `tel:+${d}` : null; };
 
@@ -67,6 +76,8 @@ export default function Retargeting({ isActive = true }) {
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
   const [followUp, setFollowUp] = useState(null);   // العميل المفتوح في مودال المتابعة
+  const [waStatus, setWaStatus] = useState(() => new Map());   // حالة آخر حملة لكل هاتف
+  const [waRecipients, setWaRecipients] = useState(null);      // مستلمو حملة (bulk أو عميل واحد)
   const [filters, setFilters] = useState({
     segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
     status: '', ownerId: '', unassigned: false, includeExcluded: false, page: 0,
@@ -103,10 +114,20 @@ export default function Retargeting({ isActive = true }) {
     setListLoading(false);
   }, [filters]);
 
+  const loadWa = useCallback(() => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {}), []);
+
   useEffect(() => { if (isActive) loadDash(); }, [isActive, loadDash]);
   useEffect(() => { if (isActive) loadList(); }, [isActive, loadList]);
+  useEffect(() => { if (isActive) loadWa(); }, [isActive, loadWa]);
 
   const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
+
+  const canCampaign = can('crm.view') || can('collections.view');
+  const openBulkCampaign = () => {
+    const recs = leads.filter(l => l.phone).map(leadToRecipient);
+    if (!recs.length) { toast('لا مستلمون بأرقام في القائمة الحالية', 'info'); return; }
+    setWaRecipients(recs);
+  };
 
   if (!can('crm.view') && !can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
@@ -273,7 +294,13 @@ export default function Retargeting({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={filters.includeExcluded} onChange={e => setFilter({ includeExcluded: e.target.checked })}/> إظهار المستبعَدين (بلاك لست/تجريبي)
             </label>
-            <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>عرض {leads.length} من {fmt0(count)} فرصة</span>
+            {canCampaign && (
+              <Btn size="sm" variant="accent" icon={<Send size={13}/>} style={{ marginInlineStart: 'auto' }}
+                onClick={openBulkCampaign} disabled={!leads.some(l => l.phone)}>
+                إطلاق حملة للمعروضين ({leads.filter(l => l.phone).length})
+              </Btn>
+            )}
+            <span style={{ marginInlineStart: canCampaign ? 0 : 'auto', fontSize: 12, color: 'var(--muted)' }}>عرض {leads.length} من {fmt0(count)} فرصة</span>
           </div>
         </Card>
 
@@ -317,11 +344,15 @@ export default function Retargeting({ isActive = true }) {
                         {l.ownerName && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>👤 {l.ownerName}</div>}
                         {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>⏰ {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
                         {l.notes && <div title={l.notes} style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {l.notes}</div>}
+                        {(() => { const w = waStatus.get(normalizeSaudiPhone(l.phone)); if (!w) return null;
+                          const st = w.paidAfter ? { t: '✅ سدّد', c: 'var(--green)' } : w.replied ? { t: '💬 ردّ', c: '#3B82F6' } : w.read ? { t: 'قُرئت', c: 'var(--muted)' } : w.delivered ? { t: 'وصلت', c: 'var(--muted)' } : { t: 'أُرسلت', c: 'var(--muted2)' };
+                          return <div style={{ fontSize: 10, color: st.c, marginTop: 2 }}>📲 حملة {fmtDate(w.lastSentAt)}{w.sends > 1 ? ` (${w.sends}×)` : ''} · {st.t}</div>; })()}
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }}>
-                        <div style={{ display: 'flex', gap: 6 }}>
+                        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           {telLink(l.phone) && <a href={telLink(l.phone)} onClick={e => e.stopPropagation()} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {waLink(l.phone) && <a href={waLink(l.phone)} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" title="واتساب" style={{ color: 'var(--green)' }}><MessageCircle size={15}/></a>}
+                          {canCampaign && l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إطلاق حملة قالب لهذا العميل" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
+                          {waLink(l.phone) && <a href={waLink(l.phone)} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" title="محادثة يدوية (بلا قالب)" style={{ color: 'var(--muted)' }}><MessageCircle size={15}/></a>}
                         </div>
                       </td>
                     </tr>
@@ -346,9 +377,18 @@ export default function Retargeting({ isActive = true }) {
       {followUp && (
         <FollowupModal
           lead={followUp} employees={employees}
+          canCampaign={canCampaign}
+          onCampaign={(l) => { setFollowUp(null); setWaRecipients([leadToRecipient(l)]); }}
           onClose={() => setFollowUp(null)}
           onSaved={() => { setFollowUp(null); loadList(); loadDash(); }}
         />
+      )}
+
+      {waRecipients && (
+        <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients}
+          bucketLabel="إعادة الاستهداف"
+          onClose={() => setWaRecipients(null)}
+          onSent={() => { setWaRecipients(null); loadWa(); }}/>
       )}
     </div>
   );
@@ -474,7 +514,7 @@ function CampaignView({ campaign, changes }) {
 const inp = { width: '100%', padding: '8px 10px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-sans)' };
 const lbl = { fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 };
 
-function FollowupModal({ lead, employees, onClose, onSaved }) {
+function FollowupModal({ lead, employees, onClose, onSaved, canCampaign, onCampaign }) {
   const [status, setStatus] = useState(lead.status || 'new');
   const [ownerId, setOwnerId] = useState(lead.ownerId || '');
   const [nextAt, setNextAt] = useState(lead.nextActionAt ? String(lead.nextActionAt).slice(0, 10) : '');
@@ -511,9 +551,16 @@ function FollowupModal({ lead, employees, onClose, onSaved }) {
         {/* أزرار سريعة: تفتح القناة وتسجّل الحالة + آخر تواصل */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {telLink(lead.phone) && <a href={telLink(lead.phone)} onClick={() => save(true, 'contacted')} style={{ ...quick, color: 'var(--text)' }}><Phone size={14}/> اتصلت</a>}
-          {waLink(lead.phone) && <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" onClick={() => save(true, 'whatsapp_sent')} style={{ ...quick, color: 'var(--green)' }}><MessageCircle size={14}/> واتساب</a>}
+          {canCampaign && lead.phone && <button onClick={() => onCampaign?.(lead)} style={{ ...quick, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 10%, transparent)', cursor: 'pointer' }}><Send size={14}/> إطلاق حملة</button>}
+          {waLink(lead.phone) && <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" onClick={() => save(true, 'whatsapp_sent')} style={{ ...quick, color: 'var(--muted)' }}><MessageCircle size={14}/> محادثة</a>}
           <Btn size="sm" variant="ghost" onClick={() => save(false, 'blacklist')} disabled={saving}>🚫 بلاك لست</Btn>
           <Btn size="sm" variant="ghost" onClick={() => save(false, 'test')} disabled={saving}>🧪 تجريبي</Btn>
+        </div>
+
+        {/* تاريخ الحملات المُرسَلة لهذا العميل */}
+        <div>
+          <label style={lbl}>📲 الحملات المُرسَلة لهذا العميل</label>
+          <CustomerCampaignHistory phone={lead.phone}/>
         </div>
         <div><label style={lbl}>الحالة / نتيجة التواصل</label>
           <Sel value={status} onChange={e => setStatus(e.target.value)}>{Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}</Sel></div>
