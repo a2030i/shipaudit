@@ -271,7 +271,11 @@ export default function Retargeting({ isActive = true }) {
                     <tr key={l.phone + i} onClick={() => setFollowUp(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                       <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
                         {l.storeName}{l.highValue && <span title="قيمة عالية" style={{ marginInlineStart: 4 }}>⭐</span>}
-                        {l.storeCount > 1 && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{l.storeCount} متاجر بنفس الرقم</div>}
+                        {l.storeCount > 1 && (
+                          <div title={(l.storeNames || []).join(' · ')} style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                            {l.storeCount} متاجر: {(l.storeNames || []).slice(0, 3).join(' · ')}{(l.storeNames || []).length > 3 ? ' …' : ''}
+                          </div>
+                        )}
                       </td>
                       <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>{l.phone || '—'}</td>
                       <td data-label="الشحنات" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(l.totalShipments)}</td>
@@ -287,8 +291,9 @@ export default function Retargeting({ isActive = true }) {
                       </td>
                       <td data-label="المتابعة" style={{ padding: '10px 12px' }}>
                         <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: stm.color, background: `color-mix(in srgb, ${stm.color} 12%, transparent)` }}>{stm.label}</span>
-                        {l.ownerName && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{l.ownerName}</div>}
-                        {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>متابعة {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
+                        {l.ownerName && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>👤 {l.ownerName}</div>}
+                        {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>⏰ {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
+                        {l.notes && <div title={l.notes} style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {l.notes}</div>}
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
@@ -361,6 +366,11 @@ function FollowupModal({ lead, employees, onClose, onSaved }) {
           <span>{lead.daysSinceLast == null ? 'لم يشحن' : `آخر شحنة ${lead.daysSinceLast}ي`}</span>
           {lead.wallet > 0.5 && <span style={{ color: 'var(--green)' }}>محفظة {fmt2(lead.wallet)}</span>}
         </div>
+        {lead.storeCount > 1 && (
+          <div style={{ fontSize: 11.5, color: 'var(--text2)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '6px 10px' }}>
+            🏬 متاجره ({lead.storeCount}): {(lead.storeNames || []).join(' · ')}
+          </div>
+        )}
         {/* أزرار سريعة: تفتح القناة وتسجّل الحالة + آخر تواصل */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {telLink(lead.phone) && <a href={telLink(lead.phone)} onClick={() => save(true, 'contacted')} style={{ ...quick, color: 'var(--text)' }}><Phone size={14}/> اتصلت</a>}
