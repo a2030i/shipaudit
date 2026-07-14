@@ -97,14 +97,22 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
         // ── Preview + config view ──
         <div>
           {/* Config */}
+          <div style={{ marginBottom: 10 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>مزوّد الإرسال</label>
+            <select value={cfg.provider || 'respondly'} onChange={e => saveCfg({ ...cfg, provider: e.target.value })}
+              style={{ width: '100%', padding: '9px 11px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)' }}>
+              <option value="respondly">Respondly (الحالي)</option>
+              <option value="hatif">Hatif · هاتف (Voxa)</option>
+            </select>
+          </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
             <Input label="اسم القالب المعتمد" value={cfg.templateName}
               onChange={e => saveCfg({ ...cfg, templateName: e.target.value })} placeholder="مثال: dues_notice"/>
             <Input label="لغة القالب" value={cfg.templateLanguage}
               onChange={e => saveCfg({ ...cfg, templateLanguage: e.target.value })} placeholder="ar"/>
           </div>
-          <Input label="معرّف القناة (channel_id) — اختياري" value={cfg.channelId}
-            onChange={e => saveCfg({ ...cfg, channelId: e.target.value })} placeholder="اتركه فارغاً لو قناة واحدة"/>
+          <Input label={cfg.provider === 'hatif' ? 'معرّف القناة (ChannelId) — مطلوب لـHatif' : 'معرّف القناة (channel_id) — اختياري'} value={cfg.channelId}
+            onChange={e => saveCfg({ ...cfg, channelId: e.target.value })} placeholder={cfg.provider === 'hatif' ? 'ChannelId من لوحة Hatif' : 'اتركه فارغاً لو قناة واحدة'}/>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 14px' }}>
             <Btn size="sm" variant="ghost" onClick={doVerify} disabled={verifying}>
