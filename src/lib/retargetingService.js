@@ -63,6 +63,19 @@ export async function setRetargetingFollowup(phone, { status = null, ownerId = n
   return data;
 }
 
+// أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح.
+export async function loadRetargetingCampaign() {
+  const { data, error } = await supabase.rpc('crm_retargeting_campaign_stats');
+  if (error) throw error;
+  const d = data || {};
+  return {
+    funnel: d.funnel || { universe: 0, worked: 0, contacted: 0, interested: 0, returned: 0, lost: 0, blocked: 0 },
+    byStatus: d.by_status || {},
+    byOwner: Array.isArray(d.by_owner) ? d.by_owner : [],
+    bySegment: Array.isArray(d.by_segment) ? d.by_segment : [],
+  };
+}
+
 // إحصائيات المتابعة (توزيع الحالات + المستحقّة اليوم + عادوا).
 export async function loadRetargetingFollowupStats() {
   const { data, error } = await supabase.rpc('crm_retargeting_followup_stats');

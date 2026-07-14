@@ -9,6 +9,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   loadRetargetingDashboard, loadRetargetingLeads, loadRetargetingFollowupStats, setRetargetingFollowup,
+  loadRetargetingCampaign,
   SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
 
@@ -57,6 +58,8 @@ export default function Retargeting({ isActive = true }) {
   const { can } = useAuth();
   const [dash, setDash] = useState(null);
   const [fuStats, setFuStats] = useState(null);
+  const [campaign, setCampaign] = useState(null);
+  const [view, setView] = useState('leads');   // 'leads' | 'campaign'
   const [employees, setEmployees] = useState([]);
   const [leads, setLeads] = useState([]);
   const [count, setCount] = useState(0);
@@ -71,12 +74,13 @@ export default function Retargeting({ isActive = true }) {
   const loadDash = useCallback(async () => {
     setLoading(true);
     try {
-      const [d, fs, emp] = await Promise.all([
+      const [d, fs, emp, camp] = await Promise.all([
         loadRetargetingDashboard(),
         loadRetargetingFollowupStats().catch(() => null),
         loadEmployees().catch(() => []),
+        loadRetargetingCampaign().catch(() => null),
       ]);
-      setDash(d); setFuStats(fs); setEmployees(emp || []);
+      setDash(d); setFuStats(fs); setEmployees(emp || []); setCampaign(camp);
     } catch (e) { toast(`فشل تحميل الداشبورد: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
@@ -135,6 +139,20 @@ export default function Retargeting({ isActive = true }) {
           </div>
         )}
 
+        {/* مبدّل العرض: الفرص / أداء الحملة */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+          {[['leads', '🎯 الفرص'], ['campaign', '📈 أداء الحملة']].map(([v, lbl]) => (
+            <button key={v} onClick={() => setView(v)} style={{
+              padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
+              border: `1.5px solid ${view === v ? '#8B5CF6' : 'var(--border)'}`,
+              background: view === v ? 'color-mix(in srgb, #8B5CF6 12%, transparent)' : 'transparent', color: 'var(--text)',
+            }}>{lbl}</button>
+          ))}
+        </div>
+
+        {view === 'campaign' && <CampaignView campaign={campaign}/>}
+
+        {view === 'leads' && (<>
         {/* المؤشّرات + فرق الرفعة */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
           {KPIS.map(k => (
@@ -317,6 +335,7 @@ export default function Retargeting({ isActive = true }) {
             <Btn size="sm" variant="ghost" disabled={filters.page + 1 >= totalPages} onClick={() => setFilter({ page: filters.page + 1 })}>التالي <ChevronLeft size={14}/></Btn>
           </div>
         )}
+        </>)}
       </>)}
 
       {followUp && (
@@ -332,6 +351,71 @@ export default function Retargeting({ isActive = true }) {
 
 function SectionTitle({ children }) {
   return <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', margin: '4px 0 8px' }}>{children}</div>;
+}
+
+// عرض أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح.
+function CampaignView({ campaign }) {
+  if (!campaign) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
+  const f = campaign.funnel || {};
+  const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
+  const steps = [
+    { k: 'worked', label: 'عُمل عليه', val: f.worked, of: f.universe, green: false },
+    { k: 'contacted', label: 'تم التواصل', val: f.contacted, of: f.worked, green: false },
+    { k: 'interested', label: 'مهتم', val: f.interested, of: f.contacted, green: false },
+    { k: 'returned', label: 'عاد للشحن ✅', val: f.returned, of: f.interested, green: true },
+  ];
+  const th = { padding: '8px 10px', textAlign: 'right', fontSize: 11, color: 'var(--muted)' };
+  const td = { padding: '8px 10px', fontFamily: 'var(--font-mono)' };
+  return (<>
+    {!f.worked && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>لا نشاط بعد — ابدأ العمل على الفرص (اتصال/واتساب/تحديث الحالة) لتظهر نتائج الحملة هنا.</div>}
+    <SectionTitle>قمع التحويل (النجاح = عاد للشحن)</SectionTitle>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }} className="hero-grid">
+      {steps.map(s => (
+        <Card key={s.k} style={{ padding: '12px 14px', borderTop: `3px solid ${s.green ? 'var(--green)' : '#8B5CF6'}` }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>{s.label}</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: s.green ? 'var(--green)' : 'var(--text)', lineHeight: 1 }}>{fmt0(s.val)}</div>
+          <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>{pct(s.val, s.of)}% من السابق</div>
+        </Card>
+      ))}
+      <Card style={{ padding: '12px 14px', borderTop: '3px solid var(--red)' }}>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>خسارة/عوائق</div>
+        <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--red)', lineHeight: 1 }}>{fmt0((f.lost || 0) + (f.blocked || 0))}</div>
+        <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>{fmt0(f.lost)} غير مهتم · {fmt0(f.blocked)} عائق</div>
+      </Card>
+    </div>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 12 }}>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', fontWeight: 700, fontSize: 12.5, background: 'var(--surface2)' }}>أداء الموظفين</div>
+        {!campaign.byOwner.length ? <div style={{ padding: 16, fontSize: 12, color: 'var(--muted)' }}>لا إسنادات بعد</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['الموظف', 'عُمل', 'تواصل', 'مهتم', 'عاد'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{campaign.byOwner.map((o, i) => (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ ...td, fontWeight: 600, fontFamily: 'var(--font-sans)' }}>{o.name}</td>
+                <td style={td}>{fmt0(o.worked)}</td><td style={td}>{fmt0(o.contacted)}</td><td style={td}>{fmt0(o.interested)}</td>
+                <td style={{ ...td, color: 'var(--green)', fontWeight: 700 }}>{fmt0(o.returned)}</td>
+              </tr>
+            ))}</tbody>
+          </table>
+        )}
+      </Card>
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '10px 12px', fontWeight: 700, fontSize: 12.5, background: 'var(--surface2)' }}>أداء الشرائح</div>
+        {!campaign.bySegment.length ? <div style={{ padding: 16, fontSize: 12, color: 'var(--muted)' }}>لا نشاط بعد</div> : (
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['الشريحة', 'عُمل', 'مهتم', 'عاد'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{campaign.bySegment.map((s, i) => { const m = segmentMeta(s.segment); return (
+              <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                <td style={{ ...td, fontFamily: 'var(--font-sans)' }}><span style={{ color: m.color, fontWeight: 700 }}>{m.icon} {m.label}</span></td>
+                <td style={td}>{fmt0(s.worked)}</td><td style={td}>{fmt0(s.interested)}</td>
+                <td style={{ ...td, color: 'var(--green)', fontWeight: 700 }}>{fmt0(s.returned)}</td>
+              </tr>
+            ); })}</tbody>
+          </table>
+        )}
+      </Card>
+    </div>
+  </>);
 }
 
 const inp = { width: '100%', padding: '8px 10px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-sans)' };
