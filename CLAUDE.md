@@ -272,6 +272,16 @@
 - **الصفحة `/legal`** (LegalEscalation.jsx، قسم العملاء، `receivables.view`): بطاقات هدف أخضر/أحمر + قائمتا تصعيد (هاتف/واتساب لكل حالة) + «ملف القانونية» Excel (ورقتان) عبر `persistAndDownloadExport` (kind `legal`).
 - **القاعدة**: أي إشارة «حوّل للقانونية» جديدة → قائمة في `/legal`. الأهداف ثابتة في الـRPC (تُعدَّل هناك).
 
+### 1.29 حملات واتساب Hatif — قوالب متعددة + قناة آلية + تتبّع الردود/السداد ✅ (2026-07-15)
+- **المزوّد Hatif/Voxa حصراً** (استُبدل Respondly كلياً §1.24). الأسرار `client_id`/`secret` في أسرار Supabase فقط. اللغة **ثابتة `ar`**.
+- **القناة تُجلَب آلياً**: `hatif-send v2` يستدعي `GET /v1/channels/service-account` (كاش ساعة) إن لم يُمرَّر `channel_id` ولا `HATIF_CHANNEL_ID`. **حُذف حقل ChannelId من الواجهة** (الإعدادات + المودال). لتثبيت قناة بعينها: سرّ `HATIF_CHANNEL_ID`. إجراء `channels` يسرد القنوات.
+- **قوالب متعددة**: `whatsapp_config.templates` = مصفوفة أسماء قوالب معتمدة (بدل `templateName` المفرد — يُرحَّل آلياً عند التحميل). `WhatsAppSettings` يديرها (إضافة/حذف/تعيين افتراضي بـradio). `WhatsAppSendModal` فيه **مُنتقي قالب `<select>`** يُختار لحظة الإطلاق (افتراضه `templateName`). **رتّب متغيّرات القالب في هاتف بنفس الترتيب: `{{1}}` الاسم · `{{2}}` المبلغ · `{{3}}` عدد الفواتير**.
+- **زر «حملة واتساب» على بطاقة العميل** (`/customer-money`): يطلق حملة قالب **لعميل واحد** (`onWa(c)` → مودال بمستلِم واحد). محادثة wa.me الحرّة بقيت كأيقونة 💬 ثانوية فقط.
+- **التتبّع — جدول `whatsapp_campaign_sends`** (RLS: قراءة authenticated، كتابة service role فقط): `hatif-send` يكتب صفاً لكل إرسال ناجح (هاتف مطبَّع/قالب/`contact_id`/`conversation_id`/`message_id`/campaign/amount). **لا رقم هاتف في webhook Voxa** — لذا نخزّن `conversation_id`+`contact_id` وقت الإرسال للمطابقة لاحقاً.
+- **RPC `whatsapp_campaign_status()`**: آخر حملة لكل هاتف + التسليم/القراءة + **هل ردّ** (من الـwebhook) + **هل سدّد بعدها** (أول `zoho_payments.date ≥ sent_at` بمطابقة اسم مطبَّع). `loadWhatsAppCampaignStatus()` يرجع Map بالهاتف → سطر حالة على البطاقة. **قاعدة السداد تقريبية بالاسم** (لا مفتاح مباشر عميل↔هاتف↔دفعة).
+- **`hatif-webhook`** (`verify_jwt=false`، بوابة `?key=` ضد `zoho_auth.webhook_key` — نمط §1.26b): يحدّث `status/delivered_at/read_at/error_reason` + أول `replied_at`/`reply_body`، بالمطابقة على `conversation_id` ثم `contact_id` لأحدث إرسال. يرجع 200 دائماً. **إعداد Hatif خطوة المستخدم**: Settings → API Connect → Webhook URL = `…/functions/v1/hatif-webhook?key=<webhook_key>`.
+- **القاعدة**: أي حملة واتساب جديدة تمرّ عبر `WhatsAppSendModal`/`sendWhatsAppCampaign` (تُسجَّل آلياً). لا تُرسِل قالباً خارج هذا المسار (وإلا فقدت التتبّع). القناة لا تُدخَل يدوياً في كود جديد.
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
