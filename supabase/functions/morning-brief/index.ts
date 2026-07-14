@@ -1,4 +1,4 @@
-// morning-brief v1 — ملخّص الصباح واتساب عبر Respondly.
+// morning-brief v2 — ملخّص الصباح واتساب عبر Hatif/Voxa (استُبدل Respondly).
 // يُستدعى من pg_cron يومياً 7:15 KSA (هوية X-Cron-Key — نفس نمط zoho-sync v9)
 // أو يدوياً من التطبيق (مستخدم admin أو معه money.pnl/receivables.view).
 //
@@ -14,7 +14,6 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const RESPONDLY_BASE = 'https://respondly.chat/api/v1';
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key',
@@ -88,27 +87,33 @@ Deno.serve(async (req) => {
 
   if (dryRun) return json({ ok: true, preview: true, vars, cfg: { enabled: !!cfg?.enabled, phone: cfg?.phone || null, template_name: cfg?.template_name || null } });
 
-  // ── الإرسال عبر Respondly (قالب معتمد) ──
-  const apiKey = Deno.env.get('RESPONDLY_API_KEY');
-  if (!apiKey) return json({ ok: false, error: 'RESPONDLY_API_KEY غير مُعدّ' });
+  // ── الإرسال عبر Hatif/Voxa (قالب معتمد) ──
+  const cid  = (Deno.env.get('client_id') || Deno.env.get('HATIF_CLIENT_ID') || '').trim();
+  const csec = (Deno.env.get('secret') || Deno.env.get('HATIF_CLIENT_SECRET') || '').trim();
+  if (!cid || !csec) return json({ ok: false, error: 'أسرار Hatif غير مُعدّة (client_id/secret)' });
   if (!cfg.template_name) return json({ ok: false, error: 'template_name غير مُعدّ في الإعداد' });
-
-  const body: any = {
-    template_name: cfg.template_name,
-    template_language: cfg.template_language || 'ar',
-    items: [{ to: cfg.phone, vars }],
-  };
-  if (cfg.channel_id) body.channel_id = cfg.channel_id;
+  if (!cfg.channel_id) return json({ ok: false, error: 'channel_id (ChannelId) مطلوب لـHatif' });
 
   try {
-    const r = await fetch(`${RESPONDLY_BASE}/messages/bulk-send`, {
+    const tr = await fetch('https://api.voxa.sa/connect/token', {
+      method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ grant_type: 'client_credentials', client_id: cid, client_secret: csec }),
+    });
+    const tj = await tr.json();
+    if (!tj.access_token) return json({ ok: false, error: 'فشل توكن Hatif' });
+    const r = await fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
       method: 'POST',
-      headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() },
-      body: JSON.stringify(body),
+      headers: { Authorization: `Bearer ${tj.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        ChannelId: cfg.channel_id, TemplateName: cfg.template_name, Language: cfg.template_language || 'ar',
+        ToNumber: cfg.phone,
+        Parameters: [{ Type: 'Body', Values: vars.map((v: unknown) => ({ Type: 'text', Text: String(v ?? '') })) }],
+      }),
     });
     const result = await r.json().catch(() => ({}));
-    if (!r.ok) return json({ ok: false, status: r.status, error: result?.error || result?.message || 'فشل الإرسال' });
-    return json({ ok: true, sent: result?.sent, failed: result?.failed, vars });
+    const ok = r.ok && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId);
+    if (!ok) return json({ ok: false, status: r.status, error: result?.message || result?.title || 'فشل الإرسال' });
+    return json({ ok: true, id: result?.conversationEventId || result?.contactId, vars });
   } catch (e) {
     return json({ ok: false, error: String((e as any)?.message || e) });
   }
