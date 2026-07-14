@@ -31,8 +31,50 @@ export const CHANNELS = {
   finance:          'تحويل للمالية',
 };
 
+// حالات المتابعة (دورة حياة الـLead + نتيجة التواصل + سبب التوقّف في حقل واحد).
+export const STATUSES = {
+  new:               { label: 'جديد',          color: 'var(--muted)' },
+  contacted:         { label: 'تم التواصل',    color: '#0EA5E9' },
+  whatsapp_sent:     { label: 'أُرسل واتساب',   color: '#22C55E' },
+  no_answer:         { label: 'لم يرد',        color: 'var(--gold)' },
+  interested:        { label: 'مهتم',          color: 'var(--green)' },
+  needs_followup:    { label: 'يحتاج متابعة',  color: '#F97316' },
+  returned:          { label: 'عاد للشحن',     color: '#16A34A' },
+  not_interested:    { label: 'غير مهتم',      color: 'var(--muted2)' },
+  price_issue:       { label: 'مشكلة سعر',     color: '#EF4444' },
+  support_issue:     { label: 'مشكلة دعم',     color: '#EF4444' },
+  integration_issue: { label: 'مشكلة ربط',     color: '#EF4444' },
+  competitor:        { label: 'انتقل لمنافس',  color: '#B91C1C' },
+  closed_business:   { label: 'توقّف نشاطه',    color: '#B91C1C' },
+  finance:           { label: 'تسوية مالية',   color: '#8B5CF6' },
+};
+
 export function segmentMeta(k)  { return SEGMENTS[k]   || { label: k, color: 'var(--muted)', icon: '•' }; }
 export function priorityMeta(k) { return PRIORITIES[k] || { label: k, color: 'var(--muted)' }; }
+export function statusMeta(k)   { return STATUSES[k]   || { label: k, color: 'var(--muted)' }; }
+
+// كتابة/تحديث متابعة عميل (بالهاتف). p_touch=true يحدّث «آخر تواصل».
+export async function setRetargetingFollowup(phone, { status = null, ownerId = null, nextAt = null, notes = null, touch = false } = {}) {
+  const { data, error } = await supabase.rpc('set_retargeting_followup', {
+    p_phone: phone, p_status: status, p_owner: ownerId || null,
+    p_next: nextAt || null, p_notes: notes, p_touch: !!touch,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// إحصائيات المتابعة (توزيع الحالات + المستحقّة اليوم + عادوا).
+export async function loadRetargetingFollowupStats() {
+  const { data, error } = await supabase.rpc('crm_retargeting_followup_stats');
+  if (error) throw error;
+  const d = data || {};
+  return {
+    byStatus: d.by_status || {},
+    assigned: Number(d.assigned) || 0,
+    dueToday: Number(d.due_today) || 0,
+    returned: Number(d.returned) || 0,
+  };
+}
 
 // الداشبورد: ملخّص + توزيعات + التقاط التغيّر (الحالي مقابل الرفعة السابقة).
 export async function loadRetargetingDashboard() {
@@ -68,7 +110,8 @@ export async function loadRetargetingDashboard() {
 // الفرص المفلترة المُرقّمة (من RPC crm_retargeting_leads).
 export async function loadRetargetingLeads({
   segment = null, priority = null, integration = null, billing = null,
-  hasBalance = null, q = null, page = 0, limit = 50,
+  hasBalance = null, q = null, status = null, ownerId = null, unassigned = null,
+  page = 0, limit = 50,
 } = {}) {
   const { data, error } = await supabase.rpc('crm_retargeting_leads', {
     p_segment: segment || null,
@@ -77,6 +120,9 @@ export async function loadRetargetingLeads({
     p_billing: billing || null,
     p_has_balance: hasBalance,
     p_q: q || null,
+    p_status: status || null,
+    p_owner: ownerId || null,
+    p_unassigned: unassigned,
     p_limit: limit,
     p_offset: Math.max(0, page) * limit,
   });
@@ -101,6 +147,13 @@ export async function loadRetargetingLeads({
       priority: r.priority || 'none',
       channel: r.channel,
       highValue: !!r.high_value,
+      // المتابعة
+      status: r.fu_status || 'new',
+      ownerId: r.fu_owner || null,
+      ownerName: r.owner_name || null,
+      nextActionAt: r.next_action_at || null,
+      notes: r.fu_notes || null,
+      lastTouchAt: r.last_touch_at || null,
     })),
     count: Number(data?.count) || 0,
     page, limit,

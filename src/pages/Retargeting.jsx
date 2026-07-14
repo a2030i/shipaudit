@@ -4,11 +4,12 @@
 // (v_crm_retargeting) عبر retargetingService — عميل فريد بالهاتف.
 import { useState, useEffect, useCallback } from 'react';
 import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, PageHeader, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import { loadEmployees } from '../lib/employeeService.js';
 import {
-  loadRetargetingDashboard, loadRetargetingLeads,
-  SEGMENTS, PRIORITIES, CHANNELS, segmentMeta, priorityMeta,
+  loadRetargetingDashboard, loadRetargetingLeads, loadRetargetingFollowupStats, setRetargetingFollowup,
+  SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
@@ -55,18 +56,28 @@ const LIMIT = 50;
 export default function Retargeting({ isActive = true }) {
   const { can } = useAuth();
   const [dash, setDash] = useState(null);
+  const [fuStats, setFuStats] = useState(null);
+  const [employees, setEmployees] = useState([]);
   const [leads, setLeads] = useState([]);
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
   const [listLoading, setListLoading] = useState(false);
+  const [followUp, setFollowUp] = useState(null);   // العميل المفتوح في مودال المتابعة
   const [filters, setFilters] = useState({
-    segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '', page: 0,
+    segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
+    status: '', ownerId: '', unassigned: false, page: 0,
   });
 
   const loadDash = useCallback(async () => {
     setLoading(true);
-    try { setDash(await loadRetargetingDashboard()); }
-    catch (e) { toast(`فشل تحميل الداشبورد: ${e.message}`, 'error'); }
+    try {
+      const [d, fs, emp] = await Promise.all([
+        loadRetargetingDashboard(),
+        loadRetargetingFollowupStats().catch(() => null),
+        loadEmployees().catch(() => []),
+      ]);
+      setDash(d); setFuStats(fs); setEmployees(emp || []);
+    } catch (e) { toast(`فشل تحميل الداشبورد: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
 
@@ -77,6 +88,8 @@ export default function Retargeting({ isActive = true }) {
         segment: filters.segment || null, priority: filters.priority || null,
         integration: filters.integration || null, billing: filters.billing || null,
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
+        status: filters.status || null, ownerId: filters.ownerId || null,
+        unassigned: filters.unassigned ? true : null,
         page: filters.page, limit: LIMIT,
       });
       setLeads(r.rows); setCount(r.count);
@@ -111,6 +124,16 @@ export default function Retargeting({ isActive = true }) {
             ? <>📊 المقارنة مع الرفعة السابقة — الأسهم أسفل كل مؤشّر</>
             : <>📊 هذه أول رفعة مُلتقَطة — نسبة التغيّر ستظهر تلقائياً عند رفع ملف متاجر جديد</>}
         </div>
+
+        {/* ملخّص المتابعة */}
+        {fuStats && (
+          <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, marginBottom: 12, color: 'var(--text2)' }}>
+            <span>📞 مُسنَدون: <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.assigned)}</b></span>
+            <span>⏰ متابعة مستحقّة اليوم: <b style={{ color: '#F97316', fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.dueToday)}</b></span>
+            <span>✅ عادوا للشحن: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.returned)}</b></span>
+            <span>🤝 مهتمّون: <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.byStatus?.interested || 0)}</b></span>
+          </div>
+        )}
 
         {/* المؤشّرات + فرق الرفعة */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
@@ -209,8 +232,23 @@ export default function Retargeting({ isActive = true }) {
             </Sel>
           </div>
           <div style={{ display: 'flex', gap: 10, marginTop: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 150 }}>
+              <Sel value={filters.status} onChange={e => setFilter({ status: e.target.value })}>
+                <option value="">كل حالات المتابعة</option>
+                {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              </Sel>
+            </div>
+            <div style={{ minWidth: 150 }}>
+              <Sel value={filters.ownerId} onChange={e => setFilter({ ownerId: e.target.value, unassigned: false })}>
+                <option value="">كل الموظفين</option>
+                {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name || emp.email}</option>)}
+              </Sel>
+            </div>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={filters.hasBalance} onChange={e => setFilter({ hasBalance: e.target.checked })}/> له رصيد فقط
+            </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              <input type="checkbox" checked={filters.unassigned} onChange={e => setFilter({ unassigned: e.target.checked, ownerId: '' })}/> بدون موظف
             </label>
             <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>عرض {leads.length} من {fmt0(count)} فرصة</span>
           </div>
@@ -223,14 +261,14 @@ export default function Retargeting({ isActive = true }) {
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-                {['المتجر', 'الجوال', 'الشحنات', 'آخر شحنة', 'المحفظة', 'الربط', 'الشريحة', 'الأولوية', 'إجراء'].map(h =>
+                {['المتجر', 'الجوال', 'الشحنات', 'آخر شحنة', 'المحفظة', 'الربط', 'الشريحة', 'الأولوية', 'المتابعة', 'إجراء'].map(h =>
                   <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {leads.map((l, i) => {
-                  const sm = segmentMeta(l.segment); const pm = priorityMeta(l.priority);
+                  const sm = segmentMeta(l.segment); const pm = priorityMeta(l.priority); const stm = statusMeta(l.status);
                   return (
-                    <tr key={l.phone + i} style={{ borderTop: '1px solid var(--border)' }}>
+                    <tr key={l.phone + i} onClick={() => setFollowUp(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                       <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
                         {l.storeName}{l.highValue && <span title="قيمة عالية" style={{ marginInlineStart: 4 }}>⭐</span>}
                         {l.storeCount > 1 && <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>{l.storeCount} متاجر بنفس الرقم</div>}
@@ -247,10 +285,15 @@ export default function Retargeting({ isActive = true }) {
                         <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: '#fff', background: pm.color }}>{l.priority}</span>
                         <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 2 }}>{CHANNELS[l.channel] || l.channel}</div>
                       </td>
+                      <td data-label="المتابعة" style={{ padding: '10px 12px' }}>
+                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: stm.color, background: `color-mix(in srgb, ${stm.color} 12%, transparent)` }}>{stm.label}</span>
+                        {l.ownerName && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>{l.ownerName}</div>}
+                        {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>متابعة {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
+                      </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }}>
                         <div style={{ display: 'flex', gap: 6 }}>
-                          {telLink(l.phone) && <a href={telLink(l.phone)} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {waLink(l.phone) && <a href={waLink(l.phone)} target="_blank" rel="noreferrer" title="واتساب" style={{ color: 'var(--green)' }}><MessageCircle size={15}/></a>}
+                          {telLink(l.phone) && <a href={telLink(l.phone)} onClick={e => e.stopPropagation()} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
+                          {waLink(l.phone) && <a href={waLink(l.phone)} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" title="واتساب" style={{ color: 'var(--green)' }}><MessageCircle size={15}/></a>}
                         </div>
                       </td>
                     </tr>
@@ -270,10 +313,72 @@ export default function Retargeting({ isActive = true }) {
           </div>
         )}
       </>)}
+
+      {followUp && (
+        <FollowupModal
+          lead={followUp} employees={employees}
+          onClose={() => setFollowUp(null)}
+          onSaved={() => { setFollowUp(null); loadList(); loadDash(); }}
+        />
+      )}
     </div>
   );
 }
 
 function SectionTitle({ children }) {
   return <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', margin: '4px 0 8px' }}>{children}</div>;
+}
+
+const inp = { width: '100%', padding: '8px 10px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontSize: 13, fontFamily: 'var(--font-sans)' };
+const lbl = { fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 };
+
+function FollowupModal({ lead, employees, onClose, onSaved }) {
+  const [status, setStatus] = useState(lead.status || 'new');
+  const [ownerId, setOwnerId] = useState(lead.ownerId || '');
+  const [nextAt, setNextAt] = useState(lead.nextActionAt ? String(lead.nextActionAt).slice(0, 10) : '');
+  const [notes, setNotes] = useState(lead.notes || '');
+  const [saving, setSaving] = useState(false);
+
+  const save = async (touch, overrideStatus) => {
+    setSaving(true);
+    try {
+      await setRetargetingFollowup(lead.phone, {
+        status: overrideStatus || status, ownerId: ownerId || null,
+        nextAt: nextAt ? new Date(nextAt).toISOString() : null, notes, touch: !!touch,
+      });
+      toast('تم حفظ المتابعة', 'success');
+      onSaved();
+    } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); setSaving(false); }
+  };
+  const quick = { display: 'inline-flex', alignItems: 'center', gap: 6, padding: '8px 12px', borderRadius: 9, textDecoration: 'none', fontSize: 12.5, fontWeight: 700, border: '1px solid var(--border2)' };
+
+  return (
+    <Modal title={`متابعة — ${lead.storeName}`} onClose={onClose} width={480}>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }} className="m-flow">
+        <div style={{ fontSize: 12, color: 'var(--muted)', display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+          <span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr' }}>{lead.phone}</span>
+          <span>{fmt0(lead.totalShipments)} شحنة</span>
+          <span>{lead.daysSinceLast == null ? 'لم يشحن' : `آخر شحنة ${lead.daysSinceLast}ي`}</span>
+          {lead.wallet > 0.5 && <span style={{ color: 'var(--green)' }}>محفظة {fmt2(lead.wallet)}</span>}
+        </div>
+        {/* أزرار سريعة: تفتح القناة وتسجّل الحالة + آخر تواصل */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {telLink(lead.phone) && <a href={telLink(lead.phone)} onClick={() => save(true, 'contacted')} style={{ ...quick, color: 'var(--text)' }}><Phone size={14}/> اتصلت</a>}
+          {waLink(lead.phone) && <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" onClick={() => save(true, 'whatsapp_sent')} style={{ ...quick, color: 'var(--green)' }}><MessageCircle size={14}/> واتساب</a>}
+        </div>
+        <div><label style={lbl}>الحالة / نتيجة التواصل</label>
+          <Sel value={status} onChange={e => setStatus(e.target.value)}>{Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}</Sel></div>
+        <div><label style={lbl}>الموظف المسؤول</label>
+          <Sel value={ownerId} onChange={e => setOwnerId(e.target.value)}><option value="">— بلا —</option>{employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}</Sel></div>
+        <div><label style={lbl}>موعد المتابعة القادمة</label>
+          <input type="date" value={nextAt} onChange={e => setNextAt(e.target.value)} style={inp}/></div>
+        <div><label style={lbl}>ملاحظات (سبب التوقّف / تفاصيل)</label>
+          <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} style={{ ...inp, resize: 'vertical' }}/></div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 4 }}>
+          <Btn variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Btn>
+          <Btn variant="accent" onClick={() => save(false, null)} disabled={saving}>حفظ المتابعة</Btn>
+        </div>
+      </div>
+    </Modal>
+  );
 }
