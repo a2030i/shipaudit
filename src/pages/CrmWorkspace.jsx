@@ -38,7 +38,6 @@ const TABS = [
   // يهبط عليها عبر LEGACY.
   { id: 'collections', label: 'قائمة التحصيل', icon: Phone, perm: 'collections.view' },
   { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
-  { id: 'sales', label: 'قوائم المبيعات', icon: PhoneCall },
   { id: 'leads', label: 'ليسوا عملاء لنا', icon: Store },
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
@@ -60,6 +59,10 @@ export default function CrmWorkspace({ isActive = true }) {
   };
   const [tab, setTab] = useState(initial);
   useEffect(() => { if (isActive) setTab(initial()); /* eslint-disable-next-line */ }, [location.search, isActive]);
+  // «قوائم المبيعات» تقاعدت لصالح إعادة الاستهداف — توجيه الروابط القديمة
+  useEffect(() => {
+    if (isActive && new URLSearchParams(location.search).get('tab') === 'sales') navigate('/retargeting', { replace: true });
+  }, [isActive, location.search, navigate]);
 
   const change = (t) => { setTab(t); navigate(`/crm?tab=${t}`, { replace: true }); };
 
@@ -84,7 +87,6 @@ export default function CrmWorkspace({ isActive = true }) {
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         {tab === 'collections' && <Collections isActive={isActive && tab === 'collections'}/>}
         {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
-        {tab === 'sales' && <SalesTab active={isActive && tab === 'sales'}/>}
         {tab === 'leads' && <LeadsTab active={isActive && tab === 'leads'}/>}
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}
         {tab === 'tasks' && <TasksTab active={isActive && tab === 'tasks'}/>}
