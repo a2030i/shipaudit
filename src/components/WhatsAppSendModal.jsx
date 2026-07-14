@@ -96,15 +96,13 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       ) : (
         // ── Preview + config view ──
         <div>
-          {/* Config — الإرسال عبر Hatif */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 8 }}>
-            <Input label="اسم القالب المعتمد" value={cfg.templateName}
-              onChange={e => saveCfg({ ...cfg, templateName: e.target.value })} placeholder="مثال: dues_notice"/>
-            <Input label="لغة القالب" value={cfg.templateLanguage}
-              onChange={e => saveCfg({ ...cfg, templateLanguage: e.target.value })} placeholder="ar"/>
+          {/* Config — الإرسال عبر Hatif (اللغة ثابتة ar) */}
+          <Input label="اسم القالب المعتمد" value={cfg.templateName}
+            onChange={e => saveCfg({ ...cfg, templateName: e.target.value, templateLanguage: 'ar' })} placeholder="مثال: dues_notice"/>
+          <div style={{ marginTop: 8 }}>
+            <Input label="معرّف القناة (ChannelId) — اختياري لو مثبّت في الأسرار" value={cfg.channelId}
+              onChange={e => saveCfg({ ...cfg, channelId: e.target.value })} placeholder="اتركه فارغاً لو ثبّتّ HATIF_CHANNEL_ID"/>
           </div>
-          <Input label="معرّف القناة (ChannelId) — مطلوب" value={cfg.channelId}
-            onChange={e => saveCfg({ ...cfg, channelId: e.target.value })} placeholder="ChannelId من لوحة Hatif"/>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '10px 0 14px' }}>
             <Btn size="sm" variant="ghost" onClick={doVerify} disabled={verifying}>
