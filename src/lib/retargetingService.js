@@ -47,6 +47,9 @@ export const STATUSES = {
   competitor:        { label: 'انتقل لمنافس',  color: '#B91C1C' },
   closed_business:   { label: 'توقّف نشاطه',    color: '#B91C1C' },
   finance:           { label: 'تسوية مالية',   color: '#8B5CF6' },
+  // حالتا الاستبعاد الدائم — تُخفَيان من القوائم افتراضياً (لا يُكلَّمان)
+  blacklist:         { label: '🚫 بلاك لست',    color: '#111827', excluded: true },
+  test:              { label: '🧪 متجر تجريبي', color: 'var(--muted2)', excluded: true },
 };
 
 export function segmentMeta(k)  { return SEGMENTS[k]   || { label: k, color: 'var(--muted)', icon: '•' }; }
@@ -89,6 +92,17 @@ export async function loadRetargetingCampaign() {
       workedTotal: Number(r.worked_total) || 0,
     },
   };
+}
+
+// سجلّ تغيّرات الحالات (من → إلى، بمن، متى) — «نعرف أي تغيرات صارت».
+export async function loadRetargetingStatusChanges(limit = 50) {
+  const { data, error } = await supabase.rpc('crm_retargeting_status_changes', { p_limit: limit });
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []).map(r => ({
+    phone: r.phone, storeName: r.primary_store || '',
+    oldStatus: r.old_status, newStatus: r.new_status,
+    changedAt: r.changed_at, changedBy: r.changed_by_name || '—',
+  }));
 }
 
 // إحصائيات المتابعة (توزيع الحالات + المستحقّة اليوم + عادوا).
@@ -141,7 +155,7 @@ export async function loadRetargetingDashboard() {
 export async function loadRetargetingLeads({
   segment = null, priority = null, integration = null, billing = null,
   hasBalance = null, q = null, status = null, ownerId = null, unassigned = null,
-  page = 0, limit = 50,
+  includeExcluded = false, page = 0, limit = 50,
 } = {}) {
   const { data, error } = await supabase.rpc('crm_retargeting_leads', {
     p_segment: segment || null,
@@ -153,6 +167,7 @@ export async function loadRetargetingLeads({
     p_status: status || null,
     p_owner: ownerId || null,
     p_unassigned: unassigned,
+    p_include_excluded: !!includeExcluded,
     p_limit: limit,
     p_offset: Math.max(0, page) * limit,
   });

@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   loadRetargetingDashboard, loadRetargetingLeads, loadRetargetingFollowupStats, setRetargetingFollowup,
-  loadRetargetingCampaign,
+  loadRetargetingCampaign, loadRetargetingStatusChanges,
   SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
 
@@ -59,6 +59,7 @@ export default function Retargeting({ isActive = true }) {
   const [dash, setDash] = useState(null);
   const [fuStats, setFuStats] = useState(null);
   const [campaign, setCampaign] = useState(null);
+  const [statusChanges, setStatusChanges] = useState([]);
   const [view, setView] = useState('leads');   // 'leads' | 'campaign'
   const [employees, setEmployees] = useState([]);
   const [leads, setLeads] = useState([]);
@@ -68,19 +69,20 @@ export default function Retargeting({ isActive = true }) {
   const [followUp, setFollowUp] = useState(null);   // العميل المفتوح في مودال المتابعة
   const [filters, setFilters] = useState({
     segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
-    status: '', ownerId: '', unassigned: false, page: 0,
+    status: '', ownerId: '', unassigned: false, includeExcluded: false, page: 0,
   });
 
   const loadDash = useCallback(async () => {
     setLoading(true);
     try {
-      const [d, fs, emp, camp] = await Promise.all([
+      const [d, fs, emp, camp, chg] = await Promise.all([
         loadRetargetingDashboard(),
         loadRetargetingFollowupStats().catch(() => null),
         loadEmployees().catch(() => []),
         loadRetargetingCampaign().catch(() => null),
+        loadRetargetingStatusChanges(40).catch(() => []),
       ]);
-      setDash(d); setFuStats(fs); setEmployees(emp || []); setCampaign(camp);
+      setDash(d); setFuStats(fs); setEmployees(emp || []); setCampaign(camp); setStatusChanges(chg || []);
     } catch (e) { toast(`فشل تحميل الداشبورد: ${e.message}`, 'error'); }
     setLoading(false);
   }, []);
@@ -93,7 +95,7 @@ export default function Retargeting({ isActive = true }) {
         integration: filters.integration || null, billing: filters.billing || null,
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
         status: filters.status || null, ownerId: filters.ownerId || null,
-        unassigned: filters.unassigned ? true : null,
+        unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
         page: filters.page, limit: LIMIT,
       });
       setLeads(r.rows); setCount(r.count);
@@ -150,7 +152,7 @@ export default function Retargeting({ isActive = true }) {
           ))}
         </div>
 
-        {view === 'campaign' && <CampaignView campaign={campaign}/>}
+        {view === 'campaign' && <CampaignView campaign={campaign} changes={statusChanges}/>}
 
         {view === 'leads' && (<>
         {/* المؤشّرات + فرق الرفعة */}
@@ -268,6 +270,9 @@ export default function Retargeting({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={filters.unassigned} onChange={e => setFilter({ unassigned: e.target.checked, ownerId: '' })}/> بدون موظف
             </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              <input type="checkbox" checked={filters.includeExcluded} onChange={e => setFilter({ includeExcluded: e.target.checked })}/> إظهار المستبعَدين (بلاك لست/تجريبي)
+            </label>
             <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>عرض {leads.length} من {fmt0(count)} فرصة</span>
           </div>
         </Card>
@@ -353,8 +358,8 @@ function SectionTitle({ children }) {
   return <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text2)', margin: '4px 0 8px' }}>{children}</div>;
 }
 
-// عرض أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح.
-function CampaignView({ campaign }) {
+// عرض أداء الحملة (المرحلة 4): قمع التحويل + أداء الموظفين + الشرائح + سجلّ التغيّرات.
+function CampaignView({ campaign, changes }) {
   if (!campaign) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
   const f = campaign.funnel || {};
   const pct = (a, b) => (b > 0 ? Math.round((a / b) * 100) : 0);
@@ -440,6 +445,29 @@ function CampaignView({ campaign }) {
         )}
       </Card>
     </div>
+    {changes && changes.length > 0 && (
+      <div style={{ marginTop: 16 }}>
+        <SectionTitle>آخر تغييرات الحالات (تبقى عبر رفعات الملفات)</SectionTitle>
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+            <thead><tr>{['المتجر', 'من', 'إلى', 'بواسطة', 'التاريخ'].map(h => <th key={h} style={th}>{h}</th>)}</tr></thead>
+            <tbody>{changes.map((c, i) => {
+              const from = c.oldStatus ? statusMeta(c.oldStatus) : { label: '—', color: 'var(--muted)' };
+              const to = statusMeta(c.newStatus);
+              return (
+                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ ...td, fontFamily: 'var(--font-sans)', fontWeight: 600 }}>{c.storeName || c.phone}</td>
+                  <td style={{ ...td, color: from.color, fontFamily: 'var(--font-sans)' }}>{from.label}</td>
+                  <td style={{ ...td, color: to.color, fontWeight: 700, fontFamily: 'var(--font-sans)' }}>{to.label}</td>
+                  <td style={{ ...td, fontFamily: 'var(--font-sans)' }}>{c.changedBy}</td>
+                  <td style={{ ...td, color: 'var(--muted)' }}>{new Date(c.changedAt).toLocaleDateString('en-CA')}</td>
+                </tr>
+              );
+            })}</tbody>
+          </table>
+        </Card>
+      </div>
+    )}
   </>);
 }
 
@@ -484,6 +512,8 @@ function FollowupModal({ lead, employees, onClose, onSaved }) {
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {telLink(lead.phone) && <a href={telLink(lead.phone)} onClick={() => save(true, 'contacted')} style={{ ...quick, color: 'var(--text)' }}><Phone size={14}/> اتصلت</a>}
           {waLink(lead.phone) && <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" onClick={() => save(true, 'whatsapp_sent')} style={{ ...quick, color: 'var(--green)' }}><MessageCircle size={14}/> واتساب</a>}
+          <Btn size="sm" variant="ghost" onClick={() => save(false, 'blacklist')} disabled={saving}>🚫 بلاك لست</Btn>
+          <Btn size="sm" variant="ghost" onClick={() => save(false, 'test')} disabled={saving}>🧪 تجريبي</Btn>
         </div>
         <div><label style={lbl}>الحالة / نتيجة التواصل</label>
           <Sel value={status} onChange={e => setStatus(e.target.value)}>{Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}</Sel></div>
