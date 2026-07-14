@@ -16,7 +16,7 @@ import { loadCreditStopList, stopReasonAr } from '../lib/collectionsService.js';
 import { loadCarrierNetBalances } from '../lib/codSettlementService.js';
 import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconciliationService.js';
 import { loadCrmDecisionSignals } from '../lib/crmService.js';
-import { loadPnlSnapshots, currentPnlPeriod } from '../lib/pnlService.js';
+import { loadPnlSnapshots, currentPnlPeriod, loadZatcaPending } from '../lib/pnlService.js';
 import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
 import { loadLegalDashboard } from '../lib/legalService.js';
 
@@ -31,7 +31,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -41,6 +41,7 @@ export default function DecisionsBoard({ isActive = true }) {
         loadInvoicesAwaitingReview().catch(() => []),
         loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
         loadCreditStopList().catch(() => null),
+        loadZatcaPending().catch(() => ({ todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [] })),
       ]);
       // ربح الشهر الجاري من كاش زوهو (§1.19: أي إشارة قرار = بطاقة هنا)
       const pnlCur = (pnlSnaps || []).find(s => s.period === currentPnlPeriod()) || null;
@@ -83,6 +84,7 @@ export default function DecisionsBoard({ isActive = true }) {
         pnl: pnlCur,
         awaiting,
         legal: legalSig,
+        zatca,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -114,6 +116,18 @@ export default function DecisionsBoard({ isActive = true }) {
               value: `${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`, unit: 'ر.س',
               sub: `قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`,
               cta: 'الوضع المالي', onClick: () => navigate('/pnl'),
+            },
+          },
+          {
+            key: 'zatca', active: (d.zatca?.todayCount || 0) > 0 || (d.zatca?.overdueCount || 0) > 0,
+            okLabel: 'كل الفواتير مُرسَلة لزاتكا',
+            props: {
+              color: 'var(--red)', icon: '🧾', title: 'فواتير لم تُرسَل لزاتكا',
+              value: (d.zatca?.todayCount || 0) + (d.zatca?.overdueCount || 0), unit: 'فاتورة معلّقة',
+              sub: `اليوم ${d.zatca?.todayCount || 0} (${fmt(d.zatca?.todayTotal || 0)} ر.س) — المهلة منتصف الليل بتوقيت السعودية`
+                 + ((d.zatca?.overdueCount || 0) > 0 ? ` · ⚠️ ${d.zatca.overdueCount} متأخرة سابقاً (${fmtK(d.zatca.overdueTotal)})` : ''),
+              top: (d.zatca?.invoices || []).slice(0, 3).map(v => `${v.invoice_number} · ${(v.customer || '').slice(0, 20)} · ${fmtK(v.total)}${v.overdue ? ' · متأخرة' : ''}`),
+              cta: 'الفواتير', onClick: () => navigate('/zoho-data?tab=invoices'),
             },
           },
           {

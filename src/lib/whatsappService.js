@@ -96,6 +96,35 @@ export async function loadWhatsAppCampaignStatus() {
   return map;
 }
 
+// ── تنبيه زاتكا المسائي — إعداد + معاينة + إرسال تجريبي ──────────────
+// app_settings['zatca_alert'] تقرؤه edge function zatca-alert (cron 21:00 KSA).
+const ZATCA_ALERT_KEY = 'zatca_alert';
+export async function loadZatcaAlertConfig() {
+  const def = { enabled: false, phone: '', templateName: '' };
+  const { data } = await supabase.from('app_settings').select('value').eq('key', ZATCA_ALERT_KEY).maybeSingle();
+  if (!data?.value) return def;
+  try { const v = JSON.parse(data.value); return { enabled: !!v.enabled, phone: v.phone || '', templateName: v.template_name || '' }; }
+  catch { return def; }
+}
+export async function saveZatcaAlertConfig(cfg) {
+  const value = JSON.stringify({
+    enabled: !!cfg.enabled, phone: normalizeSaudiPhone(cfg.phone), template_name: cfg.templateName?.trim() || '',
+  });
+  const { error } = await supabase.from('app_settings')
+    .upsert({ key: ZATCA_ALERT_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
+}
+export async function previewZatcaAlert() {
+  const { data, error } = await supabase.functions.invoke('zatca-alert', { body: { action: 'preview' } });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+export async function sendZatcaAlertNow() {
+  const { data, error } = await supabase.functions.invoke('zatca-alert', { body: {} });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 // ── ملخّص الصباح — إعداد + معاينة + إرسال فوري ──────────────────────
 // الإعداد في app_settings key='morning_brief' (تقرؤه edge function
 // morning-brief التي يستدعيها pg_cron يومياً 7:15 صباحاً KSA).
