@@ -368,6 +368,31 @@ function CampaignView({ campaign }) {
   const td = { padding: '8px 10px', fontFamily: 'var(--font-mono)' };
   return (<>
     {!f.worked && <div style={{ fontSize: 12.5, color: 'var(--muted)', marginBottom: 12 }}>لا نشاط بعد — ابدأ العمل على الفرص (اتصال/واتساب/تحديث الحالة) لتظهر نتائج الحملة هنا.</div>}
+    {/* العودة الآلية — مقارنة الشحنات بين أحدث رفعتين (موضوعية، بلا تعليم يدوي) */}
+    {campaign.reactivations?.hasPrevious && (() => {
+      const rx = campaign.reactivations;
+      return (
+        <div style={{ marginBottom: 16 }}>
+          <SectionTitle>العودة الآلية للشحن — بين رفعتَي {rx.previousDate} ← {rx.currentDate}</SectionTitle>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10 }} className="hero-grid">
+            <Card style={{ padding: '12px 14px', borderTop: '3px solid var(--green)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>عادوا بفضل الحملة</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1 }}>{fmt0(rx.workedReactivated)}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>من {fmt0(rx.workedTotal)} عميل عُمل عليه</div>
+            </Card>
+            <Card style={{ padding: '12px 14px', borderTop: '3px solid var(--green)' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>شحنات ناتجة (الحملة)</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1 }}>{fmt0(rx.workedShipments)}</div>
+            </Card>
+            <Card style={{ padding: '12px 14px', borderTop: '3px solid #06B6D4' }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>إجمالي العائدين (المنصّة)</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#06B6D4', lineHeight: 1 }}>{fmt0(rx.allReactivated)}</div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>{fmt0(rx.allShipments)} شحنة إجمالاً</div>
+            </Card>
+          </div>
+        </div>
+      );
+    })()}
     <SectionTitle>قمع التحويل (النجاح = عاد للشحن)</SectionTitle>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }} className="hero-grid">
       {steps.map(s => (
