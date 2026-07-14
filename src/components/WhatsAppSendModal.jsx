@@ -19,12 +19,15 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [sending, setSending]   = useState(false);
   const [results, setResults]   = useState(null);
   const [selected, setSelected] = useState(() => new Set());   // أرقام المستلِمين المختارين
+  const [tpl, setTpl]           = useState('');                // القالب المختار لهذه الحملة
 
   useEffect(() => {
     if (!open) return;
     setResults(null); setVerified(null);
     setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
-    loadWhatsAppConfig().then(setCfg).catch(() => setCfg({ channelId: '', templateName: '', templateLanguage: 'ar' }));
+    loadWhatsAppConfig()
+      .then(c => { setCfg(c); setTpl(c.templateName || (c.templates || [])[0] || ''); })
+      .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); });
   }, [open]);
 
   if (!open) return null;
@@ -47,16 +50,16 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   };
 
   const doSend = async () => {
-    if (!cfg?.templateName) { toast('اسم القالب غير محدّد — اضبطه من «إعدادات واتساب»', 'warn'); return; }
+    if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
     if (overLimit) { toast('الحد 200 لكل دفعة — قلّل الاختيار', 'warn'); return; }
     setSending(true);
     const r = await sendWhatsAppCampaign({
-      templateName: cfg.templateName,
+      templateName: tpl,
       templateLanguage: 'ar',
-      channelId: cfg.channelId || null,
+      channelId: null,
       items: selectedValid.map(v => ({ to: v.to, vars: v.vars, name: v.name, amount: v.amount })),
-      campaign: { name: bucketLabel ? `تحصيل — ${bucketLabel}` : 'تحصيل', bucketFilter: bucketLabel || null, userId: user?.id || null },
+      campaign: { name: bucketLabel ? `تحصيل — ${bucketLabel}` : 'تحصيل', bucket: bucketLabel || null, userId: user?.id || null },
     });
     setSending(false);
     if (r?.ok) {
@@ -95,11 +98,18 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       ) : (
         // ── اختيار المستلِمين + إرسال (القالب/القناة/اللغة مثبّتة من الإعدادات) ──
         <div>
-          {/* القالب من «إعدادات واتساب» + تحقّق سريع */}
+          {/* اختيار القالب لهذه الحملة (القائمة من «إعدادات واتساب») + تحقّق سريع */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12,
             background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 12px' }}>
-            <span style={{ fontSize: 12.5 }}>القالب: <b>{cfg.templateName || '— غير محدّد —'}</b></span>
-            {!cfg.templateName && <span style={{ fontSize: 11, color: 'var(--red)' }}>اضبطه من «إعدادات واتساب»</span>}
+            <span style={{ fontSize: 12.5, fontWeight: 600 }}>القالب:</span>
+            {(cfg.templates || []).length > 0 ? (
+              <select value={tpl} onChange={e => setTpl(e.target.value)}
+                style={{ fontSize: 12.5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                {(cfg.templates || []).map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--red)' }}>لا قوالب — أضف من «إعدادات واتساب»</span>
+            )}
             <Btn size="sm" variant="ghost" onClick={doVerify} disabled={verifying} style={{ marginInlineStart: 'auto' }}>
               <ShieldCheck size={13}/> {verifying ? 'تحقّق…' : 'تحقّق'}
             </Btn>
@@ -138,7 +148,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !cfg.templateName}>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !tpl}>
               {sending ? <><Spinner size={14}/> جارٍ الإرسال…</> : <><Send size={14}/> إرسال ({selectedValid.length})</>}
             </Btn>
             <Btn variant="ghost" onClick={onClose} disabled={sending}>إلغاء</Btn>

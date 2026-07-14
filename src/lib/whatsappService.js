@@ -7,9 +7,10 @@ import { supabase } from './supabase.js';
 const CFG_KEY = 'whatsapp_config';
 
 export const DEFAULT_WA_CONFIG = {
-  channelId:        '',
-  templateName:     '',
-  templateLanguage: 'ar',
+  templates:        [],    // قائمة القوالب المعتمدة — يُختار أحدها عند إطلاق الحملة
+  templateName:     '',    // آخر قالب مستخدَم (افتراضي في المُنتقي)
+  templateLanguage: 'ar',  // ثابتة
+  channelId:        '',    // اختياري — يُجلَب آلياً من Hatif (get-channels) إن فُرِّغ
 };
 
 // كل إرسال واتساب عبر Hatif/Voxa (استُبدل Respondly كلياً).
@@ -17,16 +18,20 @@ const WA_FN = 'hatif-send';
 
 export async function loadWhatsAppConfig() {
   const { data } = await supabase.from('app_settings').select('value').eq('key', CFG_KEY).maybeSingle();
-  if (!data?.value) return { ...DEFAULT_WA_CONFIG };
-  try { return { ...DEFAULT_WA_CONFIG, ...JSON.parse(data.value) }; }
-  catch { return { ...DEFAULT_WA_CONFIG }; }
+  let cfg = { ...DEFAULT_WA_CONFIG };
+  if (data?.value) { try { cfg = { ...DEFAULT_WA_CONFIG, ...JSON.parse(data.value) }; } catch { /* */ } }
+  if (!Array.isArray(cfg.templates)) cfg.templates = [];
+  if (!cfg.templates.length && cfg.templateName) cfg.templates = [cfg.templateName];  // ترحيل القالب المفرد القديم
+  return cfg;
 }
 
 export async function saveWhatsAppConfig(cfg) {
+  const templates = Array.isArray(cfg.templates) ? [...new Set(cfg.templates.map(t => String(t).trim()).filter(Boolean))] : [];
   const value = JSON.stringify({
+    templates,
+    templateName:     cfg.templateName?.trim() || templates[0] || '',
+    templateLanguage: 'ar',
     channelId:        cfg.channelId?.trim() || '',
-    templateName:     cfg.templateName?.trim() || '',
-    templateLanguage: cfg.templateLanguage?.trim() || 'ar',
   });
   const { error } = await supabase.from('app_settings')
     .upsert({ key: CFG_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
@@ -69,6 +74,26 @@ export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'a
   });
   if (error) return { ok: false, error: error.message };
   return data;
+}
+
+// حالة آخر حملة لكل عميل (بالهاتف): آخر إرسال + التسليم/القراءة + هل ردّ + هل سدّد بعدها.
+// يُرجِع Map مفتاحها الهاتف المطبَّع (9665…) لعرضها على بطاقات العملاء.
+export async function loadWhatsAppCampaignStatus() {
+  const { data, error } = await supabase.rpc('whatsapp_campaign_status');
+  const map = new Map();
+  if (error || !Array.isArray(data)) return map;
+  for (const r of data) {
+    if (!r.phone) continue;
+    map.set(r.phone, {
+      lastTemplate: r.last_template, lastCampaign: r.last_campaign,
+      lastSentAt: r.last_sent_at, status: r.last_status,
+      delivered: !!r.delivered, read: !!r.read_flag,
+      replied: !!r.replied, replyAt: r.reply_at,
+      sends: r.sends_count || 1,
+      paidAfter: !!r.paid_after, paidAt: r.paid_at,
+    });
+  }
+  return map;
 }
 
 // ── ملخّص الصباح — إعداد + معاينة + إرسال فوري ──────────────────────

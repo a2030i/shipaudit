@@ -15,12 +15,13 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
   planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl, syncZohoDocs } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
-  previewMorningBrief, sendMorningBriefNow } from '../lib/whatsappService.js';
+  previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
+const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // شرائح الأعمار — الترتيب من الأطزج للأخطر
@@ -40,6 +41,8 @@ export default function CustomerMoney({ isActive = true }) {
   const [bucket, setBucket] = useState('');        // '' | b0..b3
   const [sortBy, setSortBy] = useState('owed');    // owed | oldest
   const [waOpen, setWaOpen] = useState(false);
+  const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
+  const [waStatus, setWaStatus] = useState(() => new Map()); // حالة آخر حملة لكل هاتف
   const [busy, setBusy] = useState(false);
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
@@ -73,6 +76,18 @@ export default function CustomerMoney({ isActive = true }) {
     }
   };
   useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
+  // حالة آخر حملة واتساب لكل عميل (تحميل كسول + بعد كل إرسال)
+  const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
+  useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line
+  // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
+  const openSingleWa = (c) => {
+    const name = (c.storeName || c.name || '').trim();
+    setWaSingle({
+      to: normalizeSaudiPhone(c.phone), name, amount: c.owed, count: c.invCnt,
+      vars: [name, Number(c.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
+    });
+    setWaOpen(true);
+  };
   // أرصدة دائنة غير مستخدمة (تحميل كسول مرة واحدة)
   useEffect(() => {
     if (!isActive || credits != null) return;
@@ -355,13 +370,19 @@ export default function CustomerMoney({ isActive = true }) {
       {/* ── بطاقات العملاء ── */}
       {!filtered.length ? <Card><Empty icon="🎉" title="لا ديون في هذا العرض" sub="جرّب فلتراً آخر"/></Card> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
-          {filtered.map(c => <CustomerCard key={c.name} c={c} highlight={bucket}/>)}
+          {filtered.map(c => (
+            <CustomerCard key={c.name} c={c} highlight={bucket}
+              wa={waStatus.get(normalizeSaudiPhone(c.phone))}
+              onWa={can('collections.view') ? openSingleWa : null}/>
+          ))}
         </div>
       )}
 
-      <WhatsAppSendModal open={waOpen} onClose={() => setWaOpen(false)}
-        recipients={waOpen ? waRecipients : []}
-        bucketLabel={bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'تحصيل العملاء'}/>
+      <WhatsAppSendModal open={waOpen}
+        onClose={() => { setWaOpen(false); setWaSingle(null); }}
+        recipients={waOpen ? (waSingle ? [waSingle] : waRecipients) : []}
+        bucketLabel={waSingle ? `العميل ${waSingle.name}` : (bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'تحصيل العملاء')}
+        onSent={() => { loadWaStatus(); }}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
       {bulkOpen && credits && (
@@ -648,11 +669,12 @@ function MorningBriefModal({ onClose }) {
 }
 
 // بطاقة عميل — الاسم والمبلغ وأزرار الفعل، وفواتيره بنقرة
-function CustomerCard({ c, highlight }) {
+// wa = حالة آخر حملة واتساب لهذا الهاتف (من whatsapp_campaign_status) · onWa = يطلق حملة لعميل واحد
+function CustomerCard({ c, highlight, wa: waStat, onWa }) {
   const [open, setOpen] = useState(false);
   const [invs, setInvs] = useState(null);
   const digits = String(c.phone || '').replace(/\D/g, '');
-  const wa = digits ? `https://wa.me/${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
+  const waChat = digits ? `https://wa.me/${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
   const tel = digits ? `tel:+${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
 
   const toggleInvoices = async () => {
@@ -701,6 +723,21 @@ function CustomerCard({ c, highlight }) {
         )}
       </div>
 
+      {/* حالة آخر حملة واتساب — متى استلمها + هل ردّ + هل سدّد بعدها */}
+      {waStat && (
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 10, alignItems: 'center',
+          borderTop: '1px dashed var(--border)', paddingTop: 6 }}>
+          <span style={{ color: 'var(--muted2)' }}>📲 آخر حملة {fmtDate(waStat.lastSentAt)}{waStat.sends > 1 ? ` (${waStat.sends}×)` : ''}</span>
+          {waStat.paidAfter
+            ? <Chip color="var(--green)">✅ سدّد بعدها {waStat.paidAt ? fmtDate(waStat.paidAt) : ''}</Chip>
+            : waStat.replied ? <Chip color="#3B82F6">💬 ردّ — لم يسدّد</Chip>
+            : waStat.read ? <Chip color="var(--muted)">قرأها — لا رد</Chip>
+            : waStat.delivered ? <Chip color="var(--muted)">وصلت</Chip>
+            : waStat.status === 'Failed' ? <Chip color="var(--red)">فشل الإرسال</Chip>
+            : <Chip color="var(--muted)">أُرسلت</Chip>}
+        </div>
+      )}
+
       {/* شريط أعمار مصغّر */}
       <div style={{ display: 'flex', height: 5, borderRadius: 3, overflow: 'hidden', background: 'var(--surface2)' }}>
         {BUCKETS.map(b => {
@@ -719,12 +756,20 @@ function CustomerCard({ c, highlight }) {
             <Phone size={13}/> اتصال
           </a>
         )}
-        {wa && (
-          <a href={wa} target="_blank" rel="noreferrer" style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+        {digits && onWa && (
+          <button onClick={() => onWa(c)} title="إطلاق حملة واتساب لهذا العميل (قالب معتمد)"
+            style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
             padding: '8px 0', borderRadius: 8, background: 'color-mix(in srgb, var(--green) 12%, transparent)',
             border: '1px solid color-mix(in srgb, var(--green) 35%, transparent)',
-            color: 'var(--green)', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
-            <MessageCircle size={13}/> واتساب
+            color: 'var(--green)', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}>
+            <MessageCircle size={13}/> حملة واتساب
+          </button>
+        )}
+        {digits && waChat && (
+          <a href={waChat} target="_blank" rel="noreferrer" title="محادثة يدوية (بلا قالب)"
+            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '8px 9px', borderRadius: 8,
+            background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)', textDecoration: 'none' }}>
+            💬
           </a>
         )}
         {!digits && <span style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--muted2)' }}>لا هاتف — اربط المتجر في /merchants</span>}
