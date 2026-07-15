@@ -25,7 +25,7 @@ import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
 import ContractsOverview from './pages/ContractsOverview.jsx';
 import Tasks            from './pages/Tasks.jsx';
-import CustomerHub      from './pages/CustomerHub.jsx';
+import CustomerWatch    from './pages/CustomerWatch.jsx';
 import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
 import CrmWorkspace      from './pages/CrmWorkspace.jsx';
 import FulfillmentAudit  from './pages/FulfillmentAudit.jsx';
@@ -38,8 +38,7 @@ import ZohoCallback      from './pages/ZohoCallback.jsx';
 import FinancialPosition from './pages/FinancialPosition.jsx';
 import ZohoData          from './pages/ZohoData.jsx';
 import CollectionsHub    from './pages/CollectionsHub.jsx';
-import Retargeting       from './pages/Retargeting.jsx';
-import HatifLeads        from './pages/HatifLeads.jsx';
+import SalesHub          from './pages/SalesHub.jsx';
 import WhatsAppSettings   from './pages/WhatsAppSettings.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
@@ -140,14 +139,16 @@ const NAV_ITEMS = [
       { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
-  { id: 'retargeting',     path: '/retargeting',     label: 'إعادة الاستهداف', icon: Target,    section: 'customers', permKey: 'sales.view' },
-  { id: 'hatif-leads',     path: '/hatif-leads',     label: 'فرص من هاتف',     icon: UserPlus,  section: 'customers', permKey: 'sales.view' },
-  { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view', showSubTabsInNav: true,
+  // §1.32 مرحلة 3: مركز المبيعات = إعادة الاستهداف + فرص هاتف + خارج المنصّة + الشرائح + المتاجر
+  { id: 'sales-hub',       path: '/retargeting',     label: 'مركز المبيعات',  icon: Target,    section: 'customers', permKey: 'sales.view',
     subTabs: [
-      { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
-      { tabId: 'segments',    label: 'شرائح',         icon: Layers,     legacy: '/segments' },
-      { tabId: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, legacy: '/merchants' },
+      { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
+      { tabId: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    legacy: '/hatif-leads' },
+      { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
+      { tabId: 'segments',    label: 'شرائح العملاء',      icon: Layers,      legacy: '/segments' },
+      { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
+  { id: 'customer-watch',  path: '/customer-360',    label: 'متابعة العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view' },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
   { id: 'crm',             path: '/crm',             label: 'CRM العملاء', icon: Headset,   section: 'customers', permKey: 'crm.view',
@@ -198,7 +199,9 @@ const NAV_SECTIONS = [
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
 // PageSlot active check.
-const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/merchants', '/segments'];
+const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers'];
+// مركز المبيعات (§1.32 المرحلة 3): الفرص الثلاث + الشرائح + دليل المتاجر
+const SALES_HUB_PATHS = ['/retargeting', '/hatif-leads', '/segments', '/merchants'];
 // مركز التحصيل (§1.32 المرحلة 2): 4 شاشات كانت متفرّقة — المسارات القديمة تهبط على تبويبها
 const COLLECTIONS_HUB_PATHS = ['/customer-money', '/collections', '/legal', '/receivables'];
 // /hub, /carrier-kpi, /claims all render the CarriersWorkspace (3 tabs).
@@ -219,7 +222,7 @@ const PAGE_TITLES = {
   '/zoho-data':         'زوهو API',
   '/customer-money':    'مركز التحصيل',
   '/legal':             'التصعيد القانوني',
-  '/retargeting':       'إعادة الاستهداف',
+  '/retargeting':       'مركز المبيعات',
   '/whatsapp-settings': 'إعدادات واتساب',
   '/hatif-leads':       'فرص من هاتف',
   '/uploads':           'صحة مصادر البيانات',
@@ -243,7 +246,7 @@ const PAGE_TITLES = {
   '/aramex-statements': 'كشوف الحساب',
   '/bank':              'كشف بنكي',
   '/receivables':       'مديونيات العملاء',
-  '/customer-360':      'ملف العملاء',
+  '/customer-360':      'متابعة العملاء',
   '/collections':       'قائمة التحصيل',
   '/merchants':         'متاجر المنصّة',
   '/reconciliation':    'مطابقة زوهو ولمحة',
@@ -878,11 +881,8 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={COLLECTIONS_HUB_PATHS.includes(pathname)} scroll>
               <CollectionsHub isActive={COLLECTIONS_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
-            <PageSlot active={pathname==='/retargeting'} scroll>
-              <Retargeting isActive={pathname==='/retargeting'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/hatif-leads'} scroll>
-              <HatifLeads isActive={pathname==='/hatif-leads'}/>
+            <PageSlot active={SALES_HUB_PATHS.includes(pathname)} scroll>
+              <SalesHub isActive={SALES_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
@@ -915,12 +915,9 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={MONEY_HUB_PATHS.includes(pathname)} scroll>
               <MoneyHub isActive={MONEY_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
-            {/* The 4 legacy customer routes (/receivables, /merchants,
-                /segments, /customers) all funnel into the same hub
-                page. CustomerHub reads the path on mount and selects
-                the matching tab so deep links keep working. */}
+            {/* متابعة العملاء — كانت hub بأربعة تبويبات؛ بعد المرحلتين 2+3 بقيت المتابعة فقط */}
             <PageSlot active={CUSTOMER_HUB_PATHS.includes(pathname)} scroll>
-              <CustomerHub isActive={CUSTOMER_HUB_PATHS.includes(pathname)}/>
+              <CustomerWatch isActive={CUSTOMER_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/periods'} scroll>
               <Periods isActive={pathname==='/periods'}/>

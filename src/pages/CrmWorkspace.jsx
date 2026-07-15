@@ -36,7 +36,6 @@ const TABS = [
   // §1.32 مرحلة 2: «قائمة التحصيل» انتقلت لمركز التحصيل (/customer-money?tab=queue)
   // — CRM صار للمتابعة والمبيعات فقط. /collections القديم يهبط هناك (App.jsx).
   { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
-  { id: 'leads', label: 'ليسوا عملاء لنا', icon: Store },
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
   { id: 'board', label: 'أداء التحصيل', icon: BarChart3 },
@@ -84,7 +83,6 @@ export default function CrmWorkspace({ isActive = true }) {
       </div>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
-        {tab === 'leads' && <LeadsTab active={isActive && tab === 'leads'}/>}
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}
         {tab === 'tasks' && <TasksTab active={isActive && tab === 'tasks'}/>}
         {tab === 'board' && <BoardTab active={isActive && tab === 'board'}/>}
@@ -511,7 +509,7 @@ function EmailLink({ email }) {
 }
 
 // ═══════════════ الجهات الخارجية (leads) ═══════════════
-function LeadsTab({ active }) {
+export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض داخل مركز المبيعات
   const { user, can } = useAuth();
   const [leads, setLeads] = useState([]);
   const [count, setCount] = useState(0);
