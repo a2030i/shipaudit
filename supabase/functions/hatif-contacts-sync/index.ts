@@ -61,18 +61,33 @@ async function findContactId(token: string, phone: string) {
   return hit?.id || null;
 }
 
+// تطبيع مطابق لـnorm_sa_phone (SQL) وnormalizeSaudiPhone (JS)
+function normPhone(raw: unknown) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('966')) return '966' + d.slice(3).replace(/^0+/, '');
+  if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1);
+  if (d.length === 9 && d.startsWith('5')) return '966' + d;
+  return d;
+}
+
+// ⚠️ لا نستعمل حقل note: هاتف **يُضيف** ملاحظة جديدة كل مرة (لا يستبدل) فتتراكم
+// نسخ مكرّرة. customFields تُستبدَل بشكل صحيح — فكل السياق يوضع فيها.
 function buildPayload(row: any) {
   const tags: string[] = Array.isArray(row.tags) ? row.tags : [];
   const num = (v: unknown) => String(Math.round(Number(v) || 0));
+  const names: string[] = Array.isArray(row.store_names) ? row.store_names : [];
   const customFields: Record<string, string> = {
     'الوسوم': tags.join(' · ') || '—',
-    'الدين': num(row.debt),
-    'المحفظة': num(row.wallet),
-    'المتاجر': String(row.store_count || 1),
+    'المتاجر': names.join(' · ') || '—',
+    'عدد المتاجر': String(row.store_count || 1),
     'الشحنات': num(row.shipments),
     'آخر شحنة': row.days_since_last == null ? 'لم يشحن' : `${row.days_since_last} يوم`,
+    'الدين': num(row.debt),
+    'المحفظة': num(row.wallet),
   };
-  return { name: row.name || row.phone, note: row.note || '', customFields };
+  return { name: row.name || row.phone, customFields };
 }
 
 Deno.serve(async (req) => {
@@ -83,6 +98,9 @@ Deno.serve(async (req) => {
   const action = String(body.action || 'preview');
   const limit = Math.min(Math.max(Number(body.limit) || 25, 1), 200);
   const offset = Math.max(Number(body.offset) || 0, 0);
+  const overwriteName = body.overwriteName === true;   // افتراضياً لا نمسّ اسم جهة قائمة
+  const all = body.all === true;                        // يمرّ على الكل (المتخطّى مجاني)
+  const maxWrites = Math.min(Math.max(Number(body.maxWrites) || 200, 1), 400);  // سقف زمن التنفيذ
 
   // هوية: cron أو مستخدم مخوَّل
   let authed = false;
@@ -102,11 +120,17 @@ Deno.serve(async (req) => {
   }
   if (!authed) return json({ error: 'unauthorized' }, 401);
 
-  // الصفوف (ترتيب ثابت بالهاتف — §6: أي range يحتاج order)
-  const { data: rows, error } = await db.rpc('hatif_contact_labels')
-    .order('phone', { ascending: true }).range(offset, offset + limit - 1);
+  // الصفوف: عميل واحد بالرقم، أو دفعة بترتيب ثابت (§6: أي range يحتاج order)
+  const onePhone = body.phone ? normPhone(body.phone) : null;
+  const q = onePhone
+    ? db.rpc('hatif_contact_labels').eq('phone', onePhone)
+    : all
+      ? db.rpc('hatif_contact_labels').order('phone', { ascending: true })
+      : db.rpc('hatif_contact_labels').order('phone', { ascending: true }).range(offset, offset + limit - 1);
+  const { data: rows, error } = await q;
   if (error) return json({ ok: false, error: `labels: ${error.message}` });
   const list: any[] = rows || [];
+  if (onePhone && !list.length) return json({ ok: false, error: `الرقم ${onePhone} ليس ضمن كشف المتاجر` });
 
   const { count: total } = await db.from('hatif_contact_sync').select('phone', { count: 'exact', head: true });
 
@@ -114,17 +138,34 @@ Deno.serve(async (req) => {
     return json({ ok: true, preview: true, offset, returned: list.length,
       samples: list.slice(0, 5).map(r => ({ phone: r.phone, ...buildPayload(r) })), synced_so_far: total || 0 });
   }
-  if (action !== 'sync') return json({ error: 'unknown action (preview|sync)' }, 400);
+
+  // قراءة رجعية: ماذا خزّن هاتف فعلاً لهذا الرقم (تحقّق لا ادّعاء)
+  if (action === 'inspect') {
+    if (!onePhone) return json({ ok: false, error: 'phone مطلوب' });
+    try {
+      const token = await accessToken();
+      const u = `${CONTACTS_URL}?SkipCount=0&MaxResultCount=10&phoneNumber=${encodeURIComponent(onePhone)}`;
+      const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
+      const body = unwrap(await r.json().catch(() => ({})));
+      const items: any[] = body?.items || [];
+      const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
+      const hit = items.find(c => digits(c.phoneNumber) === digits(onePhone)) || items[0] || null;
+      return json({ ok: r.ok, status: r.status, matches: items.length, contact: hit });
+    } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  }
+
+  if (action !== 'sync') return json({ error: 'unknown action (preview|inspect|sync)' }, 400);
 
   let token: string;
   try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
 
-  // حالة المزامنة السابقة لهذه الدفعة
-  const phones = list.map(r => r.phone);
-  const { data: prev } = await db.from('hatif_contact_sync').select('phone, contact_id, payload_hash').in('phone', phones);
+  // حالة المزامنة السابقة (لكل الأرقام في وضع all، وإلا لهذه الدفعة)
+  const { data: prev } = all
+    ? await db.from('hatif_contact_sync').select('phone, contact_id, payload_hash')
+    : await db.from('hatif_contact_sync').select('phone, contact_id, payload_hash').in('phone', list.map(r => r.phone));
   const prevMap = new Map((prev || []).map((p: any) => [p.phone, p]));
 
-  let created = 0, updated = 0, skipped = 0, failed = 0;
+  let created = 0, updated = 0, skipped = 0, failed = 0, writes = 0, remaining = 0;
   const errors: unknown[] = [];
 
   for (const row of list) {
@@ -132,6 +173,8 @@ Deno.serve(async (req) => {
     const h = hash(JSON.stringify(payload));
     const st = prevMap.get(row.phone);
     if (st?.payload_hash === h && st?.contact_id) { skipped++; continue; }   // لا تغيّر → صفر استدعاء
+    if (writes >= maxWrites) { remaining++; continue; }                       // سقف زمن التنفيذ — الباقي للتشغيل التالي
+    writes++;
 
     try {
       let cid: string | null = st?.contact_id || null;
@@ -139,9 +182,12 @@ Deno.serve(async (req) => {
 
       let ok = false;
       if (cid) {
+        // جهة قائمة: لا ندهس الاسم الذي أدخله فريقكم (إلا بطلب صريح overwriteName)
+        // — نحدّث السياق فقط. الاسم يُكتب عند الإنشاء فقط.
+        const upd: Record<string, unknown> = overwriteName ? payload : { customFields: payload.customFields };
         const r = await fetch(`${CONTACTS_URL}/${cid}`, {
           method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify(payload),
+          body: JSON.stringify(upd),
         });
         ok = r.ok; if (ok) updated++;
         if (!ok) errors.push({ phone: row.phone, step: 'update', status: r.status, body: (await r.text()).slice(0, 200) });
@@ -167,5 +213,7 @@ Deno.serve(async (req) => {
   }
 
   return json({ ok: true, offset, processed: list.length, created, updated, skipped, failed,
-    nextOffset: list.length === limit ? offset + limit : null, errors: errors.slice(0, 5) });
+    remaining,                                                     // بقي للتشغيل التالي (بلغ السقف)
+    nextOffset: (!all && list.length === limit) ? offset + limit : null,
+    errors: errors.slice(0, 5) });
 });
