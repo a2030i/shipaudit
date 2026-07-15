@@ -26,6 +26,7 @@ import {
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import Collections from './Collections.jsx';
+import WaActions from '../components/WaActions.jsx';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -214,7 +215,7 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
         <Hd label="الدين" value={`${fmt(effectiveDebt(customer))} ر.س`} color="var(--red)"/>
         <Hd label="العمر" value={`${customer.daysOutstanding || 0} يوم`}/>
         {customer.risk && <Hd label="الخطر" value={`${customer.risk?.level?.label || '—'} (${customer.risk?.score || 0})`} color={customer.risk?.level?.color}/>}
-        {customer.merchant?.phone && <Hd label="الجوال" value={<PhoneLink phone={customer.merchant.phone}/>}/>}
+        {customer.merchant?.phone && <Hd label="الجوال" value={<PhoneLink phone={customer.merchant.phone} name={customer.customer_name || customer.name}/>}/>}
       </div>
       {/* جانب المبيعات — كان في customer.merchant دون عرض: نشاط المتجر بنظرة */}
       {customer.merchant && (
@@ -415,7 +416,7 @@ function SalesTab({ active }) {
                 {rows.slice(0, 300).map(m => (
                   <tr key={m.store_id} style={{ borderTop: '1px solid var(--border)' }}>
                     <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, cursor: 'pointer' }} onClick={() => openCard(m)}>{m.store_name}</td>
-                    <td data-label="الجوال" style={{ padding: '10px 12px' }}><PhoneLink phone={m.phone}/></td>
+                    <td data-label="الجوال" style={{ padding: '10px 12px' }}><PhoneLink phone={m.phone} name={m.store_name}/></td>
                     <td data-label={meta.dateLabel} style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
                       {fmtDate(listId === 'signup' ? m.created_at_platform : m.last_shipment_at)}
                     </td>
@@ -439,14 +440,15 @@ function SalesTab({ active }) {
   );
 }
 
-// جوال قابل للنقر: اتصال مباشر + واتساب
-function PhoneLink({ phone }) {
+// جوال قابل للنقر: اتصال + إطلاق حملة (الفعل الرئيسي) + محادثة حرّة ثانوية.
+// كان wa.me فقط — توحيد §هيكلة-0: كل أيقونة واتساب تفتح حملة قالب مسجَّلة.
+function PhoneLink({ phone, name }) {
   if (!phone) return '—';
   const digits = String(phone).replace(/\D/g, '');
   return (
     <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
       <a href={`tel:+${digits}`} style={{ color: 'var(--accent)', textDecoration: 'none' }} onClick={e => e.stopPropagation()}>{phone}</a>
-      <a href={`https://wa.me/${digits}`} target="_blank" rel="noreferrer" title="واتساب" onClick={e => e.stopPropagation()} style={{ textDecoration: 'none' }}>💬</a>
+      <WaActions phone={phone} name={name} showTel={false} size={14} campaignLabel="CRM"/>
     </span>
   );
 }
@@ -636,7 +638,7 @@ function LeadsTab({ active }) {
                     {l.name_en && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{l.name_en}</div>}
                     {l.matched_store_name && <div style={{ fontSize: 11, color: '#8B5CF6', marginTop: 3 }}>لدينا: {l.matched_store_name}</div>}
                   </td>
-                  <td data-label="الرقم" style={{ padding: '10px 12px' }}><PhoneLink phone={l.phone_normalized || l.phone}/></td>
+                  <td data-label="الرقم" style={{ padding: '10px 12px' }}><PhoneLink phone={l.phone_normalized || l.phone} name={l.name}/></td>
                   <td data-label="القسم/المنصة" style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
                     <div>{l.category || '—'}</div>
                     {l.platform && <div style={{ marginTop: 2 }}>{l.platform}</div>}
@@ -822,7 +824,7 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
     <Modal title={lead.name} onClose={onClose} width={680}>
       <div className="m-flow" style={{ maxHeight: '76vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10, marginBottom: 12 }}>
-          <Hd label="الجوال" value={<PhoneLink phone={lead.phone_normalized || lead.phone}/>}/>
+          <Hd label="الجوال" value={<PhoneLink phone={lead.phone_normalized || lead.phone} name={lead.name}/>}/>
           <Hd label="القسم" value={lead.category || '—'}/>
           <Hd label="المنصة" value={lead.platform || '—'}/>
           <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>

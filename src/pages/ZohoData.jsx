@@ -256,7 +256,7 @@ export default function ZohoData({ isActive = true }) {
     toast(`صُدّر ${filtered.length} سجلاً ✓`, 'success');
   };
 
-  if (!can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
+  if (!can('zoho.view') && !can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
 
   return (
     <div style={{ padding: '20px 26px 70px', maxWidth: 1360, margin: '0 auto' }}>

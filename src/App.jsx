@@ -134,9 +134,9 @@ const NAV_ITEMS = [
   // existing deep links still land on the right tab.
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
   { id: 'customer-money',  path: '/customer-money',  label: 'تحصيل العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
-  { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'receivables.view' },
-  { id: 'retargeting',     path: '/retargeting',     label: 'إعادة الاستهداف', icon: Target,    section: 'customers', permKey: 'crm.view' },
-  { id: 'hatif-leads',     path: '/hatif-leads',     label: 'فرص من هاتف',     icon: UserPlus,  section: 'customers', permKey: 'crm.view' },
+  { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'legal.view' },
+  { id: 'retargeting',     path: '/retargeting',     label: 'إعادة الاستهداف', icon: Target,    section: 'customers', permKey: 'sales.view' },
+  { id: 'hatif-leads',     path: '/hatif-leads',     label: 'فرص من هاتف',     icon: UserPlus,  section: 'customers', permKey: 'sales.view' },
   { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view', showSubTabsInNav: true,
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
@@ -163,7 +163,7 @@ const NAV_ITEMS = [
   { id: 'webhook',        path: '/webhook',        label: 'وارد الإيميل', icon: Inbox,  section: 'ingest', permKey: 'webhook.view' },
 
   // ── مصادر البيانات — صحة الربط والمرايا التي تغذي الأرقام ───────
-  { id: 'zoho-data',      path: '/zoho-data',      label: 'زوهو API',     icon: BookOpen, section: 'data', permKey: 'money.pnl' },
+  { id: 'zoho-data',      path: '/zoho-data',      label: 'زوهو API',     icon: BookOpen, section: 'data', permKey: 'zoho.view' },
   { id: 'uploads',        path: '/uploads',        label: 'صحة المصادر',  icon: Layers,   section: 'data', permKey: 'uploads.view' },
 
   // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
@@ -173,7 +173,7 @@ const NAV_ITEMS = [
   { id: 'integrity',    path: '/integrity',    label: 'فحص سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
   { id: 'periods',      path: '/periods',      label: 'إقفال مالي',       icon: Lock,     section: 'system', permKey: 'system.period_close' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',       icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
-  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'إعدادات واتساب', icon: MessageCircle, section: 'system', permKey: 'collections.view' },
+  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'واتساب', icon: MessageCircle, section: 'system', permKey: 'whatsapp.view_log' },
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات', icon: UserCog,  section: 'system', adminOnly: true },
 ];
 // Each section carries an accent color so the sidebar reads as

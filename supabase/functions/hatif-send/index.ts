@@ -101,8 +101,10 @@ Deno.serve(async (req) => {
 
   const auth = await requireUser(req, db);
   if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
-  const allowed = auth.role === 'admin' || auth.permissions?.['collections.view'] === true || auth.permissions?.['crm.view'] === true;
-  if (!allowed) return json({ error: 'forbidden' }, 403);
+  // صلاحيات v2: الإرسال الفعلي = campaigns.send حصراً (backfill منحها لمن كان
+  // يملك collections.view/crm.view). الفحص هنا هو الحدّ الفعلي لا الواجهة.
+  const allowed = auth.role === 'admin' || auth.permissions?.['campaigns.send'] === true;
+  if (!allowed) return json({ error: 'forbidden — تحتاج صلاحية «إطلاق حملة واتساب»' }, 403);
 
   if (action === 'verify') {
     try { await accessToken(); return json({ ok: true, provider: 'hatif' }); }

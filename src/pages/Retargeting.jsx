@@ -122,14 +122,14 @@ export default function Retargeting({ isActive = true }) {
 
   const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
 
-  const canCampaign = can('crm.view') || can('collections.view');
+  const canCampaign = can('campaigns.send');
   const openBulkCampaign = () => {
     const recs = leads.filter(l => l.phone).map(leadToRecipient);
     if (!recs.length) { toast('لا مستلمون بأرقام في القائمة الحالية', 'info'); return; }
     setWaRecipients(recs);
   };
 
-  if (!can('crm.view') && !can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  if (!can('sales.view') && !can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   const st = dash?.stats || {};
   const totalPages = Math.max(1, Math.ceil(count / LIMIT));

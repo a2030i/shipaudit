@@ -10,22 +10,18 @@ import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLegalDashboard } from '../lib/legalService.js';
+import WaActions from '../components/WaActions.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const daysSince = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : '';
 
-// خانة تليفون: اتصال + واتساب
-function PhoneCell({ phone }) {
+// خانة تواصل موحّدة: اتصال + إطلاق حملة (الفعل الرئيسي) + محادثة ثانوية (§هيكلة-0)
+function PhoneCell({ phone, name, amount, count }) {
   if (!phone) return <span style={{ fontSize: 11, color: 'var(--muted2)' }}>لا هاتف</span>;
-  const wa = String(phone).replace(/[^\d]/g, '');
-  return (
-    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
-      <a href={`tel:${phone}`} title="اتصال" style={{ color: 'var(--accent)' }}><Phone size={14}/></a>
-      <a href={`https://wa.me/${wa}`} target="_blank" rel="noreferrer" title="واتساب" style={{ color: 'var(--green)' }}><MessageCircle size={14}/></a>
-    </span>
-  );
+  return <WaActions phone={phone} name={name} amount={amount} count={count}
+    vars={[name || '', fmt(amount), String(count ?? '')]} campaignLabel="التصعيد القانوني" size={14}/>;
 }
 
 // بطاقة هدف عمر: فعليّ مقابل هدف (أخضر تحت الهدف، أحمر فوقه)
@@ -94,7 +90,7 @@ export default function LegalEscalation({ isActive = true }) {
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
-  if (!can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض المديونيات»"/></div>;
+  if (!can('legal.view') && !can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض المديونيات»"/></div>;
   if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
   const ag = d.aging;
@@ -142,7 +138,7 @@ export default function LegalEscalation({ isActive = true }) {
                     <td data-label="إجمالي المفتوح" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{fmt(r.totalOpen)}</td>
                     <td data-label="أقدم (يوم)" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', color: 'var(--red)', whiteSpace: 'nowrap' }}>{r.oldestDays}</td>
                     <td data-label="فواتير" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>{r.invCnt}</td>
-                    <td data-label="تواصل" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}><PhoneCell phone={r.phone}/></td>
+                    <td data-label="تواصل" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}><PhoneCell phone={r.phone} name={r.storeName || r.name} amount={r.totalOpen} count={r.invCnt}/></td>
                   </tr>
                 ))}
               </tbody>
@@ -172,7 +168,7 @@ export default function LegalEscalation({ isActive = true }) {
                     <td data-label="آخر شحنة" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap' }}>
                       {r.lastShipmentAt ? new Date(r.lastShipmentAt).toLocaleDateString('en-CA') : '—'}
                     </td>
-                    <td data-label="تواصل" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}><PhoneCell phone={r.phone}/></td>
+                    <td data-label="تواصل" style={{ padding: '9px 12px', whiteSpace: 'nowrap' }}><PhoneCell phone={r.phone} name={r.storeName} amount={Math.abs(Number(r.wallet) || 0)}/></td>
                   </tr>
                 ))}
               </tbody>

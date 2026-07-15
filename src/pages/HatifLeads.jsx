@@ -62,7 +62,7 @@ export default function HatifLeads({ isActive = true }) {
     });
   }, [rows, q, status, namedOnly]);
 
-  if (!can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  if (!can('sales.view') && !can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   // متغيّر القالب: {{1}} الاسم (أو الرقم لمن بلا اسم) — الفرص ليس لها شحنات/دين
   const toRecipient = (l) => ({ to: normalizeSaudiPhone(l.phone), name: display(l), amount: null, vars: [display(l)] });
@@ -135,7 +135,7 @@ export default function HatifLeads({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={namedOnly} onChange={e => setNamedOnly(e.target.checked)}/> باسم حقيقي فقط ⭐
             </label>
-            {can('collections.view') && (
+            {can('campaigns.send') && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!filtered.length}>
                 إطلاق حملة ({fmt0(filtered.length)})
               </Btn>
@@ -178,7 +178,7 @@ export default function HatifLeads({ isActive = true }) {
                       <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           {telLink(l.phone) && <a href={telLink(l.phone)} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {can('collections.view') && (
+                          {can('campaigns.send') && (
                             <button onClick={() => setWaRecipients([toRecipient(l)])} title="إطلاق حملة قالب"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
                           )}

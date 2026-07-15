@@ -18,6 +18,7 @@ import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import WaActions from '../components/WaActions.jsx';
 import {
   loadLatestReceivables, loadReceivablesSnapshots, deleteReceivablesSnapshot,
   setCustomerStatus,
@@ -224,6 +225,11 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
             <div style={{ display: 'flex', gap: 14, fontSize: 11.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)', flexWrap: 'wrap', marginTop: 3 }}>
               {m.storeId && <span><Hash size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.storeId}</span>}
               {m.phone && <span style={{ direction: 'ltr' }}><Phone size={11} style={{ verticalAlign: 'middle', marginInlineEnd: 3 }}/>{m.phone}</span>}
+              {/* §هيكلة-0: كان الهاتف نصاً بلا أزرار — اتصال + حملة + محادثة */}
+              {m.phone && <WaActions phone={m.phone} name={m.storeName || customer.name}
+                amount={Number(customer.total) || 0}
+                vars={[m.storeName || customer.name || '', Number(customer.total || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }), '']}
+                campaignLabel="الكشف الداخلي" size={13}/>}
             </div>
             <div style={{ display: 'flex', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
               {m.billingType && (
@@ -920,8 +926,11 @@ export default function CustomerReceivables({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'مديونيات العملاء');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(rtl(wb), `مديونيات_العملاء_${dateStr}.xlsx`);
-    toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success');
+    // §1.13: عبر السجل (كان XLSX.writeFile خاماً)
+    persistAndDownloadExport({ wb: rtl(wb), fileName: `مديونيات_العملاء_${dateStr}.xlsx`,
+      kind: 'receivables', rowCount: visibleCustomers.length, total: null, userId: user?.id || null })
+      .then(() => toast(`تم تصدير ${visibleCustomers.length} عميل (${linked} مرتبط بمتجر)`, 'success'))
+      .catch(e => toast(`فشل التصدير: ${e.message}`, 'error'));
   };
 
   // تصدير ملف متابعة مبني على مرجع الدين الحالي (Zoho) + دليل المتاجر.
@@ -1011,8 +1020,10 @@ export default function CustomerReceivables({ isActive = true }) {
     ws['!cols'] = [{ wch: 40 }, { wch: 16 }, { wch: 14 }, { wch: 8 }, { wch: 10 }, { wch: 34 }, { wch: 14 }, { wch: 12 }, { wch: 14 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'قائمة الإيقاف');
-    XLSX.writeFile(rtl(wb), `قائمة_الإيقاف_${new Date().toISOString().slice(0, 10)}.xlsx`);
-    toast(`تم تصدير ${stopNow.length} عميل للإيقاف`, 'success');
+    persistAndDownloadExport({ wb: rtl(wb), fileName: `قائمة_الإيقاف_${new Date().toISOString().slice(0, 10)}.xlsx`,
+      kind: 'stop_list', rowCount: stopNow.length, total: null, userId: user?.id || null })
+      .then(() => toast(`تم تصدير ${stopNow.length} عميل للإيقاف`, 'success'))
+      .catch(e => toast(`فشل التصدير: ${e.message}`, 'error'));
   };
 
 

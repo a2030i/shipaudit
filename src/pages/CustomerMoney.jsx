@@ -354,7 +354,7 @@ export default function CustomerMoney({ isActive = true }) {
           <option value="owed">الأكبر ديناً أولاً</option>
           <option value="oldest">الأقدم ديناً أولاً</option>
         </select>
-        {can('collections.view') && (
+        {can('campaigns.send') && (
           <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => waRecipients.length ? setWaOpen(true) : toast('لا مستلمين بأرقام في القائمة الحالية', 'info')}>
             حملة واتساب ({waRecipients.length})
           </Btn>
@@ -373,7 +373,7 @@ export default function CustomerMoney({ isActive = true }) {
           {filtered.map(c => (
             <CustomerCard key={c.name} c={c} highlight={bucket}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}
-              onWa={can('collections.view') ? openSingleWa : null}/>
+              onWa={can('campaigns.send') ? openSingleWa : null}/>
           ))}
         </div>
       )}

@@ -11,8 +11,10 @@ import { useAuth } from '../lib/auth.jsx';
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
 // recipients: [{ to, name, amount, count, vars:[] }]
+// البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
+// كل الصفحات التي تفتح المودال (والدالة hatif-send تعيد الفحص سيرفرياً).
 export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
   const [verifying, setVer] = useState(false);
   const [verified, setVerified] = useState(null); // null | true | false
@@ -31,6 +33,18 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   }, [open]);
 
   if (!open) return null;
+
+  if (!can('campaigns.send')) {
+    return (
+      <Modal title="📲 إرسال حملة واتساب" onClose={onClose} width={440}>
+        <div style={{ padding: '18px 6px', textAlign: 'center', fontSize: 13, color: 'var(--muted)', lineHeight: 1.8 }}>
+          🔒 لا تملك صلاحية <b style={{ color: 'var(--text)' }}>إطلاق حملات واتساب</b>.<br/>
+          اطلب من المدير منحك «إطلاق حملة واتساب» من شاشة الفريق والصلاحيات.
+        </div>
+        <div style={{ textAlign: 'left' }}><Btn variant="ghost" onClick={onClose}>إغلاق</Btn></div>
+      </Modal>
+    );
+  }
 
   const valid = recipients.filter(r => r.to && r.to.length >= 11);
   const skipped = recipients.length - valid.length;

@@ -17,6 +17,7 @@ import {
   PageHeader,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import WaActions from '../components/WaActions.jsx';
 import {
   listPaymentRequests, updatePaymentRequest, deletePaymentRequest,
   STATUS_META, receiptUrl,
@@ -356,15 +357,22 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           </div>
         </div>
         {row.phone && (
-          <a href={`tel:${row.phone}`} style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6,
-            padding: '8px 14px', borderRadius: 999,
-            background: 'var(--accent)', color: '#fff',
-            fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
-            boxShadow: '0 1px 2px rgba(16,185,129,.22)',
-          }}>
-            <Phone size={13}/> اتصل
-          </a>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+            <a href={`tel:${row.phone}`} style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '8px 14px', borderRadius: 999,
+              background: 'var(--accent)', color: '#fff',
+              fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
+              boxShadow: '0 1px 2px rgba(16,185,129,.22)',
+            }}>
+              <Phone size={13}/> اتصل
+            </a>
+            {/* §هيكلة-0: حملة قالب بمبلغ الطلب (تُسجَّل وتُتتبَّع) بدل ترك واتساب بلا زر */}
+            <WaActions phone={row.phone} name={row.store_name || row.customer_name}
+              amount={Number(row.amount_total) || 0}
+              vars={[row.store_name || row.customer_name || '', Number(row.amount_total || 0).toLocaleString('en-US', { maximumFractionDigits: 2 }), '1']}
+              campaignLabel="طلبات السداد" showTel={false} size={16}/>
+          </span>
         )}
       </div>
 
