@@ -26,47 +26,59 @@
 
 /* ── DARK THEME (default) ──────────────────────────────────────────────── */
 :root {
-  --bg:        #07091c;
-  --bg2:       #0b0e26;
-  --surface:   #11143a;
-  --surface2:  #161a47;
-  --card:      #141849;
-  --card2:     #1a1f5a;
-  --sidebar:   #0F1235;
-  --sidebar2:  #14174a;
+  /* ── DARK THEME (design-v2 2026-07-15 — «Konhub» direction معتمدة من المستخدم):
+     أخضر-فحمي بدل النيلي، برّاند ليموني للتعبئة فقط (--brand + --brand-ink)،
+     و--accent أخضر مقروء للنصوص/الروابط. المعاينة المرجعية: direction-mock-v1 ── */
+  --bg:        #131712;
+  --bg2:       #171D16;
+  --surface:   #1B211A;
+  --surface2:  #222A21;
+  --card:      #1B211A;
+  --card2:     #232B22;
+  --sidebar:   #0B0F0B;
+  --sidebar2:  #141A14;
 
-  --border:    #232867;
-  --border2:   #2e3580;
-  --border3:   #3d4699;
+  --border:    #2A322A;
+  --border2:   #39423A;
+  --border3:   #4A554B;
 
-  --accent:    #2DD4BF;
-  --accent2:   #14B8A6;
-  --accent3:   #5EEAD4;
-  --accent-dim:  rgba(45,212,191,.12);
-  --accent-glow: rgba(45,212,191,.22);
+  /* --brand = تعبئة ليمونية (أزرار رئيسية/العنصر النشط) مع حبرها الداكن.
+     لا تستعمل --brand لوناً لنص على أرضية فاتحة — لذلك --accent منفصل ومقروء. */
+  --brand:     #C9F24B;
+  --brand-ink: #161A06;
 
-  --green:     #34D399;
-  --green2:    #10B981;
-  --red:       #fb7185;
-  --red2:      #be123c;
-  --gold:      #fbbf24;
-  --gold2:     #d97706;
-  --purple:    #a78bfa;
-  --purple2:   #7c3aed;
-  --warn:      #fb923c;
+  --accent:    #B9DD3A;
+  --accent2:   #9CBF27;
+  --accent3:   #DFFF7A;
+  --accent-dim:  rgba(201,242,75,.12);
+  --accent-glow: rgba(201,242,75,.22);
 
-  --text:      #eaeaff;
-  --text2:     #c3c6ee;
-  --muted:     #7a82c4;
-  --muted2:    #4a5290;
-  --muted3:    #2b3275;
+  --green:     #4ADE80;
+  --green2:    #22C55E;
+  --red:       #F87171;
+  --red2:      #DC2626;
+  --gold:      #FBBF24;
+  --gold2:     #D97706;
+  --purple:    #C4B5FD;
+  --purple2:   #8B5CF6;
+  --warn:      #FB923C;
+  --blue:      #60A5FA;
 
-  --nav-text:       #a4abdc;
-  --nav-text-hover: #e0e3ff;
-  --nav-active-bg:  rgba(45,212,191,.14);
-  --nav-active-border: rgba(45,212,191,.42);
-  --nav-hover-bg:   rgba(255,255,255,.05);
-  --nav-label-color: #5a62a3;
+  --text:      #ECF0EA;
+  --text2:     #C6CEC4;
+  --muted:     #8B9589;
+  --muted2:    #5E6960;
+  --muted3:    #39423A;
+
+  --nav-text:        #A9B3A8;
+  --nav-text-hover:  #FFFFFF;
+  --nav-active-bg:   var(--brand);
+  --nav-active-text: var(--brand-ink);
+  --nav-active-border: transparent;
+  --nav-hover-bg:    rgba(255,255,255,.06);
+  --nav-label-color: #5F6B5F;
+  --nav-hint-color:  rgba(169,179,168,.55);
+  --nav-divider:     rgba(255,255,255,.07);
 
   /* IBM Plex Mono غير مستضاف بعد — فالسلسلة تسقط لخطوط النظام الحديثة
      (Cascadia/Consolas على ويندوز، SF Mono على ماك) بدل Courier New القديم. */
@@ -108,56 +120,65 @@
 /* Light theme — EXACT Lamha internal-system tokens, extracted from
    affiliate.lamha.sa CSS (main-blue #1447E6, off-white #FAFAFA sidebar,
    #FFFFFF cards, #E5E5E5 borders, #737373 muted, 10px radius). */
+/* ── LIGHT THEME (الافتراضي) — design-v2 «Konhub» direction:
+   ورق فاتح بميل أخضر رمادي، بطاقات بيضاء، **سايدبار داكن دائماً** (بصمة
+   التصميم) بعنصر نشط = حبّة ليمونية بحبر داكن. --accent أخضر-زيتوني مقروء
+   للنصوص/الروابط؛ الليموني الساطع = --brand للتعبئة فقط. ── */
 [data-theme="light"] {
-  --bg:        #FFFFFF;   /* page canvas — Lamha --background (white) */
-  --bg2:       #F5F5F5;   /* muted / alt surface */
-  --surface:   #FFFFFF;   /* cards */
-  --surface2:  #F7F7F7;   /* hovered cards */
+  --bg:        #F5F7F4;   /* ورق بميل أخضر خافت */
+  --bg2:       #ECEFEA;
+  --surface:   #FFFFFF;   /* البطاقات */
+  --surface2:  #F3F6F2;
   --card:      #FFFFFF;
-  --card2:     #F7F7F7;
-  --sidebar:   #F4F4F4;   /* light-grey sidebar, lifts off the white canvas */
-  --sidebar2:  #ECECEC;
+  --card2:     #F3F6F2;
+  --sidebar:   #101410;   /* داكن دائماً — التباين هو الهوية */
+  --sidebar2:  #1A211A;
 
-  --border:    #EAECF0;   /* Lamha border-color */
-  --border2:   #E5E5E5;   /* Lamha --border / inputs */
-  --border3:   #D4D4D8;
+  --border:    #E4E9E2;
+  --border2:   #D7DED5;
+  --border3:   #C3CDC1;
 
-  --accent:    #1447E6;   /* Lamha main interactive blue */
-  --accent2:   #1039C4;   /* darker for hover/press */
-  --accent3:   #3D6ACB;   /* Lamha secondary blue (--main-blue) */
-  --accent-dim:  rgba(20,71,230,.08);
-  --accent-glow: rgba(20,71,230,.16);
+  --brand:     #C9F24B;
+  --brand-ink: #161A06;
 
-  --green:     #009588;   /* Lamha chart-2 teal-green */
-  --green2:    #007a70;
-  --red:       #E40014;   /* Lamha destructive */
-  --red2:      #C1000F;
-  --gold:      #F99C00;   /* Lamha chart amber */
-  --gold2:     #D97706;
-  --purple:    #AC4BFF;   /* Lamha chart purple */
-  --purple2:   #7C3AED;
-  --warn:      #F05100;   /* Lamha chart orange */
-  --blue:      #1447E6;
+  --accent:    #567C00;   /* زيتوني — نفس عائلة الليموني لكن مقروء على الأبيض */
+  --accent2:   #46650A;
+  --accent3:   #C9F24B;
+  --accent-dim:  rgba(201,242,75,.22);
+  --accent-glow: rgba(201,242,75,.38);
 
-  --text:      #0A0A0A;   /* Lamha foreground (near-black) */
-  --text2:     #344054;   /* Lamha primary-text */
-  --muted:     #737373;   /* Lamha muted-foreground */
-  --muted2:    #A1A1A1;
-  --muted3:    #D4D4D8;
+  --green:     #1F9D5B;
+  --green2:    #157A45;
+  --red:       #DC4C4C;
+  --red2:      #B91C1C;
+  --gold:      #D9930B;
+  --gold2:     #B45309;
+  --purple:    #8B5CF6;
+  --purple2:   #6D28D9;
+  --warn:      #EA6A12;
+  --blue:      #3E7BD6;
 
-  /* Nav: off-white sidebar, light-gray active pill + blue text & bar */
-  --nav-text:        #525252;   /* readable on off-white */
-  --nav-text-hover:  #1447E6;
-  --nav-active-bg:   #E8EDFB;    /* blue-tinted active pill (visible on #F4F4F4) */
-  --nav-active-border: #1447E6;
-  --nav-active-text: #1447E6;    /* Lamha sidebar-primary */
-  --nav-hover-bg:    #EAEAEA;    /* subtle hover on the #F4F4F4 sidebar */
-  --nav-label-color: #A1A1A1;
+  --text:      #171C17;
+  --text2:     #3E463E;
+  --muted:     #778076;
+  --muted2:    #9AA399;
+  --muted3:    #C9D1C7;
 
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.05);
-  --shadow-md: 0 1px 3px rgba(16,24,40,.10), 0 1px 2px -1px rgba(16,24,40,.10);
-  --shadow-lg: 0 10px 15px -3px rgba(16,24,40,.10), 0 4px 6px -4px rgba(16,24,40,.10);
-  --shadow-xl: 0 20px 25px -5px rgba(16,24,40,.10), 0 8px 10px -6px rgba(16,24,40,.10);
+  /* السايدبار داكن حتى في الفاتح — توكناته ثابتة عبر الثيمين */
+  --nav-text:        #A9B3A8;
+  --nav-text-hover:  #FFFFFF;
+  --nav-active-bg:   var(--brand);
+  --nav-active-text: var(--brand-ink);
+  --nav-active-border: transparent;
+  --nav-hover-bg:    rgba(255,255,255,.07);
+  --nav-label-color: #5F6B5F;
+  --nav-hint-color:  rgba(169,179,168,.55);
+  --nav-divider:     rgba(255,255,255,.07);
+
+  --shadow-sm: 0 1px 2px rgba(21,28,18,.05);
+  --shadow-md: 0 1px 3px rgba(21,28,18,.08), 0 4px 16px rgba(21,28,18,.06);
+  --shadow-lg: 0 10px 15px -3px rgba(21,28,18,.10), 0 4px 6px -4px rgba(21,28,18,.10);
+  --shadow-xl: 0 20px 25px -5px rgba(21,28,18,.10), 0 8px 10px -6px rgba(21,28,18,.10);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -282,7 +303,8 @@ button:active { transform: scale(.97); }
 
 .sidebar-logo {
   padding: 16px 16px;
-  border-bottom: 1px solid var(--border);
+  /* السايدبار داكن في الثيمين — حدّ أبيض شفيف لا توكن الحدود الفاتح */
+  border-bottom: 1px solid var(--nav-divider, rgba(255,255,255,.07));
   display: flex; align-items: center; gap: 10px;
   flex-shrink: 0; min-height: 140px;
 }
@@ -293,14 +315,14 @@ button:active { transform: scale(.97); }
   overflow-y: auto; overflow-x: hidden;
 }
 
-/* ── Nav items ── */
+/* ── Nav items — design-v2: حبّة كاملة الاستدارة، النشط تعبئة ليمونية بحبر داكن ── */
 .nav-item {
   display: flex; align-items: center; gap: 12px;
-  width: 100%; padding: 10px 14px;
-  border-radius: 10px; border: 1px solid transparent;
+  width: 100%; padding: 9px 14px;
+  border-radius: 999px; border: 1px solid transparent;
   background: transparent; color: var(--nav-text);
   cursor: pointer; font-family: var(--font-sans);
-  font-size: 13.5px; font-weight: 500;
+  font-size: 13px; font-weight: 500;
   margin-bottom: 2px; white-space: nowrap;
   text-align: right; transition: all .15s; position: relative;
 }
@@ -310,13 +332,10 @@ button:active { transform: scale(.97); }
 }
 .nav-item.active {
   background: var(--nav-active-bg);
-  /* white on dark sidebar (dark theme) · blue on white sidebar (light) */
   color: var(--nav-active-text, #fff);
-  font-weight: 600;
-  /* Lamha-style blue indicator bar on the right (start) inner edge */
-  box-shadow: inset -3px 0 0 0 var(--nav-active-border, var(--accent));
+  font-weight: 700;
 }
-.nav-item.active svg { color: var(--accent); }
+.nav-item.active svg { color: var(--nav-active-text, var(--accent)); }
 .nav-item .nav-dot {
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent); flex-shrink: 0;
@@ -328,7 +347,7 @@ button:active { transform: scale(.97); }
 
 .sidebar-footer {
   padding: 10px 10px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--nav-divider, rgba(255,255,255,.07));
   flex-shrink: 0;
 }
 
@@ -343,13 +362,13 @@ button:active { transform: scale(.97); }
   background: var(--accent-dim); border-color: var(--accent); color: var(--accent);
 }
 
-/* ── Section labels ── */
+/* ── Section labels — design-v2: عربي صغير خافت (كالمرجع) بدل mono اللاتيني ── */
 .section-label {
-  font-family: var(--font-mono); font-size: 9.5px;
-  letter-spacing: 1.8px; text-transform: uppercase;
+  font-family: var(--font-sans); font-size: 10px;
+  letter-spacing: .5px;
   color: var(--nav-label-color);
   padding: 10px 13px 4px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .sidebar.collapsed .section-label { display: none; }
 
@@ -1022,19 +1041,20 @@ table {
   border-spacing: 0;
 }
 
+/* design-v2: كانت قيماً صلبة زرقاء-رمادية تُطبَّق على الثيمين — توكنات الآن */
 th {
-  background: #F8FAFC;
-  color: #64748B;
+  background: var(--surface2);
+  color: var(--muted);
   border-bottom: 1px solid var(--border);
   font-size: 11.5px;
 }
 
 td {
-  border-bottom: 1px solid #EEF2F7;
+  border-bottom: 1px solid var(--border);
 }
 
 tr:hover td {
-  background: #F8FAFC;
+  background: var(--surface2);
 }
 
 @media (max-width: 768px) {
@@ -1049,69 +1069,78 @@ tr:hover td {
    ينتقل النظام من "لوحة بطاقات" إلى واجهة تشغيل هادئة:
    جانبية فاتحة، أيقونات موحّدة، جداول أوضح، وبطاقات أقل صخباً.
 ══════════════════════════════════════════════ */
+/* design-v2 (2026-07-15، «Konhub» direction — معتمدة): هذا البلوك اللاحق هو
+   الساري (يتغلّب على بلوك الفاتح الأول أعلاه). ورق بميل أخضر، بطاقات بيضاء،
+   **سايدبار داكن دائماً** بعنصر نشط ليموني، و--accent زيتوني مقروء. */
 [data-theme="light"] {
-  --bg:        #F3F6FA;
-  --bg2:       #EAF0F7;
+  --bg:        #F5F7F4;
+  --bg2:       #ECEFEA;
   --surface:   #FFFFFF;
-  --surface2:  #F7FAFD;
+  --surface2:  #F3F6F2;
   --card:      #FFFFFF;
-  --card2:     #F7FAFD;
-  --sidebar:   #FFFFFF;
-  --sidebar2:  #F7FAFC;
+  --card2:     #F3F6F2;
+  --sidebar:   #101410;
+  --sidebar2:  #171D16;
 
-  --border:    #E4EAF2;
-  --border2:   #D7E0EA;
-  --border3:   #B9C7D8;
+  --border:    #E4E9E2;
+  --border2:   #D7DED5;
+  --border3:   #C3CDC1;
 
-  --accent:    #155EEF;
-  --accent2:   #0B4BD3;
-  --accent3:   #5AA7FF;
-  --accent-dim:  rgba(21,94,239,.08);
-  --accent-glow: rgba(21,94,239,.16);
+  --brand:     #C9F24B;
+  --brand-ink: #161A06;
 
-  --green:     #008A78;
-  --green2:    #00715F;
-  --red:       #D92D20;
-  --red2:      #B42318;
-  --gold:      #DC8A00;
-  --gold2:     #B66D00;
-  --purple:    #6E56CF;
-  --purple2:   #573BB7;
-  --warn:      #E05F16;
+  --accent:    #567C00;
+  --accent2:   #46650A;
+  --accent3:   #C9F24B;
+  --accent-dim:  rgba(201,242,75,.22);
+  --accent-glow: rgba(201,242,75,.38);
 
-  --text:      #101828;
-  --text2:     #344054;
-  --muted:     #667085;
-  --muted2:    #98A2B3;
-  --muted3:    #EAECF0;
+  --green:     #1F9D5B;
+  --green2:    #157A45;
+  --red:       #DC4C4C;
+  --red2:      #B91C1C;
+  --gold:      #D9930B;
+  --gold2:     #B45309;
+  --purple:    #8B5CF6;
+  --purple2:   #6D28D9;
+  --warn:      #EA6A12;
+  --blue:      #3E7BD6;
 
-  --nav-text:        #475467;
-  --nav-text-hover:  #101828;
-  --nav-active-bg:   #EEF4FF;
-  --nav-active-border: #155EEF;
-  --nav-active-text: #101828;
-  --nav-hover-bg:    #F4F7FB;
-  --nav-label-color: #667085;
-  --nav-hint-color:  #98A2B3;
+  --text:      #171C17;
+  --text2:     #3E463E;
+  --muted:     #778076;
+  --muted2:    #9AA399;
+  --muted3:    #C9D1C7;
 
-  --sidebar-brand-text: #101828;
-  --sidebar-brand-muted: #667085;
-  --sidebar-logo-tile-bg: #F4F7FB;
-  --sidebar-logo-shadow: inset 0 0 0 1px #E4EAF2;
-  --sidebar-user-bg: #F8FAFC;
-  --sidebar-user-border: #E4EAF2;
-  --sidebar-logout-bg: #FFFFFF;
-  --sidebar-logout-border: #D7E0EA;
-  --sidebar-logout-color: #667085;
+  /* السايدبار داكن في الثيمين — توكناته موحّدة */
+  --nav-text:        #A9B3A8;
+  --nav-text-hover:  #FFFFFF;
+  --nav-active-bg:   var(--brand);
+  --nav-active-text: var(--brand-ink);
+  --nav-active-border: transparent;
+  --nav-hover-bg:    rgba(255,255,255,.07);
+  --nav-label-color: #5F6B5F;
+  --nav-hint-color:  rgba(169,179,168,.55);
+  --nav-divider:     rgba(255,255,255,.07);
 
-  --shadow-sm: 0 1px 2px rgba(16,24,40,.04);
-  --shadow-md: 0 8px 20px rgba(16,24,40,.08), 0 1px 3px rgba(16,24,40,.05);
-  --shadow-lg: 0 18px 44px rgba(16,24,40,.12), 0 4px 10px rgba(16,24,40,.05);
-  --shadow-xl: 0 28px 76px rgba(16,24,40,.16);
+  --sidebar-brand-text: #FFFFFF;
+  --sidebar-brand-muted: #A9B3A8;
+  --sidebar-logo-tile-bg: rgba(255,255,255,.95);
+  --sidebar-logo-shadow: 0 8px 20px rgba(0,0,0,.35);
+  --sidebar-user-bg: rgba(255,255,255,.05);
+  --sidebar-user-border: rgba(255,255,255,.1);
+  --sidebar-logout-bg: rgba(255,255,255,.06);
+  --sidebar-logout-border: rgba(255,255,255,.12);
+  --sidebar-logout-color: #A9B3A8;
+
+  --shadow-sm: 0 1px 2px rgba(21,28,18,.05);
+  --shadow-md: 0 1px 3px rgba(21,28,18,.08), 0 4px 16px rgba(21,28,18,.06);
+  --shadow-lg: 0 10px 15px -3px rgba(21,28,18,.10), 0 4px 6px -4px rgba(21,28,18,.10);
+  --shadow-xl: 0 20px 25px -5px rgba(21,28,18,.10), 0 8px 10px -6px rgba(21,28,18,.10);
 }
 
 [data-theme="light"] body {
-  background: linear-gradient(180deg, #FBFCFE 0%, var(--bg) 52%, #EDF2F8 100%);
+  background: var(--bg);
 }
 
 .app-layout {
@@ -1119,18 +1148,18 @@ tr:hover td {
   gap: 14px;
 }
 
+/* design-v2: السايدبار داكن في الثيمين — حبّة ليمونية للنشط، أيقونات شفيفة */
 .sidebar {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--sidebar) 96%, #FFFFFF) 0%, var(--sidebar2) 100%);
-  border: 1px solid color-mix(in srgb, var(--border2) 92%, transparent);
+  background: var(--sidebar);
+  border: 1px solid rgba(255,255,255,.06);
   border-radius: 18px;
-  box-shadow: 0 16px 44px rgba(16,24,40,.10);
+  box-shadow: 0 16px 44px rgba(10,14,9,.25);
 }
 
 .sidebar-logo {
   min-height: 98px;
   padding: 16px 16px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--nav-divider, rgba(255,255,255,.07));
 }
 
 .sidebar-nav {
@@ -1139,22 +1168,22 @@ tr:hover td {
 
 .section-label {
   color: var(--nav-label-color);
-  letter-spacing: 0;
-  font-size: 11px;
+  letter-spacing: .4px;
+  font-size: 10px;
   font-weight: 800;
-  padding: 12px 11px 6px;
+  padding: 14px 11px 5px;
 }
 
 .nav-divider {
-  background: var(--border);
+  background: var(--nav-divider, rgba(255,255,255,.07));
 }
 
 .nav-item {
-  min-height: 44px;
+  min-height: 42px;
   gap: 10px;
-  padding: 7px 8px;
-  margin-bottom: 4px;
-  border-radius: 12px;
+  padding: 6px 8px;
+  margin-bottom: 3px;
+  border-radius: 999px;
   color: var(--nav-text);
   border: 1px solid transparent;
 }
@@ -1167,37 +1196,35 @@ tr:hover td {
 .nav-icon {
   width: 30px;
   height: 30px;
-  border-radius: 9px;
+  border-radius: 999px;
   flex: 0 0 30px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: color-mix(in srgb, var(--item-accent, var(--accent)) 75%, var(--nav-text));
-  background: color-mix(in srgb, var(--item-accent, var(--accent)) 9%, var(--surface));
-  border: 1px solid color-mix(in srgb, var(--item-accent, var(--accent)) 14%, transparent);
+  color: color-mix(in srgb, var(--item-accent, var(--brand)) 70%, var(--nav-text));
+  background: rgba(255,255,255,.05);
+  border: 1px solid transparent;
 }
 
 .nav-item.active {
-  background:
-    linear-gradient(135deg,
-      color-mix(in srgb, var(--item-accent, var(--accent)) 13%, var(--surface)),
-      color-mix(in srgb, var(--item-accent, var(--accent)) 5%, var(--surface)));
-  border-color: color-mix(in srgb, var(--item-accent, var(--accent)) 24%, var(--border));
-  color: var(--nav-active-text);
-  box-shadow: inset -3px 0 0 var(--item-accent, var(--nav-active-border)), 0 8px 18px rgba(16,24,40,.06);
+  background: var(--nav-active-bg, var(--brand));
+  border-color: transparent;
+  color: var(--nav-active-text, var(--brand-ink));
+  font-weight: 700;
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--brand) 25%, transparent);
 }
 
 .nav-item.active .nav-icon {
-  color: #FFFFFF;
-  background: linear-gradient(135deg, var(--item-accent, var(--accent)), color-mix(in srgb, var(--item-accent, var(--accent)) 72%, #0B1220));
+  color: var(--nav-active-text, var(--brand-ink));
+  background: rgba(0,0,0,.1);
   border-color: transparent;
-  box-shadow: 0 8px 18px color-mix(in srgb, var(--item-accent, var(--accent)) 22%, transparent);
+  box-shadow: none;
 }
 
 .nav-item .nav-dot {
   width: 7px;
   height: 7px;
-  background: var(--item-accent, var(--accent));
+  background: var(--item-accent, var(--brand));
   box-shadow: none;
 }
 
@@ -1206,12 +1233,12 @@ tr:hover td {
 }
 
 .sidebar-footer {
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--nav-divider, rgba(255,255,255,.07));
   padding: 10px;
 }
 
 .sidebar-toggle {
-  background: #FFFFFF;
+  background: var(--surface);
   color: var(--text2);
   border-color: var(--border2);
   box-shadow: var(--shadow-md);
@@ -1308,7 +1335,7 @@ button {
   .app-layout { padding: 0; }
   .sidebar {
     border-radius: 0 0 0 22px;
-    background: #FFFFFF;
+    background: var(--sidebar);   /* design-v2: الدرج داكن كالسايدبار (كان أبيض صلباً) */
   }
   .topbar {
     height: 56px;

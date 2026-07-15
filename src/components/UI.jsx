@@ -16,12 +16,14 @@ import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Help
 //   outline         = الحالة المطفأة لزر تبديل (toggle غير نشط)
 //   success / navy  = مهملان (success ≡ accent لونياً، navy ≡ primary) — لا تستعملهما في كود جديد
 const VARIANTS = {
+  // design-v2: primary = تعبئة براند ليمونية بحبر داكن (كالمعاينة المعتمدة) —
+  // الدلالة كما هي (§1.20: الفعل الرئيسي الواحد للسياق)، اللون فقط تغيّر.
   primary: {
-    background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
-    color: '#fff',
-    border: '1px solid var(--accent2)',
-    boxShadow: '0 8px 18px rgba(37,99,235,.20), inset 0 1px 0 rgba(255,255,255,.18)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' },
+    background: 'var(--brand, var(--accent))',
+    color: 'var(--brand-ink, #fff)',
+    border: '1px solid transparent',
+    boxShadow: '0 6px 16px color-mix(in srgb, var(--brand, var(--accent)) 28%, transparent)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 10px 22px color-mix(in srgb, var(--brand, var(--accent)) 38%, transparent)' },
   },
   accent: {
     background: 'linear-gradient(135deg, var(--green), var(--green2))',
@@ -30,12 +32,12 @@ const VARIANTS = {
     boxShadow: '0 8px 18px rgba(5,150,105,.18), inset 0 1px 0 rgba(255,255,255,.18)',
     _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(5,150,105,.26)' },
   },
-  navy: {
-    background: 'linear-gradient(135deg, var(--accent), var(--accent2))',
-    color: '#fff',
-    border: '1px solid var(--accent2)',
-    boxShadow: '0 8px 18px rgba(37,99,235,.20)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(37,99,235,.28)' },
+  navy: {   // مهمل ≡ primary — مُحاذى لنفس براند design-v2 حتى لا يختلف قديمُ الكود
+    background: 'var(--brand, var(--accent))',
+    color: 'var(--brand-ink, #fff)',
+    border: '1px solid transparent',
+    boxShadow: '0 6px 16px color-mix(in srgb, var(--brand, var(--accent)) 28%, transparent)',
+    _hover: { transform: 'translateY(-1px)' },
   },
   danger: {
     background: 'linear-gradient(135deg, #EF4444, var(--red2))',

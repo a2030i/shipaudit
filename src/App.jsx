@@ -601,7 +601,9 @@ function AppInner({ theme, toggleTheme }) {
               ), 0);
               // Accordion remains one-section-at-a-time. Navigation opens
               // the active section so action links are not hidden.
-              const isOpen = collapsed ? true : !collapsedSecs.has(sec.id);
+              // design-v2 (يتجاوز قرار الأكورديون v4): المجموعات ظاهرة دائماً
+              // تحت عناوين خافتة — كالمعاينة المعتمدة direction-mock-v1.
+              const isOpen = true;
               const SecIcon = sec.icon;
               return (
                 <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
@@ -625,14 +627,13 @@ function AppInner({ theme, toggleTheme }) {
                           background: 'var(--border)',
                         }}/>
                       )}
-                      <button
-                        onClick={() => toggleSection(sec.id)}
-                        aria-expanded={isOpen}
+                      {/* design-v2: العنوان تسمية ثابتة لا زرّ طيّ */}
+                      <div
                         style={{
                           display: 'flex', alignItems: 'center', gap: 9,
-                          width: '100%', padding: '4px 14px 8px',
+                          width: '100%', padding: '10px 14px 6px',
                           background: 'transparent', border: 'none',
-                          cursor: 'pointer', fontFamily: 'var(--font-sans)',
+                          fontFamily: 'var(--font-sans)',
                           textAlign: 'right',
                         }}
                       >
@@ -672,25 +673,7 @@ function AppInner({ theme, toggleTheme }) {
                             {sec.hint}
                           </div>
                         </div>
-                        {sectionHasActive && !isOpen && (
-                          <span style={{
-                            width: 5, height: 5, borderRadius: '50%',
-                            background: sec.accent,
-                            boxShadow: `0 0 8px ${sec.accent}`,
-                            flexShrink: 0,
-                          }}/>
-                        )}
-                        <ChevronDown
-                          size={11}
-                          style={{
-                            transition: 'transform .22s cubic-bezier(.4,0,.2,1)',
-                            transform: isOpen ? 'rotate(0)' : 'rotate(-90deg)',
-                            opacity: .55,
-                            color: 'var(--muted)',
-                            flexShrink: 0,
-                          }}
-                        />
-                      </button>
+                      </div>
                     </>
                   )}
                   <div style={{
