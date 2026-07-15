@@ -37,8 +37,7 @@ import ReportsCenter     from './pages/ReportsCenter.jsx';
 import ZohoCallback      from './pages/ZohoCallback.jsx';
 import FinancialPosition from './pages/FinancialPosition.jsx';
 import ZohoData          from './pages/ZohoData.jsx';
-import CustomerMoney     from './pages/CustomerMoney.jsx';
-import LegalEscalation   from './pages/LegalEscalation.jsx';
+import CollectionsHub    from './pages/CollectionsHub.jsx';
 import Retargeting       from './pages/Retargeting.jsx';
 import HatifLeads        from './pages/HatifLeads.jsx';
 import WhatsAppSettings   from './pages/WhatsAppSettings.jsx';
@@ -133,14 +132,19 @@ const NAV_ITEMS = [
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
-  { id: 'customer-money',  path: '/customer-money',  label: 'تحصيل العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
-  { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'legal.view' },
+  // §1.32 مرحلة 2: مركز التحصيل = تحصيل العملاء + قائمة التحصيل + القانوني + الكشف الداخلي
+  { id: 'collections-hub', path: '/customer-money',  label: 'مركز التحصيل',  icon: HandCoins, section: 'customers', permKey: 'receivables.view',
+    subTabs: [
+      { tabId: 'money',    label: 'تحصيل العملاء',   icon: HandCoins },
+      { tabId: 'queue',    label: 'قائمة التحصيل',   icon: Phone,  legacy: '/collections' },
+      { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
+      { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
+    ] },
   { id: 'retargeting',     path: '/retargeting',     label: 'إعادة الاستهداف', icon: Target,    section: 'customers', permKey: 'sales.view' },
   { id: 'hatif-leads',     path: '/hatif-leads',     label: 'فرص من هاتف',     icon: UserPlus,  section: 'customers', permKey: 'sales.view' },
   { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view', showSubTabsInNav: true,
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
-      { tabId: 'receivables', label: 'مديونيات',      icon: DollarSign, legacy: '/receivables' },
       { tabId: 'segments',    label: 'شرائح',         icon: Layers,     legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, legacy: '/merchants' },
     ] },
@@ -148,7 +152,6 @@ const NAV_ITEMS = [
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
   { id: 'crm',             path: '/crm',             label: 'CRM العملاء', icon: Headset,   section: 'customers', permKey: 'crm.view',
     subTabs: [
-      { tabId: 'collections', label: 'قائمة التحصيل', icon: Phone, legacy: '/collections' },
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'leads', label: 'ليسوا عملاء لنا', icon: ShoppingBag },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
@@ -195,7 +198,9 @@ const NAV_SECTIONS = [
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
 // PageSlot active check.
-const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/receivables', '/merchants', '/segments'];
+const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers', '/merchants', '/segments'];
+// مركز التحصيل (§1.32 المرحلة 2): 4 شاشات كانت متفرّقة — المسارات القديمة تهبط على تبويبها
+const COLLECTIONS_HUB_PATHS = ['/customer-money', '/collections', '/legal', '/receivables'];
 // /hub, /carrier-kpi, /claims all render the CarriersWorkspace (3 tabs).
 const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank / payment-requests
@@ -212,7 +217,7 @@ const PAGE_TITLES = {
   '/zoho-callback':     'ربط زوهو',
   '/pnl':               'الربحية',
   '/zoho-data':         'زوهو API',
-  '/customer-money':    'تحصيل العملاء',
+  '/customer-money':    'مركز التحصيل',
   '/legal':             'التصعيد القانوني',
   '/retargeting':       'إعادة الاستهداف',
   '/whatsapp-settings': 'إعدادات واتساب',
@@ -870,11 +875,8 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/zoho-callback'} scroll>
               <ZohoCallback isActive={pathname==='/zoho-callback'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/customer-money'} scroll>
-              <CustomerMoney isActive={pathname==='/customer-money'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/legal'} scroll>
-              <LegalEscalation isActive={pathname==='/legal'}/>
+            <PageSlot active={COLLECTIONS_HUB_PATHS.includes(pathname)} scroll>
+              <CollectionsHub isActive={COLLECTIONS_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
             <PageSlot active={pathname==='/retargeting'} scroll>
               <Retargeting isActive={pathname==='/retargeting'}/>
@@ -928,8 +930,8 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
             {/* /collections القديم يهبط على تبويب «قائمة التحصيل» داخل CRM */}
-            <PageSlot active={pathname==='/crm' || pathname==='/collections'} scroll>
-              <CrmWorkspace isActive={pathname==='/crm' || pathname==='/collections'}/>
+            <PageSlot active={pathname==='/crm'} scroll>
+              <CrmWorkspace isActive={pathname==='/crm'}/>
             </PageSlot>
             {/* تدقيق التجهيز 3PL — مسار منفصل عن تدقيق الشحن */}
             <PageSlot active={pathname==='/fulfillment'} scroll>
