@@ -1,14 +1,13 @@
-// hatif-contacts-sync — يدفع سياق العميل إلى جهات اتصال هاتف ليراه الموظفون:
-//   note        = «المتاجر: أ · ب | شحنات | آخر شحنة | دين | محفظة»
-//   customFields= الوسوم + الأرقام (دين/محفظة/متاجر/شحنات/آخر شحنة)
-// المصدر: RPC hatif_contact_labels() — موحّد بالهاتف (عميل بعدة متاجر = جهة واحدة).
+// hatif-contacts-sync v2 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// (الآلية الوحيدة التي تظهر للموظف في البروفايل — customFields تُخزَّن لكنها مخفيّة،
+// وحقل note يُضيف نسخة كل مرة ولا يُحذف برمجياً، فكلاهما مرفوض هنا).
 //
-// ⚠️ هاتف لا يوفّر endpoint لربط Tag بجهة اتصال (Tags API = تعريف الوسم فقط)،
-// لذا «الوسوم» تُكتب داخل customFields + note — وهي الآلية الوحيدة المدعومة.
+// ⚠️ هاتف لا يوفّر ربط Tag بجهة اتصال (Tags API = تعريف الوسم فقط، 53 مساراً
+// مراجَعة). البديل المعتمد: خصائص من نوع **قائمة (3)** بقيَم ملوّنة = شارات بصرية.
 //
-// حصة Voxa (~100/دقيقة مشتركة): نخزّن contact_id + بصمة الحمولة في
-// hatif_contact_sync فلا نستدعي هاتف إلا للمتغيّر (وبلا بحث بعد أول مرة).
-// الدفعات: limit/offset مع ترتيب ثابت (phone) — offset التالي يعود في nextOffset.
+// المصدر: RPC hatif_contact_profile() — موحّد بالهاتف المطبَّع، الاسم = أعلى متجر
+// شحناً، details = سرد لكل متجر. حصة Voxa: hatif_contact_sync يخزّن contact_id
+// وبصمة الحمولة فلا نستدعي هاتف إلا للمتغيّر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -24,44 +23,20 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 const TOKEN_URL = 'https://api.voxa.sa/connect/token';
 const CONTACTS_URL = 'https://api.voxa.sa/v1/contacts';
+const PROPDEF_URL = 'https://api.voxa.sa/v1/contact-property-definitions';
 
-// بصمة بسيطة (djb2) لكشف تغيّر الحمولة
-function hash(s: string) {
-  let h = 5381;
-  for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
-  return String(h >>> 0);
-}
+// تعريفات الخصائص (تُنشأ مرة). type: 1=نص 2=رقم 3=قائمة ملوّنة 4=تاريخ
+const PROP_DEFS: { name: string; type: number; options?: { value: string; color: string }[] }[] = [
+  { name: 'الحالة',  type: 3, options: [{ value: 'نشط', color: '#22C55E' }, { value: 'متوقف', color: '#EF4444' }, { value: 'جديد', color: '#3B82F6' }] },
+  { name: 'التصنيف', type: 3, options: [{ value: 'VIP', color: '#D97706' }, { value: 'عادي', color: '#9CA3AF' }] },
+  { name: 'المديونية', type: 3, options: [{ value: 'عليه مديونية', color: '#EF4444' }, { value: 'سليم', color: '#22C55E' }] },
+  { name: 'إجمالي المديونية', type: 2 },
+  { name: 'آخر شحنة', type: 4 },
+  { name: 'تاريخ الانضمام', type: 4 },
+  { name: 'تفاصيل المتاجر', type: 1 },
+];
 
-let tokenCache: { token: string; exp: number } | null = null;
-async function accessToken() {
-  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
-  const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
-  if (!id || !secret) throw new Error('أسرار Hatif غير مضبوطة');
-  const r = await fetch(TOKEN_URL, {
-    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret, scope: 'VoxaAPI' }),
-  });
-  const j = await r.json();
-  if (!j.access_token) throw new Error('فشل توكن Hatif');
-  tokenCache = { token: j.access_token, exp: Date.now() + ((Number(j.expires_in) || 3600) * 1000) - 60000 };
-  return tokenCache.token;
-}
-
-// ردود هاتف ملفوفة تحت مفتاح id (نزوة موثّقة) — نفكّها بتسامح
-const unwrap = (j: any) => (j && typeof j === 'object' && 'id' in j && typeof j.id === 'object') ? j.id : j;
-
-async function findContactId(token: string, phone: string) {
-  const u = `${CONTACTS_URL}?SkipCount=0&MaxResultCount=10&phoneNumber=${encodeURIComponent(phone)}`;
-  const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
-  if (!r.ok) return null;
-  const body = unwrap(await r.json().catch(() => ({})));
-  const items: any[] = body?.items || [];
-  const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
-  const hit = items.find(c => digits(c.phoneNumber) === digits(phone));   // مطابقة تامة (الفلتر جزئي)
-  return hit?.id || null;
-}
-
-// تطبيع مطابق لـnorm_sa_phone (SQL) وnormalizeSaudiPhone (JS)
+function hash(s: string) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); }
 function normPhone(raw: unknown) {
   let d = String(raw || '').replace(/\D/g, '');
   if (!d) return '';
@@ -71,23 +46,61 @@ function normPhone(raw: unknown) {
   if (d.length === 9 && d.startsWith('5')) return '966' + d;
   return d;
 }
+const unwrap = (j: any) => (j && typeof j === 'object' && 'id' in j && typeof j.id === 'object') ? j.id : j;
 
-// ⚠️ لا نستعمل حقل note: هاتف **يُضيف** ملاحظة جديدة كل مرة (لا يستبدل) فتتراكم
-// نسخ مكرّرة. customFields تُستبدَل بشكل صحيح — فكل السياق يوضع فيها.
-function buildPayload(row: any) {
-  const tags: string[] = Array.isArray(row.tags) ? row.tags : [];
-  const num = (v: unknown) => String(Math.round(Number(v) || 0));
-  const names: string[] = Array.isArray(row.store_names) ? row.store_names : [];
-  const customFields: Record<string, string> = {
-    'الوسوم': tags.join(' · ') || '—',
-    'المتاجر': names.join(' · ') || '—',
-    'عدد المتاجر': String(row.store_count || 1),
-    'الشحنات': num(row.shipments),
-    'آخر شحنة': row.days_since_last == null ? 'لم يشحن' : `${row.days_since_last} يوم`,
-    'الدين': num(row.debt),
-    'المحفظة': num(row.wallet),
+let tokenCache: { token: string; exp: number } | null = null;
+async function accessToken() {
+  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
+  const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
+  if (!id || !secret) throw new Error('أسرار Hatif غير مضبوطة');
+  const r = await fetch(TOKEN_URL, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret, scope: 'VoxaAPI' }) });
+  const j = await r.json();
+  if (!j.access_token) throw new Error('فشل توكن Hatif');
+  tokenCache = { token: j.access_token, exp: Date.now() + ((Number(j.expires_in) || 3600) * 1000) - 60000 };
+  return tokenCache.token;
+}
+
+// يضمن وجود التعريفات ويُرجِع الاسم → id
+async function ensureProps(token: string) {
+  const r = await fetch(PROPDEF_URL, { headers: { Authorization: `Bearer ${token}` } });
+  const b = unwrap(await r.json().catch(() => ({})));
+  const existing: any[] = Array.isArray(b) ? b : (b?.items || []);
+  const map = new Map<string, string>();
+  for (const d of existing) if (d?.name && d?.id) map.set(d.name, d.id);
+  for (const def of PROP_DEFS) {
+    if (map.has(def.name)) continue;
+    const body: Record<string, unknown> = { name: def.name, type: def.type, isRequired: false };
+    if (def.options) body.selectOptions = def.options;
+    const cr = await fetch(PROPDEF_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
+    const cb = unwrap(await cr.json().catch(() => ({})));
+    if (cb?.id) map.set(def.name, cb.id);
+    await sleep(120);
+  }
+  return map;
+}
+
+// قيَم الخصائص لعميل — القيم الفارغة تُحذف (لا نملأ حقولاً بلا معنى)
+function propValues(row: any): Record<string, string | number> {
+  const v: Record<string, string | number> = {
+    'الحالة': row.status_val,
+    'التصنيف': row.class_val,
+    'المديونية': row.debt_val,
+    'تفاصيل المتاجر': row.details || '',
   };
-  return { name: row.name || row.phone, customFields };
+  if (Number(row.debt) > 0.5) v['إجمالي المديونية'] = Math.round(Number(row.debt));
+  if (row.last_shipment_at) v['آخر شحنة'] = String(row.last_shipment_at);
+  if (row.joined_at) v['تاريخ الانضمام'] = String(row.joined_at);
+  for (const k of Object.keys(v)) if (v[k] === '' || v[k] == null) delete v[k];
+  return v;
+}
+
+async function findContactId(token: string, phone: string) {
+  const r = await fetch(`${CONTACTS_URL}?SkipCount=0&MaxResultCount=10&phoneNumber=${encodeURIComponent(phone)}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!r.ok) return null;
+  const items: any[] = unwrap(await r.json().catch(() => ({})))?.items || [];
+  const dg = (v: unknown) => String(v || '').replace(/\D/g, '');
+  return items.find(c => dg(c.phoneNumber) === dg(phone))?.id || null;
 }
 
 Deno.serve(async (req) => {
@@ -98,11 +111,9 @@ Deno.serve(async (req) => {
   const action = String(body.action || 'preview');
   const limit = Math.min(Math.max(Number(body.limit) || 25, 1), 200);
   const offset = Math.max(Number(body.offset) || 0, 0);
-  const overwriteName = body.overwriteName === true;   // افتراضياً لا نمسّ اسم جهة قائمة
-  const all = body.all === true;                        // يمرّ على الكل (المتخطّى مجاني)
-  const maxWrites = Math.min(Math.max(Number(body.maxWrites) || 200, 1), 400);  // سقف زمن التنفيذ
+  const all = body.all === true;
+  const maxWrites = Math.min(Math.max(Number(body.maxWrites) || 50, 1), 200);   // عميل واحد = ~7 استدعاءات
 
-  // هوية: cron أو مستخدم مخوَّل
   let authed = false;
   const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
   if (cronKey) {
@@ -120,47 +131,80 @@ Deno.serve(async (req) => {
   }
   if (!authed) return json({ error: 'unauthorized' }, 401);
 
-  // الصفوف: عميل واحد بالرقم، أو دفعة بترتيب ثابت (§6: أي range يحتاج order)
   const onePhone = body.phone ? normPhone(body.phone) : null;
   const q = onePhone
-    ? db.rpc('hatif_contact_labels').eq('phone', onePhone)
+    ? db.rpc('hatif_contact_profile').eq('phone', onePhone)
     : all
-      ? db.rpc('hatif_contact_labels').order('phone', { ascending: true })
-      : db.rpc('hatif_contact_labels').order('phone', { ascending: true }).range(offset, offset + limit - 1);
+      ? db.rpc('hatif_contact_profile').order('phone', { ascending: true })
+      : db.rpc('hatif_contact_profile').order('phone', { ascending: true }).range(offset, offset + limit - 1);
   const { data: rows, error } = await q;
-  if (error) return json({ ok: false, error: `labels: ${error.message}` });
+  if (error) return json({ ok: false, error: `profile: ${error.message}` });
   const list: any[] = rows || [];
   if (onePhone && !list.length) return json({ ok: false, error: `الرقم ${onePhone} ليس ضمن كشف المتاجر` });
 
-  const { count: total } = await db.from('hatif_contact_sync').select('phone', { count: 'exact', head: true });
-
   if (action === 'preview') {
-    return json({ ok: true, preview: true, offset, returned: list.length,
-      samples: list.slice(0, 5).map(r => ({ phone: r.phone, ...buildPayload(r) })), synced_so_far: total || 0 });
+    return json({ ok: true, preview: true, returned: list.length,
+      samples: list.slice(0, 3).map(r => ({ phone: r.phone, name: r.name, props: propValues(r) })) });
   }
 
-  // قراءة رجعية: ماذا خزّن هاتف فعلاً لهذا الرقم (تحقّق لا ادّعاء)
+  // سرد تعريفات الخصائص (فحص)
+  if (action === 'props') {
+    const token = await accessToken();
+    if (body.delete) {
+      const dr = await fetch(`${PROPDEF_URL}/${body.delete}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+      return json({ ok: dr.ok, status: dr.status, deleted: body.delete });
+    }
+    const r = await fetch(PROPDEF_URL, { headers: { Authorization: `Bearer ${token}` } });
+    const b = unwrap(await r.json().catch(() => ({})));
+    const defs: any[] = Array.isArray(b) ? b : (b?.items || []);
+    return json({ ok: r.ok, count: defs.length, defs: defs.map((d: any) => ({ id: d.id, name: d.name, type: d.type })) });
+  }
+
+  // قراءة رجعية — ماذا خزّن هاتف فعلاً
   if (action === 'inspect') {
     if (!onePhone) return json({ ok: false, error: 'phone مطلوب' });
-    try {
-      const token = await accessToken();
-      const u = `${CONTACTS_URL}?SkipCount=0&MaxResultCount=10&phoneNumber=${encodeURIComponent(onePhone)}`;
-      const r = await fetch(u, { headers: { Authorization: `Bearer ${token}` } });
-      const body = unwrap(await r.json().catch(() => ({})));
-      const items: any[] = body?.items || [];
-      const digits = (v: unknown) => String(v || '').replace(/\D/g, '');
-      const hit = items.find(c => digits(c.phoneNumber) === digits(onePhone)) || items[0] || null;
-      return json({ ok: r.ok, status: r.status, matches: items.length, contact: hit });
-    } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    const token = await accessToken();
+    const r = await fetch(`${CONTACTS_URL}?SkipCount=0&MaxResultCount=10&phoneNumber=${encodeURIComponent(onePhone)}`, { headers: { Authorization: `Bearer ${token}` } });
+    const items: any[] = unwrap(await r.json().catch(() => ({})))?.items || [];
+    const dg = (v: unknown) => String(v || '').replace(/\D/g, '');
+    const hit = items.find(c => dg(c.phoneNumber) === dg(onePhone)) || items[0] || null;
+    return json({ ok: r.ok, contact: hit ? { name: hit.name, phoneNumber: hit.phoneNumber, company: hit.company,
+      position: hit.position, customProperties: hit.customProperties, notes_count: (hit.notes || []).length } : null });
   }
 
-  if (action !== 'sync') return json({ error: 'unknown action (preview|inspect|sync)' }, 400);
+  // إصلاح الأسماء التي كتبتها مزامنة سابقة بلاحقة «(+N متاجر)» — نمط يخصّنا وحدنا،
+  // فلا نمسّ اسماً أدخله الفريق. الاسم الصحيح = أعلى متجر شحناً.
+  if (action === 'fixnames') {
+    const token = await accessToken();
+    const SUFFIX = /\s*\(\+\d+\s*متاجر\)\s*$/;
+    // بحث هاتف بالاسم يجد المصابين مباشرة (بدل مسح 1455 جهة)
+    const sr = await fetch(`${CONTACTS_URL}?SkipCount=0&MaxResultCount=500&name=${encodeURIComponent('متاجر)')}`,
+      { headers: { Authorization: `Bearer ${token}` } });
+    const hits: any[] = unwrap(await sr.json().catch(() => ({})))?.items || [];
+    const byPhone = new Map(list.map((r: any) => [r.phone, r.name]));
+    let fixed = 0, untouched = 0;
+    const samples: unknown[] = [];
+    for (const c of hits) {
+      if (fixed >= maxWrites) break;
+      if (!c?.name || !SUFFIX.test(c.name)) { untouched++; continue; }   // ليس من صنعنا → لا نلمسه
+      const want = byPhone.get(normPhone(c.phoneNumber));
+      if (!want || want === c.name) { untouched++; continue; }
+      const pr = await fetch(`${CONTACTS_URL}/${c.id}`, { method: 'PUT',
+        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ name: want }) });
+      if (pr.ok) { fixed++; if (samples.length < 4) samples.push({ from: c.name, to: want }); }
+      await sleep(90);
+    }
+    return json({ ok: true, found: hits.length, fixed, untouched, samples });
+  }
 
-  let token: string;
-  try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  if (action !== 'sync') return json({ error: 'unknown action (preview|props|inspect|fixnames|sync)' }, 400);
 
-  // حالة المزامنة السابقة (لكل الأرقام في وضع all، وإلا لهذه الدفعة)
-  const { data: prev } = all
+  let token: string, props: Map<string, string>;
+  try { token = await accessToken(); props = await ensureProps(token); }
+  catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+
+  const { data: prev } = all || onePhone
     ? await db.from('hatif_contact_sync').select('phone, contact_id, payload_hash')
     : await db.from('hatif_contact_sync').select('phone, contact_id, payload_hash').in('phone', list.map(r => r.phone));
   const prevMap = new Map((prev || []).map((p: any) => [p.phone, p]));
@@ -169,51 +213,51 @@ Deno.serve(async (req) => {
   const errors: unknown[] = [];
 
   for (const row of list) {
-    const payload = buildPayload(row);
-    const h = hash(JSON.stringify(payload));
+    const vals = propValues(row);
+    const h = hash(JSON.stringify({ n: row.name, v: vals }));
     const st = prevMap.get(row.phone);
-    if (st?.payload_hash === h && st?.contact_id) { skipped++; continue; }   // لا تغيّر → صفر استدعاء
-    if (writes >= maxWrites) { remaining++; continue; }                       // سقف زمن التنفيذ — الباقي للتشغيل التالي
+    if (st?.payload_hash === h && st?.contact_id) { skipped++; continue; }
+    if (writes >= maxWrites) { remaining++; continue; }
     writes++;
 
     try {
       let cid: string | null = st?.contact_id || null;
-      if (!cid) { cid = await findContactId(token, row.phone); await sleep(120); }
-
-      let ok = false;
-      if (cid) {
-        // جهة قائمة: لا ندهس الاسم الذي أدخله فريقكم (إلا بطلب صريح overwriteName)
-        // — نحدّث السياق فقط. الاسم يُكتب عند الإنشاء فقط.
-        const upd: Record<string, unknown> = overwriteName ? payload : { customFields: payload.customFields };
-        const r = await fetch(`${CONTACTS_URL}/${cid}`, {
-          method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify(upd),
-        });
-        ok = r.ok; if (ok) updated++;
-        if (!ok) errors.push({ phone: row.phone, step: 'update', status: r.status, body: (await r.text()).slice(0, 200) });
-      } else {
-        const r = await fetch(CONTACTS_URL, {
-          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ ...payload, phoneNumber: row.phone }),
-        });
-        ok = r.ok;
-        if (ok) { created++; const nb = unwrap(await r.json().catch(() => ({}))); cid = nb?.id || nb?.contactId || null; }
-        else errors.push({ phone: row.phone, step: 'create', status: r.status, body: (await r.text()).slice(0, 200) });
+      let isNew = false;
+      if (!cid) { cid = await findContactId(token, row.phone); await sleep(100); }
+      if (!cid) {
+        // جهة جديدة: الاسم = أعلى متجر شحناً (يُكتب عند الإنشاء فقط)
+        const cr = await fetch(CONTACTS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ name: row.name || row.phone, phoneNumber: row.phone }) });
+        if (!cr.ok) { failed++; errors.push({ phone: row.phone, step: 'create', status: cr.status, body: (await cr.text()).slice(0, 150) }); continue; }
+        cid = unwrap(await cr.json().catch(() => ({})))?.id || null;
+        isNew = true; created++;
+        await sleep(100);
       }
+      if (!cid) { failed++; errors.push({ phone: row.phone, step: 'no-cid' }); continue; }
 
+      // ضبط قيم الخصائص (تُستبدَل — لا تتراكم)
+      let bad = 0;
+      for (const [pname, pval] of Object.entries(vals)) {
+        const pid = props.get(pname);
+        if (!pid) continue;
+        const pr = await fetch(`${CONTACTS_URL}/${cid}/properties/${pid}`, {
+          method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ value: pval }) });
+        if (!pr.ok) { bad++; if (errors.length < 5) errors.push({ phone: row.phone, prop: pname, status: pr.status, body: (await pr.text()).slice(0, 120) }); }
+        await sleep(90);
+      }
+      const ok = bad === 0;
+      if (ok && !isNew) updated++;
+      if (!ok) failed++;
       await db.from('hatif_contact_sync').upsert({
         phone: row.phone, contact_id: cid, payload_hash: ok ? h : null,
-        synced_at: new Date().toISOString(), error: ok ? null : 'failed',
+        synced_at: new Date().toISOString(), error: ok ? null : `${bad} خاصية فشلت`,
       }, { onConflict: 'phone' });
-      if (!ok) failed++;
-      await sleep(150);   // تهدئة ضد حصة Voxa
     } catch (e) {
       failed++; errors.push({ phone: row.phone, error: String((e as Error).message || e) });
     }
   }
 
-  return json({ ok: true, offset, processed: list.length, created, updated, skipped, failed,
-    remaining,                                                     // بقي للتشغيل التالي (بلغ السقف)
-    nextOffset: (!all && list.length === limit) ? offset + limit : null,
-    errors: errors.slice(0, 5) });
+  return json({ ok: true, offset, processed: list.length, created, updated, skipped, failed, remaining,
+    nextOffset: (!all && !onePhone && list.length === limit) ? offset + limit : null, errors: errors.slice(0, 5) });
 });
