@@ -162,7 +162,7 @@ export default function Periods({ isActive = true }) {
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {['الشهر', 'الحالة', 'القيود', 'COD', 'مراجعات', 'دفعات', 'الإقفال / الفتح', 'إجراء'].map(h => (
+                {['الشهر', 'الحالة', 'الحركات المحاسبية', 'COD', 'مراجعات', 'دفعات', 'الإقفال / الفتح', 'إجراء'].map(h => (
                   <th key={h} style={thStyle}>{h}</th>
                 ))}
               </tr>
@@ -187,7 +187,7 @@ export default function Periods({ isActive = true }) {
                       </span>
                     )}
                   </td>
-                  <td data-label="القيود" style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('en-US')}</td>
+                  <td data-label="الحركات المحاسبية" style={countCell(r.counts.ops_count)}>{r.counts.ops_count.toLocaleString('en-US')}</td>
                   <td data-label="COD" style={countCell(r.counts.cod_count)}>{r.counts.cod_count.toLocaleString('en-US')}</td>
                   <td data-label="مراجعات" style={countCell(r.counts.audits_count)}>{r.counts.audits_count.toLocaleString('en-US')}</td>
                   <td data-label="دفعات" style={countCell(r.counts.payments_count)}>{r.counts.payments_count.toLocaleString('en-US')}</td>
@@ -296,7 +296,7 @@ function ActionDialog({ target, row, onCancel, onConfirm }) {
               <strong style={{ color: 'var(--text)' }}>سيُقفل عليه ما يلي:</strong>
             </div>
             <ul style={{ margin: 0, paddingInlineStart: 18 }}>
-              <li>{row.counts.ops_count.toLocaleString('en-US')} قيد محاسبي</li>
+              <li>{row.counts.ops_count.toLocaleString('en-US')} حركة محاسبية</li>
               <li>{row.counts.cod_count.toLocaleString('en-US')} صف تسوية COD</li>
               <li>{row.counts.audits_count.toLocaleString('en-US')} مراجعة</li>
               <li>{row.counts.payments_count.toLocaleString('en-US')} دفعة</li>

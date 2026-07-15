@@ -47,7 +47,7 @@ export default function CashAging({ isActive }) {
     <div style={{ padding: '28px 32px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader
         icon={<HandCoins size={22}/>}
-        title="النقد والأعمار"
+        title="أعمار الديون — لك وعليك"
         subtitle="من يحبس تحصيلك وكم يوم؟ ووش عليك للناقلين حسب الاستحقاق؟"
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث</Btn>}
       />
@@ -57,7 +57,7 @@ export default function CashAging({ isActive }) {
         {[
           { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: '#D97706' },
           { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },
-          { label: 'منه متأخر عن الاستحقاق', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
+          { label: 'منه فات موعد سداده', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
           // أرصدة دائنة (COD محتجز لم يُورَّد) — منفصلة عن الذمم حتى لا تُطرَح مضلِّلةً
           ...(Math.abs(data?.apCreditTotal || 0) > 0.5
             ? [{ label: 'أرصدة لصالحنا (COD محتجز)', value: fmt(Math.abs(data.apCreditTotal)), color: '#0EA5E9' }]
@@ -72,7 +72,7 @@ export default function CashAging({ isActive }) {
 
       {/* 1 — COD cash cycle */}
       <SectionTable
-        title="دورة نقد COD — لكل ناقل"
+        title="كم تأخذ كل شركة حتى تحوّل لك COD"
         icon={<Hourglass size={16}/>}
         columns={['الناقل','متوسط أيام التحصيل','معلّق 0-15ي','16-30ي','31-60ي','+60ي','إجمالي المعلّق','أقدم شحنة']}
       >
@@ -94,9 +94,9 @@ export default function CashAging({ isActive }) {
 
       {/* 2 — AP aging */}
       <SectionTable
-        title="أعمار ذمم الناقلين — غير المسدَّد حسب الاستحقاق"
+        title="المطلوب منك لشركات الشحن — حسب التأخير"
         icon={<HandCoins size={16}/>}
-        columns={['الناقل','متأخر ⚠','يستحق 0-30ي','31-60ي','+60ي','إشعارات لنا','الإجمالي']}
+        columns={['الناقل','متأخر ⚠','يستحق 0-30ي','31-60ي','+60ي','مبالغ لصالحك (تُخصم)','الإجمالي']}
         footer={data?.ap?.length ? (
           <tfoot><tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
             <td style={td}>الإجمالي</td>
@@ -126,7 +126,7 @@ export default function CashAging({ isActive }) {
 
       <p style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.8 }}>
         متوسط أيام التحصيل = من رفع «المتوقّع» حتى وصول التحويل (للشحنات المحصَّلة). «لا تحويلات بعد» = ناقل لم يصلنا منه أي تحويل مطابق.
-        أعمار الذمم تُحسب على الاستحقاق (أو تاريخ المستند +30 يوم إن غاب). «إشعارات لنا» = أرصدة دائنة تخصم من المطلوب.
+        أعمار الذمم تُحسب على الاستحقاق (أو تاريخ المستند +30 يوم إن غاب). «مبالغ لصالحك (تُخصم)» = أرصدة دائنة تخصم من المطلوب.
       </p>
     </div>
   );

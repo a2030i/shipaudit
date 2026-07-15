@@ -86,7 +86,7 @@ export default function MonthlyReport({ isActive }) {
   const exportXlsx = useCallback(() => {
     if (!rows.length) return;
     const aoa = [
-      ['الناقل','مفوتر','التغيّر عن السابق %','تحصيل COD','إشعارات دائنة','مدفوعات','صافي الحركة','المراجعات','فرق التدقيق','شحنات مفروقة'],
+      ['الناقل','مفوتر','التغيّر عن السابق %','تحصيل COD','مبالغ مُرجَعة/خصومات','مدفوعات','COD ناقص الفواتير','المراجعات','فرق التدقيق','شحنات فيها فرق'],
       ...rows.map(r => [r.carrierName, r.billed, deltaOf(r) ?? '', r.cod, r.creditNotes, r.payments, r.net, r.auditCount, r.auditDiff, r.mismatch]),
       [],
       ['الإجمالي', totals.billed, '', totals.cod, totals.creditNotes, totals.payments, totals.net, totals.auditCount, totals.auditDiff, totals.mismatch],
@@ -159,7 +159,7 @@ export default function MonthlyReport({ isActive }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 820 }}>
               <thead>
                 <tr style={{ background: 'var(--bg-subtle, #f8fafc)', textAlign: 'right' }}>
-                  {['الناقل','مفوتر','التغيّر','تحصيل COD','إشعارات دائنة','مدفوعات','صافي الحركة','المراجعات','فرق التدقيق'].map(h => (
+                  {['الناقل','مفوتر','التغيّر','تحصيل COD','مبالغ مُرجَعة/خصومات','مدفوعات','COD ناقص الفواتير','المراجعات','فرق التدقيق'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -216,7 +216,7 @@ export default function MonthlyReport({ isActive }) {
       )}
 
       <p style={{ marginTop: 16, fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
-        <strong>مفوتر</strong>: إجمالي الفواتير المدينة (RV/DR/INV). <strong>صافي الحركة</strong> = المفوتر − (التحصيل + الإشعارات + المدفوعات).
+        <strong>مفوتر</strong>: إجمالي الفواتير المدينة (فواتير الكشف + الرسوم + فواتير المراجعة). <strong>COD ناقص الفواتير</strong> = المفوتر − (التحصيل + الإشعارات + المدفوعات).
         <strong> فرق التدقيق</strong>: مجموع فروقات المراجعات المعتمدة (موجب = أرامكس فوترت أكثر من العقد).
       </p>
     </div>

@@ -95,7 +95,7 @@ export default function FulfillmentAudit({ isActive = true }) {
 
   return (
     <Pad>
-      <PageHeader icon={<Boxes size={22}/>} title="تدقيق فواتير التجهيز (3PL)"
+      <PageHeader icon={<Boxes size={22}/>} title="تدقيق فواتير التجهيز والتخزين"
         subtitle="ارفع فاتورة المورّد → عدّ الطلبات × سعر المتجر مقابل المفوتر + كشف التكرار"
         actions={
           <>
@@ -112,7 +112,7 @@ export default function FulfillmentAudit({ isActive = true }) {
       <Card style={{ marginBottom: 16, borderRight: '3px solid #8B5CF6' }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📦 رفع فاتورة {warehouses.find((w) => w.id === warehouse)?.name || ''}</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
-          ملف Excel بأوراق SHIPPING/SUMMARY (صيغة ديسباتش). يُكتشف المتجر تلقائياً ويُقارَن بعقده.
+          ملف Excel بأوراق SHIPPING/SUMMARY (صيغة المورّد). يُكتشف المتجر تلقائياً ويُقارَن بعقده.
         </div>
         {busy ? <div style={{ padding: 24, textAlign: 'center' }}><Spinner/></div>
           : <DropZone onFile={onFile} title="اختر فاتورة المورّد" hint="SHIPPING = الطلبات · SUMMARY = المفوتر"/>}

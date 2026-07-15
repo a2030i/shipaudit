@@ -106,7 +106,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<TrendingUp size={22}/>}
         iconColor="#0EA5E9"
-        title="تنبؤ التدفّق النقدي"
+        title="توقّع النقد — الداخل والخارج"
         subtitle="ماذا نتوقّع أن يدخل وأن يخرج خلال الفترة القادمة — مبني على مهام التحصيل والفواتير المجدولة"
         meta={`آخر تحديث ${new Date(data.asOf).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
         actions={
@@ -144,7 +144,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--green)"
           icon={<ArrowDownCircle size={20}/>}
-          label="متوقّع داخل"
+          label="متوقّع يدخل لك"
           value={fmt(data.inflowTotal)}
           unit="ر.س"
           hint={`من ${data.events.filter(e => e.direction === 'in').length} مهمة تحصيل ${horizonLabel}`}
@@ -152,7 +152,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--red)"
           icon={<ArrowUpCircle size={20}/>}
-          label="متوقّع خارج"
+          label="متوقّع تدفعه"
           value={fmt(data.outflowTotal)}
           unit="ر.س"
           hint={`من ${data.events.filter(e => e.direction === 'out').length} مهمة فاتورة ${horizonLabel}`}
@@ -160,10 +160,10 @@ export default function Forecast({ carriers = [], isActive = true }) {
         <BigStat
           color={netColor}
           icon={data.netInHorizon >= 0 ? <TrendingUp size={20}/> : <TrendingDown size={20}/>}
-          label="الصافي المتوقّع"
+          label="الباقي المتوقّع"
           value={(data.netInHorizon >= 0 ? '+' : '−') + fmt(Math.abs(data.netInHorizon))}
           unit="ر.س"
-          hint={data.netInHorizon >= 0 ? 'فائض سيولة متوقّع' : '⚠ عجز — جهّز السيولة'}
+          hint={data.netInHorizon >= 0 ? 'فائض نقد متوقّع' : '⚠ عجز — جهّز السيولة'}
           big
         />
       </div>
@@ -291,7 +291,7 @@ function ProjectedBalance({ data, horizonLabel }) {
         {risky && (
           <div style={{ flex: 1, minWidth: 200, display: 'flex', gap: 8, alignItems: 'center', color: 'var(--red)', fontSize: 12.5, fontWeight: 600 }}>
             <AlertTriangle size={16}/>
-            تنبيه سيولة: أدنى رصيد متوقّع {fmt(low)} ر.س — قد تحتاج تأخير دفعات أو تسريع تحصيل.
+            تنبيه: النقد ينخفض — أدنى رصيد متوقّع {fmt(low)} ر.س — قد تحتاج تأخير دفعات أو تسريع تحصيل.
           </div>
         )}
       </div>
@@ -319,7 +319,7 @@ function CashflowChart({ dailyFlow, bankBalance }) {
   const barW = Math.max(3, Math.min(16, innerW / (n * 1.6)));
   return (
     <Card style={{ marginBottom: 18, padding: '16px 18px' }}>
-      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📈 مسار السيولة المتوقّع</div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 4 }}>📈 مسار رصيدك المتوقّع</div>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10 }}>
         الأعمدة = داخل (أخضر) / خارج (أحمر) كل يوم · الخط = الرصيد البنكي الجاري المتوقّع
       </div>
@@ -448,7 +448,7 @@ function EventRow({ e, last }) {
             بدون تقدير
           </span>
         ) : e.estimatedAmount === 0 ? (
-          <span style={{ fontSize: 11, color: 'var(--muted)' }}>تشغيلي</span>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>بلا مبلغ</span>
         ) : (
           <div style={{
             fontSize: 16, fontWeight: 700,

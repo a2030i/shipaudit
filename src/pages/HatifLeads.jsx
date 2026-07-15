@@ -138,7 +138,7 @@ export default function HatifLeads({ isActive = true }) {
               <input type="checkbox" checked={namedOnly} onChange={e => setNamedOnly(e.target.checked)}/> باسم حقيقي فقط ⭐
             </label>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
-              <input type="checkbox" checked={showExcluded} onChange={e => setShowExcluded(e.target.checked)}/> إظهار المستبعَدين (مورد/ضجيج)
+              <input type="checkbox" checked={showExcluded} onChange={e => setShowExcluded(e.target.checked)}/> إظهار المستبعَدين (مورد/أرقام غير مهمة)
             </label>
             {can('campaigns.send') && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!filtered.length}>

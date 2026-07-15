@@ -146,7 +146,7 @@ export default function Payments({ isActive = true }) {
             عند تسديد عملية أو مجموعة عمليات من الدفتر، تُسجَّل هنا تلقائياً بإجمالي مفصّل ورقم حوالة وتاريخ.
           </div>
           <Btn variant="accent" size="md" onClick={() => { window.location.href = `/ledger?carrier=${carrier}`; }}>
-            افتح الدفتر للتسديد →
+            افتح كشف الشركة للسداد →
           </Btn>
         </Card>
       ) : (

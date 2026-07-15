@@ -72,7 +72,7 @@ export default function IntegrityCheck({ isActive }) {
             <span style={{ fontSize: 22 }}>{issues.length ? '⚠️' : '✅'}</span>
             <div style={{ fontWeight: 700, fontSize: 14 }}>
               {issues.length
-                ? `${issues.length} ${issues.length === 1 ? 'تناقض يحتاج نظرتك' : 'تناقضات تحتاج نظرتك'}`
+                ? `${issues.length} ${issues.length === 1 ? 'رقم غير متطابق يحتاج مراجعتك' : 'أرقام غير متطابقة تحتاج مراجعتك'}`
                 : 'كل الفحوص سليمة — بياناتك متّسقة'}
             </div>
           </Card>

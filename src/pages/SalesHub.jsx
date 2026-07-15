@@ -22,7 +22,7 @@ const TABS = [
   { id: 'retargeting', label: 'إعادة الاستهداف',    icon: Target,      component: Retargeting, perm: 'sales.view' },
   { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.view' },
   { id: 'external',    label: 'عملاء خارج المنصّة', icon: Store,       component: LeadsTab,    perm: 'crm.view', activeProp: true },
-  { id: 'segments',    label: 'شرائح العملاء',      icon: Layers,      component: Segments,    perm: 'sales.view' },
+  { id: 'segments',    label: 'مجموعات العملاء',    icon: Layers,      component: Segments,    perm: 'sales.view' },
   { id: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, component: Merchants,   perm: 'merchants.view' },
 ];
 

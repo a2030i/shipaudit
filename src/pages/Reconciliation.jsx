@@ -325,7 +325,7 @@ export default function Reconciliation({ isActive = true }) {
           ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
           : tab === 'zoho_live'
           ? 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر كشف داخلي، بلا أي رفع'
-          : 'الموردون — قارن أرصدة شركات الشحن في نظامنا مقابل Zoho'}
+          : 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
@@ -341,7 +341,7 @@ export default function Reconciliation({ isActive = true }) {
         {[
           { id: 'zoho_live', label: 'العملاء — زوهو API', icon: '⚡' },
           { id: 'customers', label: 'مطابقة لمحة الداخلية', icon: '🏪' },
-          { id: 'vendors',   label: 'الموردون — زوهو API', icon: '🚚' },
+          { id: 'vendors',   label: 'شركات الشحن — زوهو', icon: '🚚' },
         ].map(t => {
           const active = tab === t.id;
           return (
@@ -425,8 +425,8 @@ export default function Reconciliation({ isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
             <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('en-US')}        color="#0EA5E9"/>
             <Stat label="مطابق"           value={stats.matched.toLocaleString('en-US')}      color="var(--green)" icon={<CheckCircle2 size={14}/>}/>
-            <Stat label="Zoho ناقص"      value={stats.zohoMissing.toLocaleString('en-US')}  color="var(--red)" icon={<AlertTriangle size={14}/>}/>
-            <Stat label="Zoho زائد"      value={stats.zohoExtra.toLocaleString('en-US')}    color="#F97316"/>
+            <Stat label="ناقص في زوهو"      value={stats.zohoMissing.toLocaleString('en-US')}  color="var(--red)" icon={<AlertTriangle size={14}/>}/>
+            <Stat label="زائد في زوهو"      value={stats.zohoExtra.toLocaleString('en-US')}    color="#F97316"/>
             <Stat label="مجموع الفروقات" value={fmt(stats.gapTotal)} suffix="ر.س"           color="var(--red)"/>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginInlineStart: 'auto' }}>
               <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
@@ -617,8 +617,8 @@ export default function Reconciliation({ isActive = true }) {
         <div>
           <strong style={{ color: 'var(--text2)' }}>كيف تعمل المطابقة:</strong>{' '}
           المرجع = النظام الداخلي (ملف الاستحقاق).{' '}
-          <strong style={{ color: 'var(--red)' }}>Zoho ناقص</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
-          <strong style={{ color: '#F97316' }}>Zoho زائد</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
+          <strong style={{ color: 'var(--red)' }}>ناقص في زوهو</strong> = الفرق سالب → النظام الداخلي سجّل عملية لم تُرحَّل بعد إلى Zoho.{' '}
+          <strong style={{ color: '#F97316' }}>زائد في زوهو</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
           الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
       </div>
@@ -640,7 +640,7 @@ export default function Reconciliation({ isActive = true }) {
 const RECON_STATUS_META = {
   matched:             { label: 'مطابق للهللة',      color: 'var(--green)', icon: '✓' },
   needs_investigation: { label: 'يحتاج تحقيقاً',      color: 'var(--red)',   icon: '⚠' },
-  internal_only:       { label: 'داخلي فقط (رصيد قديم)', color: 'var(--gold)', icon: '◐' },
+  internal_only:       { label: 'رصيد قديم بلا فاتورة في زوهو', color: 'var(--gold)', icon: '◐' },
   zoho_only:           { label: 'زوهو فقط',           color: '#8B5CF6',      icon: '◑' },
 };
 
@@ -686,7 +686,7 @@ function ZohoLiveTab({ isActive = true }) {
     const aoa = [
       ['مطابقة أرصدة العملاء — زوهو المرجع (حيّ)', '', '', new Date().toISOString().slice(0, 10)],
       [],
-      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'الداخلي', 'الفرق', 'المحفظة', 'الحالة', 'أسماء زوهو', 'أسماء الكشف الداخلي'],
+      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'الداخلي', 'الفرق', 'رصيد لصالح العميل', 'الحالة', 'أسماء زوهو', 'أسماء الكشف الداخلي'],
       ...filtered.map(r => [
         r.storeName, r.phone || '', r.billingType || '', r.platformStatus || '',
         r.zoho, r.zohoOpenCnt, r.zohoOldest || '', r.internal, r.diff, r.wallet,
@@ -710,7 +710,7 @@ function ZohoLiveTab({ isActive = true }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: '#8B5CF6' },
-          { k: '', label: 'الكشف الداخلي', val: kpi.intTot, sub: 'آخر snapshot', color: '#3B82F6' },
+          { k: '', label: 'الكشف الداخلي', val: kpi.intTot, sub: 'آخر كشف مرفوع', color: '#3B82F6' },
           { k: 'matched', label: 'مطابق للهللة', val: kpi.matched.reduce((s, r) => s + r.zoho, 0), sub: `${kpi.matched.length} عميلاً`, color: 'var(--green)' },
           { k: 'needs_investigation', label: 'يحتاج تحقيقاً', val: kpi.invest.reduce((s, r) => s + Math.abs(r.diff), 0), sub: `${kpi.invest.length} عميل — فرق`, color: 'var(--red)' },
           { k: 'internal_only', label: 'داخلي فقط', val: kpi.internal.reduce((s, r) => s + r.internal, 0), sub: `${kpi.internal.length} — أرصدة قديمة بلا فاتورة زوهو`, color: 'var(--gold)' },
@@ -741,7 +741,7 @@ function ZohoLiveTab({ isActive = true }) {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {rows.length} —
-        المرجع = فواتير زوهو المفتوحة الحيّة (تُحدَّث بالمزامنة كل 6 ساعات) · «داخلي فقط» غالباً أرصدة افتتاحية قديمة لم تُنشأ لها فواتير في زوهو
+        المرجع = فواتير زوهو المفتوحة الحيّة (تُحدَّث بالمزامنة كل 6 ساعات) · «داخلي فقط» غالباً أرصدة قديمة بلا فاتورة في زوهو
       </div>
 
       {/* الجدول */}
@@ -751,7 +751,7 @@ function ZohoLiveTab({ isActive = true }) {
             <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                 <tr>
-                  {['العميل / المتجر', 'زوهو (مفتوح)', 'الداخلي', 'الفرق', 'المحفظة', 'الحالة'].map(h => (
+                  {['العميل / المتجر', 'زوهو (مفتوح)', 'الداخلي', 'الفرق', 'رصيد لصالح العميل', 'الحالة'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>
@@ -776,7 +776,7 @@ function ZohoLiveTab({ isActive = true }) {
                         color: Math.abs(r.diff) <= 1 ? 'var(--muted2)' : r.diff > 0 ? 'var(--gold)' : 'var(--red)' }}>
                         {Math.abs(r.diff) <= 1 ? '—' : fmt(r.diff)}
                       </td>
-                      <td data-label="المحفظة" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
+                      <td data-label="رصيد لصالح العميل" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
                         color: r.wallet < -0.5 ? 'var(--red)' : r.wallet > 0.5 ? 'var(--green)' : 'var(--muted2)' }}>
                         {Math.abs(r.wallet) > 0.5 ? fmt(r.wallet) : '—'}
                       </td>
@@ -885,7 +885,7 @@ function VendorsTab() {
             <Zap size={18}/>
           </span>
           <div style={{ flex: 1, minWidth: 260 }}>
-            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>أرصدة الموردين من زوهو API</div>
+            <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>أرصدة شركات الشحن من زوهو API</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
               تم إيقاف رفع Vendor Balances من Excel. هذه الصفحة تعرض المتاح من المزامنة، وأي فجوة API ستظهر في خطة التطوير.
             </div>
@@ -903,7 +903,7 @@ function VendorsTab() {
           borderBottom: '1px solid var(--border)', flexWrap: 'wrap' }}>
           <span style={{ fontSize: 16 }}>💰</span>
           <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-            خزائن COD في Zoho — رقابة سحب المحاسب
+            أرصدة COD في زوهو — رقابة سحب المحاسب
           </span>
           {treasury.uploadedAt && (
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -913,7 +913,7 @@ function VendorsTab() {
         </div>
         {treasury.rows.length === 0 ? (
           <div style={{ padding: 16, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
-            رفع ميزان المراجعة من Excel متوقف. المطلوب في المرحلة التالية ربط خزائن COD من Zoho API مباشرة حتى تظهر أرصدة كل ناقل بلا ملفات.
+            رفع كشف أرصدة زوهو من Excel متوقف. المطلوب في المرحلة التالية ربط أرصدة COD من Zoho API مباشرة حتى تظهر أرصدة كل ناقل بلا ملفات.
           </div>
         ) : (
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
@@ -950,7 +950,7 @@ function VendorsTab() {
       {reconcile.length === 0 && others.length === 0 ? (
         <Empty
           icon="🚚"
-          title="لا توجد أرصدة موردين من زوهو API"
+          title="لا توجد أرصدة شركات شحن من زوهو API"
           sub="رفع Excel الموردين متوقف. المطلوب مزامنة الموردين من API ليظهر الاتجاه: لهم / لنا / صفر."
         />
       ) : (
@@ -1055,7 +1055,7 @@ function VendorsTab() {
               }}>
                 <FileSpreadsheet size={15} color="#8B5CF6"/>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
-                  مصاريف أخرى من Zoho — {others.length} مورّد
+                  جهات صرف أخرى في زوهو — {others.length} جهة
                 </span>
                 <span style={{ marginInlineStart: 'auto', fontSize: 11.5, color: 'var(--text2)' }}>
                   ليست شركات شحن — معروضة للعلم بدون مقارنة
@@ -1287,7 +1287,7 @@ function MerchantPickerModal({ target, onCancel, onConfirm }) {
   const pickedLabel = picked && (pickingZoho ? picked.rawName : picked.storeName);
   const confirmDisabled = !picked;
   const dialogTitle = pickingZoho
-    ? `ربط مع نظير في Zoho: ${target.rawName}`
+    ? `اربطه بالاسم المقابل في زوهو: ${target.rawName}`
     : `ربط بمتجر لمحة: ${target.rawName}`;
   const candidateSourceLabel = pickingZoho
     ? 'يعرض كل عملاء Zoho — المربوط منهم سيظهر بشارة'

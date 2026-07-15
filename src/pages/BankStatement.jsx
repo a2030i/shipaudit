@@ -270,8 +270,8 @@ export default function BankStatement() {
     const ourWithdraws = t.length - ourDeposits;
     const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 0.01;
     const checks = [];
-    if (s.bankTotalCredit  != null) checks.push({ label: 'إجمالي الدائن', ours: totals.credit, bank: s.bankTotalCredit, ok: near(totals.credit, s.bankTotalCredit), money: true });
-    if (s.bankTotalDebit   != null) checks.push({ label: 'إجمالي المدين', ours: totals.debit,  bank: s.bankTotalDebit,  ok: near(totals.debit,  s.bankTotalDebit),  money: true });
+    if (s.bankTotalCredit  != null) checks.push({ label: 'إجمالي المودَع', ours: totals.credit, bank: s.bankTotalCredit, ok: near(totals.credit, s.bankTotalCredit), money: true });
+    if (s.bankTotalDebit   != null) checks.push({ label: 'إجمالي المسحوب', ours: totals.debit,  bank: s.bankTotalDebit,  ok: near(totals.debit,  s.bankTotalDebit),  money: true });
     if (s.bankDepositCount != null) checks.push({ label: 'عدد الإيداعات', ours: ourDeposits,  bank: s.bankDepositCount, ok: ourDeposits  === s.bankDepositCount });
     if (s.bankWithdrawCount!= null) checks.push({ label: 'عدد السحوبات', ours: ourWithdraws, bank: s.bankWithdrawCount, ok: ourWithdraws === s.bankWithdrawCount });
     if (!checks.length) return null;
@@ -320,10 +320,10 @@ export default function BankStatement() {
       {/* View toggle: this upload vs the accumulated saved ledger */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
         <Btn variant={view === 'current' ? 'primary' : 'outline'} icon={<Upload size={13}/>} onClick={() => setView('current')}>
-          الرفع الحالي
+          الكشف الحالي
         </Btn>
         <Btn variant={view === 'saved' ? 'primary' : 'outline'} icon={<Database size={13}/>} onClick={() => setView('saved')}>
-          الدفتر البنكي المحفوظ{saved?.length ? ` (${saved.length})` : ''}
+          الكشوف المحفوظة{saved?.length ? ` (${saved.length})` : ''}
         </Btn>
       </div>
 
@@ -390,7 +390,7 @@ export default function BankStatement() {
               </div>
               <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', rowGap: 12 }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد الافتتاحي</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد أول الفترة</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
                     {openingBalance != null ? fmtMoney(openingBalance) : '—'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
                   </div>
@@ -403,7 +403,7 @@ export default function BankStatement() {
                   ) : null}
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد الختامي</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>الرصيد آخر الفترة</div>
                   <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
                     {fmtMoney(result.summary.closingBalance)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
                   </div>
@@ -468,8 +468,8 @@ export default function BankStatement() {
           {/* Stat cards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 14 }}>
             <StatBlock label="إجمالي العمليات"   value={totals.count}             color="var(--accent)" mono/>
-            <StatBlock label="إجمالي المدين"     value={fmtMoney(totals.debit)}   color="var(--red)"   suffix="ر.س"/>
-            <StatBlock label="إجمالي الدائن"     value={fmtMoney(totals.credit)}  color="var(--green)" suffix="ر.س"/>
+            <StatBlock label="إجمالي المسحوب"     value={fmtMoney(totals.debit)}   color="var(--red)"   suffix="ر.س"/>
+            <StatBlock label="إجمالي المودَع"     value={fmtMoney(totals.credit)}  color="var(--green)" suffix="ر.س"/>
             <StatBlock label="إجمالي الرسوم المخصومة" value={fmtMoney(totals.fees)} color="var(--gold)"  suffix="ر.س"/>
           </div>
 
@@ -483,7 +483,7 @@ export default function BankStatement() {
             </Btn>
             {carrierTransfers.length > 0 && (
               <Btn variant="gold" icon={<Link2 size={14}/>} onClick={() => setReconcileOpen(true)}>
-                💼 مطابقة الموردين ({carrierTransfers.length})
+                💼 ربط تحويلاتك لشركات الشحن ({carrierTransfers.length})
               </Btn>
             )}
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>
@@ -533,8 +533,8 @@ export default function BankStatement() {
                         <th style={{ minWidth: 90 }}>التاريخ</th>
                         <th style={{ minWidth: 130 }}>الرقم المرجعي</th>
                         <th>الوصف</th>
-                        <th style={{ minWidth: 90 }}>دائن</th>
-                        <th style={{ minWidth: 90 }}>مدين (صافي)</th>
+                        <th style={{ minWidth: 90 }}>مودَع</th>
+                        <th style={{ minWidth: 90 }}>مسحوب (صافي)</th>
                         <th style={{ minWidth: 70 }}>الرسوم</th>
                         <th style={{ minWidth: 70 }}>الضريبة</th>
                       </tr>
@@ -550,10 +550,10 @@ export default function BankStatement() {
                             {t.rejected && <RejBadge/>}
                             {t.description}
                           </td>
-                          <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
+                          <td data-label="مودَع" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                             {t.credit != null ? fmtMoney(t.credit) : ''}
                           </td>
-                          <td data-label="مدين (صافي)" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
+                          <td data-label="مسحوب (صافي)" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
                             {t.debit != null && t.debit !== 0 ? fmtMoney(t.debit) : ''}
                           </td>
                           <td data-label="الرسوم" style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
@@ -579,13 +579,13 @@ export default function BankStatement() {
         savedLoading && saved == null
           ? <Card style={{ padding: 64, textAlign: 'center' }}><Spinner size={32}/></Card>
           : !saved || saved.length === 0
-            ? <Card><Empty icon="🏦" title="الدفتر البنكي فارغ" sub="ارفع كشفاً من تبويب «الرفع الحالي» ثم اضغط «حفظ في الدفتر»"/></Card>
+            ? <Card><Empty icon="🏦" title="الدفتر البنكي فارغ" sub="ارفع كشفاً من تبويب «الكشف الحالي» ثم اضغط «حفظ في الدفتر»"/></Card>
             : (
               <>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 14 }}>
                   <StatBlock label="إجمالي العمليات" value={savedTotals.count}           color="var(--accent)" mono/>
-                  <StatBlock label="إجمالي المدين"   value={fmtMoney(savedTotals.debit)}  color="var(--red)"   suffix="ر.س"/>
-                  <StatBlock label="إجمالي الدائن"   value={fmtMoney(savedTotals.credit)} color="var(--green)" suffix="ر.س"/>
+                  <StatBlock label="إجمالي المسحوب"   value={fmtMoney(savedTotals.debit)}  color="var(--red)"   suffix="ر.س"/>
+                  <StatBlock label="إجمالي المودَع"   value={fmtMoney(savedTotals.credit)} color="var(--green)" suffix="ر.س"/>
                   <StatBlock label="رسوم + ضريبة"    value={fmtMoney(savedTotals.fees)}   color="var(--gold)"  suffix="ر.س"/>
                 </div>
 
@@ -634,8 +634,8 @@ export default function BankStatement() {
                   <select value={savedType} onChange={e => setSavedType(e.target.value)}
                     style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12 }}>
                     <option value="all">كل العمليات</option>
-                    <option value="debit">مدين فقط</option>
-                    <option value="credit">دائن فقط</option>
+                    <option value="debit">مسحوب فقط</option>
+                    <option value="credit">مودَع فقط</option>
                   </select>
                   <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
                     <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
@@ -674,8 +674,8 @@ export default function BankStatement() {
                               <th style={{ minWidth: 90 }}>التاريخ</th>
                               <th style={{ minWidth: 130 }}>الرقم المرجعي</th>
                               <th>الوصف</th>
-                              <th style={{ minWidth: 90 }}>دائن</th>
-                              <th style={{ minWidth: 90 }}>مدين</th>
+                              <th style={{ minWidth: 90 }}>مودَع</th>
+                              <th style={{ minWidth: 90 }}>مسحوب</th>
                               <th style={{ minWidth: 70 }}>الرسوم</th>
                               <th style={{ minWidth: 40 }}></th>
                             </tr>
@@ -691,10 +691,10 @@ export default function BankStatement() {
                                   {t.rejected && <RejBadge/>}
                                   {t.description}
                                 </td>
-                                <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
+                                <td data-label="مودَع" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                                   {Number(t.credit) ? fmtMoney(t.credit) : ''}
                                 </td>
-                                <td data-label="مدين" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
+                                <td data-label="مسحوب" style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', fontWeight: 600 }}>
                                   {Number(t.debit) ? fmtMoney(t.debit) : ''}
                                 </td>
                                 <td data-label="الرسوم" style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
@@ -719,7 +719,7 @@ export default function BankStatement() {
       {confirmDel && (
         <Modal title="⚠️ تأكيد حذف العملية" onClose={() => !deleting && setConfirmDel(null)} width={460}>
           <div style={{ fontSize: 13, marginBottom: 12 }}>
-            سيُحذف هذا القيد نهائياً من الدفتر البنكي المحفوظ. <b style={{ color: 'var(--red)' }}>لا يمكن التراجع.</b>
+            سيُحذف هذا القيد نهائياً من الكشوف المحفوظة. <b style={{ color: 'var(--red)' }}>لا يمكن التراجع.</b>
           </div>
           <div style={{ background: 'var(--card)', border: '1px solid var(--border)', borderRadius: 9, padding: 12, marginBottom: 16, fontSize: 12, lineHeight: 1.7 }}>
             <div><span style={{ color: 'var(--muted)' }}>التاريخ:</span> {confirmDel.txn_date || '—'}</div>
@@ -729,7 +729,7 @@ export default function BankStatement() {
               <b style={{ color: Number(confirmDel.credit) ? 'var(--green)' : 'var(--red)' }}>
                 {fmtMoney(Number(confirmDel.credit) || Number(confirmDel.debit) || 0)} ر.س
               </b>{' '}
-              <span style={{ color: 'var(--muted)' }}>({Number(confirmDel.credit) ? 'دائن' : 'مدين'})</span>
+              <span style={{ color: 'var(--muted)' }}>({Number(confirmDel.credit) ? 'مودَع' : 'مسحوب'})</span>
             </div>
             <div style={{ color: 'var(--muted3)', marginTop: 4, fontSize: 11 }}>{confirmDel.description}</div>
           </div>
@@ -798,7 +798,7 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
   };
 
   return (
-    <Modal title="💼 مطابقة دفعات الموردين" onClose={onClose} width={780}>
+    <Modal title="💼 ربط تحويلاتك لشركات الشحن" onClose={onClose} width={780}>
       <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 14 }}>
         اقتراحات لربط التحويلات الصادرة لشركات الشحن بالعمليات المعلّقة في الدفتر.
         كل تأكيد يُسجّل تسديد العملية مع رقم الحوالة وتاريخها تلقائياً.

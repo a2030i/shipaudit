@@ -290,7 +290,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase',
               fontWeight: 600, marginBottom: 4,
             }}>
-              PULL EVERYTHING
+              اسحب كل الملفات
             </div>
             <div style={{ fontSize: 20, fontWeight: 700, letterSpacing: -0.4, marginBottom: 6 }}>
               {totalFiles} ملف جاهز للسحب
@@ -330,7 +330,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             }}><Banknote size={20}/></div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 3 }}>
-                COD RECEIPTS
+                تحصيلات COD
               </div>
               <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: -0.3 }}>
                 تحصيلات مُستلَمة جديدة
@@ -365,7 +365,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                 icon={codPulling ? <Spinner size={16}/> : <Sparkles size={16}/>}
                 onClick={handleCodPull}
                 disabled={codPulling || !canPull}
-                title={canPull ? '' : 'تحتاج صلاحية internal_exports.pull'}
+                title={canPull ? '' : 'تحتاج صلاحية سحب الملفات'}
                 style={{ width: '100%', justifyContent: 'center' }}
               >
                 {codPulling ? 'جارٍ السحب…' : (canPull ? 'اسحب التحصيلات الآن' : '🔒 لا تملك صلاحية السحب')}
@@ -393,7 +393,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             }}><Receipt size={20}/></div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 3 }}>
-                CUSTOMER INVOICING
+                فوترة العملاء
               </div>
               <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: -0.3 }}>
                 فواتير العملاء
@@ -477,7 +477,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                   variant="accent"
                   onClick={() => handleInvoicingPull('selected')}
                   disabled={invPulling || !selectedAuditIds.size || !canPull}
-                  title={canPull ? '' : 'تحتاج صلاحية internal_exports.pull'}
+                  title={canPull ? '' : 'تحتاج صلاحية سحب الملفات'}
                   icon={invPulling ? <Spinner size={16}/> : <Download size={16}/>}
                   style={{ justifyContent: 'center' }}
                 >
@@ -517,7 +517,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
             }}><Scale size={20}/></div>
             <div>
               <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 3 }}>
-                EXCESS WEIGHTS
+                الأوزان الزائدة
               </div>
               <h3 style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)', margin: 0, letterSpacing: -0.3 }}>
                 الأوزان الزائدة
@@ -577,7 +577,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
       <Card style={{ padding: '20px 24px', marginBottom: 18 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
           <Download size={18} style={{ color: 'var(--muted)' }}/>
-          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>السحبات السابقة</h3>
+          <h3 style={{ fontSize: 15, fontWeight: 700, margin: 0 }}>الملفات المُصدَّرة سابقاً</h3>
           <span style={{ fontSize: 12, color: 'var(--muted)' }}>
             (كل ملف محفوظ — اضغط لإعادة تحميله)
           </span>
@@ -586,7 +586,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           <div style={{ padding: 24, textAlign: 'center' }}><Spinner size={20}/></div>
         ) : history.length === 0 ? (
           <div style={{ padding: '20px', textAlign: 'center', fontSize: 13, color: 'var(--muted)' }}>
-            لا توجد سحبات محفوظة بعد — أول ملف تسحبه سيظهر هنا قابلاً لإعادة التحميل.
+            لا توجد ملفات محفوظة بعد — أول ملف تسحبه سيظهر هنا قابلاً لإعادة التحميل.
           </div>
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -614,7 +614,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                           icon={downloadingId === rec.id ? <Spinner size={12}/> : <Download size={12}/>}
                           onClick={() => handleDownloadPast(rec)}
                           disabled={!rec.filePath || downloadingId === rec.id}
-                          title={rec.filePath ? 'إعادة تحميل الملف' : 'سحبة قديمة غير محفوظة في التخزين'}>
+                          title={rec.filePath ? 'إعادة تحميل الملف' : 'ملف قديم غير محفوظ في التخزين'}>
                           تحميل
                         </Btn>
                       </td>
@@ -635,10 +635,9 @@ export default function InternalExports({ carriers = [], isActive = true }) {
       }}>
         <strong style={{ color: 'var(--text2)' }}>كيف يعمل:</strong>{' '}
         <strong>تحصيلات COD</strong>: تظل تظهر كل مرة طالما حالتها "مُستلَم بانتظار" (وصلت من الناقل ولم تُطابق مراجعة بعد).
-        فور إنشاء صف <code>out</code> مطابق على نفس AWB (عند اعتماد مراجعة لها) تختفي من تلقاء نفسها.
+        فور تسجيل التحصيل المتوقّع المطابق على نفس AWB (عند اعتماد مراجعة لها) تختفي من تلقاء نفسها.
         &nbsp;
-        <strong>فواتير العملاء + الأوزان</strong>: كل مراجعة تُسحب مرّة واحدة — يُحدَّث الـ <code>customer_invoicing_status</code>
-        أو <code>weight_billing_status</code> وما تظهر مجدداً.
+        <strong>فواتير العملاء + الأوزان</strong>: كل مراجعة تُسحب مرّة واحدة — تُوسَم كمُصدَّرة ولا تظهر مجدداً.
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ const TABS = [
   { key: 'audits',     label: 'المراجعات',   to: (id) => `/audits?carrier=${id}` },
   { key: 'cod',        label: 'تحصيل COD',  to: (id) => `/cod-settlements?carrier=${id}` },
   { key: 'statements', label: 'كشف الحساب', to: (id) => `/aramex-statements?carrier=${id}` },
-  { key: 'ledger',     label: 'الدفتر',      to: (id) => `/ledger?carrier=${id}` },
+  { key: 'ledger',     label: 'حساب الشركة', to: (id) => `/ledger?carrier=${id}` },
 ];
 
 export default function CarrierTabs({ carrierId, carrierName, active }) {

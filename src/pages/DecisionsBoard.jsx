@@ -66,7 +66,7 @@ export default function DecisionsBoard({ isActive = true }) {
       const over90 = legal.overdue90 || [], negWal = legal.prepaidNegative || [];
       const legalTop = [
         ...over90.slice(0, 2).map(r => `${r.storeName || r.name} · ${fmtK(r.amount90)} · +90ي`),
-        ...negWal.slice(0, 1).map(r => `${r.storeName} · ${fmtK(r.wallet)} · محفظة سالبة`),
+        ...negWal.slice(0, 1).map(r => `${r.storeName} · ${fmtK(r.wallet)} · رصيد محفظة تحت الصفر`),
       ];
       const legalSig = {
         count: over90.length + negWal.length, over90N: over90.length, negN: negWal.length,
@@ -118,7 +118,7 @@ export default function DecisionsBoard({ isActive = true }) {
               icon: Number(d.pnl.net) >= 0 ? '✅' : '🔻',
               title: 'ربح الشهر (زوهو)',
               value: `${Number(d.pnl.net) >= 0 ? '+' : '−'}${fmt(Math.abs(Number(d.pnl.net)))}`, unit: 'ر.س',
-              sub: `قائمة الدخل الرسمية — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`,
+              sub: `تقرير الأرباح الرسمي — شهر جارٍ يكبر مع التسجيل${d.pnl.fetched_at ? ` · حتى ${new Date(d.pnl.fetched_at).toLocaleDateString('ar-SA', { month: 'short', day: 'numeric' })}` : ''}`,
               cta: 'الوضع المالي', onClick: () => navigate('/pnl'),
             },
           },
@@ -157,7 +157,7 @@ export default function DecisionsBoard({ isActive = true }) {
             key: 'legal', active: (d.legal?.count || 0) > 0, okLabel: 'لا تحويلات قانونية',
             props: {
               color: 'var(--red)', icon: '⚖️', title: 'تحويلات قانونية', value: d.legal?.count || 0, unit: 'حالة',
-              sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} محفظة سالبة (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
+              sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} رصيد محفظة تحت الصفر (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
               top: d.legal?.top || [],
               cta: 'الصفحة القانونية', onClick: () => navigate('/legal'),
             },
@@ -171,17 +171,17 @@ export default function DecisionsBoard({ isActive = true }) {
             },
           },
           {
-            key: 'held', active: d.held > 0.5, okLabel: 'لا خزائن COD محتجزة',
+            key: 'held', active: d.held > 0.5, okLabel: 'لا فلوس COD محتجزة في زوهو',
             props: {
-              color: '#0EA5E9', icon: '💰', title: 'خزائن COD محتجزة', value: fmt(d.held), unit: 'ر.س',
+              color: '#0EA5E9', icon: '💰', title: 'فلوس COD محتجزة في زوهو', value: fmt(d.held), unit: 'ر.س',
               sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'خزائن COD تحتاج ربط Zoho API',
-              cta: 'رقابة الخزائن', onClick: () => navigate('/reconciliation?tab=vendors'),
+              cta: 'متابعة المحتجز', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
           },
           {
             key: 'vgap', active: d.vgapTotal > 1, okLabel: 'أرصدة الموردين مطابقة لزوهو',
             props: {
-              color: '#8B5CF6', icon: '🧾', title: 'فجوة تسجيل Zoho', value: fmt(d.vgapTotal), unit: 'ر.س',
+              color: '#8B5CF6', icon: '🧾', title: 'فرق الرصيد بينك وبين زوهو', value: fmt(d.vgapTotal), unit: 'ر.س',
               sub: `${d.vgaps.length} ناقل يختلف رصيدهم عن Zoho`,
               top: d.vgaps.slice(0, 3).map(v => `${v.carrierName} · ${fmtK(v.diff)} ر.س`),
               cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation?tab=vendors'),

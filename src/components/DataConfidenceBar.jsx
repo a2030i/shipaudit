@@ -19,15 +19,15 @@ function healthTone(health) {
   if (!health) return { color: 'var(--muted)', label: 'جار فحص الربط', icon: Clock3 };
   const fresh = health.webhookLastAt && (Date.now() - new Date(health.webhookLastAt).getTime()) < 6 * 3600_000;
   if (fresh) return { color: 'var(--green)', label: 'زوهو حي', icon: CheckCircle2 };
-  if (health.webhookReady) return { color: 'var(--gold)', label: 'الربط جاهز، النبضة قديمة', icon: AlertTriangle };
-  return { color: 'var(--muted)', label: 'بانتظار أول نبضة', icon: Clock3 };
+  if (health.webhookReady) return { color: 'var(--gold)', label: 'الربط جاهز، التحديث قديم', icon: AlertTriangle };
+  return { color: 'var(--muted)', label: 'بانتظار أول تحديث', icon: Clock3 };
 }
 
 export default function DataConfidenceBar({
   active = true,
-  sourceLabel = 'Zoho Books API',
+  sourceLabel = 'زوهو بوكس (مباشر)',
   snapshotMeta = null,
-  note = 'الأرقام في هذه الشاشة تقرأ من المصدر الحي، والتحديث من هنا يغنيك عن الرجوع لصفحة زوهو.',
+  note = 'الأرقام في هذه الشاشة تقرأ من زوهو مباشرة، والتحديث من هنا يغنيك عن الرجوع لصفحة زوهو.',
   canSync = false,
   syncing = false,
   refreshing = false,
@@ -95,7 +95,7 @@ export default function DataConfidenceBar({
             )}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-            آخر نبضة: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
+            آخر تحديث: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
             <span style={{ marginInline: 6 }}>·</span>
             آخر مزامنة: <b style={{ color: 'var(--text)' }}>{agoAr(health?.lastSyncAt)}</b>
             <span style={{ marginInline: 6 }}>·</span>

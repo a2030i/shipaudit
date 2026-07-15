@@ -281,7 +281,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
         <div style={{ marginBottom: 18 }}>
           <div style={{ marginBottom: 8 }}>
             <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 3 }}>
-              SAME PHONE · {siblings.length + 1} STORES
+              نفس الرقم · {siblings.length + 1} متجر
             </div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
               هذا الرقم يدير {siblings.length + 1} متاجر — اتصال واحد يكفي
@@ -477,9 +477,9 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
             <strong style={{ color: 'var(--accent)' }}>ماذا يحدث؟</strong>
             <ul style={{ margin: '6px 0 0 0', paddingInlineStart: 18, color: 'var(--muted)' }}>
               <li>يخرج من جدول المديونيات الافتراضي</li>
-              <li>لا يُحتسب في الإجماليات + الـ aging</li>
-              <li>يظهر في تبويب "متابعة خاصة"</li>
-              <li>يبقى موسوماً حتى عبر snapshots لاحقة</li>
+              <li>لا يُحتسب في الإجماليات والأعمار</li>
+              <li>يظهر في تبويب "مخفيون من الإجماليات"</li>
+              <li>يبقى موسوماً حتى عبر الكشوف القادمة</li>
             </ul>
           </>
         ) : (
@@ -487,7 +487,7 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
             <strong style={{ color: 'var(--gold)' }}>سيتم:</strong>
             <ul style={{ margin: '6px 0 0 0', paddingInlineStart: 18, color: 'var(--muted)' }}>
               <li>إرجاعه للمتابعة الافتراضية</li>
-              <li>احتسابه في الإجماليات + الـ aging</li>
+              <li>احتسابه في الإجماليات والأعمار</li>
               <li>إزالة الملاحظة إن وُجدت</li>
             </ul>
           </>
@@ -866,7 +866,7 @@ export default function CustomerReceivables({ isActive = true }) {
       'آخر شحنة',
       'تنبيه',
       'حالة الربط',
-      'دقة الربط',
+      'نسبة تطابق الاسم',
     ];
     const headers = [...baseHeaders, ...merchantHeaders];
 
@@ -999,7 +999,7 @@ export default function CustomerReceivables({ isActive = true }) {
   // the risk score + stop reason so the team can action them directly.
   const handleExportStopList = () => {
     if (!stopNow.length) { toast('لا توجد قائمة إيقاف', 'info'); return; }
-    const headers = ['اسم المتجر', 'الهاتف', 'الدين (ر.س)', 'الأيام', 'درجة الخطر', 'سبب الإيقاف', 'نوع الفوترة', 'الحالة', 'آخر شحنة'];
+    const headers = ['اسم المتجر', 'الهاتف', 'الدين (ر.س)', 'الأيام', 'أولوية المتابعة', 'سبب الإيقاف', 'نوع الفوترة', 'الحالة', 'آخر شحنة'];
     const rows = stopNow.map(c => {
       const m = c.merchant;
       return [
@@ -1168,7 +1168,7 @@ export default function CustomerReceivables({ isActive = true }) {
           <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden' }}>
             <div style={{ display: 'flex', gap: 0, padding: 6, background: 'var(--surface)', flexWrap: 'wrap' }}>
               <Tab
-                id="active" label="المتابعة الافتراضية"
+                id="active" label="كل العملاء"
                 count={data.activeCustomers?.length || 0}
                 amount={data.total}
                 active={tab === 'active'} onClick={setTab}
@@ -1181,7 +1181,7 @@ export default function CustomerReceivables({ isActive = true }) {
                 accent={anomalies.length > 0 ? '#EF4444' : null}
               />
               <Tab
-                id="excluded" label="🛡 متابعة خاصة"
+                id="excluded" label="🛡 مخفيون من الإجماليات"
                 count={data.excludedCustomers?.length || 0}
                 amount={data.excludedTotal}
                 active={tab === 'excluded'} onClick={setTab}
@@ -1526,7 +1526,7 @@ export default function CustomerReceivables({ isActive = true }) {
                               style={tagBtnStyle('exclude')}
                             >
                               <ShieldCheck size={11}/>
-                              استثناء
+                              إخفاء من الإجماليات
                             </button>
                           )}
                         </td>

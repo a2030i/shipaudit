@@ -267,7 +267,7 @@ export default function CustomerMoney({ isActive = true }) {
                   {applicableRows.length > 0
                     ? <>قابل للتطبيق الآن: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt(credits.totalApplicable)}</b> ر.س على {applicableRows.length} عميل · </>
                     : <>لا شيء قابل للتطبيق حالياً · </>}
-                  {standingCount > 0 && <>{standingCount} رصيد قائم بلا فواتير مفتوحة · </>}
+                  {standingCount > 0 && <>{standingCount} رصيد بلا فواتير مفتوحة · </>}
                   افتح للتفاصيل
                 </div>
               </div>
@@ -308,7 +308,7 @@ export default function CustomerMoney({ isActive = true }) {
                       <td data-label="يُطبَّق" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(r.applicable)}</td>
                       <td data-label="يبقى" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
                         color: r.applicable > 0.5 ? (r.clearsFully ? 'var(--green)' : 'var(--gold)') : 'var(--muted2)' }}>
-                        {r.applicable > 0.5 ? (r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)) : 'رصيد قائم'}
+                        {r.applicable > 0.5 ? (r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)) : 'رصيد بلا فواتير مفتوحة'}
                       </td>
                       <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
                         {can('zoho.apply_credits') && r.applicable > 0.5 && (

@@ -1011,7 +1011,7 @@ const BADGE_CFG = {
   ok:          { bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--green)',  bd: 'color-mix(in srgb, var(--accent) 30%, transparent)',  lbl: '✓ مطابق',     Icon: CheckCircle2 },
   mismatch:    { bg: 'rgba(248,113,113,.10)', color: 'var(--red)',    bd: 'rgba(248,113,113,.28)', lbl: '✗ فرق',       Icon: XCircle },
   favorable:   { bg: 'color-mix(in srgb, var(--accent) 12%, transparent)', color: 'var(--accent)', bd: 'color-mix(in srgb, var(--accent) 32%, transparent)',  lbl: '↓ لصالحك',    Icon: CheckCircle2 },
-  unknown:     { bg: 'rgba(122,130,196,.10)', color: 'var(--muted)',  bd: 'rgba(122,130,196,.28)', lbl: '؟ غير معروف', Icon: HelpCircle },
+  unknown:     { bg: 'rgba(122,130,196,.10)', color: 'var(--muted)',  bd: 'rgba(122,130,196,.28)', lbl: 'بانتظار المراجعة', Icon: HelpCircle },
   no_contract: { bg: 'rgba(251,146,60,.10)', color: 'var(--warn)',   bd: 'rgba(251,146,60,.28)',  lbl: '⚠ لا عقد',   Icon: AlertTriangle },
   // Inbound return (foreign origin → KSA): pass-through row that feeds the
   // merchant re-billing report — not price-audited against the contract.

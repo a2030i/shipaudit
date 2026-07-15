@@ -76,15 +76,15 @@ export default function WeightBilling({ carriers, isActive = true }) {
         trigger: 'manual',
       });
       if (result.ok) {
-        toast(`تم سحب ${result.count} شحنة من ${result.auditCount} مراجعة ✓`, 'success');
+        toast(`تم تصدير ${result.count} شحنة من ${result.auditCount} مراجعة ✓`, 'success');
         refresh();
       } else if (result.reason === 'empty') {
-        toast('لا توجد مراجعات جديدة بانتظار السحب', 'info');
+        toast('لا توجد مراجعات جديدة بانتظار التصدير', 'info');
       } else if (result.reason === 'no_shipments') {
         toast('المراجعات المُعلّقة لا تحتوي على شحنات صالحة للفوترة', 'info');
       }
     } catch (err) {
-      toast(`فشل السحب: ${err.message}`, 'error');
+      toast(`فشل التصدير: ${err.message}`, 'error');
     }
     setPulling(false);
   };
@@ -143,7 +143,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
             onClick={handlePull}
             disabled={pulling || pendingStats.audits === 0}
           >
-            {pulling ? 'جاري السحب…' : 'سحب الأوزان الآن'}
+            {pulling ? 'جاري التصدير…' : 'تصدير الأوزان الآن'}
           </Btn>
         }
       />
@@ -162,7 +162,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
                 {awaiting.length} مراجعة بانتظار الاعتماد
               </div>
               <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
-                هذي المراجعات ما تظهر في "سحب الأوزان" حتى تفتحها وتضغط <strong>اعتماد المراجعة</strong>.
+                هذي المراجعات ما تظهر في "تصدير الأوزان" حتى تفتحها وتضغط <strong>اعتماد المراجعة</strong>.
                 {awaiting.length > 0 && (
                   <> · شركات: {[...new Set(awaiting.map(a => a.carrier_name))].slice(0, 5).join(' · ')}</>
                 )}
@@ -214,7 +214,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
                   <div style={{ color: 'var(--muted)', fontSize: 11 }}>
                     {fmtDate(a.created_at)}
                   </div>
-                  <Badge status="no_contract" label="بانتظار السحب"/>
+                  <Badge status="no_contract" label="بانتظار التصدير"/>
                 </div>
               ))}
             </div>
@@ -242,7 +242,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
           <Empty
             icon="📦"
             title="ما فيه تصديرات سابقة"
-            sub="اضغط زر السحب أعلاه لتوليد أول ملف فوترة"
+            sub="اضغط زر التصدير أعلاه لتوليد أول ملف فوترة"
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
@@ -318,7 +318,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
             <div style={{ display: 'flex', gap: 10, padding: '12px 14px', background: 'rgba(248,113,113,.08)', border: '1px solid rgba(248,113,113,.25)', borderRadius: 10, marginBottom: 14 }}>
               <AlertCircle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
               <div style={{ fontSize: 12.5, lineHeight: 1.6 }}>
-                سيتم إرجاع <strong>{voiding.audit_ids?.length ?? 0}</strong> مراجعة لقائمة الانتظار، وراح تطلع مرة ثانية في زر السحب. لا تستخدمها إلا لو الملف لم يُفوتر فعلياً.
+                سيتم إرجاع <strong>{voiding.audit_ids?.length ?? 0}</strong> مراجعة لقائمة الانتظار، وراح تطلع مرة ثانية في زر التصدير. لا تستخدمها إلا لو الملف لم يُفوتر فعلياً.
               </div>
             </div>
             <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 6, fontFamily: 'var(--font-mono)' }}>
@@ -328,7 +328,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
               type="text"
               value={voidReason}
               onChange={e => setVoidReason(e.target.value)}
-              placeholder="مثال: تم سحبه بالخطأ"
+              placeholder="مثال: تم تصديره بالخطأ"
               style={{ width: '100%', padding: '9px 12px', borderRadius: 8, fontSize: 13 }}
             />
           </div>

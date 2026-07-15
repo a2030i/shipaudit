@@ -182,7 +182,7 @@ export default function UploadsHub({ isActive = true }) {
           <Sparkles size={19}/>
         </span>
         <div style={{ flex: 1, minWidth: 260 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو API هو المصدر الحي للأرقام</div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>زوهو يحدّث هذه الأرقام مباشرة</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
             الفواتير والدفعات والمصاريف والمديونيات تُقرأ من زوهو مباشرة. لا ترفع Excel زوهو هنا؛ استخدم المزامنة من صفحة زوهو API.
           </div>
@@ -216,7 +216,7 @@ export default function UploadsHub({ isActive = true }) {
           value={summary.missing}
           icon={<Upload size={16}/>}
           color="var(--red)"
-          hint="لا توجد لقطة محفوظة"
+          hint="لا يوجد كشف محفوظ بعد"
         />
         <SummaryStat
           label="الإجمالي"
@@ -248,7 +248,7 @@ export default function UploadsHub({ isActive = true }) {
               افحص أي ملف يدوي — غير زوهو
             </div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3, lineHeight: 1.6 }}>
-              متاجر المنصّة · استحقاق المتاجر · التحصيل المتوقّع المجمّع. أي ملف Excel من زوهو سيتم رفضه وتوجيهك إلى زوهو API.
+              متاجر المنصّة · استحقاق المتاجر · المتوقّع تحصيله المجمّع. أي ملف Excel من زوهو سيتم رفضه وتوجيهك إلى زوهو API.
             </div>
           </div>
         </div>
@@ -263,7 +263,7 @@ export default function UploadsHub({ isActive = true }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
           <span style={{ fontSize: 22 }}>📦</span>
           <div>
-            <div style={{ fontSize: 15, fontWeight: 700 }}>التحصيل المتوقّع المجمّع — كل الشركات</div>
+            <div style={{ fontSize: 15, fontWeight: 700 }}>ملف واحد لكل الشركات — المتوقّع تحصيله</div>
             <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
               ملف واحد من النظام الداخلي يوزّع المتوقّع على كل ناقل تلقائياً (تم التوصيل + مبلغ&gt;0). الموجود مسبقاً يُتخطّى — لا تكرار.
             </div>
@@ -533,7 +533,7 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
   const { last, stale, daysSince, accent, origin } = source;
   // Status indicator — green/amber/red based on freshness
   const statusColor = !last ? 'var(--red)' : stale ? 'var(--gold)' : 'var(--green)';
-  const statusLabel = !last ? 'لا توجد لقطة'
+  const statusLabel = !last ? 'لا توجد نسخة محفوظة'
                     : stale ? `متأخّر — ${daysSince} يوم`
                     : `محدّث — ${fmtRel(last.lastAt)}`;
   const originBadge = ORIGIN_BADGES[origin];
@@ -609,7 +609,7 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
           border: '1px dashed color-mix(in srgb, var(--red) 30%, transparent)',
           fontSize: 11.5, color: 'var(--red)', textAlign: 'center', fontWeight: 600,
         }}>
-          لا توجد لقطة محفوظة — حدّث المصدر عند الحاجة
+          لا يوجد كشف محفوظ بعد — حدّث المصدر عند الحاجة
         </div>
       )}
 

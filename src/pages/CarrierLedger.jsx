@@ -43,7 +43,7 @@ const STATUS_META = {
 };
 const SHIPMENT_LABEL = {
   domestic:           'محلي',
-  domestic_other:     'محلي (DCF)',
+  domestic_other:     'محلي — تحصيل عند الاستلام (DCF)',
   international_in:   'دولي وارد',
   international_out:  'دولي صادر',
 };
@@ -55,8 +55,8 @@ const SHIPMENT_LABEL = {
 const DOC_TYPE_META = {
   INV: { label: 'فاتورة (مراجعة معتمدة)', icon: '🧾', color: '#8b5cf6' },
   RV: { label: 'فاتورة (كشف مرفوع)', icon: '📄', color: '#3b82f6' },
-  DR: { label: 'مدين إضافي', icon: '+',  color: '#f59e0b' },
-  DG: { label: 'إشعار دائن', icon: '↩',  color: 'var(--green)' },
+  DR: { label: 'رسوم إضافية', icon: '+',  color: '#f59e0b' },
+  DG: { label: 'مبلغ مُرجَع لك', icon: '↩',  color: 'var(--green)' },
   AB: { label: 'تعديل',       icon: '🔄', color: 'var(--muted)' },
 };
 
@@ -436,7 +436,7 @@ export default function CarrierLedger({ isActive = true }) {
       }
       toast(
         `✓ تسديد ${allocations.length} فاتورة`
-        + (creditOpIds.length ? ` + تطبيق ${creditOpIds.length} إشعار دائن` : '')
+        + (creditOpIds.length ? ` + تطبيق ${creditOpIds.length} مبلغ مُرجَع لك` : '')
         + ` — صافي ${cash.toFixed(2)} ر.س`,
         'success',
       );
@@ -576,7 +576,7 @@ export default function CarrierLedger({ isActive = true }) {
     return (
       <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
         <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0, marginBottom: 18 }}>
-          📒 الدفتر
+          📒 كشف الحساب
         </h2>
         <Card style={{ textAlign: 'center', padding: 44 }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>📒</div>
@@ -599,7 +599,7 @@ export default function CarrierLedger({ isActive = true }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
           <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            📒 الدفتر
+            📒 كشف الحساب
           </h2>
           {carrierList.length > 0 && (
             <select
@@ -649,7 +649,7 @@ export default function CarrierLedger({ isActive = true }) {
           AP report so the user knows what's about to age into bad-debt-ish
           territory vs what's freshly due. */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
-        <AgingCard label="غير مستحق"        sub="due_date في المستقبل"     color="var(--green)" {...aging.notDue}/>
+        <AgingCard label="غير مستحق"        sub="موعد سدادها لم يَحِن"     color="var(--green)" {...aging.notDue}/>
         <AgingCard label="متأخر 1–30 يوم"   sub="نطاق طبيعي"               color="var(--gold)"  {...aging.d30}/>
         <AgingCard label="متأخر 31–60 يوم"  sub="ينبغي المتابعة"           color="#f59e0b"      {...aging.d60}/>
         <AgingCard label="متأخر +60 يوم"    sub="مخاطرة عالية"             color="var(--red)"   {...aging.d90}/>
@@ -705,7 +705,7 @@ export default function CarrierLedger({ isActive = true }) {
           <Select label="نوع الشحنة" value={shipmentFilter} onChange={e => setShipmentFilter(e.target.value)}>
             <option value="all">كل الأنواع</option>
             <option value="domestic">محلي</option>
-            <option value="domestic_other">محلي (DCF)</option>
+            <option value="domestic_other">محلي — تحصيل عند الاستلام (DCF)</option>
             <option value="international_in">دولي وارد</option>
             <option value="international_out">دولي صادر</option>
           </Select>
@@ -756,7 +756,7 @@ export default function CarrierLedger({ isActive = true }) {
               {counts.unaudited} فاتورة بدون تدقيق
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-              فواتير RV لم تُربط بأي مراجعة بعد — مخاطرة فروق غير مكتشفة
+              فواتير من الكشف لم تُدقَّق بعد (RV) — مخاطرة فروق غير مكتشفة
             </div>
           </div>
           <Btn size="sm" variant="primary" onClick={() => setStatusFilter('unaudited')}>
@@ -1980,7 +1980,7 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
           {credits.length > 0 && (
             <>
               <label style={{ fontSize: 11, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>
-                مذكرة دائنة من الناقل (اختياري)
+                إشعار مبلغ مُرجَع من الشركة (اختياري)
               </label>
               <select value={selectedCredit} onChange={e => setSelectedCredit(e.target.value)}
                 style={{

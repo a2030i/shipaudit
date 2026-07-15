@@ -12,15 +12,15 @@ import { useAuth } from '../lib/auth.jsx';
 // ─── Doc-type & shipment-type labels ──────────────────────────────────────
 const DOC_TYPE_META = {
   RV:  { label: 'فاتورة',       color: 'var(--accent)' },
-  DR:  { label: 'مدين إضافي',   color: 'var(--gold)'   },
-  DG:  { label: 'إشعار دائن',   color: 'var(--green)'  },
+  DR:  { label: 'رسوم إضافية',   color: 'var(--gold)'   },
+  DG:  { label: 'مبلغ مُرجَع لك',   color: 'var(--green)'  },
   AB:  { label: 'تعديل',        color: 'var(--muted)'  },
   COD: { label: 'تحصيل/شحن COD', color: 'var(--accent)' },  // سمسا
-  CM:  { label: 'إشعار دائن',   color: 'var(--green)'  },    // سمسا credit memo
+  CM:  { label: 'مبلغ مُرجَع لك',   color: 'var(--green)'  },    // سمسا credit memo
 };
 const SHIPMENT_TYPE_LABEL = {
   domestic:           'محلي',
-  domestic_other:     'محلي (DCF)',
+  domestic_other:     'محلي — تحصيل عند الاستلام (DCF)',
   international_in:   'دولي وارد',
   international_out:  'دولي صادر',
 };
@@ -509,7 +509,7 @@ export default function CarrierStatements({ carriers = [] }) {
             )}
             <Btn variant="ghost" icon={<Trash2 size={14}/>} onClick={reset}>كشف جديد</Btn>
             <span style={{ color: 'var(--muted)', fontSize: 11, marginRight: 8, fontFamily: 'var(--font-mono)' }}>
-              العمليات ({result.operations.length}) — RV {breakdown.rv} | DR {breakdown.dr} | DG {breakdown.dg} | AB {breakdown.ab}
+              العمليات ({result.operations.length}) — فواتير RV {breakdown.rv} | رسوم DR {breakdown.dr} | مُرجَع DG {breakdown.dg} | تعديل AB {breakdown.ab}
             </span>
           </div>
 
@@ -578,8 +578,8 @@ export default function CarrierStatements({ carriers = [] }) {
               ...(existingMap && deltaCounts.frozen > 0
                 ? [{ k: 'frozen', l: `🔒 مثبّتة (${deltaCounts.frozen})`, accent: '#0EA5E9' }] : []),
               { k: 'RV',  l: `فواتير (${breakdown.rv})` },
-              { k: 'DR',  l: `مدين (${breakdown.dr})` },
-              { k: 'DG',  l: `دائن (${breakdown.dg})` },
+              { k: 'DR',  l: `رسوم إضافية (${breakdown.dr})` },
+              { k: 'DG',  l: `مبالغ مُرجَعة (${breakdown.dg})` },
               { k: 'AB',  l: `تعديلات (${breakdown.ab})` },
             ].map(t => {
               const active = filter === t.k;
@@ -622,8 +622,8 @@ export default function CarrierStatements({ carriers = [] }) {
                         <th style={{ minWidth: 200 }}>المرجع</th>
                         <th style={{ minWidth: 90 }}>تاريخ المستند</th>
                         <th style={{ minWidth: 90 }}>تاريخ الاستحقاق</th>
-                        <th style={{ minWidth: 110 }}>مدين</th>
-                        <th style={{ minWidth: 110 }}>دائن</th>
+                        <th style={{ minWidth: 110 }}>مطلوب</th>
+                        <th style={{ minWidth: 110 }}>مُرجَع</th>
                         <th style={{ minWidth: 110 }}>الرصيد</th>
                         <th style={{ minWidth: 100 }}>نوع الشحنة</th>
                         <th style={{ minWidth: 90 }}>الحالة</th>
@@ -677,10 +677,10 @@ export default function CarrierStatements({ carriers = [] }) {
                             </td>
                             <td data-label="تاريخ المستند" style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.docDate || '—'}</td>
                             <td data-label="تاريخ الاستحقاق" style={{ fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{o.dueDate || '—'}</td>
-                            <td data-label="مدين" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.dr > 0 ? 'var(--red)' : 'var(--muted3)' }}>
+                            <td data-label="مطلوب" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.dr > 0 ? 'var(--red)' : 'var(--muted3)' }}>
                               {o.dr > 0 ? fmt(o.dr) : ''}
                             </td>
-                            <td data-label="دائن" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.cr < 0 ? 'var(--green)' : 'var(--muted3)' }}>
+                            <td data-label="مُرجَع" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600, color: o.cr < 0 ? 'var(--green)' : 'var(--muted3)' }}>
                               {o.cr < 0 ? fmt(Math.abs(o.cr)) : ''}
                             </td>
                             <td data-label="الرصيد" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(o.balance)}</td>
@@ -702,7 +702,7 @@ export default function CarrierStatements({ carriers = [] }) {
 
           <p style={{ marginTop: 14, color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
             <FileText size={12} style={{ display: 'inline', marginLeft: 4 }}/>
-            المرحلة 1A — العمليات تُستخرج وتُعرض فقط (ما تنحفظ في DB بعد). المراحل التالية: حفظ + رفع الفواتير + التدقيق التلقائي.
+            معاينة فقط — لن يُحفَظ شيء حتى تضغط حفظ.
           </p>
         </>
       )}

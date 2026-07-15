@@ -55,7 +55,7 @@ function Hero({ insights, snapshot }) {
       icon={<ShoppingBag size={22}/>}
       tag="LAMHA · MERCHANT DIRECTORY"
       title="متاجر المنصّة"
-      meta={snapshot ? `snapshot ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` : null}
+      meta={snapshot ? `كشف ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` : null}
       stats={[
         { label: 'إجمالي',    value: fmtCount(insights.total), big: true },
         { label: 'نشط',       value: fmtCount(insights.active), color: '#86EFAC' },
@@ -70,7 +70,7 @@ function Hero({ insights, snapshot }) {
 function InsightGrid({ insights }) {
   const cards = [
     { k:'newLast30',     label:'جدد آخر 30 يوم',   value: insights.newLast30,     icon: TrendingUp,  color:'var(--green)' },
-    { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب funnel' },
+    { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب بين التسجيل والشحن' },
     { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'var(--gold)' },
     { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'#7A82C4', hint: 'مرشحون لإعادة الاسترداد' },
     { k:'verified',      label:'متاجر موثقة', value: `${fmtCount(insights.verified || 0)} · زاتكا ${fmtCount(insights.zatcaDone || 0)}`, icon: CheckCircle2, color:'var(--green)', raw: true },
@@ -277,7 +277,7 @@ function UploadModal({ onClose, onDone, userId }) {
           <div style={{ display:'flex', gap:8, justifyContent:'flex-end', marginTop:14 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
             <Btn variant="accent" icon={<CheckCircle2 size={14}/>} onClick={handleSave} disabled={busy}>
-              حفظ كلقطة
+              حفظ كنسخة
             </Btn>
           </div>
         </>
@@ -384,7 +384,7 @@ export default function Merchants({ isActive = true }) {
         icon={<ShoppingBag size={22}/>}
         title="متاجر المنصّة"
         subtitle={loading ? 'جارٍ التحميل…' : `${fmtCount(data.merchants.length)} متجر مُسجَّل`}
-        meta={data.snapshot ? `snapshot ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
+        meta={data.snapshot ? `كشف ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
         actions={
           <>
             {data.merchants.length > 0 && (
@@ -626,7 +626,7 @@ function UnmatchedModal({ merchants, userId, onClose, onLinkSaved }) {
         borderRadius:9, fontSize:12, lineHeight:1.7,
         color:'var(--text)',
       }}>
-        <strong style={{ color:'var(--gold)' }}>⚠ هؤلاء العملاء بأسماء لم يستطع الـ auto-linker مطابقتها مع المتاجر.</strong>
+        <strong style={{ color:'var(--gold)' }}>⚠ هؤلاء العملاء بأسماء لم يستطع الربط التلقائي مطابقتها مع المتاجر.</strong>
         <div style={{ color:'var(--muted)', marginTop:3 }}>
           اختر المتجر الصحيح من القائمة (بحث بالاسم أو ID) — الربط اليدوي محمي ولن يُعاد كتابته في الرفعات القادمة.
           أو اضغط "تجاهل" لو العميل لا يطابق أي متجر.
@@ -708,7 +708,7 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
             </span>
           )}
           {row.matchMethod === 'unmatched' && (
-            <span style={{ color:'var(--muted)', fontStyle:'italic' }}>auto: لم يجد تطابق</span>
+            <span style={{ color:'var(--muted)', fontStyle:'italic' }}>تلقائي: لم يجد تطابقاً</span>
           )}
         </div>
       </div>

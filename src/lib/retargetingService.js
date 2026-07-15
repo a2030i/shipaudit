@@ -52,7 +52,7 @@ export const STATUSES = {
   converted:         { label: '✅ تحوّل لعميل',  color: '#16A34A' },
   // حالات الاستبعاد الدائم — تُخفَى من القوائم افتراضياً (لا يُكلَّمون)
   supplier:          { label: '📦 مورد/شريك',   color: '#8B5CF6', excluded: true },
-  noise:             { label: 'ضجيج',           color: 'var(--muted2)', excluded: true },
+  noise:             { label: 'أرقام غير مهمة', color: 'var(--muted2)', excluded: true },
   blacklist:         { label: '🚫 بلاك لست',    color: '#111827', excluded: true },
   test:              { label: '🧪 متجر تجريبي', color: 'var(--muted2)', excluded: true },
 };

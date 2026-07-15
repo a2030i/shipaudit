@@ -50,7 +50,7 @@ const FIELD_META = {
   taxRate:         { label: 'نسبة الضريبة % (VAT%)' },
   serviceType:     { label: 'نوع الخدمة (Road/Air)' },
   subCarrier:      { label: 'الناقل الفرعي (لوسطاء مثل بوليصة)' },
-  billingType:     { label: 'نوع الفوترة (ZDOI/ZIBI/ZOBI/ZDCF)' },
+  billingType:     { label: 'نوع الفاتورة (محلي/دولي/تحصيل — رموز أرامكس)' },
   signingStatus:   { label: 'حالة التسليم' },
 };
 
@@ -260,7 +260,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
           {[
             { icon: <FileSpreadsheet size={14}/>, label: 'Excel فقط', hint: 'xlsx / xls' },
             { icon: <FileCheck    size={14}/>, label: 'كشف الفاتورة كاملاً', hint: 'بدون تعديل' },
-            { icon: <Sparkles     size={14}/>, label: 'AI يخمّن الأعمدة', hint: 'أو نمط Regex' },
+            { icon: <Sparkles     size={14}/>, label: 'AI يخمّن الأعمدة', hint: 'أو التعرّف التلقائي بالأنماط' },
           ].map(t => (
             <div key={t.label} style={{
               padding: '10px 12px',

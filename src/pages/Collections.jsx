@@ -226,7 +226,7 @@ export default function Collections({ isActive = true }) {
   const exportTasks = () => {
     if (!visibleTasks.length) { toast('لا توجد مهام', 'info'); return; }
     const headers = [
-      'العميل', 'المسبّب', 'المرحلة', 'الدين عند الإنشاء',
+      'العميل', 'السبب', 'المرحلة', 'الدين عند الإنشاء',
       'الأيام منذ آخر فاتورة', 'وعد بالدفع', 'تاريخ الوعد',
       'منشأة في', 'الملاحظات',
     ];
@@ -317,7 +317,7 @@ export default function Collections({ isActive = true }) {
         !agingTrend.hasHistory ? (
           <div style={{ marginBottom: 16, fontSize: 11.5, color: 'var(--muted)', padding: '8px 12px',
             borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-            📈 حركة الأعمار (roll-rate) — قيد التجميع؛ التُقطت لقطة {agingTrend.cur?.period || ''}. تظهر المقارنة الشهر القادم.
+            📈 تغيّر أعمار الديون هذا الشهر — قيد التجميع؛ التُقطت لقطة {agingTrend.cur?.period || ''}. تظهر المقارنة الشهر القادم.
           </div>
         ) : (() => {
           const { cur, prev } = agingTrend;
@@ -329,7 +329,7 @@ export default function Collections({ isActive = true }) {
           return (
             <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', marginBottom: 16,
               fontSize: 11.5, padding: '8px 12px', borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-              <span style={{ fontWeight: 700, color: 'var(--text)' }}>📈 حركة الأعمار {prev.period}→{cur.period}:</span>
+              <span style={{ fontWeight: 700, color: 'var(--text)' }}>📈 تغيّر أعمار الديون {prev.period}→{cur.period}:</span>
               {buckets.map(b => {
                 const delta = (cur[b.key] || 0) - (prev[b.key] || 0);
                 const worse = (b.key === 'b61_90' || b.key === 'b90p') && delta > 0;
@@ -342,7 +342,7 @@ export default function Collections({ isActive = true }) {
               })}
               <span style={{ marginInlineStart: 'auto', fontWeight: 700,
                 color: roll90 > 0.5 ? 'var(--red)' : roll90 < -0.5 ? 'var(--green)' : 'var(--muted)' }}>
-                صافي المتدحرج إلى +90: {roll90 >= 0 ? '+' : '−'}{fmtCompact(Math.abs(roll90))} ر.س
+                صافي ما انتقل لفئة +90 يوم: {roll90 >= 0 ? '+' : '−'}{fmtCompact(Math.abs(roll90))} ر.س
               </span>
             </div>
           );
@@ -405,7 +405,7 @@ export default function Collections({ isActive = true }) {
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {['العميل', 'المسبّب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'إجراء'].map(h => (
+                {['العميل', 'السبب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'إجراء'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -429,7 +429,7 @@ export default function Collections({ isActive = true }) {
                         </div>
                       )}
                     </td>
-                    <td data-label="المسبّب" style={{ padding: '10px 12px' }}>
+                    <td data-label="السبب" style={{ padding: '10px 12px' }}>
                       <span style={pill(TRIGGER_COLORS[t.trigger])}>
                         {TRIGGER_LABELS[t.trigger] || t.trigger}
                       </span>
@@ -619,7 +619,7 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff 
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
         <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
-          <KV label="المسبّب" value={
+          <KV label="السبب" value={
             <span style={pill(TRIGGER_COLORS[task.trigger])}>{TRIGGER_LABELS[task.trigger]}</span>
           }/>
           <KV label="المرحلة" value={
@@ -773,7 +773,7 @@ function WriteoffRequestDialog({ task, onCancel, onConfirm }) {
         }}>
           <AlertTriangle size={14} color="var(--red)" style={{ display: 'inline', marginInlineEnd: 5, verticalAlign: 'middle' }}/>
           الطلب سيُرسَل للمدير. بعد الاعتماد يُخصم المبلغ من رصيد العميل المعروض،
-          مع إبقاء أصل الـ snapshot كما هو للمراجعة الخارجية. كل التغييرات تُسجَّل في activity_log.
+          مع إبقاء الكشف الأصلي كما هو للمراجعة الخارجية. كل التغييرات تُسجَّل في activity_log.
         </div>
         <label style={{ display: 'block', marginBottom: 10 }}>
           <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>

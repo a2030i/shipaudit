@@ -77,7 +77,7 @@ export default function ReportsCenter({ isActive = true }) {
       [`التقرير الشهري للناقلين — ${monthLabel(pMonth)}`],
       [`أُنشئ: ${new Date().toISOString().slice(0, 10)}`],
       [],
-      ['الناقل', 'مفوتر', 'تحصيل COD', 'إشعارات دائنة', 'مدفوعات', 'صافي الحركة', 'المراجعات', 'فرق التدقيق'],
+      ['الناقل', 'مفوتر', 'تحصيل COD', 'مبالغ مُرجَعة/خصومات', 'مدفوعات', 'COD ناقص الفواتير', 'المراجعات', 'فرق التدقيق'],
       ...rows.map(r => [r.carrierName, r.billed, r.cod, r.creditNotes, r.payments, r.net, r.auditCount, r.auditDiff]),
       [],
       ['الإجمالي', totals.billed, totals.cod, totals.creditNotes, totals.payments, totals.net, '', ''],
@@ -105,7 +105,7 @@ export default function ReportsCenter({ isActive = true }) {
   const genRecon = () => run('recon', async () => {
     const { generateBankReconReport } = await import('../lib/bankReconReport.js');
     const r = await generateBankReconReport({ month: pReconMonth || null, userId: user?.id });
-    toast(`مطابَق ${r.matched} · بنك بلا قيد ${r.bankOnly} (${fmt(r.bankOnlyTotal)} ر.س) · قيد بلا أثر ${r.payOnly}`,
+    toast(`مطابَق ${r.matched} · حركة بنك بلا سداد مسجّل ${r.bankOnly} (${fmt(r.bankOnlyTotal)} ر.س) · سداد مسجّل لم يظهر في البنك ${r.payOnly}`,
       r.bankOnly ? 'info' : 'success');
   });
 
@@ -144,7 +144,7 @@ export default function ReportsCenter({ isActive = true }) {
         {/* المطابقة البنكية */}
         <ReportCard icon={<Landmark size={18}/>} color="var(--gold)"
           title="المطابقة البنكية (بنك × دفتر)"
-          desc="3 أوراق: مطابَق · خرج من البنك بلا قيد سداد (الخطر) · قيد بلا أثر بنكي">
+          desc="3 أوراق: مطابَق · حركة بنك بلا سداد مسجّل (الخطر) · سداد مسجّل لم يظهر في البنك">
           <Select value={pReconMonth} onChange={e => setPReconMonth(e.target.value)}>
             <option value="">كل الفترات</option>
             {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
@@ -173,12 +173,12 @@ export default function ReportsCenter({ isActive = true }) {
                 {history.map(h => (
                   <tr key={`${h.kind}_${h.id}`} style={{ borderTop: '1px solid var(--border)' }}>
                     <td data-label="التاريخ" style={{ padding: '9px 12px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDate(h.pulledAt)}</td>
-                    <td data-label="النوع" style={{ padding: '9px 12px' }}>{KIND_LABEL[h.kind] || h.kind}</td>
+                    <td data-label="النوع" style={{ padding: '9px 12px' }}>{KIND_LABEL[h.kind] || 'تقرير'}</td>
                     <td data-label="" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)', fontSize: 11, maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis' }}>{h.fileName}</td>
                     <td data-label="صفوف" style={{ padding: '9px 12px', fontFamily: 'var(--font-mono)' }}>{h.rowCount ?? '—'}</td>
                     <td style={{ padding: '9px 12px' }}>
                       <Btn size="sm" variant="ghost" icon={<Download size={12}/>} disabled={!h.filePath}
-                        title={h.filePath ? 'إعادة التحميل' : 'سحبة قديمة قبل التخزين'}
+                        title={h.filePath ? 'إعادة التحميل' : 'ملف قديم قبل التخزين'}
                         onClick={async () => {
                           try { await downloadExportFile(h); } catch (e) { toast(e.message, 'error'); }
                         }}/>

@@ -275,7 +275,7 @@ export default function FinancialPosition({ isActive = true }) {
           <WaterRow label="مصاريف التشغيل" hint="أجور · رسوم بنكية · وغيرها"
             value={snap.opex} color="var(--gold)" sign="−" lines={findLines(snap, 'المصروفات التشغيلية')}/>
           {(Number(snap.other_income) || 0) - (Number(snap.other_expense) || 0) !== 0 && (
-            <WaterRow label="بنود غير تشغيلية" hint="دخل/مصاريف خارج النشاط الأساسي"
+            <WaterRow label="دخل/مصاريف خارج النشاط الأساسي" hint="بنود غير تشغيلية"
               value={(Number(snap.other_income) || 0) - (Number(snap.other_expense) || 0)} color="var(--muted)" sign="±"/>
           )}
           <div style={{
@@ -297,7 +297,7 @@ export default function FinancialPosition({ isActive = true }) {
             <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
               <AlertTriangle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
               <div style={{ flex: 1, fontSize: 13, lineHeight: 1.8 }}>
-                <b style={{ color: 'var(--red)' }}>فجوة تسجيل: ~{fmt(gap.diff)} ر.س فواتير ناقلين لم تدخل زوهو بعد</b>
+                <b style={{ color: 'var(--red)' }}>فرق: ~{fmt(gap.diff)} ر.س فواتير شحن لم تدخل زوهو بعد</b>
                 <div style={{ color: 'var(--muted)', fontSize: 12 }}>
                   دفترنا يعرف فواتير ناقلين بـ{fmt(gap.billedPreTax)} ر.س قبل الضريبة لشهر {monthLabel(sel)}
                   (الإجمالي الشامل {fmt(gap.grossBilled)} ÷ 1.15)، بينما زوهو سجّل {fmt(gap.cogs)} فقط —

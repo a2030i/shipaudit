@@ -156,7 +156,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
           {groups.onDemand.length > 0 && (
             <Card style={{ padding: '18px 22px', marginBottom: 18 }}>
               <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 10 }}>
-                ON-DEMAND ({groups.onDemand.length})
+                عند الطلب ({groups.onDemand.length})
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
                 {groups.onDemand.map(s => (

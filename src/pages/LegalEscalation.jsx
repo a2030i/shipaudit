@@ -100,7 +100,7 @@ export default function LegalEscalation({ isActive = true }) {
     <div style={{ padding: '18px 20px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader icon={<Scale size={22}/>} iconColor="var(--red)"
         title="التصعيد القانوني"
-        subtitle="أهداف الأعمار + مَن يجب تحويله للقانونية فوراً"
+        subtitle="أهداف أعمار الديون + مَن يجب تحويله للقانونية فوراً"
         actions={
           <>
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportLegal} disabled={!totalEscalate}>ملف القانونية</Btn>
@@ -109,7 +109,7 @@ export default function LegalEscalation({ isActive = true }) {
         }/>
 
       {/* ── أهداف الأعمار ── */}
-      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--muted)', margin: '4px 0 8px' }}>🎯 أهداف الأعمار (فواتير زوهو المفتوحة)</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--muted)', margin: '4px 0 8px' }}>🎯 أهداف أعمار الديون (فواتير زوهو المفتوحة)</div>
       <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 12, marginBottom: 18 }}>
         <TargetCard label="31 – 60 يوم" actual={ag.b31_60} target={ag.t31_60}/>
         <TargetCard label="61 – 90 يوم" actual={ag.b61_90} target={ag.t61_90}/>

@@ -357,7 +357,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
                 {section.perms.map(p => {
                   const on = !!perms[p.key];
                   return (
-                    <label key={p.key} style={{
+                    <label key={p.key} title={p.key} style={{
                       display: 'flex', alignItems: 'center', gap: 10,
                       padding: '7px 14px', cursor: 'pointer',
                       borderBottom: '1px solid var(--border)',
@@ -385,9 +385,6 @@ function PermissionsModal({ employee, onClose, onSave }) {
                               حسّاس
                             </span>
                           )}
-                        </div>
-                        <div style={{ fontSize: 10, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
-                          {p.key}
                         </div>
                       </div>
                     </label>

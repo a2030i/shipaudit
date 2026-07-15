@@ -304,7 +304,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       <PageHeader
         icon={<Inbox size={22}/>}
         title="صندوق الوارد"
-        subtitle="الملفات الواصلة عبر Webhook — تُسجَّل تلقائياً وتُربط بالشركة الصحيحة"
+        subtitle="الملفات الواصلة تلقائياً بالبريد — تُسجَّل تلقائياً وتُربط بالشركة الصحيحة"
         actions={
           <>
             {selected.size > 0 && canDelete && (
@@ -333,10 +333,10 @@ export default function WebhookEvents({ carriers, isActive = true }) {
           </div>
           <div style={{ flex: 1, minWidth: 220 }}>
             <div style={{ fontSize: 11, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
-              ENDPOINT
+              رابط الاستقبال
             </div>
             <div style={{ fontSize: 13.5, color: 'var(--text)', marginTop: 2 }}>
-              وجّه أتمتتك (Zapier / n8n / Make / IFTTT) لهذا الرابط
+              وجّه بريد الشركة لهذا الرابط
             </div>
           </div>
           <div style={{
@@ -350,11 +350,11 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             color: 'var(--text2)',
             direction: 'ltr',
           }}>
-            <span style={{
+            <span title="POST" style={{
               fontSize: 10, padding: '2px 8px', borderRadius: 6,
               background: 'var(--accent-dim)', color: 'var(--accent)',
               fontWeight: 700, flexShrink: 0,
-            }}>POST</span>
+            }}>🔗</span>
             <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {endpoint}
             </span>

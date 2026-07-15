@@ -29,7 +29,7 @@ const STATUS_META = {
   pending_review:   { label: '🟡 فرق غير مراجَع',         color: 'var(--gold)'  },
   disputed:         { label: '⚠️ اعتراض مفتوح',           color: '#f59e0b'      },
   over_remit:       { label: '🔵 وارد · بانتظار المطابقة', color: '#3b82f6'      },
-  over_remit_aged:  { label: '🔴 وارد قديم بدون مقابل',   color: 'var(--red)'   },
+  over_remit_aged:  { label: '🔴 تحويل وصل بلا تسوية تقابله',   color: 'var(--red)'   },
 };
 
 function statusKey(r) {
@@ -681,7 +681,7 @@ export default function CodSettlements({ isActive = true }) {
               hint={summary.disputedCount > 0 ? `أقدم اعتراض: ${summary.oldestDisputeDays} يوم` : 'لا اعتراضات'}
               color="#f59e0b"/>
             {summary.overRemitAgedCount > 0
-              ? <Hero label="🚨 وارد قديم بدون مقابل" value={summary.overRemitAgedCount}
+              ? <Hero label="🚨 تحويل وصل بلا تسوية تقابله" value={summary.overRemitAgedCount}
                   hint={`${fmt(summary.overRemitAgedAmount)} ر.س · مضى +30 يوم`} color="var(--red)"/>
               : <Hero label="مسوّاة" value={fmt(summary.matchedAmount)} suffix="ر.س"
                   hint={`${summary.matchedCount} شحنة من أصل ${rows.length}`} color="var(--green)"/>
@@ -692,7 +692,7 @@ export default function CodSettlements({ isActive = true }) {
           {summary.outstandingCount > 0 && (
             <Card style={{ padding: 14, marginBottom: 14 }}>
               <div style={{ fontSize: 12, color: 'var(--accent)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
-                📅 أعمار المتبقي (من تاريخ التسوية مع المتجر)
+                📅 منذ متى المبلغ متأخّر عند الشركة
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 <AgingCard label="0–14 يوم"   color="var(--green)" {...aging.d0_14}/>
@@ -712,7 +712,7 @@ export default function CodSettlements({ isActive = true }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                 <AgingCard label="0–30 يوم · طبيعي"   color="#3b82f6"   {...agingOver.d0_30}/>
                 <AgingCard label="31–60 يوم · انتبه"  color="#f59e0b"   {...agingOver.d31_60}/>
-                <AgingCard label="+60 يوم · حقّق"    color="var(--red)" {...agingOver.d61}/>
+                <AgingCard label="+60 يوم — تأكّد منه"    color="var(--red)" {...agingOver.d61}/>
               </div>
             </Card>
           )}

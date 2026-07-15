@@ -30,7 +30,7 @@ const telLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d 
 
 // المؤشّرات: goodUp = هل ارتفاع الرقم إيجابي (لتلوين فرق الرفعة).
 const KPIS = [
-  { key: 'unique_customers', label: 'عملاء فريدون', color: '#06B6D4', goodUp: true },
+  { key: 'unique_customers', label: 'عملاء (بلا تكرار)', color: '#06B6D4', goodUp: true },
   { key: 'prio_a',           label: 'أولوية A (اتصال)', color: 'var(--red)', goodUp: false },
   { key: 'stopped',          label: 'متوقّفون', color: '#F97316', goodUp: false },
   { key: 'never_shipped',    label: 'سجّلوا ولم يشحنوا', color: '#8B5CF6', goodUp: false },
@@ -139,8 +139,8 @@ export default function Retargeting({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Target size={22}/>} iconColor="#8B5CF6"
         title="إعادة استهداف العملاء"
-        subtitle="كشف المتاجر → فرص قابلة للتنفيذ · عميل فريد بالهاتف · أولوية واضحة"
-        meta={dash ? `${fmt0(st.unique_customers)} عميل فريد · ${fmt0(st.total_stores)} متجر · ${fmt0(st.total_shipments)} شحنة` : null}
+        subtitle="كشف المتاجر → فرص قابلة للتنفيذ · عميل واحد لكل رقم · أولوية واضحة"
+        meta={dash ? `${fmt0(st.unique_customers)} عميل (بلا تكرار) · ${fmt0(st.total_stores)} متجر · ${fmt0(st.total_shipments)} شحنة` : null}
         actions={<Btn size="sm" variant="ghost" onClick={() => { loadDash(); loadList(); }} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
       />
 
@@ -438,7 +438,7 @@ function CampaignView({ campaign, changes }) {
         </div>
       );
     })()}
-    <SectionTitle>قمع التحويل (النجاح = عاد للشحن)</SectionTitle>
+    <SectionTitle>مراحل التحويل (النجاح = عاد للشحن)</SectionTitle>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }} className="hero-grid">
       {steps.map(s => (
         <Card key={s.k} style={{ padding: '12px 14px', borderTop: `3px solid ${s.green ? 'var(--green)' : '#8B5CF6'}` }}>

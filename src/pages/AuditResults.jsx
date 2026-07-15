@@ -312,10 +312,10 @@ function ResultsTable({ results, filter, showDetail, contract }) {
   // RSS/fuel/COD appear only when at least one row populates them.
   const allGroups = {
     delivery: { key: 'delivery', label: 'شحن',     color:'#3b9ccc', bg:'rgba(59,156,204,.08)', bgL:'rgba(59,156,204,.04)' },
-    rss:      { key: 'rss',      label: 'RSS',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
+    rss:      { key: 'rss',      label: 'رسوم أمنية (RSS)',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
     fuel:     { key: 'fuel',     label: 'وقود',    color:'#3aad78', bg:'rgba(58,173,120,.08)', bgL:'rgba(58,173,120,.03)' },
     cod:      { key: 'cod',      label: 'COD',     color:'var(--accent)', bg:'color-mix(in srgb, var(--accent) 10%, transparent)', bgL:'color-mix(in srgb, var(--accent) 4%, transparent)' },
-    pos:      { key: 'pos',      label: 'POS',     color:'#ec4899', bg:'rgba(236,72,153,.10)', bgL:'rgba(236,72,153,.04)' },
+    pos:      { key: 'pos',      label: 'رسوم بطاقة (POS)',     color:'#ec4899', bg:'rgba(236,72,153,.10)', bgL:'rgba(236,72,153,.04)' },
     total:    { key: 'total',    label: 'الإجمالي',color:'#f59e0b', bg:'rgba(245,158,11,.08)', bgL:'rgba(245,158,11,.04)' },
   };
   const groups = [
@@ -384,7 +384,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
               </tr>
               <tr>
                 {groups.map(g => (
-                  [<th key={`${g.key}-i`} style={SH(g.color, g.bg)}>مفوتر</th>,
+                  [<th key={`${g.key}-i`} style={SH(g.color, g.bg)}>المطلوب منهم</th>,
                    <th key={`${g.key}-e`} style={SH(g.color, g.bg)}>متوقع</th>,
                    <th key={`${g.key}-d`} style={{ ...SH(g.color, g.bg), fontWeight:800 }}>فرق</th>]
                 ))}
@@ -402,7 +402,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
                 <th style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>وزن زائد</th>
                 <th style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
               </>}
-              <th style={{ background:'rgba(139,92,246,.1)', color:'var(--purple)', borderBottom:'2px solid rgba(139,92,246,.3)', minWidth:90 }}>مفوتر</th>
+              <th style={{ background:'rgba(139,92,246,.1)', color:'var(--purple)', borderBottom:'2px solid rgba(139,92,246,.3)', minWidth:90 }}>المطلوب منهم</th>
               <th style={{ background:'color-mix(in srgb, var(--accent) 8%, transparent)', color:'var(--green)', borderBottom:'2px solid color-mix(in srgb, var(--accent) 30%, transparent)', minWidth:90 }}>متوقع</th>
               <th style={{ background:'rgba(248,113,113,.08)', color:'var(--red)', borderBottom:'2px solid rgba(248,113,113,.3)', minWidth:80, fontWeight:700 }}>الفرق</th>
               <th style={{ minWidth:90 }}>الحالة</th>
@@ -987,14 +987,14 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             gap: 14,
           }}>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>مفوتر من الشركة</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>المطلوب منهم (حسب فاتورتهم)</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>
                 {Number(summary.totalBilled || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
               </div>
               <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>قبل الضريبة</div>
             </div>
             <div>
-              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>المتوقع حسب العقد</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>الصحيح حسب العقد</div>
               <div style={{ fontFamily: 'var(--font-mono)', fontSize: 18, fontWeight: 700, color: 'var(--accent)' }}>
                 {Number(summary.totalExpected || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
               </div>

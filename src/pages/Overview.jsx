@@ -190,7 +190,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          label="صافي حركة النقد مع الناقلين"
+          label="الداخل ناقص الخارج مع شركات الشحن"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
           unit="ر.س"
           delta={data.deltas.net}
@@ -231,7 +231,7 @@ export default function Overview({ carriers = [], isActive = true }) {
 
       {/* ── Section 1.5: Working capital — CFO health metrics ── */}
       <SectionTitle icon={<TrendingUp size={14}/>} color="#8B5CF6">
-        رأس المال العامل — متوسط أيام التحصيل والسداد
+        سرعة دوران فلوسك — تحصيل مقابل سداد
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 12, marginBottom: 12,
@@ -240,7 +240,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color="#0EA5E9"
           icon={<Calendar size={18}/>}
-          label="DSO — أيام التحصيل"
+          label="متوسط أيام تحصيلك من العملاء"
           value={data.workingCapital.dso.toFixed(1)}
           unit="يوم"
           hint={`متوسط أيام دفع العملاء · ${data.workingCapital.customersWithDebt} عميل عليه دين`}
@@ -248,7 +248,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--green)"
           icon={<Calendar size={18}/>}
-          label="DPO — أيام السداد"
+          label="متوسط أيام سدادك للشركات"
           value={data.workingCapital.dpo.toFixed(1)}
           unit="يوم"
           hint={`متوسط أيام دفعنا للشركات · ${data.workingCapital.carriersWithDebt} شركة عليها مفتوح`}
@@ -256,7 +256,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color={data.workingCapital.ccc <= 0 ? 'var(--green2)' : data.workingCapital.ccc < 30 ? 'var(--gold)' : 'var(--red)'}
           icon={<Activity size={18}/>}
-          label="CCC — دورة النقد"
+          label="الفجوة بين ما تقبض وما تدفع"
           value={(data.workingCapital.ccc >= 0 ? '+' : '−') + Math.abs(data.workingCapital.ccc).toFixed(1)}
           unit="يوم"
           hint={data.workingCapital.ccc <= 0
@@ -360,7 +360,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         {/* Top customers by debt */}
         <Card>
           <SectionTitle icon={<Users size={14}/>} color="#EF4444" inline>
-            العملاء — تركّز المديونيات{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
+            أكثر العملاء عليهم ديون{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
           {data.customerConcentration.length === 0 ? (
             <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة تحصيل العملاء"/>
@@ -391,7 +391,7 @@ export default function Overview({ carriers = [], isActive = true }) {
 
       {/* ── Section 3: AP aging ── */}
       <SectionTitle icon={<Wallet size={14}/>} color="var(--gold)">
-        أعمار الذمم الدائنة — ما علينا للشركات
+        أعمار ما عليك لشركات الشحن
       </SectionTitle>
       <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
         {/* Totals row up top */}
@@ -513,9 +513,9 @@ export default function Overview({ carriers = [], isActive = true }) {
         <Info size={14} style={{ flexShrink: 0, marginTop: 2 }}/>
         <div>
           <strong style={{ color: 'var(--text2)' }}>كيف تُحسب الأرقام:</strong>{' '}
-          الإنفاق = مجموع <code>amount_dr</code> في <code>carrier_operations</code> بتاريخ ضمن الشهر.{' '}
-          COD المُستلَم = ما رُفع من ملفات تحصيل الشركات بـ <code>direction='in'</code>.{' '}
-          الفروق = مجموع <code>drift_pre_tax</code> للمراجعات المعتمدة هذا الشهر — سالب يعني وفّرنا، موجب يعني ندفع زيادة.
+          الإنفاق = مجموع فواتير شركات الشحن المسجّلة في دفتر الناقلين بتاريخ ضمن الشهر.{' '}
+          COD المُستلَم = ما رُفع من ملفات تحصيل الشركات (المبالغ المستلمة فعلاً).{' '}
+          الفروق = مجموع الفرق قبل الضريبة للمراجعات المعتمدة هذا الشهر — سالب يعني وفّرنا، موجب يعني ندفع زيادة.
           تركّز العملاء يأتي من فواتير زوهو المفتوحة عند توفرها، مع fallback للكشوف القديمة.{' '}
           أعمار الذمم = الفرق بين تاريخ الفاتورة واليوم، للقيود غير المسددة.
         </div>
@@ -624,7 +624,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
   const sourceChips = [
     {
       label: 'دين العملاء',
-      value: data.cashPosition?.arSource === 'zoho' ? 'Zoho API مباشر' : 'Snapshot داخلي',
+      value: data.cashPosition?.arSource === 'zoho' ? 'Zoho API مباشر' : 'نسخة داخلية محفوظة',
       tone: data.cashPosition?.arSource === 'zoho' ? '#059669' : '#F59E0B',
     },
     {
@@ -699,7 +699,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
               fontWeight: 800,
             }}>
               <Zap size={14}/>
-              نبض التشغيل الآن
+              وضعك الآن باختصار
             </div>
             <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>
               الوضع النقدي الكامل
@@ -978,7 +978,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
         <CashTile
           icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
           color={cash.netNoBank >= 0 ? 'var(--green2)' : 'var(--red)'}
-          label="الصافي التشغيلي"
+          label="مستحق لك ناقص مستحق عليك"
           value={(cash.netNoBank >= 0 ? '+' : '−') + fmt(Math.abs(cash.netNoBank))}
           unit="ر.س"
           hint="مستحق لنا − مستحق علينا"
@@ -989,7 +989,7 @@ function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
           label="الوضع النقدي الكامل"
           value={cash.net == null ? '—' : (cash.net >= 0 ? '+' : '−') + fmt(Math.abs(cash.net))}
           unit={cash.net == null ? '' : 'ر.س'}
-          hint={cash.bankBalance == null ? 'حدّث رصيد البنك للحساب' : 'البنك + الصافي التشغيلي'}
+          hint={cash.bankBalance == null ? 'حدّث رصيد البنك للحساب' : 'البنك + (مستحق لك ناقص مستحق عليك)'}
           big
         />
       </div>

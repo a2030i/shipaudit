@@ -94,7 +94,7 @@ export default function ContractsOverview({ isActive = true }) {
       'السعر الأساسي (ر.س)': r.basePrice ?? '—',
       'الكيلو الزائد (ر.س)': r.excessPerKg != null ? `${r.excessPerKg} / ${r.excessUnit}كغ` : '—',
       'الوقود':              r.fuelPct != null ? `${(r.fuelPct * 100).toFixed(1)}%` : '—',
-      'RSS':                r.rssPct != null ? `${(r.rssPct * 100).toFixed(1)}%` : '—',
+      'رسوم أمنية %':                r.rssPct != null ? `${(r.rssPct * 100).toFixed(1)}%` : '—',
       'رسوم COD':           r.codFee ?? '—',
       'الوجهات':            r.destinations.length,
       'ساري':                r.isActive ? '✓' : '—',
@@ -153,7 +153,7 @@ export default function ContractsOverview({ isActive = true }) {
                   <th style={{ minWidth: 110, background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>السعر الأساسي</th>
                   <th style={{ minWidth: 130, background: 'rgba(251,191,36,.06)' }}>كل كيلو زائد</th>
                   <th style={{ minWidth: 80,  background: 'rgba(58,173,120,.06)' }}>الوقود</th>
-                  <th style={{ minWidth: 80,  background: 'rgba(168,85,247,.06)' }}>RSS</th>
+                  <th style={{ minWidth: 80,  background: 'rgba(168,85,247,.06)' }}>رسوم أمنية %</th>
                   <th style={{ minWidth: 90,  background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>رسوم COD</th>
                   <th style={{ minWidth: 80 }}>الوجهات</th>
                   <th style={{ minWidth: 70 }}>الحالة</th>

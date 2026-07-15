@@ -1,4 +1,4 @@
-// "شرائح العملاء" — segment builder.
+// "مجموعات العملاء" — segment builder.
 //
 // Take every merchant from the latest snapshot, overlay any matching
 // receivables, then let the operator narrow that universe with
@@ -450,7 +450,7 @@ export default function Segments({ isActive = true }) {
   // ── filter handlers ────────────────────────────────────────
   // Any direct filter edit clears the "currently loaded saved
   // segment" highlight so the operator knows their tweaks haven't
-  // been persisted yet (and the "حدّث الشريحة الحالية" button
+  // been persisted yet (and the "حدّث المجموعة الحالية" button
   // appears so they can save the edit back).
   const setFilter = (key, value) => {
     setFilters(prev => ({ ...prev, [key]: value }));
@@ -522,7 +522,7 @@ export default function Segments({ isActive = true }) {
       setSavedSegments(prev => [...prev, created]);
       setActiveSavedId(created.id);
       setSaveOpen(false);
-      toast(`تم حفظ شريحة «${created.name}»`, 'success');
+      toast(`تم حفظ مجموعة «${created.name}»`, 'success');
     } catch (e) {
       toast(`فشل الحفظ: ${e.message}`, 'error');
     }
@@ -544,14 +544,14 @@ export default function Segments({ isActive = true }) {
     try {
       const updated = await updateSegment(id, { filters });
       setSavedSegments(prev => prev.map(s => s.id === id ? updated : s));
-      toast('تم تحديث الشريحة بالفلاتر الحالية', 'success');
+      toast('تم تحديث المجموعة بالفلاتر الحالية', 'success');
     } catch (e) {
       toast(`فشل التحديث: ${e.message}`, 'error');
     }
   };
 
   const handleDelete = async (segment) => {
-    if (!confirm(`حذف شريحة «${segment.name}»؟ لا يمكن التراجع.`)) return;
+    if (!confirm(`حذف مجموعة «${segment.name}»؟ لا يمكن التراجع.`)) return;
     try {
       await deleteSegment(segment.id);
       setSavedSegments(prev => prev.filter(s => s.id !== segment.id));
@@ -595,10 +595,10 @@ export default function Segments({ isActive = true }) {
     ]);
     const ws = XLSX.utils.aoa_to_sheet([headers, ...data]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'شريحة');
+    XLSX.utils.book_append_sheet(wb, ws, 'مجموعة');
     const dateStr = new Date().toISOString().slice(0, 10);
     // §1.13: كل تصدير عبر السجل (كان XLSX.writeFile خاماً — لا يُعاد تحميله)
-    persistAndDownloadExport({ wb: rtl(wb), fileName: `شريحة_${filtered.length}متجر_${dateStr}.xlsx`,
+    persistAndDownloadExport({ wb: rtl(wb), fileName: `مجموعة_${filtered.length}متجر_${dateStr}.xlsx`,
       kind: 'segments', rowCount: filtered.length, total: null, userId: user?.id || null })
       .then(() => toast(`تم تصدير ${filtered.length} متجر`, 'success'))
       .catch(e => toast(`فشل التصدير: ${e.message}`, 'error'));
@@ -674,7 +674,7 @@ export default function Segments({ isActive = true }) {
         <Empty
           icon="🧩"
           title="لا يوجد كشف متاجر بعد"
-          sub="ارفع stores.xlsx من /merchants ثم ارجع لبناء الشرائح."
+          sub="ارفع stores.xlsx من /merchants ثم ارجع لبناء المجموعات."
         />
       </div>
     );
@@ -685,19 +685,19 @@ export default function Segments({ isActive = true }) {
       <PageHeader
         icon={<Layers size={22}/>}
         iconColor="#0EA5E9"
-        title="شرائح العملاء"
-        subtitle="ابنِ شريحة بفلاتر متعدّدة، احفظها باسم، وحدّث كل الشرائح بضغطة"
+        title="مجموعات العملاء"
+        subtitle="ابنِ مجموعة بفلاتر متعدّدة، احفظها باسم، وحدّث كل المجموعات بضغطة"
         meta={snapshot ? `آخر تحديث ${new Date(snapshot.uploadedAt).toLocaleDateString('en-GB')} · ${rows.length} متجر إجمالي` : null}
         actions={
           <div style={{ display: 'flex', gap: 8 }}>
             {hasAnyFilter && !activeSavedId && (
               <Btn size="sm" variant="primary" icon={<Save size={13}/>} onClick={() => setSaveOpen(true)}>
-                احفظ كشريحة
+                احفظ كمجموعة
               </Btn>
             )}
             {activeSavedId && hasAnyFilter && (
               <Btn size="sm" variant="ghost" icon={<Save size={13}/>} onClick={() => handleOverwrite(activeSavedId)}>
-                حدّث الشريحة الحالية
+                حدّث المجموعة الحالية
               </Btn>
             )}
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
@@ -715,7 +715,7 @@ export default function Segments({ isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <Bookmark size={14} color="#0EA5E9"/>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
-              شرائحي المحفوظة
+              مجموعاتي المحفوظة
             </span>
             <span style={{ fontSize: 11, color: 'var(--muted)' }}>
               ({savedSegments.length})
@@ -754,7 +754,7 @@ export default function Segments({ isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
             <SlidersHorizontal size={14} color="#0EA5E9"/>
             <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>
-              تشاهد شريحة محفوظة —
+              تشاهد مجموعة محفوظة —
               <strong style={{ color: 'var(--text)', marginInlineStart: 4 }}>
                 {savedSegments.find(s => s.id === activeSavedId)?.name || '—'}
               </strong>
@@ -833,7 +833,7 @@ export default function Segments({ isActive = true }) {
         </Card>
 
         <Card>
-          <FacetTitle icon={<ShoppingBag size={14}/>} color="#8B5CF6">العضوية</FacetTitle>
+          <FacetTitle icon={<ShoppingBag size={14}/>} color="#8B5CF6">بيانات الحساب</FacetTitle>
           <MultiChips
             label="حالة المنصّة"
             options={facetValues.platformStatuses}
@@ -918,7 +918,7 @@ export default function Segments({ isActive = true }) {
       {/* Save / Rename dialogs */}
       {saveOpen && (
         <NameDialog
-          title="حفظ شريحة جديدة"
+          title="حفظ مجموعة جديدة"
           initialValue={suggestSegmentName(filters)}
           onCancel={() => setSaveOpen(false)}
           onSubmit={handleSave}
@@ -1201,7 +1201,7 @@ function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete 
       {/* Click the chip body → load + collapse filters (just see results) */}
       <button
         onClick={onLoad}
-        title="افتح الشريحة وأظهر النتائج"
+        title="افتح المجموعة وأظهر النتائج"
         style={{
           background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
           display: 'inline-flex', alignItems: 'center', gap: 7,
@@ -1242,7 +1242,7 @@ function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete 
       </button>
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        title="حذف الشريحة"
+        title="حذف المجموعة"
         style={iconBtnStyle}
         onMouseEnter={(e) => e.currentTarget.style.color = 'var(--red)'}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
@@ -1274,13 +1274,13 @@ function NameDialog({ title, initialValue = '', onCancel, onSubmit }) {
       >
         <label style={{ display: 'block', marginBottom: 14 }}>
           <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 6 }}>
-            اسم الشريحة
+            اسم المجموعة
           </span>
           <input
             type="text"
             name="search"
             role="textbox"
-            aria-label="اسم الشريحة"
+            aria-label="اسم المجموعة"
             autoComplete="off"
             autoCorrect="off"
             spellCheck={false}
@@ -1348,7 +1348,7 @@ function suggestSegmentName(filters) {
   if (filters.platformStatuses?.length) bits.push(filters.platformStatuses.join('/'));
   if (filters.integrationTypes?.length) bits.push(`ربط ${filters.integrationTypes.join('/')}`);
   if (filters.billingTypes?.length)     bits.push(filters.billingTypes.join('/'));
-  return bits.length ? bits.join(' · ') : 'شريحة جديدة';
+  return bits.length ? bits.join(' · ') : 'مجموعة جديدة';
 }
 
 function Stat({ label, value, color, suffix }) {

@@ -47,8 +47,8 @@ function HeaderTotals({ totals, loading }) {
       tag="LAMHA · CARRIERS OVERVIEW"
       title="شركات الشحن — كشف موحّد"
       stats={[
-        { label: 'مدين علينا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
-        { label: 'دائن لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
+        { label: 'المطلوب منّا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
+        { label: 'المدفوع/لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
         {
           label: owed >= 0 ? 'نحن مدينون' : 'الشركات مدينة',
           value: loading ? '…' : `${sign} ${fmtCompact(Math.abs(owed))} ر.س`,
@@ -125,7 +125,7 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
   const actionsCount = row.pendingAudits + row.webhookPending;
   const setupGaps = [];
   if (!row.hasContract)       setupGaps.push('عقد');
-  if (!row.hasFileSignature)  setupGaps.push('بصمة Webhook');
+  if (!row.hasFileSignature)  setupGaps.push('تعريف بريد الشركة');
   if (!row.fileKind)          setupGaps.push('نوع الملف');
 
   return (

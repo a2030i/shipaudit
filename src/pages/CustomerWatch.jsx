@@ -56,7 +56,7 @@ function CustomerPulseSummary({ t }) {
   const delta = t.monthlyDelta;
   const deltaIsPositive = delta == null ? null : delta >= 0;
   const metrics = [
-    { label: 'المديونيات الداخلية', value: `${fmtCompact(t.totalDebt)} ر.س`, color: 'var(--red)' },
+    { label: 'مديونيات العملاء (الكشف الداخلي)', value: `${fmtCompact(t.totalDebt)} ر.س`, color: 'var(--red)' },
     { label: 'عملاء عليهم دين', value: fmtCount(t.debtorsCount ?? t.customerCount), color: 'var(--text)' },
     { label: 'تنبيهات نشطة', value: fmtCount(t.anomalyCount), color: t.anomalyCount > 0 ? 'var(--gold)' : 'var(--green)' },
     { label: 'إجمالي المحافظ', value: `${fmtCompact(t.totalWallet)} ر.س`, color: t.totalWallet < 0 ? 'var(--red)' : 'var(--green)' },
@@ -96,7 +96,7 @@ function CustomerPulseSummary({ t }) {
               textTransform: 'uppercase',
             }}>
               <span style={{ width: 6, height: 6, borderRadius: 999, background: 'var(--green)' }}/>
-              {t.invoicedSource === 'zoho' ? 'ZOHO LIVE' : 'MONTHLY INVOICED'}
+              {t.invoicedSource === 'zoho' ? 'زوهو مباشر' : 'فواتير الشهر'}
             </div>
             <div style={{ marginTop: 12, color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.6 }}>
               إجمالي فواتير هذا الشهر{t.invoicedSource === 'zoho' ? ' من زوهو مباشرة، شامل المدفوعة' : ''}
@@ -181,7 +181,7 @@ function statusPillTone(rawStatus, shipDays) {
   if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
   if (isActive) {
     if (shipDays != null && shipDays > 30) {
-      return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط — خامل' };
+      return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط بلا شحن حديث' };
     }
     return { bg: 'rgba(16,185,129,.14)', fg: '#047857', label: 'شغّال' };
   }
@@ -440,7 +440,7 @@ export default function CustomerWatch({ isActive = true }) {
           {chartData && chartData.series[0].data.some(v => v > 0) && (
             <Card style={{ padding: '24px 28px', marginBottom: 24 }}>
               <SectionTitle
-                tag="TREND · 12 MONTHS"
+                tag="الاتجاه · 12 شهراً"
                 title="تطوّر الفوترة الشهرية"
                 color="var(--green)"
               />
@@ -452,7 +452,7 @@ export default function CustomerWatch({ isActive = true }) {
           {data.todayActions?.length > 0 && (
             <Card style={{ padding: '20px 24px', marginBottom: 28 }}>
               <SectionTitle
-                tag="DAILY PRIORITIES"
+                tag="أولويات اليوم"
                 title="اليوم تحتاج"
                 color="var(--gold)"
                 action={
@@ -515,7 +515,7 @@ export default function CustomerWatch({ isActive = true }) {
           )}
 
           {/* ── QUICK STATS (merchant-side) ─────────────────────── */}
-          <SectionTitle tag="MERCHANTS" title="بيانات المتاجر"/>
+          <SectionTitle tag="المتاجر" title="بيانات المتاجر"/>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
@@ -524,7 +524,7 @@ export default function CustomerWatch({ isActive = true }) {
             <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
             <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
             <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="#3B82F6"/>
-            <QuickStat icon={<ZapOff/>}       label="لم يشحن أبداً"        value={fmtCount(t.neverShipped)} hint="تسرّب funnel" color="#EF4444"/>
+            <QuickStat icon={<ZapOff/>}       label="لم يشحن أبداً"        value={fmtCount(t.neverShipped)} hint="تسرّب بين التسجيل والشحن" color="#EF4444"/>
             <QuickStat icon={<Wallet/>}       label="أرصدة موجبة"          value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
             <QuickStat icon={<Wallet/>}       label="أرصدة سالبة"          value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
           </div>
@@ -533,7 +533,7 @@ export default function CustomerWatch({ isActive = true }) {
           {t.anomalyCount > 0 && (
             <>
               <SectionTitle
-                tag="ALERTS"
+                tag="التنبيهات"
                 title={`تنبيهات تحتاج إجراء (${t.anomalyCount})`}
                 color="#EF4444"
                 action={
@@ -604,7 +604,7 @@ export default function CustomerWatch({ isActive = true }) {
           )}
 
           {/* ── TOP-N LISTS ──────────────────────────────────────── */}
-          <SectionTitle tag="LEADERBOARDS" title="أهم القوائم"/>
+          <SectionTitle tag="أهم القوائم" title="أهم القوائم"/>
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
@@ -712,7 +712,7 @@ export default function CustomerWatch({ isActive = true }) {
             <TopList
               icon={<ZapOff size={14}/>}
               accent="#7A82C4"
-              title="فُقدوا (مرشّحون لاسترداد)"
+              title="توقّفوا عن الشحن (يمكن استرجاعهم)"
               sub="مُعطَّلون لكن شحنوا سابقاً"
               rows={data.top.churned}
               valueLabel=""
@@ -1228,7 +1228,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
           }}>
             <div>
               <div style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 700, marginBottom: 3 }}>
-                SAME PHONE · {siblings.length + 1} STORES
+                نفس الرقم · {siblings.length + 1} متجر
               </div>
               <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)', letterSpacing: -0.2 }}>
                 هذا الرقم يدير {siblings.length + 1} متاجر — اتصال واحد يكفي

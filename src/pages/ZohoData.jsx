@@ -71,7 +71,7 @@ function agoAr(iso) {
   if (sec < 86400) return `منذ ${Math.floor(sec / 3600)} ساعة`;
   return `منذ ${Math.floor(sec / 86400)} يوم`;
 }
-const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إشعار دائن' };
+const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إشعار خصم/إرجاع' };
 
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
@@ -295,7 +295,7 @@ export default function ZohoData({ isActive = true }) {
             <span style={{ color: 'var(--muted)' }}>
               {health.webhookLastAt
                 ? <>آخر إشعار زوهو: <b style={{ color: 'var(--text)' }}>{wAgo}</b>{health.webhookLastKind ? ` (${KIND_AR[health.webhookLastKind] || health.webhookLastKind})` : ''}</>
-                : 'فعّل Webhooks في زوهو ليتحدّث فوراً'}
+                : 'فعّل التحديث الفوري في زوهو (Webhooks)'}
             </span>
             {health.lastSyncAt && (
               <span style={{ marginInlineStart: 'auto', color: 'var(--muted2)' }}>
@@ -518,7 +518,7 @@ function InvoiceDashboard({ dash, onPick, onShowOverdue, campaign }) {
         </div>
         {/* أعلى المدينين */}
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>أكثر العملاء ديناً (غير مسدّد)</div>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>أكثر العملاء عليهم مبالغ لك (غير مسدّد)</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {dash.debtors.slice(0, 8).map((d, i) => (
               <button key={d.cust} onClick={() => onPick(d.cust)} title="اعرض فواتير هذا العميل"

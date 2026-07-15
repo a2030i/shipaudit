@@ -136,7 +136,7 @@ function QueueTab({ active }) {
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-              {['العميل', 'الدين', 'العمر', 'الخطر', 'الحالة', 'آخر لمسة', 'الإجراء التالي'].map(h =>
+              {['العميل', 'الدين', 'العمر', 'الخطر', 'الحالة', 'آخر تواصل', 'الإجراء التالي'].map(h =>
                 <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
             </tr></thead>
             <tbody>
@@ -156,7 +156,7 @@ function QueueTab({ active }) {
                     <td data-label="الحالة" style={{ padding: '10px 12px' }}>
                       {r.status && <span style={{ background: `${r.status.color}20`, color: r.status.color, padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 600 }}>{r.status.label_ar}</span>}
                     </td>
-                    <td data-label="آخر لمسة" style={{ padding: '10px 12px', color: stale > 7 ? 'var(--red)' : 'var(--muted)' }}>{stale == null ? '—' : `${stale}ي`}</td>
+                    <td data-label="آخر تواصل" style={{ padding: '10px 12px', color: stale > 7 ? 'var(--red)' : 'var(--muted)' }}>{stale == null ? '—' : `${stale}ي`}</td>
                     <td data-label="الإجراء التالي" style={{ padding: '10px 12px', color: 'var(--muted)' }}>{fmtDate(r.next_action_at)}</td>
                   </tr>
                 );
@@ -308,7 +308,7 @@ function CustomerDrawer({ customer, onClose, onChanged }) {
                   <div style={{ display: 'flex', gap: 6, marginTop: 4 }}>
                     <Btn size="sm" variant="accent" onClick={() => act(() => resolvePromise(a.id, { status: 'kept', keptAmount: a.promise_amount }), 'سُجّل الدفع')}>تم الدفع</Btn>
                     <Btn size="sm" variant="ghost" onClick={() => act(() => resolvePromise(a.id, { status: 'partial' }), 'سُجّل جزئياً')}>جزئي</Btn>
-                    <Btn size="sm" variant="danger" onClick={() => act(() => resolvePromise(a.id, { status: 'broken' }), 'وُسِم مكسوراً')}>مكسور</Btn>
+                    <Btn size="sm" variant="danger" onClick={() => act(() => resolvePromise(a.id, { status: 'broken' }), 'وُسم أنه لم يُوفَ')}>لم يُوفَ</Btn>
                   </div>
                 )}
                 <div style={{ fontSize: 11, color: 'var(--muted2,#9CA3AF)', marginTop: 2 }}>{fmtDate(a.occurred_at)}</div>
@@ -554,7 +554,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
 
   const assignLead = async (lead, ownerId) => {
     await updateLead(lead.id, { owner_id: ownerId || null });
-    toast(ownerId ? 'تم إسناد الـlead' : 'أزيل الإسناد', 'success');
+    toast(ownerId ? 'تم إسناد الجهة المحتملة' : 'أزيل الإسناد', 'success');
     refresh();
   };
 
@@ -562,7 +562,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   const totalPages = Math.max(1, Math.ceil(count / 50));  // = PAGE في crmLeadsService
   return (
     <Pad>
-      <PageHeader icon={<Store size={22}/>} title="ليسوا عملاء لنا" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
+      <PageHeader icon={<Store size={22}/>} title="جهات محتملة" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
         actions={<>
           <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
           {can('crm.upload_leads') && <Btn size="sm" variant="primary" icon={<Upload size={14}/>} onClick={() => setModal('upload')}>رفع وتنظيف Excel</Btn>}
@@ -570,7 +570,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         </>}/>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 12 }}>
-        <CrmKpi label="إجمالي الـleads" value={fmt0(stats?.total || count)} color="#06B6D4"/>
+        <CrmKpi label="إجمالي العملاء المحتملين" value={fmt0(stats?.total || count)} color="#06B6D4"/>
         <CrmKpi label="جديدة" value={fmt0(stats?.newCount || 0)} color="var(--green)"/>
         <CrmKpi label="أرقام مكررة" value={fmt0(stats?.duplicateRows || 0)} color="var(--gold)"/>
         <CrmKpi label="طلعوا عملاء لدينا" value={fmt0(stats?.existingCustomers || 0)} color="#8B5CF6"/>
@@ -613,7 +613,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             <input type="checkbox" checked={filters.unassignedOnly} onChange={e => setFilter({ unassignedOnly: e.target.checked, ownerId: '' })}/> بدون موظف
           </label>
           <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>
-            عرض {leads.length} من {fmt0(count)} lead
+            عرض {leads.length} من {fmt0(count)} جهة محتملة
           </span>
         </div>
       </Card>
@@ -743,7 +743,7 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
         ownerId: targetOwner,
         assigneeIds,
       });
-      toast(`أضيف ${res.added} lead · تخطي ${res.skipped} · عملاء لدينا ${res.matchedPlatform}`, 'success');
+      toast(`أضيف ${res.added} جهة محتملة · تخطي ${res.skipped} · عملاء لدينا ${res.matchedPlatform}`, 'success');
       onSaved();
     } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
     setBusy(false);
@@ -769,7 +769,7 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
               </div>
             )}
             <Card style={{ padding: 12, marginTop: 12 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>إسناد الـleads بعد الرفع</div>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>إسناد العملاء المحتملين بعد الرفع</div>
               <Select value={assignMode} onChange={e => setAssignMode(e.target.value)}>
                 <option value="me">إسناد لي</option>
                 <option value="specific">إسناد لموظف محدد</option>
@@ -786,7 +786,7 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 14 }}>
               <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
               <Btn variant="accent" disabled={busy || !parsed.rows.length || (assignMode === 'specific' && !ownerId)} onClick={save}>
-                اعتماد التنظيف وحفظ {fmt0(parsed.rows.length)} lead
+                اعتماد التنظيف وحفظ {fmt0(parsed.rows.length)} جهة محتملة
               </Btn>
             </div>
           </>
@@ -940,7 +940,7 @@ function DealsTab({ active }) {
   const openStages = stages.filter(s => !s.is_won && !s.is_lost);
   return (
     <Pad>
-      <PageHeader icon={<TrendingUp size={22}/>} title="صفقات المبيعات" subtitle="pipeline الفرص — انقل الصفقة عبر قائمة المرحلة داخل البطاقة"
+      <PageHeader icon={<TrendingUp size={22}/>} title="صفقات المبيعات" subtitle="مسار الصفقات — انقل الصفقة عبر قائمة المرحلة داخل البطاقة"
         actions={can('crm.manage_deals') && <Btn size="sm" icon={<Plus size={14}/>} onClick={() => setModal(true)}>صفقة جديدة</Btn>}/>
       {loading && !deals.length ? <Spin/> : (
         <div style={{ display: 'grid', gridTemplateColumns: `repeat(${Math.max(openStages.length, 1)}, minmax(180px, 1fr))`, gap: 10, overflowX: 'auto' }}>
@@ -1042,15 +1042,15 @@ function BoardTab({ active }) {
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
   if (!s) return <Pad><Spin/></Pad>;
   const cards = [
-    { l: 'لمسات هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
-    { l: 'Leads مفتوحة', v: s.leadsOpen, c: 'var(--green)' },
+    { l: 'مرّات التواصل هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
+    { l: 'جهات محتملة مفتوحة', v: s.leadsOpen, c: 'var(--green)' },
     { l: 'أرقام مكررة', v: s.leadsDuplicateRows, c: 'var(--gold)' },
     { l: 'عملاء لدينا داخل القائمة', v: s.leadsExistingCustomers, c: '#8B5CF6' },
     { l: 'وعود نشطة', v: s.promisesOpen, c: 'var(--gold)' },
     { l: 'وعود محقّقة', v: s.promisesKept, c: 'var(--green)' },
-    { l: 'وعود مكسورة', v: s.promisesBroken, c: 'var(--red)' },
+    { l: 'وعود لم تُوفَ', v: s.promisesBroken, c: 'var(--red)' },
     { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: '#8B5CF6' },
-    { l: 'قيمة الـpipeline', v: `${fmt0(s.pipelineValue)} ر.س`, c: '#3B82F6' },
+    { l: 'قيمة الصفقات المفتوحة', v: `${fmt0(s.pipelineValue)} ر.س`, c: '#3B82F6' },
   ];
   const employeeName = (id) => id
     ? (employees.find(e => e.id === id)?.name || employees.find(e => e.id === id)?.email || 'موظف')

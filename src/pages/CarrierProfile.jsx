@@ -344,7 +344,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
             <strong style={{ color: 'var(--text)' }}>{currentKindLabel}</strong>
           )
         }/>
-        <Row label="بريد المرسِل (Webhook)" value={
+        <Row label="بريد الشركة الذي تصلنا منه الملفات" value={
           editingEmails ? (
             <div style={{ display: 'grid', gap: 8, marginTop: 4 }}>
               <input
@@ -394,16 +394,16 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                   setEmailsDraft((signature?.email_from || []).join(', '));
                   setEditingEmails(true);
                 }}
-                title="تعديل بصمة الـ webhook"
+                title="تعديل تعريف بريد الشركة"
               >
                 تعديل
               </Btn>
             </div>
           )
         }/>
-        {signature?.awb_prefix && <Row label="بادئة AWB" value={<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signature.awb_prefix}</code>}/>}
+        {signature?.awb_prefix && <Row label="بداية رقم الشحنة (AWB)" value={<code style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signature.awb_prefix}</code>}/>}
         {signature?.carrier_vat_id && <Row label="الرقم الضريبي" value={<span style={{ fontFamily: 'var(--font-mono)', fontSize: 11 }}>{signature.carrier_vat_id}</span>}/>}
-        {signature?.header_row_hint != null && <Row label="صف العنوان المتوقع" value={<span style={{ fontFamily: 'var(--font-mono)' }}>{signature.header_row_hint}</span>}/>}
+        {signature?.header_row_hint != null && <Row label="رقم صف رؤوس الأعمدة" value={<span style={{ fontFamily: 'var(--font-mono)' }}>{signature.header_row_hint}</span>}/>}
       </div>
     </SectionCard>
   );
@@ -524,6 +524,14 @@ function WebhookList({ webhooks }) {
 }
 
 // ── Recent ops list ────────────────────────────────────────────
+// Display-only Arabic labels for raw doc_type codes (plain-language pass §1.20)
+const OPS_DOC_TYPE_AR = {
+  INV: 'فاتورة مراجعة',
+  RV:  'فاتورة كشف',
+  DR:  'رسوم',
+  DG:  'مُرجَع',
+  AB:  'تعديل',
+};
 function OpsList({ ops }) {
   if (!ops?.length) {
     return <Empty icon="📒" title="لا توجد حركات بعد"/>;
@@ -552,7 +560,7 @@ function OpsList({ ops }) {
               border: `1px solid ${isDr ? 'rgba(239,68,68,.30)' : 'color-mix(in srgb, var(--accent) 30%, transparent)'}`,
               whiteSpace: 'nowrap',
             }}>
-              {o.doc_type}
+              {o.doc_type}{OPS_DOC_TYPE_AR[o.doc_type] ? ` · ${OPS_DOC_TYPE_AR[o.doc_type]}` : ''}
             </span>
             <div style={{ minWidth: 0 }}>
               <div style={{ fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -680,7 +688,7 @@ export default function CarrierProfile() {
         />
         <StatCard
           icon={Building2}
-          label="صافي موقف الناقل"
+          label="المتبقّي بعد خصم التحصيل"
           value={`${fmt(Math.abs(summary.netPosition))} ر.س`}
           sub={summary.netPosition > 0 ? 'بعد خصم COD: مدينون لها' : summary.netPosition < 0 ? 'بعد خصم COD: مدينة لنا' : 'متعادل'}
           color={netColor}
@@ -736,7 +744,7 @@ export default function CarrierProfile() {
       </div>
 
       <SectionCard
-        title="آخر حركات الدفتر"
+        title="آخر الحركات"
         action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/ledger?carrier=${carrierId}`)}>الكشف الكامل</Btn>}
         accent="#8B5CF6"
       >
