@@ -24,6 +24,30 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const TOKEN_URL = 'https://api.voxa.sa/connect/token';
 const CONTACTS_URL = 'https://api.voxa.sa/v1/contacts';
 const PROPDEF_URL = 'https://api.voxa.sa/v1/contact-property-definitions';
+const TAGS_URL = 'https://api.voxa.sa/v1/tags/service-account';
+
+// مكتبة الوسوم — تُنشأ مرة ليلصقها الموظف بنقرة من قائمة موحّدة (الإلصاق يدوي:
+// هاتف لا يوفّر endpoint لربط وسم بمحادثة/جهة — الوسوم للقراءة فقط في الـAPI).
+// isPinned = يظهر في المقدّمة. العربية هنا داخل الكود (curl يشوّهها على Windows).
+const TAG_CATALOG: { name: string; icon: string; isPinned: boolean }[] = [
+  { name: 'VIP',          icon: '⭐', isPinned: true },
+  { name: 'عليه مديونية', icon: '🔴', isPinned: true },
+  { name: 'متوقف',        icon: '⛔', isPinned: true },
+  { name: 'عميل محتمل',   icon: '🎯', isPinned: true },
+  // وسما الفريق القائمان — كانا يتشاركان 🔥 مع «عميل محتمل» (بلا تمييز بصري)
+  { name: 'اجتماع',       icon: '📅', isPinned: true },
+  { name: 'اتصال',        icon: '📞', isPinned: false },
+  { name: 'نشط',          icon: '✅', isPinned: false },
+  { name: 'جديد',         icon: '🆕', isPinned: false },
+  { name: 'متأخر سداد',   icon: '⏰', isPinned: false },
+  { name: 'رصيد سالب',    icon: '💸', isPinned: false },
+  { name: 'دفع مسبق',     icon: '💳', isPinned: false },
+  { name: 'دفع لاحق',     icon: '🧾', isPinned: false },
+  { name: 'وعد بالسداد',  icon: '🤝', isPinned: false },
+  { name: 'مورد/شريك',    icon: '📦', isPinned: false },
+  { name: 'شكوى',         icon: '⚠️', isPinned: false },
+  { name: 'بلاك لست',     icon: '🚷', isPinned: false },
+];
 
 // تعريفات الخصائص (تُنشأ مرة). type: 1=نص 2=رقم 3=قائمة ملوّنة 4=تاريخ
 const PROP_DEFS: { name: string; type: number; options?: { value: string; color: string }[] }[] = [
@@ -170,6 +194,73 @@ Deno.serve(async (req) => {
     const b = unwrap(await r.json().catch(() => ({})));
     const defs: any[] = Array.isArray(b) ? b : (b?.items || []);
     return json({ ok: r.ok, count: defs.length, defs: defs.map((d: any) => ({ id: d.id, name: d.name, type: d.type })) });
+  }
+
+  // مكتبة الوسوم: سرد · إنشاء الناقص · تحديث الموجود ليطابق الكتالوج (أيقونة/تثبيت)
+  if (action === 'tags') {
+    const token = await accessToken();
+    // سرد الكل (صفحات)
+    const existing: any[] = [];
+    for (let skip = 0; skip < 500; skip += 100) {
+      const r = await fetch(`${TAGS_URL}?skipCount=${skip}&maxResultCount=100`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) return json({ ok: false, status: r.status, error: (await r.text()).slice(0, 150) });
+      const b = unwrap(await r.json().catch(() => ({})));
+      const items: any[] = b?.items || [];
+      existing.push(...items);
+      if (existing.length >= (b?.totalCount ?? existing.length) || !items.length) break;
+    }
+    if (!body.ensure) {
+      return json({ ok: true, count: existing.length,
+        tags: existing.map((t: any) => ({ id: t.id, name: t.name, icon: t.icon, isPinned: t.isPinned })),
+        catalog: TAG_CATALOG.map(t => t.name),
+        missing: TAG_CATALOG.filter(c => !existing.some((e: any) => e.name === c.name)).map(c => c.name) });
+    }
+
+    // إزالة التكرار بعد التشذيب: نُبقي **الأقدم** (هو الملصوق على المحادثات) ونحذف
+    // النسخ الأحدث. سببه أن اسماً قائماً كان بمسافة زائدة («اتصال ») فلم يطابق.
+    const deleted: string[] = [];
+    if (body.dedupe) {
+      const groups = new Map<string, any[]>();
+      for (const t of existing) {
+        const k = String(t.name || '').trim();
+        groups.set(k, [...(groups.get(k) || []), t]);
+      }
+      for (const [k, g] of groups) {
+        if (g.length < 2) continue;
+        g.sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)));
+        for (const dup of g.slice(1)) {
+          const r = await fetch(`${TAGS_URL}/${dup.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+          if (r.ok) deleted.push(`${k} (${dup.id.slice(0, 8)})`);
+          await sleep(100);
+        }
+      }
+      // نُحدِّث القائمة المحلّية بعد الحذف
+      for (const [, g] of groups) if (g.length > 1) for (const d of g.slice(1)) {
+        const i = existing.findIndex((e: any) => e.id === d.id); if (i >= 0) existing.splice(i, 1);
+      }
+    }
+
+    // المطابقة بالاسم **بعد التشذيب** — وإلا أنشأنا نسخة ثانية لاسم بمسافة زائدة
+    const byName = new Map(existing.map((t: any) => [String(t.name || '').trim(), t]));
+    const created: string[] = [], updated: string[] = [], failed: unknown[] = [];
+    for (const def of TAG_CATALOG) {
+      const cur: any = byName.get(def.name);
+      if (!cur) {
+        const r = await fetch(TAGS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ name: def.name, icon: def.icon, isPinned: def.isPinned }) });
+        if (r.ok) created.push(def.name); else failed.push({ name: def.name, step: 'create', status: r.status, body: (await r.text()).slice(0, 120) });
+      } else if (cur.icon !== def.icon || cur.isPinned !== def.isPinned || cur.name !== def.name) {
+        // name يُصحَّح أيضاً (يشذّب المسافة الزائدة) — نفس الوسم فلا تُفقَد إلصاقاته
+        const r = await fetch(`${TAGS_URL}/${cur.id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ name: def.name, icon: def.icon, isPinned: def.isPinned }) });
+        if (r.ok) updated.push(def.name); else failed.push({ name: def.name, step: 'update', status: r.status, body: (await r.text()).slice(0, 120) });
+      }
+      await sleep(110);
+    }
+    const extra = existing.filter((e: any) => !TAG_CATALOG.some(c => c.name === String(e.name || '').trim())).map((e: any) => e.name);
+    return json({ ok: true, created, updated, deleted, failed,
+      unchanged: TAG_CATALOG.length - created.length - updated.length - failed.length,
+      not_in_catalog: extra });   // وسوم أنشأها فريقكم — لا نلمسها
   }
 
   // جرد: من في هاتف وليس عندنا (والعكس) — مقارنة بالهاتف المطبَّع
