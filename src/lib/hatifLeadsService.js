@@ -53,6 +53,16 @@ export async function updateHatifLead(phone, { status, note, ownerId } = {}) {
   return true;
 }
 
+// مزامنة فورية: تجرد جهات هاتف وتلتقط أي جوال سعودي جديد كلّمنا وليس عميلاً.
+// (cron يفعلها كل ساعتين أيضاً — هذا للفوري عند الطلب.)
+export async function syncHatifLeads() {
+  const { data, error } = await supabase.functions.invoke('hatif-contacts-sync', {
+    body: { action: 'audit', all: true, save: true },
+  });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 // مؤشّرات سريعة من القائمة المحمَّلة (بلا استدعاء إضافي)
 export function computeLeadStats(rows) {
   const s = { total: rows.length, named: 0, mobile: 0, byStatus: {}, byKind: {} };
