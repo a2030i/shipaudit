@@ -83,48 +83,38 @@ const NAV_ITEMS = [
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
 
-  // ── Carriers — العمل اليومي مع الناقلين ─────────────────────────
-  // الشركات hub now hosts 3 lenses as sub-tabs (CarriersWorkspace): cards,
-  // carrier KPIs (was /carrier-kpi in reports), claims (was a flat item).
-  { id: 'hub',          path: '/hub',               label: 'حالة الناقلين',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
+  // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
+  // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
+  { id: 'hub',          path: '/hub',               label: 'حالة الشركات',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
     subTabs: [
-      { tabId: 'hub',    label: 'البطاقات',      icon: Building2 },
-      { tabId: 'kpi',    label: 'أداء الناقلين', icon: BarChart3, legacy: '/carrier-kpi' },
-      { tabId: 'claims', label: 'المطالبات',     icon: Scale,     legacy: '/claims' },
+      { tabId: 'hub',    label: 'البطاقات',     icon: Building2 },
+      { tabId: 'kpi',    label: 'أداء الشركات', icon: BarChart3, legacy: '/carrier-kpi' },
+      { tabId: 'claims', label: 'المطالبات',    icon: Scale,     legacy: '/claims' },
     ] },
-  // كشوف الحساب raised to position #2 + a VIEW permission (was upload-only,
-  // which hid it from view-only accountants) so it's reachable in ≤2 clicks.
-  // The upload button inside the page stays gated by carriers.upload_statement.
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف ومطابقات',   icon: FileText,   section: 'carriers', permKey: 'carriers.view' },
-  { id: 'fulfillment',  path: '/fulfillment',    label: 'تدقيق فواتير التجهيز', icon: Briefcase, section: 'carriers', permKey: 'audits.view' },
-  { id: 'audits',       path: '/audits',            label: 'مراجعات الفواتير', icon: History,   section: 'carriers', permKey: 'audits.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'دفتر الناقلين',    icon: BookOpen,   section: 'carriers', permKey: 'ledger.view' },
+  { id: 'drop',         path: '/drop',              label: 'رفع ملف',          icon: Upload,    section: 'carriers', permKey: 'audits.create' },
+  { id: 'webhook',      path: '/webhook',           label: 'وارد الفواتير',    icon: Inbox,     section: 'carriers', permKey: 'webhook.view' },
+  { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', permKey: 'audits.view' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف حساب الشركات', icon: FileText, section: 'carriers', permKey: 'carriers.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'حسابات الشركات',   icon: BookOpen,  section: 'carriers', permKey: 'ledger.view' },
+  { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'carriers', permKey: 'audits.view' },
 
-  // ── Reports — قراءة فقط ─────────────────────────────────────────
-  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',  icon: FileText,      section: 'reports', permKey: 'carriers.view' },
-  { id: 'cash-aging',       path: '/cash-aging',       label: 'أعمار النقد',     icon: Wallet,        section: 'finance', permKey: 'ledger.view' },
-  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',  icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
-  // (carrier-kpi moved into the الشركات hub as the «أداء الناقلين» sub-tab)
-  { id: 'forecast',         path: '/forecast',         label: 'تنبؤ التدفّق',    icon: TrendingUp,    section: 'finance', permKey: 'forecast.view' },
-  { id: 'weight-billing',   path: '/weight-billing',   label: 'الأوزان الزائدة', icon: Scale,         section: 'reports', permKey: 'internal_exports.view' },
-  { id: 'internal-exports', path: '/internal-exports', label: 'التصدير الداخلي', icon: FileText,      section: 'reports', permKey: 'internal_exports.view' },
+  // ── التقارير ────────────────────────────────────────────────────
+  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',        icon: FileText,      section: 'reports', permKey: 'carriers.view' },
+  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',        icon: CalendarRange, section: 'reports', permKey: 'carriers.view' },
+  { id: 'weight-billing',   path: '/weight-billing',   label: 'فوترة الأوزان الزائدة', icon: Scale,         section: 'reports', permKey: 'internal_exports.view' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'التصدير وسجل الملفات',  icon: FileText,      section: 'reports', permKey: 'internal_exports.view' },
 
-  // ── Finance ────────────────────────────────────────────────────
-  // cod / payments / bank / payment-requests merged into /money
-  // with 4 tabs. Legacy routes still resolve to the matching tab.
-  // /money hosts 4 tabs. Listing them as `subTabs` makes each lens
-  // visible & one-click in the sidebar (they used to be discoverable
-  // only by opening /money first). Each navigates to the canonical
-  // ?tab= URL the in-page tab strip also produces.
-  // «هل نربح؟» — قائمة الدخل الرسمية من Zoho Books مترجمة لغير المالي
-  { id: 'pnl',       path: '/pnl',      label: 'الربحية',        icon: TrendingUp, section: 'finance', permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'النقد والمدفوعات', icon: Banknote, section: 'finance', permKey: 'payments.view',
+  // ── نظام المالية — مرتّب: هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل → الإقفال ──
+  { id: 'pnl',       path: '/pnl',      label: 'الأرباح والخسائر',  icon: TrendingUp, section: 'finance', permKey: 'money.pnl' },
+  { id: 'money',     path: '/money',    label: 'البنك والمدفوعات',  icon: Banknote,   section: 'finance', permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
-      { tabId: 'bank',     label: 'كشف بنكي',     icon: Wallet,     legacy: '/bank' },
+      { tabId: 'bank',     label: 'كشف البنك',    icon: Wallet,     legacy: '/bank' },
       { tabId: 'requests', label: 'طلبات السداد', icon: Inbox,      legacy: '/payment-requests' },
     ] },
+  { id: 'cash-aging', path: '/cash-aging', label: 'أعمار الديون',  icon: Wallet,     section: 'finance', permKey: 'ledger.view' },
+  { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'finance', permKey: 'forecast.view' },
 
   // ── Customers (AR side) ───────────────────────────────────────
   // Customers + receivables + segments + merchants merged into
@@ -135,7 +125,7 @@ const NAV_ITEMS = [
   { id: 'collections-hub', path: '/customer-money',  label: 'مركز التحصيل',  icon: HandCoins, section: 'collections', permKey: 'receivables.view',
     subTabs: [
       { tabId: 'money',    label: 'تحصيل العملاء',   icon: HandCoins },
-      { tabId: 'queue',    label: 'قائمة التحصيل',   icon: Phone,  legacy: '/collections' },
+      { tabId: 'queue',    label: 'مهام التحصيل',    icon: Phone,  legacy: '/collections' },
       { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
@@ -151,34 +141,30 @@ const NAV_ITEMS = [
   { id: 'customer-watch',  path: '/customer-360',    label: 'متابعة العملاء', icon: Users,     section: 'collections', permKey: 'receivables.view' },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'CRM العملاء', icon: Headset,   section: 'sales', permKey: 'crm.view',
+  { id: 'crm',             path: '/crm',             label: 'متابعة المبيعات (CRM)', icon: Headset,   section: 'sales', permKey: 'crm.view',
     subTabs: [
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
-      { tabId: 'leads', label: 'ليسوا عملاء لنا', icon: ShoppingBag },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
     ] },
-  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو ولمحة', icon: GitCompare, section: 'finance', permKey: 'reconciliation.view' },
+  { id: 'zoho-data',       path: '/zoho-data',       label: 'بيانات زوهو',       icon: BookOpen,   section: 'finance', permKey: 'zoho.view' },
+  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو مع لمحة', icon: GitCompare, section: 'finance', permKey: 'reconciliation.view' },
+  { id: 'periods',         path: '/periods',         label: 'إقفال الشهور',      icon: Lock,       section: 'finance', permKey: 'system.period_close' },
 
-  // ── الاستقبال والرفع — أبواب دخول الملفات اليدوية فقط ──────────
-  // Zoho moved out of this section: it is API-synced data now, not an inbox file.
-  { id: 'drop',           path: '/drop',           label: 'رفع ذكي',      icon: Upload, section: 'carriers', permKey: 'audits.create' },
-  { id: 'webhook',        path: '/webhook',        label: 'وارد الإيميل', icon: Inbox,  section: 'carriers', permKey: 'webhook.view' },
+  // ── نظام واتساب ─────────────────────────────────────────────────
+  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'حملات واتساب', icon: MessageCircle, section: 'whatsapp', permKey: 'whatsapp.view_log' },
 
-  // ── مصادر البيانات — صحة الربط والمرايا التي تغذي الأرقام ───────
-  { id: 'zoho-data',      path: '/zoho-data',      label: 'زوهو API',     icon: BookOpen, section: 'finance', permKey: 'zoho.view' },
-  { id: 'uploads',        path: '/uploads',        label: 'صحة المصادر',  icon: Layers,   section: 'system', permKey: 'uploads.view' },
-
-  // ── الإعدادات والنظام (الأقل استخداماً) ─────────────────────────
-  { id: 'tasks',        path: '/tasks',        label: 'مهام التشغيل',     icon: ListTodo,      section: 'system', permKey: 'audits.view' },
-  { id: 'carriers',     path: '/carriers',     label: 'إعداد الناقلين',   icon: Truck, section: 'carriers', permKey: 'carriers.view' },
+  // ── إعداد شركات الشحن (نهاية قسمها) ─────────────────────────────
+  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',    icon: Truck,         section: 'carriers', permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',  icon: ClipboardList, section: 'carriers', permKey: 'carriers.edit_contract' },
+
+  // ── الإدارة (الأقل استخداماً) ────────────────────────────────────
+  { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,  section: 'system', adminOnly: true },
+  { id: 'tasks',        path: '/tasks',        label: 'المهام',             icon: ListTodo, section: 'system', permKey: 'audits.view' },
+  { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,  section: 'system', permKey: 'uploads.view' },
   { id: 'integrity',    path: '/integrity',    label: 'فحص سلامة البيانات', icon: FileCheck, section: 'system', permKey: 'system.view_audit_log' },
-  { id: 'periods',      path: '/periods',      label: 'إقفال مالي',       icon: Lock,     section: 'finance', permKey: 'system.period_close' },
-  { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',       icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
-  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'واتساب', icon: MessageCircle, section: 'whatsapp', permKey: 'whatsapp.view_log' },
-  { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات', icon: UserCog,  section: 'system', adminOnly: true },
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity, section: 'system', permKey: 'system.view_audit_log' },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -188,13 +174,13 @@ const NAV_ITEMS = [
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
   // §1.32 المرحلة 4: 7 أنظمة (موديولات) بدل 8 أقسام مبعثرة — قرار المستخدم 2026-07-15
-  { id: 'carriers',    label: 'نظام الناقلين', icon: Truck,         accent: '#3B82F6', hint: 'فواتير · تدقيق · وارد' },
-  { id: 'finance',     label: 'نظام المالية',  icon: DollarSign,    accent: '#F59E0B', hint: 'ربح · بنك · زوهو' },
-  { id: 'collections', label: 'نظام التحصيل',  icon: HandCoins,     accent: '#EF4444', hint: 'مديونيات · قانوني' },
-  { id: 'sales',       label: 'نظام المبيعات', icon: Target,        accent: '#F97316', hint: 'فرص · CRM' },
-  { id: 'whatsapp',    label: 'نظام واتساب',   icon: MessageCircle, accent: '#22C55E', hint: 'حملات · قوالب · تنبيهات' },
-  { id: 'reports',     label: 'التقارير',      icon: BarChart3,     accent: '#10B981', hint: 'شهري · أوزان · تصدير' },
-  { id: 'system',      label: 'الإدارة',       icon: Briefcase,     accent: '#8B5CF6', hint: 'فريق · سلامة · سجل' },
+  { id: 'carriers',    label: 'شركات الشحن',  icon: Truck,         accent: '#3B82F6', hint: 'فواتيرها · تدقيقها · حساباتها' },
+  { id: 'finance',     label: 'المالية',      icon: DollarSign,    accent: '#F59E0B', hint: 'الأرباح · البنك · زوهو' },
+  { id: 'collections', label: 'التحصيل',      icon: HandCoins,     accent: '#EF4444', hint: 'ديون العملاء ومتابعتها' },
+  { id: 'sales',       label: 'المبيعات',     icon: Target,        accent: '#F97316', hint: 'فرص جديدة · إعادة تنشيط' },
+  { id: 'whatsapp',    label: 'واتساب',       icon: MessageCircle, accent: '#22C55E', hint: 'الحملات · القوالب · التنبيهات' },
+  { id: 'reports',     label: 'التقارير',     icon: BarChart3,     accent: '#10B981', hint: 'جاهزة للطباعة والتصدير' },
+  { id: 'system',      label: 'الإدارة',      icon: Briefcase,     accent: '#8B5CF6', hint: 'الفريق · الفحوص · السجلات' },
 ];
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -213,51 +199,51 @@ const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/p
 const PAGE_TITLES = {
   '/overview':          'الرئيسية',
   '/decisions':         'لوحة القرارات',
-  '/crm':               'CRM العملاء',
-  '/fulfillment':       'تدقيق فواتير التجهيز',
+  '/crm':               'متابعة المبيعات (CRM)',
+  '/fulfillment':       'فواتير التجهيز',
   '/monthly-report':    'التقرير الشهري',
   '/reports':           'مكتبة التقارير',
   '/zoho-callback':     'ربط زوهو',
-  '/pnl':               'الربحية',
-  '/zoho-data':         'زوهو API',
+  '/pnl':               'الأرباح والخسائر',
+  '/zoho-data':         'بيانات زوهو',
   '/customer-money':    'مركز التحصيل',
   '/legal':             'التصعيد القانوني',
   '/retargeting':       'مركز المبيعات',
-  '/whatsapp-settings': 'إعدادات واتساب',
+  '/whatsapp-settings': 'حملات واتساب',
   '/hatif-leads':       'فرص من هاتف',
-  '/uploads':           'صحة مصادر البيانات',
-  '/hub':               'حالة الناقلين',
+  '/uploads':           'حالة مصادر البيانات',
+  '/hub':               'حالة الشركات',
   '/carrier':           'بروفايل الشركة',
-  '/webhook':           'وارد الإيميل',
+  '/webhook':           'وارد الفواتير',
   '/customers':         'متابعة العملاء',
   '/payment-requests':  'طلبات السداد',
-  '/internal-exports':  'تصدير للأنظمة الداخلية',
+  '/internal-exports':  'التصدير وسجل الملفات',
   '/upload':            'مراجعة جديدة',
-  '/drop':              'رفع ذكي',
-  '/cash-aging':        'أعمار النقد',
+  '/drop':              'رفع ملف',
+  '/cash-aging':        'أعمار الديون',
   '/integrity':         'سلامة البيانات',
   '/claims':            'المطالبات',
-  '/audits':            'سجل المراجعات',
-  '/weight-billing':    'تصدير الأوزان الزائدة',
-  '/ledger':            'دفتر الشركات',
+  '/audits':            'تدقيق الفواتير',
+  '/weight-billing':    'فوترة الأوزان الزائدة',
+  '/ledger':            'حسابات الشركات',
   '/cod-settlements':   'تسويات الدفع عند الاستلام',
-  '/money':             'النقد والمدفوعات',
+  '/money':             'البنك والمدفوعات',
   '/payments':          'الدفعات',
-  '/aramex-statements': 'كشوف الحساب',
-  '/bank':              'كشف بنكي',
+  '/aramex-statements': 'كشوف حساب الشركات',
+  '/bank':              'كشف البنك',
   '/receivables':       'مديونيات العملاء',
   '/customer-360':      'متابعة العملاء',
-  '/collections':       'قائمة التحصيل',
+  '/collections':       'مهام التحصيل',
   '/merchants':         'متاجر المنصّة',
-  '/reconciliation':    'مطابقة زوهو ولمحة',
+  '/reconciliation':    'مطابقة زوهو مع لمحة',
   '/segments':          'شرائح العملاء',
-  '/carriers':          'إعداد الناقلين',
+  '/carriers':          'إدارة الشركات',
   '/contracts':         'جدول العقود',
-  '/carrier-kpi':       'أداء الناقلين',
+  '/carrier-kpi':       'أداء الشركات',
   '/activity-log':      'سجل النشاط',
-  '/tasks':             'مهام الأسبوع',
-  '/periods':           'إقفال الفترات',
-  '/forecast':          'تنبؤ التدفّق النقدي',
+  '/tasks':             'المهام',
+  '/periods':           'إقفال الشهور',
+  '/forecast':          'توقّع السيولة',
   '/employees':         'الموظفون',
   '/settings/ai':            'الإعدادات — الذكاء الاصطناعي',
   '/settings/data':          'الإعدادات — البيانات',
@@ -677,9 +663,8 @@ function AppInner({ theme, toggleTheme }) {
                     </>
                   )}
                   <div style={{
-                    overflow: 'hidden',
-                    maxHeight: isOpen ? rowCount * 42 + 12 : 0,
-                    transition: 'max-height .25s cubic-bezier(.4,0,.2,1)',
+                    /* design-v2: لا أكورديون — سقف الارتفاع القديم (rowCount×42) كان
+                       يقصّ آخر عناصر كل قسم بعد تكبير الصفوف (بلاغ المستخدم). */
                     paddingInlineEnd: collapsed ? 0 : 6,
                   }}>
                     {/* بعض عناصر الـhub تعرض اختصارات فرعية عند الحاجة العملية للوصول السريع. */}
