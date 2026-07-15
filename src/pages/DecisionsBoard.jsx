@@ -150,7 +150,7 @@ export default function DecisionsBoard({ isActive = true }) {
               sub: `دينهم ${fmt(d.creditStop?.activeTotal || 0)} ر.س فوق حدّ ${fmtK(d.creditStop?.limit || 10000)} — أوقِف شحنهم قبل التراكم`,
               top: (d.creditStop?.rows || []).filter(r => r.active).slice(0, 3)
                 .map(r => `${r.storeName || r.customerName} · ${fmtK(r.totalOpen)} ر.س · ${stopReasonAr(r.reason)}`),
-              cta: 'قائمة التحصيل', onClick: () => navigate('/crm?tab=collections'),
+              cta: 'قائمة التحصيل', onClick: () => navigate('/customer-money?tab=queue'),
             },
           },
           {
