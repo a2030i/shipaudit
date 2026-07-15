@@ -17,7 +17,7 @@ import {
   Users, TrendingUp, TrendingDown, Wallet,
   ShoppingBag, AlertTriangle, UserPlus, ZapOff, Phone,
   ArrowLeft, AlertOctagon, Flame, Clock, Moon, Search, X,
-  Download, Activity, Calendar, Hash,
+  Download, Activity, Calendar, Hash, Send,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast,
@@ -27,6 +27,8 @@ import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
 import InteractionsLog from '../components/InteractionsLog.jsx';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ── Formatters ───────────────────────────────────────────────────
@@ -767,6 +769,7 @@ export default function CustomerWatch({ isActive = true }) {
 // financial impact (debt or wallet) descending. Each row clickable
 // → opens the drill-down modal. Includes Excel export of the bucket.
 function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
+  const [waOpen, setWaOpen] = useState(false);   // §هيكلة-0: إطلاق مباشر بدل ملف فقط
   const meta = ANOMALY_META[kind];
   if (!meta) return null;
   const Icon = meta.icon;
@@ -886,9 +889,15 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           {kind === 'negative_wallet' && (
-            <Btn size="md" variant="primary" icon={<Phone size={13}/>} onClick={handleExportCampaign}>
-              ملف حملة (٣ أعمدة)
-            </Btn>
+            <>
+              {/* §هيكلة-0: إطلاق مباشر من نفس الصفوف — الملف يبقى خياراً ثانوياً */}
+              <Btn size="md" variant="primary" icon={<Send size={13}/>} onClick={() => setWaOpen(true)}>
+                إطلاق حملة
+              </Btn>
+              <Btn size="md" variant="ghost" icon={<Phone size={13}/>} onClick={handleExportCampaign}>
+                ملف حملة (٣ أعمدة)
+              </Btn>
+            </>
           )}
           <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={handleExport}>
             تصدير Excel
@@ -1008,6 +1017,19 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
           );
         })}
       </div>
+
+      {/* §هيكلة-0: إطلاق حملة من نفس صفوف «ملف الحملة» (رصيد سالب) مباشرة */}
+      {waOpen && (
+        <WhatsAppSendModal open={waOpen}
+          recipients={sorted.filter(r => r.merchant?.phone).map(r => {
+            const name = r.merchant?.storeName || r.name;
+            const bal = Number(r.merchant?.walletBalance) || 0;
+            return { to: normalizeSaudiPhone(r.merchant.phone), name, amount: Math.abs(bal),
+              vars: [name, bal.toFixed(2)] };
+          })}
+          bucketLabel={meta.label}
+          onClose={() => setWaOpen(false)} onSent={() => setWaOpen(false)}/>
+      )}
     </Modal>
   );
 }

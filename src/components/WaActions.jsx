@@ -1,0 +1,53 @@
+// WaActions — أزرار التواصل الموحّدة لأي صف/بطاقة فيها هاتف:
+//   📞 اتصال · ✈️ إطلاق حملة قالب (الفعل الرئيسي — مسجَّل ومتتبَّع) · 💬 محادثة حرّة (ثانوي)
+// يدير مودال WhatsAppSendModal بنفسه (مستلِم واحد) — فيُزرَع في أي صفحة بلا سباكة.
+// قاعدة §1.29: أي إرسال قالب يمرّ عبر sendWhatsAppCampaign (تسجيل+تتبّع)؛
+// wa.me الحرّة تبقى أيقونة ثانوية فقط. بوابة الإرسال المركزية داخل المودال (campaigns.send).
+import { useState } from 'react';
+import { Phone, MessageCircle, Send } from 'lucide-react';
+import { useAuth } from '../lib/auth.jsx';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+import WhatsAppSendModal from './WhatsAppSendModal.jsx';
+
+// props: phone (خام — يُطبَّع داخلياً) · name · amount? · count? · vars? (افتراضها [name])
+//        campaignLabel? (اسم الحملة في السجل) · size? (حجم الأيقونات) · showTel?/showChat?
+export default function WaActions({ phone, name, amount = null, count = null, vars = null,
+  campaignLabel = null, size = 15, showTel = true, showChat = true }) {
+  const { can } = useAuth();
+  const [open, setOpen] = useState(false);
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return null;
+  const normalized = normalizeSaudiPhone(digits);
+  const tel = `tel:+${normalized}`;
+  const chat = `https://wa.me/${normalized}`;
+  const displayName = (name || '').trim() || normalized;
+  const canSend = can('campaigns.send');
+
+  const recipient = {
+    to: normalized, name: displayName, amount, count,
+    vars: vars || [displayName],
+  };
+
+  return (
+    <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+      {showTel && (
+        <a href={tel} title="اتصال" style={{ color: 'var(--text)', display: 'inline-flex' }}><Phone size={size}/></a>
+      )}
+      {canSend && (
+        <button onClick={() => setOpen(true)} title="إطلاق حملة واتساب (قالب معتمد — يُسجَّل ويُتتبَّع)"
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'inline-flex' }}>
+          <Send size={size}/>
+        </button>
+      )}
+      {showChat && (
+        <a href={chat} target="_blank" rel="noreferrer" title="محادثة يدوية (بلا قالب — لا تُسجَّل كحملة)"
+          style={{ color: 'var(--muted)', display: 'inline-flex' }}><MessageCircle size={size}/></a>
+      )}
+      {open && (
+        <WhatsAppSendModal open={open} recipients={[recipient]}
+          bucketLabel={campaignLabel || `العميل ${displayName}`}
+          onClose={() => setOpen(false)} onSent={() => setOpen(false)}/>
+      )}
+    </span>
+  );
+}

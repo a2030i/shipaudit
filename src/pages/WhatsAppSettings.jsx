@@ -33,7 +33,7 @@ export default function WhatsAppSettings({ isActive = true }) {
   }, []);
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
 
-  if (!can('collections.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  if (!can('whatsapp.configure') && !can('whatsapp.view_log')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   const templates = Array.isArray(cfg?.templates) ? cfg.templates : [];
   const addTpl = () => {

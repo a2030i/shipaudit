@@ -100,6 +100,7 @@ export const PERMISSION_CATALOG = [
       { key: 'receivables.tag_customer', label: 'تصنيف عميل (مستبعد/أولوية)' },
       { key: 'receivables.request_writeoff', label: 'تقديم طلب شطب دين' },
       { key: 'receivables.approve_writeoff', label: 'اعتماد/رفض طلب شطب', sensitive: true },
+      { key: 'legal.view',                   label: 'التصعيد القانوني (تجاوز 90 يوم/محافظ سالبة)' },
     ],
   },
   {
@@ -141,9 +142,27 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'sales', label: 'المبيعات وإعادة الاستهداف', icon: 'Target', color: '#F97316',
+    perms: [
+      { key: 'sales.view',   label: 'عرض إعادة الاستهداف وفرص هاتف والشرائح' },
+      { key: 'sales.manage', label: 'تحديث حالة/ملاحظة/إسناد الفرص' },
+      { key: 'sales.export', label: 'تصدير قوائم الفرص' },
+    ],
+  },
+  {
+    id: 'campaigns', label: 'حملات واتساب', icon: 'MessageCircle', color: '#22C55E',
+    perms: [
+      // الإرسال فعل خارجي يصل العميل — حسّاس عمداً (يُستثنى من preset «قراءة وكتابة»)
+      { key: 'campaigns.send',      label: 'إطلاق حملة واتساب (إرسال فعلي للعملاء)', sensitive: true },
+      { key: 'whatsapp.view_log',   label: 'عرض سجل الحملات' },
+      { key: 'whatsapp.configure',  label: 'إعدادات واتساب (القوالب/التنبيهات)', sensitive: true },
+    ],
+  },
+  {
     id: 'money', label: 'النقد والمدفوعات', icon: 'Wallet', color: '#F59E0B',
     perms: [
       { key: 'money.pnl',          label: 'الوضع المالي — قائمة الدخل من زوهو (أرباح/خسائر)' },
+      { key: 'zoho.view',          label: 'زوهو API — تصفّح المرايا ولوحة الفواتير' },
       { key: 'bank.view',          label: 'عرض رصيد البنك وسجل التحديثات' },
       { key: 'bank.set_balance',   label: 'تحديث رصيد البنك يدوياً', sensitive: true },
       { key: 'payments.view',      label: 'عرض الدفعات' },
@@ -221,12 +240,36 @@ const ADMIN_ONLY_KEYS = new Set([
 ]);
 export const FULL_ACCOUNTANT_KEYS = ALL_PERMISSION_KEYS.filter(k => !ADMIN_ONLY_KEYS.has(k));
 
+// ── أدوار وظيفية جاهزة (v2 — 2026-07-15) ─────────────────────────────
+// «موظف مبيعات»: الفرص والحملات فقط — صفر مالية/تدقيق/تحصيل ديون.
+export const SALES_ROLE_KEYS = [
+  'overview.view',
+  'sales.view', 'sales.manage', 'sales.export',
+  'campaigns.send', 'whatsapp.view_log',
+  'crm.view', 'crm.log_activity', 'crm.change_status', 'crm.manage_tasks', 'crm.manage_deals',
+  'merchants.view',
+];
+
+// «محصّل ديون»: المديونيات والتصعيد والحملات — صفر مبيعات/مالية عامة.
+export const COLLECTOR_ROLE_KEYS = [
+  'overview.view',
+  'receivables.view', 'receivables.export', 'receivables.tag_customer', 'receivables.request_writeoff',
+  'legal.view',
+  'collections.view', 'collections.regenerate', 'collections.update_stage',
+  'collections.record_promise', 'collections.snooze', 'collections.create_task',
+  'campaigns.send', 'whatsapp.view_log',
+  'crm.view', 'crm.log_activity', 'crm.record_promise', 'crm.change_status', 'crm.manage_tasks',
+  'merchants.view',
+];
+
 // Preset list shown in the UI as quick toggles.
 export const PRESETS = [
-  { id: 'none',     label: 'بدون صلاحيات',  keys: []                       },
-  { id: 'readonly', label: 'قراءة فقط',     keys: READ_ONLY_KEYS           },
-  { id: 'standard', label: 'محاسب — قراءة وكتابة', keys: READ_WRITE_KEYS    },
-  { id: 'full',     label: 'محاسب — صلاحيات كاملة (عدا الموظفين)', keys: FULL_ACCOUNTANT_KEYS },
+  { id: 'none',      label: 'بدون صلاحيات',  keys: []                       },
+  { id: 'readonly',  label: 'قراءة فقط',     keys: READ_ONLY_KEYS           },
+  { id: 'sales',     label: 'موظف مبيعات — فرص وحملات', keys: SALES_ROLE_KEYS },
+  { id: 'collector', label: 'محصّل — مديونيات وحملات',  keys: COLLECTOR_ROLE_KEYS },
+  { id: 'standard',  label: 'محاسب — قراءة وكتابة', keys: READ_WRITE_KEYS    },
+  { id: 'full',      label: 'محاسب — صلاحيات كاملة (عدا الموظفين)', keys: FULL_ACCOUNTANT_KEYS },
 ];
 
 // ────────────────────────────────────────────────────────────────────
@@ -235,7 +278,9 @@ export const PRESETS = [
 export function can(profile, key) {
   if (!profile) return false;
   if (profile.role === 'admin') return true;
-  if (!key) return true; // a missing key means the call site forgot to gate; default open to avoid breaking screens
+  // v2: مفتاح مفقود = مغلق. الافتراض القديم (مفتوح) كان يجعل أي صفحة تنسى
+  // حارسها مكشوفة لكل محاسب — فُحصت كل مواقع الاستدعاء قبل هذا القلب.
+  if (!key) return false;
   return profile.permissions?.[key] === true;
 }
 

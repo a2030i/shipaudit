@@ -27,6 +27,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, Select,
 } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
@@ -332,7 +333,7 @@ function matchesFilters(row, f) {
 // ── component ───────────────────────────────────────────────────
 export default function Segments({ isActive = true }) {
   const location = useLocation();
-  const { profile } = useAuth();
+  const { profile, can, user } = useAuth();
   const [loading, setLoading]       = useState(true);
   const [merchants, setMerchants]   = useState([]);
   const [receivables, setReceivables] = useState([]);
@@ -596,8 +597,11 @@ export default function Segments({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'شريحة');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(rtl(wb), `شريحة_${filtered.length}متجر_${dateStr}.xlsx`);
-    toast(`تم تصدير ${filtered.length} متجر`, 'success');
+    // §1.13: كل تصدير عبر السجل (كان XLSX.writeFile خاماً — لا يُعاد تحميله)
+    persistAndDownloadExport({ wb: rtl(wb), fileName: `شريحة_${filtered.length}متجر_${dateStr}.xlsx`,
+      kind: 'segments', rowCount: filtered.length, total: null, userId: user?.id || null })
+      .then(() => toast(`تم تصدير ${filtered.length} متجر`, 'success'))
+      .catch(e => toast(`فشل التصدير: ${e.message}`, 'error'));
   };
 
   // مستلِمو حملة واتساب من الشريحة الحالية — المودال يتيح اختيار عملاء محدّدين
@@ -642,7 +646,9 @@ export default function Segments({ isActive = true }) {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'حملة');
     const dateStr = new Date().toISOString().slice(0, 10);
-    XLSX.writeFile(rtl(wb), `حملة_${xRows.length}متجر_${dateStr}.xlsx`);
+    persistAndDownloadExport({ wb: rtl(wb), fileName: `حملة_${xRows.length}متجر_${dateStr}.xlsx`,
+      kind: 'segments_campaign', rowCount: xRows.length, total: null, userId: user?.id || null })
+      .catch(e => toast(`فشل التخزين: ${e.message}`, 'error'));
     toast(
       skipped
         ? `تم تصدير ${xRows.length} للحملة · تخطّينا ${skipped} بدون جوال`
@@ -891,9 +897,12 @@ export default function Segments({ isActive = true }) {
             <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? 'var(--red)' : '#0EA5E9'} suffix="ر.س"/>
           </div>
           <div style={{ display: 'flex', gap: 8, marginInlineStart: 'auto', flexWrap: 'wrap' }}>
-            <Btn size="md" variant="primary" icon={<MessageCircle size={13}/>} onClick={() => setWaOpen(true)} disabled={!filtered.length}>
-              إرسال حملة واتساب
-            </Btn>
+            {/* §هيكلة-0: كان الزر بلا أي بوابة صلاحية — الآن campaigns.send (والمودال يعيد الفحص) */}
+            {can('campaigns.send') && (
+              <Btn size="md" variant="primary" icon={<MessageCircle size={13}/>} onClick={() => setWaOpen(true)} disabled={!filtered.length}>
+                إرسال حملة واتساب
+              </Btn>
+            )}
             <Btn size="md" variant="ghost" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
               ملف حملة
             </Btn>

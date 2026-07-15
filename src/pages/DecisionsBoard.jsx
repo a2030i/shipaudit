@@ -11,6 +11,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, Gauge, ChevronLeft } from 'lucide-react';
 import { Card, Spinner, Btn, PageHeader, toast } from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { loadCreditStopList, stopReasonAr } from '../lib/collectionsService.js';
 import { loadCarrierNetBalances } from '../lib/codSettlementService.js';
@@ -25,6 +26,7 @@ const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFix
 
 export default function DecisionsBoard({ isActive = true }) {
   const navigate = useNavigate();
+  const { can } = useAuth();
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(false);
 
@@ -91,6 +93,8 @@ export default function DecisionsBoard({ isActive = true }) {
   }, []);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
+
+  if (!can('overview.view')) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>🔒 لا صلاحية</div>;
 
   return (
     <div style={{ padding: '22px 28px 70px', maxWidth: 1360, margin: '0 auto' }}>
