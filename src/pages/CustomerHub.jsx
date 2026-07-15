@@ -21,13 +21,11 @@ import { Users, DollarSign, Layers, ShoppingBag } from 'lucide-react';
 import { PageHeader } from '../components/UI.jsx';
 
 import CustomerWatch       from './CustomerWatch.jsx';
-import CustomerReceivables from './CustomerReceivables.jsx';
 import Segments            from './Segments.jsx';
 import Merchants           from './Merchants.jsx';
 
 const TABS = [
   { id: 'watch',       label: 'متابعة',     icon: Users,       component: CustomerWatch },
-  { id: 'receivables', label: 'مديونيات',   icon: DollarSign,  component: CustomerReceivables },
   { id: 'segments',    label: 'شرائح',      icon: Layers,      component: Segments },
   { id: 'merchants',   label: 'متاجر المنصّة', icon: ShoppingBag, component: Merchants },
 ];
@@ -36,7 +34,6 @@ const TABS = [
 // land on the right tab without a full URL rewrite.
 const LEGACY_PATH_TO_TAB = {
   '/customers':    'watch',
-  '/receivables':  'receivables',
   '/segments':     'segments',
   '/merchants':    'merchants',
 };
