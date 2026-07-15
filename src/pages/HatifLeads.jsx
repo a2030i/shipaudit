@@ -5,8 +5,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserPlus, RefreshCw, Phone, MessageCircle, Send, Search, Download } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadHatifLeads, updateHatifLead, computeLeadStats,
-  LEAD_STATUSES, LEAD_KINDS, statusMeta, kindMeta } from '../lib/hatifLeadsService.js';
+import { loadHatifLeads, updateHatifLead, computeLeadStats, syncHatifLeads,
+  LEAD_STATUSES, statusMeta, kindMeta } from '../lib/hatifLeadsService.js';
 import { normalizeSaudiPhone, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
@@ -24,12 +24,12 @@ export default function HatifLeads({ isActive = true }) {
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
-  const [kind, setKind] = useState('mobile_sa');     // الافتراضي: القابل للاستهداف
   const [status, setStatus] = useState('');
-  const [namedOnly, setNamedOnly] = useState(true);  // الافتراضي: الأثمن أولاً
+  const [namedOnly, setNamedOnly] = useState(false);
   const [waRecipients, setWaRecipients] = useState(null);
   const [waStatus, setWaStatus] = useState(() => new Map());
   const [detail, setDetail] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -37,6 +37,15 @@ export default function HatifLeads({ isActive = true }) {
     catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setRows([]); }
     setLoading(false);
   }, []);
+
+  // مزامنة فورية من هاتف (الـcron يفعلها كل ساعتين أيضاً)
+  const doSync = async () => {
+    setSyncing(true);
+    const r = await syncHatifLeads();
+    setSyncing(false);
+    if (r?.ok) { toast(`تمت المزامنة — ${r.in_hatif_not_ours} فرصة (${r.saved} محفوظة)`, 'success'); await load(); }
+    else toast(`فشلت المزامنة: ${r?.error || 'غير معروف'}`, 'error');
+  };
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
   const loadWa = useCallback(() => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {}), []);
   useEffect(() => { if (isActive) loadWa(); }, [isActive, loadWa]);
@@ -47,20 +56,19 @@ export default function HatifLeads({ isActive = true }) {
     const s = q.trim().toLowerCase();
     return rows.filter(l => {
       if (namedOnly && !l.namedManually) return false;
-      if (kind && l.kind !== kind) return false;
       if (status && l.status !== status) return false;
       if (s && ![l.name, l.phone, l.company].some(v => String(v ?? '').toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [rows, q, kind, status, namedOnly]);
+  }, [rows, q, status, namedOnly]);
 
   if (!can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   // متغيّر القالب: {{1}} الاسم (أو الرقم لمن بلا اسم) — الفرص ليس لها شحنات/دين
   const toRecipient = (l) => ({ to: normalizeSaudiPhone(l.phone), name: display(l), amount: null, vars: [display(l)] });
   const openBulk = () => {
-    const recs = filtered.filter(l => l.kind === 'mobile_sa').map(toRecipient);
-    if (!recs.length) { toast('لا أرقام جوال قابلة للإرسال في العرض الحالي', 'info'); return; }
+    const recs = filtered.map(toRecipient);
+    if (!recs.length) { toast('لا أرقام في العرض الحالي', 'info'); return; }
     setWaRecipients(recs);
   };
   const setStat = async (l, v) => {
@@ -76,7 +84,7 @@ export default function HatifLeads({ isActive = true }) {
       const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
       const data = filtered.map(l => ({
         'الاسم': l.name || '', 'الجوال': l.phone, 'الشركة': l.company || '',
-        'سُمّي يدوياً': l.namedManually ? 'نعم' : 'لا', 'نوع الرقم': kindMeta(l.kind).label,
+        'سُمّي يدوياً': l.namedManually ? 'نعم' : 'لا',
         'الحالة': statusMeta(l.status).label, 'أول ظهور في هاتف': l.createdAt ? String(l.createdAt).slice(0, 10) : '',
         'ملاحظة': l.note || '',
       }));
@@ -88,15 +96,17 @@ export default function HatifLeads({ isActive = true }) {
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
-  const mobileCount = filtered.filter(l => l.kind === 'mobile_sa').length;
-
   return (
     <div style={{ padding: '20px 24px 70px', maxWidth: 1360, margin: '0 auto' }}>
       <PageHeader icon={<UserPlus size={22}/>} iconColor="#F97316"
         title="فرص من هاتف"
-        subtitle="أرقام تحدّثت معنا في واتساب وليست في كشف متاجرنا — مستفسرون لم يسجّلوا"
-        meta={stats ? `${fmt0(stats.total)} رقماً · ${fmt0(stats.named)} باسم حقيقي · ${fmt0(stats.mobile)} جوال` : null}
-        actions={<Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+        subtitle="جوّالات سعودية تحدّثت معنا في واتساب وليست في كشف متاجرنا — مستفسرون لم يسجّلوا"
+        meta={stats ? `${fmt0(stats.total)} فرصة · ${fmt0(stats.named)} باسم حقيقي` : null}
+        actions={<>
+          <Btn size="sm" variant="primary" icon={<RefreshCw size={13} className={syncing ? 'spin' : ''}/>}
+            onClick={doSync} disabled={syncing || loading}>{syncing ? 'جارٍ المزامنة…' : 'مزامنة من هاتف'}</Btn>
+          <Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+        </>}
       />
 
       {!rows && loading ? <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div> : !rows?.length ? (
@@ -104,10 +114,10 @@ export default function HatifLeads({ isActive = true }) {
       ) : (<>
         {/* المؤشّرات */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
-          <Stat label="إجمالي الفرص" value={stats.total} color="#F97316"/>
+          <Stat label="إجمالي الفرص" value={stats.total} color="#F97316" sub="جوال سعودي — كلها قابلة للحملات"/>
           <Stat label="باسم حقيقي ⭐" value={stats.named} color="var(--green)" sub="سمّاهم موظف — الأثمن"/>
-          <Stat label="جوال سعودي" value={stats.mobile} color="#0EA5E9" sub="قابل للحملات"/>
           <Stat label="عملاء محتملون" value={stats.byStatus.lead || 0} color="var(--gold)"/>
+          <Stat label="لم تُصنَّف بعد" value={stats.byStatus.new || 0} color="#3B82F6"/>
         </div>
 
         {/* الفلاتر */}
@@ -118,10 +128,6 @@ export default function HatifLeads({ isActive = true }) {
               <input value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالاسم أو الجوال…"
                 style={{ ...selStyle, width: '100%', padding: '8px 32px 8px 10px' }}/>
             </div>
-            <select value={kind} onChange={e => setKind(e.target.value)} style={selStyle}>
-              <option value="">كل أنواع الأرقام</option>
-              {Object.entries(LEAD_KINDS).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
-            </select>
             <select value={status} onChange={e => setStatus(e.target.value)} style={selStyle}>
               <option value="">كل الحالات</option>
               {Object.entries(LEAD_STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
@@ -130,15 +136,15 @@ export default function HatifLeads({ isActive = true }) {
               <input type="checkbox" checked={namedOnly} onChange={e => setNamedOnly(e.target.checked)}/> باسم حقيقي فقط ⭐
             </label>
             {can('collections.view') && (
-              <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!mobileCount}>
-                إطلاق حملة ({mobileCount})
+              <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!filtered.length}>
+                إطلاق حملة ({fmt0(filtered.length)})
               </Btn>
             )}
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
             عرض <b style={{ color: 'var(--text)' }}>{fmt0(filtered.length)}</b> من {fmt0(stats.total)}
-            {mobileCount !== filtered.length && ` · ${fmt0(mobileCount)} منها جوال قابل للإرسال`}
+            
           </div>
         </Card>
 
@@ -147,12 +153,11 @@ export default function HatifLeads({ isActive = true }) {
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-                {['الاسم', 'الجوال', 'نوع الرقم', 'أول ظهور', 'الحالة', 'إجراء'].map(h =>
+                {['الاسم', 'الجوال', 'أول ظهور', 'الحالة', 'إجراء'].map(h =>
                   <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
               </tr></thead>
               <tbody>
                 {filtered.slice(0, 300).map(l => {
-                  const km = kindMeta(l.kind);
                   const w = waStatus.get(normalizeSaudiPhone(l.phone));
                   return (
                     <tr key={l.phone} onClick={() => setDetail(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
@@ -163,9 +168,6 @@ export default function HatifLeads({ isActive = true }) {
                           📲 حملة {fmtDate(w.lastSentAt)} · {w.replied ? 'ردّ' : w.read ? 'قُرئت' : w.delivered ? 'وصلت' : 'أُرسلت'}</div>}
                       </td>
                       <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>{l.phone}</td>
-                      <td data-label="نوع الرقم" style={{ padding: '10px 12px' }}>
-                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: km.color, background: `color-mix(in srgb, ${km.color} 12%, transparent)` }}>{km.label}</span>
-                      </td>
                       <td data-label="أول ظهور" style={{ padding: '10px 12px', color: 'var(--muted)' }}>{fmtDate(l.createdAt)}</td>
                       <td data-label="الحالة" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                         <select value={l.status} onChange={e => setStat(l, e.target.value)}
@@ -176,7 +178,7 @@ export default function HatifLeads({ isActive = true }) {
                       <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           {telLink(l.phone) && <a href={telLink(l.phone)} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {can('collections.view') && l.kind === 'mobile_sa' && (
+                          {can('collections.view') && (
                             <button onClick={() => setWaRecipients([toRecipient(l)])} title="إطلاق حملة قالب"
                               style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
                           )}
