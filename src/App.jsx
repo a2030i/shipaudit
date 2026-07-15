@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark } from './components/BrandLogo.jsx';
@@ -40,6 +40,7 @@ import ZohoData          from './pages/ZohoData.jsx';
 import CustomerMoney     from './pages/CustomerMoney.jsx';
 import LegalEscalation   from './pages/LegalEscalation.jsx';
 import Retargeting       from './pages/Retargeting.jsx';
+import HatifLeads        from './pages/HatifLeads.jsx';
 import WhatsAppSettings   from './pages/WhatsAppSettings.jsx';
 import SmartDrop         from './pages/SmartDrop.jsx';
 import CashAging         from './pages/CashAging.jsx';
@@ -135,6 +136,7 @@ const NAV_ITEMS = [
   { id: 'customer-money',  path: '/customer-money',  label: 'تحصيل العملاء', icon: HandCoins, section: 'customers', permKey: 'receivables.view' },
   { id: 'legal',           path: '/legal',           label: 'التصعيد القانوني', icon: Scale,     section: 'customers', permKey: 'receivables.view' },
   { id: 'retargeting',     path: '/retargeting',     label: 'إعادة الاستهداف', icon: Target,    section: 'customers', permKey: 'crm.view' },
+  { id: 'hatif-leads',     path: '/hatif-leads',     label: 'فرص من هاتف',     icon: UserPlus,  section: 'customers', permKey: 'crm.view' },
   { id: 'customer-hub',    path: '/customer-360',    label: 'ملف العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view', showSubTabsInNav: true,
     subTabs: [
       { tabId: 'watch',       label: 'متابعة',        icon: Users,      legacy: '/customers' },
@@ -214,6 +216,7 @@ const PAGE_TITLES = {
   '/legal':             'التصعيد القانوني',
   '/retargeting':       'إعادة الاستهداف',
   '/whatsapp-settings': 'إعدادات واتساب',
+  '/hatif-leads':       'فرص من هاتف',
   '/uploads':           'صحة مصادر البيانات',
   '/hub':               'حالة الناقلين',
   '/carrier':           'بروفايل الشركة',
@@ -295,7 +298,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -875,6 +878,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/retargeting'} scroll>
               <Retargeting isActive={pathname==='/retargeting'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/hatif-leads'} scroll>
+              <HatifLeads isActive={pathname==='/hatif-leads'}/>
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
