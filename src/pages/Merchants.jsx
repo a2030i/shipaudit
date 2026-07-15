@@ -259,8 +259,8 @@ function UploadModal({ onClose, onDone, userId }) {
         <>
           <div style={{
             marginTop:12, padding:'12px 14px',
-            background:'rgba(45,212,191,.08)',
-            border:'1px solid rgba(45,212,191,.35)',
+            background:'color-mix(in srgb, var(--accent) 8%, transparent)',
+            border:'1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
             borderRadius:9, fontSize:12, lineHeight:1.8,
           }}>
             <div style={{ fontWeight:700, color:'var(--accent)', marginBottom:4 }}>✓ تم تحليل الملف</div>
@@ -460,8 +460,8 @@ export default function Merchants({ isActive = true }) {
               <span style={{
                 marginInlineStart:'auto',
                 padding:'3px 10px', borderRadius:11,
-                background: 'rgba(45,212,191,.10)',
-                border: '1px solid rgba(45,212,191,.32)',
+                background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)',
                 fontSize:11, fontFamily:'var(--font-mono)', fontWeight:700, color:'var(--accent)',
                 whiteSpace:'nowrap',
               }}>
@@ -718,7 +718,7 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
           <div style={{
             display:'flex', alignItems:'center', gap:6,
             padding:'6px 10px', borderRadius:7,
-            background:'rgba(45,212,191,.10)', border:'1px solid rgba(45,212,191,.35)',
+            background:'color-mix(in srgb, var(--accent) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--accent) 35%, transparent)',
             fontSize:11.5,
           }}>
             <CheckCircle2 size={12} color="var(--accent)"/>

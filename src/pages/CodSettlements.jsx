@@ -768,9 +768,9 @@ export default function CodSettlements({ isActive = true }) {
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
                                 padding: '1px 7px', borderRadius: 10,
-                                background: 'rgba(45,212,191,.12)',
+                                background: 'color-mix(in srgb, var(--accent) 12%, transparent)',
                                 color: 'var(--accent)',
-                                border: '1px solid rgba(45,212,191,.30)',
+                                border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                                 fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
                                 whiteSpace: 'nowrap',
                               }} title="مُستخرج تلقائياً من فاتورة الناقل المعتمَدة">
@@ -878,7 +878,7 @@ export default function CodSettlements({ isActive = true }) {
                     {outFiles.length > 0 && (
                       <>
                         <SectionHeader
-                          icon="📋" label="متوقّع من الناقل" color="#2DD4BF"
+                          icon="📋" label="متوقّع من الناقل" color="var(--accent)"
                           files={outFiles} total={outTotal}
                           extra={outUnsettled > 0 && (
                             <span style={{ fontSize: 10.5, color: 'var(--gold)', fontWeight: 700 }}>
@@ -1197,7 +1197,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
     ? Math.floor((today - new Date(r.actionDate)) / 86400000)
     : 0;
   return (
-    <tr style={checked ? { background: 'rgba(45,212,191,.06)' } : undefined}>
+    <tr style={checked ? { background: 'color-mix(in srgb, var(--accent) 6%, transparent)' } : undefined}>
       <td data-label="" style={{ textAlign: 'center' }}>
         <input type="checkbox" checked={!!checked} onChange={onToggle}
           style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
@@ -1603,8 +1603,8 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8,
         padding: '8px 12px', marginBottom: 14,
-        background: isIn ? 'rgba(45,212,191,.10)' : 'rgba(122,130,196,.10)',
-        border: `1px solid ${isIn ? 'rgba(45,212,191,.32)' : 'var(--border2)'}`,
+        background: isIn ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'rgba(122,130,196,.10)',
+        border: `1px solid ${isIn ? 'color-mix(in srgb, var(--accent) 32%, transparent)' : 'var(--border2)'}`,
         borderRadius: 9, fontSize: 12,
       }}>
         <span style={{ fontSize: 16 }}>{isIn ? '📥' : '📋'}</span>
@@ -1647,8 +1647,8 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
               renders cleanly (just one row). */}
           <div style={{
             padding: '10px 14px', marginBottom: 12,
-            background: 'rgba(45,212,191,.08)',
-            border: '1px solid rgba(45,212,191,.30)',
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
             borderRadius: 9, fontSize: 12,
           }}>
             <div style={{ fontWeight: 700, marginBottom: 8, color: 'var(--text)' }}>

@@ -172,8 +172,8 @@ function ColMapBadges({ colMap }) {
               <div key={field} style={{
                 display:'flex', alignItems:'center', gap:5,
                 padding:'4px 10px', borderRadius:7,
-                background: mapped ? 'rgba(45,212,191,.07)' : isReq ? 'rgba(248,113,113,.07)' : 'transparent',
-                border:`1px solid ${mapped?'rgba(45,212,191,.2)':isReq?'rgba(248,113,113,.25)':'var(--border)'}`,
+                background: mapped ? 'color-mix(in srgb, var(--accent) 7%, transparent)' : isReq ? 'rgba(248,113,113,.07)' : 'transparent',
+                border:`1px solid ${mapped?'color-mix(in srgb, var(--accent) 20%, transparent)':isReq?'rgba(248,113,113,.25)':'var(--border)'}`,
               }}>
                 <span style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{label}</span>
                 <span style={{fontSize:9,color:'var(--muted3)'}}>→</span>
@@ -314,7 +314,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
     delivery: { key: 'delivery', label: 'شحن',     color:'#3b9ccc', bg:'rgba(59,156,204,.08)', bgL:'rgba(59,156,204,.04)' },
     rss:      { key: 'rss',      label: 'RSS',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
     fuel:     { key: 'fuel',     label: 'وقود',    color:'#3aad78', bg:'rgba(58,173,120,.08)', bgL:'rgba(58,173,120,.03)' },
-    cod:      { key: 'cod',      label: 'COD',     color:'#2dd4bf', bg:'rgba(45,212,191,.10)', bgL:'rgba(45,212,191,.04)' },
+    cod:      { key: 'cod',      label: 'COD',     color:'var(--accent)', bg:'color-mix(in srgb, var(--accent) 10%, transparent)', bgL:'color-mix(in srgb, var(--accent) 4%, transparent)' },
     pos:      { key: 'pos',      label: 'POS',     color:'#ec4899', bg:'rgba(236,72,153,.10)', bgL:'rgba(236,72,153,.04)' },
     total:    { key: 'total',    label: 'الإجمالي',color:'#f59e0b', bg:'rgba(245,158,11,.08)', bgL:'rgba(245,158,11,.04)' },
   };
@@ -403,7 +403,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
                 <th style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
               </>}
               <th style={{ background:'rgba(139,92,246,.1)', color:'var(--purple)', borderBottom:'2px solid rgba(139,92,246,.3)', minWidth:90 }}>مفوتر</th>
-              <th style={{ background:'rgba(45,212,191,.08)', color:'var(--green)', borderBottom:'2px solid rgba(45,212,191,.3)', minWidth:90 }}>متوقع</th>
+              <th style={{ background:'color-mix(in srgb, var(--accent) 8%, transparent)', color:'var(--green)', borderBottom:'2px solid color-mix(in srgb, var(--accent) 30%, transparent)', minWidth:90 }}>متوقع</th>
               <th style={{ background:'rgba(248,113,113,.08)', color:'var(--red)', borderBottom:'2px solid rgba(248,113,113,.3)', minWidth:80, fontWeight:700 }}>الفرق</th>
               <th style={{ minWidth:90 }}>الحالة</th>
             </tr>
@@ -778,15 +778,15 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           <div style={{
             marginBottom: 16, padding: '14px 18px', borderRadius: 12,
             background: approvalGate.canApprove
-              ? 'linear-gradient(135deg, rgba(45,212,191,.10), rgba(45,212,191,.02))'
+              ? 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 10%, transparent), color-mix(in srgb, var(--accent) 2%, transparent))'
               : 'linear-gradient(135deg, rgba(239,68,68,.10), rgba(239,68,68,.02))',
-            border: `1px solid ${approvalGate.canApprove ? 'rgba(45,212,191,.40)' : 'rgba(239,68,68,.40)'}`,
+            border: `1px solid ${approvalGate.canApprove ? 'color-mix(in srgb, var(--accent) 40%, transparent)' : 'rgba(239,68,68,.40)'}`,
             display: 'flex', flexDirection: 'column', gap: 12,
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
               <div style={{
                 width: 38, height: 38, borderRadius: 10,
-                background: approvalGate.canApprove ? 'rgba(45,212,191,.22)' : 'rgba(239,68,68,.18)',
+                background: approvalGate.canApprove ? 'color-mix(in srgb, var(--accent) 22%, transparent)' : 'rgba(239,68,68,.18)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 flexShrink: 0,
               }}>
@@ -868,8 +868,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         {reviewStatus === 'approved' && (
           <div style={{
             marginBottom: 16, padding: '10px 16px', borderRadius: 11,
-            background: 'rgba(45,212,191,.08)',
-            border: '1px solid rgba(45,212,191,.32)',
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)',
             display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           }}>
             <CheckCircle2 size={18} color="var(--accent)"/>
@@ -974,7 +974,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         <div style={{
           marginBottom: 16,
           padding: '16px 20px',
-          background: 'linear-gradient(135deg, rgba(45,212,191,.06), rgba(27,30,84,.04))',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, transparent), rgba(27,30,84,.04))',
           border: '1px solid var(--border)',
           borderRadius: 12,
         }}>

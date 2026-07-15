@@ -31,7 +31,7 @@ const fmtDate = (iso) => {
 
 const STATUS_META = {
   exported: { color: 'var(--gold)',   label: '⏳ بانتظار الفوترة', bg: 'rgba(251,191,36,.10)' },
-  billed:   { color: 'var(--green)',  label: '✓ مفوتر',           bg: 'rgba(45,212,191,.10)' },
+  billed:   { color: 'var(--green)',  label: '✓ مفوتر',           bg: 'color-mix(in srgb, var(--accent) 10%, transparent)' },
   voided:   { color: 'var(--muted)',  label: '✗ ملغي',            bg: 'rgba(122,130,196,.10)' },
 };
 

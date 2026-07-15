@@ -28,7 +28,7 @@ const fmtDate = (iso) => {
 const fmtDateOnly = (iso) => iso || '—';
 
 const ACTION_META = {
-  created:  { color: 'var(--green)',  bg: 'rgba(45,212,191,.10)',  Icon: Plus,    label: 'إضافة' },
+  created:  { color: 'var(--green)',  bg: 'color-mix(in srgb, var(--accent) 10%, transparent)',  Icon: Plus,    label: 'إضافة' },
   updated:  { color: 'var(--gold)',   bg: 'rgba(251,191,36,.10)',  Icon: Edit3,   label: 'تعديل' },
   deleted:  { color: 'var(--red)',    bg: 'rgba(248,113,113,.10)', Icon: Trash2,  label: 'حذف'   },
 };
@@ -149,12 +149,12 @@ export default function ContractsOverview({ isActive = true }) {
                   <th style={{ minWidth: 160 }}>الشركة</th>
                   <th style={{ minWidth: 140 }}>العقد</th>
                   <th style={{ minWidth: 110 }}>الفترة</th>
-                  <th style={{ minWidth: 110, background: 'rgba(45,212,191,.06)' }}>الحد الأساسي</th>
-                  <th style={{ minWidth: 110, background: 'rgba(45,212,191,.06)' }}>السعر الأساسي</th>
+                  <th style={{ minWidth: 110, background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>الحد الأساسي</th>
+                  <th style={{ minWidth: 110, background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>السعر الأساسي</th>
                   <th style={{ minWidth: 130, background: 'rgba(251,191,36,.06)' }}>كل كيلو زائد</th>
                   <th style={{ minWidth: 80,  background: 'rgba(58,173,120,.06)' }}>الوقود</th>
                   <th style={{ minWidth: 80,  background: 'rgba(168,85,247,.06)' }}>RSS</th>
-                  <th style={{ minWidth: 90,  background: 'rgba(45,212,191,.06)' }}>رسوم COD</th>
+                  <th style={{ minWidth: 90,  background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>رسوم COD</th>
                   <th style={{ minWidth: 80 }}>الوجهات</th>
                   <th style={{ minWidth: 70 }}>الحالة</th>
                 </tr>
@@ -190,8 +190,8 @@ export default function ContractsOverview({ isActive = true }) {
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
                           padding: '2px 9px', borderRadius: 12,
-                          background: 'rgba(45,212,191,.10)',
-                          border: '1px solid rgba(45,212,191,.30)',
+                          background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                          border: '1px solid color-mix(in srgb, var(--accent) 30%, transparent)',
                           color: 'var(--accent)', fontSize: 10.5, fontWeight: 700,
                         }}>
                           <CheckCircle2 size={10}/> ساري
@@ -293,7 +293,7 @@ export default function ContractsOverview({ isActive = true }) {
                           <tr>
                             <th style={{ minWidth: 130 }}>الحقل</th>
                             <th style={{ minWidth: 200, background: 'rgba(248,113,113,.05)' }}>قبل</th>
-                            <th style={{ minWidth: 200, background: 'rgba(45,212,191,.05)' }}>بعد</th>
+                            <th style={{ minWidth: 200, background: 'color-mix(in srgb, var(--accent) 5%, transparent)' }}>بعد</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -303,7 +303,7 @@ export default function ContractsOverview({ isActive = true }) {
                                 {FIELD_AR[field] || field}
                               </td>
                               <td style={{ background: 'rgba(248,113,113,.03)' }}>{renderValue(before)}</td>
-                              <td style={{ background: 'rgba(45,212,191,.03)' }}>{renderValue(after)}</td>
+                              <td style={{ background: 'color-mix(in srgb, var(--accent) 3%, transparent)' }}>{renderValue(after)}</td>
                             </tr>
                           ))}
                         </tbody>

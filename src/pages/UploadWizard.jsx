@@ -321,12 +321,12 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
         marginBottom: 16,
         padding: '12px 14px',
         background: detectedOk
-          ? 'rgba(45,212,191,.06)'
+          ? 'color-mix(in srgb, var(--accent) 6%, transparent)'
           : !carrierId
             ? 'rgba(251,146,60,.08)'
             : 'rgba(251,191,36,.06)',
         border: `1px solid ${detectedOk
-          ? 'rgba(45,212,191,.30)'
+          ? 'color-mix(in srgb, var(--accent) 30%, transparent)'
           : !carrierId
             ? 'rgba(251,146,60,.30)'
             : 'rgba(251,191,36,.30)'}`,
@@ -383,14 +383,14 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
             ✓ عناوين في الصف {detectedRow}
           </span>
         )}
-        <span style={{ background:'rgba(45,212,191,.1)', border:'1px solid rgba(45,212,191,.25)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
+        <span style={{ background:'color-mix(in srgb, var(--accent) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--accent) 25%, transparent)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
           {rowCount} سطر بيانات
         </span>
-        <span style={{ background:'rgba(45,212,191,.08)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
+        <span style={{ background:'color-mix(in srgb, var(--accent) 8%, transparent)', border:'1px solid var(--border)', color:'var(--muted)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20 }}>
           {mappedCount}/{visibleFields.length} أعمدة معيّنة
         </span>
         {carrier && (
-          <span style={{ background:'rgba(45,212,191,.1)', border:'1px solid rgba(45,212,191,.30)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20, fontWeight: 700 }}>
+          <span style={{ background:'color-mix(in srgb, var(--accent) 10%, transparent)', border:'1px solid color-mix(in srgb, var(--accent) 30%, transparent)', color:'var(--accent)', fontSize:10, fontFamily:'var(--font-mono)', padding:'3px 10px', borderRadius:20, fontWeight: 700 }}>
             {carrier.logo} {carrier.name}
           </span>
         )}
@@ -425,8 +425,8 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
               display:'grid', gridTemplateColumns:'180px 1fr', gap:10,
               marginBottom:7, alignItems:'center',
               padding:'6px 10px', borderRadius:8,
-              background: isMapped ? 'rgba(45,212,191,.05)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
-              border: `1px solid ${isMapped?'rgba(45,212,191,.20)':required&&!isMapped?'rgba(248,113,113,.20)':'transparent'}`,
+              background: isMapped ? 'color-mix(in srgb, var(--accent) 5%, transparent)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
+              border: `1px solid ${isMapped?'color-mix(in srgb, var(--accent) 20%, transparent)':required&&!isMapped?'rgba(248,113,113,.20)':'transparent'}`,
             }}>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
                 <span style={{ fontSize:12, color: isMapped?'var(--accent)':required?'var(--red)':'var(--muted3)' }}>
@@ -446,7 +446,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
                 value={colMap[field] || ''}
                 onChange={e => setColMap({ ...colMap, [field]: e.target.value || null })}
                 style={{ padding:'5px 9px', borderRadius:7, fontSize:12, cursor:'pointer',
-                  borderColor: isMapped?'rgba(45,212,191,.30)':undefined }}
+                  borderColor: isMapped?'color-mix(in srgb, var(--accent) 30%, transparent)':undefined }}
               >
                 <option value="">— غير محدد —</option>
                 {headers.map(h => <option key={h} value={h}>{h}</option>)}
@@ -464,8 +464,8 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
         <div style={{ display:'flex', flexWrap:'wrap', gap:5 }}>
           {headers.map(h => (
             <span key={h} style={{
-              background: Object.values(colMap).includes(h) ? 'rgba(45,212,191,.12)' : 'var(--card)',
-              border: `1px solid ${Object.values(colMap).includes(h)?'rgba(45,212,191,.28)':'var(--border)'}`,
+              background: Object.values(colMap).includes(h) ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'var(--card)',
+              border: `1px solid ${Object.values(colMap).includes(h)?'color-mix(in srgb, var(--accent) 28%, transparent)':'var(--border)'}`,
               color: Object.values(colMap).includes(h) ? 'var(--accent)' : 'var(--muted)',
               borderRadius:5, padding:'2px 8px', fontSize:10, fontFamily:'var(--font-mono)',
             }}>{h}</span>
@@ -969,7 +969,7 @@ export default function UploadWizard({ carriers, onComplete }) {
                 {i < stepLabels.length - 1 && (
                   <div style={{
                     flex: 1, height: 2, minWidth: 30,
-                    background: step > s.n ? 'linear-gradient(90deg, #14B8A6, #2DD4BF)' : 'var(--border)',
+                    background: step > s.n ? 'linear-gradient(90deg, var(--accent2), var(--accent))' : 'var(--border)',
                     borderRadius: 2,
                     transition: 'background .3s',
                   }}/>

@@ -468,8 +468,8 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
 
       <div style={{
         marginBottom: 14, padding: '10px 14px',
-        background: isExclude ? 'rgba(45,212,191,.06)' : 'rgba(251,191,36,.06)',
-        border: `1px solid ${isExclude ? 'rgba(45,212,191,.32)' : 'rgba(251,191,36,.32)'}`,
+        background: isExclude ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : 'rgba(251,191,36,.06)',
+        border: `1px solid ${isExclude ? 'color-mix(in srgb, var(--accent) 32%, transparent)' : 'rgba(251,191,36,.32)'}`,
         borderRadius: 9, fontSize: 12, lineHeight: 1.7,
       }}>
         {isExclude ? (
@@ -1355,8 +1355,8 @@ export default function CustomerReceivables({ isActive = true }) {
                 <span style={{
                   display: 'inline-flex', alignItems: 'center', gap: 6,
                   padding: '3px 10px', borderRadius: 11,
-                  background: hasFilters ? 'rgba(45,212,191,.10)' : 'var(--surface)',
-                  border: `1px solid ${hasFilters ? 'rgba(45,212,191,.32)' : 'var(--border)'}`,
+                  background: hasFilters ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)',
+                  border: `1px solid ${hasFilters ? 'color-mix(in srgb, var(--accent) 32%, transparent)' : 'var(--border)'}`,
                   fontSize: 11, fontFamily: 'var(--font-mono)', fontWeight: 700,
                   color: hasFilters ? 'var(--accent)' : 'var(--muted)',
                   whiteSpace: 'nowrap',
@@ -1415,13 +1415,13 @@ export default function CustomerReceivables({ isActive = true }) {
                       : c.anomaly === 'postpaid_overdue'    ? 'rgba(245,158,11,.06)'
                       : c.anomaly === 'inactive_with_debt'  ? 'rgba(122,130,196,.06)'
                       : null;
-                    const baseBg = anomalyTint || (isExcluded ? 'rgba(45,212,191,.04)' : undefined);
+                    const baseBg = anomalyTint || (isExcluded ? 'color-mix(in srgb, var(--accent) 4%, transparent)' : undefined);
                     return (
                       <tr
                         key={c.name}
                         onClick={() => setOpenCustomer(c)}
                         style={{ cursor: 'pointer', background: baseBg }}
-                        onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12') : isExcluded ? 'rgba(45,212,191,.10)' : 'var(--surface)'}
+                        onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12') : isExcluded ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)'}
                         onMouseLeave={e => e.currentTarget.style.background = baseBg || ''}
                       >
                         <td style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
@@ -1670,9 +1670,9 @@ function tagBtnStyle(kind) {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '3px 8px',
     borderRadius: 8,
-    background: isExclude ? 'rgba(45,212,191,.10)' : 'rgba(122,130,196,.10)',
+    background: isExclude ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'rgba(122,130,196,.10)',
     color:      isExclude ? 'var(--accent)'        : 'var(--muted)',
-    border: `1px solid ${isExclude ? 'rgba(45,212,191,.35)' : 'var(--border2)'}`,
+    border: `1px solid ${isExclude ? 'color-mix(in srgb, var(--accent) 35%, transparent)' : 'var(--border2)'}`,
     fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
     cursor: 'pointer',
     whiteSpace: 'nowrap',

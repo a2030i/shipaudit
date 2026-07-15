@@ -24,7 +24,7 @@ import { useAuth } from '../lib/auth.jsx';
 const STATUS_META = {
   pending:              { color: 'var(--muted)',  bg: 'rgba(122,130,196,.10)', label: '⏸ في الانتظار' },
   processing:           { color: 'var(--gold)',   bg: 'rgba(251,191,36,.10)',  label: '⏳ قيد المعالجة' },
-  processed:            { color: 'var(--green)',  bg: 'rgba(45,212,191,.10)',  label: '✓ تم' },
+  processed:            { color: 'var(--green)',  bg: 'color-mix(in srgb, var(--accent) 10%, transparent)',  label: '✓ تم' },
   failed:               { color: 'var(--red)',    bg: 'rgba(248,113,113,.10)', label: '✗ فشل' },
   awaiting_assignment:  { color: 'var(--gold)',   bg: 'rgba(251,191,36,.10)',  label: '⚠ يحتاج ربط' },
 };
@@ -71,8 +71,8 @@ function extractCompanyFromEmail(sender) {
 function fileTypeChip(filename) {
   const ext = String(filename || '').toLowerCase().split('.').pop();
   const M = {
-    xlsx: { label: 'XLSX', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
-    xlsm: { label: 'XLSM', color: '#2DD4BF', bg: 'rgba(45,212,191,.10)', Icon: FileSpreadsheet },
+    xlsx: { label: 'XLSX', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: FileSpreadsheet },
+    xlsm: { label: 'XLSM', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: FileSpreadsheet },
     xls:  { label: 'XLS',  color: 'var(--green)', bg: 'rgba(16,185,129,.10)', Icon: FileSpreadsheet },
     csv:  { label: 'CSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
     tsv:  { label: 'TSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
@@ -413,7 +413,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                       type="checkbox"
                       checked={filtered.length > 0 && selected.size === filtered.length}
                       onChange={toggleSelAll}
-                      style={{ cursor: 'pointer', accentColor: '#2DD4BF' }}
+                      style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
                       title="تحديد الكل"
                     />
                   </th>
@@ -453,13 +453,13 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                   const showCodBtn   = canImport && !isActioned && !!e.detected_carrier_id
                                        && ['audit_and_cod_separate', 'cod_only'].includes(carrierKind);
                   return (
-                    <tr key={e.id} style={isSel ? { background: 'rgba(45,212,191,.06)' } : undefined}>
+                    <tr key={e.id} style={isSel ? { background: 'color-mix(in srgb, var(--accent) 6%, transparent)' } : undefined}>
                       <td data-label="" style={{ paddingInline: 8 }}>
                         <input
                           type="checkbox"
                           checked={isSel}
                           onChange={() => toggleSel(e.id)}
-                          style={{ cursor: 'pointer', accentColor: '#2DD4BF' }}
+                          style={{ cursor: 'pointer', accentColor: 'var(--accent)' }}
                         />
                       </td>
                       <td data-label="التاريخ" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
@@ -529,9 +529,9 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             padding: '3px 9px', borderRadius: 12,
-                            background: 'rgba(45,212,191,.14)',
+                            background: 'color-mix(in srgb, var(--accent) 14%, transparent)',
                             color: 'var(--accent)',
-                            border: '1px solid rgba(45,212,191,.40)',
+                            border: '1px solid color-mix(in srgb, var(--accent) 40%, transparent)',
                             fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)',
                             whiteSpace: 'nowrap',
                           }}>
@@ -664,8 +664,8 @@ export default function WebhookEvents({ carriers, isActive = true }) {
             ))}
           </select>
 
-          <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', background: 'rgba(45,212,191,.06)', border: '1px solid rgba(45,212,191,.22)', borderRadius: 9, cursor: 'pointer', marginBottom: 16 }}>
-            <input type="checkbox" checked={learnSig} onChange={e => setLearnSig(e.target.checked)} style={{ marginTop: 3, accentColor: '#2DD4BF' }}/>
+          <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', padding: '10px 12px', background: 'color-mix(in srgb, var(--accent) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 22%, transparent)', borderRadius: 9, cursor: 'pointer', marginBottom: 16 }}>
+            <input type="checkbox" checked={learnSig} onChange={e => setLearnSig(e.target.checked)} style={{ marginTop: 3, accentColor: 'var(--accent)' }}/>
             <div style={{ fontSize: 12, lineHeight: 1.55 }}>
               <div style={{ fontWeight: 700, color: 'var(--text)', marginBottom: 2 }}>تذكَّر الشركة للملفات القادمة</div>
               <div style={{ color: 'var(--muted)', fontSize: 11.5 }}>

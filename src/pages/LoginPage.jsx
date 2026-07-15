@@ -34,9 +34,9 @@ export default function LoginPage() {
       background: 'var(--bg)',
       display: 'flex', overflow: 'hidden',
       backgroundImage: `
-        radial-gradient(ellipse 80% 60% at 15% 50%, rgba(45,212,191,.10) 0%, transparent 60%),
+        radial-gradient(ellipse 80% 60% at 15% 50%, color-mix(in srgb, var(--accent) 10%, transparent) 0%, transparent 60%),
         radial-gradient(ellipse 60% 50% at 85% 20%, rgba(27,30,84,.30) 0%, transparent 55%),
-        radial-gradient(ellipse 40% 40% at 50% 90%, rgba(45,212,191,.06) 0%, transparent 50%)
+        radial-gradient(ellipse 40% 40% at 50% 90%, color-mix(in srgb, var(--accent) 6%, transparent) 0%, transparent 50%)
       `,
     }}>
 
@@ -60,7 +60,7 @@ export default function LoginPage() {
         <div style={{
           position: 'absolute', top: '25%', right: '20%',
           width: 300, height: 300, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(45,212,191,.18) 0%, transparent 70%)',
+          background: 'radial-gradient(circle, color-mix(in srgb, var(--accent) 18%, transparent) 0%, transparent 70%)',
           filter: 'blur(40px)',
           pointerEvents: 'none',
         }}/>
@@ -153,7 +153,7 @@ export default function LoginPage() {
                   outline: 'none', boxSizing: 'border-box', direction: 'ltr',
                   transition: 'border-color .2s, box-shadow .2s',
                 }}
-                onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(45,212,191,.12)'; }}
+                onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent)'; }}
                 onBlur={e  => { e.target.style.borderColor = 'var(--border2)'; e.target.style.boxShadow = 'none'; }}
               />
             </div>
@@ -175,7 +175,7 @@ export default function LoginPage() {
                     outline: 'none', boxSizing: 'border-box', direction: 'ltr',
                     transition: 'border-color .2s, box-shadow .2s',
                   }}
-                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px rgba(45,212,191,.12)'; }}
+                  onFocus={e => { e.target.style.borderColor = 'var(--accent)'; e.target.style.boxShadow = '0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent)'; }}
                   onBlur={e  => { e.target.style.borderColor = 'var(--border2)'; e.target.style.boxShadow = 'none'; }}
                 />
                 <button type="button" onClick={() => setShowPw(v => !v)} style={{
@@ -204,13 +204,13 @@ export default function LoginPage() {
               width: '100%', padding: '13px 0', borderRadius: 11,
               background: loading
                 ? 'var(--surface)'
-                : 'linear-gradient(135deg, #1B1E54 0%, #2DD4BF 130%)',
+                : 'linear-gradient(135deg, #1B1E54 0%, var(--accent) 130%)',
               border: 'none',
               color: loading ? 'var(--muted)' : '#fff',
               fontWeight: 700, fontSize: 14,
               cursor: loading ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: loading ? 'none' : '0 8px 24px rgba(27,30,84,.32), 0 2px 8px rgba(45,212,191,.22)',
+              boxShadow: loading ? 'none' : '0 8px 24px rgba(27,30,84,.32), 0 2px 8px color-mix(in srgb, var(--accent) 22%, transparent)',
               transition: 'opacity .2s, box-shadow .2s',
               fontFamily: 'var(--font-sans)',
             }}>

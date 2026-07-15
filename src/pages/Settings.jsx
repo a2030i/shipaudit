@@ -133,8 +133,8 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
                 style={{
                   display:'grid',gridTemplateColumns:'1fr auto',gap:'4px 12px',
                   padding:'10px 14px',borderRadius:9,cursor:'pointer',textAlign:'right',
-                  background:s.openrouterModel===m.id?'rgba(45,212,191,.1)':'var(--surface)',
-                  border:`1px solid ${s.openrouterModel===m.id?'rgba(45,212,191,.3)':'var(--border)'}`,
+                  background:s.openrouterModel===m.id?'color-mix(in srgb, var(--accent) 10%, transparent)':'var(--surface)',
+                  border:`1px solid ${s.openrouterModel===m.id?'color-mix(in srgb, var(--accent) 30%, transparent)':'var(--border)'}`,
                   transition:'all .15s',
                 }}>
                 <div style={{display:'flex',alignItems:'center',gap:7}}>
@@ -347,16 +347,16 @@ export function AuditsHistory({ onOpen, isActive = true }) {
       {selectedIds.size > 0 && (
         <div style={{
           position: 'sticky', top: 0, zIndex: 5, marginBottom: 14,
-          background: 'linear-gradient(135deg, rgba(45,212,191,.20) 0%, rgba(27,30,84,.18) 100%)',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 20%, transparent) 0%, rgba(27,30,84,.18) 100%)',
           border: '1px solid var(--accent)', borderRadius: 12,
           padding: '12px 16px',
           display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
           backdropFilter: 'blur(8px)',
-          boxShadow: '0 6px 24px rgba(45,212,191,.16)',
+          boxShadow: '0 6px 24px color-mix(in srgb, var(--accent) 16%, transparent)',
         }}>
           <div style={{
             width: 32, height: 32, borderRadius: 8,
-            background: 'rgba(45,212,191,.25)',
+            background: 'color-mix(in srgb, var(--accent) 25%, transparent)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 14, color: 'var(--accent)',
           }}>
@@ -407,7 +407,7 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                     <input type="checkbox"
                       checked={allVisibleSelected}
                       onChange={toggleSelectAllVisible}
-                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#2DD4BF' }}
+                      style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
                     />
                     {allVisibleSelected
                       ? `إلغاء التحديد (${filtered.length})`
@@ -428,10 +428,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                 // red for mismatches, gold when selected.
                 const stripeColor = isSelected ? '#fbbf24'
                                   : hasIssues  ? '#f87171'
-                                  :              '#2DD4BF';
+                                  :              'var(--accent)';
                 const review = a.reviewStatus || 'pending';
                 const reviewMeta = review === 'approved'
-                  ? { color: '#2DD4BF', label: '✓ معتمدة', bg: 'rgba(45,212,191,.10)', bd: 'rgba(45,212,191,.32)' }
+                  ? { color: 'var(--accent)', label: '✓ معتمدة', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', bd: 'color-mix(in srgb, var(--accent) 32%, transparent)' }
                   : review === 'rejected'
                     ? { color: '#f87171', label: '✗ مرفوضة', bg: 'rgba(248,113,113,.10)', bd: 'rgba(248,113,113,.32)' }
                     : { color: '#fbbf24', label: '⏳ بانتظار الاعتماد', bg: 'rgba(251,191,36,.10)', bd: 'rgba(251,191,36,.32)' };
@@ -461,18 +461,18 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                           checked={isSelected}
                           onChange={() => toggleSelect(a.id)}
                           title="حدد لتصدير الأوزان الإضافية مدمجة"
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: '#2DD4BF' }}
+                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
                         />
                         <div style={{
                           width: 44, height: 44, borderRadius: 11,
                           background: hasIssues
                             ? 'linear-gradient(135deg, rgba(248,113,113,.18), rgba(248,113,113,.06))'
-                            : 'linear-gradient(135deg, rgba(45,212,191,.18), rgba(27,30,84,.10))',
-                          border: `1px solid ${hasIssues ? 'rgba(248,113,113,.32)' : 'rgba(45,212,191,.32)'}`,
+                            : 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 18%, transparent), rgba(27,30,84,.10))',
+                          border: `1px solid ${hasIssues ? 'rgba(248,113,113,.32)' : 'color-mix(in srgb, var(--accent) 32%, transparent)'}`,
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           flexShrink: 0,
                         }}>
-                          <Truck size={20} color={hasIssues ? '#f87171' : '#2DD4BF'}/>
+                          <Truck size={20} color={hasIssues ? '#f87171' : 'var(--accent)'}/>
                         </div>
                       </div>
 
@@ -504,8 +504,8 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                             <span style={{
                               display: 'inline-flex', alignItems: 'center', gap: 5,
                               padding: '2px 9px', borderRadius: 999,
-                              background: 'rgba(45,212,191,.10)',
-                              border: '1px solid rgba(45,212,191,.32)',
+                              background: 'color-mix(in srgb, var(--accent) 10%, transparent)',
+                              border: '1px solid color-mix(in srgb, var(--accent) 32%, transparent)',
                               color: 'var(--accent)', fontSize: 10.5, fontWeight: 600,
                               fontFamily: 'var(--font-mono)',
                             }}>
@@ -529,8 +529,8 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                       {/* Status panel */}
                       <div style={{
                         padding: '8px 14px', minWidth: 110, textAlign: 'center',
-                        background: hasIssues ? 'rgba(248,113,113,.06)' : 'rgba(45,212,191,.06)',
-                        border: `1px solid ${hasIssues ? 'rgba(248,113,113,.22)' : 'rgba(45,212,191,.22)'}`,
+                        background: hasIssues ? 'rgba(248,113,113,.06)' : 'color-mix(in srgb, var(--accent) 6%, transparent)',
+                        border: `1px solid ${hasIssues ? 'rgba(248,113,113,.22)' : 'color-mix(in srgb, var(--accent) 22%, transparent)'}`,
                         borderRadius: 10,
                       }}>
                         {hasIssues ? (

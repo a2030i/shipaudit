@@ -19,7 +19,7 @@ const ROLES = [
 ];
 
 const AVATAR_COLORS = [
-  '#2DD4BF','#34d399','#fbbf24','#f87171',
+  'var(--accent)','#34d399','#fbbf24','#f87171',
   '#a78bfa','#fb923c','#e879f9','#4ade80',
 ];
 
@@ -54,7 +54,7 @@ function Avatar({ name, color, size = 40 }) {
   return (
     <div style={{
       width: size, height: size, borderRadius: '50%', flexShrink: 0,
-      background: color || '#2DD4BF',
+      background: color || 'var(--accent)',
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       fontSize: size * 0.36, fontWeight: 700, color: '#000',
     }}>
@@ -71,7 +71,7 @@ function EmployeeModal({ employee, onClose, onSave }) {
     email:        employee?.email        || '',
     password:     '',
     role:         employee?.role         || 'accountant',
-    avatar_color: employee?.avatar_color || '#2DD4BF',
+    avatar_color: employee?.avatar_color || 'var(--accent)',
   });
   const [saving, setSaving] = useState(false);
 

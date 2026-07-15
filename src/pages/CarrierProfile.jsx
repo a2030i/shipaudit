@@ -181,7 +181,7 @@ function ContractSection({ contracts, onEdit }) {
     <SectionCard
       title={`العقود (${contracts.length})`}
       action={<Btn size="sm" variant="ghost" icon={<Edit3 size={12}/>} onClick={onEdit}>تعديل</Btn>}
-      accent="#2DD4BF"
+      accent="var(--accent)"
     >
       <div style={{ display: 'grid', gap: 10 }}>
         {contracts.map(c => {
@@ -315,7 +315,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                 <label key={opt.value} style={{
                   display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 10px',
-                  background: pick === opt.value ? 'rgba(45,212,191,.10)' : 'var(--surface)',
+                  background: pick === opt.value ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)',
                   border: `1px solid ${pick === opt.value ? 'var(--accent)' : 'var(--border)'}`,
                   borderRadius: 8, cursor: 'pointer',
                   fontSize: 12,
@@ -324,7 +324,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
                     type="radio" name="file_kind"
                     checked={pick === opt.value}
                     onChange={() => setPick(opt.value)}
-                    style={{ accentColor: '#2DD4BF' }}
+                    style={{ accentColor: 'var(--accent)' }}
                   />
                   <span style={{ flex: 1, color: 'var(--text)', fontWeight: pick === opt.value ? 700 : 400 }}>
                     {opt.label}
@@ -507,9 +507,9 @@ function WebhookList({ webhooks }) {
           </div>
           <span style={{
             padding: '2px 7px', borderRadius: 10,
-            background: w.audit_id ? 'rgba(45,212,191,.14)' : 'rgba(122,130,196,.10)',
+            background: w.audit_id ? 'color-mix(in srgb, var(--accent) 14%, transparent)' : 'rgba(122,130,196,.10)',
             color: w.audit_id ? 'var(--accent)' : 'var(--muted)',
-            border: `1px solid ${w.audit_id ? 'rgba(45,212,191,.40)' : 'var(--border2)'}`,
+            border: `1px solid ${w.audit_id ? 'color-mix(in srgb, var(--accent) 40%, transparent)' : 'var(--border2)'}`,
             fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap',
           }}>
             {w.audit_id ? '✓ تمت مراجعتها' : w.status === 'awaiting_assignment' ? '⏳ جديد' : w.status}
@@ -547,9 +547,9 @@ function OpsList({ ops }) {
             <span style={{
               padding: '2px 7px', borderRadius: 9, fontSize: 9.5,
               fontFamily: 'var(--font-mono)', fontWeight: 700,
-              background: isDr ? 'rgba(239,68,68,.10)' : 'rgba(45,212,191,.10)',
+              background: isDr ? 'rgba(239,68,68,.10)' : 'color-mix(in srgb, var(--accent) 10%, transparent)',
               color: isDr ? 'var(--red)' : 'var(--accent)',
-              border: `1px solid ${isDr ? 'rgba(239,68,68,.30)' : 'rgba(45,212,191,.30)'}`,
+              border: `1px solid ${isDr ? 'rgba(239,68,68,.30)' : 'color-mix(in srgb, var(--accent) 30%, transparent)'}`,
               whiteSpace: 'nowrap',
             }}>
               {o.doc_type}
