@@ -1,15 +1,12 @@
 // فرص من هاتف — أرقام تحدّثت معنا في واتساب لكنها ليست في كشف متاجرنا.
 // المصدر: جدول hatif_unknown_contacts (تملؤه دالة hatif-contacts-sync action=audit).
 // named_manually = سمّاه موظف (الاسم يحوي حرفاً) = إشارة اهتمام حقيقية → الأثمن.
+//
+// توحيد المتابعة (§1.32 تكملة): الحالة/الملاحظة/الإسناد تعيش في
+// retargeting_followups الموحّد (نفس مفردات إعادة الاستهداف ونفس سجل التغييرات)
+// — hatif_unknown_contacts صار مصدر «مَن هم» فقط لا «أين وصلنا معهم».
 import { supabase } from './supabase.js';
 
-export const LEAD_STATUSES = {
-  new:       { label: 'جديد',        color: '#3B82F6' },
-  lead:      { label: 'عميل محتمل',  color: 'var(--green)' },
-  supplier:  { label: 'مورد/شريك',   color: '#8B5CF6' },
-  noise:     { label: 'ضجيج',        color: 'var(--muted)' },
-  converted: { label: 'تحوّل لعميل',  color: 'var(--gold)' },
-};
 export const LEAD_KINDS = {
   mobile_sa:   { label: 'جوال سعودي',   color: 'var(--green)' },
   service_sa:  { label: 'موحّد/مجاني',  color: '#8B5CF6' },
@@ -17,8 +14,23 @@ export const LEAD_KINDS = {
   foreign:     { label: 'أجنبي',        color: 'var(--muted)' },
   other:       { label: 'آخر',          color: 'var(--muted2)' },
 };
-export const statusMeta = (s) => LEAD_STATUSES[s] || { label: s || '—', color: 'var(--muted)' };
-export const kindMeta   = (k) => LEAD_KINDS[k]   || { label: k || '—', color: 'var(--muted)' };
+export const kindMeta = (k) => LEAD_KINDS[k] || { label: k || '—', color: 'var(--muted)' };
+
+// كل المتابعات (جدول صغير — بضعة آلاف كحد أقصى) → Map بالهاتف.
+// §6: أي range يحتاج order ثابتاً؛ PostgREST يسقّف 1000 فنجلب على صفحات.
+export async function loadFollowupsMap() {
+  const map = new Map();
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase.from('retargeting_followups')
+      .select('phone, status, owner_id, next_action_at, notes')
+      .order('phone', { ascending: true })
+      .range(from, from + 999);
+    if (error) throw error;
+    for (const r of (data || [])) map.set(r.phone, r);
+    if (!data || data.length < 1000) break;
+  }
+  return map;
+}
 
 // ⚠️ PostgREST يسقّف عند 1000 صف — نجلب على صفحات (§6: أي range يحتاج order ثابتاً).
 export async function loadHatifLeads() {
@@ -32,25 +44,20 @@ export async function loadHatifLeads() {
     rows.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
-  return rows.map(r => ({
-    phone: r.phone, contactId: r.contact_id, name: r.name, company: r.company,
-    namedManually: !!r.named_manually, kind: r.phone_kind,
-    createdAt: r.created_at_hatif, status: r.status || 'new',
-    ownerId: r.owner_id, note: r.note, lastSeen: r.last_seen,
-  }));
-}
-
-// تحديث تصنيف/ملاحظة/إسناد فرصة (RLS: authenticated update)
-export async function updateHatifLead(phone, { status, note, ownerId } = {}) {
-  const patch = { updated_at: new Date().toISOString() };
-  if (status !== undefined) patch.status = status;
-  if (note !== undefined) patch.note = note;
-  if (ownerId !== undefined) patch.owner_id = ownerId || null;
-  const { data, error } = await supabase.from('hatif_unknown_contacts')
-    .update(patch).eq('phone', phone).select('phone');
-  if (error) throw error;
-  if (!data?.length) throw new Error('لم يُحدَّث أي صف');   // حماية من فشل RLS الصامت (§6)
-  return true;
+  // دمج حالة المتابعة الموحّدة (retargeting_followups) — لا من hatif_unknown_contacts
+  const fu = await loadFollowupsMap();
+  return rows.map(r => {
+    const f = fu.get(r.phone);
+    return {
+      phone: r.phone, contactId: r.contact_id, name: r.name, company: r.company,
+      namedManually: !!r.named_manually, kind: r.phone_kind,
+      createdAt: r.created_at_hatif, lastSeen: r.last_seen,
+      status: f?.status || 'new',
+      ownerId: f?.owner_id || null,
+      note: f?.notes || null,
+      nextActionAt: f?.next_action_at || null,
+    };
+  });
 }
 
 // مزامنة فورية: تجرد جهات هاتف وتلتقط أي جوال سعودي جديد كلّمنا وليس عميلاً.

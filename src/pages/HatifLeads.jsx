@@ -5,8 +5,8 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserPlus, RefreshCw, Phone, MessageCircle, Send, Search, Download } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadHatifLeads, updateHatifLead, computeLeadStats, syncHatifLeads,
-  LEAD_STATUSES, statusMeta, kindMeta } from '../lib/hatifLeadsService.js';
+import { loadHatifLeads, computeLeadStats, syncHatifLeads, kindMeta } from '../lib/hatifLeadsService.js';
+import { STATUSES, statusMeta, setRetargetingFollowup } from '../lib/retargetingService.js';
 import { normalizeSaudiPhone, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
@@ -26,6 +26,7 @@ export default function HatifLeads({ isActive = true }) {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [namedOnly, setNamedOnly] = useState(false);
+  const [showExcluded, setShowExcluded] = useState(false);   // مورد/ضجيج/بلاك لست
   const [waRecipients, setWaRecipients] = useState(null);
   const [waStatus, setWaStatus] = useState(() => new Map());
   const [detail, setDetail] = useState(null);
@@ -56,11 +57,12 @@ export default function HatifLeads({ isActive = true }) {
     const s = q.trim().toLowerCase();
     return rows.filter(l => {
       if (namedOnly && !l.namedManually) return false;
+      if (!showExcluded && !status && statusMeta(l.status).excluded) return false;
       if (status && l.status !== status) return false;
       if (s && ![l.name, l.phone, l.company].some(v => String(v ?? '').toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [rows, q, status, namedOnly]);
+  }, [rows, q, status, namedOnly, showExcluded]);
 
   if (!can('sales.view') && !can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
@@ -73,7 +75,7 @@ export default function HatifLeads({ isActive = true }) {
   };
   const setStat = async (l, v) => {
     try {
-      await updateHatifLead(l.phone, { status: v });
+      await setRetargetingFollowup(l.phone, { status: v });   // النظام الموحّد + سجل التغييرات
       setRows(prev => prev.map(x => x.phone === l.phone ? { ...x, status: v } : x));
     } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
   };
@@ -116,7 +118,7 @@ export default function HatifLeads({ isActive = true }) {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
           <Stat label="إجمالي الفرص" value={stats.total} color="#F97316" sub="جوال سعودي — كلها قابلة للحملات"/>
           <Stat label="باسم حقيقي ⭐" value={stats.named} color="var(--green)" sub="سمّاهم موظف — الأثمن"/>
-          <Stat label="عملاء محتملون" value={stats.byStatus.lead || 0} color="var(--gold)"/>
+          <Stat label="مهتمّون" value={stats.byStatus.interested || 0} color="var(--gold)"/>
           <Stat label="لم تُصنَّف بعد" value={stats.byStatus.new || 0} color="#3B82F6"/>
         </div>
 
@@ -130,10 +132,13 @@ export default function HatifLeads({ isActive = true }) {
             </div>
             <select value={status} onChange={e => setStatus(e.target.value)} style={selStyle}>
               <option value="">كل الحالات</option>
-              {Object.entries(LEAD_STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+              {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={namedOnly} onChange={e => setNamedOnly(e.target.checked)}/> باسم حقيقي فقط ⭐
+            </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              <input type="checkbox" checked={showExcluded} onChange={e => setShowExcluded(e.target.checked)}/> إظهار المستبعَدين (مورد/ضجيج)
             </label>
             {can('campaigns.send') && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!filtered.length}>
@@ -172,7 +177,7 @@ export default function HatifLeads({ isActive = true }) {
                       <td data-label="الحالة" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
                         <select value={l.status} onChange={e => setStat(l, e.target.value)}
                           style={{ ...selStyle, fontSize: 11, padding: '4px 8px', color: statusMeta(l.status).color, fontWeight: 700 }}>
-                          {Object.entries(LEAD_STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+                          {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
                         </select>
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
@@ -227,7 +232,7 @@ function LeadModal({ lead, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const save = async () => {
     setSaving(true);
-    try { await updateHatifLead(lead.phone, { status, note }); toast('تم الحفظ', 'success'); onSaved({ status, note }); }
+    try { await setRetargetingFollowup(lead.phone, { status, notes: note }); toast('تم الحفظ', 'success'); onSaved({ status, note }); }
     catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); setSaving(false); }
   };
   return (
@@ -243,7 +248,7 @@ function LeadModal({ lead, onClose, onSaved }) {
         </div>
         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>التصنيف</label>
         <select value={status} onChange={e => setStatus(e.target.value)} style={{ ...selStyle, width: '100%', marginBottom: 12 }}>
-          {Object.entries(LEAD_STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
+          {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
         </select>
         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>ملاحظة</label>
         <textarea value={note} onChange={e => setNote(e.target.value)} rows={3}

@@ -47,7 +47,12 @@ export const STATUSES = {
   competitor:        { label: 'انتقل لمنافس',  color: '#B91C1C' },
   closed_business:   { label: 'توقّف نشاطه',    color: '#B91C1C' },
   finance:           { label: 'تسوية مالية',   color: '#8B5CF6' },
-  // حالتا الاستبعاد الدائم — تُخفَيان من القوائم افتراضياً (لا يُكلَّمان)
+  // توحيد المتابعة (§1.32 تكملة): حالات «فرص من هاتف» انضمّت للمفردات الموحّدة —
+  // نظام متابعة واحد (retargeting_followups) لكل تبويبات مركز المبيعات.
+  converted:         { label: '✅ تحوّل لعميل',  color: '#16A34A' },
+  // حالات الاستبعاد الدائم — تُخفَى من القوائم افتراضياً (لا يُكلَّمون)
+  supplier:          { label: '📦 مورد/شريك',   color: '#8B5CF6', excluded: true },
+  noise:             { label: 'ضجيج',           color: 'var(--muted2)', excluded: true },
   blacklist:         { label: '🚫 بلاك لست',    color: '#111827', excluded: true },
   test:              { label: '🧪 متجر تجريبي', color: 'var(--muted2)', excluded: true },
 };

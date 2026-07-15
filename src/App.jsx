@@ -975,13 +975,15 @@ function AppInner({ theme, toggleTheme }) {
           منفصلة عن الدرج — لا تخالف قاعدة «لا تثبيت عناصر جديدة» (§1.11f). */}
       <nav className="bottom-nav">
         {[
+          // design-v2 + الأنظمة السبعة: التحصيل والمبيعات (الاستخدام اليومي بالجوال)
+          // بدل رفع/وارد المكتبيّين. active يشمل مسارات الهَب القديمة.
           { path: '/overview',       label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
           { path: '/decisions',      label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
-          { path: '/drop',           label: 'رفع',      icon: Upload,          permKey: 'audits.create' },
-          { path: '/webhook',        label: 'الوارد',   icon: Inbox,           permKey: 'webhook.view' },
+          { path: '/customer-money', label: 'التحصيل',  icon: HandCoins,       permKey: 'receivables.view', group: COLLECTIONS_HUB_PATHS },
+          { path: '/retargeting',    label: 'المبيعات', icon: Target,          permKey: 'sales.view',       group: SALES_HUB_PATHS },
         ].filter(it => isAdmin || can(it.permKey)).map(it => {
           const Icon = it.icon;
-          const active = location.pathname === it.path;
+          const active = it.group ? it.group.includes(location.pathname) : location.pathname === it.path;
           return (
             <button key={it.path} onClick={() => goto(it.path)}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>

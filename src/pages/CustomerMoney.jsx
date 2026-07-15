@@ -275,7 +275,8 @@ export default function CustomerMoney({ isActive = true }) {
             </button>
             {isAdmin && (
               <>
-                {applicableRows.length > 0 && (
+                {/* صلاحيات v2: التطبيق كتابة مالية — مفتاح zoho.apply_credits الحسّاس */}
+                {applicableRows.length > 0 && can('zoho.apply_credits') && (
                   <button onClick={() => setBulkOpen(true)} title="يطبّق الأرصدة القابلة للتطبيق (لها فواتير مفتوحة) دفعة واحدة"
                     style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--card)', background: 'var(--green)',
                       border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
@@ -310,7 +311,7 @@ export default function CustomerMoney({ isActive = true }) {
                         {r.applicable > 0.5 ? (r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)) : 'رصيد قائم'}
                       </td>
                       <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {isAdmin && r.applicable > 0.5 && (
+                        {can('zoho.apply_credits') && r.applicable > 0.5 && (
                           <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name, zohoUrl: r.zohoUrl })}
                             style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 12%, transparent)',
                               border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>

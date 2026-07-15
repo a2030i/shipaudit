@@ -240,6 +240,11 @@ Deno.serve(async (req) => {
   const isAdmin = auth.role === 'admin';
   const canRead = isAdmin || auth.permissions?.['money.pnl'] === true || auth.permissions?.['receivables.view'] === true;
   if (!canRead) return json({ error: 'forbidden' }, 403);
+  // صلاحيات v2: «التطبيق» كتابة مالية في زوهو — مفتاح حسّاس مستقل عن مفاتيح
+  // العرض (كان receivables.view وحده يكفي للكتابة!). plan/العرض يبقيان للقرّاء.
+  if (action === 'apply' && !isAdmin && auth.permissions?.['zoho.apply_credits'] !== true) {
+    return json({ error: 'forbidden — تحتاج صلاحية «تطبيق أرصدة دائنة»' }, 403);
+  }
   if (!contactId) return json({ error: 'contact_id مطلوب' }, 400);
 
   try {
