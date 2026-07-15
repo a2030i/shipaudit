@@ -190,17 +190,43 @@ Deno.serve(async (req) => {
         scanned++;
         const np = normPhone(c.phoneNumber);
         if (np) seen.add(np);
-        if (np && !ours.has(np)) hatifOnly.push({ name: c.name || null, phone: c.phoneNumber, hasName: !!c.name, company: c.company || null });
+        if (!np || ours.has(np)) continue;
+        // سمّاه موظف؟ الاسم الحقيقي يحوي **حرفاً** — «920006546» هو الرقم بصيغة
+        // محلية لا اسم (كان يُعدّ اسماً يدوياً غلطاً).
+        const nm = String(c.name || '').trim();
+        const named = !!nm && /\p{L}/u.test(nm);
+        const kind = /^9665\d{8}$/.test(np) ? 'mobile_sa'
+          : /^966(9200|800)\d+$/.test(np) ? 'service_sa'        // موحّد/مجاني = شركات
+          : /^966[1-4]\d{8}$/.test(np) ? 'landline_sa'          // ثابت (كان \d{7} فيفوته)
+          : np.startsWith('966') ? 'other' : 'foreign';
+        hatifOnly.push({ phone: np, contact_id: c.id, name: named ? nm : null, company: c.company || null,
+          named_manually: named, phone_kind: kind, created_at_hatif: c.creationTime || null });
       }
       skip += items.length;
       if (skip >= total) break;
       await sleep(80);
     }
     const oursOnly = [...ours].filter(p => !seen.has(p));
+
+    // الحفظ عندنا (upsert — الحالة/الملاحظة/الإسناد التي يضعها الفريق لا تُدهس)
+    let saved = 0;
+    if (body.save) {
+      const now = new Date().toISOString();
+      for (let i = 0; i < hatifOnly.length; i += 500) {
+        const chunk = hatifOnly.slice(i, i + 500).map(x => ({ ...x, last_seen: now, updated_at: now }));
+        const { error: ue } = await db.from('hatif_unknown_contacts')
+          .upsert(chunk, { onConflict: 'phone', ignoreDuplicates: false });
+        if (!ue) saved += chunk.length;
+      }
+    }
+
+    const by = (k: string, v: string) => hatifOnly.filter((x: any) => x[k] === v).length;
     return json({ ok: true, hatif_total: total, scanned, ours_total: ours.size,
-      in_hatif_not_ours: hatifOnly.length, in_ours_not_hatif: oursOnly.length,
-      named: hatifOnly.filter(x => x.hasName).length, unnamed: hatifOnly.filter(x => !x.hasName).length,
-      samples: hatifOnly.slice(0, 15) });
+      in_hatif_not_ours: hatifOnly.length, in_ours_not_hatif: oursOnly.length, saved,
+      named_manually: hatifOnly.filter((x: any) => x.named_manually).length,
+      kinds: { mobile_sa: by('phone_kind', 'mobile_sa'), landline_sa: by('phone_kind', 'landline_sa'),
+               foreign: by('phone_kind','foreign'), other: by('phone_kind','other'), service_sa: by('phone_kind','service_sa') },
+      samples: hatifOnly.filter((x: any) => x.named_manually).slice(0, 12) });
   }
 
   // قراءة رجعية — ماذا خزّن هاتف فعلاً
