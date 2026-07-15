@@ -131,15 +131,27 @@ Deno.serve(async (req) => {
   }
   if (!authed) return json({ error: 'unauthorized' }, 401);
 
+  // ⚠️ PostgREST يسقّف نتيجة الـRPC عند **1000 صف** (إعداد سيرفري لا يرفعه range)،
+  // فوضع all يجب أن يجلب على صفحات وإلا فقدنا 455 عميلاً صامتاً.
   const onePhone = body.phone ? normPhone(body.phone) : null;
-  const q = onePhone
-    ? db.rpc('hatif_contact_profile').eq('phone', onePhone)
-    : all
-      ? db.rpc('hatif_contact_profile').order('phone', { ascending: true })
-      : db.rpc('hatif_contact_profile').order('phone', { ascending: true }).range(offset, offset + limit - 1);
-  const { data: rows, error } = await q;
-  if (error) return json({ ok: false, error: `profile: ${error.message}` });
-  const list: any[] = rows || [];
+  let list: any[] = [];
+  if (onePhone) {
+    const { data, error } = await db.rpc('hatif_contact_profile').eq('phone', onePhone);
+    if (error) return json({ ok: false, error: `profile: ${error.message}` });
+    list = data || [];
+  } else if (all) {
+    for (let off = 0; off < 20000; off += 1000) {
+      const { data, error } = await db.rpc('hatif_contact_profile').order('phone', { ascending: true }).range(off, off + 999);
+      if (error) return json({ ok: false, error: `profile: ${error.message}` });
+      const chunk = data || [];
+      list.push(...chunk);
+      if (chunk.length < 1000) break;
+    }
+  } else {
+    const { data, error } = await db.rpc('hatif_contact_profile').order('phone', { ascending: true }).range(offset, offset + limit - 1);
+    if (error) return json({ ok: false, error: `profile: ${error.message}` });
+    list = data || [];
+  }
   if (onePhone && !list.length) return json({ ok: false, error: `الرقم ${onePhone} ليس ضمن كشف المتاجر` });
 
   if (action === 'preview') {
@@ -158,6 +170,37 @@ Deno.serve(async (req) => {
     const b = unwrap(await r.json().catch(() => ({})));
     const defs: any[] = Array.isArray(b) ? b : (b?.items || []);
     return json({ ok: r.ok, count: defs.length, defs: defs.map((d: any) => ({ id: d.id, name: d.name, type: d.type })) });
+  }
+
+  // جرد: من في هاتف وليس عندنا (والعكس) — مقارنة بالهاتف المطبَّع
+  if (action === 'audit') {
+    const token = await accessToken();
+    const ours = new Set(list.map((r: any) => r.phone));
+    const hatifOnly: any[] = [];
+    let skip = 0, total = 0, scanned = 0;
+    const seen = new Set<string>();
+    for (let i = 0; i < 30; i++) {   // سقف أمان
+      const r = await fetch(`${CONTACTS_URL}?SkipCount=${skip}&MaxResultCount=200`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) break;
+      const b = unwrap(await r.json().catch(() => ({})));
+      total = b?.totalCount ?? total;
+      const items: any[] = b?.items || [];
+      if (!items.length) break;
+      for (const c of items) {
+        scanned++;
+        const np = normPhone(c.phoneNumber);
+        if (np) seen.add(np);
+        if (np && !ours.has(np)) hatifOnly.push({ name: c.name || null, phone: c.phoneNumber, hasName: !!c.name, company: c.company || null });
+      }
+      skip += items.length;
+      if (skip >= total) break;
+      await sleep(80);
+    }
+    const oursOnly = [...ours].filter(p => !seen.has(p));
+    return json({ ok: true, hatif_total: total, scanned, ours_total: ours.size,
+      in_hatif_not_ours: hatifOnly.length, in_ours_not_hatif: oursOnly.length,
+      named: hatifOnly.filter(x => x.hasName).length, unnamed: hatifOnly.filter(x => !x.hasName).length,
+      samples: hatifOnly.slice(0, 15) });
   }
 
   // قراءة رجعية — ماذا خزّن هاتف فعلاً
