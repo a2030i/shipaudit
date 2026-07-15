@@ -81,14 +81,22 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <ResultStat label="فشلت" value={results.failed || 0} color={results.failed ? 'var(--red)' : '#6B7280'}/>
             <ResultStat label="الإجمالي" value={results.total || valid.length} color="#3B82F6"/>
           </div>
-          {Array.isArray(results.results) && results.results.some(x => !x.success) && (
+          {/* الفاشلون فقط. الحقل من hatif-send اسمه **ok** لا success — الفلترة على
+              success (غير موجود) كانت تُظهر كل النتائج كفاشلة رغم نجاحها. */}
+          {Array.isArray(results.results) && results.results.some(x => !x.ok) && (
             <div style={{ maxHeight: 200, overflow: 'auto', fontSize: 12, border: '1px solid var(--border)', borderRadius: 8 }}>
-              {results.results.filter(x => !x.success).map((x, i) => (
+              {results.results.filter(x => !x.ok).map((x, i) => (
                 <div key={i} style={{ padding: '7px 11px', borderTop: i ? '1px solid var(--border)' : 'none', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
                   <span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr' }}>{x.to}</span>
                   <span style={{ color: 'var(--red)' }}>{x.error || 'فشل'}</span>
                 </div>
               ))}
+            </div>
+          )}
+          {results.sent > 0 && !results.failed && (
+            <div style={{ fontSize: 12, color: 'var(--green2)', background: 'color-mix(in srgb, var(--green) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--green) 28%, transparent)', borderRadius: 8, padding: '9px 12px' }}>
+              ✅ أُرسلت كل الرسائل بنجاح — تابع حالتها (وصلت/قُرئت/ردّ) في «سجل الحملات».
             </div>
           )}
           <div style={{ marginTop: 16, textAlign: 'left' }}>
