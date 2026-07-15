@@ -136,7 +136,7 @@ export default function Retargeting({ isActive = true }) {
   const integrations = Object.entries(dash?.integrations || {}).sort((a, b) => b[1] - a[1]);
 
   return (
-    <div style={{ padding: '20px 24px 70px', maxWidth: 1360, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Target size={22}/>} iconColor="#8B5CF6"
         title="إعادة استهداف العملاء"
         subtitle="كشف المتاجر → فرص قابلة للتنفيذ · عميل فريد بالهاتف · أولوية واضحة"

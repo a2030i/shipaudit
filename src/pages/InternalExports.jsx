@@ -255,7 +255,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
   const anyLoading    = codLoading || invLoading || weightLoading;
 
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<FileSpreadsheet size={22}/>}
         title="سحب للنظام الداخلي"

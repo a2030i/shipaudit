@@ -83,7 +83,7 @@ export default function WhatsAppSettings({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '20px 24px 60px', maxWidth: tab === 'campaigns' ? 1100 : 660, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: tab === 'campaigns' ? 1100 : 660, margin: '0 auto' }}>
       <PageHeader icon={<MessageCircle size={22}/>} iconColor="#22C55E"
         title="واتساب"
         subtitle="الإرسال عبر Hatif · هاتف (Voxa) — إعدادات القوالب + سجل الحملات"

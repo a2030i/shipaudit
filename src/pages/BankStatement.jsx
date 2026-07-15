@@ -308,7 +308,7 @@ export default function BankStatement() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
         💼 كشف <span style={{ color: 'var(--accent)' }}>الحساب</span>
       </h2>

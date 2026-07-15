@@ -634,7 +634,7 @@ export default function CarrierProfile() {
   const netColor = Math.abs(summary.netPosition) < 0.01 ? 'var(--muted)' : summary.netPosition > 0 ? 'var(--red)' : 'var(--accent)';
 
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1200 }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <CarrierTabs carrierId={carrierId} carrierName={carrier.name} active="overview"/>
       <Hero carrier={carrier} onBack={() => navigate('/hub')}/>
 

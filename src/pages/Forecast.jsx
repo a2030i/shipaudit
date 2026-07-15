@@ -102,7 +102,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
   const horizonLabel = HORIZON_OPTIONS.find(h => h.days === horizon)?.label || `${horizon} يوم`;
 
   return (
-    <div style={{ padding: '20px 24px 60px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader
         icon={<TrendingUp size={22}/>}
         iconColor="#0EA5E9"

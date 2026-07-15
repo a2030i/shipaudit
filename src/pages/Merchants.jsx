@@ -379,7 +379,7 @@ export default function Merchants({ isActive = true }) {
   }, [data.merchants, search, filterType, filterStatus]);
 
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1440 }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<ShoppingBag size={22}/>}
         title="متاجر المنصّة"

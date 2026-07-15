@@ -574,7 +574,7 @@ export default function CarrierLedger({ isActive = true }) {
   // First-time empty state — no statement has been saved yet anywhere.
   if (!loading && carrierList.length === 0) {
     return (
-      <div style={{ padding: '32px 40px 80px', maxWidth: 1100 }}>
+      <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
         <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0, marginBottom: 18 }}>
           📒 الدفتر
         </h2>
@@ -594,7 +594,7 @@ export default function CarrierLedger({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1300 }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
       <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>

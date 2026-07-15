@@ -324,7 +324,7 @@ export default function CarrierStatements({ carriers = [] }) {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '32px 40px 80px', maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
       {fromWorkspace && (
         <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
       )}

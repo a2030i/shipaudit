@@ -99,7 +99,7 @@ export default function HatifLeads({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '20px 24px 70px', maxWidth: 1360, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<UserPlus size={22}/>} iconColor="#F97316"
         title="فرص من هاتف"
         subtitle="جوّالات سعودية تحدّثت معنا في واتساب وليست في كشف متاجرنا — مستفسرون لم يسجّلوا"

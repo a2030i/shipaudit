@@ -97,7 +97,7 @@ export default function DecisionsBoard({ isActive = true }) {
   if (!can('overview.view')) return <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>🔒 لا صلاحية</div>;
 
   return (
-    <div style={{ padding: '22px 28px 70px', maxWidth: 1360, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Gauge size={22}/>}
         title="لوحة القرارات"

@@ -259,7 +259,7 @@ export default function ZohoData({ isActive = true }) {
   if (!can('zoho.view') && !can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
 
   return (
-    <div style={{ padding: '20px 26px 70px', maxWidth: 1360, margin: '0 auto' }}>
+    <div style={{ padding: '20px 26px 70px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
         title="زوهو API"
         subtitle="مزامنة مباشرة من Zoho Books — فواتير · دفعات · مصاريف · قيود"
@@ -308,7 +308,9 @@ export default function ZohoData({ isActive = true }) {
 
       {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
       {type === 'invoices' && dash && (
-        <InvoiceDashboard dash={dash} onPick={setQ}
+        {/* النقر على مدين = كامل دينه عبر كل الشهور — كان فلتر الشهر يبقى مفعّلاً
+            فيُخفي فواتير خارج الشهر ويُظهر «متبقٍّ» أقل من الحقيقي (بلاغ 2026-07-15) */}
+        <InvoiceDashboard dash={dash} onPick={(name) => { setQ(name); setPeriod(''); setPeriodTo(''); }}
           onShowOverdue={() => {
             // المتأخرات موزّعة على أشهر قديمة — افتح كل الفترات وفلترها
             setPeriod(''); setPeriodTo(''); setStatus('overdue'); setQ('');
