@@ -25,6 +25,8 @@ const LEAD_COLUMNS = [
   'matched_store_id', 'matched_store_name', 'matched_store_status',
   'matched_store_billing_type', 'matched_store_shipments',
   'matched_store_last_shipment_at', 'matched_store_wallet',
+  // من view crm_leads_campaign: آخر حملة واتساب لكل جهة (2026-07-16)
+  'last_campaign_at', 'last_campaign_status', 'last_campaign_template', 'last_campaign_replied_at',
 ].join(',');
 
 const listCache = new Map();
@@ -433,19 +435,22 @@ export async function loadLeads({
   duplicateOnly = false,
   matchedOnly = false,
   matched = '',          // '' الكل | 'yes' موجود في المنصّة | 'no' خارجها (طلب المستخدم 2026-07-16)
+  campaign = '',         // '' الكل | 'none' بلا حملة | 'within7' | 'within30' | 'older30'
   unassignedOnly = false,
   page = 0,
   limit = PAGE,
   force = false,
 } = {}) {
-  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, matched, unassignedOnly, page, limit });
+  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, matched, campaign, unassignedOnly, page, limit });
   const cached = listCache.get(key);
   if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
 
   const from = Math.max(0, page) * limit;
   const to = from + limit - 1;
+  // القراءة من view crm_leads_campaign (crm_leads + آخر حملة واتساب lateral) —
+  // security_invoker فيحترم RLS. الكتابة تبقى على crm_leads الأساسي.
   let query = supabase
-    .from('crm_leads')
+    .from('crm_leads_campaign')
     .select(LEAD_COLUMNS, { count: 'exact' })
     .order('updated_at', { ascending: false })
     .order('id', { ascending: true })   // قاعدة §6: tiebreaker فريد لكل .range()
@@ -459,6 +464,14 @@ export async function loadLeads({
   if (duplicateOnly) query = query.gt('duplicate_count', 1);
   if (matched === 'yes' || matchedOnly) query = query.not('matched_store_id', 'is', null);
   else if (matched === 'no') query = query.is('matched_store_id', null);
+  // فلتر آخر حملة واتساب — على الخادم (view) فلا حدود للعدد
+  if (campaign) {
+    const daysAgo = (n) => new Date(Date.now() - n * 86_400_000).toISOString();
+    if (campaign === 'none') query = query.is('last_campaign_at', null);
+    else if (campaign === 'within7') query = query.gte('last_campaign_at', daysAgo(7));
+    else if (campaign === 'within30') query = query.gte('last_campaign_at', daysAgo(30));
+    else if (campaign === 'older30') query = query.not('last_campaign_at', 'is', null).lt('last_campaign_at', daysAgo(30));
+  }
   const term = q.trim();
   if (term) {
     const phone = normalizeSaudiPhone(term);
@@ -610,9 +623,28 @@ export async function createLead({
 // (لا حلقة 7000 طلب). نفس شروط loadLeads بالضبط، ثم update واحد.
 export async function bulkAssignLeads({
   status = null, ownerId = null, q = '', category = '', platform = '',
-  duplicateOnly = false, matched = '', unassignedOnly = false,
+  duplicateOnly = false, matched = '', campaign = '', unassignedOnly = false,
   newOwnerId,
 } = {}) {
+  // فلتر الحملة يعيش في الـview فقط (لا يُفلتَر به update على الجدول الأساسي):
+  // نجمع المعرّفات المطابقة من الـview صفحات-صفحات ثم نحدّث بدفعات ids.
+  if (campaign) {
+    const ids = [];
+    for (let off = 0; off < 40000; off += 1000) {
+      const r = await loadLeads({ status, ownerId, q, category, platform, duplicateOnly, matched, campaign, unassignedOnly, page: off / 1000, limit: 1000, force: true });
+      ids.push(...r.rows.map(x => x.id));
+      if (r.rows.length < 1000 || ids.length >= r.count) break;
+    }
+    let done = 0;
+    for (let i = 0; i < ids.length; i += 500) {
+      const chunk = ids.slice(i, i + 500);
+      const { error } = await supabase.from('crm_leads').update({ owner_id: newOwnerId || null }).in('id', chunk);
+      if (error) throw error;
+      done += chunk.length;
+    }
+    listCache.clear();
+    return done;
+  }
   let query = supabase.from('crm_leads').update({ owner_id: newOwnerId || null });
   if (status) query = query.eq('status', status);
   if (ownerId) query = query.eq('owner_id', ownerId);

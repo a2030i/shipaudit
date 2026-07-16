@@ -527,6 +527,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     platform: '',
     duplicateOnly: false,
     matched: '',          // '' الكل | 'yes' | 'no' (كان checkbox — طلب المستخدم: نعم/لا)
+    campaign: '',         // آخر حملة واتساب: '' | none | within7 | within30 | older30
     unassignedOnly: false,
     page: 0,
   });
@@ -672,6 +673,17 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             </select>
           </label>
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+            📲 آخر حملة واتساب
+            <select value={filters.campaign} onChange={e => setFilter({ campaign: e.target.value })}
+              style={{ padding: '4px 10px', borderRadius: 8, fontSize: 12, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+              <option value="">الكل</option>
+              <option value="none">بلا حملة إطلاقاً</option>
+              <option value="within7">خلال آخر 7 أيام</option>
+              <option value="within30">خلال آخر 30 يوم</option>
+              <option value="older30">له حملة أقدم من 30 يوم</option>
+            </select>
+          </label>
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
             <input type="checkbox" checked={filters.unassignedOnly} onChange={e => setFilter({ unassignedOnly: e.target.checked, ownerId: '' })}/> بدون موظف
           </label>
           <span style={{ marginInlineStart: 'auto', fontSize: 12, color: 'var(--muted)' }}>
@@ -744,6 +756,10 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                         ? <MiniPill color="#8B5CF6" icon={<CheckCircle2 size={11}/>} label="عميل لدينا"/>
                         : <MiniPill color="var(--green)" label="خارج المنصّة"/>}
                       {Number(l.duplicate_count) > 1 && <MiniPill color="var(--gold)" icon={<AlertTriangle size={11}/>} label={`${l.duplicate_count} بنفس الرقم`}/>}
+                      {l.last_campaign_at && (
+                        <MiniPill color={l.last_campaign_replied_at ? 'var(--green)' : '#0EA5E9'}
+                          label={`📲 حملة قبل ${Math.floor((Date.now() - new Date(l.last_campaign_at).getTime()) / 86_400_000)} يوم${l.last_campaign_replied_at ? ' · ردّ' : ''}`}/>
+                      )}
                     </div>
                   </td>
                   <td data-label="الموظف" style={{ padding: '10px 12px', minWidth: 150 }} onClick={e => e.stopPropagation()}>
@@ -924,6 +940,10 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           <Hd label="المنصة" value={lead.platform || '—'}/>
           <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>
           {lead.duplicate_count > 1 && <Hd label="تكرار الرقم" value={`${lead.duplicate_count} متاجر`} color="var(--gold)"/>}
+          <Hd label="آخر حملة واتساب" color={lead.last_campaign_at ? (lead.last_campaign_replied_at ? 'var(--green)' : '#0EA5E9') : 'var(--muted2)'}
+            value={lead.last_campaign_at
+              ? `${fmtDate(lead.last_campaign_at)} · ${lead.last_campaign_template || ''}${lead.last_campaign_replied_at ? ' · ردّ ✓' : ''}`
+              : 'لم تُرسَل له حملة'}/>
         </div>
         {/* المتاجر الأخرى بنفس الرقم (duplicate_names مخزَّنة مع الصف — طلب المستخدم 2026-07-16) */}
         {lead.duplicate_count > 1 && Array.isArray(lead.duplicate_names) && lead.duplicate_names.length > 0 && (
