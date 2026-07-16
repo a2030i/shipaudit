@@ -251,9 +251,10 @@ const ADMIN_ONLY_KEYS = new Set([
 export const FULL_ACCOUNTANT_KEYS = ALL_PERMISSION_KEYS.filter(k => !ADMIN_ONLY_KEYS.has(k));
 
 // ── أدوار وظيفية جاهزة (v2 — 2026-07-15) ─────────────────────────────
+// ملاحظة (2026-07-16): أُزيلت overview.view من القوالب المحدودة — غرفة
+// العمليات شاشة مالية، والموظف المحدود يهبط على أول صفحة مرئية له.
 // «موظف مبيعات»: الفرص والحملات فقط — صفر مالية/تدقيق/تحصيل ديون.
 export const SALES_ROLE_KEYS = [
-  'overview.view',
   'sales.view', 'sales.manage', 'sales.export',
   'campaigns.send', 'whatsapp.view_log',
   'crm.view', 'crm.log_activity', 'crm.change_status', 'crm.manage_tasks', 'crm.manage_deals',
@@ -262,7 +263,6 @@ export const SALES_ROLE_KEYS = [
 
 // «محصّل ديون»: المديونيات والتصعيد والحملات — صفر مبيعات/مالية عامة.
 export const COLLECTOR_ROLE_KEYS = [
-  'overview.view',
   'receivables.view', 'receivables.export', 'receivables.tag_customer', 'receivables.request_writeoff',
   'legal.view',
   'collections.view', 'collections.regenerate', 'collections.update_stage',
@@ -274,7 +274,6 @@ export const COLLECTOR_ROLE_KEYS = [
 
 // «موظف خدمة عملاء»: التذاكر + دليل المتاجر فقط — صفر مالية/تدقيق/حملات.
 export const SUPPORT_ROLE_KEYS = [
-  'overview.view',
   'support.view', 'support.create', 'support.manage',
   'merchants.view',
 ];

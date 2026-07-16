@@ -88,6 +88,12 @@ export default function Overview({ carriers = [], isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
+  // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
+  // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).
+  if (!can('overview.view')) {
+    return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض الصفحة الرئيسية» — تُمنح من شاشة الفريق"/></div>;
+  }
+
   if (loading || !data) {
     return (
       <div style={{ padding: 24 }}>
@@ -139,17 +145,22 @@ export default function Overview({ carriers = [], isActive = true }) {
         }
       />
 
-      <OperationsCommand
-        data={data}
-        period={period}
-        carrierNameById={carrierNameById}
-        onNavigate={navigate}
-        onRefresh={refresh}
-      />
+      {/* أرقام النقد (البنك/العملاء/الناقلين) خلف overview.cash_position —
+          overview.view وحدها تعرض الصفحة بلا الوضع النقدي */}
+      {can('overview.cash_position') && (
+        <OperationsCommand
+          data={data}
+          period={period}
+          carrierNameById={carrierNameById}
+          onNavigate={navigate}
+          onRefresh={refresh}
+        />
+      )}
 
       {/* ── HERO: Cash position — the headline answer ──
           Edit-bank click only fires for users with bank.set_balance.
           Read-only viewers still see the tile but it's not clickable. */}
+      {can('overview.cash_position') && (
       <CashHero
         cash={data.cashPosition}
         codOutstanding={data.codOutstanding}
@@ -159,6 +170,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           notes:   '',
         }) : null}
       />
+      )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
       <SectionTitle icon={<Calendar size={14}/>} color="#0EA5E9">

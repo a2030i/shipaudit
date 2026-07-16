@@ -186,6 +186,24 @@ const NAV_SECTIONS = [
   { id: 'reports',     label: 'التقارير',     icon: BarChart3,     accent: '#10B981', hint: 'جاهزة للطباعة والتصدير' },
   { id: 'system',      label: 'الإدارة',      icon: Briefcase,     accent: '#8B5CF6', hint: 'الفريق · الفحوص · السجلات' },
 ];
+// ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
+// 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
+// العنوان يرى كل المال (القائمة تخفي العنصر لكن الصفحة تُعرض).
+// الخريطة تُشتق من NAV_ITEMS تلقائياً (المسار + مسارات subTabs القديمة)،
+// فأي صفحة جديدة تُحمى بمجرد حملها permKey في القائمة. المسار الممنوع
+// يُعامل كمسار مجهول → إعادة توجيه لأول صفحة مرئية للموظف.
+const PATH_PERM = new Map();
+for (const it of NAV_ITEMS) {
+  if (!it.permKey) continue;
+  PATH_PERM.set(it.path, it.permKey);
+  for (const s of it.subTabs || []) if (s.legacy) PATH_PERM.set(s.legacy, it.permKey);
+}
+// مسارات لا تظهر في القائمة
+PATH_PERM.set('/carrier',   'carriers.view');
+PATH_PERM.set('/upload',    'audits.create');
+PATH_PERM.set('/results',   'audits.view');
+PATH_PERM.set('/customers', 'receivables.view');
+
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
 // PageSlot active check.
@@ -295,8 +313,13 @@ function AppInner({ theme, toggleTheme }) {
   const navigate  = useNavigate();
   const location  = useLocation();
   const isAdmin   = profile?.role === 'admin';
-  const pathname  = location.pathname;
-  const isSettingsPath = pathname.startsWith('/settings');
+  // الحارس المركزي: المسار الممنوع يصير '__locked__' فلا يطابق أي PageSlot
+  // (لا عرض ولا جلب بيانات) ويسقط في تحويلة «مسار مجهول» → أول صفحة مسموحة.
+  const rawPath   = location.pathname;
+  const pathPermKey = rawPath.startsWith('/settings') ? 'system.view_settings' : PATH_PERM.get(rawPath);
+  const pathAllowed = isAdmin || !pathPermKey || can(pathPermKey);
+  const pathname  = pathAllowed ? rawPath : '__locked__';
+  const isSettingsPath = pathAllowed && rawPath.startsWith('/settings');
   const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
@@ -956,11 +979,20 @@ function AppInner({ theme, toggleTheme }) {
               />
             </PageSlot>
 
-            {/* Unknown paths → redirect */}
+            {/* Unknown paths (بما فيها الممنوعة '__locked__') → redirect */}
             {!isKnownPath && !isSettingsPath && (
-              <Routes>
-                <Route path="*" element={<Navigate to="/overview" replace/>}/>
-              </Routes>
+              visibleNav.length ? (
+                <Routes>
+                  {/* هبوط ذكي: مَن لا يملك overview.view يهبط على أول صفحة مرئية له
+                      (اكتُشف مع موظف مبيعات هبط على غرفة العمليات 2026-07-16) */}
+                  <Route path="*" element={<Navigate to={(can('overview.view') ? '/overview' : visibleNav[0]?.path) || '/overview'} replace/>}/>
+                </Routes>
+              ) : (
+                // موظف بلا أي صلاحية — رسالة بدل حلقة تحويل لا نهائية
+                <div style={{ padding: 60, textAlign: 'center', color: 'var(--muted)', fontFamily: 'var(--font-sans)', fontSize: 13 }}>
+                  🔒 لا صلاحيات ممنوحة لحسابك بعد — اطلب من المدير منحك صلاحيات من شاشة الفريق.
+                </div>
+              )
             )}
 
           </div>
