@@ -153,7 +153,11 @@ Deno.serve(async (req) => {
     const { data: { user } } = await uc.auth.getUser();
     if (user) {
       const { data: p } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
-      authed = p?.role === 'admin' || p?.permissions?.['crm.view'] === true;
+      // تفصيص 2026-07-16: تبويب «فرص من هاتف» صار على sales.hatif_leads —
+      // كان الشرط crm.view وحدها فرُفض موظف يملك التبويب (401 عند «مزامنة من هاتف»)
+      authed = p?.role === 'admin'
+        || p?.permissions?.['crm.view'] === true
+        || p?.permissions?.['sales.hatif_leads'] === true;
     }
   }
   if (!authed) return json({ error: 'unauthorized' }, 401);
