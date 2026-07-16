@@ -150,6 +150,15 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'support', label: 'تذاكر خدمة العملاء', icon: 'LifeBuoy', color: '#06B6D4',
+    perms: [
+      { key: 'support.view',   label: 'عرض لوحة التذاكر' },
+      { key: 'support.create', label: 'إنشاء تذكرة جديدة' },
+      { key: 'support.manage', label: 'تغيير حالة التذاكر وإسنادها', sensitive: true },
+      { key: 'support.delete', label: 'حذف تذكرة', sensitive: true },
+    ],
+  },
+  {
     id: 'campaigns', label: 'حملات واتساب', icon: 'MessageCircle', color: '#22C55E',
     perms: [
       // الإرسال فعل خارجي يصل العميل — حسّاس عمداً (يُستثنى من preset «قراءة وكتابة»)
@@ -263,12 +272,20 @@ export const COLLECTOR_ROLE_KEYS = [
   'merchants.view',
 ];
 
+// «موظف خدمة عملاء»: التذاكر + دليل المتاجر فقط — صفر مالية/تدقيق/حملات.
+export const SUPPORT_ROLE_KEYS = [
+  'overview.view',
+  'support.view', 'support.create', 'support.manage',
+  'merchants.view',
+];
+
 // Preset list shown in the UI as quick toggles.
 export const PRESETS = [
   { id: 'none',      label: 'بدون صلاحيات',  keys: []                       },
   { id: 'readonly',  label: 'قراءة فقط',     keys: READ_ONLY_KEYS           },
   { id: 'sales',     label: 'موظف مبيعات — فرص وحملات', keys: SALES_ROLE_KEYS },
   { id: 'collector', label: 'محصّل — مديونيات وحملات',  keys: COLLECTOR_ROLE_KEYS },
+  { id: 'support',   label: 'موظف خدمة عملاء — تذاكر',  keys: SUPPORT_ROLE_KEYS },
   { id: 'standard',  label: 'محاسب — قراءة وكتابة', keys: READ_WRITE_KEYS    },
   { id: 'full',      label: 'محاسب — صلاحيات كاملة (عدا الموظفين)', keys: FULL_ACCOUNTANT_KEYS },
 ];

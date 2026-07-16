@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
-  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings,
+  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy,
 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, toast } from '../components/UI.jsx';
 import {
@@ -26,7 +26,7 @@ const AVATAR_COLORS = [
 // Icon lookup for permission catalog sections
 const SECTION_ICONS = {
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
-  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings,
+  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy,
 };
 
 function RoleBadge({ role }) {

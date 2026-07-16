@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark } from './components/BrandLogo.jsx';
@@ -49,6 +49,8 @@ import CommandPalette    from './components/CommandPalette.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
 import UploadsHub       from './pages/UploadsHub.jsx';
+import TicketForm       from './pages/TicketForm.jsx';
+import SupportBoard     from './pages/SupportBoard.jsx';
 
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -148,6 +150,8 @@ const NAV_ITEMS = [
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
     ] },
+  // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
+  { id: 'support',         path: '/support',         label: 'تذاكر خدمة العملاء', icon: LifeBuoy, section: 'sales', permKey: 'support.view' },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'بيانات زوهو',       icon: BookOpen,   section: 'finance', permKey: 'zoho.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو مع لمحة', icon: GitCompare, section: 'finance', permKey: 'reconciliation.view' },
   { id: 'periods',         path: '/periods',         label: 'إقفال الشهور',      icon: Lock,       section: 'finance', permKey: 'system.period_close' },
@@ -211,6 +215,7 @@ const PAGE_TITLES = {
   '/retargeting':       'مركز المبيعات',
   '/whatsapp-settings': 'حملات واتساب',
   '/hatif-leads':       'فرص من هاتف',
+  '/support':           'تذاكر خدمة العملاء',
   '/uploads':           'حالة مصادر البيانات',
   '/hub':               'حالة الشركات',
   '/carrier':           'بروفايل الشركة',
@@ -292,7 +297,7 @@ function AppInner({ theme, toggleTheme }) {
   const isAdmin   = profile?.role === 'admin';
   const pathname  = location.pathname;
   const isSettingsPath = pathname.startsWith('/settings');
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -477,6 +482,10 @@ function AppInner({ theme, toggleTheme }) {
   );
 
   if (!user || !profile) return <LoginPage/>;
+
+  // «/ticket» — نموذج تذكرة الدعم السريع (§1.35): شاشة كاملة بلا قائمة جانبية.
+  // خلف بوابة الدخول (ليس عاماً) — رابط مباشر يحفظه فريق خدمة العملاء.
+  if (pathname === '/ticket') return <TicketForm/>;
 
   // Filter nav items by per-user permissions (src/lib/permissions.js).
   //   • admin → everything
@@ -854,6 +863,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/support'} scroll>
+              <SupportBoard isActive={pathname==='/support'}/>
             </PageSlot>
             <PageSlot active={pathname==='/zoho-data'} scroll>
               <ZohoData isActive={pathname==='/zoho-data'}/>

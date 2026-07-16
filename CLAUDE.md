@@ -337,6 +337,15 @@
 - **فخّ PostgREST**: أي RPC يرجع صفوفاً يقفه PostgREST عند **1000 صف** سيرفرياً (`.range()` لا يرفعه) — أي جلب كامل يُصفَّح بحلقة 1000 (مثال `loadFollowupsMap`).
 - **فخّ البناء**: لا تسلسل `build | grep | tail && git push` — الأنبوب يبتلع كود خروج vite (وصلت دفعة مكسورة مرة). البناء أمر مستقل ويُفحص `EXIT` قبل أي commit.
 
+### 1.35 تذاكر خدمة العملاء `/ticket` + `/support` ✅ (2026-07-16)
+المشكلة: فريق الخدمة يرد على العملاء في هاتف ومشاكلهم تضيع (لا رقم مرجعي/حالة/مسؤول). الحل = نظام تذاكر مصغّر:
+- **الجداول**: `support_tickets` (ticket_no تسلسلي → `TKT-0042` · store_id/name/phone من دليل المتاجر · title/description · carrier_id/name اختياري · awb اختياري · status · created_by/assigned_to · resolved_at) + **`support_ticket_events`** (create/status/assign/comment — سجل كامل، وهو ما سيغذّي إشعارات واتساب مستقبلاً). RPC `support_ticket_stats()`. حالات: open→in_progress→waiting_customer→resolved→closed (`TICKET_STATUSES` في `supportService.js` = نقطة الحقيقة).
+- **`/ticket`** (TicketForm.jsx): نموذج مستقل **بلا قائمة جانبية** — early return في AppInner **بعد بوابة الدخول** (ليس عاماً — قرار المستخدم الصريح). متجر ببحث مباشر (1,491 متجر، لا select خام؛ بلا تطابق = يُحفظ الاسم كما كُتب) + هاتف المتجر يُلتقط تلقائياً. شاشة نجاح تبرز الرقم المرجعي + نسخ. `?phone=9665...` يملأ المتجر تلقائياً (لرابط مستقبلي من هاتف).
+- **`/support`** (SupportBoard.jsx، قسم «المبيعات»): بطاقات حالة تفلتر بالنقر (+«مفتوحة +3 أيام» حمراء) · فلاتر (بحث حر يلتقط TKT-N/متجر/AWB/هاتف · شركة · مسؤول) · **تغيير الحالة والإسناد من الصف مباشرة** (select مضمّن) · درج تفاصيل بسجل الأحداث + تعليقات · تصدير عبر `persistAndDownloadExport` (kind=`support_tickets`).
+- **الصلاحيات**: `support.view/create` + `support.manage` (حسّاس) + `support.delete` (حسّاس) — قسم `support` في الكتالوج (أيقونة LifeBuoy مضافة لـ`SECTION_ICONS` في EmployeeManager). **دور جاهز «موظف خدمة عملاء»** (`SUPPORT_ROLE_KEYS`: overview.view + support.* عدا delete + merchants.view).
+- **واتساب مستقبلاً**: الهاتف محفوظ بالتذكرة + كل تحديث حدث مسجَّل → إشعار إنشاء/حل عبر مسار `hatif-send` القائم (قاعدة §1.29) — لم يُبنَ بعد.
+- **القاعدة**: أي ميزة دعم/تذاكر جديدة تكتب حدثاً في `support_ticket_events` (لا تعدّل التذكرة صامتة) — السجل هو المرجع ومصدر الإشعارات.
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`
