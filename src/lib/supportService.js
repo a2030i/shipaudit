@@ -27,6 +27,9 @@ export const TICKET_CATEGORIES = {
 };
 export function ticketCategoryMeta(k) { return TICKET_CATEGORIES[k] || TICKET_CATEGORIES.other; }
 
+// أنواع الشحنات يلزمها رقم AWB؛ المالي/التقني/أخرى لا يلزمها
+export const AWB_REQUIRED_CATEGORIES = ['delayed', 'damaged', 'cod'];
+
 // إحصائيات رأس اللوحة (RPC — عدّ سيرفري، لا يتأثر بالفلاتر/الترقيم)
 export async function loadTicketStats() {
   const { data, error } = await supabase.rpc('support_ticket_stats');
@@ -96,8 +99,40 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
   return { rows: (data || []).map(mapTicket), count: count ?? 0 };
 }
 
-// إنشاء تذكرة + حدث 'create' — يرجع التذكرة برقمها المرجعي
-export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, userId }) {
+// إنشاء تذكرة — مع ذكاء نفس الشحنة: لو AWB يطابق تذكرة سابقة،
+//   • محلولة/مغلقة → **إعادة فتح تلقائية** + إلحاق التفاصيل الجديدة (reopened)
+//   • مفتوحة أصلاً → لا تذكرة مكررة؛ تُلحق التفاصيل بها (existing)
+// وإلا تُنشأ جديدة (created). يرجع { ticket, created|reopened|existing }.
+export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, assignedTo, assigneeName, userId }) {
+  const awbNorm = (awb || '').trim();
+  if (awbNorm) {
+    const { data: dups, error: dupErr } = await supabase.from('support_tickets')
+      .select(TICKET_SELECT)
+      .ilike('awb', awbNorm)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (dupErr) throw dupErr;
+    const dup = dups?.[0];
+    if (dup) {
+      const detail = `مشكلة جديدة على نفس الشحنة: ${title}${description ? ` — ${description}` : ''}`;
+      if (dup.status === 'resolved' || dup.status === 'closed') {
+        const { error: upErr } = await supabase.from('support_tickets')
+          .update({ status: 'open', resolved_at: null }).eq('id', dup.id);
+        if (upErr) throw upErr;
+        await supabase.from('support_ticket_events').insert([
+          { ticket_id: dup.id, user_id: userId || null, kind: 'status', old_status: dup.status, new_status: 'open',
+            note: 'أُعيد فتحها تلقائياً — وردت مشكلة جديدة لنفس رقم الشحنة', internal: true },
+          { ticket_id: dup.id, user_id: userId || null, kind: 'comment', note: detail, internal: true },
+        ]);
+        return { ticket: { ...mapTicket(dup), status: 'open', resolvedAt: null }, reopened: true };
+      }
+      // مفتوحة أصلاً → إلحاق بدل التكرار
+      await supabase.from('support_ticket_events').insert({
+        ticket_id: dup.id, user_id: userId || null, kind: 'comment', note: detail, internal: true,
+      });
+      return { ticket: mapTicket(dup), existing: true };
+    }
+  }
   const { data, error } = await supabase.from('support_tickets').insert({
     store_id: storeId || null,
     store_name: storeName,
@@ -106,15 +141,16 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
     description: description || null,
     carrier_id: carrierId || null,
     carrier_name: carrierName || null,
-    awb: awb || null,
+    awb: awbNorm || null,
     category: category || 'other',
+    assigned_to: assignedTo || null,
     created_by: userId || null,
   }).select(TICKET_SELECT).single();
   if (error) throw error;
-  await supabase.from('support_ticket_events').insert({
-    ticket_id: data.id, user_id: userId || null, kind: 'create', new_status: 'open',
-  });
-  return mapTicket(data);
+  const events = [{ ticket_id: data.id, user_id: userId || null, kind: 'create', new_status: 'open', internal: true }];
+  if (assignedTo) events.push({ ticket_id: data.id, user_id: userId || null, kind: 'assign', note: assigneeName ? `أُسندت إلى ${assigneeName}` : 'أُسندت عند الإنشاء', internal: true });
+  await supabase.from('support_ticket_events').insert(events);
+  return { ticket: mapTicket(data), created: true };
 }
 
 // تغيير الحالة (+ resolved_at عند الحل/الإغلاق) وتسجيل الحدث

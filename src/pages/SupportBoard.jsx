@@ -7,7 +7,8 @@ import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lo
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
-import { Card, Btn, Spinner, Empty, toast, PageHeader, Select } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHeader, Select, Modal } from '../components/UI.jsx';
+import TicketCreateForm from '../components/TicketCreateForm.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCarriers } from '../lib/coreService.js';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -71,6 +72,7 @@ export default function SupportBoard({ isActive = true }) {
   const [events, setEvents] = useState(null);
   const [comment, setComment] = useState('');
   const [commentInternal, setCommentInternal] = useState(true); // 🔒 الافتراض: داخلية
+  const [createOpen, setCreateOpen] = useState(false);          // مودال «تذكرة جديدة»
 
   const refresh = async (soft = false) => {
     if (!soft) setBusy(true);
@@ -184,7 +186,7 @@ export default function SupportBoard({ isActive = true }) {
         actions={
           <>
             <Btn size="sm" variant="primary" icon={<Plus size={14}/>}
-              onClick={() => window.open('/ticket', '_blank', 'noopener')}>تذكرة جديدة</Btn>
+              onClick={() => setCreateOpen(true)}>تذكرة جديدة</Btn>
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!rows.length}>تصدير</Btn>
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={() => refresh()} disabled={busy}>تحديث</Btn>
           </>
@@ -398,6 +400,15 @@ export default function SupportBoard({ isActive = true }) {
         </>
       ))}
 
+      {/* ── مودال تذكرة جديدة — نفس نموذج /ticket (مكوّن مشترك) ── */}
+      {createOpen && (
+        <Modal title="تذكرة دعم جديدة" width={580} onClose={() => setCreateOpen(false)}>
+          <TicketCreateForm
+            onCreated={() => refresh(true)}
+            onClose={() => setCreateOpen(false)}/>
+        </Modal>
+      )}
+
       {/* ── درج التفاصيل ── */}
       {drawer && (
         <div role="dialog" aria-modal="true" onClick={() => setDrawer(null)}
@@ -423,7 +434,12 @@ export default function SupportBoard({ isActive = true }) {
               <div><span style={{ color: 'var(--muted2)' }}>AWB: </span><span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr' }}>{drawer.awb || '—'}</span></div>
               <div><span style={{ color: 'var(--muted2)' }}>أنشأها: </span>{drawer.creatorName || '—'}</div>
               <div><span style={{ color: 'var(--muted2)' }}>التاريخ: </span>{fmtDateTime(drawer.createdAt)}</div>
-              <div style={{ gridColumn: '1 / -1' }}><span style={{ color: 'var(--muted2)' }}>الحالة: </span><StatusPill status={drawer.status}/></div>
+              <div style={{ gridColumn: '1 / -1' }}>
+                <span style={{ color: 'var(--muted2)' }}>الحالة: </span><StatusPill status={drawer.status}/>
+                {drawer.status === 'waiting_customer' && (
+                  <span style={{ fontSize: 10.5, color: 'var(--gold)', marginInlineStart: 8 }}>⏳ تُغلق تلقائياً بعد 3 أيام بلا رد</span>
+                )}
+              </div>
             </div>
 
             {drawer.description && (
