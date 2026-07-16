@@ -3,9 +3,10 @@
 // The API key lives only in the edge function; this UI never sees it.
 
 import { useState, useEffect } from 'react';
-import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
+import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
@@ -22,14 +23,18 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [results, setResults]   = useState(null);
   const [selected, setSelected] = useState(() => new Set());   // أرقام المستلِمين المختارين
   const [tpl, setTpl]           = useState('');                // القالب المختار لهذه الحملة
+  const [waStatus, setWaStatus] = useState(() => new Map());   // آخر حملة/رقم — لتحذير التكرار
+  const [schedOn, setSchedOn]   = useState(false);             // ⏰ جدولة بدل الإرسال الآن
+  const [schedAt, setSchedAt]   = useState('');
 
   useEffect(() => {
     if (!open) return;
-    setResults(null); setVerified(null);
+    setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
     setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
     loadWhatsAppConfig()
       .then(c => { setCfg(c); setTpl(c.templateName || (c.templates || [])[0] || ''); })
       .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); });
+    loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   }, [open]);
 
   if (!open) return null;
@@ -51,6 +56,19 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const selectedValid = valid.filter(r => selected.has(r.to));
   const overLimit = selectedValid.length > 200;
 
+  // حماية الإفراط: مَن أُرسل له خلال آخر 7 أيام (من أي تبويب/حملة)
+  const recentDays = 7;
+  const isRecent = (to) => {
+    const st = waStatus.get(to);
+    return !!(st?.lastSentAt && (Date.now() - new Date(st.lastSentAt).getTime()) < recentDays * 86_400_000);
+  };
+  const recentSelected = selectedValid.filter(r => isRecent(r.to));
+  const excludeRecent = () => setSelected(prev => {
+    const n = new Set(prev);
+    for (const r of recentSelected) n.delete(r.to);
+    return n;
+  });
+
   const toggle = (to) => setSelected(prev => { const n = new Set(prev); n.has(to) ? n.delete(to) : n.add(to); return n; });
   const allOn  = () => setSelected(new Set(valid.map(r => r.to)));
   const allOff = () => setSelected(new Set());
@@ -63,7 +81,29 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     else { setVerified(false); toast(`فشل التحقق: ${r?.error || 'غير معروف'}`, 'error'); }
   };
 
+  // جدولة بدل الإرسال الآن — تُكتب في campaign_queue وينفّذها campaign-runner
+  const doSchedule = async () => {
+    if (!tpl) { toast('اختر قالباً أولاً', 'warn'); return; }
+    if (!selectedValid.length || overLimit) { toast('راجع اختيار المستلمين', 'warn'); return; }
+    if (!schedAt || new Date(schedAt).getTime() < Date.now() + 5 * 60_000) {
+      toast('اختر وقتاً مستقبلياً (بعد 5 دقائق على الأقل)', 'warn'); return;
+    }
+    setSending(true);
+    try {
+      await scheduleCampaign({
+        scheduledAt: new Date(schedAt).toISOString(), templateName: tpl,
+        recipients: selectedValid.map(v => ({ to: v.to, vars: v.vars, name: v.name, amount: v.amount })),
+        bucketLabel, userId: user?.id || null,
+      });
+      toast(`⏰ جُدولت الحملة (${selectedValid.length} مستلم) — تُرسَل ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
+      onSent?.({ scheduled: true });
+      onClose?.();
+    } catch (e) { toast(`فشلت الجدولة: ${e.message}`, 'error'); }
+    setSending(false);
+  };
+
   const doSend = async () => {
+    if (schedOn) return doSchedule();
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
     if (overLimit) { toast('الحد 200 لكل دفعة — قلّل الاختيار', 'warn'); return; }
@@ -165,13 +205,38 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             </div>
           )}
 
+          {/* حماية الإفراط في المراسلة — عبر كل التبويبات والحملات */}
+          {recentSelected.length > 0 && (
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12,
+              background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
+              borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: 'var(--gold)' }}>
+              <AlertTriangle size={14}/> {recentSelected.length} من المختارين أُرسل لهم خلال آخر {recentDays} أيام
+              <Btn size="sm" variant="ghost" onClick={excludeRecent}>استبعادهم</Btn>
+            </div>
+          )}
+
+          {/* ⏰ جدولة بدل الإرسال الفوري — ينفّذها المشغّل الآلي كل 15 دقيقة */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12,
+            border: '1px dashed var(--border2)', borderRadius: 9, padding: '8px 12px' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12.5, cursor: 'pointer', color: 'var(--text)' }}>
+              <input type="checkbox" checked={schedOn} onChange={e => setSchedOn(e.target.checked)} style={{ accentColor: 'var(--accent)' }}/>
+              <Clock size={13}/> جدولة الإرسال لوقت لاحق
+            </label>
+            {schedOn && (
+              <input type="datetime-local" value={schedAt} onChange={e => setSchedAt(e.target.value)}
+                style={{ fontSize: 12.5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}/>
+            )}
+          </div>
+
           <div style={{ background: 'rgba(217,119,6,.07)', border: '1px solid rgba(217,119,6,.3)', borderRadius: 8, padding: '9px 12px', fontSize: 11.5, color: '#92400E', marginBottom: 14 }}>
             ⚠️ سيُرسَل القالب لـ{selectedValid.length} عميل مختار عبر واتساب. لا يمكن التراجع بعد الإرسال.
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
             <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !tpl}>
-              {sending ? <><Spinner size={14}/> جارٍ الإرسال…</> : <><Send size={14}/> إرسال ({selectedValid.length})</>}
+              {sending ? <><Spinner size={14}/> جارٍ…</>
+                : schedOn ? <><Clock size={14}/> جدولة ({selectedValid.length})</>
+                : <><Send size={14}/> إرسال ({selectedValid.length})</>}
             </Btn>
             <Btn variant="ghost" onClick={onClose} disabled={sending}>إلغاء</Btn>
           </div>

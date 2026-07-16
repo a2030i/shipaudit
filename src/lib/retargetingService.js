@@ -209,3 +209,53 @@ export async function loadRetargetingLeads({
     page, limit,
   };
 }
+
+// ── محرك المبيعات (§1.37) ────────────────────────────────────────────
+// إسناد/ختم جماعي للمتابعات الموحّدة (يخدم إعادة الاستهداف + فرص هاتف)
+export async function bulkSetFollowups(phones, { ownerId = null, status = null, touch = false } = {}) {
+  if (!phones?.length) return 0;
+  let total = 0;
+  for (let i = 0; i < phones.length; i += 1000) {   // فخّ PostgREST-1000
+    const { data, error } = await supabase.rpc('set_retargeting_followups_bulk', {
+      p_phones: phones.slice(i, i + 1000), p_owner: ownerId || null,
+      p_status: status || null, p_touch: !!touch,
+    });
+    if (error) throw error;
+    total += Number(data) || 0;
+  }
+  return total;
+}
+
+// «مهامي اليوم» — يوم موظف المبيعات في استدعاء واحد
+export async function loadSalesToday(userId = null) {
+  const { data, error } = await supabase.rpc('sales_today', { p_user: userId || null });
+  if (error) throw error;
+  return {
+    dueFollowups: data?.due_followups || [],
+    replies: data?.replies || [],
+    myNewLeads: data?.my_new_leads || [],
+    myNewLeadsCount: Number(data?.my_new_leads_count) || 0,
+    myTasks: data?.my_tasks || [],
+    myFollowupsTotal: Number(data?.my_followups_total) || 0,
+  };
+}
+
+// معدل التحويل بالموظف — نقطة الحقيقة للوحة الأداء والأهداف
+export async function loadSalesOwnerStats() {
+  const { data, error } = await supabase.rpc('sales_owner_stats');
+  if (error) throw error;
+  return (Array.isArray(data) ? data : []).map(r => ({
+    ownerId: r.owner_id, assigned: Number(r.assigned) || 0,
+    worked: Number(r.worked) || 0, returned: Number(r.returned) || 0,
+    conversionPct: Number(r.conversion_pct) || 0, touches7d: Number(r.touches_7d) || 0,
+  }));
+}
+
+// جدولة حملة (طابور campaign_queue — ينفّذها campaign-runner كل 15 دقيقة)
+export async function scheduleCampaign({ scheduledAt, templateName, recipients, bucketLabel, userId }) {
+  const { error } = await supabase.from('campaign_queue').insert({
+    scheduled_at: scheduledAt, template_name: templateName,
+    recipients, bucket_label: bucketLabel || null, created_by: userId || null,
+  });
+  if (error) throw error;
+}

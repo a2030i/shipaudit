@@ -12,7 +12,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   loadRetargetingDashboard, loadRetargetingLeads, loadRetargetingFollowupStats, setRetargetingFollowup,
-  loadRetargetingCampaign, loadRetargetingStatusChanges,
+  loadRetargetingCampaign, loadRetargetingStatusChanges, bulkSetFollowups,
   SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
 import { loadWhatsAppCampaignStatus, normalizeSaudiPhone } from '../lib/whatsappService.js';
@@ -67,8 +67,10 @@ function Sel({ value, onChange, children }) {
 const LIMIT = 50;
 
 export default function Retargeting({ isActive = true }) {
-  const { can, user } = useAuth();
+  const { can, user, isAdmin } = useAuth();
   const [exporting, setExporting] = useState(false);
+  const [bulkOwner, setBulkOwner] = useState('');   // إسناد جماعي للنتائج المفلترة
+  const [assigning, setAssigning] = useState(false);
   const [dash, setDash] = useState(null);
   const [fuStats, setFuStats] = useState(null);
   const [campaign, setCampaign] = useState(null);
@@ -82,10 +84,11 @@ export default function Retargeting({ isActive = true }) {
   const [followUp, setFollowUp] = useState(null);   // العميل المفتوح في مودال المتابعة
   const [waStatus, setWaStatus] = useState(() => new Map());   // حالة آخر حملة لكل هاتف
   const [waRecipients, setWaRecipients] = useState(null);      // مستلمو حملة (bulk أو عميل واحد)
-  const [filters, setFilters] = useState({
+  // الموظف يفتح على «المسندة لي» افتراضياً (§1.37) — المدير يرى الكل
+  const [filters, setFilters] = useState(() => ({
     segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
-    status: '', ownerId: '', unassigned: false, includeExcluded: false, page: 0,
-  });
+    status: '', ownerId: (!isAdmin && user?.id) ? user.id : '', unassigned: false, includeExcluded: false, page: 0,
+  }));
 
   const loadDash = useCallback(async () => {
     setLoading(true);
@@ -170,6 +173,35 @@ export default function Retargeting({ isActive = true }) {
       toast(`صُدّر ${fmt0(all.length)} عميل ✓ (محفوظ في سجل الملفات)`, 'success');
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
     setExporting(false);
+  };
+
+  // إسناد جماعي: كل النتائج المطابقة للفلاتر (لا الصفحة فقط) — يجمع الهواتف
+  // صفحات-صفحات ثم RPC واحدة (§1.37 — كان الإسناد فردياً عبر المودال فقط)
+  const bulkAssign = async () => {
+    if (!bulkOwner) return;
+    const emp = employees.find(e => e.id === bulkOwner);
+    if (!window.confirm(`إسناد كل النتائج المطابقة (${fmt0(count)} فرصة) إلى ${emp?.name || 'الموظف'}؟`)) return;
+    setAssigning(true);
+    try {
+      const base = {
+        segment: filters.segment || null, priority: filters.priority || null,
+        integration: filters.integration || null, billing: filters.billing || null,
+        hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
+        status: filters.status || null, ownerId: filters.ownerId || null,
+        unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+      };
+      const phones = [];
+      for (let page = 0; page < 60; page++) {
+        const r = await loadRetargetingLeads({ ...base, page, limit: 500 });
+        phones.push(...r.rows.map(x => x.phone).filter(Boolean));
+        if (!r.rows.length || phones.length >= r.count) break;
+      }
+      const n = await bulkSetFollowups(phones, { ownerId: bulkOwner });
+      toast(`أُسندت ${fmt0(n)} فرصة إلى ${emp?.name || 'الموظف'} ✓`, 'success');
+      setBulkOwner('');
+      loadList(); loadDash();
+    } catch (e) { toast(`فشل الإسناد: ${e.message}`, 'error'); }
+    setAssigning(false);
   };
 
   const canCampaign = can('campaigns.send');
@@ -355,6 +387,20 @@ export default function Retargeting({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={filters.includeExcluded} onChange={e => setFilter({ includeExcluded: e.target.checked })}/> إظهار المستبعَدين (بلاك لست/تجريبي)
             </label>
+            {isAdmin && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <select value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}
+                  style={{ padding: '6px 10px', borderRadius: 8, fontSize: 12, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+                  <option value="">إسناد النتائج لموظف…</option>
+                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name || emp.email}</option>)}
+                </select>
+                {bulkOwner && (
+                  <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={assigning || !count}>
+                    {assigning ? 'يُسند…' : `إسناد ${fmt0(count)}`}
+                  </Btn>
+                )}
+              </span>
+            )}
             {canCampaign && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} style={{ marginInlineStart: 'auto' }}
                 onClick={openBulkCampaign} disabled={!leads.some(l => l.phone)}>
@@ -449,7 +495,17 @@ export default function Retargeting({ isActive = true }) {
         <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients}
           bucketLabel="إعادة الاستهداف"
           onClose={() => setWaRecipients(null)}
-          onSent={() => { setWaRecipients(null); loadWa(); }}/>
+          onSent={(r) => {
+            // ختم حالة المتابعة «أُرسل واتساب» للمستلمين (§1.37 — كان الإرسال
+            // الرسمي لا يلمس المتابعة بينما wa.me اليدوية تختمها). المجدولة لا
+            // تُختم الآن (لم تُرسل بعد — المشغّل يرسلها لاحقاً).
+            const phones = (waRecipients || []).map(x => x.to).filter(Boolean);
+            setWaRecipients(null); loadWa();
+            if (!r?.scheduled && phones.length) {
+              bulkSetFollowups(phones, { status: 'whatsapp_sent', touch: true })
+                .then(() => loadList()).catch(() => {});
+            }
+          }}/>
       )}
     </div>
   );

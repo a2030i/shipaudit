@@ -139,6 +139,7 @@ const NAV_ITEMS = [
   { id: 'sales-hub',       path: '/retargeting',     label: 'مركز المبيعات',  icon: Target,    section: 'sales',
     permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
+      { tabId: 'today',       label: 'يومي',               icon: Target },
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
       { tabId: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    legacy: '/hatif-leads' },
       { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
