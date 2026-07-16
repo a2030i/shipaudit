@@ -916,7 +916,14 @@ export async function loadTreasuryBalances() {
 export async function loadCustomerBalanceRecon() {
   const { data, error } = await supabase.rpc('customer_balance_recon_zoho');
   if (error) throw error;
-  return (data || []).map(r => ({
+  // عمر الكشف الداخلي (2026-07-17): المستخدم ظن الرقم معطلاً وهو من ملف
+  // invoice_details منقطع منذ أسبوع — نعرض تاريخه وملفه على البطاقة
+  const { data: snap } = await supabase.from('customer_receivables')
+    .select('uploaded_at, source_file').order('uploaded_at', { ascending: false }).limit(1);
+  const internalMeta = snap?.[0]
+    ? { uploadedAt: snap[0].uploaded_at, sourceFile: snap[0].source_file }
+    : null;
+  const rows = (data || []).map(r => ({
     anchor:         r.anchor,
     storeId:        r.store_id,
     storeName:      r.store_name || (r.zoho_names || [])[0] || (r.internal_names || [])[0] || r.anchor,
@@ -933,6 +940,8 @@ export async function loadCustomerBalanceRecon() {
     diff:           Number(r.diff) || 0,
     status:         r.recon_status,
   }));
+  rows.internalMeta = internalMeta;   // ملحق على المصفوفة — لا يكسر مستهلكي array
+  return rows;
 }
 
 // ─────────────────────────────────────────────────────────────────

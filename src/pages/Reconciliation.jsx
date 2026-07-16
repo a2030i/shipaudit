@@ -722,7 +722,17 @@ function ZohoLiveTab({ isActive = true }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 14 }}>
         {[
           { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: '#8B5CF6' },
-          { k: '', label: 'الكشف الداخلي', val: kpi.intTot, sub: 'آخر كشف مرفوع', color: '#3B82F6' },
+          // عمر الكشف ظاهر على البطاقة (2026-07-17) — المستخدم ظن الرقم معطلاً
+          // وهو من ملف invoice_details منقطع منذ أسبوع
+          { k: '', label: 'الكشف الداخلي', val: kpi.intTot,
+            sub: (() => {
+              const m = rows.internalMeta;
+              if (!m?.uploadedAt) return 'آخر كشف مرفوع';
+              const days = Math.floor((Date.now() - new Date(m.uploadedAt).getTime()) / 86_400_000);
+              const when = new Date(m.uploadedAt).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
+              return `${m.sourceFile || 'كشف'} — ${when}${days >= 3 ? ` (قديم ${days} يوم ⚠️)` : ''}`;
+            })(),
+            color: rows.internalMeta?.uploadedAt && (Date.now() - new Date(rows.internalMeta.uploadedAt).getTime()) > 3 * 86_400_000 ? 'var(--red)' : '#3B82F6' },
           { k: 'matched', label: 'مطابق للهللة', val: kpi.matched.reduce((s, r) => s + r.zoho, 0), sub: `${kpi.matched.length} عميلاً`, color: 'var(--green)' },
           { k: 'needs_investigation', label: 'يحتاج تحقيقاً', val: kpi.invest.reduce((s, r) => s + Math.abs(r.diff), 0), sub: `${kpi.invest.length} عميل — فرق`, color: 'var(--red)' },
           { k: 'internal_only', label: 'داخلي فقط', val: kpi.internal.reduce((s, r) => s + r.internal, 0), sub: `${kpi.internal.length} — أرصدة قديمة بلا فاتورة زوهو`, color: 'var(--gold)' },
