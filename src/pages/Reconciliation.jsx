@@ -364,20 +364,14 @@ export default function Reconciliation({ isActive = true }) {
       {tab === 'zoho_live' && <ZohoLiveTab isActive={isActive}/>}
       {tab === 'customers' && <>
 
-      {/* تنبيه دائم: هذا التبويب كشوف محفوظة (لا يتحدث بالتحديث) — الحي في ⚡ */}
+      {/* توضيح المصدرين: الداخلي كشف مرفوع يتجمد بين الرفعات · زوهو حي من API */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-        background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
-        border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
+        background: 'color-mix(in srgb, #8B5CF6 7%, transparent)',
+        border: '1px solid color-mix(in srgb, #8B5CF6 25%, transparent)',
         borderRadius: 10, padding: '9px 14px', marginBottom: 14, fontSize: 12.5,
       }}>
-        <span>🕐 هذا التبويب يقارن <b>كشوفاً محفوظة</b> (آخر ميزان مراجعة زوهو مرفوع × آخر كشف داخلي) — الأرقام تتجمد حتى الرفعة التالية ولا يغيّرها تحديث الصفحة.</span>
-        <button onClick={() => setTab('zoho_live')} style={{
-          border: 'none', background: 'transparent', cursor: 'pointer',
-          color: 'var(--accent)', fontWeight: 700, fontSize: 12.5, fontFamily: 'var(--font-sans)', textDecoration: 'underline',
-        }}>
-          أرقام زوهو الحية الآن → تبويب «⚡ العملاء — زوهو API»
-        </button>
+        <span>⚡ عمود <b>زوهو حي من الـAPI</b> (لا رفع له) · عمود <b>الداخلي</b> = آخر ملف «استحقاق المتاجر» مرفوع — يتجمد حتى الرفعة التالية.</span>
       </div>
 
       {/* Upload row */}
@@ -566,12 +560,12 @@ export default function Reconciliation({ isActive = true }) {
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {/* توضيح (2026-07-17): كلا العمودين كشوف محفوظة مجمّدة — المستخدم
-                    ظنّ عمود Zoho حيّاً وأعاد التحميل 10 مرات. الحيّ في تبويب ⚡ */}
+                {/* 2026-07-17: عمود زوهو صار حيّاً من المرآة (RPC balance_reconciliation
+                    كان يقرأ ميزان مراجعة مرفوعاً يتقادم أسابيع — «زوهو API ما عاد فيه ملفات») */}
                 <th style={thStyle}>#</th>
                 <th style={thStyle}>المتجر</th>
-                <th style={{...thStyle, color: '#3B82F6'}}>الداخلي (كشف محفوظ — المرجع)</th>
-                <th style={thStyle}>زوهو (ميزان مراجعة مرفوع — ليس حيّاً)</th>
+                <th style={{...thStyle, color: '#3B82F6'}}>الداخلي (استحقاق المتاجر — المرجع)</th>
+                <th style={{...thStyle, color: '#8B5CF6'}}>⚡ زوهو (حي من API)</th>
                 <th style={thStyle}>الفرق</th>
                 <th style={thStyle}>الإجراء</th>
               </tr>
