@@ -3,7 +3,10 @@
 // الشرائح/الأولوية/الربط + فلاتر كاملة + جدول فرص مُرقّم. يقرأ محرّك التصنيف
 // (v_crm_retargeting) عبر retargetingService — عميل فريد بالهاتف.
 import { useState, useEffect, useCallback } from 'react';
-import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search, Send } from 'lucide-react';
+import { Target, RefreshCw, Phone, MessageCircle, ChevronLeft, ChevronRight, Search, Send, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, PageHeader, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
@@ -64,7 +67,8 @@ function Sel({ value, onChange, children }) {
 const LIMIT = 50;
 
 export default function Retargeting({ isActive = true }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
+  const [exporting, setExporting] = useState(false);
   const [dash, setDash] = useState(null);
   const [fuStats, setFuStats] = useState(null);
   const [campaign, setCampaign] = useState(null);
@@ -122,6 +126,52 @@ export default function Retargeting({ isActive = true }) {
 
   const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
 
+  // تصدير كل النتائج بالفلاتر الحالية (لا الصفحة المعروضة فقط) — صفحات 500
+  // (فخّ PostgREST-1000 §1.34) عبر persistAndDownloadExport (قاعدة §1.13).
+  const exportXlsx = async () => {
+    if (exporting) return;
+    setExporting(true);
+    try {
+      const base = {
+        segment: filters.segment || null, priority: filters.priority || null,
+        integration: filters.integration || null, billing: filters.billing || null,
+        hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
+        status: filters.status || null, ownerId: filters.ownerId || null,
+        unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+      };
+      const all = [];
+      for (let page = 0; page < 60; page++) {
+        const r = await loadRetargetingLeads({ ...base, page, limit: 500 });
+        all.push(...r.rows);
+        if (!r.rows.length || all.length >= r.count) break;
+      }
+      if (!all.length) { toast('لا نتائج للتصدير بالفلاتر الحالية', 'info'); setExporting(false); return; }
+      const headers = ['المتجر', 'الهاتف', 'المجموعة', 'الأولوية', 'القناة المقترحة', 'الشحنات',
+        'آخر شحنة', 'أيام منذ آخر شحنة', 'المحفظة', 'نوع الفوترة', 'الربط', 'حالة المتابعة', 'المسؤول', 'ملاحظات'];
+      const aoa = [
+        ['إعادة استهداف العملاء', '', new Date().toISOString().slice(0, 10)],
+        [],
+        headers,
+        ...all.map(l => [l.storeName, l.phone || '', segmentMeta(l.segment).label, priorityMeta(l.priority).label,
+          CHANNELS[l.channel] || l.channel || '', l.totalShipments,
+          l.lastShipment ? new Date(l.lastShipment).toLocaleDateString('en-CA') : '',
+          l.daysSinceLast ?? '', l.wallet, l.billingType || '', l.integrationType || '',
+          statusMeta(l.status).label, l.ownerName || '', l.notes || '']),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 30 : (i === 13 ? 36 : 13) }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'الفرص');
+      rtl(wb);
+      await persistAndDownloadExport({
+        wb, fileName: `اعادة_الاستهداف_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'retargeting', rowCount: all.length, userId: user?.id || null,
+      });
+      toast(`صُدّر ${fmt0(all.length)} عميل ✓ (محفوظ في سجل الملفات)`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+    setExporting(false);
+  };
+
   const canCampaign = can('campaigns.send');
   const openBulkCampaign = () => {
     const recs = leads.filter(l => l.phone).map(leadToRecipient);
@@ -141,7 +191,17 @@ export default function Retargeting({ isActive = true }) {
         title="إعادة استهداف العملاء"
         subtitle="كشف المتاجر → فرص قابلة للتنفيذ · عميل واحد لكل رقم · أولوية واضحة"
         meta={dash ? `${fmt0(st.unique_customers)} عميل (بلا تكرار) · ${fmt0(st.total_stores)} متجر · ${fmt0(st.total_shipments)} شحنة` : null}
-        actions={<Btn size="sm" variant="ghost" onClick={() => { loadDash(); loadList(); }} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+        actions={
+          <>
+            {can('sales.export') && (
+              <Btn size="sm" variant="ghost" icon={exporting ? <Spinner size={13}/> : <Download size={13}/>}
+                onClick={exportXlsx} disabled={exporting || !count}>
+                {exporting ? 'يصدّر…' : `تصدير النتائج (${fmt0(count)})`}
+              </Btn>
+            )}
+            <Btn size="sm" variant="ghost" onClick={() => { loadDash(); loadList(); }} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+          </>
+        }
       />
 
       {!dash && loading ? <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div> : dash && (<>
