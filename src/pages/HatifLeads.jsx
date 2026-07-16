@@ -222,13 +222,12 @@ export default function HatifLeads({ isActive = true }) {
                         </select>
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                        {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
+                            يظهر للجميع والمودال يوضّح الصلاحية الناقصة */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           {telLink(l.phone) && <a href={telLink(l.phone)} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {can('campaigns.send') && (
-                            <button onClick={() => setWaRecipients([toRecipient(l)])} title="إطلاق حملة قالب"
-                              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
-                          )}
-                          {waLink(l.phone) && <a href={waLink(l.phone)} target="_blank" rel="noreferrer" title="محادثة يدوية" style={{ color: 'var(--muted)' }}><MessageCircle size={15}/></a>}
+                          <button onClick={() => setWaRecipients([toRecipient(l)])} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)"
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
                         </div>
                       </td>
                     </tr>

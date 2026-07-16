@@ -456,10 +456,11 @@ export default function Retargeting({ isActive = true }) {
                           return <div style={{ fontSize: 10, color: st.c, marginTop: 2 }}>📲 حملة {fmtDate(w.lastSentAt)}{w.sends > 1 ? ` (${w.sends}×)` : ''} · {st.t}</div>; })()}
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }}>
+                        {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
+                            يظهر للجميع والمودال يوضّح الصلاحية الناقصة (لا إخفاء صامت) */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
                           {telLink(l.phone) && <a href={telLink(l.phone)} onClick={e => e.stopPropagation()} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
-                          {canCampaign && l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إطلاق حملة قالب لهذا العميل" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
-                          {waLink(l.phone) && <a href={waLink(l.phone)} onClick={e => e.stopPropagation()} target="_blank" rel="noreferrer" title="محادثة يدوية (بلا قالب)" style={{ color: 'var(--muted)' }}><MessageCircle size={15}/></a>}
+                          {l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
                         </div>
                       </td>
                     </tr>
@@ -668,8 +669,9 @@ function FollowupModal({ lead, employees, onClose, onSaved, canCampaign, onCampa
         {/* أزرار سريعة: تفتح القناة وتسجّل الحالة + آخر تواصل */}
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {telLink(lead.phone) && <a href={telLink(lead.phone)} onClick={() => save(true, 'contacted')} style={{ ...quick, color: 'var(--text)' }}><Phone size={14}/> اتصلت</a>}
-          {canCampaign && lead.phone && <button onClick={() => onCampaign?.(lead)} style={{ ...quick, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 10%, transparent)', cursor: 'pointer' }}><Send size={14}/> إطلاق حملة</button>}
-          {waLink(lead.phone) && <a href={waLink(lead.phone)} target="_blank" rel="noreferrer" onClick={() => save(true, 'whatsapp_sent')} style={{ ...quick, color: 'var(--muted)' }}><MessageCircle size={14}/> محادثة</a>}
+          {/* «كل شي على هاتف»: wa.me أُزيلت (كانت تختم whatsapp_sent وهي محادثة يدوية
+              بلا قالب ولا تسجيل — قياس مضلِّل). زر الحملة للجميع والمودال يوضّح الصلاحية */}
+          {lead.phone && <button onClick={() => onCampaign?.(lead)} style={{ ...quick, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 10%, transparent)', cursor: 'pointer' }}><Send size={14}/> إرسال واتساب (هاتف)</button>}
           <Btn size="sm" variant="ghost" onClick={() => save(false, 'blacklist')} disabled={saving}>🚫 بلاك لست</Btn>
           <Btn size="sm" variant="ghost" onClick={() => save(false, 'test')} disabled={saving}>🧪 تجريبي</Btn>
         </div>
