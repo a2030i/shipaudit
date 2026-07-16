@@ -760,6 +760,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                         <MiniPill color={l.last_campaign_replied_at ? 'var(--green)' : '#0EA5E9'}
                           label={`📲 حملة قبل ${Math.floor((Date.now() - new Date(l.last_campaign_at).getTime()) / 86_400_000)} يوم${l.last_campaign_replied_at ? ' · ردّ' : ''}`}/>
                       )}
+                      {l.in_hatif && <MiniPill color="#06B6D4" label="📱 في فرص هاتف أيضاً"/>}
                     </div>
                   </td>
                   <td data-label="الموظف" style={{ padding: '10px 12px', minWidth: 150 }} onClick={e => e.stopPropagation()}>
@@ -983,6 +984,18 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" icon={<CalendarClock size={13}/>} onClick={() => setForm({ mode: 'task', title: '', due: '' })}>جدولة</Btn>}
           {can('crm.assign') && <Btn size="sm" variant="ghost" icon={<UserCog size={13}/>} onClick={() => setForm({ mode: 'assign', ownerId: lead.owner_id || '' })}>إسناد</Btn>}
           <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: 'status', status: lead.status || 'new' })}>تغيير الحالة</Btn>
+          {/* §1.37: صفقة مربوطة بالجهة بنقرة — كانت الصفقات تُنشأ باسم حر منفصل */}
+          {can('crm.manage_deals') && (
+            <Btn size="sm" variant="accent" icon={<TrendingUp size={13}/>} disabled={busy}
+              onClick={() => act(async () => {
+                await createDeal({
+                  title: `صفقة — ${lead.name}`, entityType: 'lead', entityRef: lead.name,
+                  value: 0, ownerId: lead.owner_id || user?.id, userId: user?.id,
+                });
+              }, `أُنشئت صفقة مربوطة بـ${lead.name} — تابعها في «صفقات المبيعات»`)}>
+              أنشئ صفقة
+            </Btn>
+          )}
         </div>
 
         {form.mode && (
@@ -1160,19 +1173,37 @@ function TasksTab({ active }) {
 
 // ═══════════════ أداء التحصيل (board) ═══════════════
 function BoardTab({ active }) {
-  const { can } = useAuth();
+  const { can, user, isAdmin } = useAuth();
   const [s, setS] = useState(null);
   const [employees, setEmployees] = useState([]);
+  // §1.37: معدل التحويل بالموظف (RPC sales_owner_stats) + أهداف أسبوعية
+  const [ownerStats, setOwnerStats] = useState([]);
+  const [targets, setTargets] = useState({ touches7d: 0, conversions: 0 });
+  const [targetEdit, setTargetEdit] = useState(false);
   const refresh = useCallback(async () => {
     try {
       const [stats, emp] = await Promise.all([loadBoardStats(), loadEmployees().catch(() => [])]);
       setS(stats);
       setEmployees(emp);
+      import('../lib/retargetingService.js').then(m => m.loadSalesOwnerStats().then(setOwnerStats).catch(() => {}));
+      import('../lib/supabase.js').then(({ supabase }) =>
+        supabase.from('app_settings').select('value').eq('key', 'sales_targets').maybeSingle()
+          .then(({ data }) => { if (data?.value) setTargets({ touches7d: Number(data.value.touches7d) || 0, conversions: Number(data.value.conversions) || 0 }); }));
     } catch (e) { toast(e.message, 'error'); }
   }, []);
+  const saveTargets = async () => {
+    try {
+      const { supabase } = await import('../lib/supabase.js');
+      const { error } = await supabase.from('app_settings').upsert({ key: 'sales_targets', value: targets }, { onConflict: 'key' });
+      if (error) throw error;
+      toast('حُفظت الأهداف ✓', 'success'); setTargetEdit(false);
+    } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
+  };
   useEffect(() => { if (active) refresh(); }, [active, refresh]);
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
   if (!s) return <Pad><Spin/></Pad>;
+  const convByOwner = new Map(ownerStats.map(o => [o.ownerId, o]));
+  const myConv = convByOwner.get(user?.id);
   const cards = [
     { l: 'مرّات التواصل هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
     { l: 'جهات محتملة مفتوحة', v: s.leadsOpen, c: 'var(--green)' },
@@ -1190,8 +1221,23 @@ function BoardTab({ active }) {
   return (
     <Pad>
       <PageHeader icon={<BarChart3 size={22}/>} title="أداء المبيعات والمتابعة"
-        subtitle="من عنده leads؟ من تواصل؟ ومن عنده مهام مفتوحة؟"
+        subtitle="من عنده جهات؟ من تواصل؟ ومعدل تحويل كل موظف مقابل الهدف"
         actions={<Btn size="sm" variant="ghost" onClick={refresh}><RefreshCw size={14}/></Btn>}/>
+
+      {/* «أرقامي» — بطاقة الموظف الشخصية (§1.37) */}
+      {myConv && (
+        <Card style={{ padding: '12px 16px', marginBottom: 14, border: '1.5px solid color-mix(in srgb, #F97316 35%, var(--border))', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+          <span style={{ fontSize: 13, fontWeight: 900 }}>🎯 أرقامي</span>
+          <MyStat label="فرصي المسندة" v={fmt0(myConv.assigned)} c="#06B6D4"/>
+          <MyStat label="عملت عليها" v={fmt0(myConv.worked)} c="var(--gold)"/>
+          <MyStat label="عادوا/تحوّلوا" v={fmt0(myConv.returned)} c="var(--green)"/>
+          <MyStat label="معدل تحويلي" v={`${myConv.conversionPct}%`} c="#8B5CF6"/>
+          <MyStat label={`تواصلي (7 أيام)${targets.touches7d ? ` / هدف ${targets.touches7d}` : ''}`}
+            v={fmt0(myConv.touches7d)}
+            c={targets.touches7d ? (myConv.touches7d >= targets.touches7d ? 'var(--green)' : 'var(--red)') : '#06B6D4'}/>
+        </Card>
+      )}
+
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12, marginBottom: 16 }}>
         {cards.map(c => (
           <Card key={c.l} style={{ borderTop: `3px solid ${c.c}` }}>
@@ -1201,22 +1247,48 @@ function BoardTab({ active }) {
         ))}
       </div>
       <Card style={{ padding: 0, overflow: 'hidden' }}>
-        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)' }}>
-          <div style={{ fontSize: 15, fontWeight: 900 }}>أداء الموظفين</div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>الأرقام تعتمد على leads المسندة، أنشطة الأسبوع، المهام، والصفقات</div>
+        <div style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <div>
+            <div style={{ fontSize: 15, fontWeight: 900 }}>أداء الموظفين</div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 3 }}>الجهات المسندة، التواصل، معدل التحويل من متابعات إعادة الاستهداف، والصفقات</div>
+          </div>
+          {isAdmin && (
+            <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 12 }}>
+              {targetEdit ? (
+                <>
+                  هدف التواصل/أسبوع:
+                  <input type="number" value={targets.touches7d} onChange={e => setTargets(t => ({ ...t, touches7d: Number(e.target.value) || 0 }))}
+                    style={{ width: 70, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}/>
+                  <Btn size="sm" variant="accent" onClick={saveTargets}>حفظ</Btn>
+                  <Btn size="sm" variant="ghost" onClick={() => setTargetEdit(false)}>إلغاء</Btn>
+                </>
+              ) : (
+                <Btn size="sm" variant="ghost" onClick={() => setTargetEdit(true)}>
+                  🎯 الهدف الأسبوعي: {targets.touches7d || 'غير محدد'}
+                </Btn>
+              )}
+            </span>
+          )}
         </div>
         <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
           <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-            {['الموظف', 'Leads', 'مفتوحة', 'لمسات أسبوعية', 'مهام مفتوحة', 'مهام منجزة', 'صفقات مفتوحة', 'ربح فعلي'].map(h =>
+            {['الموظف', 'الجهات', 'مفتوحة', 'لمسات أسبوعية', 'معدل التحويل', 'مهام مفتوحة', 'مهام منجزة', 'صفقات مفتوحة', 'ربح فعلي'].map(h =>
               <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
           </tr></thead>
           <tbody>
             {(s.byOwner || []).map(row => (
               <tr key={row.ownerId || 'none'} style={{ borderTop: '1px solid var(--border)' }}>
                 <td data-label="الموظف" style={{ padding: '10px 12px', fontWeight: 800 }}>{employeeName(row.ownerId)}</td>
-                <td data-label="Leads" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.assignedLeads)}</td>
+                <td data-label="الجهات" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.assignedLeads)}</td>
                 <td data-label="مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.openLeads ? 'var(--green)' : 'var(--muted)' }}>{fmt0(row.openLeads)}</td>
-                <td data-label="لمسات أسبوعية" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.touchesThisWeek ? '#06B6D4' : 'var(--muted)' }}>{fmt0(row.touchesThisWeek)}</td>
+                <td data-label="لمسات أسبوعية" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: targets.touches7d ? (row.touchesThisWeek >= targets.touches7d ? 'var(--green)' : 'var(--red)') : (row.touchesThisWeek ? '#06B6D4' : 'var(--muted)') }}>
+                  {fmt0(row.touchesThisWeek)}{targets.touches7d ? ` / ${targets.touches7d}` : ''}
+                </td>
+                <td data-label="معدل التحويل" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>
+                  {(() => { const o = convByOwner.get(row.ownerId); return o
+                    ? <span style={{ color: o.conversionPct >= 10 ? 'var(--green)' : o.conversionPct > 0 ? 'var(--gold)' : 'var(--muted)' }}>{o.conversionPct}% <span style={{ fontSize: 10, color: 'var(--muted2)' }}>({fmt0(o.returned)}/{fmt0(o.worked)})</span></span>
+                    : <span style={{ color: 'var(--muted2)' }}>—</span>; })()}
+                </td>
                 <td data-label="مهام مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.tasksOpen ? 'var(--gold)' : 'var(--muted)' }}>{fmt0(row.tasksOpen)}</td>
                 <td data-label="مهام منجزة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.tasksDoneThisWeek)}</td>
                 <td data-label="صفقات مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.dealsOpen)}</td>
@@ -1227,6 +1299,15 @@ function BoardTab({ active }) {
         </table>
       </Card>
     </Pad>
+  );
+}
+
+function MyStat({ label, v, c }) {
+  return (
+    <span style={{ display: 'inline-flex', flexDirection: 'column', gap: 2 }}>
+      <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{label}</span>
+      <span style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: c }}>{v}</span>
+    </span>
   );
 }
 

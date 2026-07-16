@@ -6,7 +6,8 @@ import { UserPlus, RefreshCw, Phone, MessageCircle, Send, Search, Download } fro
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadHatifLeads, computeLeadStats, syncHatifLeads, kindMeta } from '../lib/hatifLeadsService.js';
-import { STATUSES, statusMeta, setRetargetingFollowup } from '../lib/retargetingService.js';
+import { STATUSES, statusMeta, setRetargetingFollowup, bulkSetFollowups } from '../lib/retargetingService.js';
+import { loadEmployees } from '../lib/employeeService.js';
 import { normalizeSaudiPhone, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
@@ -20,7 +21,7 @@ const display = (l) => l.name || l.phone;
 const selStyle = { padding: '8px 10px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', fontSize: 12 };
 
 export default function HatifLeads({ isActive = true }) {
-  const { can, user } = useAuth();
+  const { can, user, isAdmin } = useAuth();
   const [rows, setRows] = useState(null);
   const [loading, setLoading] = useState(false);
   const [q, setQ] = useState('');
@@ -31,6 +32,12 @@ export default function HatifLeads({ isActive = true }) {
   const [waStatus, setWaStatus] = useState(() => new Map());
   const [detail, setDetail] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  // §1.37: إسناد جماعي + فلترا «مستحقة اليوم» و«المسندة لي» (افتراضي للموظف)
+  const [employees, setEmployees] = useState([]);
+  const [bulkOwner, setBulkOwner] = useState('');
+  const [assigning, setAssigning] = useState(false);
+  const [dueOnly, setDueOnly] = useState(false);
+  const [mineOnly, setMineOnly] = useState(() => !isAdmin);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,6 +55,7 @@ export default function HatifLeads({ isActive = true }) {
     else toast(`فشلت المزامنة: ${r?.error || 'غير معروف'}`, 'error');
   };
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
+  useEffect(() => { loadEmployees().then(setEmployees).catch(() => {}); }, []);
   const loadWa = useCallback(() => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {}), []);
   useEffect(() => { if (isActive) loadWa(); }, [isActive, loadWa]);
 
@@ -55,14 +63,17 @@ export default function HatifLeads({ isActive = true }) {
   const filtered = useMemo(() => {
     if (!rows) return [];
     const s = q.trim().toLowerCase();
+    const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
     return rows.filter(l => {
       if (namedOnly && !l.namedManually) return false;
       if (!showExcluded && !status && statusMeta(l.status).excluded) return false;
       if (status && l.status !== status) return false;
+      if (mineOnly && l.ownerId !== user?.id) return false;
+      if (dueOnly && !(l.nextActionAt && new Date(l.nextActionAt) <= endOfToday)) return false;
       if (s && ![l.name, l.phone, l.company].some(v => String(v ?? '').toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [rows, q, status, namedOnly, showExcluded]);
+  }, [rows, q, status, namedOnly, showExcluded, mineOnly, dueOnly, user?.id]);
 
   // تفصيص 2026-07-16: مفتاح مستقل لهذا التبويب
   if (!can('sales.hatif_leads')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب فرص من هاتف»"/></div>;
@@ -141,6 +152,33 @@ export default function HatifLeads({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={showExcluded} onChange={e => setShowExcluded(e.target.checked)}/> إظهار المستبعَدين (مورد/أرقام غير مهمة)
             </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
+              <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)}/> المسندة لي
+            </label>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#F97316', fontWeight: 700 }}>
+              <input type="checkbox" checked={dueOnly} onChange={e => setDueOnly(e.target.checked)}/> ⏰ مستحقة اليوم
+            </label>
+            {isAdmin && (
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <select value={bulkOwner} onChange={e => setBulkOwner(e.target.value)} style={selStyle}>
+                  <option value="">إسناد المعروضين لموظف…</option>
+                  {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name || emp.email}</option>)}
+                </select>
+                {bulkOwner && (
+                  <Btn size="sm" variant="accent" disabled={assigning || !filtered.length} onClick={async () => {
+                    const emp = employees.find(e => e.id === bulkOwner);
+                    if (!window.confirm(`إسناد ${fmt0(filtered.length)} فرصة إلى ${emp?.name || 'الموظف'}؟`)) return;
+                    setAssigning(true);
+                    try {
+                      const n = await bulkSetFollowups(filtered.map(l => l.phone).filter(Boolean), { ownerId: bulkOwner });
+                      toast(`أُسندت ${fmt0(n)} فرصة ✓`, 'success');
+                      setBulkOwner(''); load();
+                    } catch (e) { toast(`فشل الإسناد: ${e.message}`, 'error'); }
+                    setAssigning(false);
+                  }}>{assigning ? 'يُسند…' : `إسناد ${fmt0(filtered.length)}`}</Btn>
+                )}
+              </span>
+            )}
             {can('campaigns.send') && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} onClick={openBulk} disabled={!filtered.length}>
                 إطلاق حملة ({fmt0(filtered.length)})

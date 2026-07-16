@@ -154,6 +154,45 @@ export default function WhatsAppSettings({ isActive = true }) {
         </Card>
       )}
 
+      {/* ── متابعة غير المتجاوبين تلقائياً (drip §1.37) — ينفّذها campaign-runner كل 15 دقيقة ── */}
+      {cfg && (
+        <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>🔁 متابعة غير المتجاوبين تلقائياً</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
+            مَن استلم حملة <b>ولم يردّ خلال N يوم</b> يُرسَل له قالب المتابعة تلقائياً — <b>مرة واحدة فقط</b> لكل حملة
+            (لا يلاحق مَن ردّ، ولا مَن مضى على حملته أكثر من 30 يوماً). يعمل عبر المشغّل الآلي كل 15 دقيقة.
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: 'pointer' }}>
+            <input type="checkbox" checked={!!cfg.drip?.enabled}
+              onChange={e => setCfg({ ...cfg, drip: { ...(cfg.drip || {}), enabled: e.target.checked } })}/>
+            تفعيل المتابعة التلقائية
+          </label>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>قالب المتابعة</div>
+              {(cfg.templates || []).length ? (
+                <select value={cfg.drip?.template || ''}
+                  onChange={e => setCfg({ ...cfg, drip: { ...(cfg.drip || {}), template: e.target.value } })}
+                  style={{ fontSize: 12.5, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', width: '100%' }}>
+                  <option value="">— اختر قالباً —</option>
+                  {(cfg.templates || []).map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              ) : <div style={{ fontSize: 11.5, color: 'var(--red)' }}>أضف قالباً في الأعلى أولاً</div>}
+            </div>
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>بعد كم يوم بلا رد؟</div>
+              <input type="number" min={1} max={14} value={cfg.drip?.afterDays ?? 3}
+                onChange={e => setCfg({ ...cfg, drip: { ...(cfg.drip || {}), afterDays: Number(e.target.value) || 3 } })}
+                style={{ width: 90, fontSize: 12.5, padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}/>
+            </div>
+          </div>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+            متغيّر قالب المتابعة: <code>{'{{1}}'}</code> اسم العميل فقط — صمّمه في هاتف كتذكير لطيف عام.
+            احفظ بزر «حفظ» أعلى الصفحة (نفس إعدادات القوالب).
+          </div>
+        </Card>
+      )}
+
       {/* ── تنبيه زاتكا المسائي — واتساب 9م بتوقيت السعودية بالفواتير التي لم تُرسَل ── */}
       {zatca && (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
