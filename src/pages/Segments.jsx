@@ -907,12 +907,17 @@ export default function Segments({ isActive = true }) {
                 إرسال حملة واتساب
               </Btn>
             )}
-            <Btn size="md" variant="ghost" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
-              ملف حملة
-            </Btn>
-            <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={exportFull} disabled={!filtered.length}>
-              تصدير Excel
-            </Btn>
+            {/* التصدير خلف sales.export (كانا بلا بوابة — اكتُشف مع موظف محدود 2026-07-16) */}
+            {can('sales.export') && (
+              <Btn size="md" variant="ghost" icon={<Phone size={13}/>} onClick={exportCampaign} disabled={!filtered.length}>
+                ملف حملة
+              </Btn>
+            )}
+            {can('sales.export') && (
+              <Btn size="md" variant="ghost" icon={<Download size={13}/>} onClick={exportFull} disabled={!filtered.length}>
+                تصدير Excel
+              </Btn>
+            )}
           </div>
         </div>
       </Card>

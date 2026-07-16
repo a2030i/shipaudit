@@ -558,7 +558,9 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     refresh();
   };
 
-  if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
+  // تفصيص 2026-07-16: التبويب يعيش في مركز المبيعات على مفتاحه المستقل —
+  // كان الحارس crm.view وحدها فظهر التبويب (بمفتاحه الجديد) وداخله «لا صلاحية».
+  if (!can('sales.external_leads') && !can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب عملاء خارج المنصّة»"/></Pad>;
   const totalPages = Math.max(1, Math.ceil(count / 50));  // = PAGE في crmLeadsService
   return (
     <Pad>

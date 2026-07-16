@@ -146,7 +146,9 @@ export default function HatifLeads({ isActive = true }) {
                 إطلاق حملة ({fmt0(filtered.length)})
               </Btn>
             )}
-            <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
+            {can('sales.export') && (
+              <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
+            )}
           </div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
             عرض <b style={{ color: 'var(--text)' }}>{fmt0(filtered.length)}</b> من {fmt0(stats.total)}
