@@ -90,7 +90,7 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
   if (s) {
     // بحث حر: المتجر/العنوان/AWB/الهاتف — ولو كان رقم تذكرة (TKT-0042 أو 42) نلتقطه
     const num = parseInt(s.replace(/^tkt-?/i, ''), 10);
-    const ors = [`store_name.ilike.%${s}%`, `title.ilike.%${s}%`, `awb.ilike.%${s}%`, `customer_phone.ilike.%${s}%`];
+    const ors = [`store_name.ilike.%${s}%`, `title.ilike.%${s}%`, `description.ilike.%${s}%`, `awb.ilike.%${s}%`, `customer_phone.ilike.%${s}%`];
     if (Number.isFinite(num) && num > 0) ors.push(`ticket_no.eq.${num}`);
     query = query.or(ors.join(','));
   }
@@ -104,6 +104,9 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
 //   • مفتوحة أصلاً → لا تذكرة مكررة؛ تُلحق التفاصيل بها (existing)
 // وإلا تُنشأ جديدة (created). يرجع { ticket, created|reopened|existing }.
 export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, assignedTo, assigneeName, userId }) {
+  // العنوان أُلغي من النموذج (قرار المستخدم 2026-07-16) — النوع + الوصف يكفيان.
+  // عمود title باقٍ (not null) فيتولّد من تسمية النوع إن لم يُمرَّر.
+  const effTitle = (title || '').trim() || ticketCategoryMeta(category || 'other').label;
   const awbNorm = (awb || '').trim();
   if (awbNorm) {
     const { data: dups, error: dupErr } = await supabase.from('support_tickets')
@@ -114,7 +117,7 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
     if (dupErr) throw dupErr;
     const dup = dups?.[0];
     if (dup) {
-      const detail = `مشكلة جديدة على نفس الشحنة: ${title}${description ? ` — ${description}` : ''}`;
+      const detail = `مشكلة جديدة على نفس الشحنة (${effTitle})${description ? `: ${description}` : ''}`;
       if (dup.status === 'resolved' || dup.status === 'closed') {
         const { error: upErr } = await supabase.from('support_tickets')
           .update({ status: 'open', resolved_at: null }).eq('id', dup.id);
@@ -137,7 +140,7 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
     store_id: storeId || null,
     store_name: storeName,
     customer_phone: customerPhone || null,
-    title,
+    title: effTitle,
     description: description || null,
     carrier_id: carrierId || null,
     carrier_name: carrierName || null,

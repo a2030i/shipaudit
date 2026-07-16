@@ -1356,3 +1356,8 @@ button {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* ── نموذج التذاكر (§1.35): مكوّنا Input/Select يفقدان ستايلهما الداخلي
+   (فخّ style:undefined في UI.jsx) والـCSS العام بلا width — فالحقول تنكمش
+   لعرض محتواها. هذه القاعدة المحصورة تملّئها داخل النموذج فقط. */
+.tform input, .tform select, .tform textarea { width: 100%; }

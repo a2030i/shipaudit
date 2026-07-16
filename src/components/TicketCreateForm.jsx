@@ -30,7 +30,6 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   const [storeQ, setStoreQ] = useState('');
   const [store, setStore] = useState(null);           // المتجر المختار من القائمة
   const [listOpen, setListOpen] = useState(false);
-  const [title, setTitle] = useState('');
   const [category, setCategory] = useState('delayed');
   const [carrierId, setCarrierId] = useState('');
   const [awb, setAwb] = useState('');
@@ -81,7 +80,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   const submit = async () => {
     const storeName = (store?.store_name || storeQ).trim();
     if (!storeName) return toast('اختر المتجر أو اكتب اسمه', 'error');
-    if (!title.trim()) return toast('اكتب عنوان المشكلة', 'error');
+    if (!desc.trim()) return toast('اكتب وصف المشكلة', 'error');
     if (awbRequired && !awb.trim()) return toast(`رقم الشحنة AWB إلزامي لنوع «${TICKET_CATEGORIES[category].label}»`, 'error');
     setBusy(true);
     try {
@@ -91,8 +90,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         storeId: store?.store_id || null,
         storeName,
         customerPhone: store?.phone ? normalizeSaudiPhone(store.phone) : null,
-        title: title.trim(),
-        description: desc.trim() || null,
+        description: desc.trim(),
         carrierId: carrierId || null,
         carrierName: carrier?.name || null,
         awb: awb.trim() || null,
@@ -109,7 +107,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
 
   const resetForm = () => {
     setResult(null); setStore(null); setStoreQ('');
-    setTitle(''); setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(''); setDesc('');
+    setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(''); setDesc('');
   };
 
   if (!can('support.create')) return (
@@ -139,7 +137,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   }
 
   return (
-    <div style={{ padding: '4px 2px' }}>
+    <div className="tform" style={{ padding: '4px 2px' }}>
       {/* المتجر — بحث مباشر في دليل المتاجر (لا قائمة منسدلة خام) */}
       <div ref={boxRef} style={{ position: 'relative', marginBottom: 14 }}>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5 }}>
@@ -191,9 +189,6 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         )}
       </div>
 
-      <Input label="عنوان المشكلة *" value={title} onChange={(e) => setTitle(e.target.value)}
-        placeholder="مثال: شحنة متأخرة 5 أيام عند العميل" style={{ marginBottom: 14 }}/>
-
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
         <Select label="نوع المشكلة" value={category} onChange={(e) => setCategory(e.target.value)}>
           {Object.entries(TICKET_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
@@ -222,7 +217,9 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
       </div>
 
       <div style={{ marginBottom: 18 }}>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5 }}>وصف المشكلة</label>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5 }}>
+          وصف المشكلة <span style={{ color: 'var(--red)' }}>*</span>
+        </label>
         <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={4}
           placeholder="ما قاله العميل بالضبط + أي تفاصيل تساعد على الحل…"
           style={{

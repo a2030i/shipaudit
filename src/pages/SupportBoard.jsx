@@ -144,17 +144,17 @@ export default function SupportBoard({ isActive = true }) {
 
   const exportXlsx = async () => {
     if (!rows?.length) return;
-    const headers = ['الرقم', 'المتجر', 'الهاتف', 'العنوان', 'النوع', 'شركة الشحن', 'AWB', 'الحالة', 'المسؤول', 'أنشأها', 'التاريخ', 'العمر (يوم)', 'الوصف'];
+    const headers = ['الرقم', 'المتجر', 'الهاتف', 'النوع', 'شركة الشحن', 'AWB', 'الحالة', 'المسؤول', 'أنشأها', 'التاريخ', 'العمر (يوم)', 'الوصف'];
     const aoa = [
       ['تذاكر خدمة العملاء', '', new Date().toISOString().slice(0, 10)],
       [],
       headers,
-      ...rows.map(t => [t.ref, t.storeName, t.customerPhone || '', t.title, ticketCategoryMeta(t.category).label, t.carrierName || '', t.awb || '',
+      ...rows.map(t => [t.ref, t.storeName, t.customerPhone || '', ticketCategoryMeta(t.category).label, t.carrierName || '', t.awb || '',
         ticketStatusMeta(t.status).label, t.assigneeName || '', t.creatorName || '',
         new Date(t.createdAt).toLocaleDateString('en-CA'), ageDays(t.createdAt), t.description || '']),
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 34 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 11 }, { wch: 10 }, { wch: 40 }];
+    ws['!cols'] = [{ wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 11 }, { wch: 10 }, { wch: 44 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'التذاكر');
     rtl(wb);
@@ -259,7 +259,7 @@ export default function SupportBoard({ isActive = true }) {
           <div className="m-flow" style={{ overflowX: 'auto' }}>
             <table className="m-cards" style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface)' }}>
-                <tr>{['الرقم', 'المتجر', 'العنوان', 'النوع', 'الشركة', 'الحالة', 'المسؤول', 'العمر', ''].map(h => (
+                <tr>{['الرقم', 'المتجر', 'المشكلة', 'النوع', 'الشركة', 'الحالة', 'المسؤول', 'العمر', ''].map(h => (
                   <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}</tr>
               </thead>
@@ -271,7 +271,7 @@ export default function SupportBoard({ isActive = true }) {
                     <tr key={t.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => openDrawer(t)}>
                       <td data-label="" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{t.ref}</td>
                       <td data-label="المتجر" style={{ padding: '8px 12px', fontWeight: 600 }}>{t.storeName}</td>
-                      <td data-label="العنوان" style={{ padding: '8px 12px', color: 'var(--muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.title}</td>
+                      <td data-label="المشكلة" style={{ padding: '8px 12px', color: 'var(--muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || t.title}</td>
                       <td data-label="النوع" style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontSize: 11.5 }}>{ticketCategoryMeta(t.category).icon} {ticketCategoryMeta(t.category).label}</td>
                       <td data-label="الشركة" style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{t.carrierName || carrierName.get(t.carrierId) || '—'}</td>
                       <td data-label="الحالة" style={{ padding: '8px 12px' }} onClick={(e) => e.stopPropagation()}>
