@@ -526,10 +526,14 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     category: '',
     platform: '',
     duplicateOnly: false,
-    matchedOnly: false,
+    matched: '',          // '' الكل | 'yes' | 'no' (كان checkbox — طلب المستخدم: نعم/لا)
     unassignedOnly: false,
     page: 0,
   });
+  // تحديد جماعي → تحويل لموظف دفعة واحدة (طلب المستخدم 2026-07-16)
+  const [selIds, setSelIds] = useState(() => new Set());
+  const [bulkOwner, setBulkOwner] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -550,12 +554,41 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   }, [filters]);
   useEffect(() => { if (active) refresh(); }, [active, refresh]);
 
-  const setFilter = (patch) => setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 }));
+  const setFilter = (patch) => { setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 })); setSelIds(new Set()); };
 
   const assignLead = async (lead, ownerId) => {
     await updateLead(lead.id, { owner_id: ownerId || null });
     toast(ownerId ? 'تم إسناد الجهة المحتملة' : 'أزيل الإسناد', 'success');
     refresh();
+  };
+
+  const toggleSel = (id) => setSelIds(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+  const allPageSelected = leads.length > 0 && leads.every(l => selIds.has(l.id));
+  const toggleAllPage = () => setSelIds(prev => {
+    const n = new Set(prev);
+    if (allPageSelected) leads.forEach(l => n.delete(l.id));
+    else leads.forEach(l => n.add(l.id));
+    return n;
+  });
+  const bulkAssign = async () => {
+    if (!bulkOwner || !selIds.size) return;
+    setBulkBusy(true);
+    let ok = 0;
+    try {
+      for (const id of selIds) {
+        await updateLead(id, { owner_id: bulkOwner });
+        ok++;
+      }
+      const emp = employees.find(e => e.id === bulkOwner);
+      toast(`حُوّلت ${ok} جهة إلى ${emp?.name || 'الموظف'} ✓`, 'success');
+      setSelIds(new Set()); setBulkOwner('');
+      refresh();
+    } catch (e) { toast(`تحوّلت ${ok} ثم فشل: ${e.message}`, 'error'); }
+    setBulkBusy(false);
   };
 
   // تفصيص 2026-07-16: التبويب يعيش في مركز المبيعات على مفتاحه المستقل —
@@ -609,7 +642,13 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             <input type="checkbox" checked={filters.duplicateOnly} onChange={e => setFilter({ duplicateOnly: e.target.checked })}/> أرقام مكررة فقط
           </label>
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
-            <input type="checkbox" checked={filters.matchedOnly} onChange={e => setFilter({ matchedOnly: e.target.checked })}/> عملاء موجودون في المنصّة
+            موجود في المنصّة؟
+            <select value={filters.matched} onChange={e => setFilter({ matched: e.target.value })}
+              style={{ padding: '4px 10px', borderRadius: 8, fontSize: 12, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+              <option value="">الكل</option>
+              <option value="yes">نعم — عملاء لدينا</option>
+              <option value="no">لا — خارج المنصّة</option>
+            </select>
           </label>
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
             <input type="checkbox" checked={filters.unassignedOnly} onChange={e => setFilter({ unassignedOnly: e.target.checked, ownerId: '' })}/> بدون موظف
@@ -620,15 +659,43 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         </div>
       </Card>
 
+      {/* شريط التحويل الجماعي — يظهر عند تحديد أي صف */}
+      {can('crm.assign') && selIds.size > 0 && (
+        <Card style={{ padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '1.5px solid color-mix(in srgb, var(--accent) 35%, var(--border))' }}>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>✓ {selIds.size} جهة محددة</span>
+          <select value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}
+            style={{ padding: '6px 12px', borderRadius: 9, fontSize: 12.5, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+            <option value="">اختر الموظف…</option>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+          </select>
+          <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={!bulkOwner || bulkBusy}>
+            {bulkBusy ? 'يحوّل…' : `تحويل ${selIds.size} للموظف`}
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={() => setSelIds(new Set())}>إلغاء التحديد</Btn>
+        </Card>
+      )}
+
       {loading && !leads.length ? <Spin/> : !leads.length ? <Empty icon="🏪" title="لا جهات" sub="ارفع ملف متاجر أو خفف الفلاتر الحالية"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
+              {can('crm.assign') && (
+                <th style={{ padding: '10px 12px', width: 34 }}>
+                  <input type="checkbox" checked={allPageSelected} onChange={toggleAllPage}
+                    title="تحديد كل صفوف الصفحة" style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}/>
+                </th>
+              )}
               {['المتجر', 'الرقم', 'القسم/المنصة', 'التحقق', 'الموظف', 'الحالة', ''].map(h => <th key={h} style={{ padding: '10px 12px', fontSize: 11.5, color: 'var(--muted)' }}>{h}</th>)}
             </tr></thead>
             <tbody>
               {leads.map(l => (
-                <tr key={l.id} onClick={() => setSel(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
+                <tr key={l.id} onClick={() => setSel(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer', background: selIds.has(l.id) ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : undefined }}>
+                  {can('crm.assign') && (
+                    <td data-label="تحديد" style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
+                      <input type="checkbox" checked={selIds.has(l.id)} onChange={() => toggleSel(l.id)}
+                        style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}/>
+                    </td>
+                  )}
                   <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
                     <div>{l.name}</div>
                     {l.name_en && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{l.name_en}</div>}
@@ -826,6 +893,17 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>
           {lead.duplicate_count > 1 && <Hd label="تكرار الرقم" value={`${lead.duplicate_count} متاجر`} color="var(--gold)"/>}
         </div>
+        {/* المتاجر الأخرى بنفس الرقم (duplicate_names مخزَّنة مع الصف — طلب المستخدم 2026-07-16) */}
+        {lead.duplicate_count > 1 && Array.isArray(lead.duplicate_names) && lead.duplicate_names.length > 0 && (
+          <Card style={{ padding: 12, background: 'color-mix(in srgb, var(--gold) 7%, transparent)', borderColor: 'color-mix(in srgb, var(--gold) 30%, var(--border))', marginBottom: 12 }}>
+            <div style={{ fontWeight: 800, color: 'var(--gold)', fontSize: 12.5, marginBottom: 6 }}>⚠️ متاجر أخرى بنفس هذا الرقم</div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+              {lead.duplicate_names.filter(n => n && n !== lead.name).map((n, i) => (
+                <span key={i} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}>{n}</span>
+              ))}
+            </div>
+          </Card>
+        )}
         {(lead.website || lead.store_url || lead.social_links?.instagram) && (
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
             {lead.website && <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => window.open(lead.website, '_blank')}>الموقع</Btn>}

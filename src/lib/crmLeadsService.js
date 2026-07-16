@@ -432,12 +432,13 @@ export async function loadLeads({
   platform = '',
   duplicateOnly = false,
   matchedOnly = false,
+  matched = '',          // '' الكل | 'yes' موجود في المنصّة | 'no' خارجها (طلب المستخدم 2026-07-16)
   unassignedOnly = false,
   page = 0,
   limit = PAGE,
   force = false,
 } = {}) {
-  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, unassignedOnly, page, limit });
+  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, matched, unassignedOnly, page, limit });
   const cached = listCache.get(key);
   if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
 
@@ -447,6 +448,7 @@ export async function loadLeads({
     .from('crm_leads')
     .select(LEAD_COLUMNS, { count: 'exact' })
     .order('updated_at', { ascending: false })
+    .order('id', { ascending: true })   // قاعدة §6: tiebreaker فريد لكل .range()
     .range(from, to);
 
   if (status) query = query.eq('status', status);
@@ -455,7 +457,8 @@ export async function loadLeads({
   if (category) query = query.eq('category', category);
   if (platform) query = query.eq('platform', platform);
   if (duplicateOnly) query = query.gt('duplicate_count', 1);
-  if (matchedOnly) query = query.not('matched_store_id', 'is', null);
+  if (matched === 'yes' || matchedOnly) query = query.not('matched_store_id', 'is', null);
+  else if (matched === 'no') query = query.is('matched_store_id', null);
   const term = q.trim();
   if (term) {
     const phone = normalizeSaudiPhone(term);
