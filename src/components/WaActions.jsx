@@ -1,19 +1,19 @@
 // WaActions — أزرار التواصل الموحّدة لأي صف/بطاقة فيها هاتف:
-//   📞 اتصال · ✈️ إطلاق حملة قالب (الفعل الرئيسي — مسجَّل ومتتبَّع) · 💬 محادثة حرّة (ثانوي)
+//   📞 اتصال · ✈️ إطلاق حملة قالب (الفعل الرئيسي — مسجَّل ومتتبَّع)
 // يدير مودال WhatsAppSendModal بنفسه (مستلِم واحد) — فيُزرَع في أي صفحة بلا سباكة.
-// قاعدة §1.29: أي إرسال قالب يمرّ عبر sendWhatsAppCampaign (تسجيل+تتبّع)؛
-// wa.me الحرّة تبقى أيقونة ثانوية فقط. بوابة الإرسال المركزية داخل المودال (campaigns.send).
+// قاعدة §1.29: أي إرسال قالب يمرّ عبر sendWhatsAppCampaign (تسجيل+تتبّع).
+// قرار المستخدم (2026-07-16): «كل شي على هاتف» — wa.me الحرّة مطفأة افتراضياً
+// (كانت تظهر وحدها لمن لا يملك campaigns.send فتضيع المحادثة خارج النظام)،
+// وزر الحملة يظهر للجميع والمودال نفسه يوضّح الصلاحية الناقصة.
 import { useState } from 'react';
 import { Phone, MessageCircle, Send } from 'lucide-react';
-import { useAuth } from '../lib/auth.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from './WhatsAppSendModal.jsx';
 
 // props: phone (خام — يُطبَّع داخلياً) · name · amount? · count? · vars? (افتراضها [name])
 //        campaignLabel? (اسم الحملة في السجل) · size? (حجم الأيقونات) · showTel?/showChat?
 export default function WaActions({ phone, name, amount = null, count = null, vars = null,
-  campaignLabel = null, size = 15, showTel = true, showChat = true }) {
-  const { can } = useAuth();
+  campaignLabel = null, size = 15, showTel = true, showChat = false }) {
   const [open, setOpen] = useState(false);
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return null;
@@ -21,7 +21,6 @@ export default function WaActions({ phone, name, amount = null, count = null, va
   const tel = `tel:+${normalized}`;
   const chat = `https://wa.me/${normalized}`;
   const displayName = (name || '').trim() || normalized;
-  const canSend = can('campaigns.send');
 
   const recipient = {
     to: normalized, name: displayName, amount, count,
@@ -33,12 +32,10 @@ export default function WaActions({ phone, name, amount = null, count = null, va
       {showTel && (
         <a href={tel} title="اتصال" style={{ color: 'var(--text)', display: 'inline-flex' }}><Phone size={size}/></a>
       )}
-      {canSend && (
-        <button onClick={() => setOpen(true)} title="إطلاق حملة واتساب (قالب معتمد — يُسجَّل ويُتتبَّع)"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'inline-flex' }}>
-          <Send size={size}/>
-        </button>
-      )}
+      <button onClick={() => setOpen(true)} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل ويُتتبَّع)"
+        style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'inline-flex' }}>
+        <Send size={size}/>
+      </button>
       {showChat && (
         <a href={chat} target="_blank" rel="noreferrer" title="محادثة يدوية (بلا قالب — لا تُسجَّل كحملة)"
           style={{ color: 'var(--muted)', display: 'inline-flex' }}><MessageCircle size={size}/></a>
