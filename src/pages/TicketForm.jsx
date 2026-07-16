@@ -10,7 +10,7 @@ import { LamhaMark } from '../components/BrandLogo.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCarriers } from '../lib/coreService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
-import { createTicket } from '../lib/supportService.js';
+import { createTicket, TICKET_CATEGORIES } from '../lib/supportService.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 export default function TicketForm() {
@@ -24,6 +24,7 @@ export default function TicketForm() {
   const [store, setStore] = useState(null);           // المتجر المختار من القائمة
   const [listOpen, setListOpen] = useState(false);
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('delayed');
   const [carrierId, setCarrierId] = useState('');
   const [awb, setAwb] = useState('');
   const [desc, setDesc] = useState('');
@@ -83,6 +84,7 @@ export default function TicketForm() {
         carrierId: carrierId || null,
         carrierName: carrier?.name || null,
         awb: awb.trim() || null,
+        category,
         userId: user?.id || null,
       });
       setCreated(t);
@@ -92,7 +94,7 @@ export default function TicketForm() {
 
   const resetForm = () => {
     setCreated(null); setStore(null); setStoreQ('');
-    setTitle(''); setCarrierId(''); setAwb(''); setDesc('');
+    setTitle(''); setCategory('delayed'); setCarrierId(''); setAwb(''); setDesc('');
   };
 
   const shell = (children) => (
@@ -196,13 +198,16 @@ export default function TicketForm() {
         placeholder="مثال: شحنة متأخرة 5 أيام عند العميل" style={{ marginBottom: 14 }}/>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
+        <Select label="نوع المشكلة" value={category} onChange={(e) => setCategory(e.target.value)}>
+          {Object.entries(TICKET_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+        </Select>
         <Select label="شركة الشحن" value={carrierId} onChange={(e) => setCarrierId(e.target.value)}>
           <option value="">غير متعلقة بشركة</option>
           {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
-        <Input label="رقم الشحنة AWB" value={awb} onChange={(e) => setAwb(e.target.value)}
-          placeholder="اختياري" style={{ direction: 'ltr' }}/>
       </div>
+      <Input label="رقم الشحنة AWB" value={awb} onChange={(e) => setAwb(e.target.value)}
+        placeholder="اختياري" style={{ marginBottom: 14 }}/>
 
       <div style={{ marginBottom: 18 }}>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5 }}>وصف المشكلة</label>

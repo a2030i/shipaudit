@@ -16,6 +16,17 @@ export const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer'];
 export function ticketStatusMeta(k) { return TICKET_STATUSES[k] || { label: k, color: 'var(--muted)' }; }
 export function ticketRef(no) { return `TKT-${String(no).padStart(4, '0')}`; }
 
+// أنواع التذكرة — نقطة الحقيقة الواحدة (المفتاح يُخزَّن في support_tickets.category)
+export const TICKET_CATEGORIES = {
+  delayed:  { label: 'شحنة متأخرة',        icon: '⏰' },
+  damaged:  { label: 'شحنة تالفة/مفقودة',  icon: '📦' },
+  cod:      { label: 'تحصيل COD',          icon: '💰' },
+  billing:  { label: 'فوترة/مالية',        icon: '🧾' },
+  platform: { label: 'المنصّة/تقني',       icon: '⚙️' },
+  other:    { label: 'أخرى',               icon: '📝' },
+};
+export function ticketCategoryMeta(k) { return TICKET_CATEGORIES[k] || TICKET_CATEGORIES.other; }
+
 // إحصائيات رأس اللوحة (RPC — عدّ سيرفري، لا يتأثر بالفلاتر/الترقيم)
 export async function loadTicketStats() {
   const { data, error } = await supabase.rpc('support_ticket_stats');
@@ -45,6 +56,7 @@ function mapTicket(r) {
     carrierId: r.carrier_id,
     carrierName: r.carrier_name,
     awb: r.awb,
+    category: r.category || 'other',
     status: r.status,
     source: r.source,
     createdBy: r.created_by,
@@ -58,7 +70,7 @@ function mapTicket(r) {
 }
 
 // قائمة التذاكر مع الفلاتر. قاعدة §6: أي .range() يلزمه .order('id') tiebreaker.
-export async function loadTickets({ status = '', carrierId = '', assignedTo = '', q = '', openOnly = false, from = 0, limit = 200 } = {}) {
+export async function loadTickets({ status = '', carrierId = '', assignedTo = '', category = '', q = '', openOnly = false, from = 0, limit = 200 } = {}) {
   let query = supabase.from('support_tickets')
     .select(TICKET_SELECT, { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -68,6 +80,9 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
   else if (openOnly) query = query.in('status', OPEN_STATUSES);
   if (carrierId) query = query.eq('carrier_id', carrierId);
   if (assignedTo) query = query.eq('assigned_to', assignedTo);
+  if (category) query = category === 'other'
+    ? query.or('category.eq.other,category.is.null')
+    : query.eq('category', category);
   const s = q.trim();
   if (s) {
     // بحث حر: المتجر/العنوان/AWB/الهاتف — ولو كان رقم تذكرة (TKT-0042 أو 42) نلتقطه
@@ -82,7 +97,7 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
 }
 
 // إنشاء تذكرة + حدث 'create' — يرجع التذكرة برقمها المرجعي
-export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, userId }) {
+export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, userId }) {
   const { data, error } = await supabase.from('support_tickets').insert({
     store_id: storeId || null,
     store_name: storeName,
@@ -92,6 +107,7 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
     carrier_id: carrierId || null,
     carrier_name: carrierName || null,
     awb: awb || null,
+    category: category || 'other',
     created_by: userId || null,
   }).select(TICKET_SELECT).single();
   if (error) throw error;
@@ -127,10 +143,11 @@ export async function assignTicket(ticketId, { assigneeId, assigneeName, userId 
   });
 }
 
-// تعليق على التذكرة
-export async function addTicketComment(ticketId, { note, userId }) {
+// تعليق على التذكرة. internal=true (الافتراض) = ملاحظة داخلية للفريق فقط —
+// القاعدة الدائمة: أي إشعار واتساب مستقبلي يُرسَل فقط للأحداث internal=false.
+export async function addTicketComment(ticketId, { note, userId, internal = true }) {
   const { error } = await supabase.from('support_ticket_events').insert({
-    ticket_id: ticketId, user_id: userId || null, kind: 'comment', note,
+    ticket_id: ticketId, user_id: userId || null, kind: 'comment', note, internal: !!internal,
   });
   if (error) throw error;
 }
@@ -144,8 +161,23 @@ export async function loadTicketEvents(ticketId) {
   if (error) throw error;
   return (data || []).map(e => ({
     id: e.id, kind: e.kind, oldStatus: e.old_status, newStatus: e.new_status,
-    note: e.note, userName: e.user?.name || '—', createdAt: e.created_at,
+    note: e.note, internal: e.internal !== false,
+    userName: e.user?.name || '—', createdAt: e.created_at,
   }));
+}
+
+// داشبورد الأرقام: الحالات × النوع × شركات الشحن + زمن الحل (RPC)
+export async function loadSupportDashboard() {
+  const { data, error } = await supabase.rpc('support_dashboard');
+  if (error) throw error;
+  return {
+    byStatus: data?.by_status || {},
+    byCategory: (data?.by_category || []).map(r => ({ category: r.category, total: Number(r.total) || 0, open: Number(r.open) || 0 })),
+    byCarrier: (data?.by_carrier || []).map(r => ({ carrierId: r.carrier_id, carrierName: r.carrier_name || 'بدون شركة', total: Number(r.total) || 0, open: Number(r.open) || 0 })),
+    avgResolutionHours: data?.avg_resolution_hours == null ? null : Number(data.avg_resolution_hours),
+    created30d: Number(data?.created_30d) || 0,
+    resolved30d: Number(data?.resolved_30d) || 0,
+  };
 }
 
 // حذف تذكرة (admin) — قاعدة §6: .select('id') ضد RLS silent-fail
