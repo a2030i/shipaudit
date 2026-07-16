@@ -3,7 +3,8 @@
 // تغيير الحالة من الصف مباشرة (بلا مودال) + درج تفاصيل بسجل الأحداث.
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock } from 'lucide-react';
+import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip } from 'lucide-react';
+import { useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -16,6 +17,7 @@ import {
   TICKET_STATUSES, TICKET_CATEGORIES, ticketStatusMeta, ticketCategoryMeta,
   loadTickets, loadTicketStats, loadSupportDashboard,
   updateTicketStatus, assignTicket, addTicketComment, loadTicketEvents, deleteTicket,
+  loadTicketAttachments, uploadTicketAttachments, getAttachmentUrl,
 } from '../lib/supportService.js';
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
@@ -73,6 +75,9 @@ export default function SupportBoard({ isActive = true }) {
   const [comment, setComment] = useState('');
   const [commentInternal, setCommentInternal] = useState(true); // 🔒 الافتراض: داخلية
   const [createOpen, setCreateOpen] = useState(false);          // مودال «تذكرة جديدة»
+  const [attachments, setAttachments] = useState(null);         // مرفقات التذكرة المفتوحة
+  const [attBusy, setAttBusy] = useState(false);
+  const attRef = useRef(null);
 
   const refresh = async (soft = false) => {
     if (!soft) setBusy(true);
@@ -99,8 +104,29 @@ export default function SupportBoard({ isActive = true }) {
   }, []);
 
   const openDrawer = async (t) => {
-    setDrawer(t); setEvents(null); setComment('');
+    setDrawer(t); setEvents(null); setComment(''); setAttachments(null);
+    loadTicketAttachments(t.id).then(setAttachments).catch(() => setAttachments([]));
     try { setEvents(await loadTicketEvents(t.id)); } catch { setEvents([]); }
+  };
+
+  // فتح مرفق برابط موقّت (الـbucket خاص)
+  const openAttachment = async (a) => {
+    try { window.open(await getAttachmentUrl(a.filePath), '_blank', 'noopener'); }
+    catch (e) { toast(`تعذّر فتح المرفق: ${e.message}`, 'error'); }
+  };
+  const addAttachments = async (list) => {
+    const files = Array.from(list || []).filter(f => f.size <= 10 * 1024 * 1024);
+    if (Array.from(list || []).length !== files.length) toast('تجاهلت ملفات أكبر من 10MB', 'error');
+    if (!files.length || !drawer) return;
+    setAttBusy(true);
+    try {
+      await uploadTicketAttachments(drawer.id, files, user?.id);
+      toast(`أُرفق ${files.length} ملف ✓`, 'success');
+      loadTicketAttachments(drawer.id).then(setAttachments).catch(() => {});
+      loadTicketEvents(drawer.id).then(setEvents).catch(() => {});
+    } catch (e) { toast(e.message, 'error'); }
+    setAttBusy(false);
+    if (attRef.current) attRef.current.value = '';
   };
 
   const changeStatus = async (t, newStatus) => {
@@ -448,6 +474,38 @@ export default function SupportBoard({ isActive = true }) {
               </div>
             )}
 
+            {/* ── المرفقات ── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)' }}>
+                📎 المرفقات {attachments?.length ? `(${attachments.length})` : ''}
+              </span>
+              <input ref={attRef} type="file" multiple hidden
+                accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={(e) => addAttachments(e.target.files)}/>
+              <Btn size="sm" variant="ghost" icon={attBusy ? <Spinner size={12}/> : <Paperclip size={12}/>}
+                onClick={() => attRef.current?.click()} disabled={attBusy}>إرفاق</Btn>
+            </div>
+            {attachments == null ? <Spinner size={14}/> : !attachments.length ? (
+              <div style={{ fontSize: 11.5, color: 'var(--muted2)', marginBottom: 14 }}>لا مرفقات</div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 5, marginBottom: 14 }}>
+                {attachments.map(a => (
+                  <button key={a.id} onClick={() => openAttachment(a)} style={{
+                    display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8,
+                    padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border)',
+                    background: 'var(--surface)', cursor: 'pointer', textAlign: 'start',
+                    fontFamily: 'var(--font-sans)', width: '100%',
+                  }}>
+                    <span style={{ fontSize: 12, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      📎 {a.fileName}
+                    </span>
+                    <span style={{ fontSize: 10, color: 'var(--muted2)', whiteSpace: 'nowrap' }}>
+                      {a.sizeBytes ? `${(a.sizeBytes / 1024 / 1024).toFixed(1)}MB · ` : ''}{a.uploaderName} ⬇️
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
+
             {can('support.manage') && (
               <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
                 {Object.entries(TICKET_STATUSES).filter(([k]) => k !== drawer.status).map(([k, v]) => (
@@ -468,6 +526,7 @@ export default function SupportBoard({ isActive = true }) {
                       {e.kind === 'create' && '🆕 أُنشئت التذكرة'}
                       {e.kind === 'status' && <>🔄 {ticketStatusMeta(e.oldStatus).label} ← <b style={{ color: ticketStatusMeta(e.newStatus).color }}>{ticketStatusMeta(e.newStatus).label}</b></>}
                       {e.kind === 'assign' && `👤 ${e.note || 'تغيير الإسناد'}`}
+                      {e.kind === 'attach' && `${e.note || '📎 مرفق جديد'}`}
                       {e.kind === 'comment' && (
                         <>
                           {e.internal ? '🔒' : '💬'} {e.note}

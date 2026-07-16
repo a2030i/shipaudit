@@ -219,6 +219,52 @@ export async function loadSupportDashboard() {
   };
 }
 
+// ── المرفقات ──────────────────────────────────────────────────────
+// bucket خاص 'support-attachments' — المفتاح ASCII فقط (فخّ §1.7)،
+// الاسم العربي يبقى في file_name. كل إرفاق يُسجَّل حدث 'attach'.
+const ATT_BUCKET = 'support-attachments';
+const asciiKey = (name) => (String(name).replace(/[^A-Za-z0-9._-]+/g, '_').replace(/_+/g, '_').slice(-80)) || 'file';
+
+export async function uploadTicketAttachments(ticketId, files, userId) {
+  const uploaded = [];
+  for (const f of files) {
+    const path = `t/${ticketId}/${Date.now()}_${asciiKey(f.name)}`;
+    const { error: upErr } = await supabase.storage.from(ATT_BUCKET)
+      .upload(path, f, { contentType: f.type || undefined });
+    if (upErr) throw new Error(`فشل رفع «${f.name}»: ${upErr.message}`);
+    const { error } = await supabase.from('support_ticket_attachments').insert({
+      ticket_id: ticketId, file_name: f.name, file_path: path,
+      size_bytes: f.size || null, mime: f.type || null, uploaded_by: userId || null,
+    });
+    if (error) throw error;
+    await supabase.from('support_ticket_events').insert({
+      ticket_id: ticketId, user_id: userId || null, kind: 'attach', note: `📎 ${f.name}`, internal: true,
+    });
+    uploaded.push(f.name);
+  }
+  return uploaded;
+}
+
+export async function loadTicketAttachments(ticketId) {
+  const { data, error } = await supabase.from('support_ticket_attachments')
+    .select('*, uploader:uploaded_by(name)')
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(a => ({
+    id: a.id, fileName: a.file_name, filePath: a.file_path,
+    sizeBytes: Number(a.size_bytes) || 0, mime: a.mime,
+    uploaderName: a.uploader?.name || '—', createdAt: a.created_at,
+  }));
+}
+
+// رابط تحميل موقّت (ساعة) — الـbucket خاص فلا روابط دائمة
+export async function getAttachmentUrl(filePath) {
+  const { data, error } = await supabase.storage.from(ATT_BUCKET).createSignedUrl(filePath, 3600);
+  if (error) throw error;
+  return data.signedUrl;
+}
+
 // حذف تذكرة (admin) — قاعدة §6: .select('id') ضد RLS silent-fail
 export async function deleteTicket(ticketId) {
   const { data, error } = await supabase.from('support_tickets')

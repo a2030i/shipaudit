@@ -3,13 +3,13 @@
 // الذكاء: AWB إلزامي لأنواع الشحنات فقط · نفس AWB لتذكرة سابقة → إعادة فتح
 // تلقائية أو إلحاق (لا تكرار) · إسناد لموظف من النموذج.
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { LifeBuoy, Search, CheckCircle2, RotateCcw, Link2 } from 'lucide-react';
+import { LifeBuoy, Search, CheckCircle2, RotateCcw, Link2, Paperclip, X } from 'lucide-react';
 import { Btn, Input, Select, Spinner, toast, Empty } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCarriers } from '../lib/coreService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import { loadEmployees } from '../lib/employeeService.js';
-import { createTicket, TICKET_CATEGORIES, AWB_REQUIRED_CATEGORIES } from '../lib/supportService.js';
+import { createTicket, uploadTicketAttachments, TICKET_CATEGORIES, AWB_REQUIRED_CATEGORIES } from '../lib/supportService.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 // نتيجة الإنشاء بأنواعها الثلاثة — لكلٍّ رسالتها وأيقونتها
@@ -37,7 +37,20 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);         // { ticket, created|reopened|existing }
+  const [files, setFiles] = useState([]);              // مرفقات قبل الإنشاء
   const boxRef = useRef(null);
+  const fileRef = useRef(null);
+
+  const MAX_FILE_MB = 10;
+  const addFiles = (list) => {
+    const ok = [], rejected = [];
+    for (const f of Array.from(list || [])) {
+      (f.size > MAX_FILE_MB * 1024 * 1024 ? rejected : ok).push(f);
+    }
+    if (rejected.length) toast(`تجاهلت ${rejected.length} ملف أكبر من ${MAX_FILE_MB}MB`, 'error');
+    if (ok.length) setFiles(prev => [...prev, ...ok]);
+    if (fileRef.current) fileRef.current.value = '';
+  };
 
   const awbRequired = AWB_REQUIRED_CATEGORIES.includes(category);
 
@@ -99,6 +112,12 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         assigneeName: emp?.name || null,
         userId: user?.id || null,
       });
+      // المرفقات تُرفع بعد معرفة التذكرة (تشمل حالتي إعادة الفتح/الإلحاق —
+      // تلتصق بالتذكرة الصحيحة). فشل الرفع لا يُفشل التذكرة (توست فقط).
+      if (files.length) {
+        try { await uploadTicketAttachments(r.ticket.id, files, user?.id); }
+        catch (e) { toast(`أُنشئت التذكرة لكن تعذّر رفع مرفق: ${e.message}`, 'error'); }
+      }
       setResult(r);
       onCreated?.(r);
     } catch (e) { toast(`فشل إنشاء التذكرة: ${e.message}`, 'error'); }
@@ -107,7 +126,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
 
   const resetForm = () => {
     setResult(null); setStore(null); setStoreQ('');
-    setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(''); setDesc('');
+    setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(''); setDesc(''); setFiles([]);
   };
 
   if (!can('support.create')) return (
@@ -227,6 +246,36 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
             border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)',
             fontSize: 13.5, fontFamily: 'var(--font-sans)', outline: 'none',
           }}/>
+      </div>
+
+      {/* المرفقات — صور/PDF/إكسل، حتى 10MB للملف */}
+      <div style={{ marginBottom: 18 }}>
+        <input ref={fileRef} type="file" multiple hidden
+          accept="image/*,.pdf,.xlsx,.xls,.csv" onChange={(e) => addFiles(e.target.files)}/>
+        <button onClick={() => fileRef.current?.click()} type="button" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px',
+          borderRadius: 9, border: '1.5px dashed var(--border2)', cursor: 'pointer',
+          background: 'transparent', color: 'var(--muted)', fontSize: 12, fontFamily: 'var(--font-sans)',
+        }}>
+          <Paperclip size={13}/> إرفاق ملفات (صور / PDF / إكسل)
+        </button>
+        {files.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+            {files.map((f, i) => (
+              <span key={`${f.name}_${i}`} style={{
+                display: 'inline-flex', alignItems: 'center', gap: 5, padding: '3px 9px',
+                borderRadius: 20, fontSize: 11, background: 'var(--surface)',
+                border: '1px solid var(--border)', color: 'var(--text)',
+              }}>
+                📎 {f.name} <span style={{ color: 'var(--muted2)', fontSize: 10 }}>({(f.size / 1024 / 1024).toFixed(1)}MB)</span>
+                <button onClick={() => setFiles(prev => prev.filter((_, j) => j !== i))} type="button"
+                  style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--muted)', padding: 0, display: 'flex' }}>
+                  <X size={11}/>
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <Btn variant="primary" size="full" icon={busy ? <Spinner size={15} color="currentColor"/> : <LifeBuoy size={15}/>}
