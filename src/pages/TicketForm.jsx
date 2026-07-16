@@ -97,8 +97,10 @@ export default function TicketForm() {
     setTitle(''); setCategory('delayed'); setCarrierId(''); setAwb(''); setDesc('');
   };
 
+  // ملاحظة: ‎#root نفسه ‎display:flex + overflow:hidden — فالغلاف يأخذ flex:1
+  // وعرضاً كاملاً وتمريراً داخلياً، وإلا التصق النموذج يميناً بلا توسيط ولا تمرير.
   const shell = (children) => (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '28px 14px 60px' }}>
+    <div style={{ flex: 1, width: '100%', height: '100vh', overflowY: 'auto', background: 'var(--bg)', display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '28px 14px 60px' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 18 }}>
         <LamhaMark size={34}/>
         <div>
