@@ -254,7 +254,7 @@ const PAGE_TITLES = {
   '/settings/data':          'الإعدادات — البيانات',
   '/results':                'نتائج التدقيق',
 };
-const ROLE_LABEL = { admin: 'مدير', accountant: 'محاسب' };
+const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
 // ── Root ──────────────────────────────────────────────────────────────────────
 export default function App() {

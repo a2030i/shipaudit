@@ -15,7 +15,9 @@ import {
 
 const ROLES = [
   { value: 'admin',      label: 'مدير',  color: 'var(--accent)', desc: 'يشاهد ويفعل كل شيء' },
-  { value: 'accountant', label: 'محاسب', color: 'var(--green)',  desc: 'صلاحياته تُدار من زر "الصلاحيات"' },
+  // القيمة 'accountant' تاريخية في DB — العرض «موظف» (قرار المستخدم 2026-07-16):
+  // الدور واحد لكل الموظفين، والتفصيل بالصلاحيات لكل موظف على حدة.
+  { value: 'accountant', label: 'موظف', color: 'var(--green)',  desc: 'صلاحياته تُدار من زر "الصلاحيات"' },
 ];
 
 const AVATAR_COLORS = [
@@ -519,7 +521,7 @@ export default function EmployeeManager() {
         <div>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>إدارة الموظفين</h2>
           <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>
-            {employees.length} موظف · {roleCounts.admin} مدير · {roleCounts.accountant} محاسب
+            {employees.length} في الفريق · {roleCounts.admin} مدير · {roleCounts.accountant} موظف
           </div>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
