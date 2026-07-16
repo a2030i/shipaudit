@@ -10,6 +10,7 @@ import {
   loadEmployeeActivitySummary, loadEmployeeActivity,
 } from '../lib/employeeService.js';
 import { useAuth } from '../lib/auth.jsx';
+import { pageTitle } from '../lib/pageTitles.js';
 import {
   PERMISSION_CATALOG, PRESETS, ALL_PERMISSION_KEYS, FULL_ACCOUNTANT_KEYS,
 } from '../lib/permissions.js';
@@ -477,9 +478,14 @@ const DATA_TABLE_AR = {
 };
 const DATA_OP_AR = { insert: 'إضافة', update: 'تعديل', delete: 'حذف' };
 const actLabel = (r) => {
-  if (r.kind !== 'data') return r.action;
-  const [t, op] = String(r.action).split(':');
-  return `${DATA_OP_AR[op] || op} في ${DATA_TABLE_AR[t] || t}`;
+  if (r.kind === 'data') {
+    const [t, op] = String(r.action).split(':');
+    return `${DATA_OP_AR[op] || op} في ${DATA_TABLE_AR[t] || t}`;
+  }
+  // التنقّل/الممنوع: اسم الصفحة بالنظام بدل المسار الخام (طلب المستخدم 2026-07-16)
+  if (r.kind === 'page') return `زيارة «${pageTitle(r.path)}»`;
+  if (r.kind === 'denied') return `حاول فتح «${pageTitle(r.path)}» بلا صلاحية`;
+  return r.action;
 };
 const fmtWhen = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
 
@@ -532,7 +538,9 @@ function ActivityModal({ employee, onClose }) {
                     {actLabel(r)}
                     {r.detail?.fileName ? <span style={{ color: 'var(--muted)' }}> — {r.detail.fileName}</span> : null}
                   </div>
-                  {r.path && <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--muted)', direction: 'ltr', textAlign: 'end' }}>{r.path}</div>}
+                  {r.path && !['page', 'denied'].includes(r.kind) && (
+                    <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{pageTitle(r.path)}</div>
+                  )}
                 </div>
                 <div style={{ fontSize: 10, color: 'var(--muted2)', textAlign: 'start', whiteSpace: 'nowrap' }}>
                   <div>{fmtWhen(r.createdAt)}</div>

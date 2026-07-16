@@ -9,6 +9,7 @@ import { LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
+import { PAGE_TITLES } from './lib/pageTitles.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 import CarrierProfile from './pages/CarrierProfile.jsx';
 import CustomerPortal from './pages/CustomerPortal.jsx';
@@ -223,60 +224,6 @@ const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/payment-requests'];
 
-const PAGE_TITLES = {
-  '/overview':          'الرئيسية',
-  '/decisions':         'لوحة القرارات',
-  '/crm':               'متابعة المبيعات (CRM)',
-  '/fulfillment':       'فواتير التجهيز',
-  '/monthly-report':    'التقرير الشهري',
-  '/reports':           'مكتبة التقارير',
-  '/zoho-callback':     'ربط زوهو',
-  '/pnl':               'الأرباح والخسائر',
-  '/zoho-data':         'بيانات زوهو',
-  '/customer-money':    'مركز التحصيل',
-  '/legal':             'التصعيد القانوني',
-  '/retargeting':       'مركز المبيعات',
-  '/whatsapp-settings': 'حملات واتساب',
-  '/hatif-leads':       'فرص من هاتف',
-  '/support':           'تذاكر خدمة العملاء',
-  '/uploads':           'حالة مصادر البيانات',
-  '/hub':               'حالة الشركات',
-  '/carrier':           'بروفايل الشركة',
-  '/webhook':           'وارد الفواتير',
-  '/customers':         'متابعة العملاء',
-  '/payment-requests':  'طلبات السداد',
-  '/internal-exports':  'التصدير وسجل الملفات',
-  '/upload':            'مراجعة جديدة',
-  '/drop':              'رفع ملف',
-  '/cash-aging':        'أعمار الديون',
-  '/integrity':         'سلامة البيانات',
-  '/claims':            'المطالبات',
-  '/audits':            'تدقيق الفواتير',
-  '/weight-billing':    'فوترة الأوزان الزائدة',
-  '/ledger':            'حسابات الشركات',
-  '/cod-settlements':   'تسويات الدفع عند الاستلام',
-  '/money':             'البنك والمدفوعات',
-  '/payments':          'الدفعات',
-  '/aramex-statements': 'كشوف حساب الشركات',
-  '/bank':              'كشف البنك',
-  '/receivables':       'مديونيات العملاء',
-  '/customer-360':      'متابعة العملاء',
-  '/collections':       'مهام التحصيل',
-  '/merchants':         'متاجر المنصّة',
-  '/reconciliation':    'مطابقة زوهو مع لمحة',
-  '/segments':          'مجموعات العملاء',
-  '/carriers':          'إدارة الشركات',
-  '/contracts':         'جدول العقود',
-  '/carrier-kpi':       'أداء الشركات',
-  '/activity-log':      'سجل النشاط',
-  '/tasks':             'المهام',
-  '/periods':           'إقفال الشهور',
-  '/forecast':          'توقّع السيولة',
-  '/employees':         'الموظفون',
-  '/settings/ai':            'الإعدادات — الذكاء الاصطناعي',
-  '/settings/data':          'الإعدادات — البيانات',
-  '/results':                'نتائج التدقيق',
-};
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
 // ── Root ──────────────────────────────────────────────────────────────────────
