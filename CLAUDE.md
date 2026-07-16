@@ -350,6 +350,14 @@
 - **واتساب مستقبلاً**: الهاتف محفوظ بالتذكرة + كل تحديث حدث مسجَّل → إشعار إنشاء/حل عبر مسار `hatif-send` القائم (قاعدة §1.29) — لم يُبنَ بعد.
 - **القاعدة**: أي ميزة دعم/تذاكر جديدة تكتب حدثاً في `support_ticket_events` (لا تعدّل التذكرة صامتة) — السجل هو المرجع ومصدر الإشعارات.
 
+### 1.36 سجل تحركات الموظفين + رسالة «ما عندك صلاحية» ✅ (2026-07-16)
+طلب المستخدم: سجل تفصيلي كامل لكل موظف (دخول/تنقّل/أفعال/IP/دولة، والحسّاس خصوصاً) + رسالة صريحة عند فتح صفحة بلا صلاحية (لا تحويل صامت).
+- **الجدول `user_activity_log`**: kind (`login`/`page`/`denied`/`export`/`data`/`action`) + action/detail/path/**ip/country**/user_agent. RLS: قراءة **مدير فقط** (`is_admin()`)، الكتابة عبر edge function وservice role.
+- **3 مصادر تسجيل**: (١) **`activityLogger.js`** (fire-and-forget، الفشل صامت) → edge function **`track-activity`** تلتقط IP من `x-forwarded-for` والدولة من `cf-ipcountry` **سيرفرياً** — دخول مرة/جلسة (App) + كل تنقّل (`logPageView` بمنع تكرار المسار المتتالي) + كل محاولة ممنوعة (`logDenied`). (٢) **تصدير**: `persistAndDownloadExport` يسجّل (نقطة العبور الوحيدة §1.13). (٣) **trigger `log_sensitive_change()`** على الجداول الحسّاسة (payments/carrier_operations/audits/period_closes/support_tickets/app_settings + profiles-update) — يلتقط `auth.uid()` من الـDB نفسها فلا يُتجاوز من الواجهة. **لا triggers على جداول الإدراج الجماعي** (cod_settlement/audit_shipments — آلاف الصفوف/رفعة).
+- **القراءة**: RPC `employee_activity_summary()` (آخر دخول من `auth.users.last_sign_in_at` + آخر حركة/IP/دولة + عدّادات 7 أيام + denied_7d) و`employee_activity_log(p_user,p_kind,...)` — كلاهما `is_admin()` داخلياً. الواجهة في **شاشة الفريق**: آخر دخول + عدّاد الحركة + شارة «⛔ N محاولة بلا صلاحية» على كل صف، وزر **«السجل»** يفتح مودالاً بفلاتر النوع وترقيم.
+- **رسالة الرفض**: الحارس المركزي (§1.32) لم يعد يحوّل صامتاً — شاشة «⛔ ما عندك صلاحية على هذه الصفحة» (المسار + زر العودة + تنويه أن المحاولة سُجّلت). التحويل الذكي بقي **فقط** للمسارات المجهولة المسموحة.
+- **القاعدة**: أي فعل حسّاس جديد إمّا على جدول مُصاد بالـtrigger (يكفي) أو يستدعي `logActivity()` يدوياً. جدول جديد حسّاس → أضفه لمصفوفة الـtriggers في الهجرة.
+
 ### 1.12 COD المستحق غير المحصَّل في Overview ✅ (UX 2026-05-29)
 - `overviewService.loadOverview` يجلب `loadCarrierNetBalances()` (RPC `carrier_cod_net_balances`) ويُرجِع `codOutstanding = { total, carriersDue }` (مجموع الصافي الموجب > 0.5 لكل ناقل)
 - `Overview.jsx` → `CashHero` يعرض بطاقة "COD لم يُحصَّل بعد" (تظهر فقط إن > 0.5) تنقل لـ `/money?tab=cod`

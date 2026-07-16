@@ -8,6 +8,7 @@ import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
+import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 import CarrierProfile from './pages/CarrierProfile.jsx';
 import CustomerPortal from './pages/CustomerPortal.jsx';
@@ -320,6 +321,15 @@ function AppInner({ theme, toggleTheme }) {
   const pathAllowed = isAdmin || !pathPermKey || can(pathPermKey);
   const pathname  = pathAllowed ? rawPath : '__locked__';
   const isSettingsPath = pathAllowed && rawPath.startsWith('/settings');
+
+  // سجل التحركات (§1.36): دخول مرة/جلسة + كل تنقّل + كل محاولة ممنوعة (بـIP سيرفري)
+  useEffect(() => { if (user && profile) logLogin(); }, [user, profile]);
+  useEffect(() => {
+    if (!user || !profile) return;
+    if (pathAllowed) logPageView(rawPath);
+    else logDenied(rawPath, pathPermKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawPath, pathAllowed, user, profile]);
   const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
@@ -979,8 +989,30 @@ function AppInner({ theme, toggleTheme }) {
               />
             </PageSlot>
 
-            {/* Unknown paths (بما فيها الممنوعة '__locked__') → redirect */}
-            {!isKnownPath && !isSettingsPath && (
+            {/* مسار ممنوع → رسالة صريحة «ما عندك صلاحية» (طلب المستخدم — لا تحويل صامت).
+                المحاولة مسجَّلة في سجل التحركات (logDenied أعلاه) بالـIP. */}
+            {!pathAllowed && (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: 380, gap: 10, fontFamily: 'var(--font-sans)', textAlign: 'center', padding: 24 }}>
+                <div style={{ fontSize: 44 }}>⛔</div>
+                <div style={{ fontSize: 17, fontWeight: 800, color: 'var(--text)' }}>ما عندك صلاحية على هذه الصفحة</div>
+                <div style={{ fontSize: 12.5, color: 'var(--muted)' }}>
+                  الصفحة <span style={{ fontFamily: 'var(--font-mono)', direction: 'ltr', display: 'inline-block' }}>{rawPath}</span> تتطلب صلاحية لا يملكها حسابك — اطلبها من المدير.
+                  <br/>هذه المحاولة سُجّلت في سجل التحركات.
+                </div>
+                {visibleNav.length > 0 && (
+                  <button onClick={() => navigate(visibleNav[0].path)} style={{
+                    marginTop: 8, padding: '9px 22px', borderRadius: 10, border: 'none', cursor: 'pointer',
+                    background: 'var(--brand, var(--accent))', color: 'var(--brand-ink, #fff)',
+                    fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 700,
+                  }}>
+                    العودة لصفحتك الرئيسية
+                  </button>
+                )}
+              </div>
+            )}
+
+            {/* Unknown paths → redirect (المسارات الممنوعة تُعرض رسالة أعلاه لا تحويل) */}
+            {pathAllowed && !isKnownPath && !isSettingsPath && (
               visibleNav.length ? (
                 <Routes>
                   {/* هبوط ذكي: مَن لا يملك overview.view يهبط على أول صفحة مرئية له

@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
-  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy,
+  Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy, History,
 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, toast } from '../components/UI.jsx';
 import {
   loadEmployees, createEmployee, updateEmployee, deleteEmployee, updateEmployeePermissions,
+  loadEmployeeActivitySummary, loadEmployeeActivity,
 } from '../lib/employeeService.js';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -459,6 +460,99 @@ function DeleteConfirm({ employee, onClose, onConfirm }) {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
+// ── سجل تحركات موظف (§1.36): دخول/تنقّل/ممنوع/تصدير/تعديل بيانات — بالـIP والدولة ──
+const ACT_KINDS = {
+  '':     { label: 'الكل',       color: 'var(--muted)' },
+  login:  { label: '🔑 دخول',    color: 'var(--green)' },
+  page:   { label: '👣 تنقّل',    color: '#0EA5E9' },
+  denied: { label: '⛔ ممنوع',    color: 'var(--red)' },
+  export: { label: '📤 تصدير',   color: 'var(--gold)' },
+  data:   { label: '✏️ بيانات',  color: '#8B5CF6' },
+  action: { label: '⚙️ إجراء',   color: 'var(--muted)' },
+};
+const DATA_TABLE_AR = {
+  payments: 'الدفعات', carrier_operations: 'حركات حسابات الشركات', audits: 'المراجعات',
+  period_closes: 'إقفال الشهور', support_tickets: 'تذاكر الدعم', app_settings: 'الإعدادات',
+  profiles: 'الموظفين/الصلاحيات',
+};
+const DATA_OP_AR = { insert: 'إضافة', update: 'تعديل', delete: 'حذف' };
+const actLabel = (r) => {
+  if (r.kind !== 'data') return r.action;
+  const [t, op] = String(r.action).split(':');
+  return `${DATA_OP_AR[op] || op} في ${DATA_TABLE_AR[t] || t}`;
+};
+const fmtWhen = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
+
+function ActivityModal({ employee, onClose }) {
+  const [kind, setKind] = useState('');
+  const [rows, setRows] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState(false);
+  const PAGE = 100;
+
+  const load = async (reset) => {
+    setBusy(true);
+    try {
+      const offset = reset ? 0 : (rows?.length || 0);
+      const r = await loadEmployeeActivity(employee.id, { kind: kind || null, limit: PAGE, offset });
+      setRows(prev => reset ? r : [...(prev || []), ...r]);
+      setDone(r.length < PAGE);
+    } catch (e) { toast(e.message, 'error'); setRows(prev => prev || []); }
+    setBusy(false);
+  };
+  useEffect(() => { setRows(null); setDone(false); load(true); }, [kind]); // eslint-disable-line
+
+  return (
+    <Modal title={`سجل تحركات — ${employee.name}`} width={660} onClose={onClose}>
+      <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 12 }}>
+        {Object.entries(ACT_KINDS).map(([k, v]) => (
+          <button key={k} onClick={() => setKind(k)} style={{
+            padding: '4px 12px', borderRadius: 20, fontSize: 11.5, cursor: 'pointer',
+            fontFamily: 'var(--font-sans)', fontWeight: kind === k ? 700 : 500,
+            border: `1.5px solid ${kind === k ? v.color : 'var(--border)'}`,
+            background: kind === k ? `color-mix(in srgb, ${v.color} 10%, transparent)` : 'transparent',
+            color: kind === k ? v.color : 'var(--muted)',
+          }}>{v.label}</button>
+        ))}
+      </div>
+      <div className="m-flow" style={{ maxHeight: '55vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7, paddingInlineEnd: 4 }}>
+        {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={20}/></div>
+          : !rows.length ? <div style={{ padding: 30, textAlign: 'center', color: 'var(--muted2)', fontSize: 12 }}>لا تحركات مسجَّلة{kind ? ' لهذا النوع' : ''} — السجل بدأ من تفعيل الميزة</div>
+          : rows.map(r => {
+            const km = ACT_KINDS[r.kind] || ACT_KINDS.action;
+            return (
+              <div key={r.id} style={{
+                display: 'flex', alignItems: 'flex-start', gap: 10, padding: '8px 10px',
+                borderRadius: 9, border: '1px solid var(--border)',
+                background: r.kind === 'denied' ? 'color-mix(in srgb, var(--red) 5%, transparent)' : 'var(--surface)',
+              }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: km.color, whiteSpace: 'nowrap', paddingTop: 1 }}>{km.label}</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12, color: 'var(--text)' }}>
+                    {actLabel(r)}
+                    {r.detail?.fileName ? <span style={{ color: 'var(--muted)' }}> — {r.detail.fileName}</span> : null}
+                  </div>
+                  {r.path && <div style={{ fontSize: 10.5, fontFamily: 'var(--font-mono)', color: 'var(--muted)', direction: 'ltr', textAlign: 'end' }}>{r.path}</div>}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--muted2)', textAlign: 'start', whiteSpace: 'nowrap' }}>
+                  <div>{fmtWhen(r.createdAt)}</div>
+                  {(r.ip || r.country) && (
+                    <div style={{ fontFamily: 'var(--font-mono)', direction: 'ltr' }}>{r.country ? `${r.country} · ` : ''}{r.ip || ''}</div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        {rows?.length > 0 && !done && (
+          <Btn variant="ghost" size="sm" onClick={() => load(false)} disabled={busy}>
+            {busy ? 'يحمّل…' : 'تحميل المزيد'}
+          </Btn>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
 export default function EmployeeManager() {
   const { profile: myProfile, can } = useAuth();
   const [employees, setEmployees] = useState([]);
@@ -468,11 +562,13 @@ export default function EmployeeManager() {
 
   const canManageEmployees   = can('system.manage_employees');
   const canManagePermissions = can('system.manage_permissions');
+  const [actSummary, setActSummary] = useState(() => new Map()); // سجل التحركات — ملخّص/موظف
 
   const reload = useCallback(async () => {
     setLoading(true);
     try {
       setEmployees(await loadEmployees());
+      loadEmployeeActivitySummary().then(setActSummary).catch(() => {});
     } catch (e) {
       toast(e.message, 'error');
     } finally {
@@ -605,11 +701,38 @@ export default function EmployeeManager() {
                     <div style={{ color: 'var(--muted)', fontSize: 12 }}>{emp.email}</div>
                   </div>
 
-                  <div style={{ color: 'var(--muted)', fontSize: 11, fontFamily: 'var(--font-mono)', flexShrink: 0 }}>
-                    {emp.created_at ? new Date(emp.created_at).toLocaleDateString('en-GB') : '—'}
-                  </div>
+                  {/* آخر دخول + آخر حركة + محاولات ممنوعة (من سجل التحركات §1.36) */}
+                  {(() => {
+                    const a = actSummary.get(emp.id);
+                    return (
+                      <div style={{ fontSize: 10.5, flexShrink: 0, textAlign: 'start', minWidth: 150 }}>
+                        <div style={{ color: 'var(--muted)' }}>
+                          آخر دخول: <b style={{ color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
+                            {a?.lastSignIn ? new Date(a.lastSignIn).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}
+                          </b>
+                        </div>
+                        <div style={{ color: 'var(--muted2)', marginTop: 2 }}>
+                          {a?.actions7d ? `${a.actions7d} حركة آخر 7 أيام` : 'لا حركة مسجَّلة'}
+                          {a?.lastCountry ? ` · ${a.lastCountry}` : ''}
+                        </div>
+                        {a?.denied7d > 0 && (
+                          <div style={{ color: 'var(--red)', fontWeight: 700, marginTop: 2 }}>
+                            ⛔ {a.denied7d} محاولة بلا صلاحية
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+                    <Btn
+                      variant="ghost" size="sm"
+                      title="سجل التحركات التفصيلي"
+                      icon={<History size={12}/>}
+                      onClick={() => setModal({ type: 'activity', employee: emp })}
+                    >
+                      السجل
+                    </Btn>
                     {emp.role === 'accountant' && canManagePermissions && (
                       <Btn
                         variant="ghost" size="sm"
@@ -643,6 +766,10 @@ export default function EmployeeManager() {
             );
           })}
         </div>
+      )}
+
+      {modal?.type === 'activity' && (
+        <ActivityModal employee={modal.employee} onClose={() => setModal(null)}/>
       )}
 
       {(modal?.type === 'add' || modal?.type === 'edit') && (
