@@ -606,6 +606,39 @@ export async function createLead({
   return data;
 }
 
+// تحويل جماعي لكل النتائج المطابقة للفلاتر — عملية واحدة على الخادم
+// (لا حلقة 7000 طلب). نفس شروط loadLeads بالضبط، ثم update واحد.
+export async function bulkAssignLeads({
+  status = null, ownerId = null, q = '', category = '', platform = '',
+  duplicateOnly = false, matched = '', unassignedOnly = false,
+  newOwnerId,
+} = {}) {
+  let query = supabase.from('crm_leads').update({ owner_id: newOwnerId || null });
+  if (status) query = query.eq('status', status);
+  if (ownerId) query = query.eq('owner_id', ownerId);
+  if (unassignedOnly) query = query.is('owner_id', null);
+  if (category) query = query.eq('category', category);
+  if (platform) query = query.eq('platform', platform);
+  if (duplicateOnly) query = query.gt('duplicate_count', 1);
+  if (matched === 'yes') query = query.not('matched_store_id', 'is', null);
+  else if (matched === 'no') query = query.is('matched_store_id', null);
+  const term = (q || '').trim();
+  if (term) {
+    const phone = normalizeSaudiPhone(term);
+    query = phone
+      ? query.or(`phone_normalized.eq.${phone},whatsapp_normalized.eq.${phone}`)
+      : query.or(`name.ilike.%${term}%,name_en.ilike.%${term}%,email.ilike.%${term}%,category.ilike.%${term}%,platform.ilike.%${term}%,website.ilike.%${term}%,store_url.ilike.%${term}%`);
+  }
+  // حارس ضد التحويل الأعمى: لا update بلا أي شرط إطلاقاً (كل الجدول!)
+  if (!status && !ownerId && !unassignedOnly && !category && !platform && !duplicateOnly && !matched && !term) {
+    query = query.gte('created_at', '1970-01-01'); // شرط صوري يبقي العملية صريحة القصد
+  }
+  const { data, error } = await query.select('id');
+  if (error) throw error;
+  listCache.clear();
+  return data?.length || 0;
+}
+
 export async function updateLead(id, patch) {
   if (!id) throw new Error('id مطلوب');
   const normalized = { ...patch, updated_at: new Date().toISOString() };

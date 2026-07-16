@@ -20,7 +20,7 @@ import {
   upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
 import {
-  loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot,
+  loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot, bulkAssignLeads,
   updateLead, loadLeadStats, loadLeadOptions,
 } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
@@ -532,6 +532,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   });
   // تحديد جماعي → تحويل لموظف دفعة واحدة (طلب المستخدم 2026-07-16)
   const [selIds, setSelIds] = useState(() => new Set());
+  const [selAllMatching, setSelAllMatching] = useState(false); // كل النتائج المطابقة (عبر كل الصفحات)
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
 
@@ -554,7 +555,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   }, [filters]);
   useEffect(() => { if (active) refresh(); }, [active, refresh]);
 
-  const setFilter = (patch) => { setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 })); setSelIds(new Set()); };
+  const setFilter = (patch) => { setFilters(prev => ({ ...prev, ...patch, page: patch.page ?? 0 })); setSelIds(new Set()); setSelAllMatching(false); };
 
   const assignLead = async (lead, ownerId) => {
     await updateLead(lead.id, { owner_id: ownerId || null });
@@ -568,14 +569,32 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     return n;
   });
   const allPageSelected = leads.length > 0 && leads.every(l => selIds.has(l.id));
-  const toggleAllPage = () => setSelIds(prev => {
-    const n = new Set(prev);
-    if (allPageSelected) leads.forEach(l => n.delete(l.id));
-    else leads.forEach(l => n.add(l.id));
-    return n;
-  });
+  const toggleAllPage = () => {
+    setSelAllMatching(false);
+    setSelIds(prev => {
+      const n = new Set(prev);
+      if (allPageSelected) leads.forEach(l => n.delete(l.id));
+      else leads.forEach(l => n.add(l.id));
+      return n;
+    });
+  };
   const bulkAssign = async () => {
-    if (!bulkOwner || !selIds.size) return;
+    if (!bulkOwner || (!selIds.size && !selAllMatching)) return;
+    const emp = employees.find(e => e.id === bulkOwner);
+    // كل النتائج المطابقة (7,004 مثلاً): عملية واحدة على الخادم بنفس الفلاتر —
+    // لا حلقة آلاف الطلبات. تأكيد صريح قبل التنفيذ (فعل واسع).
+    if (selAllMatching) {
+      if (!window.confirm(`تحويل كل النتائج المطابقة للفلاتر (${fmt0(count)} جهة) إلى ${emp?.name || 'الموظف'}؟`)) return;
+      setBulkBusy(true);
+      try {
+        const n = await bulkAssignLeads({ ...filters, newOwnerId: bulkOwner });
+        toast(`حُوّلت ${fmt0(n)} جهة إلى ${emp?.name || 'الموظف'} ✓`, 'success');
+        setSelIds(new Set()); setSelAllMatching(false); setBulkOwner('');
+        refresh();
+      } catch (e) { toast(`فشل التحويل الجماعي: ${e.message}`, 'error'); }
+      setBulkBusy(false);
+      return;
+    }
     setBulkBusy(true);
     let ok = 0;
     try {
@@ -583,7 +602,6 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         await updateLead(id, { owner_id: bulkOwner });
         ok++;
       }
-      const emp = employees.find(e => e.id === bulkOwner);
       toast(`حُوّلت ${ok} جهة إلى ${emp?.name || 'الموظف'} ✓`, 'success');
       setSelIds(new Set()); setBulkOwner('');
       refresh();
@@ -660,18 +678,29 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       </Card>
 
       {/* شريط التحويل الجماعي — يظهر عند تحديد أي صف */}
-      {can('crm.assign') && selIds.size > 0 && (
+      {can('crm.assign') && (selIds.size > 0 || selAllMatching) && (
         <Card style={{ padding: '10px 14px', marginBottom: 10, display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', border: '1.5px solid color-mix(in srgb, var(--accent) 35%, var(--border))' }}>
-          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>✓ {selIds.size} جهة محددة</span>
+          <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
+            ✓ {selAllMatching ? `كل النتائج المطابقة (${fmt0(count)})` : `${selIds.size} جهة`} محددة
+          </span>
+          {/* الصفحة كلها محددة والنتائج أكثر → عرض تحديد الكل عبر الصفحات */}
+          {!selAllMatching && allPageSelected && count > leads.length && (
+            <button onClick={() => setSelAllMatching(true)} style={{
+              border: 'none', background: 'transparent', cursor: 'pointer',
+              color: 'var(--accent)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', textDecoration: 'underline',
+            }}>
+              تحديد كل الـ{fmt0(count)} المطابقة للفلاتر
+            </button>
+          )}
           <select value={bulkOwner} onChange={e => setBulkOwner(e.target.value)}
             style={{ padding: '6px 12px', borderRadius: 9, fontSize: 12.5, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
             <option value="">اختر الموظف…</option>
             {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
           </select>
           <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={!bulkOwner || bulkBusy}>
-            {bulkBusy ? 'يحوّل…' : `تحويل ${selIds.size} للموظف`}
+            {bulkBusy ? 'يحوّل…' : `تحويل ${selAllMatching ? fmt0(count) : selIds.size} للموظف`}
           </Btn>
-          <Btn size="sm" variant="ghost" onClick={() => setSelIds(new Set())}>إلغاء التحديد</Btn>
+          <Btn size="sm" variant="ghost" onClick={() => { setSelIds(new Set()); setSelAllMatching(false); }}>إلغاء التحديد</Btn>
         </Card>
       )}
 
