@@ -324,7 +324,7 @@ export default function Reconciliation({ isActive = true }) {
         subtitle={tab === 'customers'
           ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
           : tab === 'zoho_live'
-          ? 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر كشف داخلي، بلا أي رفع'
+          ? 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر استحقاق لمحة'
           : 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
@@ -698,7 +698,7 @@ function ZohoLiveTab({ isActive = true }) {
     const aoa = [
       ['مطابقة أرصدة العملاء — زوهو المرجع (حيّ)', '', '', new Date().toISOString().slice(0, 10)],
       [],
-      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'الداخلي', 'الفرق', 'رصيد لصالح العميل', 'الحالة', 'أسماء زوهو', 'أسماء الكشف الداخلي'],
+      ['العميل/المتجر', 'الهاتف', 'نوع الفوترة', 'حالة المنصّة', 'زوهو (مفتوح)', 'عدد الفواتير', 'أقدم فاتورة', 'استحقاق لمحة', 'الفرق', 'رصيد لصالح العميل', 'الحالة', 'أسماء زوهو', 'أسماء الاستحقاق'],
       ...filtered.map(r => [
         r.storeName, r.phone || '', r.billingType || '', r.platformStatus || '',
         r.zoho, r.zohoOpenCnt, r.zohoOldest || '', r.internal, r.diff, r.wallet,
@@ -724,10 +724,10 @@ function ZohoLiveTab({ isActive = true }) {
           { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: '#8B5CF6' },
           // عمر الكشف ظاهر على البطاقة (2026-07-17) — المستخدم ظن الرقم معطلاً
           // وهو من ملف invoice_details منقطع منذ أسبوع
-          { k: '', label: 'الكشف الداخلي', val: kpi.intTot,
+          { k: '', label: 'استحقاق لمحة', val: kpi.intTot,
             sub: (() => {
               const m = rows.internalMeta;
-              if (!m?.uploadedAt) return 'آخر كشف مرفوع';
+              if (!m?.uploadedAt) return 'آخر استحقاق مرفوع';
               const days = Math.floor((Date.now() - new Date(m.uploadedAt).getTime()) / 86_400_000);
               const when = new Date(m.uploadedAt).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' });
               return `${m.sourceFile || 'كشف'} — ${when}${days >= 3 ? ` (قديم ${days} يوم ⚠️)` : ''}`;
@@ -763,7 +763,7 @@ function ZohoLiveTab({ isActive = true }) {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {rows.length} —
-        المرجع = فواتير زوهو المفتوحة الحيّة (تُحدَّث بالمزامنة كل 6 ساعات) · «داخلي فقط» غالباً أرصدة قديمة بلا فاتورة في زوهو
+        المرجع = فواتير زوهو المفتوحة الحيّة (مزامنة كل 30 دقيقة + فوري بالويبهوك) · الداخلي = آخر استحقاق لمحة مرفوع · «داخلي فقط» = في الاستحقاق بلا فاتورة زوهو
       </div>
 
       {/* الجدول */}
@@ -773,7 +773,7 @@ function ZohoLiveTab({ isActive = true }) {
             <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
               <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
                 <tr>
-                  {['العميل / المتجر', 'زوهو (مفتوح)', 'الداخلي', 'الفرق', 'رصيد لصالح العميل', 'الحالة'].map(h => (
+                  {['العميل / المتجر', 'زوهو (مفتوح)', 'استحقاق لمحة', 'الفرق', 'رصيد لصالح العميل', 'الحالة'].map(h => (
                     <th key={h} style={{ padding: '10px 12px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
                 </tr>

@@ -916,12 +916,14 @@ export async function loadTreasuryBalances() {
 export async function loadCustomerBalanceRecon() {
   const { data, error } = await supabase.rpc('customer_balance_recon_zoho');
   if (error) throw error;
-  // عمر الكشف الداخلي (2026-07-17): المستخدم ظن الرقم معطلاً وهو من ملف
-  // invoice_details منقطع منذ أسبوع — نعرض تاريخه وملفه على البطاقة
-  const { data: snap } = await supabase.from('customer_receivables')
-    .select('uploaded_at, source_file').order('uploaded_at', { ascending: false }).limit(1);
+  // الجانب الداخلي = استحقاق لمحة (2026-07-17): تبيّن أن invoice_details كان
+  // تقرير زوهو المجدول بالإيميل وتوقف عمداً بعد الـAPI — فكان التبويب يقارن
+  // زوهو الحي بزوهو قديم. عمر الاستحقاق يظهر على البطاقة.
+  const { data: snap } = await supabase.from('store_balance_snapshots')
+    .select('uploaded_at, file_name').eq('source', 'internal')
+    .order('uploaded_at', { ascending: false }).limit(1);
   const internalMeta = snap?.[0]
-    ? { uploadedAt: snap[0].uploaded_at, sourceFile: snap[0].source_file }
+    ? { uploadedAt: snap[0].uploaded_at, sourceFile: snap[0].file_name }
     : null;
   const rows = (data || []).map(r => ({
     anchor:         r.anchor,
