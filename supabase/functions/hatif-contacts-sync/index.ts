@@ -1,4 +1,7 @@
-// hatif-contacts-sync v2 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// hatif-contacts-sync v3 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// v3 (2026-07-16): إجراء name_audit — جرد الجهات التي أسماؤها اليدوية تخالف
+// اسم متجرها الصحيح عندنا (+ إصلاح اختياري بـfix:true بأمر صريح).
+// ⚠️ النشر عبر MCP يعيد verify_jwt=true — استدعاء الكرون يحتاج Bearer anon + X-Cron-Key.
 // (الآلية الوحيدة التي تظهر للموظف في البروفايل — customFields تُخزَّن لكنها مخفيّة،
 // وحقل note يُضيف نسخة كل مرة ولا يُحذف برمجياً، فكلاهما مرفوض هنا).
 //
@@ -324,6 +327,62 @@ Deno.serve(async (req) => {
   }
 
   // قراءة رجعية — ماذا خزّن هاتف فعلاً
+  // جرد الأسماء (v3): جهاتُنا (في كشف المتاجر) التي اسمها في هاتف يخالف
+  // اسم متجرها الصحيح (أعلى متجر شحناً). fix:true = إصلاح جماعي بأمر صريح.
+  if (action === 'name_audit') {
+    const token = await accessToken();
+    const byPhone = new Map(list.map((r: any) => [r.phone, { name: r.name, details: r.details || '' }]));
+    const SUFFIX = /\s*\(\+\d+\s*متاجر\)\s*$/;
+    const manual: any[] = [], unnamed: any[] = [];
+    let skip = 0, total = 0;
+    for (let i = 0; i < 30; i++) {
+      const r = await fetch(`${CONTACTS_URL}?SkipCount=${skip}&MaxResultCount=200`, { headers: { Authorization: `Bearer ${token}` } });
+      if (!r.ok) break;
+      const b = unwrap(await r.json().catch(() => ({})));
+      total = b?.totalCount ?? total;
+      const items: any[] = b?.items || [];
+      if (!items.length) break;
+      for (const c of items) {
+        const np = normPhone(c.phoneNumber);
+        const want = byPhone.get(np);
+        if (!want) continue;
+        const raw = String(c.name || '').trim();
+        const nm = raw.replace(SUFFIX, '').trim();
+        if (!nm || !/\p{L}/u.test(nm)) {
+          unnamed.push({ phone: np, contact_id: c.id, hatif_name: raw, correct_name: want.name });
+          continue;
+        }
+        if (nm !== String(want.name || '').trim()) {
+          manual.push({ phone: np, contact_id: c.id, hatif_name: raw, correct_name: want.name });
+        }
+      }
+      skip += items.length;
+      if (skip >= total) break;
+      await sleep(80);
+    }
+
+    // إصلاح جماعي اختياري — يدهس الاسم اليدوي بأمر صريح من المدير فقط (fix:true)
+    let fixed = 0;
+    const fixErrors: unknown[] = [];
+    if (body.fix) {
+      const targets = body.fixUnnamed ? [...manual, ...unnamed] : manual;
+      for (const m of targets) {
+        if (fixed >= maxWrites) break;
+        if (!m.correct_name) continue;
+        const pr = await fetch(`${CONTACTS_URL}/${m.contact_id}`, { method: 'PUT',
+          headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ name: m.correct_name }) });
+        if (pr.ok) fixed++; else if (fixErrors.length < 4) fixErrors.push({ phone: m.phone, status: pr.status });
+        await sleep(90);
+      }
+    }
+
+    const max = Math.min(Number(body.max) || 300, 1000);
+    return json({ ok: true, hatif_total: total, ours_total: byPhone.size,
+      manual_diff: manual.length, unnamed: unnamed.length, fixed, fixErrors,
+      manual_list: manual.slice(0, max), unnamed_list: unnamed.slice(0, Math.min(max, 100)) });
+  }
+
   if (action === 'inspect') {
     if (!onePhone) return json({ ok: false, error: 'phone مطلوب' });
     const token = await accessToken();
@@ -361,7 +420,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, found: hits.length, fixed, untouched, samples });
   }
 
-  if (action !== 'sync') return json({ error: 'unknown action (preview|props|inspect|fixnames|sync)' }, 400);
+  if (action !== 'sync') return json({ error: 'unknown action (preview|props|inspect|name_audit|fixnames|tags|audit|sync)' }, 400);
 
   let token: string, props: Map<string, string>;
   try { token = await accessToken(); props = await ensureProps(token); }
