@@ -634,7 +634,10 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr))', gap: 8 }} className="crm-lead-filters">
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{ position: 'absolute', top: 11, insetInlineStart: 11, color: 'var(--muted)' }}/>
-            <input value={filters.q} onChange={e => setFilter({ q: e.target.value })}
+            {/* type=search + autoComplete=off + name محايد: كروم كان يظنه حقل بريد
+                فيعبّئه بإيميل الحساب تلقائياً عند كل دخول للصفحة (2026-07-16) */}
+            <input type="search" name="leads-filter-q" autoComplete="off"
+              value={filters.q} onChange={e => setFilter({ q: e.target.value })}
               placeholder="ابحث باسم، رقم 966، بريد، قسم..."
               style={{ width: '100%', padding: '9px 34px 9px 12px', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)' }}/>
           </div>
