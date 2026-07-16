@@ -297,7 +297,7 @@ function Row({ label, value, accent }) {
 
 // ── Main ───────────────────────────────────────────────────────
 export default function Merchants({ isActive = true }) {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [data, setData] = useState({ snapshot: null, merchants: [] });
@@ -377,6 +377,11 @@ export default function Merchants({ isActive = true }) {
     }
     return [...pool].sort((a, b) => (b.shipment_count || 0) - (a.shipment_count || 0));
   }, [data.merchants, search, filterType, filterStatus]);
+
+  // حارس التبويب (تفصيص 2026-07-16) — كانت الصفحة بلا حارس داخلي
+  if (!can('merchants.view')) {
+    return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض دليل المتاجر»"/></div>;
+  }
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>

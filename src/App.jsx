@@ -133,7 +133,10 @@ const NAV_ITEMS = [
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
   // §1.32 مرحلة 3: مركز المبيعات = إعادة الاستهداف + فرص هاتف + خارج المنصّة + الشرائح + المتاجر
-  { id: 'sales-hub',       path: '/retargeting',     label: 'مركز المبيعات',  icon: Target,    section: 'sales', permKey: 'sales.view',
+  // مركز المبيعات: صلاحية مستقلة لكل تبويب (تفصيص 2026-07-16) — permAny = يظهر
+  // العنصر لمن يملك أياً منها، وSalesHub يفلتر تبويباته بالمفتاح الدقيق.
+  { id: 'sales-hub',       path: '/retargeting',     label: 'مركز المبيعات',  icon: Target,    section: 'sales',
+    permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
       { tabId: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    legacy: '/hatif-leads' },
@@ -195,9 +198,10 @@ const NAV_SECTIONS = [
 // يُعامل كمسار مجهول → إعادة توجيه لأول صفحة مرئية للموظف.
 const PATH_PERM = new Map();
 for (const it of NAV_ITEMS) {
-  if (!it.permKey) continue;
-  PATH_PERM.set(it.path, it.permKey);
-  for (const s of it.subTabs || []) if (s.legacy) PATH_PERM.set(s.legacy, it.permKey);
+  const pk = it.permAny || it.permKey;   // permAny = مصفوفة «أيّ منها يكفي»
+  if (!pk) continue;
+  PATH_PERM.set(it.path, pk);
+  for (const s of it.subTabs || []) if (s.legacy) PATH_PERM.set(s.legacy, pk);
 }
 // مسارات لا تظهر في القائمة
 PATH_PERM.set('/carrier',   'carriers.view');
@@ -318,7 +322,8 @@ function AppInner({ theme, toggleTheme }) {
   // (لا عرض ولا جلب بيانات) ويسقط في تحويلة «مسار مجهول» → أول صفحة مسموحة.
   const rawPath   = location.pathname;
   const pathPermKey = rawPath.startsWith('/settings') ? 'system.view_settings' : PATH_PERM.get(rawPath);
-  const pathAllowed = isAdmin || !pathPermKey || can(pathPermKey);
+  const pathAllowed = isAdmin || !pathPermKey
+    || (Array.isArray(pathPermKey) ? pathPermKey.some(k => can(k)) : can(pathPermKey));
   const pathname  = pathAllowed ? rawPath : '__locked__';
   const isSettingsPath = pathAllowed && rawPath.startsWith('/settings');
 
@@ -327,7 +332,7 @@ function AppInner({ theme, toggleTheme }) {
   useEffect(() => {
     if (!user || !profile) return;
     if (pathAllowed) logPageView(rawPath);
-    else logDenied(rawPath, pathPermKey);
+    else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
   const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support'];
@@ -530,6 +535,7 @@ function AppInner({ theme, toggleTheme }) {
     ? NAV_ITEMS
     : NAV_ITEMS.filter(n => {
         if (n.adminOnly) return false;
+        if (n.permAny)   return n.permAny.some(k => can(k));
         if (!n.permKey)  return true;
         return can(n.permKey);
       });

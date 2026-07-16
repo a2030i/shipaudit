@@ -18,11 +18,13 @@ import { LeadsTab } from './CrmWorkspace.jsx';
 import Segments    from './Segments.jsx';
 import Merchants   from './Merchants.jsx';
 
+// تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
+// sales.view لم يعد يفتح إلا إعادة الاستهداف.
 const TABS = [
   { id: 'retargeting', label: 'إعادة الاستهداف',    icon: Target,      component: Retargeting, perm: 'sales.view' },
-  { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.view' },
-  { id: 'external',    label: 'عملاء خارج المنصّة', icon: Store,       component: LeadsTab,    perm: 'crm.view', activeProp: true },
-  { id: 'segments',    label: 'مجموعات العملاء',    icon: Layers,      component: Segments,    perm: 'sales.view' },
+  { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.hatif_leads' },
+  { id: 'external',    label: 'عملاء خارج المنصّة', icon: Store,       component: LeadsTab,    perm: 'sales.external_leads', activeProp: true },
+  { id: 'segments',    label: 'مجموعات العملاء',    icon: Layers,      component: Segments,    perm: 'sales.segments' },
   { id: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, component: Merchants,   perm: 'merchants.view' },
 ];
 

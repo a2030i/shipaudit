@@ -64,7 +64,8 @@ export default function HatifLeads({ isActive = true }) {
     });
   }, [rows, q, status, namedOnly, showExcluded]);
 
-  if (!can('sales.view') && !can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  // تفصيص 2026-07-16: مفتاح مستقل لهذا التبويب
+  if (!can('sales.hatif_leads')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب فرص من هاتف»"/></div>;
 
   // متغيّر القالب: {{1}} الاسم (أو الرقم لمن بلا اسم) — الفرص ليس لها شحنات/دين
   const toRecipient = (l) => ({ to: normalizeSaudiPhone(l.phone), name: display(l), amount: null, vars: [display(l)] });

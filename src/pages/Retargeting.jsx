@@ -179,7 +179,8 @@ export default function Retargeting({ isActive = true }) {
     setWaRecipients(recs);
   };
 
-  if (!can('sales.view') && !can('crm.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  // تفصيص 2026-07-16: sales.view = هذا التبويب حصراً (أُزيل fallback crm.view)
+  if (!can('sales.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب إعادة الاستهداف»"/></div>;
 
   const st = dash?.stats || {};
   const totalPages = Math.max(1, Math.ceil(count / LIMIT));

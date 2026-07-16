@@ -658,6 +658,10 @@ export default function Segments({ isActive = true }) {
   };
 
   // ── render ──────────────────────────────────────────────────
+  // تفصيص 2026-07-16: مفتاح مستقل لتبويب مجموعات العملاء
+  if (!can('sales.segments')) {
+    return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب مجموعات العملاء»"/></div>;
+  }
   if (loading) {
     return (
       <div style={{ padding: 24 }}>

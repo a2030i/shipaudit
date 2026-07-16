@@ -144,7 +144,12 @@ export const PERMISSION_CATALOG = [
   {
     id: 'sales', label: 'المبيعات وإعادة الاستهداف', icon: 'Target', color: '#F97316',
     perms: [
-      { key: 'sales.view',   label: 'عرض إعادة الاستهداف وفرص هاتف والشرائح' },
+      // تفصيص تبويبات مركز المبيعات (قرار المستخدم 2026-07-16): مفتاح لكل تبويب.
+      // sales.view = تبويب إعادة الاستهداف فقط (كان يفتح كل التبويبات).
+      { key: 'sales.view',           label: 'تبويب إعادة الاستهداف' },
+      { key: 'sales.hatif_leads',    label: 'تبويب فرص من هاتف' },
+      { key: 'sales.external_leads', label: 'تبويب عملاء خارج المنصّة' },
+      { key: 'sales.segments',       label: 'تبويب مجموعات العملاء' },
       { key: 'sales.manage', label: 'تحديث حالة/ملاحظة/إسناد الفرص' },
       { key: 'sales.export', label: 'تصدير قوائم الفرص' },
     ],
@@ -255,7 +260,8 @@ export const FULL_ACCOUNTANT_KEYS = ALL_PERMISSION_KEYS.filter(k => !ADMIN_ONLY_
 // العمليات شاشة مالية، والموظف المحدود يهبط على أول صفحة مرئية له.
 // «موظف مبيعات»: الفرص والحملات فقط — صفر مالية/تدقيق/تحصيل ديون.
 export const SALES_ROLE_KEYS = [
-  'sales.view', 'sales.manage', 'sales.export',
+  'sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments',
+  'sales.manage', 'sales.export',
   'campaigns.send', 'whatsapp.view_log',
   'crm.view', 'crm.log_activity', 'crm.change_status', 'crm.manage_tasks', 'crm.manage_deals',
   'merchants.view',
