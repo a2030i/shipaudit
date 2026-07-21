@@ -58,6 +58,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [verified, setVerified] = useState(null); // null | true | false
   const [sending, setSending]   = useState(false);
   const [results, setResults]   = useState(null);
+  const [progress, setProgress] = useState(null);   // {done,total,sent,failed} أثناء الدفعات
   const [selected, setSelected] = useState(() => new Set());   // أرقام المستلِمين المختارين
   const [tpl, setTpl]           = useState('');                // القالب المختار لهذه الحملة
   const [waStatus, setWaStatus] = useState(() => new Map());   // آخر حملة/رقم — لتحذير التكرار
@@ -156,8 +157,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const valid = validAll.filter(r => !exPhones.has(r.to));
   const skipped = recipients.length - validAll.length;
   const selectedValid = valid.filter(r => selected.has(r.to));
-  // فوق 200: الإرسال الفوري ممنوع (حصة هاتف) — الجدولة تقسّمه دفعات آلياً
-  const overLimit = selectedValid.length > 200 && !schedOn;
+  // لا حدّ للعدد: الفوري يُقسَّم دفعات 120 متتالية (كل استدعاء دالة تحت مهلتها —
+  // الدالة ترسل ~80/دقيقة ضمن حصة Voxa). الكبير جداً الأفضل جدولته (خلفية).
+  const SEND_CHUNK = 120;
   const lastSentOf = (to) => waStatus.get(to)?.lastSentAt || null;
   const daysAgoTxt = (iso) => {
     if (!iso) return null;
@@ -195,7 +197,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const doSchedule = async () => {
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً أولاً', 'warn'); return; }
-    if (!selectedValid.length) { toast('راجع اختيار المستلمين', 'warn'); return; }
+    if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
     if (!schedAt || new Date(schedAt).getTime() < Date.now() + 5 * 60_000) {
       toast('اختر وقتاً مستقبلياً (بعد 5 دقائق على الأقل)', 'warn'); return;
     }
@@ -214,29 +216,42 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setSending(false);
   };
 
+  // إرسال فوري بلا حدّ للعدد: دفعات SEND_CHUNK متتالية (كل استدعاء تحت مهلة
+  // الدالة) — النتائج تُجمَّع، والتقدّم يظهر حياً. لا تُغلق النافذة أثناءها.
   const doSend = async () => {
     if (schedOn) return doSchedule();
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
-    if (overLimit) { toast('فوق 200: فعّل الجدولة — تُرسَل دفعات آلياً', 'warn'); return; }
     setSending(true);
-    const r = await sendWhatsAppCampaign({
-      templateName: tpl,
-      templateLanguage: 'ar',
-      channelId: null,
-      items: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
-      campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
-    });
-    if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
-    setSending(false);
-    if (r?.ok) {
-      setResults(r);
-      toast(`تم الإرسال — ${r.sent || 0} نجحت · ${r.failed || 0} فشلت`, (r.failed ? 'warn' : 'success'));
-      onSent?.(r);
-    } else {
-      toast(`فشل الإرسال: ${r?.error || 'غير معروف'}`, 'error');
+    const items = selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount }));
+    const agg = { ok: true, total: items.length, sent: 0, failed: 0, results: [] };
+    setProgress({ done: 0, total: items.length, sent: 0, failed: 0 });
+    let hardError = null;
+    for (let i = 0; i < items.length; i += SEND_CHUNK) {
+      const chunk = items.slice(i, i + SEND_CHUNK);
+      const r = await sendWhatsAppCampaign({
+        templateName: tpl, templateLanguage: 'ar', channelId: null, items: chunk,
+        campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
+      });
+      if (r?.ok) {
+        agg.sent += r.sent || 0; agg.failed += r.failed || 0;
+        if (Array.isArray(r.results)) agg.results.push(...r.results);
+      } else {
+        // فشل الدفعة كلها (شبكة/مهلة) — نتوقف ونعرض ما أُنجز حتى لا نكرّر المُرسَل
+        hardError = r?.error || 'انقطاع أثناء الإرسال';
+        agg.failed += chunk.length;
+        agg.results.push(...chunk.map(c => ({ to: c.to, ok: false, error: hardError })));
+        break;
+      }
+      setProgress({ done: Math.min(i + SEND_CHUNK, items.length), total: items.length, sent: agg.sent, failed: agg.failed });
     }
+    if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
+    setSending(false); setProgress(null);
+    setResults(agg);
+    if (hardError) toast(`توقّف الإرسال: ${hardError} — نجحت ${agg.sent} قبل التوقف`, 'error');
+    else toast(`تم الإرسال — ${agg.sent} نجحت · ${agg.failed} فشلت`, (agg.failed ? 'warn' : 'success'));
+    onSent?.(agg);
   };
 
   return (
@@ -404,10 +419,22 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {!valid.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>لا مستلِمون بأرقام صالحة</div>}
           </div>
 
-          {overLimit && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>
-              <AlertTriangle size={15}/> {fmt(selectedValid.length)} مختار — الإرسال الفوري حدّه 200.
-              <Btn size="sm" variant="ghost" onClick={() => setSchedOn(true)}>⏰ جدولها — تُرسَل دفعات آلياً</Btn>
+          {selectedValid.length > SEND_CHUNK && !schedOn && (
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10, lineHeight: 1.7 }}>
+              ℹ️ {fmt(selectedValid.length)} مستلم — يُرسَلون فوراً على {Math.ceil(selectedValid.length / SEND_CHUNK)} دفعات متتالية
+              (≈{Math.ceil(selectedValid.length / 80)} دقيقة، أبقِ النافذة مفتوحة). أو فعّل الجدولة ليرسلها النظام في الخلفية.
+            </div>
+          )}
+
+          {progress && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ height: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${Math.round(progress.done / Math.max(1, progress.total) * 100)}%`,
+                  background: 'var(--green)', transition: 'width .4s' }}/>
+              </div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
+                يُرسِل… {fmt(progress.done)} / {fmt(progress.total)} · نجحت {fmt(progress.sent)}{progress.failed ? ` · فشلت ${fmt(progress.failed)}` : ''} — لا تُغلق النافذة
+              </div>
             </div>
           )}
 
@@ -439,8 +466,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !tpl || !campName.trim()}>
-              {sending ? <><Spinner size={14}/> جارٍ…</>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || !tpl || !campName.trim()}>
+              {sending ? <><Spinner size={14}/> {progress ? `يُرسِل ${fmt(progress.done)}/${fmt(progress.total)}…` : 'جارٍ…'}</>
                 : schedOn ? <><Clock size={14}/> جدولة ({fmt(selectedValid.length)})</>
                 : <><Send size={14}/> إرسال ({fmt(selectedValid.length)})</>}
             </Btn>

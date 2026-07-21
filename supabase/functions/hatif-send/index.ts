@@ -1,4 +1,6 @@
-// hatif-send v1 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// hatif-send v10 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// v10 (2026-07-21): مهلة 350ms بين الرسائل (~170/دقيقة أقصى — تحت حصة Voxa
+// المشتركة) بعد فتح حدّ الإرسال الفوري: المودال يقسّم أي عدد دفعات 150 متتالية.
 // نفس واجهة whatsapp-send: action verify|send + template_name/template_language/
 // channel_id + items:[{to, vars[]}] — فيعمل التطبيق دون تغيير. الأسرار:
 // client_id · secret (أو HATIF_CLIENT_ID/SECRET). التوكن client-credentials مع كاش.
@@ -14,6 +16,7 @@ const CORS = {
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const env = (...names: string[]) => { for (const n of names) { const v = Deno.env.get(n); if (v && v.trim()) return v.trim(); } return ''; };
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 const TOKEN_URL = 'https://api.voxa.sa/connect/token';
 const SEND_URL  = 'https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate';
@@ -150,6 +153,7 @@ Deno.serve(async (req) => {
           status: res.status || 'accepted', sent_at: sentAt, sent_by: auth.id,
         });
       } catch (e) { failed++; results.push({ to, ok: false, error: String((e as Error).message || e) }); }
+      await sleep(350);   // ~170/دقيقة أقصى — تحت حصة Voxa المشتركة مع الكرونات
     }
     if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* لا يُفشل الإرسال */ } }
     return json({ ok: true, total: items.length, sent, failed, results, provider: 'hatif' });
