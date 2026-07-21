@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
@@ -1059,6 +1059,30 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
 }
 
 // ── PageSlot: keeps page mounted, hides without triggering CSS animations ─────
+// حاجز أخطاء لكل صفحة: كل ~55 صفحة في شجرة React واحدة (PageSlot يبدّل
+// visibility فقط) — انهيار render في أي صفحة (حتى مخفية) كان يُسقط التطبيق كله.
+// هذا الحاجز يعزل العطل في صفحته ويعرض بطاقة استعادة بدل الشاشة البيضاء.
+class SlotBoundary extends Component {
+  constructor(p) { super(p); this.state = { err: null }; }
+  static getDerivedStateFromError(err) { return { err }; }
+  render() {
+    if (this.state.err) {
+      return (
+        <div style={{ padding: 40, textAlign: 'center', color: 'var(--muted)' }}>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>⚠️</div>
+          <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 6 }}>تعطّلت هذه الصفحة</div>
+          <div style={{ fontSize: 12, marginBottom: 16 }}>{String(this.state.err?.message || this.state.err).slice(0, 160)}</div>
+          <button onClick={() => window.location.reload()}
+            style={{ padding: '8px 18px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+            تحديث الصفحة
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function PageSlot({ active, scroll = false, children }) {
   return (
     <div className="page-slot" style={{
@@ -1068,7 +1092,7 @@ function PageSlot({ active, scroll = false, children }) {
       pointerEvents: active ? 'auto' : 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'stretch',
     }}>
-      {children}
+      <SlotBoundary>{children}</SlotBoundary>
     </div>
   );
 }
