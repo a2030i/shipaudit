@@ -100,6 +100,18 @@ export function isRealSaudiMobile(v) {
 
 // اسم جهة وهمي/سبام يُرفَض عند الرفع والإضافة (قواعد التنظيف الصارمة 2026-07-22).
 // نصوص العرض فقط — لا يمسّ الأرقام. مبنيّ على فحص 89,671 صفاً فعلياً.
+// جوهر اسم الجهة لغرض إزالة التكرار: يزيل بادئات عامة (متجر/محل/شركة/مؤسسة/
+// سوق/ستور/store/shop/the) من الاسم **المطبَّع** فيتساوى «تراكيب» و«متجر تراكيب».
+// يُطبَّق على طرفي المقارنة (الموجود + الجديد). فراغ بعد التجريد → يرجع الأصل
+// (كي لا تتصادم كل «متجر X» ذات الجوهر الفارغ).
+const LEAD_PREFIX_RE = /^(?:متجر|محل|شركه|مؤسسه|موسسه|سوق|ستور|store|shop|the)\s+/;
+function dedupCore(norm) {
+  let s = String(norm || '');
+  let prev;
+  do { prev = s; s = s.replace(LEAD_PREFIX_RE, ''); } while (s !== prev);
+  return s.trim() || String(norm || '').trim();
+}
+
 export function isJunkLeadName(name) {
   const raw = String(name ?? '').trim();
   if (raw.replace(/\s/g, '').length <= 1) return true;               // فارغ/حرف واحد
@@ -415,7 +427,7 @@ export async function uploadLeadsSnapshot({
   const existingPhones = new Map();
   for (const r of existing || []) {
     const phone = normalizeSaudiPhone(r.phone_normalized || r.phone);
-    const norm = r.name_normalized || '';
+    const norm = dedupCore(r.name_normalized || '');   // «تراكيب» = «متجر تراكيب»
     if (phone && norm) existingIdentities.add(`${phone}|${norm}`);
     if (phone) existingPhones.set(phone, (existingPhones.get(phone) || 0) + 1);
   }
@@ -434,7 +446,7 @@ export async function uploadLeadsSnapshot({
     const nameNorm = r.nameNormalized || normalizeName(r.name);
     if (!nameNorm) { skippedNoName++; continue; }
     if (!r.phoneNormalized) { skippedInvalidPhone++; continue; }
-    const identity = `${r.phoneNormalized}|${nameNorm}`;
+    const identity = `${r.phoneNormalized}|${dedupCore(nameNorm)}`;
     if (existingIdentities.has(identity) || batchSeen.has(identity)) { skippedExact++; continue; }
     batchSeen.add(identity);
 
