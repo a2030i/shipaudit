@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -22,6 +22,12 @@ const FIELD_LABELS = {
   last_shipment:'تاريخ آخر شحنة',
   days_since:   'أيام منذ آخر شحنة',
   wallet:       'رصيد المحفظة',
+  billing_type: 'نوع الفوترة',
+  store_status: 'حالة المتجر',
+  zoho_due:     'مديونية زوهو المفتوحة',
+  zoho_open_count: 'عدد فواتير زوهو المفتوحة',
+  zoho_last_invoice: 'تاريخ آخر فاتورة (زوهو)',
+  zoho_last_payment: 'تاريخ آخر دفعة (زوهو)',
   overdue:      'المبلغ المتأخر',
   oldest_days:  'عمر أقدم فاتورة (يوم)',
   last_payment: 'تاريخ آخر دفعة',
@@ -30,8 +36,9 @@ const FIELD_LABELS = {
   platform:     'المنصّة',
   phone:        'رقم الجوال',
 };
-const fieldValue = (r, key) => {
-  const v = (r.fields && r.fields[key] !== undefined) ? r.fields[key]
+// fields = حقول الصفحة مدموجة فوق سياق القاعدة (campaign_recipient_context)
+const fieldValue = (fields, r, key) => {
+  const v = (fields && fields[key] !== undefined) ? fields[key]
     : (key === 'name' ? r.name : key === 'amount' ? r.amount : key === 'count' ? r.count : undefined);
   if (v == null || v === '') return '—';
   if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
@@ -64,6 +71,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [exCamps, setExCamps]     = useState(() => new Set());  // أسماء الحملات المستثناة
   const [exPhones, setExPhones]   = useState(() => new Set());  // أرقامها (تُجلب عند الاختيار)
   const [exOpen, setExOpen]       = useState(false);
+  // سياق واسع لكل مستلم من القاعدة (شحنات/محفظة/زوهو…) — حقول الصفحة تفوز عند التعارض
+  const [ctx, setCtx]             = useState(() => new Map());
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات، وإلا «افتراضي الصفحة» بعدد vars
   const defaultMapFor = (templateName, config) => {
@@ -79,6 +88,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setCampName(bucketLabel || ''); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
     setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
     loadCampaignNames().then(setCampaigns).catch(() => setCampaigns([]));
+    setCtx(new Map());
+    loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -93,22 +104,26 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // تغيير القالب → تحميل ربطه المحفوظ (أو الافتراضي)
   const pickTemplate = (t) => { setTpl(t); setVarMap(defaultMapFor(t, cfg)); };
 
-  // الحقول المتاحة من بيانات الصفحة الحالية (اتحاد مفاتيح fields عبر المستلمين)
+  // حقول مستلِم = سياق القاعدة (بالهاتف) + حقول صفحته فوقه (تفوز عند التعارض)
+  const mergedFields = (r) => ({ ...(ctx.get(r.to) || {}), ...(r.fields || {}) });
+
+  // الحقول المتاحة: اتحاد حقول الصفحة + سياق القاعدة عبر المستلمين
   const availableFields = useMemo(() => {
     const keys = new Set(['name']);
     for (const r of recipients) {
       if (r.amount != null) keys.add('amount');
       if (r.count != null) keys.add('count');
-      for (const k of Object.keys(r.fields || {})) if (r.fields[k] != null && r.fields[k] !== '') keys.add(k);
+      const f = { ...(ctx.get(r.to) || {}), ...(r.fields || {}) };
+      for (const k of Object.keys(f)) if (f[k] != null && f[k] !== '') keys.add(k);
     }
     return [...keys];
-  }, [recipients]);
+  }, [recipients, ctx]);
 
   // حلّ متغيرات مستلِم واحد وفق الربط الحالي
   const resolveVarsFor = (r) => varMap.map((m, i) => {
     if (m.src === 'legacy') return String(r.vars?.[i] ?? r.name ?? '');
     if (m.src === 'custom') return m.text || '';
-    if (m.src.startsWith('field:')) return fieldValue(r, m.src.slice(6));
+    if (m.src.startsWith('field:')) return fieldValue(mergedFields(r), r, m.src.slice(6));
     return '';
   });
   const mapCustomized = varMap.some(m => m.src !== 'legacy');

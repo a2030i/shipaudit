@@ -87,6 +87,38 @@ export async function loadCampaignPhones(names) {
   return phones;
 }
 
+// سياق المستلمين لمتغيرات القالب (2026-07-21): RPC campaign_recipient_context —
+// المتجر الأعلى شحناً بالهاتف + زوهو الحي (مديونية/آخر فاتورة/آخر دفعة).
+// يُرجِع Map(phone → fields) بالمفاتيح المعرّبة في FIELD_LABELS. الفشل صامت
+// (المودال يشتغل بحقول الصفحة وحدها). دفعات 500 (سقف PostgREST 1000 صف §1.34).
+export async function loadCampaignRecipientContext(phones) {
+  const map = new Map();
+  const uniq = [...new Set((phones || []).filter(Boolean))];
+  for (let i = 0; i < uniq.length; i += 500) {
+    try {
+      const { data, error } = await supabase.rpc('campaign_recipient_context', { p_phones: uniq.slice(i, i + 500) });
+      if (error || !Array.isArray(data)) continue;
+      for (const r of data) {
+        const f = {};
+        if (r.shipments != null) f.shipments = r.shipments;
+        if (r.last_shipment) {
+          f.last_shipment = r.last_shipment;
+          f.days_since = Math.floor((Date.now() - new Date(r.last_shipment).getTime()) / 86_400_000);
+        }
+        if (r.wallet != null) f.wallet = Number(r.wallet);
+        if (r.billing_type) f.billing_type = r.billing_type;
+        if (r.store_status) f.store_status = r.store_status;
+        if (r.zoho_due != null) f.zoho_due = Number(r.zoho_due);
+        if (r.zoho_open_count != null) f.zoho_open_count = Number(r.zoho_open_count);
+        if (r.zoho_last_invoice) f.zoho_last_invoice = r.zoho_last_invoice;
+        if (r.zoho_last_payment) f.zoho_last_payment = r.zoho_last_payment;
+        map.set(r.phone, f);
+      }
+    } catch { /* اختياري — لا يُفشل المودال */ }
+  }
+  return map;
+}
+
 // Saudi phone normalization → international digits, no '+'.
 //   05XXXXXXXX (10) → 9665XXXXXXXX · 5XXXXXXXX (9) → 9665XXXXXXXX
 //   already 9665… → as-is · anything else → digits as-is (best effort)
