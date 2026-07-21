@@ -115,28 +115,40 @@ function normalizeHeader(s) {
     .trim();
 }
 
+// المرادفات تشمل صيغة تصدير دليل سلة العام (nameAr/whatsup/businessType.name/
+// address.city.name…) — تُطابَق بعد normalizeHeader (يُبقي النقاط، يخفض الحالة).
 const HEADER_KEYS = {
-  rowNo:        ['#', 'م', 'serial', 'no'],
-  category:     ['القسم', 'التصنيف', 'category'],
-  name:         ['اسم المتجر - عربي', 'اسم المتجر', 'المتجر', 'الجهة', 'name', 'store name', 'merchant'],
-  nameEn:       ['اسم المتجر - انجليزي', 'اسم المتجر - إنجليزي', 'english name', 'name en'],
-  phone:        ['رقم الجوال', 'الجوال', 'mobile'],
-  phoneAlt:     ['رقم الهاتف', 'الهاتف', 'phone', 'tel'],
+  rowNo:        ['#', 'م', 'serial'],
+  category:     ['القسم', 'التصنيف', 'category', 'businesstype.name', 'business type'],
+  subCategory:  ['businesssubtype.name', 'business sub type', 'subcategory'],
+  name:         ['اسم المتجر - عربي', 'اسم المتجر', 'المتجر', 'الجهة', 'namear', 'name ar', 'name', 'store name', 'merchant'],
+  nameEn:       ['اسم المتجر - انجليزي', 'اسم المتجر - إنجليزي', 'nameen', 'english name', 'name en'],
+  phone:        ['رقم الجوال', 'الجوال', 'mobile', 'contactdetails.customerservicenumber', 'customerservicenumber', 'customer service number'],
+  phoneAlt:     ['رقم الهاتف', 'الهاتف', 'phone'],
   unifiedPhone: ['الرقم الموحد', 'unified'],
-  whatsapp:     ['رقم واتس آب', 'رقم واتساب', 'whatsapp number'],
+  whatsapp:     ['رقم واتس آب', 'رقم واتساب', 'whatsapp number', 'whatsup'],
   whatsappLink: ['رابط واتساب', 'رابط واتس آب', 'whatsapp link'],
   address:      ['عنوان المتجر', 'العنوان', 'address'],
-  email:        ['البريد الإلكتروني', 'الايميل', 'الإيميل', 'email', 'e-mail'],
+  city:         ['address.city.name', 'المدينة', 'city'],
+  region:       ['address.region.name', 'المنطقة', 'region'],
+  district:     ['address.district.name', 'الحي', 'district'],
+  street:       ['address.streetname', 'الشارع', 'street'],
+  email:        ['البريد الإلكتروني', 'الايميل', 'الإيميل', 'contactdetails.email', 'email', 'e-mail'],
   website:      ['الموقع الإلكتروني', 'الموقع الالكتروني', 'website', 'site'],
   platform:     ['salla / zid', 'salla/zid', 'سلة / زد', 'منصة', 'platform'],
+  rating:       ['rating', 'التقييم'],
+  reviews:      ['totalreviews', 'total reviews', 'عدد التقييمات'],
   instagram:    ['إنستجرام', 'انستجرام', 'instagram'],
   facebook:     ['فيس بوك', 'facebook'],
-  twitter:      ['تويتر', 'twitter', 'x'],
+  twitter:      ['تويتر', 'twitter'],
   telegram:     ['تليجرام', 'telegram'],
-  googlePlay:   ['رابط التطبيق جوجل بلاي', 'google play'],
-  appStore:     ['رابط التطبيق آبل ستور', 'app store', 'apple store'],
+  snapchat:     ['سناب شات', 'سناب', 'snapchat'],
+  tiktok:       ['تيك توك', 'tiktok'],
+  googlePlay:   ['رابط التطبيق جوجل بلاي', 'google play', 'android_app'],
+  appStore:     ['رابط التطبيق آبل ستور', 'app store', 'apple store', 'apple_app'],
   storeUrl:     ['رابط المتجر', 'store url', 'store link'],
   notes:        ['ملاحظات', 'notes', 'note'],
+  description:  ['description', 'الوصف', 'وصف'],
 };
 
 function findIdx(header, keys) {
@@ -209,6 +221,10 @@ export function parseLeadsRows(allRows) {
   if (headerIdx < 0 || cols.name < 0) throw new Error('لم يُعثر على عمود اسم المتجر');
 
   const header = allRows[headerIdx] || [];
+  // صيغة سلة: نميّزها بعمود مميّز لها لنضع المنصّة «سلة» افتراضياً (لا عمود منصّة فيها)
+  const normHeader = header.map(normalizeHeader);
+  const isSallaFormat = normHeader.some(h =>
+    h === 'contactdetails.customerservicenumber' || h === 'businesstype.name' || h === 'namear');
   const rows = [];
   let invalidPhone = 0;
   let blankName = 0;
@@ -230,21 +246,33 @@ export function parseLeadsRows(allRows) {
     if (phoneNorm && !isRealSaudiMobile(phoneNorm)) phoneNorm = null;
     if (!phoneNorm) invalidPhone++;
 
+    // النوع الفرعي يُلحَق بالقسم (سلة: businessType + businessSubType)
+    const cat = toText(cell(r, cols.category));
+    const subCat = toText(cell(r, cols.subCategory));
+    const category = cat && subCat ? `${cat} — ${subCat}` : (cat || subCat);
+    // العنوان: عمود صريح، وإلا يُركَّب من (حي/مدينة/منطقة) عند غيابه (صيغة سلة)
+    const city = toText(cell(r, cols.city));
+    let address = toText(cell(r, cols.address));
+    if (!address) {
+      address = [cell(r, cols.street), cell(r, cols.district), city, cell(r, cols.region)]
+        .map(v => toText(v)).filter(Boolean).join('، ') || null;
+    }
+
     rows.push({
       rowNumber: i + 1,
       name,
       nameNormalized: normalizeName(name),
       nameEn: toText(cell(r, cols.nameEn)),
-      category: toText(cell(r, cols.category)),
+      category,
       phone: phoneNorm,
       phoneNormalized: phoneNorm,
       whatsapp: whatsappNorm || phoneNorm,
       whatsappNormalized: whatsappNorm || phoneNorm,
       email: toText(cell(r, cols.email)),
-      city: null,
-      address: toText(cell(r, cols.address)),
+      city,
+      address,
       website: toText(cell(r, cols.website)),
-      platform: toText(cell(r, cols.platform)),
+      platform: toText(cell(r, cols.platform)) || (isSallaFormat ? 'سلة' : null),
       storeUrl: toText(cell(r, cols.storeUrl)),
       socialLinks: {
         whatsapp: toText(cell(r, cols.whatsappLink)),
@@ -252,6 +280,8 @@ export function parseLeadsRows(allRows) {
         facebook: toText(cell(r, cols.facebook)),
         twitter: toText(cell(r, cols.twitter)),
         telegram: toText(cell(r, cols.telegram)),
+        snapchat: toText(cell(r, cols.snapchat)),
+        tiktok: toText(cell(r, cols.tiktok)),
         googlePlay: toText(cell(r, cols.googlePlay)),
         appStore: toText(cell(r, cols.appStore)),
       },
