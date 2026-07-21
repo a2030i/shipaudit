@@ -119,20 +119,20 @@ function normalizeHeader(s) {
 // address.city.name…) — تُطابَق بعد normalizeHeader (يُبقي النقاط، يخفض الحالة).
 const HEADER_KEYS = {
   rowNo:        ['#', 'م', 'serial'],
-  category:     ['القسم', 'التصنيف', 'category', 'businesstype.name', 'business type'],
-  subCategory:  ['businesssubtype.name', 'business sub type', 'subcategory'],
+  category:     ['القسم', 'التصنيف', 'category', 'businesstype.name', 'businesstype'],
+  subCategory:  ['businesssubtype.name', 'businesssubtype', 'subcategory'],
   name:         ['اسم المتجر - عربي', 'اسم المتجر', 'المتجر', 'الجهة', 'namear', 'name ar', 'name', 'store name', 'merchant'],
   nameEn:       ['اسم المتجر - انجليزي', 'اسم المتجر - إنجليزي', 'nameen', 'english name', 'name en'],
   phone:        ['رقم الجوال', 'الجوال', 'mobile', 'contactdetails.customerservicenumber', 'customerservicenumber', 'customer service number'],
   phoneAlt:     ['رقم الهاتف', 'الهاتف', 'phone'],
   unifiedPhone: ['الرقم الموحد', 'unified'],
-  whatsapp:     ['رقم واتس آب', 'رقم واتساب', 'whatsapp number', 'whatsup'],
+  whatsapp:     ['رقم واتس آب', 'رقم واتساب', 'whatsapp number', 'whatsup', 'whatsapp'],
   whatsappLink: ['رابط واتساب', 'رابط واتس آب', 'whatsapp link'],
   address:      ['عنوان المتجر', 'العنوان', 'address'],
   city:         ['address.city.name', 'المدينة', 'city'],
   region:       ['address.region.name', 'المنطقة', 'region'],
   district:     ['address.district.name', 'الحي', 'district'],
-  street:       ['address.streetname', 'الشارع', 'street'],
+  street:       ['address.streetname', 'الشارع', 'streetname', 'street'],
   email:        ['البريد الإلكتروني', 'الايميل', 'الإيميل', 'contactdetails.email', 'email', 'e-mail'],
   website:      ['الموقع الإلكتروني', 'الموقع الالكتروني', 'website', 'site'],
   platform:     ['salla / zid', 'salla/zid', 'سلة / زد', 'منصة', 'platform'],
@@ -144,9 +144,9 @@ const HEADER_KEYS = {
   telegram:     ['تليجرام', 'telegram'],
   snapchat:     ['سناب شات', 'سناب', 'snapchat'],
   tiktok:       ['تيك توك', 'tiktok'],
-  googlePlay:   ['رابط التطبيق جوجل بلاي', 'google play', 'android_app'],
-  appStore:     ['رابط التطبيق آبل ستور', 'app store', 'apple store', 'apple_app'],
-  storeUrl:     ['رابط المتجر', 'store url', 'store link'],
+  googlePlay:   ['رابط التطبيق جوجل بلاي', 'google play', 'android_app', 'android app'],
+  appStore:     ['رابط التطبيق آبل ستور', 'app store', 'apple store', 'apple_app', 'apple app'],
+  storeUrl:     ['رابط المتجر', 'store url', 'store link', 'zid store', 'url'],
   notes:        ['ملاحظات', 'notes', 'note'],
   description:  ['description', 'الوصف', 'وصف'],
 };
@@ -221,10 +221,16 @@ export function parseLeadsRows(allRows) {
   if (headerIdx < 0 || cols.name < 0) throw new Error('لم يُعثر على عمود اسم المتجر');
 
   const header = allRows[headerIdx] || [];
-  // صيغة سلة: نميّزها بعمود مميّز لها لنضع المنصّة «سلة» افتراضياً (لا عمود منصّة فيها)
+  // كشف المنصّة من أعمدة مميّزة (لا عمود منصّة صريح في هذه التصديرات):
+  //  • سلة: أعمدة منقّطة `contactDetails.*`/`businessType.name`
+  //  • زد: عمود `zid store`
+  //  • معروف: دليل عام (منصّة المتجر مجهولة) → لا نضع منصّة افتراضية
+  // ملاحظة: `nameAr` وحده ليس مميّزاً (معروف يحمله أيضاً) فأُسقط من علامة سلة.
   const normHeader = header.map(normalizeHeader);
-  const isSallaFormat = normHeader.some(h =>
-    h === 'contactdetails.customerservicenumber' || h === 'businesstype.name' || h === 'namear');
+  const isZidFormat = normHeader.includes('zid store');
+  const isSallaFormat = normHeader.includes('contactdetails.customerservicenumber')
+    || normHeader.includes('businesstype.name');
+  const defaultPlatform = isZidFormat ? 'زد' : isSallaFormat ? 'سلة' : null;
   const rows = [];
   let invalidPhone = 0;
   let blankName = 0;
@@ -272,7 +278,7 @@ export function parseLeadsRows(allRows) {
       city,
       address,
       website: toText(cell(r, cols.website)),
-      platform: toText(cell(r, cols.platform)) || (isSallaFormat ? 'سلة' : null),
+      platform: toText(cell(r, cols.platform)) || defaultPlatform,
       storeUrl: toText(cell(r, cols.storeUrl)),
       socialLinks: {
         whatsapp: toText(cell(r, cols.whatsappLink)),
