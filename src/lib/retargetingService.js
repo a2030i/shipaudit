@@ -160,7 +160,7 @@ export async function loadRetargetingDashboard() {
 export async function loadRetargetingLeads({
   segment = null, priority = null, integration = null, billing = null,
   hasBalance = null, q = null, status = null, ownerId = null, unassigned = null,
-  includeExcluded = false, page = 0, limit = 50,
+  includeExcluded = false, campaign = null, page = 0, limit = 50,
 } = {}) {
   const { data, error } = await supabase.rpc('crm_retargeting_leads', {
     p_segment: segment || null,
@@ -173,6 +173,7 @@ export async function loadRetargetingLeads({
     p_owner: ownerId || null,
     p_unassigned: unassigned,
     p_include_excluded: !!includeExcluded,
+    p_campaign: campaign || null,   // آخر حملة منذ: none|within7|within30|older30
     p_limit: limit,
     p_offset: Math.max(0, page) * limit,
   });

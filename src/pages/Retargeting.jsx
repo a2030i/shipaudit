@@ -94,7 +94,8 @@ export default function Retargeting({ isActive = true }) {
   // الموظف يفتح على «المسندة لي» افتراضياً (§1.37) — المدير يرى الكل
   const [filters, setFilters] = useState(() => ({
     segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
-    status: '', ownerId: (!isAdmin && user?.id) ? user.id : '', unassigned: false, includeExcluded: false, page: 0,
+    status: '', ownerId: (!isAdmin && user?.id) ? user.id : '', unassigned: false, includeExcluded: false,
+    campaign: '', page: 0,   // آخر حملة منذ: '' | none | within7 | within30 | older30
   }));
 
   const loadDash = useCallback(async () => {
@@ -121,6 +122,7 @@ export default function Retargeting({ isActive = true }) {
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
         status: filters.status || null, ownerId: filters.ownerId || null,
         unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+        campaign: filters.campaign || null,
         page: filters.page, limit: LIMIT,
       });
       setLeads(r.rows); setCount(r.count);
@@ -148,6 +150,7 @@ export default function Retargeting({ isActive = true }) {
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
         status: filters.status || null, ownerId: filters.ownerId || null,
         unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+        campaign: filters.campaign || null,
       };
       const all = [];
       for (let page = 0; page < 60; page++) {
@@ -196,6 +199,7 @@ export default function Retargeting({ isActive = true }) {
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
         status: filters.status || null, ownerId: filters.ownerId || null,
         unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+        campaign: filters.campaign || null,
       };
       const phones = [];
       for (let page = 0; page < 60; page++) {
@@ -224,6 +228,7 @@ export default function Retargeting({ isActive = true }) {
         hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
         status: filters.status || null, ownerId: filters.ownerId || null,
         unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+        campaign: filters.campaign || null,
       };
       const all = [];
       for (let page = 0; page < 60; page++) {
@@ -403,6 +408,16 @@ export default function Retargeting({ isActive = true }) {
               <Sel value={filters.ownerId} onChange={e => setFilter({ ownerId: e.target.value, unassigned: false })}>
                 <option value="">كل الموظفين</option>
                 {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name || emp.email}</option>)}
+              </Sel>
+            </div>
+            {/* آخر حملة منذ — كي لا نراسل من راسلناه قريباً (خادمياً، فلا حدود للعدد) */}
+            <div style={{ minWidth: 160 }}>
+              <Sel value={filters.campaign} onChange={e => setFilter({ campaign: e.target.value })}>
+                <option value="">📲 آخر حملة: الكل</option>
+                <option value="none">بلا حملة إطلاقاً</option>
+                <option value="within7">راسلناه خلال 7 أيام</option>
+                <option value="within30">راسلناه خلال 30 يوم</option>
+                <option value="older30">آخر حملة أقدم من 30 يوم</option>
               </Sel>
             </div>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>

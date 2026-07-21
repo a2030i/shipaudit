@@ -552,6 +552,26 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     if (!recs.length) { toast('لا أرقام جوال في القائمة المختارة', 'info'); return; }
     setWaRecipients(recs);
   };
+  // إطلاق حملة على **كل** المطابق للفلاتر (لا الصفحة المعروضة فقط) — يجلب صفحات
+  // 500 حتى الاكتمال (نفس نمط الإسناد الجماعي/إعادة الاستهداف). طلب المستخدم:
+  // «ابغا اطلق حملة للمحددين، يظهر فقط 50 المعروضين».
+  const [prepCampaign, setPrepCampaign] = useState(false);
+  const launchAllMatching = async () => {
+    if (prepCampaign) return;
+    setPrepCampaign(true);
+    try {
+      const all = [];
+      for (let page = 0; page < 200; page++) {
+        const r = await loadLeads({ ...filters, page, limit: 500, force: true });
+        all.push(...(r.rows || []));
+        if (!r.rows?.length || all.length >= (r.count || 0)) break;
+      }
+      const recs = all.filter(l => l.phone_normalized || l.phone).map(leadRecipient);
+      if (!recs.length) { toast('لا أرقام جوال بالفلاتر الحالية', 'info'); return; }
+      setWaRecipients(recs);
+    } catch (e) { toast(`تعذّر تجهيز المستلمين: ${e.message}`, 'error'); }
+    finally { setPrepCampaign(false); }
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -735,11 +755,16 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={!bulkOwner || bulkBusy}>
             {bulkBusy ? 'يحوّل…' : `تحويل ${selAllMatching ? fmt0(count) : selIds.size} للموظف`}
           </Btn>
-          {/* حملة واتساب للمحدد (ضمن الصفحة الحالية — الشامل عبر الفلاتر + «للمعروضين») */}
+          {/* حملة واتساب للمحدد — الصفحة الحالية أو كل المطابق عند «تحديد الكل» */}
           {selIds.size > 0 && !selAllMatching && (
             <Btn size="sm" variant="ghost" icon={<Phone size={13}/>}
               onClick={() => launchCampaign(leads.filter(l => selIds.has(l.id)))}>
               📲 حملة للمحدد ({leads.filter(l => selIds.has(l.id) && (l.phone_normalized || l.phone)).length})
+            </Btn>
+          )}
+          {selAllMatching && (
+            <Btn size="sm" variant="accent" icon={<Phone size={13}/>} onClick={launchAllMatching} disabled={prepCampaign}>
+              {prepCampaign ? 'يجهّز المستلمين…' : `📲 حملة لكل المطابق (${fmt0(count)})`}
             </Btn>
           )}
           <Btn size="sm" variant="ghost" onClick={() => { setSelIds(new Set()); setSelAllMatching(false); }}>إلغاء التحديد</Btn>
