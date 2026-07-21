@@ -60,11 +60,15 @@ Deno.serve(async (req) => {
       // حالة الفاتورة الإلكترونية (زاتكا) — الحقل المؤكَّد: einvoice_details.status
       // (القيم: pushed = أُرسلت لزاتكا · فارغ/failed = لم تُدفع بعد). المسودّات لا تُدفع أصلاً.
       const ein = s(inv.einvoice_details?.status ?? inv.einvoice_status ?? inv.zatca_status);
-      await db.from('zoho_invoices').upsert({
+      const row: Record<string, unknown> = {
         zoho_id: s(inv.invoice_id), invoice_number: s(inv.invoice_number),
         customer_name: s(inv.customer_name), date: inv.date || null,
         total: num(inv.total), balance: balOf(inv.status, inv.balance), status: s(inv.status),
-        einvoice_status: ein, last_modified: now, synced_at: now });
+        last_modified: now, synced_at: now };
+      // لا تكتب einvoice_status=null فوق قيمة مخزونة (webhook بلا einvoice_details
+      // كان يمسح «pushed» → فاتورة مُرسَلة لزاتكا تظهر معلّقة). نُدرجه فقط إن وُجد.
+      if (ein) row.einvoice_status = ein;
+      await db.from('zoho_invoices').upsert(row);
       updated = 'invoice';
     } else if (cn?.creditnote_id) {
       await db.from('zoho_creditnotes').upsert({
