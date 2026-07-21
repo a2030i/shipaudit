@@ -1,4 +1,6 @@
-// hatif-send v11 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// hatif-send v13 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// v13 (2026-07-21): حُذف إجراء explore المؤقت (كان بروكسي GET مفتوحاً على
+// api.voxa.sa بمفتاح الـwebhook — أُزيل بعد استرجاع سجل حملة الـ504).
 // v10 (2026-07-21): مهلة 350ms بين الرسائل (~170/دقيقة أقصى — تحت حصة Voxa).
 // v11 (2026-07-21): **تسجيل فوري رسالة-برسالة** — الإدراج الواحد في النهاية ضاع
 // كاملاً حين قتلت المهلة (504) استدعاءً بـ290 مستلماً: ~120 رسالة خرجت فعلاً
@@ -103,27 +105,6 @@ Deno.serve(async (req) => {
     if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
     try { const t = await accessToken(); return json({ ok: !!t, token_len: t.length }); }
     catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
-  }
-
-  // explore (v12 مؤقت) — GET فقط على api.voxa.sa لاستكشاف نقاط نهاية المحادثات
-  // (استرجاع مستلمي حملة ضاع سجلها). محمي بنفس ?key= نمط probe.
-  if (action === 'explore') {
-    const key = url.searchParams.get('key') || '';
-    const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
-    if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
-    const paths = Array.isArray(body.paths) ? (body.paths as string[]).slice(0, 12) : [];
-    let token: string;
-    try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
-    const results: unknown[] = [];
-    for (const p of paths) {
-      if (!p.startsWith('/')) { results.push({ path: p, error: 'path must start with /' }); continue; }
-      try {
-        const r = await fetch('https://api.voxa.sa' + p, { headers: { Authorization: `Bearer ${token}` } });
-        const txt = await r.text();
-        results.push({ path: p, status: r.status, snippet: txt.slice(0, 900) });
-      } catch (e) { results.push({ path: p, error: String((e as Error).message || e) }); }
-    }
-    return json({ ok: true, results });
   }
 
   const auth = await requireUser(req, db);
