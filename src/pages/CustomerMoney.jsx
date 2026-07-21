@@ -80,11 +80,18 @@ export default function CustomerMoney({ isActive = true }) {
   const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
+  // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
+  const collectionFields = (c) => ({
+    name: (c.storeName || c.name || '').trim(), amount: c.owed, count: c.invCnt,
+    overdue: c.overdue, oldest_days: c.oldestDays, wallet: c.walletBalance,
+    last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
+  });
   const openSingleWa = (c) => {
     const name = (c.storeName || c.name || '').trim();
     setWaSingle({
       to: normalizeSaudiPhone(c.phone), name, amount: c.owed, count: c.invCnt,
       vars: [name, Number(c.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
+      fields: collectionFields(c),
     });
     setWaOpen(true);
   };
@@ -120,8 +127,9 @@ export default function CustomerMoney({ isActive = true }) {
       return {
         to: normalizeSaudiPhone(c.phone), name, amount: c.owed, count: c.invCnt,
         vars: [name, Number(c.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
+        fields: collectionFields(c),
       };
-    }), [filtered]);
+    }), [filtered]);  // eslint-disable-line
 
   // ملف الحملة — زوهو المرجع للدين + سياق المتجر (هاتف/نوع فوترة/حالة/محفظة/آخر
   // شحنة) للفريق. يمرّ عبر persistAndDownloadExport (تخزين + سجل السحبات، §1.13).

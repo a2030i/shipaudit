@@ -545,6 +545,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     to: normalizeSaudiPhone(l.phone_normalized || l.phone),
     name: l.name || '',
     vars: [l.name || ''],
+    fields: { name: l.name, category: l.category, platform: l.platform, phone: l.phone_normalized || l.phone },
   });
   const launchCampaign = (list) => {
     const recs = list.filter(l => l.phone_normalized || l.phone).map(leadRecipient);

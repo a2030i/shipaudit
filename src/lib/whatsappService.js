@@ -32,10 +32,22 @@ export async function saveWhatsAppConfig(cfg) {
     templateName:     cfg.templateName?.trim() || templates[0] || '',
     templateLanguage: 'ar',
     channelId:        cfg.channelId?.trim() || '',
+    // فخّ: السيريالايزر كان يُسقط المفاتيح غير المعروفة — drip كان يضيع مع كل حفظ
+    drip:             cfg.drip || null,
+    // ربط متغيرات القوالب (2026-07-21): { [templateName]: [{src, text?}, ...] }
+    templateVars:     cfg.templateVars || {},
   });
   const { error } = await supabase.from('app_settings')
     .upsert({ key: CFG_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
   if (error) throw error;
+}
+
+// حفظ ربط متغيرات قالب واحد (يُستدعى من مودال الإرسال بعد التخصيص) —
+// قراءة-دمج-كتابة حتى لا تُمسّ بقية الإعدادات.
+export async function saveTemplateVarMap(templateName, map) {
+  const cfg = await loadWhatsAppConfig();
+  const templateVars = { ...(cfg.templateVars || {}), [templateName]: map };
+  await saveWhatsAppConfig({ ...cfg, templateVars });
 }
 
 // Saudi phone normalization → international digits, no '+'.

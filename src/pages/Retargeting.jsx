@@ -27,6 +27,12 @@ const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDat
 const leadToRecipient = (l) => ({
   to: normalizeSaudiPhone(l.phone), name: l.storeName, amount: null,
   vars: [l.storeName || '', String(l.totalShipments || 0), l.daysSinceLast == null ? '—' : `${l.daysSinceLast} يوم`],
+  // أعمدة الصفحة المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
+  fields: {
+    name: l.storeName, shipments: l.totalShipments,
+    last_shipment: l.lastShipment, days_since: l.daysSinceLast,
+    wallet: l.wallet,
+  },
 });
 const waLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `https://wa.me/${d}` : null; };
 const telLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d ? `tel:+${d}` : null; };

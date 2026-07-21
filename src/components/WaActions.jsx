@@ -13,7 +13,7 @@ import WhatsAppSendModal from './WhatsAppSendModal.jsx';
 // props: phone (خام — يُطبَّع داخلياً) · name · amount? · count? · vars? (افتراضها [name])
 //        campaignLabel? (اسم الحملة في السجل) · size? (حجم الأيقونات) · showTel?/showChat?
 export default function WaActions({ phone, name, amount = null, count = null, vars = null,
-  campaignLabel = null, size = 15, showTel = true, showChat = false }) {
+  fields = null, campaignLabel = null, size = 15, showTel = true, showChat = false }) {
   const [open, setOpen] = useState(false);
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return null;
@@ -25,6 +25,7 @@ export default function WaActions({ phone, name, amount = null, count = null, va
   const recipient = {
     to: normalized, name: displayName, amount, count,
     vars: vars || [displayName],
+    fields: { name: displayName, amount, count, phone: normalized, ...(fields || {}) },
   };
 
   return (

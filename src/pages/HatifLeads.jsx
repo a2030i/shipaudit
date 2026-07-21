@@ -79,7 +79,8 @@ export default function HatifLeads({ isActive = true }) {
   if (!can('sales.hatif_leads')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب فرص من هاتف»"/></div>;
 
   // متغيّر القالب: {{1}} الاسم (أو الرقم لمن بلا اسم) — الفرص ليس لها شحنات/دين
-  const toRecipient = (l) => ({ to: normalizeSaudiPhone(l.phone), name: display(l), amount: null, vars: [display(l)] });
+  const toRecipient = (l) => ({ to: normalizeSaudiPhone(l.phone), name: display(l), amount: null, vars: [display(l)],
+    fields: { name: display(l), phone: l.phone, first_seen: l.createdAt } });
   const openBulk = () => {
     const recs = filtered.map(toRecipient);
     if (!recs.length) { toast('لا أرقام في العرض الحالي', 'info'); return; }

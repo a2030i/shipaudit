@@ -2,14 +2,44 @@
 // External action: nothing is sent until the operator presses «إرسال الآن».
 // The API key lives only in the edge function; this UI never sees it.
 
-import { useState, useEffect } from 'react';
-import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock } from 'lucide-react';
+import { useState, useEffect, useMemo } from 'react';
+import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+// ── ربط متغيرات القالب بأعمدة الصفحة (2026-07-21) ─────────────────────
+// كل مستلِم قد يحمل fields:{...} من صفحته — الكتالوج يعرّب المفاتيح المعروفة.
+// «افتراضي الصفحة {{i}}» = سلوك vars القديم (لا كسر لأي صفحة لم تُخصَّص).
+const FIELD_LABELS = {
+  name:         'اسم المتجر/العميل',
+  amount:       'المبلغ / المديونية',
+  count:        'عدد الفواتير',
+  shipments:    'عدد الشحنات',
+  last_shipment:'تاريخ آخر شحنة',
+  days_since:   'أيام منذ آخر شحنة',
+  wallet:       'رصيد المحفظة',
+  overdue:      'المبلغ المتأخر',
+  oldest_days:  'عمر أقدم فاتورة (يوم)',
+  last_payment: 'تاريخ آخر دفعة',
+  first_seen:   'أول ظهور في هاتف',
+  category:     'القسم',
+  platform:     'المنصّة',
+  phone:        'رقم الجوال',
+};
+const fieldValue = (r, key) => {
+  const v = (r.fields && r.fields[key] !== undefined) ? r.fields[key]
+    : (key === 'name' ? r.name : key === 'amount' ? r.amount : key === 'count' ? r.count : undefined);
+  if (v == null || v === '') return '—';
+  if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+    try { return new Date(v).toLocaleDateString('ar-SA', { day: 'numeric', month: 'long', year: 'numeric' }); } catch { return v.slice(0, 10); }
+  }
+  if (typeof v === 'number') return v.toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return String(v);
+};
 
 // recipients: [{ to, name, amount, count, vars:[] }]
 // البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
@@ -26,16 +56,54 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [waStatus, setWaStatus] = useState(() => new Map());   // آخر حملة/رقم — لتحذير التكرار
   const [schedOn, setSchedOn]   = useState(false);             // ⏰ جدولة بدل الإرسال الآن
   const [schedAt, setSchedAt]   = useState('');
+  // ربط متغيرات القالب: [{src:'legacy'|'custom'|'field:<key>', text?}] لكل {{i}}
+  const [varMap, setVarMap]     = useState([]);
+
+  // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات، وإلا «افتراضي الصفحة» بعدد vars
+  const defaultMapFor = (templateName, config) => {
+    const saved = config?.templateVars?.[templateName];
+    if (Array.isArray(saved) && saved.length) return saved.map(m => ({ src: m.src || 'legacy', text: m.text || '' }));
+    const n = Math.max(1, recipients[0]?.vars?.length || 1);
+    return Array.from({ length: Math.min(n, 5) }, () => ({ src: 'legacy', text: '' }));
+  };
 
   useEffect(() => {
     if (!open) return;
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
     setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
     loadWhatsAppConfig()
-      .then(c => { setCfg(c); setTpl(c.templateName || (c.templates || [])[0] || ''); })
-      .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); });
+      .then(c => {
+        setCfg(c);
+        const t = c.templateName || (c.templates || [])[0] || '';
+        setTpl(t);
+        setVarMap(defaultMapFor(t, c));
+      })
+      .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); setVarMap([{ src: 'legacy', text: '' }]); });
     loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   }, [open]);
+
+  // تغيير القالب → تحميل ربطه المحفوظ (أو الافتراضي)
+  const pickTemplate = (t) => { setTpl(t); setVarMap(defaultMapFor(t, cfg)); };
+
+  // الحقول المتاحة من بيانات الصفحة الحالية (اتحاد مفاتيح fields عبر المستلمين)
+  const availableFields = useMemo(() => {
+    const keys = new Set(['name']);
+    for (const r of recipients) {
+      if (r.amount != null) keys.add('amount');
+      if (r.count != null) keys.add('count');
+      for (const k of Object.keys(r.fields || {})) if (r.fields[k] != null && r.fields[k] !== '') keys.add(k);
+    }
+    return [...keys];
+  }, [recipients]);
+
+  // حلّ متغيرات مستلِم واحد وفق الربط الحالي
+  const resolveVarsFor = (r) => varMap.map((m, i) => {
+    if (m.src === 'legacy') return String(r.vars?.[i] ?? r.name ?? '');
+    if (m.src === 'custom') return m.text || '';
+    if (m.src.startsWith('field:')) return fieldValue(r, m.src.slice(6));
+    return '';
+  });
+  const mapCustomized = varMap.some(m => m.src !== 'legacy');
 
   if (!open) return null;
 
@@ -92,9 +160,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     try {
       await scheduleCampaign({
         scheduledAt: new Date(schedAt).toISOString(), templateName: tpl,
-        recipients: selectedValid.map(v => ({ to: v.to, vars: v.vars, name: v.name, amount: v.amount })),
+        recipients: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
         bucketLabel, userId: user?.id || null,
       });
+      if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
       toast(`⏰ جُدولت الحملة (${selectedValid.length} مستلم) — تُرسَل ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
       onSent?.({ scheduled: true });
       onClose?.();
@@ -112,9 +181,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       templateName: tpl,
       templateLanguage: 'ar',
       channelId: null,
-      items: selectedValid.map(v => ({ to: v.to, vars: v.vars, name: v.name, amount: v.amount })),
+      items: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
       campaign: { name: bucketLabel ? `تحصيل — ${bucketLabel}` : 'تحصيل', bucket: bucketLabel || null, userId: user?.id || null },
     });
+    if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
     setSending(false);
     if (r?.ok) {
       setResults(r);
@@ -165,7 +235,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 12px' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>القالب:</span>
             {(cfg.templates || []).length > 0 ? (
-              <select value={tpl} onChange={e => setTpl(e.target.value)}
+              <select value={tpl} onChange={e => pickTemplate(e.target.value)}
                 style={{ fontSize: 12.5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
                 {(cfg.templates || []).map(t => <option key={t} value={t}>{t}</option>)}
               </select>
@@ -177,6 +247,47 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             </Btn>
             {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/></span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/></span>}
+          </div>
+
+          {/* ── ربط متغيرات القالب بأعمدة الصفحة (يُحفَظ لكل قالب) ── */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 12, background: 'var(--surface2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>متغيرات القالب</span>
+              <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>اربط كل {'{{i}}'} بعمود من هذه الصفحة — يُحفظ للقالب تلقائياً</span>
+              <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 4 }}>
+                <button onClick={() => setVarMap(m => m.length < 5 ? [...m, { src: 'legacy', text: '' }] : m)} title="إضافة متغير"
+                  style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', padding: '2px 6px', color: 'var(--text)' }}><Plus size={11}/></button>
+                <button onClick={() => setVarMap(m => m.length > 1 ? m.slice(0, -1) : m)} title="حذف آخر متغير"
+                  style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', padding: '2px 6px', color: 'var(--text)' }}><Minus size={11}/></button>
+              </span>
+            </div>
+            {varMap.map((m, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--accent)', minWidth: 44, direction: 'ltr', textAlign: 'left' }}>{`{{${i + 1}}}`}</span>
+                <select value={m.src} onChange={e => setVarMap(prev => prev.map((x, j) => j === i ? { ...x, src: e.target.value } : x))}
+                  style={{ fontSize: 12, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minWidth: 170 }}>
+                  <option value="legacy">افتراضي الصفحة</option>
+                  {availableFields.map(k => <option key={k} value={`field:${k}`}>{FIELD_LABELS[k] || k}</option>)}
+                  <option value="custom">نص ثابت…</option>
+                </select>
+                {m.src === 'custom' && (
+                  <input value={m.text} onChange={e => setVarMap(prev => prev.map((x, j) => j === i ? { ...x, text: e.target.value } : x))}
+                    placeholder="اكتب النص الثابت…"
+                    style={{ flex: 1, minWidth: 140, fontSize: 12, padding: '4px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)' }}/>
+                )}
+                {selectedValid[0] && (
+                  <span style={{ fontSize: 11, color: 'var(--green2)', fontFamily: 'var(--font-mono)', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 160, whiteSpace: 'nowrap' }}
+                    title={resolveVarsFor(selectedValid[0])[i]}>
+                    ← {resolveVarsFor(selectedValid[0])[i]}
+                  </span>
+                )}
+              </div>
+            ))}
+            {selectedValid[0] && (
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>
+                المعاينة على أول مستلِم: <b>{selectedValid[0].name || selectedValid[0].to}</b>
+              </div>
+            )}
           </div>
 
           {/* اختيار المستلِمين */}
