@@ -122,17 +122,21 @@ export async function loadCampaignRecipientContext(phones) {
   return map;
 }
 
-// Saudi phone normalization → international digits, no '+'.
-//   05XXXXXXXX (10) → 9665XXXXXXXX · 5XXXXXXXX (9) → 9665XXXXXXXX
-//   already 9665… → as-is · anything else → digits as-is (best effort)
+// تطبيع الهاتف السعودي — موحّد مع norm_sa_phone (SQL) وnormalizeSaudiPhone
+// (crmLeadsService) وnorm (hatif-send) — §1.31 ينص على تطابقها. كان هذا الأبسط
+// يُبقي '9660…' مشوّهاً ويحذف الأرقام العربية. الآن: أرقام عربية/فارسية + قصّ
+// 9660 و00 والصفر البادئ. يُرجِع '' للمشوَّه (توافق الـcallers القديمة).
 export function normalizeSaudiPhone(raw) {
-  let d = String(raw || '').replace(/[^\d]/g, '');
-  if (!d) return '';
-  if (d.startsWith('00')) d = d.slice(2);
-  if (d.startsWith('966')) return d;
-  if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1);
-  if (d.length === 9  && d.startsWith('5'))  return '966' + d;
-  return d;
+  let s = String(raw ?? '')
+    .replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)))
+    .replace(/[۰-۹]/g, d => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
+    .replace(/\D/g, '');
+  if (!s) return '';
+  if (s.startsWith('00')) s = s.slice(2);
+  if (s.startsWith('9660')) s = '966' + s.slice(4);
+  else if (s.startsWith('0')) s = '966' + s.slice(1);
+  else if (!s.startsWith('966')) s = '966' + s;
+  return /^966\d{8,10}$/.test(s) ? s : '';
 }
 
 // Verify the stored key works (and the plan allows API). Returns
@@ -163,10 +167,19 @@ export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'a
 // حالة آخر حملة لكل عميل (بالهاتف): آخر إرسال + التسليم/القراءة + هل ردّ + هل سدّد بعدها.
 // يُرجِع Map مفتاحها الهاتف المطبَّع (9665…) لعرضها على بطاقات العملاء.
 export async function loadWhatsAppCampaignStatus() {
-  const { data, error } = await supabase.rpc('whatsapp_campaign_status');
   const map = new Map();
-  if (error || !Array.isArray(data)) return map;
-  for (const r of data) {
+  // ترقيم صفحات (فخّ سقف PostgREST 1000): الدالة set-returning صفّ لكل هاتف —
+  // حملة إعادة استهداف كاملة تتجاوز 1000 هاتف مميّز فتُبتَر صامتاً وتُعطَّل حماية
+  // الإرسال المزدوج. نصفّح بـorder('phone')+range حتى النفاد.
+  const rows = [];
+  for (let from = 0; from < 100000; from += 1000) {
+    const { data, error } = await supabase.rpc('whatsapp_campaign_status')
+      .order('phone', { ascending: true }).range(from, from + 999);
+    if (error || !Array.isArray(data)) break;
+    rows.push(...data);
+    if (data.length < 1000) break;
+  }
+  for (const r of rows) {
     if (!r.phone) continue;
     map.set(r.phone, {
       lastTemplate: r.last_template, lastCampaign: r.last_campaign,

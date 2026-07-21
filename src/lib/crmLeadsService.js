@@ -44,7 +44,10 @@ export function invalidateLeadCaches() {
 async function selectAllRows(makeQuery, pageSize = SUPABASE_PAGE) {
   const rows = [];
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    // فخّ §6: ترتيب غير فريد (created_at وحده) يُكرّر صفوفاً بين الصفحات على
+    // جدول 51K+ صف. نفرض id كـtiebreaker هنا فرضاً لا اتفاقاً — يُلحَق بعد
+    // ترتيب الـcaller فلا يغيّر الفرز الظاهر، فقط يجعله حتمياً.
+    const { data, error } = await makeQuery().order('id', { ascending: true }).range(from, from + pageSize - 1);
     if (error) throw error;
     const chunk = data || [];
     rows.push(...chunk);

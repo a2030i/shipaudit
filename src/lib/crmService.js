@@ -18,7 +18,8 @@ const nowIso = () => new Date().toISOString();
 async function selectAllRows(makeQuery, pageSize = SUPABASE_PAGE) {
   const rows = [];
   for (let from = 0; ; from += pageSize) {
-    const { data, error } = await makeQuery().range(from, from + pageSize - 1);
+    // فخّ §6: id كـtiebreaker حتمي بعد ترتيب الـcaller (منع تكرار الصفحات)
+    const { data, error } = await makeQuery().order('id', { ascending: true }).range(from, from + pageSize - 1);
     if (error) throw error;
     const chunk = data || [];
     rows.push(...chunk);
