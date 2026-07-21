@@ -86,6 +86,37 @@ export async function loadNoWhatsappList() {
   return data.map(r => ({ phone: r.phone, name: r.name, lastAttempt: r.last_attempt, attempts: Number(r.attempts) || 1, campaigns: r.campaigns }));
 }
 
+// قائمة الحظر الدائمة (رقم شخصي/منصّة/رقم خاطئ لمتجر لا يمكن حذفه) — تُستبعَد
+// من كل حملة تلقائياً (مدموجة في no_whatsapp_phones). إدارة يدوية.
+export async function loadBlocklist() {
+  const { data, error } = await supabase.rpc('campaign_blocklist_report');
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({ phone: r.phone, name: r.name, reason: r.reason, addedAt: r.added_at }));
+}
+function normSaPhoneJs(raw) {
+  let d = String(raw || '').replace(/\D/g, '');
+  if (!d) return '';
+  if (d.startsWith('00')) d = d.slice(2);
+  if (d.startsWith('966')) return d;
+  if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1);
+  if (d.length === 9 && d.startsWith('5')) return '966' + d;
+  return d;
+}
+export async function addToBlocklist({ phone, name, reason, userId }) {
+  const p = normSaPhoneJs(phone);
+  if (!p || p.length < 11) throw new Error('رقم غير صالح');
+  const { error } = await supabase.from('campaign_phone_blocklist')
+    .upsert({ phone: p, name: name || null, reason: reason || null, added_by: userId || null }, { onConflict: 'phone' });
+  if (error) throw error;
+  return p;
+}
+export async function removeFromBlocklist(phone) {
+  const p = normSaPhoneJs(phone);
+  const { data, error } = await supabase.from('campaign_phone_blocklist').delete().eq('phone', p).select('phone');
+  if (error) throw error;
+  return (data || []).length;
+}
+
 // أرقام مستلمي حملات بعينها — لاستثنائهم من الحملة الجديدة
 export async function loadCampaignPhones(names) {
   const phones = new Set();

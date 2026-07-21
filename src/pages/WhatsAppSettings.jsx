@@ -7,7 +7,8 @@ import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../componen
 import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
-  loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList } from '../lib/whatsappService.js';
+  loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
+  loadBlocklist, addToBlocklist, removeFromBlocklist } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -257,6 +258,28 @@ function CampaignsTab() {
   const [prepFail, setPrepFail] = useState('');
   const [noWa, setNoWa] = useState([]);            // أرقام بلا واتساب (للاتصال)
   const [expNoWa, setExpNoWa] = useState(false);
+  const [block, setBlock] = useState([]);          // قائمة الحظر الدائمة
+  const [blkPhone, setBlkPhone] = useState('');
+  const [blkName, setBlkName] = useState('');
+  const [blkBusy, setBlkBusy] = useState(false);
+
+  const addBlock = async () => {
+    if (blkBusy || !blkPhone.trim()) return;
+    setBlkBusy(true);
+    try {
+      await addToBlocklist({ phone: blkPhone, name: blkName || null, reason: 'حظر يدوي', userId: user?.id || null });
+      setBlkPhone(''); setBlkName('');
+      setBlock(await loadBlocklist());
+      toast('أُضيف للحظر — لن يستقبل أي حملة ✓', 'success');
+    } catch (e) { toast(e.message || 'تعذّر الإضافة', 'error'); }
+    setBlkBusy(false);
+  };
+  const removeBlock = async (phone) => {
+    setBlkBusy(true);
+    try { await removeFromBlocklist(phone); setBlock(await loadBlocklist()); toast('أُزيل من الحظر', 'info'); }
+    catch (e) { toast(e.message || 'تعذّر الحذف', 'error'); }
+    setBlkBusy(false);
+  };
 
   // إعادة استهداف الفاشلين في حملة — يجلب أرقامهم ويفتح مودال الإرسال.
   const campaignFailed = async (name) => {
@@ -273,12 +296,13 @@ function CampaignsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [log, rep, nw] = await Promise.all([
+      const [log, rep, nw, blk] = await Promise.all([
         loadWhatsAppLog({ limit: camp ? 1000 : 500, campaign: camp || null }),
         loadWhatsAppCampaignReport(),
         loadNoWhatsappList().catch(() => []),
+        loadBlocklist().catch(() => []),
       ]);
-      setRows(log); setReport(rep); setNoWa(nw);
+      setRows(log); setReport(rep); setNoWa(nw); setBlock(blk);
     } catch { setRows([]); }
     setLoading(false);
   }, [camp]);
@@ -416,6 +440,37 @@ function CampaignsTab() {
           <Btn size="sm" variant="ghost" onClick={exportNoWa} disabled={expNoWa}>{expNoWa ? 'يصدّر…' : '📥 تصدير للاتصال'}</Btn>
         </Card>
       )}
+
+      {/* ── قائمة الحظر الدائمة — أرقام لا تُراسَل أبداً (رقم شخصي/منصّة/متجر لا يُحذف) ── */}
+      <Card style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 18 }}>⛔</span>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>قائمة الحظر الدائمة — {block.length} رقم</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>أرقام تُستبعَد من كل حملة تلقائياً (على مستوى الخادم أيضاً) — لرقم شخصي أو متجر لا يمكن حذفه لأن عليه شحنات/رصيد.</div>
+          </div>
+        </div>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <input value={blkPhone} onChange={e => setBlkPhone(e.target.value)} placeholder="رقم الجوال (05… أو 9665…)"
+            style={{ ...selStyle, minWidth: 170, direction: 'ltr', textAlign: 'right' }} />
+          <input value={blkName} onChange={e => setBlkName(e.target.value)} placeholder="الوصف (اختياري)"
+            style={{ ...selStyle, minWidth: 150 }} />
+          <Btn size="sm" variant="accent" onClick={addBlock} disabled={blkBusy || !blkPhone.trim()}>{blkBusy ? '…' : '⛔ احظر'}</Btn>
+        </div>
+        {block.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+            {block.map(b => (
+              <div key={b.phone} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12,
+                borderTop: '1px solid var(--border)', paddingTop: 6 }}>
+                <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, direction: 'ltr' }}>{b.phone}</span>
+                <span style={{ color: 'var(--muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || b.reason || ''}</span>
+                <button onClick={() => removeBlock(b.phone)} disabled={blkBusy} title="إزالة من الحظر"
+                  style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', fontSize: 10.5, padding: '2px 8px', color: 'var(--muted)' }}>إزالة ✕</button>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
 
       {/* ── سجل الرسائل (المفلتر على الحملة المفتوحة إن وُجدت) ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>

@@ -442,7 +442,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
               <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
                 {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0) && ' · '}
                 {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && noWaCount > 0 && ' · '}
-                {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب</span>}
+                {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب/محظور</span>}
               </span>
             )}
           </div>

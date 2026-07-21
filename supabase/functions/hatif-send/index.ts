@@ -1,4 +1,9 @@
-// hatif-send v13 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// hatif-send v14 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// v14 (2026-07-21): **حارس قائمة الحظر السيرفري** — أي رقم في مجموعة
+// no_whatsapp_phones() (= undeliverable ∪ campaign_phone_blocklist، يشمل رقم
+// المالك الشخصي) يُتخطّى في كل مسار إرسال بلا استثناء (فوري/مجدول/drip)، حتى
+// لو تسلّل عبر الـdrip الذي يتجاوز استبعاد المودال. الرقم المحظور لا يُراسَل
+// أبداً ولا يُسجَّل كإرسال — يُعاد كنتيجة skipped.
 // v13 (2026-07-21): حُذف إجراء explore المؤقت (كان بروكسي GET مفتوحاً على
 // api.voxa.sa بمفتاح الـwebhook — أُزيل بعد استرجاع سجل حملة الـ504).
 // v10 (2026-07-21): مهلة 350ms بين الرسائل (~170/دقيقة أقصى — تحت حصة Voxa).
@@ -139,10 +144,18 @@ Deno.serve(async (req) => {
     let channelId = String(body.channel_id || '');
     if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
     if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
-    const results: unknown[] = []; let sent = 0, failed = 0;
+    // حارس الحظر السيرفري — يُحمَّل مرة واحدة لكل استدعاء (لا لكل رسالة).
+    // يشمل بلا-واتساب (undeliverable) + قائمة الحظر اليدوية (رقم المالك).
+    const blocked = new Set<string>();
+    try {
+      const { data: bl } = await db.rpc('no_whatsapp_phones');
+      for (const r of (bl || []) as { phone: string }[]) if (r.phone) blocked.add(r.phone);
+    } catch { /* فشل الجلب لا يُفشل الإرسال — لكنه لا يستثني، فنسجّله */ }
+    const results: unknown[] = []; let sent = 0, failed = 0, skipped = 0;
     for (const it of items) {
       const to = norm(it.to);
       if (!to || to.length < 11) { results.push({ to: it.to, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
+      if (blocked.has(to)) { results.push({ to, ok: false, skipped: true, error: 'محظور — لا يُراسَل (بلا واتساب/قائمة حظر)' }); skipped++; continue; }
       try {
         const res = await sendTemplate(token, { channelId, templateName, language, to, vars: it.vars || [] });
         if (res.ok) sent++; else failed++;
@@ -159,7 +172,7 @@ Deno.serve(async (req) => {
       } catch (e) { failed++; results.push({ to, ok: false, error: String((e as Error).message || e) }); }
       await sleep(300);   // مع زمن الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
     }
-    return json({ ok: true, total: items.length, sent, failed, results, provider: 'hatif' });
+    return json({ ok: true, total: items.length, sent, failed, skipped, results, provider: 'hatif' });
   }
 
   return json({ error: 'unknown action (probe|verify|channels|send)' }, 400);
