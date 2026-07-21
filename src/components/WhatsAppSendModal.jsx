@@ -75,10 +75,11 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // سياق واسع لكل مستلم من القاعدة (شحنات/محفظة/زوهو…) — حقول الصفحة تفوز عند التعارض
   const [ctx, setCtx]             = useState(() => new Map());
 
-  // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات، وإلا «افتراضي الصفحة» بعدد vars
+  // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات (يُحترَم حتى لو **فارغ** —
+  // قالب بلا متغيرات)، وإلا «افتراضي الصفحة» بعدد vars.
   const defaultMapFor = (templateName, config) => {
     const saved = config?.templateVars?.[templateName];
-    if (Array.isArray(saved) && saved.length) return saved.map(m => ({ src: m.src || 'legacy', text: m.text || '' }));
+    if (Array.isArray(saved)) return saved.map(m => ({ src: m.src || 'legacy', text: m.text || '' }));
     const n = Math.max(1, recipients[0]?.vars?.length || 1);
     return Array.from({ length: Math.min(n, 5) }, () => ({ src: 'legacy', text: '' }));
   };
@@ -137,7 +138,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     if (m.src.startsWith('field:')) return fieldValue(mergedFields(r), r, m.src.slice(6));
     return '';
   });
-  const mapCustomized = varMap.some(m => m.src !== 'legacy');
+  // «مخصَّص» = ربط غير افتراضي **أو** إفراغ المتغيرات (قالب بلا متغيرات) — كلاهما
+  // يجب أن يُحفظ للقالب حتى لا يُعاد المتغير الافتراضي في المرة القادمة.
+  const mapCustomized = varMap.length === 0 || varMap.some(m => m.src !== 'legacy');
 
   if (!open) return null;
 
@@ -387,10 +390,15 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
               <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 4 }}>
                 <button onClick={() => setVarMap(m => m.length < 5 ? [...m, { src: 'legacy', text: '' }] : m)} title="إضافة متغير"
                   style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', padding: '2px 6px', color: 'var(--text)' }}><Plus size={11}/></button>
-                <button onClick={() => setVarMap(m => m.length > 1 ? m.slice(0, -1) : m)} title="حذف آخر متغير"
+                <button onClick={() => setVarMap(m => m.length > 0 ? m.slice(0, -1) : m)} title="حذف آخر متغير"
                   style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', padding: '2px 6px', color: 'var(--text)' }}><Minus size={11}/></button>
               </span>
             </div>
+            {varMap.length === 0 && (
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', padding: '4px 2px' }}>
+                لا متغيرات — قالب ثابت (لن يُرسَل أي متغيّر). اضغط ＋ لإضافة متغيّر إن احتجت.
+              </div>
+            )}
             {varMap.map((m, i) => (
               <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, flexWrap: 'wrap' }}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontSize: 12, fontWeight: 700, color: 'var(--accent)', minWidth: 44, direction: 'ltr', textAlign: 'left' }}>{`{{${i + 1}}}`}</span>
@@ -413,7 +421,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                 )}
               </div>
             ))}
-            {selectedValid[0] && (
+            {selectedValid[0] && varMap.length > 0 && (
               <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 4 }}>
                 المعاينة على أول مستلِم: <b>{selectedValid[0].name || selectedValid[0].to}</b>
               </div>
