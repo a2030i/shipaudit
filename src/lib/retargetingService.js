@@ -3,6 +3,35 @@
 // بين رفعات ملف المتاجر. المصدر = أحدث snapshot للمتاجر (stores.xlsx).
 import { supabase } from './supabase.js';
 
+// ── داشبورد تنشيط المتاجر (2026-07-21) ──────────────────────────────
+// اتجاه «المتاجر النشطة» (آخر شحنة ≤N يوم) عبر لقطات كشف المتاجر مقابل هدف
+// ثابت — لقياس أثر فريق المبيعات. الهدف في app_settings['store_activation'].
+const ACTIVATION_KEY = 'store_activation';
+export const ACTIVATION_DEFAULT = { target: 500, days: 5 };
+
+export async function loadActivationConfig() {
+  const { data } = await supabase.from('app_settings').select('value').eq('key', ACTIVATION_KEY).maybeSingle();
+  if (!data?.value) return { ...ACTIVATION_DEFAULT };
+  try { const v = JSON.parse(data.value); return { target: Number(v.target) || 500, days: Number(v.days) || 5 }; }
+  catch { return { ...ACTIVATION_DEFAULT }; }
+}
+export async function saveActivationConfig({ target, days }) {
+  const value = JSON.stringify({ target: Math.max(1, Math.round(Number(target) || 500)), days: Math.max(1, Math.round(Number(days) || 5)) });
+  const { error } = await supabase.from('app_settings')
+    .upsert({ key: ACTIVATION_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+  if (error) throw error;
+}
+export async function loadStoreActivationTrend(days = 5, limit = 24) {
+  const { data, error } = await supabase.rpc('store_activation_trend', { p_days: days, p_limit: limit });
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({
+    snapDate: r.snap_date, uploadedAt: r.uploaded_at,
+    total: Number(r.total_stores) || 0, active: Number(r.active_stores) || 0,
+    active30: Number(r.active_30d) || 0,
+    prepaid: Number(r.prepaid_active) || 0, postpaid: Number(r.postpaid_active) || 0,
+  }));
+}
+
 // تسميات وألوان الشرائح/الأولوية/القناة — نقطة الحقيقة الواحدة للعرض.
 export const SEGMENTS = {
   new_active:        { label: 'جديد نشط',            color: '#0EA5E9', icon: '🆕' },

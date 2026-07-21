@@ -9,10 +9,11 @@
 // والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?tab=<id>.
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise } from 'lucide-react';
+import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
 import SalesToday  from './SalesToday.jsx';
+import StoreActivation from './StoreActivation.jsx';
 import Retargeting from './Retargeting.jsx';
 import HatifLeads  from './HatifLeads.jsx';
 import { LeadsTab } from './CrmWorkspace.jsx';
@@ -24,6 +25,7 @@ import Merchants   from './Merchants.jsx';
 const TABS = [
   // «يومي» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
   { id: 'today',       label: 'يومي',               icon: Sunrise,     component: SalesToday },
+  { id: 'activation',  label: 'هدف التنشيط',        icon: TrendingUp,  component: StoreActivation },
   { id: 'retargeting', label: 'إعادة الاستهداف',    icon: Target,      component: Retargeting, perm: 'sales.view' },
   { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.hatif_leads' },
   { id: 'external',    label: 'عملاء خارج المنصّة', icon: Store,       component: LeadsTab,    perm: 'sales.external_leads', activeProp: true },
