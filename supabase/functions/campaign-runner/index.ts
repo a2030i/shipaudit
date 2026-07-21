@@ -1,7 +1,8 @@
-// campaign-runner v2 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
+// campaign-runner v3 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
 //  (١) يرسل الحملات المجدولة المستحقة من campaign_queue — v2: يعالج **عدة صفوف**
-//      ضمن ميزانية وقت (~100ث من مهلة 150ث) لأن الجدولة الكبيرة تُقسَّم صفوف 150 مستلم.
+//      ضمن ميزانية وقت (من مهلة 150ث) لأن الجدولة الكبيرة تُقسَّم صفوف 100 مستلم.
 //      اسم الحملة في السجل = bucket_label (اسم الحملة الذي كتبه المستخدم) لا «مجدولة».
+//      v3: تسجيل فوري رسالة-برسالة + تقدير واقعي 1.1ث/رسالة (نفس إصلاح hatif-send v11).
 //  (٢) متابعة غير المتجاوبين (drip): إن فُعّلت في إعدادات واتساب — من لم يرد
 //      خلال N يوم يُرسَل له قالب المتابعة مرة واحدة (followed_up يمنع التكرار).
 // الحماية: X-Cron-Key ضد zoho_auth.cron_key (نمط morning-brief). verify_jwt=false.
@@ -61,10 +62,11 @@ async function sendTemplate(token: string, o: { channelId: string; templateName:
 
 Deno.serve(async (req) => {
   const started = Date.now();
-  // مهلة الدالة 150ث — لا نلتقط دفعة إلا إذا كان وقتها المقدَّر يسع قبل 130ث
-  // (كل إرسال ≈ 800ms: sleep 350 + استدعاء Voxa) وإلا قُطعنا منتصفها وبقيت 'sending'.
+  // مهلة الدالة 150ث — لا نلتقط دفعة إلا إذا كان وقتها المقدَّر يسع قبل 130ث.
+  // القياس الفعلي ≈ 1.1ث/رسالة (sleep 300 + استدعاء Voxa ~500-700ms + التسجيل الفوري)
+  // — تقدير 800ms السابق كان متفائلاً وكاد يُدخل دفعة تُقتل منتصفها.
   const HARD_MS = 130_000;
-  const estJobMs = (n: number) => n * 800 + 5_000;
+  const estJobMs = (n: number) => n * 1_100 + 5_000;
   const db = svc();
   const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key') || '';
   const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
@@ -96,9 +98,7 @@ Deno.serve(async (req) => {
       (out.jobs as number)++;
       await ensureHatif();
       const recipients: any[] = Array.isArray(job.recipients) ? job.recipients : [];
-      const logRows: Record<string, unknown>[] = [];
       let sent = 0, failed = 0;
-      const sentAt = new Date().toISOString();
       const campaignName = (job.bucket_label || '').trim() || 'مجدولة';
       for (const it of recipients.slice(0, 200)) {
         const to = norm(it.to);
@@ -107,15 +107,16 @@ Deno.serve(async (req) => {
           const res = await sendTemplate(token, { channelId, templateName: job.template_name, to, vars: it.vars || [] });
           if (res.ok) {
             sent++;
-            logRows.push({ phone: to, name: it.name || null, template_name: job.template_name, channel_id: channelId,
+            // تسجيل فوري (نفس إصلاح hatif-send v11) — الانقطاع لا يضيع السجل
+            try { await db.from('whatsapp_campaign_sends').insert({
+              phone: to, name: it.name || null, template_name: job.template_name, channel_id: channelId,
               contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
               campaign_name: campaignName, campaign_bucket: job.bucket_label || null, amount: it.amount ?? null,
-              status: res.status || 'accepted', sent_at: sentAt, sent_by: job.created_by || 'scheduler' });
+              status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' }); } catch { /* */ }
           } else failed++;
         } catch { failed++; }
-        await sleep(350);   // ~170/دقيقة أقصى — تحت حصة Voxa
+        await sleep(300);   // مع الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
       }
-      if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* */ } }
       await db.from('campaign_queue').update({
         status: failed && !sent ? 'failed' : 'sent',
         result: { sent, failed }, processed_at: new Date().toISOString(),

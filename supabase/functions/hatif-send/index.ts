@@ -1,6 +1,9 @@
-// hatif-send v10 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
-// v10 (2026-07-21): مهلة 350ms بين الرسائل (~170/دقيقة أقصى — تحت حصة Voxa
-// المشتركة) بعد فتح حدّ الإرسال الفوري: المودال يقسّم أي عدد دفعات 150 متتالية.
+// hatif-send v11 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// v10 (2026-07-21): مهلة 350ms بين الرسائل (~170/دقيقة أقصى — تحت حصة Voxa).
+// v11 (2026-07-21): **تسجيل فوري رسالة-برسالة** — الإدراج الواحد في النهاية ضاع
+// كاملاً حين قتلت المهلة (504) استدعاءً بـ290 مستلماً: ~120 رسالة خرجت فعلاً
+// (أكّدتها إشعارات الـwebhook) بلا أي صف سجل. الآن كل نجاح يُسجَّل لحظته،
+// فالانقطاع يترك سجلاً دقيقاً ويتيح الاستئناف عبر «استثناء من حملات سابقة».
 // نفس واجهة whatsapp-send: action verify|send + template_name/template_language/
 // channel_id + items:[{to, vars[]}] — فيعمل التطبيق دون تغيير. الأسرار:
 // client_id · secret (أو HATIF_CLIENT_ID/SECRET). التوكن client-credentials مع كاش.
@@ -135,8 +138,6 @@ Deno.serve(async (req) => {
     if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
     if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
     const results: unknown[] = []; let sent = 0, failed = 0;
-    const logRows: Record<string, unknown>[] = [];
-    const sentAt = new Date().toISOString();
     for (const it of items) {
       const to = norm(it.to);
       if (!to || to.length < 11) { results.push({ to: it.to, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
@@ -144,18 +145,18 @@ Deno.serve(async (req) => {
         const res = await sendTemplate(token, { channelId, templateName, language, to, vars: it.vars || [] });
         if (res.ok) sent++; else failed++;
         results.push({ to, ok: res.ok, id: res.id, error: res.error });
-        if (res.ok) logRows.push({
+        // تسجيل فوري (v11) — لا تجميع للنهاية: انقطاع المهلة كان يضيع السجل كله
+        if (res.ok) { try { await db.from('whatsapp_campaign_sends').insert({
           phone: to, name: (it as Record<string, unknown>).name || null,
           template_name: templateName, channel_id: channelId,
           contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
           campaign_name: campaign.name || null, campaign_bucket: campaign.bucket || null,
           amount: (it as Record<string, unknown>).amount ?? null,
-          status: res.status || 'accepted', sent_at: sentAt, sent_by: auth.id,
-        });
+          status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: auth.id,
+        }); } catch { /* لا يُفشل الإرسال */ } }
       } catch (e) { failed++; results.push({ to, ok: false, error: String((e as Error).message || e) }); }
-      await sleep(350);   // ~170/دقيقة أقصى — تحت حصة Voxa المشتركة مع الكرونات
+      await sleep(300);   // مع زمن الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
     }
-    if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* لا يُفشل الإرسال */ } }
     return json({ ok: true, total: items.length, sent, failed, results, provider: 'hatif' });
   }
 

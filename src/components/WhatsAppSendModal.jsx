@@ -157,9 +157,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const valid = validAll.filter(r => !exPhones.has(r.to));
   const skipped = recipients.length - validAll.length;
   const selectedValid = valid.filter(r => selected.has(r.to));
-  // لا حدّ للعدد: الفوري يُقسَّم دفعات 120 متتالية (كل استدعاء دالة تحت مهلتها —
-  // الدالة ترسل ~80/دقيقة ضمن حصة Voxa). الكبير جداً الأفضل جدولته (خلفية).
-  const SEND_CHUNK = 120;
+  // لا حدّ للعدد: الفوري يُقسَّم دفعات 60 متتالية — القياس الفعلي ≈ ثانية/رسالة
+  // (إرسال هاتف + التسجيل الفوري)، فدفعة 60 ≈ دقيقة، بأمان تحت مهلة الدالة 150ث.
+  // (120 سابقاً لامست المهلة وقُتلت 504 على حملة 290). الكبير الأفضل جدولته.
+  const SEND_CHUNK = 60;
   const lastSentOf = (to) => waStatus.get(to)?.lastSentAt || null;
   const daysAgoTxt = (iso) => {
     if (!iso) return null;
