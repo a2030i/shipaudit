@@ -20,6 +20,8 @@ import { loadCrmDecisionSignals } from '../lib/crmService.js';
 import { loadPnlSnapshots, currentPnlPeriod, loadZatcaPending } from '../lib/pnlService.js';
 import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
 import { loadLegalDashboard } from '../lib/legalService.js';
+import { loadIntegrityChecks } from '../lib/integrityService.js';
+import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
@@ -33,7 +35,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -44,7 +46,12 @@ export default function DecisionsBoard({ isActive = true }) {
         loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
         loadCreditStopList().catch(() => null),
         loadZatcaPending().catch(() => ({ todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [] })),
+        loadIntegrityChecks().catch(() => null),
+        loadClaims().then(summarizeClaims).catch(() => null),
       ]);
+      // فحص السلامة: أخطر التناقضات (item_count>0) — يجمع «ناقل بلا فاتورة» وiMile…
+      const integ = Array.isArray(integrity) ? integrity.filter(c => c.count > 0) : [];
+      const integTop = integ.slice(0, 3).map(c => `${c.label} · ${c.count}${c.total > 0.5 ? ` · ${fmtK(c.total)} ر.س` : ''}`);
       // ربح الشهر الجاري من كاش زوهو (§1.19: أي إشارة قرار = بطاقة هنا)
       const pnlCur = (pnlSnaps || []).find(s => s.period === currentPnlPeriod()) || null;
 
@@ -87,6 +94,9 @@ export default function DecisionsBoard({ isActive = true }) {
         awaiting,
         legal: legalSig,
         zatca,
+        integ: { count: integ.length, top: integTop,
+          total: integ.reduce((s, c) => s + (c.total > 0.5 ? c.total : 0), 0) },
+        claims: claims || { open: 0, openTotal: 0, submitted: 0, submittedTotal: 0, recovered: 0, recoveredTotal: 0 },
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -191,6 +201,24 @@ export default function DecisionsBoard({ isActive = true }) {
           // الكشف الداخلي المجمّد (توقّف 10 يوليو) فنصف عملائها سدّدوا فعلاً —
           // إشارة الدين الحيّة هي بطاقة «الإيقاف الائتماني» (creditStop، زوهو حي).
           // التنبيهات تبقى داخل /receivables موسومةً كالكشف الداخلي.
+          {
+            key: 'integ', active: (d.integ?.count || 0) > 0, okLabel: 'لا تناقضات بيانات',
+            props: {
+              color: 'var(--red)', icon: '🩺', title: 'سلامة البيانات', value: d.integ?.count || 0, unit: 'تناقض',
+              sub: d.integ?.total > 0.5 ? `بأثر مالي ${fmt(d.integ.total)} ر.س` : 'تناقضات صامتة تحتاج مراجعة',
+              top: d.integ?.top || [],
+              cta: 'فتح فحص السلامة', onClick: () => navigate('/integrity'),
+            },
+          },
+          {
+            key: 'claims', active: (d.claims?.open || 0) + (d.claims?.submitted || 0) > 0, okLabel: 'لا مطالبات مفتوحة',
+            props: {
+              color: 'var(--gold)', icon: '⚖️', title: 'مطالبات استرداد مفتوحة',
+              value: (d.claims?.open || 0) + (d.claims?.submitted || 0), unit: 'مطالبة',
+              sub: `مكتشفة ${fmt(d.claims?.openTotal || 0)} · قيد المطالبة ${fmt(d.claims?.submittedTotal || 0)} ر.س — استُرد ${fmt(d.claims?.recoveredTotal || 0)}`,
+              cta: 'فتح المطالبات', onClick: () => navigate('/hub?tab=claims'),
+            },
+          },
           {
             key: 'broken', active: (d.crm?.brokenCount || 0) > 0, okLabel: 'لا وعود مكسورة',
             props: {

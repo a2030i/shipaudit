@@ -6,6 +6,7 @@ import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX, loadAuditShipments } from '../lib/coreService.js';
 import { markEventProcessed } from '../lib/webhookService.js';
+import { createClaim } from '../lib/claimsService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
 
@@ -768,6 +769,28 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     }
   };
 
+  // إنشاء مطالبة استرداد من الفروق «لصالحك» — يُغلق دورة «الاكتشاف→الاسترداد»
+  // (كان السجل يبقى فارغاً رغم فروقات معروفة). يعبّئ الناقل/الفترة/المبلغ آلياً.
+  const [claiming, setClaiming] = useState(false);
+  const overbill = +(Number(summary.totalDiff) || 0).toFixed(2);   // موجب = فوترة زائدة
+  const handleCreateClaim = async () => {
+    if (overbill <= 1) { toast('لا فروق لصالحك تستحق مطالبة', 'info'); return; }
+    if (!window.confirm(`إنشاء مطالبة استرداد على ${audit.carrierName} بمبلغ ${overbill.toFixed(2)} ر.س (${audit.period})؟`)) return;
+    setClaiming(true);
+    try {
+      await createClaim({
+        carrierId: audit.carrierId, source: 'audit',
+        reference: audit.period || audit.id,
+        title: `فروق تدقيق ${audit.carrierName} — ${audit.period || ''}`.trim(),
+        amount: overbill,
+        notes: `من مراجعة ${audit.id}: ${summary.mismatch} فرق، إجمالي لصالحك ${overbill.toFixed(2)} ر.س`,
+        userId: profile?.id || null,
+      });
+      toast('أُنشئت المطالبة ✓ — تابعها في مركز الناقلين ← المطالبات', 'success');
+    } catch (e) { toast(`تعذّر إنشاء المطالبة: ${e.message}`, 'error'); }
+    setClaiming(false);
+  };
+
   return (
     <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:'100%',overflow:'hidden'}}>
 
@@ -929,6 +952,11 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             {summary.mismatch>0 && (
               <Btn size="sm" variant="accent" onClick={handleExport} icon="⬇️">
                 تصدير الفروق ({summary.mismatch})
+              </Btn>
+            )}
+            {overbill > 1 && (can('audits.approve') || can('carriers.view')) && (
+              <Btn size="sm" variant="gold" onClick={handleCreateClaim} disabled={claiming} icon="⚖️">
+                {claiming ? 'يُنشئ…' : `أنشئ مطالبة (${overbill.toFixed(0)} ر.س)`}
               </Btn>
             )}
             {summary.inbound>0 && (
