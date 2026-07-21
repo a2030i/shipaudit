@@ -20,7 +20,7 @@ import {
   upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
 import {
-  loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot, bulkAssignLeads,
+  loadLeads, createLead, convertLead, parseLeadsRows, detectLeadColumns, uploadLeadsSnapshot, bulkAssignLeads,
   updateLead, loadLeadStats, loadLeadOptions, loadLeadsByPhone,
 } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
@@ -887,24 +887,66 @@ function CrmKpi({ label, value, color }) {
   </Card>;
 }
 
+// مُعيّن الأعمدة الذكي — حقول قياسية موحّدة تُربَط بأي عمود من الملف (يلغي الحاجة
+// لتوسيع HEADER_KEYS مع كل صيغة). الربط يُحفَظ محلياً لكل توقيع ترويسة فيُتذكَّر.
+const LEAD_MAP_FIELDS = [
+  { key: 'name',     label: 'اسم المتجر',   required: true },
+  { key: 'phone',    label: 'رقم الجوال',   required: true },
+  { key: 'whatsapp', label: 'واتساب' },
+  { key: 'platform', label: 'المنصّة' },
+  { key: 'category', label: 'المجال / القسم' },
+  { key: 'city',     label: 'المدينة' },
+  { key: 'email',    label: 'الإيميل' },
+  { key: 'website',  label: 'الموقع / الرابط' },
+];
+const mapSignature = (headers) => 'sa-leadmap-v1:' + headers.map(h => h.label).join('|').slice(0, 400);
+const loadSavedMap = (sig) => { try { return JSON.parse(localStorage.getItem(sig) || 'null'); } catch { return null; } };
+
 function LeadUploadModal({ employees, userId, onClose, onSaved }) {
   const [fileName, setFileName] = useState('');
+  const [raw, setRaw] = useState(null);            // صفوف الملف الخام
+  const [detect, setDetect] = useState(null);      // { headers, cols }
+  const [mapping, setMapping] = useState({});      // {field: columnIndex | -1}
   const [parsed, setParsed] = useState(null);
   const [assignMode, setAssignMode] = useState('me');
   const [ownerId, setOwnerId] = useState(userId || '');
   const [busy, setBusy] = useState(false);
 
   const onFile = async (file) => {
-    setBusy(true);
+    setBusy(true); setParsed(null); setDetect(null); setRaw(null);
     try {
       const XLSX = await import('xlsx');
       const buf = await file.arrayBuffer();
       const wb = XLSX.read(buf, { type: 'array' });
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1, raw: true, defval: '' });
-      setParsed(parseLeadsRows(rows));
-      setFileName(file.name);
+      const d = detectLeadColumns(rows);
+      // القيمة الأولية لكل حقل: المحفوظ لهذه الترويسة، وإلا الربط التلقائي (الهاتف
+      // من phone ثم phoneAlt ثم unified).
+      const saved = loadSavedMap(mapSignature(d.headers));
+      const autoPhone = d.cols.phone >= 0 ? d.cols.phone : d.cols.phoneAlt >= 0 ? d.cols.phoneAlt : (d.cols.unifiedPhone ?? -1);
+      const init = {};
+      for (const f of LEAD_MAP_FIELDS) {
+        const auto = f.key === 'phone' ? autoPhone : (d.cols[f.key] ?? -1);
+        init[f.key] = saved && saved[f.key] != null ? saved[f.key] : (auto >= 0 ? auto : -1);
+      }
+      setRaw(rows); setDetect(d); setMapping(init); setFileName(file.name);
     } catch (e) { toast(`فشل قراءة الملف: ${e.message}`, 'error'); }
     setBusy(false);
+  };
+
+  // متابعة من مُعيّن الأعمدة → تحليل بالربط المختار + حفظه لهذه الترويسة
+  const applyMapping = () => {
+    if (mapping.name == null || mapping.name < 0) { toast('عيّن عمود «اسم المتجر»', 'warn'); return; }
+    if (mapping.phone == null || mapping.phone < 0) { toast('عيّن عمود «رقم الجوال»', 'warn'); return; }
+    try {
+      const override = {};
+      for (const f of LEAD_MAP_FIELDS) override[f.key] = mapping[f.key] >= 0 ? mapping[f.key] : -1;
+      // الهاتف يذهب لحقل phone؛ نُعطّل البدائل كي لا يُلتقَط عمود آخر
+      override.phoneAlt = -1; override.unifiedPhone = -1;
+      const p = parseLeadsRows(raw, override);
+      setParsed(p);
+      try { localStorage.setItem(mapSignature(detect.headers), JSON.stringify(mapping)); } catch { /* */ }
+    } catch (e) { toast(e.message, 'error'); }
   };
 
   const save = async () => {
@@ -929,10 +971,39 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
   return (
     <Modal title="رفع وتنظيف متاجر خارجية" onClose={onClose} width={680}>
       <div className="m-flow" style={{ maxHeight: '72vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
-        <DropZone onFile={onFile} title={fileName || 'اختر ملف Excel'} hint="يدعم ملف معروف: القسم، أسماء المتجر، أرقام الجوال/واتساب، الموقع، Salla/Zid، وروابط السوشيال"/>
+        <DropZone onFile={onFile} title={fileName || 'اختر ملف Excel'} hint="أي ملف متاجر — ستربط أعمدته (اسم/رقم/منصّة/مجال…) بضغطة. يتعرّف تلقائياً على سلة/زد/معروف."/>
         {busy && <div style={{ padding: 16, textAlign: 'center' }}><Spinner/></div>}
+
+        {/* مُعيّن الأعمدة — يظهر بعد قراءة الملف وقبل التحليل */}
+        {detect && !parsed && (
+          <Card style={{ padding: 14, marginTop: 14 }}>
+            <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 4 }}>ربط أعمدة الملف بالحقول القياسية</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
+              تعرّفنا تلقائياً على {Object.values(mapping).filter(v => v >= 0).length} حقل. عدّل أي ربط غير صحيح — يُحفَظ لهذه الصيغة فلا تعيده.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(210px, 1fr))', gap: 10 }}>
+              {LEAD_MAP_FIELDS.map(f => (
+                <div key={f.key}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, marginBottom: 4 }}>
+                    {f.label} {f.required && <span style={{ color: 'var(--red)' }}>*</span>}
+                  </div>
+                  <Select value={mapping[f.key] ?? -1} onChange={e => setMapping(m => ({ ...m, [f.key]: Number(e.target.value) }))}
+                    style={{ borderColor: f.required && (mapping[f.key] == null || mapping[f.key] < 0) ? 'var(--red)' : undefined }}>
+                    <option value={-1}>— لا شيء —</option>
+                    {detect.headers.map(h => <option key={h.idx} value={h.idx}>{h.label}</option>)}
+                  </Select>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+              <Btn variant="accent" onClick={applyMapping}>متابعة ←</Btn>
+            </div>
+          </Card>
+        )}
+
         {s && (
           <>
+            <Btn size="sm" variant="ghost" onClick={() => setParsed(null)} style={{ marginTop: 12 }}>← تعديل ربط الأعمدة</Btn>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 14 }}>
               <CrmKpi label="صفوف مقروءة" value={fmt0(s.totalRows)} color="#06B6D4"/>
               <CrmKpi label="بأرقام صالحة" value={fmt0(s.withPhone)} color="var(--green)"/>

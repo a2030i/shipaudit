@@ -164,7 +164,9 @@ function findIdx(header, keys) {
 }
 
 function detectHeaderRow(allRows) {
-  let best = { idx: -1, score: 0, cols: {} };
+  // نختار صف الترويسة = الأكثر أعمدةً معروفة (بلا اشتراط عمود الاسم — كي يعمل
+  // مُعيّن الأعمدة اليدوي حتى حين يفشل التعرّف على الاسم تلقائياً).
+  let best = { idx: -1, score: -1, cols: {} };
   for (let i = 0; i < Math.min(10, allRows.length); i++) {
     const row = allRows[i] || [];
     const cols = {};
@@ -173,9 +175,19 @@ function detectHeaderRow(allRows) {
       cols[field] = findIdx(row, keys);
       if (cols[field] >= 0) score++;
     }
-    if (cols.name >= 0 && score > best.score) best = { idx: i, score, cols };
+    if (score > best.score) best = { idx: i, score, cols };
   }
   return best;
+}
+
+// كاشف الأعمدة — يُرجِع صف الترويسة المكتشَف + الربط التلقائي + كل عناوين
+// الأعمدة (لواجهة مُعيّن الأعمدة الذكي). لا يرمي خطأً حتى لو لم يُكتشف الاسم.
+export function detectLeadColumns(allRows) {
+  if (!Array.isArray(allRows) || !allRows.length) return { headerIdx: -1, headers: [], cols: {} };
+  const { idx, cols } = detectHeaderRow(allRows);
+  const headerRow = idx >= 0 ? (allRows[idx] || []) : (allRows[0] || []);
+  const headers = headerRow.map((h, i) => ({ idx: i, label: String(h ?? '').trim() || `عمود ${i + 1}` }));
+  return { headerIdx: idx >= 0 ? idx : 0, headers, cols };
 }
 
 function cell(row, idx) {
@@ -215,10 +227,15 @@ function duplicateDiagnostics(rows) {
   };
 }
 
-export function parseLeadsRows(allRows) {
+// colsOverride: ربط يدوي اختياري {field: columnIndex} من مُعيّن الأعمدة الذكي —
+// يُدمَج فوق الربط التلقائي (قيمة -1 = «لا شيء» تُعطّل الحقل). يجعل أي صيغة ملف
+// قابلة للرفع دون توسيع HEADER_KEYS.
+export function parseLeadsRows(allRows, colsOverride = null) {
   if (!Array.isArray(allRows) || allRows.length < 2) throw new Error('الملف فارغ أو غير معتاد');
-  const { idx: headerIdx, cols } = detectHeaderRow(allRows);
-  if (headerIdx < 0 || cols.name < 0) throw new Error('لم يُعثر على عمود اسم المتجر');
+  const { idx: detectedIdx, cols: autoCols } = detectHeaderRow(allRows);
+  const headerIdx = detectedIdx >= 0 ? detectedIdx : 0;
+  const cols = colsOverride ? { ...autoCols, ...colsOverride } : autoCols;
+  if (cols.name == null || cols.name < 0) throw new Error('لم يُعثر على عمود اسم المتجر — عيّنه يدوياً من مُعيّن الأعمدة');
 
   const header = allRows[headerIdx] || [];
   // كشف المنصّة من أعمدة مميّزة (لا عمود منصّة صريح في هذه التصديرات):
