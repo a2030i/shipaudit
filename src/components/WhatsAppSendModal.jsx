@@ -105,17 +105,27 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // تغيير القالب → تحميل ربطه المحفوظ (أو الافتراضي)
   const pickTemplate = (t) => { setTpl(t); setVarMap(defaultMapFor(t, cfg)); };
 
-  // حقول مستلِم = سياق القاعدة (بالهاتف) + حقول صفحته فوقه (تفوز عند التعارض)
-  const mergedFields = (r) => ({ ...(ctx.get(r.to) || {}), ...(r.fields || {}) });
+  // اختيار سياق المتجر الصحيح للمستلم (حادثة TREVU/farnearapp — رقم واحد بمتاجر
+  // عدة): متجر واحد على الرقم = يُؤخذ؛ متاجر عدة = فقط ما يطابق اسم المستلم؛
+  // لا تطابق = لا سياق متجر إطلاقاً (رسالة ناقصة أفضل من رسالة ببيانات متجر آخر).
+  const normName = (s) => String(s || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  const pickCtx = (r) => {
+    const arr = ctx.get(r.to);
+    if (!arr?.length) return null;
+    if (arr.length === 1) return arr[0];
+    return arr.find(x => normName(x._store) === normName(r.name)) || null;
+  };
+  // حقول مستلِم = سياق متجره الصحيح + حقول صفحته فوقه (تفوز عند التعارض)
+  const mergedFields = (r) => ({ ...(pickCtx(r) || {}), ...(r.fields || {}) });
 
-  // الحقول المتاحة: اتحاد حقول الصفحة + سياق القاعدة عبر المستلمين
+  // الحقول المتاحة: اتحاد حقول الصفحة + سياق القاعدة عبر المستلمين (بلا مفاتيح _ الداخلية)
   const availableFields = useMemo(() => {
     const keys = new Set(['name']);
     for (const r of recipients) {
       if (r.amount != null) keys.add('amount');
       if (r.count != null) keys.add('count');
-      const f = { ...(ctx.get(r.to) || {}), ...(r.fields || {}) };
-      for (const k of Object.keys(f)) if (f[k] != null && f[k] !== '') keys.add(k);
+      const f = mergedFields(r);
+      for (const k of Object.keys(f)) if (!k.startsWith('_') && f[k] != null && f[k] !== '') keys.add(k);
     }
     return [...keys];
   }, [recipients, ctx]);

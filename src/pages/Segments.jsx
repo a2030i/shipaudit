@@ -614,7 +614,16 @@ export default function Segments({ isActive = true }) {
       const value = r.debt > 0.5 ? r.debt.toFixed(2)
         : Math.abs(r.walletBalance) > 0.01 ? r.walletBalance.toFixed(2)
           : String(r.shipmentCount);
-      out.push({ to: phone, name: r.storeName, amount: Number(r.debt) || 0, vars: [r.storeName, value] });
+      out.push({
+        to: phone, name: r.storeName, amount: Number(r.debt) || 0, vars: [r.storeName, value],
+        // أعمدة صف المتجر نفسه لمتغيرات القالب — بدونها كان مودال الإرسال يستكمل
+        // من سياق القاعدة الذي قد يجلب متجراً آخر بنفس الرقم (حادثة TREVU/farnearapp)
+        fields: {
+          name: r.storeName, shipments: r.shipmentCount,
+          last_shipment: r.lastShipmentAt, days_since: r._shipDays,
+          wallet: r.walletBalance, amount: Number(r.debt) || 0,
+        },
+      });
     }
     return out;
   };

@@ -87,19 +87,20 @@ export async function loadCampaignPhones(names) {
   return phones;
 }
 
-// سياق المستلمين لمتغيرات القالب (2026-07-21): RPC campaign_recipient_context —
-// المتجر الأعلى شحناً بالهاتف + زوهو الحي (مديونية/آخر فاتورة/آخر دفعة).
-// يُرجِع Map(phone → fields) بالمفاتيح المعرّبة في FIELD_LABELS. الفشل صامت
-// (المودال يشتغل بحقول الصفحة وحدها). دفعات 500 (سقف PostgREST 1000 صف §1.34).
+// سياق المستلمين لمتغيرات القالب (2026-07-21): RPC campaign_recipient_context v2 —
+// **صف لكل متجر على الرقم** (لا الأعلى شحناً فقط — حادثة TREVU/farnearapp:
+// رقم واحد بمتجرين أعطى تاريخ متجر آخر). يُرجِع Map(phone → [مصفوفة متاجر])
+// وكل عنصر يحمل `_store`/`_storeCount` للمطابقة بالاسم في المودال.
+// الفشل صامت (المودال يشتغل بحقول الصفحة وحدها). دفعات 400 (سقف 1000 صف §1.34).
 export async function loadCampaignRecipientContext(phones) {
   const map = new Map();
   const uniq = [...new Set((phones || []).filter(Boolean))];
-  for (let i = 0; i < uniq.length; i += 500) {
+  for (let i = 0; i < uniq.length; i += 400) {
     try {
-      const { data, error } = await supabase.rpc('campaign_recipient_context', { p_phones: uniq.slice(i, i + 500) });
+      const { data, error } = await supabase.rpc('campaign_recipient_context', { p_phones: uniq.slice(i, i + 400) });
       if (error || !Array.isArray(data)) continue;
       for (const r of data) {
-        const f = {};
+        const f = { _store: r.store_name || '', _storeCount: Number(r.store_count || 1) };
         if (r.shipments != null) f.shipments = r.shipments;
         if (r.last_shipment) {
           f.last_shipment = r.last_shipment;
@@ -112,7 +113,9 @@ export async function loadCampaignRecipientContext(phones) {
         if (r.zoho_open_count != null) f.zoho_open_count = Number(r.zoho_open_count);
         if (r.zoho_last_invoice) f.zoho_last_invoice = r.zoho_last_invoice;
         if (r.zoho_last_payment) f.zoho_last_payment = r.zoho_last_payment;
-        map.set(r.phone, f);
+        const arr = map.get(r.phone) || [];
+        arr.push(f);
+        map.set(r.phone, arr);
       }
     } catch { /* اختياري — لا يُفشل المودال */ }
   }
