@@ -7,7 +7,7 @@ import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../componen
 import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
-  loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures } from '../lib/whatsappService.js';
+  loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -255,6 +255,8 @@ function CampaignsTab() {
   const [status, setStatus] = useState('');
   const [failWa, setFailWa] = useState(null);      // مستلمو «حملة للفاشلين»
   const [prepFail, setPrepFail] = useState('');
+  const [noWa, setNoWa] = useState([]);            // أرقام بلا واتساب (للاتصال)
+  const [expNoWa, setExpNoWa] = useState(false);
 
   // إعادة استهداف الفاشلين في حملة — يجلب أرقامهم ويفتح مودال الإرسال.
   const campaignFailed = async (name) => {
@@ -271,15 +273,36 @@ function CampaignsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [log, rep] = await Promise.all([
+      const [log, rep, nw] = await Promise.all([
         loadWhatsAppLog({ limit: camp ? 1000 : 500, campaign: camp || null }),
         loadWhatsAppCampaignReport(),
+        loadNoWhatsappList().catch(() => []),
       ]);
-      setRows(log); setReport(rep);
+      setRows(log); setReport(rep); setNoWa(nw);
     } catch { setRows([]); }
     setLoading(false);
   }, [camp]);
   useEffect(() => { load(); }, [load]);
+
+  // تصدير أرقام «بلا واتساب» لفريق الاتصال (رقم/اسم/آخر محاولة/الحملات)
+  const exportNoWa = async () => {
+    if (expNoWa || !noWa.length) return;
+    setExpNoWa(true);
+    try {
+      const headers = ['الجوال', 'المتجر/العميل', 'آخر محاولة', 'عدد المحاولات', 'الحملات'];
+      const dt = (d) => d ? new Date(d).toLocaleString('en-GB') : '';
+      const aoa = [['أرقام بلا واتساب — للاتصال', '', new Date().toISOString().slice(0, 10)], [], headers,
+        ...noWa.map(r => [r.phone, r.name || '', dt(r.lastAttempt), r.attempts, r.campaigns || ''])];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = headers.map((_, i) => ({ wch: i === 1 ? 28 : i === 4 ? 30 : 15 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'بلا واتساب');
+      rtl(wb);
+      await persistAndDownloadExport({ wb, fileName: `ارقام_بلا_واتساب_${new Date().toISOString().slice(0, 10)}.xlsx`, kind: 'no_whatsapp', rowCount: noWa.length, userId: user?.id || null });
+      toast(`صُدّر ${noWa.length} رقم للاتصال ✓`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+    setExpNoWa(false);
+  };
 
   // تصدير تفاصيل الحملة المفتوحة (حالة كل رقم) — عبر persistAndDownloadExport (§1.13)
   const exportCampaign = async (list) => {
@@ -380,6 +403,19 @@ function CampaignsTab() {
           </tbody>
         </table>
       </div>
+
+      {/* ── أرقام بلا واتساب (للاتصال) — تُستبعَد آلياً من كل حملة ── */}
+      {noWa.length > 0 && (
+        <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          border: '1.5px solid color-mix(in srgb, var(--red) 30%, var(--border))', background: 'color-mix(in srgb, var(--red) 5%, transparent)' }}>
+          <span style={{ fontSize: 20 }}>🚫</span>
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>{noWa.length} رقم بلا واتساب — للاتصال بهم</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>«الرقم غير موجود على واتساب» — تُستبعَد آلياً من كل حملة قادمة (لا استثناء يدوي). حوّلها لفريق الاتصال.</div>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={exportNoWa} disabled={expNoWa}>{expNoWa ? 'يصدّر…' : '📥 تصدير للاتصال'}</Btn>
+        </Card>
+      )}
 
       {/* ── سجل الرسائل (المفلتر على الحملة المفتوحة إن وُجدت) ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>

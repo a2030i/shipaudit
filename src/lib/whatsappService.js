@@ -72,6 +72,20 @@ export async function loadCampaignNames() {
   return [...out.values()].sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
 }
 
+// أرقام بلا واتساب (فشل «الرقم غير موجود») — تُستثنى آلياً من كل حملة قادمة.
+export async function loadNoWhatsappSet() {
+  const set = new Set();
+  const { data } = await supabase.rpc('no_whatsapp_phones');
+  for (const r of data || []) if (r.phone) set.add(r.phone);
+  return set;
+}
+// تقرير كامل (للاتصال بهم / التصدير) — رقم/اسم/آخر محاولة/الحملات.
+export async function loadNoWhatsappList() {
+  const { data, error } = await supabase.rpc('no_whatsapp_report');
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({ phone: r.phone, name: r.name, lastAttempt: r.last_attempt, attempts: Number(r.attempts) || 1, campaigns: r.campaigns }));
+}
+
 // أرقام مستلمي حملات بعينها — لاستثنائهم من الحملة الجديدة
 export async function loadCampaignPhones(names) {
   const phones = new Set();

@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -74,6 +74,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [exOpen, setExOpen]       = useState(false);
   // سياق واسع لكل مستلم من القاعدة (شحنات/محفظة/زوهو…) — حقول الصفحة تفوز عند التعارض
   const [ctx, setCtx]             = useState(() => new Map());
+  // أرقام بلا واتساب — تُستبعَد آلياً من كل حملة (لا استثناء يدوي)
+  const [noWa, setNoWa]          = useState(() => new Set());
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات (يُحترَم حتى لو **فارغ** —
   // قالب بلا متغيرات)، وإلا «افتراضي الصفحة» بعدد vars.
@@ -92,6 +94,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     loadCampaignNames().then(setCampaigns).catch(() => setCampaigns([]));
     setCtx(new Map());
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
+    loadNoWhatsappSet().then(setNoWa).catch(() => {});
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -177,8 +180,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     return out;
   })();
   const dupSkipped = recipients.filter(r => r.to && r.to.length >= 11).length - validAll.length;
-  const excludedCount = validAll.filter(r => exPhones.has(r.to)).length;
-  const valid = validAll.filter(r => !exPhones.has(r.to));
+  // استبعاد آلي لمن ليس له واتساب (فشل «الرقم غير موجود») — لا استثناء يدوي
+  const noWaCount = validAll.filter(r => noWa.has(r.to)).length;
+  const excludedCount = validAll.filter(r => exPhones.has(r.to) && !noWa.has(r.to)).length;
+  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to));
   const skipped = recipients.filter(r => !(r.to && r.to.length >= 11)).length;
   const selectedValid = valid.filter(r => selected.has(r.to));
   // لا حدّ للعدد: الفوري يُقسَّم دفعات 60 متتالية — القياس الفعلي ≈ ثانية/رسالة
@@ -433,10 +438,11 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
             <Btn size="sm" variant="ghost" onClick={allOn}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
-            {(skipped > 0 || dupSkipped > 0) && (
+            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0) && (
               <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
-                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && dupSkipped > 0 && ' · '}
-                {dupSkipped > 0 && `دُمج ${dupSkipped} رقم مكرّر`}
+                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0) && ' · '}
+                {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && noWaCount > 0 && ' · '}
+                {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب</span>}
               </span>
             )}
           </div>
