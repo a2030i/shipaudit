@@ -819,7 +819,10 @@ export async function approveAudit(auditId, userId) {
       console.info(`audit ${updated.id}: file_kind=${fileKind || 'unset'} — audit doesn't populate cod_settlement directly`);
     }
   } catch (e) {
-    console.warn('COD auto-extract failed:', e.message);
+    // فشل استخراج COD يُرفَق بالنتيجة ويُعرَض (كان يُبتلع صامتاً بينما فشل قيد
+    // الدفتر المجاور يُعرَض) — فمراجعة audit_with_cod تُعتمد بصفر تحصيل بلا تنبيه.
+    console.error('COD auto-extract failed:', e.message);
+    updated.codExtractError = e.message;
   }
 
   // ── Auto-post to the carrier sub-ledger (A/P sub-ledger). One DR
@@ -839,12 +842,16 @@ export async function approveAudit(auditId, userId) {
       try {
         const { data: openRvs } = await supabase
           .from('carrier_operations')
-          .select('id, amount_dr, amount_cr')
+          .select('id, amount_dr, amount_cr, status')
           .eq('carrier_id', updated.carrier_id)
           .eq('doc_type', 'RV')
           .is('audit_id', null);
+        // استبعاد المسدَّد/الجزئي من مرشّحي الربط (خطر دفع مزدوج): قلب قيد paid
+        // إلى 'audited' يعيد فتح رصيد سُدِّد فعلاً. التدقيق الرجعي لفاتورة مدفوعة
+        // حالة مشروعة، لكن عبر ربط INV مستقل لا إعادة فتح القيد المسدَّد.
         const matches = (openRvs ?? []).filter(
-          r => Math.abs(((Number(r.amount_dr) || 0) - (Number(r.amount_cr) || 0)) - gross) < 0.5
+          r => r.status !== 'paid' && r.status !== 'partial'
+            && Math.abs(((Number(r.amount_dr) || 0) - (Number(r.amount_cr) || 0)) - gross) < 0.5
         );
         if (matches.length === 1) {
           await supabase.from('carrier_operations').update({

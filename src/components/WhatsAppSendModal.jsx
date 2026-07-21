@@ -162,10 +162,21 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     catch { toast('تعذّر جلب أرقام الحملة المستثناة', 'error'); }
   };
 
-  const validAll = recipients.filter(r => r.to && r.to.length >= 11);
+  // إزالة تكرار الهاتف (حادثة 2026-07-21: رقم بعدة متاجر = عدة مستلمين فاستلم
+  // 3 رسائل في 37 ثانية → خطر حظر الرقم التجاري). أول صف للرقم يفوز (الأعلى
+  // شحناً غالباً — الصفحات ترتّب تنازلياً)، مع الاحتفاظ بحقوله للمعاينة.
+  const validAll = (() => {
+    const seen = new Set(); const out = [];
+    for (const r of recipients) {
+      if (!r.to || r.to.length < 11 || seen.has(r.to)) continue;
+      seen.add(r.to); out.push(r);
+    }
+    return out;
+  })();
+  const dupSkipped = recipients.filter(r => r.to && r.to.length >= 11).length - validAll.length;
   const excludedCount = validAll.filter(r => exPhones.has(r.to)).length;
   const valid = validAll.filter(r => !exPhones.has(r.to));
-  const skipped = recipients.length - validAll.length;
+  const skipped = recipients.filter(r => !(r.to && r.to.length >= 11)).length;
   const selectedValid = valid.filter(r => selected.has(r.to));
   // لا حدّ للعدد: الفوري يُقسَّم دفعات 60 متتالية — القياس الفعلي ≈ ثانية/رسالة
   // (إرسال هاتف + التسجيل الفوري)، فدفعة 60 ≈ دقيقة، بأمان تحت مهلة الدالة 150ث.
@@ -414,7 +425,12 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
             <Btn size="sm" variant="ghost" onClick={allOn}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
-            {skipped > 0 && <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>تُخطّي {skipped} بلا رقم</span>}
+            {(skipped > 0 || dupSkipped > 0) && (
+              <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
+                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && dupSkipped > 0 && ' · '}
+                {dupSkipped > 0 && `دُمج ${dupSkipped} رقم مكرّر`}
+              </span>
+            )}
           </div>
           <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
             {valid.slice(0, 400).map((r, i) => {

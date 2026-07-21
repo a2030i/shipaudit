@@ -619,6 +619,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         setReviewStatus('approved');
         toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
         if (_ap1?.ledgerPostError) { ledgerErr = _ap1.ledgerPostError; } if (_ap1?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap1.ledgerPostError} — راجع /integrity`, 'error');
+        if (_ap1?.codExtractError) toast(`⚠️ اعتُمدت لكن استخراج التحصيل فشل: ${_ap1.codExtractError} — راجع /integrity`, 'error');
       } else {
         const _ap2 = await approveAudit(audit.id, profile?.id);
         audit.reviewStatus = 'approved';

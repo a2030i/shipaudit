@@ -1,4 +1,4 @@
-// hatif-webhook v3 — يستقبل أحداث رسائل Hatif/Voxa (حالة التسليم + الردود)
+// hatif-webhook v5 — يستقبل أحداث رسائل Hatif/Voxa (حالة التسليم + الردود)
 // ويحدّث whatsapp_campaign_sends. verify_jwt=false — الحماية عبر ?key= ضد
 // zoho_auth.webhook_key (نفس نمط zoho-webhook). لا استدعاء زوهو/Hatif هنا.
 // v2 (محرك المبيعات §1.37): أول رد وارد = أحرّ فرصة — يحدّث المتابعة
@@ -86,7 +86,7 @@ Deno.serve(async (req) => {
       // مهمة لمالك المتابعة أو لمُرسِل الحملة — مرة لكل رد أول
       const assignee = fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null);
       if (assignee) {
-        await db.from('crm_tasks').insert({
+        const { error: taskErr } = await db.from('crm_tasks').insert({
           title: `↩️ ردّ وارد من ${row.name || row.phone} — تابِعه الآن`,
           kind: 'followup',
           entity_type: 'retargeting',
@@ -96,8 +96,11 @@ Deno.serve(async (req) => {
           priority: 'high',
           status: 'open',
         });
+        // لا تبتلع فشل إدراج المهمة صامتاً — كان قيد entity_type يرفض 'retargeting'
+        // فتضيع كل الردود بلا أثر (أُصلح القيد؛ نُبقي التسجيل لأي فشل مستقبلي)
+        if (taskErr) console.error('crm_task insert failed on reply:', taskErr.message);
       }
-    } catch { /* الـwebhook يرجع 200 دائماً */ }
+    } catch (e) { console.error('reply→task handler failed:', (e as Error).message); }
   }
   return ok();
 });

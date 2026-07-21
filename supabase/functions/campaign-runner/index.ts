@@ -1,4 +1,7 @@
-// campaign-runner v3 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
+// campaign-runner v4 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
+//  v4 (2026-07-21): استرداد الطابور العالق ('sending' +10د → pending) +
+//  drip بالعميل لا بالصف (استبعاد من ردّ + إزالة تكرار الهاتف + تعليم كل صفوفه).
+// campaign-runner v3 — كرون كل 15 دقيقة:
 //  (١) يرسل الحملات المجدولة المستحقة من campaign_queue — v2: يعالج **عدة صفوف**
 //      ضمن ميزانية وقت (من مهلة 150ث) لأن الجدولة الكبيرة تُقسَّم صفوف 100 مستلم.
 //      اسم الحملة في السجل = bucket_label (اسم الحملة الذي كتبه المستخدم) لا «مجدولة».
@@ -73,6 +76,17 @@ Deno.serve(async (req) => {
   if (!za?.cron_key || cronKey !== za.cron_key) return new Response('forbidden', { status: 403 });
 
   const out: Record<string, unknown> = { jobs: 0, queue_sent: 0, queue_failed: 0, drip_sent: 0 };
+
+  // استرداد الطابور العالق: صف 'sending' أقدم من 10 دقائق = قُتلت الدالة منتصفه
+  // (crash/deploy/504) — يُعاد لـpending. المُرسَل لهم فعلاً موجودون في
+  // whatsapp_campaign_sends فيُستبعدون عند إعادة الإرسال (نمط «استثناء حملات سابقة»).
+  try {
+    const cutoff = new Date(Date.now() - 10 * 60_000).toISOString();
+    const { data: stuck } = await db.from('campaign_queue')
+      .update({ status: 'pending' }).eq('status', 'sending').lt('processed_at', cutoff).select('id');
+    if (stuck?.length) out.recovered = stuck.length;
+  } catch { /* غير قاتل */ }
+
   let token = '', channelId = '';
   const ensureHatif = async () => {
     if (!token) token = await accessToken();
@@ -91,9 +105,11 @@ Deno.serve(async (req) => {
       if (!job) break;
       const jobLen = Array.isArray(job.recipients) ? job.recipients.length : 0;
       if (Date.now() - started + estJobMs(jobLen) > HARD_MS) { out.deferred = true; break; }
-      // احجز الصف فوراً (تشغيلتان متوازيتان لا تلتقطان نفس الدفعة)
+      // احجز الصف فوراً + ختم processed_at كعلامة «بدأ الآن» (يُدهَس عند الاكتمال)
+      // — استرداد الطابور العالق يعتمد عليها (صف 'sending' قديم = قُتلت الدالة).
       const { data: claimed } = await db.from('campaign_queue')
-        .update({ status: 'sending' }).eq('id', job.id).eq('status', 'pending').select('id');
+        .update({ status: 'sending', processed_at: new Date().toISOString() })
+        .eq('id', job.id).eq('status', 'pending').select('id');
       if (!claimed?.length) continue;
       (out.jobs as number)++;
       await ensureHatif();
@@ -134,21 +150,30 @@ Deno.serve(async (req) => {
         const after = Number(drip.afterDays);
         const from = new Date(Date.now() - 30 * 86_400_000).toISOString();   // لا نلاحق القديم جداً
         const to   = new Date(Date.now() - after * 86_400_000).toISOString();
-        const { data: cold } = await db.from('whatsapp_campaign_sends')
-          .select('id, phone, name')
-          .is('replied_at', null).eq('followed_up', false)
+        const { data: coldRaw } = await db.from('whatsapp_campaign_sends')
+          .select('id, phone, name, replied_at')
+          .eq('followed_up', false)
           .neq('template_name', drip.template)
           .gte('sent_at', from).lte('sent_at', to)
-          .order('sent_at').limit(30);
+          .order('sent_at').limit(120);
+        // إزالة تكرار بالهاتف + استبعاد من له أي صف ردّ (drip بالعميل لا بالصف):
+        // hatif-webhook يكتب replied_at على أحدث صف فقط، فصفوف الرقم الأقدم تبقى
+        // null — بلا هذا الفلتر يُلاحَق من ردّ فعلاً، ويستلم رقم واحد عدة رسائل.
+        const repliedPhones = new Set((coldRaw || []).filter(r => r.replied_at).map(r => r.phone));
+        const seenPhones = new Set<string>();
+        const cold = (coldRaw || []).filter(r => {
+          if (r.replied_at || repliedPhones.has(r.phone) || seenPhones.has(r.phone)) return false;
+          seenPhones.add(r.phone); return true;
+        }).slice(0, 30);
         if (cold?.length) {
           await ensureHatif();
           const logRows: Record<string, unknown>[] = [];
-          const doneIds: number[] = [];
+          const donePhones: string[] = [];
           const sentAt = new Date().toISOString();
           for (const c of cold) {
             try {
               const res = await sendTemplate(token, { channelId, templateName: drip.template, to: c.phone, vars: [c.name || ''] });
-              doneIds.push(c.id);   // نعلّمه حتى لو فشل — لا نعيد المحاولة إلى ما لا نهاية
+              donePhones.push(c.phone);   // نعلّم كل صفوف الرقم — لا نلاحقه ثانية
               if (res.ok) {
                 (out.drip_sent as number)++;
                 logRows.push({ phone: c.phone, name: c.name, template_name: drip.template, channel_id: channelId,
@@ -156,11 +181,13 @@ Deno.serve(async (req) => {
                   campaign_name: 'متابعة تلقائية', campaign_bucket: `بعد ${after} يوم بلا رد`,
                   status: res.status || 'accepted', sent_at: sentAt, sent_by: 'auto-drip', followed_up: true });
               }
-            } catch { doneIds.push(c.id); }
+            } catch { donePhones.push(c.phone); }
             await sleep(350);
           }
           if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* */ } }
-          if (doneIds.length) { try { await db.from('whatsapp_campaign_sends').update({ followed_up: true }).in('id', doneIds); } catch { /* */ } }
+          // علّم followed_up على **كل صفوف الرقم** (لا الصف الملتقَط فقط) حتى لا
+          // يُلاحَق الرقم ثانية عبر صفّ آخر له في تشغيلة قادمة.
+          if (donePhones.length) { try { await db.from('whatsapp_campaign_sends').update({ followed_up: true }).in('phone', donePhones); } catch { /* */ } }
         }
       }
     }
