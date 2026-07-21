@@ -61,6 +61,14 @@ const PROP_DEFS: { name: string; type: number; options?: { value: string; color:
   { name: 'آخر شحنة', type: 4 },
   { name: 'تاريخ الانضمام', type: 4 },
   { name: 'تفاصيل المتاجر', type: 1 },
+  // متابعة المبيعات (2026-07-21): إجراءات الفريق (جدولة/ملاحظة/بلاك لست) تنعكس
+  // على ملف العميل في هاتف. قائمة ملوّنة + ملاحظة نصية بموعد المتابعة والمسؤول.
+  { name: 'متابعة المبيعات', type: 3, options: [
+    { value: 'متابعة مطلوبة', color: '#D97706' }, { value: 'مهتم', color: '#3B82F6' },
+    { value: 'تحوّل', color: '#22C55E' }, { value: 'غير مهتم', color: '#9CA3AF' },
+    { value: 'بلاك لست', color: '#EF4444' }, { value: 'تم التواصل', color: '#06B6D4' },
+  ] },
+  { name: 'ملاحظة الفريق', type: 1 },
 ];
 
 function hash(s: string) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); }
@@ -114,6 +122,8 @@ function propValues(row: any): Record<string, string | number> {
     'التصنيف': row.class_val,
     'المديونية': row.debt_val,
     'تفاصيل المتاجر': row.details || '',
+    'متابعة المبيعات': row.followup_val || '',
+    'ملاحظة الفريق': row.followup_note || '',
   };
   if (Number(row.debt) > 0.5) v['إجمالي المديونية'] = Math.round(Number(row.debt));
   if (row.last_shipment_at) v['آخر شحنة'] = String(row.last_shipment_at);
