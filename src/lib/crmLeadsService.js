@@ -93,7 +93,22 @@ export function isRealSaudiMobile(v) {
   const s = normalizeSaudiPhone(v);
   if (!s || !/^9665\d{8}$/.test(s)) return false;   // 9665 + 8 أرقام
   if (/^(\d)\1{7}$/.test(s.slice(4))) return false; // أرقام المشترك كلها متطابقة = وهمي
+  if (/(\d)\1{5}$/.test(s)) return false;           // ينتهي بـ6 خانات متطابقة (…000000) = placeholder
+  if (s === '966512345678') return false;           // placeholder «اكتب أي رقم» شائع
   return true;
+}
+
+// اسم جهة وهمي/سبام يُرفَض عند الرفع والإضافة (قواعد التنظيف الصارمة 2026-07-22).
+// نصوص العرض فقط — لا يمسّ الأرقام. مبنيّ على فحص 89,671 صفاً فعلياً.
+export function isJunkLeadName(name) {
+  const raw = String(name ?? '').trim();
+  if (raw.replace(/\s/g, '').length <= 1) return true;               // فارغ/حرف واحد
+  const digits = toAsciiDigits(raw);
+  if (/^[0-9\s+._\-()]+$/.test(digits)) return true;                 // أرقام/رموز فقط (لا اسم)
+  if (/(test|dummy|asdf|xxx|تجربة|تجريبي|وهمي|لا ?يوجد|بلا اسم)/i.test(raw)) return true; // اختبار
+  if (/(استثمر|عملات رقمية|العملات الرقمية|ارباح يومي|أرباح يومي|راس مالك|رأس مالك|فوركس|forex|تداول الذهب|بيع عملات)/i.test(raw)) return true; // سبام مالي
+  if (/(أرامكو|ارامكو|صندوق الاستثمارات العامة)/.test(raw)) return true; // انتحال جهة رسمية
+  return false;
 }
 
 function pickFirstPhone(...values) {
@@ -251,12 +266,15 @@ export function parseLeadsRows(allRows, colsOverride = null) {
   const rows = [];
   let invalidPhone = 0;
   let blankName = 0;
+  let junkName = 0;
 
   for (let i = headerIdx + 1; i < allRows.length; i++) {
     const r = allRows[i];
     if (!r) continue;
     const name = toText(cell(r, cols.name));
     if (!name) { blankName++; continue; }
+    // قواعد التنظيف الصارمة: اسم وهمي/سبام/أرقام-فقط يُرفَض (لا يدخل القاعدة)
+    if (isJunkLeadName(name)) { junkName++; continue; }
 
     const whatsappNorm = normalizeSaudiPhone(cell(r, cols.whatsapp));
     let phoneNorm = pickFirstPhone(
@@ -325,6 +343,7 @@ export function parseLeadsRows(allRows, colsOverride = null) {
     stats: {
       totalRows: rows.length,
       blankName,
+      junkName,
       invalidPhone,
       withPhone: rows.filter(r => r.phoneNormalized).length,
       categories: categories.length,

@@ -57,6 +57,11 @@ export const CHECK_META = {
     desc:  'مراجعة قديمة معتمدة برقم صفوف لكن صفر شحنات محفوظة — لا يمكن مراجعة تفاصيلها. أعد بناءها من الملف الأصلي عند الحاجة.',
     severity: 'amber', goto: '/audits',
   },
+  external_leads_junk: {
+    label: 'جهات خارجية وهمية (هاتف placeholder/اسم سبام)',
+    desc:  'جهات في «المتاجر الخارجية» بهاتف وهمي (…000000/512345678) أو اسم أرقام-فقط/سبام مالي/انتحال. البوابة تمنع الجديد عند الرفع — احذف القديم من مركز المبيعات.',
+    severity: 'amber', goto: '/retargeting',
+  },
 };
 
 export async function loadIntegrityChecks() {
