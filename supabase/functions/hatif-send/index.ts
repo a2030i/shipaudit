@@ -105,6 +105,27 @@ Deno.serve(async (req) => {
     catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
   }
 
+  // explore (v12 مؤقت) — GET فقط على api.voxa.sa لاستكشاف نقاط نهاية المحادثات
+  // (استرجاع مستلمي حملة ضاع سجلها). محمي بنفس ?key= نمط probe.
+  if (action === 'explore') {
+    const key = url.searchParams.get('key') || '';
+    const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
+    if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
+    const paths = Array.isArray(body.paths) ? (body.paths as string[]).slice(0, 12) : [];
+    let token: string;
+    try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    const results: unknown[] = [];
+    for (const p of paths) {
+      if (!p.startsWith('/')) { results.push({ path: p, error: 'path must start with /' }); continue; }
+      try {
+        const r = await fetch('https://api.voxa.sa' + p, { headers: { Authorization: `Bearer ${token}` } });
+        const txt = await r.text();
+        results.push({ path: p, status: r.status, snippet: txt.slice(0, 900) });
+      } catch (e) { results.push({ path: p, error: String((e as Error).message || e) }); }
+    }
+    return json({ ok: true, results });
+  }
+
   const auth = await requireUser(req, db);
   if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
   // صلاحيات v2: الإرسال الفعلي = campaigns.send حصراً (backfill منحها لمن كان
