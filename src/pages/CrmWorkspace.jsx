@@ -26,6 +26,8 @@ import {
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import WaActions from '../components/WaActions.jsx';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -536,6 +538,19 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   const [selAllMatching, setSelAllMatching] = useState(false); // كل النتائج المطابقة (عبر كل الصفحات)
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  // إطلاق حملة واتساب من التبويب مباشرة (طلب المستخدم 2026-07-21):
+  // للمحدد أو للصفحة المعروضة — عبر WhatsAppSendModal (قالب هاتف مسجَّل §1.29)
+  const [waRecipients, setWaRecipients] = useState(null);
+  const leadRecipient = (l) => ({
+    to: normalizeSaudiPhone(l.phone_normalized || l.phone),
+    name: l.name || '',
+    vars: [l.name || ''],
+  });
+  const launchCampaign = (list) => {
+    const recs = list.filter(l => l.phone_normalized || l.phone).map(leadRecipient);
+    if (!recs.length) { toast('لا أرقام جوال في القائمة المختارة', 'info'); return; }
+    setWaRecipients(recs);
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -619,6 +634,10 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       <PageHeader icon={<Store size={22}/>} title="جهات محتملة" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
         actions={<>
           <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+          {/* إطلاق حملة قالب للصفحة المعروضة (المودال يوضّح الصلاحية لمن لا يملكها) */}
+          <Btn size="sm" variant="accent" icon={<Phone size={13}/>} onClick={() => launchCampaign(leads)}>
+            إطلاق حملة للمعروضين ({leads.filter(l => l.phone_normalized || l.phone).length})
+          </Btn>
           {can('crm.upload_leads') && <Btn size="sm" variant="primary" icon={<Upload size={14}/>} onClick={() => setModal('upload')}>رفع وتنظيف Excel</Btn>}
           {can('crm.upload_leads') && <Btn size="sm" icon={<Plus size={14}/>} onClick={() => setModal('new')}>جهة جديدة</Btn>}
         </>}/>
@@ -715,6 +734,13 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={!bulkOwner || bulkBusy}>
             {bulkBusy ? 'يحوّل…' : `تحويل ${selAllMatching ? fmt0(count) : selIds.size} للموظف`}
           </Btn>
+          {/* حملة واتساب للمحدد (ضمن الصفحة الحالية — الشامل عبر الفلاتر + «للمعروضين») */}
+          {selIds.size > 0 && !selAllMatching && (
+            <Btn size="sm" variant="ghost" icon={<Phone size={13}/>}
+              onClick={() => launchCampaign(leads.filter(l => selIds.has(l.id)))}>
+              📲 حملة للمحدد ({leads.filter(l => selIds.has(l.id) && (l.phone_normalized || l.phone)).length})
+            </Btn>
+          )}
           <Btn size="sm" variant="ghost" onClick={() => { setSelIds(new Set()); setSelAllMatching(false); }}>إلغاء التحديد</Btn>
         </Card>
       )}
@@ -791,6 +817,11 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       )}
       {modal === 'upload' && <LeadUploadModal employees={employees} userId={user?.id} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }}/>}
       {modal === 'new' && <NewLeadModal onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }} userId={user?.id}/>}
+      {waRecipients && (
+        <WhatsAppSendModal open recipients={waRecipients}
+          bucketLabel="جهات محتملة — عملاء خارج المنصّة"
+          onClose={() => setWaRecipients(null)} onSent={() => setWaRecipients(null)}/>
+      )}
       {sel && <LeadDrawer lead={sel} employees={employees} onClose={() => setSel(null)} onChanged={refresh}/>}
     </Pad>
   );
