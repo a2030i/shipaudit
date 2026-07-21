@@ -697,6 +697,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           <Select value={filters.platform} onChange={e => setFilter({ platform: e.target.value })}>
             <option value="">كل المنصات</option>
             {options.platforms.map(p => <option key={p} value={p}>{p}</option>)}
+            <option value="__none__">غير سلة ولا زد (بلا منصّة)</option>
           </Select>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 10, alignItems: 'center' }}>

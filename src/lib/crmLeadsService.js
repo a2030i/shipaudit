@@ -463,7 +463,9 @@ export async function loadLeads({
   if (ownerId) query = query.eq('owner_id', ownerId);
   if (unassignedOnly) query = query.is('owner_id', null);
   if (category) query = query.eq('category', category);
-  if (platform) query = query.eq('platform', platform);
+  // '__none__' = غير سلة ولا زد (فارغ أو منصّة أخرى) — يشمل null والفراغ
+  if (platform === '__none__') query = query.or('platform.is.null,platform.not.in.(Salla,Zid)');
+  else if (platform) query = query.eq('platform', platform);
   if (duplicateOnly) query = query.gt('duplicate_count', 1);
   if (matched === 'yes' || matchedOnly) query = query.not('matched_store_id', 'is', null);
   else if (matched === 'no') query = query.is('matched_store_id', null);
@@ -653,7 +655,9 @@ export async function bulkAssignLeads({
   if (ownerId) query = query.eq('owner_id', ownerId);
   if (unassignedOnly) query = query.is('owner_id', null);
   if (category) query = query.eq('category', category);
-  if (platform) query = query.eq('platform', platform);
+  // '__none__' = غير سلة ولا زد (فارغ أو منصّة أخرى) — يشمل null والفراغ
+  if (platform === '__none__') query = query.or('platform.is.null,platform.not.in.(Salla,Zid)');
+  else if (platform) query = query.eq('platform', platform);
   if (duplicateOnly) query = query.gt('duplicate_count', 1);
   if (matched === 'yes') query = query.not('matched_store_id', 'is', null);
   else if (matched === 'no') query = query.is('matched_store_id', null);
