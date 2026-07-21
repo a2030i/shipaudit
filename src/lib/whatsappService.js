@@ -177,9 +177,23 @@ export async function loadWhatsAppCampaignStatus() {
   return map;
 }
 
-// سجل الحملات المرجعي — كل رسالة مع اسم المُرسِل والحالة. phone لتاريخ عميل واحد.
-export async function loadWhatsAppLog({ phone = null, limit = 300 } = {}) {
-  const { data, error } = await supabase.rpc('whatsapp_campaign_log', { p_phone: phone, p_limit: limit });
+// تقرير الحملات المجمَّع (2026-07-21): صف لكل حملة — مستهدفون/وصلت/قُرئت/ردود/فشل.
+// الحالات يغذّيها hatif-webhook — بلا ضبطه في هاتف تبقى «أُرسلت» فقط.
+export async function loadWhatsAppCampaignReport() {
+  const { data, error } = await supabase.rpc('whatsapp_campaign_report');
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({
+    name: r.campaign_name, template: r.template_name,
+    firstSent: r.first_sent, lastSent: r.last_sent,
+    targets: Number(r.targets || 0), delivered: Number(r.delivered || 0),
+    read: Number(r.read_count || 0), replied: Number(r.replied || 0), failed: Number(r.failed || 0),
+  }));
+}
+
+// سجل الحملات المرجعي — كل رسالة مع اسم المُرسِل والحالة. phone لتاريخ عميل واحد،
+// campaign لتفاصيل حملة بعينها (حالة كل رقم).
+export async function loadWhatsAppLog({ phone = null, limit = 300, campaign = null } = {}) {
+  const { data, error } = await supabase.rpc('whatsapp_campaign_log', { p_phone: phone, p_limit: limit, p_campaign: campaign });
   if (error || !Array.isArray(data)) return [];
   return data.map(r => ({
     id: r.id, phone: r.phone, name: r.name, template: r.template_name,

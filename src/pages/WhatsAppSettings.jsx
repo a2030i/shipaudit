@@ -7,8 +7,11 @@ import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../componen
 import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
-  loadWhatsAppLog } from '../lib/whatsappService.js';
+  loadWhatsAppLog, loadWhatsAppCampaignReport } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
+import * as XLSX from 'xlsx';
+import { rtl } from '../lib/xlsxRtl.js';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 export default function WhatsAppSettings({ isActive = true }) {
   const { can } = useAuth();
@@ -237,20 +240,60 @@ export default function WhatsAppSettings({ isActive = true }) {
   );
 }
 
-// تاب سجل الحملات — كل رسالة أُرسلت: المستلِم/القالب/الحملة/المُرسِل/الوقت/الحالة + فلاتر.
+// تاب سجل الحملات — تقرير مجمَّع لكل حملة (كواجهة هاتف: مستهدفون/وصلت/قُرئت/ردود)
+// + سجل الرسائل: نقرة الحملة تفتح حالة كل رقم فيها، مع تصدير Excel للحملة.
 function CampaignsTab() {
+  const { user } = useAuth();
   const [rows, setRows] = useState(null);
+  const [report, setReport] = useState([]);        // صف لكل حملة
+  const [camp, setCamp] = useState('');            // الحملة المفتوحة (فلتر سيرفري)
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [q, setQ] = useState('');
   const [tpl, setTpl] = useState('');
   const [status, setStatus] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
-    try { setRows(await loadWhatsAppLog({ limit: 500 })); } catch { setRows([]); }
+    try {
+      const [log, rep] = await Promise.all([
+        loadWhatsAppLog({ limit: camp ? 1000 : 500, campaign: camp || null }),
+        loadWhatsAppCampaignReport(),
+      ]);
+      setRows(log); setReport(rep);
+    } catch { setRows([]); }
     setLoading(false);
-  }, []);
+  }, [camp]);
   useEffect(() => { load(); }, [load]);
+
+  // تصدير تفاصيل الحملة المفتوحة (حالة كل رقم) — عبر persistAndDownloadExport (§1.13)
+  const exportCampaign = async (list) => {
+    if (exporting || !list.length) return;
+    setExporting(true);
+    try {
+      const headers = ['المستلِم', 'الجوال', 'القالب', 'الحملة', 'المُرسِل', 'وقت الإرسال', 'الحالة', 'وصلت', 'قُرئت', 'ردّ', 'نص الرد', 'سبب الفشل'];
+      const stTxt = (r) => r.repliedAt ? 'ردّ' : (r.status === 'Failed' || r.error) ? 'فشل' : r.readAt ? 'قُرئت' : r.deliveredAt ? 'وصلت' : 'أُرسلت';
+      const dt = (d) => d ? new Date(d).toLocaleString('en-GB') : '';
+      const aoa = [
+        [`تقرير حملة واتساب${camp ? ` — ${camp}` : ''}`, '', new Date().toISOString().slice(0, 10)],
+        [],
+        headers,
+        ...list.map(r => [r.name || '', r.phone, r.template || '', r.campaign || '', r.sentBy || '',
+          dt(r.sentAt), stTxt(r), dt(r.deliveredAt), dt(r.readAt), dt(r.repliedAt), r.replyBody || '', r.error || '']),
+      ];
+      const ws = XLSX.utils.aoa_to_sheet(aoa);
+      ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 28 : 15 }));
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'الرسائل');
+      rtl(wb);
+      await persistAndDownloadExport({
+        wb, fileName: `حملة_واتساب_${(camp || 'الكل').replace(/[\\/:*?"<>|]/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'whatsapp_campaign', rowCount: list.length, userId: user?.id || null,
+      });
+      toast(`صُدّر ${list.length} رسالة ✓`, 'success');
+    } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
+    setExporting(false);
+  };
 
   const templates = [...new Set((rows || []).map(r => r.template).filter(Boolean))];
   const filtered = (rows || []).filter(r => {
@@ -274,8 +317,52 @@ function CampaignsTab() {
 
   if (rows == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
 
+  const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
+  const anyStatus = report.some(c => c.delivered || c.read || c.replied);
+  const rth = { padding: '9px 11px', fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', textAlign: 'right' };
+  const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ── تقرير الحملات (كواجهة هاتف) — نقرة الحملة تفتح رسائلها ── */}
+      <div style={{ fontSize: 13, fontWeight: 700 }}>📊 تقرير الحملات</div>
+      {!anyStatus && report.length > 0 && (
+        <div style={{ fontSize: 11.5, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)', borderRadius: 8, padding: '8px 12px' }}>
+          ⚠️ أعمدة «وصلت/قُرئت/ردّ» كلها صفر — webhook هاتف غير مضبوط. اضبطه مرة واحدة من
+          هاتف: الإعدادات ← API Connect ← Webhook URL (اطلب الرابط من المدير) وستتحدّث الحالات تلقائياً.
+        </div>
+      )}
+      <div style={{ overflowX: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+        <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
+          <thead><tr style={{ background: 'var(--surface2)' }}>
+            {['الحملة', 'القالب', 'آخر إرسال', 'المستهدفون', 'وصلت', 'قُرئت', 'ردّوا', 'فشل'].map(h => <th key={h} style={rth}>{h}</th>)}
+          </tr></thead>
+          <tbody>
+            {report.map(c => (
+              <tr key={c.name} onClick={() => setCamp(camp === c.name ? '' : c.name)}
+                style={{ borderTop: '1px solid var(--border)', cursor: 'pointer',
+                  background: camp === c.name ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent' }}>
+                <td data-label="" style={{ ...rtd, fontWeight: 700, whiteSpace: 'normal' }}>{camp === c.name ? '▾ ' : ''}{c.name}</td>
+                <td data-label="القالب" style={{ ...rtd, fontFamily: 'var(--font-mono)', fontSize: 11 }}>{c.template || '—'}</td>
+                <td data-label="آخر إرسال" style={{ ...rtd, color: 'var(--muted)' }}>{c.lastSent ? new Date(c.lastSent).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }) : '—'}</td>
+                <td data-label="المستهدفون" style={{ ...rtd, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{c.targets}</td>
+                <td data-label="وصلت" style={{ ...rtd, fontFamily: 'var(--font-mono)' }}>{c.delivered} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.delivered, c.targets)})</span></td>
+                <td data-label="قُرئت" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{c.read} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.read, c.targets)})</span></td>
+                <td data-label="ردّوا" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: '#3B82F6' }}>{c.replied}</td>
+                <td data-label="فشل" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: c.failed ? 'var(--red)' : 'var(--muted2)' }}>{c.failed}</td>
+              </tr>
+            ))}
+            {!report.length && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>لا حملات بعد</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {/* ── سجل الرسائل (المفلتر على الحملة المفتوحة إن وُجدت) ── */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>✉️ سجل الرسائل{camp ? ` — ${camp}` : ''}</span>
+        {camp && <Btn size="sm" variant="ghost" onClick={() => setCamp('')}>عرض الكل ✕</Btn>}
+      </div>
       {/* مؤشّرات */}
       <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12.5, color: 'var(--text2)' }}>
         <span>الإجمالي <b style={{ fontFamily: 'var(--font-mono)' }}>{stats.total}</b></span>
@@ -283,7 +370,12 @@ function CampaignsTab() {
         <span>قُرئت <b style={{ color: 'var(--green2)', fontFamily: 'var(--font-mono)' }}>{stats.read}</b></span>
         <span>ردّوا <b style={{ color: '#3B82F6', fontFamily: 'var(--font-mono)' }}>{stats.replied}</b></span>
         <span>فشل <b style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>{stats.failed}</b></span>
-        <Btn size="sm" variant="ghost" style={{ marginInlineStart: 'auto' }} onClick={load} disabled={loading}><RefreshCw size={13} className={loading ? 'spin' : ''}/> تحديث</Btn>
+        <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 6 }}>
+          <Btn size="sm" variant="ghost" onClick={() => exportCampaign(filtered)} disabled={exporting || !filtered.length}>
+            {exporting ? 'يصدّر…' : '📥 تصدير التقرير'}
+          </Btn>
+          <Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={13} className={loading ? 'spin' : ''}/> تحديث</Btn>
+        </span>
       </div>
       {/* فلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
