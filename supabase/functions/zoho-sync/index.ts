@@ -1,5 +1,9 @@
-// zoho-sync v13 — الإشعارات الدائنة صارت سحباً كاملاً (noDelta): تطبيق الإشعار
-// على فاتورة لا يُحرّك last_modified_time فالدلتا تتركه عالقاً برصيد وهمي.
+// zoho-sync v14 — مصالحة الدفعات ذات الرصيد المفتوح: تطبيق الدفعة على فاتورة
+// لا يُحرّك last_modified لها (نفس فخّ الإشعارات §1.26b) فتبقى «غير مستخدمة»
+// وهمياً في المرآة (دفعة 12,197 لعميل OUT OF LINE بقيت عالقة 3 أيام).
+// العلاج: إعادة جلب موجّهة لكل دفعة unused>0 عندنا (قائمة صغيرة، سقف 40/دورة).
+// v13 — الإشعارات الدائنة: سحب كامل (noDelta) + مصالحة الحذف — تطبيق/حذف
+// الإشعار في زوهو لا يُحرّك last_modified، فالدلتا وupsert يتركانه عالقاً برصيد وهمي.
 // v12 — + كيان creditnotes (مرآة الإشعارات الدائنة) + unused_amount
 // للدفعات — أساس بناء «خطة تطبيق الرصيد» من المرآة بلا استدعاء زوهو حيّ.
 // v11 — + كيان contacts (أرصدة العملاء/الموردين المباشرة شاملة
@@ -143,8 +147,6 @@ Deno.serve(async (req) => {
   const db = svc();
 
   try {
-    // هوية آلية (pg_cron — v9): X-Cron-Key يُقارن بـzoho_auth.cron_key —
-    // تسمح بـsync/pnl_month فقط. البشر يمرّون بـrequireUser كالمعتاد.
     let auth: Awaited<ReturnType<typeof requireUser>> = null;
     const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
     if (cronKey && (action === 'sync' || action === 'pnl_month')) {
@@ -248,15 +250,16 @@ Deno.serve(async (req) => {
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
           zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
-          status: it.status || null, last_modified: lm, synced_at: now }) },
+          status: it.status || null, last_modified: lm, synced_at: now,
+          einvoice_status: (it.einvoice_status as string) || null }) },
         { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        // الإشعارات الدائنة — مرآة. **سحب كامل بلا دلتا**: تطبيق الإشعار على فاتورة
-        // في زوهو (POST …/invoices) لا يُحرّك last_modified_time للإشعار نفسه، فالدلتا
-        // تتركه عالقاً برصيد وهمي (CN-00029 بقي open/1000 وهو مطبَّق فعلاً ورصيد
-        // العميل الحيّ صفر). full يصحّح الرصيد كل دورة. الجدول صغير (عشرات الصفوف).
+        // الإشعارات الدائنة — مرآة. **سحب كامل (noDelta) + مصالحة الحذف**:
+        // تطبيق الإشعار على فاتورة (POST …/invoices) لا يُحرّك last_modified_time،
+        // والحذف/الإلغاء يُخرجه من القائمة — فالدلتا وupsert يتركانه عالقاً
+        // برصيد وهمي (CN-00029 بقي open/1000 وقد حُذف). full + reconcile يصحّح.
         { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true, reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
@@ -286,9 +289,7 @@ Deno.serve(async (req) => {
           notes: (it.notes as string) || null, total: Number(it.total) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
         // contacts (v11): الرصيد المستحق لكل عميل/مورد مباشرة من زوهو —
-        // يشمل السلف والإشعارات الدائنة (unused_credits) التي لا تظهر في
-        // zoho_bills أبداً (مورد دائن بـ−198K كان غائباً كلياً عن المرايا).
-        // الأرصدة تتغير دون تعديل جهة الاتصال → سحب كامل بلا دلتا.
+        // يشمل السلف والإشعارات الدائنة (unused_credits). سحب كامل بلا دلتا.
         { ent: 'contacts', listKey: 'contacts', table: 'zoho_contacts', sortColumn: 'contact_name', noDelta: true,
           map: (it, lm, now) => ({
           zoho_id: it.contact_id, contact_name: (it.contact_name as string) || null,
@@ -336,7 +337,7 @@ Deno.serve(async (req) => {
           }
           if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
           // مصالحة الحذف: المزامنة upsert فقط فلا تلتقط ما حُذف/أُلغي في زوهو (يبقى
-          // عالقاً برصيد وهمي). آمنة حصراً لكيان كامل (noDelta) اكتمل سحبه (more=false،
+          // عالقاً برصيد وهمي). آمنة حصراً لكيان كامل (noDelta) اكتمل سحبه (more=false؛
           // لم يُقصّ بحدّ الصفحات). أحذف ما لم يُلمَس هذه الدورة (synced_at قبل البداية).
           if (cfg.reconcileDeletes && !more) {
             await db.from(cfg.table).delete().lt('synced_at', runStart);
@@ -347,6 +348,41 @@ Deno.serve(async (req) => {
           results[cfg.ent] = saved;
         } catch (e) { results[cfg.ent] = `خطأ: ${String((e as Error).message || e)}`; }
       }
+
+      // v14: مصالحة الدفعات ذات الرصيد المفتوح — تطبيق الدفعة على فاتورة لا
+      // يُحرّك last_modified لها (نفس فخّ الإشعارات) فتبقى «غير مستخدمة» وهمياً
+      // وتُفشل «طبّق للكل» بـ«أكثر من الرصيد». القائمة صغيرة دائماً → إعادة جلب
+      // موجّهة لكل دفعة unused>0 (سقف 40/دورة). 404 = حُذفت في زوهو → تُحذف عندنا.
+      try {
+        const { data: openPays } = await db.from('zoho_payments')
+          .select('zoho_id').gt('unused_amount', 0.01).limit(40);
+        let refreshed = 0;
+        for (const p of openPays || []) {
+          const r = await fetch(`${apiDomain}/books/v3/customerpayments/${p.zoho_id}?organization_id=${orgId}`, {
+            headers: { Authorization: `Zoho-oauthtoken ${token}` },
+          });
+          const j = await r.json().catch(() => ({} as Record<string, unknown>));
+          const pay = (j as Record<string, any>)?.payment;
+          if ((j as Record<string, unknown>).code === 0 && pay) {
+            await db.from('zoho_payments').update({
+              amount: Number(pay.amount) || 0,
+              unused_amount: Number(pay.unused_amount) || 0,
+              invoice_numbers: Array.isArray(pay.invoices)
+                ? pay.invoices.map((v: Record<string, unknown>) => v.invoice_number).filter(Boolean).join(', ')
+                : '',
+              last_modified: pay.last_modified_time ? new Date(pay.last_modified_time as string).toISOString() : null,
+              synced_at: new Date().toISOString(),
+            }).eq('zoho_id', p.zoho_id);
+            refreshed++;
+          } else if (r.status === 404) {
+            await db.from('zoho_payments').delete().eq('zoho_id', p.zoho_id);
+            refreshed++;
+          }
+          await new Promise(res => setTimeout(res, 120));
+        }
+        results['payments_refetch'] = refreshed;
+      } catch (e) { results['payments_refetch'] = `خطأ: ${String((e as Error).message || e)}`; }
+
       return json({ ok: true, results });
     }
 
