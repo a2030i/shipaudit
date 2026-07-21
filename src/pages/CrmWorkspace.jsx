@@ -21,7 +21,7 @@ import {
 } from '../lib/crmService.js';
 import {
   loadLeads, createLead, convertLead, parseLeadsRows, uploadLeadsSnapshot, bulkAssignLeads,
-  updateLead, loadLeadStats, loadLeadOptions,
+  updateLead, loadLeadStats, loadLeadOptions, loadLeadsByPhone,
 } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
@@ -977,11 +977,19 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
   const [timeline, setTimeline] = useState([]);
   const [form, setForm] = useState({ mode: null });
   const [busy, setBusy] = useState(false);
+  const [siblings, setSiblings] = useState([]);   // متاجر أخرى على نفس الرقم (جلب حيّ)
   const reload = useCallback(async () => {
     try { setTimeline(await loadTimeline({ entityType: 'lead', entityRef: lead.id })); }
     catch (e) { toast(e.message, 'error'); }
   }, [lead.id]);
   useEffect(() => { reload(); }, [reload]);
+  // جلب حيّ لكل الجهات على نفس الرقم — لا يعتمد على duplicate_names (تلتقط
+  // تكرار داخل الملف فقط؛ التكرار عبر الرفعات يظهر هنا)
+  useEffect(() => {
+    if (Number(lead.duplicate_count) > 1) {
+      loadLeadsByPhone(lead.phone_normalized || lead.phone, lead.id).then(setSiblings).catch(() => setSiblings([]));
+    } else setSiblings([]);
+  }, [lead.id, lead.duplicate_count, lead.phone_normalized, lead.phone]);
 
   const act = async (fn, ok) => {
     setBusy(true);
@@ -1004,15 +1012,32 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
               ? `${fmtDate(lead.last_campaign_at)} · ${lead.last_campaign_template || ''}${lead.last_campaign_replied_at ? ' · ردّ ✓' : ''}`
               : 'لم تُرسَل له حملة'}/>
         </div>
-        {/* المتاجر الأخرى بنفس الرقم (duplicate_names مخزَّنة مع الصف — طلب المستخدم 2026-07-16) */}
-        {lead.duplicate_count > 1 && Array.isArray(lead.duplicate_names) && lead.duplicate_names.length > 0 && (
+        {/* المتاجر الأخرى بنفس الرقم — جلب حيّ (يظهر التكرار عبر الرفعات الذي لا
+            تلتقطه duplicate_names). fallback للأسماء المخزَّنة إن لم يصل الجلب بعد */}
+        {lead.duplicate_count > 1 && (siblings.length > 0 || (Array.isArray(lead.duplicate_names) && lead.duplicate_names.filter(n => n && n !== lead.name).length > 0)) && (
           <Card style={{ padding: 12, background: 'color-mix(in srgb, var(--gold) 7%, transparent)', borderColor: 'color-mix(in srgb, var(--gold) 30%, var(--border))', marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, color: 'var(--gold)', fontSize: 12.5, marginBottom: 6 }}>⚠️ متاجر أخرى بنفس هذا الرقم</div>
-            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-              {lead.duplicate_names.filter(n => n && n !== lead.name).map((n, i) => (
-                <span key={i} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}>{n}</span>
-              ))}
-            </div>
+            <div style={{ fontWeight: 800, color: 'var(--gold)', fontSize: 12.5, marginBottom: 8 }}>⚠️ {siblings.length || (lead.duplicate_count - 1)} متجر آخر بنفس هذا الرقم</div>
+            {siblings.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {siblings.map(s => (
+                  <div key={s.id} style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', padding: '6px 10px', borderRadius: 8, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+                    <span style={{ fontWeight: 700, fontSize: 12.5 }}>{s.name}</span>
+                    {s.category && <span style={{ fontSize: 11, color: 'var(--muted)' }}>· {s.category}</span>}
+                    {s.city && <span style={{ fontSize: 11, color: 'var(--muted2)' }}>· {s.city}</span>}
+                    {s.platform && <MiniPill color="var(--accent)" label={s.platform}/>}
+                    <span style={{ marginInlineStart: 'auto', display: 'flex', gap: 6 }}>
+                      {(s.store_url || s.website) && <button onClick={() => window.open(s.store_url || s.website, '_blank')} title="فتح المتجر" style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', padding: '2px 7px', fontSize: 11, color: 'var(--accent)' }}><ExternalLink size={11}/></button>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                {lead.duplicate_names.filter(n => n && n !== lead.name).map((n, i) => (
+                  <span key={i} style={{ padding: '3px 10px', borderRadius: 20, fontSize: 12, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--text)' }}>{n}</span>
+                ))}
+              </div>
+            )}
           </Card>
         )}
         {(lead.website || lead.store_url || lead.social_links?.instagram) && (

@@ -737,6 +737,22 @@ export async function updateLeadStatus(id, status) {
   return updateLead(id, { status });
 }
 
+// كل الجهات على نفس الرقم — جلب حيّ (لا يعتمد على duplicate_names المخزَّنة
+// التي تلتقط تكرار داخل الملف فقط؛ التكرار عبر الرفعات لا يظهر فيها). يستبعد
+// الصفّ الحالي. يُستخدَم في بطاقة الجهة لعرض «متاجر أخرى بنفس الرقم».
+export async function loadLeadsByPhone(phone, excludeId = null) {
+  const p = normalizeSaudiPhone(phone);
+  if (!p) return [];
+  let q = supabase.from('crm_leads')
+    .select('id, name, name_en, category, city, platform, status, store_url, website')
+    .or(`phone_normalized.eq.${p},whatsapp_normalized.eq.${p}`)
+    .order('name');
+  if (excludeId) q = q.neq('id', excludeId);
+  const { data, error } = await q;
+  if (error) return [];
+  return data || [];
+}
+
 export async function convertLead(id, { customerName = null, storeId = null } = {}) {
   if (!id) throw new Error('id مطلوب');
   return updateLead(id, {
