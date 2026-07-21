@@ -227,14 +227,26 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setSending(true);
     const items = selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount }));
     const agg = { ok: true, total: items.length, sent: 0, failed: 0, results: [] };
-    setProgress({ done: 0, total: items.length, sent: 0, failed: 0 });
+    const batches = Math.ceil(items.length / SEND_CHUNK);
+    setProgress({ done: 0, total: items.length, sent: 0, failed: 0, batch: 1, batches });
     let hardError = null;
     for (let i = 0; i < items.length; i += SEND_CHUNK) {
       const chunk = items.slice(i, i + SEND_CHUNK);
-      const r = await sendWhatsAppCampaign({
-        templateName: tpl, templateLanguage: 'ar', channelId: null, items: chunk,
-        campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
-      });
+      const batch = Math.floor(i / SEND_CHUNK) + 1;
+      // تقدير حي أثناء الدفعة (~رسالة/ثانية داخل الدالة) — العدّاد كان يجمد
+      // على 0 طوال الدقيقة الأولى فبدا الإرسال معلّقاً وهو يعمل
+      const t0 = Date.now();
+      const ticker = setInterval(() => {
+        const guess = Math.min(chunk.length - 1, Math.floor((Date.now() - t0) / 1000));
+        setProgress({ done: i + guess, total: items.length, sent: agg.sent + guess, failed: agg.failed, batch, batches, estimating: true });
+      }, 1000);
+      let r;
+      try {
+        r = await sendWhatsAppCampaign({
+          templateName: tpl, templateLanguage: 'ar', channelId: null, items: chunk,
+          campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
+        });
+      } finally { clearInterval(ticker); }
       if (r?.ok) {
         agg.sent += r.sent || 0; agg.failed += r.failed || 0;
         if (Array.isArray(r.results)) agg.results.push(...r.results);
@@ -245,7 +257,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
         agg.results.push(...chunk.map(c => ({ to: c.to, ok: false, error: hardError })));
         break;
       }
-      setProgress({ done: Math.min(i + SEND_CHUNK, items.length), total: items.length, sent: agg.sent, failed: agg.failed });
+      setProgress({ done: Math.min(i + SEND_CHUNK, items.length), total: items.length, sent: agg.sent, failed: agg.failed, batch: Math.min(batch + 1, batches), batches });
     }
     if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
     setSending(false); setProgress(null);
@@ -434,7 +446,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                   background: 'var(--green)', transition: 'width .4s' }}/>
               </div>
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 4 }}>
-                يُرسِل… {fmt(progress.done)} / {fmt(progress.total)} · نجحت {fmt(progress.sent)}{progress.failed ? ` · فشلت ${fmt(progress.failed)}` : ''} — لا تُغلق النافذة
+                يُرسِل… {progress.estimating ? '~' : ''}{fmt(progress.done)} / {fmt(progress.total)}
+                {progress.batches > 1 ? ` · الدفعة ${progress.batch}/${progress.batches}` : ''}
+                {progress.failed ? ` · فشلت ${fmt(progress.failed)}` : ''} — لا تُغلق النافذة
               </div>
             </div>
           )}
