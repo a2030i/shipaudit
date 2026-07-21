@@ -76,6 +76,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [ctx, setCtx]             = useState(() => new Map());
   // أرقام بلا واتساب — تُستبعَد آلياً من كل حملة (لا استثناء يدوي)
   const [noWa, setNoWa]          = useState(() => new Set());
+  // «رسالة لكل متجر»: افتراضياً OFF (يُدمَج تكرار الهاتف — الأأمن ضد الحظر). لمّا
+  // يملك رقم عدة متاجر ويُفعَّل → كل متجر رسالة مستقلة ببياناته. المفتاح يتحوّل
+  // من الهاتف إلى معرّف المتجر (r._rk) ليُميَّز متجران على نفس الرقم.
+  const [perStore, setPerStore] = useState(false);
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات (يُحترَم حتى لو **فارغ** —
   // قالب بلا متغيرات)، وإلا «افتراضي الصفحة» بعدد vars.
@@ -90,7 +94,11 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     if (!open) return;
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
     setCampName(bucketLabel || ''); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
-    setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
+    setPerStore(false);
+    // الكل افتراضياً — بمفاتيح _rk (نفس صيغة rows: معرّف المتجر أو الهاتف+الترتيب)
+    setSelected(new Set(recipients
+      .map((r, i) => (r.to && r.to.length >= 11) ? (r.storeId != null ? `s${r.storeId}` : `${r.to}#${i}`) : null)
+      .filter(Boolean)));
     loadCampaignNames().then(setCampaigns).catch(() => setCampaigns([]));
     setCtx(new Map());
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
@@ -121,6 +129,19 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   };
   // حقول مستلِم = سياق متجره الصحيح + حقول صفحته فوقه (تفوز عند التعارض)
   const mergedFields = (r) => ({ ...(pickCtx(r) || {}), ...(r.fields || {}) });
+
+  // كل مستلِم يحمل مفتاحاً فريداً ثابتاً (_rk): معرّف المتجر إن وُجد، وإلا
+  // الهاتف+الترتيب. أساس اختيار «رسالة لكل متجر» (متجران على رقم واحد لهما
+  // مفتاحان مختلفان). ثابت طوال فتح المودال (recipients ثابتة).
+  const rows = useMemo(() => recipients.map((r, i) => ({
+    ...r, _rk: r.storeId != null ? `s${r.storeId}` : `${r.to || 'x'}#${i}`,
+  })), [recipients]);
+  // كم رقماً يملك أكثر من متجر (لإظهار زر «رسالة لكل متجر» عند اللزوم فقط).
+  const sharedPhones = useMemo(() => {
+    const m = new Map();
+    for (const r of rows) if (r.to && r.to.length >= 11) m.set(r.to, (m.get(r.to) || 0) + 1);
+    return [...m.values()].filter(c => c > 1).length;
+  }, [rows]);
 
   // الحقول المتاحة: اتحاد حقول الصفحة + سياق القاعدة عبر المستلمين (بلا مفاتيح _ الداخلية)
   const availableFields = useMemo(() => {
@@ -168,24 +189,38 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     catch { toast('تعذّر جلب أرقام الحملة المستثناة', 'error'); }
   };
 
-  // إزالة تكرار الهاتف (حادثة 2026-07-21: رقم بعدة متاجر = عدة مستلمين فاستلم
-  // 3 رسائل في 37 ثانية → خطر حظر الرقم التجاري). أول صف للرقم يفوز (الأعلى
-  // شحناً غالباً — الصفحات ترتّب تنازلياً)، مع الاحتفاظ بحقوله للمعاينة.
+  // الدمج: افتراضياً حسب الهاتف (رقم واحد = مستلِم واحد — الأأمن ضد الحظر، حادثة
+  // 2026-07-21: رقم استلم 3 رسائل/37ث). عند «رسالة لكل متجر» → الدمج حسب معرّف
+  // المتجر فيصبح كل متجر مستلِماً مستقلاً برسالته وبياناته. أول صف يفوز عند الدمج
+  // بالهاتف (الأعلى شحناً — الصفحات ترتّب تنازلياً).
   const validAll = (() => {
     const seen = new Set(); const out = [];
-    for (const r of recipients) {
-      if (!r.to || r.to.length < 11 || seen.has(r.to)) continue;
-      seen.add(r.to); out.push(r);
+    for (const r of rows) {
+      if (!r.to || r.to.length < 11) continue;
+      const dk = perStore ? r._rk : r.to;
+      if (seen.has(dk)) continue;
+      seen.add(dk); out.push(r);
     }
     return out;
   })();
-  const dupSkipped = recipients.filter(r => r.to && r.to.length >= 11).length - validAll.length;
-  // استبعاد آلي لمن ليس له واتساب (فشل «الرقم غير موجود») — لا استثناء يدوي
+  const dupSkipped = perStore ? 0 : (rows.filter(r => r.to && r.to.length >= 11).length - validAll.length);
+  // استبعاد آلي لمن ليس له واتساب/محظور (بالهاتف — يشمل كل متاجر الرقم) — لا استثناء يدوي
   const noWaCount = validAll.filter(r => noWa.has(r.to)).length;
   const excludedCount = validAll.filter(r => exPhones.has(r.to) && !noWa.has(r.to)).length;
   const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to));
-  const skipped = recipients.filter(r => !(r.to && r.to.length >= 11)).length;
-  const selectedValid = valid.filter(r => selected.has(r.to));
+  const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
+  const selectedValid = valid.filter(r => selected.has(r._rk));
+  // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
+  const allKeysFor = (mode) => {
+    const seen = new Set(); const out = [];
+    for (const r of rows) {
+      if (!r.to || r.to.length < 11) continue;
+      const dk = mode ? r._rk : r.to;
+      if (seen.has(dk)) continue;
+      seen.add(dk); out.push(r._rk);
+    }
+    return out;
+  };
   // لا حدّ للعدد: الفوري يُقسَّم دفعات 60 متتالية — القياس الفعلي ≈ ثانية/رسالة
   // (إرسال هاتف + التسجيل الفوري)، فدفعة 60 ≈ دقيقة، بأمان تحت مهلة الدالة 150ث.
   // (120 سابقاً لامست المهلة وقُتلت 504 على حملة 290). الكبير الأفضل جدولته.
@@ -206,13 +241,15 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const recentSelected = selectedValid.filter(r => isRecent(r.to));
   const excludeRecent = () => setSelected(prev => {
     const n = new Set(prev);
-    for (const r of recentSelected) n.delete(r.to);
+    for (const r of recentSelected) n.delete(r._rk);
     return n;
   });
 
-  const toggle = (to) => setSelected(prev => { const n = new Set(prev); n.has(to) ? n.delete(to) : n.add(to); return n; });
-  const allOn  = () => setSelected(new Set(valid.map(r => r.to)));
+  const toggle = (k) => setSelected(prev => { const n = new Set(prev); n.has(k) ? n.delete(k) : n.add(k); return n; });
+  const allOn  = () => setSelected(new Set(valid.map(r => r._rk)));
   const allOff = () => setSelected(new Set());
+  // تبديل «رسالة لكل متجر» — يغيّر الدمج فيُعاد اختيار الكل وفق الوضع الجديد
+  const togglePerStore = (m) => { setPerStore(m); setSelected(new Set(allKeysFor(m))); };
 
   const doVerify = async () => {
     setVer(true); setVerified(null);
@@ -433,6 +470,21 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             )}
           </div>
 
+          {/* رقم واحد يملك عدة متاجر — زر «رسالة لكل متجر» (افتراضياً OFF = رسالة/رقم) */}
+          {sharedPhones > 0 && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8, fontSize: 12,
+              background: 'color-mix(in srgb, var(--accent) 7%, transparent)', border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--border))',
+              borderRadius: 9, padding: '8px 12px', cursor: 'pointer' }}>
+              <input type="checkbox" checked={perStore} onChange={e => togglePerStore(e.target.checked)} style={{ accentColor: 'var(--accent)' }}/>
+              <span style={{ flex: 1 }}>
+                <b>رسالة لكل متجر</b> — {sharedPhones} رقم يملك عدة متاجر.
+                <span style={{ color: 'var(--muted)' }}> {perStore
+                  ? ' كل متجر يستقبل رسالة ببياناته (الرقم قد يصله عدة رسائل).'
+                  : ' الآن: رسالة واحدة لكل رقم (يُدمَج التكرار). فعّله لإرسال رسالة لكل متجر.'}</span>
+              </span>
+            </label>
+          )}
+
           {/* اختيار المستلِمين */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12.5, flexWrap: 'wrap' }}>
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
@@ -450,9 +502,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {valid.slice(0, 400).map((r, i) => {
               const last = daysAgoTxt(lastSentOf(r.to));
               return (
-                <label key={r.to + i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                <label key={r._rk} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
                   borderTop: i ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
-                  <input type="checkbox" checked={selected.has(r.to)} onChange={() => toggle(r.to)}/>
+                  <input type="checkbox" checked={selected.has(r._rk)} onChange={() => toggle(r._rk)}/>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                     <span style={{ display: 'block', fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.to}</span>
                     <span style={{ display: 'block', fontSize: 10.5, color: last ? 'var(--gold)' : 'var(--muted2)' }}>
