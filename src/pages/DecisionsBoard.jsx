@@ -187,14 +187,10 @@ export default function DecisionsBoard({ isActive = true }) {
               cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
           },
-          {
-            key: 'anom', active: d.anomalyCount > 0, okLabel: 'لا تنبيهات عملاء',
-            props: {
-              color: 'var(--red)', icon: '⚠️', title: 'تنبيهات العملاء', value: d.anomalyCount, unit: 'عميل',
-              sub: `إجمالي المديونيات ${fmt(d.totalDebt)} ر.س (الكشف الداخلي)`,
-              cta: 'فتح التنبيهات', onClick: () => navigate('/receivables?tab=anomalies'),
-            },
-          },
+          // بطاقة «تنبيهات العملاء» أُزيلت من شاشة الصباح (2026-07-21): كانت من
+          // الكشف الداخلي المجمّد (توقّف 10 يوليو) فنصف عملائها سدّدوا فعلاً —
+          // إشارة الدين الحيّة هي بطاقة «الإيقاف الائتماني» (creditStop، زوهو حي).
+          // التنبيهات تبقى داخل /receivables موسومةً كالكشف الداخلي.
           {
             key: 'broken', active: (d.crm?.brokenCount || 0) > 0, okLabel: 'لا وعود مكسورة',
             props: {

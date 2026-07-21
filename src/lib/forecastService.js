@@ -53,28 +53,20 @@ export async function loadCarrierRemittanceAvg(batches = 3) {
 // but timing-uncertain — surfaced separately, NOT folded into the running
 // balance so we don't overstate near-term cash).
 async function loadReceivablesInflow(now, horizonEnd, termsDays = 30) {
-  const { data: snapRow } = await supabase
-    .from('customer_receivables')
-    .select('snapshot_id')
-    .order('snapshot_date', { ascending: false })
-    .limit(1);
-  if (!snapRow?.length) return { byDate: new Map(), withinTotal: 0, overdue: 0 };
-  const snapshotId = snapRow[0].snapshot_id;
-
+  // مرآة زوهو الحيّة (§1.23): كان يقرأ customer_receivables المجمّد منذ 10 يوليو
+  // فيعدّ ديون من سدّدوا فعلاً كنقد قابل للتحصيل. الآن الفواتير المفتوحة الحيّة.
   const rows = [];
   let from = 0;
   while (true) {
     const { data, error } = await supabase
-      .from('customer_receivables')
-      .select('invoice_date, balance_amount')
-      .eq('snapshot_id', snapshotId)
-      .eq('is_summary', false)
-      .gt('balance_amount', 0)
-      .order('id', { ascending: true })
+      .from('zoho_invoices')
+      .select('date, balance')
+      .gt('balance', 0.5)
+      .order('zoho_id', { ascending: true })
       .range(from, from + 999);
     if (error) throw error;
     if (!data?.length) break;
-    rows.push(...data);
+    rows.push(...data.map(r => ({ invoice_date: r.date, balance_amount: r.balance })));
     if (data.length < 1000) break;
     from += 1000;
   }
