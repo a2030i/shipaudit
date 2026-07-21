@@ -77,8 +77,9 @@ export async function loadCampaignPhones(names) {
   const phones = new Set();
   if (!names?.length) return phones;
   for (let from = 0; from < 100000; from += 1000) {
+    // الفاشلون لا يُعدّون «تم التواصل» فلا يُستثنَون (يمكن إعادة استهدافهم)
     const { data, error } = await supabase.from('whatsapp_campaign_sends')
-      .select('phone').in('campaign_name', names)
+      .select('phone').in('campaign_name', names).neq('status', 'Failed')
       .order('id', { ascending: true }).range(from, from + 999);
     if (error) throw error;
     for (const r of data || []) if (r.phone) phones.add(r.phone);
@@ -204,6 +205,23 @@ export async function loadWhatsAppCampaignReport() {
     targets: Number(r.targets || 0), delivered: Number(r.delivered || 0),
     read: Number(r.read_count || 0), replied: Number(r.replied || 0), failed: Number(r.failed || 0),
   }));
+}
+
+// أرقام حملة فشلت (لإعادة استهدافهم) — الفاشلون مسجَّلون بحالة Failed + سبب.
+// دفعات 1000 (سقف PostgREST). يُرجِع [{to, name, reason}] بلا تكرار بالهاتف.
+export async function loadCampaignFailures(campaignName) {
+  const map = new Map();
+  for (let from = 0; from < 20000; from += 1000) {
+    const { data, error } = await supabase.from('whatsapp_campaign_sends')
+      .select('phone, name, error_reason, status')
+      .eq('campaign_name', campaignName)
+      .or('status.eq.Failed,error_reason.not.is.null')
+      .order('id', { ascending: true }).range(from, from + 999);
+    if (error || !Array.isArray(data)) break;
+    for (const r of data) if (r.phone && !map.has(r.phone)) map.set(r.phone, { to: r.phone, name: r.name || r.phone, vars: [r.name || ''], reason: r.error_reason || 'فشل' });
+    if (data.length < 1000) break;
+  }
+  return [...map.values()];
 }
 
 // سجل الحملات المرجعي — كل رسالة مع اسم المُرسِل والحالة. phone لتاريخ عميل واحد،

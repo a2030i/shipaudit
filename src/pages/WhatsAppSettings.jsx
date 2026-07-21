@@ -7,8 +7,9 @@ import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../componen
 import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
-  loadWhatsAppLog, loadWhatsAppCampaignReport } from '../lib/whatsappService.js';
+  loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -252,6 +253,20 @@ function CampaignsTab() {
   const [q, setQ] = useState('');
   const [tpl, setTpl] = useState('');
   const [status, setStatus] = useState('');
+  const [failWa, setFailWa] = useState(null);      // مستلمو «حملة للفاشلين»
+  const [prepFail, setPrepFail] = useState('');
+
+  // إعادة استهداف الفاشلين في حملة — يجلب أرقامهم ويفتح مودال الإرسال.
+  const campaignFailed = async (name) => {
+    if (prepFail) return;
+    setPrepFail(name);
+    try {
+      const recs = await loadCampaignFailures(name);
+      if (!recs.length) { toast('لا فاشلون في هذه الحملة', 'info'); return; }
+      setFailWa({ name, recs });
+    } catch (e) { toast(`تعذّر جلب الفاشلين: ${e.message}`, 'error'); }
+    finally { setPrepFail(''); }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -350,7 +365,15 @@ function CampaignsTab() {
                 <td data-label="وصلت" style={{ ...rtd, fontFamily: 'var(--font-mono)' }}>{c.delivered} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.delivered, c.targets)})</span></td>
                 <td data-label="قُرئت" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{c.read} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.read, c.targets)})</span></td>
                 <td data-label="ردّوا" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: '#3B82F6' }}>{c.replied}</td>
-                <td data-label="فشل" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: c.failed ? 'var(--red)' : 'var(--muted2)' }}>{c.failed}</td>
+                <td data-label="فشل" style={{ ...rtd }} onClick={e => e.stopPropagation()}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: c.failed ? 'var(--red)' : 'var(--muted2)' }}>{c.failed}</span>
+                  {c.failed > 0 && (
+                    <button onClick={() => campaignFailed(c.name)} disabled={!!prepFail} title="أعد الإرسال للفاشلين"
+                      style={{ marginInlineStart: 8, border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', fontSize: 10.5, padding: '2px 7px', color: 'var(--accent)', fontFamily: 'var(--font-sans)' }}>
+                      {prepFail === c.name ? '…' : '📲 حملة للفاشلين'}
+                    </button>
+                  )}
+                </td>
               </tr>
             ))}
             {!report.length && <tr><td colSpan={8} style={{ padding: 20, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>لا حملات بعد</td></tr>}
@@ -396,6 +419,12 @@ function CampaignsTab() {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>عرض {filtered.length} من {stats.total} رسالة</div>
       <CampaignLogTable rows={filtered}/>
+
+      {failWa && (
+        <WhatsAppSendModal open recipients={failWa.recs}
+          bucketLabel={`إعادة إرسال — ${failWa.name}`}
+          onClose={() => setFailWa(null)} onSent={() => { setFailWa(null); load(); }}/>
+      )}
     </div>
   );
 }
