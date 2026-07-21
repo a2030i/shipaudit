@@ -50,6 +50,43 @@ export async function saveTemplateVarMap(templateName, map) {
   await saveWhatsAppConfig({ ...cfg, templateVars });
 }
 
+// ── نظام الحملات الاحترافي (2026-07-21) ─────────────────────────────
+// أسماء الحملات السابقة (للاستثناء عند إطلاق حملة جديدة) — تجميع محلي
+// (لا group-by في PostgREST والجدول صغير). قاعدة §6: order('id') لكل range.
+export async function loadCampaignNames() {
+  const out = new Map();
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data, error } = await supabase.from('whatsapp_campaign_sends')
+      .select('campaign_name, sent_at')
+      .order('id', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    for (const r of data || []) {
+      const k = (r.campaign_name || '').trim() || '(بلا اسم)';
+      const cur = out.get(k) || { name: k, sends: 0, lastAt: null };
+      cur.sends++;
+      if (!cur.lastAt || (r.sent_at && r.sent_at > cur.lastAt)) cur.lastAt = r.sent_at;
+      out.set(k, cur);
+    }
+    if (!data || data.length < 1000) break;
+  }
+  return [...out.values()].sort((a, b) => String(b.lastAt || '').localeCompare(String(a.lastAt || '')));
+}
+
+// أرقام مستلمي حملات بعينها — لاستثنائهم من الحملة الجديدة
+export async function loadCampaignPhones(names) {
+  const phones = new Set();
+  if (!names?.length) return phones;
+  for (let from = 0; from < 100000; from += 1000) {
+    const { data, error } = await supabase.from('whatsapp_campaign_sends')
+      .select('phone').in('campaign_name', names)
+      .order('id', { ascending: true }).range(from, from + 999);
+    if (error) throw error;
+    for (const r of data || []) if (r.phone) phones.add(r.phone);
+    if (!data || data.length < 1000) break;
+  }
+  return phones;
+}
+
 // Saudi phone normalization → international digits, no '+'.
 //   05XXXXXXXX (10) → 9665XXXXXXXX · 5XXXXXXXX (9) → 9665XXXXXXXX
 //   already 9665… → as-is · anything else → digits as-is (best effort)

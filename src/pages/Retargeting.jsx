@@ -90,6 +90,7 @@ export default function Retargeting({ isActive = true }) {
   const [followUp, setFollowUp] = useState(null);   // العميل المفتوح في مودال المتابعة
   const [waStatus, setWaStatus] = useState(() => new Map());   // حالة آخر حملة لكل هاتف
   const [waRecipients, setWaRecipients] = useState(null);      // مستلمو حملة (bulk أو عميل واحد)
+  const [prepCampaign, setPrepCampaign] = useState(false);     // يجهّز كل المطابق للحملة
   // الموظف يفتح على «المسندة لي» افتراضياً (§1.37) — المدير يرى الكل
   const [filters, setFilters] = useState(() => ({
     segment: '', priority: '', integration: '', billing: '', hasBalance: false, q: '',
@@ -211,10 +212,30 @@ export default function Retargeting({ isActive = true }) {
   };
 
   const canCampaign = can('campaigns.send');
-  const openBulkCampaign = () => {
-    const recs = leads.filter(l => l.phone).map(leadToRecipient);
-    if (!recs.length) { toast('لا مستلمون بأرقام في القائمة الحالية', 'info'); return; }
-    setWaRecipients(recs);
+  // إطلاق حملة على **كل** المطابق للفلاتر (لا الصفحة المعروضة فقط) — نفس نمط
+  // exportXlsx/bulkAssign: صفحات 500 حتى الاكتمال. الجدولة تقسّمها دفعات آلياً.
+  const openBulkCampaign = async () => {
+    if (prepCampaign) return;
+    setPrepCampaign(true);
+    try {
+      const base = {
+        segment: filters.segment || null, priority: filters.priority || null,
+        integration: filters.integration || null, billing: filters.billing || null,
+        hasBalance: filters.hasBalance ? true : null, q: filters.q || null,
+        status: filters.status || null, ownerId: filters.ownerId || null,
+        unassigned: filters.unassigned ? true : null, includeExcluded: filters.includeExcluded,
+      };
+      const all = [];
+      for (let page = 0; page < 60; page++) {
+        const r = await loadRetargetingLeads({ ...base, page, limit: 500 });
+        all.push(...r.rows);
+        if (!r.rows.length || all.length >= r.count) break;
+      }
+      const recs = all.filter(l => l.phone).map(leadToRecipient);
+      if (!recs.length) { toast('لا مستلمون بأرقام بالفلاتر الحالية', 'info'); return; }
+      setWaRecipients(recs);
+    } catch (e) { toast(`تعذّر تجهيز المستلمين: ${e.message}`, 'error'); }
+    finally { setPrepCampaign(false); }
   };
 
   // تفصيص 2026-07-16: sales.view = هذا التبويب حصراً (أُزيل fallback crm.view)
@@ -409,8 +430,8 @@ export default function Retargeting({ isActive = true }) {
             )}
             {canCampaign && (
               <Btn size="sm" variant="accent" icon={<Send size={13}/>} style={{ marginInlineStart: 'auto' }}
-                onClick={openBulkCampaign} disabled={!leads.some(l => l.phone)}>
-                إطلاق حملة للمعروضين ({leads.filter(l => l.phone).length})
+                onClick={openBulkCampaign} disabled={prepCampaign || !count}>
+                {prepCampaign ? 'يجهّز المستلمين…' : `إطلاق حملة لكل المطابق (${fmt0(count)})`}
               </Btn>
             )}
             <span style={{ marginInlineStart: canCampaign ? 0 : 'auto', fontSize: 12, color: 'var(--muted)' }}>عرض {leads.length} من {fmt0(count)} فرصة</span>

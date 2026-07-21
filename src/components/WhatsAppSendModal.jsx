@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -58,6 +58,12 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [schedAt, setSchedAt]   = useState('');
   // ربط متغيرات القالب: [{src:'legacy'|'custom'|'field:<key>', text?}] لكل {{i}}
   const [varMap, setVarMap]     = useState([]);
+  // نظام الحملات (2026-07-21): اسم إلزامي + استثناء مستلمي حملات سابقة
+  const [campName, setCampName]   = useState('');
+  const [campaigns, setCampaigns] = useState([]);          // الحملات السابقة (اسم/عدد/آخر إرسال)
+  const [exCamps, setExCamps]     = useState(() => new Set());  // أسماء الحملات المستثناة
+  const [exPhones, setExPhones]   = useState(() => new Set());  // أرقامها (تُجلب عند الاختيار)
+  const [exOpen, setExOpen]       = useState(false);
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات، وإلا «افتراضي الصفحة» بعدد vars
   const defaultMapFor = (templateName, config) => {
@@ -70,7 +76,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   useEffect(() => {
     if (!open) return;
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
+    setCampName(bucketLabel || ''); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
     setSelected(new Set(recipients.filter(r => r.to && r.to.length >= 11).map(r => r.to)));  // الكل افتراضياً
+    loadCampaignNames().then(setCampaigns).catch(() => setCampaigns([]));
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -119,10 +127,28 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     );
   }
 
-  const valid = recipients.filter(r => r.to && r.to.length >= 11);
-  const skipped = recipients.length - valid.length;
+  // استثناء مستلمي الحملات المحددة — الرقم المرسَل له في أي منها لا يُرسَل ثانية
+  const toggleExCampaign = async (name) => {
+    const next = new Set(exCamps);
+    next.has(name) ? next.delete(name) : next.add(name);
+    setExCamps(next);
+    try { setExPhones(await loadCampaignPhones([...next])); }
+    catch { toast('تعذّر جلب أرقام الحملة المستثناة', 'error'); }
+  };
+
+  const validAll = recipients.filter(r => r.to && r.to.length >= 11);
+  const excludedCount = validAll.filter(r => exPhones.has(r.to)).length;
+  const valid = validAll.filter(r => !exPhones.has(r.to));
+  const skipped = recipients.length - validAll.length;
   const selectedValid = valid.filter(r => selected.has(r.to));
-  const overLimit = selectedValid.length > 200;
+  // فوق 200: الإرسال الفوري ممنوع (حصة هاتف) — الجدولة تقسّمه دفعات آلياً
+  const overLimit = selectedValid.length > 200 && !schedOn;
+  const lastSentOf = (to) => waStatus.get(to)?.lastSentAt || null;
+  const daysAgoTxt = (iso) => {
+    if (!iso) return null;
+    const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
+    return d === 0 ? 'اليوم' : `قبل ${d} يوم`;
+  };
 
   // حماية الإفراط: مَن أُرسل له خلال آخر 7 أيام (من أي تبويب/حملة)
   const recentDays = 7;
@@ -150,21 +176,23 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   };
 
   // جدولة بدل الإرسال الآن — تُكتب في campaign_queue وينفّذها campaign-runner
+  // (scheduleCampaign تقسّم المستلمين صفوف طابور 150/دفعة — لا حدّ للعدد هنا)
   const doSchedule = async () => {
+    if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً أولاً', 'warn'); return; }
-    if (!selectedValid.length || overLimit) { toast('راجع اختيار المستلمين', 'warn'); return; }
+    if (!selectedValid.length) { toast('راجع اختيار المستلمين', 'warn'); return; }
     if (!schedAt || new Date(schedAt).getTime() < Date.now() + 5 * 60_000) {
       toast('اختر وقتاً مستقبلياً (بعد 5 دقائق على الأقل)', 'warn'); return;
     }
     setSending(true);
     try {
-      await scheduleCampaign({
+      const batches = await scheduleCampaign({
         scheduledAt: new Date(schedAt).toISOString(), templateName: tpl,
         recipients: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
-        bucketLabel, userId: user?.id || null,
+        bucketLabel: campName.trim(), userId: user?.id || null,
       });
       if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
-      toast(`⏰ جُدولت الحملة (${selectedValid.length} مستلم) — تُرسَل ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
+      toast(`⏰ جُدولت «${campName.trim()}» (${fmt(selectedValid.length)} مستلم على ${batches} دفعة) — تبدأ ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
       onSent?.({ scheduled: true });
       onClose?.();
     } catch (e) { toast(`فشلت الجدولة: ${e.message}`, 'error'); }
@@ -173,16 +201,17 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
 
   const doSend = async () => {
     if (schedOn) return doSchedule();
+    if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
-    if (overLimit) { toast('الحد 200 لكل دفعة — قلّل الاختيار', 'warn'); return; }
+    if (overLimit) { toast('فوق 200: فعّل الجدولة — تُرسَل دفعات آلياً', 'warn'); return; }
     setSending(true);
     const r = await sendWhatsAppCampaign({
       templateName: tpl,
       templateLanguage: 'ar',
       channelId: null,
       items: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
-      campaign: { name: bucketLabel ? `تحصيل — ${bucketLabel}` : 'تحصيل', bucket: bucketLabel || null, userId: user?.id || null },
+      campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
     });
     if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
     setSending(false);
@@ -230,6 +259,43 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       ) : (
         // ── اختيار المستلِمين + إرسال (القالب/القناة/اللغة مثبّتة من الإعدادات) ──
         <div>
+          {/* اسم الحملة — إلزامي (يظهر في السجل ويُستخدم للاستثناء مستقبلاً) */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+            <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>اسم الحملة <span style={{ color: 'var(--red)' }}>*</span></span>
+            <input value={campName} onChange={e => setCampName(e.target.value)} placeholder="مثال: تحصيل متأخرين يوليو"
+              style={{ flex: 1, fontSize: 12.5, padding: '7px 11px', borderRadius: 8,
+                border: `1px solid ${campName.trim() ? 'var(--border)' : 'var(--red)'}`, background: 'var(--bg)', color: 'var(--text)' }}/>
+          </div>
+
+          {/* استثناء مستلمي حملات سابقة — لا يُرسَل لمن سبق استهدافه فيها */}
+          <div style={{ border: '1px solid var(--border)', borderRadius: 9, marginBottom: 10, background: 'var(--surface2)' }}>
+            <button onClick={() => setExOpen(o => !o)}
+              style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)', fontSize: 12, fontWeight: 700 }}>
+              <span>{exOpen ? '▾' : '◂'}</span> استثناء من حملات سابقة
+              {exCamps.size > 0 && (
+                <span style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 600 }}>
+                  {exCamps.size} حملة — استُبعد {excludedCount} مستلم
+                </span>
+              )}
+              <span style={{ marginInlineStart: 'auto', fontSize: 10.5, color: 'var(--muted2)', fontWeight: 400 }}>
+                من أُرسل له في الحملات المحددة لن يُرسَل ثانية
+              </span>
+            </button>
+            {exOpen && (
+              <div className="m-flow" style={{ maxHeight: 170, overflowY: 'auto', borderTop: '1px solid var(--border)' }}>
+                {campaigns.length === 0 && <div style={{ padding: 12, fontSize: 11.5, color: 'var(--muted)' }}>لا حملات سابقة</div>}
+                {campaigns.map(c => (
+                  <label key={c.name} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 12px', cursor: 'pointer', fontSize: 12 }}>
+                    <input type="checkbox" checked={exCamps.has(c.name)} onChange={() => toggleExCampaign(c.name)}/>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                    <span style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{c.sends} رسالة</span>
+                    {c.lastAt && <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{daysAgoTxt(c.lastAt)}</span>}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+
           {/* اختيار القالب لهذه الحملة (القائمة من «إعدادات واتساب») + تحقّق سريع */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12,
             background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 12px' }}>
@@ -298,21 +364,35 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {skipped > 0 && <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>تُخطّي {skipped} بلا رقم</span>}
           </div>
           <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
-            {valid.map((r, i) => (
-              <label key={r.to + i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
-                borderTop: i ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
-                <input type="checkbox" checked={selected.has(r.to)} onChange={() => toggle(r.to)}/>
-                <span style={{ flex: 1, fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.to}</span>
-                <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)', direction: 'ltr' }}>{r.to}</span>
-                {r.amount != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--gold)' }}>{fmt(r.amount)}</span>}
-              </label>
-            ))}
+            {valid.slice(0, 400).map((r, i) => {
+              const last = daysAgoTxt(lastSentOf(r.to));
+              return (
+                <label key={r.to + i} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                  borderTop: i ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={selected.has(r.to)} onChange={() => toggle(r.to)}/>
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+                    <span style={{ display: 'block', fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.to}</span>
+                    <span style={{ display: 'block', fontSize: 10.5, color: last ? 'var(--gold)' : 'var(--muted2)' }}>
+                      {last ? `آخر رسالة: ${last}` : 'لم تُراسَل من قبل'}
+                    </span>
+                  </span>
+                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)', direction: 'ltr' }}>{r.to}</span>
+                  {r.amount != null && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--gold)' }}>{fmt(r.amount)}</span>}
+                </label>
+              );
+            })}
+            {valid.length > 400 && (
+              <div style={{ padding: '8px 12px', fontSize: 11.5, color: 'var(--muted)', borderTop: '1px solid var(--border)' }}>
+                … و{valid.length - 400} مستلماً آخر (معروض أول 400 — «تحديد الكل» يشملهم جميعاً)
+              </div>
+            )}
             {!valid.length && <div style={{ padding: 16, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>لا مستلِمون بأرقام صالحة</div>}
           </div>
 
           {overLimit && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>
-              <AlertTriangle size={15}/> {selectedValid.length} مختار — الحد 200 لكل دفعة. قلّل الاختيار.
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>
+              <AlertTriangle size={15}/> {fmt(selectedValid.length)} مختار — الإرسال الفوري حدّه 200.
+              <Btn size="sm" variant="ghost" onClick={() => setSchedOn(true)}>⏰ جدولها — تُرسَل دفعات آلياً</Btn>
             </div>
           )}
 
@@ -344,10 +424,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !tpl}>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || overLimit || !tpl || !campName.trim()}>
               {sending ? <><Spinner size={14}/> جارٍ…</>
-                : schedOn ? <><Clock size={14}/> جدولة ({selectedValid.length})</>
-                : <><Send size={14}/> إرسال ({selectedValid.length})</>}
+                : schedOn ? <><Clock size={14}/> جدولة ({fmt(selectedValid.length)})</>
+                : <><Send size={14}/> إرسال ({fmt(selectedValid.length)})</>}
             </Btn>
             <Btn variant="ghost" onClick={onClose} disabled={sending}>إلغاء</Btn>
           </div>
