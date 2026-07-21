@@ -1,4 +1,6 @@
-// hatif-contacts-sync v3 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// hatif-contacts-sync v5 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// v5 (2026-07-21): خاصية «واتساب» (نعم/لا) — لا = الرقم غير موجود على واتساب
+// فيتصل به الموظف هاتفياً. + v4: «متابعة المبيعات» و«ملاحظة الفريق».
 // v3 (2026-07-16): إجراء name_audit — جرد الجهات التي أسماؤها اليدوية تخالف
 // اسم متجرها الصحيح عندنا (+ إصلاح اختياري بـfix:true بأمر صريح).
 // ⚠️ النشر عبر MCP يعيد verify_jwt=true — استدعاء الكرون يحتاج Bearer anon + X-Cron-Key.
@@ -69,6 +71,11 @@ const PROP_DEFS: { name: string; type: number; options?: { value: string; color:
     { value: 'بلاك لست', color: '#EF4444' }, { value: 'تم التواصل', color: '#06B6D4' },
   ] },
   { name: 'ملاحظة الفريق', type: 1 },
+  // واتساب (2026-07-21): نعم = وصلته رسالة · لا = الرقم غير موجود على واتساب
+  // (فشل undeliverable) → الموظف يعرف من يتصل به هاتفياً بدل واتساب.
+  { name: 'واتساب', type: 3, options: [
+    { value: 'نعم', color: '#22C55E' }, { value: 'لا', color: '#EF4444' },
+  ] },
 ];
 
 function hash(s: string) { let h = 5381; for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0; return String(h >>> 0); }
@@ -124,6 +131,7 @@ function propValues(row: any): Record<string, string | number> {
     'تفاصيل المتاجر': row.details || '',
     'متابعة المبيعات': row.followup_val || '',
     'ملاحظة الفريق': row.followup_note || '',
+    'واتساب': row.whatsapp_val || '',
   };
   if (Number(row.debt) > 0.5) v['إجمالي المديونية'] = Math.round(Number(row.debt));
   if (row.last_shipment_at) v['آخر شحنة'] = String(row.last_shipment_at);
