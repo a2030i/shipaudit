@@ -5,6 +5,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
 import CarrierTabs from '../components/CarrierTabs.jsx';
+import StatementUploadModal from '../components/StatementUploadModal.jsx';
 import {
   loadOperations,
   loadOpenBalance,
@@ -102,6 +103,10 @@ const fmt = n => (n == null || Number.isNaN(n))
 export default function CarrierLedger({ isActive = true }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [carrier, setCarrier] = useState(() => searchParams.get('carrier') || '');
+  // دخلنا لناقل محدّد (من بطاقته/تبويباته) → لا نعرض قائمة اختيار (CarrierTabs
+  // يعرض الناقل أصلاً). القائمة تظهر فقط عند الدخول العام (بلا ?carrier=).
+  const [locked] = useState(() => !!searchParams.get('carrier'));
+  const [uploadOpen, setUploadOpen] = useState(false);   // مودال رفع الكشف المباشر
   const [carrierList, setCarrierList] = useState([]);
   const [ops, setOps] = useState([]);
   const [bal, setBal] = useState(null);
@@ -585,10 +590,14 @@ export default function CarrierLedger({ isActive = true }) {
             ارفع كشف حساب من صفحة <strong style={{ color: 'var(--accent)' }}>"رفع كشف"</strong>،
             ثم اضغط <strong style={{ color: 'var(--green)' }}>"💾 حفظ في الدفتر"</strong> ليتعبأ الدفتر هنا.
           </div>
-          <Btn variant="primary" onClick={() => { window.location.href = '/aramex-statements'; }}>
+          <Btn variant="primary" onClick={() => { carrier ? setUploadOpen(true) : (window.location.href = '/aramex-statements'); }}>
             رفع كشف حساب →
           </Btn>
         </Card>
+        {carrier && (
+          <StatementUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)}
+            carrierId={carrier} carrierName={currentCarrierName} onSaved={refresh}/>
+        )}
       </div>
     );
   }
@@ -601,7 +610,8 @@ export default function CarrierLedger({ isActive = true }) {
           <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
             📒 كشف الحساب
           </h2>
-          {carrierList.length > 0 && (
+          {/* دخول لناقل محدّد → لا قائمة (CarrierTabs يعرضه). الدخول العام → قائمة اختيار */}
+          {!locked && carrierList.length > 0 && (
             <select
               value={carrier}
               onChange={e => setCarrier(e.target.value)}
@@ -733,7 +743,7 @@ export default function CarrierLedger({ isActive = true }) {
               {periodGaps.length > 6 ? ` · +${periodGaps.length - 6}` : ''}
             </div>
           </div>
-          <Btn size="sm" variant="ghost" onClick={() => { window.location.href = '/aramex-statements'; }}>
+          <Btn size="sm" variant="ghost" onClick={() => { setUploadOpen(true); }}>
             رفع كشف →
           </Btn>
         </div>
@@ -1040,6 +1050,8 @@ export default function CarrierLedger({ isActive = true }) {
           onRefresh={refresh}
         />
       )}
+      <StatementUploadModal open={uploadOpen} onClose={() => setUploadOpen(false)}
+        carrierId={carrier} carrierName={currentCarrierName} onSaved={refresh}/>
     </div>
   );
 }
