@@ -8,8 +8,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
-  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, syncHatifUsers } from '../lib/whatsappService.js';
-import { loadEmployees } from '../lib/employeeService.js';
+  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -28,24 +27,13 @@ export default function WhatsAppSettings({ isActive = true }) {
   const [zBusy, setZBusy] = useState(false);
   const [zPrev, setZPrev] = useState(null);
   const [tab, setTab] = useState('settings');      // settings | campaigns
-  const [hatifSync, setHatifSync] = useState(null); // نتيجة مزامنة موظفي هاتف
-  const [syncing, setSyncing] = useState(false);
-  const doSyncHatif = async () => {
-    setSyncing(true);
-    try {
-      const r = await syncHatifUsers();
-      if (r?.ok) { setHatifSync(r); toast(`رُبِط ${r.mapped} موظف من ${r.total}`, 'success'); }
-      else toast(r?.error || 'فشلت المزامنة', 'error');
-    } catch (e) { toast(e.message, 'error'); }
-    setSyncing(false);
-  };
 
-  const [employees, setEmployees] = useState([]);
+  const [hatifUsers, setHatifUsers] = useState([]);   // موظفو هاتف (الفريق يردّ هناك)
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [c, z, emps] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null), loadEmployees().catch(() => [])]);
-      setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' }); setEmployees(emps || []);
+      const [c, z, hu] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null), loadHatifUsers().catch(() => [])]);
+      setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' }); setHatifUsers(hu || []);
     } catch (e) { toast(e.message, 'error'); }
     setLoading(false);
   }, []);
@@ -148,13 +136,13 @@ export default function WhatsAppSettings({ isActive = true }) {
                       <span style={{ fontFamily: 'var(--font-mono)' }}>{t}</span>
                       {cfg.templateName === t && <span style={{ fontSize: 10.5, color: 'var(--green2)' }}>افتراضي</span>}
                     </label>
-                    {/* المسؤول عن ردود هذا القالب — يُسند إليه الرد آلياً (مهمة + محادثة هاتف) */}
+                    {/* المسؤول عن ردود هذا القالب في هاتف — تُسند إليه المحادثة آلياً عند الرد */}
                     <select value={cfg.templateAgents?.[t] || ''}
                       onChange={e => setCfg({ ...cfg, templateAgents: { ...(cfg.templateAgents || {}), [t]: e.target.value || undefined } })}
-                      style={{ fontSize: 11.5, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minWidth: 150 }}
-                      title="المسؤول عن ردود هذا القالب">
-                      <option value="">↩️ المسؤول: تلقائي (المُرسِل)</option>
-                      {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+                      style={{ fontSize: 11.5, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minWidth: 160 }}
+                      title="موظف هاتف المسؤول عن ردود هذا القالب">
+                      <option value="">↩️ المسؤول في هاتف: —</option>
+                      {hatifUsers.map(u => <option key={u.userId} value={u.userId}>{u.name}{u.email ? ` · ${u.email}` : ''}</option>)}
                     </select>
                     <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeTpl(t)}><Trash2 size={13}/></Btn>
                   </div>
@@ -180,23 +168,17 @@ export default function WhatsAppSettings({ isActive = true }) {
         </Card>
       )}
 
-      {/* ── إسناد المحادثات تلقائياً في هاتف — ربط موظفينا بموظفي هاتف بالإيميل ── */}
+      {/* ── إسناد المحادثات تلقائياً في هاتف — القالب يحدّد المسؤول (الفريق في هاتف) ── */}
       {can('whatsapp.configure') && (
-        <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
-          <div style={{ fontSize: 13.5, fontWeight: 700 }}>👥 إسناد المحادثات تلقائياً في هاتف</div>
+        <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>👥 إسناد ردود القوالب في هاتف</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
-            عند ردّ العميل على حملة، النظام <b>يُسند المحادثة في هاتف لموظف المبيعات المسؤول</b> (مالك المتابعة/مُرسِل الحملة) — تظهر عنده مباشرة.
-            يتطلّب ربط موظفينا بموظفي هاتف. الربط <b>بالإيميل</b> (نفس إيميل الموظف في النظام وفي هاتف).
+            عند ردّ العميل على حملة، النظام <b>يُسند المحادثة في هاتف لموظف هاتف المسؤول عن القالب</b> — تظهر عنده مباشرة.
+            اختر المسؤول لكل قالب من القائمة أعلاه (منسدلة «المسؤول في هاتف»). <b>لا يحتاج الموظف حساباً في نظامنا</b> — يكفي وجوده في هاتف.
           </div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Btn variant="accent" onClick={doSyncHatif} disabled={syncing}>{syncing ? 'يزامن…' : '🔄 مزامنة موظفي هاتف'}</Btn>
-            {hatifSync && <span style={{ fontSize: 12, color: 'var(--green2)' }}>رُبِط {hatifSync.mapped} من {hatifSync.total} موظف بالإيميل ✓</span>}
+          <div style={{ fontSize: 11.5, color: hatifUsers.length ? 'var(--green2)' : 'var(--gold)' }}>
+            {hatifUsers.length ? `✓ ${hatifUsers.length} موظف هاتف متاح للإسناد` : '⚠️ لم يتم جلب موظفي هاتف — تأكّد من أسرار Hatif، ثم أعد فتح الصفحة.'}
           </div>
-          {hatifSync && hatifSync.mapped < hatifSync.total && (
-            <div style={{ fontSize: 11.5, color: 'var(--gold)' }}>
-              ⚠️ {hatifSync.total - hatifSync.mapped} موظف في هاتف بلا مطابقة إيميل عندنا — تأكّد أن إيميل الموظف نفسه في النظامين ليُسند له.
-            </div>
-          )}
         </Card>
       )}
 

@@ -208,11 +208,11 @@ export async function verifyWhatsAppKey() {
   return data;
 }
 
-// ربط موظفي النظام بموظفي هاتف بالإيميل (للإسناد التلقائي عند الرد). admin فقط.
-export async function syncHatifUsers() {
-  const { data, error } = await supabase.functions.invoke(WA_FN, { body: { action: 'sync_hatif_users' } });
-  if (error) return { ok: false, error: error.message };
-  return data;
+// موظفو هاتف (Workspace) — لربط القالب بمسؤوله مباشرة (الفريق في هاتف لا عندنا).
+export async function loadHatifUsers() {
+  const { data, error } = await supabase.functions.invoke(WA_FN, { body: { action: 'hatif_users' } });
+  if (error || !data?.ok) return [];
+  return (data.users || []).map(u => ({ userId: u.userId, name: u.name, email: u.email || null }));
 }
 
 // Send a template campaign. items: [{ to, vars:[], name, amount }].
