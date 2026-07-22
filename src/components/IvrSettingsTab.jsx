@@ -129,6 +129,39 @@ export default function IvrTab() {
           </label>
         </div>
 
+        {/* ساعات الاتصال + إعادة المحاولة — يحرسها ivr-runner (cron كل 15د) */}
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>⏰ الجدولة وساعات الاتصال</div>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>لا تتصل قبل الساعة
+              <input type="number" min={0} max={23} disabled={!mayConfigure} value={cfg.callHours?.start ?? 9}
+                onChange={e => setCfg({ ...cfg, callHours: { ...(cfg.callHours || {}), start: Number(e.target.value) } })} style={{ ...inp, width: 80 }}/>
+            </label>
+            <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>ولا بعد الساعة
+              <input type="number" min={1} max={24} disabled={!mayConfigure} value={cfg.callHours?.end ?? 21}
+                onChange={e => setCfg({ ...cfg, callHours: { ...(cfg.callHours || {}), end: Number(e.target.value) } })} style={{ ...inp, width: 80 }}/>
+            </label>
+            <span style={{ fontSize: 11, color: 'var(--muted)' }}>بتوقيت السعودية — المكالمات المجدولة/المُعادة تُطلَق داخل هذه النافذة فقط.</span>
+          </div>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: mayConfigure ? 'pointer' : 'default' }}>
+            <input type="checkbox" disabled={!mayConfigure} checked={!!cfg.retry?.enabled}
+              onChange={e => setCfg({ ...cfg, retry: { ...(cfg.retry || {}), enabled: e.target.checked } })}/>
+            🔁 إعادة الاتصال آلياً على «لم يُردّ»
+          </label>
+          {cfg.retry?.enabled && (
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end', paddingInlineStart: 22 }}>
+              <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>بعد كم ساعة
+                <input type="number" min={1} max={72} disabled={!mayConfigure} value={cfg.retry?.afterHours ?? 3}
+                  onChange={e => setCfg({ ...cfg, retry: { ...(cfg.retry || {}), afterHours: Number(e.target.value) } })} style={{ ...inp, width: 80 }}/>
+              </label>
+              <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>أقصى عدد محاولات
+                <input type="number" min={1} max={5} disabled={!mayConfigure} value={cfg.retry?.maxAttempts ?? 2}
+                  onChange={e => setCfg({ ...cfg, retry: { ...(cfg.retry || {}), maxAttempts: Number(e.target.value) } })} style={{ ...inp, width: 80 }}/>
+              </label>
+            </div>
+          )}
+        </div>
+
         <div style={{ display: 'grid', gap: 12 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div style={{ fontSize: 13.5, fontWeight: 700 }}>السكربتات الصوتية</div>

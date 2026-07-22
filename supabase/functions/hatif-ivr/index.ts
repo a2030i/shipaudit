@@ -153,9 +153,11 @@ Deno.serve(async (req) => {
       if (!ttsText && !String(script.audioUrl || '').trim()) { results.push({ phone: to, ok: false, error: 'لا صوت ولا نص للمكالمة' }); failed++; continue; }
 
       // سجّل الصف أولاً — id يصير externalId (idempotency)
+      const retryOn = cfg.retry?.enabled === true;
       const { data: ins, error: insErr } = await db.from('ivr_calls').insert({
         phone: to, name: r.name || null, campaign_name: campaignName, script_key: script.key,
         tts_text: ttsText, channel_id: channelId, status: 'pending', initiated_by: auth.id,
+        attempt: 1, max_attempts: retryOn ? (Number(cfg.retry?.maxAttempts) || 2) : 1, retry_fields: r.fields || null,
       }).select('id').single();
       if (insErr || !ins?.id) { results.push({ phone: to, ok: false, error: 'فشل تسجيل المكالمة' }); failed++; continue; }
       const callRowId = ins.id;

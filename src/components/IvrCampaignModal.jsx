@@ -4,14 +4,14 @@
 import { useState, useEffect, useMemo } from 'react';
 import { PhoneCall, ShieldCheck, X, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadIvrConfig, launchIvrCampaign } from '../lib/ivrService.js';
+import { loadIvrConfig, launchIvrCampaign, scheduleIvrQueue } from '../lib/ivrService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const BATCH = 40;   // دفعة الاستدعاء الواحد (كل مكالمة ~0.4ث تسجيل + إطلاق)
 
 // recipients: [{ phone, name, fields? }]
 export default function IvrCampaignModal({ open, onClose, recipients = [], bucketLabel, onDone }) {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const allowed = can('campaigns.ivr');
   const [cfg, setCfg] = useState(null);
   const [scriptKey, setScriptKey] = useState('');
@@ -20,6 +20,8 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
   const [launching, setLaunching] = useState(false);
   const [progress, setProgress] = useState(null);   // {done,total,placed,failed}
   const [results, setResults] = useState(null);
+  const [schedOn, setSchedOn] = useState(false);     // ⏰ جدولة بدل الاتصال الآن
+  const [schedAt, setSchedAt] = useState('');
 
   useEffect(() => {
     if (!open) return;
@@ -51,6 +53,20 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
     if (!script) { toast('اختر سكربتاً صوتياً', 'error'); return; }
     if (!campName.trim()) { toast('اكتب اسم الحملة', 'error'); return; }
     if (!dedup.length) { toast('لا مستلمين', 'error'); return; }
+    // جدولة: تُدرَج في الطابور ويطلقها ivr-runner في وقتها (ضمن ساعات الاتصال)
+    if (schedOn) {
+      if (!schedAt) { toast('اختر وقت الجدولة', 'error'); return; }
+      setLaunching(true);
+      try {
+        const recs = dedup.map(r => ({ phone: String(r.phone), name: r.name || null, fields: r.fields || null }));
+        const { queued } = await scheduleIvrQueue({ recipients: recs, scriptKey, campaignName: campName.trim(), runAt: new Date(schedAt).toISOString(), userId: user?.id || null });
+        setResults({ scheduled: true, queued });
+        toast(`جُدولت ${queued} مكالمة`, 'success');
+        onDone && onDone({ scheduled: true, queued });
+      } catch (e) { toast(e.message || 'فشل الجدولة', 'error'); }
+      finally { setLaunching(false); }
+      return;
+    }
     setLaunching(true); setResults(null);
     const agg = { total: dedup.length, placed: 0, failed: 0, skipped: 0, results: [] };
     try {
@@ -147,11 +163,27 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
               </div>
             )}
 
+            {/* ⏰ جدولة بدل الاتصال الآن — يعالجها ivr-runner ضمن ساعات الاتصال */}
+            {!results && !progress && (
+              <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap', borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 7, fontSize: 12.5, cursor: 'pointer' }}>
+                  <input type="checkbox" checked={schedOn} onChange={e => setSchedOn(e.target.checked)}/> ⏰ جدولة لوقت لاحق
+                </label>
+                {schedOn && (
+                  <input type="datetime-local" value={schedAt} onChange={e => setSchedAt(e.target.value)}
+                    style={{ padding: '7px 10px', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12.5, background: 'var(--bg)', color: 'var(--text)' }}/>
+                )}
+                {schedOn && <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>تُطلَق ضمن ساعات الاتصال المضبوطة في الإعدادات.</span>}
+              </div>
+            )}
+
             {results && (
               <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', color: '#166534', borderRadius: 10, padding: 12, fontSize: 14 }}>
-                <CheckCircle2 size={16} style={{ verticalAlign: -3 }} /> أُطلقت <b>{results.placed}</b> مكالمة
-                {results.failed ? ` · فشل ${results.failed}` : ''}{results.skipped ? ` · محظور ${results.skipped}` : ''}.
-                <div style={{ fontSize: 12, marginTop: 4 }}>النتائج والضغطات تظهر في «إعدادات واتساب ← سجل المكالمات» بعد ردّ العملاء.</div>
+                <CheckCircle2 size={16} style={{ verticalAlign: -3 }} />{' '}
+                {results.scheduled
+                  ? <>جُدولت <b>{results.queued}</b> مكالمة — تُطلَق آلياً في وقتها ضمن ساعات الاتصال.</>
+                  : <>أُطلقت <b>{results.placed}</b> مكالمة{results.failed ? ` · فشل ${results.failed}` : ''}{results.skipped ? ` · محظور ${results.skipped}` : ''}.</>}
+                <div style={{ fontSize: 12, marginTop: 4 }}>النتائج والضغطات تظهر في «إعدادات واتساب ← سجل المكالمات».</div>
               </div>
             )}
           </>
@@ -162,7 +194,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
         <Btn variant="ghost" onClick={onClose} disabled={launching}><X size={15} /> {results ? 'إغلاق' : 'إلغاء'}</Btn>
         {!results && (
           <Btn variant="accent" onClick={launch} disabled={!allowed || launching || !cfg || cfg.enabled === false || !dedup.length}>
-            {launching ? <Spinner size={15} /> : <PhoneCall size={15} />} ابدأ الاتصال ({dedup.length})
+            {launching ? <Spinner size={15} /> : <PhoneCall size={15} />} {schedOn ? `جدولة (${dedup.length})` : `ابدأ الاتصال (${dedup.length})`}
           </Btn>
         )}
       </div>

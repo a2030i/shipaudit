@@ -89,7 +89,7 @@ Deno.serve(async (req) => {
   const answered   = !!(p.answeredAt || p.AnsweredAt);
   if (!externalId && !voxaCallId) return ok();
 
-  const SEL = 'id, phone, name, script_key, initiated_by, pressed_digit, action_taken, template_sent_at';
+  const SEL = 'id, phone, name, script_key, initiated_by, pressed_digit, action_taken, template_sent_at, attempt, max_attempts, retry_fields, campaign_name';
   let row: Record<string, any> | null = null;
   if (externalId) { const { data } = await db.from('ivr_calls').select(SEL).eq('external_id', externalId).limit(1); row = data?.[0] || null; }
   if (!row && voxaCallId) { const { data } = await db.from('ivr_calls').select(SEL).eq('voxa_call_id', voxaCallId).limit(1); row = data?.[0] || null; }
@@ -160,6 +160,23 @@ Deno.serve(async (req) => {
         if (res.ok || res.skipped) patch.template_sent_at = when;
       } catch (e) { console.error('ivr answer/press→template failed:', (e as Error).message); }
     }
+  }
+
+  // ── إعادة المحاولة على «لم يُردّ» (غير مُجاب) — تُدرَج في الطابور بعد afterHours ──
+  if (!answered && Number(row.attempt || 1) < Number(row.max_attempts || 1)) {
+    try {
+      let retry: Record<string, any> | null = null;
+      const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
+      try { retry = cfgRow?.value ? JSON.parse(cfgRow.value).retry : null; } catch { /* */ }
+      if (retry?.enabled) {
+        const runAt = new Date(Date.now() + (Number(retry.afterHours) || 3) * 3600 * 1000).toISOString();
+        await db.from('ivr_queue').insert({
+          phone: row.phone, name: row.name, fields: row.retry_fields, script_key: row.script_key,
+          campaign_name: row.campaign_name, run_at: runAt, status: 'queued',
+          attempts: Number(row.attempt || 1), max_attempts: Number(row.max_attempts || 1), created_by: row.initiated_by,
+        });
+      }
+    } catch (e) { console.error('ivr retry enqueue failed:', (e as Error).message); }
   }
 
   if (Object.keys(patch).length) { try { await db.from('ivr_calls').update(patch).eq('id', row.id); } catch { /* */ } }

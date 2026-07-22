@@ -31,6 +31,8 @@ const DEFAULT_CFG = {
   enabled: false, ttsVoice: 'Female', channelId: '',
   maxAudioRetries: 2, inputTimeoutMs: 6000, digitTimeoutMs: 3000,
   defaultScript: '', scripts: [],
+  callHours: { start: 9, end: 21 },                                    // نافذة الاتصال بتوقيت السعودية
+  retry: { enabled: false, afterHours: 3, maxAttempts: 2, onResults: ['NoAnswer', 'Busy'] },
 };
 
 export async function loadIvrConfig() {
@@ -48,6 +50,16 @@ export async function saveIvrConfig(cfg) {
     inputTimeoutMs: Math.max(1000, Math.min(30000, Number(cfg.inputTimeoutMs ?? 6000))),
     digitTimeoutMs: Math.max(1000, Math.min(10000, Number(cfg.digitTimeoutMs ?? 3000))),
     defaultScript: cfg.defaultScript || (cfg.scripts?.[0]?.key || ''),
+    callHours: {
+      start: Math.max(0, Math.min(23, Number(cfg.callHours?.start ?? 9))),
+      end: Math.max(1, Math.min(24, Number(cfg.callHours?.end ?? 21))),
+    },
+    retry: {
+      enabled: !!cfg.retry?.enabled,
+      afterHours: Math.max(1, Math.min(72, Number(cfg.retry?.afterHours ?? 3))),
+      maxAttempts: Math.max(1, Math.min(5, Number(cfg.retry?.maxAttempts ?? 2))),
+      onResults: ['NoAnswer', 'Busy'],
+    },
     scripts: (Array.isArray(cfg.scripts) ? cfg.scripts : []).map(s => ({
       key: s.key, label: s.label || s.key, ttsText: s.ttsText || '',
       audioUrl: s.audioUrl || '',                 // صوت مرفوع (WAV) — يُشغَّل بدل TTS إن وُجد
@@ -90,6 +102,24 @@ export async function launchIvrCampaign({ recipients, scriptKey, campaignName, t
   if (error) throw new Error(error.message || 'فشل إطلاق المكالمات');
   if (data && data.ok === false) throw new Error(data.error || 'فشل إطلاق المكالمات');
   return data;
+}
+
+// جدولة مكالمات — تُدرَج في الطابور ليعالجها ivr-runner في run_at (ضمن ساعات الاتصال)
+export async function scheduleIvrQueue({ recipients, scriptKey, campaignName, runAt, userId = null }) {
+  const rows = (recipients || []).filter(r => r && r.phone).map(r => ({
+    phone: String(r.phone).replace(/\D/g, ''), name: r.name || null, fields: r.fields || null,
+    script_key: scriptKey, campaign_name: campaignName || null, run_at: runAt,
+    status: 'queued', attempts: 0, max_attempts: 1, created_by: userId,
+  }));
+  if (!rows.length) return { queued: 0 };
+  // دفعات 500
+  let queued = 0;
+  for (let i = 0; i < rows.length; i += 500) {
+    const { error } = await supabase.from('ivr_queue').insert(rows.slice(i, i + 500));
+    if (error) throw error;
+    queued += Math.min(500, rows.length - i);
+  }
+  return { queued };
 }
 
 export async function loadIvrCalls({ campaign = null, phone = null, limit = 300 } = {}) {
