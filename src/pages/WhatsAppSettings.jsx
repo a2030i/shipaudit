@@ -3,8 +3,10 @@
 // ويُستخدَم في حملات التحصيل (/customer-money) وإعادة الاستهداف. اللغة ثابتة ar.
 import { useState, useEffect, useCallback } from 'react';
 import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Trash2 } from 'lucide-react';
+import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
 import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
@@ -89,7 +91,7 @@ export default function WhatsAppSettings({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: tab === 'campaigns' ? 1100 : 660, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: (tab === 'campaigns' || tab === 'ivr') ? 1100 : 660, margin: '0 auto' }}>
       <PageHeader icon={<MessageCircle size={22}/>} iconColor="#22C55E"
         title="واتساب"
         subtitle="الإرسال عبر Hatif · هاتف (Voxa) — إعدادات القوالب + سجل الحملات"
@@ -98,7 +100,7 @@ export default function WhatsAppSettings({ isActive = true }) {
 
       {/* مبدّل: الإعدادات / سجل الحملات */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات']].map(([v, lbl]) => (
+        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
             border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
@@ -107,7 +109,8 @@ export default function WhatsAppSettings({ isActive = true }) {
         ))}
       </div>
 
-      {tab === 'campaigns' ? <CampaignsTab/> :
+      {tab === 'ivr' ? <IvrTab/> :
+      tab === 'campaigns' ? <CampaignsTab/> :
       !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', lineHeight: 1.7 }}>
@@ -169,7 +172,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       )}
 
       {/* ── إسناد المحادثات تلقائياً في هاتف — القالب يحدّد المسؤول (الفريق في هاتف) ── */}
-      {can('whatsapp.configure') && (
+      {tab === 'settings' && can('whatsapp.configure') && (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 8, marginTop: 14 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>👥 إسناد ردود القوالب في هاتف</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
@@ -183,7 +186,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       )}
 
       {/* ── متابعة غير المتجاوبين تلقائياً (drip §1.37) — ينفّذها campaign-runner كل 15 دقيقة ── */}
-      {cfg && (
+      {tab === 'settings' && cfg && (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>🔁 متابعة غير المتجاوبين تلقائياً</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
@@ -222,7 +225,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       )}
 
       {/* ── تنبيه زاتكا المسائي — واتساب 9م بتوقيت السعودية بالفواتير التي لم تُرسَل ── */}
-      {zatca && (
+      {tab === 'settings' && zatca && (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
           <div style={{ fontSize: 13.5, fontWeight: 700 }}>🧾 تنبيه زاتكا المسائي</div>
           <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
@@ -268,7 +271,8 @@ export default function WhatsAppSettings({ isActive = true }) {
 // تاب سجل الحملات — تقرير مجمَّع لكل حملة (كواجهة هاتف: مستهدفون/وصلت/قُرئت/ردود)
 // + سجل الرسائل: نقرة الحملة تفتح حالة كل رقم فيها، مع تصدير Excel للحملة.
 function CampaignsTab() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
+  const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [report, setReport] = useState([]);        // صف لكل حملة
   const [camp, setCamp] = useState('');            // الحملة المفتوحة (فلتر سيرفري)
@@ -502,7 +506,12 @@ function CampaignsTab() {
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>«الرقم غير موجود على واتساب» — تُستبعَد آلياً من كل حملة قادمة (لا استثناء يدوي). حوّلها لفريق الاتصال.</div>
           </div>
           <Btn size="sm" variant="ghost" onClick={exportNoWa} disabled={expNoWa}>{expNoWa ? 'يصدّر…' : '📥 تصدير للاتصال'}</Btn>
+          {can('campaigns.ivr') && <Btn size="sm" variant="accent" onClick={() => setIvrOpen(true)}>📞 مكالمة آلية</Btn>}
         </Card>
+      )}
+      {ivrOpen && (
+        <IvrCampaignModal open={ivrOpen} onClose={() => setIvrOpen(false)} bucketLabel="اتصال بلا واتساب"
+          recipients={noWa.map(r => ({ phone: r.phone, name: r.name, fields: { name: r.name } }))} />
       )}
 
       {/* ── قائمة الحظر الدائمة — أرقام لا تُراسَل أبداً (رقم شخصي/منصّة/متجر لا يُحذف) ── */}
