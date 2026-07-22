@@ -334,6 +334,17 @@ export default function Retargeting({ isActive = true }) {
             );
           })}
         </div>
+        {/* توضيح: شرائح «لم يشحن» الثلاث = تقسيم إجمالي من لم يشحن نهائياً (لا أرقام متناقضة) */}
+        {(() => {
+          const nt = (dash.segments.registered_no_ship || 0) + (dash.segments.linked_no_ship || 0) + (dash.segments.topped_no_ship || 0);
+          if (!nt) return null;
+          return (
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: -6, marginBottom: 14, lineHeight: 1.7 }}>
+              ℹ️ «سجّل ولم يشحن» + «ربط ولم يشحن» + «شحن رصيد ولم يشحن» = تقسيم الـ<b style={{ color: 'var(--text)' }}>{fmt0(nt)}</b> متجر
+              الذين <b>لم يشحنوا نهائياً</b> (نفس رقم فلتر «آخر شحنة = لم يشحن» في المتاجر) — كل متجر في شريحة واحدة، فلا تكرار.
+            </div>
+          );
+        })()}
 
         {/* توزيع الأولوية + الربط */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 12, marginBottom: 16 }}>
