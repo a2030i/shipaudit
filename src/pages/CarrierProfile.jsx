@@ -50,6 +50,7 @@ const fmtDate = (iso) => {
 
 // ── Hero ────────────────────────────────────────────────────────
 function Hero({ carrier, onBack }) {
+  const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → الحرف الأول
   return (
     <div style={{
       position: 'relative',
@@ -72,8 +73,8 @@ function Hero({ carrier, onBack }) {
         >
           رجوع
         </Btn>
-        {carrier.logo ? (
-          <img src={carrier.logo} alt="" style={{
+        {carrier.logo && !logoErr ? (
+          <img src={carrier.logo} alt="" onError={() => setLogoErr(true)} style={{
             width: 56, height: 56, borderRadius: 12, objectFit: 'cover',
             border: '2px solid rgba(255,255,255,.20)', flexShrink: 0,
           }}/>

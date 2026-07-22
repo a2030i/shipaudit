@@ -108,6 +108,7 @@ function HealthStrip({ row, onCod, onLedger }) {
 }
 
 function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
+  const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → ننزل للبديل (الحرف الأول)
   const owed = row.balance; // > 0 = we owe them; < 0 = they owe us
   const balanceColor =
     Math.abs(owed) < 0.01 ? 'var(--muted)' :
@@ -152,8 +153,8 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
     >
       {/* Header: logo + name (no top color stripe) */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 22 }}>
-        {row.logo ? (
-          <img src={row.logo} alt="" style={{
+        {row.logo && !logoErr ? (
+          <img src={row.logo} alt="" onError={() => setLogoErr(true)} style={{
             width: 44, height: 44, borderRadius: 12, objectFit: 'cover',
             border: '1px solid var(--border)',
           }}/>
