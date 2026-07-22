@@ -1,4 +1,6 @@
-// hatif-send v14 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// hatif-send v15 — إرسال واتساب عبر Hatif/Voxa (بديل Respondly).
+// v15 (2026-07-22): إجراءان admin: hatif_users (سرد موظفي الـWorkspace) +
+// sync_hatif_users (ربط profiles.email بموظف هاتف → hatif_user_id للإسناد الآلي).
 // v14 (2026-07-21): **حارس قائمة الحظر السيرفري** — أي رقم في مجموعة
 // no_whatsapp_phones() (= undeliverable ∪ campaign_phone_blocklist، يشمل رقم
 // المالك الشخصي) يُتخطّى في كل مسار إرسال بلا استثناء (فوري/مجدول/drip)، حتى
@@ -129,6 +131,27 @@ Deno.serve(async (req) => {
       const t = await accessToken();
       const items = await fetchChannels(t);
       return json({ ok: true, channels: items.map((c: Record<string, any>) => ({ id: c.id, name: c.name, number: c.phoneNumber?.number || null })) });
+    } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  }
+
+  // موظفو هاتف (Workspace) + الربط الآلي بموظفينا بالإيميل — للإسناد التلقائي
+  if (action === 'hatif_users' || action === 'sync_hatif_users') {
+    if (auth.role !== 'admin') return json({ error: 'forbidden — للمدير فقط' }, 403);
+    try {
+      const t = await accessToken();
+      const r = await fetch('https://api.voxa.sa/v1/workspaces/users', { headers: { Authorization: `Bearer ${t}` } });
+      const j = await r.json().catch(() => ({}));
+      const users = (Array.isArray(j) ? j : (j.items || [])).filter((u: Record<string, any>) => !u.isAiAgent)
+        .map((u: Record<string, any>) => ({ userId: u.userId, name: u.name, email: u.email || null }));
+      if (action === 'hatif_users') return json({ ok: true, users });
+      // sync: طابِق profiles.email = user.email (حساس للحالة لا) → اضبط hatif_user_id
+      let mapped = 0;
+      for (const u of users) {
+        if (!u.email || !u.userId) continue;
+        const { data: p } = await db.from('profiles').select('id').ilike('email', u.email).maybeSingle();
+        if (p?.id) { await db.from('profiles').update({ hatif_user_id: u.userId }).eq('id', p.id); mapped++; }
+      }
+      return json({ ok: true, users, mapped, total: users.length });
     } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
   }
 

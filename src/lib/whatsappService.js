@@ -205,6 +205,13 @@ export async function verifyWhatsAppKey() {
   return data;
 }
 
+// ربط موظفي النظام بموظفي هاتف بالإيميل (للإسناد التلقائي عند الرد). admin فقط.
+export async function syncHatifUsers() {
+  const { data, error } = await supabase.functions.invoke(WA_FN, { body: { action: 'sync_hatif_users' } });
+  if (error) return { ok: false, error: error.message };
+  return data;
+}
+
 // Send a template campaign. items: [{ to, vars:[], name, amount }].
 // Returns { ok, total, sent, failed, results, campaignId } | { ok:false, error }.
 export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'ar', channelId, items, campaign = {} }) {

@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
-  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth } from '../lib/whatsappService.js';
+  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, syncHatifUsers } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -27,6 +27,17 @@ export default function WhatsAppSettings({ isActive = true }) {
   const [zBusy, setZBusy] = useState(false);
   const [zPrev, setZPrev] = useState(null);
   const [tab, setTab] = useState('settings');      // settings | campaigns
+  const [hatifSync, setHatifSync] = useState(null); // نتيجة مزامنة موظفي هاتف
+  const [syncing, setSyncing] = useState(false);
+  const doSyncHatif = async () => {
+    setSyncing(true);
+    try {
+      const r = await syncHatifUsers();
+      if (r?.ok) { setHatifSync(r); toast(`رُبِط ${r.mapped} موظف من ${r.total}`, 'success'); }
+      else toast(r?.error || 'فشلت المزامنة', 'error');
+    } catch (e) { toast(e.message, 'error'); }
+    setSyncing(false);
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -156,6 +167,26 @@ export default function WhatsAppSettings({ isActive = true }) {
             • اسم القالب <b>حسّاس لحالة الأحرف</b> ويجب أن يطابق المعتمد في لوحة هاتف تماماً.<br/>
             • ملخّص الصباح له إعداده الخاص (زر 🌅 في فلوسي عند العملاء).
           </div>
+        </Card>
+      )}
+
+      {/* ── إسناد المحادثات تلقائياً في هاتف — ربط موظفينا بموظفي هاتف بالإيميل ── */}
+      {can('whatsapp.configure') && (
+        <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10, marginTop: 14 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>👥 إسناد المحادثات تلقائياً في هاتف</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
+            عند ردّ العميل على حملة، النظام <b>يُسند المحادثة في هاتف لموظف المبيعات المسؤول</b> (مالك المتابعة/مُرسِل الحملة) — تظهر عنده مباشرة.
+            يتطلّب ربط موظفينا بموظفي هاتف. الربط <b>بالإيميل</b> (نفس إيميل الموظف في النظام وفي هاتف).
+          </div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Btn variant="accent" onClick={doSyncHatif} disabled={syncing}>{syncing ? 'يزامن…' : '🔄 مزامنة موظفي هاتف'}</Btn>
+            {hatifSync && <span style={{ fontSize: 12, color: 'var(--green2)' }}>رُبِط {hatifSync.mapped} من {hatifSync.total} موظف بالإيميل ✓</span>}
+          </div>
+          {hatifSync && hatifSync.mapped < hatifSync.total && (
+            <div style={{ fontSize: 11.5, color: 'var(--gold)' }}>
+              ⚠️ {hatifSync.total - hatifSync.mapped} موظف في هاتف بلا مطابقة إيميل عندنا — تأكّد أن إيميل الموظف نفسه في النظامين ليُسند له.
+            </div>
+          )}
         </Card>
       )}
 

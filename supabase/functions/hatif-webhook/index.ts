@@ -1,4 +1,7 @@
-// hatif-webhook v7 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook v8 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// v8 (2026-07-22): **إسناد المحادثة تلقائياً** — عند ردّ حقيقي، يُسند المحادثة في
+// هاتف لموظف هاتف المربوط بمالك المتابعة/المُرسِل (Assign Conversation) — تظهر عنده مباشرة.
+// v7 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
 // verify_jwt=false — الحماية ?key= ضد zoho_auth.webhook_key.
 // v2 (§1.37): أول رد = فرصة حارة → متابعة needs_followup + مهمة crm_task.
 // v3: مطابقة متسلسلة (محادثة ثم جهة). v6: كاشف الردود الآلية بالنص.
@@ -9,6 +12,21 @@ import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+// توكن Voxa (client-credentials) — لإسناد المحادثة عند رد العميل (v8).
+const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
+let tokenCache: { token: string; exp: number } | null = null;
+async function accessToken() {
+  if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
+  const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
+  if (!id || !secret) throw new Error('no hatif secrets');
+  const r = await fetch('https://api.voxa.sa/connect/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret, scope: 'VoxaAPI' }) });
+  const j = await r.json();
+  if (!j.access_token) throw new Error('token failed');
+  tokenCache = { token: j.access_token, exp: Date.now() + ((Number(j.expires_in) || 3600) * 1000) - 60000 };
+  return tokenCache.token;
+}
 
 const AUTO_REPLY_RE = new RegExp([
   'شكرا?ً?\\s*لتواصلك', 'شكرا?ً?\\s*لتواصلكم', 'شكرا?ً?\\s*على\\s*تواصلك',
@@ -102,6 +120,18 @@ Deno.serve(async (req) => {
           assigned_to: assignee, due_at: new Date().toISOString(), priority: 'high', status: 'open',
         });
         if (taskErr) console.error('crm_task insert failed on reply:', taskErr.message);
+        // إسناد المحادثة في هاتف لموظف هاتف المربوط بالمالك (v8) — Assign Conversation
+        try {
+          const { data: prof } = await db.from('profiles').select('hatif_user_id').eq('id', assignee).maybeSingle();
+          const convId = conversationId || row.conversation_id;
+          if (prof?.hatif_user_id && convId) {
+            const tok = await accessToken();
+            await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/assign`, {
+              method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
+              body: JSON.stringify({ assignedUserId: prof.hatif_user_id }),
+            });
+          }
+        } catch (e) { console.error('assign conversation failed:', (e as Error).message); }
       }
     } catch (e) { console.error('reply→task handler failed:', (e as Error).message); }
   }
