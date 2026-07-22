@@ -1,4 +1,6 @@
-// hatif-webhook v11 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook v12 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// v12 (2026-07-22): **نافذة أتمتة = 3 أيام من الإرسال** — الإسناد/المهمة منّا داخل
+// 3 أيام فقط؛ رد بعدها → تمشي المحادثة على أتمتة هاتف (سياق مختلف).
 // v11 (2026-07-22): **الإسناد على أول رد حتى لو آلي** (قرار المستخدم) — الإسناد توجيه
 // لا يزعج أحداً، فيتمّ على أول رد وارد (آلي أو حقيقي) مرة واحدة (hatif_assigned_at).
 // المهمة CRM تبقى للرد الحقيقي فقط. templateAgents = Voxa userId (الفريق في هاتف).
@@ -87,6 +89,9 @@ Deno.serve(async (req) => {
     let secs: number | null = null;
     if (row.sent_at) { const d = (new Date(when).getTime() - new Date(row.sent_at).getTime()) / 1000; if (Number.isFinite(d)) secs = d; }
     const auto = isAutoText(body) || (secs !== null && secs >= 0 && secs <= 60);
+    // نافذة أتمتتنا = 3 أيام من الإرسال فقط (قرار المستخدم). بعدها المحادثة قديمة
+    // (سياق مختلف) → تمشي على أتمتة هاتف، فلا إسناد ولا مهمة منّا.
+    const within3d = secs === null || secs <= 3 * 86400;
     if (auto) {
       patch.reply_is_auto = true;
       patch.auto_reply_at = when;
@@ -95,11 +100,10 @@ Deno.serve(async (req) => {
       patch.replied_at = when;
       patch.reply_body = body ? String(body).slice(0, 500) : null;
       patch.reply_is_auto = false;
-      firstReply = true;
+      if (within3d) firstReply = true;   // مهمة/متابعة داخل النافذة فقط
     }
-    // إسناد المحادثة في هاتف على **أول رد (آلي أو حقيقي)** — مرة واحدة (قرار المستخدم):
-    // الإسناد توجيه فقط لا يزعج أحداً؛ المهمة تبقى للرد الحقيقي فقط (أدناه).
-    if (!row.hatif_assigned_at) {
+    // إسناد المحادثة في هاتف على أول رد (آلي أو حقيقي) داخل نافذة الـ3 أيام — مرة واحدة.
+    if (!row.hatif_assigned_at && within3d) {
       try {
         let hatifUserId: string | null = null;
         const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
