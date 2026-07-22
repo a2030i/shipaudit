@@ -35,14 +35,29 @@ export async function saveIvrConfig(cfg) {
     defaultScript: cfg.defaultScript || (cfg.scripts?.[0]?.key || ''),
     scripts: (Array.isArray(cfg.scripts) ? cfg.scripts : []).map(s => ({
       key: s.key, label: s.label || s.key, ttsText: s.ttsText || '',
+      audioUrl: s.audioUrl || '',                 // صوت مرفوع (WAV) — يُشغَّل بدل TTS إن وُجد
+      onAnswerTemplate: s.onAnswerTemplate || '',  // قالب واتساب يُرسَل تلقائياً إن رُدّ على المكالمة
       options: (Array.isArray(s.options) ? s.options : []).map(o => ({
         digit: String(o.digit), description: o.description || '', action: o.action || 'none',
+        template: o.template || '',                // قالب واتساب يُرسَل عند ضغط هذا الرقم
       })),
     })),
   };
   const { error } = await supabase.from('app_settings').upsert({ key: 'ivr_config', value: JSON.stringify(clean) }, { onConflict: 'key' });
   if (error) throw error;
   return clean;
+}
+
+// رفع ملف صوتي (WAV) لسكربت — يُرجِع الرابط العام ليُشغّله Voxa. Voxa يقبل WAV فقط.
+export async function uploadIvrAudio(file, scriptKey) {
+  if (!file) throw new Error('لا ملف');
+  const name = String(file.name || '').toLowerCase();
+  if (!name.endsWith('.wav')) throw new Error('Voxa يقبل WAV فقط — حوّل الملف إلى .wav');
+  const path = `${scriptKey || 'script'}_${Date.now()}.wav`;   // مفتاح ASCII آمن
+  const { error } = await supabase.storage.from('ivr-audio').upload(path, file, { contentType: 'audio/wav', upsert: true });
+  if (error) throw error;
+  const { data } = supabase.storage.from('ivr-audio').getPublicUrl(path);
+  return data?.publicUrl || '';
 }
 
 export async function verifyIvr() {

@@ -149,7 +149,8 @@ Deno.serve(async (req) => {
       if (!to || to.length < 11) { results.push({ phone: r.phone, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
       if (blocked.has(to)) { results.push({ phone: to, ok: false, skipped: true, error: 'محظور — لا يُتَّصل به' }); skipped++; continue; }
       const ttsText = fillTts(String(body.tts_override || script.ttsText || ''), r);
-      if (!ttsText) { results.push({ phone: to, ok: false, error: 'نص المكالمة فارغ' }); failed++; continue; }
+      // صوت مرفوع أو نص منطوق — أحدهما مطلوب
+      if (!ttsText && !String(script.audioUrl || '').trim()) { results.push({ phone: to, ok: false, error: 'لا صوت ولا نص للمكالمة' }); failed++; continue; }
 
       // سجّل الصف أولاً — id يصير externalId (idempotency)
       const { data: ins, error: insErr } = await db.from('ivr_calls').insert({
@@ -161,13 +162,16 @@ Deno.serve(async (req) => {
       await db.from('ivr_calls').update({ external_id: callRowId }).eq('id', callRowId);
 
       try {
-        const payload = {
+        // صوت مرفوع (WAV) يتقدّم على TTS — أحدهما يكفي Voxa.
+        const audioUrl = String(script.audioUrl || '').trim();
+        const payload: Record<string, unknown> = {
           channelId, destinationNumber: to, externalId: callRowId, webhookUrl,
-          ttsText, ttsVoice, options: voxaOptions,
+          ttsVoice, options: voxaOptions,
           maxAudioRetries: Number(cfg.maxAudioRetries ?? 2),
           inputTimeoutMs: Number(cfg.inputTimeoutMs ?? 6000),
           digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000),
         };
+        if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
         const vr = await fetch(IVR_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
         const vj = await vr.json().catch(() => ({}));
         if (vr.ok) {

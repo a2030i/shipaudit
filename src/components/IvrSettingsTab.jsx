@@ -1,10 +1,11 @@
 // تاب المكالمات الآلية (IVR) داخل «إعدادات واتساب» — الإعدادات + السكربتات + سجل المكالمات.
 // السكربت = نص منطوق (TTS) + خيارات ضغط (DTMF)؛ كل ضغطة تُنفّذ إجراءً عبر ivr-webhook.
 import { useState, useEffect } from 'react';
-import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall } from 'lucide-react';
+import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, ivrStatusBadge, IVR_ACTIONS } from '../lib/ivrService.js';
+import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, ivrStatusBadge, IVR_ACTIONS, uploadIvrAudio } from '../lib/ivrService.js';
+import { loadWhatsAppConfig } from '../lib/whatsappService.js';
 
 export default function IvrTab() {
   const { can } = useAuth();
@@ -19,8 +20,23 @@ export default function IvrTab() {
   const [loadingCalls, setLoadingCalls] = useState(false);
   const [testPhone, setTestPhone] = useState('');
   const [testing, setTesting] = useState(false);
+  const [templates, setTemplates] = useState([]);   // قوالب واتساب المعتمدة (لأتمتة الرد/الضغطة)
+  const [uploadingKey, setUploadingKey] = useState('');
 
-  useEffect(() => { loadIvrConfig().then(setCfg); loadIvrCampaigns().then(setCamps); }, []);
+  useEffect(() => {
+    loadIvrConfig().then(setCfg);
+    loadIvrCampaigns().then(setCamps);
+    loadWhatsAppConfig().then(c => setTemplates(c?.templates || [])).catch(() => {});
+  }, []);
+
+  const onAudioUpload = async (idx, file) => {
+    if (!file) return;
+    const s = cfg.scripts[idx];
+    setUploadingKey(s.key);
+    try { const urlStr = await uploadIvrAudio(file, s.key); updateScript(idx, { audioUrl: urlStr }); toast('رُفع الصوت ✓', 'success'); }
+    catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
+    finally { setUploadingKey(''); }
+  };
 
   const openCampaign = async (name) => {
     setOpenCamp(name); setLoadingCalls(true);
@@ -104,15 +120,46 @@ export default function IvrTab() {
                 </label>
                 {mayConfigure && cfg.scripts.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeScript(si)}><Trash2 size={13}/></Btn>}
               </div>
-              <textarea disabled={!mayConfigure} value={s.ttsText} onChange={e => updateScript(si, { ttsText: e.target.value })} rows={3}
-                placeholder="النص المنطوق — استخدم {name} أو {amount} لملء بيانات العميل" style={{ ...inp, resize: 'vertical', lineHeight: 1.7 }}/>
-              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>خيارات الضغط (كل رقم = إجراء):</div>
+              <textarea disabled={!mayConfigure || !!s.audioUrl} value={s.ttsText} onChange={e => updateScript(si, { ttsText: e.target.value })} rows={3}
+                placeholder="النص المنطوق — استخدم {name} أو {amount} لملء بيانات العميل" style={{ ...inp, resize: 'vertical', lineHeight: 1.7, opacity: s.audioUrl ? 0.5 : 1 }}/>
+
+              {/* صوت مرفوع (WAV) — يتقدّم على النص المنطوق */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                {s.audioUrl ? (
+                  <>
+                    <audio src={s.audioUrl} controls style={{ height: 30, maxWidth: 220 }}/>
+                    <span style={{ color: 'var(--green2)', fontSize: 11 }}>✓ صوت مرفوع (يُشغَّل بدل النص)</span>
+                    {mayConfigure && <Btn size="sm" variant="ghost" title="إزالة الصوت" onClick={() => updateScript(si, { audioUrl: '' })}><X size={12}/></Btn>}
+                  </>
+                ) : mayConfigure && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--accent)', fontSize: 12 }}>
+                    <Upload size={13}/> {uploadingKey === s.key ? 'يرفع…' : 'ارفع صوتك (WAV) — بدل الآلي'}
+                    <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onAudioUpload(si, f); }}/>
+                  </label>
+                )}
+              </div>
+
+              {/* أتمتة: إن رُدّ على المكالمة → أرسل قالب واتساب تلقائياً */}
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, flexWrap: 'wrap' }}>
+                <span style={{ color: 'var(--muted)' }}>📲 إن رُدّ عليها → أرسل قالب:</span>
+                <select disabled={!mayConfigure} value={s.onAnswerTemplate || ''} onChange={e => updateScript(si, { onAnswerTemplate: e.target.value })} style={{ ...inp, minWidth: 180 }}>
+                  <option value="">— بلا قالب —</option>
+                  {templates.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </label>
+
+              <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>خيارات الضغط (كل رقم = إجراء + قالب اختياري):</div>
               {s.options.map((o, oi) => (
                 <div key={oi} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                   <input disabled={!mayConfigure} value={o.digit} onChange={e => updateOpt(si, oi, { digit: e.target.value })} placeholder="#" style={{ ...inp, width: 46, textAlign: 'center' }}/>
                   <input disabled={!mayConfigure} value={o.description} onChange={e => updateOpt(si, oi, { description: e.target.value })} placeholder="وصف الخيار" style={{ ...inp, flex: 1, minWidth: 120 }}/>
-                  <select disabled={!mayConfigure} value={o.action} onChange={e => updateOpt(si, oi, { action: e.target.value })} style={{ ...inp, minWidth: 200 }}>
+                  <select disabled={!mayConfigure} value={o.action} onChange={e => updateOpt(si, oi, { action: e.target.value })} style={{ ...inp, minWidth: 190 }}>
                     {IVR_ACTIONS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                  </select>
+                  <select disabled={!mayConfigure} value={o.template || ''} onChange={e => updateOpt(si, oi, { template: e.target.value })} style={{ ...inp, minWidth: 150 }} title="قالب واتساب يُرسَل عند ضغط هذا الرقم">
+                    <option value="">📲 بلا قالب</option>
+                    {templates.map(t => <option key={t} value={t}>+ {t}</option>)}
                   </select>
                   {mayConfigure && s.options.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeOpt(si, oi)}><X size={13}/></Btn>}
                 </div>
