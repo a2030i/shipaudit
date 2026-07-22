@@ -71,8 +71,12 @@ export async function loadIvrCalls({ campaign = null, phone = null, limit = 300 
 }
 
 // ملخّص لكل حملة (عُدّت/رُدّ عليها/ضغطات)
+// ملاحظة: Voxa يرسل status/result **أرقاماً** لا نصوصاً — فالإشارات الموثوقة =
+// answered_at (رُدّ) + pressed_digit (تفاعل) + الحالة النهائية (اكتملت/فشلت).
 export async function loadIvrCampaigns({ limit = 40 } = {}) {
-  const { data } = await supabase.from('ivr_calls').select('campaign_name, status, result, pressed_digit, created_at').order('created_at', { ascending: false }).limit(4000);
+  const { data } = await supabase.from('ivr_calls')
+    .select('campaign_name, status, pressed_digit, answered_at, duration_seconds, created_at')
+    .order('created_at', { ascending: false }).limit(4000);
   const rows = data || [];
   const byC = new Map();
   for (const r of rows) {
@@ -80,24 +84,28 @@ export async function loadIvrCampaigns({ limit = 40 } = {}) {
     if (!byC.has(k)) byC.set(k, { campaign: k, total: 0, answered: 0, pressed: 0, failed: 0, last: r.created_at });
     const c = byC.get(k);
     c.total++;
-    if (r.result === 'Success' || r.answered_at) c.answered++;
+    const answered = !!r.answered_at || (Number(r.duration_seconds) > 0);
+    const terminal = isTerminalStatus(r.status);
+    if (answered) c.answered++;
     if (r.pressed_digit) c.pressed++;
-    if (r.status === 'Failed' || r.result === 'Failed' || r.result === 'NoAnswer' || r.result === 'Busy') c.failed++;
+    if (!answered && (terminal || String(r.status || '') === 'Failed')) c.failed++;
     if (r.created_at > c.last) c.last = r.created_at;
   }
   return Array.from(byC.values()).slice(0, limit);
 }
 
-const RESULT_AR = {
-  Success: { t: 'نجحت', c: '#16A34A' }, NoAnswer: { t: 'لا رد', c: '#9CA3AF' },
-  Busy: { t: 'مشغول', c: '#F59E0B' }, Failed: { t: 'فشلت', c: '#DC2626' },
-  DtmfTimeout: { t: 'بلا ضغطة', c: '#9CA3AF' },
-};
-const STATUS_AR = {
-  pending: { t: 'قيد الإطلاق', c: '#9CA3AF' }, InProgress: { t: 'جارية', c: '#3B82F6' },
-  Completed: { t: 'اكتملت', c: '#16A34A' }, Failed: { t: 'فشلت', c: '#DC2626' },
-};
+// الحالة النهائية: Voxa يرسل 4 (اكتملت) رقماً؛ نقبل النصّي أيضاً احتياطاً.
+function isTerminalStatus(s) {
+  const v = String(s ?? '');
+  return v === '4' || v === '3' || v === 'Completed' || v === 'Failed';
+}
+
+// شارة الحالة — بالإشارات الموثوقة لا بالأكواد الرقمية الغامضة.
 export function ivrStatusBadge(row) {
-  if (row.result && RESULT_AR[row.result]) return RESULT_AR[row.result];
-  return STATUS_AR[row.status] || { t: row.status || '—', c: '#9CA3AF' };
+  if (row.pressed_digit) return { t: `ضغط ${row.pressed_digit}`, c: '#16A34A' };
+  const answered = !!row.answered_at || (Number(row.duration_seconds) > 0);
+  if (answered) return { t: 'رُدّ — بلا ضغطة', c: '#3B82F6' };
+  if (isTerminalStatus(row.status)) return { t: 'لم يُردّ', c: '#9CA3AF' };
+  if (String(row.status || '') === 'pending') return { t: 'قيد الإطلاق', c: '#9CA3AF' };
+  return { t: 'جارية', c: '#3B82F6' };
 }
