@@ -8,6 +8,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, PageHeader, Modal, toast } from '../components/UI.jsx';
+import IvrCallButton from '../components/IvrCallButton.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
@@ -512,7 +513,7 @@ export default function Retargeting({ isActive = true }) {
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
                             يظهر للجميع والمودال يوضّح الصلاحية الناقصة (لا إخفاء صامت) */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {telLink(l.phone) && <a href={telLink(l.phone)} onClick={e => e.stopPropagation()} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
+                          {l.phone && <IvrCallButton phone={l.phone} name={l.store_name || l.name} size={15}/>}
                           {l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
                         </div>
                       </td>

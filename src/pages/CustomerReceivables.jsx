@@ -14,6 +14,7 @@ import {
   Phone, Hash, ShoppingBag, ArrowLeft,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import IvrCallButton from '../components/IvrCallButton.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import InteractionsLog from '../components/InteractionsLog.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -251,15 +252,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
             </div>
           </div>
           {m.phone && (
-            <a href={`tel:${m.phone}`} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', borderRadius: 999,
-              background: 'var(--accent)', color: '#fff',
-              fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
-              boxShadow: '0 1px 2px rgba(16,185,129,.22)',
-            }}>
-              <Phone size={13}/> اتصل
-            </a>
+            <IvrCallButton phone={m.phone} name={m.storeName || m.name} fields={{ name: m.storeName || m.name }} label size={13}
+              style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px rgba(16,185,129,.22)' }}/>
           )}
         </div>
       )}

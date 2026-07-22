@@ -6,9 +6,10 @@
 // (كانت تظهر وحدها لمن لا يملك campaigns.send فتضيع المحادثة خارج النظام)،
 // وزر الحملة يظهر للجميع والمودال نفسه يوضّح الصلاحية الناقصة.
 import { useState } from 'react';
-import { Phone, MessageCircle, Send } from 'lucide-react';
+import { MessageCircle, Send } from 'lucide-react';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from './WhatsAppSendModal.jsx';
+import IvrCallButton from './IvrCallButton.jsx';
 
 // props: phone (خام — يُطبَّع داخلياً) · name · amount? · count? · vars? (افتراضها [name])
 //        campaignLabel? (اسم الحملة في السجل) · size? (حجم الأيقونات) · showTel?/showChat?
@@ -18,7 +19,6 @@ export default function WaActions({ phone, name, amount = null, count = null, va
   const digits = String(phone || '').replace(/\D/g, '');
   if (!digits) return null;
   const normalized = normalizeSaudiPhone(digits);
-  const tel = `tel:+${normalized}`;
   const chat = `https://wa.me/${normalized}`;
   const displayName = (name || '').trim() || normalized;
 
@@ -31,7 +31,7 @@ export default function WaActions({ phone, name, amount = null, count = null, va
   return (
     <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
       {showTel && (
-        <a href={tel} title="اتصال" style={{ color: 'var(--text)', display: 'inline-flex' }}><Phone size={size}/></a>
+        <IvrCallButton phone={normalized} name={displayName} fields={recipient.fields} size={size}/>
       )}
       <button onClick={() => setOpen(true)} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل ويُتتبَّع)"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'inline-flex' }}>

@@ -4,6 +4,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { UserPlus, RefreshCw, Phone, MessageCircle, Send, Search, Download } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
+import IvrCallButton from '../components/IvrCallButton.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadHatifLeads, computeLeadStats, syncHatifLeads, kindMeta } from '../lib/hatifLeadsService.js';
 import { STATUSES, statusMeta, setRetargetingFollowup, bulkSetFollowups } from '../lib/retargetingService.js';
@@ -226,7 +227,7 @@ export default function HatifLeads({ isActive = true }) {
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
                             يظهر للجميع والمودال يوضّح الصلاحية الناقصة */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {telLink(l.phone) && <a href={telLink(l.phone)} title="اتصال" style={{ color: 'var(--text)' }}><Phone size={15}/></a>}
+                          {l.phone && <IvrCallButton phone={l.phone} name={l.store_name || l.name} size={15}/>}
                           <button onClick={() => setWaRecipients([toRecipient(l)])} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)"
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
                         </div>

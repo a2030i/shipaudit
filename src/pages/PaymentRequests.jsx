@@ -16,6 +16,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast,
   PageHeader,
 } from '../components/UI.jsx';
+import IvrCallButton from '../components/IvrCallButton.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import WaActions from '../components/WaActions.jsx';
 import {
@@ -358,15 +359,8 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
         </div>
         {row.phone && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
-            <a href={`tel:${row.phone}`} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '8px 14px', borderRadius: 999,
-              background: 'var(--accent)', color: '#fff',
-              fontSize: 12.5, fontWeight: 600, textDecoration: 'none',
-              boxShadow: '0 1px 2px rgba(16,185,129,.22)',
-            }}>
-              <Phone size={13}/> اتصل
-            </a>
+            <IvrCallButton phone={row.phone} name={row.store_name || row.customer_name} fields={{ name: row.store_name || row.customer_name, amount: row.amount }} label size={13}
+              style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px rgba(16,185,129,.22)' }}/>
             {/* §هيكلة-0: حملة قالب بمبلغ الطلب (تُسجَّل وتُتتبَّع) بدل ترك واتساب بلا زر */}
             <WaActions phone={row.phone} name={row.store_name || row.customer_name}
               amount={Number(row.amount_total) || 0}

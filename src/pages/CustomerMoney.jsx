@@ -17,6 +17,7 @@ import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZoh
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import IvrCallButton from '../components/IvrCallButton.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -684,7 +685,6 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
   const [invs, setInvs] = useState(null);
   const digits = String(c.phone || '').replace(/\D/g, '');
   const waChat = digits ? `https://wa.me/${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
-  const tel = digits ? `tel:+${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
 
   const toggleInvoices = async () => {
     const next = !open;
@@ -758,12 +758,9 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-        {tel && (
-          <a href={tel} style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
-            padding: '8px 0', borderRadius: 8, background: 'var(--surface2)', border: '1px solid var(--border)',
-            color: 'var(--text)', textDecoration: 'none', fontSize: 12, fontWeight: 700 }}>
-            <Phone size={13}/> اتصال
-          </a>
+        {digits && (
+          <IvrCallButton phone={digits} name={c.storeName || c.name} fields={{ name: c.storeName || c.name, amount: c.owed }}
+            label size={13} style={{ flex: 1, justifyContent: 'center', padding: '8px 0', fontSize: 12, fontWeight: 700 }}/>
         )}
         {digits && onWa && (
           <button onClick={() => onWa(c)} title="إطلاق حملة واتساب لهذا العميل (قالب معتمد)"
