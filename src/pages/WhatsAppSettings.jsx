@@ -9,6 +9,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, syncHatifUsers } from '../lib/whatsappService.js';
+import { loadEmployees } from '../lib/employeeService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -39,11 +40,12 @@ export default function WhatsAppSettings({ isActive = true }) {
     setSyncing(false);
   };
 
+  const [employees, setEmployees] = useState([]);
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [c, z] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null)]);
-      setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' });
+      const [c, z, emps] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null), loadEmployees().catch(() => [])]);
+      setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' }); setEmployees(emps || []);
     } catch (e) { toast(e.message, 'error'); }
     setLoading(false);
   }, []);
@@ -140,12 +142,20 @@ export default function WhatsAppSettings({ isActive = true }) {
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {templates.map(t => (
-                  <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px' }}>
-                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, cursor: 'pointer', fontSize: 12.5 }}>
+                  <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '7px 10px', flexWrap: 'wrap' }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 7, flex: 1, minWidth: 160, cursor: 'pointer', fontSize: 12.5 }}>
                       <input type="radio" name="defaultTpl" checked={cfg.templateName === t} onChange={() => setCfg({ ...cfg, templateName: t })}/>
                       <span style={{ fontFamily: 'var(--font-mono)' }}>{t}</span>
                       {cfg.templateName === t && <span style={{ fontSize: 10.5, color: 'var(--green2)' }}>افتراضي</span>}
                     </label>
+                    {/* المسؤول عن ردود هذا القالب — يُسند إليه الرد آلياً (مهمة + محادثة هاتف) */}
+                    <select value={cfg.templateAgents?.[t] || ''}
+                      onChange={e => setCfg({ ...cfg, templateAgents: { ...(cfg.templateAgents || {}), [t]: e.target.value || undefined } })}
+                      style={{ fontSize: 11.5, padding: '4px 8px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', minWidth: 150 }}
+                      title="المسؤول عن ردود هذا القالب">
+                      <option value="">↩️ المسؤول: تلقائي (المُرسِل)</option>
+                      {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
+                    </select>
                     <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeTpl(t)}><Trash2 size={13}/></Btn>
                   </div>
                 ))}

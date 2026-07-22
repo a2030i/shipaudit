@@ -36,6 +36,9 @@ export async function saveWhatsAppConfig(cfg) {
     drip:             cfg.drip || null,
     // ربط متغيرات القوالب (2026-07-21): { [templateName]: [{src, text?}, ...] }
     templateVars:     cfg.templateVars || {},
+    // ربط القالب بموظف مسؤول (2026-07-22): { [templateName]: <supabase user id> } —
+    // ردّ العميل على هذا القالب يُسند لهذا الموظف (مهمة + محادثة هاتف).
+    templateAgents:   cfg.templateAgents || {},
   });
   const { error } = await supabase.from('app_settings')
     .upsert({ key: CFG_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });

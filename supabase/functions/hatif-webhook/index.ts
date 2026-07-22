@@ -1,4 +1,6 @@
-// hatif-webhook v8 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook v9 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// v9 (2026-07-22): **الإسناد بالقالب** — المسؤول عن الرد = المربوط بالقالب في
+// whatsapp_config.templateAgents (قالب مالي→بلال، تسويقي→مبيعات)، وإلا مالك المتابعة/المُرسِل.
 // v8 (2026-07-22): **إسناد المحادثة تلقائياً** — عند ردّ حقيقي، يُسند المحادثة في
 // هاتف لموظف هاتف المربوط بمالك المتابعة/المُرسِل (Assign Conversation) — تظهر عنده مباشرة.
 // v7 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
@@ -58,7 +60,7 @@ Deno.serve(async (req) => {
   const when           = p.creationTime || p.CreationTime || new Date().toISOString();
   if (!conversationId && !contactId) return ok();
 
-  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, sent_at';
+  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, sent_at, template_name';
   let row: Record<string, any> | null = null;
   if (conversationId) {
     const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
@@ -112,7 +114,14 @@ Deno.serve(async (req) => {
           last_touch_at: when, updated_at: new Date().toISOString(),
         }, { onConflict: 'phone' });
       }
-      const assignee = fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null);
+      // الأولوية للمسؤول عن القالب (templateAgents) — قالب مالي→بلال، تسويقي→مبيعات؛
+      // وإلا مالك المتابعة، وإلا مُرسِل الحملة.
+      let tplOwner: string | null = null;
+      try {
+        const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
+        if (cfgRow?.value && row.template_name) tplOwner = (JSON.parse(cfgRow.value).templateAgents || {})[row.template_name] || null;
+      } catch { /* */ }
+      const assignee = tplOwner ?? fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null);
       if (assignee) {
         const { error: taskErr } = await db.from('crm_tasks').insert({
           title: `↩️ ردّ وارد من ${row.name || row.phone} — تابِعه الآن`,
