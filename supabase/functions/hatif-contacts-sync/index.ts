@@ -1,9 +1,10 @@
-// hatif-contacts-sync v2 — يدفع ملف العميل إلى **Contact Properties** في هاتف
+// hatif-contacts-sync v3 — يدفع ملف العميل إلى **Contact Properties** في هاتف
 // (الآلية الوحيدة التي تظهر للموظف في البروفايل — customFields تُخزَّن لكنها مخفيّة،
 // وحقل note يُضيف نسخة كل مرة ولا يُحذف برمجياً، فكلاهما مرفوض هنا).
 //
-// ⚠️ هاتف لا يوفّر ربط Tag بجهة اتصال (Tags API = تعريف الوسم فقط، 53 مساراً
-// مراجَعة). البديل المعتمد: خصائص من نوع **قائمة (3)** بقيَم ملوّنة = شارات بصرية.
+// ⚠️ هاتف لا يوفّر ربط Tag **بجهة اتصال** (v1: تعريف الوسم فقط، 53 مساراً مراجَعة).
+// البديل المعتمد للجهات: خصائص من نوع **قائمة (3)** بقيَم ملوّنة = شارات بصرية.
+// 🆕 لكن v2 يوفّر ربط Tag **بالمحادثة** (كشفه الدعم 2026-07-22) — action=convo يجرّبه.
 //
 // المصدر: RPC hatif_contact_profile() — موحّد بالهاتف المطبَّع، الاسم = أعلى متجر
 // شحناً، details = سرد لكل متجر. حصة Voxa: hatif_contact_sync يخزّن contact_id
@@ -26,8 +27,8 @@ const CONTACTS_URL = 'https://api.voxa.sa/v1/contacts';
 const PROPDEF_URL = 'https://api.voxa.sa/v1/contact-property-definitions';
 const TAGS_URL = 'https://api.voxa.sa/v1/tags/service-account';
 
-// مكتبة الوسوم — تُنشأ مرة ليلصقها الموظف بنقرة من قائمة موحّدة (الإلصاق يدوي:
-// هاتف لا يوفّر endpoint لربط وسم بمحادثة/جهة — الوسوم للقراءة فقط في الـAPI).
+// مكتبة الوسوم — تُنشأ مرة ليلصقها الموظف بنقرة من قائمة موحّدة. الإلصاق بجهة
+// الاتصال يدوي (لا endpoint له)، أما **المحادثة** فلها endpoint v2 (action=convo).
 // isPinned = يظهر في المقدّمة. العربية هنا داخل الكود (curl يشوّهها على Windows).
 const TAG_CATALOG: { name: string; icon: string; isPinned: boolean }[] = [
   { name: 'VIP',          icon: '⭐', isPinned: true },
@@ -158,6 +159,69 @@ Deno.serve(async (req) => {
   // ⚠️ PostgREST يسقّف نتيجة الـRPC عند **1000 صف** (إعداد سيرفري لا يرفعه range)،
   // فوضع all يجب أن يجلب على صفحات وإلا فقدنا 455 عميلاً صامتاً.
   const onePhone = body.phone ? normPhone(body.phone) : null;
+
+  // ── تجربة وسم المحادثات — endpoint v2 كشفه دعم هاتف (2026-07-22) ──
+  // POST v2/conversations/service-account/{id}/tags {tagIds:[…]} — الدلالة المشتبهة
+  // **استبدال كامل** ([] يمسح كل الوسوم، حسب الدعم). الإجراء يتحقق عملياً:
+  // يقرأ → يلصق وسماً → يرسل وسماً آخر وحده (لو بقي الاثنان=إضافة، واحد=استبدال) → ينظّف.
+  // قبل موقع فحص العضوية في كشف المتاجر عمداً — المحادثة قد تكون لعميل خارج الكشف.
+  if (action === 'convo') {
+    const token = await accessToken();
+    const V2 = 'https://api.voxa.sa/v2/conversations/service-account';
+
+    // المحادثة المستهدفة: صريحة، أو آخر إرسال حملة (لهاتف معيّن أو الأحدث إطلاقاً)
+    let convoId = String(body.conversation_id || '');
+    let target: Record<string, unknown> | null = null;
+    if (!convoId) {
+      let q = db.from('whatsapp_campaign_sends')
+        .select('phone, name, conversation_id, template_name, sent_at')
+        .not('conversation_id', 'is', null)
+        .order('sent_at', { ascending: false }).limit(1);
+      if (onePhone) q = q.eq('phone', onePhone);
+      const { data, error } = await q;
+      if (error) return json({ ok: false, error: error.message });
+      target = (data || [])[0] || null;
+      convoId = String(target?.conversation_id || '');
+    }
+    if (!convoId) return json({ ok: false, error: 'لا محادثة معروفة — مرّر conversation_id أو phone لعميل استلم حملة' });
+
+    const call = async (step: string, url: string, init?: RequestInit) => {
+      const r = await fetch(url, { ...init, headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' } });
+      const txt = await r.text();
+      await sleep(120);
+      return { step, status: r.status, body: txt.slice(0, 300) };
+    };
+    const log: unknown[] = [];
+
+    // قراءة قبل أي كتابة — أي الأشكال يدعمها v2؟
+    log.push(await call('read: GET v2 …/tags', `${V2}/${convoId}/tags`));
+    log.push(await call('read: GET v2 convo', `${V2}/${convoId}`));
+
+    if (body.write !== true) {
+      return json({ ok: true, mode: 'probe — قراءة فقط، مرّر write:true للتجربة الكاملة', target, conversation_id: convoId, log });
+    }
+
+    // معرّفا وسمي التجربة من المكتبة (§tags)
+    const tr = await fetch(`${TAGS_URL}?skipCount=0&maxResultCount=100`, { headers: { Authorization: `Bearer ${token}` } });
+    const allTags: any[] = unwrap(await tr.json().catch(() => ({})))?.items || [];
+    const idOf = (n: string) => allTags.find((t: any) => String(t.name || '').trim() === n)?.id || null;
+    const t1 = idOf(String(body.tag1 || 'اتصال')), t2 = idOf(String(body.tag2 || 'متأخر سداد'));
+    if (!t1 || !t2) return json({ ok: false, error: 'وسما التجربة غير موجودين في المكتبة', have: allTags.map((t: any) => t.name) });
+
+    log.push(await call('write: POST [t1=اتصال]', `${V2}/${convoId}/tags`, { method: 'POST', body: JSON.stringify({ tagIds: [t1] }) }));
+    log.push(await call('read بعد [t1]', `${V2}/${convoId}/tags`));
+    log.push(await call('write: POST [t2=متأخر سداد] وحده', `${V2}/${convoId}/tags`, { method: 'POST', body: JSON.stringify({ tagIds: [t2] }) }));
+    log.push(await call('read بعد [t2] — وسمان=إضافة، واحد=استبدال', `${V2}/${convoId}/tags`));
+
+    // تنظيف: محادثات حملاتنا لا يوسمها الفريق عادة، فإرجاعها بلا وسوم آمن.
+    // مرّر keep:true لإبقاء الوسم الأخير ظاهراً في صندوق هاتف (فحص بصري).
+    if (body.keep !== true) {
+      log.push(await call('cleanup: POST []', `${V2}/${convoId}/tags`, { method: 'POST', body: JSON.stringify({ tagIds: [] }) }));
+      log.push(await call('read بعد التنظيف', `${V2}/${convoId}/tags`));
+    }
+    return json({ ok: true, target, conversation_id: convoId, tag_ids: { t1, t2 }, log });
+  }
+
   let list: any[] = [];
   if (onePhone) {
     const { data, error } = await db.rpc('hatif_contact_profile').eq('phone', onePhone);
@@ -361,7 +425,7 @@ Deno.serve(async (req) => {
     return json({ ok: true, found: hits.length, fixed, untouched, samples });
   }
 
-  if (action !== 'sync') return json({ error: 'unknown action (preview|props|inspect|fixnames|sync)' }, 400);
+  if (action !== 'sync') return json({ error: 'unknown action (preview|props|tags|audit|inspect|fixnames|convo|sync)' }, 400);
 
   let token: string, props: Map<string, string>;
   try { token = await accessToken(); props = await ensureProps(token); }
