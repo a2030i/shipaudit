@@ -41,7 +41,7 @@ Deno.serve(async (req) => {
   }
   if (!row) return ok();
 
-  const patch: Record<string, any> = {};
+  const patch: Record<string, any> = { raw: p };   // نخزّن الخام لتثبيت خرائط حقول Voxa الحقيقية
   if (status)     patch.status = String(status);
   if (result)     patch.result = String(result);
   if (pressed != null && pressed !== '') patch.pressed_digit = String(pressed);
@@ -54,9 +54,13 @@ Deno.serve(async (req) => {
   }
 
   // press→action — مرة واحدة (لا يُعاد التنفيذ إن وصل الـwebhook مرتين).
-  const digit = (pressed != null && pressed !== '') ? String(pressed) : null;
-  const isCompleted = String(status || '') === 'Completed';
-  if (isCompleted && digit && !row.action_taken) {
+  // Voxa يرسل status/result كأرقام لا نصوص؛ فلا نعتمد على نص الحالة 'Completed'.
+  // نأخذ الضغطة من pressedDigit فقط (رمز مفرد 0-9,*,#) وننفّذ الإجراء بمجرد وجودها.
+  // (خرائط result/status الرقمية تُثبَّت من الحمولة الخام المخزّنة — لا نخمّن هنا كي
+  // لا نُطلق dnc خاطئاً على رقم لم يُضغط عليه فعلاً.)
+  const DTMF = /^[0-9*#]$/;
+  const digit: string | null = (pressed != null && DTMF.test(String(pressed))) ? String(pressed) : null;
+  if (digit && !row.action_taken) {
     try {
       const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
       let cfg: Record<string, any> = {};
