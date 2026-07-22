@@ -8,7 +8,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
-  loadBlocklist, addToBlocklist, removeFromBlocklist } from '../lib/whatsappService.js';
+  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -259,6 +259,7 @@ function CampaignsTab() {
   const [noWa, setNoWa] = useState([]);            // أرقام بلا واتساب (للاتصال)
   const [expNoWa, setExpNoWa] = useState(false);
   const [block, setBlock] = useState([]);          // قائمة الحظر الدائمة
+  const [health, setHealth] = useState(null);      // صحة التسليم (كل الحملات)
   const [blkPhone, setBlkPhone] = useState('');
   const [blkName, setBlkName] = useState('');
   const [blkBusy, setBlkBusy] = useState(false);
@@ -296,13 +297,14 @@ function CampaignsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [log, rep, nw, blk] = await Promise.all([
+      const [log, rep, nw, blk, hl] = await Promise.all([
         loadWhatsAppLog({ limit: camp ? 1000 : 500, campaign: camp || null }),
         loadWhatsAppCampaignReport(),
         loadNoWhatsappList().catch(() => []),
         loadBlocklist().catch(() => []),
+        loadWhatsAppDeliveryHealth().catch(() => null),
       ]);
-      setRows(log); setReport(rep); setNoWa(nw); setBlock(blk);
+      setRows(log); setReport(rep); setNoWa(nw); setBlock(blk); setHealth(hl);
     } catch { setRows([]); }
     setLoading(false);
   }, [camp]);
@@ -380,12 +382,51 @@ function CampaignsTab() {
   if (rows == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
 
   const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
+  const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
   const anyStatus = report.some(c => c.delivered || c.read || c.replied);
   const rth = { padding: '9px 11px', fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', textAlign: 'right' };
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
+  const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: '#3B82F6', failed: 'var(--red)', pending: 'var(--gold)' };
+  const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
+    : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
+    : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
+    : /invalid|not.*valid/i.test(r) ? 'رقم غير صالح' : r;
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* ── صحة التسليم عبر كل الحملات (تسليم/قراءة/رفض + أسباب) ── */}
+      {health && health.total > 0 && (
+        <Card style={{ padding: '14px 16px' }}>
+          <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>📡 صحة التسليم — كل الحملات ({fmt0(health.total)} رسالة)</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
+            {[['وُصِّلت', health.delivered, 'delivered'], ['قُرئت', health.read, 'read'], ['ردّ حقيقي', health.replied, 'replied'],
+              ['رُفضت', health.failed, 'failed'], ['قيد الإرسال', health.pending, 'pending']].map(([l, v, k]) => (
+              <div key={k} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 10px', textAlign: 'center' }}>
+                <div style={{ fontSize: 10, color: 'var(--muted)' }}>{l}</div>
+                <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: HEALTH_TONE[k] }}>{fmt0(v)}</div>
+                <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{pct(v, health.total)}</div>
+              </div>
+            ))}
+          </div>
+          {health.reasons.length > 0 && (
+            <div style={{ marginTop: 12 }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>أسباب الرفض:</div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                {health.reasons.map((r, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
+                    <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--red)', minWidth: 42 }}>{fmt0(r.n)}</span>
+                    <span style={{ flex: 1 }}>{reasonAr(r.reason)}</span>
+                    {/undeliverable/i.test(r.reason) && <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>يُستبعَد آلياً ✓</span>}
+                    {/healthy ecosystem/i.test(r.reason) && <span style={{ fontSize: 10.5, color: 'var(--gold)' }}>استهدف أضيق</span>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* ── تقرير الحملات (كواجهة هاتف) — نقرة الحملة تفتح رسائلها ── */}
       <div style={{ fontSize: 13, fontWeight: 700 }}>📊 تقرير الحملات</div>
       {!anyStatus && report.length > 0 && (

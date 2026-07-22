@@ -86,6 +86,18 @@ export async function loadNoWhatsappList() {
   return data.map(r => ({ phone: r.phone, name: r.name, lastAttempt: r.last_attempt, attempts: Number(r.attempts) || 1, campaigns: r.campaigns }));
 }
 
+// صحة التسليم عبر كل الحملات (إجماليات + أسباب الرفض) — لبطاقة «سجل الحملات».
+export async function loadWhatsAppDeliveryHealth() {
+  const { data, error } = await supabase.rpc('whatsapp_delivery_health');
+  if (error || !data) return null;
+  return {
+    total: Number(data.total) || 0, delivered: Number(data.delivered) || 0,
+    read: Number(data.read) || 0, replied: Number(data.replied) || 0,
+    auto: Number(data.auto) || 0, failed: Number(data.failed) || 0, pending: Number(data.pending) || 0,
+    reasons: Array.isArray(data.reasons) ? data.reasons.map(r => ({ reason: r.reason, n: Number(r.n) || 0 })) : [],
+  };
+}
+
 // قائمة الحظر الدائمة (رقم شخصي/منصّة/رقم خاطئ لمتجر لا يمكن حذفه) — تُستبعَد
 // من كل حملة تلقائياً (مدموجة في no_whatsapp_phones). إدارة يدوية.
 export async function loadBlocklist() {
