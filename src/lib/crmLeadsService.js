@@ -112,6 +112,36 @@ function dedupCore(norm) {
   return s.trim() || String(norm || '').trim();
 }
 
+// توحيد المنصّة: الإنجليزي = العربي (Salla→سلة · Zid→زد). يطابق canon SQL.
+export function canonPlatform(p) {
+  if (!p) return null;
+  const s = String(p).trim();
+  if (/^salla$/i.test(s) || s === 'سلة') return 'سلة';
+  if (/^zid$/i.test(s) || s === 'زد') return 'زد';
+  return s || null;
+}
+// دمج الأقسام لـ11 رئيسياً — يأخذ ما قبل «—» ثم يطابق بالكلمة المفتاحية.
+// نسخة JS من canon_lead_category (SQL) — تبقيان متطابقتين.
+export function canonLeadCategory(c) {
+  if (!c) return null;
+  const head = String(c).replace(/[—–-]/g, '—').split('—')[0].replace(/\s+/g, ' ').trim();
+  if (!head) return null;
+  if (/تسويق|حلول إلكتروني|تصميم|طباعة|تصوير|لوجست|إدار|خدمات الأعمال|دراسات|استشار|برمج|تقني|موقع/.test(head)) return 'خدمات الأعمال';
+  if (/مستلزمات المرأة|كوافير|تجميل|عناية|عطور|صحة|لياقة|الجمال/.test(head)) return 'الجمال والصحة';
+  if (/مطبخ|مخبوز|قهوة|مشروب|أطعم|اطعم|طعام|حلوي|بن|تمر/.test(head)) return 'أطعمة ومشروبات';
+  if (/إلكترون|الكترون|اكسسوار|جوال|كمبيوتر|تقنية/.test(head)) return 'إلكترونيات';
+  if (/أثاث|اثاث|ديكور|منزل|مفروش/.test(head)) return 'المنزل';
+  if (/حرف|يدوي|هدايا|هديه|متسوق|ورد|زهور/.test(head)) return 'هدايا';
+  if (/مناسبات|حفل|تنسيق|فعاليات/.test(head)) return 'حفلات';
+  if (/أكاديمي|اكاديمي|تعليم|دورات|تدريب|مدرس/.test(head)) return 'التعليم';
+  if (/عقار/.test(head)) return 'العقارات';
+  if (/سيارات|سياره|مركبات/.test(head)) return 'السيارات';
+  if (/أزياء|ازياء|ملابس|موضة|عباي|أحذية|حقائب/.test(head)) return 'أزياء';
+  if (/أطفال|اطفال|مواليد|ألعاب|العاب/.test(head)) return 'أطفال وألعاب';
+  if (head === 'أخرى' || head === 'اخرى') return 'أخرى';
+  return head;
+}
+
 export function isJunkLeadName(name) {
   const raw = String(name ?? '').trim();
   if (raw.replace(/\s/g, '').length <= 1) return true;               // فارغ/حرف واحد
@@ -299,10 +329,10 @@ export function parseLeadsRows(allRows, colsOverride = null) {
     if (phoneNorm && !isRealSaudiMobile(phoneNorm)) phoneNorm = null;
     if (!phoneNorm) invalidPhone++;
 
-    // النوع الفرعي يُلحَق بالقسم (سلة: businessType + businessSubType)
+    // القسم يُدمَج لـ11 رئيسياً (canonLeadCategory) — النوع الفرعي يُطوى في الرئيسي
     const cat = toText(cell(r, cols.category));
     const subCat = toText(cell(r, cols.subCategory));
-    const category = cat && subCat ? `${cat} — ${subCat}` : (cat || subCat);
+    const category = canonLeadCategory(cat && subCat ? `${cat} — ${subCat}` : (cat || subCat));
     // العنوان: عمود صريح، وإلا يُركَّب من (حي/مدينة/منطقة) عند غيابه (صيغة سلة)
     const city = toText(cell(r, cols.city));
     let address = toText(cell(r, cols.address));
@@ -325,7 +355,7 @@ export function parseLeadsRows(allRows, colsOverride = null) {
       city,
       address,
       website: toText(cell(r, cols.website)),
-      platform: toText(cell(r, cols.platform)) || defaultPlatform,
+      platform: canonPlatform(toText(cell(r, cols.platform)) || defaultPlatform),
       storeUrl: toText(cell(r, cols.storeUrl)),
       socialLinks: {
         whatsapp: toText(cell(r, cols.whatsappLink)),
