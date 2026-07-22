@@ -759,7 +759,9 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {digits && (
-          <IvrCallButton phone={digits} name={c.storeName || c.name} fields={{ name: c.storeName || c.name, amount: c.owed }}
+          <IvrCallButton phone={digits} name={c.storeName || c.name}
+            fields={{ name: c.storeName || c.name, amount: c.owed, overdue: c.overdue, wallet: c.walletBalance,
+              invoices_count: c.invCnt, oldest_days: c.oldestDays, last_shipment: c.lastShipmentAt }}
             label size={13} style={{ flex: 1, justifyContent: 'center', padding: '8px 0', fontSize: 12, fontWeight: 700 }}/>
         )}
         {digits && onWa && (

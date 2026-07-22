@@ -1,10 +1,10 @@
 // تاب المكالمات الآلية (IVR) داخل «إعدادات واتساب» — الإعدادات + السكربتات + سجل المكالمات.
 // السكربت = نص منطوق (TTS) + خيارات ضغط (DTMF)؛ كل ضغطة تُنفّذ إجراءً عبر ivr-webhook.
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, ivrStatusBadge, IVR_ACTIONS, uploadIvrAudio } from '../lib/ivrService.js';
+import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, ivrStatusBadge, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
 import { loadWhatsAppConfig } from '../lib/whatsappService.js';
 
 export default function IvrTab() {
@@ -22,6 +22,21 @@ export default function IvrTab() {
   const [testing, setTesting] = useState(false);
   const [templates, setTemplates] = useState([]);   // قوالب واتساب المعتمدة (لأتمتة الرد/الضغطة)
   const [uploadingKey, setUploadingKey] = useState('');
+  const focusRef = useRef({ el: null, si: -1 });    // آخر textarea نصّ منطوق مُركّز — لإدراج المتغيّر عند المؤشّر
+
+  // إدراج متغيّر عند مؤشّر النص المنطوق للسكربت si (وإلا يُلحَق بالنهاية)
+  const insertVar = (si, token) => {
+    const s = cfg.scripts[si]; const cur = s.ttsText || '';
+    const f = focusRef.current;
+    if (f.el && f.si === si) {
+      const start = f.el.selectionStart ?? cur.length, end = f.el.selectionEnd ?? start;
+      const next = cur.slice(0, start) + token + cur.slice(end);
+      updateScript(si, { ttsText: next });
+      requestAnimationFrame(() => { try { f.el.focus(); const pos = start + token.length; f.el.setSelectionRange(pos, pos); } catch { /* */ } });
+    } else {
+      updateScript(si, { ttsText: (cur ? cur + ' ' : '') + token });
+    }
+  };
 
   useEffect(() => {
     loadIvrConfig().then(setCfg);
@@ -128,11 +143,24 @@ export default function IvrTab() {
                 </label>
                 {mayConfigure && cfg.scripts.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeScript(si)}><Trash2 size={13}/></Btn>}
               </div>
-              <textarea disabled={!mayConfigure || !!s.audioUrl} value={s.ttsText} onChange={e => updateScript(si, { ttsText: e.target.value })} rows={3}
-                placeholder="النص المنطوق — استخدم {name} أو {amount} لملء بيانات العميل" style={{ ...inp, resize: 'vertical', lineHeight: 1.7, opacity: s.audioUrl ? 0.5 : 1 }}/>
+              <textarea disabled={!mayConfigure || !!s.audioUrl} value={s.ttsText}
+                onChange={e => updateScript(si, { ttsText: e.target.value })}
+                onFocus={e => { focusRef.current = { el: e.target, si }; }}
+                onSelect={e => { focusRef.current = { el: e.target, si }; }}
+                rows={3}
+                placeholder="النص المنطوق — أدرِج متغيّراً بالأزرار أدناه أو اكتب {name}" style={{ ...inp, resize: 'vertical', lineHeight: 1.7, opacity: s.audioUrl ? 0.5 : 1 }}/>
               {!s.audioUrl && (
-                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.7 }}>
-                  متغيّرات تُملأ لكل عميل: <code>{'{name}'}</code> الاسم · <code>{'{amount}'}</code> المبلغ/المديونية — وأي عمود من بيانات الحملة. (تعمل مع النص المنطوق فقط، لا مع الصوت المرفوع.)
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, alignItems: 'center' }}>
+                  <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>أدرِج متغيّراً:</span>
+                  {IVR_VARS.map(v => (
+                    <button key={v.token} type="button" disabled={!mayConfigure} onClick={() => insertVar(si, v.token)}
+                      title={`${v.label} — يُملأ لكل عميل`}
+                      style={{ fontSize: 10.5, padding: '3px 9px', borderRadius: 999, cursor: mayConfigure ? 'pointer' : 'default',
+                        border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--accent)', fontWeight: 600 }}>
+                      {v.label}
+                    </button>
+                  ))}
+                  <span style={{ fontSize: 10, color: 'var(--muted2)', width: '100%', marginTop: 2 }}>يُملأ لكل عميل من بيانات الحملة (يعمل مع النص المنطوق فقط، لا مع الصوت المرفوع).</span>
                 </div>
               )}
 

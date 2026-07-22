@@ -5,6 +5,20 @@ import { supabase } from './supabase.js';
 
 const IVR_FN = 'hatif-ivr';
 
+// متغيّرات النص المنطوق — تُدرَج بزر، وتُملأ لكل عميل من بيانات الحملة (fillTts).
+export const IVR_VARS = [
+  { token: '{name}', label: 'الاسم' },
+  { token: '{amount}', label: 'المبلغ/المديونية' },
+  { token: '{wallet}', label: 'رصيد المحفظة' },
+  { token: '{overdue}', label: 'المتأخّر' },
+  { token: '{shipments}', label: 'عدد الشحنات' },
+  { token: '{last_shipment}', label: 'آخر شحنة' },
+  { token: '{days_since}', label: 'أيام منذ آخر شحنة' },
+  { token: '{invoices_count}', label: 'عدد الفواتير' },
+  { token: '{oldest_days}', label: 'عمر أقدم فاتورة' },
+  { token: '{city}', label: 'المدينة' },
+];
+
 export const IVR_ACTIONS = [
   { key: 'send_template', label: 'إرسال قالب واتساب (اختر القالب ⬅)' },
   { key: 'followup', label: 'متابعة مبيعات/تحصيل (مهمة للفريق)' },

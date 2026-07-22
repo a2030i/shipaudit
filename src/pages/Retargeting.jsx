@@ -513,7 +513,8 @@ export default function Retargeting({ isActive = true }) {
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
                             يظهر للجميع والمودال يوضّح الصلاحية الناقصة (لا إخفاء صامت) */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {l.phone && <IvrCallButton phone={l.phone} name={l.store_name || l.name} size={15}/>}
+                          {l.phone && <IvrCallButton phone={l.phone} name={l.storeName}
+                            fields={{ name: l.storeName, shipments: l.totalShipments, last_shipment: l.lastShipment, days_since: l.daysSinceLast, wallet: l.wallet }} size={15}/>}
                           {l.phone && <button onClick={e => { e.stopPropagation(); setWaRecipients([leadToRecipient(l)]); }} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)" style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>}
                         </div>
                       </td>

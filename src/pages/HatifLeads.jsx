@@ -227,7 +227,7 @@ export default function HatifLeads({ isActive = true }) {
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة
                             يظهر للجميع والمودال يوضّح الصلاحية الناقصة */}
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                          {l.phone && <IvrCallButton phone={l.phone} name={l.store_name || l.name} size={15}/>}
+                          {l.phone && <IvrCallButton phone={l.phone} name={l.name} fields={{ name: l.name || l.phone }} size={15}/>}
                           <button onClick={() => setWaRecipients([toRecipient(l)])} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل)"
                             style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'flex' }}><Send size={15}/></button>
                         </div>
