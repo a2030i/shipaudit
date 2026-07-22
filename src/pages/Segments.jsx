@@ -29,6 +29,7 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
+import { loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { loadLatestReceivables } from '../lib/customerReceivablesService.js';
 import {
@@ -100,6 +101,7 @@ const EMPTY_FILTERS = {
   shipmentCountKind: null,  // 'zero' | 'one_plus' | 'high'
   signupRecency:     null,  // number of days — show rows where signupDays >= N
   topupRecency:      null,  // 'never' | 'gte_30' | 'gte_60' | 'gte_90' | 'gte_180'
+  campaignRecency:   null,  // 'never' (لم تُرسَل حملة) | 'gte_N' | 'lte_N' (أيام منذ آخر حملة واتساب)
 
   // Account
   platformStatuses:  [],    // multi-select of raw status strings
@@ -174,6 +176,12 @@ const FACET_CONFIG = {
     operators: ['any', 'gte', 'lte'],
     specials:  [],
     defaultValue: 5,
+  },
+  campaignRecency: {
+    unit: 'يوم',
+    operators: ['any', 'gte', 'lte'],
+    specials:  [{ value: 'never', label: 'لم تُرسَل حملة' }],
+    defaultValue: 7,
   },
   debtFilter: {
     unit: 'ر.س',
@@ -301,6 +309,10 @@ function matchesFilters(row, f) {
   if (!matchNumeric(parseFacetValue(f.topupRecency), row._topupDays, {
     never: () => !row.lastTopupAt,
   })) return false;
+  // Activity: last WhatsApp campaign recency (أيام منذ آخر حملة) — never = لم تُرسَل
+  if (!matchNumeric(parseFacetValue(f.campaignRecency), row._campaignDays, {
+    never: () => row._campaignDays == null,
+  })) return false;
   // Account: multi-select facets — empty array means no constraint
   if (f.platformStatuses?.length && !f.platformStatuses.includes(row.platformStatus || '')) return false;
   if (f.billingTypes?.length     && !f.billingTypes.includes(row.billingType || ''))         return false;
@@ -336,6 +348,7 @@ export default function Segments({ isActive = true }) {
   const { profile, can, user } = useAuth();
   const [loading, setLoading]       = useState(true);
   const [merchants, setMerchants]   = useState([]);
+  const [waStatus, setWaStatus]     = useState(() => new Map());  // هاتف → آخر حملة
   const [receivables, setReceivables] = useState([]);
   const [snapshot, setSnapshot]     = useState(null);
   const [filters, setFilters]       = useState(EMPTY_FILTERS);
@@ -362,15 +375,17 @@ export default function Segments({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [mResult, rResult, segments] = await Promise.all([
+      const [mResult, rResult, segments, wa] = await Promise.all([
         loadLatestMerchants(),
         loadLatestReceivables().catch(() => ({ customers: [] })),
         listSegments().catch(() => []),
+        loadWhatsAppCampaignStatus().catch(() => new Map()),
       ]);
       setMerchants(mResult?.merchants || []);
       setReceivables(rResult?.customers || []);
       setSnapshot(mResult?.snapshot || null);
       setSavedSegments(segments);
+      setWaStatus(wa || new Map());
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -379,10 +394,17 @@ export default function Segments({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
-  const rows = useMemo(
-    () => unifyRows(merchants, receivables),
-    [merchants, receivables],
-  );
+  const rows = useMemo(() => {
+    const base = unifyRows(merchants, receivables);
+    // أرفق «أيام منذ آخر حملة واتساب» لكل متجر عبر هاتفه المطبَّع
+    return base.map(r => {
+      const p = normalizePhone(r.phone);
+      const st = p ? waStatus.get(p) : null;
+      const last = st?.lastSentAt || null;
+      const days = last ? Math.floor((Date.now() - new Date(last).getTime()) / 86_400_000) : null;
+      return { ...r, _lastCampaignAt: last, _campaignDays: days };
+    });
+  }, [merchants, receivables, waStatus]);
 
   const filtered = useMemo(
     () => rows.filter(r => matchesFilters(r, filters)),
@@ -842,6 +864,12 @@ export default function Segments({ isActive = true }) {
             facetKey="topupRecency"
             value={filters.topupRecency}
             onChange={v => setFilter('topupRecency', v)}
+          />
+          <NumericFacet
+            label="آخر حملة واتساب منذ"
+            facetKey="campaignRecency"
+            value={filters.campaignRecency}
+            onChange={v => setFilter('campaignRecency', v)}
           />
         </Card>
 
