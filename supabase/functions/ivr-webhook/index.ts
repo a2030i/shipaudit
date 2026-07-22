@@ -45,7 +45,7 @@ async function getChannelId(token: string) {
   if (id) channelCache = { id, exp: Date.now() + 3600_000 };
   return id;
 }
-async function sendTemplate(db: ReturnType<typeof svc>, phone: string, name: string | null, templateName: string, campaign: string) {
+async function sendTemplate(db: ReturnType<typeof svc>, phone: string, name: string | null, templateName: string, campaign: string, vars: unknown[] = []) {
   // حارس: لا نراسل رقماً محظوراً/بلا واتساب
   try {
     const { data: bl } = await db.from('campaign_phone_blocklist').select('phone').eq('phone', phone).maybeSingle();
@@ -54,8 +54,10 @@ async function sendTemplate(db: ReturnType<typeof svc>, phone: string, name: str
   const token = await accessToken();
   const channelId = await getChannelId(token);
   if (!channelId) return { ok: false, error: 'no channel' };
+  // متغيّرات القالب: [اسم, مبلغ, عدد] لقالب التحصيل (sadad). فارغ → الاسم فقط.
+  const values = (vars && vars.length ? vars : (name ? [name] : [])).map(v => ({ Type: 'text', Text: String(v ?? '') }));
   const payload = { ChannelId: channelId, TemplateName: templateName, Language: 'ar', ToNumber: phone,
-    Parameters: name ? [{ Type: 'Body', Values: [{ Type: 'text', Text: String(name) }] }] : [] };
+    Parameters: values.length ? [{ Type: 'Body', Values: values }] : [] };
   const r = await fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
     method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
   const j = await r.json().catch(() => ({}));
@@ -156,7 +158,13 @@ Deno.serve(async (req) => {
       : (answered && script.onAnswerTemplate && String(script.onAnswerTemplate).trim() ? String(script.onAnswerTemplate).trim() : '');
     if (tpl) {
       try {
-        const res = await sendTemplate(db, row.phone, row.name || null, tpl, `IVR: ${row.script_key || ''}`);
+        // متغيّرات قالب التحصيل: {{1}} الاسم · {{2}} المبلغ · {{3}} عدد الفواتير (من retry_fields)
+        const rf = (row.retry_fields && typeof row.retry_fields === 'object') ? row.retry_fields : {};
+        const amt = rf.amount ?? rf.overdue;
+        const vars = (amt != null && amt !== '')
+          ? [row.name || '', String(Math.round(Number(amt) || 0)), String(rf.invoices_count ?? rf.count ?? '')]
+          : (row.name ? [row.name] : []);
+        const res = await sendTemplate(db, row.phone, row.name || null, tpl, `IVR: ${row.script_key || ''}`, vars);
         if (res.ok || res.skipped) patch.template_sent_at = when;
       } catch (e) { console.error('ivr answer/press→template failed:', (e as Error).message); }
     }
