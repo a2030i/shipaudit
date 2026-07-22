@@ -130,6 +130,11 @@ export default function IvrTab() {
               </div>
               <textarea disabled={!mayConfigure || !!s.audioUrl} value={s.ttsText} onChange={e => updateScript(si, { ttsText: e.target.value })} rows={3}
                 placeholder="النص المنطوق — استخدم {name} أو {amount} لملء بيانات العميل" style={{ ...inp, resize: 'vertical', lineHeight: 1.7, opacity: s.audioUrl ? 0.5 : 1 }}/>
+              {!s.audioUrl && (
+                <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.7 }}>
+                  متغيّرات تُملأ لكل عميل: <code>{'{name}'}</code> الاسم · <code>{'{amount}'}</code> المبلغ/المديونية — وأي عمود من بيانات الحملة. (تعمل مع النص المنطوق فقط، لا مع الصوت المرفوع.)
+                </div>
+              )}
 
               {/* صوت مرفوع (WAV) — يتقدّم على النص المنطوق */}
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
