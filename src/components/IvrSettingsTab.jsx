@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, ivrStatusBadge, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
+import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, loadIvrAnalytics, ivrStatusBadge, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
 import { loadWhatsAppConfig } from '../lib/whatsappService.js';
 
 export default function IvrTab() {
@@ -38,9 +38,12 @@ export default function IvrTab() {
     }
   };
 
+  const [analytics, setAnalytics] = useState(null);
+
   useEffect(() => {
     loadIvrConfig().then(setCfg);
     loadIvrCampaigns().then(setCamps);
+    loadIvrAnalytics(90).then(setAnalytics).catch(() => {});
     loadWhatsAppConfig().then(c => setTemplates(c?.templates || [])).catch(() => {});
   }, []);
 
@@ -303,6 +306,55 @@ export default function IvrTab() {
           </div>
         )}
       </Card>
+
+      {/* لوحة تحليلات IVR — نسب الرد/الضغط + أفضل ساعة + أداء السكربتات */}
+      {analytics?.overall?.total > 0 && (() => {
+        const o = analytics.overall; const pct = (a, b) => b ? Math.round((a / b) * 100) : 0;
+        const bestHour = [...(analytics.by_hour || [])].filter(h => h.total >= 2).sort((a, b) => (b.answered / b.total) - (a.answered / a.total))[0];
+        const Stat = ({ label, val, color }) => (
+          <div style={{ flex: 1, minWidth: 120, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 12px' }}>
+            <div style={{ fontSize: 20, fontWeight: 800, color, fontFamily: 'var(--font-mono)' }}>{val}</div>
+            <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
+          </div>
+        );
+        return (
+          <Card style={{ padding: 18, marginBottom: 14 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>📊 تحليلات المكالمات (آخر 90 يوم)</div>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <Stat label="إجمالي المكالمات" val={o.total} color="var(--text)"/>
+              <Stat label="نسبة الرد" val={`${pct(o.answered, o.total)}%`} color="#16A34A"/>
+              <Stat label="نسبة التفاعل (ضغط)" val={`${pct(o.pressed, o.answered)}%`} color="var(--accent)"/>
+              <Stat label="طلبوا الإيقاف" val={o.opted_out} color="#DC2626"/>
+              <Stat label="لم يُردّ" val={o.no_answer} color="#9CA3AF"/>
+            </div>
+            {bestHour && (
+              <div style={{ fontSize: 12.5, color: 'var(--muted)', marginTop: 10 }}>
+                ⏰ أفضل وقت للاتصال: <b style={{ color: 'var(--text)' }}>الساعة {bestHour.hr}:00</b> (نسبة رد {pct(bestHour.answered, bestHour.total)}%).
+              </div>
+            )}
+            {(analytics.by_script || []).length > 1 && (
+              <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginTop: 10 }}>
+                <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
+                  <th style={{ padding: '5px 7px' }} data-label="">السكربت</th>
+                  <th style={{ padding: '5px 7px' }}>مكالمات</th>
+                  <th style={{ padding: '5px 7px' }}>نسبة الرد</th>
+                  <th style={{ padding: '5px 7px' }}>نسبة الضغط</th>
+                </tr></thead>
+                <tbody>
+                  {analytics.by_script.map(s => (
+                    <tr key={s.script_key} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 7px', fontWeight: 600 }} data-label="السكربت">{s.script_key}</td>
+                      <td style={{ padding: '6px 7px' }} data-label="مكالمات">{s.total}</td>
+                      <td style={{ padding: '6px 7px' }} data-label="الرد">{pct(s.answered, s.total)}%</td>
+                      <td style={{ padding: '6px 7px' }} data-label="الضغط">{pct(s.pressed, s.answered)}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </Card>
+        );
+      })()}
 
       <Card style={{ padding: 18 }}>
         <div style={{ fontSize: 13.5, fontWeight: 700, marginBottom: 10 }}>📋 سجل المكالمات</div>

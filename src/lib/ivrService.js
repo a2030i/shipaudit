@@ -133,6 +133,30 @@ export async function loadIvrCalls({ campaign = null, phone = null, limit = 300 
   return data || [];
 }
 
+// سجل مكالمات هاتف (يدوية + آلية) لعميل واحد — تسجيل/ملخّص/مشاعر من hatif_calls
+const norm966 = (p) => { let d = String(p || '').replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('966')) return d; if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1); if (d.length === 9 && d.startsWith('5')) return '966' + d; return d; };
+export async function loadHatifCallsByPhone(phone, limit = 20) {
+  const p = norm966(phone); if (!p) return [];
+  const { data, error } = await supabase.from('hatif_calls').select('*').eq('phone', p).order('started_at', { ascending: false, nullsFirst: false }).limit(limit);
+  if (error) return [];
+  return data || [];
+}
+export const HATIF_SENTIMENT = {
+  Positive: { t: 'إيجابي', e: '😊', c: '#16A34A' }, Neutral: { t: 'محايد', e: '😐', c: '#9CA3AF' },
+  Negative: { t: 'سلبي', e: '😟', c: '#DC2626' }, Mixed: { t: 'مختلط', e: '😕', c: '#F59E0B' }, Unknown: { t: '—', e: '', c: '#9CA3AF' },
+};
+export const HATIF_CALL_STATUS = {
+  Completed: 'مكتملة', Missed: 'لم يُردّ', NoAnswer: 'لا رد', Busy: 'مشغول', Failed: 'فشلت',
+  RejectedByCaller: 'رُفضت', RejectedByCallee: 'رُفضت', Cancelled: 'أُلغيت', Ringing: 'رنين', Active: 'جارية',
+};
+
+// تحليلات IVR — نسب الرد/الضغط/الإيقاف + أفضل ساعة + أداء كل سكربت
+export async function loadIvrAnalytics(days = 30) {
+  const { data, error } = await supabase.rpc('ivr_analytics', { p_days: days });
+  if (error) return null;
+  return data;
+}
+
 // ملخّص لكل حملة (عُدّت/رُدّ عليها/ضغطات)
 // ملاحظة: Voxa يرسل status/result **أرقاماً** لا نصوصاً — فالإشارات الموثوقة =
 // answered_at (رُدّ) + pressed_digit (تفاعل) + الحالة النهائية (اكتملت/فشلت).

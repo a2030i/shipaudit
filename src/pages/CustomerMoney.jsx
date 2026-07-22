@@ -18,6 +18,7 @@ import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
+import CustomerCallLog from '../components/CustomerCallLog.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -802,6 +803,8 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
             ))}
         </div>
       )}
+
+      {digits && <CustomerCallLog phone={digits}/>}
     </Card>
   );
 }
