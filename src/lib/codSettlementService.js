@@ -452,12 +452,37 @@ export async function loadSettlementUploads({ carrierId } = {}) {
     }
   }
 
+  // تسميات ودّية اختيارية (cod_upload_labels) — تُعرَض بدل اسم الملف الطويل
+  const ids = [...map.keys()];
+  const labels = new Map();
+  if (ids.length) {
+    const { data: lbl } = await supabase
+      .from('cod_upload_labels').select('upload_id, label').in('upload_id', ids);
+    for (const r of lbl || []) if (r.label) labels.set(r.upload_id, r.label);
+  }
+
   return [...map.values()].map(u => ({
     ...u,
+    label:            labels.get(u.uploadId) || null,
     amount:           +u.amount.toFixed(2),
     settledAmount:    +u.settledAmount.toFixed(2),
     unsettledAmount:  +u.unsettledAmount.toFixed(2),
   }));
+}
+
+// تعيين/مسح تسمية ودّية لملف تحصيل COD (لا تمسّ source_file المصدري)
+export async function setUploadLabel(uploadId, label, userId = null) {
+  if (!uploadId) throw new Error('upload_id مطلوب');
+  const clean = String(label || '').trim();
+  if (!clean) {
+    const { error } = await supabase.from('cod_upload_labels').delete().eq('upload_id', uploadId);
+    if (error) throw error;
+    return null;
+  }
+  const { error } = await supabase.from('cod_upload_labels')
+    .upsert({ upload_id: uploadId, label: clean, updated_by: userId, updated_at: new Date().toISOString() }, { onConflict: 'upload_id' });
+  if (error) throw error;
+  return clean;
 }
 
 // ── Reconciliation engine ──────────────────────────────────────────────

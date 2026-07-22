@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft } from 'lucide-react';
+import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageSquare, Trash2, Download, ChevronDown, ChevronLeft, Pencil, Check, X } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
@@ -10,7 +10,7 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   loadReconciliation, summarizeReconciliation, ageOutstanding, ageOverRemit,
   saveSettlementUpload, setReconciliationAction, clearReconciliationAction,
-  loadSettlementUploads, deleteSettlementUpload, loadUploadShipments,
+  loadSettlementUploads, deleteSettlementUpload, loadUploadShipments, setUploadLabel,
   findDuplicateSettlementAwbs, loadOutstandingByCarrier, saveConsolidatedExpected,
 } from '../lib/codSettlementService.js';
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
@@ -127,6 +127,16 @@ export default function CodSettlements({ isActive = true }) {
   // in the reconciliation (matched / outstanding / over_remit / …). Works
   // for both directions — carrier file (in) or internal-system file (out).
   const [exportingUpload, setExportingUpload] = useState(null);
+  const [renamingId, setRenamingId] = useState(null);   // ملف قيد إعادة التسمية
+  const [renameVal, setRenameVal] = useState('');
+  const saveRename = async (u) => {
+    try {
+      await setUploadLabel(u.uploadId, renameVal, user?.id || null);
+      setUploads(prev => prev.map(x => x.uploadId === u.uploadId ? { ...x, label: renameVal.trim() || null } : x));
+      setRenamingId(null);
+      toast('حُفظت التسمية', 'success');
+    } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); }
+  };
   const handleExportUpload = async (u) => {
     setExportingUpload(u.uploadId);
     try {
@@ -795,12 +805,23 @@ export default function CodSettlements({ isActive = true }) {
                           }
                           return null;
                         })()}
-                        <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                          {u.sourceFile || '(بدون اسم ملف)'}
-                        </span>
+                        {renamingId === u.uploadId ? (
+                          <input autoFocus value={renameVal} onChange={e => setRenameVal(e.target.value)}
+                            onKeyDown={e => { if (e.key === 'Enter') saveRename(u); if (e.key === 'Escape') setRenamingId(null); }}
+                            onClick={e => e.stopPropagation()}
+                            placeholder="اسم ودّي للملف…"
+                            style={{ fontSize: 12, fontWeight: 600, padding: '3px 8px', borderRadius: 6, border: '1px solid var(--accent)', background: 'var(--bg)', color: 'var(--text)', minWidth: 200 }}/>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {u.label || u.sourceFile || '(بدون اسم ملف)'}
+                          </span>
+                        )}
                       </div>
                       <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>
                         {u.uploadDate}
+                        {u.label && u.sourceFile && (
+                          <span style={{ marginInlineStart: 6, opacity: .8 }}>· {u.sourceFile}</span>
+                        )}
                         {u.settlementRef && (
                           <span style={{ marginInlineStart: 6, fontFamily: 'var(--font-mono)' }}>· {u.settlementRef}</span>
                         )}
@@ -831,6 +852,18 @@ export default function CodSettlements({ isActive = true }) {
                       </div>
                       <div style={{ fontSize: 9, color: 'var(--muted)' }}>ر.س</div>
                     </div>
+                    {renamingId === u.uploadId ? (
+                      <>
+                        <Btn size="sm" variant="accent" onClick={() => saveRename(u)} title="حفظ التسمية"><Check size={12}/></Btn>
+                        <Btn size="sm" variant="ghost" onClick={() => setRenamingId(null)} title="إلغاء"><X size={12}/></Btn>
+                      </>
+                    ) : (
+                      <Btn size="sm" variant="ghost"
+                        onClick={() => { setRenamingId(u.uploadId); setRenameVal(u.label || ''); }}
+                        title="تسمية ودّية للملف">
+                        <Pencil size={12}/>
+                      </Btn>
+                    )}
                     <Btn size="sm" variant="ghost"
                       onClick={() => handleExportUpload(u)}
                       disabled={exportingUpload === u.uploadId}
