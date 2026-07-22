@@ -172,6 +172,9 @@ Deno.serve(async (req) => {
           digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000),
         };
         if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
+        // رسالة ختام (WAV) تُشغَّل بعد ضغطة صحيحة ثم يُقفل — «شكراً لك»
+        const successUrl = String(script.successAudioUrl || '').trim();
+        if (successUrl) payload.successMessageFileUrl = successUrl;
         const vr = await fetch(IVR_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
         const vj = await vr.json().catch(() => ({}));
         if (vr.ok) {

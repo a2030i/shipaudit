@@ -33,7 +33,15 @@ export default function IvrTab() {
     if (!file) return;
     const s = cfg.scripts[idx];
     setUploadingKey(s.key);
-    try { const urlStr = await uploadIvrAudio(file, s.key); updateScript(idx, { audioUrl: urlStr }); toast('رُفع الصوت ✓', 'success'); }
+    try { const urlStr = await uploadIvrAudio(file, s.key, 'main'); updateScript(idx, { audioUrl: urlStr }); toast('رُفع الصوت ✓', 'success'); }
+    catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
+    finally { setUploadingKey(''); }
+  };
+  const onSuccessAudioUpload = async (idx, file) => {
+    if (!file) return;
+    const s = cfg.scripts[idx];
+    setUploadingKey(s.key + '_ok');
+    try { const urlStr = await uploadIvrAudio(file, s.key, 'closing'); updateScript(idx, { successAudioUrl: urlStr }); toast('رُفعت رسالة الختام ✓', 'success'); }
     catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
     finally { setUploadingKey(''); }
   };
@@ -148,6 +156,23 @@ export default function IvrTab() {
                   {templates.map(t => <option key={t} value={t}>{t}</option>)}
                 </select>
               </label>
+
+              {/* رسالة الختام (شكراً) — تُشغَّل بعد ضغطة صحيحة ثم يُقفل. ملف WAV (Voxa لا يدعم نصاً للختام) */}
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
+                <span style={{ color: 'var(--muted)' }}>🙏 رسالة الختام (شكراً ثم يُقفل):</span>
+                {s.successAudioUrl ? (
+                  <>
+                    <audio src={s.successAudioUrl} controls style={{ height: 30, maxWidth: 200 }}/>
+                    {mayConfigure && <Btn size="sm" variant="ghost" title="إزالة" onClick={() => updateScript(si, { successAudioUrl: '' })}><X size={12}/></Btn>}
+                  </>
+                ) : mayConfigure && (
+                  <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--accent)' }}>
+                    <Upload size={13}/> {uploadingKey === s.key + '_ok' ? 'يرفع…' : 'ارفع «شكراً» (WAV)'}
+                    <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                      onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onSuccessAudioUpload(si, f); }}/>
+                  </label>
+                )}
+              </div>
 
               <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>خيارات الضغط (كل رقم = إجراء + قالب اختياري):</div>
               {s.options.map((o, oi) => (

@@ -6,6 +6,7 @@ import { supabase } from './supabase.js';
 const IVR_FN = 'hatif-ivr';
 
 export const IVR_ACTIONS = [
+  { key: 'send_template', label: 'إرسال قالب واتساب (اختر القالب ⬅)' },
   { key: 'followup', label: 'متابعة مبيعات/تحصيل (مهمة للفريق)' },
   { key: 'callback', label: 'طلب معاودة اتصال' },
   { key: 'dnc',      label: 'إيقاف الاتصالات (لا تتصل به)' },
@@ -36,6 +37,7 @@ export async function saveIvrConfig(cfg) {
     scripts: (Array.isArray(cfg.scripts) ? cfg.scripts : []).map(s => ({
       key: s.key, label: s.label || s.key, ttsText: s.ttsText || '',
       audioUrl: s.audioUrl || '',                 // صوت مرفوع (WAV) — يُشغَّل بدل TTS إن وُجد
+      successAudioUrl: s.successAudioUrl || '',    // رسالة ختام (WAV) — تُشغَّل بعد الضغط ثم يُقفل
       onAnswerTemplate: s.onAnswerTemplate || '',  // قالب واتساب يُرسَل تلقائياً إن رُدّ على المكالمة
       options: (Array.isArray(s.options) ? s.options : []).map(o => ({
         digit: String(o.digit), description: o.description || '', action: o.action || 'none',
@@ -49,11 +51,11 @@ export async function saveIvrConfig(cfg) {
 }
 
 // رفع ملف صوتي (WAV) لسكربت — يُرجِع الرابط العام ليُشغّله Voxa. Voxa يقبل WAV فقط.
-export async function uploadIvrAudio(file, scriptKey) {
+export async function uploadIvrAudio(file, scriptKey, kind = 'main') {
   if (!file) throw new Error('لا ملف');
   const name = String(file.name || '').toLowerCase();
   if (!name.endsWith('.wav')) throw new Error('Voxa يقبل WAV فقط — حوّل الملف إلى .wav');
-  const path = `${scriptKey || 'script'}_${Date.now()}.wav`;   // مفتاح ASCII آمن
+  const path = `${scriptKey || 'script'}_${kind}_${Date.now()}.wav`;   // مفتاح ASCII آمن
   const { error } = await supabase.storage.from('ivr-audio').upload(path, file, { contentType: 'audio/wav', upsert: true });
   if (error) throw error;
   const { data } = supabase.storage.from('ivr-audio').getPublicUrl(path);
