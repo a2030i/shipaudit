@@ -52,6 +52,23 @@ export default function IvrTab() {
     catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
     finally { setUploadingKey(''); }
   };
+  // معاينة صوتية بالمتصفّح — نسمع السكربت قبل الإطلاق (قيم تجريبية للمتغيّرات)
+  const speakPreview = (s) => {
+    try {
+      const synth = window.speechSynthesis;
+      if (!synth) { toast('المتصفّح لا يدعم المعاينة الصوتية', 'error'); return; }
+      synth.cancel();
+      const sample = { name: 'متجر تجربة', amount: '١٥٠٠', overdue: '٥٠٠', wallet: '٢٠٠', shipments: '٣٠', last_shipment: 'قبل ١٠ أيام', days_since: '١٠', invoices_count: '٥', oldest_days: '٤١', city: 'الرياض' };
+      const text = String(s.ttsText || '').replace(/\{([^}]+)\}/g, (_m, k) => sample[String(k).trim()] ?? '');
+      if (!text.trim()) { toast('لا نص للمعاينة', 'error'); return; }
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'ar-SA'; u.rate = 0.95;
+      const arVoice = synth.getVoices().find(v => /ar/i.test(v.lang));
+      if (arVoice) u.voice = arVoice;
+      synth.speak(u);
+    } catch (e) { toast('تعذّرت المعاينة', 'error'); }
+  };
+
   const onSuccessAudioUpload = async (idx, file) => {
     if (!file) return;
     const s = cfg.scripts[idx];
@@ -160,6 +177,11 @@ export default function IvrTab() {
               </label>
             </div>
           )}
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12.5, cursor: mayConfigure ? 'pointer' : 'default' }}>
+            <input type="checkbox" disabled={!mayConfigure} checked={!!cfg.speakNumbersWords}
+              onChange={e => setCfg({ ...cfg, speakNumbersWords: e.target.checked })}/>
+            🔢 نطق المبالغ بالعربي («ألف وخمسمئة ريال» بدل «1500»)
+          </label>
         </div>
 
         <div style={{ display: 'grid', gap: 12 }}>
@@ -194,6 +216,12 @@ export default function IvrTab() {
                     </button>
                   ))}
                   <span style={{ fontSize: 10, color: 'var(--muted2)', width: '100%', marginTop: 2 }}>يُملأ لكل عميل من بيانات الحملة (يعمل مع النص المنطوق فقط، لا مع الصوت المرفوع).</span>
+                </div>
+              )}
+              {!s.audioUrl && (
+                <div>
+                  <Btn size="sm" variant="ghost" onClick={() => speakPreview(s)}>🔊 استماع للمعاينة</Btn>
+                  <span style={{ fontSize: 10, color: 'var(--muted2)', marginInlineStart: 8 }}>بصوت المتصفّح (قيم تجريبية) — للتأكد من الصياغة قبل الإطلاق.</span>
                 </div>
               )}
 

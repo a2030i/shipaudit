@@ -31,9 +31,21 @@ async function getChannelId(token: string, cfgChannel: string) {
   const r = await fetch('https://api.voxa.sa/v1/channels/service-account', { headers: { Authorization: `Bearer ${token}` } });
   const j = await r.json().catch(() => ({})); return (Array.isArray(j.items) ? j.items : [])[0]?.id || '';
 }
-function fillTts(tpl: string, name: string | null, fields: Record<string, unknown> | null) {
+const AR_ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
+const AR_TENS = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
+const AR_HUND = ['', 'مئة', 'مئتان', 'ثلاثمئة', 'أربعمئة', 'خمسمئة', 'ستمئة', 'سبعمئة', 'ثمانمئة', 'تسعمئة'];
+function arBelow1000(x: number): string { const p: string[] = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
+function arNum(nRaw: unknown): string {
+  const n = Math.round(Math.abs(Number(nRaw) || 0)); if (n === 0) return 'صفر';
+  const p: string[] = []; const th = Math.floor(n / 1000), r = n % 1000;
+  if (th) { if (th === 1) p.push('ألف'); else if (th === 2) p.push('ألفان'); else if (th <= 10) p.push(arBelow1000(th) + ' آلاف'); else p.push(arBelow1000(th) + ' ألف'); }
+  if (r) p.push(arBelow1000(r));
+  return p.join(' و');
+}
+const AMOUNT_KEYS = new Set(['amount', 'overdue', 'wallet', 'debt', 'مبلغ']);
+function fillTts(tpl: string, name: string | null, fields: Record<string, unknown> | null, speakWords = false) {
   const f = fields || {}; const map: Record<string, string> = { name: name || String(f.name || ''), 'اسم': name || String(f.name || '') };
-  for (const [k, v] of Object.entries(f)) map[k] = String(v ?? '');
+  for (const [k, v] of Object.entries(f)) map[k] = (speakWords && AMOUNT_KEYS.has(k) && v !== '' && v != null && Number.isFinite(Number(v))) ? arNum(v) + ' ريال' : String(v ?? '');
   const alias: Record<string, string> = { amount: 'amount', 'مبلغ': 'amount' };
   return String(tpl || '').replace(/\{([^}]+)\}/g, (_m, key) => { const k = String(key).trim(); if (map[k] != null && map[k] !== '') return map[k]; const a = alias[k]; if (a && map[a] != null) return map[a]; return ''; }).replace(/\s{2,}/g, ' ').trim();
 }
@@ -80,7 +92,7 @@ Deno.serve(async (req) => {
 
     await db.from('ivr_queue').update({ status: 'sending' }).eq('id', q.id);
     const audioUrl = String(script.audioUrl || '').trim();
-    const ttsText = fillTts(String(script.ttsText || ''), q.name, q.fields);
+    const ttsText = fillTts(String(script.ttsText || ''), q.name, q.fields, cfg.speakNumbersWords === true);
     const attempt = (Number(q.attempts) || 0) + 1;
     const maxAtt = Number(q.max_attempts) || 1;
 

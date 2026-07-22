@@ -33,6 +33,7 @@ const DEFAULT_CFG = {
   defaultScript: '', scripts: [],
   callHours: { start: 9, end: 21 },                                    // نافذة الاتصال بتوقيت السعودية
   retry: { enabled: false, afterHours: 3, maxAttempts: 2, onResults: ['NoAnswer', 'Busy'] },
+  speakNumbersWords: false,
 };
 
 export async function loadIvrConfig() {
@@ -60,6 +61,7 @@ export async function saveIvrConfig(cfg) {
       maxAttempts: Math.max(1, Math.min(5, Number(cfg.retry?.maxAttempts ?? 2))),
       onResults: ['NoAnswer', 'Busy'],
     },
+    speakNumbersWords: !!cfg.speakNumbersWords,   // نطق المبالغ بالعربي («ألف وخمسمئة ريال»)
     scripts: (Array.isArray(cfg.scripts) ? cfg.scripts : []).map(s => ({
       key: s.key, label: s.label || s.key, ttsText: s.ttsText || '',
       audioUrl: s.audioUrl || '',                 // صوت مرفوع (WAV) — يُشغَّل بدل TTS إن وُجد

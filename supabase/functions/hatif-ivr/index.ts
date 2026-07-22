@@ -69,13 +69,28 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   return { id: user.id, role: p?.role || null, permissions: p?.permissions || {} };
 }
 
+// نطق عدد صحيح بالعربي (0..999999) — لتوضيح المبالغ في TTS
+const AR_ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
+const AR_TENS = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
+const AR_HUND = ['', 'مئة', 'مئتان', 'ثلاثمئة', 'أربعمئة', 'خمسمئة', 'ستمئة', 'سبعمئة', 'ثمانمئة', 'تسعمئة'];
+function arBelow1000(x: number): string { const p: string[] = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
+function arNum(nRaw: unknown): string {
+  const n = Math.round(Math.abs(Number(nRaw) || 0)); if (n === 0) return 'صفر';
+  const p: string[] = []; const th = Math.floor(n / 1000), r = n % 1000;
+  if (th) { if (th === 1) p.push('ألف'); else if (th === 2) p.push('ألفان'); else if (th <= 10) p.push(arBelow1000(th) + ' آلاف'); else p.push(arBelow1000(th) + ' ألف'); }
+  if (r) p.push(arBelow1000(r));
+  return p.join(' و');
+}
+const AMOUNT_KEYS = new Set(['amount', 'overdue', 'wallet', 'debt', 'مبلغ']);
+
 // ملء متغيّرات السكربت الصوتي من حقول المستلِم — {name}/{اسم}, {amount}/{مبلغ}, {أي حقل}.
-function fillTts(tpl: string, r: { name?: string; fields?: Record<string, unknown> }) {
+function fillTts(tpl: string, r: { name?: string; fields?: Record<string, unknown> }, speakWords = false) {
   const f = r.fields || {};
+  const num = (k: string, v: unknown) => (speakWords && AMOUNT_KEYS.has(k) && v !== '' && v != null && Number.isFinite(Number(v))) ? arNum(v) + ' ريال' : String(v ?? '');
   const map: Record<string, string> = {
     name: r.name || String(f.name || f['اسم'] || ''), 'اسم': r.name || String(f.name || f['اسم'] || ''),
   };
-  for (const [k, v] of Object.entries(f)) map[k] = String(v ?? '');
+  for (const [k, v] of Object.entries(f)) map[k] = num(k, v);
   const alias: Record<string, string> = { amount: 'amount', 'مبلغ': 'amount', debt: 'amount' };
   return String(tpl || '').replace(/\{([^}]+)\}/g, (_m, key) => {
     const k = String(key).trim();
@@ -148,7 +163,7 @@ Deno.serve(async (req) => {
       const to = norm(r.phone);
       if (!to || to.length < 11) { results.push({ phone: r.phone, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
       if (blocked.has(to)) { results.push({ phone: to, ok: false, skipped: true, error: 'محظور — لا يُتَّصل به' }); skipped++; continue; }
-      const ttsText = fillTts(String(body.tts_override || script.ttsText || ''), r);
+      const ttsText = fillTts(String(body.tts_override || script.ttsText || ''), r, cfg.speakNumbersWords === true);
       // صوت مرفوع أو نص منطوق — أحدهما مطلوب
       if (!ttsText && !String(script.audioUrl || '').trim()) { results.push({ phone: to, ok: false, error: 'لا صوت ولا نص للمكالمة' }); failed++; continue; }
 
