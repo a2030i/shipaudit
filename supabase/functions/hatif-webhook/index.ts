@@ -1,7 +1,9 @@
-// hatif-webhook v10 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook v11 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// v11 (2026-07-22): **الإسناد على أول رد حتى لو آلي** (قرار المستخدم) — الإسناد توجيه
+// لا يزعج أحداً، فيتمّ على أول رد وارد (آلي أو حقيقي) مرة واحدة (hatif_assigned_at).
+// المهمة CRM تبقى للرد الحقيقي فقط. templateAgents = Voxa userId (الفريق في هاتف).
 // v10 (2026-07-22): **الإسناد بالقالب لموظف هاتف مباشرة** — templateAgents يخزّن Voxa
 // userId (الفريق في هاتف لا في نظامنا). المحادثة تُسند له مباشرة بلا حساب عندنا.
-// مهمة CRM (اختيارية) تبقى لمالك المتابعة/المُرسِل (موظف نظامنا).
 // v9 (2026-07-22): **الإسناد بالقالب** — المسؤول عن الرد = المربوط بالقالب في
 // whatsapp_config.templateAgents (قالب مالي→بلال، تسويقي→مبيعات)، وإلا مالك المتابعة/المُرسِل.
 // v8 (2026-07-22): **إسناد المحادثة تلقائياً** — عند ردّ حقيقي، يُسند المحادثة في
@@ -63,7 +65,7 @@ Deno.serve(async (req) => {
   const when           = p.creationTime || p.CreationTime || new Date().toISOString();
   if (!conversationId && !contactId) return ok();
 
-  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, sent_at, template_name';
+  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, sent_at, template_name, hatif_assigned_at';
   let row: Record<string, any> | null = null;
   if (conversationId) {
     const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
@@ -95,6 +97,29 @@ Deno.serve(async (req) => {
       patch.reply_is_auto = false;
       firstReply = true;
     }
+    // إسناد المحادثة في هاتف على **أول رد (آلي أو حقيقي)** — مرة واحدة (قرار المستخدم):
+    // الإسناد توجيه فقط لا يزعج أحداً؛ المهمة تبقى للرد الحقيقي فقط (أدناه).
+    if (!row.hatif_assigned_at) {
+      try {
+        let hatifUserId: string | null = null;
+        const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
+        if (cfgRow?.value && row.template_name) hatifUserId = (JSON.parse(cfgRow.value).templateAgents || {})[row.template_name] || null;
+        if (!hatifUserId && row.sent_by && row.sent_by.length > 20) {
+          const { data: prof } = await db.from('profiles').select('hatif_user_id').eq('id', row.sent_by).maybeSingle();
+          hatifUserId = prof?.hatif_user_id || null;
+        }
+        const convId = conversationId || row.conversation_id;
+        if (hatifUserId && convId) {
+          const tok = await accessToken();
+          const ar = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/assign`, {
+            method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
+            body: JSON.stringify({ assignedUserId: hatifUserId }),
+          });
+          if (ar.ok) patch.hatif_assigned_at = when;
+          else console.error('assign conversation http', ar.status);
+        }
+      } catch (e) { console.error('assign conversation failed:', (e as Error).message); }
+    }
   } else {
     if (status) patch.status = status;
     if (status === 'Delivered') patch.delivered_at = when;
@@ -117,13 +142,8 @@ Deno.serve(async (req) => {
           last_touch_at: when, updated_at: new Date().toISOString(),
         }, { onConflict: 'phone' });
       }
-      // مسؤول القالب في هاتف = Voxa userId مباشرة (الفريق في هاتف لا في نظامنا).
-      let hatifUserId: string | null = null;
-      try {
-        const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
-        if (cfgRow?.value && row.template_name) hatifUserId = (JSON.parse(cfgRow.value).templateAgents || {})[row.template_name] || null;
-      } catch { /* */ }
-      // مهمة CRM (اختيارية) لمالك المتابعة/المُرسِل — موظف نظامنا فقط
+      // مهمة CRM (اختيارية) لمالك المتابعة/المُرسِل — موظف نظامنا فقط (الرد الحقيقي فقط).
+      // الإسناد في هاتف تمّ أعلاه (على أول رد آلي/حقيقي) — منفصل عن المهمة.
       const taskAssignee = fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null);
       if (taskAssignee) {
         const { error: taskErr } = await db.from('crm_tasks').insert({
@@ -133,21 +153,6 @@ Deno.serve(async (req) => {
         });
         if (taskErr) console.error('crm_task insert failed on reply:', taskErr.message);
       }
-      // إسناد المحادثة في هاتف — مسؤول القالب مباشرة، وإلا hatif_user_id لمالك النظام
-      try {
-        if (!hatifUserId && taskAssignee) {
-          const { data: prof } = await db.from('profiles').select('hatif_user_id').eq('id', taskAssignee).maybeSingle();
-          hatifUserId = prof?.hatif_user_id || null;
-        }
-        const convId = conversationId || row.conversation_id;
-        if (hatifUserId && convId) {
-          const tok = await accessToken();
-          await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/assign`, {
-            method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
-            body: JSON.stringify({ assignedUserId: hatifUserId }),
-          });
-        }
-      } catch (e) { console.error('assign conversation failed:', (e as Error).message); }
     } catch (e) { console.error('reply→task handler failed:', (e as Error).message); }
   }
   return ok();
