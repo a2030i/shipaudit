@@ -961,7 +961,7 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
         ownerId: targetOwner,
         assigneeIds,
       });
-      toast(`أضيف ${res.added} جهة محتملة · تخطي ${res.skipped} · عملاء لدينا ${res.matchedPlatform}`, 'success');
+      toast(`أضيف ${res.added} جهة محتملة · تخطي ${res.skipped}${res.skippedExisting ? ` (منهم ${res.skippedExisting} عميل لدينا مستبعَد)` : ''}`, 'success');
       onSaved();
     } catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
     setBusy(false);

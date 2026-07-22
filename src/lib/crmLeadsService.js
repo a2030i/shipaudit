@@ -470,12 +470,16 @@ export async function uploadLeadsSnapshot({
   let skippedExact = 0;
   let skippedInvalidPhone = 0;
   let skippedNoName = 0;
+  let skippedExisting = 0;   // عملاء لدينا (مطابقون للمنصّة) — لا يدخلون الخارجية
   const batchSeen = new Set();
 
   for (const r of inputRows) {
     const nameNorm = r.nameNormalized || normalizeName(r.name);
     if (!nameNorm) { skippedNoName++; continue; }
     if (!r.phoneNormalized) { skippedInvalidPhone++; continue; }
+    // رقم عميل لدينا (تطابق منصّة بالهاتف) لا يُقبل في «المتاجر الخارجية» —
+    // الهدف فرص جديدة لا عملاء قائمين (قرار المستخدم 2026-07-22).
+    if (r.matchedStore) { skippedExisting++; continue; }
     const identity = `${r.phoneNormalized}|${dedupCore(nameNorm)}`;
     if (existingIdentities.has(identity) || batchSeen.has(identity)) { skippedExact++; continue; }
     batchSeen.add(identity);
@@ -483,7 +487,7 @@ export async function uploadLeadsSnapshot({
     const owner = owners.length ? owners[toInsert.length % owners.length] : null;
     const priorPhoneCount = existingPhones.get(r.phoneNormalized) || 0;
     const duplicateCount = Math.max(Number(r.duplicateCount) || 1, priorPhoneCount + Number(r.duplicateCount || 1));
-    const matched = r.matchedStore || null;
+    const matched = null;   // لم يعد يُدرَج مطابق (يُتخطّى أعلاه)
     toInsert.push({
       name: r.name,
       name_normalized: nameNorm,
@@ -532,10 +536,11 @@ export async function uploadLeadsSnapshot({
 
   return {
     added,
-    skipped: skippedExact + skippedInvalidPhone + skippedNoName,
+    skipped: skippedExact + skippedInvalidPhone + skippedNoName + skippedExisting,
     skippedExact,
     skippedInvalidPhone,
     skippedNoName,
+    skippedExisting,
     matchedPlatform,
     duplicatePhones: parsed.stats?.duplicatePhones || 0,
     duplicateRows: parsed.stats?.duplicateRows || 0,
