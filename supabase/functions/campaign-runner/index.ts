@@ -1,4 +1,7 @@
-// campaign-runner v4 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
+// campaign-runner v5 (محرك المبيعات §1.37 + نظام الحملات §1.29) — كرون كل 15 دقيقة:
+//  v5 (2026-07-23، خطة هاتف البند 4): تحصين ضد الفشل الصامت — تسجيل كل فشل إرسال
+//  بـstatus='failed'+error_reason، جلب قائمة الحظر (فشلها يوقف الإرسال fail-safe)
+//  وتخطّي المحظور، وإدراج السجل بإعادة محاولة (لا ابتلاع صامت).
 //  v4 (2026-07-21): استرداد الطابور العالق ('sending' +10د → pending) +
 //  drip بالعميل لا بالصف (استبعاد من ردّ + إزالة تكرار الهاتف + تعليم كل صفوفه).
 // campaign-runner v3 — كرون كل 15 دقيقة:
@@ -62,6 +65,28 @@ async function sendTemplate(token: string, o: { channelId: string; templateName:
   return { ok, id: j.conversationEventId || j.contactId || null, contactId: j.contactId || null, conversationId: j.conversationId || null,
            status: j.status || null, error: ok ? null : (j.message || j.title || `http ${r.status}`) };
 }
+// قائمة الحظر كاملة (مصفّحة — تجاوز سقف 1000). فشل الجلب يوقف الإرسال (fail-safe).
+async function loadBlocklist(db: ReturnType<typeof svc>): Promise<Set<string>> {
+  const set = new Set<string>();
+  for (let off = 0; off < 100000; off += 1000) {
+    const { data, error } = await db.from('campaign_phone_blocklist').select('phone').range(off, off + 999);
+    if (error) throw error;
+    for (const r of (data || [])) if (r.phone) set.add(String(r.phone));
+    if (!data || data.length < 1000) break;
+  }
+  return set;
+}
+// إدراج سجل الإرسال مع إعادة محاولة واحدة — لا نبتلع الفشل صامتاً (فقدان السجل = خطر
+// ازدواج إرسال عند الاستئناف، وفقدان تتبّع الفشل).
+async function logSend(db: ReturnType<typeof svc>, r: Record<string, unknown>) {
+  for (let i = 0; i < 2; i++) {
+    const { error } = await db.from('whatsapp_campaign_sends').insert(r);
+    if (!error) return true;
+    if (i === 0) await sleep(400);
+    else console.error('campaign-runner log insert failed:', error.message, r.phone);
+  }
+  return false;
+}
 
 Deno.serve(async (req) => {
   const started = Date.now();
@@ -87,6 +112,11 @@ Deno.serve(async (req) => {
     if (stuck?.length) out.recovered = stuck.length;
   } catch { /* غير قاتل */ }
 
+  // قائمة الحظر مرة واحدة — فشل جلبها = لا نرسل هذه التشغيلة (كي لا نراسل محظوراً).
+  let blockSet = new Set<string>(); let canSend = true;
+  try { blockSet = await loadBlocklist(db); }
+  catch (e) { out.blocklist_error = String((e as Error).message || e); canSend = false; }
+
   let token = '', channelId = '';
   const ensureHatif = async () => {
     if (!token) token = await accessToken();
@@ -96,7 +126,7 @@ Deno.serve(async (req) => {
 
   // ── (١) الحملات المجدولة: صفوف طابور متتالية ضمن ميزانية الوقت ──
   // الجدولة تكتب صفوف 150 مستلم (§1.29) — كل صف ≈ 55ث إرسالاً، فنمرّر ما يسعه الوقت.
-  try {
+  if (canSend) try {
     while (true) {
       const { data: due } = await db.from('campaign_queue')
         .select('*').eq('status', 'pending').lte('scheduled_at', new Date().toISOString())
@@ -114,35 +144,43 @@ Deno.serve(async (req) => {
       (out.jobs as number)++;
       await ensureHatif();
       const recipients: any[] = Array.isArray(job.recipients) ? job.recipients : [];
-      let sent = 0, failed = 0;
+      let sent = 0, failed = 0, skipped = 0;
       const campaignName = (job.bucket_label || '').trim() || 'مجدولة';
       for (const it of recipients.slice(0, 200)) {
         const to = norm(it.to);
         if (!to || to.length < 11) { failed++; continue; }
+        if (blockSet.has(to)) { skipped++; continue; }   // محظور — لا نراسله
+        const base: Record<string, unknown> = { phone: to, name: it.name || null, template_name: job.template_name,
+          channel_id: channelId, campaign_name: campaignName, campaign_bucket: job.bucket_label || null,
+          amount: it.amount ?? null, sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' };
         try {
           const res = await sendTemplate(token, { channelId, templateName: job.template_name, to, vars: it.vars || [] });
           if (res.ok) {
             sent++;
             // تسجيل فوري (نفس إصلاح hatif-send v11) — الانقطاع لا يضيع السجل
-            try { await db.from('whatsapp_campaign_sends').insert({
-              phone: to, name: it.name || null, template_name: job.template_name, channel_id: channelId,
-              contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
-              campaign_name: campaignName, campaign_bucket: job.bucket_label || null, amount: it.amount ?? null,
-              status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' }); } catch { /* */ }
-          } else failed++;
-        } catch { failed++; }
+            await logSend(db, { ...base, contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id, status: res.status || 'accepted' });
+          } else {
+            // البند 4: نسجّل الفشل بسببه — كان يُبتلع فلا يظهر في «فشل الحملات»
+            failed++;
+            await logSend(db, { ...base, status: 'failed', error_reason: String(res.error || 'send failed').slice(0, 300) });
+          }
+        } catch (e) {
+          failed++;
+          await logSend(db, { ...base, status: 'failed', error_reason: String((e as Error).message || e).slice(0, 300) });
+        }
         await sleep(300);   // مع الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
       }
       await db.from('campaign_queue').update({
         status: failed && !sent ? 'failed' : 'sent',
-        result: { sent, failed }, processed_at: new Date().toISOString(),
+        result: { sent, failed, skipped }, processed_at: new Date().toISOString(),
       }).eq('id', job.id);
       (out.queue_sent as number) += sent; (out.queue_failed as number) += failed;
+      out.queue_skipped = (Number(out.queue_skipped) || 0) + skipped;
     }
   } catch (e) { out.queue_error = String((e as Error).message || e); }
 
   // ── (٢) متابعة غير المتجاوبين (drip) — إن مُفعّلة في whatsapp_config.drip ──
-  try {
+  if (canSend) try {
     if (Date.now() - started < HARD_MS - 25_000) {   // الـdrip ≈ 25ث لثلاثين رسالة
       const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
       const drip = (cfgRow?.value as Record<string, any>)?.drip || {};
@@ -171,6 +209,7 @@ Deno.serve(async (req) => {
           const donePhones: string[] = [];
           const sentAt = new Date().toISOString();
           for (const c of cold) {
+            if (blockSet.has(c.phone)) { donePhones.push(c.phone); continue; }   // محظور — لا نلاحقه
             try {
               const res = await sendTemplate(token, { channelId, templateName: drip.template, to: c.phone, vars: [c.name || ''] });
               donePhones.push(c.phone);   // نعلّم كل صفوف الرقم — لا نلاحقه ثانية
