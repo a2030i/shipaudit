@@ -1,8 +1,6 @@
-// ivr-webhook v3 (2026-07-22) — يستقبل نتيجة مكالمة IVR من Voxa/Hatif ويحدّث ivr_calls،
-// ثم ينفّذ الإجراء المرتبط بالضغطة (press→action) + أتمتة القوالب:
-//   press→action: followup/callback → متابعة+مهمة · dnc → حظر اتصال
-//   press→template: ضغطة معيّنة → قالب واتساب فوري (مثل رابط سداد)
-//   answer→template: إن رُدّ على المكالمة → قالب واتساب تلقائياً (script.onAnswerTemplate)
+// ivr-webhook v6 (2026-07-23) — يستقبل نتيجة مكالمة IVR ويحدّث ivr_calls، ثم press→action
+// + أتمتة القوالب (بمتغيّرات الاسم/المبلغ/العدد) + إعادة المحاولة على «لم يُرد».
+// v6 (خطة هاتف البند 9): إعادة المحاولة **لا للفشل الدائم** — retry.onResults=NoAnswer/Busy.
 // Voxa يرسل status/result أرقاماً؛ الإشارات الموثوقة = pressedDigit + answeredAt.
 // verify_jwt=false — الحماية ?key= ضد zoho_auth.webhook_key.
 import { createClient } from 'npm:@supabase/supabase-js@2';
@@ -170,8 +168,12 @@ Deno.serve(async (req) => {
     }
   }
 
-  // ── إعادة المحاولة على «لم يُردّ» (غير مُجاب) — تُدرَج في الطابور بعد afterHours ──
-  if (!answered && Number(row.attempt || 1) < Number(row.max_attempts || 1)) {
+  // ── إعادة المحاولة على «لم يُرد» فقط — لا للفشل الدائم (البند 9) ──
+  // retry.onResults = NoAnswer/Busy. Voxa يرسل result نصاً أو رقماً، فنحرس بنمط «فشل دائم»
+  // على result+hangupCause (fail/reject/invalid/dtmf/success) بدل مطابقة رقمية هشّة.
+  const retrySig = `${String(result ?? '')} ${String(p.hangupCause ?? p.HangupCause ?? '')}`.toLowerCase();
+  const permanentFail = /fail|reject|invalid|unalloc|blocked|dtmf|success/.test(retrySig);
+  if (!answered && !permanentFail && Number(row.attempt || 1) < Number(row.max_attempts || 1)) {
     try {
       let retry: Record<string, any> | null = null;
       const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();

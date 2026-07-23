@@ -1,4 +1,7 @@
-// hatif-call-webhook v2 (2026-07-22) — webhook «ما بعد المكالمة» من هاتف/Voxa.
+// hatif-call-webhook v3 (2026-07-23) — webhook «ما بعد المكالمة» من هاتف/Voxa.
+// v3 (خطة هاتف البند 9): **مكالمة واردة من عميل نعرفه = فرصة حارّة** → متابعة
+// needs_followup + مهمة CRM لمالك المتابعة/المُرسِل (حجز ذرّي على followup_created
+// مرة/مكالمة). رقم مجهول (بلا متابعة/حملة سابقة) لا يُنشئ ضجيجاً.
 // مواصفة مؤكّدة من التوثيق: يطلق عند اكتمال كل مكالمة (وارد type=1 / صادر type=2،
 // ومكالمات AI). يحمل التسجيل (recordingUrl) + النصّ (transcription) + الملخّص (summary)
 // + المشاعر (sentiment) + الموظف (userName) — يغذّي «سجل التواصل في بطاقة العميل».
@@ -75,5 +78,40 @@ Deno.serve(async (req) => {
     if (row.provider_call_id) await db.from('hatif_calls').upsert(row, { onConflict: 'provider_call_id' });
     else await db.from('hatif_calls').insert(row);
   } catch (e) { console.error('hatif-call-webhook insert failed:', (e as Error).message); }
+
+  // البند 9: مكالمة واردة من عميل نعرفه = فرصة حارّة → متابعة + مهمة CRM.
+  // حجز ذرّي على followup_created (مرة/مكالمة) كي لا تُكرّر webhook مكرّرة المهمة.
+  if (row.provider_call_id && row.call_type === 1 && row.phone) {
+    try {
+      const { data: won } = await db.from('hatif_calls')
+        .update({ followup_created: true })
+        .eq('provider_call_id', row.provider_call_id).eq('followup_created', false).select('provider_call_id');
+      if (won && won.length) {
+        // نعرف العميل؟ (متابعة قائمة أو حملة سابقة) — وإلا لا ننشئ ضجيجاً لرقم مجهول
+        const { data: fu } = await db.from('retargeting_followups').select('phone, status, owner_id').eq('phone', row.phone).maybeSingle();
+        let owner: string | null = fu?.owner_id ?? null;
+        let known = !!fu;
+        if (!owner) {
+          const { data: cs } = await db.from('whatsapp_campaign_sends').select('sent_by')
+            .eq('phone', row.phone).not('sent_by', 'is', null).order('sent_at', { ascending: false }).limit(1);
+          if (cs?.[0]) { known = true; if (cs[0].sent_by && String(cs[0].sent_by).length > 20) owner = cs[0].sent_by; }
+        }
+        if (known) {
+          const nowIso = new Date().toISOString();
+          const FINAL = new Set(['converted', 'returned', 'supplier', 'noise', 'blacklist', 'test']);
+          if (!fu || !FINAL.has(fu.status)) {
+            await db.from('retargeting_followups').upsert({ phone: row.phone, status: 'needs_followup', owner_id: owner, last_touch_at: nowIso, updated_at: nowIso }, { onConflict: 'phone' });
+          }
+          if (owner) {
+            await db.from('crm_tasks').insert({
+              title: `📞 مكالمة واردة من ${row.phone} — تابِعها`,
+              kind: 'followup', entity_type: 'retargeting', entity_ref: row.phone,
+              assigned_to: owner, due_at: nowIso, priority: 'high', status: 'open',
+            });
+          }
+        }
+      }
+    } catch (e) { console.error('inbound call → followup failed:', (e as Error).message); }
+  }
   return ok();
 });
