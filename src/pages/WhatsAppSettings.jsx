@@ -94,8 +94,8 @@ export default function WhatsAppSettings({ isActive = true }) {
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: (tab === 'campaigns' || tab === 'ivr') ? 1180 : 960, margin: '0 auto' }}>
       <PageHeader icon={<MessageCircle size={22}/>} iconColor="#22C55E"
-        title="واتساب"
-        subtitle="الإرسال عبر Hatif · هاتف (Voxa) — إعدادات القوالب + سجل الحملات"
+        title="منصة هاتف"
+        subtitle="الربط مع هاتف (Voxa) — قوالب واتساب + المكالمات الآلية + التاقات + جهات الاتصال"
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
       />
 

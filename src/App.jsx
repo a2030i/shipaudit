@@ -163,7 +163,7 @@ const NAV_ITEMS = [
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو مع لمحة', icon: GitCompare, section: 'money', permKey: 'reconciliation.view' },
 
   // ── الحملات والتقارير ───────────────────────────────────────────
-  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'حملات واتساب', icon: MessageCircle, section: 'outreach', permKey: 'whatsapp.view_log' },
+  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'منصة هاتف', icon: MessageCircle, section: 'outreach', permKey: 'whatsapp.view_log' },
 
   // ── الإعدادات والأدوات (الأقل استخداماً + الإعداد + النادر) ──────
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', adminOnly: true },
