@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
 
   if (action === 'list') {
     try {
-      const r = await fetch('https://api.voxa.sa/v1/tags/service-account', { headers: { Authorization: `Bearer ${token}` } });
+      const r = await fetch('https://api.voxa.sa/v1/tags/service-account?maxResultCount=500&skipCount=0', { headers: { Authorization: `Bearer ${token}` } });
       const j = await r.json().catch(() => ({}));
       const items = Array.isArray(j) ? j : (j.items || j.tags || []);
       return json({ ok: true, tags: items.map((t: Record<string, any>) => ({ id: t.id || t.tagId, name: t.name || t.title, color: t.color || t.colour || null })) });

@@ -27,7 +27,8 @@ async function accessToken() {
   const j = await r.json(); if (!j.access_token) throw new Error('token failed'); return j.access_token as string;
 }
 async function listTags(token: string): Promise<Map<string, string>> {
-  const r = await fetch(`${V}/v1/tags/service-account`, { headers: { Authorization: `Bearer ${token}` } });
+  // الافتراضي 10 فقط — نطلب صفحة كبيرة لجلب كل التاقات
+  const r = await fetch(`${V}/v1/tags/service-account?maxResultCount=500&skipCount=0`, { headers: { Authorization: `Bearer ${token}` } });
   const j = await r.json().catch(() => ({}));
   const items = Array.isArray(j) ? j : (j.items || j.tags || []);
   const m = new Map<string, string>();
