@@ -52,7 +52,9 @@ export async function saveIvrConfig(cfg) {
     maxAudioRetries: Math.max(0, Math.min(5, Number(cfg.maxAudioRetries ?? 2))),
     inputTimeoutMs: Math.max(1000, Math.min(30000, Number(cfg.inputTimeoutMs ?? 6000))),
     digitTimeoutMs: Math.max(1000, Math.min(10000, Number(cfg.digitTimeoutMs ?? 3000))),
-    defaultScript: cfg.defaultScript || (cfg.scripts?.[0]?.key || ''),
+    // الافتراضي يجب أن يشير لسكربت موجود — وإلا يصير معطّلاً فيفشل «اختر سكربتاً»
+    defaultScript: (Array.isArray(cfg.scripts) && cfg.scripts.some(s => s.key === cfg.defaultScript))
+      ? cfg.defaultScript : (cfg.scripts?.[0]?.key || ''),
     callHours: {
       start: Math.max(0, Math.min(23, Number(cfg.callHours?.start ?? 9))),
       end: Math.max(1, Math.min(24, Number(cfg.callHours?.end ?? 21))),

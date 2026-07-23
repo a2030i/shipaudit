@@ -27,7 +27,10 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
     if (!open) return;
     loadIvrConfig().then(c => {
       setCfg(c);
-      setScriptKey(c.defaultScript || c.scripts?.[0]?.key || '');
+      // الافتراضي قد يشير لسكربت محذوف (معطّل) → القائمة تعرض الأول بصرياً لكن القيمة
+      // معطّلة فيفشل «اختر سكربتاً». نهيّئ دائماً بمفتاح موجود فعلاً.
+      const valid = (c.scripts || []).some(s => s.key === c.defaultScript);
+      setScriptKey(valid ? c.defaultScript : (c.scripts?.[0]?.key || ''));
     });
     setCampName(bucketLabel || '');
     setResults(null); setProgress(null);
