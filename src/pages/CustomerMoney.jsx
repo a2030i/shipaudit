@@ -41,7 +41,8 @@ export default function CustomerMoney({ isActive = true }) {
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
   const [q, setQ] = useState('');
-  const [bucket, setBucket] = useState('');        // '' | b0..b3
+  const [buckets, setBuckets] = useState(() => new Set());   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
+  const toggleBucket = (key) => setBuckets(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [sortBy, setSortBy] = useState('owed');    // owed | oldest
   const [waOpen, setWaOpen] = useState(false);
   const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
@@ -83,18 +84,23 @@ export default function CustomerMoney({ isActive = true }) {
   const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
+  // مبلغ التحصيل لكل عميل = مجموع الشرائح المختارة فقط (أو كامل الدين إن لم تُختَر شريحة).
+  // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.
+  const bandAmt = (c) => buckets.size === 0 ? (c.owed || 0)
+    : BUCKETS.reduce((s, b) => s + (buckets.has(b.key) ? (c[b.key] || 0) : 0), 0);
   // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
-  const collectionFields = (c) => ({
-    name: (c.storeName || c.name || '').trim(), amount: c.owed, count: c.invCnt,
+  const collectionFields = (c, amt = c.owed) => ({
+    name: (c.storeName || c.name || '').trim(), amount: amt, count: c.invCnt,
     overdue: c.overdue, oldest_days: c.oldestDays, wallet: c.walletBalance,
     last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
   });
   const openSingleWa = (c) => {
     const name = (c.storeName || c.name || '').trim();
+    const amt = bandAmt(c);
     setWaSingle({
-      to: normalizeSaudiPhone(c.phone), name, amount: c.owed, count: c.invCnt,
-      vars: [name, Number(c.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
-      fields: collectionFields(c),
+      to: normalizeSaudiPhone(c.phone), name, amount: amt, count: c.invCnt,
+      vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
+      fields: collectionFields(c, amt),
     });
     setWaOpen(true);
   };
@@ -115,41 +121,44 @@ export default function CustomerMoney({ isActive = true }) {
   const filtered = useMemo(() => {
     if (!d) return [];
     let list = d.customers;
-    if (bucket) list = list.filter(c => (c[bucket] || 0) > 0.5);
+    if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
-    return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : b.owed - a.owed);
-  }, [d, q, bucket, sortBy]);
-  const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + c.owed, 0).toFixed(2), [filtered]);
+    return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
+  }, [d, q, buckets, sortBy]);  // eslint-disable-line
+  const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
 
   const waRecipients = useMemo(() => filtered
-    .filter(c => c.phone && c.owed > 0.5)
+    .filter(c => c.phone && bandAmt(c) > 0.5)
     .map(c => {
       const name = (c.storeName || c.name || '').trim();
+      const amt = bandAmt(c);
       return {
-        to: normalizeSaudiPhone(c.phone), name, amount: c.owed, count: c.invCnt,
-        vars: [name, Number(c.owed).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
-        fields: collectionFields(c),
+        to: normalizeSaudiPhone(c.phone), name, amount: amt, count: c.invCnt,
+        vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
+        fields: collectionFields(c, amt),
       };
-    }), [filtered]);  // eslint-disable-line
+    }), [filtered, buckets]);  // eslint-disable-line
 
   // ملف الحملة — زوهو المرجع للدين + سياق المتجر (هاتف/نوع فوترة/حالة/محفظة/آخر
   // شحنة) للفريق. يمرّ عبر persistAndDownloadExport (تخزين + سجل السحبات، §1.13).
   const exportXlsx = async () => {
     if (!filtered.length) return;
+    const campLabel = buckets.size ? 'مبلغ الشرائح المختارة' : 'مبلغ التحصيل';
     const headers = ['العميل', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
-      'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها'];
+      'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
+    const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
-      [],
+      buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
       ...filtered.map(c => [c.name, c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
         c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
-        c.lastPaymentDate || '', c.lastPaymentAmount || '']),
+        c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', '', '', '', '', filteredTotal],
+      ['الإجمالي', '', '', '', '', owedTotal, '', '', '', '', '', '', '', '', '', '', '', filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 32 : (i === 1 ? 24 : 12) }));
@@ -229,16 +238,16 @@ export default function CustomerMoney({ isActive = true }) {
 
         {/* شريط الأعمار — اضغط شريحة لفلترة العملاء */}
         <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>أعمار الدين — اضغط شريحة لعرض عملائها</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>أعمار الدين — اختر شريحة أو أكثر (المبلغ والحملة يصيران لمجموع المختار فقط)</div>
           <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
             {BUCKETS.map(b => {
               const v = d.aging[b.key] || 0;
               const pct = Math.max((v / agingTotal) * 100, v > 0.5 ? 6 : 0);
               if (pct === 0) return null;
-              const active = bucket === b.key;
+              const active = buckets.has(b.key);
               return (
                 <div key={b.key} title={`${b.label}: ${fmt(v)} ر.س`}
-                  onClick={() => setBucket(active ? '' : b.key)}
+                  onClick={() => toggleBucket(b.key)}
                   style={{ width: `${pct}%`, background: b.color, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', color: '#fff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
                     overflow: 'hidden', outline: active ? '2.5px solid var(--text)' : 'none', outlineOffset: -2 }}>
@@ -247,15 +256,20 @@ export default function CustomerMoney({ isActive = true }) {
               );
             })}
           </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6 }}>
+          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
             {BUCKETS.map(b => (
-              <span key={b.key} onClick={() => setBucket(bucket === b.key ? '' : b.key)}
-                style={{ fontSize: 10.5, color: bucket === b.key ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
-                  fontWeight: bucket === b.key ? 800 : 500 }}>
+              <span key={b.key} onClick={() => toggleBucket(b.key)}
+                style={{ fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
+                  fontWeight: buckets.has(b.key) ? 800 : 500 }}>
+                <input type="checkbox" checked={buckets.has(b.key)} readOnly
+                  style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
                 {b.label}: {fmt(d.aging[b.key] || 0)}
               </span>
             ))}
+            {buckets.size > 0 && (
+              <span onClick={() => setBuckets(new Set())} style={{ fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</span>
+            )}
           </div>
         </div>
       </Card>
@@ -375,15 +389,17 @@ export default function CustomerMoney({ isActive = true }) {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {d.customers.length} عميلاً
-        {bucket ? ` — شريحة ${BUCKETS.find(b => b.key === bucket)?.label}` : ''} ·
-        إجمالي المعروض <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(filteredTotal)}</b> ر.س
+        {buckets.size ? ` — شرائح ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : ''} ·
+        {buckets.size ? 'مجموع الشرائح المختارة ' : 'إجمالي المعروض '}
+        <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(filteredTotal)}</b> ر.س
+        {buckets.size > 0 && <span style={{ color: 'var(--muted2)' }}> — الحملة تُرسل بهذا المبلغ لا كامل الدين</span>}
       </div>
 
       {/* ── بطاقات العملاء ── */}
       {!filtered.length ? <Card><Empty icon="🎉" title="لا ديون في هذا العرض" sub="جرّب فلتراً آخر"/></Card> : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
           {filtered.map(c => (
-            <CustomerCard key={c.name} c={c} highlight={bucket}
+            <CustomerCard key={c.name} c={c} highlight={buckets}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}
               onWa={can('campaigns.send') ? openSingleWa : null}/>
           ))}
@@ -393,7 +409,7 @@ export default function CustomerMoney({ isActive = true }) {
       <WhatsAppSendModal open={waOpen}
         onClose={() => { setWaOpen(false); setWaSingle(null); }}
         recipients={waOpen ? (waSingle ? [waSingle] : waRecipients) : []}
-        bucketLabel={waSingle ? `العميل ${waSingle.name}` : (bucket ? `أعمار ${BUCKETS.find(b => b.key === bucket)?.label}` : 'تحصيل العملاء')}
+        bucketLabel={waSingle ? `العميل ${waSingle.name}` : (buckets.size ? `أعمار ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : 'تحصيل العملاء')}
         onSent={() => { loadWaStatus(); }}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
@@ -755,7 +771,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           const v = c[b.key] || 0;
           if (v <= 0.5) return null;
           return <div key={b.key} style={{ width: `${(v / c.owed) * 100}%`, background: b.color,
-            opacity: !highlight || highlight === b.key ? 1 : 0.25 }}/>;
+            opacity: (!highlight || highlight.size === 0 || highlight.has(b.key)) ? 1 : 0.25 }}/>;
         })}
       </div>
 
