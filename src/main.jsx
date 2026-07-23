@@ -4,6 +4,21 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
 
+// توقيت السعودية عالمياً: قاعدة البيانات تخزّن UTC، ونريد العرض بتوقيت الرياض مهما كان
+// جهاز المتصفّح. نحقن timeZone='Asia/Riyadh' في كل دوال Date.toLocale* حين لا يُمرَّر
+// timeZone صراحةً — يغطّي كل مواضع عرض التاريخ/الوقت دفعة واحدة بلا تغيير صيغها. لا يمسّ
+// Number.toLocaleString (الأرقام)، ولا الاستدعاءات التي تمرّر timeZone (مثل saTime.js).
+// (لا عملية لأجهزة السعودية أصلاً — يُصحّح فقط الأجهزة بتوقيت مختلف.)
+(() => {
+  const TZ = 'Asia/Riyadh';
+  for (const m of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']) {
+    const orig = Date.prototype[m];
+    Date.prototype[m] = function (locale, opts) {
+      return orig.call(this, locale, (opts && opts.timeZone) ? opts : { ...(opts || {}), timeZone: TZ });
+    };
+  }
+})();
+
 // Top-level error boundary: a render crash anywhere used to unmount the
 // whole tree → silent WHITE PAGE with zero clue for the operator. Now the
 // error message + stack render on screen so it can be reported instantly.
