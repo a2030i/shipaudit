@@ -81,13 +81,50 @@ export async function saveIvrConfig(cfg) {
   return clean;
 }
 
-// رفع ملف صوتي (WAV) لسكربت — يُرجِع الرابط العام ليُشغّله Voxa. Voxa يقبل WAV فقط.
+// ترميز AudioBuffer (أحادي) إلى WAV PCM 16-bit.
+function encodeWavPcm16(buf) {
+  const rate = buf.sampleRate;
+  const samples = buf.getChannelData(0);
+  const dataLen = samples.length * 2;
+  const ab = new ArrayBuffer(44 + dataLen);
+  const dv = new DataView(ab);
+  const w = (o, s) => { for (let i = 0; i < s.length; i++) dv.setUint8(o + i, s.charCodeAt(i)); };
+  w(0, 'RIFF'); dv.setUint32(4, 36 + dataLen, true); w(8, 'WAVE');
+  w(12, 'fmt '); dv.setUint32(16, 16, true); dv.setUint16(20, 1, true); dv.setUint16(22, 1, true);
+  dv.setUint32(24, rate, true); dv.setUint32(28, rate * 2, true); dv.setUint16(32, 2, true); dv.setUint16(34, 16, true);
+  w(36, 'data'); dv.setUint32(40, dataLen, true);
+  let off = 44;
+  for (let i = 0; i < samples.length; i++) { const s = Math.max(-1, Math.min(1, samples[i])); dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2; }
+  return new Blob([ab], { type: 'audio/wav' });
+}
+// تحويل أي ملف صوتي (mp3/m4a/ogg…) → WAV أحادي 8kHz 16-bit (قياسي للهاتف) في المتصفّح.
+async function audioFileToWav(file, targetRate = 8000) {
+  const arrayBuf = await file.arrayBuffer();
+  const AC = window.AudioContext || window.webkitAudioContext;
+  if (!AC) throw new Error('المتصفّح لا يدعم تحويل الصوت');
+  const ctx = new AC();
+  let decoded;
+  try { decoded = await ctx.decodeAudioData(arrayBuf.slice(0)); } finally { try { ctx.close(); } catch { /* */ } }
+  const length = Math.max(1, Math.ceil(decoded.duration * targetRate));
+  const offline = new OfflineAudioContext(1, length, targetRate);   // 1 قناة = دمج تلقائي لأحادي + إعادة عيّنة
+  const src = offline.createBufferSource();
+  src.buffer = decoded; src.connect(offline.destination); src.start(0);
+  const rendered = await offline.startRendering();
+  return encodeWavPcm16(rendered);
+}
+
+// رفع ملف صوتي لسكربت — يُرجِع الرابط العام ليُشغّله Voxa.
+// Voxa يقبل WAV فقط، فأي صيغة أخرى تُحوَّل تلقائياً في المتصفّح قبل الرفع.
 export async function uploadIvrAudio(file, scriptKey, kind = 'main') {
   if (!file) throw new Error('لا ملف');
   const name = String(file.name || '').toLowerCase();
-  if (!name.endsWith('.wav')) throw new Error('Voxa يقبل WAV فقط — حوّل الملف إلى .wav');
+  let blob = file;
+  if (!name.endsWith('.wav')) {
+    try { blob = await audioFileToWav(file); }
+    catch { throw new Error('تعذّر تحويل الملف إلى WAV — جرّب ملفاً آخر (mp3/m4a/wav) أو حوّله يدوياً'); }
+  }
   const path = `${scriptKey || 'script'}_${kind}_${Date.now()}.wav`;   // مفتاح ASCII آمن
-  const { error } = await supabase.storage.from('ivr-audio').upload(path, file, { contentType: 'audio/wav', upsert: true });
+  const { error } = await supabase.storage.from('ivr-audio').upload(path, blob, { contentType: 'audio/wav', upsert: true });
   if (error) throw error;
   const { data } = supabase.storage.from('ivr-audio').getPublicUrl(path);
   return data?.publicUrl || '';

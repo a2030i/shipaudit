@@ -276,8 +276,8 @@ export default function IvrTab() {
                   </>
                 ) : mayConfigure && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--accent)', fontSize: 12 }}>
-                    <Upload size={13}/> {uploadingKey === s.key ? 'يرفع…' : 'ارفع صوتك (WAV) — بدل الآلي'}
-                    <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                    <Upload size={13}/> {uploadingKey === s.key ? 'يحوّل ويرفع…' : 'ارفع صوتك (MP3/WAV — يُحوَّل تلقائياً)'}
+                    <input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav" style={{ display: 'none' }}
                       onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onAudioUpload(si, f); }}/>
                   </label>
                 )}
@@ -302,8 +302,8 @@ export default function IvrTab() {
                   </>
                 ) : mayConfigure && (
                   <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: 'pointer', color: 'var(--accent)' }}>
-                    <Upload size={13}/> {uploadingKey === s.key + '_ok' ? 'يرفع…' : 'ارفع «شكراً» (WAV)'}
-                    <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                    <Upload size={13}/> {uploadingKey === s.key + '_ok' ? 'يحوّل ويرفع…' : 'ارفع «شكراً» (MP3/WAV)'}
+                    <input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav" style={{ display: 'none' }}
                       onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onSuccessAudioUpload(si, f); }}/>
                   </label>
                 )}
@@ -334,8 +334,8 @@ export default function IvrTab() {
                       </>
                     ) : mayConfigure && (
                       <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', color: 'var(--accent)' }}>
-                        <Upload size={12}/> {uploadingKey === `${s.key}_opt${oi}` ? 'يرفع…' : 'ارفع رداً صوتياً (WAV)'}
-                        <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                        <Upload size={12}/> {uploadingKey === `${s.key}_opt${oi}` ? 'يحوّل ويرفع…' : 'ارفع رداً صوتياً (MP3/WAV)'}
+                        <input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav" style={{ display: 'none' }}
                           onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onOptAudioUpload(si, oi, f); }}/>
                       </label>
                     )}
