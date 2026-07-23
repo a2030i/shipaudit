@@ -1,8 +1,10 @@
-// hatif-tag-sync v2 (2026-07-23) — نظام تاقات هاتف المؤتمت الكامل.
-// v2: (١) أسماء التاقات مطابقة لتاقات المستخدم في هاتف («عليه مديونية»). (٢) تصفّح
-// RPC كامل (تجاوز حدّ 1000 صف §1.34). (٣) **يحافظ على التاقات اليدوية** (اجتماع…):
-// يقرأ تاقات المحادثة الحالية، يُبقي غير-القانونية، ويدمجها مع تاقاتنا (POST يستبدل).
-// (٤) لا يُطبّق إن نقص تعيين تاق (كي لا يمسح). لا يحذف تعريف تاق أبداً.
+// hatif-tag-sync v7 (2026-07-23) — نظام تاقات هاتف المؤتمت الكامل.
+// v7: (١) استبدال مباشر للتاقات (POST {tagIds: wantIds}) — حُذف GET قراءة التاقات
+// الحالية للحفاظ على اليدوية (المستخدم يريد صفر تاق يدوي وSTRAY يحذفها كلها، فالحفظ
+// بلا فائدة). النتيجة: نداء Voxa واحد/رقم بدل اثنين → ضِعف الإنتاجية وإزالة نقطة تخطٍّ.
+// (٢) يعتمد على ORDER BY الثابت في RPC hatif_phone_tags (إصلاح فخّ §1.34/§6 —
+// بلا ترتيب ثابت كان تصفّح .range() يُسقط ~1506 صفاً فلا تُطبَّق أبداً).
+// v2: أسماء مطابقة لهاتف + تصفّح كامل + حذف STRAY. لا يحذف تعريف تاق قانوني أبداً.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const CORS = { 'Access-Control-Allow-Origin': 'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
@@ -47,15 +49,10 @@ async function deleteTag(token: string, id: string): Promise<boolean> {
   const r = await fetch(`${V}/v1/tags/service-account/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
   return r.ok || r.status === 204;
 }
-// تاقات المحادثة الحالية (لنُبقي اليدوية عند الاستبدال)
-async function currentConvTagIds(token: string, convId: string): Promise<string[] | null> {
-  try {
-    const r = await fetch(`${V}/v2/conversations/service-account/${convId}`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) return null;
-    const j = await r.json().catch(() => ({}));
-    const raw = j.tags || j.conversationTags || j.tagIds || [];
-    return (Array.isArray(raw) ? raw : []).map((t: any) => String(t?.id || t?.tagId || t)).filter(Boolean);
-  } catch { return null; }
+// تفعيل التاق (المفتاح في واجهة هاتف = isPinned) — الموجود سابقاً بقي مُطفأً
+async function enableTag(token: string, id: string, name: string, icon: string): Promise<boolean> {
+  const r = await fetch(`${V}/v1/tags/service-account/${id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name, icon, isPinned: true }) });
+  return r.ok;
 }
 
 async function requireAuth(req: Request, db: ReturnType<typeof svc>) {
@@ -97,7 +94,12 @@ Deno.serve(async (req) => {
     const badId = tagMap.get(norm(bad));
     if (badId) { try { if (await deleteTag(token, badId)) { tagMap.delete(norm(bad)); deleted++; } await sleep(200); } catch { /* */ } }
   }
-  const canonIds = new Set(CANON.map(t => tagMap.get(norm(t.name))).filter(Boolean) as string[]);
+  // تفعيل كل تاق قانوني (isPinned) — التاقات المُنشأة سابقاً بقيت مُطفأة في واجهة هاتف
+  let enabled = 0;
+  for (const t of CANON) {
+    const id = tagMap.get(norm(t.name));
+    if (id) { try { if (await enableTag(token, id, t.name, t.icon)) enabled++; await sleep(150); } catch { /* */ } }
+  }
 
   // 2) الحالة المرغوبة — تصفّح كامل (تجاوز حدّ 1000)
   const desired: { phone: string; tags: string[] }[] = [];
@@ -127,21 +129,16 @@ Deno.serve(async (req) => {
     const wantIds = names.map(n => tagMap.get(norm(n))).filter(Boolean) as string[];
     // تعيين ناقص (إنشاء فشل) — لا نُطبّق كي لا نمسح
     if (names.length > 0 && wantIds.length < names.length) { skipped++; continue; }
-    // اقرأ التاقات الحالية وأبقِ اليدوية (غير القانونية) — GET يفشل ⇒ لا نمسّ
-    const cur = await currentConvTagIds(token, convId);
-    if (cur === null) { skipped++; continue; }
-    const preserved = cur.filter(id => !canonIds.has(id));
-    const finalIds = [...new Set([...preserved, ...wantIds])];
-
+    // استبدال مباشر — المستخدم يريد صفر تاق يدوي (STRAY محذوفة) فلا حاجة لقراءة الحالي
     try {
       const rr = await fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: finalIds }) });
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: wantIds }) });
       if (rr.ok) {
         await db.from('hatif_conversation_tags').upsert({ phone: r.phone, conversation_id: convId, tag_names: names, applied_at: new Date().toISOString() }, { onConflict: 'phone' });
         applied_n++;
       } else failed++;
     } catch { failed++; }
-    await sleep(250);
+    await sleep(200);
   }
-  return json({ ok: true, changed: changed.length, applied: applied_n, failed, skipped, created, deleted, remaining: Math.max(0, changed.length - applied_n - failed - skipped) });
+  return json({ ok: true, changed: changed.length, applied: applied_n, failed, skipped, created, deleted, enabled, remaining: Math.max(0, changed.length - applied_n - failed - skipped) });
 });
