@@ -236,12 +236,17 @@ export async function runHatifTagSync(limit = 120) {
 }
 export async function loadTagSyncStatus() {
   const { count: applied } = await supabase.from('hatif_conversation_tags').select('phone', { count: 'exact', head: true });
-  let desired = null, tagged = null;
+  let desired = 0, tagged = 0;
   try {
-    const { data } = await supabase.rpc('hatif_phone_tags');
-    desired = (data || []).length;
-    tagged = (data || []).filter(r => (r.tags || []).length > 0).length;
-  } catch { /* */ }
+    // تصفّح كامل — RPC يقفه PostgREST عند 1000 صف (§1.34)
+    for (let off = 0; off < 20000; off += 1000) {
+      const { data } = await supabase.rpc('hatif_phone_tags').range(off, off + 999);
+      const rows = data || [];
+      desired += rows.length;
+      tagged += rows.filter(r => (r.tags || []).length > 0).length;
+      if (rows.length < 1000) break;
+    }
+  } catch { desired = null; tagged = null; }
   return { applied: applied || 0, desired, tagged };
 }
 

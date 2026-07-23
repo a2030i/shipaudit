@@ -609,7 +609,7 @@ function TagSystemCard() {
     catch (e) { toast(e.message || 'فشل', 'error'); }
     finally { setBusy(false); }
   };
-  const TAGS = [['مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
+  const TAGS = [['عليه مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
   return (
     <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>🏷️ نظام التاقات المؤتمت</div>
