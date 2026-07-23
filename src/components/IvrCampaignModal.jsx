@@ -125,8 +125,17 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
 
             {script && (
               <div style={{ background: 'var(--panel, #F8FAFC)', border: '1px solid var(--border)', borderRadius: 10, padding: 12, fontSize: 13, lineHeight: 1.7 }}>
-                <div style={{ color: 'var(--muted)', marginBottom: 4 }}>نص المكالمة (المتغيّرات تُملأ لكل عميل):</div>
-                <div style={{ fontWeight: 500 }}>{script.ttsText || '—'}</div>
+                {script.audioUrl ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <span style={{ color: 'var(--green2)', fontWeight: 600 }}>🔊 صوت مرفوع</span>
+                    <span style={{ color: 'var(--muted)', fontSize: 12 }}>يُشغَّل كما سُجِّل — بلا متغيّرات (المتغيّرات في قالب الواتساب فقط)</span>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ color: 'var(--muted)', marginBottom: 4 }}>نص المكالمة (المتغيّرات تُملأ لكل عميل):</div>
+                    <div style={{ fontWeight: 500 }}>{script.ttsText || '—'}</div>
+                  </>
+                )}
                 <div style={{ marginTop: 8, display: 'flex', flexWrap: 'wrap', gap: 6 }}>
                   {(script.options || []).map(o => (
                     <span key={o.digit} style={{ background: '#EEF2FF', color: '#3730A3', borderRadius: 999, padding: '3px 10px', fontSize: 12 }}>
@@ -156,7 +165,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
               {valid.length > 400 && <div style={{ padding: 8, fontSize: 12, color: 'var(--muted)', textAlign: 'center' }}>… وعرض 400 من {valid.length} (التحديد يشمل الكل)</div>}
             </div>
 
-            {progress && (
+            {progress && !results && (
               <div style={{ fontSize: 13 }}>
                 جارٍ الإطلاق… {progress.done}/{progress.total} — نجح {progress.placed} · فشل {progress.failed}
                 <div style={{ height: 6, background: 'var(--border)', borderRadius: 999, marginTop: 6, overflow: 'hidden' }}>

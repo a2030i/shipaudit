@@ -69,6 +69,7 @@ export async function saveIvrConfig(cfg) {
     scripts: (Array.isArray(cfg.scripts) ? cfg.scripts : []).map(s => ({
       key: s.key, label: s.label || s.key, ttsText: s.ttsText || '',
       audioUrl: s.audioUrl || '',                 // صوت مرفوع (WAV) — يُشغَّل بدل TTS إن وُجد
+      audioSec: Math.max(0, Math.round(Number(s.audioSec) || 0)),  // طول التسجيل بالثواني — لتحديد «سمعها كاملة»
       successAudioUrl: s.successAudioUrl || '',    // رسالة ختام (WAV) — تُشغَّل بعد الضغط ثم يُقفل
       onAnswerTemplate: s.onAnswerTemplate || '',  // قالب واتساب يُرسَل تلقائياً إن رُدّ على المكالمة
       options: (Array.isArray(s.options) ? s.options : []).map(o => ({

@@ -270,8 +270,9 @@ export default function IvrTab() {
               <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12 }}>
                 {s.audioUrl ? (
                   <>
-                    <audio src={s.audioUrl} controls style={{ height: 30, maxWidth: 220 }}/>
-                    <span style={{ color: 'var(--green2)', fontSize: 11 }}>✓ صوت مرفوع (يُشغَّل بدل النص)</span>
+                    <audio src={s.audioUrl} controls style={{ height: 30, maxWidth: 220 }}
+                      onLoadedMetadata={e => { const d = Math.round(e.target.duration || 0); if (d && d !== Math.round(Number(s.audioSec) || 0)) updateScript(si, { audioSec: d }); }}/>
+                    <span style={{ color: 'var(--green2)', fontSize: 11 }}>✓ صوت مرفوع (يُشغَّل بدل النص){s.audioSec ? ` · ${s.audioSec}ث` : ''}</span>
                     {mayConfigure && <Btn size="sm" variant="ghost" title="إزالة الصوت" onClick={() => updateScript(si, { audioUrl: '' })}><X size={12}/></Btn>}
                   </>
                 ) : mayConfigure && (
@@ -477,16 +478,32 @@ export default function IvrTab() {
                       <th style={{ padding: '5px 7px' }}>الرقم</th>
                       <th style={{ padding: '5px 7px' }}>معرّف المكالمة</th>
                       <th style={{ padding: '5px 7px' }}>الحالة</th>
+                      <th style={{ padding: '5px 7px' }}>المدة</th>
+                      <th style={{ padding: '5px 7px' }}>الصوت المُشغَّل</th>
                       <th style={{ padding: '5px 7px' }}>ضغط</th>
                       <th style={{ padding: '5px 7px' }}>الإجراء</th>
                     </tr></thead>
                     <tbody>
-                      {calls.map(r => { const b = ivrStatusBadge(r); const cid = r.voxa_call_id || r.external_id || r.id || ''; return (
+                      {calls.map(r => { const b = ivrStatusBadge(r); const cid = r.voxa_call_id || r.external_id || r.id || '';
+                        const dur = Math.round(Number(r.duration_seconds) || 0);
+                        const answered = !!r.answered_at || dur > 0;
+                        const sc = (cfg.scripts || []).find(s => s.key === r.script_key);
+                        const audioSec = Math.round(Number(sc?.audioSec) || 0);
+                        const full = answered && audioSec > 0 && dur >= audioSec - 3;   // سمع (تقريباً) كامل التسجيل
+                        return (
                         <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
                           <td style={{ padding: '6px 7px' }} data-label="الاسم">{r.name || '—'}</td>
                           <td style={{ padding: '6px 7px', direction: 'ltr', fontFamily: 'monospace' }} data-label="الرقم">{r.phone}</td>
                           <td style={{ padding: '6px 7px', direction: 'ltr', fontFamily: 'monospace', fontSize: 10.5, color: 'var(--muted)', wordBreak: 'break-all', maxWidth: 150 }} data-label="معرّف المكالمة" title={cid}>{cid || '—'}</td>
                           <td style={{ padding: '6px 7px' }} data-label="الحالة"><span style={{ color: b.c, fontWeight: 600 }}>{b.t}</span></td>
+                          <td style={{ padding: '6px 7px', whiteSpace: 'nowrap' }} data-label="المدة">
+                            {answered ? <>سمع <b>{dur}</b>ث{audioSec ? ` / ${audioSec}ث` : ''}{full && <span style={{ color: 'var(--green2)', fontWeight: 700, marginInlineStart: 5 }}>✓ كاملة</span>}</> : <span style={{ color: 'var(--muted)' }}>—</span>}
+                          </td>
+                          <td style={{ padding: '6px 7px' }} data-label="الصوت المُشغَّل">
+                            {sc?.audioUrl
+                              ? <audio src={sc.audioUrl} controls preload="none" style={{ height: 28, maxWidth: 150 }}/>
+                              : <span style={{ color: 'var(--muted)', fontSize: 11 }}>نص منطوق (بلا تسجيل)</span>}
+                          </td>
                           <td style={{ padding: '6px 7px', fontWeight: 700, color: r.pressed_digit ? 'var(--green2)' : 'var(--muted)' }} data-label="ضغط">{r.pressed_digit || '—'}</td>
                           <td style={{ padding: '6px 7px', color: 'var(--muted)' }} data-label="الإجراء">{r.action_taken === 'followup' ? 'متابعة' : r.action_taken === 'dnc' ? 'إيقاف اتصال' : r.action_taken === 'callback' ? 'معاودة' : r.action_taken === 'none' ? 'بلا' : '—'}</td>
                         </tr>
