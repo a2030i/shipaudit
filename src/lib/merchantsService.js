@@ -242,6 +242,9 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     }
     if (error) throw error;
   }
+  // كشف متاجر جديد يغيّر حالة/شحنات كثير من المتاجر → أطلق مزامنة تاقات هاتف فوراً
+  // (بدل انتظار الكرون 20د). fire-and-forget — الفشل صامت (الكرون شبكة أمان).
+  supabase.rpc('trigger_tag_sync').then(() => {}, () => {});
   return {
     snapshotId,
     snapshotDate,

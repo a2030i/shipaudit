@@ -16,7 +16,7 @@ import {
   loadRetargetingCampaign, loadRetargetingStatusChanges, bulkSetFollowups,
   SEGMENTS, PRIORITIES, CHANNELS, STATUSES, segmentMeta, priorityMeta, statusMeta,
 } from '../lib/retargetingService.js';
-import { loadWhatsAppCampaignStatus, normalizeSaudiPhone } from '../lib/whatsappService.js';
+import { loadWhatsAppCampaignStatus, normalizeSaudiPhone, waStatusBadge } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
 
@@ -506,8 +506,8 @@ export default function Retargeting({ isActive = true }) {
                         {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>⏰ {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
                         {l.notes && <div title={l.notes} style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {l.notes}</div>}
                         {(() => { const w = waStatus.get(normalizeSaudiPhone(l.phone)); if (!w) return null;
-                          const st = w.paidAfter ? { t: '✅ سدّد', c: 'var(--green)' } : w.replied ? { t: '💬 ردّ', c: '#3B82F6' } : w.read ? { t: 'قُرئت', c: 'var(--muted)' } : w.delivered ? { t: 'وصلت', c: 'var(--muted)' } : { t: 'أُرسلت', c: 'var(--muted2)' };
-                          return <div style={{ fontSize: 10, color: st.c, marginTop: 2 }}>📲 حملة {fmtDate(w.lastSentAt)}{w.sends > 1 ? ` (${w.sends}×)` : ''} · {st.t}</div>; })()}
+                          const st = waStatusBadge(w);
+                          return <div style={{ fontSize: 10, color: st.c, fontWeight: 600, marginTop: 2 }}>📲 حملة {fmtDate(w.lastSentAt)}{w.sends > 1 ? ` (${w.sends}×)` : ''} · {st.t}</div>; })()}
                       </td>
                       <td data-label="إجراء" style={{ padding: '10px 12px' }}>
                         {/* «كل شي على هاتف» (2026-07-16): wa.me الحرة أُزيلت — زر الحملة

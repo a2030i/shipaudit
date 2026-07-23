@@ -6,13 +6,13 @@ import { loadWhatsAppLog } from '../lib/whatsappService.js';
 
 const fmtDateTime = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
 
-// حالة الرسالة موحّدة → شارة ملوّنة (رد > فشل > قُرئت > وصلت > أُرسلت)
+// حالة الرسالة موحّدة → شارة بلون مميّز واضح لكل حالة (ردّ > فشل > قُرئت > وصلت > أُرسلت)
 export function campaignStatusBadge(r) {
-  if (r.repliedAt) return { label: '💬 ردّ', color: '#3B82F6' };
-  if (r.status === 'Failed' || r.error) return { label: 'فشل', color: 'var(--red)' };
-  if (r.readAt) return { label: 'قُرئت', color: 'var(--green2)' };
-  if (r.deliveredAt) return { label: 'وصلت', color: 'var(--muted)' };
-  return { label: 'أُرسلت', color: 'var(--muted2)' };
+  if (r.repliedAt) return { label: '💬 ردّ', color: '#2563EB' };            // أزرق
+  if (r.status === 'Failed' || r.error) return { label: '⚠️ فشل', color: '#DC2626' };  // أحمر
+  if (r.readAt) return { label: '👁 قُرئت', color: '#7C3AED' };             // بنفسجي
+  if (r.deliveredAt) return { label: '✓ وصلت', color: '#0891B2' };          // سماوي
+  return { label: '➤ أُرسلت', color: '#6B7280' };                          // رمادي
 }
 
 // شارة صغيرة

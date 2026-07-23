@@ -532,7 +532,12 @@ export async function uploadLeadsSnapshot({
     if (error) throw error;
     added += chunk.length;
   }
-  if (added) invalidateLeadCaches();
+  if (added) {
+    invalidateLeadCaches();
+    // leads جديدة (عملاء محتملون) → أطلق مزامنة تاقات هاتف فوراً (بدل انتظار الكرون).
+    // fire-and-forget — الفشل صامت (الكرون شبكة أمان).
+    supabase.rpc('trigger_tag_sync').then(() => {}, () => {});
+  }
 
   return {
     added,

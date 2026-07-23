@@ -296,6 +296,19 @@ export async function loadWhatsAppCampaignStatus() {
   return map;
 }
 
+// شارة حالة آخر رسالة حملة على بطاقة العميل — لون مميّز واضح لكل حالة (نقطة الحقيقة
+// الوحيدة، تُستعمَل في كل الصفحات بدل ألوان مضمّنة متفرّقة). الترتيب: سدّد > ردّ > فشل
+// > قُرئت > وصلت > أُرسلت.
+export function waStatusBadge(w) {
+  if (!w) return null;
+  if (w.paidAfter) return { t: '✅ سدّد', c: '#16A34A' };            // أخضر قوي
+  if (w.replied) return { t: '💬 ردّ', c: '#2563EB' };              // أزرق
+  if (/fail|undeliver/i.test(String(w.status || ''))) return { t: '⚠️ فشل', c: '#DC2626' };  // أحمر
+  if (w.read) return { t: '👁 قُرئت', c: '#7C3AED' };               // بنفسجي
+  if (w.delivered) return { t: '✓ وصلت', c: '#0891B2' };            // سماوي
+  return { t: '➤ أُرسلت', c: '#6B7280' };                           // رمادي
+}
+
 // تقرير الحملات المجمَّع (2026-07-21): صف لكل حملة — مستهدفون/وصلت/قُرئت/ردود/فشل.
 // الحالات يغذّيها hatif-webhook — بلا ضبطه في هاتف تبقى «أُرسلت» فقط.
 export async function loadWhatsAppCampaignReport() {

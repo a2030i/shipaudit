@@ -9,7 +9,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadHatifLeads, computeLeadStats, syncHatifLeads, kindMeta } from '../lib/hatifLeadsService.js';
 import { STATUSES, statusMeta, setRetargetingFollowup, bulkSetFollowups } from '../lib/retargetingService.js';
 import { loadEmployees } from '../lib/employeeService.js';
-import { normalizeSaudiPhone, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
+import { normalizeSaudiPhone, loadWhatsAppCampaignStatus, waStatusBadge } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
 
@@ -212,8 +212,8 @@ export default function HatifLeads({ isActive = true }) {
                       <td data-label="الاسم" style={{ padding: '10px 12px', fontWeight: 700 }}>
                         {l.namedManually && <span title="سمّاه موظف">⭐ </span>}{display(l)}
                         {l.company && <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{l.company}</div>}
-                        {w && <div style={{ fontSize: 10, color: w.replied ? '#3B82F6' : 'var(--muted2)', marginTop: 2 }}>
-                          📲 حملة {fmtDate(w.lastSentAt)} · {w.replied ? 'ردّ' : w.read ? 'قُرئت' : w.delivered ? 'وصلت' : 'أُرسلت'}</div>}
+                        {w && (() => { const st = waStatusBadge(w); return <div style={{ fontSize: 10, color: st.c, fontWeight: 600, marginTop: 2 }}>
+                          📲 حملة {fmtDate(w.lastSentAt)} · {st.t}</div>; })()}
                       </td>
                       <td data-label="الجوال" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right' }}>{l.phone}</td>
                       <td data-label="أول ظهور" style={{ padding: '10px 12px', color: 'var(--muted)' }}>{fmtDate(l.createdAt)}</td>
