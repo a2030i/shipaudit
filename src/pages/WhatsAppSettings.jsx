@@ -601,13 +601,26 @@ function CampaignsTab() {
 function TagSystemCard() {
   const [st, setSt] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null);   // {done,total} أثناء الحلقة
   const load = useCallback(() => { loadTagSyncStatus().then(setSt).catch(() => {}); }, []);
   useEffect(() => { load(); }, [load]);
+  // مزامنة «الكل دفعة واحدة»: الواجهة تكرّر استدعاء الدالة (كل ~120 لأن مهلة السيرفر 150ث)
+  // حتى «متبقٍ 0»، مع شريط تقدّم حي. من منظور المستخدم: ضغطة واحدة + شريط.
   const sync = async () => {
-    setBusy(true);
-    try { const r = await runHatifTagSync(120); toast(`طُبِّق ${r.applied} · متبقٍ ${r.remaining}`, 'success'); load(); }
-    catch (e) { toast(e.message || 'فشل', 'error'); }
-    finally { setBusy(false); }
+    setBusy(true); setProg({ done: 0, total: null });
+    let total = null, done = 0;
+    try {
+      for (let round = 0; round < 80; round++) {
+        const r = await runHatifTagSync(120);
+        if (total == null) total = r.changed || 0;
+        done += (r.applied || 0);
+        setProg({ done, total });
+        if (!r.remaining) break;
+        if ((r.applied || 0) === 0) break;   // لا تقدّم (المتبقّي غير قابل للتطبيق: بلا محادثة/تعذّر) — توقّف
+      }
+      toast(`اكتملت المزامنة — طُبِّق ${done} تاق`, 'success');
+    } catch (e) { toast(e.message || 'فشل', 'error'); }
+    finally { setBusy(false); setProg(null); load(); }
   };
   const TAGS = [['عليه مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
   return (
@@ -625,12 +638,21 @@ function TagSystemCard() {
       </div>
       {st && (
         <div style={{ fontSize: 12, color: 'var(--muted)' }}>
-          محادثات مؤهّلة: <b style={{ color: 'var(--text)' }}>{st.desired ?? '—'}</b> · منها بتاق: <b style={{ color: 'var(--text)' }}>{st.tagged ?? '—'}</b> · طُبِّق فعلاً: <b style={{ color: 'var(--green2)' }}>{st.applied}</b>
+          محادثات تستحق تاقاً: <b style={{ color: 'var(--text)' }}>{st.tagged ?? '—'}</b> من {st.desired ?? '—'} · <b style={{ color: 'var(--green2)' }}>مطبَّقة فعلاً: {st.applied}</b>
+          {st.tagged != null && st.applied < st.tagged && <span style={{ color: 'var(--gold)' }}> — اضغط «مزامنة» لإكمال الباقي</span>}
+        </div>
+      )}
+      {prog && (
+        <div style={{ fontSize: 12 }}>
+          جارٍ المزامنة… طُبِّق <b>{prog.done}</b>{prog.total ? ` من ~${prog.total}` : ''} (لا تُغلق الصفحة)
+          <div style={{ height: 7, background: 'var(--border)', borderRadius: 999, marginTop: 6, overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${prog.total ? Math.min(100, Math.round((prog.done / Math.max(1, prog.total)) * 100)) : 30}%`, background: 'var(--accent)', transition: 'width .3s' }}/>
+          </div>
         </div>
       )}
       <div>
-        <Btn variant="accent" onClick={sync} disabled={busy}>{busy ? 'جارٍ المزامنة…' : '🔄 مزامنة التاقات الآن'}</Btn>
-        <span style={{ fontSize: 11, color: 'var(--muted2)', marginInlineStart: 8 }}>دفعة 120/ضغطة — كرّر حتى «متبقٍ 0» لأول مرة.</span>
+        <Btn variant="accent" onClick={sync} disabled={busy}>{busy ? 'جارٍ المزامنة…' : '🔄 مزامنة كل التاقات'}</Btn>
+        <span style={{ fontSize: 11, color: 'var(--muted2)', marginInlineStart: 8 }}>يعالج الكل دفعة واحدة (يقسّمها السيرفر آلياً) مع شريط تقدّم.</span>
       </div>
     </Card>
   );
