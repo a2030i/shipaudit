@@ -1,4 +1,6 @@
-// hatif-webhook v12 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook v13 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// v13 (2026-07-23، خطة هاتف البند 3): حجز ذرّي لأول رد (UPDATE…WHERE replied_at IS NULL
+// RETURNING) — من يكسب الصفّ وحده يُنشئ المهمة/المتابعة، فلا ازدواج عند ردّين متزامنين.
 // v12 (2026-07-22): **نافذة أتمتة = 3 أيام من الإرسال** — الإسناد/المهمة منّا داخل
 // 3 أيام فقط؛ رد بعدها → تمشي المحادثة على أتمتة هاتف (سياق مختلف).
 // v11 (2026-07-22): **الإسناد على أول رد حتى لو آلي** (قرار المستخدم) — الإسناد توجيه
@@ -97,10 +99,12 @@ Deno.serve(async (req) => {
       patch.auto_reply_at = when;
       if (body) patch.reply_body = String(body).slice(0, 500);
     } else if (!row.replied_at) {
-      patch.replied_at = when;
-      patch.reply_body = body ? String(body).slice(0, 500) : null;
-      patch.reply_is_auto = false;
-      if (within3d) firstReply = true;   // مهمة/متابعة داخل النافذة فقط
+      // حجز ذرّي (البند 3): من يكسب الصفّ (replied_at IS NULL) وحده يُنشئ المهمة —
+      // يمنع ازدواج المهام/المتابعات عند وصول نفس الرد مرتين متزامناً (read-then-write).
+      const { data: won } = await db.from('whatsapp_campaign_sends')
+        .update({ replied_at: when, reply_body: body ? String(body).slice(0, 500) : null, reply_is_auto: false })
+        .eq('id', row.id).is('replied_at', null).select('id');
+      if (won && won.length && within3d) firstReply = true;   // مهمة/متابعة داخل النافذة فقط
     }
     // إسناد المحادثة في هاتف على أول رد (آلي أو حقيقي) داخل نافذة الـ3 أيام — مرة واحدة.
     if (!row.hatif_assigned_at && within3d) {
