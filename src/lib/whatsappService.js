@@ -227,6 +227,23 @@ export async function applyConversationTags(phone, tagIds) {
   if (data && data.ok === false) throw new Error(data.error || 'فشل الوسم');
   return data;
 }
+// نظام التاقات المؤتمت — تشغيل دفعة مزامنة يدوياً (المدير) + حالة ما طُبِّق
+export async function runHatifTagSync(limit = 120) {
+  const { data, error } = await supabase.functions.invoke('hatif-tag-sync', { body: { limit } });
+  if (error) throw new Error(error.message || 'فشل المزامنة');
+  if (data && data.ok === false) throw new Error(data.error || 'فشل المزامنة');
+  return data;
+}
+export async function loadTagSyncStatus() {
+  const { count: applied } = await supabase.from('hatif_conversation_tags').select('phone', { count: 'exact', head: true });
+  let desired = null, tagged = null;
+  try {
+    const { data } = await supabase.rpc('hatif_phone_tags');
+    desired = (data || []).length;
+    tagged = (data || []).filter(r => (r.tags || []).length > 0).length;
+  } catch { /* */ }
+  return { applied: applied || 0, desired, tagged };
+}
 
 // Send a template campaign. items: [{ to, vars:[], name, amount }].
 // Returns { ok, total, sent, failed, results, campaignId } | { ok:false, error }.

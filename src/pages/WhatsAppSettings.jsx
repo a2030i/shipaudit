@@ -10,7 +10,8 @@ import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
-  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers } from '../lib/whatsappService.js';
+  loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
+  runHatifTagSync, loadTagSyncStatus } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -18,7 +19,7 @@ import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 
 export default function WhatsAppSettings({ isActive = true }) {
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const [cfg, setCfg] = useState(null);
   const [newTpl, setNewTpl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -223,6 +224,9 @@ export default function WhatsAppSettings({ isActive = true }) {
           </div>
         </Card>
       )}
+
+      {/* ── نظام التاقات المؤتمت — يوسم محادثات هاتف بحالة العميل تلقائياً ── */}
+      {tab === 'settings' && isAdmin && <TagSystemCard/>}
 
       {/* ── تنبيه زاتكا المسائي — واتساب 9م بتوقيت السعودية بالفواتير التي لم تُرسَل ── */}
       {tab === 'settings' && zatca && (
@@ -590,5 +594,44 @@ function CampaignsTab() {
           onClose={() => setFailWa(null)} onSent={() => { setFailWa(null); load(); }}/>
       )}
     </div>
+  );
+}
+
+// ── نظام التاقات المؤتمت — يوسم محادثات هاتف بحالة العميل (مديونية/VIP/متوقف/…) ──
+function TagSystemCard() {
+  const [st, setSt] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const load = useCallback(() => { loadTagSyncStatus().then(setSt).catch(() => {}); }, []);
+  useEffect(() => { load(); }, [load]);
+  const sync = async () => {
+    setBusy(true);
+    try { const r = await runHatifTagSync(120); toast(`طُبِّق ${r.applied} · متبقٍ ${r.remaining}`, 'success'); load(); }
+    catch (e) { toast(e.message || 'فشل', 'error'); }
+    finally { setBusy(false); }
+  };
+  const TAGS = [['مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
+  return (
+    <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
+      <div style={{ fontSize: 13.5, fontWeight: 700 }}>🏷️ نظام التاقات المؤتمت</div>
+      <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
+        يوسم محادثة كل عميل في هاتف <b>تلقائياً بحالته</b> من بياناتنا، فيراها فريقك في صندوق الوارد. رقم بعدة متاجر = يؤخذ <b>الأعلى شحناً</b>.
+        يعمل عبر مزامنة دورية كل 20 دقيقة (تُنشئ التاقات الناقصة في هاتف وتطبّق المتغيّر فقط).
+      </div>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
+        {TAGS.map(([n, c]) => (
+          <span key={n} style={{ padding: '4px 11px', borderRadius: 999, fontSize: 12, fontWeight: 600,
+            border: `1.5px solid ${c}`, background: `color-mix(in srgb, ${c} 14%, transparent)`, color: 'var(--text)' }}>{n}</span>
+        ))}
+      </div>
+      {st && (
+        <div style={{ fontSize: 12, color: 'var(--muted)' }}>
+          محادثات مؤهّلة: <b style={{ color: 'var(--text)' }}>{st.desired ?? '—'}</b> · منها بتاق: <b style={{ color: 'var(--text)' }}>{st.tagged ?? '—'}</b> · طُبِّق فعلاً: <b style={{ color: 'var(--green2)' }}>{st.applied}</b>
+        </div>
+      )}
+      <div>
+        <Btn variant="accent" onClick={sync} disabled={busy}>{busy ? 'جارٍ المزامنة…' : '🔄 مزامنة التاقات الآن'}</Btn>
+        <span style={{ fontSize: 11, color: 'var(--muted2)', marginInlineStart: 8 }}>دفعة 120/ضغطة — كرّر حتى «متبقٍ 0» لأول مرة.</span>
+      </div>
+    </Card>
   );
 }
