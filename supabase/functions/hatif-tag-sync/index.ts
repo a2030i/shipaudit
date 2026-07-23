@@ -78,6 +78,12 @@ Deno.serve(async (req) => {
 
   let token = ''; try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
 
+  // وضع «سرد فقط» — يُرجِع كل تاقات هاتف بلا أي تعديل (للاطّلاع/التشخيص)
+  if (body.list === true) {
+    const m = await listTags(token);
+    return json({ ok: true, count: m.size, tags: [...m.entries()].map(([name, id]) => ({ name, id })) });
+  }
+
   // 1) خريطة الاسم→id + إنشاء الناقص، ثم إعادة السرد لضمان الـIDs
   let tagMap = await listTags(token);
   let created = 0;

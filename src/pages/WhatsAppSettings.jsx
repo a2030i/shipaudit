@@ -11,7 +11,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  runHatifTagSync, loadTagSyncStatus } from '../lib/whatsappService.js';
+  runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -623,6 +623,9 @@ function TagSystemCard() {
     finally { setBusy(false); setProg(null); load(); }
   };
   const TAGS = [['عليه مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
+  const [allTags, setAllTags] = useState(null);
+  const OURS = new Set(['عليه مديونية', 'VIP', 'متوقف', 'دفع مسبق', 'عميل محتمل', 'ردّ بشري']);
+  const showTags = async () => { setAllTags('loading'); try { setAllTags(await loadHatifTags()); } catch { setAllTags([]); } };
   return (
     <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>🏷️ نظام التاقات المؤتمت</div>
@@ -650,10 +653,24 @@ function TagSystemCard() {
           </div>
         </div>
       )}
-      <div>
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
         <Btn variant="accent" onClick={sync} disabled={busy}>{busy ? 'جارٍ المزامنة…' : '🔄 مزامنة كل التاقات'}</Btn>
-        <span style={{ fontSize: 11, color: 'var(--muted2)', marginInlineStart: 8 }}>يعالج الكل دفعة واحدة (يقسّمها السيرفر آلياً) مع شريط تقدّم.</span>
+        <Btn variant="ghost" onClick={showTags}>🔖 عرض تاقات هاتف</Btn>
+        <span style={{ fontSize: 11, color: 'var(--muted2)' }}>يعالج الكل دفعة واحدة (يقسّمها السيرفر آلياً) مع شريط تقدّم.</span>
       </div>
+      {allTags && allTags !== 'loading' && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>تاقات هاتف ({allTags.length}) — <span style={{ color: 'var(--green2)' }}>المخضّرة يديرها النظام</span>، والبقية يدوية (يحافظ عليها):</div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {allTags.map(t => {
+              const ours = OURS.has(String(t.name).trim());
+              return <span key={t.id} style={{ padding: '3px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 600,
+                border: `1.5px solid ${ours ? 'var(--green2)' : 'var(--border)'}`, background: ours ? 'color-mix(in srgb, var(--green) 12%, transparent)' : 'var(--surface2)', color: 'var(--text)' }}>{t.name}</span>;
+            })}
+          </div>
+        </div>
+      )}
+      {allTags === 'loading' && <div style={{ fontSize: 12, color: 'var(--muted)' }}>جارٍ جلب التاقات من هاتف…</div>}
     </Card>
   );
 }
