@@ -97,8 +97,9 @@ function encodeWavPcm16(buf) {
   for (let i = 0; i < samples.length; i++) { const s = Math.max(-1, Math.min(1, samples[i])); dv.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true); off += 2; }
   return new Blob([ab], { type: 'audio/wav' });
 }
-// تحويل أي ملف صوتي (mp3/m4a/ogg…) → WAV أحادي 8kHz 16-bit (قياسي للهاتف) في المتصفّح.
-async function audioFileToWav(file, targetRate = 8000) {
+// تحويل أي ملف صوتي (mp3/m4a/ogg…) → WAV أحادي 16kHz 16-bit في المتصفّح.
+// 16kHz (واسع النطاق) أوضح بكثير من 8kHz الهاتفي وأدقّ للصوت البشري — ومقبول من Voxa.
+async function audioFileToWav(file, targetRate = 16000) {
   const arrayBuf = await file.arrayBuffer();
   const AC = window.AudioContext || window.webkitAudioContext;
   if (!AC) throw new Error('المتصفّح لا يدعم تحويل الصوت');
