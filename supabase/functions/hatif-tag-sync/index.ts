@@ -13,10 +13,12 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 // أسماء التاقات = تاقات المستخدم في هاتف بالضبط (لا تكرار) + إيموجي (icon حسب التوثيق)
 const CANON: { name: string; icon: string }[] = [
-  { name: 'عليه مديونية', icon: '🔴' }, { name: 'VIP', icon: '⭐' }, { name: 'متوقف', icon: '⛔' },
-  { name: 'دفع مسبق', icon: '💳' }, { name: 'عميل محتمل', icon: '🎯' }, { name: 'ردّ بشري', icon: '💬' },
+  { name: 'عليه مديونية', icon: '🔴' }, { name: 'متأخر سداد', icon: '⏰' }, { name: 'رصيد سالب', icon: '🔻' },
+  { name: 'VIP', icon: '⭐' }, { name: 'نشط', icon: '🟢' }, { name: 'متوقف', icon: '⛔' }, { name: 'جديد', icon: '🆕' },
+  { name: 'دفع مسبق', icon: '💳' }, { name: 'دفع لاحق', icon: '📅' }, { name: 'عميل محتمل', icon: '🎯' }, { name: 'بلاك لست', icon: '🚫' },
 ];
-const STRAY = ['مديونية'];   // تاقات خاطئة من نسخ سابقة — تُحذف إن وُجد البديل القانوني
+// تاقات تُحذف (قرار المستخدم: صفر تاق يدوي) — القديم المكرّر + اليدوية غير المؤتمتة
+const STRAY = ['مديونية', 'ردّ بشري', 'اجتماع', 'اتصال', 'وعد بالسداد', 'مورد/شريك', 'شكوى', 'مبيعات', 'تسويق بالعمولة', 'توصيل', 'استفسار', 'غير مهتم'];
 const norm = (v: string) => String(v || '').trim();
 const V = 'https://api.voxa.sa';
 
@@ -89,11 +91,11 @@ Deno.serve(async (req) => {
   let created = 0;
   for (const t of CANON) { if (!tagMap.has(norm(t.name))) { try { const id = await createTag(token, t.name, t.icon); if (id) created++; await sleep(200); } catch { /* */ } } }
   if (created) tagMap = await listTags(token);
-  // حذف التاقات الخاطئة المكرّرة (مثل «مديونية») إن وُجد البديل القانوني («عليه مديونية»)
+  // حذف تاقات STRAY (المكرّر + اليدوية) — قرار المستخدم: صفر تاق يدوي
   let deleted = 0;
   for (const bad of STRAY) {
     const badId = tagMap.get(norm(bad));
-    if (badId && tagMap.has(norm('عليه مديونية'))) { try { if (await deleteTag(token, badId)) { tagMap.delete(norm(bad)); deleted++; } await sleep(200); } catch { /* */ } }
+    if (badId) { try { if (await deleteTag(token, badId)) { tagMap.delete(norm(bad)); deleted++; } await sleep(200); } catch { /* */ } }
   }
   const canonIds = new Set(CANON.map(t => tagMap.get(norm(t.name))).filter(Boolean) as string[]);
 

@@ -622,16 +622,16 @@ function TagSystemCard() {
     } catch (e) { toast(e.message || 'فشل', 'error'); }
     finally { setBusy(false); setProg(null); load(); }
   };
-  const TAGS = [['عليه مديونية', '#DC2626'], ['VIP', '#F59E0B'], ['متوقف', '#6B7280'], ['دفع مسبق', '#8B5CF6'], ['عميل محتمل', '#3B82F6'], ['ردّ بشري', '#16A34A']];
+  const TAGS = [['عليه مديونية', '#DC2626'], ['متأخر سداد', '#F97316'], ['رصيد سالب', '#DC2626'], ['VIP', '#F59E0B'], ['نشط', '#16A34A'], ['متوقف', '#6B7280'], ['جديد', '#06B6D4'], ['دفع مسبق', '#8B5CF6'], ['دفع لاحق', '#3B82F6'], ['عميل محتمل', '#3B82F6'], ['بلاك لست', '#111827']];
   const [allTags, setAllTags] = useState(null);
-  const OURS = new Set(['عليه مديونية', 'VIP', 'متوقف', 'دفع مسبق', 'عميل محتمل', 'ردّ بشري']);
+  const OURS = new Set(['عليه مديونية', 'متأخر سداد', 'رصيد سالب', 'VIP', 'نشط', 'متوقف', 'جديد', 'دفع مسبق', 'دفع لاحق', 'عميل محتمل', 'بلاك لست']);
   const showTags = async () => { setAllTags('loading'); try { setAllTags(await loadHatifTags()); } catch { setAllTags([]); } };
   return (
     <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12, marginTop: 14 }}>
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>🏷️ نظام التاقات المؤتمت</div>
       <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
-        يوسم محادثة كل عميل في هاتف <b>تلقائياً بحالته</b> من بياناتنا، فيراها فريقك في صندوق الوارد. رقم بعدة متاجر = يؤخذ <b>الأعلى شحناً</b>.
-        يعمل عبر مزامنة دورية كل 20 دقيقة (تُنشئ التاقات الناقصة في هاتف وتطبّق المتغيّر فقط).
+        يوسم محادثة كل عميل في هاتف <b>تلقائياً بحالته</b> من بياناتنا (11 تاق تحليلي). رقم بعدة متاجر = يؤخذ <b>الأعلى شحناً</b>.
+        <b>نظام مؤتمت بالكامل — صفر تاق يدوي:</b> يُنشئ الناقص بإيموجي مثبّتة، و<b>يحذف أي تاق يدوي</b> (اجتماع/شكوى/…)، ويطبّق المتغيّر فقط. مزامنة كل 20 دقيقة.
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
         {TAGS.map(([n, c]) => (
@@ -660,7 +660,7 @@ function TagSystemCard() {
       </div>
       {allTags && allTags !== 'loading' && (
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>تاقات هاتف ({allTags.length}) — <span style={{ color: 'var(--green2)' }}>المخضّرة يديرها النظام</span>، والبقية يدوية (يحافظ عليها):</div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>تاقات هاتف ({allTags.length}) — <span style={{ color: 'var(--green2)' }}>المخضّرة يديرها النظام</span>، وغيرها يدوية <b>ستُحذف</b> في المزامنة القادمة:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {allTags.map(t => {
               const ours = OURS.has(String(t.name).trim());
