@@ -215,6 +215,19 @@ export async function loadHatifUsers() {
   return (data.users || []).map(u => ({ userId: u.userId, name: u.name, email: u.email || null }));
 }
 
+// تاقات هاتف — سرد المتاح + تطبيق يدوي على محادثة العميل (بالهاتف)
+export async function loadHatifTags() {
+  const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'list' } });
+  if (error || !data?.ok) return [];
+  return (data.tags || []).filter(t => t.id);
+}
+export async function applyConversationTags(phone, tagIds) {
+  const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'apply', phone, tagIds } });
+  if (error) throw new Error(error.message || 'فشل الوسم');
+  if (data && data.ok === false) throw new Error(data.error || 'فشل الوسم');
+  return data;
+}
+
 // Send a template campaign. items: [{ to, vars:[], name, amount }].
 // Returns { ok, total, sent, failed, results, campaignId } | { ok:false, error }.
 export async function sendWhatsAppCampaign({ templateName, templateLanguage = 'ar', channelId, items, campaign = {} }) {

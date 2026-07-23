@@ -19,6 +19,7 @@ import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
+import TagButton from '../components/TagButton.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -804,7 +805,13 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
         </div>
       )}
 
-      {digits && <CustomerCallLog phone={digits}/>}
+      {digits && (
+        <div style={{ display: 'flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
+          <CustomerCallLog phone={digits}/>
+          <TagButton phone={digits} name={c.storeName || c.name}
+            suggest={[...(c.owed > 0.5 ? ['عليه مديونية'] : []), ...(c.oldestDays > 90 ? ['متأخر 90 يوم'] : []), ...(c.billingType === 'دفع مسبق' ? ['دفع مسبق'] : [])]}/>
+        </div>
+      )}
     </Card>
   );
 }
