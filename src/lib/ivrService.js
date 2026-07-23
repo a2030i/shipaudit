@@ -70,6 +70,7 @@ export async function saveIvrConfig(cfg) {
       options: (Array.isArray(s.options) ? s.options : []).map(o => ({
         digit: String(o.digit), description: o.description || '', action: o.action || 'none',
         template: o.template || '',                // قالب واتساب يُرسَل عند ضغط هذا الرقم
+        responseAudioUrl: o.responseAudioUrl || '', // صوت (WAV) يُشغَّل عند ضغط هذا الرقم («تم كذا، شكراً»)
       })),
     })),
   };

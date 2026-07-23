@@ -106,7 +106,7 @@ Deno.serve(async (req) => {
 
     try {
       const payload: Record<string, unknown> = { channelId, destinationNumber: to, externalId: callRowId, webhookUrl, ttsVoice,
-        options: options.map((o: Record<string, any>) => ({ Digit: String(o.digit), Description: String(o.description || o.digit) })),
+        options: options.map((o: Record<string, any>) => { const op: Record<string, unknown> = { Digit: String(o.digit), Description: String(o.description || o.digit) }; if (o.responseAudioUrl && String(o.responseAudioUrl).trim()) op.ResponseMessageFileUrl = String(o.responseAudioUrl).trim(); return op; }),
         maxAudioRetries: Number(cfg.maxAudioRetries ?? 2), inputTimeoutMs: Number(cfg.inputTimeoutMs ?? 6000), digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000) };
       if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
       const successUrl = String(script.successAudioUrl || '').trim(); if (successUrl) payload.successMessageFileUrl = successUrl;

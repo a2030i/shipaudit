@@ -155,7 +155,11 @@ Deno.serve(async (req) => {
 
     const webhookKey = (await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle()).data?.webhook_key || '';
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ivr-webhook?key=${encodeURIComponent(webhookKey)}`;
-    const voxaOptions = options.map((o: Record<string, any>) => ({ Digit: String(o.digit), Description: String(o.description || o.digit) }));
+    const voxaOptions = options.map((o: Record<string, any>) => {
+      const opt: Record<string, unknown> = { Digit: String(o.digit), Description: String(o.description || o.digit) };
+      if (o.responseAudioUrl && String(o.responseAudioUrl).trim()) opt.ResponseMessageFileUrl = String(o.responseAudioUrl).trim();
+      return opt;
+    });
     const ttsVoice = (cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female';
 
     const results: unknown[] = []; let placed = 0, failed = 0, skipped = 0;

@@ -80,6 +80,14 @@ export default function IvrTab() {
     catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
     finally { setUploadingKey(''); }
   };
+  const onOptAudioUpload = async (si, oi, file) => {
+    if (!file) return;
+    const s = cfg.scripts[si];
+    setUploadingKey(`${s.key}_opt${oi}`);
+    try { const urlStr = await uploadIvrAudio(file, `${s.key}_opt${s.options[oi].digit}`, 'response'); updateOpt(si, oi, { responseAudioUrl: urlStr }); toast('رُفع صوت الخيار ✓', 'success'); }
+    catch (e) { toast(e.message || 'فشل رفع الصوت', 'error'); }
+    finally { setUploadingKey(''); }
+  };
 
   const openCampaign = async (name) => {
     setOpenCamp(name); setLoadingCalls(true);
@@ -273,17 +281,35 @@ export default function IvrTab() {
 
               <div style={{ fontSize: 11.5, fontWeight: 600, color: 'var(--muted)' }}>خيارات الضغط (كل رقم = إجراء + قالب اختياري):</div>
               {s.options.map((o, oi) => (
-                <div key={oi} style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-                  <input disabled={!mayConfigure} value={o.digit} onChange={e => updateOpt(si, oi, { digit: e.target.value })} placeholder="#" style={{ ...inp, width: 46, textAlign: 'center' }}/>
-                  <input disabled={!mayConfigure} value={o.description} onChange={e => updateOpt(si, oi, { description: e.target.value })} placeholder="وصف الخيار" style={{ ...inp, flex: 1, minWidth: 120 }}/>
-                  <select disabled={!mayConfigure} value={o.action} onChange={e => updateOpt(si, oi, { action: e.target.value })} style={{ ...inp, minWidth: 190 }}>
-                    {IVR_ACTIONS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
-                  </select>
-                  <select disabled={!mayConfigure} value={o.template || ''} onChange={e => updateOpt(si, oi, { template: e.target.value })} style={{ ...inp, minWidth: 150 }} title="قالب واتساب يُرسَل عند ضغط هذا الرقم">
-                    <option value="">📲 بلا قالب</option>
-                    {templates.map(t => <option key={t} value={t}>+ {t}</option>)}
-                  </select>
-                  {mayConfigure && s.options.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeOpt(si, oi)}><X size={13}/></Btn>}
+                <div key={oi} style={{ display: 'grid', gap: 5, borderInlineStart: '2px solid var(--border)', paddingInlineStart: 8 }}>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                    <input disabled={!mayConfigure} value={o.digit} onChange={e => updateOpt(si, oi, { digit: e.target.value })} placeholder="#" style={{ ...inp, width: 46, textAlign: 'center' }}/>
+                    <input disabled={!mayConfigure} value={o.description} onChange={e => updateOpt(si, oi, { description: e.target.value })} placeholder="وصف الخيار" style={{ ...inp, flex: 1, minWidth: 120 }}/>
+                    <select disabled={!mayConfigure} value={o.action} onChange={e => updateOpt(si, oi, { action: e.target.value })} style={{ ...inp, minWidth: 190 }}>
+                      {IVR_ACTIONS.map(a => <option key={a.key} value={a.key}>{a.label}</option>)}
+                    </select>
+                    <select disabled={!mayConfigure} value={o.template || ''} onChange={e => updateOpt(si, oi, { template: e.target.value })} style={{ ...inp, minWidth: 150 }} title="قالب واتساب يُرسَل عند ضغط هذا الرقم">
+                      <option value="">📲 بلا قالب</option>
+                      {templates.map(t => <option key={t} value={t}>+ {t}</option>)}
+                    </select>
+                    {mayConfigure && s.options.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeOpt(si, oi)}><X size={13}/></Btn>}
+                  </div>
+                  {/* صوت الرد على هذا الخيار (WAV) — يُشغَّل عند الضغط، مثل «تم إرسال الرابط، شكراً» */}
+                  <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 11.5 }}>
+                    <span style={{ color: 'var(--muted)' }}>🔊 صوت عند ضغط {o.digit}:</span>
+                    {o.responseAudioUrl ? (
+                      <>
+                        <audio src={o.responseAudioUrl} controls style={{ height: 28, maxWidth: 180 }}/>
+                        {mayConfigure && <Btn size="sm" variant="ghost" title="إزالة" onClick={() => updateOpt(si, oi, { responseAudioUrl: '' })}><X size={12}/></Btn>}
+                      </>
+                    ) : mayConfigure && (
+                      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer', color: 'var(--accent)' }}>
+                        <Upload size={12}/> {uploadingKey === `${s.key}_opt${oi}` ? 'يرفع…' : 'ارفع رداً صوتياً (WAV)'}
+                        <input type="file" accept=".wav,audio/wav" style={{ display: 'none' }}
+                          onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; onOptAudioUpload(si, oi, f); }}/>
+                      </label>
+                    )}
+                  </div>
                 </div>
               ))}
               {mayConfigure && <Btn size="sm" variant="ghost" icon={<Plus size={12}/>} onClick={() => addOpt(si)}>خيار</Btn>}
