@@ -1,4 +1,7 @@
-// hatif-tag-sync v7 (2026-07-23) — نظام تاقات هاتف المؤتمت الكامل.
+// hatif-tag-sync v8 (2026-07-23) — نظام تاقات هاتف المؤتمت الكامل.
+// v8: **إصلاح تجمّد العدّاد** — قراءة appliedMap كانت بلا تصفّح فتُقَص عند 1000 صف
+// (فخّ §1.34)، فـ~121 صفاً مطبَّقاً يختفي ويُعاد معالجته كل تشغيلة ويلتهم الميزانية
+// فلا تُطبَّق الأرقام الجديدة أبداً. الآن تصفّح كامل لـappliedMap (order phone + range).
 // v7: (١) استبدال مباشر للتاقات (POST {tagIds: wantIds}) — حُذف GET قراءة التاقات
 // الحالية للحفاظ على اليدوية (المستخدم يريد صفر تاق يدوي وSTRAY يحذفها كلها، فالحفظ
 // بلا فائدة). النتيجة: نداء Voxa واحد/رقم بدل اثنين → ضِعف الإنتاجية وإزالة نقطة تخطٍّ.
@@ -109,9 +112,16 @@ Deno.serve(async (req) => {
     desired.push(...rows);
     if (rows.length < 1000) break;
   }
-  const { data: applied } = await db.from('hatif_conversation_tags').select('phone, tag_names');
+  // تصفّح كامل — الجدول >1000 صف وPostgREST يقفه عند 1000 (فخّ §1.34): بلا تصفّح
+  // تختفي ~121 صفاً مطبَّقاً من appliedMap فتُعاد معالجتها كل تشغيلة وتلتهم الميزانية
+  // فلا تصل الأرقام الجديدة أبداً (العدّاد يتجمّد). ORDER BY phone ثابت للتصفّح.
   const appliedMap = new Map<string, string[]>();
-  for (const r of (applied || []) as { phone: string; tag_names: string[] }[]) appliedMap.set(r.phone, r.tag_names || []);
+  for (let off = 0; off < 100000; off += 1000) {
+    const { data } = await db.from('hatif_conversation_tags').select('phone, tag_names').order('phone', { ascending: true }).range(off, off + 999);
+    const rows = (data || []) as { phone: string; tag_names: string[] }[];
+    for (const r of rows) appliedMap.set(r.phone, r.tag_names || []);
+    if (rows.length < 1000) break;
+  }
 
   // 3) المتغيّرات فقط
   const eqSet = (x: string[], y: string[]) => x.length === y.length && [...x].sort().join('|') === [...y].sort().join('|');
