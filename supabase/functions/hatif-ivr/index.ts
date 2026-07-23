@@ -1,4 +1,5 @@
-// hatif-ivr v7 (2026-07-23) — إطلاق مكالمات آلية (Outbound IVR) عبر Voxa/Hatif.
+// hatif-ivr v8 (2026-07-23) — إطلاق مكالمات آلية (Outbound IVR) عبر Voxa/Hatif.
+// v8: التجربة تُعرَف بـtest:true **أو** باسم «تجربة IVR» (يعمل مع الواجهة القديمة فوراً).
 // v7 (خطة التجربة): مكالمة التجربة (`test:true` بمستلِم واحد) **تتجاوز قائمة الحظر**
 // — فعل إداري متعمّد لرقمك لسماع الصوت، لا حملة. الحملات العادية تظلّ محكومة بالحظر.
 // v6: صوت رد لكل خيار (ResponseMessageFileUrl). v5: نطق المبالغ بالعربي.
@@ -131,7 +132,9 @@ Deno.serve(async (req) => {
     const campaignName = String(body.campaign_name || '') || null;
     if (!recipients.length) return json({ ok: false, error: 'لا مستلمين' });
     // تجربة إدارية بمستلِم واحد → تتجاوز قائمة الحظر (لسماع الصوت على رقمك). لا للحملات.
-    const isTest = body.test === true && recipients.length === 1;
+    // نتعرّف عليها بـtest:true (الواجهة الجديدة) أو باسم «تجربة IVR» (زر التجربة القديم أيضاً)
+    // — فيعمل التجاوز فوراً بلا انتظار نشر الواجهة.
+    const isTest = (body.test === true || campaignName === 'تجربة IVR') && recipients.length === 1;
 
     const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
     let cfg: Record<string, any> = {};
