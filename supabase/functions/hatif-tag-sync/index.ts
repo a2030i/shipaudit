@@ -11,11 +11,12 @@ const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPA
 const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-// أسماء التاقات = تاقات المستخدم في هاتف بالضبط (لا تكرار)
-const CANON: { name: string; color: string }[] = [
-  { name: 'عليه مديونية', color: '#DC2626' }, { name: 'VIP', color: '#F59E0B' }, { name: 'متوقف', color: '#6B7280' },
-  { name: 'دفع مسبق', color: '#8B5CF6' }, { name: 'عميل محتمل', color: '#3B82F6' }, { name: 'ردّ بشري', color: '#16A34A' },
+// أسماء التاقات = تاقات المستخدم في هاتف بالضبط (لا تكرار) + إيموجي (icon حسب التوثيق)
+const CANON: { name: string; icon: string }[] = [
+  { name: 'عليه مديونية', icon: '🔴' }, { name: 'VIP', icon: '⭐' }, { name: 'متوقف', icon: '⛔' },
+  { name: 'دفع مسبق', icon: '💳' }, { name: 'عميل محتمل', icon: '🎯' }, { name: 'ردّ بشري', icon: '💬' },
 ];
+const STRAY = ['مديونية'];   // تاقات خاطئة من نسخ سابقة — تُحذف إن وُجد البديل القانوني
 const norm = (v: string) => String(v || '').trim();
 const V = 'https://api.voxa.sa';
 
@@ -35,10 +36,14 @@ async function listTags(token: string): Promise<Map<string, string>> {
   for (const t of items) { const id = t.id || t.tagId; const nm = t.name || t.title; if (id && nm) m.set(norm(nm), String(id)); }
   return m;
 }
-async function createTag(token: string, name: string, color: string): Promise<string | null> {
-  const r = await fetch(`${V}/v1/tags/service-account`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name, color }) });
+async function createTag(token: string, name: string, icon: string): Promise<string | null> {
+  const r = await fetch(`${V}/v1/tags/service-account`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name, icon, isPinned: true }) });
   const j = await r.json().catch(() => ({}));
   return (j.id || j.tagId) ? String(j.id || j.tagId) : null;
+}
+async function deleteTag(token: string, id: string): Promise<boolean> {
+  const r = await fetch(`${V}/v1/tags/service-account/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+  return r.ok || r.status === 204;
 }
 // تاقات المحادثة الحالية (لنُبقي اليدوية عند الاستبدال)
 async function currentConvTagIds(token: string, convId: string): Promise<string[] | null> {
@@ -76,8 +81,14 @@ Deno.serve(async (req) => {
   // 1) خريطة الاسم→id + إنشاء الناقص، ثم إعادة السرد لضمان الـIDs
   let tagMap = await listTags(token);
   let created = 0;
-  for (const t of CANON) { if (!tagMap.has(norm(t.name))) { try { const id = await createTag(token, t.name, t.color); if (id) created++; await sleep(200); } catch { /* */ } } }
+  for (const t of CANON) { if (!tagMap.has(norm(t.name))) { try { const id = await createTag(token, t.name, t.icon); if (id) created++; await sleep(200); } catch { /* */ } } }
   if (created) tagMap = await listTags(token);
+  // حذف التاقات الخاطئة المكرّرة (مثل «مديونية») إن وُجد البديل القانوني («عليه مديونية»)
+  let deleted = 0;
+  for (const bad of STRAY) {
+    const badId = tagMap.get(norm(bad));
+    if (badId && tagMap.has(norm('عليه مديونية'))) { try { if (await deleteTag(token, badId)) { tagMap.delete(norm(bad)); deleted++; } await sleep(200); } catch { /* */ } }
+  }
   const canonIds = new Set(CANON.map(t => tagMap.get(norm(t.name))).filter(Boolean) as string[]);
 
   // 2) الحالة المرغوبة — تصفّح كامل (تجاوز حدّ 1000)
@@ -124,5 +135,5 @@ Deno.serve(async (req) => {
     } catch { failed++; }
     await sleep(250);
   }
-  return json({ ok: true, changed: changed.length, applied: applied_n, failed, skipped, created, remaining: Math.max(0, changed.length - applied_n - failed - skipped) });
+  return json({ ok: true, changed: changed.length, applied: applied_n, failed, skipped, created, deleted, remaining: Math.max(0, changed.length - applied_n - failed - skipped) });
 });
