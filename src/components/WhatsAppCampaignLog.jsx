@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { Spinner, Empty } from './UI.jsx';
 import { loadWhatsAppLog } from '../lib/whatsappService.js';
 
-const fmtDateTime = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
+import { saDateTime as fmtDateTime } from '../lib/saTime.js';   // توقيت السعودية
 
 // حالة الرسالة موحّدة → شارة بلون مميّز واضح لكل حالة (ردّ > فشل > قُرئت > وصلت > أُرسلت)
 export function campaignStatusBadge(r) {

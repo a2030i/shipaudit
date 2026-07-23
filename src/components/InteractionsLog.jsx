@@ -16,11 +16,7 @@ import {
   listInteractions, addInteraction, deleteInteraction, interactionKindMeta,
 } from '../lib/customerInteractionsService.js';
 
-const fmtDate = (iso) => {
-  if (!iso) return '—';
-  try { return new Date(iso).toLocaleDateString('en-GB', { year: 'numeric', month: 'short', day: 'numeric' }); }
-  catch { return iso; }
-};
+import { saDate as fmtDate } from '../lib/saTime.js';   // توقيت السعودية
 const daysAgo = (iso) => {
   if (!iso) return null;
   return Math.floor((Date.now() - new Date(iso)) / 86_400_000);

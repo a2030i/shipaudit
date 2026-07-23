@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { PhoneCall, ChevronDown } from 'lucide-react';
 import { loadHatifCallsByPhone, HATIF_SENTIMENT, HATIF_CALL_STATUS } from '../lib/ivrService.js';
 
-const fmtDate = (d) => { if (!d) return '—'; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
+import { saDateTime as fmtDate } from '../lib/saTime.js';   // توقيت السعودية
 const fmtDur = (s) => { s = Number(s) || 0; if (!s) return ''; const m = Math.floor(s / 60), ss = s % 60; return `${m}:${String(ss).padStart(2, '0')}`; };
 
 export default function CustomerCallLog({ phone, compact = true }) {
