@@ -2,6 +2,8 @@
 // الإطلاق والحالة عبر edge function hatif-ivr؛ النتائج والضغطات في جدول ivr_calls
 // (يحدّثها ivr-webhook). مصمَّم أساساً للوصول لمن لا يملك واتساب (§IVR).
 import { supabase } from './supabase.js';
+import * as XLSX from 'xlsx';
+import { persistAndDownloadExport } from './internalExportsService.js';
 
 const IVR_FN = 'hatif-ivr';
 
@@ -196,4 +198,38 @@ export function ivrStatusBadge(row) {
   if (isTerminalStatus(row.status)) return { t: 'لم يُردّ', c: '#9CA3AF' };
   if (String(row.status || '') === 'pending') return { t: 'قيد الإطلاق', c: '#9CA3AF' };
   return { t: 'جارية', c: '#3B82F6' };
+}
+
+// تقرير Excel كامل لحملة مكالمات — كل رقم: رُدّ/فشل/الضغطة/الخيار المختار/الإجراء.
+// يمرّ عبر persistAndDownloadExport (تخزين + سجل + RTL، قاعدة §1.13).
+export async function exportIvrCampaign(campaignName, userId = null) {
+  const rows = [];
+  for (let off = 0; off < 200000; off += 1000) {
+    const { data, error } = await supabase.from('ivr_calls').select('*')
+      .eq('campaign_name', campaignName).order('id', { ascending: true }).range(off, off + 999);
+    if (error) break;
+    rows.push(...(data || []));
+    if (!data || data.length < 1000) break;
+  }
+  const cfg = await loadIvrConfig();
+  const header = ['الاسم', 'الرقم', 'معرّف المكالمة (Voxa)', 'الحالة', 'رُدّ؟', 'الضغطة', 'الخيار المختار', 'الإجراء المُنفَّذ', 'المدة (ث)', 'المحاولة', 'السبب', 'وقت الإنشاء'];
+  const body = rows.map(r => {
+    const b = ivrStatusBadge(r);
+    const answered = !!r.answered_at || Number(r.duration_seconds) > 0;
+    const script = (cfg.scripts || []).find(s => s.key === r.script_key);
+    const opt = (script?.options || []).find(o => String(o.digit) === String(r.pressed_digit || ''));
+    const actLabel = (IVR_ACTIONS.find(a => a.key === r.action_taken) || {}).label || (r.action_taken || '');
+    return [
+      r.name || '', r.phone || '', r.voxa_call_id || r.external_id || r.id || '',
+      b.t, answered ? 'نعم' : 'لا', r.pressed_digit || '',
+      r.pressed_digit ? (opt?.description || `خيار ${r.pressed_digit}`) : '',
+      actLabel, r.duration_seconds ?? '', r.attempt ?? '', r.error_message || r.hangup_cause || '',
+      r.created_at ? new Date(r.created_at).toLocaleString('ar-SA') : '',
+    ];
+  });
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet([header, ...body]), 'المكالمات');
+  const fileName = `حملة مكالمات - ${campaignName} - ${new Date().toISOString().slice(0, 10)}.xlsx`;
+  await persistAndDownloadExport({ wb, fileName, kind: 'ivr_campaign', rowCount: rows.length, userId });
+  return rows.length;
 }

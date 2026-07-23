@@ -1,14 +1,34 @@
 // تاب المكالمات الآلية (IVR) داخل «إعدادات واتساب» — الإعدادات + السكربتات + سجل المكالمات.
 // السكربت = نص منطوق (TTS) + خيارات ضغط (DTMF)؛ كل ضغطة تُنفّذ إجراءً عبر ivr-webhook.
-import { useState, useEffect, useRef } from 'react';
-import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload } from 'lucide-react';
+import { useState, useEffect, useRef, useMemo } from 'react';
+import { ShieldCheck, CheckCircle2, X, Save, Plus, Trash2, PhoneCall, Upload, Download, Send } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, loadIvrAnalytics, ivrStatusBadge, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
+import { loadIvrConfig, saveIvrConfig, verifyIvr, launchIvrCampaign, loadIvrCampaigns, loadIvrCalls, loadIvrAnalytics, ivrStatusBadge, exportIvrCampaign, IVR_ACTIONS, IVR_VARS, uploadIvrAudio } from '../lib/ivrService.js';
 import { loadWhatsAppConfig } from '../lib/whatsappService.js';
+import IvrCampaignModal from './IvrCampaignModal.jsx';
+
+// تطبيع رقم سعودي من نصّ ملصوق (05../5../966../00966..) — يُبقي الجوّال الصالح فقط
+function parsePastedPhones(text) {
+  const norm = (raw) => {
+    let d = String(raw || '').replace(/\D/g, '');
+    if (!d) return '';
+    if (d.startsWith('00')) d = d.slice(2);
+    if (d.startsWith('966')) return '966' + d.slice(3).replace(/^0+/, '');
+    if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1);
+    if (d.length === 9 && d.startsWith('5')) return '966' + d;
+    return d;
+  };
+  const seen = new Set(); const out = [];
+  for (const part of String(text || '').split(/[\s,;،\n\r\t]+/)) {
+    const n = norm(part.trim());
+    if (/^9665\d{8}$/.test(n) && !seen.has(n)) { seen.add(n); out.push({ phone: n, name: null }); }
+  }
+  return out;
+}
 
 export default function IvrTab() {
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const mayConfigure = can('whatsapp.configure');
   const [cfg, setCfg] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -22,6 +42,10 @@ export default function IvrTab() {
   const [testing, setTesting] = useState(false);
   const [templates, setTemplates] = useState([]);   // قوالب واتساب المعتمدة (لأتمتة الرد/الضغطة)
   const [uploadingKey, setUploadingKey] = useState('');
+  const [manualText, setManualText] = useState('');  // حملة بأرقام ملصقة
+  const [manualOpen, setManualOpen] = useState(false);
+  const [exporting, setExporting] = useState('');    // اسم الحملة الجاري تصديرها
+  const manualRecipients = useMemo(() => parsePastedPhones(manualText), [manualText]);
   const focusRef = useRef({ el: null, si: -1 });    // آخر textarea نصّ منطوق مُركّز — لإدراج المتغيّر عند المؤشّر
 
   // إدراج متغيّر عند مؤشّر النص المنطوق للسكربت si (وإلا يُلحَق بالنهاية)
@@ -93,6 +117,12 @@ export default function IvrTab() {
     setOpenCamp(name); setLoadingCalls(true);
     const rows = await loadIvrCalls({ campaign: name, limit: 500 });
     setCalls(rows); setLoadingCalls(false);
+  };
+  const exportCampaign = async (name) => {
+    setExporting(name);
+    try { const n = await exportIvrCampaign(name, user?.id || null); toast(`صُدِّر تقرير ${n} مكالمة`, 'success'); }
+    catch (e) { toast(e.message || 'فشل التصدير', 'error'); }
+    finally { setExporting(''); }
   };
 
   const save = async () => {
@@ -333,6 +363,29 @@ export default function IvrTab() {
         )}
       </Card>
 
+      {/* حملة مكالمات بأرقام ملصقة — الصق أرقاماً ثم اختر السكربت واسم الحملة في النافذة */}
+      {can('campaigns.ivr') && (
+        <Card style={{ padding: 18, display: 'grid', gap: 10 }}>
+          <div style={{ fontSize: 13.5, fontWeight: 700 }}>📞 حملة مكالمات بأرقام ملصقة</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
+            الصق مجموعة أرقام (سطر لكل رقم أو مفصولة بفواصل) — ثم أطلق حملة مكالمات آلية. تختار السكربت واسم الحملة في النافذة.
+          </div>
+          <textarea value={manualText} onChange={e => setManualText(e.target.value)} rows={5}
+            placeholder={'05XXXXXXXX\n9665XXXXXXXX\n05XXXXXXXX، 05XXXXXXXX'}
+            style={{ ...inp, direction: 'ltr', resize: 'vertical', fontFamily: 'monospace', lineHeight: 1.8 }}/>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 12.5, fontWeight: 600, color: manualRecipients.length ? 'var(--green2)' : 'var(--muted)' }}>
+              {manualRecipients.length} رقم سعودي صالح (يُزال المكرّر)
+            </span>
+            <Btn variant="accent" icon={<PhoneCall size={14}/>} disabled={!manualRecipients.length || !cfg.enabled}
+              onClick={() => setManualOpen(true)} style={{ marginInlineStart: 'auto' }}>
+              إطلاق حملة ({manualRecipients.length})
+            </Btn>
+          </div>
+          {!cfg.enabled && <div style={{ fontSize: 11.5, color: 'var(--gold)' }}>فعّل المكالمات الآلية أولاً (الأعلى).</div>}
+        </Card>
+      )}
+
       {/* لوحة تحليلات IVR — نسب الرد/الضغط + أفضل ساعة + أداء السكربتات */}
       {analytics?.overall?.total > 0 && (() => {
         const o = analytics.overall; const pct = (a, b) => b ? Math.round((a / b) * 100) : 0;
@@ -411,21 +464,28 @@ export default function IvrTab() {
 
             {openCamp && (
               <div style={{ border: '1px solid var(--border)', borderRadius: 10, padding: 12 }}>
-                <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>مكالمات: {openCamp}</div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <div style={{ fontWeight: 700, fontSize: 13 }}>مكالمات: {openCamp}</div>
+                  <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => exportCampaign(openCamp)} disabled={exporting === openCamp}>
+                    {exporting === openCamp ? 'يصدّر…' : 'تقرير Excel كامل'}
+                  </Btn>
+                </div>
                 {loadingCalls ? <Spinner/> : !calls.length ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>لا صفوف.</div> : (
                   <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                     <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
                       <th style={{ padding: '5px 7px' }} data-label="">الاسم</th>
                       <th style={{ padding: '5px 7px' }}>الرقم</th>
+                      <th style={{ padding: '5px 7px' }}>معرّف المكالمة</th>
                       <th style={{ padding: '5px 7px' }}>الحالة</th>
                       <th style={{ padding: '5px 7px' }}>ضغط</th>
                       <th style={{ padding: '5px 7px' }}>الإجراء</th>
                     </tr></thead>
                     <tbody>
-                      {calls.map(r => { const b = ivrStatusBadge(r); return (
+                      {calls.map(r => { const b = ivrStatusBadge(r); const cid = r.voxa_call_id || r.external_id || r.id || ''; return (
                         <tr key={r.id} style={{ borderTop: '1px solid var(--border)' }}>
                           <td style={{ padding: '6px 7px' }} data-label="الاسم">{r.name || '—'}</td>
                           <td style={{ padding: '6px 7px', direction: 'ltr', fontFamily: 'monospace' }} data-label="الرقم">{r.phone}</td>
+                          <td style={{ padding: '6px 7px', direction: 'ltr', fontFamily: 'monospace', fontSize: 10.5, color: 'var(--muted)', wordBreak: 'break-all', maxWidth: 150 }} data-label="معرّف المكالمة" title={cid}>{cid || '—'}</td>
                           <td style={{ padding: '6px 7px' }} data-label="الحالة"><span style={{ color: b.c, fontWeight: 600 }}>{b.t}</span></td>
                           <td style={{ padding: '6px 7px', fontWeight: 700, color: r.pressed_digit ? 'var(--green2)' : 'var(--muted)' }} data-label="ضغط">{r.pressed_digit || '—'}</td>
                           <td style={{ padding: '6px 7px', color: 'var(--muted)' }} data-label="الإجراء">{r.action_taken === 'followup' ? 'متابعة' : r.action_taken === 'dnc' ? 'إيقاف اتصال' : r.action_taken === 'callback' ? 'معاودة' : r.action_taken === 'none' ? 'بلا' : '—'}</td>
@@ -439,6 +499,9 @@ export default function IvrTab() {
           </div>
         )}
       </Card>
+
+      <IvrCampaignModal open={manualOpen} onClose={() => setManualOpen(false)} recipients={manualRecipients}
+        bucketLabel="مكالمات (أرقام ملصقة)" onDone={() => loadIvrCampaigns().then(setCamps)}/>
     </div>
   );
 }
