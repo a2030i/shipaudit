@@ -140,7 +140,7 @@ export default function IvrTab() {
     if (!testPhone.trim()) { toast('اكتب رقماً للتجربة', 'error'); return; }
     setTesting(true);
     try {
-      const r = await launchIvrCampaign({ recipients: [{ phone: testPhone.trim(), name: 'تجربة' }], scriptKey: cfg.defaultScript, campaignName: 'تجربة IVR' });
+      const r = await launchIvrCampaign({ recipients: [{ phone: testPhone.trim(), name: 'تجربة' }], scriptKey: cfg.defaultScript, campaignName: 'تجربة IVR', test: true });
       toast(r.placed ? 'أُطلقت مكالمة التجربة' : (r.results?.[0]?.error || 'فشلت'), r.placed ? 'success' : 'error');
     } catch (e) { toast(e.message || 'فشل', 'error'); }
     finally { setTesting(false); }

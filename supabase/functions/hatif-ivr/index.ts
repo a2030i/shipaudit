@@ -1,9 +1,8 @@
-// hatif-ivr v1 (2026-07-22) — إطلاق مكالمات آلية (Outbound IVR) عبر Voxa/Hatif.
-// POST api.voxa.sa/v1/outbound-ivr لكل مستلِم — يشتغل صوتياً (TTS) ويقرأ ضغطة العميل
-// (DTMF) ثم يرسل نتيجة المكالمة إلى ivr-webhook. مصمَّم أساساً للعملاء **بلا واتساب**.
-// الأسرار: client_id · secret (VoxaAPI scope). القناة تُجلَب آلياً (نمط hatif-send).
-// الحارس السيرفري: campaigns.ivr (حسّاس). الحظر = campaign_phone_blocklist فقط
-// (لا نُطبّق مجموعة بلا-واتساب — هؤلاء بالضبط هدف الاتصال الصوتي).
+// hatif-ivr v7 (2026-07-23) — إطلاق مكالمات آلية (Outbound IVR) عبر Voxa/Hatif.
+// v7 (خطة التجربة): مكالمة التجربة (`test:true` بمستلِم واحد) **تتجاوز قائمة الحظر**
+// — فعل إداري متعمّد لرقمك لسماع الصوت، لا حملة. الحملات العادية تظلّ محكومة بالحظر.
+// v6: صوت رد لكل خيار (ResponseMessageFileUrl). v5: نطق المبالغ بالعربي.
+// v4: إعادة محاولة. v3: رسالة ختام. v2: صوت مرفوع. الحارس: campaigns.ivr.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -131,8 +130,9 @@ Deno.serve(async (req) => {
     const scriptKey = String(body.script_key || '');
     const campaignName = String(body.campaign_name || '') || null;
     if (!recipients.length) return json({ ok: false, error: 'لا مستلمين' });
+    // تجربة إدارية بمستلِم واحد → تتجاوز قائمة الحظر (لسماع الصوت على رقمك). لا للحملات.
+    const isTest = body.test === true && recipients.length === 1;
 
-    // الإعدادات + السكربت
     const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
     let cfg: Record<string, any> = {};
     try { cfg = cfgRow?.value ? JSON.parse(cfgRow.value) : {}; } catch { cfg = {}; }
@@ -149,7 +149,6 @@ Deno.serve(async (req) => {
     if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
     if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
 
-    // حظر الاتصال — القائمة اليدوية فقط (تشمل رقم المالك). لا نُطبّق بلا-واتساب.
     const blocked = new Set<string>();
     try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || []) as { phone: string }[]) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
 
@@ -166,12 +165,11 @@ Deno.serve(async (req) => {
     for (const r of recipients) {
       const to = norm(r.phone);
       if (!to || to.length < 11) { results.push({ phone: r.phone, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
-      if (blocked.has(to)) { results.push({ phone: to, ok: false, skipped: true, error: 'محظور — لا يُتَّصل به' }); skipped++; continue; }
+      if (!isTest && blocked.has(to)) { results.push({ phone: to, ok: false, skipped: true, error: 'محظور — لا يُتَّصل به' }); skipped++; continue; }
       const ttsText = fillTts(String(body.tts_override || script.ttsText || ''), r, cfg.speakNumbersWords === true);
-      // صوت مرفوع أو نص منطوق — أحدهما مطلوب
-      if (!ttsText && !String(script.audioUrl || '').trim()) { results.push({ phone: to, ok: false, error: 'لا صوت ولا نص للمكالمة' }); failed++; continue; }
+      const audioUrl = String(script.audioUrl || '').trim();
+      if (!ttsText && !audioUrl) { results.push({ phone: to, ok: false, error: 'لا صوت ولا نص للمكالمة' }); failed++; continue; }
 
-      // سجّل الصف أولاً — id يصير externalId (idempotency)
       const retryOn = cfg.retry?.enabled === true;
       const { data: ins, error: insErr } = await db.from('ivr_calls').insert({
         phone: to, name: r.name || null, campaign_name: campaignName, script_key: script.key,
@@ -183,8 +181,6 @@ Deno.serve(async (req) => {
       await db.from('ivr_calls').update({ external_id: callRowId }).eq('id', callRowId);
 
       try {
-        // صوت مرفوع (WAV) يتقدّم على TTS — أحدهما يكفي Voxa.
-        const audioUrl = String(script.audioUrl || '').trim();
         const payload: Record<string, unknown> = {
           channelId, destinationNumber: to, externalId: callRowId, webhookUrl,
           ttsVoice, options: voxaOptions,
@@ -193,7 +189,6 @@ Deno.serve(async (req) => {
           digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000),
         };
         if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
-        // رسالة ختام (WAV) تُشغَّل بعد ضغطة صحيحة ثم يُقفل — «شكراً لك»
         const successUrl = String(script.successAudioUrl || '').trim();
         if (successUrl) payload.successMessageFileUrl = successUrl;
         const vr = await fetch(IVR_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
@@ -213,7 +208,7 @@ Deno.serve(async (req) => {
         await db.from('ivr_calls').update({ status: 'Failed', error_message: String((e as Error).message || e).slice(0, 300) }).eq('id', callRowId);
         results.push({ phone: to, ok: false, error: String((e as Error).message || e) });
       }
-      await sleep(400);   // تحت حصة Voxa
+      await sleep(400);
     }
     return json({ ok: true, total: recipients.length, placed, failed, skipped, results, provider: 'hatif-ivr' });
   }

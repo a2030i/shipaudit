@@ -137,9 +137,10 @@ export async function verifyIvr() {
 }
 
 // إطلاق حملة مكالمات — recipients: [{ phone, name, fields? }]
-export async function launchIvrCampaign({ recipients, scriptKey, campaignName, ttsOverride = null }) {
+// test:true (بمستلِم واحد) = مكالمة تجربة تتجاوز قائمة الحظر (لسماع الصوت على رقمك).
+export async function launchIvrCampaign({ recipients, scriptKey, campaignName, ttsOverride = null, test = false }) {
   const { data, error } = await supabase.functions.invoke(IVR_FN, {
-    body: { action: 'call', recipients, script_key: scriptKey, campaign_name: campaignName, tts_override: ttsOverride },
+    body: { action: 'call', recipients, script_key: scriptKey, campaign_name: campaignName, tts_override: ttsOverride, test },
   });
   if (error) throw new Error(error.message || 'فشل إطلاق المكالمات');
   if (data && data.ok === false) throw new Error(data.error || 'فشل إطلاق المكالمات');
