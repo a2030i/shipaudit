@@ -72,6 +72,10 @@ export async function saveIvrConfig(cfg) {
       audioSec: Math.max(0, Math.round(Number(s.audioSec) || 0)),  // طول التسجيل بالثواني — لتحديد «سمعها كاملة»
       successAudioUrl: s.successAudioUrl || '',    // رسالة ختام (WAV) — تُشغَّل بعد الضغط ثم يُقفل
       onAnswerTemplate: s.onAnswerTemplate || '',  // قالب واتساب يُرسَل تلقائياً إن رُدّ على المكالمة
+      // تجاوزات لكل سكربت (undefined = يرث الإعداد العام). JSON.stringify يُسقط undefined فالغياب = وراثة.
+      ttsVoice: (s.ttsVoice === 'Male' || s.ttsVoice === 'Female') ? s.ttsVoice : undefined,
+      maxAudioRetries: (s.maxAudioRetries == null || s.maxAudioRetries === '') ? undefined : Math.max(0, Math.min(5, Number(s.maxAudioRetries))),
+      inputTimeoutMs: (s.inputTimeoutMs == null || s.inputTimeoutMs === '') ? undefined : Math.max(1000, Math.min(30000, Number(s.inputTimeoutMs))),
       options: (Array.isArray(s.options) ? s.options : []).map(o => ({
         digit: String(o.digit), description: o.description || '', action: o.action || 'none',
         template: o.template || '',                // قالب واتساب يُرسَل عند ضغط هذا الرقم

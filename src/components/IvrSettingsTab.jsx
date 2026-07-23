@@ -173,6 +173,7 @@ export default function IvrTab() {
           تفعيل المكالمات الآلية
         </label>
 
+        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700, marginTop: 2 }}>الإعدادات الافتراضية <span style={{ fontWeight: 400 }}>— يرثها كل سكربت ما لم يحدّد إعداده الخاص أدناه</span></div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
           <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>الصوت
             <select disabled={!mayConfigure} value={cfg.ttsVoice} onChange={e => setCfg({ ...cfg, ttsVoice: e.target.value })} style={inp}>
@@ -238,6 +239,33 @@ export default function IvrTab() {
                   <input type="radio" name="defScript" disabled={!mayConfigure} checked={cfg.defaultScript === s.key} onChange={() => setCfg({ ...cfg, defaultScript: s.key })}/> افتراضي
                 </label>
                 {mayConfigure && cfg.scripts.length > 1 && <Btn size="sm" variant="ghost" title="حذف" onClick={() => removeScript(si)}><Trash2 size={13}/></Btn>}
+              </div>
+
+              {/* إعدادات خاصة بهذا السكربت — فارغ = يرث الافتراضي العام. الصوت يظهر للنص المنطوق فقط. */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end', padding: '7px 9px', background: 'var(--bg)', border: '1px dashed var(--border)', borderRadius: 8 }}>
+                <span style={{ fontSize: 10.5, color: 'var(--muted)', width: '100%', fontWeight: 700 }}>⚙️ إعدادات هذا السكربت <span style={{ fontWeight: 400 }}>(فارغ = يرث الافتراضي)</span></span>
+                {!s.audioUrl ? (
+                  <label style={{ display: 'grid', gap: 4, fontSize: 11 }}>الصوت
+                    <select disabled={!mayConfigure} value={s.ttsVoice || ''} onChange={e => updateScript(si, { ttsVoice: e.target.value || undefined })} style={{ ...inp, minWidth: 120 }}>
+                      <option value="">افتراضي ({cfg.ttsVoice === 'Male' ? 'ذكر' : 'أنثى'})</option>
+                      <option value="Female">أنثى</option>
+                      <option value="Male">ذكر</option>
+                    </select>
+                  </label>
+                ) : (
+                  <span style={{ fontSize: 10.5, color: 'var(--muted2)', alignSelf: 'center' }}>🔊 صوت مرفوع — لا يحتاج اختيار ذكر/أنثى</span>
+                )}
+                <label style={{ display: 'grid', gap: 4, fontSize: 11 }}>إعادة التشغيل
+                  <select disabled={!mayConfigure} value={s.maxAudioRetries ?? ''} onChange={e => updateScript(si, { maxAudioRetries: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ ...inp, width: 130 }}>
+                    <option value="">افتراضي ({cfg.maxAudioRetries ?? 2})</option>
+                    {[0, 1, 2, 3, 4, 5].map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
+                <label style={{ display: 'grid', gap: 4, fontSize: 11 }}>مهلة الضغط (مللي)
+                  <input type="number" min={1000} max={30000} step={500} disabled={!mayConfigure} value={s.inputTimeoutMs ?? ''}
+                    placeholder={`افتراضي ${cfg.inputTimeoutMs ?? 6000}`}
+                    onChange={e => updateScript(si, { inputTimeoutMs: e.target.value === '' ? undefined : Number(e.target.value) })} style={{ ...inp, width: 140 }}/>
+                </label>
               </div>
               <textarea disabled={!mayConfigure || !!s.audioUrl} value={s.ttsText}
                 onChange={e => updateScript(si, { ttsText: e.target.value })}
