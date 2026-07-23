@@ -173,21 +173,6 @@ export default function IvrTab() {
           تفعيل المكالمات الآلية
         </label>
 
-        <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 700, marginTop: 2 }}>الإعدادات الافتراضية <span style={{ fontWeight: 400 }}>— يرثها كل سكربت ما لم يحدّد إعداده الخاص أدناه</span></div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>الصوت
-            <select disabled={!mayConfigure} value={cfg.ttsVoice} onChange={e => setCfg({ ...cfg, ttsVoice: e.target.value })} style={inp}>
-              <option value="Female">أنثى</option><option value="Male">ذكر</option>
-            </select>
-          </label>
-          <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>إعادة تشغيل النص (0-5)
-            <input type="number" min={0} max={5} disabled={!mayConfigure} value={cfg.maxAudioRetries} onChange={e => setCfg({ ...cfg, maxAudioRetries: Number(e.target.value) })} style={{ ...inp, width: 90 }}/>
-          </label>
-          <label style={{ display: 'grid', gap: 5, fontSize: 12.5 }}>مهلة الضغط (مللي)
-            <input type="number" min={1000} max={30000} step={500} disabled={!mayConfigure} value={cfg.inputTimeoutMs} onChange={e => setCfg({ ...cfg, inputTimeoutMs: Number(e.target.value) })} style={{ ...inp, width: 110 }}/>
-          </label>
-        </div>
-
         {/* ساعات الاتصال + إعادة المحاولة — يحرسها ivr-runner (cron كل 15د) */}
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12, display: 'grid', gap: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>⏰ الجدولة وساعات الاتصال</div>
