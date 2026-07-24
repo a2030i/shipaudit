@@ -82,6 +82,7 @@ export default function ZohoData({ isActive = true }) {
   const [health, setHealth] = useState(null);       // صحة مزامنة زوهو (webhook + دوري)
   const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
   const [waOpen, setWaOpen] = useState(false);
+  const [waMode, setWaMode] = useState('customer'); // 'customer' (مجمّع) | 'invoice' (لكل فاتورة)
 
   // حملة تحصيل المتأخرين — من zoho_overdue_campaign (هواتف من دليل المتاجر)
   const loadCampaign = async () => {
@@ -94,7 +95,15 @@ export default function ZohoData({ isActive = true }) {
     try {
       const rows = await loadCampaign();
       if (!rows.length) { toast('لا فواتير متأخرة حالياً 🎉', 'info'); return; }
-      setWaOpen(true);
+      setWaMode('customer'); setWaOpen(true);
+    } catch (e) { toast(`فشل تجهيز الحملة: ${e.message}`, 'error'); }
+  };
+  // حملة سداد لكل فاتورة (من الجدول المفلتر) — قالب فيه اسم المتجر وتاريخ الفاتورة والمتبقي.
+  // الهواتف من حملة المتأخرين (customer→phone). الفاتورة بلا هاتف معروف تُستبعَد.
+  const openInvoiceCampaign = async () => {
+    try {
+      await loadCampaign();   // يحمّل خريطة الهواتف (customer→phone)
+      setWaMode('invoice'); setWaOpen(true);
     } catch (e) { toast(`فشل تجهيز الحملة: ${e.message}`, 'error'); }
   };
   const exportCampaign = async () => {
@@ -238,6 +247,37 @@ export default function ZohoData({ isActive = true }) {
   const total = useMemo(() => +filtered.reduce((s, r) => s + (Number(r[cfg.amount]) || 0), 0).toFixed(2), [filtered, cfg]);
   const totalBalance = useMemo(() => +filtered.reduce((s, r) => s + (Number(r.balance) || 0), 0).toFixed(2), [filtered]);
 
+  // خريطة هاتف كل عميل (من حملة المتأخرين) — لربط كل فاتورة برقم صاحبها
+  const phoneByCustomer = useMemo(() => {
+    const m = new Map();
+    (campaign || []).forEach(r => { if (r.phone) m.set(r.customerName, { phone: r.phone, store: r.storeName }); });
+    return m;
+  }, [campaign]);
+  // مستلِمو حملة «لكل فاتورة» — من الجدول المفلتر (يحترم الفترة/الحالة/المبلغ المختارة).
+  // كل فاتورة = مستلِم بمعرّف فريد (storeId=zoho_id) فتُرسَل رسالة لكل فاتورة عند تفعيل
+  // «رسالة لكل …» في المودال (الافتراضي رسالة/رقم — أأمن ضد الحظر، §1.29).
+  const unpaidInvCount = useMemo(() =>
+    type === 'invoices' ? filtered.filter(r => Number(r.balance) > 0.5).length : 0, [type, filtered]);
+  const invoiceWaRecipients = useMemo(() => {
+    if (type !== 'invoices') return [];
+    return filtered
+      .filter(r => Number(r.balance) > 0.5)
+      .map(r => {
+        const info = phoneByCustomer.get(r.customer_name);
+        if (!info?.phone) return null;
+        const store = (info.store || r.customer_name || '').trim();
+        const amt = +(Number(r.balance) || 0).toFixed(2);
+        return {
+          to: normalizeSaudiPhone(info.phone), name: store, amount: amt, storeId: r.zoho_id,
+          // القالب: {{1}} اسم المتجر · {{2}} تاريخ الفاتورة · {{3}} المبلغ المتبقي
+          vars: [store, r.date || '', Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 })],
+          fields: { name: store, invoice_date: r.date, invoice_number: r.invoice_number,
+            remaining: amt, amount: amt },
+        };
+      })
+      .filter(Boolean);
+  }, [type, filtered, phoneByCustomer]);
+
   const exportXlsx = () => {
     if (!filtered.length) return;
     const aoa = [
@@ -363,6 +403,12 @@ export default function ZohoData({ isActive = true }) {
             مسح الفلاتر
           </Btn>
         )}
+        {type === 'invoices' && can('collections.view') && (
+          <Btn size="sm" variant="accent" onClick={openInvoiceCampaign} disabled={!unpaidInvCount}
+            title="حملة واتساب لكل فاتورة في العرض الحالي — قالب فيه اسم المتجر وتاريخ الفاتورة والمتبقي">
+            📲 حملة لكل فاتورة ({unpaidInvCount})
+          </Btn>
+        )}
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>
           تصدير
         </Btn>
@@ -438,8 +484,8 @@ export default function ZohoData({ isActive = true }) {
       <WhatsAppSendModal
         open={waOpen}
         onClose={() => setWaOpen(false)}
-        recipients={waOpen ? waRecipients : []}
-        bucketLabel="فواتير زوهو المتأخرة"
+        recipients={waOpen ? (waMode === 'invoice' ? invoiceWaRecipients : waRecipients) : []}
+        bucketLabel={waMode === 'invoice' ? 'سداد لكل فاتورة' : 'فواتير زوهو المتأخرة'}
       />
     </div>
   );

@@ -35,6 +35,9 @@ const FIELD_LABELS = {
   category:     'القسم',
   platform:     'المنصّة',
   phone:        'رقم الجوال',
+  invoice_date: 'تاريخ الفاتورة',
+  invoice_number: 'رقم الفاتورة',
+  remaining:    'المبلغ المتبقي (غير المدفوع)',
 };
 // fields = حقول الصفحة مدموجة فوق سياق القاعدة (campaign_recipient_context)
 const fieldValue = (fields, r, key) => {
