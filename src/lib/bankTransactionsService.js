@@ -130,6 +130,16 @@ export async function loadPreviousClosing(periodFrom) {
   return data?.[0] || null;
 }
 
+// كل ملخّصات الكشوف المرفوعة (للعرض المحفوظ: الختامي/الافتتاحي لكل فترة)
+export async function loadStatementSummaries() {
+  const { data, error } = await supabase
+    .from('bank_statement_summaries')
+    .select('period_from, period_to, opening_balance, closing_balance, total_debit, total_credit, file_name')
+    .order('period_to', { ascending: false });
+  if (error) return [];
+  return data || [];
+}
+
 export async function saveStatementSummary({ periodFrom, periodTo, opening, closing, totalDebit, totalCredit, fileName, userId }) {
   if (!periodFrom && !periodTo) return { ok: false };
   const { error } = await supabase.from('bank_statement_summaries').upsert({

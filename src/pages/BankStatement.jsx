@@ -3,7 +3,7 @@ import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2,
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
-import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary } from '../lib/bankTransactionsService.js';
+import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -39,6 +39,7 @@ export default function BankStatement() {
   const [savedFrom, setSavedFrom]       = useState('');       // فلتر الفترة: من
   const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
   const [savedType, setSavedType]       = useState('all');    // all | debit | credit
+  const [stmtSummaries, setStmtSummaries] = useState([]);      // ملخّصات الكشوف (ختامي/افتتاحي لكل فترة)
   const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
   const [deleting, setDeleting]         = useState(false);
 
@@ -48,6 +49,7 @@ export default function BankStatement() {
       const rows = await loadBankTransactions();
       annotateRejected(rows);   // علّم أزواج التحويلات المرفوضة (مدين + رفض بنفس المرجع)
       setSaved(rows);
+      loadStatementSummaries().then(setStmtSummaries).catch(() => {});
     }
     catch (e) { toast(`فشل تحميل الدفتر البنكي: ${e.message}`, 'error'); }
     setSavedLoading(false);
@@ -149,6 +151,19 @@ export default function BankStatement() {
       fees:   list.reduce((s, t) => s + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
     };
   }, [savedFiltered]);
+
+  // الرصيد الختامي للفترة المختارة — من ملخّصات الكشوف المرفوعة (تطابق دقيق
+  // لشريحة جاهزة، أو أحدث كشف ينتهي ضمن المدى المخصّص).
+  const periodClosing = useMemo(() => {
+    if (!savedTo || !stmtSummaries.length) return null;
+    const d = (x) => String(x || '').slice(0, 10);
+    const exact = stmtSummaries.find(s => d(s.period_from) === savedFrom && d(s.period_to) === savedTo);
+    if (exact) return exact;
+    const inRange = stmtSummaries
+      .filter(s => d(s.period_to) <= savedTo && (!savedFrom || d(s.period_to) >= savedFrom))
+      .sort((a, b) => d(b.period_to).localeCompare(d(a.period_to)));
+    return inRange[0] || null;
+  }, [stmtSummaries, savedFrom, savedTo]);
 
   const handleDeleteSaved = async (id) => {
     try {
@@ -587,7 +602,18 @@ export default function BankStatement() {
                   <StatBlock label="إجمالي المسحوب"   value={fmtMoney(savedTotals.debit)}  color="var(--red)"   suffix="ر.س"/>
                   <StatBlock label="إجمالي المودَع"   value={fmtMoney(savedTotals.credit)} color="var(--green)" suffix="ر.س"/>
                   <StatBlock label="رسوم + ضريبة"    value={fmtMoney(savedTotals.fees)}   color="var(--gold)"  suffix="ر.س"/>
+                  {periodClosing && periodClosing.closing_balance != null && (
+                    <StatBlock label={`الرصيد الختامي · ${String(periodClosing.period_to).slice(0, 10)}`}
+                      value={fmtMoney(Number(periodClosing.closing_balance))} color="var(--accent)" suffix="ر.س"/>
+                  )}
                 </div>
+                {periodClosing && periodClosing.closing_balance != null && (
+                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, marginTop: -6 }}>
+                    كشف {String(periodClosing.period_from).slice(0, 10)} ← {String(periodClosing.period_to).slice(0, 10)}
+                    {periodClosing.opening_balance != null && <> · الافتتاحي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmtMoney(Number(periodClosing.opening_balance))}</b> ر.س</>}
+                    {' · '}الختامي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{fmtMoney(Number(periodClosing.closing_balance))}</b> ر.س
+                  </div>
+                )}
 
                 {savedRejectedInfo.count > 0 && (
                   <div style={{
