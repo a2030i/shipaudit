@@ -223,16 +223,18 @@ function extractFeesFromDescription(desc) {
   const text = String(desc);
   let fees = 0, tax = 0;
 
-  // Match `الرسوم` only when it's the standalone fee marker, not when it
-  // appears in phrases like `بغرض الرسوم...`. Anchor to a word break before it.
-  const feeRe = new RegExp(`(?:^|[\\s\\(\\)،,])الرسوم\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
+  // كلمة الرسوم تختلف بين صيغ البنك: الرسوم (عربي) · Fees/Fee · Commission (SWIFT)
+  // · charge/charges (SARIE variant). مربوطة بفاصل قبلها لتفادي «surcharge»/«بغرض الرسوم».
+  const feeRe = new RegExp(`(?:^|[\\s\\(\\)،,])(?:الرسوم|fees?|commission|charges?)\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
   const feeMatch = text.match(feeRe);
   if (feeMatch) fees = parseNumber(feeMatch[1]) || 0;
 
   // VAT: prefer the explicit `ضريبة القيمة المضافة` phrase to avoid grabbing
-  // unrelated `الضريبة` mentions elsewhere.
+  // unrelated `الضريبة` mentions elsewhere. الفرع الإنجليزي يقبل «VAT SAR7.50»
+  // (رمز العملة بين VAT والرقم) — كان يفشل بلا CURRENCY_TOKEN.
   const taxRe = new RegExp(`ضريبة(?:\\s+القيمة\\s+المضافة)?\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
-  const taxMatch = text.match(taxRe) || text.match(/vat\s*[:،\-]?\s*([\d.,]+)/i);
+  const vatRe = new RegExp(`vat\\s*${CURRENCY_TOKEN}\\s*[:،\\-]?\\s*([\\d.,]+)`, 'i');
+  const taxMatch = text.match(taxRe) || text.match(vatRe);
   if (taxMatch) tax = parseNumber(taxMatch[1]) || 0;
 
   return { fees, tax };
