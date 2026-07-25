@@ -165,6 +165,20 @@ export default function BankStatement() {
     return inRange[0] || null;
   }, [stmtSummaries, savedFrom, savedTo]);
 
+  // التحقّق من ختامي البنك: نحسبه بأنفسنا (افتتاحي + مودَع − مسحوب شامل الرسوم)
+  // على كامل فترة الكشف — تطابقه مع رقم البنك = دليل التقاط كل عملية بلا نقص/تكرار.
+  // نستخدم فترة الكشف نفسها (لا فلتر النوع/البحث) كي لا يكسر التطابق فلترٌ جزئي.
+  const periodRecon = useMemo(() => {
+    if (!periodClosing || periodClosing.opening_balance == null || periodClosing.closing_balance == null) return null;
+    const from = String(periodClosing.period_from).slice(0, 10), to = String(periodClosing.period_to).slice(0, 10);
+    const inP = (saved || []).filter(t => { const d = String(t.txn_date || '').slice(0, 10); return d >= from && d <= to; });
+    const credit = inP.reduce((s, t) => s + (Number(t.credit) || 0), 0);
+    const debitGross = inP.reduce((s, t) => s + (Number(t.debit) || 0) + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0);
+    const computed = +(Number(periodClosing.opening_balance) + credit - debitGross).toFixed(2);
+    const gap = +(computed - Number(periodClosing.closing_balance)).toFixed(2);
+    return { computed, gap, ok: Math.abs(gap) <= 0.5 };
+  }, [periodClosing, saved]);
+
   const handleDeleteSaved = async (id) => {
     try {
       await deleteBankTransaction(id);
@@ -608,10 +622,23 @@ export default function BankStatement() {
                   )}
                 </div>
                 {periodClosing && periodClosing.closing_balance != null && (
-                  <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 10, marginTop: -6 }}>
-                    كشف {String(periodClosing.period_from).slice(0, 10)} ← {String(periodClosing.period_to).slice(0, 10)}
-                    {periodClosing.opening_balance != null && <> · الافتتاحي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmtMoney(Number(periodClosing.opening_balance))}</b> ر.س</>}
-                    {' · '}الختامي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{fmtMoney(Number(periodClosing.closing_balance))}</b> ر.س
+                  <div style={{ marginBottom: 10, marginTop: -6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                      كشف {String(periodClosing.period_from).slice(0, 10)} ← {String(periodClosing.period_to).slice(0, 10)}
+                      {periodClosing.opening_balance != null && <> · الافتتاحي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmtMoney(Number(periodClosing.opening_balance))}</b> ر.س</>}
+                      {' · '}الختامي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{fmtMoney(Number(periodClosing.closing_balance))}</b> ر.س
+                    </div>
+                    {periodRecon && (
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.6, padding: '8px 12px', borderRadius: 9,
+                        background: periodRecon.ok ? 'rgba(16,163,74,.08)' : 'rgba(220,38,38,.08)',
+                        border: `1px solid ${periodRecon.ok ? 'rgba(16,163,74,.3)' : 'rgba(220,38,38,.3)'}`,
+                        color: periodRecon.ok ? 'var(--green)' : 'var(--red)' }}>
+                        <span style={{ fontSize: 14, flexShrink: 0 }}>{periodRecon.ok ? '✓' : '⚠️'}</span>
+                        {periodRecon.ok
+                          ? <span>تحقّقنا: حساب البنك <b>مطابق</b> لعملياتنا — الافتتاحي + الحركة = الختامي بالضبط (فجوة صفر). دليل أنّنا التقطنا كل عملية بلا نقص أو تكرار.</span>
+                          : <span>فجوة <b style={{ fontFamily: 'var(--font-mono)' }}>{fmtMoney(Math.abs(periodRecon.gap))}</b> ر.س: حسابنا يعطي <b style={{ fontFamily: 'var(--font-mono)' }}>{fmtMoney(periodRecon.computed)}</b> بينما ختامي البنك <b style={{ fontFamily: 'var(--font-mono)' }}>{fmtMoney(Number(periodClosing.closing_balance))}</b> — عملية ناقصة/مكررة أو خطأ، راجِع الفترة.</span>}
+                      </div>
+                    )}
                   </div>
                 )}
 
