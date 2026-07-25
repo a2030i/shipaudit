@@ -1,7 +1,7 @@
 // إعدادات واتساب (Hatif · هاتف/Voxa) — مكان ثابت لضبط القالب والقناة والتحقّق،
 // بدل تكرار الإعداد داخل مودال الإرسال. يُخزَّن في app_settings key='whatsapp_config'
 // ويُستخدَم في حملات التحصيل (/customer-money) وإعادة الاستهداف. اللغة ثابتة ar.
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Trash2 } from 'lucide-react';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
 import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../components/UI.jsx';
@@ -11,7 +11,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadHatifAgentActivity, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -101,7 +101,7 @@ export default function WhatsAppSettings({ isActive = true }) {
 
       {/* مبدّل: الإعدادات / سجل الحملات */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية']].map(([v, lbl]) => (
+        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
             border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
@@ -111,6 +111,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       </div>
 
       {tab === 'ivr' ? <IvrTab/> :
+      tab === 'agents' ? <AgentActivityTab/> :
       tab === 'campaigns' ? <CampaignsTab/> :
       !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
@@ -269,6 +270,77 @@ export default function WhatsAppSettings({ isActive = true }) {
         </Card>
       )}
     </div>
+  );
+}
+
+// تاب أداء الفريق — إسناد ونشاط الموظفين من أحداث هاتف (hatif_events).
+// يتغذّى من webhook مساحة العمل (AssignedUserIdChanged…) — يمتلئ مع كل محادثة يتولّاها موظف.
+function AgentActivityTab() {
+  const [days, setDays] = useState(30);
+  const [rows, setRows] = useState(null);
+  const [users, setUsers] = useState([]);
+
+  useEffect(() => { loadHatifAgentActivity(days).then(setRows).catch(() => setRows([])); }, [days]);
+  useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
+
+  const nameById = useMemo(() => {
+    const m = new Map();
+    users.forEach(u => { if (u.userId) m.set(String(u.userId), u.name || u.email || null); });
+    return m;
+  }, [users]);
+  const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
+
+  return (
+    <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>👥 أداء الفريق — الإسناد والنشاط</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>
+            مَن يتولّى المحادثات في هاتف — من أحداث «تعيين الموظف» (webhook مساحة العمل).
+          </div>
+        </div>
+        <select value={days} onChange={e => setDays(Number(e.target.value))}
+          style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+          <option value={7}>آخر 7 أيام</option>
+          <option value={30}>آخر 30 يوماً</option>
+          <option value={90}>آخر 90 يوماً</option>
+        </select>
+      </div>
+
+      {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
+        : !rows.length ? (
+          <Empty icon="📞" title="لا نشاط بعد"
+            sub="يمتلئ تلقائياً كلما تولّى موظف محادثة في هاتف (webhook مساحة العمل يُرسل حدث التعيين)."/>
+        ) : (
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
+              <th style={{ padding: '7px 9px' }} data-label="">الموظف</th>
+              <th style={{ padding: '7px 9px' }}>محادثات</th>
+              <th style={{ padding: '7px 9px' }}>جهات اتصال</th>
+              <th style={{ padding: '7px 9px' }}>إسنادات</th>
+              <th style={{ padding: '7px 9px' }}>أحداث</th>
+              <th style={{ padding: '7px 9px' }}>آخر نشاط</th>
+            </tr></thead>
+            <tbody>
+              {rows.map(r => (
+                <tr key={r.agent_id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 9px', fontWeight: 700 }} data-label="الموظف">
+                    {nameById.get(String(r.agent_id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(r.agent_id)}>{String(r.agent_id).slice(0, 8)}…</span>}
+                  </td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', fontWeight: 700 }} data-label="محادثات">{r.conversations}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="جهات اتصال">{r.contacts}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="إسنادات">{r.assignments}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }} data-label="أحداث">{r.events}</td>
+                  <td style={{ padding: '8px 9px', fontSize: 11.5, color: 'var(--muted)' }} data-label="آخر نشاط">{fmtWhen(r.last_at)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        هذه بيانات <b>إسناد المحادثات</b> (مَن يتولّى مَن). تفاصيل المكالمة (مدة/تسجيل/مشاعر) تحتاج تفعيل «تحليل المكالمات AI» في هاتف ليصل حدث «Call Completed».
+      </div>
+    </Card>
   );
 }
 

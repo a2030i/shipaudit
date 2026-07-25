@@ -215,6 +215,13 @@ export async function loadHatifUsers() {
   return (data.users || []).map(u => ({ userId: u.userId, name: u.name, email: u.email || null }));
 }
 
+// نشاط وإسناد الموظفين من hatif_events (أحداث webhook مساحة العمل) — أساس أداء الفريق.
+export async function loadHatifAgentActivity(days = 30) {
+  const { data, error } = await supabase.rpc('hatif_agent_activity', { p_days: days });
+  if (error) return [];
+  return data || [];
+}
+
 // تاقات هاتف — سرد المتاح + تطبيق يدوي على محادثة العميل (بالهاتف)
 export async function loadHatifTags() {
   const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'list' } });
