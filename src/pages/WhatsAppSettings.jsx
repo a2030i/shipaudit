@@ -437,6 +437,7 @@ function AgentActivityTab() {
             <option value={7}>آخر 7 أيام</option>
             <option value={30}>آخر 30 يوماً</option>
             <option value={90}>آخر 90 يوماً</option>
+            <option value={3650}>كل الفترة</option>
           </select>
         </div>
       </div>
