@@ -31,10 +31,20 @@ export default function Payments({ isActive = true }) {
   const [opsOf, setOpsOf] = useState({}); // { paymentId → ops[] }
   const [confirmDelete, setConfirmDelete] = useState(null);
 
+  // مزامنة الناقل مع الرابط — تُدمَج فقط مفتاح `carrier` وتُبقي بقية المعاملات
+  // كما هي (خاصة `tab=` الذي يملكه MoneyHub). كانت `setSearchParams({})` تمسح
+  // الرابط كاملاً، وبما أن Payments يبقى mounted داخل الهَب (مخفياً) فكانت تمحو
+  // `?tab=bank` عند التحديث فترجع الصفحة للتبويب الافتراضي. + تُشغَّل فقط حين
+  // يكون تبويب الدفعات نشطاً فلا تكتب `carrier` على رابط تبويب آخر.
   useEffect(() => {
-    if (carrier) setSearchParams({ carrier }, { replace: true });
-    else         setSearchParams({}, { replace: true });
-  }, [carrier]); // eslint-disable-line
+    if (!isActive) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (carrier) next.set('carrier', carrier);
+      else next.delete('carrier');
+      return next;
+    }, { replace: true });
+  }, [carrier, isActive]); // eslint-disable-line
 
   const refresh = useCallback(async () => {
     setLoading(true);
