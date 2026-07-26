@@ -11,7 +11,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  loadHatifAgentActivity, loadHatifCallStats, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -279,10 +279,14 @@ function AgentActivityTab() {
   const [days, setDays] = useState(30);
   const [rows, setRows] = useState(null);
   const [calls, setCalls] = useState(null);       // إحصاءات المكالمات الحقيقية
+  const [recent, setRecent] = useState(null);     // آخر المكالمات (تسجيل + ملخّص)
+  const [agentFilter, setAgentFilter] = useState(null); // فلتر بموظف (user_id)
+  const [openCall, setOpenCall] = useState(null); // مكالمة مفتوحة (ملخّص)
   const [users, setUsers] = useState([]);
 
   useEffect(() => { loadHatifAgentActivity(days).then(setRows).catch(() => setRows([])); }, [days]);
   useEffect(() => { loadHatifCallStats(days).then(setCalls).catch(() => setCalls([])); }, [days]);
+  useEffect(() => { setRecent(null); loadHatifCalls({ days, userId: agentFilter, limit: 60 }).then(setRecent).catch(() => setRecent([])); }, [days, agentFilter]);
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
 
   const nameById = useMemo(() => {
@@ -379,6 +383,60 @@ function AgentActivityTab() {
             </tbody>
           </table>
         )}
+      {/* آخر المكالمات — تسجيل + ملخّص AI لكل مكالمة */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 10, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🎧 آخر المكالمات</div>
+        <select value={agentFilter || ''} onChange={e => setAgentFilter(e.target.value || null)}
+          style={{ padding: '6px 10px', borderRadius: 8, fontSize: 12, marginInlineStart: 'auto' }}>
+          <option value="">كل الموظفين</option>
+          {(calls || []).map(c => <option key={c.user_id || 'null'} value={c.user_id || ''}>{nameById.get(String(c.user_id)) || (c.user_id ? String(c.user_id).slice(0, 8) + '…' : 'بلا موظف')} ({c.calls})</option>)}
+        </select>
+      </div>
+      {recent == null ? <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>
+        : !recent.length ? <div style={{ fontSize: 12, color: 'var(--muted)', padding: '4px 2px' }}>لا مكالمات.</div>
+        : (
+          <div style={{ display: 'grid', gap: 6 }}>
+            {recent.map(c => {
+              const open = openCall === c.id;
+              const inbound = c.call_type === 1;
+              const sum = c.ai_summary?.summary;
+              const steps = c.ai_summary?.next_steps || c.ai_summary?.nextSteps;
+              return (
+                <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
+                  <div onClick={() => setOpenCall(open ? null : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', flexWrap: 'wrap', fontSize: 12.5 }}>
+                    <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: inbound ? 'color-mix(in srgb, #0EA5E9 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)', color: inbound ? '#0EA5E9' : 'var(--green)' }}>{inbound ? '↙ وارد' : '↗ صادر'}</span>
+                    <b>{nameById.get(String(c.user_id)) || (c.user_id ? String(c.user_id).slice(0, 8) + '…' : 'بلا موظف')}</b>
+                    <span style={{ color: 'var(--muted)' }}>{fmtWhen(c.creation_time)}</span>
+                    <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{c.pickup_time ? fmtDur(c.talk_seconds) : 'لم تُردّ'}</span>
+                    {c.sentiment ? <span>{sentLabel(c.sentiment)}</span> : null}
+                    {c.recording_url && <span style={{ color: 'var(--accent)', fontSize: 11 }}>🎙 تسجيل</span>}
+                    {c.ai_summary && <span style={{ color: 'var(--accent)', fontSize: 11 }}>📄 ملخّص</span>}
+                    <span style={{ marginInlineStart: 'auto', color: 'var(--muted2)' }}>{open ? '▲' : '▼'}</span>
+                  </div>
+                  {open && (
+                    <div style={{ padding: '4px 12px 12px', borderTop: '1px solid var(--border)', display: 'grid', gap: 8, fontSize: 12.5 }}>
+                      {c.recording_url && <audio controls preload="none" src={c.recording_url} style={{ width: '100%', height: 34 }}/>}
+                      {Array.isArray(sum) && sum.length > 0 && (
+                        <div>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>📄 ملخّص المكالمة</div>
+                          <ul style={{ margin: 0, paddingInlineStart: 18, lineHeight: 1.8, color: 'var(--text)' }}>{sum.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                        </div>
+                      )}
+                      {Array.isArray(steps) && steps.length > 0 && (
+                        <div>
+                          <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--gold)' }}>🎯 الخطوات التالية</div>
+                          <ul style={{ margin: 0, paddingInlineStart: 18, lineHeight: 1.8, color: 'var(--muted)' }}>{steps.map((s, i) => <li key={i}>{s}</li>)}</ul>
+                        </div>
+                      )}
+                      {!c.recording_url && !c.ai_summary && <div style={{ color: 'var(--muted)' }}>لا تسجيل ولا تحليل لهذه المكالمة.</div>}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
         <b>المكالمات</b> تُسحب من سجلّ هاتف (GET /v1/call/list) كل 30 دقيقة — مع التسجيل والملخّص والمشاعر لكل مكالمة.
         <b> إسناد المحادثات</b> من أحداث «تعيين الموظف» (webhook مساحة العمل). أسماء الموظفين من موظفي هاتف.
