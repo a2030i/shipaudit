@@ -19,6 +19,7 @@ import {
 import { loadWhatsAppCampaignStatus, normalizeSaudiPhone, waStatusBadge } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
+import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -731,10 +732,9 @@ function FollowupModal({ lead, employees, onClose, onSaved, canCampaign, onCampa
           <Btn size="sm" variant="ghost" onClick={() => save(false, 'test')} disabled={saving}>🧪 تجريبي</Btn>
         </div>
 
-        {/* تاريخ الحملات المُرسَلة لهذا العميل */}
+        {/* سجلّ تواصل العميل الموحّد — حملات + مكالمات آلية (تسجيل/نص) + مَن تولّاه */}
         <div>
-          <label style={lbl}>📲 الحملات المُرسَلة لهذا العميل</label>
-          <CustomerCampaignHistory phone={lead.phone}/>
+          <CustomerCommTimeline phone={lead.phone}/>
         </div>
         <div><label style={lbl}>الحالة / نتيجة التواصل</label>
           <Sel value={status} onChange={e => setStatus(e.target.value)}>{Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}</Sel></div>

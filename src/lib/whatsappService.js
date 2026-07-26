@@ -239,6 +239,14 @@ export async function loadHatifCallStats(days = 30) {
   if (error) return [];
   return data || [];
 }
+// سجلّ تواصل العميل الموحّد (حملات واتساب + مكالمات IVR بتسجيلها + مَن تولّى محادثته)
+// — مركز العمليات يعرضه في بطاقة العميل بلا دخول هاتف. p_phone يُطبَّع سيرفرياً.
+export async function loadCustomerCommTimeline(phone) {
+  if (!phone) return [];
+  const { data, error } = await supabase.rpc('customer_comm_timeline', { p_phone: String(phone) });
+  if (error) return [];
+  return data || [];
+}
 // آخر مكالمات (تسجيل + ملخّص AI + مشاعر) — للعرض التفصيلي.
 export async function loadHatifCalls({ days = 30, userId = null, limit = 100 } = {}) {
   let q = supabase.from('hatif_call_log')

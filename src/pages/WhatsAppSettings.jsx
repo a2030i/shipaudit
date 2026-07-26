@@ -297,7 +297,9 @@ function AgentActivityTab() {
   const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
   const fmtDur = (s) => { const n = Number(s) || 0; if (!n) return '—'; const m = Math.floor(n / 60); const sec = n % 60; return m ? `${m}د ${sec}ث` : `${sec}ث`; };
   const sentLabel = (v) => { const n = Number(v); if (!n) return '—'; return n >= 4 ? `😊 ${n.toFixed(1)}` : n <= 2 ? `😞 ${n.toFixed(1)}` : `😐 ${n.toFixed(1)}`; };
-  const agentName = (id) => nameById.get(String(id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(id)}>{String(id).slice(0, 8)}…</span>;
+  // بلا موظف = مكالمة آلية (IVR/نظام) — لا يمكن صادر بلا موظف إلا آلياً (قرار المستخدم).
+  const agentName = (id) => !id ? <span style={{ color: '#8B5CF6', fontWeight: 700 }}>🤖 آلي (IVR)</span>
+    : (nameById.get(String(id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(id)}>{String(id).slice(0, 8)}…</span>);
 
   return (
     <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
@@ -389,7 +391,7 @@ function AgentActivityTab() {
         <select value={agentFilter || ''} onChange={e => setAgentFilter(e.target.value || null)}
           style={{ padding: '6px 10px', borderRadius: 8, fontSize: 12, marginInlineStart: 'auto' }}>
           <option value="">كل الموظفين</option>
-          {(calls || []).map(c => <option key={c.user_id || 'null'} value={c.user_id || ''}>{nameById.get(String(c.user_id)) || (c.user_id ? String(c.user_id).slice(0, 8) + '…' : 'بلا موظف')} ({c.calls})</option>)}
+          {(calls || []).map(c => <option key={c.user_id || 'null'} value={c.user_id || ''}>{c.user_id ? (nameById.get(String(c.user_id)) || String(c.user_id).slice(0, 8) + '…') : '🤖 آلي (IVR)'} ({c.calls})</option>)}
         </select>
       </div>
       {recent == null ? <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>
@@ -405,7 +407,7 @@ function AgentActivityTab() {
                 <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
                   <div onClick={() => setOpenCall(open ? null : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', flexWrap: 'wrap', fontSize: 12.5 }}>
                     <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: inbound ? 'color-mix(in srgb, #0EA5E9 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)', color: inbound ? '#0EA5E9' : 'var(--green)' }}>{inbound ? '↙ وارد' : '↗ صادر'}</span>
-                    <b>{nameById.get(String(c.user_id)) || (c.user_id ? String(c.user_id).slice(0, 8) + '…' : 'بلا موظف')}</b>
+                    <b>{agentName(c.user_id)}</b>
                     <span style={{ color: 'var(--muted)' }}>{fmtWhen(c.creation_time)}</span>
                     <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{c.pickup_time ? fmtDur(c.talk_seconds) : 'لم تُردّ'}</span>
                     {c.sentiment ? <span>{sentLabel(c.sentiment)}</span> : null}
