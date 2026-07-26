@@ -70,7 +70,7 @@ export default function NextActions({ isActive = true }) {
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: 'var(--muted)' }}>
           <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)}/> المسندة لي فقط
         </label>
-        {['', 'تحصيل', 'مبيعات', 'تواصل'].map(g => (
+        {['', 'متابعة', 'تحصيل', 'مبيعات', 'تواصل'].map(g => (
           <Btn key={g || 'all'} size="sm" variant={group === g ? 'primary' : 'outline'} onClick={() => setGroup(g)}>{g || 'الكل'}</Btn>
         ))}
       </div>

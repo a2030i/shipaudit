@@ -23,6 +23,7 @@ import { loadLegalDashboard } from '../lib/legalService.js';
 import { loadIntegrityChecks } from '../lib/integrityService.js';
 import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
 import { loadHatifCallOps, loadWhatsAppNumberHealth } from '../lib/whatsappService.js';
+import { loadSlaBreaches } from '../lib/nextActionsService.js';
 
 // تسميات فئات مشاكل المكالمات (متطابقة مع تبويب تحليل المكالمات).
 const CALL_PROBLEM_AR = {
@@ -43,7 +44,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps, waHealth] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps, waHealth, sla] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -58,6 +59,7 @@ export default function DecisionsBoard({ isActive = true }) {
         loadClaims().then(summarizeClaims).catch(() => null),
         loadHatifCallOps().catch(() => null),
         loadWhatsAppNumberHealth().catch(() => null),
+        loadSlaBreaches().catch(() => null),
       ]);
       // فحص السلامة: أخطر التناقضات (item_count>0) — يجمع «ناقل بلا فاتورة» وiMile…
       const integ = Array.isArray(integrity) ? integrity.filter(c => c.count > 0) : [];
@@ -109,6 +111,7 @@ export default function DecisionsBoard({ isActive = true }) {
         claims: claims || { open: 0, openTotal: 0, submitted: 0, submittedTotal: 0, recovered: 0, recoveredTotal: 0 },
         callOps: callOps || null,
         waHealth: waHealth || null,
+        sla: sla || null,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -182,6 +185,15 @@ export default function DecisionsBoard({ isActive = true }) {
               sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} رصيد محفظة تحت الصفر (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
               top: d.legal?.top || [],
               cta: 'الصفحة القانونية', onClick: () => navigate('/legal'),
+            },
+          },
+          {
+            key: 'sla', active: (d.sla?.total || 0) > 0, okLabel: 'لا متابعة متأخّرة — الفريق منضبط',
+            props: {
+              color: 'var(--red)', icon: '⏰', title: 'متابعات تجاوزت SLA',
+              value: d.sla?.total || 0, unit: 'متابعة متأخّرة',
+              sub: `${d.sla?.stale || 0} راكدة (+3 أيام بلا تواصل) · ${d.sla?.overdue || 0} تجاوزت موعدها · أقدمها ${d.sla?.oldestDays || 0} يوماً — الفريق يتجاهل عملاء مُسنَدين`,
+              cta: 'الفعل التالي', onClick: () => navigate('/next-actions'),
             },
           },
           {
