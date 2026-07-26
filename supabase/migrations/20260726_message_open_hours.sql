@@ -1,4 +1,4 @@
-ALTER note: see MCP-applied migration.
+-- ALTER note: see MCP-applied migration.
 -- توزيع ساعة فتح الرسائل (read_at) + الردّ بتوقيت السعودية (Asia/Riyadh) — لقرار توقيت الحملة.
 create or replace function public.message_open_hours(p_days int default 120)
 returns table(hour int, opens bigint, replies bigint)
