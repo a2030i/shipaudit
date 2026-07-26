@@ -12,7 +12,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
   loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
-  loadCallTargets, saveCallTargets, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadCallTargets, saveCallTargets, loadOutreachImpact, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -103,7 +103,7 @@ export default function WhatsAppSettings({ isActive = true }) {
 
       {/* مبدّل: الإعدادات / سجل الحملات */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
+        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['impact', '💰 الأثر بالريال'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
             border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
@@ -113,6 +113,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       </div>
 
       {tab === 'ivr' ? <IvrTab/> :
+      tab === 'impact' ? <OutreachImpactTab/> :
       tab === 'problems' ? <CallProblemsTab/> :
       tab === 'agents' ? <AgentActivityTab/> :
       tab === 'campaigns' ? <CampaignsTab/> :
@@ -273,6 +274,81 @@ export default function WhatsAppSettings({ isActive = true }) {
         </Card>
       )}
     </div>
+  );
+}
+
+// تاب «الأثر بالريال» — محرّك النتائج: كم حصّلت كل حملة فعلاً (تواصل → سدّد).
+function OutreachImpactTab() {
+  const [days, setDays] = useState(90);
+  const [rows, setRows] = useState(null);
+  const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+  useEffect(() => { setRows(null); loadOutreachImpact(days).then(setRows).catch(() => setRows([])); }, [days]);
+  const totals = useMemo(() => {
+    const t = { collected: 0, paid: 0, contacted: 0 };
+    for (const r of (rows || [])) { t.collected += r.collected; t.paid += r.paid; t.contacted += r.contacted; }
+    return t;
+  }, [rows]);
+
+  return (
+    <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>💰 الأثر بالريال — هل تواصلنا يجلب فلوساً؟</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>لكل حملة: كم عميلاً تواصلنا معه، وكم سدّد خلال 14 يوماً بعدها، والمبلغ المُحصَّل.</div>
+        </div>
+        <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+          <option value={30}>آخر 30 يوماً</option>
+          <option value={90}>آخر 90 يوماً</option>
+          <option value={365}>آخر سنة</option>
+        </select>
+      </div>
+
+      {/* بانر الإجمالي */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
+        <div style={{ padding: '12px 14px', borderRadius: 12, background: 'color-mix(in srgb, var(--green) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--green) 30%, var(--border))' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 حُصِّل بعد التواصل</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{fmt2(totals.collected)} <span style={{ fontSize: 12 }}>ر.س</span></div>
+        </div>
+        <div style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>عملاء سدّدوا</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{fmt2(totals.paid)}</div>
+        </div>
+        <div style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>تواصلنا معهم</div>
+          <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)' }}>{fmt2(totals.contacted)}</div>
+        </div>
+      </div>
+
+      {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
+        : !rows.length ? <Empty icon="💰" title="لا حملات في الفترة"/>
+        : (
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
+              <th style={{ padding: '7px 9px' }} data-label="">الحملة</th>
+              <th style={{ padding: '7px 9px' }}>تواصل</th>
+              <th style={{ padding: '7px 9px' }}>ردّ</th>
+              <th style={{ padding: '7px 9px' }}>سدّد</th>
+              <th style={{ padding: '7px 9px' }}>حُصِّل (ر.س)</th>
+              <th style={{ padding: '7px 9px' }}>التحويل</th>
+            </tr></thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 9px', fontWeight: 700 }} data-label="الحملة">{r.campaign}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="تواصل">{fmt2(r.contacted)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: '#0EA5E9' }} data-label="ردّ">{fmt2(r.replied)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 700 }} data-label="سدّد">{fmt2(r.paid)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 700 }} data-label="حُصِّل">{r.collected > 0 ? fmt2(r.collected) : '—'}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="التحويل">{r.convRate > 0 ? `${r.convRate}%` : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        «سدّد» = عميل تواصلنا معه ثم وصلت دفعة زوهو خلال 14 يوماً (ارتباط بالاسم، تقريبي — لا يثبت السببية القطعية). حملات الجهات الجديدة (خارج المنصّة) لا تُطابَق (ليسوا عملاء زوهو بعد).
+      </div>
+    </Card>
   );
 }
 

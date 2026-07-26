@@ -4,7 +4,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Spinner } from './UI.jsx';
 import CallTranscript from './CallTranscript.jsx';
-import { loadCustomerCommTimeline, loadHatifUsers } from '../lib/whatsappService.js';
+import { loadCustomerCommTimeline, loadHatifUsers, hatifInboxUrl } from '../lib/whatsappService.js';
 
 const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
 const sentLabel = (v) => { const n = Number(v); if (!n) return null; return n >= 4 ? `😊 إيجابي` : n <= 2 ? `😞 سلبي` : `😐 محايد`; };
@@ -28,9 +28,22 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
 
   if (rows == null) return <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>;
 
+  // أحدث محادثة لها conversation_id → رابط فتحها في هاتف (rows مرتّبة تنازلياً).
+  const convId = rows.find(r => r.conversation_id)?.conversation_id;
+  const inboxUrl = hatifInboxUrl(convId);
+
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🕘 {title}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🕘 {title}</div>
+        {inboxUrl && (
+          <a href={inboxUrl} target="_blank" rel="noopener noreferrer"
+            style={{ marginInlineStart: 'auto', fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#25D366',
+              padding: '5px 11px', borderRadius: 999, textDecoration: 'none', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+            💬 افتح المحادثة في هاتف ↗
+          </a>
+        )}
+      </div>
       {!rows.length ? (
         <div style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 2px' }}>
           لا تواصل مسجَّل لهذا الرقم بعد (حملات/مكالمات آلية/محادثات). المكالمات الصوتية اليدوية لا تُنسَب للعميل بعد — بانتظار هاتف.

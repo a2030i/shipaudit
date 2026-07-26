@@ -239,6 +239,13 @@ export async function loadHatifCallStats(days = 30) {
   if (error) return [];
   return data || [];
 }
+// رابط فتح محادثة في واجهة هاتف مباشرة (القناة الرئيسية ثابتة — قناة واحدة).
+// يسدّ فجوة «لا نرى نصّ المحادثة»: بنقرة تفتح المحادثة نفسها في هاتف.
+export const HATIF_CHANNEL_ID = '3a1e515d-a31e-eace-2286-713745be95cc';
+export function hatifInboxUrl(conversationId) {
+  if (!conversationId) return null;
+  return `https://app.hatif.io/ar/inbox?channelId=${HATIF_CHANNEL_ID}&conversationId=${conversationId}`;
+}
 // سجلّ تواصل العميل الموحّد (حملات واتساب + مكالمات IVR بتسجيلها + مَن تولّى محادثته)
 // — مركز العمليات يعرضه في بطاقة العميل بلا دخول هاتف. p_phone يُطبَّع سيرفرياً.
 export async function loadCustomerCommTimeline(phone) {
@@ -269,6 +276,15 @@ export async function saveCallTargets({ weekly }) {
   const { error } = await supabase.from('app_settings')
     .upsert({ key: 'call_targets', value: JSON.stringify({ weekly: Number(weekly) || 0 }) }, { onConflict: 'key' });
   if (error) throw error;
+}
+// محرّك النتائج — الأثر بالريال لكل حملة (تواصل → سدّد خلال 14 يوماً + المبلغ).
+export async function loadOutreachImpact(days = 90) {
+  const { data, error } = await supabase.rpc('outreach_impact', { p_days: days });
+  if (error) return [];
+  return (data || []).map(r => ({
+    campaign: r.campaign_name, contacted: Number(r.contacted) || 0, replied: Number(r.replied) || 0,
+    paid: Number(r.paid) || 0, collected: Number(r.collected) || 0, convRate: Number(r.conv_rate) || 0,
+  }));
 }
 // ملخّص إشارات المكالمات للوحة القرارات: سلبية آخر 7 أيام + أكثر مشكلة صاعدة.
 export async function loadHatifCallOps() {
