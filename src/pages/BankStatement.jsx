@@ -310,12 +310,16 @@ export default function BankStatement() {
 
   const filtered = useMemo(() => {
     if (!result) return [];
-    if (!search.trim()) return result.transactions;
-    const q = search.trim().toLowerCase();
-    return result.transactions.filter(t =>
-      String(t.reference).toLowerCase().includes(q)
-      || String(t.description).toLowerCase().includes(q)
-    );
+    let list = result.transactions;
+    if (search.trim()) {
+      const q = search.trim().toLowerCase();
+      list = list.filter(t =>
+        String(t.reference).toLowerCase().includes(q)
+        || String(t.description).toLowerCase().includes(q)
+      );
+    }
+    // ترتيب بالتاريخ (الأحدث أولاً) — مثل الدفتر المحفوظ (طلب المستخدم).
+    return [...list].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
   }, [result, search]);
 
   // ── Export ────────────────────────────────────────────────────────────────
