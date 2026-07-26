@@ -30,10 +30,11 @@ function dedupKeyOf(t) {
 
 // Persist a parsed statement. Returns { saved, added, merged } so the UI can
 // tell the user how many rows were new vs. already-known (merged).
-export async function saveBankTransactions({ transactions, summary, fileName, userId }) {
+export async function saveBankTransactions({ transactions, summary, fileName, userId, bank = 'بنك الإنماء' }) {
   const now = new Date().toISOString();
   const rows = (transactions ?? []).map(t => ({
     dedup_key:   dedupKeyOf(t),
+    bank,
     txn_date:    t.date || null,
     reference:   String(t.reference ?? '').trim() || null,
     description: t.description || null,
@@ -61,7 +62,7 @@ export async function saveBankTransactions({ transactions, summary, fileName, us
   for (let i = 0; i < keys.length; i += CHUNK) {
     const chunk = keys.slice(i, i + CHUNK);
     const { data, error } = await supabase
-      .from(TABLE).select('dedup_key').in('dedup_key', chunk);
+      .from(TABLE).select('dedup_key').eq('bank', bank).in('dedup_key', chunk);
     if (error) throw error;
     for (const d of data ?? []) existing.add(d.dedup_key);
   }
@@ -69,7 +70,7 @@ export async function saveBankTransactions({ transactions, summary, fileName, us
   for (let i = 0; i < deduped.length; i += CHUNK) {
     const chunk = deduped.slice(i, i + CHUNK);
     const { error } = await supabase
-      .from(TABLE).upsert(chunk, { onConflict: 'dedup_key' });
+      .from(TABLE).upsert(chunk, { onConflict: 'bank,dedup_key' });
     if (error) throw error;
   }
 
@@ -80,17 +81,19 @@ export async function saveBankTransactions({ transactions, summary, fileName, us
 // All saved transactions, newest first. Paginated with a stable (txn_date,id)
 // order so .range() pages never overlap once the table crosses 1000 rows
 // (the double-count trap from AGENTS.md §6).
-export async function loadBankTransactions({ limit = 5000 } = {}) {
+export async function loadBankTransactions({ limit = 5000, bank = null } = {}) {
   const PAGE = 1000;
   const rows = [];
   let from = 0;
   while (true) {
-    const { data, error } = await supabase
+    let q = supabase
       .from(TABLE)
-      .select('id, txn_date, reference, description, debit, credit, fees, tax, source_file, period_from, period_to')
+      .select('id, bank, txn_date, reference, description, debit, credit, fees, tax, source_file, period_from, period_to')
       .order('txn_date', { ascending: false })
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
+    if (bank) q = q.eq('bank', bank);
+    const { data, error } = await q;
     if (error) throw error;
     if (!data?.length) break;
     rows.push(...data);
@@ -118,11 +121,12 @@ export async function deleteBankUpload(sourceFile) {
 
 // ─── استمرارية الرصيد: ملخّص كل كشف (افتتاحي/ختامي/فترة) ───
 // افتتاحي كشف جديد يجب أن يطابق ختامي الكشف السابق بالهللة.
-export async function loadPreviousClosing(periodFrom) {
+export async function loadPreviousClosing(periodFrom, bank = 'بنك الإنماء') {
   if (!periodFrom) return null;
   const { data, error } = await supabase
     .from('bank_statement_summaries')
     .select('period_from, period_to, closing_balance, file_name')
+    .eq('bank', bank)
     .lt('period_to', periodFrom)
     .order('period_to', { ascending: false })
     .limit(1);
@@ -131,23 +135,40 @@ export async function loadPreviousClosing(periodFrom) {
 }
 
 // كل ملخّصات الكشوف المرفوعة (للعرض المحفوظ: الختامي/الافتتاحي لكل فترة)
-export async function loadStatementSummaries() {
-  const { data, error } = await supabase
+export async function loadStatementSummaries(bank = null) {
+  let q = supabase
     .from('bank_statement_summaries')
-    .select('period_from, period_to, opening_balance, closing_balance, total_debit, total_credit, file_name')
+    .select('bank, period_from, period_to, opening_balance, closing_balance, total_debit, total_credit, file_name')
     .order('period_to', { ascending: false });
+  if (bank) q = q.eq('bank', bank);
+  const { data, error } = await q;
   if (error) return [];
   return data || [];
 }
 
-export async function saveStatementSummary({ periodFrom, periodTo, opening, closing, totalDebit, totalCredit, fileName, userId }) {
+export async function saveStatementSummary({ periodFrom, periodTo, opening, closing, totalDebit, totalCredit, fileName, userId, bank = 'بنك الإنماء' }) {
   if (!periodFrom && !periodTo) return { ok: false };
   const { error } = await supabase.from('bank_statement_summaries').upsert({
+    bank,
     period_from: periodFrom || null, period_to: periodTo || null,
     opening_balance: opening ?? null, closing_balance: closing ?? null,
     total_debit: totalDebit ?? null, total_credit: totalCredit ?? null,
     file_name: fileName || null, created_by: userId ?? null,
-  }, { onConflict: 'period_from,period_to' });
+  }, { onConflict: 'bank,period_from,period_to' });
   if (error) throw error;
   return { ok: true };
+}
+
+// قائمة البنوك + رصيد كل بنك (ختامي آخر كشف) + الإجمالي — لعرض متعدد البنوك.
+export async function loadBankList() {
+  const summaries = await loadStatementSummaries();
+  const byBank = new Map();
+  for (const s of summaries) {
+    const b = s.bank || 'بنك الإنماء';
+    // الأحدث فترةً لكل بنك (summaries مرتّبة period_to تنازلياً → أول ظهور = الأحدث)
+    if (!byBank.has(b)) byBank.set(b, { bank: b, closing: Number(s.closing_balance) || 0, asOf: s.period_to });
+  }
+  const banks = [...byBank.values()];
+  const total = banks.reduce((sum, b) => sum + (b.closing || 0), 0);
+  return { banks, total };
 }

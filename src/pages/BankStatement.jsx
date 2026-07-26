@@ -61,9 +61,10 @@ export default function BankStatement() {
     if (!result) return;
     setSaving(true);
     try {
+      const bank = result.bank || 'بنك الإنماء';
       const r = await saveBankTransactions({
         transactions: result.transactions, summary: result.summary,
-        fileName: result.fileName, userId: user?.id,
+        fileName: result.fileName, userId: user?.id, bank,
       });
       // خزّن ملخّص الكشف (افتتاحي/ختامي/فترة) لفحص استمرارية الرصيد لاحقاً
       try {
@@ -71,10 +72,10 @@ export default function BankStatement() {
           periodFrom: result.summary?.periodFrom, periodTo: result.summary?.periodTo,
           opening: openingBalance, closing: result.summary?.closingBalance,
           totalDebit: totals.debit, totalCredit: totals.credit,
-          fileName: result.fileName, userId: user?.id,
+          fileName: result.fileName, userId: user?.id, bank,
         });
       } catch { /* غير قاتل */ }
-      toast(`حُفظ ${r.saved} عملية · ${r.added} جديدة · ${r.merged} مدموجة`, 'success');
+      toast(`حُفظ ${r.saved} عملية من ${bank} · ${r.added} جديدة · ${r.merged} مدموجة`, 'success');
       setSaved(null);   // invalidate so the saved view reloads fresh
       setView('saved');
     } catch (e) {
@@ -276,7 +277,7 @@ export default function BankStatement() {
   const [prevClosing, setPrevClosing] = useState(null);
   useEffect(() => {
     const pf = result?.summary?.periodFrom;
-    if (pf) loadPreviousClosing(pf).then(setPrevClosing).catch(() => setPrevClosing(null));
+    if (pf) loadPreviousClosing(pf, result?.bank || 'بنك الإنماء').then(setPrevClosing).catch(() => setPrevClosing(null));
     else setPrevClosing(null);
   }, [result]);
   const continuityGap = (openingBalance != null && prevClosing?.closing_balance != null)
@@ -507,6 +508,10 @@ export default function BankStatement() {
             <Btn variant="accent" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
               {saving ? 'جارٍ الحفظ…' : 'حفظ في الدفتر'}
             </Btn>
+            {/* البنك المكتشَف — يُحفظ منفصلاً (§متعدد البنوك) */}
+            <span style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800, background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent)', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
+              🏦 {result?.bank || 'بنك الإنماء'}
+            </span>
             <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExport}>
               تصدير الكشف الصافي
             </Btn>

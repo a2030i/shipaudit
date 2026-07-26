@@ -37,21 +37,32 @@ export async function loadCurrentBalance() {
 // ختامي آخر كشف مرفوع (bank_statement_summaries) والإدخال اليدوي.
 // يرجع { balance, source: 'statement'|'manual', asOf, notes } أو null.
 export async function loadEffectiveBankBalance() {
-  const [manual, stmtRes] = await Promise.all([
+  // متعدد البنوك (§2026-07-27): رصيد الكشوف = مجموع ختامي آخر كشف لكل بنك (لا بنك
+  // واحد). أحدث فترة عبر البنوك تحدّد asOf. اليدوي يبقى بديلاً حين لا كشوف.
+  const [manual, summaries] = await Promise.all([
     loadCurrentBalance().catch(() => null),
     supabase.from('bank_statement_summaries')
-      .select('period_to, closing_balance, file_name')
-      .order('period_to', { ascending: false }).limit(1)
-      .then(r => r.data?.[0] || null).catch(() => null),
+      .select('bank, period_to, closing_balance')
+      .order('period_to', { ascending: false })
+      .then(r => r.data || []).catch(() => []),
   ]);
+  // ختامي آخر كشف لكل بنك (summaries مرتّبة تنازلياً → أول ظهور = الأحدث)
+  const byBank = new Map();
+  for (const s of summaries) {
+    const b = s.bank || 'بنك الإنماء';
+    if (!byBank.has(b)) byBank.set(b, { closing: Number(s.closing_balance) || 0, asOf: s.period_to });
+  }
+  const banks = [...byBank.entries()].map(([bank, v]) => ({ bank, ...v }));
+  const stmtTotal = banks.reduce((sum, b) => sum + b.closing, 0);
+  const latestAsOf = banks.reduce((mx, b) => (b.asOf && (!mx || b.asOf > mx) ? b.asOf : mx), null);
+
   const manualDate = manual?.recordedAt ? new Date(manual.recordedAt).getTime() : -1;
-  const stmtDate   = stmtRes?.period_to ? new Date(stmtRes.period_to).getTime() : -1;
-  if (stmtRes && stmtDate >= manualDate) {
+  const stmtDate   = latestAsOf ? new Date(latestAsOf).getTime() : -1;
+  if (banks.length && stmtDate >= manualDate) {
     return {
-      balance: Number(stmtRes.closing_balance) || 0,
-      source:  'statement',
-      asOf:    stmtRes.period_to,
-      notes:   `الرصيد الختامي لكشف ${stmtRes.period_to}`,
+      balance: stmtTotal, source: 'statement', asOf: latestAsOf,
+      notes: banks.length > 1 ? `مجموع ${banks.length} بنوك (ختامي آخر كشف لكل بنك)` : `الرصيد الختامي لكشف ${latestAsOf}`,
+      banks,
     };
   }
   if (manual) return { balance: manual.balance, source: 'manual', asOf: manual.recordedAt, notes: manual.notes };

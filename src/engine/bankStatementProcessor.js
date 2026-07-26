@@ -13,8 +13,8 @@ const VAT_RATE = 0.15;
 
 // Column-header keyword map (Arabic + English fallbacks)
 const HEADER_KEYWORDS = {
-  date:        [/تاريخ/i, /^date$/i, /transaction.?date/i],
-  ref:         [/رقم.?مرجعي/i, /مرجع/i, /reference/i, /^ref/i],
+  date:        [/تاريخ/i, /date/i],
+  ref:         [/رقم.?مرجعي/i, /مرجع/i, /reference/i, /^ref/i, /transaction.?id/i, /unique.?id/i],
   desc:        [/وصف/i, /البيان/i, /description/i, /details/i, /narration/i],
   credit:      [/^دائن$/i, /credit/i, /^cr$/i],
   debit:       [/^مدين$/i, /debit/i, /^dr$/i],
@@ -69,8 +69,8 @@ const PERIOD_PATTERNS = [
 ];
 // إجماليات البنك المطبوعة في الترويسة — تُستخدَم للتحقّق فقط (لا تُنسَخ كأرقامنا):
 // نجمع العمليات بأنفسنا ونقارن الناتج بهذه لإثبات أننا التقطنا كل العملية.
-const TOTAL_CREDIT_PATTERNS  = [/مجموع.?مبلغ.?الا?يداعات/i, /مجموع.?الإيداعات/i, /total.?credit.?amount/i];
-const TOTAL_DEBIT_PATTERNS   = [/مجموع.?مبلغ.?الخصومات/i, /مجموع.?مبلغ.?السحوبات/i, /total.?debit.?amount/i];
+const TOTAL_CREDIT_PATTERNS  = [/مجموع.?مبلغ.?الا?يداعات/i, /مجموع.?الإيداعات/i, /total.?credit/i];
+const TOTAL_DEBIT_PATTERNS   = [/مجموع.?مبلغ.?الخصومات/i, /مجموع.?مبلغ.?السحوبات/i, /total.?debit/i];
 const DEPOSIT_COUNT_PATTERNS  = [/عدد.?الإيداعات/i, /عدد.?الايداعات/i, /number.?of.?deposits/i];
 const WITHDRAW_COUNT_PATTERNS = [/عدد.?السحوبات/i, /number.?of.?withdraw/i];
 
@@ -80,9 +80,17 @@ function valueBeforeLabel(row, patterns, { integer = false } = {}) {
   for (let c = 0; c < row.length; c++) {
     if (patterns.some(p => p.test(String(row[c] ?? '')))) { labelIdx = c; break; }
   }
-  if (labelIdx <= 0) return null;
+  if (labelIdx < 0) return null;
+  // قبل العنوان (RTL) ثم بعده (LTR كـSiFi) — أرقام نظيفة فقط.
   for (let c = labelIdx - 1; c >= 0; c--) {
-    const n = parseNumber(row[c]);
+    const n = cleanNumber(row[c]);
+    if (n != null && (integer ? Math.abs(n) >= 0 : Math.abs(n) > 0.01)) {
+      if (integer && !Number.isInteger(n)) continue;
+      return n;
+    }
+  }
+  for (let c = labelIdx + 1; c < row.length; c++) {
+    const n = cleanNumber(row[c]);
     if (n != null && (integer ? Math.abs(n) >= 0 : Math.abs(n) > 0.01)) {
       if (integer && !Number.isInteger(n)) continue;
       return n;
@@ -110,6 +118,7 @@ function findAllDatesInText(text) {
 
 function parseDateCell(v) {
   if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
   if (typeof v === 'number') {
     // Excel serial date → ISO date
     return new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString().slice(0, 10);
@@ -121,6 +130,15 @@ function parseDateCell(v) {
   const dmyMatch = s.match(/(\d{1,2})[-/](\d{1,2})[-/](\d{4})/);
   if (dmyMatch) return `${dmyMatch[3]}-${dmyMatch[2].padStart(2,'0')}-${dmyMatch[1].padStart(2,'0')}`;
   return s.length <= 10 ? s : null;
+}
+
+// رقم «نظيف» فقط: خلية رقمية فعلية أو نصّ رقمي محض — لا يلتقط أرقاماً مدفونة في
+// نصّ عنوان مثل «Closing Balance as of 26 Jul, 2026» (يمنع 262026 الوهمي).
+function cleanNumber(cell) {
+  if (typeof cell === 'number') return cell;
+  const s = String(cell ?? '').replace(/\s/g, '').trim();
+  if (/^-?[\d,]+(\.\d+)?$/.test(s)) return parseNumber(s);
+  return null;
 }
 
 function parseNumber(v) {
@@ -168,18 +186,13 @@ export function extractSummaryFromRows(rows, headerRowIndex) {
         const cell = String(row[c] ?? '');
         if (CLOSING_PATTERNS.some(p => p.test(cell))) { labelIdx = c; break; }
       }
-      if (labelIdx > 0) {
-        for (let c = labelIdx - 1; c >= 0; c--) {
-          const n = parseNumber(row[c]);
-          if (n != null && Math.abs(n) > 0.01) { summary.closingBalance = n; break; }
-        }
+      // القيمة قبل العنوان (RTL كالإنماء) ثم بعده (LTR كـSiFi) — أرقام نظيفة فقط
+      // (cleanNumber يتجاهل الأرقام المدفونة في نصّ العنوان مثل «26 Jul, 2026»).
+      for (let c = labelIdx - 1; c >= 0 && summary.closingBalance == null; c--) {
+        const n = cleanNumber(row[c]); if (n != null && Math.abs(n) > 0.01) summary.closingBalance = n;
       }
-      // Fallback: first numeric on the row
-      if (summary.closingBalance == null) {
-        for (const cell of row) {
-          const n = parseNumber(cell);
-          if (n != null && Math.abs(n) > 0.01) { summary.closingBalance = n; break; }
-        }
+      for (let c = labelIdx + 1; c < row.length && summary.closingBalance == null; c++) {
+        const n = cleanNumber(row[c]); if (n != null && Math.abs(n) > 0.01) summary.closingBalance = n;
       }
     }
 
@@ -352,6 +365,14 @@ export function annotateRejected(list) {
  * @param {ArrayBuffer} arrayBuffer  the binary Excel/CSV content
  * @returns {{transactions: Array, summary: Object, hiddenFees: number}}
  */
+// يكشف اسم البنك من محتوى الكشف — لدعم البنوك المتعددة (§multi-bank 2026-07-26).
+// SiFi: كشف مبسّط إنجليزي بأعمدة بطاقة. الإنماء: الافتراضي.
+export function detectBankName(rows) {
+  const text = rows.slice(0, 18).map(r => Array.isArray(r) ? r.map(c => String(c ?? '')).join(' ') : '').join(' ');
+  if (/Simplified Account Statement|Card Last 4 Digits|ساي ?فاي|\bsifi\b/i.test(text)) return 'بنك ساي فاي';
+  return 'بنك الإنماء';
+}
+
 export function parseExcelFile(arrayBuffer) {
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -359,13 +380,20 @@ export function parseExcelFile(arrayBuffer) {
 
   const colMap = detectColumnsByHeader(rows);
   if (!colMap) {
-    throw new Error('تعذّر التعرف على أعمدة كشف الحساب — تأكّد أن الملف من بنك الإنماء أو يحتوي على أعمدة: التاريخ، مرجع، وصف، دائن، مدين.');
+    throw new Error('تعذّر التعرف على أعمدة كشف الحساب — تأكّد أن الملف من بنك الإنماء/ساي فاي أو يحتوي على أعمدة: التاريخ، وصف، دائن/مدين (Debit/Credit).');
   }
 
+  const bank = detectBankName(rows);
   const summary = extractSummaryFromRows(rows, colMap.headerRow);
   const { transactions, hiddenFees } = parseAlinmaFormat(rows, colMap);
 
-  return { transactions, summary, hiddenFees };
+  // الفترة = نطاق تواريخ العمليات الفعلي (أوثق من ترويسة قد تُخطئ استخراج التاريخ).
+  if (transactions.length) {
+    const ds = transactions.map(t => t.date).filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort();
+    if (ds.length) { summary.periodFrom = ds[0]; summary.periodTo = ds[ds.length - 1]; }
+  }
+
+  return { transactions, summary, hiddenFees, bank };
 }
 
 // ─── Carrier-payment detection ────────────────────────────────────────────────
