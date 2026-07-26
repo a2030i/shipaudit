@@ -123,15 +123,21 @@ export default function CarrierLedger({ isActive = true }) {
   // hide selected rows (we just reset to keep mental model simple).
   const [selectedIds, setSelectedIds] = useState(() => new Set());
 
-  // Sync carrier param ↔ URL (preserve ?doc= when present so the deep-link is
-  // shareable / refreshable).
+  // Sync carrier param ↔ URL — يُدمَج فقط مفتاح `carrier` مع إبقاء بقية المعاملات
+  // كما هي. CarrierLedger يبقى mounted دائماً (PageSlot) حتى ونحن على صفحة أخرى،
+  // و`setSearchParams` تعمل على رابط الصفحة الحالية عالمياً لا على مسار المكوّن —
+  // فكانت `setSearchParams({})` عند الإقلاع تمسح `?tab=bank` من `/money`. الحل:
+  // لا نلمس الرابط إلا حين تكون صفحة الدفتر نشطة، ونُبقي كل المعاملات (بما فيها
+  // `doc=` للـdeep-link).
   useEffect(() => {
-    const next = {};
-    if (carrier) next.carrier = carrier;
-    const doc = searchParams.get('doc');
-    if (doc) next.doc = doc;
-    setSearchParams(next, { replace: true });
-  }, [carrier]); // eslint-disable-line
+    if (!isActive) return;
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      if (carrier) next.set('carrier', carrier);
+      else next.delete('carrier');
+      return next;
+    }, { replace: true });
+  }, [carrier, isActive]); // eslint-disable-line
 
   const refresh = useCallback(async () => {
     setLoading(true);
