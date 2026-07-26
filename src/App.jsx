@@ -47,6 +47,7 @@ import CashAging         from './pages/CashAging.jsx';
 import IntegrityCheck    from './pages/IntegrityCheck.jsx';
 // Claims now renders inside CarriersWorkspace (claims tab), not a top-level route.
 import DecisionsBoard   from './pages/DecisionsBoard.jsx';
+import NextActions      from './pages/NextActions.jsx';
 import CommandPalette    from './components/CommandPalette.jsx';
 import Overview         from './pages/Overview.jsx';
 import Reconciliation   from './pages/Reconciliation.jsx';
@@ -86,6 +87,8 @@ const NAV_ITEMS = [
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
+  // الفعل التالي — قائمة إجراءات لكل عميل (ردّ/دين/محفظة/توقّف) — «آلة القرار».
+  { id: 'next-actions', path: '/next-actions', label: 'الفعل التالي', icon: Target, pinned: true, permAny: ['collections.view', 'sales.view', 'overview.view'] },
 
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
@@ -809,6 +812,10 @@ function AppInner({ theme, toggleTheme }) {
 
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
+            </PageSlot>
+
+            <PageSlot active={pathname==='/next-actions'} scroll>
+              <NextActions isActive={pathname==='/next-actions'}/>
             </PageSlot>
             {/* /hub + /carrier-kpi + /claims all render this workspace;
                 CarriersWorkspace reads ?tab= or the legacy path to pick
