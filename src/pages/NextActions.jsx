@@ -8,7 +8,15 @@ import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.j
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import { loadNextBestActions, NBA_META } from '../lib/nextActionsService.js';
+import { setRetargetingFollowup, STATUSES } from '../lib/retargetingService.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+
+// نتائج المتابعة السريعة (إغلاق الحلقة) — تُسجَّل في retargeting_followups + تلمس آخر تواصل.
+const OUTCOMES = [
+  ['contacted', 'تم التواصل'], ['interested', 'مهتم'], ['no_answer', 'لم يرد'],
+  ['needs_followup', 'يحتاج متابعة'], ['returned', 'عاد للشحن'], ['converted', 'تحوّل ✅'],
+  ['not_interested', 'غير مهتم'], ['price_issue', 'مشكلة سعر'],
+];
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 
@@ -50,6 +58,16 @@ export default function NextActions({ isActive = true }) {
     to: normalizeSaudiPhone(r.phone), name: r.name, amount: r.amount,
     vars: [r.name || ''], fields: { name: r.name, amount: r.amount, reason: r.reason },
   });
+
+  // إغلاق الحلقة: تسجيل نتيجة المتابعة (يلمس آخر تواصل فيخرج من SLA) + إخراجه من القائمة.
+  const recordOutcome = async (r, status) => {
+    if (!status) return;
+    try {
+      await setRetargetingFollowup(r.phone, { status, ownerId: r.ownerId || user?.id || null, touch: true });
+      setRows(prev => (prev || []).filter(x => !(x.phone === r.phone && x.reasonCode === r.reasonCode)));
+      toast(`سُجّلت النتيجة: ${STATUSES[status]?.label || status}`, 'success');
+    } catch (e) { toast(`تعذّر التسجيل: ${e.message}`, 'error'); }
+  };
 
   return (
     <Pad>
@@ -101,6 +119,12 @@ export default function NextActions({ isActive = true }) {
                       style={{ borderRadius: 999, padding: '7px 12px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12, cursor: 'pointer' }}/>
                     <Btn size="sm" variant="accent" icon={<Phone size={12}/>} onClick={() => setWa(recipient(r))}>حملة</Btn>
                     <Btn size="sm" variant="ghost" onClick={() => navigate('/customer-money?q=' + encodeURIComponent(r.phone))}>عرض</Btn>
+                    {/* إغلاق الحلقة: تسجيل النتيجة → يخرج من القائمة + يُنهي SLA */}
+                    <select defaultValue="" onChange={e => { recordOutcome(r, e.target.value); e.target.value = ''; }}
+                      title="سجّل نتيجة المتابعة" style={{ padding: '6px 8px', borderRadius: 8, fontSize: 11.5, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', cursor: 'pointer' }}>
+                      <option value="">✓ النتيجة…</option>
+                      {OUTCOMES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+                    </select>
                   </div>
                 </Card>
               );
