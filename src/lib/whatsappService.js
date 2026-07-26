@@ -304,6 +304,12 @@ export async function loadCampaignHourStats(days = 90) {
   if (error) return [];
   return data || [];
 }
+// متى تُفتح الرسائل فعلاً (توزيع ساعة القراءة + الردّ) — لقرار توقيت الحملة.
+export async function loadMessageOpenHours(days = 120) {
+  const { data, error } = await supabase.rpc('message_open_hours', { p_days: days });
+  if (error) return [];
+  return (data || []).map(r => ({ hour: Number(r.hour), opens: Number(r.opens) || 0, replies: Number(r.replies) || 0 }));
+}
 // محرّك النتائج — الأثر بالريال لكل حملة (تواصل → سدّد خلال 14 يوماً + المبلغ).
 export async function loadOutreachImpact(days = 90) {
   const { data, error } = await supabase.rpc('outreach_impact', { p_days: days });

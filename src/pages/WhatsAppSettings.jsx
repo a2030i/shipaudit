@@ -12,7 +12,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
   loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
-  loadCallTargets, saveCallTargets, loadOutreachImpact, loadCampaignTemplateStats, loadCampaignHourStats,
+  loadCallTargets, saveCallTargets, loadOutreachImpact, loadCampaignTemplateStats, loadCampaignHourStats, loadMessageOpenHours,
   runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
@@ -284,10 +284,13 @@ function OutreachImpactTab() {
   const [rows, setRows] = useState(null);
   const [tmpl, setTmpl] = useState([]);       // أداء كل قالب
   const [hours, setHours] = useState([]);     // أداء كل ساعة إرسال
+  const [openH, setOpenH] = useState([]);     // توزيع ساعة فتح الرسائل
   const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   useEffect(() => { setRows(null); loadOutreachImpact(days).then(setRows).catch(() => setRows([])); }, [days]);
-  useEffect(() => { loadCampaignTemplateStats(days).then(setTmpl).catch(() => {}); loadCampaignHourStats(days).then(setHours).catch(() => {}); }, [days]);
+  useEffect(() => { loadCampaignTemplateStats(days).then(setTmpl).catch(() => {}); loadCampaignHourStats(days).then(setHours).catch(() => {}); loadMessageOpenHours(365).then(setOpenH).catch(() => {}); }, [days]);
   const bestHour = useMemo(() => [...(hours || [])].sort((a, b) => (b.reply_pct || 0) - (a.reply_pct || 0))[0], [hours]);
+  const peakOpen = useMemo(() => [...(openH || [])].sort((a, b) => b.opens - a.opens)[0], [openH]);
+  const maxOpens = useMemo(() => Math.max(...(openH || []).map(h => h.opens), 1), [openH]);
   const totals = useMemo(() => {
     const t = { collected: 0, paid: 0, contacted: 0 };
     for (const r of (rows || [])) { t.collected += r.collected; t.paid += r.paid; t.contacted += r.contacted; }
@@ -392,6 +395,30 @@ function OutreachImpactTab() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* متى تُفتح الرسائل — توزيع 24 ساعة + الذروة + توصية التوقيت */}
+      {openH.length > 0 && (
+        <div style={{ borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 4 }}>🕛 متى يفتح العملاء رسائلك (خلال اليوم)</div>
+          {peakOpen && (
+            <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 700, marginBottom: 8 }}>
+              ذروة الفتح: الساعة {peakOpen.hour}:00 · التوصية: أطلق الحملة الساعة {Math.max(0, peakOpen.hour - 1)}:00–{peakOpen.hour}:00 لتصل طازجة وقت الذروة.
+            </div>
+          )}
+          <div style={{ display: 'flex', gap: 2, alignItems: 'flex-end', height: 90 }}>
+            {openH.map(h => (
+              <div key={h.hour} title={`الساعة ${h.hour}: ${fmt2(h.opens)} فتحة · ${fmt2(h.replies)} ردّ`}
+                style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                <span style={{ fontSize: 8, color: 'var(--muted2)', fontFamily: 'var(--font-mono)' }}>{h.opens > 0 ? fmt2(h.opens) : ''}</span>
+                <div style={{ width: '100%', height: `${Math.round(60 * h.opens / maxOpens)}px`, minHeight: h.opens > 0 ? 2 : 0,
+                  background: h === peakOpen ? 'var(--green)' : 'color-mix(in srgb, var(--accent) 60%, transparent)', borderRadius: '3px 3px 0 0' }}/>
+                <span style={{ fontSize: 8, color: h === peakOpen ? 'var(--green)' : 'var(--muted2)', fontWeight: h === peakOpen ? 800 : 400 }}>{h.hour}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 4 }}>الأعمدة = عدد مرات فتح الرسائل حسب ساعة اليوم (توقيت السعودية، آخر سنة). الأخضر = الذروة.</div>
         </div>
       )}
 
