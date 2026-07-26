@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -79,7 +79,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [ctx, setCtx]             = useState(() => new Map());
   // أرقام بلا واتساب — تُستبعَد آلياً من كل حملة (لا استثناء يدوي)
   const [noWa, setNoWa]          = useState(() => new Set());
-  const [hatifTouched, setHatifTouched] = useState(() => new Map()); // يتواصل معهم الفريق في هاتف الآن
+  const [hatifTouched, setHatifTouched] = useState(() => new Map()); // يتواصل معهم الفريق في هاتف
+  const [weak, setWeak] = useState(() => new Set());  // أرقام ضعيفة (لا تسليم قط) — تُستبعَد لحماية الرقم الآن
   // «رسالة لكل متجر»: افتراضياً OFF (يُدمَج تكرار الهاتف — الأأمن ضد الحظر). لمّا
   // يملك رقم عدة متاجر ويُفعَّل → كل متجر رسالة مستقلة ببياناته. المفتاح يتحوّل
   // من الهاتف إلى معرّف المتجر (r._rk) ليُميَّز متجران على نفس الرقم.
@@ -108,6 +109,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
     loadNoWhatsappSet().then(setNoWa).catch(() => {});
     loadHatifTouchedPhones(30).then(setHatifTouched).catch(() => {});
+    loadWeakWhatsappSet().then(setWeak).catch(() => {});
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -215,7 +217,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // استبعاد آلي لمن يتواصل معهم الفريق مباشرة في هاتف (محادثة مُسنَدة لموظف) — حتى لا
   // نطلق قالباً على عميل يكلّمه موظف الآن (خوف المستخدم 2026-07-26).
   const hatifTouchedCount = validAll.filter(r => hatifTouched.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to)).length;
-  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to));
+  // استبعاد آلي للأرقام الضعيفة (أُرسل لها ولا تسليم قط) — تحمي جودة رقم واتساب من التدهور.
+  const weakCount = validAll.filter(r => weak.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to)).length;
+  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to));
   const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
   const selectedValid = valid.filter(r => selected.has(r._rk));
   // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
@@ -383,6 +387,12 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
               style={{ flex: 1, fontSize: 12.5, padding: '7px 11px', borderRadius: 8,
                 border: `1px solid ${campName.trim() ? 'var(--border)' : 'var(--red)'}`, background: 'var(--bg)', color: 'var(--text)' }}/>
           </div>
+          {/* تحذير اسم مكرّر — يخلط القياس (حملتان تحت اسم واحد). استخدم اسماً فريداً. */}
+          {campName.trim() && campaigns.some(c => c.name === campName.trim()) && (
+            <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: -4, marginBottom: 8 }}>
+              ⚠️ اسم مُستخدَم سابقاً — سيُدمج القياس مع الحملة القديمة. أضِف تاريخاً لاسم فريد (مثال: «{campName.trim()} — {new Date().toLocaleDateString('en-CA')}»).
+            </div>
+          )}
 
           {/* استثناء مستلمي حملات سابقة — لا يُرسَل لمن سبق استهدافه فيها */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 9, marginBottom: 10, background: 'var(--surface2)' }}>
@@ -505,6 +515,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                 {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب/محظور</span>}
                 {noWaCount > 0 && hatifTouchedCount > 0 && ' · '}
                 {hatifTouchedCount > 0 && <span style={{ color: 'var(--gold)' }}>💬 استُبعد {hatifTouchedCount} يكلّمهم الفريق في هاتف</span>}
+                {weakCount > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
+                {weakCount > 0 && <span style={{ color: 'var(--red)' }}>📉 استُبعد {weakCount} رقم ضعيف (لا تسليم قط)</span>}
               </span>
             )}
           </div>

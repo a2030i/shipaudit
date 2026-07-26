@@ -277,6 +277,33 @@ export async function saveCallTargets({ weekly }) {
     .upsert({ key: 'call_targets', value: JSON.stringify({ weekly: Number(weekly) || 0 }) }, { onConflict: 'key' });
   if (error) throw error;
 }
+// حارس جودة رقم واتساب — إجماليات 14 يوماً + علم الخطر (تسليم<60% أو حملة كبيرة بردّ<1.5%).
+export async function loadWhatsAppNumberHealth() {
+  const { data, error } = await supabase.rpc('whatsapp_number_health');
+  if (error || !Array.isArray(data) || !data.length) return null;
+  return data[0];
+}
+// أرقام ضعيفة (أُرسل لها ولا أي تسليم/قراءة/ردّ) — تُستبعَد آلياً من الحملات القادمة.
+export async function loadWeakWhatsappSet() {
+  const set = new Set();
+  for (let from = 0; from < 200000; from += 1000) {
+    const { data, error } = await supabase.from('v_weak_whatsapp').select('phone').order('phone').range(from, from + 999);
+    if (error || !data?.length) break;
+    for (const r of data) if (r.phone) set.add(r.phone);
+    if (data.length < 1000) break;
+  }
+  return set;
+}
+export async function loadCampaignTemplateStats(days = 90) {
+  const { data, error } = await supabase.rpc('campaign_template_stats', { p_days: days });
+  if (error) return [];
+  return data || [];
+}
+export async function loadCampaignHourStats(days = 90) {
+  const { data, error } = await supabase.rpc('campaign_hour_stats', { p_days: days });
+  if (error) return [];
+  return data || [];
+}
 // محرّك النتائج — الأثر بالريال لكل حملة (تواصل → سدّد خلال 14 يوماً + المبلغ).
 export async function loadOutreachImpact(days = 90) {
   const { data, error } = await supabase.rpc('outreach_impact', { p_days: days });

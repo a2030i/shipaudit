@@ -22,7 +22,7 @@ import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
 import { loadLegalDashboard } from '../lib/legalService.js';
 import { loadIntegrityChecks } from '../lib/integrityService.js';
 import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
-import { loadHatifCallOps } from '../lib/whatsappService.js';
+import { loadHatifCallOps, loadWhatsAppNumberHealth } from '../lib/whatsappService.js';
 
 // تسميات فئات مشاكل المكالمات (متطابقة مع تبويب تحليل المكالمات).
 const CALL_PROBLEM_AR = {
@@ -43,7 +43,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps, waHealth] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -57,6 +57,7 @@ export default function DecisionsBoard({ isActive = true }) {
         loadIntegrityChecks().catch(() => null),
         loadClaims().then(summarizeClaims).catch(() => null),
         loadHatifCallOps().catch(() => null),
+        loadWhatsAppNumberHealth().catch(() => null),
       ]);
       // فحص السلامة: أخطر التناقضات (item_count>0) — يجمع «ناقل بلا فاتورة» وiMile…
       const integ = Array.isArray(integrity) ? integrity.filter(c => c.count > 0) : [];
@@ -107,6 +108,7 @@ export default function DecisionsBoard({ isActive = true }) {
           total: integ.reduce((s, c) => s + (c.total > 0.5 ? c.total : 0), 0) },
         claims: claims || { open: 0, openTotal: 0, submitted: 0, submittedTotal: 0, recovered: 0, recoveredTotal: 0 },
         callOps: callOps || null,
+        waHealth: waHealth || null,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -189,6 +191,16 @@ export default function DecisionsBoard({ isActive = true }) {
               value: d.callOps?.negative_7d || 0, unit: 'مكالمة (7 أيام)',
               sub: `مشاعرها سلبية${(d.callOps?.negative_prev || 0) > 0 ? ` — كانت ${d.callOps.negative_prev} في الأسبوع السابق` : ''} · اسمع تسجيلها وتدخّل عند اللزوم`,
               cta: 'أداء الفريق', onClick: () => navigate('/whatsapp-settings'),
+            },
+          },
+          {
+            key: 'waHealth', active: !!d.waHealth?.at_risk,
+            okLabel: 'رقم واتساب بصحّة جيدة',
+            props: {
+              color: 'var(--red)', icon: '📉', title: 'جودة رقم واتساب في خطر',
+              value: `${d.waHealth?.delivered_pct ?? '—'}%`, unit: 'تسليم (14 يوماً)',
+              sub: `ردّ ${d.waHealth?.reply_pct ?? '—'}% · أضعف حملة «${(d.waHealth?.worst_campaign || '').slice(0, 24)}» (ردّ ${d.waHealth?.worst_reply_pct ?? '—'}%) — قلّل الباردة وأوقف الأرقام الضعيفة قبل تدهور التصنيف`,
+              cta: 'الأثر والحملات', onClick: () => navigate('/whatsapp-settings'),
             },
           },
           {

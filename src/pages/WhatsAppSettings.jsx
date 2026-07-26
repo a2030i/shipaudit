@@ -12,7 +12,8 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
   loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
-  loadCallTargets, saveCallTargets, loadOutreachImpact, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadCallTargets, saveCallTargets, loadOutreachImpact, loadCampaignTemplateStats, loadCampaignHourStats,
+  runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -281,8 +282,12 @@ export default function WhatsAppSettings({ isActive = true }) {
 function OutreachImpactTab() {
   const [days, setDays] = useState(90);
   const [rows, setRows] = useState(null);
+  const [tmpl, setTmpl] = useState([]);       // أداء كل قالب
+  const [hours, setHours] = useState([]);     // أداء كل ساعة إرسال
   const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
   useEffect(() => { setRows(null); loadOutreachImpact(days).then(setRows).catch(() => setRows([])); }, [days]);
+  useEffect(() => { loadCampaignTemplateStats(days).then(setTmpl).catch(() => {}); loadCampaignHourStats(days).then(setHours).catch(() => {}); }, [days]);
+  const bestHour = useMemo(() => [...(hours || [])].sort((a, b) => (b.reply_pct || 0) - (a.reply_pct || 0))[0], [hours]);
   const totals = useMemo(() => {
     const t = { collected: 0, paid: 0, contacted: 0 };
     for (const r of (rows || [])) { t.collected += r.collected; t.paid += r.paid; t.contacted += r.contacted; }
@@ -345,6 +350,51 @@ function OutreachImpactTab() {
             </tbody>
           </table>
         )}
+      {/* أداء القوالب + أفضل ساعة إرسال */}
+      {(tmpl.length > 0 || hours.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: 14, marginTop: 4 }}>
+          {tmpl.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>📝 أداء القوالب</div>
+              <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11 }}>
+                  <th style={{ padding: '5px 7px' }} data-label="">القالب</th><th style={{ padding: '5px 7px' }}>أُرسل</th>
+                  <th style={{ padding: '5px 7px' }}>سُلّم</th><th style={{ padding: '5px 7px' }}>قُرئ</th><th style={{ padding: '5px 7px' }}>ردّ</th>
+                </tr></thead>
+                <tbody>
+                  {tmpl.map((t, i) => (
+                    <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
+                      <td style={{ padding: '6px 7px', fontWeight: 700 }} data-label="القالب">{t.template}</td>
+                      <td style={{ padding: '6px 7px', fontFamily: 'var(--font-mono)' }} data-label="أُرسل">{fmt2(t.sent)}</td>
+                      <td style={{ padding: '6px 7px', fontFamily: 'var(--font-mono)' }} data-label="سُلّم">{t.delivered_pct}%</td>
+                      <td style={{ padding: '6px 7px', fontFamily: 'var(--font-mono)' }} data-label="قُرئ">{t.read_pct}%</td>
+                      <td style={{ padding: '6px 7px', fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 700 }} data-label="ردّ">{t.reply_pct}%</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {hours.length > 0 && (
+            <div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 6 }}>⏰ أفضل ساعة إرسال</div>
+              {bestHour && <div style={{ fontSize: 12, color: 'var(--green)', fontWeight: 700, marginBottom: 6 }}>الأعلى ردّاً: الساعة {bestHour.hour}:00 ({bestHour.reply_pct}% ردّ)</div>}
+              <div style={{ display: 'flex', gap: 3, alignItems: 'flex-end', height: 70 }}>
+                {hours.map((h, i) => {
+                  const max = Math.max(...hours.map(x => x.reply_pct || 0), 1);
+                  return (
+                    <div key={i} title={`الساعة ${h.hour}: ${h.reply_pct}% ردّ · ${fmt2(h.sent)} أُرسل`} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <div style={{ width: '100%', height: `${Math.round(50 * (h.reply_pct || 0) / max)}px`, minHeight: 2, background: h === bestHour ? 'var(--green)' : 'var(--accent)', borderRadius: '3px 3px 0 0' }}/>
+                      <span style={{ fontSize: 8.5, color: 'var(--muted2)' }}>{h.hour}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
         «سدّد» = عميل تواصلنا معه ثم وصلت دفعة زوهو خلال 14 يوماً (ارتباط بالاسم، تقريبي — لا يثبت السببية القطعية). حملات الجهات الجديدة (خارج المنصّة) لا تُطابَق (ليسوا عملاء زوهو بعد).
       </div>
