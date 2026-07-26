@@ -24,6 +24,7 @@ import {
   PageHeader, SectionTitle, AreaChart,
 } from '../components/UI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
+import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
@@ -1358,6 +1359,13 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {/* سجلّ تواصل العميل الموحّد (حملات + مكالمات آلية بتسجيلها + مَن تولّاه) */}
+      {m?.phone && (
+        <div style={{ marginTop: 22 }}>
+          <CustomerCommTimeline phone={m.phone}/>
         </div>
       )}
 

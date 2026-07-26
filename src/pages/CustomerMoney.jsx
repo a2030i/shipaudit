@@ -19,6 +19,7 @@ import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
+import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
@@ -828,6 +829,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
             suggest={[...(c.owed > 0.5 ? ['عليه مديونية'] : []), ...(c.oldestDays > 90 ? ['متأخر 90 يوم'] : []), ...(c.billingType === 'دفع مسبق' ? ['دفع مسبق'] : [])]}/>
         </div>
       )}
+      {digits && <div style={{ marginTop: 4 }}><CustomerCommTimeline phone={digits}/></div>}
     </Card>
   );
 }
