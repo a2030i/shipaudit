@@ -11,8 +11,10 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
+  loadCallTargets, saveCallTargets, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
+import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -360,6 +362,7 @@ function CallProblemsTab() {
                             <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 10px', display: 'grid', gap: 6, fontSize: 12 }}>
                               {c.recording_url && <audio controls preload="none" src={c.recording_url} style={{ width: '100%', height: 32 }}/>}
                               {Array.isArray(sum) && <ul style={{ margin: 0, paddingInlineStart: 16, lineHeight: 1.7 }}>{sum.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+                              <CallTranscript words={c.ai_summary?.transcription?.words}/>
                             </div>
                           )}
                         </div>
@@ -380,6 +383,7 @@ function CallProblemsTab() {
 // تاب أداء الفريق — إسناد ونشاط الموظفين من أحداث هاتف (hatif_events).
 // يتغذّى من webhook مساحة العمل (AssignedUserIdChanged…) — يمتلئ مع كل محادثة يتولّاها موظف.
 function AgentActivityTab() {
+  const { isAdmin } = useAuth();
   const [days, setDays] = useState(30);
   const [rows, setRows] = useState(null);
   const [calls, setCalls] = useState(null);       // إحصاءات المكالمات الحقيقية
@@ -387,11 +391,16 @@ function AgentActivityTab() {
   const [agentFilter, setAgentFilter] = useState(null); // فلتر بموظف (user_id)
   const [openCall, setOpenCall] = useState(null); // مكالمة مفتوحة (ملخّص)
   const [users, setUsers] = useState([]);
+  const [target, setTarget] = useState(0);        // هدف مكالمات أسبوعي/موظف
 
   useEffect(() => { loadHatifAgentActivity(days).then(setRows).catch(() => setRows([])); }, [days]);
   useEffect(() => { loadHatifCallStats(days).then(setCalls).catch(() => setCalls([])); }, [days]);
   useEffect(() => { setRecent(null); loadHatifCalls({ days, userId: agentFilter, limit: 60 }).then(setRecent).catch(() => setRecent([])); }, [days, agentFilter]);
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
+  useEffect(() => { loadCallTargets().then(t => setTarget(t.weekly || 0)).catch(() => {}); }, []);
+  const winTarget = target > 0 ? Math.round(target * days / 7) : 0;  // الهدف مقيّساً على النافذة
+  const targetColor = (n) => !winTarget ? 'var(--text)' : n >= winTarget ? 'var(--green)' : n < winTarget * 0.6 ? 'var(--red)' : 'var(--gold)';
+  const saveTarget = async () => { try { await saveCallTargets({ weekly: target }); toast('حُفظ الهدف', 'success'); } catch (e) { toast(e.message, 'error'); } };
 
   const nameById = useMemo(() => {
     const m = new Map();
@@ -414,12 +423,22 @@ function AgentActivityTab() {
             مَن يتولّى المحادثات في هاتف — من أحداث «تعيين الموظف» (webhook مساحة العمل).
           </div>
         </div>
-        <select value={days} onChange={e => setDays(Number(e.target.value))}
-          style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
-          <option value={7}>آخر 7 أيام</option>
-          <option value={30}>آخر 30 يوماً</option>
-          <option value={90}>آخر 90 يوماً</option>
-        </select>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          {/* هدف مكالمات أسبوعي لكل موظف — المدير يحرّره، الجدول يلوّن مقابله */}
+          <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--muted)' }}>
+            🎯 هدف أسبوعي/موظف:
+            <input type="number" min="0" value={target} disabled={!isAdmin}
+              onChange={e => setTarget(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              style={{ width: 64, padding: '5px 7px', borderRadius: 7, fontSize: 12, textAlign: 'center', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}/>
+            {isAdmin && <button onClick={saveTarget} style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 7, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>حفظ</button>}
+          </label>
+          <select value={days} onChange={e => setDays(Number(e.target.value))}
+            style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+            <option value={7}>آخر 7 أيام</option>
+            <option value={30}>آخر 30 يوماً</option>
+            <option value={90}>آخر 90 يوماً</option>
+          </select>
+        </div>
       </div>
 
       {/* مكالمات الفريق الحقيقية — من سجلّ هاتف (hatif_call_log عبر السحب). */}
@@ -444,7 +463,9 @@ function AgentActivityTab() {
               {calls.map(r => (
                 <tr key={r.user_id} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '8px 9px', fontWeight: 700 }} data-label="الموظف">{agentName(r.user_id)}</td>
-                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', fontWeight: 700 }} data-label="مكالمات">{r.calls}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: r.user_id ? targetColor(r.calls) : 'var(--text)' }} data-label="مكالمات">
+                    {r.calls}{winTarget > 0 && r.user_id ? <span style={{ fontSize: 9.5, color: 'var(--muted2)', fontWeight: 400 }}> / {winTarget}</span> : null}
+                  </td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="مردودة">{r.answered}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="وارد">{r.inbound}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="صادر">{r.outbound}</td>
@@ -528,6 +549,7 @@ function AgentActivityTab() {
                           <ul style={{ margin: 0, paddingInlineStart: 18, lineHeight: 1.8, color: 'var(--text)' }}>{sum.map((s, i) => <li key={i}>{s}</li>)}</ul>
                         </div>
                       )}
+                      <CallTranscript words={c.ai_summary?.transcription?.words}/>
                       {Array.isArray(steps) && steps.length > 0 && (
                         <div>
                           <div style={{ fontWeight: 700, marginBottom: 4, color: 'var(--gold)' }}>🎯 الخطوات التالية</div>

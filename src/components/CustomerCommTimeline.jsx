@@ -3,6 +3,7 @@
 // المصدر: RPC customer_comm_timeline (كل ما هو مربوط برقم العميل فعلاً).
 import { useState, useEffect, useMemo } from 'react';
 import { Spinner } from './UI.jsx';
+import CallTranscript from './CallTranscript.jsx';
 import { loadCustomerCommTimeline, loadHatifUsers } from '../lib/whatsappService.js';
 
 const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
@@ -64,6 +65,7 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
                     <ul style={{ margin: 0, paddingInlineStart: 18, lineHeight: 1.8 }}>{sum.map((s, j) => <li key={j}>{s}</li>)}</ul>
                   </div>
                 )}
+                {r.ai_summary?.transcription?.words && <CallTranscript words={r.ai_summary.transcription.words}/>}
               </div>
             )}
           </div>

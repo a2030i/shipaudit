@@ -258,6 +258,24 @@ export async function loadHatifProblemCalls(category, days = 60) {
   if (error) return [];
   return data || [];
 }
+// هدف المكالمات الأسبوعي لكل موظف (app_settings) — يحرّره المدير من تبويب أداء الفريق.
+export async function loadCallTargets() {
+  const { data } = await supabase.from('app_settings').select('value').eq('key', 'call_targets').maybeSingle();
+  if (!data?.value) return { weekly: 0 };
+  try { const v = typeof data.value === 'string' ? JSON.parse(data.value) : data.value; return { weekly: Number(v.weekly) || 0 }; }
+  catch { return { weekly: 0 }; }
+}
+export async function saveCallTargets({ weekly }) {
+  const { error } = await supabase.from('app_settings')
+    .upsert({ key: 'call_targets', value: JSON.stringify({ weekly: Number(weekly) || 0 }) }, { onConflict: 'key' });
+  if (error) throw error;
+}
+// ملخّص إشارات المكالمات للوحة القرارات: سلبية آخر 7 أيام + أكثر مشكلة صاعدة.
+export async function loadHatifCallOps() {
+  const { data, error } = await supabase.rpc('hatif_call_ops');
+  if (error || !Array.isArray(data) || !data.length) return null;
+  return data[0];
+}
 // آخر مكالمات (تسجيل + ملخّص AI + مشاعر) — للعرض التفصيلي.
 export async function loadHatifCalls({ days = 30, userId = null, limit = 100 } = {}) {
   let q = supabase.from('hatif_call_log')

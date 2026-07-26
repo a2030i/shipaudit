@@ -22,6 +22,14 @@ import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
 import { loadLegalDashboard } from '../lib/legalService.js';
 import { loadIntegrityChecks } from '../lib/integrityService.js';
 import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
+import { loadHatifCallOps } from '../lib/whatsappService.js';
+
+// تسميات فئات مشاكل المكالمات (متطابقة مع تبويب تحليل المكالمات).
+const CALL_PROBLEM_AR = {
+  price: 'السعر مرتفع', returns: 'لبس الإرجاع المجاني', delivery: 'تأخّر التوصيل',
+  lost: 'شحنات مفقودة', support: 'صعوبة الدعم', billing: 'الفوترة',
+  carriers: 'نقص الناقلين', closed: 'إغلاق النشاط', cr_requirement: 'اشتراط السجل التجاري',
+};
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFixed(1) + 'ك' : String(Math.round(n)); };
@@ -35,7 +43,7 @@ export default function DecisionsBoard({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -48,6 +56,7 @@ export default function DecisionsBoard({ isActive = true }) {
         loadZatcaPending().catch(() => ({ todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [] })),
         loadIntegrityChecks().catch(() => null),
         loadClaims().then(summarizeClaims).catch(() => null),
+        loadHatifCallOps().catch(() => null),
       ]);
       // فحص السلامة: أخطر التناقضات (item_count>0) — يجمع «ناقل بلا فاتورة» وiMile…
       const integ = Array.isArray(integrity) ? integrity.filter(c => c.count > 0) : [];
@@ -97,6 +106,7 @@ export default function DecisionsBoard({ isActive = true }) {
         integ: { count: integ.length, top: integTop,
           total: integ.reduce((s, c) => s + (c.total > 0.5 ? c.total : 0), 0) },
         claims: claims || { open: 0, openTotal: 0, submitted: 0, submittedTotal: 0, recovered: 0, recoveredTotal: 0 },
+        callOps: callOps || null,
       });
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
     setLoading(false);
@@ -170,6 +180,25 @@ export default function DecisionsBoard({ isActive = true }) {
               sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} رصيد محفظة تحت الصفر (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
               top: d.legal?.top || [],
               cta: 'الصفحة القانونية', onClick: () => navigate('/legal'),
+            },
+          },
+          {
+            key: 'negCalls', active: (d.callOps?.negative_7d || 0) > 0, okLabel: 'لا مكالمات سلبية تحتاج مراجعة',
+            props: {
+              color: 'var(--red)', icon: '🎧', title: 'مكالمات سلبية تحتاج مراجعة',
+              value: d.callOps?.negative_7d || 0, unit: 'مكالمة (7 أيام)',
+              sub: `مشاعرها سلبية${(d.callOps?.negative_prev || 0) > 0 ? ` — كانت ${d.callOps.negative_prev} في الأسبوع السابق` : ''} · اسمع تسجيلها وتدخّل عند اللزوم`,
+              cta: 'أداء الفريق', onClick: () => navigate('/whatsapp-settings'),
+            },
+          },
+          {
+            key: 'risingProblem', active: !!d.callOps?.rising_category && (d.callOps?.rising_delta || 0) > 0,
+            okLabel: 'لا مشكلة مكالمات صاعدة',
+            props: {
+              color: 'var(--gold)', icon: '🧩', title: 'مشكلة صاعدة في المكالمات',
+              value: CALL_PROBLEM_AR[d.callOps?.rising_category] || d.callOps?.rising_category || '—', unit: '',
+              sub: `${d.callOps?.rising_now || 0} مكالمة (▲ +${d.callOps?.rising_delta || 0} عن الفترة السابقة) — عالجها قبل ما تكبر`,
+              cta: 'تحليل المكالمات', onClick: () => navigate('/whatsapp-settings'),
             },
           },
           {
