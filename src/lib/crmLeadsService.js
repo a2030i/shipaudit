@@ -802,6 +802,22 @@ export async function bulkAssignLeads({
   return data?.length || 0;
 }
 
+// إسناد مجموعة معرّفات محددة (عيّنة عشوائية من نتائج مطابقة) لموظف — بدفعات 500.
+export async function assignLeadsByIds(ids, newOwnerId) {
+  const list = (ids || []).filter(Boolean);
+  if (!list.length) return 0;
+  let done = 0;
+  for (let i = 0; i < list.length; i += 500) {
+    const chunk = list.slice(i, i + 500);
+    const { data, error } = await supabase.from('crm_leads')
+      .update({ owner_id: newOwnerId || null }).in('id', chunk).select('id');
+    if (error) throw error;
+    done += data?.length || 0;
+  }
+  listCache.clear();
+  return done;
+}
+
 export async function updateLead(id, patch) {
   if (!id) throw new Error('id مطلوب');
   const normalized = { ...patch, updated_at: new Date().toISOString() };

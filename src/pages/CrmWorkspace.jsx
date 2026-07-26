@@ -21,7 +21,7 @@ import {
 } from '../lib/crmService.js';
 import {
   loadLeads, createLead, convertLead, parseLeadsRows, detectLeadColumns, uploadLeadsSnapshot, bulkAssignLeads,
-  updateLead, loadLeadStats, loadLeadOptions, loadLeadsByPhone,
+  assignLeadsByIds, updateLead, loadLeadStats, loadLeadOptions, loadLeadsByPhone,
 } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
@@ -33,6 +33,15 @@ const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigi
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('ar-SA', { year: 'numeric', month: 'short', day: 'numeric' }) : '—';
 const daysAgo = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
+// خلط عشوائي (Fisher-Yates) — لأخذ عيّنة عشوائية N من نتائج مطابقة للفلاتر.
+const shuffle = (arr) => {
+  const a = arr.slice();
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+};
 
 const TABS = [
   // §1.32 مرحلة 2: «قائمة التحصيل» انتقلت لمركز التحصيل (/customer-money?tab=queue)
@@ -538,6 +547,9 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   const [selAllMatching, setSelAllMatching] = useState(false); // كل النتائج المطابقة (عبر كل الصفحات)
   const [bulkOwner, setBulkOwner] = useState('');
   const [bulkBusy, setBulkBusy] = useState(false);
+  // عيّنة عشوائية ضمن الفلاتر (طلب المستخدم 2026-07-26): «13 ألف كثير، ابغا 1000
+  // عشوائي ضمن الفلاتر». حقل عدد يقصّ «كل المطابق» لعيّنة عشوائية (0/فارغ = الكل).
+  const [sampleN, setSampleN] = useState(1000);
   // إطلاق حملة واتساب من التبويب مباشرة (طلب المستخدم 2026-07-21):
   // للمحدد أو للصفحة المعروضة — عبر WhatsAppSendModal (قالب هاتف مسجَّل §1.29)
   const [waRecipients, setWaRecipients] = useState(null);
@@ -566,7 +578,11 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         all.push(...(r.rows || []));
         if (!r.rows?.length || all.length >= (r.count || 0)) break;
       }
-      const recs = all.filter(l => l.phone_normalized || l.phone).map(leadRecipient);
+      let pick = all.filter(l => l.phone_normalized || l.phone);
+      // عيّنة عشوائية: نخلط ثم نقصّ N (المستخدم لا يريد كل الـ13 ألف دفعة).
+      const n = Number(sampleN) || 0;
+      if (n > 0 && pick.length > n) pick = shuffle(pick).slice(0, n);
+      const recs = pick.map(leadRecipient);
       if (!recs.length) { toast('لا أرقام جوال بالفلاتر الحالية', 'info'); return; }
       setWaRecipients(recs);
     } catch (e) { toast(`تعذّر تجهيز المستلمين: ${e.message}`, 'error'); }
@@ -621,10 +637,26 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     // كل النتائج المطابقة (7,004 مثلاً): عملية واحدة على الخادم بنفس الفلاتر —
     // لا حلقة آلاف الطلبات. تأكيد صريح قبل التنفيذ (فعل واسع).
     if (selAllMatching) {
-      if (!window.confirm(`تحويل كل النتائج المطابقة للفلاتر (${fmt0(count)} جهة) إلى ${emp?.name || 'الموظف'}؟`)) return;
+      const sn = Number(sampleN) || 0;
+      const sampling = sn > 0 && sn < count;
+      const label = sampling ? `عيّنة عشوائية (${fmt0(sn)}) من ${fmt0(count)}` : `كل النتائج المطابقة (${fmt0(count)} جهة)`;
+      if (!window.confirm(`تحويل ${label} إلى ${emp?.name || 'الموظف'}؟`)) return;
       setBulkBusy(true);
       try {
-        const n = await bulkAssignLeads({ ...filters, newOwnerId: bulkOwner });
+        let n;
+        if (sampling) {
+          // عيّنة عشوائية: نجلب المطابق ثم نخلط ونقصّ ونُسنِد بالمعرّفات المحددة.
+          const all = [];
+          for (let page = 0; page < 400; page++) {
+            const r = await loadLeads({ ...filters, page, limit: 500, force: true });
+            all.push(...(r.rows || []));
+            if (!r.rows?.length || all.length >= (r.count || 0)) break;
+          }
+          const ids = shuffle(all).slice(0, sn).map(l => l.id);
+          n = await assignLeadsByIds(ids, bulkOwner);
+        } else {
+          n = await bulkAssignLeads({ ...filters, newOwnerId: bulkOwner });
+        }
         toast(`حُوّلت ${fmt0(n)} جهة إلى ${emp?.name || 'الموظف'} ✓`, 'success');
         setSelIds(new Set()); setSelAllMatching(false); setBulkOwner('');
         refresh();
@@ -739,6 +771,16 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>
             ✓ {selAllMatching ? `كل النتائج المطابقة (${fmt0(count)})` : `${selIds.size} جهة`} محددة
           </span>
+          {/* عيّنة عشوائية ضمن الفلاتر — الحملة/الإسناد تعمل على N عشوائية لا الكل */}
+          {selAllMatching && (
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 12, color: 'var(--muted)' }}>
+              🎲 عيّنة عشوائية:
+              <input type="number" min="0" step="100" value={sampleN}
+                onChange={e => setSampleN(e.target.value === '' ? '' : Math.max(0, parseInt(e.target.value, 10) || 0))}
+                style={{ width: 78, padding: '5px 8px', borderRadius: 8, fontSize: 12.5, textAlign: 'center', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}/>
+              <span style={{ fontSize: 11, color: 'var(--muted2)' }}>{Number(sampleN) > 0 ? `من ${fmt0(count)} (0 = الكل)` : 'الكل'}</span>
+            </label>
+          )}
           {/* الصفحة كلها محددة والنتائج أكثر → عرض تحديد الكل عبر الصفحات */}
           {!selAllMatching && allPageSelected && count > leads.length && (
             <button onClick={() => setSelAllMatching(true)} style={{
@@ -754,7 +796,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
           </select>
           <Btn size="sm" variant="accent" onClick={bulkAssign} disabled={!bulkOwner || bulkBusy}>
-            {bulkBusy ? 'يحوّل…' : `تحويل ${selAllMatching ? fmt0(count) : selIds.size} للموظف`}
+            {bulkBusy ? 'يحوّل…' : `تحويل ${selAllMatching ? fmt0(Number(sampleN) > 0 ? Math.min(Number(sampleN), count) : count) : selIds.size} للموظف`}
           </Btn>
           {/* حملة واتساب للمحدد — الصفحة الحالية أو كل المطابق عند «تحديد الكل» */}
           {selIds.size > 0 && !selAllMatching && (
@@ -765,7 +807,10 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           )}
           {selAllMatching && (
             <Btn size="sm" variant="accent" icon={<Phone size={13}/>} onClick={launchAllMatching} disabled={prepCampaign}>
-              {prepCampaign ? 'يجهّز المستلمين…' : `📲 حملة لكل المطابق (${fmt0(count)})`}
+              {prepCampaign ? 'يجهّز المستلمين…'
+                : Number(sampleN) > 0
+                  ? `📲 حملة لعيّنة عشوائية (${fmt0(Math.min(Number(sampleN), count))})`
+                  : `📲 حملة لكل المطابق (${fmt0(count)})`}
             </Btn>
           )}
           <Btn size="sm" variant="ghost" onClick={() => { setSelIds(new Set()); setSelAllMatching(false); }}>إلغاء التحديد</Btn>
