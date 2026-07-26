@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -79,6 +79,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [ctx, setCtx]             = useState(() => new Map());
   // أرقام بلا واتساب — تُستبعَد آلياً من كل حملة (لا استثناء يدوي)
   const [noWa, setNoWa]          = useState(() => new Set());
+  const [hatifTouched, setHatifTouched] = useState(() => new Map()); // يتواصل معهم الفريق في هاتف الآن
   // «رسالة لكل متجر»: افتراضياً OFF (يُدمَج تكرار الهاتف — الأأمن ضد الحظر). لمّا
   // يملك رقم عدة متاجر ويُفعَّل → كل متجر رسالة مستقلة ببياناته. المفتاح يتحوّل
   // من الهاتف إلى معرّف المتجر (r._rk) ليُميَّز متجران على نفس الرقم.
@@ -106,6 +107,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setCtx(new Map());
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
     loadNoWhatsappSet().then(setNoWa).catch(() => {});
+    loadHatifTouchedPhones(30).then(setHatifTouched).catch(() => {});
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -210,7 +212,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // استبعاد آلي لمن ليس له واتساب/محظور (بالهاتف — يشمل كل متاجر الرقم) — لا استثناء يدوي
   const noWaCount = validAll.filter(r => noWa.has(r.to)).length;
   const excludedCount = validAll.filter(r => exPhones.has(r.to) && !noWa.has(r.to)).length;
-  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to));
+  // استبعاد آلي لمن يتواصل معهم الفريق مباشرة في هاتف (محادثة مُسنَدة لموظف) — حتى لا
+  // نطلق قالباً على عميل يكلّمه موظف الآن (خوف المستخدم 2026-07-26).
+  const hatifTouchedCount = validAll.filter(r => hatifTouched.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to)).length;
+  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to));
   const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
   const selectedValid = valid.filter(r => selected.has(r._rk));
   // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
@@ -493,11 +498,13 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
             <Btn size="sm" variant="ghost" onClick={allOn}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
-            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0) && (
+            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0) && (
               <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
-                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0) && ' · '}
-                {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && noWaCount > 0 && ' · '}
+                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
+                {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
                 {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب/محظور</span>}
+                {noWaCount > 0 && hatifTouchedCount > 0 && ' · '}
+                {hatifTouchedCount > 0 && <span style={{ color: 'var(--gold)' }}>💬 استُبعد {hatifTouchedCount} يكلّمهم الفريق في هاتف</span>}
               </span>
             )}
           </div>

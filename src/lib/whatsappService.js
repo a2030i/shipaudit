@@ -82,6 +82,16 @@ export async function loadNoWhatsappSet() {
   for (const r of data || []) if (r.phone) set.add(r.phone);
   return set;
 }
+// أرقام يتواصل معهم الفريق مباشرة في هاتف الآن (محادثتهم مُسنَدة لموظف بشري خلال
+// آخر p_days يوماً) — تُستبعَد آلياً من حملات القوالب حتى لا نقاطع تواصل الموظف
+// (خوف المستخدم 2026-07-26). يرجع Map(هاتف → آخر إسناد) لعرض السبب في المودال.
+export async function loadHatifTouchedPhones(days = 30) {
+  const map = new Map();
+  const { data, error } = await supabase.rpc('hatif_touched_phones', { p_days: days });
+  if (error || !Array.isArray(data)) return map;
+  for (const r of data) if (r.phone) map.set(r.phone, r.last_touch || null);
+  return map;
+}
 // تقرير كامل (للاتصال بهم / التصدير) — رقم/اسم/آخر محاولة/الحملات.
 export async function loadNoWhatsappList() {
   const { data, error } = await supabase.rpc('no_whatsapp_report');
