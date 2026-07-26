@@ -16,6 +16,13 @@ const KIND = {
 };
 const STATUS_AR = { sent: 'أُرسلت', delivered: 'وصلت', read: 'قُرئت', replied: 'ردّ ✓', failed: 'فشلت' };
 const STATUS_COLOR = { sent: 'var(--muted)', delivered: '#0EA5E9', read: '#8B5CF6', replied: 'var(--green)', failed: 'var(--red)' };
+// تصنيف نية ردّ العميل — يبرز مَن مهتمّ بالحملة (طلب المستخدم).
+const INTENT_META = {
+  interested:     { label: '🔥 مهتمّ', color: '#F97316' },
+  wants_call:     { label: '📞 يطلب اتصالاً', color: '#0EA5E9' },
+  price:          { label: '💰 اعتراض سعر', color: 'var(--gold)' },
+  not_interested: { label: '🚫 غير مهتمّ', color: 'var(--muted)' },
+};
 
 export default function CustomerCommTimeline({ phone, title = 'سجلّ تواصل العميل' }) {
   const [rows, setRows] = useState(null);
@@ -64,10 +71,19 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
                 <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: `color-mix(in srgb, ${STATUS_COLOR[r.status]} 15%, transparent)`, color: STATUS_COLOR[r.status] }}>{STATUS_AR[r.status]}</span>
               )}
               {sentLabel(r.sentiment) && <span style={{ fontSize: 11 }}>{sentLabel(r.sentiment)}</span>}
+              {r.reply_intent && INTENT_META[r.reply_intent] && (
+                <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 800, background: `color-mix(in srgb, ${INTENT_META[r.reply_intent].color} 18%, transparent)`, color: INTENT_META[r.reply_intent].color }}>{INTENT_META[r.reply_intent].label}</span>
+              )}
               {r.agent_id && nameById.get(String(r.agent_id)) && <span style={{ fontSize: 11, color: 'var(--muted)' }}>— {nameById.get(String(r.agent_id))}</span>}
               <span style={{ marginInlineStart: 'auto', fontSize: 11, color: 'var(--muted2)' }}>{fmtWhen(r.occurred_at)}</span>
               {expandable && <span style={{ color: 'var(--muted2)', fontSize: 11 }}>{isOpen ? '▲' : '▼'}</span>}
             </div>
+            {/* مختصر ردّ العميل ظاهر في السطر (لا مخفياً) — طلب المستخدم: نعرف مَن مهتمّ بالحملة */}
+            {r.reply_body && !isOpen && (
+              <div style={{ padding: '0 12px 8px 34px', fontSize: 11.5, color: 'var(--text)', lineHeight: 1.5 }}>
+                💬 <b style={{ color: 'var(--green)' }}>ردّه:</b> {r.reply_body.length > 90 ? r.reply_body.slice(0, 90).replace(/\n/g, ' ') + '…' : r.reply_body.replace(/\n/g, ' ')}
+              </div>
+            )}
             {isOpen && expandable && (
               <div style={{ padding: '4px 12px 12px', borderTop: '1px solid var(--border)', display: 'grid', gap: 8, fontSize: 12.5 }}>
                 {r.reply_body && <div style={{ background: 'color-mix(in srgb, var(--green) 8%, transparent)', borderRadius: 8, padding: '6px 10px' }}><b>ردّ العميل:</b> {r.reply_body}</div>}
