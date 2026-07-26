@@ -39,6 +39,7 @@ export default function BankStatement() {
   const [savedFrom, setSavedFrom]       = useState('');       // فلتر الفترة: من
   const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
   const [savedType, setSavedType]       = useState('all');    // all | debit | credit
+  const [savedBank, setSavedBank]       = useState('all');    // all | اسم البنك
   const [stmtSummaries, setStmtSummaries] = useState([]);      // ملخّصات الكشوف (ختامي/افتتاحي لكل فترة)
   const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
   const [deleting, setDeleting]         = useState(false);
@@ -94,10 +95,29 @@ export default function BankStatement() {
     if (savedTo)   list = list.filter(t => t.txn_date && String(t.txn_date).slice(0, 10) <= savedTo);
     if (savedType === 'debit')  list = list.filter(t => Number(t.debit) > 0);
     if (savedType === 'credit') list = list.filter(t => Number(t.credit) > 0);
+    if (savedBank !== 'all')    list = list.filter(t => (t.bank || 'بنك الإنماء') === savedBank);
     return list;
-  }, [saved, savedSearch, savedFrom, savedTo, savedType]);
+  }, [saved, savedSearch, savedFrom, savedTo, savedType, savedBank]);
 
-  const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all');
+  const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all' || savedBank !== 'all');
+
+  // البنوك + رصيد كل بنك (ختامي آخر كشف) — لعرض التمييز بين البنوك.
+  const bankSummary = useMemo(() => {
+    const byBank = new Map();
+    for (const t of (saved || [])) {
+      const b = t.bank || 'بنك الإنماء';
+      const cur = byBank.get(b) || { bank: b, count: 0, debit: 0, credit: 0 };
+      cur.count++; cur.debit += Number(t.debit) || 0; cur.credit += Number(t.credit) || 0;
+      byBank.set(b, cur);
+    }
+    // ختامي آخر كشف لكل بنك من ملخّصات الكشوف
+    for (const s of stmtSummaries || []) {
+      const b = s.bank || 'بنك الإنماء';
+      const cur = byBank.get(b);
+      if (cur && cur.closing == null) { cur.closing = Number(s.closing_balance) || 0; cur.asOf = s.period_to; }
+    }
+    return [...byBank.values()].sort((a, b) => b.count - a.count);
+  }, [saved, stmtSummaries]);
 
   const savedRejectedInfo = useMemo(() => {
     const returns = (savedFiltered || []).filter(t => t.rejected && (Number(t.credit) || 0) > 0);
@@ -630,6 +650,25 @@ export default function BankStatement() {
                       value={fmtMoney(Number(periodClosing.closing_balance))} color="var(--accent)" suffix="ر.س"/>
                   )}
                 </div>
+                {/* شريط البنوك — رصيد كل بنك (ختامي آخر كشف) + النقر يفلتر (§متعدد البنوك) */}
+                {bankSummary.length > 1 && (
+                  <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 14 }}>
+                    {bankSummary.map(b => (
+                      <div key={b.bank} onClick={() => setSavedBank(savedBank === b.bank ? 'all' : b.bank)}
+                        style={{ cursor: 'pointer', flex: '1 1 200px', minWidth: 180, padding: '12px 16px', borderRadius: 12,
+                          border: `1.5px solid ${savedBank === b.bank ? 'var(--accent)' : 'var(--border)'}`,
+                          background: savedBank === b.bank ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'var(--surface)' }}>
+                        <div style={{ fontSize: 13, fontWeight: 800, display: 'flex', gap: 6, alignItems: 'center' }}>🏦 {b.bank}</div>
+                        <div style={{ fontSize: 20, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--accent)', marginTop: 4 }}>
+                          {b.closing != null ? fmtMoney(b.closing) : '—'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
+                        </div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                          {b.count} عملية{b.asOf ? ` · ختامي ${String(b.asOf).slice(0, 10)}` : ''}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {periodClosing && periodClosing.closing_balance != null && (
                   <div style={{ marginBottom: 10, marginTop: -6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -693,6 +732,13 @@ export default function BankStatement() {
                     <input type="date" value={savedTo} onChange={e => setSavedTo(e.target.value)}
                       title="إلى تاريخ" style={{ padding: '7px 8px', borderRadius: 8, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
                   </div>
+                  {bankSummary.length > 1 && (
+                    <select value={savedBank} onChange={e => setSavedBank(e.target.value)}
+                      title="فلتر البنك" style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                      <option value="all">🏦 كل البنوك</option>
+                      {bankSummary.map(b => <option key={b.bank} value={b.bank}>{b.bank} ({b.count})</option>)}
+                    </select>
+                  )}
                   <select value={savedType} onChange={e => setSavedType(e.target.value)}
                     style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12 }}>
                     <option value="all">كل العمليات</option>
@@ -709,7 +755,7 @@ export default function BankStatement() {
                     />
                   </div>
                   {filtersActive && (
-                    <Btn variant="ghost" size="sm" onClick={() => { setSavedSearch(''); setSavedFrom(''); setSavedTo(''); setSavedType('all'); }}>
+                    <Btn variant="ghost" size="sm" onClick={() => { setSavedSearch(''); setSavedFrom(''); setSavedTo(''); setSavedType('all'); setSavedBank('all'); }}>
                       مسح الفلاتر
                     </Btn>
                   )}
@@ -745,7 +791,12 @@ export default function BankStatement() {
                           <tbody>
                             {savedFiltered.map(t => (
                               <tr key={t.id} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
-                                <td data-label="التاريخ" style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>{t.txn_date || '—'}</td>
+                                <td data-label="التاريخ" style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
+                                  {t.txn_date || '—'}
+                                  {savedBank === 'all' && bankSummary.length > 1 && (
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', marginTop: 2 }}>🏦 {(t.bank || 'بنك الإنماء').replace('بنك ', '')}</div>
+                                  )}
+                                </td>
                                 <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                                   {t.reference || '—'}
                                 </td>
