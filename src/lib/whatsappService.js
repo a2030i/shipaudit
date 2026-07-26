@@ -247,6 +247,17 @@ export async function loadCustomerCommTimeline(phone) {
   if (error) return [];
   return data || [];
 }
+// تحليل مشاكل المكالمات — تصنيف آلي لكل مكالمة من نصّ ملخّصها + اتجاه أسبوعي.
+export async function loadHatifCallProblems(days = 60) {
+  const { data, error } = await supabase.rpc('hatif_call_problems', { p_days: days });
+  if (error) return [];
+  return data || [];
+}
+export async function loadHatifProblemCalls(category, days = 60) {
+  const { data, error } = await supabase.rpc('hatif_problem_calls', { p_category: category, p_days: days, p_limit: 40 });
+  if (error) return [];
+  return data || [];
+}
 // آخر مكالمات (تسجيل + ملخّص AI + مشاعر) — للعرض التفصيلي.
 export async function loadHatifCalls({ days = 30, userId = null, limit = 100 } = {}) {
   let q = supabase.from('hatif_call_log')

@@ -11,7 +11,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -101,7 +101,7 @@ export default function WhatsAppSettings({ isActive = true }) {
 
       {/* مبدّل: الإعدادات / سجل الحملات */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
-        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق']].map(([v, lbl]) => (
+        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
             border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
@@ -111,6 +111,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       </div>
 
       {tab === 'ivr' ? <IvrTab/> :
+      tab === 'problems' ? <CallProblemsTab/> :
       tab === 'agents' ? <AgentActivityTab/> :
       tab === 'campaigns' ? <CampaignsTab/> :
       !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
@@ -270,6 +271,109 @@ export default function WhatsAppSettings({ isActive = true }) {
         </Card>
       )}
     </div>
+  );
+}
+
+// تاب تحليل المكالمات — تصنيف آلي لمشاكل العملاء من نصوص المكالمات + اتجاه + تنقيب.
+const PROBLEM_META = {
+  price:          { icon: '💰', label: 'السعر مرتفع مقابل المنافسين', action: 'راجع باقة أسعار تنافسية / أسعار خاصة للحجم', color: '#EF4444' },
+  returns:        { icon: '↩️', label: 'لبس ميزة الإرجاع المجاني', action: 'وضّح تغطية الإرجاع المجاني في القالب والمكالمة', color: '#F59E0B' },
+  delivery:       { icon: '🚚', label: 'تأخّر التوصيل', action: 'تابع الشحنات المتأخرة وصعّد للناقل', color: '#EF4444' },
+  lost:           { icon: '📦', label: 'شحنات مفقودة', action: 'افتح تذكرة دعم وتابع مع الناقل', color: '#EF4444' },
+  support:        { icon: '🎧', label: 'صعوبة خدمة العملاء / بطء الرد', action: 'حسّن زمن الرد ومتابعة الطلبات', color: '#F59E0B' },
+  billing:        { icon: '🧾', label: 'الفواتير / الفوترة', action: 'راجع دقّة الفواتير ووضوحها', color: '#F59E0B' },
+  carriers:       { icon: '🚛', label: 'نقص خيارات الناقلين / السرعة', action: 'فعّل ناقلين إضافيين (خاصة جدة)', color: '#0EA5E9' },
+  closed:         { icon: '🔒', label: 'إغلاق النشاط التجاري', action: 'ليس خللاً تقنياً — نظّف القائمة من المغلقين', color: 'var(--muted)' },
+  cr_requirement: { icon: '📋', label: 'اشتراط السجل التجاري يطرد الأفراد', action: 'ادرس باقة أفراد بلا سجل تجاري', color: '#8B5CF6' },
+};
+function CallProblemsTab() {
+  const [days, setDays] = useState(60);
+  const [rows, setRows] = useState(null);
+  const [open, setOpen] = useState(null);        // الفئة المفتوحة
+  const [calls, setCalls] = useState(null);
+  const [openCall, setOpenCall] = useState(null);
+  const fmtWhen = (iso) => { try { return new Date(iso).toLocaleDateString('ar-SA', { dateStyle: 'medium' }); } catch { return String(iso).slice(0, 10); } };
+  const sentLabel = (v) => { const n = Number(v); if (!n) return null; return n >= 3 ? '😐' : '😞'; };
+
+  useEffect(() => { setRows(null); loadHatifCallProblems(days).then(setRows).catch(() => setRows([])); setOpen(null); }, [days]);
+  const drill = (cat) => {
+    if (open === cat) { setOpen(null); return; }
+    setOpen(cat); setCalls(null); setOpenCall(null);
+    loadHatifProblemCalls(cat, days).then(setCalls).catch(() => setCalls([]));
+  };
+
+  return (
+    <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>🧩 تحليل المكالمات — أكثر المشاكل</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>تصنيف آلي من نصوص المكالمات المحلَّلة. انقر فئة لسماع نماذجها.</div>
+        </div>
+        <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
+          <option value={30}>آخر 30 يوماً</option>
+          <option value={60}>آخر 60 يوماً</option>
+          <option value={90}>آخر 90 يوماً</option>
+        </select>
+      </div>
+
+      {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
+        : !rows.length ? <Empty icon="🧩" title="لا مكالمات محلَّلة بعد" sub="تظهر المشاكل تلقائياً كلما وصلت مكالمات بتحليل AI."/>
+        : rows.map(r => {
+          const m = PROBLEM_META[r.category] || { icon: '•', label: r.category, action: '', color: 'var(--muted)' };
+          const trend = Number(r.calls) - Number(r.calls_prev);
+          const isOpen = open === r.category;
+          return (
+            <div key={r.category} style={{ border: `1px solid ${isOpen ? m.color : 'var(--border)'}`, borderRadius: 10, overflow: 'hidden' }}>
+              <div onClick={() => drill(r.category)} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', cursor: 'pointer', flexWrap: 'wrap' }}>
+                <span style={{ fontSize: 18 }}>{m.icon}</span>
+                <div style={{ flex: 1, minWidth: 180 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13, color: m.color }}>{m.label}</div>
+                  <div style={{ fontSize: 11, color: 'var(--muted)' }}>{m.action}</div>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <div style={{ fontFamily: 'var(--font-mono)', fontWeight: 800, fontSize: 18 }}>{r.calls}</div>
+                  <div style={{ fontSize: 10, color: 'var(--muted2)' }}>مكالمة</div>
+                </div>
+                <span style={{ fontSize: 11.5, fontWeight: 700, color: trend > 0 ? 'var(--red)' : trend < 0 ? 'var(--green)' : 'var(--muted)' }}>
+                  {trend > 0 ? `▲ +${trend}` : trend < 0 ? `▼ ${trend}` : '—'}
+                  <span style={{ fontSize: 9.5, color: 'var(--muted2)', fontWeight: 400 }}> مقابل الفترة السابقة</span>
+                </span>
+                <span style={{ color: 'var(--muted2)' }}>{isOpen ? '▲' : '▼'}</span>
+              </div>
+              {isOpen && (
+                <div style={{ borderTop: '1px solid var(--border)', padding: '8px 12px', display: 'grid', gap: 6 }}>
+                  {calls == null ? <div style={{ padding: 16, textAlign: 'center' }}><Spinner/></div>
+                    : !calls.length ? <div style={{ fontSize: 12, color: 'var(--muted)' }}>لا نماذج.</div>
+                    : calls.map(c => {
+                      const co = openCall === c.id;
+                      const sum = c.ai_summary?.summary;
+                      return (
+                        <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden' }}>
+                          <div onClick={() => setOpenCall(co ? null : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 9px', cursor: 'pointer', fontSize: 12 }}>
+                            <span style={{ color: 'var(--muted)' }}>{fmtWhen(c.creation_time)}</span>
+                            <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{Math.round((c.talk_seconds || 0) / 60)}د</span>
+                            {sentLabel(c.sentiment) && <span>{sentLabel(c.sentiment)}</span>}
+                            {c.recording_url && <span style={{ color: 'var(--accent)', fontSize: 10.5 }}>🎙</span>}
+                            <span style={{ marginInlineStart: 'auto', color: 'var(--muted2)' }}>{co ? '▲' : '▼'}</span>
+                          </div>
+                          {co && (
+                            <div style={{ borderTop: '1px solid var(--border)', padding: '6px 10px 10px', display: 'grid', gap: 6, fontSize: 12 }}>
+                              {c.recording_url && <audio controls preload="none" src={c.recording_url} style={{ width: '100%', height: 32 }}/>}
+                              {Array.isArray(sum) && <ul style={{ margin: 0, paddingInlineStart: 16, lineHeight: 1.7 }}>{sum.map((s, i) => <li key={i}>{s}</li>)}</ul>}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
+        التصنيف آلي بالكلمات المفتاحية من ملخّص كل مكالمة (يستبعد قوائم IVR الترحيبية). الاتجاه = آخر {days} يوماً مقابل الفترة السابقة مثلها.
+      </div>
+    </Card>
   );
 }
 
