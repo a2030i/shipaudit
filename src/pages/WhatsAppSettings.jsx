@@ -11,7 +11,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  loadHatifAgentActivity, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
+  loadHatifAgentActivity, loadHatifCallStats, runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
@@ -278,9 +278,11 @@ export default function WhatsAppSettings({ isActive = true }) {
 function AgentActivityTab() {
   const [days, setDays] = useState(30);
   const [rows, setRows] = useState(null);
+  const [calls, setCalls] = useState(null);       // إحصاءات المكالمات الحقيقية
   const [users, setUsers] = useState([]);
 
   useEffect(() => { loadHatifAgentActivity(days).then(setRows).catch(() => setRows([])); }, [days]);
+  useEffect(() => { loadHatifCallStats(days).then(setCalls).catch(() => setCalls([])); }, [days]);
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
 
   const nameById = useMemo(() => {
@@ -289,6 +291,9 @@ function AgentActivityTab() {
     return m;
   }, [users]);
   const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
+  const fmtDur = (s) => { const n = Number(s) || 0; if (!n) return '—'; const m = Math.floor(n / 60); const sec = n % 60; return m ? `${m}د ${sec}ث` : `${sec}ث`; };
+  const sentLabel = (v) => { const n = Number(v); if (!n) return '—'; return n >= 4 ? `😊 ${n.toFixed(1)}` : n <= 2 ? `😞 ${n.toFixed(1)}` : `😐 ${n.toFixed(1)}`; };
+  const agentName = (id) => nameById.get(String(id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(id)}>{String(id).slice(0, 8)}…</span>;
 
   return (
     <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
@@ -307,6 +312,43 @@ function AgentActivityTab() {
         </select>
       </div>
 
+      {/* مكالمات الفريق الحقيقية — من سجلّ هاتف (hatif_call_log عبر السحب). */}
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>📞 المكالمات (وارد + صادر)</div>
+      {calls == null ? <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>
+        : !calls.length ? (
+          <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 2px' }}>لا مكالمات في هذه الفترة (السحب كل 30 دقيقة).</div>
+        ) : (
+          <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+            <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
+              <th style={{ padding: '7px 9px' }} data-label="">الموظف</th>
+              <th style={{ padding: '7px 9px' }}>مكالمات</th>
+              <th style={{ padding: '7px 9px' }}>مردودة</th>
+              <th style={{ padding: '7px 9px' }}>وارد</th>
+              <th style={{ padding: '7px 9px' }}>صادر</th>
+              <th style={{ padding: '7px 9px' }}>إجمالي التحدّث</th>
+              <th style={{ padding: '7px 9px' }}>متوسط المكالمة</th>
+              <th style={{ padding: '7px 9px' }}>المشاعر</th>
+              <th style={{ padding: '7px 9px' }}>آخر مكالمة</th>
+            </tr></thead>
+            <tbody>
+              {calls.map(r => (
+                <tr key={r.user_id} style={{ borderTop: '1px solid var(--border)' }}>
+                  <td style={{ padding: '8px 9px', fontWeight: 700 }} data-label="الموظف">{agentName(r.user_id)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', fontWeight: 700 }} data-label="مكالمات">{r.calls}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="مردودة">{r.answered}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="وارد">{r.inbound}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="صادر">{r.outbound}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="إجمالي التحدّث">{fmtDur(r.talk_seconds)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }} data-label="متوسط المكالمة">{fmtDur(Math.round(r.avg_talk))}</td>
+                  <td style={{ padding: '8px 9px' }} data-label="المشاعر">{sentLabel(r.avg_sentiment)}</td>
+                  <td style={{ padding: '8px 9px', fontSize: 11.5, color: 'var(--muted)' }} data-label="آخر مكالمة">{fmtWhen(r.last_call)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+
+      <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', marginTop: 10 }}>💬 إسناد المحادثات (واتساب)</div>
       {rows == null ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div>
         : !rows.length ? (
           <Empty icon="📞" title="لا نشاط بعد"
@@ -338,7 +380,8 @@ function AgentActivityTab() {
           </table>
         )}
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-        هذه بيانات <b>إسناد المحادثات</b> (مَن يتولّى مَن). تفاصيل المكالمة (مدة/تسجيل/مشاعر) تحتاج تفعيل «تحليل المكالمات AI» في هاتف ليصل حدث «Call Completed».
+        <b>المكالمات</b> تُسحب من سجلّ هاتف (GET /v1/call/list) كل 30 دقيقة — مع التسجيل والملخّص والمشاعر لكل مكالمة.
+        <b> إسناد المحادثات</b> من أحداث «تعيين الموظف» (webhook مساحة العمل). أسماء الموظفين من موظفي هاتف.
       </div>
     </Card>
   );

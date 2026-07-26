@@ -232,6 +232,26 @@ export async function loadHatifAgentActivity(days = 30) {
   return data || [];
 }
 
+// إحصاءات مكالمات الفريق من hatif_call_log (سجلّ هاتف الكامل، يُسحب عبر hatif-pull-calls).
+// عدد/مردودة/وارد/صادر/دقائق تحدّث/متوسط/متوسط المشاعر لكل موظف.
+export async function loadHatifCallStats(days = 30) {
+  const { data, error } = await supabase.rpc('hatif_call_agent_stats', { p_days: days });
+  if (error) return [];
+  return data || [];
+}
+// آخر مكالمات (تسجيل + ملخّص AI + مشاعر) — للعرض التفصيلي.
+export async function loadHatifCalls({ days = 30, userId = null, limit = 100 } = {}) {
+  let q = supabase.from('hatif_call_log')
+    .select('id, user_id, user_name, call_type, status, creation_time, pickup_time, talk_seconds, ringing_duration, recording_url, ai_summary, sentiment, contact_number')
+    .gte('creation_time', new Date(Date.now() - days * 86400000).toISOString())
+    .order('creation_time', { ascending: false })
+    .limit(limit);
+  if (userId) q = q.eq('user_id', userId);
+  const { data, error } = await q;
+  if (error) return [];
+  return data || [];
+}
+
 // تاقات هاتف — سرد المتاح + تطبيق يدوي على محادثة العميل (بالهاتف)
 export async function loadHatifTags() {
   const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'list' } });
