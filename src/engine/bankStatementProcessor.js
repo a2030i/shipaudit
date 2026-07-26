@@ -20,6 +20,7 @@ const HEADER_KEYWORDS = {
   debit:       [/^مدين$/i, /debit/i, /^dr$/i],
   fees:        [/الرسوم/i, /^رسوم$/i, /fees?$/i, /charges/i],
   tax:         [/الضريبة/i, /^ضريبة$/i, /^vat$/i, /tax/i],
+  type:        [/transaction.?type/i, /نوع.?العملية/i, /^النوع$/i],
 };
 
 // Try to match an Excel header cell against a keyword group
@@ -47,6 +48,7 @@ export function detectColumnsByHeader(rows) {
       if (matchKeyword(cell, HEADER_KEYWORDS.debit)  && map.debitCol  == null) map.debitCol  = c;
       if (matchKeyword(cell, HEADER_KEYWORDS.fees)   && map.feesCol   == null) map.feesCol   = c;
       if (matchKeyword(cell, HEADER_KEYWORDS.tax)    && map.taxCol    == null) map.taxCol    = c;
+      if (matchKeyword(cell, HEADER_KEYWORDS.type)   && map.typeCol   == null) map.typeCol   = c;
     }
     // We need at least date + (credit or debit) to consider the row a header.
     if (map.dateCol != null && (map.creditCol != null || map.debitCol != null)) {
@@ -280,7 +282,11 @@ export function parseAlinmaFormat(rows, colMap) {
     const date    = parseDateCell(dateRaw);
     const datetime = parseDateTimeCell(dateRaw);   // الوقت الكامل لترتيب التسلسل داخل اليوم
     const ref     = colMap.refCol  != null ? String(row[colMap.refCol]  ?? '').trim() : '';
-    const desc    = colMap.descCol != null ? String(row[colMap.descCol] ?? '').trim() : '';
+    let   desc    = colMap.descCol != null ? String(row[colMap.descCol] ?? '').trim() : '';
+    // نوع العملية (SiFi: «Local Transfer Fee»/«VAT»/…) يُصدَّر لأول الوصف ليتّضح أن
+    // الصفّ رسوم تحويل أو ضريبتها (تتبع التحويل مباشرة بمراجع متتالية).
+    const txnType = colMap.typeCol != null ? String(row[colMap.typeCol] ?? '').trim() : '';
+    if (txnType && !desc.toLowerCase().includes(txnType.toLowerCase())) desc = desc ? `${txnType} · ${desc}` : txnType;
     // Banks often store debits as signed negatives (e.g. -155.25). Convert to
     // positive magnitude so totals and the "مدين" column read correctly.
     const creditRaw = colMap.creditCol != null ? parseNumber(row[colMap.creditCol]) : null;
