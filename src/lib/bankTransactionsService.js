@@ -89,7 +89,7 @@ export async function loadBankTransactions({ limit = 5000, bank = null } = {}) {
   while (true) {
     let q = supabase
       .from(TABLE)
-      .select('id, bank, txn_date, txn_at, reference, description, debit, credit, fees, tax, source_file, period_from, period_to')
+      .select('id, bank, txn_date, txn_at, reference, description, debit, credit, fees, tax, note, source_file, period_from, period_to')
       .order('txn_date', { ascending: false })
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
@@ -102,6 +102,14 @@ export async function loadBankTransactions({ limit = 5000, bank = null } = {}) {
     from += PAGE;
   }
   return rows;
+}
+
+// ملاحظة يدوية على عملية بنكية — تُحفظ/تُمحى (نص فارغ = مسح).
+export async function setBankNote(id, note) {
+  const { data, error } = await supabase
+    .from(TABLE).update({ note: (note ?? '').trim() || null }).eq('id', id).select('id');
+  if (error) throw error;
+  if (!data?.length) throw new Error('لم تُحفظ الملاحظة (تحقّق من الصلاحيات)');
 }
 
 export async function deleteBankTransaction(id) {

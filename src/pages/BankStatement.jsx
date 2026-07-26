@@ -3,7 +3,7 @@ import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2,
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
-import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries } from '../lib/bankTransactionsService.js';
+import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -48,6 +48,9 @@ export default function BankStatement() {
   const [savedBank, setSavedBank]       = useState('all');    // all | اسم البنك
   const [stmtSummaries, setStmtSummaries] = useState([]);      // ملخّصات الكشوف (ختامي/افتتاحي لكل فترة)
   const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
+  const [noteFor, setNoteFor]           = useState(null);     // العملية المطلوب إضافة ملاحظة لها
+  const [noteText, setNoteText]         = useState('');
+  const [noteSaving, setNoteSaving]     = useState(false);
   const [deleting, setDeleting]         = useState(false);
 
   const loadSaved = useCallback(async () => {
@@ -808,9 +811,14 @@ export default function BankStatement() {
                                 <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>
                                   {t.reference || '—'}
                                 </td>
-                                <td data-label="" style={{ fontSize: 12, maxWidth: 360, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                                <td data-label="" style={{ fontSize: 12, maxWidth: 360 }}>
                                   {t.rejected && <RejBadge/>}
-                                  {t.description}
+                                  <div style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{t.description}</div>
+                                  {t.note && (
+                                    <div style={{ marginTop: 3, fontSize: 11, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 10%, transparent)', borderRadius: 6, padding: '3px 8px', display: 'inline-block' }}>
+                                      📝 {t.note}
+                                    </div>
+                                  )}
                                 </td>
                                 <td data-label="مودَع" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                                   {Number(t.credit) ? fmtMoney(t.credit) : ''}
@@ -821,9 +829,13 @@ export default function BankStatement() {
                                 <td data-label="الرسوم" style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>
                                   {Number(t.fees) + Number(t.tax) > 0 ? (Number(t.fees) + Number(t.tax)).toFixed(2) : ''}
                                 </td>
-                                <td data-label="حذف">
-                                  <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
-                                    onClick={() => setConfirmDel(t)}/>
+                                <td data-label="إجراء">
+                                  <div style={{ display: 'flex', gap: 5 }}>
+                                    <button title="ملاحظة" onClick={() => { setNoteFor(t); setNoteText(t.note || ''); }}
+                                      style={{ border: `1px solid ${t.note ? 'var(--gold)' : 'var(--border2)'}`, background: t.note ? 'color-mix(in srgb, var(--gold) 14%, transparent)' : 'var(--surface)', color: t.note ? 'var(--gold)' : 'var(--muted)', borderRadius: 8, padding: '5px 7px', cursor: 'pointer', fontSize: 12 }}>📝</button>
+                                    <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
+                                      onClick={() => setConfirmDel(t)}/>
+                                  </div>
                                 </td>
                               </tr>
                             ))}
@@ -865,6 +877,30 @@ export default function BankStatement() {
               }}>
               {deleting ? 'جارٍ الحذف…' : 'تأكيد الحذف'}
             </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* ملاحظة على عملية بنكية */}
+      {noteFor && (
+        <Modal title="📝 ملاحظة على العملية" onClose={() => setNoteFor(null)} width={460}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
+            {noteFor.txn_date} · {noteFor.reference} · <span style={{ color: (Number(noteFor.debit) > 0) ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(Number(noteFor.debit) > 0 ? noteFor.debit : noteFor.credit)} ر.س</span>
+          </div>
+          <textarea value={noteText} onChange={e => setNoteText(e.target.value)} autoFocus rows={3}
+            placeholder="اكتب ملاحظتك على هذه العملية (سبب/سياق/تذكير)…"
+            style={{ width: '100%', padding: '9px 11px', borderRadius: 9, fontSize: 13, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', resize: 'vertical' }}/>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 12 }}>
+            {noteFor.note
+              ? <Btn variant="ghost" size="sm" onClick={async () => { setNoteSaving(true); try { await setBankNote(noteFor.id, ''); setSaved(prev => (prev || []).map(x => x.id === noteFor.id ? { ...x, note: null } : x)); setNoteFor(null); toast('حُذفت الملاحظة', 'success'); } catch (e) { toast(e.message, 'error'); } setNoteSaving(false); }}>حذف الملاحظة</Btn>
+              : <span/>}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn variant="ghost" onClick={() => setNoteFor(null)} disabled={noteSaving}>إلغاء</Btn>
+              <Btn variant="accent" disabled={noteSaving} icon={noteSaving ? <Spinner size={13}/> : null}
+                onClick={async () => { setNoteSaving(true); try { await setBankNote(noteFor.id, noteText); setSaved(prev => (prev || []).map(x => x.id === noteFor.id ? { ...x, note: noteText.trim() || null } : x)); setNoteFor(null); toast('حُفظت الملاحظة', 'success'); } catch (e) { toast(e.message, 'error'); } setNoteSaving(false); }}>
+                حفظ
+              </Btn>
+            </div>
           </div>
         </Modal>
       )}

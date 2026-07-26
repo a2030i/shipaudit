@@ -339,6 +339,7 @@ export function parseAlinmaFormat(rows, colMap) {
       fees:         +fees.toFixed(2),
       tax:          +tax.toFixed(2),
       feesRemoved,
+      _type:        txnType,   // داخلي: لدمج صفوف الرسوم/الضريبة في التحويل الأب
     });
   }
 
@@ -394,6 +395,39 @@ export function detectBankName(rows) {
   return 'بنك الإنماء';
 }
 
+// دمج صفوف «رسوم التحويل» و«ضريبة الرسوم» المنفصلة (SiFi) في صف التحويل الأب —
+// فالتحويل يظهر بصف واحد: مسحوب + رسومه + ضريبته. تُطابَق بالنوع + نفس الوقت
+// (دفعة واحدة). الإجمالي يبقى محفوظاً (تنتقل المبالغ لعمودي الرسوم/الضريبة).
+function feeVatKind(t) {
+  const ty = String(t._type || '').toLowerCase();
+  if (/^vat$|\bvat\b|ضريبة/.test(ty)) return 'vat';
+  if (/transfer fee|\bfee\b|رسوم/.test(ty)) return 'fee';
+  return null;
+}
+function sameGroup(a, b) {
+  if (a.datetime && b.datetime) return a.datetime === b.datetime;   // نفس الثانية = دفعة واحدة
+  return (a.date || '') === (b.date || '');
+}
+function foldSeparateFees(transactions) {
+  const num = (r) => { const n = Number(String(r || '').replace(/\D/g, '')); return Number.isFinite(n) ? n : 0; };
+  const ordered = [...transactions].sort((a, b) => num(a.reference) - num(b.reference)); // تسلسل زمني
+  const keep = [];
+  let parent = null;
+  for (const t of ordered) {
+    const kind = feeVatKind(t);
+    if (kind && parent && sameGroup(parent, t)) {
+      const amt = +Math.abs((t.debit || 0) || (t.credit || 0)).toFixed(2);
+      if (kind === 'vat') parent.tax = +((parent.tax || 0) + amt).toFixed(2);
+      else parent.fees = +((parent.fees || 0) + amt).toFixed(2);
+      parent.feesRemoved = +((parent.fees || 0) + (parent.tax || 0)).toFixed(2);
+      continue;   // يُطوى في الأب — لا يبقى صفاً مستقلاً
+    }
+    keep.push(t);
+    if (!kind && t.debit != null && t.debit !== 0) parent = t;   // آخر تحويل/سداد = الأب
+  }
+  return keep;
+}
+
 export function parseExcelFile(arrayBuffer) {
   const workbook = XLSX.read(arrayBuffer, { type: 'array' });
   const sheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -406,7 +440,10 @@ export function parseExcelFile(arrayBuffer) {
 
   const bank = detectBankName(rows);
   const summary = extractSummaryFromRows(rows, colMap.headerRow);
-  const { transactions, hiddenFees } = parseAlinmaFormat(rows, colMap);
+  const parsed = parseAlinmaFormat(rows, colMap);
+  const hiddenFees = parsed.hiddenFees;
+  // دمج صفوف الرسوم/الضريبة المنفصلة في التحويل الأب (SiFi) — صف واحد لكل تحويل.
+  const transactions = foldSeparateFees(parsed.transactions);
 
   // الفترة = نطاق تواريخ العمليات الفعلي (أوثق من ترويسة قد تُخطئ استخراج التاريخ).
   if (transactions.length) {
