@@ -141,6 +141,19 @@ function cleanNumber(cell) {
   return null;
 }
 
+// الوقت الكامل (ISO) حين يوفّره الكشف: SiFi يضع الوقت في الجزء الكسري من الرقم
+// التسلسلي. يُستخدَم لترتيب تسلسل العمليات داخل اليوم. null للتاريخ بلا وقت.
+function parseDateTimeCell(v) {
+  if (v == null || v === '') return null;
+  if (v instanceof Date) return v.toISOString();
+  if (typeof v === 'number') {
+    // كسر غير صفري = وقت فعلي؛ عدد صحيح = تاريخ فقط (لا وقت مفيد للترتيب)
+    if (Number.isInteger(v)) return null;
+    return new Date(Math.round((v - 25569) * 86400 * 1000)).toISOString();
+  }
+  return null;
+}
+
 function parseNumber(v) {
   if (v == null || v === '') return null;
   if (typeof v === 'number') return v;
@@ -265,6 +278,7 @@ export function parseAlinmaFormat(rows, colMap) {
 
     const dateRaw = colMap.dateCol != null ? row[colMap.dateCol] : null;
     const date    = parseDateCell(dateRaw);
+    const datetime = parseDateTimeCell(dateRaw);   // الوقت الكامل لترتيب التسلسل داخل اليوم
     const ref     = colMap.refCol  != null ? String(row[colMap.refCol]  ?? '').trim() : '';
     const desc    = colMap.descCol != null ? String(row[colMap.descCol] ?? '').trim() : '';
     // Banks often store debits as signed negatives (e.g. -155.25). Convert to
@@ -286,7 +300,7 @@ export function parseAlinmaFormat(rows, colMap) {
       const amt = +Math.abs((debit ?? 0) || (credit ?? 0)).toFixed(2);
       hiddenFees += amt;
       transactions.push({
-        date: date ?? '', reference: ref, description: desc || 'رسوم بنكية (بلا وصف)',
+        date: date ?? '', datetime, reference: ref, description: desc || 'رسوم بنكية (بلا وصف)',
         credit: null, debit: 0, fees: amt, tax: 0, feesRemoved: amt,
       });
       continue;
@@ -311,6 +325,7 @@ export function parseAlinmaFormat(rows, colMap) {
 
     transactions.push({
       date:         date ?? '',
+      datetime,
       reference:    ref,
       description:  desc,
       credit:       credit,

@@ -13,6 +13,12 @@ const fmtMoney = n =>
     ? '—'
     : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
+// مفتاح ترتيب تسلسل العمليات: الوقت الكامل (datetime/txn_at) وإلا التاريخ، ثم المرجع
+// تصاعدياً (مبطَّن) عند تساوي الوقت — فالأصغر مرجعاً = الأقدم. يعمل لحقول المعاينة
+// (date/datetime) والمحفوظ (txn_date/txn_at). 2026-07-27.
+const seqKey = (t) =>
+  `${t.datetime || t.txn_at || t.date || t.txn_date || ''}|${String(t.reference || '').padStart(24, '0')}`;
+
 // Carrier aliases used for description matching (extends what's in the carrier name field)
 const CARRIER_ALIASES = {
   aramex: ['أرامكس', 'ارامكس', 'aramex', 'ARAMEX', 'aramex saudi'],
@@ -96,7 +102,8 @@ export default function BankStatement() {
     if (savedType === 'debit')  list = list.filter(t => Number(t.debit) > 0);
     if (savedType === 'credit') list = list.filter(t => Number(t.credit) > 0);
     if (savedBank !== 'all')    list = list.filter(t => (t.bank || 'بنك الإنماء') === savedBank);
-    return list;
+    // ترتيب تسلسلي (الوقت ثم المرجع) — الأحدث أولاً، فالتسلسل داخل اليوم صحيح.
+    return [...list].sort((a, b) => seqKey(b).localeCompare(seqKey(a)));
   }, [saved, savedSearch, savedFrom, savedTo, savedType, savedBank]);
 
   const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all' || savedBank !== 'all');
@@ -338,8 +345,8 @@ export default function BankStatement() {
         || String(t.description).toLowerCase().includes(q)
       );
     }
-    // ترتيب بالتاريخ (الأحدث أولاً) — مثل الدفتر المحفوظ (طلب المستخدم).
-    return [...list].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+    // ترتيب تسلسلي: الوقت الكامل (SiFi) ثم المرجع تصاعدياً عند التساوي — الأحدث أولاً.
+    return [...list].sort((a, b) => seqKey(b).localeCompare(seqKey(a)));
   }, [result, search]);
 
   // ── Export ────────────────────────────────────────────────────────────────
@@ -793,6 +800,7 @@ export default function BankStatement() {
                               <tr key={t.id} style={t.rejected ? { background: 'rgba(220,38,38,.05)' } : undefined}>
                                 <td data-label="التاريخ" style={{ color: 'var(--muted)', fontSize: 11, whiteSpace: 'nowrap' }}>
                                   {t.txn_date || '—'}
+                                  {t.txn_at && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted2)', marginInlineStart: 4 }}>{String(t.txn_at).match(/[T ](\d{2}:\d{2})/)?.[1] || ''}</span>}
                                   {savedBank === 'all' && bankSummary.length > 1 && (
                                     <div style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', marginTop: 2 }}>🏦 {(t.bank || 'بنك الإنماء').replace('بنك ', '')}</div>
                                   )}

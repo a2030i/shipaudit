@@ -36,6 +36,7 @@ export async function saveBankTransactions({ transactions, summary, fileName, us
     dedup_key:   dedupKeyOf(t),
     bank,
     txn_date:    t.date || null,
+    txn_at:      t.datetime || null,
     reference:   String(t.reference ?? '').trim() || null,
     description: t.description || null,
     debit:       Number(t.debit) || 0,
@@ -88,7 +89,7 @@ export async function loadBankTransactions({ limit = 5000, bank = null } = {}) {
   while (true) {
     let q = supabase
       .from(TABLE)
-      .select('id, bank, txn_date, reference, description, debit, credit, fees, tax, source_file, period_from, period_to')
+      .select('id, bank, txn_date, txn_at, reference, description, debit, credit, fees, tax, source_file, period_from, period_to')
       .order('txn_date', { ascending: false })
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
