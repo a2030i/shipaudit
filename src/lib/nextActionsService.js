@@ -5,6 +5,7 @@ import { supabase } from './supabase.js';
 
 // وصف كل نوع إشارة — أيقونة/لون/مجموعة الإجراء (نقطة الحقيقة للعرض).
 export const NBA_META = {
+  hot_reply:  { icon: '🔥', label: 'ردّ باهتمام — عميل حارّ', color: '#F97316', group: 'تواصل' },
   sla:        { icon: '⏰', label: 'متابعة متأخرة (SLA)', color: 'var(--red)', group: 'متابعة' },
   reply:      { icon: '↩️', label: 'ردّ لم يُتابَع', color: '#0EA5E9', group: 'تواصل' },
   wallet_neg: { icon: '👛', label: 'محفظة سالبة', color: 'var(--red)', group: 'تحصيل' },
