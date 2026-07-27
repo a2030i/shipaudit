@@ -69,11 +69,26 @@ export async function loadPlatformCarriers() {
     const cost = extractBaseCost(cr);
     const m = pc.markup != null ? Number(pc.markup) : markup;
     const costPrice = cost.base != null ? Number((cost.base + m).toFixed(2)) : null;
+    const sellPrice = pc.sell_price != null ? Number(pc.sell_price) : null;
+    // أسعار المنافسين + أفضل سعر (الأقل بين المنصّات الأربع) واسم صاحبه
+    const plat = [
+      { key: 'lamha', label: 'لمحة',  v: sellPrice },
+      { key: 'auto',  label: 'أوتو',  v: pc.sell_auto  != null ? Number(pc.sell_auto)  : null },
+      { key: 'torod', label: 'طرود',  v: pc.sell_torod != null ? Number(pc.sell_torod) : null },
+      { key: 'trek',  label: 'تريك',  v: pc.sell_trek  != null ? Number(pc.sell_trek)  : null },
+    ].filter(x => x.v != null && Number.isFinite(x.v));
+    const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
       id: cr.id, name: cr.name,
       isActive: !!pc.is_active,
       freeReturn: !!pc.free_return,
-      sellPrice: pc.sell_price != null ? Number(pc.sell_price) : null,
+      sellPrice,
+      sellAuto:  pc.sell_auto  != null ? Number(pc.sell_auto)  : null,
+      sellTorod: pc.sell_torod != null ? Number(pc.sell_torod) : null,
+      sellTrek:  pc.sell_trek  != null ? Number(pc.sell_trek)  : null,
+      bestPrice: best ? best.v : null,
+      bestPlatform: best ? best.label : null,
+      bestIsLamha: best ? best.key === 'lamha' : false,
       markup: m,
       markupOverride: pc.markup != null ? Number(pc.markup) : null,
       base: cost.base,

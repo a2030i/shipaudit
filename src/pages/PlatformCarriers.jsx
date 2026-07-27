@@ -18,7 +18,7 @@ export default function PlatformCarriers({ isActive = true }) {
   const [markup, setMarkup] = useState(2);
   const [markupInput, setMarkupInput] = useState('2');
   const [savingMk, setSavingMk] = useState(false);
-  const [sellDraft, setSellDraft] = useState({});   // carrierId → نص سعر البيع قيد التحرير
+  const [priceDraft, setPriceDraft] = useState({});   // `${carrierId}:${platform}` → نص السعر قيد التحرير
 
   const load = useCallback(async () => {
     setRows(null);
@@ -58,13 +58,37 @@ export default function PlatformCarriers({ isActive = true }) {
     setSavingMk(false);
   };
 
-  const saveSell = async (id) => {
-    const raw = sellDraft[id];
+  // حفظ سعر منصّة واحدة (لمحة/أوتو/طرود/تريك) — تحديث متفائل للحقل الصحيح.
+  const PRICE_COLS = { lamha: ['sell_price', 'sellPrice'], auto: ['sell_auto', 'sellAuto'], torod: ['sell_torod', 'sellTorod'], trek: ['sell_trek', 'sellTrek'] };
+  const savePrice = async (id, plat) => {
+    const k = `${id}:${plat}`;
+    const raw = priceDraft[k];
     const v = raw === '' || raw == null ? null : Number(raw);
-    if (v != null && !Number.isFinite(v)) { toast('سعر بيع غير صالح', 'error'); return; }
-    await patch(id, { sell_price: v });
-    setSellDraft(d => { const n = { ...d }; delete n[id]; return n; });
-    toast('حُفظ سعر البيع ✓', 'success');
+    if (v != null && !Number.isFinite(v)) { toast('سعر غير صالح', 'error'); return; }
+    const [col, rowKey] = PRICE_COLS[plat];
+    setRows(prev => prev.map(r => r.id === id ? { ...r, [rowKey]: v } : r));
+    setPriceDraft(d => { const n = { ...d }; delete n[k]; return n; });
+    try { await savePlatformCarrier(id, { [col]: v }, user?.id); }
+    catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
+  };
+
+  // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود/تريك)
+  const priceCellNode = (r, plat) => {
+    const rowKey = PRICE_COLS[plat][1];
+    const cur = r[rowKey];
+    const k = `${r.id}:${plat}`;
+    const dirty = priceDraft[k] != null && priceDraft[k] !== String(cur ?? '');
+    if (!canEdit) return <span style={{ fontFamily: 'var(--font-mono)' }}>{cur != null ? fmt2(cur) : '—'}</span>;
+    return (
+      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+        <input type="number" step="0.5" placeholder="—"
+          value={priceDraft[k] ?? (cur ?? '')}
+          onChange={e => setPriceDraft(d => ({ ...d, [k]: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter') savePrice(r.id, plat); }}
+          style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}/>
+        {dirty && <button onClick={() => savePrice(r.id, plat)} title="حفظ" style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 6, cursor: 'pointer', padding: '4px 6px', display: 'flex' }}><Save size={12}/></button>}
+      </span>
+    );
   };
 
   const exportXlsx = async () => {
@@ -72,18 +96,22 @@ export default function PlatformCarriers({ isActive = true }) {
       const XLSX = await import('xlsx');
       const { rtl } = await import('../lib/xlsxRtl.js');
       const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
-      const data = sorted.filter(r => r.isActive).map(r => ({
-        'الشركة': r.name,
-        'التكلفة الأساسية (عقد)': r.base ?? '',
-        'وقود %': r.fuelPct ? (r.fuelPct * 100) : '',
-        'الهامش': r.markup,
-        'سعر التكلفة': r.costPrice ?? '',
-        'سعر البيع': r.sellPrice ?? '',
-        'الربح': (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '',
-        'الربح بعد الوقود': (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice - ((r.base || 0) * (r.fuelPct || 0))).toFixed(2)) : '',
-        'رجيع مجاني': r.freeReturn ? 'نعم' : 'لا',
-        'العقد': r.hasContract ? (r.contractLabel || 'موجود') : 'بلا عقد',
-      }));
+      const data = sorted.filter(r => r.isActive).map(r => {
+        const profit = (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '';
+        const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null);
+        const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+        return {
+          'اسم شركة الشحن': r.name,
+          'سعر التكلفة في لمحة': r.costPrice ?? '',
+          'ربح لمحة': profit,
+          'البيع في لمحة': r.sellPrice ?? '',
+          'البيع في أوتو': r.sellAuto ?? '',
+          'البيع في طرود': r.sellTorod ?? '',
+          'البيع في تريك': r.sellTrek ?? '',
+          'أفضل سعر': best ? best[1] : '',
+          'أرخص منصّة': best ? best[0] : '',
+        };
+      });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), 'شركات المنصّة');
       await persistAndDownloadExport({ wb: rtl(wb), fileName: `شركات-المنصة-المفعلة-${new Date().toISOString().slice(0, 10)}.xlsx`,
@@ -96,7 +124,7 @@ export default function PlatformCarriers({ isActive = true }) {
     <Pad>
       <PageHeader icon={<Truck size={22}/>} iconColor="#3B82F6"
         title="شركات المنصّة المفعّلة"
-        subtitle="الناقلون الظاهرون للعملاء الآن — سعر التكلفة = تكلفة العقد + هامش قياسي. سعر البيع يُضاف لاحقاً."
+        subtitle="مقارنة أسعار البيع: لمحة مقابل أوتو · طرود · تريك — مع تكلفة لمحة (من العقد + هامش) وربحها، و«أفضل سعر» يبرز الأرخص."
         meta={rows ? `${activeCount} مفعّلة${noContract ? ` · ${noContract} بلا عقد` : ''}` : null}
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
@@ -119,66 +147,50 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['مفعّلة', 'الشركة', 'التكلفة الأساسية', 'التفاصيل', 'الهامش', 'سعر التكلفة', 'سعر البيع', 'الربح', 'رجيع مجاني'].map(h => <th key={h} style={th}>{h}</th>)}
+                  {['', 'اسم شركة الشحن', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {sorted.map(r => {
-                    // الربح = البيع − التكلفة. للناقلين ذوي الوقود (نتحمّله للناقل) نعرض
-                    // «بعد الوقود» = الربح − (الأساس × الوقود%) لصورة أدق.
                     const profit = (r.sellPrice != null && r.costPrice != null) ? r.sellPrice - r.costPrice : null;
                     const fuelCost = (r.base != null && r.fuelPct) ? r.base * r.fuelPct : 0;
                     const profitNet = profit != null ? profit - fuelCost : null;
                     const pColor = profit == null ? 'var(--muted2)' : profit <= 0 ? 'var(--red)' : profit < 1.5 ? 'var(--gold)' : 'var(--green)';
+                    // أفضل سعر = الأقل بين المنصّات الأربع (يُحسب حيّاً من الصف)
+                    const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null && Number.isFinite(v));
+                    const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+                    const bestIsLamha = best && best[0] === 'لمحة';
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
-                      <td data-label="مفعّلة" style={cell}>
-                        <input type="checkbox" checked={r.isActive} disabled={!canEdit}
-                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 16, height: 16 }}/>
+                      <td data-label="مفعّلة" style={{ ...cell, width: 30 }}>
+                        <input type="checkbox" checked={r.isActive} disabled={!canEdit} title="مفعّلة"
+                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 15, height: 15 }}/>
                       </td>
-                      <td data-label="الشركة" style={{ ...cell, fontWeight: 700 }}>
+                      <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.name}
                         {!r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
-                      <td data-label="التكلفة الأساسية" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
-                        {r.base != null ? `${fmt2(r.base)} ر.س` : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                      <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
+                        {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
                       </td>
-                      <td data-label="التفاصيل" style={{ ...cell, fontSize: 11, color: 'var(--muted)', whiteSpace: 'normal' }}>
-                        {r.base != null && [
-                          r.upTo ? `حتى ${r.upTo}كغ` : 'وزن ثابت',
-                          r.excessPerKg ? `+${r.excessPerKg}/كغ` : null,
-                          r.fuelPct ? `وقود ${(r.fuelPct * 100).toFixed(1)}%` : null,
-                          r.inclusiveVat ? 'شامل الضريبة' : null,
-                        ].filter(Boolean).join(' · ')}
-                      </td>
-                      <td data-label="الهامش" style={{ ...cell, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>+{fmt2(r.markup)}</td>
-                      <td data-label="سعر التكلفة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
-                        {r.costPrice != null ? `${fmt2(r.costPrice)} ر.س` : '—'}
-                      </td>
-                      <td data-label="سعر البيع" style={cell} onClick={e => e.stopPropagation()}>
-                        {canEdit ? (
-                          <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }}>
-                            <input type="number" step="0.5" placeholder="—"
-                              value={sellDraft[r.id] ?? (r.sellPrice ?? '')}
-                              onChange={e => setSellDraft(d => ({ ...d, [r.id]: e.target.value }))}
-                              onKeyDown={e => { if (e.key === 'Enter') saveSell(r.id); }}
-                              style={{ width: 76, padding: '5px 8px', borderRadius: 7, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}/>
-                            {sellDraft[r.id] != null && sellDraft[r.id] !== String(r.sellPrice ?? '') && (
-                              <button onClick={() => saveSell(r.id)} title="حفظ" style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 6, cursor: 'pointer', padding: '4px 6px', display: 'flex' }}><Save size={12}/></button>
-                            )}
-                          </span>
-                        ) : (r.sellPrice != null ? `${fmt2(r.sellPrice)} ر.س` : '—')}
-                      </td>
-                      <td data-label="الربح" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
+                      <td data-label="ربح لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
                         {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
                         {profit != null && fuelCost > 0 && (
-                          <div style={{ fontSize: 9.5, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
-                            بعد الوقود {profitNet > 0 ? '+' : ''}{fmt2(profitNet)}
-                          </div>
+                          <div style={{ fontSize: 9.5, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>بعد الوقود {profitNet > 0 ? '+' : ''}{fmt2(profitNet)}</div>
                         )}
                       </td>
-                      <td data-label="رجيع مجاني" style={cell}>
-                        <input type="checkbox" checked={r.freeReturn} disabled={!canEdit}
-                          onChange={e => patch(r.id, { free_return: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 16, height: 16 }}/>
+                      <td data-label="البيع في لمحة" style={cell}>{priceCellNode(r, 'lamha')}</td>
+                      <td data-label="البيع في أوتو" style={cell}>{priceCellNode(r, 'auto')}</td>
+                      <td data-label="البيع في طرود" style={cell}>{priceCellNode(r, 'torod')}</td>
+                      <td data-label="البيع في تريك" style={cell}>{priceCellNode(r, 'trek')}</td>
+                      <td data-label="أفضل سعر" style={{ ...cell, fontWeight: 800 }}>
+                        {best ? (
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                            <span style={{ fontFamily: 'var(--font-mono)' }}>{fmt2(best[1])}</span>
+                            <span style={{ fontSize: 10, fontWeight: 700, color: bestIsLamha ? 'var(--green)' : 'var(--gold)' }}>
+                              {bestIsLamha ? '🟢 لمحة الأرخص' : `🟡 ${best[0]} أرخص`}
+                            </span>
+                          </span>
+                        ) : '—'}
                       </td>
                     </tr>
                   );})}
@@ -194,7 +206,7 @@ export default function PlatformCarriers({ isActive = true }) {
         ) : null}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted2)', marginTop: 8 }}>
-        سعر البيع فارغ الآن — سيُملأ من إكسل الأسعار اللايف لاحقاً. التكلفة الأساسية تتبع العقد تلقائياً.
+        أسعار أوتو · طرود · تريك تُملأ عند توفّرها — «أفضل سعر» يأخذ الأقل بين المنصّات الأربع تلقائياً. سعر التكلفة يتبع العقد.
       </div>
     </Pad>
   );
