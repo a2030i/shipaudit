@@ -1,30 +1,30 @@
-// Lamha brand logo.
+// شعار لمحة الرسمي (LAMHA LOGO GUIDE — 2026-07-27).
 //
-// Drop the official artwork into `public/`:
-//   • public/lamha-logo.png   — full horizontal logo (wordmark + mark)
-//   • public/lamha-mark.png   — just the hexagonal mark (used when collapsed)
+// الأصول في `public/` (مستخرجة من ملفات الهوية الرسمية):
+//   • lamha-icon.png        — الأيقونة (سداسية بخطوط سرعة، أزرق #2B68DE + تركواز #31D5E1)
+//   • lamha-logo-color.png  — الشعار الأفقي الكامل الملوّن (للخلفيات الفاتحة)
+//   • lamha-logo-white.png  — الشعار الأفقي الأبيض (للسايدبار الكحلي #333062 وكل الداكن)
 //
-// If a file is missing the component silently falls back to an inline
-// SVG approximation so the UI never breaks. Replace the PNGs with the
-// official artwork to get a pixel-perfect logo.
+// عند فقدان ملف يسقط المكوّن لرسم SVG بألوان الهوية الرسمية فلا تنكسر الواجهة.
 
 import { useState } from 'react';
 
-// Official artwork served from public/lamha-logo.png
-// (collapsed sidebar falls back to the SVG mark below).
-const FULL_LOGO_SRC = '/lamha-logo.png';
-const MARK_SRC      = '/lamha-mark.png';
+const MARK_SRC       = '/lamha-icon.png';
+const LOGO_COLOR_SRC = '/lamha-logo-color.png';
+const LOGO_WHITE_SRC = '/lamha-logo-white.png';
 
-// SVG mark in the official Lamha colors (navy + sky) so it reads on the
-// white sidebar when collapsed and the PNG mark isn't provided.
+// أيقونة احتياطية بألوان الهوية الرسمية (سداسيتان متداخلتان + خطوط سرعة)
 function FallbackMark({ size }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 64 64" fill="none" aria-label="Lamha">
-      <path d="M32 6 L10 18 L10 46 L32 58 Z" fill="#1B3B6F"/>
-      <path d="M32 6 L54 18 L54 46 L32 58 Z" fill="#3B9AD9"/>
-      <path d="M32 14 L46 24 L46 40 L32 50 L18 40 L18 24 Z"
-            stroke="#fff" strokeOpacity=".25" strokeWidth="1.4" fill="none"/>
-      <circle cx="32" cy="32" r="3" fill="#fff" fillOpacity=".3"/>
+    <svg width={size} height={size} viewBox="0 0 64 48" fill="none" aria-label="Lamha">
+      {/* خطوط السرعة */}
+      <line x1="2"  y1="12" x2="18" y2="12" stroke="#2B68DE" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="6"  y1="24" x2="16" y2="24" stroke="#2B68DE" strokeWidth="4.5" strokeLinecap="round"/>
+      <line x1="2"  y1="36" x2="18" y2="36" stroke="#2B68DE" strokeWidth="4.5" strokeLinecap="round"/>
+      {/* السداسية الخارجية (تركواز) */}
+      <path d="M38 4 L54 4 L62 24 L54 44 L38 44 L30 24 Z" stroke="#31D5E1" strokeWidth="4.5" strokeLinejoin="round" fill="none"/>
+      {/* السداسية الداخلية (أزرق) */}
+      <path d="M26 4 L40 24 L26 44 L20 44 L20 4 Z" stroke="#2B68DE" strokeWidth="4.5" strokeLinejoin="round" fill="none"/>
     </svg>
   );
 }
@@ -44,16 +44,17 @@ export function LamhaMark({ size = 32 }) {
   );
 }
 
-export function LamhaLogo({ height = 32 }) {
+// الشعار الأفقي الكامل — variant='color' للخلفيات الفاتحة (الافتراضي)،
+// variant='white' للكحلي/الداكن (السايدبار، رؤوس البوابة الداكنة).
+export function LamhaLogo({ height = 32, variant = 'color' }) {
   const [broken, setBroken] = useState(false);
 
   if (broken) {
-    // Inline fallback wordmark + mark
     return (
       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, lineHeight: 1 }}>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          <span style={{ fontFamily: 'var(--font-sans)', fontSize: height * 0.78, fontWeight: 800, color: 'var(--brand-navy)', letterSpacing: '-.5px', lineHeight: 1 }}>لمحة</span>
-          <span style={{ fontFamily: 'var(--font-mono)', fontSize: height * 0.32, color: 'var(--brand-teal)', letterSpacing: 3, fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>LAMHA</span>
+          <span style={{ fontFamily: 'var(--font-sans)', fontSize: height * 0.78, fontWeight: 800, color: variant === 'white' ? '#FFFFFF' : 'var(--brand-navy)', letterSpacing: '-.5px', lineHeight: 1 }}>لمحة</span>
+          <span style={{ fontFamily: 'var(--font-mono)', fontSize: height * 0.32, color: variant === 'white' ? 'rgba(255,255,255,.75)' : 'var(--brand-teal-2)', letterSpacing: 3, fontWeight: 600, textTransform: 'uppercase', lineHeight: 1 }}>LAMHA</span>
         </div>
         <FallbackMark size={height + 4}/>
       </div>
@@ -62,14 +63,11 @@ export function LamhaLogo({ height = 32 }) {
 
   return (
     <img
-      src={FULL_LOGO_SRC}
+      src={variant === 'white' ? LOGO_WHITE_SRC : LOGO_COLOR_SRC}
       alt="Lamha"
       height={height}
       onError={() => setBroken(true)}
-      // mixBlendMode 'multiply' melts the logo's light background into the
-      // sidebar so no box shows around the artwork — kept on regardless of
-      // the sidebar shade.
-      style={{ display: 'block', height, width: 'auto', objectFit: 'contain', mixBlendMode: 'multiply' }}
+      style={{ display: 'block', height, width: 'auto', objectFit: 'contain' }}
     />
   );
 }

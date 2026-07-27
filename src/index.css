@@ -13,45 +13,48 @@
    Teal  #2DD4BF  – icon / accent
 ══════════════════════════════════════════════ */
 :root {
-  /* ── Brand constants (Lamha logo: deep navy text + sky-blue icon) ─────── */
-  --brand-navy:      #1B3B6F;   /* «لمحة» navy */
-  --brand-navy-2:    #15406E;
-  --brand-navy-3:    #102A4F;
-  --brand-teal:      #3B9AD9;   /* icon sky-blue (var name kept for reuse) */
-  --brand-teal-2:    #2477C9;   /* mid azure */
-  --brand-teal-3:    #7FC1EC;   /* light sky */
-  --brand-gradient:  linear-gradient(135deg, #1B3B6F 0%, #3B9AD9 130%);
-  --brand-gradient-soft: linear-gradient(135deg, rgba(27,59,111,.88) 0%, rgba(59,154,217,.65) 140%);
+  /* ── ثوابت الهوية الرسمية (LAMHA LOGO GUIDE — 2026-07-27) ──────────────
+     كحلي لمحة #333062 (الشعار النصي) · أزرق ملكي #2B68DE (السداسية الداخلية
+     وخطوط السرعة) · تركواز #31D5E1 (السداسية الخارجية) · أبيض. هذه الأربعة
+     هي الهوية — كل توكنات الثيم تُشتق منها. */
+  --brand-navy:      #333062;   /* «لمحة» — لون الشعار النصي الرسمي */
+  --brand-navy-2:    #2A2852;
+  --brand-navy-3:    #201E40;
+  --brand-teal:      #31D5E1;   /* التركواز الرسمي (السداسية الخارجية) */
+  --brand-teal-2:    #2B68DE;   /* الأزرق الملكي الرسمي */
+  --brand-teal-3:    #8FDDE6;   /* تركواز فاتح مشتق */
+  --brand-gradient:  linear-gradient(135deg, #333062 0%, #2B68DE 100%);
+  --brand-gradient-soft: linear-gradient(135deg, rgba(51,48,98,.9) 0%, rgba(43,104,222,.65) 140%);
 }
 
 /* ── DARK THEME (default) ──────────────────────────────────────────────── */
 :root {
-  /* ── DARK THEME (design-v2 2026-07-15 — «Konhub» direction معتمدة من المستخدم):
-     أخضر-فحمي بدل النيلي، برّاند ليموني للتعبئة فقط (--brand + --brand-ink)،
-     و--accent أخضر مقروء للنصوص/الروابط. المعاينة المرجعية: direction-mock-v1 ── */
-  --bg:        #131712;
-  --bg2:       #171D16;
-  --surface:   #1B211A;
-  --surface2:  #222A21;
-  --card:      #1B211A;
-  --card2:     #232B22;
-  --sidebar:   #0B0F0B;
-  --sidebar2:  #141A14;
+  /* ── الثيم الداكن — الهوية الرسمية (2026-07-27): عائلة كحلي لمحة #333062
+     مظلمة، برّاند = الأزرق الملكي #2B68DE بحبر أبيض، والتركواز #31D5E1
+     إشارة «النبض الحي» (accent3). ── */
+  --bg:        #0F1123;
+  --bg2:       #12142B;
+  --surface:   #171A36;
+  --surface2:  #1E2244;
+  --card:      #171A36;
+  --card2:     #202550;
+  --sidebar:   #0B0D1F;
+  --sidebar2:  #14173A;
 
-  --border:    #2A322A;
-  --border2:   #39423A;
-  --border3:   #4A554B;
+  --border:    #262B52;
+  --border2:   #333965;
+  --border3:   #434A7E;
 
-  /* --brand = تعبئة ليمونية (أزرار رئيسية/العنصر النشط) مع حبرها الداكن.
-     لا تستعمل --brand لوناً لنص على أرضية فاتحة — لذلك --accent منفصل ومقروء. */
-  --brand:     #C9F24B;
-  --brand-ink: #161A06;
+  /* --brand = تعبئة زرقاء ملكية (أزرار رئيسية/العنصر النشط) بحبر أبيض.
+     --accent أزرق فاتح مقروء للنصوص/الروابط على الداكن. */
+  --brand:     #2B68DE;
+  --brand-ink: #FFFFFF;
 
-  --accent:    #B9DD3A;
-  --accent2:   #9CBF27;
-  --accent3:   #DFFF7A;
-  --accent-dim:  rgba(201,242,75,.12);
-  --accent-glow: rgba(201,242,75,.22);
+  --accent:    #8FA8F5;
+  --accent2:   #6C8DF0;
+  --accent3:   #31D5E1;
+  --accent-dim:  rgba(43,104,222,.16);
+  --accent-glow: rgba(49,213,225,.25);
 
   --green:     #4ADE80;
   --green2:    #22C55E;
@@ -62,23 +65,23 @@
   --purple:    #C4B5FD;
   --purple2:   #8B5CF6;
   --warn:      #FB923C;
-  --blue:      #60A5FA;
+  --blue:      #6FA0FF;
 
-  --text:      #ECF0EA;
-  --text2:     #C6CEC4;
-  --muted:     #8B9589;
-  --muted2:    #5E6960;
-  --muted3:    #39423A;
+  --text:      #EAECFA;
+  --text2:     #C6CBEA;
+  --muted:     #8F95BE;
+  --muted2:    #62688F;
+  --muted3:    #333965;
 
-  --nav-text:        #A9B3A8;
+  --nav-text:        #A9AFD8;
   --nav-text-hover:  #FFFFFF;
   --nav-active-bg:   var(--brand);
   --nav-active-text: var(--brand-ink);
   --nav-active-border: transparent;
   --nav-hover-bg:    rgba(255,255,255,.06);
-  --nav-label-color: #5F6B5F;
-  --nav-hint-color:  rgba(169,179,168,.55);
-  --nav-divider:     rgba(255,255,255,.07);
+  --nav-label-color: #666D9E;
+  --nav-hint-color:  rgba(169,175,216,.55);
+  --nav-divider:     rgba(255,255,255,.08);
 
   /* IBM Plex Mono غير مستضاف بعد — فالسلسلة تسقط لخطوط النظام الحديثة
      (Cascadia/Consolas على ويندوز، SF Mono على ماك) بدل Courier New القديم. */
@@ -120,65 +123,65 @@
 /* Light theme — EXACT Lamha internal-system tokens, extracted from
    affiliate.lamha.sa CSS (main-blue #1447E6, off-white #FAFAFA sidebar,
    #FFFFFF cards, #E5E5E5 borders, #737373 muted, 10px radius). */
-/* ── LIGHT THEME (الافتراضي) — design-v2 «Konhub» direction:
-   ورق فاتح بميل أخضر رمادي، بطاقات بيضاء، **سايدبار داكن دائماً** (بصمة
-   التصميم) بعنصر نشط = حبّة ليمونية بحبر داكن. --accent أخضر-زيتوني مقروء
-   للنصوص/الروابط؛ الليموني الساطع = --brand للتعبئة فقط. ── */
+/* ── LIGHT THEME (الافتراضي) — الهوية الرسمية (LAMHA LOGO GUIDE 2026-07-27):
+   لوحة مصرفية باردة بميل أزرق، بطاقات بيضاء، **السايدبار = كحلي لمحة #333062**
+   (لون الشعار — العلامة تسكن المنتج)، العنصر النشط = حبّة زرقاء ملكية #2B68DE
+   بحبر أبيض، والتركواز #31D5E1 إشارة النبض الحي (accent3). ── */
 [data-theme="light"] {
-  --bg:        #F5F7F4;   /* ورق بميل أخضر خافت */
-  --bg2:       #ECEFEA;
+  --bg:        #F5F7FB;   /* لوحة باردة بميل أزرق */
+  --bg2:       #ECF0F8;
   --surface:   #FFFFFF;   /* البطاقات */
-  --surface2:  #F3F6F2;
+  --surface2:  #F1F4FA;
   --card:      #FFFFFF;
-  --card2:     #F3F6F2;
-  --sidebar:   #101410;   /* داكن دائماً — التباين هو الهوية */
-  --sidebar2:  #1A211A;
+  --card2:     #F1F4FA;
+  --sidebar:   #333062;   /* كحلي لمحة الرسمي — بصمة الهوية */
+  --sidebar2:  #3C3973;
 
-  --border:    #E4E9E2;
-  --border2:   #D7DED5;
-  --border3:   #C3CDC1;
+  --border:    #E4E8F2;
+  --border2:   #D5DBEA;
+  --border3:   #BFC7DE;
 
-  --brand:     #C9F24B;
-  --brand-ink: #161A06;
+  --brand:     #2B68DE;
+  --brand-ink: #FFFFFF;
 
-  --accent:    #567C00;   /* زيتوني — نفس عائلة الليموني لكن مقروء على الأبيض */
-  --accent2:   #46650A;
-  --accent3:   #C9F24B;
-  --accent-dim:  rgba(201,242,75,.22);
-  --accent-glow: rgba(201,242,75,.38);
+  --accent:    #2456C9;   /* أزرق أدكن قليلاً — AA للنصوص على الأبيض */
+  --accent2:   #1B449F;
+  --accent3:   #31D5E1;
+  --accent-dim:  rgba(43,104,222,.10);
+  --accent-glow: rgba(43,104,222,.20);
 
-  --green:     #1F9D5B;
-  --green2:    #157A45;
-  --red:       #DC4C4C;
+  --green:     #16A34A;
+  --green2:    #15803D;
+  --red:       #DC2626;
   --red2:      #B91C1C;
-  --gold:      #D9930B;
+  --gold:      #D97706;
   --gold2:     #B45309;
-  --purple:    #8B5CF6;
+  --purple:    #7C3AED;
   --purple2:   #6D28D9;
-  --warn:      #EA6A12;
-  --blue:      #3E7BD6;
+  --warn:      #EA580C;
+  --blue:      #2B68DE;
 
-  --text:      #171C17;
-  --text2:     #3E463E;
-  --muted:     #778076;
-  --muted2:    #9AA399;
-  --muted3:    #C9D1C7;
+  --text:      #262550;   /* حبر من عائلة كحلي الشعار */
+  --text2:     #45446E;
+  --muted:     #6C7195;
+  --muted2:    #9AA0BD;
+  --muted3:    #D5DBEA;
 
-  /* السايدبار داكن حتى في الفاتح — توكناته ثابتة عبر الثيمين */
-  --nav-text:        #A9B3A8;
+  /* السايدبار كحلي حتى في الفاتح — توكناته ثابتة عبر الثيمين */
+  --nav-text:        #B9BEE3;
   --nav-text-hover:  #FFFFFF;
   --nav-active-bg:   var(--brand);
   --nav-active-text: var(--brand-ink);
   --nav-active-border: transparent;
-  --nav-hover-bg:    rgba(255,255,255,.07);
-  --nav-label-color: #5F6B5F;
-  --nav-hint-color:  rgba(169,179,168,.55);
-  --nav-divider:     rgba(255,255,255,.07);
+  --nav-hover-bg:    rgba(255,255,255,.08);
+  --nav-label-color: #8287BF;
+  --nav-hint-color:  rgba(185,190,227,.55);
+  --nav-divider:     rgba(255,255,255,.09);
 
-  --shadow-sm: 0 1px 2px rgba(21,28,18,.05);
-  --shadow-md: 0 1px 3px rgba(21,28,18,.08), 0 4px 16px rgba(21,28,18,.06);
-  --shadow-lg: 0 10px 15px -3px rgba(21,28,18,.10), 0 4px 6px -4px rgba(21,28,18,.10);
-  --shadow-xl: 0 20px 25px -5px rgba(21,28,18,.10), 0 8px 10px -6px rgba(21,28,18,.10);
+  --shadow-sm: 0 1px 2px rgba(22,34,74,.06);
+  --shadow-md: 0 1px 3px rgba(22,34,74,.07), 0 4px 16px rgba(22,34,74,.06);
+  --shadow-lg: 0 10px 15px -3px rgba(22,34,74,.10), 0 4px 6px -4px rgba(22,34,74,.08);
+  --shadow-xl: 0 20px 25px -5px rgba(22,34,74,.12), 0 8px 10px -6px rgba(22,34,74,.08);
 }
 
 html, body { height: 100%; overflow: hidden; }
@@ -929,9 +932,10 @@ button:active { transform: scale(.97); }
 }
 
 body {
+  /* توهّج أزرق خافت أعلى اليمين (الهوية) فوق أرضية الثيم — يعمل في الثيمين */
   background:
-    radial-gradient(circle at top right, rgba(37,99,235,.08), transparent 28rem),
-    linear-gradient(180deg, #F9FAFB 0%, var(--bg) 44%, #EEF2F7 100%);
+    radial-gradient(circle at top right, var(--accent-dim), transparent 28rem),
+    var(--bg);
 }
 
 .app-layout {
@@ -1076,71 +1080,72 @@ tr:hover td {
 /* design-v2 (2026-07-15، «Konhub» direction — معتمدة): هذا البلوك اللاحق هو
    الساري (يتغلّب على بلوك الفاتح الأول أعلاه). ورق بميل أخضر، بطاقات بيضاء،
    **سايدبار داكن دائماً** بعنصر نشط ليموني، و--accent زيتوني مقروء. */
+/* ── البلوك الساري (§1.33: اللاحق يفوز) — الهوية الرسمية 2026-07-27 ── */
 [data-theme="light"] {
-  --bg:        #F5F7F4;
-  --bg2:       #ECEFEA;
+  --bg:        #F5F7FB;
+  --bg2:       #ECF0F8;
   --surface:   #FFFFFF;
-  --surface2:  #F3F6F2;
+  --surface2:  #F1F4FA;
   --card:      #FFFFFF;
-  --card2:     #F3F6F2;
-  --sidebar:   #101410;
-  --sidebar2:  #171D16;
+  --card2:     #F1F4FA;
+  --sidebar:   #333062;   /* كحلي لمحة الرسمي */
+  --sidebar2:  #3C3973;
 
-  --border:    #E4E9E2;
-  --border2:   #D7DED5;
-  --border3:   #C3CDC1;
+  --border:    #E4E8F2;
+  --border2:   #D5DBEA;
+  --border3:   #BFC7DE;
 
-  --brand:     #C9F24B;
-  --brand-ink: #161A06;
+  --brand:     #2B68DE;
+  --brand-ink: #FFFFFF;
 
-  --accent:    #567C00;
-  --accent2:   #46650A;
-  --accent3:   #C9F24B;
-  --accent-dim:  rgba(201,242,75,.22);
-  --accent-glow: rgba(201,242,75,.38);
+  --accent:    #2456C9;
+  --accent2:   #1B449F;
+  --accent3:   #31D5E1;
+  --accent-dim:  rgba(43,104,222,.10);
+  --accent-glow: rgba(43,104,222,.20);
 
-  --green:     #1F9D5B;
-  --green2:    #157A45;
-  --red:       #DC4C4C;
+  --green:     #16A34A;
+  --green2:    #15803D;
+  --red:       #DC2626;
   --red2:      #B91C1C;
-  --gold:      #D9930B;
+  --gold:      #D97706;
   --gold2:     #B45309;
-  --purple:    #8B5CF6;
+  --purple:    #7C3AED;
   --purple2:   #6D28D9;
-  --warn:      #EA6A12;
-  --blue:      #3E7BD6;
+  --warn:      #EA580C;
+  --blue:      #2B68DE;
 
-  --text:      #171C17;
-  --text2:     #3E463E;
-  --muted:     #778076;
-  --muted2:    #9AA399;
-  --muted3:    #C9D1C7;
+  --text:      #262550;
+  --text2:     #45446E;
+  --muted:     #6C7195;
+  --muted2:    #9AA0BD;
+  --muted3:    #D5DBEA;
 
-  /* السايدبار داكن في الثيمين — توكناته موحّدة */
-  --nav-text:        #A9B3A8;
+  /* السايدبار كحلي في الثيمين — توكناته موحّدة */
+  --nav-text:        #B9BEE3;
   --nav-text-hover:  #FFFFFF;
   --nav-active-bg:   var(--brand);
   --nav-active-text: var(--brand-ink);
   --nav-active-border: transparent;
-  --nav-hover-bg:    rgba(255,255,255,.07);
-  --nav-label-color: #5F6B5F;
-  --nav-hint-color:  rgba(169,179,168,.55);
-  --nav-divider:     rgba(255,255,255,.07);
+  --nav-hover-bg:    rgba(255,255,255,.08);
+  --nav-label-color: #8287BF;
+  --nav-hint-color:  rgba(185,190,227,.55);
+  --nav-divider:     rgba(255,255,255,.09);
 
   --sidebar-brand-text: #FFFFFF;
-  --sidebar-brand-muted: #A9B3A8;
+  --sidebar-brand-muted: #B9BEE3;
   --sidebar-logo-tile-bg: rgba(255,255,255,.95);
-  --sidebar-logo-shadow: 0 8px 20px rgba(0,0,0,.35);
-  --sidebar-user-bg: rgba(255,255,255,.05);
-  --sidebar-user-border: rgba(255,255,255,.1);
-  --sidebar-logout-bg: rgba(255,255,255,.06);
-  --sidebar-logout-border: rgba(255,255,255,.12);
-  --sidebar-logout-color: #A9B3A8;
+  --sidebar-logo-shadow: 0 8px 20px rgba(20,18,50,.35);
+  --sidebar-user-bg: rgba(255,255,255,.06);
+  --sidebar-user-border: rgba(255,255,255,.12);
+  --sidebar-logout-bg: rgba(255,255,255,.07);
+  --sidebar-logout-border: rgba(255,255,255,.14);
+  --sidebar-logout-color: #B9BEE3;
 
-  --shadow-sm: 0 1px 2px rgba(21,28,18,.05);
-  --shadow-md: 0 1px 3px rgba(21,28,18,.08), 0 4px 16px rgba(21,28,18,.06);
-  --shadow-lg: 0 10px 15px -3px rgba(21,28,18,.10), 0 4px 6px -4px rgba(21,28,18,.10);
-  --shadow-xl: 0 20px 25px -5px rgba(21,28,18,.10), 0 8px 10px -6px rgba(21,28,18,.10);
+  --shadow-sm: 0 1px 2px rgba(22,34,74,.06);
+  --shadow-md: 0 1px 3px rgba(22,34,74,.07), 0 4px 16px rgba(22,34,74,.06);
+  --shadow-lg: 0 10px 15px -3px rgba(22,34,74,.10), 0 4px 6px -4px rgba(22,34,74,.08);
+  --shadow-xl: 0 20px 25px -5px rgba(22,34,74,.12), 0 8px 10px -6px rgba(22,34,74,.08);
 }
 
 [data-theme="light"] body {

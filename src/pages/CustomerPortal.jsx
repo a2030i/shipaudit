@@ -298,12 +298,12 @@ export default function CustomerPortal() {
     }}>
       {/* Brand header */}
       <div style={{
-        background: '#0A0A0B', color: '#fff',
+        background: 'var(--brand-navy, #333062)', color: '#fff',
         padding: '20px 24px',
         boxShadow: '0 4px 12px rgba(0,0,0,.08)',
       }}>
         <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-          <LamhaLogo height={24} color="#fff" accent="var(--green)"/>
+          <LamhaLogo height={24} variant="white"/>
           <span style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600 }}>
             CUSTOMER PORTAL
           </span>
