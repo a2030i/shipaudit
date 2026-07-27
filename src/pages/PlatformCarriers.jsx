@@ -46,12 +46,12 @@ export default function PlatformCarriers({ isActive = true }) {
   // غير الموجودين (بوليصة/فارنير/داخلية) لا تظهر إطلاقاً. «إظهار الكل» للإدارة فقط.
   const visible = useMemo(() => showAll ? sorted : sorted.filter(r => r.isActive), [sorted, showAll]);
   const activeCount = useMemo(() => (rows || []).filter(r => r.isActive && !r.isCompetitor).length, [rows]);
-  const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive && !r.isCompetitor).length, [rows]);
-  // عدد الشركات لكل منصّة (كم شركة تبيع عبرها) — للمقارنة
+  const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive).length, [rows]);
+  // عدد الشركات النشطة لكل منصّة — للمقارنة
   const platCounts = useMemo(() => {
-    const rs = rows || [];
+    const rs = (rows || []).filter(r => r.isActive);
     return {
-      lamha: rs.filter(r => r.sellPrice != null).length,   // كل ما تبيعه لمحة (بعقد أو بلا)
+      lamha: rs.filter(r => r.sellPrice != null).length,
       auto:  rs.filter(r => r.sellAuto != null).length,
       torod: rs.filter(r => r.sellTorod != null).length,
       trek:  rs.filter(r => r.sellTrek != null).length,

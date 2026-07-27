@@ -130,7 +130,8 @@ export async function loadPlatformCarriers() {
       competitorOnly: lamhaPrice == null,
       name: c.name, displayName: c.name, platformName: c.name,   // الاسم طبق إكسل لمحة بالضبط
       service: c.service || null,
-      isActive: true, freeReturn: false,
+      isActive: c.active !== false, freeReturn: false,           // غير النشط في لمحة يُخفى
+      competitorRow: true,
       unavailable: lamhaPrice == null ? ['lamha'] : [],   // لمحة غير متاحة فقط للمنافس الصرف
       sellPrice: lamhaPrice,
       sellAuto:  c.sell_auto  != null ? Number(c.sell_auto)  : null,
