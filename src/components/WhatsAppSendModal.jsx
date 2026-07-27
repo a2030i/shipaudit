@@ -2,7 +2,7 @@
 // External action: nothing is sent until the operator presses «إرسال الآن».
 // The API key lives only in the edge function; this UI never sees it.
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
 import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet } from '../lib/whatsappService.js';
@@ -10,6 +10,18 @@ import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+
+// اسم حملة فريد افتراضياً: القاعدة + تاريخ اليوم، وإن تصادم يُضاف رقم (2)/(3)…
+// حتى لا يُدمج القياس/الاستثناء مع حملة سابقة. المستخدم يبقى قادراً على تعديله.
+function uniqueCampaignName(base, existing) {
+  const b = (base || 'حملة').trim();
+  const today = new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD
+  const set = new Set((existing || []).map(c => c.name));
+  const first = `${b} — ${today}`;
+  if (!set.has(first)) return first;
+  for (let i = 2; i < 200; i++) { const c = `${b} — ${today} (${i})`; if (!set.has(c)) return c; }
+  return `${b} — ${today} (${Date.now()})`;
+}
 
 // ── ربط متغيرات القالب بأعمدة الصفحة (2026-07-21) ─────────────────────
 // كل مستلِم قد يحمل fields:{...} من صفحته — الكتالوج يعرّب المفاتيح المعروفة.
@@ -71,6 +83,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [varMap, setVarMap]     = useState([]);
   // نظام الحملات (2026-07-21): اسم إلزامي + استثناء مستلمي حملات سابقة
   const [campName, setCampName]   = useState('');
+  const nameEdited = useRef(false);                        // هل عدّل المستخدم الاسم يدوياً (فلا نُعيد ضبطه)
   const [campaigns, setCampaigns] = useState([]);          // الحملات السابقة (اسم/عدد/آخر إرسال)
   const [exCamps, setExCamps]     = useState(() => new Set());  // أسماء الحملات المستثناة
   const [exPhones, setExPhones]   = useState(() => new Set());  // أرقامها (تُجلب عند الاختيار)
@@ -98,13 +111,19 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   useEffect(() => {
     if (!open) return;
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
-    setCampName(bucketLabel || ''); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
+    nameEdited.current = false;
+    setCampName(uniqueCampaignName(bucketLabel, [])); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
     setPerStore(false);
     // الكل افتراضياً — بمفاتيح _rk (نفس صيغة rows: معرّف المتجر أو الهاتف+الترتيب)
     setSelected(new Set(recipients
       .map((r, i) => (r.to && r.to.length >= 11) ? (r.storeId != null ? `s${r.storeId}` : `${r.to}#${i}`) : null)
       .filter(Boolean)));
-    loadCampaignNames().then(setCampaigns).catch(() => setCampaigns([]));
+    loadCampaignNames().then(list => {
+      setCampaigns(list);
+      // بعد معرفة الحملات السابقة: إن لم يعدّل المستخدم الاسم، اجعله فريداً فعلاً
+      // (يضيف رقماً لو الاسم+تاريخ اليوم مُستخدَم) — فلا يُدمج القياس صامتاً.
+      if (!nameEdited.current) setCampName(uniqueCampaignName(bucketLabel, list));
+    }).catch(() => setCampaigns([]));
     setCtx(new Map());
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
     loadNoWhatsappSet().then(setNoWa).catch(() => {});
@@ -383,7 +402,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           {/* اسم الحملة — إلزامي (يظهر في السجل ويُستخدم للاستثناء مستقبلاً) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>اسم الحملة <span style={{ color: 'var(--red)' }}>*</span></span>
-            <input value={campName} onChange={e => setCampName(e.target.value)} placeholder="مثال: تحصيل متأخرين يوليو"
+            <input value={campName} onChange={e => { nameEdited.current = true; setCampName(e.target.value); }} placeholder="مثال: تحصيل متأخرين يوليو"
               style={{ flex: 1, fontSize: 12.5, padding: '7px 11px', borderRadius: 8,
                 border: `1px solid ${campName.trim() ? 'var(--border)' : 'var(--red)'}`, background: 'var(--bg)', color: 'var(--text)' }}/>
           </div>
