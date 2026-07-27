@@ -82,6 +82,9 @@ export async function loadPlatformCarriers() {
     const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
       id: cr.id, name: cr.name,
+      // اسم المنصّة (كما في إكسل العملاء) للعرض — يسقط لاسم النظام إن لم يُضبط
+      displayName: pc.platform_name || cr.name,
+      platformName: pc.platform_name || null,
       isActive: !!pc.is_active,
       freeReturn: !!pc.free_return,
       sellPrice,

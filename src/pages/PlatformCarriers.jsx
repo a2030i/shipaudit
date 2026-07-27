@@ -101,7 +101,7 @@ export default function PlatformCarriers({ isActive = true }) {
         const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null);
         const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
         return {
-          'اسم شركة الشحن': r.name,
+          'اسم شركة الشحن': r.displayName,
           'سعر التكلفة في لمحة': r.costPrice ?? '',
           'ربح لمحة': profit,
           'البيع في لمحة': r.sellPrice ?? '',
@@ -165,7 +165,7 @@ export default function PlatformCarriers({ isActive = true }) {
                           onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 15, height: 15 }}/>
                       </td>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
-                        {r.name}
+                        {r.displayName}
                         {!r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
