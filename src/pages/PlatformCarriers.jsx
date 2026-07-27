@@ -61,10 +61,18 @@ export default function PlatformCarriers({ isActive = true }) {
   if (!can('carriers.view')) return <Pad><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية عرض شركات الشحن"/></Pad>;
 
   const patch = async (id, p) => {
-    // تحديث متفائل
-    setRows(prev => prev.map(r => r.id === id ? recompute({ ...r, ...p }, markup) : r));
-    try { await savePlatformCarrier(id, p, user?.id); }
-    catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
+    const row = (rows || []).find(r => r.id === id);
+    // تحديث متفائل بأسماء حقول الصف (is_active→isActive · free_return→freeReturn)
+    const rowPatch = {};
+    if ('is_active' in p) rowPatch.isActive = p.is_active;
+    if ('free_return' in p) rowPatch.freeReturn = p.free_return;
+    setRows(prev => prev.map(r => r.id === id ? recompute({ ...r, ...rowPatch }, markup) : r));
+    try {
+      if (row?.isCompetitor) {
+        // جدول المنافسين: is_active→active (لا free_return)
+        if ('is_active' in p) await savePlatformCompetitor(row.compId, { active: p.is_active }, user?.id);
+      } else await savePlatformCarrier(id, p, user?.id);
+    } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
   };
 
   const saveMarkup = async () => {
@@ -225,8 +233,8 @@ export default function PlatformCarriers({ isActive = true }) {
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="مفعّلة" style={{ ...cell, width: 30 }}>
-                        <input type="checkbox" checked={r.isActive} disabled={!canEdit || r.isCompetitor} title={r.isCompetitor ? 'شركة منافس' : 'مفعّلة'}
-                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: (canEdit && !r.isCompetitor) ? 'pointer' : 'default', width: 15, height: 15 }}/>
+                        <input type="checkbox" checked={r.isActive} disabled={!canEdit} title={r.competitorOnly ? 'شركة منافس' : 'مفعّلة في لمحة'}
+                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 15, height: 15 }}/>
                       </td>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.displayName}
