@@ -32,9 +32,15 @@ export default function PlatformCarriers({ isActive = true }) {
 
   const sorted = useMemo(() => {
     if (!rows) return [];
-    return [...rows].sort((a, b) =>
-      ((a.isCompetitor ? 1 : 0) - (b.isCompetitor ? 1 : 0))   // منافسونا آخراً
-      || (b.isActive - a.isActive) || (b.hasContract - a.hasContract) || ((a.base ?? 1e9) - (b.base ?? 1e9)));
+    return [...rows].sort((a, b) => {
+      // شركات لمحة (لها سعر بيع) فوق · المنافس الصرف (لمحة غير متاحة) تحت
+      const ag = a.sellPrice != null ? 0 : 1, bg = b.sellPrice != null ? 0 : 1;
+      if (ag !== bg) return ag - bg;
+      // ثم بسعر البيع من الأقل للأعلى (لمحة للمجموعة الأولى · أوتو للمنافس)
+      const ap = a.sellPrice != null ? a.sellPrice : (a.sellAuto ?? 1e9);
+      const bp = b.sellPrice != null ? b.sellPrice : (b.sellAuto ?? 1e9);
+      return ap - bp;
+    });
   }, [rows]);
   // صفحة مقارنة منافسين → تعرض فقط الناقلين الموجودين في إكسل أسعار البيع (المفعّلين).
   // غير الموجودين (بوليصة/فارنير/داخلية) لا تظهر إطلاقاً. «إظهار الكل» للإدارة فقط.
