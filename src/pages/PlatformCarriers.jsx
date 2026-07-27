@@ -45,7 +45,7 @@ export default function PlatformCarriers({ isActive = true }) {
   const platCounts = useMemo(() => {
     const rs = rows || [];
     return {
-      lamha: rs.filter(r => !r.isCompetitor && r.isActive).length,
+      lamha: rs.filter(r => r.sellPrice != null).length,   // كل ما تبيعه لمحة (بعقد أو بلا)
       auto:  rs.filter(r => r.sellAuto != null).length,
       torod: rs.filter(r => r.sellTorod != null).length,
       trek:  rs.filter(r => r.sellTrek != null).length,
@@ -85,8 +85,11 @@ export default function PlatformCarriers({ isActive = true }) {
     setRows(prev => prev.map(r => r.id === id ? { ...r, [rowKey]: v } : r));
     setPriceDraft(d => { const n = { ...d }; delete n[k]; return n; });
     try {
-      if (row?.isCompetitor) await savePlatformCompetitor(row.compId, { [col]: v }, user?.id);
-      else await savePlatformCarrier(id, { [col]: v }, user?.id);
+      if (row?.isCompetitor) {
+        // جدول المنافسين يخزّن لمحة في عمود sell_lamha (لا sell_price)
+        const compCol = plat === 'lamha' ? 'sell_lamha' : col;
+        await savePlatformCompetitor(row.compId, { [compCol]: v }, user?.id);
+      } else await savePlatformCarrier(id, { [col]: v }, user?.id);
     } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
   };
 
@@ -204,7 +207,7 @@ export default function PlatformCarriers({ isActive = true }) {
                       </td>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.displayName}
-                        {r.isCompetitor
+                        {r.competitorOnly
                           ? <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--muted2)', background: 'var(--surface2)', padding: '1px 6px', borderRadius: 20 }}>لدى منافس</span>
                           : !r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>

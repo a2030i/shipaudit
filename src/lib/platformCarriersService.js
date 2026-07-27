@@ -116,7 +116,9 @@ export async function loadPlatformCarriers() {
 
   // شركات لدى المنافسين فقط — تُعرَض كصفوف عادية بـ«لمحة = غير متاحة» (بلا عقد/تكلفة).
   const compRows = (compRes.data || []).map(c => {
+    const lamhaPrice = c.sell_lamha != null ? Number(c.sell_lamha) : null;
     const plat = [
+      { key: 'lamha', label: 'لمحة', v: lamhaPrice },
       { key: 'auto',  label: 'أوتو', v: c.sell_auto  != null ? Number(c.sell_auto)  : null },
       { key: 'torod', label: 'طرود', v: c.sell_torod != null ? Number(c.sell_torod) : null },
       { key: 'trek',  label: 'تريك', v: c.sell_trek  != null ? Number(c.sell_trek)  : null },
@@ -124,15 +126,17 @@ export async function loadPlatformCarriers() {
     const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
       id: `comp_${c.id}`, compId: c.id, isCompetitor: true,
+      // منتج لمحة بلا عقد (سعر لمحة موجود) مقابل شركة منافس فقط (بلا سعر لمحة)
+      competitorOnly: lamhaPrice == null,
       name: c.name, displayName: c.service ? `${c.name} · ${c.service}` : c.name, platformName: c.name,
       service: c.service || null,
       isActive: true, freeReturn: false,
-      unavailable: ['lamha'],           // لمحة لا تقدّمها
-      sellPrice: null,
+      unavailable: lamhaPrice == null ? ['lamha'] : [],   // لمحة غير متاحة فقط للمنافس الصرف
+      sellPrice: lamhaPrice,
       sellAuto:  c.sell_auto  != null ? Number(c.sell_auto)  : null,
       sellTorod: c.sell_torod != null ? Number(c.sell_torod) : null,
       sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
-      bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: false,
+      bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
       base: null, costReason: 'لدى منافس', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
       costPrice: null, hasContract: false, notes: c.note || null,
