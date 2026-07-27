@@ -333,19 +333,22 @@ export default function Merchants({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
-  // Click "ربط تلقائي" → pull all distinct customer_names from
-  // customer_receivables, run autoLinkCustomers against the current
-  // merchants snapshot, report counts.
+  // Click "ربط تلقائي" → أسماء عملاء زوهو **الحية** (المرآة: عقود + فواتير)
+  // ثم autoLinkCustomers ضد كشف المتاجر الحالي. كان المصدر customer_receivables
+  // الميت (مجمّد منذ 2026-07-10 — §1.23) فأي عميل زوهو جديد لا يُربط أبداً.
   const handleAutoLink = async () => {
     if (!data.merchants.length) { toast('ارفع المتاجر أولاً', 'warn'); return; }
     setAutoLinking(true);
     try {
-      const { data: names, error } = await supabase
-        .from('customer_receivables')
-        .select('customer_name')
-        .eq('is_summary', true);
-      if (error) throw error;
-      const distinct = [...new Set((names || []).map(r => r.customer_name).filter(Boolean))];
+      const [contactsRes, invoicesRes] = await Promise.all([
+        supabase.from('zoho_contacts').select('contact_name').eq('contact_type', 'customer'),
+        supabase.from('zoho_invoices').select('customer_name'),
+      ]);
+      if (contactsRes.error) throw contactsRes.error;
+      const distinct = [...new Set([
+        ...(contactsRes.data || []).map(r => r.contact_name),
+        ...(invoicesRes.data || []).map(r => r.customer_name),
+      ].filter(Boolean))];
       const results = await autoLinkCustomers(distinct, data.merchants, { userId: user?.id });
       const matched   = [...results.values()].filter(r => r.storeId).length;
       const unmatched = distinct.length - matched;

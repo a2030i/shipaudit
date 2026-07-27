@@ -1051,6 +1051,7 @@ export default function Segments({ isActive = true }) {
       {waOpen && (
         <WhatsAppSendModal
           open={waOpen}
+          salesAudience
           onClose={() => setWaOpen(false)}
           recipients={buildWaRecipients()}
           bucketLabel={savedSegments.find(s => s.id === activeSavedId)?.name || null}

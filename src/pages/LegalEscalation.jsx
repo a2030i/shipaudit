@@ -11,6 +11,8 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.j
 import { useAuth } from '../lib/auth.jsx';
 import { loadLegalDashboard } from '../lib/legalService.js';
 import WaActions from '../components/WaActions.jsx';
+import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -48,6 +50,19 @@ export default function LegalEscalation({ isActive = true }) {
   const { can, user } = useAuth();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
+  // حملة مطالبة جماعية لأصحاب المحافظ السالبة (فحص الوكلاء: الـ23 وصلتهم رسالة
+  // مبيعات بدل المطالبة — هذا الزر يوجّه المطالبة الصحيحة للقائمة كلها دفعة واحدة)
+  const [walletWaOpen, setWalletWaOpen] = useState(false);
+  const walletRecipients = (d?.prepaidNegative || [])
+    .filter(r => r.phone)
+    .map(r => {
+      const amt = Math.abs(Number(r.wallet) || 0);
+      return {
+        to: normalizeSaudiPhone(r.phone), name: r.storeName, amount: amt,
+        vars: [r.storeName || '', fmt(amt), ''],
+        fields: { name: r.storeName, amount: amt, wallet: r.wallet, last_shipment: r.lastShipmentAt },
+      };
+    });
 
   const refresh = async () => {
     setBusy(true);
@@ -148,8 +163,17 @@ export default function LegalEscalation({ isActive = true }) {
       )}
 
       {/* ── 🚨 دفع مسبق برصيد سالب ── */}
-      <SectionHeader icon="🚨" title={`دفع مسبق برصيد سالب — تحويل فوري للقانونية (${d.prepaidNegative.length})`}
-        note="متاجر شحنت أكثر من رصيدها (المحفظة سالبة) — من كشف المنصّة"/>
+      <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 240 }}>
+          <SectionHeader icon="🚨" title={`دفع مسبق برصيد سالب — تحويل فوري للقانونية (${d.prepaidNegative.length})`}
+            note="متاجر شحنت أكثر من رصيدها (المحفظة سالبة) — من كشف المنصّة"/>
+        </div>
+        {can('campaigns.send') && walletRecipients.length > 0 && (
+          <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => setWalletWaOpen(true)}>
+            حملة مطالبة للكل ({walletRecipients.length})
+          </Btn>
+        )}
+      </div>
       {!d.prepaidNegative.length ? <Card><Empty icon="✅" title="لا محافظ سالبة" sub="كل الدفع المسبق موجب"/></Card> : (
         <Card style={{ padding: 0, overflow: 'hidden', border: '1.5px solid color-mix(in srgb, var(--red) 25%, var(--border))' }}>
           <div className="m-flow" style={{ overflowX: 'auto' }}>
@@ -180,6 +204,11 @@ export default function LegalEscalation({ isActive = true }) {
       <div style={{ marginTop: 16, fontSize: 11, color: 'var(--muted2)', display: 'flex', gap: 6, alignItems: 'center' }}>
         <AlertTriangle size={13}/> {totalEscalate} حالة مرشّحة للتصعيد القانوني · المصدر: زوهو (المتأخرة) + كشف المنصّة (المحافظ)
       </div>
+
+      {/* حملة المطالبة الجماعية للمحافظ السالبة — {{2}} = |رصيد المحفظة| */}
+      <WhatsAppSendModal open={walletWaOpen} onClose={() => setWalletWaOpen(false)}
+        recipients={walletRecipients} bucketLabel="مطالبة محافظ سالبة"
+        onSent={() => setWalletWaOpen(false)}/>
     </div>
   );
 }

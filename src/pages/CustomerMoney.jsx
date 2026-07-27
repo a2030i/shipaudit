@@ -15,7 +15,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
   planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl, syncZohoDocs } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
-  previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus } from '../lib/whatsappService.js';
+  previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus, loadTemplateSentSet } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
@@ -84,6 +84,12 @@ export default function CustomerMoney({ isActive = true }) {
   // حالة آخر حملة واتساب لكل عميل (تحميل كسول + بعد كل إرسال)
   const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line
+  // مَن وصله قالب المطالبة (sadad) يوماً — لفلتر «لم تصلهم مطالبة» (فحص الوكلاء:
+  // 29 من 40 مديناً بهاتف لم يُطالَبوا قط). يُعاد تحميله بعد كل إرسال.
+  const [sadadSet, setSadadSet] = useState(() => new Set());
+  const [unclaimedOnly, setUnclaimedOnly] = useState(false);
+  const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
+  useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
   // مبلغ التحصيل لكل عميل = مجموع الشرائح المختارة فقط (أو كامل الدين إن لم تُختَر شريحة).
   // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.
@@ -123,11 +129,13 @@ export default function CustomerMoney({ isActive = true }) {
     if (!d) return [];
     let list = d.customers;
     if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
+    // «لم تصلهم مطالبة» = له هاتف ولم يصله قالب sadad قط
+    if (unclaimedOnly) list = list.filter(c => c.phone && !sadadSet.has(normalizeSaudiPhone(c.phone)));
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
-  }, [d, q, buckets, sortBy]);  // eslint-disable-line
+  }, [d, q, buckets, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
 
   const waRecipients = useMemo(() => filtered
@@ -381,6 +389,18 @@ export default function CustomerMoney({ isActive = true }) {
           <option value="owed">الأكبر ديناً أولاً</option>
           <option value="oldest">الأقدم ديناً أولاً</option>
         </select>
+        {/* «لم تصلهم مطالبة» — مدينون بهاتف لم يصلهم قالب sadad قط (سدّ فجوة الـ29) */}
+        {(() => {
+          const unclaimedCount = (d?.customers || []).filter(c =>
+            c.phone && (c.owed || 0) > 0.5 && !sadadSet.has(normalizeSaudiPhone(c.phone))).length;
+          return (
+            <Btn size="sm" variant={unclaimedOnly ? 'primary' : 'outline'}
+              onClick={() => setUnclaimedOnly(v => !v)}
+              title="مدينون لهم هاتف ولم يصلهم قالب المطالبة (sadad) إطلاقاً">
+              🔕 لم تصلهم مطالبة ({unclaimedCount})
+            </Btn>
+          );
+        })()}
         {can('campaigns.send') && (
           <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => waRecipients.length ? setWaOpen(true) : toast('لا مستلمين بأرقام في القائمة الحالية', 'info')}>
             حملة واتساب ({waRecipients.length})
@@ -411,7 +431,7 @@ export default function CustomerMoney({ isActive = true }) {
         onClose={() => { setWaOpen(false); setWaSingle(null); }}
         recipients={waOpen ? (waSingle ? [waSingle] : waRecipients) : []}
         bucketLabel={waSingle ? `العميل ${waSingle.name}` : (buckets.size ? `أعمار ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : 'تحصيل العملاء')}
-        onSent={() => { loadWaStatus(); }}/>
+        onSent={() => { loadWaStatus(); loadSadad(); }}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
       {bulkOpen && credits && (

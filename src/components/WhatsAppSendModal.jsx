@@ -66,7 +66,7 @@ const fieldValue = (fields, r, key) => {
 // recipients: [{ to, name, amount, count, vars:[] }]
 // البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
 // كل الصفحات التي تفتح المودال (والدالة hatif-send تعيد الفحص سيرفرياً).
-export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent, lockedTemplate = null }) {
+export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent, lockedTemplate = null, salesAudience = false }) {
   const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
   const [verifying, setVer] = useState(false);
@@ -239,7 +239,19 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const hatifTouchedCount = validAll.filter(r => hatifTouched.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to)).length;
   // استبعاد آلي للأرقام الضعيفة (أُرسل لها ولا تسليم قط) — تحمي جودة رقم واتساب من التدهور.
   const weakCount = validAll.filter(r => weak.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to)).length;
-  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to));
+  // استبعاد آلي للمدينين من حملات **المبيعات** (salesAudience فقط): رقم أي متجر
+  // من متاجره محفظته سالبة لا يُخاطَب بعرض تسويقي — حادثة 2026-07-21: 23 متجراً
+  // بمحافظ −74 ألف وصلتهم «ارجع اشحن معنا» بدل المطالبة (فحص الوكلاء).
+  const debtorSet = useMemo(() => {
+    const s = new Set();
+    if (!salesAudience) return s;
+    for (const [phone, stores] of ctx) {
+      if ((stores || []).some(st => (st.wallet ?? 0) < -0.5)) s.add(phone);
+    }
+    return s;
+  }, [ctx, salesAudience]);
+  const debtorCount = validAll.filter(r => debtorSet.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to)).length;
+  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to) && !debtorSet.has(r.to));
   const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
   const selectedValid = valid.filter(r => selected.has(r._rk));
   // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
@@ -534,7 +546,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
             <Btn size="sm" variant="ghost" onClick={allOn}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
-            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0) && (
+            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0 || weakCount > 0 || debtorCount > 0) && (
               <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
                 {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
                 {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
@@ -543,6 +555,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                 {hatifTouchedCount > 0 && <span style={{ color: 'var(--gold)' }}>💬 استُبعد {hatifTouchedCount} يكلّمهم الفريق في هاتف</span>}
                 {weakCount > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
                 {weakCount > 0 && <span style={{ color: 'var(--red)' }}>📉 استُبعد {weakCount} رقم ضعيف (لا تسليم قط)</span>}
+                {debtorCount > 0 && ' · '}
+                {debtorCount > 0 && <span style={{ color: 'var(--red)' }}>💰 استُبعد {debtorCount} عليهم مديونية محفظة — وجّههم للتحصيل لا للعروض</span>}
               </span>
             )}
           </div>

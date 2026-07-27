@@ -263,7 +263,7 @@ export default function HatifLeads({ isActive = true }) {
         onSaved={(patch) => { setRows(prev => prev.map(x => x.phone === detail.phone ? { ...x, ...patch } : x)); setDetail(null); }}/>}
 
       {waRecipients && (
-        <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients} bucketLabel="فرص من هاتف"
+        <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients} salesAudience bucketLabel="فرص من هاتف"
           onClose={() => setWaRecipients(null)}
           onSent={() => { setWaRecipients(null); loadWa(); }}/>
       )}

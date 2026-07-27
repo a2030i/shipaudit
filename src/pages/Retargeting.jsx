@@ -549,7 +549,7 @@ export default function Retargeting({ isActive = true }) {
       )}
 
       {waRecipients && (
-        <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients}
+        <WhatsAppSendModal open={!!waRecipients} recipients={waRecipients} salesAudience
           bucketLabel="إعادة الاستهداف"
           onClose={() => setWaRecipients(null)}
           onSent={(r) => {

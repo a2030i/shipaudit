@@ -445,6 +445,22 @@ export async function loadWhatsAppCampaignReport() {
   }));
 }
 
+// أرقام وصلها قالب معيّن (أي وقت، أي حملة) — Set بالهاتف المطبَّع. تُستخدم لفلتر
+// «لم تصلهم مطالبة» في مركز التحصيل (من لم يصله sadad قط). مصفّح (§6).
+export async function loadTemplateSentSet(templateName) {
+  const set = new Set();
+  if (!templateName) return set;
+  for (let from = 0; from < 100000; from += 1000) {
+    const { data, error } = await supabase.from('whatsapp_campaign_sends')
+      .select('phone').eq('template_name', templateName)
+      .order('id', { ascending: true }).range(from, from + 999);
+    if (error || !Array.isArray(data)) break;
+    for (const r of data) if (r.phone) set.add(r.phone);
+    if (data.length < 1000) break;
+  }
+  return set;
+}
+
 // أرقام حملة فشلت (لإعادة استهدافهم) — الفاشلون مسجَّلون بحالة Failed + سبب.
 // دفعات 1000 (سقف PostgREST). يُرجِع { recipients:[{to,name,reason}], template }
 // — القالب الأصلي للحملة (يُقفَل عند إعادة الإرسال: نفس رسالة الحملة الأصلية).
