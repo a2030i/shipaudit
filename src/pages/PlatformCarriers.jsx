@@ -235,9 +235,6 @@ export default function PlatformCarriers({ isActive = true }) {
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.displayName}
-                        {r.competitorOnly
-                          ? <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--muted2)', background: 'var(--surface2)', padding: '1px 6px', borderRadius: 20 }}>لدى منافس</span>
-                          : !r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
                       <td data-label="الحالة في لمحة" style={cell}>
                         {r.competitorOnly

@@ -140,7 +140,7 @@ export async function loadPlatformCarriers() {
       sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
       bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
-      base: null, costReason: isLamha ? 'بلا عقد' : 'لدى منافس', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
+      base: null, costReason: null, fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
       // تكلفة يدوية للصفوف بلا عقد (يدخلها المستخدم) — لحساب الربح
       costPrice: c.cost != null ? Number(c.cost) : null, hasContract: false, notes: c.note || null,
     };
