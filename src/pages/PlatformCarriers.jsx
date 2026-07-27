@@ -156,6 +156,7 @@ export default function PlatformCarriers({ isActive = true }) {
         const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
         return {
           'اسم شركة الشحن': r.displayName,
+          'الحالة في لمحة': r.competitorOnly ? 'منافس' : (r.isActive ? 'نشط' : 'غير نشط'),
           'سعر التكلفة في لمحة': r.costPrice ?? '',
           'ربح لمحة': profit,
           'البيع في لمحة': r.sellPrice ?? '',
@@ -219,7 +220,7 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['اسم شركة الشحن', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  {['اسم شركة الشحن', 'الحالة في لمحة', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {visible.map(r => {
@@ -238,10 +239,17 @@ export default function PlatformCarriers({ isActive = true }) {
                           ? <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--muted2)', background: 'var(--surface2)', padding: '1px 6px', borderRadius: 20 }}>لدى منافس</span>
                           : !r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
+                      <td data-label="الحالة في لمحة" style={cell}>
+                        {r.competitorOnly
+                          ? <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>منافس</span>
+                          : <span style={{ fontSize: 10.5, fontWeight: 700, padding: '2px 9px', borderRadius: 20,
+                              color: r.isActive ? 'var(--green)' : 'var(--red)',
+                              background: r.isActive ? 'color-mix(in srgb, var(--green) 14%, transparent)' : 'color-mix(in srgb, var(--red) 14%, transparent)' }}>
+                              {r.isActive ? 'نشط' : 'غير نشط'}
+                            </span>}
+                      </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
-                        {(r.isCompetitor && !r.competitorOnly && canEdit)
-                          ? costCellNode(r)
-                          : r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                        {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
                         {!r.isCompetitor && r.costPrice != null && r.fuelAmt > 0 && (
                           <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>شامل وقود {(r.fuelPct * 100).toFixed(1)}% ({fmt2(r.fuelAmt)})</div>
                         )}
