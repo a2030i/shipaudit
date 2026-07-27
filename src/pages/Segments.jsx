@@ -1131,14 +1131,15 @@ function FacetTitle({ icon, color, children }) {
 // stays one flat string per facet.
 function NumericFacet({ label, facetKey, value, onChange }) {
   const cfg = FACET_CONFIG[facetKey];
-  if (!cfg) return null;
   const parsed = parseFacetValue(value);
 
   // Local input value — derived from the parsed token. We keep a
   // separate `localN` so the user can type "1" without it being
   // interpreted as `gte_1` before they finish typing "15".
+  // (الـhooks قبل حارس `!cfg` — hook بعد return شرطي = React #310)
   const [localN, setLocalN] = useState(parsed.value ?? '');
   useEffect(() => { setLocalN(parsed.value ?? ''); }, [value]);
+  if (!cfg) return null;
 
   const emit = (op, n) => {
     const token = buildToken(op, n);

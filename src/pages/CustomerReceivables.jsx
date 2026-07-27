@@ -165,11 +165,12 @@ function normalizePhone(raw) {
 }
 
 function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSelect, onClose }) {
-  if (!customer) return null;
-  const m = customer.merchant;
+  // ⚠️ المكوّن يُرسم بلا شرط والدرج يُفتح بتغيّر customer من null — فأي hook يجب
+  // أن يسبق `if (!customer) return null` وإلا انفجر React #310 (نفس حادثة 2026-07-28).
+  const m = customer?.merchant;
   const myPhone   = normalizePhone(m?.phone);
   const myStoreId = m?.storeId || null;
-  const showStoreSubtitle = customer.name && m?.storeName && m.storeName !== customer.name;
+  const showStoreSubtitle = customer?.name && m?.storeName && m.storeName !== customer.name;
 
   // Phone siblings — every other merchant on the same phone, enriched
   // with their receivables row when one exists.
@@ -197,6 +198,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
     }
     return out.sort((a, b) => (b.debt + Math.abs(b.wallet)) - (a.debt + Math.abs(a.wallet)));
   }, [myPhone, myStoreId, allCustomers, allMerchants]);
+
+  if (!customer) return null;
 
   return (
     <Modal title={customer.name} onClose={onClose} width={780}>

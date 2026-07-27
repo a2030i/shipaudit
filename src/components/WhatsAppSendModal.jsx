@@ -193,6 +193,20 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // يجب أن يُحفظ للقالب حتى لا يُعاد المتغير الافتراضي في المرة القادمة.
   const mapCustomized = varMap.length === 0 || varMap.some(m => m.src !== 'legacy');
 
+  // استبعاد آلي للمدينين من حملات **المبيعات** (salesAudience فقط): رقم أي متجر
+  // من متاجره محفظته سالبة لا يُخاطَب بعرض تسويقي — حادثة 2026-07-21: 23 متجراً
+  // بمحافظ −74 ألف وصلتهم «ارجع اشحن معنا» بدل المطالبة (فحص الوكلاء).
+  // ⚠️ يجب أن يبقى هذا الـhook فوق `if (!open) return null` — وضعه بعده كسر
+  // قاعدة ترتيب الـhooks (React #310) لحظة فتح المودال (حادثة 2026-07-28).
+  const debtorSet = useMemo(() => {
+    const s = new Set();
+    if (!salesAudience) return s;
+    for (const [phone, stores] of ctx) {
+      if ((stores || []).some(st => (st.wallet ?? 0) < -0.5)) s.add(phone);
+    }
+    return s;
+  }, [ctx, salesAudience]);
+
   if (!open) return null;
 
   if (!can('campaigns.send')) {
@@ -239,17 +253,6 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const hatifTouchedCount = validAll.filter(r => hatifTouched.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to)).length;
   // استبعاد آلي للأرقام الضعيفة (أُرسل لها ولا تسليم قط) — تحمي جودة رقم واتساب من التدهور.
   const weakCount = validAll.filter(r => weak.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to)).length;
-  // استبعاد آلي للمدينين من حملات **المبيعات** (salesAudience فقط): رقم أي متجر
-  // من متاجره محفظته سالبة لا يُخاطَب بعرض تسويقي — حادثة 2026-07-21: 23 متجراً
-  // بمحافظ −74 ألف وصلتهم «ارجع اشحن معنا» بدل المطالبة (فحص الوكلاء).
-  const debtorSet = useMemo(() => {
-    const s = new Set();
-    if (!salesAudience) return s;
-    for (const [phone, stores] of ctx) {
-      if ((stores || []).some(st => (st.wallet ?? 0) < -0.5)) s.add(phone);
-    }
-    return s;
-  }, [ctx, salesAudience]);
   const debtorCount = validAll.filter(r => debtorSet.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to)).length;
   const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to) && !debtorSet.has(r.to));
   const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
