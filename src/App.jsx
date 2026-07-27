@@ -22,6 +22,7 @@ import LoginPage      from './pages/LoginPage.jsx';
 import EmployeeManager from './pages/EmployeeManager.jsx';
 import CarrierStatements from './pages/CarrierStatements.jsx';
 import CarrierLedger     from './pages/CarrierLedger.jsx';
+import PlatformCarriers  from './pages/PlatformCarriers.jsx';
 import ActivityLog       from './pages/ActivityLog.jsx';
 import WeightBilling     from './pages/WeightBilling.jsx';
 import WebhookEvents     from './pages/WebhookEvents.jsx';
@@ -103,6 +104,7 @@ const NAV_ITEMS = [
   { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', permKey: 'audits.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف حساب الشركات', icon: FileText, section: 'carriers', permKey: 'carriers.view' },
   { id: 'ledger',       path: '/ledger',            label: 'حسابات الشركات',   icon: BookOpen,  section: 'carriers', permKey: 'ledger.view' },
+  { id: 'platform-carriers', path: '/platform-carriers', label: 'شركات المنصّة المفعّلة', icon: DollarSign, section: 'carriers', permKey: 'carriers.view' },
   // فواتير التجهيز — نادرة → «الأدوات»
   { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'tools', permKey: 'audits.view' },
 
@@ -288,7 +290,7 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/platform-carriers'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -884,6 +886,9 @@ function AppInner({ theme, toggleTheme }) {
             {/* /claims now renders inside CarriersWorkspace (claims tab) above */}
             <PageSlot active={pathname==='/ledger'} scroll>
               <CarrierLedger isActive={pathname==='/ledger'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/platform-carriers'} scroll>
+              <PlatformCarriers isActive={pathname==='/platform-carriers'}/>
             </PageSlot>
             {/* /cod-settlements + /payments + /bank + /payment-requests
                 all funnel through MoneyHub which selects the right tab
