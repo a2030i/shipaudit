@@ -5,7 +5,7 @@ import {
   ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
-import { LamhaMark } from './components/BrandLogo.jsx';
+import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
@@ -535,26 +535,18 @@ function AppInner({ theme, toggleTheme }) {
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
 
-          {/* Logo — Lamha brand */}
+          {/* الشعار الرسمي الأبيض على الكحلي (RADICAL v3) — مركز عمليات لمحة */}
           <div className="sidebar-logo">
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
-              <div style={{
-                display:'grid', gridTemplateColumns:'auto 1fr', alignItems:'center',
-                gap:12, width:'100%',
-              }}>
-                <div style={{
-                  width:48, height:48, borderRadius:14,
-                  background:'var(--sidebar-logo-tile-bg, #fff)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  boxShadow:'var(--sidebar-logo-shadow, 0 10px 24px rgba(2,8,23,.24))',
-                }}>
-                  <LamhaMark size={32}/>
-                </div>
-                <div style={{ minWidth:0 }}>
-                  <div style={{ color:'var(--sidebar-brand-text, #fff)', fontSize:15, fontWeight:800, lineHeight:1.2 }}>ShipAudit Pro</div>
-                  <div style={{ color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', fontSize:11, marginTop:3 }}>Lamha finance ops</div>
+              <div style={{ display:'flex', flexDirection:'column', gap:7, width:'100%', alignItems:'flex-start' }}>
+                <LamhaLogo height={40} variant="white"/>
+                <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                  <span className="live-dot"/>
+                  <span style={{ color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', fontSize:10.5, letterSpacing:1.6, fontWeight:700, fontFamily:'var(--font-mono)' }}>
+                    OPERATIONS CENTER
+                  </span>
                 </div>
               </div>
             )}

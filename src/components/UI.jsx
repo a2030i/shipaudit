@@ -16,14 +16,14 @@ import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, Help
 //   outline         = الحالة المطفأة لزر تبديل (toggle غير نشط)
 //   success / navy  = مهملان (success ≡ accent لونياً، navy ≡ primary) — لا تستعملهما في كود جديد
 const VARIANTS = {
-  // design-v2: primary = تعبئة براند ليمونية بحبر داكن (كالمعاينة المعتمدة) —
-  // الدلالة كما هي (§1.20: الفعل الرئيسي الواحد للسياق)، اللون فقط تغيّر.
+  // RADICAL v3: primary = تدرّج أزرق ملكي رسمي بلمعة علوية — الدلالة كما هي
+  // (§1.20: الفعل الرئيسي الواحد للسياق)، الشكل صار متدرّجاً متوهّجاً.
   primary: {
-    background: 'var(--brand, var(--accent))',
-    color: 'var(--brand-ink, #fff)',
+    background: 'linear-gradient(135deg, #2F73F2 0%, #2456C9 100%)',
+    color: '#FFFFFF',
     border: '1px solid transparent',
-    boxShadow: '0 6px 16px color-mix(in srgb, var(--brand, var(--accent)) 28%, transparent)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 10px 22px color-mix(in srgb, var(--brand, var(--accent)) 38%, transparent)' },
+    boxShadow: '0 8px 20px rgba(43,104,222,.32), inset 0 1px 0 rgba(255,255,255,.22)',
+    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 28px rgba(43,104,222,.45), inset 0 1px 0 rgba(255,255,255,.22)' },
   },
   accent: {
     background: 'linear-gradient(135deg, var(--green), var(--green2))',
@@ -227,50 +227,39 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
 // right (RTL), title + optional subtitle, actions on the left.
 // Pattern matches Dashboard's welcome banner — apply across the system
 // so every page reads the same way.
+// RADICAL v3 (2026-07-27): الهيدر صار «الشريط البطولي» — تدرّج كحلي→أزرق ملكي
+// رسمي بعلامة نمط السداسيات المائية (CSS class page-hero-band في index.css)،
+// أيقونة في بلاطة زجاجية، عنوان أبيض، meta تركوازي. نفس الـAPI فكل الصفحات
+// (~40) تتحوّل دفعة واحدة بلا أي تعديل فيها.
 export function PageHeader({
   icon, avatar, title, subtitle, actions, meta,
-  iconColor = 'var(--accent)',
+  iconColor = 'var(--accent)',   // يُحتفظ به للتوافق — البلاطة زجاجية موحّدة الآن
 }) {
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      marginBottom: 28, gap: 16, flexWrap: 'wrap',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, minWidth: 0 }}>
+    <div className="page-hero-band">
+      <div style={{ display: 'flex', alignItems: 'center', gap: 15, minWidth: 0 }}>
         {avatar !== undefined ? (
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-            background: avatar?.bg || 'linear-gradient(135deg,#10B981,#059669)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 19, fontWeight: 700, color: '#fff',
-            boxShadow: 'var(--shadow-sm)',
-          }}>
+          <div className="hero-icon-tile" style={{ fontSize: 19, fontWeight: 700 }}>
             {avatar?.letter || '?'}
           </div>
         ) : icon && (
-          <div style={{
-            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
-            background: `color-mix(in srgb, ${iconColor} 10%, transparent)`,
-            color: iconColor,
-            border: `1px solid color-mix(in srgb, ${iconColor} 18%, transparent)`,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-          }}>{icon}</div>
+          <div className="hero-icon-tile">{icon}</div>
         )}
         <div style={{ minWidth: 0 }}>
           <h1 style={{
-            fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 700,
-            color: 'var(--text)', margin: 0, lineHeight: 1.2, letterSpacing: 0,
+            fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800,
+            margin: 0, lineHeight: 1.2, letterSpacing: 0,
             whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
           }}>{title}</h1>
           {subtitle && (
-            <p style={{ color: 'var(--muted)', fontSize: 13.5, margin: 0, marginTop: 4 }}>
+            <p className="hero-sub" style={{ fontSize: 12.5, margin: 0, marginTop: 4 }}>
               {subtitle}
             </p>
           )}
           {meta && (
-            <div style={{
+            <div className="hero-meta" style={{
               fontSize: 11.5, marginTop: 6, fontFamily: 'var(--font-mono)',
-              color: 'var(--muted2)', letterSpacing: 0.3,
+              letterSpacing: 0.3, fontWeight: 600,
             }}>{meta}</div>
           )}
         </div>
