@@ -128,7 +128,7 @@ export async function loadPlatformCarriers() {
       id: `comp_${c.id}`, compId: c.id, isCompetitor: true,
       // منتج لمحة بلا عقد (سعر لمحة موجود) مقابل شركة منافس فقط (بلا سعر لمحة)
       competitorOnly: lamhaPrice == null,
-      name: c.name, displayName: c.service ? `${c.name} · ${c.service}` : c.name, platformName: c.name,
+      name: c.name, displayName: c.name, platformName: c.name,   // الاسم طبق إكسل لمحة بالضبط
       service: c.service || null,
       isActive: true, freeReturn: false,
       unavailable: lamhaPrice == null ? ['lamha'] : [],   // لمحة غير متاحة فقط للمنافس الصرف
@@ -138,8 +138,9 @@ export async function loadPlatformCarriers() {
       sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
       bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
-      base: null, costReason: 'لدى منافس', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
-      costPrice: null, hasContract: false, notes: c.note || null,
+      base: null, costReason: lamhaPrice == null ? 'لدى منافس' : 'بلا عقد', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
+      // تكلفة يدوية للصفوف بلا عقد (يدخلها المستخدم) — لحساب الربح
+      costPrice: c.cost != null ? Number(c.cost) : null, hasContract: false, notes: c.note || null,
     };
   });
 

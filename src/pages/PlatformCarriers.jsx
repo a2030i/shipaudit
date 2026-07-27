@@ -79,18 +79,35 @@ export default function PlatformCarriers({ isActive = true }) {
     const k = `${id}:${plat}`;
     const raw = priceDraft[k];
     const v = raw === '' || raw == null ? null : Number(raw);
-    if (v != null && !Number.isFinite(v)) { toast('سعر غير صالح', 'error'); return; }
-    const [col, rowKey] = PRICE_COLS[plat];
+    if (v != null && !Number.isFinite(v)) { toast('قيمة غير صالحة', 'error'); return; }
+    const rowKey = plat === 'cost' ? 'costPrice' : PRICE_COLS[plat][1];
     const row = (rows || []).find(r => r.id === id);
     setRows(prev => prev.map(r => r.id === id ? { ...r, [rowKey]: v } : r));
     setPriceDraft(d => { const n = { ...d }; delete n[k]; return n; });
     try {
       if (row?.isCompetitor) {
-        // جدول المنافسين يخزّن لمحة في عمود sell_lamha (لا sell_price)
-        const compCol = plat === 'lamha' ? 'sell_lamha' : col;
+        // جدول المنافسين: لمحة→sell_lamha · التكلفة→cost · البقية كما هي
+        const compCol = plat === 'lamha' ? 'sell_lamha' : plat === 'cost' ? 'cost' : PRICE_COLS[plat][0];
         await savePlatformCompetitor(row.compId, { [compCol]: v }, user?.id);
-      } else await savePlatformCarrier(id, { [col]: v }, user?.id);
+      } else await savePlatformCarrier(id, { [PRICE_COLS[plat][0]]: v }, user?.id);
     } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
+  };
+
+  // خلية التكلفة القابلة للتحرير — لصفوف لمحة بلا عقد (يدخل المستخدم التكلفة يدوياً)
+  const costCellNode = (r) => {
+    const cur = r.costPrice;
+    const k = `${r.id}:cost`;
+    const dirty = priceDraft[k] != null && priceDraft[k] !== String(cur ?? '');
+    return (
+      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
+        <input type="number" step="0.5" placeholder="التكلفة"
+          value={priceDraft[k] ?? (cur ?? '')}
+          onChange={e => setPriceDraft(d => ({ ...d, [k]: e.target.value }))}
+          onKeyDown={e => { if (e.key === 'Enter') savePrice(r.id, 'cost'); }}
+          style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: '1px dashed var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}/>
+        {dirty && <button onClick={() => savePrice(r.id, 'cost')} title="حفظ" style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 6, cursor: 'pointer', padding: '4px 6px', display: 'flex' }}><Save size={12}/></button>}
+      </span>
+    );
   };
 
   // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود/تريك)
@@ -212,8 +229,10 @@ export default function PlatformCarriers({ isActive = true }) {
                           : !r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
-                        {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
-                        {r.costPrice != null && r.fuelAmt > 0 && (
+                        {(r.isCompetitor && !r.competitorOnly && canEdit)
+                          ? costCellNode(r)
+                          : r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                        {!r.isCompetitor && r.costPrice != null && r.fuelAmt > 0 && (
                           <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>شامل وقود {(r.fuelPct * 100).toFixed(1)}% ({fmt2(r.fuelAmt)})</div>
                         )}
                       </td>
