@@ -191,10 +191,10 @@ export default function PlatformCarriers({ isActive = true }) {
         {canEdit && Number(markupInput) !== markup && (
           <Btn size="sm" variant="accent" icon={<Save size={13}/>} onClick={saveMarkup} disabled={savingMk}>حفظ الهامش</Btn>
         )}
-        {canEdit && hiddenCount > 0 && (
+        {hiddenCount > 0 && (
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)}/>
-            إظهار غير المفعّلة ({hiddenCount}) — للإدارة
+            إظهار غير النشطة في لمحة ({hiddenCount})
           </label>
         )}
         <span style={{ fontSize: 11.5, color: 'var(--muted2)', marginInlineStart: 'auto' }}>سعر التكلفة = الأساس + الوقود + هامش {markup} ر.س</span>
@@ -219,7 +219,7 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['', 'اسم شركة الشحن', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  {['اسم شركة الشحن', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {visible.map(r => {
@@ -232,10 +232,6 @@ export default function PlatformCarriers({ isActive = true }) {
                     const bestIsLamha = best && best[0] === 'لمحة';
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
-                      <td data-label="مفعّلة" style={{ ...cell, width: 30 }}>
-                        <input type="checkbox" checked={r.isActive} disabled={!canEdit} title={r.competitorOnly ? 'شركة منافس' : 'مفعّلة في لمحة'}
-                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 15, height: 15 }}/>
-                      </td>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.displayName}
                         {r.competitorOnly
