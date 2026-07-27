@@ -9,13 +9,25 @@ import { loadCarriers } from './coreService.js';
 // يتعامل مع: مصفوفة مسطّحة (ثابت)، مصفوفة بشرائح (حتى Xكغ ثم /كغ)، مناطق (Zone A)،
 // الوسيط (subCarrier — متعدد)، والدولي (جدول lookup — لا أساس محلي).
 export function extractBaseCost(carrier) {
-  const c = (carrier?.contracts || []).find(x => x && x.pricing) || null;
-  if (!c) return { base: null, reason: 'بلا عقد' };
-  if (c.pricingKey === 'subCarrier') return { base: null, reason: 'وسيط (أسعار متعددة)' };
-  const pr = c.pricing || {};
-  const arr = pr['Saudi Arabia'] || pr['Zone A']
-    || Object.values(pr).find(v => Array.isArray(v));   // أول منطقة مصفوفة
-  if (!Array.isArray(arr) || !arr.length) return { base: null, reason: 'دولي/جدول' };
+  const contracts = (carrier?.contracts || []).filter(x => x && x.pricing);
+  if (!contracts.length) return { base: null, reason: 'بلا عقد' };
+  // فضّل العقد **المحلي** (له شريحة Saudi Arabia مصفوفة) — سمسا مثلاً لها عقدان
+  // (GCC أولاً + محلي) وأخذ الأول يعطي سعر عُمان 35 بدل المحلي 13.
+  let c = null, arr = null;
+  for (const ct of contracts) {
+    if (Array.isArray(ct.pricing?.['Saudi Arabia']) && ct.pricing['Saudi Arabia'].length) { c = ct; arr = ct.pricing['Saudi Arabia']; break; }
+  }
+  if (!arr) {   // لا عقد محلي صريح — Zone A ثم أي مصفوفة (تجاهل الوسيط)
+    for (const ct of contracts) {
+      if (ct.pricingKey === 'subCarrier') continue;
+      const a = ct.pricing['Zone A'] || Object.values(ct.pricing).find(v => Array.isArray(v));
+      if (Array.isArray(a) && a.length) { c = ct; arr = a; break; }
+    }
+  }
+  if (!c || !arr) {
+    if (contracts.some(x => x.pricingKey === 'subCarrier')) return { base: null, reason: 'وسيط (أسعار متعددة)' };
+    return { base: null, reason: 'دولي/جدول' };
+  }
   const first = arr[0];
   const base = Number(first.price);
   if (!Number.isFinite(base)) return { base: null, reason: 'غير محدّد' };
