@@ -51,7 +51,7 @@ export default function PlatformCarriers({ isActive = true }) {
   const platCounts = useMemo(() => {
     const rs = (rows || []).filter(r => r.isActive);
     return {
-      lamha: rs.filter(r => r.sellPrice != null).length,
+      lamha: rs.filter(r => !r.competitorOnly).length,   // كل شركات لمحة (بسعر أو بلا)
       auto:  rs.filter(r => r.sellAuto != null).length,
       torod: rs.filter(r => r.sellTorod != null).length,
       trek:  rs.filter(r => r.sellTrek != null).length,

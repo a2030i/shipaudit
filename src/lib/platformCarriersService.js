@@ -116,6 +116,7 @@ export async function loadPlatformCarriers() {
 
   // شركات لدى المنافسين فقط — تُعرَض كصفوف عادية بـ«لمحة = غير متاحة» (بلا عقد/تكلفة).
   const compRows = (compRes.data || []).map(c => {
+    const isLamha = c.is_lamha === true;   // شركة لمحة (نشطة أو لا، بسعر أو بلا) مقابل منافس صرف
     const lamhaPrice = c.sell_lamha != null ? Number(c.sell_lamha) : null;
     const plat = [
       { key: 'lamha', label: 'لمحة', v: lamhaPrice },
@@ -126,20 +127,20 @@ export async function loadPlatformCarriers() {
     const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
       id: `comp_${c.id}`, compId: c.id, isCompetitor: true,
-      // منتج لمحة بلا عقد (سعر لمحة موجود) مقابل شركة منافس فقط (بلا سعر لمحة)
-      competitorOnly: lamhaPrice == null,
+      // شركة لمحة (بلا عقد) مقابل منافس صرف (لمحة غير متاحة)
+      competitorOnly: !isLamha,
       name: c.name, displayName: c.name, platformName: c.name,   // الاسم طبق إكسل لمحة بالضبط
       service: c.service || null,
       isActive: c.active !== false, freeReturn: false,           // غير النشط في لمحة يُخفى
       competitorRow: true,
-      unavailable: lamhaPrice == null ? ['lamha'] : [],   // لمحة غير متاحة فقط للمنافس الصرف
+      unavailable: isLamha ? [] : ['lamha'],   // لمحة غير متاحة فقط للمنافس الصرف (شركة لمحة تقبل سعراً)
       sellPrice: lamhaPrice,
       sellAuto:  c.sell_auto  != null ? Number(c.sell_auto)  : null,
       sellTorod: c.sell_torod != null ? Number(c.sell_torod) : null,
       sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
       bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
-      base: null, costReason: lamhaPrice == null ? 'لدى منافس' : 'بلا عقد', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
+      base: null, costReason: isLamha ? 'بلا عقد' : 'لدى منافس', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
       // تكلفة يدوية للصفوف بلا عقد (يدخلها المستخدم) — لحساب الربح
       costPrice: c.cost != null ? Number(c.cost) : null, hasContract: false, notes: c.note || null,
     };
