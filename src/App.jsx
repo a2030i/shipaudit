@@ -771,21 +771,23 @@ function AppInner({ theme, toggleTheme }) {
             </button>
 
             <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-              <span style={{
+              <span className="topbar-title" style={{
                 fontFamily:'var(--font-sans)', fontSize:15, fontWeight:800,
                 color:'var(--text)', whiteSpace:'nowrap', letterSpacing:0,
               }}>
                 {currentTitle}
               </span>
-              <span style={{
+              <span className="topbar-brandtag" style={{
                 color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)',
                 letterSpacing:1.5, textTransform:'uppercase', fontWeight:600,
                 marginInlineStart:6,
               }}>
                 Lamha
               </span>
-              {/* Quick search / command palette trigger */}
+              {/* Quick search / command palette trigger — minWidth 220 يُصفَّر
+                  على الجوال عبر .topbar-search (كان يوسّع التطبيق كله أفقياً) */}
               <button
+                className="topbar-search"
                 onClick={() => setPaletteOpen(true)}
                 title="بحث سريع (Ctrl+K)"
                 style={{
@@ -798,8 +800,8 @@ function AppInner({ theme, toggleTheme }) {
                 }}
               >
                 <Search size={15}/>
-                <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>عميل، فاتورة، AWB، صفحة…</span>
-                <kbd style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 6, padding: '2px 6px', marginInlineStart: 'auto', color:'var(--muted)' }}>Ctrl K</kbd>
+                <span className="topbar-search-hint" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>عميل، فاتورة، AWB، صفحة…</span>
+                <kbd className="topbar-search-kbd" style={{ fontSize: 10, border: '1px solid var(--border2)', borderRadius: 6, padding: '2px 6px', marginInlineStart: 'auto', color:'var(--muted)' }}>Ctrl K</kbd>
               </button>
             </div>
 
