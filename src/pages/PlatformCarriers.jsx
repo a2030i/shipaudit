@@ -5,7 +5,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Truck, RefreshCw, Download, Save } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadPlatformCarriers, savePlatformCarrier, loadPlatformMarkup, savePlatformMarkup } from '../lib/platformCarriersService.js';
+import { loadPlatformCarriers, savePlatformCarrier, savePlatformCompetitor, loadPlatformMarkup, savePlatformMarkup } from '../lib/platformCarriersService.js';
 
 const fmt2 = (n) => n == null ? '—' : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const cell = { padding: '10px 12px', fontSize: 12.5, whiteSpace: 'nowrap' };
@@ -33,13 +33,24 @@ export default function PlatformCarriers({ isActive = true }) {
   const sorted = useMemo(() => {
     if (!rows) return [];
     return [...rows].sort((a, b) =>
-      (b.isActive - a.isActive) || (b.hasContract - a.hasContract) || ((a.base ?? 1e9) - (b.base ?? 1e9)));
+      ((a.isCompetitor ? 1 : 0) - (b.isCompetitor ? 1 : 0))   // منافسونا آخراً
+      || (b.isActive - a.isActive) || (b.hasContract - a.hasContract) || ((a.base ?? 1e9) - (b.base ?? 1e9)));
   }, [rows]);
   // صفحة مقارنة منافسين → تعرض فقط الناقلين الموجودين في إكسل أسعار البيع (المفعّلين).
   // غير الموجودين (بوليصة/فارنير/داخلية) لا تظهر إطلاقاً. «إظهار الكل» للإدارة فقط.
   const visible = useMemo(() => showAll ? sorted : sorted.filter(r => r.isActive), [sorted, showAll]);
-  const activeCount = useMemo(() => (rows || []).filter(r => r.isActive).length, [rows]);
-  const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive).length, [rows]);
+  const activeCount = useMemo(() => (rows || []).filter(r => r.isActive && !r.isCompetitor).length, [rows]);
+  const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive && !r.isCompetitor).length, [rows]);
+  // عدد الشركات لكل منصّة (كم شركة تبيع عبرها) — للمقارنة
+  const platCounts = useMemo(() => {
+    const rs = rows || [];
+    return {
+      lamha: rs.filter(r => !r.isCompetitor && r.isActive).length,
+      auto:  rs.filter(r => r.sellAuto != null).length,
+      torod: rs.filter(r => r.sellTorod != null).length,
+      trek:  rs.filter(r => r.sellTrek != null).length,
+    };
+  }, [rows]);
 
   if (!can('carriers.view')) return <Pad><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية عرض شركات الشحن"/></Pad>;
 
@@ -70,10 +81,13 @@ export default function PlatformCarriers({ isActive = true }) {
     const v = raw === '' || raw == null ? null : Number(raw);
     if (v != null && !Number.isFinite(v)) { toast('سعر غير صالح', 'error'); return; }
     const [col, rowKey] = PRICE_COLS[plat];
+    const row = (rows || []).find(r => r.id === id);
     setRows(prev => prev.map(r => r.id === id ? { ...r, [rowKey]: v } : r));
     setPriceDraft(d => { const n = { ...d }; delete n[k]; return n; });
-    try { await savePlatformCarrier(id, { [col]: v }, user?.id); }
-    catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
+    try {
+      if (row?.isCompetitor) await savePlatformCompetitor(row.compId, { [col]: v }, user?.id);
+      else await savePlatformCarrier(id, { [col]: v }, user?.id);
+    } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
   };
 
   // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود/تريك)
@@ -152,6 +166,18 @@ export default function PlatformCarriers({ isActive = true }) {
         <span style={{ fontSize: 11.5, color: 'var(--muted2)', marginInlineStart: 'auto' }}>سعر التكلفة = الأساس + الوقود + هامش {markup} ر.س</span>
       </Card>
 
+      {/* عدد الشركات لكل منصّة */}
+      {rows && (
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+          {[['لمحة', platCounts.lamha, 'var(--accent)'], ['أوتو', platCounts.auto, '#F97316'], ['طرود', platCounts.torod, '#8B5CF6'], ['تريك', platCounts.trek, '#0EA5E9']].map(([lbl, n, col]) => (
+            <div key={lbl} style={{ flex: '1 1 120px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 13px', borderTop: `3px solid ${col}` }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 2 }}>{lbl}</div>
+              <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: col }}>{n} <span style={{ fontSize: 11, color: 'var(--muted2)', fontWeight: 400 }}>شركة</span></div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {rows == null ? <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>
         : !visible.length ? <Card><Empty icon="🚚" title="لا شركات في المقارنة" sub="فعّل الشركات الموجودة في إكسل أسعار البيع"/></Card>
         : (
@@ -173,12 +199,14 @@ export default function PlatformCarriers({ isActive = true }) {
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="مفعّلة" style={{ ...cell, width: 30 }}>
-                        <input type="checkbox" checked={r.isActive} disabled={!canEdit} title="مفعّلة"
-                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 15, height: 15 }}/>
+                        <input type="checkbox" checked={r.isActive} disabled={!canEdit || r.isCompetitor} title={r.isCompetitor ? 'شركة منافس' : 'مفعّلة'}
+                          onChange={e => patch(r.id, { is_active: e.target.checked })} style={{ cursor: (canEdit && !r.isCompetitor) ? 'pointer' : 'default', width: 15, height: 15 }}/>
                       </td>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
                         {r.displayName}
-                        {!r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
+                        {r.isCompetitor
+                          ? <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--muted2)', background: 'var(--surface2)', padding: '1px 6px', borderRadius: 20 }}>لدى منافس</span>
+                          : !r.hasContract && <span style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 15%, transparent)', padding: '1px 6px', borderRadius: 20 }}>بلا عقد</span>}
                       </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
                         {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}

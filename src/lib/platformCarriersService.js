@@ -58,13 +58,14 @@ export async function savePlatformMarkup(markup) {
 }
 
 export async function loadPlatformCarriers() {
-  const [carriers, pcRes, markup] = await Promise.all([
+  const [carriers, pcRes, compRes, markup] = await Promise.all([
     loadCarriers(),
     supabase.from('platform_carriers').select('*'),
+    supabase.from('platform_competitors').select('*').order('sell_auto', { ascending: true, nullsFirst: false }),
     loadPlatformMarkup(),
   ]);
   const pcMap = new Map((pcRes.data || []).map(r => [r.carrier_id, r]));
-  return (carriers || []).map(cr => {
+  const ourRows = (carriers || []).map(cr => {
     const pc = pcMap.get(cr.id) || {};
     const cost = extractBaseCost(cr);
     const m = pc.markup != null ? Number(pc.markup) : markup;
@@ -112,6 +113,40 @@ export async function loadPlatformCarriers() {
       notes: pc.notes || null,
     };
   });
+
+  // شركات لدى المنافسين فقط — تُعرَض كصفوف عادية بـ«لمحة = غير متاحة» (بلا عقد/تكلفة).
+  const compRows = (compRes.data || []).map(c => {
+    const plat = [
+      { key: 'auto',  label: 'أوتو', v: c.sell_auto  != null ? Number(c.sell_auto)  : null },
+      { key: 'torod', label: 'طرود', v: c.sell_torod != null ? Number(c.sell_torod) : null },
+      { key: 'trek',  label: 'تريك', v: c.sell_trek  != null ? Number(c.sell_trek)  : null },
+    ].filter(x => x.v != null && Number.isFinite(x.v));
+    const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
+    return {
+      id: `comp_${c.id}`, compId: c.id, isCompetitor: true,
+      name: c.name, displayName: c.service ? `${c.name} · ${c.service}` : c.name, platformName: c.name,
+      service: c.service || null,
+      isActive: true, freeReturn: false,
+      unavailable: ['lamha'],           // لمحة لا تقدّمها
+      sellPrice: null,
+      sellAuto:  c.sell_auto  != null ? Number(c.sell_auto)  : null,
+      sellTorod: c.sell_torod != null ? Number(c.sell_torod) : null,
+      sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
+      bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: false,
+      markup, markupOverride: null,
+      base: null, costReason: 'لدى منافس', fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
+      costPrice: null, hasContract: false, notes: c.note || null,
+    };
+  });
+
+  return [...ourRows, ...compRows];
+}
+
+// حفظ سعر منافس (أوتو/طرود/تريك) — للشركات الموجودة لدى المنافسين فقط.
+export async function savePlatformCompetitor(compId, patch, userId = null) {
+  const { error } = await supabase.from('platform_competitors')
+    .update({ ...patch, updated_at: new Date().toISOString(), updated_by: userId }).eq('id', compId);
+  if (error) throw error;
 }
 
 // حفظ حقل واحد أو أكثر لناقل منصّة (upsert آمن — الصف قد لا يكون موجوداً).
