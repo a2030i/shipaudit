@@ -98,14 +98,14 @@ export default function Forecast({ carriers = [], isActive = true }) {
     );
   }
 
-  const netColor = data.netInHorizon >= 0 ? '#047857' : 'var(--red)';
+  const netColor = data.netInHorizon >= 0 ? 'var(--green)' : 'var(--red)';
   const horizonLabel = HORIZON_OPTIONS.find(h => h.days === horizon)?.label || `${horizon} يوم`;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader
         icon={<TrendingUp size={22}/>}
-        iconColor="#0EA5E9"
+        iconColor="var(--accent3)"
         title="توقّع النقد — الداخل والخارج"
         subtitle="ماذا نتوقّع أن يدخل وأن يخرج خلال الفترة القادمة — مبني على مهام التحصيل والفواتير المجدولة"
         meta={`آخر تحديث ${new Date(data.asOf).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`}
@@ -123,9 +123,9 @@ export default function Forecast({ carriers = [], isActive = true }) {
           return (
             <button key={opt.days} onClick={() => setHorizon(opt.days)} style={{
               padding: '8px 16px', borderRadius: 999,
-              border: `1.5px solid ${active ? '#0EA5E9' : 'var(--border)'}`,
-              background: active ? 'color-mix(in srgb, #0EA5E9 12%, transparent)' : 'transparent',
-              color: active ? '#0EA5E9' : 'var(--text2)',
+              border: `1.5px solid ${active ? 'var(--accent3)' : 'var(--border)'}`,
+              background: active ? 'color-mix(in srgb, var(--accent3) 12%, transparent)' : 'transparent',
+              color: active ? 'var(--accent3)' : 'var(--text2)',
               fontSize: 12.5, fontWeight: 600, cursor: 'pointer',
               fontFamily: 'var(--font-sans)',
               transition: 'all .15s',
@@ -171,11 +171,11 @@ export default function Forecast({ carriers = [], isActive = true }) {
       {/* Side info card: current obligations */}
       <Card style={{
         marginBottom: 18,
-        background: 'color-mix(in srgb, #0EA5E9 5%, transparent)',
-        border: '1px solid color-mix(in srgb, #0EA5E9 18%, transparent)',
+        background: 'color-mix(in srgb, var(--accent3) 5%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--accent3) 18%, transparent)',
       }}>
         <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
-          <Wallet size={18} color="#0EA5E9"/>
+          <Wallet size={18} color="var(--accent3)"/>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
               مستحقّ علينا للشركات الآن
@@ -190,7 +190,7 @@ export default function Forecast({ carriers = [], isActive = true }) {
             <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
               COD في الطريق إلينا
             </div>
-            <div style={{ fontSize: 14, color: '#047857', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+            <div style={{ fontSize: 14, color: 'var(--green)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
               {fmt(data.codInTransit)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
             </div>
           </div>
@@ -268,15 +268,15 @@ function ProjectedBalance({ data, horizonLabel }) {
   const proj = data.projectedBalance;
   const low = data.minProjected;
   const risky = (low != null && low < 0) || (proj != null && proj < 0);
-  const projColor = proj >= 0 ? '#047857' : 'var(--red)';
+  const projColor = proj >= 0 ? 'var(--green)' : 'var(--red)';
   return (
     <Card style={{
       marginBottom: 18, padding: 18,
-      background: risky ? 'color-mix(in srgb, var(--red) 6%, transparent)' : 'color-mix(in srgb, #047857 5%, transparent)',
-      border: `1px solid color-mix(in srgb, ${risky ? 'var(--red)' : '#047857'} 20%, transparent)`,
+      background: risky ? 'color-mix(in srgb, var(--red) 6%, transparent)' : 'color-mix(in srgb, var(--green) 5%, transparent)',
+      border: `1px solid color-mix(in srgb, ${risky ? 'var(--red)' : 'var(--green)'} 20%, transparent)`,
     }}>
       <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Banknote size={20} color={risky ? 'var(--red)' : '#047857'}/>
+        <Banknote size={20} color={risky ? 'var(--red)' : 'var(--green)'}/>
         <div style={{ minWidth: 150 }}>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>الرصيد البنكي الآن</div>
           <div style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>{fmt(cur)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span></div>
@@ -337,8 +337,8 @@ function CashflowChart({ dailyFlow, bankBalance }) {
             </g>
           );
         })}
-        <path d={path} fill="none" stroke="#0EA5E9" strokeWidth="2" strokeLinejoin="round"/>
-        {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="#0EA5E9"/>)}
+        <path d={path} fill="none" stroke="var(--accent3)" strokeWidth="2" strokeLinejoin="round"/>
+        {pts.map((p, i) => <circle key={i} cx={p[0]} cy={p[1]} r="2.5" fill="var(--accent3)"/>)}
       </svg>
     </Card>
   );
@@ -346,10 +346,13 @@ function CashflowChart({ dailyFlow, bankBalance }) {
 
 function BigStat({ color, icon, label, value, unit, hint, big = false }) {
   return (
-    <Card style={{
+    <div className="stat-card" style={{
       padding: 18,
       background: `color-mix(in srgb, ${color} ${big ? 8 : 5}%, transparent)`,
       border: `1px solid color-mix(in srgb, ${color} ${big ? 28 : 18}%, transparent)`,
+      borderRadius: 'var(--r-lg)',
+      boxShadow: 'var(--shadow-sm)',
+      '--sc-tone': color,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
         <span style={{
@@ -373,7 +376,7 @@ function BigStat({ color, icon, label, value, unit, hint, big = false }) {
           {hint}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

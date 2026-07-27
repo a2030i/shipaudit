@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, TrendingUp, TrendingDown, AlertTriangle } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast } from '../components/UI.jsx';
+import { RefreshCw, TrendingUp, TrendingDown, AlertTriangle, BarChart3 } from 'lucide-react';
+import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { loadCarrierKpis } from '../lib/carrierStatementsService.js';
 import { carrierScore } from '../lib/carrierScore.js';
 
@@ -41,17 +41,12 @@ export default function CarrierKpi({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            📊 أداء الناقلين
-          </h2>
-          <p style={{ color: 'var(--muted)', fontSize: 12, margin: '4px 0 0' }}>
-            مؤشرات الدقة، النزاعات، الالتزام بالسداد، والتغطية بالتدقيق لكل ناقل.
-          </p>
-        </div>
-        <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-      </div>
+      <PageHeader
+        icon={<BarChart3 size={22}/>}
+        title="أداء الناقلين"
+        subtitle="مؤشرات الدقة، النزاعات، الالتزام بالسداد، والتغطية بالتدقيق لكل ناقل."
+        actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>}
+      />
 
       {kpis.length === 0 ? (
         <Empty icon="📊" title="لا توجد بيانات بعد" sub="ارفع كشف حساب وفواتير لتظهر المؤشرات هنا"/>
@@ -199,9 +194,10 @@ function Row({ icon, label, value, valueColor, extra, extraColor, sub }) {
 
 function Stat({ label, value, suffix, hint, color, big }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
+      '--sc-tone': color,
     }}>
       <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
         {label}

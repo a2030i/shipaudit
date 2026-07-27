@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
-import { CheckCircle2, XCircle, RotateCcw, AlertCircle } from 'lucide-react';
-import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast } from '../components/UI.jsx';
+import { CheckCircle2, XCircle, RotateCcw, AlertCircle, ClipboardCheck } from 'lucide-react';
+import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights, exportInboundReturns } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
@@ -80,7 +80,7 @@ function AIPanel({ audit, carriers }) {
       </div>
 
       {analysis && (
-        <div style={{padding:'12px 14px',background:'#f5a62310',borderBottom:'1px solid #f5a62330',fontSize:13,lineHeight:1.8}}>
+        <div style={{padding:'12px 14px',background:'color-mix(in srgb, var(--gold) 8%, transparent)',borderBottom:'1px solid color-mix(in srgb, var(--gold) 20%, transparent)',fontSize:13,lineHeight:1.8}}>
           <div style={{color:'var(--gold)',fontSize:10,fontFamily:'var(--font-mono)',marginBottom:6}}>تحليل AI:</div>
           {analysis}
         </div>
@@ -935,16 +935,11 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         )}
 
         {/* Header */}
-        <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:10}}>
-          <div>
-            <h2 style={{fontFamily:'var(--font-mono)',fontSize:18,marginBottom:4}}>
-              نتائج تدقيق <span style={{color:'var(--accent)'}}>{audit.carrierName}</span>
-            </h2>
-            <div style={{color:'var(--muted)',fontSize:12}}>
-              {audit.period} · {contract?.label||'—'} · {results.length} شحنة
-            </div>
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+        <PageHeader
+          icon={<ClipboardCheck size={22}/>}
+          title={<>نتائج تدقيق <span style={{color:'var(--accent3)'}}>{audit.carrierName}</span></>}
+          subtitle={`${audit.period} · ${contract?.label||'—'} · ${results.length} شحنة`}
+          actions={<>
             <Btn size="sm" variant="ghost" onClick={onNewAudit}>+ مراجعة جديدة</Btn>
             <Btn size="sm" variant={showDetail?'outline':'ghost'} onClick={()=>setShowDetail(s=>!s)}>
               {showDetail ? '📊 ملخص' : '🔬 تفاصيل'}
@@ -973,8 +968,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             <Btn size="sm" variant={showAI?'primary':'gold'} onClick={()=>setShowAI(s=>!s)} icon="✨">
               {showAI?'إخفاء AI':'مساعد AI'}
             </Btn>
-          </div>
-        </div>
+          </>}
+        />
 
         {/* Stats */}
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>

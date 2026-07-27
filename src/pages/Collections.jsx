@@ -262,7 +262,7 @@ export default function Collections({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Phone size={22}/>}
-        iconColor="#EF4444"
+        iconColor="var(--red)"
         title="قائمة التحصيل"
         subtitle="مهام مولّدة تلقائياً من العملاء اللي تجاوزوا السقف أو تأخّروا"
         meta={`${stats.open} مهمة مفتوحة · ${fmt(stats.totalDebt)} ر.س مفتوح`}
@@ -286,13 +286,13 @@ export default function Collections({ isActive = true }) {
         display: 'grid', gap: 12, marginBottom: 16,
         gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
       }}>
-        <SummaryStat label="مفتوحة"        value={stats.open}             color="#0EA5E9"/>
-        <SummaryStat label="جديدة"          value={stats.todo}             color="#0EA5E9"/>
-        <SummaryStat label="بانتظار الردّ"   value={stats.contacted}        color="#8B5CF6"/>
+        <SummaryStat label="مفتوحة"        value={stats.open}             color="var(--accent3)"/>
+        <SummaryStat label="جديدة"          value={stats.todo}             color="var(--accent3)"/>
+        <SummaryStat label="بانتظار الردّ"   value={stats.contacted}        color="var(--accent)"/>
         <SummaryStat label="وعود فعّالة"     value={stats.promised}         color="var(--gold)"/>
         <SummaryStat label="وعود اليوم"      value={stats.promiseDueToday}  color="var(--green)"/>
         <SummaryStat label="وعود متأخّرة"    value={stats.promiseOverdue}   color="var(--red)"/>
-        <SummaryStat label="متوسط عمر الدين" value={`${arHealth.avgAge} يوم`} color="#F97316"/>
+        <SummaryStat label="متوسط عمر الدين" value={`${arHealth.avgAge} يوم`} color="var(--gold)"/>
       </div>
 
       {/* مستويات التصعيد — توزيع الدين الحيّ (زوهو) على مراحل المطالبة (ب+ج).
@@ -585,16 +585,18 @@ const pill = (color) => ({
 
 function SummaryStat({ label, value, color }) {
   return (
-    <Card style={{
+    <div className="stat-card" style={{
       padding: 12,
-      background: `color-mix(in srgb, ${color} 4%, transparent)`,
-      border: `1px solid color-mix(in srgb, ${color} 18%, transparent)`,
+      background: 'var(--card)',
+      border: '1px solid var(--border)',
+      borderRadius: 'var(--r-lg)',
+      '--sc-tone': color,
     }}>
       <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 600, letterSpacing: .3 }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, color, fontFamily: 'var(--font-mono)', letterSpacing: -0.4 }}>
         {value.toLocaleString('en-US')}
       </div>
-    </Card>
+    </div>
   );
 }
 

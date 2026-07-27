@@ -105,6 +105,7 @@ function Hero({ carrier, onBack }) {
 function StatCard({ label, value, sub, color, icon: Icon, onClick, title }) {
   return (
     <div
+      className="stat-card"
       role={onClick ? 'button' : undefined}
       tabIndex={onClick ? 0 : undefined}
       title={title}
@@ -120,13 +121,14 @@ function StatCard({ label, value, sub, color, icon: Icon, onClick, title }) {
       borderRadius: 'var(--r-lg)', padding: '14px 18px',
       display: 'flex', flexDirection: 'column', gap: 4,
       cursor: onClick ? 'pointer' : 'default',
+      '--sc-tone': color || 'var(--accent)',
     }}>
       <div style={{
         fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)',
         letterSpacing: 2, textTransform: 'uppercase',
         display: 'flex', alignItems: 'center', gap: 6,
       }}>
-        {Icon && <Icon size={11}/>}
+        {Icon && <span className="stat-icon-tile"><Icon size={16}/></span>}
         {label}
       </div>
       <div style={{

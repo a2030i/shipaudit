@@ -210,7 +210,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           big
         />
         <BigStat
-          color="#8B5CF6"
+          color="var(--accent)"
           icon={<AlertTriangle size={18}/>}
           label="الفروق المُكتشفة"
           value={fmt(data.thisMonth.driftTotal)}
@@ -242,7 +242,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       )}
 
       {/* ── Section 1.5: Working capital — CFO health metrics ── */}
-      <SectionTitle icon={<TrendingUp size={14}/>} color="#8B5CF6">
+      <SectionTitle icon={<TrendingUp size={14}/>} color="var(--accent)">
         سرعة دوران فلوسك — تحصيل مقابل سداد
       </SectionTitle>
       <div style={{
@@ -610,7 +610,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
     },
     Math.abs(drift) > 0.5 && {
       icon: <Target size={18}/>,
-      tone: '#7C3AED',
+      tone: 'var(--accent)',
       title: drift < 0 ? 'استرداد مكتشف' : 'فرق يحتاج تفسير',
       value: fmtCompact(Math.abs(drift)),
       unit: 'ر.س',
@@ -1155,10 +1155,13 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
   const deltaArrow = delta == null ? '·' : deltaUp ? '↑' : '↓';
 
   return (
-    <Card style={{
+    <div className="stat-card" style={{
       padding: 16,
       background: 'var(--surface)',
       border:     `1px solid var(--border2)`,
+      borderRadius: 'var(--r-lg)',
+      boxShadow: 'var(--shadow-sm)',
+      '--sc-tone': color,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
         <span style={{
@@ -1192,7 +1195,7 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
           {hint}
         </div>
       )}
-    </Card>
+    </div>
   );
 }
 

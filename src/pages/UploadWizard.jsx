@@ -13,7 +13,7 @@ import {
   Upload, FileSpreadsheet, Sparkles, CheckCircle2, Calendar,
   Truck, AlertCircle, ArrowLeft, ArrowRight, Building2, FileCheck,
 } from 'lucide-react';
-import { Card, Btn, Select, Spinner, Badge, toast, PageHero } from '../components/UI.jsx';
+import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
 import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
@@ -917,16 +917,11 @@ export default function UploadWizard({ carriers, onComplete }) {
   return (
     <div style={{ padding: '32px 42px 80px', maxWidth: 1180, margin: '0 auto' }}>
 
-      <PageHero
-        tag="Audit workflow"
+      <PageHeader
         icon={<UploadIcon size={22}/>}
         title="تدقيق فاتورة جديدة"
         subtitle="ارفع الفاتورة، دع النظام يقرأ الناقل والأعمدة، ثم اعتمد المراجعة بثقة"
-        accent="var(--accent)"
-        stats={[
-          { label: 'الخطوة', value: `${step}/3`, hint: step === 1 ? 'الفترة' : step === 2 ? 'الرفع' : 'المراجعة', color: 'var(--accent)' },
-          { label: 'الفترة', value: period, hint: 'قابلة للتعديل', color: 'var(--text)' },
-        ]}
+        meta={`الخطوة ${step}/3 — ${step === 1 ? 'الفترة' : step === 2 ? 'الرفع' : 'المراجعة'} · الفترة ${period}`}
       />
 
       {/* ── STEP INDICATOR ────────────────────────────────────────────── */}

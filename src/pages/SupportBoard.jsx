@@ -39,10 +39,11 @@ function StatusPill({ status }) {
 // بطاقة إحصائية علوية — النقر يفلتر
 function StatCard({ label, value, color, active, onClick }) {
   return (
-    <button onClick={onClick} style={{
+    <button className="stat-card" onClick={onClick} style={{
       border: `1.5px solid ${active ? color : 'var(--border)'}`, borderRadius: 12,
       padding: '10px 14px', cursor: 'pointer', textAlign: 'start', fontFamily: 'var(--font-sans)',
       background: active ? `color-mix(in srgb, ${color} 8%, transparent)` : 'var(--card)',
+      '--sc-tone': color || 'var(--accent)',
     }}>
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
       <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color }}>{value}</div>

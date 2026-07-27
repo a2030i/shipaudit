@@ -5,7 +5,7 @@
 // ?phone=9665... يملأ المتجر تلقائياً (رابط مستقبلي من داخل هاتف).
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { ArrowRight } from 'lucide-react';
-import { Card } from '../components/UI.jsx';
+import { Card, Btn } from '../components/UI.jsx';
 import { LamhaMark } from '../components/BrandLogo.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import TicketCreateForm from '../components/TicketCreateForm.jsx';
@@ -30,13 +30,9 @@ export default function TicketForm() {
         <TicketCreateForm prefillPhone={searchParams.get('phone') || ''}/>
       </Card>
       {can('support.view') && (
-        <button onClick={() => navigate('/support')} style={{
-          marginTop: 16, border: 'none', background: 'transparent', cursor: 'pointer',
-          color: 'var(--accent)', fontSize: 12.5, fontFamily: 'var(--font-sans)', fontWeight: 600,
-          display: 'inline-flex', alignItems: 'center', gap: 5,
-        }}>
+        <Btn variant="ghost" size="sm" onClick={() => navigate('/support')} style={{ marginTop: 16, color: 'var(--accent)' }}>
           لوحة متابعة التذاكر <ArrowRight size={13} style={{ transform: 'scaleX(-1)' }}/>
-        </button>
+        </Btn>
       )}
     </div>
   );

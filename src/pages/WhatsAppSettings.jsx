@@ -96,7 +96,7 @@ export default function WhatsAppSettings({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: (tab === 'campaigns' || tab === 'ivr') ? 1180 : 960, margin: '0 auto' }}>
-      <PageHeader icon={<MessageCircle size={22}/>} iconColor="#22C55E"
+      <PageHeader icon={<MessageCircle size={22}/>} iconColor="var(--green)"
         title="منصة هاتف"
         subtitle="الربط مع هاتف (Voxa) — قوالب واتساب + المكالمات الآلية + التاقات + جهات الاتصال"
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
@@ -107,8 +107,8 @@ export default function WhatsAppSettings({ isActive = true }) {
         {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['impact', '💰 الأثر بالريال'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-            border: `1.5px solid ${tab === v ? '#22C55E' : 'var(--border)'}`,
-            background: tab === v ? 'color-mix(in srgb, #22C55E 12%, transparent)' : 'transparent', color: 'var(--text)',
+            border: `1.5px solid ${tab === v ? 'var(--green)' : 'var(--border)'}`,
+            background: tab === v ? 'color-mix(in srgb, var(--green) 12%, transparent)' : 'transparent', color: 'var(--text)',
           }}>{lbl}</button>
         ))}
       </div>
@@ -431,15 +431,15 @@ function OutreachImpactTab() {
 
 // تاب تحليل المكالمات — تصنيف آلي لمشاكل العملاء من نصوص المكالمات + اتجاه + تنقيب.
 const PROBLEM_META = {
-  price:          { icon: '💰', label: 'السعر مرتفع مقابل المنافسين', action: 'راجع باقة أسعار تنافسية / أسعار خاصة للحجم', color: '#EF4444' },
-  returns:        { icon: '↩️', label: 'لبس ميزة الإرجاع المجاني', action: 'وضّح تغطية الإرجاع المجاني في القالب والمكالمة', color: '#F59E0B' },
-  delivery:       { icon: '🚚', label: 'تأخّر التوصيل', action: 'تابع الشحنات المتأخرة وصعّد للناقل', color: '#EF4444' },
-  lost:           { icon: '📦', label: 'شحنات مفقودة', action: 'افتح تذكرة دعم وتابع مع الناقل', color: '#EF4444' },
-  support:        { icon: '🎧', label: 'صعوبة خدمة العملاء / بطء الرد', action: 'حسّن زمن الرد ومتابعة الطلبات', color: '#F59E0B' },
-  billing:        { icon: '🧾', label: 'الفواتير / الفوترة', action: 'راجع دقّة الفواتير ووضوحها', color: '#F59E0B' },
-  carriers:       { icon: '🚛', label: 'نقص خيارات الناقلين / السرعة', action: 'فعّل ناقلين إضافيين (خاصة جدة)', color: '#0EA5E9' },
+  price:          { icon: '💰', label: 'السعر مرتفع مقابل المنافسين', action: 'راجع باقة أسعار تنافسية / أسعار خاصة للحجم', color: 'var(--red)' },
+  returns:        { icon: '↩️', label: 'لبس ميزة الإرجاع المجاني', action: 'وضّح تغطية الإرجاع المجاني في القالب والمكالمة', color: 'var(--gold)' },
+  delivery:       { icon: '🚚', label: 'تأخّر التوصيل', action: 'تابع الشحنات المتأخرة وصعّد للناقل', color: 'var(--red)' },
+  lost:           { icon: '📦', label: 'شحنات مفقودة', action: 'افتح تذكرة دعم وتابع مع الناقل', color: 'var(--red)' },
+  support:        { icon: '🎧', label: 'صعوبة خدمة العملاء / بطء الرد', action: 'حسّن زمن الرد ومتابعة الطلبات', color: 'var(--gold)' },
+  billing:        { icon: '🧾', label: 'الفواتير / الفوترة', action: 'راجع دقّة الفواتير ووضوحها', color: 'var(--gold)' },
+  carriers:       { icon: '🚛', label: 'نقص خيارات الناقلين / السرعة', action: 'فعّل ناقلين إضافيين (خاصة جدة)', color: 'var(--accent)' },
   closed:         { icon: '🔒', label: 'إغلاق النشاط التجاري', action: 'ليس خللاً تقنياً — نظّف القائمة من المغلقين', color: 'var(--muted)' },
-  cr_requirement: { icon: '📋', label: 'اشتراط السجل التجاري يطرد الأفراد', action: 'ادرس باقة أفراد بلا سجل تجاري', color: '#8B5CF6' },
+  cr_requirement: { icon: '📋', label: 'اشتراط السجل التجاري يطرد الأفراد', action: 'ادرس باقة أفراد بلا سجل تجاري', color: 'var(--accent)' },
 };
 function CallProblemsTab() {
   const [days, setDays] = useState(60);
@@ -564,7 +564,7 @@ function AgentActivityTab() {
   const fmtDur = (s) => { const n = Number(s) || 0; if (!n) return '—'; const m = Math.floor(n / 60); const sec = n % 60; return m ? `${m}د ${sec}ث` : `${sec}ث`; };
   const sentLabel = (v) => { const n = Number(v); if (!n) return '—'; return n >= 4 ? `😊 ${n.toFixed(1)}` : n <= 2 ? `😞 ${n.toFixed(1)}` : `😐 ${n.toFixed(1)}`; };
   // بلا موظف = مكالمة آلية (IVR/نظام) — لا يمكن صادر بلا موظف إلا آلياً (قرار المستخدم).
-  const agentName = (id) => !id ? <span style={{ color: '#8B5CF6', fontWeight: 700 }}>🤖 آلي (IVR)</span>
+  const agentName = (id) => !id ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>🤖 آلي (IVR)</span>
     : (nameById.get(String(id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(id)}>{String(id).slice(0, 8)}…</span>);
 
   return (
@@ -873,7 +873,7 @@ function CampaignsTab() {
   const rth = { padding: '9px 11px', fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', textAlign: 'right' };
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
-  const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: '#3B82F6', failed: 'var(--red)', pending: 'var(--gold)' };
+  const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
   const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
     : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
     : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
@@ -1078,7 +1078,7 @@ function TagSystemCard() {
     } catch (e) { toast(e.message || 'فشل', 'error'); }
     finally { setBusy(false); setProg(null); load(); }
   };
-  const TAGS = [['عليه مديونية', '#DC2626'], ['متأخر سداد', '#F97316'], ['رصيد سالب', '#DC2626'], ['VIP', '#F59E0B'], ['نشط', '#16A34A'], ['متوقف', '#6B7280'], ['جديد', '#06B6D4'], ['دفع مسبق', '#8B5CF6'], ['دفع لاحق', '#3B82F6'], ['عميل محتمل', '#3B82F6'], ['بلاك لست', '#111827']];
+  const TAGS = [['عليه مديونية', '#DC2626'], ['متأخر سداد', '#F97316'], ['رصيد سالب', '#DC2626'], ['VIP', '#F59E0B'], ['نشط', '#16A34A'], ['متوقف', '#6B7280'], ['جديد', '#06B6D4'], ['دفع مسبق', '#8B5CF6'], ['دفع لاحق', '#3B82F6'], ['عميل محتمل', '#3B82F6'], ['بلاك لست', 'var(--text)']];
   const [allTags, setAllTags] = useState(null);
   const OURS = new Set(['عليه مديونية', 'متأخر سداد', 'رصيد سالب', 'VIP', 'نشط', 'متوقف', 'جديد', 'دفع مسبق', 'دفع لاحق', 'عميل محتمل', 'بلاك لست']);
   const showTags = async () => { setAllTags('loading'); try { setAllTags(await loadHatifTags()); } catch { setAllTags([]); } };

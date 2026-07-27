@@ -47,7 +47,7 @@ export default function IntegrityCheck({ isActive }) {
   const healthy = (checks || []).filter(c => c.count === 0);
 
   return (
-    <div style={{ padding: '28px 32px 80px', maxWidth: 920, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<ShieldCheck size={22}/>}
         title="سلامة البيانات"

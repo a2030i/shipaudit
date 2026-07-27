@@ -102,7 +102,7 @@ export default function MonthlyReport({ isActive }) {
   if (loading && !data) return <div style={{ padding: 48, textAlign: 'center' }}><Spinner/></div>;
 
   return (
-    <div style={{ padding: '28px 32px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '28px 32px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <PageHeader
         icon={<CalendarRange size={24}/>}
         title="التقرير الشهري للناقلين"
@@ -158,7 +158,7 @@ export default function MonthlyReport({ isActive }) {
           <div style={{ overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 820 }}>
               <thead>
-                <tr style={{ background: 'var(--bg-subtle, #f8fafc)', textAlign: 'right' }}>
+                <tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
                   {['الناقل','مفوتر','التغيّر','تحصيل COD','مبالغ مُرجَعة/خصومات','مدفوعات','COD ناقص الفواتير','المراجعات','فرق التدقيق'].map(h => (
                     <th key={h} style={{ padding: '12px 14px', fontWeight: 700, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                   ))}
@@ -198,7 +198,7 @@ export default function MonthlyReport({ isActive }) {
                 })}
               </tbody>
               <tfoot>
-                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg-subtle, #f8fafc)', fontWeight: 700 }}>
+                <tr style={{ borderTop: '2px solid var(--border)', background: 'var(--surface2)', fontWeight: 700 }}>
                   <td style={{ padding: '12px 14px' }}>الإجمالي ({rows.length})</td>
                   <td style={{ padding: '12px 14px', fontVariantNumeric: 'tabular-nums' }}>{fmt(totals.billed)}</td>
                   <td style={{ padding: '12px 14px' }}></td>

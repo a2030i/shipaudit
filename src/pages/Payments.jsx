@@ -333,9 +333,10 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete }) {
 // ── Stat ───────────────────────────────────────────────────────────────
 function Stat({ label, value, suffix, color, big }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
+      '--sc-tone': color || 'var(--accent)',
     }}>
       <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
         {label}

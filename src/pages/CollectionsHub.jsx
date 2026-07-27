@@ -79,7 +79,7 @@ export default function CollectionsHub({ isActive = true }) {
             <button key={t.id} onClick={() => handleTabChange(t.id)}
               style={{
                 padding: '10px 18px', border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? '#EF4444' : 'transparent'}`,
+                borderBottom: `2.5px solid ${active ? 'var(--red)' : 'transparent'}`,
                 color: active ? 'var(--text)' : 'var(--muted)',
                 fontSize: 13, fontWeight: active ? 700 : 500,
                 fontFamily: 'var(--font-sans)', cursor: 'pointer',

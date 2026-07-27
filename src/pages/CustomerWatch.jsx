@@ -180,7 +180,7 @@ function statusPillTone(rawStatus, shipDays) {
   const isInactive  = /غير\s*نشط|غير\s*مفعّل|غير\s*مفعل|inactive/i.test(s);
   const isActive    = /^نشط$|active|مفعّل/i.test(s);
   if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: 'var(--red)', label: s || 'موقوف' };
-  if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
+  if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: 'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', label: s || 'غير نشط' };
   if (isActive) {
     if (shipDays != null && shipDays > 30) {
       return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط بلا شحن حديث' };
@@ -195,7 +195,7 @@ const ANOMALY_META = {
   prepaid_with_debt:  { color: '#EF4444', icon: AlertTriangle, label: 'دفع مسبق وعليه دين', hint: 'يدفع من المحفظة لكن عليه فواتير' },
   active_with_debt:   { color: '#F97316', icon: Flame,         label: 'يشحن الآن وعليه دين', hint: 'آخر شحنة خلال 10 أيام — اتصل اليوم' },
   postpaid_overdue:   { color: 'var(--gold)', icon: Clock,         label: 'متأخر +60 يوم',       hint: 'مرشّح للإيقاف بعد تنبيه' },
-  inactive_with_debt: { color: '#7A82C4', icon: Moon,          label: 'موقوف وعليه دين',     hint: 'حصّل قبل الإغلاق النهائي' },
+  inactive_with_debt: { color: 'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', icon: Moon,          label: 'موقوف وعليه دين',     hint: 'حصّل قبل الإغلاق النهائي' },
 };
 
 // ── Main ──────────────────────────────────────────────────────────
@@ -525,7 +525,7 @@ export default function CustomerWatch({ isActive = true }) {
           }}>
             <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
             <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
-            <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="#3B82F6"/>
+            <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="var(--brand)"/>
             <QuickStat icon={<ZapOff/>}       label="لم يشحن أبداً"        value={fmtCount(t.neverShipped)} hint="تسرّب بين التسجيل والشحن" color="#EF4444"/>
             <QuickStat icon={<Wallet/>}       label="أرصدة موجبة"          value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
             <QuickStat icon={<Wallet/>}       label="أرصدة سالبة"          value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
@@ -653,7 +653,7 @@ export default function CustomerWatch({ isActive = true }) {
             />
             <TopList
               icon={<Wallet size={14}/>}
-              accent="#3B82F6"
+              accent="var(--brand)"
               title="أكبر المحافظ"
               sub="رصيد دفع مسبق نشط"
               rows={data.top.byWallet}
@@ -713,7 +713,7 @@ export default function CustomerWatch({ isActive = true }) {
             />
             <TopList
               icon={<ZapOff size={14}/>}
-              accent="#7A82C4"
+              accent="color-mix(in srgb, var(--brand-navy) 55%, var(--muted))"
               title="توقّفوا عن الشحن (يمكن استرجاعهم)"
               sub="مُعطَّلون لكن شحنوا سابقاً"
               rows={data.top.churned}
@@ -1164,7 +1164,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
         </div>
         {m?.phone && (
           <IvrCallButton phone={m.phone} name={m.storeName || m.name} fields={{ name: m.storeName || m.name, amount: m.balance ?? m.debt }} label size={13}
-            style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px rgba(16,185,129,.22)' }}/>
+            style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px color-mix(in srgb, var(--accent) 25%, transparent)' }}/>
         )}
       </div>
 
@@ -1174,7 +1174,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
       {/* Status chips */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 16 }}>
         {m?.billingType && (
-          <Chip color={m.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)'} label={m.billingType}/>
+          <Chip color={m.billingType === 'دفع مسبق' ? 'var(--brand)' : 'var(--gold)'} label={m.billingType}/>
         )}
         {m?.platformStatus && (
           <Chip color={m.platformStatus === 'نشط' ? 'var(--green)' : '#71717A'} label={`المنصّة: ${m.platformStatus}`}/>
@@ -1259,7 +1259,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
           }}>
             {siblings.map((s, i) => {
               const sm = s.merchant;
-              const billingColor = sm.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)';
+              const billingColor = sm.billingType === 'دفع مسبق' ? 'var(--brand)' : 'var(--gold)';
               const statusColor  = sm.platformStatus === 'نشط' ? 'var(--green)' : '#71717A';
               return (
                 <div

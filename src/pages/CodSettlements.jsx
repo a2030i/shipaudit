@@ -27,7 +27,7 @@ const STATUS_META = {
   resolved:         { label: '✓ تم الحل',                color: 'var(--green)' },
   outstanding:      { label: '🔴 متبقّي',                color: 'var(--red)'   },
   pending_review:   { label: '🟡 فرق غير مراجَع',         color: 'var(--gold)'  },
-  disputed:         { label: '⚠️ اعتراض مفتوح',           color: '#f59e0b'      },
+  disputed:         { label: '⚠️ اعتراض مفتوح',           color: 'var(--gold)'  },
   over_remit:       { label: '🔵 وارد · بانتظار المطابقة', color: '#3b82f6'      },
   over_remit_aged:  { label: '🔴 تحويل وصل بلا تسوية تقابله',   color: 'var(--red)'   },
 };
@@ -689,7 +689,7 @@ export default function CodSettlements({ isActive = true }) {
               hint={`${fmt(summary.pendingReviewAmount)} ر.س قيمة الفروق`} color="var(--gold)"/>
             <Hero label="اعتراضات مفتوحة" value={summary.disputedCount}
               hint={summary.disputedCount > 0 ? `أقدم اعتراض: ${summary.oldestDisputeDays} يوم` : 'لا اعتراضات'}
-              color="#f59e0b"/>
+              color="var(--gold)"/>
             {summary.overRemitAgedCount > 0
               ? <Hero label="🚨 تحويل وصل بلا تسوية تقابله" value={summary.overRemitAgedCount}
                   hint={`${fmt(summary.overRemitAgedAmount)} ر.س · مضى +30 يوم`} color="var(--red)"/>
@@ -707,7 +707,7 @@ export default function CodSettlements({ isActive = true }) {
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
                 <AgingCard label="0–14 يوم"   color="var(--green)" {...aging.d0_14}/>
                 <AgingCard label="15–30 يوم"  color="var(--gold)"  {...aging.d15_30}/>
-                <AgingCard label="31–60 يوم"  color="#f59e0b"      {...aging.d31_60}/>
+                <AgingCard label="31–60 يوم"  color="var(--gold)"  {...aging.d31_60}/>
                 <AgingCard label="+60 يوم"    color="var(--red)"   {...aging.d61}/>
               </div>
             </Card>
@@ -721,7 +721,7 @@ export default function CodSettlements({ isActive = true }) {
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
                 <AgingCard label="0–30 يوم · طبيعي"   color="#3b82f6"   {...agingOver.d0_30}/>
-                <AgingCard label="31–60 يوم · انتبه"  color="#f59e0b"   {...agingOver.d31_60}/>
+                <AgingCard label="31–60 يوم · انتبه"  color="var(--gold)"   {...agingOver.d31_60}/>
                 <AgingCard label="+60 يوم — تأكّد منه"    color="var(--red)" {...agingOver.d61}/>
               </div>
             </Card>
@@ -1874,10 +1874,11 @@ function Tab({ id, label, n, active, onClick }) {
 
 function Hero({ label, value, suffix, hint, color, big }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       background: 'var(--card)',
       borderRadius: 'var(--r-lg)', padding: '20px 24px',
       boxShadow: 'var(--shadow-sm)',
+      '--sc-tone': color,
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
         <span style={{ color: 'var(--muted)', fontSize: 11.5, fontWeight: 500 }}>

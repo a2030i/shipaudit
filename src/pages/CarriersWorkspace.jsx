@@ -73,7 +73,7 @@ export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
               style={{
                 padding: '10px 18px',
                 border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? '#3B82F6' : 'transparent'}`,
+                borderBottom: `2.5px solid ${active ? 'var(--brand)' : 'transparent'}`,
                 color: active ? 'var(--text)' : 'var(--muted)',
                 fontSize: 13, fontWeight: active ? 700 : 500,
                 fontFamily: 'var(--font-sans)', cursor: 'pointer',

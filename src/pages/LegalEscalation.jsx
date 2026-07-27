@@ -112,7 +112,7 @@ export default function LegalEscalation({ isActive = true }) {
   const totalEscalate = d.overdue90.length + d.prepaidNegative.length;
 
   return (
-    <div style={{ padding: '18px 20px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Scale size={22}/>} iconColor="var(--red)"
         title="التصعيد القانوني"
         subtitle="أهداف أعمار الديون + مَن يجب تحويله للقانونية فوراً"

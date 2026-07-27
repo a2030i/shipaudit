@@ -272,12 +272,18 @@ export default function HatifLeads({ isActive = true }) {
 }
 
 function Stat({ label, value, color, sub }) {
+  // stat-card class needs to land on the DOM root — the shared Card drops
+  // className, so this local KPI uses a div with the same card tokens.
   return (
-    <Card style={{ padding: '12px 14px', borderTop: `3px solid ${color}` }}>
+    <div className="stat-card" style={{
+      background: 'var(--card)', border: '1px solid var(--border2)',
+      borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)',
+      padding: '12px 14px', '--sc-tone': color || 'var(--accent)',
+    }}>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 21, fontWeight: 800, color, fontFamily: 'var(--font-mono)', lineHeight: 1 }}>{fmt0(value)}</div>
       {sub && <div style={{ fontSize: 10, color: 'var(--muted2)', marginTop: 3 }}>{sub}</div>}
-    </Card>
+    </div>
   );
 }
 

@@ -1079,7 +1079,8 @@ function RejBadge() {
 
 function StatBlock({ label, value, color, suffix, mono }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
+      '--sc-tone': color || 'var(--accent)',
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
     }}>

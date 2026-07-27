@@ -55,7 +55,7 @@ export default function StoreActivation({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader icon={<TrendingUp size={22}/>} iconColor="#059669"
+      <PageHeader icon={<TrendingUp size={22}/>} iconColor="var(--green)"
         title="هدف تنشيط المتاجر"
         subtitle={`المتاجر النشطة = آخر شحنة خلال ${cfg.days} أيام · الهدف ${fmt(cfg.target)} متجر — لقياس أثر فريق المبيعات`}
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
@@ -87,9 +87,9 @@ export default function StoreActivation({ isActive = true }) {
       <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
         <StatCard label={`نشط (${cfg.days} أيام)`} value={fmt(cur.active)} color="var(--green2)" icon="✅"
           sub={prev ? `${dChange >= 0 ? '+' : ''}${dChange} عن السابق` : null}/>
-        <StatCard label="نشط (30 يوم)" value={fmt(cur.active30)} color="#0EA5E9" icon="📦"/>
-        <StatCard label="نشط دفع مسبق" value={fmt(cur.prepaid)} color="#8B5CF6" icon="💳"/>
-        <StatCard label="نشط دفع لاحق" value={fmt(cur.postpaid)} color="#D97706" icon="🧾"/>
+        <StatCard label="نشط (30 يوم)" value={fmt(cur.active30)} color="var(--accent3)" icon="📦"/>
+        <StatCard label="نشط دفع مسبق" value={fmt(cur.prepaid)} color="var(--accent)" icon="💳"/>
+        <StatCard label="نشط دفع لاحق" value={fmt(cur.postpaid)} color="var(--gold)" icon="🧾"/>
         <StatCard label="إجمالي المتاجر" value={fmt(cur.total)} color="var(--muted)" icon="🏪"
           sub={`${Math.round((cur.active / cur.total) * 100)}% منها نشط`}/>
       </div>

@@ -194,7 +194,7 @@ export default function CustomerMoney({ isActive = true }) {
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
 
   return (
-    <div style={{ padding: '18px 20px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
         title="تحصيل العملاء"
         subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"
@@ -311,17 +311,13 @@ export default function CustomerMoney({ isActive = true }) {
               <>
                 {/* صلاحيات v2: التطبيق كتابة مالية — مفتاح zoho.apply_credits الحسّاس */}
                 {applicableRows.length > 0 && can('zoho.apply_credits') && (
-                  <button onClick={() => setBulkOpen(true)} title="يطبّق الأرصدة القابلة للتطبيق (لها فواتير مفتوحة) دفعة واحدة"
-                    style={{ fontSize: 11.5, fontWeight: 800, color: 'var(--card)', background: 'var(--green)',
-                      border: 'none', borderRadius: 8, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                  <Btn size="sm" variant="accent" onClick={() => setBulkOpen(true)} title="يطبّق الأرصدة القابلة للتطبيق (لها فواتير مفتوحة) دفعة واحدة">
                     ⚡ طبّق للكل ({applicableRows.length})
-                  </button>
+                  </Btn>
                 )}
-                <button onClick={grantWriteAccess} title="مرة واحدة — يفعّل التطبيق"
-                  style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--accent)', background: 'var(--card)',
-                    border: '1px solid color-mix(in srgb, var(--accent) 35%, var(--border))', borderRadius: 8, padding: '7px 12px', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                <Btn size="sm" variant="ghost" onClick={grantWriteAccess} title="مرة واحدة — يفعّل التطبيق">
                   🔑 منح صلاحية
-                </button>
+                </Btn>
               </>
             )}
           </div>

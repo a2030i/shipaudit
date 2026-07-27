@@ -196,7 +196,7 @@ function AuditResult({ audit, onSave, saving, canSave }) {
 
 function Stat({ label, value, color }) {
   return (
-    <div style={{ background: 'var(--surface2)', borderRadius: 9, padding: '10px 12px' }}>
+    <div className="stat-card" style={{ background: 'var(--surface2)', borderRadius: 9, padding: '10px 12px', '--sc-tone': color || 'var(--accent)' }}>
       <div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div>
       <div style={{ fontSize: 17, fontWeight: 800, color: color || 'var(--text)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>{value}</div>
     </div>

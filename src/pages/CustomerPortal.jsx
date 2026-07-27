@@ -465,7 +465,7 @@ export default function CustomerPortal() {
             {lookup.stores.length > 1 && selectedStoreIds.size > 0 && (
               <div style={{
                 position: 'sticky', bottom: 16, marginTop: 16,
-                background: '#0A0A0B', borderRadius: 16, padding: '18px 20px',
+                background: 'var(--brand-navy)', borderRadius: 16, padding: '18px 20px',
                 boxShadow: '0 16px 40px rgba(0,0,0,.18)',
                 color: '#fff',
                 display: 'grid', gridTemplateColumns: '1fr auto', gap: 16, alignItems: 'center',
@@ -679,7 +679,7 @@ export default function CustomerPortal() {
                 disabled={submitting || paymentAmount <= 0}
                 style={{
                   padding: '16px', borderRadius: 14,
-                  background: '#0A0A0B', color: '#fff', border: 'none',
+                  background: 'var(--brand-navy)', color: '#fff', border: 'none',
                   fontSize: 14.5, fontWeight: 700, cursor: submitting ? 'wait' : 'pointer',
                   fontFamily: 'inherit', display: 'flex', flexDirection: 'column',
                   alignItems: 'center', gap: 4,
@@ -852,7 +852,7 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
 
         {/* Amount headline */}
         <div style={{
-          background: '#0A0A0B', color: '#fff',
+          background: 'var(--brand-navy)', color: '#fff',
           borderRadius: 14, padding: '16px 18px', marginBottom: 16,
         }}>
           <div style={{ fontSize: 11, color: 'rgba(255,255,255,.55)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', fontWeight: 600, marginBottom: 4 }}>

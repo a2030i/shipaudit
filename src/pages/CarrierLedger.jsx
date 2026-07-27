@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, RefreshCw, Link2, FileText, Upload, Download } from 'lucide-react';
+import { Search, RefreshCw, Link2, FileText, Upload, Download, BookOpen } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
-import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast } from '../components/UI.jsx';
+import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import StatementUploadModal from '../components/StatementUploadModal.jsx';
 import {
@@ -54,7 +54,7 @@ const SHIPMENT_LABEL = {
 // AB = adjustment-both (a netted correction). Distinct colors so a glance
 // at the ledger answers "what kind of line is this."
 const DOC_TYPE_META = {
-  INV: { label: 'فاتورة (مراجعة معتمدة)', icon: '🧾', color: '#8b5cf6' },
+  INV: { label: 'فاتورة (مراجعة معتمدة)', icon: '🧾', color: 'var(--accent)' },
   RV: { label: 'فاتورة (كشف مرفوع)', icon: '📄', color: '#3b82f6' },
   DR: { label: 'رسوم إضافية', icon: '+',  color: '#f59e0b' },
   DG: { label: 'مبلغ مُرجَع لك', icon: '↩',  color: 'var(--green)' },
@@ -75,7 +75,8 @@ function DocTypeLegend() {
       {Object.entries(DOC_TYPE_META).map(([code, dm]) => (
         <span key={code} style={{
           display: 'inline-flex', alignItems: 'center', gap: 4,
-          background: `${dm.color}18`, border: `1px solid ${dm.color}40`,
+          background: `color-mix(in srgb, ${dm.color} 9%, transparent)`,
+          border: `1px solid color-mix(in srgb, ${dm.color} 25%, transparent)`,
           color: dm.color, padding: '2px 8px', borderRadius: 12,
           fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
         }}>
@@ -585,10 +586,8 @@ export default function CarrierLedger({ isActive = true }) {
   // First-time empty state — no statement has been saved yet anywhere.
   if (!loading && carrierList.length === 0) {
     return (
-      <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
-        <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0, marginBottom: 18 }}>
-          📒 كشف الحساب
-        </h2>
+      <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+        <PageHeader icon={<BookOpen size={22}/>} title="كشف الحساب"/>
         <Card style={{ textAlign: 'center', padding: 44 }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>📒</div>
           <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>الدفتر فاضي</div>
@@ -609,15 +608,14 @@ export default function CarrierLedger({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            📒 كشف الحساب
-          </h2>
-          {/* دخول لناقل محدّد → لا قائمة (CarrierTabs يعرضه). الدخول العام → قائمة اختيار */}
-          {!locked && carrierList.length > 0 && (
+      <PageHeader
+        icon={<BookOpen size={22}/>}
+        title="كشف الحساب"
+        meta={
+          /* دخول لناقل محدّد → لا قائمة (CarrierTabs يعرضه). الدخول العام → قائمة اختيار */
+          !locked && carrierList.length > 0 && (
             <select
               value={carrier}
               onChange={e => setCarrier(e.target.value)}
@@ -633,9 +631,9 @@ export default function CarrierLedger({ isActive = true }) {
                 </option>
               ))}
             </select>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+          )
+        }
+        actions={<>
           {/* كشف حساب رسمي (Excel منسّق برصيد جارٍ) — مستند النزاع/المطالبة */}
           {carrier && (
             <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={async () => {
@@ -649,8 +647,8 @@ export default function CarrierLedger({ isActive = true }) {
             </Btn>
           )}
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-        </div>
-      </div>
+        </>}
+      />
 
       {/* Balance summary */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px,1fr))', gap: 12, marginBottom: 12 }}>
@@ -924,7 +922,8 @@ export default function CarrierLedger({ isActive = true }) {
                             return (
                               <span style={{
                                 display: 'inline-flex', alignItems: 'center', gap: 4,
-                                background: `${dm.color}20`, border: `1px solid ${dm.color}40`,
+                                background: `color-mix(in srgb, ${dm.color} 12%, transparent)`,
+                                border: `1px solid color-mix(in srgb, ${dm.color} 25%, transparent)`,
                                 color: dm.color, fontSize: 10, fontWeight: 700,
                                 padding: '2px 7px', borderRadius: 12,
                                 fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap',
@@ -2082,9 +2081,10 @@ function AgingCard({ label, sub, count, amount, color }) {
 // ── Stat block ────────────────────────────────────────────────────────────
 function Stat({ label, value, suffix, color, big }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       background: 'var(--card)', border: '1px solid var(--border)',
       borderRadius: 11, padding: '13px 16px',
+      '--sc-tone': color,
     }}>
       <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 3 }}>
         {label}

@@ -20,7 +20,7 @@ import {
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
   Link as LinkIcon, X, Phone,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, Modal, toast, PageHero, PageHeader, DropZone } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
@@ -47,35 +47,16 @@ const daysAgo = (iso) => {
   return Math.floor((Date.now() - new Date(iso)) / 86_400_000);
 };
 
-// ── Hero ────────────────────────────────────────────────────────
-function Hero({ insights, snapshot }) {
-  return (
-    <PageHero
-      variant="dark"
-      icon={<ShoppingBag size={22}/>}
-      tag="LAMHA · MERCHANT DIRECTORY"
-      title="متاجر المنصّة"
-      meta={snapshot ? `كشف ${snapshot.id} · رُفع ${fmtDate(snapshot.uploadedAt)}` : null}
-      stats={[
-        { label: 'إجمالي',    value: fmtCount(insights.total), big: true },
-        { label: 'نشط',       value: fmtCount(insights.active), color: '#86EFAC' },
-        { label: 'دفع مسبق',  value: fmtCount(insights.prepaid) },
-        { label: 'دفع لاحق',  value: fmtCount(insights.postpaid), color: '#FBBF24' },
-      ]}
-    />
-  );
-}
-
 // ── Insight cards ──────────────────────────────────────────────
 function InsightGrid({ insights }) {
   const cards = [
     { k:'newLast30',     label:'جدد آخر 30 يوم',   value: insights.newLast30,     icon: TrendingUp,  color:'var(--green)' },
-    { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'#EF4444', hint: 'تسرّب بين التسجيل والشحن' },
+    { k:'neverShipped',  label:'لم يشحن أبداً',     value: insights.neverShipped,  icon: AlertTriangle, color:'var(--red)', hint: 'تسرّب بين التسجيل والشحن' },
     { k:'dormantActive', label:'نشط بلا حركة +60', value: insights.dormantActive, icon: ZapOff,      color:'var(--gold)' },
-    { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'#7A82C4', hint: 'مرشحون لإعادة الاسترداد' },
+    { k:'churned',       label:'فُقدوا (شحن ثم توقّف)', value: insights.churned,    icon: ZapOff,      color:'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', hint: 'مرشحون لإعادة الاسترداد' },
     { k:'verified',      label:'متاجر موثقة', value: `${fmtCount(insights.verified || 0)} · زاتكا ${fmtCount(insights.zatcaDone || 0)}`, icon: CheckCircle2, color:'var(--green)', raw: true },
-    { k:'walletPiles',   label:'محافظ راكدة (+60ي)', value: `${fmtCount(insights.walletPilesUp)} · ${fmt(insights.walletPilesAmount)} ر.س`, icon: Wallet, color:'#F97316', raw: true, hint: 'رصيد دون نشاط' },
-    { k:'walletTotal',   label:'إجمالي أرصدة المحافظ', value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'#3B82F6', raw: true },
+    { k:'walletPiles',   label:'محافظ راكدة (+60ي)', value: `${fmtCount(insights.walletPilesUp)} · ${fmt(insights.walletPilesAmount)} ر.س`, icon: Wallet, color:'var(--gold)', raw: true, hint: 'رصيد دون نشاط' },
+    { k:'walletTotal',   label:'إجمالي أرصدة المحافظ', value: `${fmt(insights.walletTotal)} ر.س`, icon: Wallet, color:'var(--brand)', raw: true },
   ];
   return (
     <div style={{
@@ -86,18 +67,25 @@ function InsightGrid({ insights }) {
       {cards.map(c => {
         const Icon = c.icon;
         return (
-          <Card key={c.k} style={{ padding:'14px 18px', borderTop:`2px solid ${c.color}` }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase' }}>
-              <Icon size={12} color={c.color}/>
-              {c.label}
+          <div key={c.k} className="stat-card" style={{
+            background:'var(--card)', border:'1px solid var(--border)',
+            borderRadius:'var(--r-lg)', padding:'14px 18px',
+            display:'flex', alignItems:'center', gap:10,
+            '--sc-tone': c.color,
+          }}>
+            <span className="stat-icon-tile"><Icon size={16}/></span>
+            <div style={{ minWidth:0 }}>
+              <div style={{ fontSize:10, color:'var(--muted)', fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase' }}>
+                {c.label}
+              </div>
+              <div style={{ fontSize: c.raw ? 16 : 22, fontWeight:800, color:c.color, fontFamily:'var(--font-mono)', marginTop:4 }}>
+                {c.raw ? c.value : fmtCount(c.value)}
+              </div>
+              {c.hint && (
+                <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:3 }}>{c.hint}</div>
+              )}
             </div>
-            <div style={{ fontSize: c.raw ? 16 : 22, fontWeight:800, color:c.color, fontFamily:'var(--font-mono)', marginTop:4 }}>
-              {c.raw ? c.value : fmtCount(c.value)}
-            </div>
-            {c.hint && (
-              <div style={{ fontSize:10.5, color:'var(--muted)', marginTop:3 }}>{c.hint}</div>
-            )}
-          </Card>
+          </div>
         );
       })}
     </div>
@@ -128,7 +116,7 @@ function MerchantInsightsPanels({ insights }) {
       />
       <MiniMerchantTable
         icon={ZapOff}
-        accent="#7A82C4"
+        accent="color-mix(in srgb, var(--brand-navy) 55%, var(--muted))"
         title={`فُقدوا (${fmtCount(insights.churned || 0)}) — مرشّحون لاسترداد`}
         sub="مُعطَّلون في المنصّة لكن شحنوا سابقاً"
         rows={insights.churnedTop || []}
@@ -392,7 +380,10 @@ export default function Merchants({ isActive = true }) {
         icon={<ShoppingBag size={22}/>}
         title="متاجر المنصّة"
         subtitle={loading ? 'جارٍ التحميل…' : `${fmtCount(data.merchants.length)} متجر مُسجَّل`}
-        meta={data.snapshot ? `كشف ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null}
+        meta={[
+          data.snapshot ? `كشف ${data.snapshot.id} · رُفع ${fmtDate(data.snapshot.uploadedAt)}` : null,
+          data.merchants.length > 0 ? `نشط ${fmtCount(insights.active)} · دفع مسبق ${fmtCount(insights.prepaid)} · دفع لاحق ${fmtCount(insights.postpaid)}` : null,
+        ].filter(Boolean).join('  —  ') || null}
         actions={
           <>
             {data.merchants.length > 0 && (
@@ -414,7 +405,6 @@ export default function Merchants({ isActive = true }) {
           </>
         }
       />
-      <Hero insights={insights} snapshot={data.snapshot}/>
 
       {loading ? (
         <div style={{ display:'flex', justifyContent:'center', padding:80 }}><Spinner size={28}/></div>
@@ -517,7 +507,7 @@ export default function Merchants({ isActive = true }) {
                           {m.billing_type === 'دفع لاحق' ? (
                             <span style={billingChip('var(--gold)')}>📋 دفع لاحق</span>
                           ) : m.billing_type === 'دفع مسبق' ? (
-                            <span style={billingChip('#3B82F6')}>💳 دفع مسبق</span>
+                            <span style={billingChip('var(--brand)')}>💳 دفع مسبق</span>
                           ) : <span style={{ color:'var(--muted)' }}>—</span>}
                         </td>
                         <td data-label="الحالة">
@@ -801,7 +791,7 @@ function MerchantMetaChips({ merchant }) {
     });
   }
   if (merchant.vat_registered === true) {
-    chips.push({ key: 'vat', label: 'ضريبة', color: '#3B82F6', title: 'مسجل في الضريبة' });
+    chips.push({ key: 'vat', label: 'ضريبة', color: 'var(--brand)', title: 'مسجل في الضريبة' });
   }
   if (merchant.zatca_completed === true) {
     chips.push({ key: 'zatca', label: 'زاتكا', color: 'var(--accent)', title: 'مكمل بيانات زاتكا' });
@@ -836,7 +826,8 @@ function billingChip(color) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 4,
     padding: '2px 9px', borderRadius: 11,
-    background: color + '18', color, border: `1px solid ${color}40`,
+    background: `color-mix(in srgb, ${color} 10%, transparent)`, color,
+    border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`,
     fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
   };
 }

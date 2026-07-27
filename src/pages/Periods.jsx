@@ -129,7 +129,7 @@ export default function Periods({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
       <PageHeader
         icon={<Lock size={22}/>}
-        iconColor="#8B5CF6"
+        iconColor="var(--brand)"
         title="إقفال الفترات"
         subtitle="اقفل الشهور المنتهية حتى لا يُعدّل عليها أحد. الفتح متاح لكن يترك أثراً في السجل."
         meta={`${closedCount} مقفل · ${rows.length - closedCount} مفتوح`}
@@ -141,9 +141,9 @@ export default function Periods({ isActive = true }) {
       />
 
       {/* Educational banner — explains what closing does, once */}
-      <Card style={{ marginBottom: 18, background: 'color-mix(in srgb, #8B5CF6 6%, transparent)', border: '1px solid color-mix(in srgb, #8B5CF6 22%, transparent)' }}>
+      <Card style={{ marginBottom: 18, background: 'color-mix(in srgb, var(--brand) 6%, transparent)', border: '1px solid color-mix(in srgb, var(--brand) 22%, transparent)' }}>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-          <Info size={18} color="#8B5CF6" style={{ flexShrink: 0, marginTop: 2 }}/>
+          <Info size={18} color="var(--brand)" style={{ flexShrink: 0, marginTop: 2 }}/>
           <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
             عند إقفال شهر يتم منع أي إضافة / تعديل / حذف على:
             <strong style={{ color: 'var(--text)' }}> العمليات المحاسبية، تسويات COD، المراجعات، والدفعات</strong> داخل ذلك الشهر — على مستوى قاعدة البيانات (لا يمكن تجاوزه من الواجهة). فتح الشهر مجدداً ممكن لكن يجب إدخال سبب يبقى في السجل.

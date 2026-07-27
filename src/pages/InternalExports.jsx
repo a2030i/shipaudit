@@ -273,7 +273,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
       {!anyLoading && totalFiles > 0 && (
         <div className="pull-everything" style={{
           padding: '22px 26px', marginBottom: 22,
-          background: 'linear-gradient(135deg, #0A0A0B 0%, #18181B 100%)',
+          background: 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))',
           color: '#fff', borderRadius: 'var(--r-xl)',
           boxShadow: 'var(--shadow-lg)',
           display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 22, alignItems: 'center',
@@ -388,7 +388,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 18 }}>
             <div style={{
               width: 44, height: 44, borderRadius: 12,
-              background: 'rgba(139,92,246,.10)', color: '#8B5CF6',
+              background: 'color-mix(in srgb, var(--accent) 10%, transparent)', color: 'var(--accent)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}><Receipt size={20}/></div>
             <div>
@@ -409,7 +409,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
           ) : invPending.length === 0 ? (
             <div style={{
               padding: '32px 20px', textAlign: 'center', fontSize: 13.5, color: 'var(--muted)',
-              background: 'rgba(139,92,246,.04)', borderRadius: 12, marginBottom: 14,
+              background: 'color-mix(in srgb, var(--accent) 4%, transparent)', borderRadius: 12, marginBottom: 14,
             }}>
               ✓ كل المراجعات المعتمدة مسحوبة — لا يوجد جديد
             </div>
@@ -418,8 +418,8 @@ export default function InternalExports({ carriers = [], isActive = true }) {
               <div style={{
                 display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 14,
               }}>
-                <BigStat label="مراجعة جاهزة" value={invPending.length} color="#8B5CF6"/>
-                <BigStat label="إجمالي شحنات" value={fmt(invShipments).replace('.00', '')} color="#8B5CF6"/>
+                <BigStat label="مراجعة جاهزة" value={invPending.length} color="var(--accent)"/>
+                <BigStat label="إجمالي شحنات" value={fmt(invShipments).replace('.00', '')} color="var(--accent)"/>
               </div>
 
               {/* Audit selection list */}
@@ -450,13 +450,13 @@ export default function InternalExports({ carriers = [], isActive = true }) {
                       display: 'grid', gridTemplateColumns: 'auto 1fr auto', gap: 12,
                       padding: '11px 14px', alignItems: 'center', cursor: 'pointer',
                       borderBottom: i === invPending.length - 1 ? 'none' : '1px solid var(--border)',
-                      background: checked ? 'rgba(139,92,246,.04)' : 'transparent',
+                      background: checked ? 'color-mix(in srgb, var(--accent) 4%, transparent)' : 'transparent',
                     }}>
                       <input
                         type="checkbox"
                         checked={checked}
                         onChange={() => toggleAudit(a.id)}
-                        style={{ width: 16, height: 16, accentColor: '#8B5CF6', cursor: 'pointer' }}
+                        style={{ width: 16, height: 16, accentColor: 'var(--accent)', cursor: 'pointer' }}
                       />
                       <div style={{ minWidth: 0 }}>
                         <div className="ie-export-label" style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -645,7 +645,8 @@ export default function InternalExports({ carriers = [], isActive = true }) {
 
 function BigStat({ label, value, color }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
+      '--sc-tone': color,
       padding: '12px 14px',
       background: `color-mix(in srgb, ${color} 6%, transparent)`,
       borderRadius: 12, textAlign: 'center',

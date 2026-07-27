@@ -605,7 +605,7 @@ function ContractForm({ contract, onSave, onClose }) {
 
 // ── Carrier form ───────────────────────────────────────────────────────────────
 const LOGOS = ['📦','🚚','✈️','🛳️','🏢','📮','🔵','🟡','🟢','🔴'];
-const COLORS = ['#f5a623','#00c6ff','#00e676','#ff4d6d','#a855f7','#f97316','#06b6d4','#84cc16'];
+const COLORS = ['#2B68DE','#31D5E1','#333062','#059669','#D97706','#DC2626','#0EA5E9','#6B7280'];
 
 function CarrierForm({ carrier, onSave, onClose }) {
   const [name,  setName]  = useState(carrier?.name||'');

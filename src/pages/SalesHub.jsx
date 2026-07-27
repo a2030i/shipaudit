@@ -88,7 +88,7 @@ export default function SalesHub({ isActive = true }) {
             <button key={t.id} onClick={() => handleTabChange(t.id)}
               style={{
                 padding: '10px 18px', border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? '#F97316' : 'transparent'}`,
+                borderBottom: `2.5px solid ${active ? 'var(--gold)' : 'transparent'}`,
                 color: active ? 'var(--text)' : 'var(--muted)',
                 fontSize: 13, fontWeight: active ? 700 : 500,
                 fontFamily: 'var(--font-sans)', cursor: 'pointer',

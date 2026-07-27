@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, HandCoins, Hourglass } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { Card, StatCard, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { loadCashAging } from '../lib/cashAgingService.js';
 
 const fmt = (v) => (v == null || Number.isNaN(v) || Math.abs(v) < 0.005) ? '—'
@@ -44,7 +44,7 @@ export default function CashAging({ isActive }) {
   if (loading && !data) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div>;
 
   return (
-    <div style={{ padding: '28px 32px 80px', maxWidth: 1200, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<HandCoins size={22}/>}
         title="أعمار الديون — لك وعليك"
@@ -55,18 +55,20 @@ export default function CashAging({ isActive }) {
       {/* Headline KPIs */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 22 }}>
         {[
-          { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: '#D97706' },
+          { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: 'var(--gold)' },
           { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },
           { label: 'منه فات موعد سداده', value: fmt(data?.apOverdue), color: data?.apOverdue > 0.5 ? 'var(--red)' : 'var(--muted)' },
           // أرصدة دائنة (COD محتجز لم يُورَّد) — منفصلة عن الذمم حتى لا تُطرَح مضلِّلةً
           ...(Math.abs(data?.apCreditTotal || 0) > 0.5
-            ? [{ label: 'أرصدة لصالحنا (COD محتجز)', value: fmt(Math.abs(data.apCreditTotal)), color: '#0EA5E9' }]
+            ? [{ label: 'أرصدة لصالحنا (COD محتجز)', value: fmt(Math.abs(data.apCreditTotal)), color: 'var(--accent3)' }]
             : []),
         ].map(k => (
-          <Card key={k.label} style={{ padding: '14px 16px' }}>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>{k.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-mono)', color: k.color }}>{k.value} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span></div>
-          </Card>
+          <StatCard
+            key={k.label}
+            label={k.label}
+            color={k.color}
+            value={<>{k.value} <span style={{ fontSize: 11, color: 'var(--muted)', fontWeight: 400 }}>ر.س</span></>}
+          />
         ))}
       </div>
 
@@ -83,7 +85,7 @@ export default function CashAging({ isActive }) {
               {r.avgDays == null ? 'لا تحويلات بعد' : r.avgDays <= 0 ? '≤ يوم' : `${r.avgDays} يوم`}
             </td>
             <td style={td}>{fmt(r.buckets[0])}</td>
-            <td style={{ ...td, color: r.buckets[1] > 0.5 ? '#D97706' : 'inherit' }}>{fmt(r.buckets[1])}</td>
+            <td style={{ ...td, color: r.buckets[1] > 0.5 ? 'var(--gold)' : 'inherit' }}>{fmt(r.buckets[1])}</td>
             <td style={{ ...td, color: r.buckets[2] > 0.5 ? 'var(--red)' : 'inherit' }}>{fmt(r.buckets[2])}</td>
             <td style={{ ...td, color: r.buckets[3] > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.buckets[3] > 0.5 ? 700 : 400 }}>{fmt(r.buckets[3])}</td>
             <td style={{ ...td, fontWeight: 700 }}>{fmt(r.outTotal)}</td>

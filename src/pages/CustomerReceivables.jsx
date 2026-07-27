@@ -422,11 +422,12 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
 
 function StatPill({ label, value, color }) {
   return (
-    <div style={{
+    <div className="stat-card" style={{
       padding: '6px 12px',
       background: 'var(--surface)',
       border: '1px solid var(--border)',
       borderRadius: 9,
+      '--sc-tone': color || 'var(--accent)',
     }}>
       <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase' }}>{label}</div>
       <div style={{ fontSize: 13, fontWeight: 700, color: color || 'var(--text)', fontFamily: 'var(--font-mono)', marginTop: 2 }}>

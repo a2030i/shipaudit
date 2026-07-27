@@ -149,7 +149,7 @@ export default function FinancialPosition({ isActive = true }) {
   const profitable = net >= 0;
 
   return (
-    <div style={{ padding: '20px 26px 70px', maxWidth: 1300, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Wallet size={22}/>} iconColor="var(--green)"
         title="الوضع المالي"

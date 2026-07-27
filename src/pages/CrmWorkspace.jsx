@@ -83,7 +83,7 @@ export default function CrmWorkspace({ isActive = true }) {
           return (
             <button key={t.id} onClick={() => change(t.id)} style={{
               padding: '10px 18px', border: 'none', background: 'transparent',
-              borderBottom: `2.5px solid ${active ? '#06B6D4' : 'transparent'}`,
+              borderBottom: `2.5px solid ${active ? 'var(--accent3)' : 'transparent'}`,
               color: active ? 'var(--text)' : 'var(--muted)', fontSize: 13, fontWeight: active ? 700 : 500,
               fontFamily: 'var(--font-sans)', cursor: 'pointer', marginBottom: -1,
               display: 'inline-flex', alignItems: 'center', gap: 7 }}>
@@ -916,9 +916,9 @@ function LeadStatusBadge({ status }) {
   const color = status === 'converted' ? 'var(--green)'
     : status === 'existing_customer' ? '#8B5CF6'
     : status === 'lost' ? 'var(--red)'
-    : status === 'qualified' ? '#3B82F6'
+    : status === 'qualified' ? 'var(--brand)'
     : 'var(--gold)';
-  return <span style={{ background: `${color}18`, color, padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>{leadStatusLabel(status)}</span>;
+  return <span style={{ background: `color-mix(in srgb, ${color} 9%, transparent)`, color, padding: '3px 9px', borderRadius: 999, fontSize: 11, fontWeight: 800 }}>{leadStatusLabel(status)}</span>;
 }
 
 function MiniPill({ color, label, icon = null }) {
@@ -1412,7 +1412,7 @@ function BoardTab({ active }) {
     { l: 'وعود محقّقة', v: s.promisesKept, c: 'var(--green)' },
     { l: 'وعود لم تُوفَ', v: s.promisesBroken, c: 'var(--red)' },
     { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: '#8B5CF6' },
-    { l: 'قيمة الصفقات المفتوحة', v: `${fmt0(s.pipelineValue)} ر.س`, c: '#3B82F6' },
+    { l: 'قيمة الصفقات المفتوحة', v: `${fmt0(s.pipelineValue)} ر.س`, c: 'var(--brand)' },
   ];
   const employeeName = (id) => id
     ? (employees.find(e => e.id === id)?.name || employees.find(e => e.id === id)?.email || 'موظف')
@@ -1580,7 +1580,7 @@ function RowEditor({ item, upsert, del, onChange }) {
 }
 
 // helpers
-function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1120, margin: '0 auto' }}>{children}</div>; }
+function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>{children}</div>; }
 function Spin() { return <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>; }
 function Hd({ label, value, color }) { return <div><div style={{ fontSize: 11, color: 'var(--muted)' }}>{label}</div><div style={{ fontSize: 14, fontWeight: 700, color: color || 'var(--text)' }}>{value}</div></div>; }
 function MiniBtn({ color, label, onClick }) {

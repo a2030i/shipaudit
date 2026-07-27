@@ -4,7 +4,7 @@ import {
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
   Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy, History,
 } from 'lucide-react';
-import { Card, Btn, Modal, Spinner, toast } from '../components/UI.jsx';
+import { Card, Btn, Modal, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import {
   loadEmployees, createEmployee, updateEmployee, deleteEmployee, updateEmployeePermissions,
   loadEmployeeActivitySummary, loadEmployeeActivity,
@@ -181,8 +181,8 @@ function EmployeeModal({ employee, onClose, onSave }) {
         {form.role === 'accountant' && isNew && (
           <div style={{
             marginBottom: 14, padding: '10px 12px', borderRadius: 8,
-            background: 'color-mix(in srgb, #8B5CF6 8%, transparent)',
-            border: '1px solid color-mix(in srgb, #8B5CF6 25%, transparent)',
+            background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
             fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.6,
           }}>
             <Lock size={12} style={{ verticalAlign: 'middle', marginLeft: 4 }}/>
@@ -465,10 +465,10 @@ function DeleteConfirm({ employee, onClose, onConfirm }) {
 const ACT_KINDS = {
   '':     { label: 'الكل',       color: 'var(--muted)' },
   login:  { label: '🔑 دخول',    color: 'var(--green)' },
-  page:   { label: '👣 تنقّل',    color: '#0EA5E9' },
+  page:   { label: '👣 تنقّل',    color: 'var(--accent3)' },
   denied: { label: '⛔ ممنوع',    color: 'var(--red)' },
   export: { label: '📤 تصدير',   color: 'var(--gold)' },
-  data:   { label: '✏️ بيانات',  color: '#8B5CF6' },
+  data:   { label: '✏️ بيانات',  color: 'var(--accent)' },
   action: { label: '⚙️ إجراء',   color: 'var(--muted)' },
 };
 const DATA_TABLE_AR = {
@@ -619,16 +619,13 @@ export default function EmployeeManager() {
   }, {});
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 920, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 920, margin: '0 auto' }}>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 24 }}>
-        <div>
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>إدارة الموظفين</h2>
-          <div style={{ color: 'var(--muted)', fontSize: 12, marginTop: 3 }}>
-            {employees.length} في الفريق · {roleCounts.admin} مدير · {roleCounts.accountant} موظف
-          </div>
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+      <PageHeader
+        icon={<Users size={22}/>}
+        title="إدارة الموظفين"
+        subtitle={`${employees.length} في الفريق · ${roleCounts.admin} مدير · ${roleCounts.accountant} موظف`}
+        actions={<>
           <Btn variant="ghost" size="sm" icon={<RefreshCw size={13}/>} onClick={reload}>
             تحديث
           </Btn>
@@ -637,17 +634,18 @@ export default function EmployeeManager() {
               إضافة موظف
             </Btn>
           )}
-        </div>
-      </div>
+        </>}
+      />
 
       <div style={{ display: 'flex', gap: 12, marginBottom: 24, flexWrap: 'wrap' }}>
         {ROLES.map(r => (
-          <div key={r.value} style={{
+          <div key={r.value} className="stat-card" style={{
             flex: 1, padding: '12px 16px', borderRadius: 10,
             background: 'var(--card)', border: `1px solid var(--border)`,
-            borderTop: `2px solid ${r.color}`,
+            '--sc-tone': r.color,
           }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 4 }}>
+            <div style={{ color: 'var(--muted)', fontSize: 10, fontFamily: 'var(--font-mono)', marginBottom: 4, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span className="stat-icon-tile">{r.value === 'admin' ? <ShieldCheck size={14}/> : <Shield size={14}/>}</span>
               {r.label}
             </div>
             <div style={{ color: r.color, fontSize: 22, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>

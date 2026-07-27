@@ -44,7 +44,7 @@ const KPIS = [
   { key: 'unique_customers', label: 'عملاء (بلا تكرار)', color: '#06B6D4', goodUp: true },
   { key: 'prio_a',           label: 'أولوية A (اتصال)', color: 'var(--red)', goodUp: false },
   { key: 'stopped',          label: 'متوقّفون', color: '#F97316', goodUp: false },
-  { key: 'never_shipped',    label: 'سجّلوا ولم يشحنوا', color: '#8B5CF6', goodUp: false },
+  { key: 'never_shipped',    label: 'سجّلوا ولم يشحنوا', color: 'var(--accent)', goodUp: false },
   { key: 'high_value',       label: 'قيمة عالية', color: 'var(--gold)', goodUp: true },
   { key: 'active',           label: 'نشطون', color: 'var(--green)', goodUp: true },
   { key: 'with_balance',     label: 'لهم رصيد', color: '#0EA5E9', goodUp: true },
@@ -254,7 +254,7 @@ export default function Retargeting({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader icon={<Target size={22}/>} iconColor="#8B5CF6"
+      <PageHeader icon={<Target size={22}/>} iconColor="var(--brand)"
         title="إعادة استهداف العملاء"
         subtitle="كشف المتاجر → فرص قابلة للتنفيذ · عميل واحد لكل رقم · أولوية واضحة"
         meta={dash ? `${fmt0(st.unique_customers)} عميل (بلا تكرار) · ${fmt0(st.total_stores)} متجر · ${fmt0(st.total_shipments)} شحنة` : null}
@@ -294,8 +294,8 @@ export default function Retargeting({ isActive = true }) {
           {[['leads', '🎯 الفرص'], ['campaign', '📈 أداء الحملة']].map(([v, lbl]) => (
             <button key={v} onClick={() => setView(v)} style={{
               padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-              border: `1.5px solid ${view === v ? '#8B5CF6' : 'var(--border)'}`,
-              background: view === v ? 'color-mix(in srgb, #8B5CF6 12%, transparent)' : 'transparent', color: 'var(--text)',
+              border: `1.5px solid ${view === v ? 'var(--brand)' : 'var(--border)'}`,
+              background: view === v ? 'color-mix(in srgb, var(--brand) 12%, transparent)' : 'transparent', color: 'var(--text)',
             }}>{lbl}</button>
           ))}
         </div>
@@ -374,8 +374,8 @@ export default function Retargeting({ isActive = true }) {
                 return (
                   <button key={intg} onClick={() => setFilter({ integration: on ? '' : val })} style={{
                     padding: '5px 10px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600,
-                    border: `1.5px solid ${on ? '#8B5CF6' : 'var(--border)'}`,
-                    background: on ? 'color-mix(in srgb, #8B5CF6 14%, transparent)' : 'transparent', color: 'var(--text)',
+                    border: `1.5px solid ${on ? 'var(--brand)' : 'var(--border)'}`,
+                    background: on ? 'color-mix(in srgb, var(--brand) 14%, transparent)' : 'transparent', color: 'var(--text)',
                   }}>{intg} · {fmt0(cnt)}</button>
                 );
               })}

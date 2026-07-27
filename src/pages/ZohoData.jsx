@@ -299,7 +299,7 @@ export default function ZohoData({ isActive = true }) {
   if (!can('zoho.view') && !can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
 
   return (
-    <div style={{ padding: '20px 26px 70px', maxWidth: 1320, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
         title="زوهو API"
         subtitle="مزامنة مباشرة من Zoho Books — فواتير · دفعات · مصاريف · قيود"

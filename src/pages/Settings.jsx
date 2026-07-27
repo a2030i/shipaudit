@@ -186,9 +186,9 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
 // Visual map for the per-audit type badge. Keys match deriveAuditType()
 // in src/engine/audit.js — keep in sync.
 const AUDIT_TYPE_META = {
-  domestic:      { label: 'محلي',                 icon: '🇸🇦', color: '#22c55e' },
+  domestic:      { label: 'محلي',                 icon: '🇸🇦', color: 'var(--green)' },
   international: { label: 'دولي',                 icon: '🌐', color: '#f59e0b' },
-  cod:           { label: 'دفع عند الاستلام',     icon: '💰', color: '#a855f7' },
+  cod:           { label: 'دفع عند الاستلام',     icon: '💰', color: 'var(--accent)' },
   mixed:         { label: 'مختلط',                icon: '🔀', color: '#06b6d4' },
   unknown:       { label: 'غير محدد',             icon: '❓', color: 'var(--muted)' },
 };
@@ -332,7 +332,7 @@ export function AuditsHistory({ onOpen, isActive = true }) {
     : null;
 
   return (
-    <div style={{ padding: '24px 28px', maxWidth: 1180 }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       {scopedCarrierId && (
         <CarrierTabs carrierId={scopedCarrierId} carrierName={scopedCarrierName} active="audits"/>
       )}
@@ -426,15 +426,15 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                 const diff       = Number(a.diff ?? 0);
                 // Color the left edge by audit health: teal for clean,
                 // red for mismatches, gold when selected.
-                const stripeColor = isSelected ? '#fbbf24'
-                                  : hasIssues  ? '#f87171'
+                const stripeColor = isSelected ? 'var(--gold)'
+                                  : hasIssues  ? 'var(--red)'
                                   :              'var(--accent)';
                 const review = a.reviewStatus || 'pending';
                 const reviewMeta = review === 'approved'
                   ? { color: 'var(--accent)', label: '✓ معتمدة', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', bd: 'color-mix(in srgb, var(--accent) 32%, transparent)' }
                   : review === 'rejected'
-                    ? { color: '#f87171', label: '✗ مرفوضة', bg: 'rgba(248,113,113,.10)', bd: 'rgba(248,113,113,.32)' }
-                    : { color: '#fbbf24', label: '⏳ بانتظار الاعتماد', bg: 'rgba(251,191,36,.10)', bd: 'rgba(251,191,36,.32)' };
+                    ? { color: 'var(--red)', label: '✗ مرفوضة', bg: 'color-mix(in srgb, var(--red) 10%, transparent)', bd: 'color-mix(in srgb, var(--red) 32%, transparent)' }
+                    : { color: 'var(--gold)', label: '⏳ بانتظار الاعتماد', bg: 'color-mix(in srgb, var(--gold) 10%, transparent)', bd: 'color-mix(in srgb, var(--gold) 32%, transparent)' };
                 return (
                   <Card key={a.id} style={{
                     padding: 0, overflow: 'hidden',
@@ -649,16 +649,9 @@ function AuditsFilter({ audits, children }) {
           <Filter size={14} color="var(--accent)"/>
           <span style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)' }}>فلترة وبحث</span>
           {hasFilter && (
-            <button onClick={reset} style={{
-              marginInlineStart: 'auto',
-              background: 'rgba(248,113,113,.08)',
-              border: '1px solid rgba(248,113,113,.28)',
-              color: 'var(--red)', fontSize: 11, fontWeight: 600,
-              padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-              display: 'inline-flex', alignItems: 'center', gap: 5,
-            }}>
+            <Btn size="sm" variant="ghost" onClick={reset} style={{ marginInlineStart: 'auto' }}>
               <X size={11}/> مسح الفلاتر
-            </button>
+            </Btn>
           )}
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, alignItems: 'flex-end' }}>

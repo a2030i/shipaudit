@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { RefreshCw, Filter, Activity } from 'lucide-react';
-import { Card, Btn, Empty, Spinner, toast } from '../components/UI.jsx';
+import { Card, Btn, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import { loadActivityLog } from '../lib/carrierStatementsService.js';
 
 const ACTION_META = {
@@ -51,17 +51,14 @@ export default function ActivityLog({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1100, margin: '0 auto' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 18, flexWrap: 'wrap', gap: 10 }}>
-        <div>
-          <h2 style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', margin: 0 }}>
-            🕓 سجل النشاط
-          </h2>
-          <p style={{ color: 'var(--muted)', fontSize: 12, margin: '4px 0 0' }}>
-            مَن فعَل ماذا ومتى — مرجع للمراجعة الداخلية ومتابعة فِرق العمل.
-          </p>
-        </div>
-        <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-      </div>
+      <PageHeader
+        icon={<Activity size={22}/>}
+        title="سجل النشاط"
+        subtitle="مَن فعَل ماذا ومتى — مرجع للمراجعة الداخلية ومتابعة فِرق العمل."
+        actions={
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+        }
+      />
 
       {rows.length === 0 ? (
         <Empty
@@ -81,7 +78,7 @@ export default function ActivityLog({ isActive = true }) {
             ].filter(t => t.k === 'all' || (counts[t.k] ?? 0) > 0).map(t => (
               <button key={t.k} onClick={() => setActionFilter(t.k)}
                 style={{
-                  background: actionFilter === t.k ? 'var(--accent)20' : 'transparent',
+                  background: actionFilter === t.k ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
                   border: `1px solid ${actionFilter === t.k ? 'var(--accent)' : 'var(--border)'}`,
                   color: actionFilter === t.k ? 'var(--accent)' : 'var(--muted)',
                   borderRadius: 7, padding: '5px 13px', cursor: 'pointer',
@@ -118,7 +115,7 @@ function LogRow({ r }) {
     }}>
       <div style={{
         width: 32, height: 32, borderRadius: '50%',
-        background: `${meta.color}20`, border: `1px solid ${meta.color}40`,
+        background: `color-mix(in srgb, ${meta.color} 12%, transparent)`, border: `1px solid color-mix(in srgb, ${meta.color} 25%, transparent)`,
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         fontSize: 16,
       }}>

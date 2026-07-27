@@ -146,9 +146,9 @@ export default function PaymentRequests({ isActive = true }) {
         border: '1px solid rgba(59,130,246,.18)',
         borderRadius: 12,
       }}>
-        <Info size={16} color="#3B82F6" style={{ marginTop: 2, flexShrink: 0 }}/>
+        <Info size={16} color="var(--brand)" style={{ marginTop: 2, flexShrink: 0 }}/>
         <div style={{ fontSize: 12.5, color: 'var(--text2)', lineHeight: 1.7 }}>
-          <strong style={{ color: '#3B82F6' }}>هذي مجرد سجل — لا تؤثّر على الفواتير.</strong>{' '}
+          <strong style={{ color: 'var(--brand)' }}>هذي مجرد سجل — لا تؤثّر على الفواتير.</strong>{' '}
           المحاسب يرصد السداد في النظام المالي الخارجي، ثم يرفع كشف فواتير جديد في صفحة المديونيات
           عشان الأرصدة تتحدّث تلقائياً.
         </div>
@@ -225,7 +225,7 @@ export default function PaymentRequests({ isActive = true }) {
                     {r.payment_type === 'bank_transfer' && (
                       <span title="حوالة بنكية" style={{
                         fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
-                        background: 'rgba(59,130,246,.14)', color: '#3B82F6',
+                        background: 'rgba(59,130,246,.14)', color: 'var(--brand)',
                         fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
                       }}>🏦 حوالة</span>
                     )}
@@ -360,7 +360,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
         {row.phone && (
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
             <IvrCallButton phone={row.phone} name={row.store_name || row.customer_name} fields={{ name: row.store_name || row.customer_name, amount: row.amount }} label size={13}
-              style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px rgba(16,185,129,.22)' }}/>
+              style={{ borderRadius: 999, padding: '8px 14px', background: 'var(--accent)', color: '#fff', border: 'none', fontSize: 12.5, boxShadow: '0 1px 2px color-mix(in srgb, var(--accent) 25%, transparent)' }}/>
             {/* §هيكلة-0: حملة قالب بمبلغ الطلب (تُسجَّل وتُتتبَّع) بدل ترك واتساب بلا زر */}
             <WaActions phone={row.phone} name={row.store_name || row.customer_name}
               amount={Number(row.amount_total) || 0}
@@ -390,7 +390,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
       {/* Headline amount */}
       <div style={{
         padding: '18px 20px', marginBottom: 14,
-        background: '#0A0A0B', borderRadius: 14, color: '#fff',
+        background: 'var(--brand-navy)', borderRadius: 14, color: '#fff',
       }}>
         <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 1.5, textTransform: 'uppercase', color: 'rgba(255,255,255,.55)', fontWeight: 600, marginBottom: 6 }}>
           المبلغ المطلوب سداده
@@ -457,7 +457,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
             <div style={{
               width: 28, height: 28, borderRadius: 8,
-              background: 'rgba(59,130,246,.14)', color: '#3B82F6',
+              background: 'rgba(59,130,246,.14)', color: 'var(--brand)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
             }}>🏦</div>
             <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
@@ -473,7 +473,7 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
                   <a href={url} target="_blank" rel="noopener noreferrer" style={{
                     display: 'inline-flex', alignItems: 'center', gap: 6,
                     padding: '8px 14px', borderRadius: 999,
-                    background: '#3B82F6', color: '#fff', textDecoration: 'none',
+                    background: 'var(--brand)', color: '#fff', textDecoration: 'none',
                     fontSize: 12.5, fontWeight: 600,
                   }}>
                     📎 افتح إيصال التحويل (PDF) ↗
@@ -579,9 +579,9 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
           background: 'rgba(59,130,246,.05)', borderRadius: 12,
           display: 'flex', gap: 10, alignItems: 'flex-start',
         }}>
-          <MessageSquare size={15} color="#3B82F6" style={{ marginTop: 2, flexShrink: 0 }}/>
+          <MessageSquare size={15} color="var(--brand)" style={{ marginTop: 2, flexShrink: 0 }}/>
           <div>
-            <div style={{ fontSize: 11.5, color: '#3B82F6', fontWeight: 600, marginBottom: 4 }}>ملاحظة العميل</div>
+            <div style={{ fontSize: 11.5, color: 'var(--brand)', fontWeight: 600, marginBottom: 4 }}>ملاحظة العميل</div>
             <div style={{ fontSize: 13, color: 'var(--text)', whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>{row.notes}</div>
           </div>
         </div>

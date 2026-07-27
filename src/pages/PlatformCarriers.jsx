@@ -177,7 +177,7 @@ export default function PlatformCarriers({ isActive = true }) {
 
   return (
     <Pad>
-      <PageHeader icon={<Truck size={22}/>} iconColor="#3B82F6"
+      <PageHeader icon={<Truck size={22}/>} iconColor="var(--brand)"
         title="شركات المنصّة المفعّلة"
         subtitle="مقارنة أسعار البيع: لمحة مقابل أوتو · طرود · تريك — مع تكلفة لمحة (من العقد + هامش) وربحها، و«أفضل سعر» يبرز الأرخص."
         meta={rows ? `${activeCount} شركة في المقارنة` : null}
