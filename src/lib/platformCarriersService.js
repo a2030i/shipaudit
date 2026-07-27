@@ -87,6 +87,7 @@ export async function loadPlatformCarriers() {
       platformName: pc.platform_name || null,
       isActive: !!pc.is_active,
       freeReturn: !!pc.free_return,
+      unavailable: pc.unavailable || [],   // منصّات لا تقدّم هذا الناقل → «غير متاحة»
       sellPrice,
       sellAuto:  pc.sell_auto  != null ? Number(pc.sell_auto)  : null,
       sellTorod: pc.sell_torod != null ? Number(pc.sell_torod) : null,

@@ -19,6 +19,7 @@ export default function PlatformCarriers({ isActive = true }) {
   const [markupInput, setMarkupInput] = useState('2');
   const [savingMk, setSavingMk] = useState(false);
   const [priceDraft, setPriceDraft] = useState({});   // `${carrierId}:${platform}` → نص السعر قيد التحرير
+  const [showAll, setShowAll] = useState(false);       // إظهار غير المفعّلة (إدارة فقط)
 
   const load = useCallback(async () => {
     setRows(null);
@@ -34,8 +35,11 @@ export default function PlatformCarriers({ isActive = true }) {
     return [...rows].sort((a, b) =>
       (b.isActive - a.isActive) || (b.hasContract - a.hasContract) || ((a.base ?? 1e9) - (b.base ?? 1e9)));
   }, [rows]);
+  // صفحة مقارنة منافسين → تعرض فقط الناقلين الموجودين في إكسل أسعار البيع (المفعّلين).
+  // غير الموجودين (بوليصة/فارنير/داخلية) لا تظهر إطلاقاً. «إظهار الكل» للإدارة فقط.
+  const visible = useMemo(() => showAll ? sorted : sorted.filter(r => r.isActive), [sorted, showAll]);
   const activeCount = useMemo(() => (rows || []).filter(r => r.isActive).length, [rows]);
-  const noContract = useMemo(() => (rows || []).filter(r => r.isActive && !r.hasContract).length, [rows]);
+  const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive).length, [rows]);
 
   if (!can('carriers.view')) return <Pad><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية عرض شركات الشحن"/></Pad>;
 
@@ -74,6 +78,8 @@ export default function PlatformCarriers({ isActive = true }) {
 
   // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود/تريك)
   const priceCellNode = (r, plat) => {
+    // منصّة لا تقدّم هذا الناقل → «غير متاحة» (لا تدخل المقارنة)
+    if ((r.unavailable || []).includes(plat)) return <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>غير متاحة</span>;
     const rowKey = PRICE_COLS[plat][1];
     const cur = r[rowKey];
     const k = `${r.id}:${plat}`;
@@ -125,7 +131,7 @@ export default function PlatformCarriers({ isActive = true }) {
       <PageHeader icon={<Truck size={22}/>} iconColor="#3B82F6"
         title="شركات المنصّة المفعّلة"
         subtitle="مقارنة أسعار البيع: لمحة مقابل أوتو · طرود · تريك — مع تكلفة لمحة (من العقد + هامش) وربحها، و«أفضل سعر» يبرز الأرخص."
-        meta={rows ? `${activeCount} مفعّلة${noContract ? ` · ${noContract} بلا عقد` : ''}` : null}
+        meta={rows ? `${activeCount} شركة في المقارنة` : null}
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
       {/* الهامش القياسي */}
@@ -137,11 +143,17 @@ export default function PlatformCarriers({ isActive = true }) {
         {canEdit && Number(markupInput) !== markup && (
           <Btn size="sm" variant="accent" icon={<Save size={13}/>} onClick={saveMarkup} disabled={savingMk}>حفظ الهامش</Btn>
         )}
-        <span style={{ fontSize: 11.5, color: 'var(--muted2)', marginInlineStart: 'auto' }}>سعر التكلفة = التكلفة الأساسية + {markup} ر.س</span>
+        {canEdit && hiddenCount > 0 && (
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)}/>
+            إظهار غير المفعّلة ({hiddenCount}) — للإدارة
+          </label>
+        )}
+        <span style={{ fontSize: 11.5, color: 'var(--muted2)', marginInlineStart: 'auto' }}>سعر التكلفة = الأساس + الوقود + هامش {markup} ر.س</span>
       </Card>
 
       {rows == null ? <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>
-        : !sorted.length ? <Card><Empty icon="🚚" title="لا شركات" sub="أضف شركات من إدارة الشركات"/></Card>
+        : !visible.length ? <Card><Empty icon="🚚" title="لا شركات في المقارنة" sub="فعّل الشركات الموجودة في إكسل أسعار البيع"/></Card>
         : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <div style={{ overflowX: 'auto' }}>
@@ -150,7 +162,7 @@ export default function PlatformCarriers({ isActive = true }) {
                   {['', 'اسم شركة الشحن', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {sorted.map(r => {
+                  {visible.map(r => {
                     // التكلفة تشمل الوقود، فالربح = البيع − التكلفة صافٍ مباشرة
                     const profit = (r.sellPrice != null && r.costPrice != null) ? r.sellPrice - r.costPrice : null;
                     const pColor = profit == null ? 'var(--muted2)' : profit <= 0 ? 'var(--red)' : profit < 1.5 ? 'var(--gold)' : 'var(--green)';
