@@ -68,7 +68,9 @@ export async function loadPlatformCarriers() {
     const pc = pcMap.get(cr.id) || {};
     const cost = extractBaseCost(cr);
     const m = pc.markup != null ? Number(pc.markup) : markup;
-    const costPrice = cost.base != null ? Number((cost.base + m).toFixed(2)) : null;
+    // التكلفة تشمل الوقود (ندفعه للناقل): الأساس + (الأساس × الوقود%) + الهامش
+    const fuelAmt = cost.base != null ? Number((cost.base * (cost.fuelPct || 0)).toFixed(2)) : 0;
+    const costPrice = cost.base != null ? Number((cost.base + fuelAmt + m).toFixed(2)) : null;
     const sellPrice = pc.sell_price != null ? Number(pc.sell_price) : null;
     // أسعار المنافسين + أفضل سعر (الأقل بين المنصّات الأربع) واسم صاحبه
     const plat = [
@@ -96,6 +98,7 @@ export async function loadPlatformCarriers() {
       upTo: cost.upTo,
       excessPerKg: cost.excessPerKg,
       fuelPct: cost.fuelPct || 0,
+      fuelAmt,
       codFee: cost.codFee || 0,
       posFeePct: cost.posFeePct || 0,
       inclusiveVat: !!cost.inclusiveVat,

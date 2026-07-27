@@ -151,9 +151,8 @@ export default function PlatformCarriers({ isActive = true }) {
                 </tr></thead>
                 <tbody>
                   {sorted.map(r => {
+                    // التكلفة تشمل الوقود، فالربح = البيع − التكلفة صافٍ مباشرة
                     const profit = (r.sellPrice != null && r.costPrice != null) ? r.sellPrice - r.costPrice : null;
-                    const fuelCost = (r.base != null && r.fuelPct) ? r.base * r.fuelPct : 0;
-                    const profitNet = profit != null ? profit - fuelCost : null;
                     const pColor = profit == null ? 'var(--muted2)' : profit <= 0 ? 'var(--red)' : profit < 1.5 ? 'var(--gold)' : 'var(--green)';
                     // أفضل سعر = الأقل بين المنصّات الأربع (يُحسب حيّاً من الصف)
                     const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null && Number.isFinite(v));
@@ -171,12 +170,12 @@ export default function PlatformCarriers({ isActive = true }) {
                       </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
                         {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                        {r.costPrice != null && r.fuelAmt > 0 && (
+                          <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>شامل وقود {(r.fuelPct * 100).toFixed(1)}% ({fmt2(r.fuelAmt)})</div>
+                        )}
                       </td>
                       <td data-label="ربح لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
                         {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
-                        {profit != null && fuelCost > 0 && (
-                          <div style={{ fontSize: 9.5, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>بعد الوقود {profitNet > 0 ? '+' : ''}{fmt2(profitNet)}</div>
-                        )}
                       </td>
                       <td data-label="البيع في لمحة" style={cell}>{priceCellNode(r, 'lamha')}</td>
                       <td data-label="البيع في أوتو" style={cell}>{priceCellNode(r, 'auto')}</td>
@@ -215,7 +214,8 @@ export default function PlatformCarriers({ isActive = true }) {
 // إعادة حساب سعر التكلفة عند تغيّر الهامش أو تجاوزه لناقل.
 function recompute(r, globalMarkup) {
   const m = r.markupOverride != null ? r.markupOverride : globalMarkup;
-  return { ...r, markup: m, costPrice: r.base != null ? Number((r.base + m).toFixed(2)) : null };
+  const fuelAmt = r.base != null ? Number((r.base * (r.fuelPct || 0)).toFixed(2)) : 0;
+  return { ...r, markup: m, fuelAmt, costPrice: r.base != null ? Number((r.base + fuelAmt + m).toFixed(2)) : null };
 }
 
 function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>{children}</div>; }
