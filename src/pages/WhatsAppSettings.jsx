@@ -773,9 +773,9 @@ function CampaignsTab() {
     if (prepFail) return;
     setPrepFail(name);
     try {
-      const recs = await loadCampaignFailures(name);
-      if (!recs.length) { toast('لا فاشلون في هذه الحملة', 'info'); return; }
-      setFailWa({ name, recs });
+      const { recipients, template } = await loadCampaignFailures(name);
+      if (!recipients.length) { toast('لا فاشلون في هذه الحملة', 'info'); return; }
+      setFailWa({ name, recs: recipients, template });
     } catch (e) { toast(`تعذّر جلب الفاشلين: ${e.message}`, 'error'); }
     finally { setPrepFail(''); }
   };
@@ -1046,6 +1046,7 @@ function CampaignsTab() {
       {failWa && (
         <WhatsAppSendModal open recipients={failWa.recs}
           bucketLabel={`إعادة إرسال — ${failWa.name}`}
+          lockedTemplate={failWa.template}
           onClose={() => setFailWa(null)} onSent={() => { setFailWa(null); load(); }}/>
       )}
     </div>

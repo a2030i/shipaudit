@@ -66,7 +66,7 @@ const fieldValue = (fields, r, key) => {
 // recipients: [{ to, name, amount, count, vars:[] }]
 // البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
 // كل الصفحات التي تفتح المودال (والدالة hatif-send تعيد الفحص سيرفرياً).
-export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent }) {
+export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent, lockedTemplate = null }) {
   const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
   const [verifying, setVer] = useState(false);
@@ -132,7 +132,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
-        const t = c.templateName || (c.templates || [])[0] || '';
+        // إعادة إرسال للفاشلين → القالب مقفول على قالب الحملة الأصلي (ممنوع تغييره)
+        const t = lockedTemplate || c.templateName || (c.templates || [])[0] || '';
         setTpl(t);
         setVarMap(defaultMapFor(t, c));
       })
@@ -446,7 +447,13 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12,
             background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 12px' }}>
             <span style={{ fontSize: 12.5, fontWeight: 600 }}>القالب:</span>
-            {(cfg.templates || []).length > 0 ? (
+            {lockedTemplate ? (
+              // إعادة إرسال للفاشلين → قالب الحملة الأصلي مقفول (نفس الرسالة، ممنوع تغييره)
+              <span style={{ fontSize: 12.5, fontFamily: 'var(--font-mono)', fontWeight: 700, padding: '5px 10px', borderRadius: 7, background: 'var(--bg)', border: '1px solid var(--border)' }}>
+                🔒 {tpl || lockedTemplate}
+                <span style={{ fontSize: 10.5, color: 'var(--muted2)', fontWeight: 400, marginInlineStart: 6, fontFamily: 'var(--font-sans)' }}>قالب الحملة الأصلي</span>
+              </span>
+            ) : (cfg.templates || []).length > 0 ? (
               <select value={tpl} onChange={e => pickTemplate(e.target.value)}
                 style={{ fontSize: 12.5, padding: '5px 9px', borderRadius: 7, border: '1px solid var(--border)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)' }}>
                 {(cfg.templates || []).map(t => <option key={t} value={t}>{t}</option>)}

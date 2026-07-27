@@ -446,20 +446,25 @@ export async function loadWhatsAppCampaignReport() {
 }
 
 // أرقام حملة فشلت (لإعادة استهدافهم) — الفاشلون مسجَّلون بحالة Failed + سبب.
-// دفعات 1000 (سقف PostgREST). يُرجِع [{to, name, reason}] بلا تكرار بالهاتف.
+// دفعات 1000 (سقف PostgREST). يُرجِع { recipients:[{to,name,reason}], template }
+// — القالب الأصلي للحملة (يُقفَل عند إعادة الإرسال: نفس رسالة الحملة الأصلية).
 export async function loadCampaignFailures(campaignName) {
   const map = new Map();
+  let template = null;
   for (let from = 0; from < 20000; from += 1000) {
     const { data, error } = await supabase.from('whatsapp_campaign_sends')
-      .select('phone, name, error_reason, status')
+      .select('phone, name, error_reason, status, template_name')
       .eq('campaign_name', campaignName)
       .or('status.eq.Failed,error_reason.not.is.null')
       .order('id', { ascending: true }).range(from, from + 999);
     if (error || !Array.isArray(data)) break;
-    for (const r of data) if (r.phone && !map.has(r.phone)) map.set(r.phone, { to: r.phone, name: r.name || r.phone, vars: [r.name || ''], reason: r.error_reason || 'فشل' });
+    for (const r of data) {
+      if (r.phone && !map.has(r.phone)) map.set(r.phone, { to: r.phone, name: r.name || r.phone, vars: [r.name || ''], reason: r.error_reason || 'فشل' });
+      if (!template && r.template_name) template = r.template_name;
+    }
     if (data.length < 1000) break;
   }
-  return [...map.values()];
+  return { recipients: [...map.values()], template };
 }
 
 // سجل الحملات المرجعي — كل رسالة مع اسم المُرسِل والحالة. phone لتاريخ عميل واحد،
