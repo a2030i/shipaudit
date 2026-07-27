@@ -167,6 +167,7 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
   const chgColor = down ? 'var(--red)' : 'var(--green)';
   return (
     <div
+      className="stat-card"
       onClick={onClick}
       onMouseEnter={() => onClick && setHovered(true)}
       onMouseLeave={() => onClick && setHovered(false)}
@@ -180,13 +181,14 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
         transform: hovered && onClick ? 'translateY(-1px)' : 'none',
         boxShadow: hovered && onClick ? 'var(--shadow-md)' : 'var(--shadow-sm)',
         minWidth: 130,
+        '--sc-tone': tone === 'var(--text)' ? 'var(--accent)' : tone,
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)', fontSize: 12.5, fontWeight: 600 }}>
-          {icon && <span style={{ color: tone, display: 'flex', fontSize: 15 }}>{icon}</span>}
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
+        <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: 'var(--muted)', fontSize: 12.5, fontWeight: 600, minHeight: icon ? 38 : undefined }}>
           {label}
         </span>
+        {icon && <span className="stat-icon-tile">{icon}</span>}
       </div>
       <div style={{ color: tone, fontSize: 27, fontWeight: 800, lineHeight: 1, letterSpacing: 0 }}>
         {value ?? '—'}
