@@ -1567,7 +1567,7 @@ export default function CustomerReceivables({ isActive = true }) {
           {history.length === 0
             ? <Empty icon="📁" title="لا توجد رفعات قديمة بعد"/>
             : (
-              <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+              <div className="m-flow" style={{ maxHeight: 420, overflowY: 'auto' }}>
                 {history.map(s => (
                   <div key={s.snapshotId} style={{
                     display: 'grid',

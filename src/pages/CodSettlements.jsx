@@ -903,7 +903,7 @@ export default function CodSettlements({ isActive = true }) {
                 );
 
                 return (
-                  <div style={{ maxHeight: 420, overflowY: 'auto' }}>
+                  <div className="m-flow" style={{ maxHeight: 420, overflowY: 'auto' }}>
                     {/* Outgoing section — what we EXPECT to receive from
                         the carrier. Sources: internal merchant-settlement
                         export, OR auto-extracted from an approved carrier
@@ -1028,7 +1028,7 @@ export default function CodSettlements({ isActive = true }) {
           </div>
 
           <Card style={{ padding: 0, overflow: 'hidden' }}>
-            <div style={{ maxHeight: 600, overflowY: 'auto' }}>
+            <div className="m-flow" style={{ maxHeight: 600, overflowY: 'auto' }}>
               {filtered.length === 0
                 ? <Empty icon="✓" title="لا شيء في هذي الحالة" sub="غيّر التبويب أعلاه"/>
                 : (

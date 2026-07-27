@@ -269,6 +269,7 @@ export default function CustomerMoney({ isActive = true }) {
             {BUCKETS.map(b => (
               <span key={b.key} onClick={() => toggleBucket(b.key)}
                 style={{ fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
+                  display: 'inline-flex', alignItems: 'center', padding: '6px 4px',
                   fontWeight: buckets.has(b.key) ? 800 : 500 }}>
                 <input type="checkbox" checked={buckets.has(b.key)} readOnly
                   style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
@@ -511,7 +512,7 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
           <div style={{ height: 6, borderRadius: 3, background: 'var(--surface2)', overflow: 'hidden', marginBottom: 12 }}>
             <div style={{ width: `${(log.length / rows.length) * 100}%`, height: '100%', background: 'var(--green)', transition: 'width .2s' }}/>
           </div>
-          <div style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>
+          <div className="m-flow" style={{ maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, fontSize: 12 }}>
             {log.map((l, i) => (
               <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 10px', borderTop: i ? '1px solid var(--border)' : 'none' }}>
                 <span>{l.ok ? '✓' : '✗'}</span>
@@ -602,7 +603,7 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
               من الرصيد الدائن على <b>{plan.plan.length}</b> فاتورة (الأقدم أولاً). **هذه العملية تكتب في Zoho Books** —
               تطبيق رصيد موجود فقط، لا تُنشئ ولا تحذف أي فاتورة.
             </div>
-            <div style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+            <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
               {plan.plan.map((p, i) => (
                 <div key={p.invoice_id} style={{ padding: '9px 12px', borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 12 }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 700 }}>

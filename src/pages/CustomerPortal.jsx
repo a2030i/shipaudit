@@ -291,7 +291,7 @@ export default function CustomerPortal() {
 
   return (
     <div className="portal-root" style={{
-      minHeight: '100vh', width: '100%',
+      minHeight: '100dvh', width: '100%',
       background: 'linear-gradient(180deg, #FAFAFA 0%, #F4F4F5 100%)',
       direction: 'rtl', fontFamily: 'var(--font-sans)',
       overflowY: 'auto',
@@ -542,7 +542,7 @@ export default function CustomerPortal() {
               <div style={{ padding: '14px 18px', borderBottom: '1px solid #F4F4F5' }}>
                 <h3 style={{ fontSize: 14.5, fontWeight: 700, color: '#18181B', margin: 0 }}>الفواتير المعلّقة</h3>
               </div>
-              <div style={{ maxHeight: 320, overflowY: 'auto' }}>
+              <div className="m-flow" style={{ maxHeight: 320, overflowY: 'auto' }}>
                 {selectedStores.every(s => !s.invoices?.length) ? (
                   <div style={{ padding: 32, textAlign: 'center', color: '#71717A', fontSize: 13 }}>
                     لا توجد فواتير معلّقة — كل شيء مسدّد
@@ -828,13 +828,13 @@ function BankTransferModal({ amount, submitting, onClose, onSubmit }) {
   );
 
   return (
-    <div style={{
+    <div className="modal-overlay" style={{
       position: 'fixed', inset: 0, background: 'rgba(15,18,53,.45)',
       backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
       zIndex: 1000, padding: 16,
     }}
     onClick={e => e.target === e.currentTarget && onClose()}>
-      <div style={{
+      <div role="dialog" style={{
         background: '#fff', borderRadius: 20, padding: 24,
         width: '100%', maxWidth: 520, maxHeight: '92vh', overflowY: 'auto',
         boxShadow: '0 24px 56px rgba(0,0,0,.24)',

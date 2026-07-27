@@ -34,6 +34,7 @@ export default function WaActions({ phone, name, amount = null, count = null, va
         <IvrCallButton phone={normalized} name={displayName} fields={recipient.fields} size={size}/>
       )}
       <button onClick={() => setOpen(true)} title="إرسال واتساب عبر هاتف (قالب معتمد — يُسجَّل ويُتتبَّع)"
+        className="wa-icon-btn"
         style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--green)', padding: 0, display: 'inline-flex' }}>
         <Send size={size}/>
       </button>

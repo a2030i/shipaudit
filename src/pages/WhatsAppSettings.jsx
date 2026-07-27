@@ -103,7 +103,7 @@ export default function WhatsAppSettings({ isActive = true }) {
       />
 
       {/* مبدّل: الإعدادات / سجل الحملات */}
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+      <div style={{ display: 'flex', gap: 6, rowGap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
         {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['impact', '💰 الأثر بالريال'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
           <button key={v} onClick={() => setTab(v)} style={{
             padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,

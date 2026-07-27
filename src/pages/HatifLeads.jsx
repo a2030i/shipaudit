@@ -297,8 +297,14 @@ function LeadModal({ lead, onClose, onSaved }) {
     catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); setSaving(false); }
   };
   return (
-    <div role="dialog" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
-      <Card onClick={e => e.stopPropagation()} style={{ width: 'min(520px, 94vw)', maxHeight: '88vh', overflowY: 'auto', padding: 18 }} className="m-flow">
+    <div className="modal-overlay" style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200 }} onClick={onClose}>
+      {/* div لا Card (المكوّن يُسقط role/className) — role=dialog على البطاقة نفسها
+          كي تسري قواعد الجوال (.modal-overlay تُسكرل والبطاقة تفرد طولها) */}
+      <div role="dialog" onClick={e => e.stopPropagation()} style={{
+        background: 'var(--card)', border: '1px solid var(--border2)',
+        borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-md)',
+        width: 'min(520px, 94vw)', maxHeight: '88vh', overflowY: 'auto', padding: 18,
+      }}>
         <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 4 }}>{display(lead)}</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', fontFamily: 'var(--font-mono)', direction: 'ltr', textAlign: 'right', marginBottom: 12 }}>{lead.phone}</div>
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
@@ -332,7 +338,7 @@ function LeadModal({ lead, onClose, onSaved }) {
           <Btn variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Btn>
           <Btn variant="accent" onClick={save} disabled={saving}>حفظ</Btn>
         </div>
-      </Card>
+      </div>
     </div>
   );
 }

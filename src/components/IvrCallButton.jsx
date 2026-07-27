@@ -16,6 +16,7 @@ export default function IvrCallButton({ phone, name, fields = null, size = 15, l
   return (
     <>
       <button onClick={e => { e.stopPropagation(); setOpen(true); }} title="اتصال آلي (IVR)"
+        className={label ? undefined : 'wa-icon-btn'}
         style={label ? {
           display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', borderRadius: 9,
           border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)',

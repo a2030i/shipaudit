@@ -908,7 +908,7 @@ function AnomalyListModal({ kind, rows, onClose, onRowClick }) {
       </div>
 
       {/* Scrollable list */}
-      <div style={{
+      <div className="m-flow" style={{
         border: '1px solid var(--border)', borderRadius: 12,
         maxHeight: 480, overflowY: 'auto',
       }}>
@@ -1486,7 +1486,7 @@ function TopList({ icon, accent, title, sub, rows, valueLabel, renderRow, empty,
           </button>
         )}
       </div>
-      <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+      <div className="m-flow" style={{ maxHeight: 360, overflowY: 'auto' }}>
         {!rows?.length ? (
           <div style={{ padding: 28, textAlign: 'center', fontSize: 12, color: 'var(--muted)' }}>{empty}</div>
         ) : (

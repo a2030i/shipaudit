@@ -466,7 +466,8 @@ button:active { transform: scale(.97); }
 
 @media (max-width: 768px) {
   html, body { height: 100%; overflow: hidden; }
-  #root { height: 100vh; }
+  /* iOS: ‏100vh أطول من المرئي (شريط سفاري) — dvh يصحّح، والقديم fallback */
+  #root { height: 100vh; height: 100dvh; }
 
   /* iOS Safari auto-zooms when an input/select has font-size < 16px on focus.
      Force 16px on form controls on mobile so the page stays at 1× zoom.
@@ -546,8 +547,10 @@ button:active { transform: scale(.97); }
   .page-content > div > div[style*="padding: '32px 40px"] {
     padding: 18px 14px 40px !important;
   }
-  /* المعيار الموحّد الجديد (design-v2 هوامش 2026-07-15) — التسلسل بلا اقتباسات */
-  .page-content > div > div[style*="padding: 24px 28px 80px"] {
+  /* المعيار الموحّد الجديد (design-v2 هوامش 2026-07-15) — التسلسل بلا اقتباسات.
+     محدد سليل (لا > مباشر): جذور تبويبات الهَبات (مركز المبيعات/التحصيل) أعمق
+     من مستويين فكان القصّ لا يصلها (فحص الجوال 2026-07-28). */
+  .page-content div[style*="padding: 24px 28px 80px"] {
     padding: 18px 14px 40px !important;
   }
   .page-content > div > div[style*="padding"] {
@@ -649,18 +652,14 @@ button:active { transform: scale(.97); }
   .page-content [style*="repeat(4,"],
   .page-content [style*="repeat(5,"],
   .page-content [style*="repeat(6,"],
+  .page-content [style*="repeat(7,"],
   .page-content [style*="1fr 360px"],
-  .page-content [style*="1fr 320px"],
   .page-content [style*="260px 1fr"],
-  .page-content [style*="200px 1fr"],
   .page-content [style*="180px 1fr"],
-  .page-content [style*="160px 1fr"],
-  .page-content [style*="160px repeat"],
   .page-content [style*="80px 1fr"],
   /* Filter rows: search + amount/days inputs (Receivables/Collections).
      Browser normalizes minmax(140px,1fr) → "minmax(140px, 1fr)". */
   .page-content [style*="minmax(140px, 1fr) auto"],
-  .page-content [style*="minmax(0px, 1fr) minmax(0px, 1fr)"],
   .page-content [style*="1fr 1fr 2fr"],
   /* Audit batch: multi-col action/list rows that overflow at 375px. These
      all have >=4 columns or a fixed-px first column, so collapsing to one
@@ -671,10 +670,8 @@ button:active { transform: scale(.97); }
   .page-content [style*="auto 1fr auto auto"],
   .page-content [style*="auto 1fr 1fr 1fr"],
   .page-content [style*="1.4fr 1fr auto auto"],
-  .page-content [style*="40px minmax(0, 1fr)"],
-  .page-content [style*="90px 1fr"],
-  .page-content [style*="110px 1fr"],
-  .page-content [style*="120px 1fr"] {
+  /* المتصفح يطبّع minmax(0,1fr) → "minmax(0px, 1fr)" — بدون px كان ميتاً (§1.18) */
+  .page-content [style*="40px minmax(0px, 1fr)"] {
     grid-template-columns: 1fr !important;
   }
 
@@ -807,10 +804,18 @@ button:active { transform: scale(.97); }
     bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; left: 12px !important;
     width: calc(100vw - 24px) !important;
     height: calc(100vh - 150px) !important;
+    height: calc(100dvh - 150px) !important;
     max-height: calc(100vh - 150px) !important;
+    max-height: calc(100dvh - 150px) !important;
   }
+}
 
-  /* ── شريط التنقّل السفلي (جوال فقط) ── */
+/* ── شريط التنقّل السفلي — جوال فقط (≤768px كما يوثّق §1.21) ──
+   كان داخل بلوك 480 فقط: بين 481–768px كان يُرسم عنصراً عارياً بجانب
+   .app-layout يضغط عرض التطبيق (فحص الجوال 2026-07-28). الأساس مخفي،
+   والجوال بأكمله (≤768) يظهره ثابتاً. */
+.bottom-nav { display: none; }
+@media (max-width: 768px) {
   .bottom-nav {
     display: flex;
     position: fixed; bottom: 0; right: 0; left: 0; z-index: 60;
@@ -827,11 +832,6 @@ button:active { transform: scale(.97); }
   .bottom-nav-btn.active { color: var(--accent); }
   /* مساحة أسفل المحتوى كي لا يغطّي الشريط آخر صفوف الصفحة */
   .page-content { padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; }
-}
-
-/* الشريط السفلي للجوال فقط — مخفي على الحاسب */
-@media (min-width: 769px) {
-  .bottom-nav { display: none; }
 }
 
 /* ── الطباعة (A4) — أول وجود حقيقي للطباعة في النظام ──
@@ -1645,5 +1645,22 @@ thead th { letter-spacing: .3px; }
   .modal-overlay [role="dialog"] div[style*="overflow: auto"] {
     max-height: none !important;
     overflow-y: visible !important;
+  }
+
+  /* ── أهداف لمس ≥40px لأزرار الأيقونات في صفوف التحصيل/المبيعات ──
+     (زر الحملة ✈️ وزر الاتصال — كانا ~15px، فحص الجوال 2026-07-28) */
+  .wa-icon-btn {
+    min-width: 40px !important;
+    min-height: 40px !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 0 !important;
+  }
+
+  /* البوابة (/portal) خارج .page-content — نفس علاج m-flow للقوائم الداخلية */
+  .portal-root .m-flow {
+    max-height: none !important;
+    overflow: visible !important;
   }
 }

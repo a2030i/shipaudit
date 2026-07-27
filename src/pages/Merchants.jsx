@@ -138,7 +138,7 @@ function MiniMerchantTable({ icon: Icon, accent, title, sub, rows, valueLabel, v
         </div>
         <div style={{ fontSize:11, color:'var(--muted)', marginTop:3 }}>{sub}</div>
       </div>
-      <div style={{ maxHeight: 280, overflowY: 'auto' }}>
+      <div className="m-flow" style={{ maxHeight: 280, overflowY: 'auto' }}>
         {!rows.length ? (
           <div style={{ padding:24, textAlign:'center', fontSize:12, color:'var(--muted)' }}>{emptyMsg}</div>
         ) : (

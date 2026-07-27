@@ -438,9 +438,11 @@ export default function SupportBoard({ isActive = true }) {
 
       {/* ── درج التفاصيل ── */}
       {drawer && (
-        <div role="dialog" aria-modal="true" onClick={() => setDrawer(null)}
+        <div onClick={() => setDrawer(null)}
           style={{ position: 'fixed', inset: 0, zIndex: 90, background: 'rgba(0,0,0,.38)', display: 'flex', justifyContent: 'flex-start' }}>
-          <div onClick={(e) => e.stopPropagation()} className="m-flow" style={{
+          {/* role=dialog على اللوح لا الطبقة، وبلا m-flow (اللوح fixed يحتاج
+              تمريره الداخلي — m-flow كان يلغيه فيُحبس السجل على الجوال) */}
+          <div role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()} style={{
             width: 'min(94vw, 460px)', height: '100%', overflowY: 'auto',
             background: 'var(--card)', borderInlineEnd: '1px solid var(--border)',
             padding: '18px 18px 40px',
