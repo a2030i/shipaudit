@@ -1620,4 +1620,30 @@ thead th { letter-spacing: .3px; }
   .topbar-search-hint, .topbar-search-kbd { display: none; }
   /* الهيدر البطولي: العنوان يلتف بدل القص على الشاشات الضيقة */
   .page-hero-band h1 { white-space: normal !important; }
+
+  /* ── المودالات على الجوال: الطبقة تُسكرل لا المودال (2026-07-28) ──
+     كان المودال maxHeight:90vh بتمركز عمودي — وiOS يحسب 100vh أطول من
+     المرئي (شريط سفاري) → X بالأعلى وزر الإرسال بالأسفل خارج الشاشة،
+     والمحتوى «ضمن مقاسه» فلا يوجد تمرير داخلي أصلاً = كل المودالات محبوسة
+     (شكوى «ما أقدر أرسل ولا أحط إكس»). النموذج الأثبت على iOS: المودال
+     يفرد طوله الطبيعي كاملاً والطبقة الخلفية هي القابلة للتمرير. */
+  .modal-overlay {
+    align-items: flex-start !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .modal-overlay [role="dialog"], .modal-overlay .modal {
+    max-height: none !important;
+    overflow-y: visible !important;
+    height: auto !important;
+    margin: 10px 12px 40px !important;
+  }
+  /* أي حاوية تمرير داخلية في المودال تنفرد بكامل طولها (يلغي التمرير
+     المتداخل الذي يحبس إصبع iOS — يعمّم قاعدة .m-flow على كل المودالات) */
+  .modal-overlay [role="dialog"] div[style*="overflow-y: auto"],
+  .modal-overlay [role="dialog"] div[style*="overflow: auto"] {
+    max-height: none !important;
+    overflow-y: visible !important;
+  }
 }

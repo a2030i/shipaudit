@@ -1076,6 +1076,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
 
   return (
     <div
+      className="modal-overlay"
       style={{
         position: 'fixed', inset: 0,
         background: 'rgba(15,18,53,.45)',
