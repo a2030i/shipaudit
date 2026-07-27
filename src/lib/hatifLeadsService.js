@@ -32,32 +32,36 @@ export async function loadFollowupsMap() {
   return map;
 }
 
-// ⚠️ PostgREST يسقّف عند 1000 صف — نجلب على صفحات (§6: أي range يحتاج order ثابتاً).
+// «فرص هاتف» مُثراة عبر RPC hatif_leads_enriched — تربط كل رقم مجهول بأفضل مطابقة
+// في crm_leads (اسم/منصّة/قسم/مدينة) + حالة المتابعة الموحّدة. فالـ466 lead نعرفها
+// تكتسب هويتها بدل «مجهول». ⚠️ RPC يسقّفه PostgREST عند 1000 (§1.34) → نصفّح
+// بـrange (الـRPC فيه ORDER BY phone ثابت).
 export async function loadHatifLeads() {
   const rows = [];
   for (let from = 0; from < 20000; from += 1000) {
-    const { data, error } = await supabase.from('hatif_unknown_contacts')
-      .select('phone, contact_id, name, company, named_manually, phone_kind, created_at_hatif, status, owner_id, note, last_seen')
-      .order('phone', { ascending: true })
-      .range(from, from + 999);
+    const { data, error } = await supabase.rpc('hatif_leads_enriched').range(from, from + 999);
     if (error) throw error;
     rows.push(...(data || []));
     if (!data || data.length < 1000) break;
   }
-  // دمج حالة المتابعة الموحّدة (retargeting_followups) — لا من hatif_unknown_contacts
-  const fu = await loadFollowupsMap();
-  return rows.map(r => {
-    const f = fu.get(r.phone);
-    return {
-      phone: r.phone, contactId: r.contact_id, name: r.name, company: r.company,
-      namedManually: !!r.named_manually, kind: r.phone_kind,
-      createdAt: r.created_at_hatif, lastSeen: r.last_seen,
-      status: f?.status || 'new',
-      ownerId: f?.owner_id || null,
-      note: f?.notes || null,
-      nextActionAt: f?.next_action_at || null,
-    };
-  });
+  return rows.map(r => ({
+    phone: r.phone, contactId: r.contact_id,
+    hatifName: r.hatif_name,
+    // أفضل اسم معروف: اسم الـlead المطابق ثم اسم هاتف (سمّاه الفريق) ثم لا شيء
+    name: r.lead_name || r.hatif_name || null,
+    company: null,
+    // إثراء crm_leads
+    leadId: r.lead_id, leadName: r.lead_name, leadMatched: !!r.lead_matched,
+    platform: r.platform, category: r.category, city: r.city,
+    // معروف = مطابق lead أو مسمّى في هاتف
+    identified: !!r.lead_matched || !!r.hatif_name,
+    namedManually: !!r.named_manually, kind: r.phone_kind,
+    createdAt: r.created_at_hatif, lastSeen: r.last_seen,
+    status: r.status || 'new',
+    ownerId: r.owner_id || null,
+    note: r.note || null,
+    nextActionAt: r.next_action_at || null,
+  }));
 }
 
 // مزامنة فورية: تجرد جهات هاتف وتلتقط أي جوال سعودي جديد كلّمنا وليس عميلاً.
@@ -72,10 +76,12 @@ export async function syncHatifLeads() {
 
 // مؤشّرات سريعة من القائمة المحمَّلة (بلا استدعاء إضافي)
 export function computeLeadStats(rows) {
-  const s = { total: rows.length, named: 0, mobile: 0, byStatus: {}, byKind: {} };
+  const s = { total: rows.length, named: 0, mobile: 0, identified: 0, leadMatched: 0, byStatus: {}, byKind: {} };
   for (const r of rows) {
     if (r.namedManually) s.named++;
     if (r.kind === 'mobile_sa') s.mobile++;
+    if (r.identified) s.identified++;      // مطابق lead أو مسمّى في هاتف
+    if (r.leadMatched) s.leadMatched++;    // مطابق crm_leads تحديداً
     s.byStatus[r.status] = (s.byStatus[r.status] || 0) + 1;
     s.byKind[r.kind] = (s.byKind[r.kind] || 0) + 1;
   }

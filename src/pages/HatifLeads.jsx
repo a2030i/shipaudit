@@ -28,6 +28,7 @@ export default function HatifLeads({ isActive = true }) {
   const [q, setQ] = useState('');
   const [status, setStatus] = useState('');
   const [namedOnly, setNamedOnly] = useState(false);
+  const [identifiedOnly, setIdentifiedOnly] = useState(false);   // معروف (مرتبط بعميل أو مسمّى)
   const [showExcluded, setShowExcluded] = useState(false);   // مورد/ضجيج/بلاك لست
   const [waRecipients, setWaRecipients] = useState(null);
   const [waStatus, setWaStatus] = useState(() => new Map());
@@ -67,14 +68,15 @@ export default function HatifLeads({ isActive = true }) {
     const endOfToday = new Date(); endOfToday.setHours(23, 59, 59, 999);
     return rows.filter(l => {
       if (namedOnly && !l.namedManually) return false;
+      if (identifiedOnly && !l.identified) return false;
       if (!showExcluded && !status && statusMeta(l.status).excluded) return false;
       if (status && l.status !== status) return false;
       if (mineOnly && l.ownerId !== user?.id) return false;
       if (dueOnly && !(l.nextActionAt && new Date(l.nextActionAt) <= endOfToday)) return false;
-      if (s && ![l.name, l.phone, l.company].some(v => String(v ?? '').toLowerCase().includes(s))) return false;
+      if (s && ![l.name, l.hatifName, l.phone, l.city, l.category, l.platform].some(v => String(v ?? '').toLowerCase().includes(s))) return false;
       return true;
     });
-  }, [rows, q, status, namedOnly, showExcluded, mineOnly, dueOnly, user?.id]);
+  }, [rows, q, status, namedOnly, identifiedOnly, showExcluded, mineOnly, dueOnly, user?.id]);
 
   // تفصيص 2026-07-16: مفتاح مستقل لهذا التبويب
   if (!can('sales.hatif_leads')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «تبويب فرص من هاتف»"/></div>;
@@ -99,7 +101,9 @@ export default function HatifLeads({ isActive = true }) {
       const { rtl } = await import('../lib/xlsxRtl.js');
       const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
       const data = filtered.map(l => ({
-        'الاسم': l.name || '', 'الجوال': l.phone, 'الشركة': l.company || '',
+        'الاسم': l.name || '', 'الجوال': l.phone,
+        'معروف': l.leadMatched ? 'مرتبط بعميل' : l.hatifName ? 'مسمّى في هاتف' : 'جديد',
+        'المنصّة': l.platform || '', 'القسم': l.category || '', 'المدينة': l.city || '',
         'سُمّي يدوياً': l.namedManually ? 'نعم' : 'لا',
         'الحالة': statusMeta(l.status).label, 'أول ظهور في هاتف': l.createdAt ? String(l.createdAt).slice(0, 10) : '',
         'ملاحظة': l.note || '',
@@ -131,8 +135,8 @@ export default function HatifLeads({ isActive = true }) {
         {/* المؤشّرات */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
           <Stat label="إجمالي الفرص" value={stats.total} color="#F97316" sub="جوال سعودي — كلها قابلة للحملات"/>
-          <Stat label="باسم حقيقي ⭐" value={stats.named} color="var(--green)" sub="سمّاهم موظف — الأثمن"/>
-          <Stat label="مهتمّون" value={stats.byStatus.interested || 0} color="var(--gold)"/>
+          <Stat label="معروف 🔗" value={stats.identified} color="var(--green)" sub={`${fmt0(stats.leadMatched)} مرتبط بعميل + مسمّى — ابدأ بهم`}/>
+          <Stat label="باسم حقيقي ⭐" value={stats.named} color="var(--accent)" sub="سمّاهم موظف في هاتف"/>
           <Stat label="لم تُصنَّف بعد" value={stats.byStatus.new || 0} color="#3B82F6"/>
         </div>
 
@@ -148,6 +152,9 @@ export default function HatifLeads({ isActive = true }) {
               <option value="">كل الحالات</option>
               {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
             </select>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--green)', fontWeight: 700 }}>
+              <input type="checkbox" checked={identifiedOnly} onChange={e => setIdentifiedOnly(e.target.checked)}/> 🔗 معروف فقط
+            </label>
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={namedOnly} onChange={e => setNamedOnly(e.target.checked)}/> باسم حقيقي فقط ⭐
             </label>
@@ -211,6 +218,12 @@ export default function HatifLeads({ isActive = true }) {
                     <tr key={l.phone} onClick={() => setDetail(l)} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }}>
                       <td data-label="الاسم" style={{ padding: '10px 12px', fontWeight: 700 }}>
                         {l.namedManually && <span title="سمّاه موظف">⭐ </span>}{display(l)}
+                        {l.leadMatched && <span title="مرتبط بجهة محتملة معروفة" style={{ marginInlineStart: 6, fontSize: 9.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 14%, transparent)', padding: '1px 6px', borderRadius: 20 }}>🔗 معروف</span>}
+                        {(l.platform || l.category || l.city) && (
+                          <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
+                            {[l.platform, l.category, l.city].filter(Boolean).join(' · ')}
+                          </div>
+                        )}
                         {l.company && <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{l.company}</div>}
                         {w && (() => { const st = waStatusBadge(w); return <div style={{ fontSize: 10, color: st.c, fontWeight: 600, marginTop: 2 }}>
                           📲 حملة {fmtDate(w.lastSentAt)} · {st.t}</div>; })()}
@@ -285,9 +298,19 @@ function LeadModal({ lead, onClose, onSaved }) {
         <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'var(--muted)', marginBottom: 12 }}>
           <span>{kindMeta(lead.kind).label}</span>
           <span>أول ظهور: {fmtDate(lead.createdAt)}</span>
-          {lead.namedManually && <span style={{ color: 'var(--green)' }}>⭐ سمّاه موظف</span>}
+          {lead.leadMatched && <span style={{ color: 'var(--green)', fontWeight: 700 }}>🔗 مرتبط بجهة محتملة معروفة</span>}
+          {lead.namedManually && <span style={{ color: 'var(--accent)' }}>⭐ سمّاه موظف</span>}
           {lead.company && <span>الشركة: {lead.company}</span>}
         </div>
+        {(lead.platform || lead.category || lead.city) && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+            {[['المنصّة', lead.platform], ['القسم', lead.category], ['المدينة', lead.city]].filter(([, v]) => v).map(([k, v]) => (
+              <span key={k} style={{ fontSize: 11, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 8, padding: '3px 9px' }}>
+                <span style={{ color: 'var(--muted2)' }}>{k}:</span> <b>{v}</b>
+              </span>
+            ))}
+          </div>
+        )}
         <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', display: 'block', marginBottom: 4 }}>التصنيف</label>
         <select value={status} onChange={e => setStatus(e.target.value)} style={{ ...selStyle, width: '100%', marginBottom: 12 }}>
           {Object.entries(STATUSES).map(([k, m]) => <option key={k} value={k}>{m.label}</option>)}
