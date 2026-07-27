@@ -207,7 +207,7 @@ export default function SupportBoard({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader icon={<LifeBuoy size={22}/>} iconColor="#06B6D4"
+      <PageHeader icon={<LifeBuoy size={22}/>} iconColor="var(--accent3)"
         title="تذاكر خدمة العملاء"
         subtitle="سجّل المشكلة قبل أن تضيع — تابعها حتى تُحل"
         actions={
@@ -242,9 +242,9 @@ export default function SupportBoard({ isActive = true }) {
       {/* ── بطاقات الحالة (النقر يفلتر) ── */}
       {stats && (
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 16 }}>
-          <StatCard label="جديدة" value={stats.open} color="#0EA5E9" active={status === 'open'} onClick={() => pickStat('open')}/>
+          <StatCard label="جديدة" value={stats.open} color="var(--accent3)" active={status === 'open'} onClick={() => pickStat('open')}/>
           <StatCard label="قيد المعالجة" value={stats.inProgress} color="var(--gold)" active={status === 'in_progress'} onClick={() => pickStat('in_progress')}/>
-          <StatCard label="بانتظار العميل" value={stats.waiting} color="#8B5CF6" active={status === 'waiting_customer'} onClick={() => pickStat('waiting_customer')}/>
+          <StatCard label="بانتظار العميل" value={stats.waiting} color="var(--accent)" active={status === 'waiting_customer'} onClick={() => pickStat('waiting_customer')}/>
           <StatCard label="مفتوحة +3 أيام" value={stats.stale3d} color="var(--red)" active={!status && openOnly} onClick={() => pickStat('openOnly')}/>
           <StatCard label="حُلّت آخر 7 أيام" value={stats.resolved7d} color="var(--green)" active={status === 'resolved'} onClick={() => pickStat('resolved')}/>
           <StatCard label="الكل" value={stats.total} color="var(--muted)" active={!status && !openOnly} onClick={() => pickStat('all')}/>
@@ -348,9 +348,9 @@ export default function SupportBoard({ isActive = true }) {
           <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(160px,1fr))', gap: 10, marginBottom: 16 }}>
             {[
               { label: 'إجمالي التذاكر', value: stats?.total ?? 0, color: 'var(--accent)' },
-              { label: 'مفتوحة الآن', value: (stats?.open ?? 0) + (stats?.inProgress ?? 0) + (stats?.waiting ?? 0), color: '#0EA5E9' },
+              { label: 'مفتوحة الآن', value: (stats?.open ?? 0) + (stats?.inProgress ?? 0) + (stats?.waiting ?? 0), color: 'var(--accent3)' },
               { label: 'متوسط زمن الحل', value: dash.avgResolutionHours == null ? '—' : (dash.avgResolutionHours >= 48 ? `${(dash.avgResolutionHours / 24).toFixed(1)} يوم` : `${dash.avgResolutionHours} ساعة`), color: 'var(--gold)' },
-              { label: 'أُنشئت آخر 30 يوم', value: dash.created30d, color: '#8B5CF6' },
+              { label: 'أُنشئت آخر 30 يوم', value: dash.created30d, color: 'var(--accent)' },
               { label: 'حُلّت آخر 30 يوم', value: dash.resolved30d, color: 'var(--green)' },
             ].map(c => (
               <div key={c.label} style={{ border: '1.5px solid var(--border)', borderRadius: 12, padding: '10px 14px', background: 'var(--card)' }}>

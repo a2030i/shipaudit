@@ -10,7 +10,7 @@ import { saDateTime as fmtDateTime } from '../lib/saTime.js';   // توقيت ا
 export function campaignStatusBadge(r) {
   if (r.repliedAt) return { label: '💬 ردّ', color: '#2563EB' };            // أزرق
   if (r.status === 'Failed' || r.error) return { label: '⚠️ فشل', color: '#DC2626' };  // أحمر
-  if (r.readAt) return { label: '👁 قُرئت', color: '#7C3AED' };             // بنفسجي
+  if (r.readAt) return { label: '👁 قُرئت', color: 'var(--accent)' };        // بنفسجي
   if (r.deliveredAt) return { label: '✓ وصلت', color: '#0891B2' };          // سماوي
   return { label: '➤ أُرسلت', color: '#6B7280' };                          // رمادي
 }

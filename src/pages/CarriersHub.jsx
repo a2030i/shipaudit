@@ -253,7 +253,7 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
           <ActionPill
             icon={<WebhookIcon size={11}/>}
             label={`${row.webhookPending} ملف وارد`}
-            color="#3B82F6"
+            color="var(--brand)"
             onClick={(e) => { e.stopPropagation(); onWebhook?.(); }}
           />
         )}

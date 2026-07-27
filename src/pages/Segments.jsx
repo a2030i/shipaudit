@@ -84,8 +84,8 @@ function statusPillTone(rawStatus, shipDays) {
   if (isSuspended) return { bg: 'rgba(220,38,38,.12)',  fg: 'var(--red)', label: s || 'موقوف' };
   if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: '#5B6BB0', label: s || 'غير نشط' };
   if (isActive) {
-    if (shipDays != null && shipDays > 30) return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط — خامل' };
-    return { bg: 'rgba(16,185,129,.14)', fg: '#047857', label: 'شغّال' };
+    if (shipDays != null && shipDays > 30) return { bg: 'color-mix(in srgb, var(--gold) 14%, transparent)', fg: 'var(--gold)', label: 'نشط — خامل' };
+    return { bg: 'color-mix(in srgb, var(--green) 14%, transparent)', fg: 'var(--green)', label: 'شغّال' };
   }
   return { bg: 'rgba(148,163,184,.16)', fg: 'var(--muted)', label: s || 'غير معروف' };
 }
@@ -719,7 +719,7 @@ export default function Segments({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Layers size={22}/>}
-        iconColor="#0EA5E9"
+        iconColor="var(--accent3)"
         title="مجموعات العملاء"
         subtitle="ابنِ مجموعة بفلاتر متعدّدة، احفظها باسم، وحدّث كل المجموعات بضغطة"
         meta={snapshot ? `آخر تحديث ${new Date(snapshot.uploadedAt).toLocaleDateString('en-GB')} · ${rows.length} متجر إجمالي` : null}
@@ -748,7 +748,7 @@ export default function Segments({ isActive = true }) {
       {savedSegments.length > 0 && (
         <Card style={{ marginBottom: 16, background: 'var(--surface2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
-            <Bookmark size={14} color="#0EA5E9"/>
+            <Bookmark size={14} color="var(--accent3)"/>
             <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>
               مجموعاتي المحفوظة
             </span>
@@ -783,11 +783,11 @@ export default function Segments({ isActive = true }) {
       {activeSavedId && !filtersExpanded && (
         <Card style={{
           marginBottom: 14, padding: '12px 16px',
-          background: 'color-mix(in srgb, #0EA5E9 5%, transparent)',
-          border: '1px solid color-mix(in srgb, #0EA5E9 18%, transparent)',
+          background: 'color-mix(in srgb, var(--accent3) 5%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--accent3) 18%, transparent)',
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            <SlidersHorizontal size={14} color="#0EA5E9"/>
+            <SlidersHorizontal size={14} color="var(--accent3)"/>
             <span style={{ fontSize: 12.5, color: 'var(--text2)' }}>
               تشاهد مجموعة محفوظة —
               <strong style={{ color: 'var(--text)', marginInlineStart: 4 }}>
@@ -800,8 +800,8 @@ export default function Segments({ isActive = true }) {
                 marginInlineStart: 'auto',
                 display: 'inline-flex', alignItems: 'center', gap: 6,
                 padding: '6px 12px', borderRadius: 999,
-                border: '1.5px solid #0EA5E9',
-                background: 'transparent', color: '#0EA5E9',
+                border: '1.5px solid var(--accent3)',
+                background: 'transparent', color: 'var(--accent3)',
                 fontSize: 12, fontWeight: 600, cursor: 'pointer',
                 fontFamily: 'var(--font-sans)',
               }}
@@ -874,7 +874,7 @@ export default function Segments({ isActive = true }) {
         </Card>
 
         <Card>
-          <FacetTitle icon={<ShoppingBag size={14}/>} color="#8B5CF6">بيانات الحساب</FacetTitle>
+          <FacetTitle icon={<ShoppingBag size={14}/>} color="var(--accent)">بيانات الحساب</FacetTitle>
           <MultiChips
             label="حالة المنصّة"
             options={facetValues.platformStatuses}
@@ -932,10 +932,10 @@ export default function Segments({ isActive = true }) {
             />
           </div>
           <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Stat label="النتائج"     value={stats.count.toLocaleString('en-US')} color="#0EA5E9"/>
+            <Stat label="النتائج"     value={stats.count.toLocaleString('en-US')} color="var(--accent3)"/>
             <Stat label="بأرقام جوال"  value={stats.withPhone.toLocaleString('en-US')} color="var(--green)"/>
             <Stat label="إجمالي الدين" value={fmt(stats.totalDebt)}    color="#EF4444" suffix="ر.س"/>
-            <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? 'var(--red)' : '#0EA5E9'} suffix="ر.س"/>
+            <Stat label="إجمالي المحافظ" value={fmt(stats.totalWallet)} color={stats.totalWallet < 0 ? 'var(--red)' : 'var(--accent3)'} suffix="ر.س"/>
           </div>
           <div style={{ display: 'flex', gap: 8, marginInlineStart: 'auto', flexWrap: 'wrap' }}>
             {/* §هيكلة-0: كان الزر بلا أي بوابة صلاحية — الآن campaigns.send (والمودال يعيد الفحص) */}
@@ -1080,7 +1080,7 @@ function SortableTh({ col, sortBy, sortDir, onSort }) {
       style={{
         padding: '10px 12px', textAlign: 'right',
         fontSize: 11, fontWeight: 600,
-        color: active ? '#0EA5E9' : 'var(--muted)',
+        color: active ? 'var(--accent3)' : 'var(--muted)',
         whiteSpace: 'nowrap',
         cursor: sortable ? 'pointer' : 'default',
         userSelect: 'none',
@@ -1220,9 +1220,9 @@ function MultiChips({ label, options, selected, onToggle }) {
           return (
             <button key={opt} onClick={() => onToggle(opt)} style={{
               padding: '4px 10px', borderRadius: 999,
-              border: `1px solid ${on ? '#0EA5E9' : 'var(--border)'}`,
-              background: on ? 'rgba(14,165,233,.12)' : 'transparent',
-              color: on ? '#0369A1' : 'var(--text2)',
+              border: `1px solid ${on ? 'var(--accent3)' : 'var(--border)'}`,
+              background: on ? 'color-mix(in srgb, var(--accent3) 12%, transparent)' : 'transparent',
+              color: on ? 'var(--accent)' : 'var(--text2)',
               fontSize: 11.5, fontWeight: 600, cursor: 'pointer',
               fontFamily: 'var(--font-sans)',
             }}>
@@ -1236,7 +1236,7 @@ function MultiChips({ label, options, selected, onToggle }) {
 }
 
 function SavedChip({ segment, count, active, onLoad, onEdit, onRename, onDelete }) {
-  const tint = segment.color || '#0EA5E9';
+  const tint = segment.color || 'var(--accent3)';
   return (
     <div style={{
       display: 'inline-flex', alignItems: 'center', gap: 8,

@@ -172,8 +172,8 @@ export async function deletePaymentRequest(id) {
 }
 
 export const STATUS_META = {
-  pending:    { label: 'في الانتظار', color: '#F59E0B' },
-  contacted:  { label: 'تم التواصل',  color: '#3B82F6' },
+  pending:    { label: 'في الانتظار', color: 'var(--gold)' },
+  contacted:  { label: 'تم التواصل',  color: 'var(--brand)' },
   paid:       { label: 'تم السداد',   color: '#10B981' },
   cancelled:  { label: 'ملغي',        color: '#71717A' },
 };

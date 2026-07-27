@@ -192,7 +192,7 @@ export async function loadHatifCallsByPhone(phone, limit = 20) {
 }
 export const HATIF_SENTIMENT = {
   Positive: { t: 'إيجابي', e: '😊', c: '#16A34A' }, Neutral: { t: 'محايد', e: '😐', c: '#9CA3AF' },
-  Negative: { t: 'سلبي', e: '😟', c: '#DC2626' }, Mixed: { t: 'مختلط', e: '😕', c: '#F59E0B' }, Unknown: { t: '—', e: '', c: '#9CA3AF' },
+  Negative: { t: 'سلبي', e: '😟', c: '#DC2626' }, Mixed: { t: 'مختلط', e: '😕', c: 'var(--gold)' }, Unknown: { t: '—', e: '', c: '#9CA3AF' },
 };
 export const HATIF_CALL_STATUS = {
   Completed: 'مكتملة', Missed: 'لم يُردّ', NoAnswer: 'لا رد', Busy: 'مشغول', Failed: 'فشلت',
@@ -240,10 +240,10 @@ function isTerminalStatus(s) {
 export function ivrStatusBadge(row) {
   if (row.pressed_digit) return { t: `ضغط ${row.pressed_digit}`, c: '#16A34A' };
   const answered = !!row.answered_at || (Number(row.duration_seconds) > 0);
-  if (answered) return { t: 'رُدّ — بلا ضغطة', c: '#3B82F6' };
+  if (answered) return { t: 'رُدّ — بلا ضغطة', c: 'var(--brand)' };
   if (isTerminalStatus(row.status)) return { t: 'لم يُردّ', c: '#9CA3AF' };
   if (String(row.status || '') === 'pending') return { t: 'قيد الإطلاق', c: '#9CA3AF' };
-  return { t: 'جارية', c: '#3B82F6' };
+  return { t: 'جارية', c: 'var(--brand)' };
 }
 
 // تقرير Excel كامل لحملة مكالمات — كل رقم: رُدّ/فشل/الضغطة/الخيار المختار/الإجراء.

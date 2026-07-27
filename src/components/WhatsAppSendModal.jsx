@@ -385,7 +385,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
             <ResultStat label="نجحت" value={results.sent || 0} color="var(--green2)"/>
             <ResultStat label="فشلت" value={results.failed || 0} color={results.failed ? 'var(--red)' : '#6B7280'}/>
-            <ResultStat label="الإجمالي" value={results.total || valid.length} color="#3B82F6"/>
+            <ResultStat label="الإجمالي" value={results.total || valid.length} color="var(--brand)"/>
           </div>
           {/* الفاشلون فقط. الحقل من hatif-send اسمه **ok** لا success — الفلترة على
               success (غير موجود) كانت تُظهر كل النتائج كفاشلة رغم نجاحها. */}

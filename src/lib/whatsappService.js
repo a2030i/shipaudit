@@ -427,7 +427,7 @@ export function waStatusBadge(w) {
   if (w.paidAfter) return { t: '✅ سدّد', c: '#16A34A' };            // أخضر قوي
   if (w.replied) return { t: '💬 ردّ', c: '#2563EB' };              // أزرق
   if (/fail|undeliver/i.test(String(w.status || ''))) return { t: '⚠️ فشل', c: '#DC2626' };  // أحمر
-  if (w.read) return { t: '👁 قُرئت', c: '#7C3AED' };               // بنفسجي
+  if (w.read) return { t: '👁 قُرئت', c: 'color-mix(in srgb, var(--accent) 55%, var(--muted))' }; // أزرق مطفأ (البنفسجي محظور بالهوية)
   if (w.delivered) return { t: '✓ وصلت', c: '#0891B2' };            // سماوي
   return { t: '➤ أُرسلت', c: '#6B7280' };                           // رمادي
 }

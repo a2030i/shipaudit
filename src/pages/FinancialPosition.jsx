@@ -257,7 +257,7 @@ export default function FinancialPosition({ isActive = true }) {
               ({claims.recovered} مطالبة)
             </span>
             {claims.submittedTotal > 0.5 && (
-              <span style={{ fontSize: 12 }}>· قيد المطالبة <b style={{ fontFamily: 'var(--font-mono)', color: '#3B82F6' }}>{fmt(claims.submittedTotal)}</b></span>
+              <span style={{ fontSize: 12 }}>· قيد المطالبة <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>{fmt(claims.submittedTotal)}</b></span>
             )}
             {claims.openTotal > 0.5 && (
               <span style={{ fontSize: 12 }}>· مكتشفة لم تُطالَب <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--gold)' }}>{fmt(claims.openTotal)}</b></span>

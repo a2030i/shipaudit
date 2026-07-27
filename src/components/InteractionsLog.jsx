@@ -102,8 +102,8 @@ export default function InteractionsLog({ customerName, storeId }) {
           background: promiseOverdue
             ? 'rgba(239,68,68,.06)'
             : openPromise
-              ? 'rgba(245,158,11,.07)'
-              : 'rgba(59,130,246,.05)',
+              ? 'color-mix(in srgb, var(--gold) 7%, transparent)'
+              : 'color-mix(in srgb, var(--brand) 5%, transparent)',
           borderRadius: 12,
           display: 'flex', alignItems: 'center', gap: 12,
         }}>
@@ -123,7 +123,7 @@ export default function InteractionsLog({ customerName, storeId }) {
             </>
           ) : (
             <>
-              <Activity size={16} color="#3B82F6"/>
+              <Activity size={16} color="var(--brand)"/>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: 'var(--text)' }}>
                   آخر تواصل: {interactionKindMeta(last.kind).label}
@@ -268,7 +268,7 @@ export default function InteractionsLog({ customerName, storeId }) {
                     {it.due_date && (
                       <span style={{
                         fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
-                        background: isOverdue ? 'rgba(239,68,68,.14)' : 'rgba(245,158,11,.12)',
+                        background: isOverdue ? 'color-mix(in srgb, var(--red) 14%, transparent)' : 'color-mix(in srgb, var(--gold) 12%, transparent)',
                         color: isOverdue ? 'var(--red)' : 'var(--gold)',
                         fontFamily: 'var(--font-mono)', fontWeight: 700,
                       }}>

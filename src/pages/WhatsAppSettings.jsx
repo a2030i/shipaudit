@@ -344,7 +344,7 @@ function OutreachImpactTab() {
                 <tr key={i} style={{ borderTop: '1px solid var(--border)' }}>
                   <td style={{ padding: '8px 9px', fontWeight: 700 }} data-label="الحملة">{r.campaign}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="تواصل">{fmt2(r.contacted)}</td>
-                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: '#0EA5E9' }} data-label="ردّ">{fmt2(r.replied)}</td>
+                  <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--accent3)' }} data-label="ردّ">{fmt2(r.replied)}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 700 }} data-label="سدّد">{fmt2(r.paid)}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 700 }} data-label="حُصِّل">{r.collected > 0 ? fmt2(r.collected) : '—'}</td>
                   <td style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }} data-label="التحويل">{r.convRate > 0 ? `${r.convRate}%` : '—'}</td>
@@ -583,7 +583,7 @@ function AgentActivityTab() {
             <input type="number" min="0" value={target} disabled={!isAdmin}
               onChange={e => setTarget(Math.max(0, parseInt(e.target.value, 10) || 0))}
               style={{ width: 64, padding: '5px 7px', borderRadius: 7, fontSize: 12, textAlign: 'center', border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)' }}/>
-            {isAdmin && <button onClick={saveTarget} style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 7, padding: '5px 9px', fontSize: 11, cursor: 'pointer', fontWeight: 700 }}>حفظ</button>}
+            {isAdmin && <Btn size="sm" variant="accent" onClick={saveTarget}>حفظ</Btn>}
           </label>
           <select value={days} onChange={e => setDays(Number(e.target.value))}
             style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
@@ -685,7 +685,7 @@ function AgentActivityTab() {
               return (
                 <div key={c.id} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
                   <div onClick={() => setOpenCall(open ? null : c.id)} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', cursor: 'pointer', flexWrap: 'wrap', fontSize: 12.5 }}>
-                    <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: inbound ? 'color-mix(in srgb, #0EA5E9 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)', color: inbound ? '#0EA5E9' : 'var(--green)' }}>{inbound ? '↙ وارد' : '↗ صادر'}</span>
+                    <span style={{ padding: '2px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 700, background: inbound ? 'color-mix(in srgb, var(--accent3) 15%, transparent)' : 'color-mix(in srgb, var(--green) 15%, transparent)', color: inbound ? 'var(--accent3)' : 'var(--green)' }}>{inbound ? '↙ وارد' : '↗ صادر'}</span>
                     <b>{agentName(c.user_id)}</b>
                     <span style={{ color: 'var(--muted)' }}>{fmtWhen(c.creation_time)}</span>
                     <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{c.pickup_time ? fmtDur(c.talk_seconds) : 'لم تُردّ'}</span>
@@ -888,7 +888,7 @@ function CampaignsTab() {
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: 8 }}>
             {[['وُصِّلت', health.delivered, 'delivered'], ['قُرئت', health.read, 'read'], ['ردّ حقيقي', health.replied, 'replied'],
               ['رُفضت', health.failed, 'failed'], ['قيد الإرسال', health.pending, 'pending']].map(([l, v, k]) => (
-              <div key={k} style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 10px', textAlign: 'center' }}>
+              <div key={k} className="stat-card" style={{ background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '9px 10px', textAlign: 'center', '--sc-tone': HEALTH_TONE[k] }}>
                 <div style={{ fontSize: 10, color: 'var(--muted)' }}>{l}</div>
                 <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: HEALTH_TONE[k] }}>{fmt0(v)}</div>
                 <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{pct(v, health.total)}</div>
@@ -938,14 +938,14 @@ function CampaignsTab() {
                 <td data-label="المستهدفون" style={{ ...rtd, fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{c.targets}</td>
                 <td data-label="وصلت" style={{ ...rtd, fontFamily: 'var(--font-mono)' }}>{c.delivered} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.delivered, c.targets)})</span></td>
                 <td data-label="قُرئت" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: 'var(--green2)' }}>{c.read} <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>({pct(c.read, c.targets)})</span></td>
-                <td data-label="ردّوا" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: '#3B82F6' }}>{c.replied}</td>
+                <td data-label="ردّوا" style={{ ...rtd, fontFamily: 'var(--font-mono)', color: 'var(--brand)' }}>{c.replied}</td>
                 <td data-label="فشل" style={{ ...rtd }} onClick={e => e.stopPropagation()}>
                   <span style={{ fontFamily: 'var(--font-mono)', color: c.failed ? 'var(--red)' : 'var(--muted2)' }}>{c.failed}</span>
                   {c.failed > 0 && (
-                    <button onClick={() => campaignFailed(c.name)} disabled={!!prepFail} title="أعد الإرسال للفاشلين"
-                      style={{ marginInlineStart: 8, border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', fontSize: 10.5, padding: '2px 7px', color: 'var(--accent)', fontFamily: 'var(--font-sans)' }}>
+                    <Btn size="sm" variant="ghost" onClick={() => campaignFailed(c.name)} disabled={!!prepFail} title="أعد الإرسال للفاشلين"
+                      style={{ marginInlineStart: 8 }}>
                       {prepFail === c.name ? '…' : '📲 حملة للفاشلين'}
-                    </button>
+                    </Btn>
                   )}
                 </td>
               </tr>
@@ -996,8 +996,7 @@ function CampaignsTab() {
                 borderTop: '1px solid var(--border)', paddingTop: 6 }}>
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, direction: 'ltr' }}>{b.phone}</span>
                 <span style={{ color: 'var(--muted)', flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.name || b.reason || ''}</span>
-                <button onClick={() => removeBlock(b.phone)} disabled={blkBusy} title="إزالة من الحظر"
-                  style={{ border: '1px solid var(--border)', background: 'var(--bg)', borderRadius: 6, cursor: 'pointer', fontSize: 10.5, padding: '2px 8px', color: 'var(--muted)' }}>إزالة ✕</button>
+                <Btn size="sm" variant="danger" onClick={() => removeBlock(b.phone)} disabled={blkBusy} title="إزالة من الحظر">إزالة ✕</Btn>
               </div>
             ))}
           </div>
@@ -1014,7 +1013,7 @@ function CampaignsTab() {
         <span>الإجمالي <b style={{ fontFamily: 'var(--font-mono)' }}>{stats.total}</b></span>
         <span>وصلت <b style={{ color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>{stats.delivered}</b></span>
         <span>قُرئت <b style={{ color: 'var(--green2)', fontFamily: 'var(--font-mono)' }}>{stats.read}</b></span>
-        <span>ردّوا <b style={{ color: '#3B82F6', fontFamily: 'var(--font-mono)' }}>{stats.replied}</b></span>
+        <span>ردّوا <b style={{ color: 'var(--brand)', fontFamily: 'var(--font-mono)' }}>{stats.replied}</b></span>
         <span>فشل <b style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)' }}>{stats.failed}</b></span>
         <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 6 }}>
           <Btn size="sm" variant="ghost" onClick={() => exportCampaign(filtered)} disabled={exporting || !filtered.length}>

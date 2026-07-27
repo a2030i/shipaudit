@@ -103,7 +103,7 @@ function Hero({ total, overdueTotal, customerCount, snapshot, oldestDays }) {
       meta={receivablesMeta(snapshot)}
       stats={[
         { label: 'إجمالي المستحقّات', value: `${fmt(total)} ر.س`, big: true },
-        { label: 'المتجاوز 30 يوم',   value: `${fmt(overdueTotal)} ر.س`, color: '#FBBF24' },
+        { label: 'المتجاوز 30 يوم',   value: `${fmt(overdueTotal)} ر.س`, color: 'var(--gold)' },
         { label: 'عدد العملاء',       value: customerCount },
         {
           label: 'أقدم فاتورة',
@@ -120,8 +120,8 @@ function AgingGrid({ aging, total }) {
   const cells = [
     { key: 'd0_30',    label: '0–30 يوم',  amount: aging.d0_30,    color: 'var(--green)' },
     { key: 'd31_60',   label: '31–60 يوم', amount: aging.d31_60,   color: 'var(--gold)' },
-    { key: 'd61_90',   label: '61–90 يوم', amount: aging.d61_90,   color: '#F97316' },
-    { key: 'd90_plus', label: '+90 يوم',   amount: aging.d90_plus, color: '#EF4444' },
+    { key: 'd61_90',   label: '61–90 يوم', amount: aging.d61_90,   color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
+    { key: 'd90_plus', label: '+90 يوم',   amount: aging.d90_plus, color: 'var(--red)' },
   ];
   return (
     <div style={{
@@ -236,8 +236,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
               {m.billingType && (
                 <span style={{
                   fontSize: 10.5, padding: '2px 8px', borderRadius: 999,
-                  background: m.billingType === 'دفع مسبق' ? 'rgba(59,130,246,.14)' : 'rgba(245,158,11,.14)',
-                  color: m.billingType === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)',
+                  background: m.billingType === 'دفع مسبق' ? 'color-mix(in srgb, var(--brand) 14%, transparent)' : 'color-mix(in srgb, var(--gold) 14%, transparent)',
+                  color: m.billingType === 'دفع مسبق' ? 'var(--brand)' : 'var(--gold)',
                   fontWeight: 600,
                 }}>{m.billingType}</span>
               )}
@@ -287,7 +287,7 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
           }}>
             {siblings.map((s, i) => {
               const sm = s.merchant;
-              const billingColor = sm.billing_type === 'دفع مسبق' ? '#3B82F6' : 'var(--gold)';
+              const billingColor = sm.billing_type === 'دفع مسبق' ? 'var(--brand)' : 'var(--gold)';
               const statusColor  = sm.status === 'نشط' ? 'var(--green)' : '#71717A';
               return (
                 <div
@@ -372,8 +372,8 @@ function CustomerDrawer({ customer, allCustomers = [], allMerchants = [], onSele
                   : null;
                 const color =
                   days == null ? 'var(--muted)' :
-                  days > 90    ? '#EF4444' :   // red — critically overdue
-                  days > 60    ? '#F97316' :   // orange — chase
+                  days > 90    ? 'var(--red)' :   // red — critically overdue
+                  days > 60    ? 'color-mix(in srgb, var(--gold) 50%, var(--red))' :   // orange — chase
                   days > 30    ? 'var(--gold)' :   // yellow — past due
                                  'var(--green)';    // green — current
                 return (
@@ -463,8 +463,8 @@ function TagCustomerModal({ customer, mode, onClose, onSubmit }) {
 
       <div style={{
         marginBottom: 14, padding: '10px 14px',
-        background: isExclude ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : 'rgba(251,191,36,.06)',
-        border: `1px solid ${isExclude ? 'color-mix(in srgb, var(--accent) 32%, transparent)' : 'rgba(251,191,36,.32)'}`,
+        background: isExclude ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : 'color-mix(in srgb, var(--gold) 6%, transparent)',
+        border: `1px solid ${isExclude ? 'color-mix(in srgb, var(--accent) 32%, transparent)' : 'color-mix(in srgb, var(--gold) 32%, transparent)'}`,
         borderRadius: 9, fontSize: 12, lineHeight: 1.7,
       }}>
         {isExclude ? (
@@ -1138,7 +1138,7 @@ export default function CustomerReceivables({ isActive = true }) {
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 14,
                 padding: '14px 18px', marginBottom: 16,
-                background: linked === 0 ? 'rgba(239,68,68,.06)' : 'rgba(245,158,11,.08)',
+                background: linked === 0 ? 'color-mix(in srgb, var(--red) 6%, transparent)' : 'color-mix(in srgb, var(--gold) 8%, transparent)',
                 borderRadius: 12,
               }}>
                 <AlertTriangle size={18} color={linked === 0 ? 'var(--red)' : 'var(--gold)'}/>
@@ -1328,16 +1328,16 @@ export default function CustomerReceivables({ isActive = true }) {
                 {[
                   { k: 'd0_30',    l: '0–30',  c: 'var(--green)' },
                   { k: 'd31_60',   l: '31–60', c: 'var(--gold)' },
-                  { k: 'd61_90',   l: '61–90', c: '#F97316' },
-                  { k: 'd90_plus', l: '+90',   c: '#EF4444' },
+                  { k: 'd61_90',   l: '61–90', c: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
+                  { k: 'd90_plus', l: '+90',   c: 'var(--red)' },
                 ].map(b => {
                   const on = bucketFilters.has(b.k);
                   return (
                     <button key={b.k} onClick={() => toggleBucket(b.k)} style={{
                       padding: '4px 9px', borderRadius: 12,
-                      background: on ? `${b.c}20` : 'var(--surface)',
+                      background: on ? `color-mix(in srgb, ${b.c} 12%, transparent)` : 'var(--surface)',
                       color: on ? b.c : 'var(--muted)',
-                      border: `1px solid ${on ? `${b.c}80` : 'var(--border)'}`,
+                      border: `1px solid ${on ? `color-mix(in srgb, ${b.c} 50%, transparent)` : 'var(--border)'}`,
                       fontSize: 10.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
                       cursor: 'pointer', whiteSpace: 'nowrap',
                     }}>
@@ -1397,8 +1397,8 @@ export default function CustomerReceivables({ isActive = true }) {
                   {visibleCustomers.map(c => {
                     const ageColor =
                       c.daysOutstanding == null ? 'var(--muted)'
-                      : c.daysOutstanding > 90 ? '#EF4444'
-                      : c.daysOutstanding > 60 ? '#F97316'
+                      : c.daysOutstanding > 90 ? 'var(--red)'
+                      : c.daysOutstanding > 60 ? 'color-mix(in srgb, var(--gold) 50%, var(--red))'
                       : c.daysOutstanding > 30 ? 'var(--gold)'
                       : 'var(--green)';
                     const isExcluded = c.status === 'excluded';
@@ -1406,8 +1406,8 @@ export default function CustomerReceivables({ isActive = true }) {
                     // Pick a tinted row background based on anomaly tag.
                     const anomalyTint = c.anomaly === 'negative_wallet'    ? 'rgba(220,38,38,.08)'
                       : c.anomaly === 'prepaid_with_debt'   ? 'rgba(239,68,68,.06)'
-                      : c.anomaly === 'active_with_debt'    ? 'rgba(249,115,22,.06)'
-                      : c.anomaly === 'postpaid_overdue'    ? 'rgba(245,158,11,.06)'
+                      : c.anomaly === 'active_with_debt'    ? 'color-mix(in srgb, color-mix(in srgb, var(--gold) 50%, var(--red)) 6%, transparent)'
+                      : c.anomaly === 'postpaid_overdue'    ? 'color-mix(in srgb, var(--gold) 6%, transparent)'
                       : c.anomaly === 'inactive_with_debt'  ? 'rgba(122,130,196,.06)'
                       : null;
                     const baseBg = anomalyTint || (isExcluded ? 'color-mix(in srgb, var(--accent) 4%, transparent)' : undefined);
@@ -1416,7 +1416,7 @@ export default function CustomerReceivables({ isActive = true }) {
                         key={c.name}
                         onClick={() => setOpenCustomer(c)}
                         style={{ cursor: 'pointer', background: baseBg }}
-                        onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12') : isExcluded ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)'}
+                        onMouseEnter={e => e.currentTarget.style.background = anomalyTint ? anomalyTint.replace('.06','.12').replace(' 6%,',' 12%,') : isExcluded ? 'color-mix(in srgb, var(--accent) 10%, transparent)' : 'var(--surface)'}
                         onMouseLeave={e => e.currentTarget.style.background = baseBg || ''}
                       >
                         <td style={{ fontSize: 12, color: 'var(--text)', fontWeight: 600 }}>
@@ -1445,7 +1445,7 @@ export default function CustomerReceivables({ isActive = true }) {
                                   <span style={miniChip('var(--gold)')} title="نوع الفوترة">📋 لاحق</span>
                                 )}
                                 {m.billingType === 'دفع مسبق' && (
-                                  <span style={miniChip('#3B82F6')} title="نوع الفوترة">💳 مسبق</span>
+                                  <span style={miniChip('var(--brand)')} title="نوع الفوترة">💳 مسبق</span>
                                 )}
                                 {m.platformStatus === 'غير نشط' && (
                                   <span style={miniChip('var(--muted)')} title="حالة المتجر">○ غير نشط</span>
@@ -1631,9 +1631,9 @@ function miniChip(color) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 3,
     padding: '1px 6px', borderRadius: 9,
-    background: color === 'var(--muted)' ? 'var(--surface)' : `${color}18`,
+    background: color === 'var(--muted)' ? 'var(--surface)' : `color-mix(in srgb, ${color} 9%, transparent)`,
     color,
-    border: `1px solid ${color === 'var(--muted)' ? 'var(--border)' : color + '40'}`,
+    border: `1px solid ${color === 'var(--muted)' ? 'var(--border)' : `color-mix(in srgb, ${color} 25%, transparent)`}`,
     fontSize: 9.5, fontFamily: 'var(--font-mono)', fontWeight: 700,
     whiteSpace: 'nowrap',
   };
@@ -1642,7 +1642,7 @@ function miniChip(color) {
 const ANOMALY_META = {
   negative_wallet:     { color: 'var(--red)', label: '💥 رصيد محفظة سالب',       hint: 'متجر دفع مسبق ورصيده ناقص — خطأ تقني، سُمح بشحن على الـ credit بدون رصيد' },
   prepaid_with_debt:   { color: '#EF4444', label: '🚨 دفع مسبق وعليه دين',    hint: 'متجر يدفع من المحفظة لكن عليه فواتير — احتمال خطأ تقني، يحتاج تحقق' },
-  active_with_debt:    { color: '#F97316', label: '🔥 يشحن الآن وعليه دين',   hint: 'العميل لا يزال يشحن (آخر شحنة خلال 10 أيام) — اتصل عليه اليوم قبل ما يتراكم أكثر' },
+  active_with_debt:    { color: 'color-mix(in srgb, var(--gold) 50%, var(--red))', label: '🔥 يشحن الآن وعليه دين',   hint: 'العميل لا يزال يشحن (آخر شحنة خلال 10 أيام) — اتصل عليه اليوم قبل ما يتراكم أكثر' },
   postpaid_overdue:    { color: 'var(--gold)', label: '⏰ متأخر +60 يوم',          hint: 'متجر دفع لاحق متأخر — مرشّح للإيقاف بعد تنبيه' },
   inactive_with_debt:  { color: '#7A82C4', label: '😴 موقوف وعليه دين',        hint: 'متجر غير نشط لكن عليه مديونية — حصّل قبل الإغلاق النهائي' },
   over_credit_limit:   { color: '#B91C1C', label: '🛑 تجاوز السقف الائتماني',   hint: 'تجاوز رصيد العميل سقفه الائتماني (الافتراضي 10,000 ر.س) — يحتاج وقف الخدمة أو رفع السقف' },
@@ -1652,7 +1652,7 @@ function anomalyChip(kind) {
   return {
     display: 'inline-flex', alignItems: 'center', gap: 3,
     padding: '2px 8px', borderRadius: 10,
-    background: m.color + '20', color: m.color, border: `1px solid ${m.color}50`,
+    background: `color-mix(in srgb, ${m.color} 12%, transparent)`, color: m.color, border: `1px solid color-mix(in srgb, ${m.color} 30%, transparent)`,
     fontSize: 10, fontFamily: 'var(--font-mono)', fontWeight: 700, whiteSpace: 'nowrap',
   };
 }

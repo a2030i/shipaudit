@@ -28,7 +28,7 @@ const STATUS_META = {
   outstanding:      { label: '🔴 متبقّي',                color: 'var(--red)'   },
   pending_review:   { label: '🟡 فرق غير مراجَع',         color: 'var(--gold)'  },
   disputed:         { label: '⚠️ اعتراض مفتوح',           color: 'var(--gold)'  },
-  over_remit:       { label: '🔵 وارد · بانتظار المطابقة', color: '#3b82f6'      },
+  over_remit:       { label: '🔵 وارد · بانتظار المطابقة', color: 'var(--brand)' },
   over_remit_aged:  { label: '🔴 تحويل وصل بلا تسوية تقابله',   color: 'var(--red)'   },
 };
 
@@ -661,7 +661,7 @@ export default function CodSettlements({ isActive = true }) {
           {globalOutstanding.total > 0.5 && (
             <div style={{
               marginBottom: 14, padding: '12px 16px', borderRadius: 11,
-              background: 'linear-gradient(135deg, rgba(248,113,113,.12), rgba(248,113,113,.04))',
+              background: 'linear-gradient(135deg, color-mix(in srgb, var(--red) 12%, transparent), color-mix(in srgb, var(--red) 4%, transparent))',
               border: '1px solid var(--red)',
               display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
             }}>
@@ -716,11 +716,11 @@ export default function CodSettlements({ isActive = true }) {
           {/* Aging of over_remit (carrier paid us, no matching outgoing yet) */}
           {summary.overRemitCount > 0 && (
             <Card style={{ padding: 14, marginBottom: 14 }}>
-              <div style={{ fontSize: 12, color: '#3b82f6', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, color: 'var(--brand)', fontFamily: 'var(--font-mono)', marginBottom: 10 }}>
                 📥 أعمار الوارد بدون مقابل (من تاريخ تحويل الناقل)
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10 }}>
-                <AgingCard label="0–30 يوم · طبيعي"   color="#3b82f6"   {...agingOver.d0_30}/>
+                <AgingCard label="0–30 يوم · طبيعي"   color="var(--brand)"   {...agingOver.d0_30}/>
                 <AgingCard label="31–60 يوم · انتبه"  color="var(--gold)"   {...agingOver.d31_60}/>
                 <AgingCard label="+60 يوم — تأكّد منه"    color="var(--red)" {...agingOver.d61}/>
               </div>
@@ -926,7 +926,7 @@ export default function CodSettlements({ isActive = true }) {
                     {inFiles.length > 0 && (
                       <>
                         <SectionHeader
-                          icon="📥" label="مُستلَم من الناقل" color="#22c55e"
+                          icon="📥" label="مُستلَم من الناقل" color="var(--green)"
                           files={inFiles} total={inTotal}
                         />
                         {inFiles.map(u => <FileRow key={u.uploadId} u={u}/>)}
@@ -982,8 +982,8 @@ export default function CodSettlements({ isActive = true }) {
           {tab === 'over' && counts.overRemit > 0 && (
             <div style={{
               marginBottom: 12, padding: '10px 14px',
-              background: 'rgba(59,130,246,.08)',
-              border: '1px solid rgba(59,130,246,.35)',
+              background: 'color-mix(in srgb, var(--brand) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--brand) 35%, transparent)',
               borderRadius: 11, fontSize: 12, lineHeight: 1.7, color: 'var(--text)',
             }}>
               💡 هذي شحنات استلمت تحويلها من الناقل ولم يطابقها أي AWB في تسوياتك الصادرة بعد.
@@ -1184,7 +1184,7 @@ export default function CodSettlements({ isActive = true }) {
                   <div style={{ color: 'var(--red)', fontSize: 12, marginTop: 8 }}>⚠️ أخطاء: {results.filter(r => r.error).map(r => `${labelOf(r.carrierId)}: ${r.error}`).join(' · ')}</div>
                 )}
                 {unmapped.length > 0 && (
-                  <div style={{ background: '#F59E0B15', color: '#B45309', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>
+                  <div style={{ background: 'color-mix(in srgb, var(--gold) 8%, transparent)', color: 'var(--gold)', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginTop: 10 }}>
                     🏷️ شركات بلا ناقل مطابق (تُجوهلت): {unmapped.map(u => `${u.name} (${u.n}/${u.total})`).join(' · ')}
                   </div>
                 )}
@@ -1699,8 +1699,8 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
                   <div key={idx} style={{
                     display: 'grid', gridTemplateColumns: '1fr auto', gap: 10,
                     padding: '6px 10px',
-                    background: p.error ? 'rgba(248,113,113,.08)' : 'var(--card)',
-                    border: `1px solid ${p.error ? 'rgba(248,113,113,.30)' : 'var(--border)'}`,
+                    background: p.error ? 'color-mix(in srgb, var(--red) 8%, transparent)' : 'var(--card)',
+                    border: `1px solid ${p.error ? 'color-mix(in srgb, var(--red) 30%, transparent)' : 'var(--border)'}`,
                     borderRadius: 7,
                   }}>
                     <div style={{ minWidth: 0 }}>
@@ -1742,7 +1742,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
           {preview && !preview.error && (preview.inBatchDups > 0 || preview.crossFileDups > 0) && (
             <div style={{
               padding: '10px 14px', marginBottom: 12,
-              background: 'rgba(248,113,113,.08)',
+              background: 'color-mix(in srgb, var(--red) 8%, transparent)',
               border: '1px solid var(--red)',
               borderRadius: 9, fontSize: 12, lineHeight: 1.8,
             }}>
@@ -1786,8 +1786,8 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
           {preview && preview.error && (
             <div style={{
               marginTop: 12, padding: '10px 14px',
-              background: 'rgba(248,113,113,.08)',
-              border: '1px solid rgba(248,113,113,.32)',
+              background: 'color-mix(in srgb, var(--red) 8%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
               borderRadius: 9, fontSize: 12, color: 'var(--text)', lineHeight: 1.7,
             }}>
               <div style={{ fontWeight: 700, color: 'var(--red)', marginBottom: 4 }}>
@@ -1811,7 +1811,7 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
                   {preview.rows.slice(0, 50).map((r, i) => {
                     const isDup = r._dup === 'in_batch' || r._dup === 'cross_file';
                     return (
-                      <tr key={i} style={isDup ? { background: 'rgba(248,113,113,.06)' } : undefined}>
+                      <tr key={i} style={isDup ? { background: 'color-mix(in srgb, var(--red) 6%, transparent)' } : undefined}>
                         <td style={{ fontFamily: 'var(--font-mono)', color: isDup ? 'var(--red)' : 'var(--accent)' }}>
                           {r.awb}
                           {r._dup === 'in_batch' && (

@@ -27,7 +27,7 @@
 // ────────────────────────────────────────────────────────────────────
 export const PERMISSION_CATALOG = [
   {
-    id: 'overview', label: 'الرئيسية والتقارير', icon: 'LayoutDashboard', color: '#0EA5E9',
+    id: 'overview', label: 'الرئيسية والتقارير', icon: 'LayoutDashboard', color: 'var(--accent3)',
     perms: [
       { key: 'overview.view',       label: 'عرض الصفحة الرئيسية' },
       { key: 'overview.cash_position', label: 'عرض رصيد البنك وملخّص الكاش' },
@@ -36,7 +36,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'uploads', label: 'مصادر البيانات', icon: 'Layers', color: '#0EA5E9',
+    id: 'uploads', label: 'مصادر البيانات', icon: 'Layers', color: 'var(--brand-navy)',
     perms: [
       { key: 'uploads.view',         label: 'فتح صحة مصادر البيانات' },
       { key: 'uploads.upload_file',  label: 'تحديث مصدر يدوي بملف' },
@@ -45,7 +45,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'webhook', label: 'صندوق الوارد (Webhook)', icon: 'Mail', color: '#8B5CF6',
+    id: 'webhook', label: 'صندوق الوارد (Webhook)', icon: 'Mail', color: 'var(--accent)',
     perms: [
       { key: 'webhook.view',         label: 'عرض الإيميلات الواردة' },
       { key: 'webhook.import_audit', label: 'استيراد ملف كمراجعة (حفظ كمراجعة)' },
@@ -69,7 +69,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'carriers', label: 'شركات الشحن', icon: 'Truck', color: '#3B82F6',
+    id: 'carriers', label: 'شركات الشحن', icon: 'Truck', color: 'var(--brand)',
     perms: [
       { key: 'carriers.view',          label: 'عرض شركات الشحن وبروفايلاتها' },
       { key: 'carriers.create',        label: 'إضافة شركة شحن جديدة' },
@@ -81,7 +81,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'cod', label: 'تسويات COD', icon: 'Coins', color: '#F59E0B',
+    id: 'cod', label: 'تسويات COD', icon: 'Coins', color: 'var(--gold)',
     perms: [
       { key: 'cod.view',             label: 'عرض تسويات COD' },
       { key: 'cod.upload_in',        label: 'رفع ملف تحصيل (مُستلَم)' },
@@ -116,7 +116,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'crm', label: 'المتابعة والمبيعات (CRM)', icon: 'Headset', color: '#06B6D4',
+    id: 'crm', label: 'المتابعة والمبيعات (CRM)', icon: 'Headset', color: 'var(--accent3)',
     perms: [
       { key: 'crm.view',            label: 'عرض قائمة المتابعة والجهات والصفقات' },
       { key: 'crm.view_all',        label: 'عرض متابعات كل الموظفين (لا المُسنَدة لي فقط)', sensitive: true },
@@ -133,7 +133,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'merchants', label: 'دليل المتاجر', icon: 'Store', color: '#8B5CF6',
+    id: 'merchants', label: 'دليل المتاجر', icon: 'Store', color: 'var(--accent)',
     perms: [
       { key: 'merchants.view',     label: 'عرض دليل المتاجر' },
       { key: 'merchants.upload',   label: 'رفع snapshot جديد' },
@@ -142,7 +142,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'sales', label: 'المبيعات وإعادة الاستهداف', icon: 'Target', color: '#F97316',
+    id: 'sales', label: 'المبيعات وإعادة الاستهداف', icon: 'Target', color: 'var(--gold)',
     perms: [
       // تفصيص تبويبات مركز المبيعات (قرار المستخدم 2026-07-16): مفتاح لكل تبويب.
       // sales.view = تبويب إعادة الاستهداف فقط (كان يفتح كل التبويبات).
@@ -155,7 +155,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'support', label: 'تذاكر خدمة العملاء', icon: 'LifeBuoy', color: '#06B6D4',
+    id: 'support', label: 'تذاكر خدمة العملاء', icon: 'LifeBuoy', color: 'var(--accent3)',
     perms: [
       { key: 'support.view',   label: 'عرض لوحة التذاكر' },
       { key: 'support.create', label: 'إنشاء تذكرة جديدة' },
@@ -164,7 +164,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'campaigns', label: 'حملات واتساب', icon: 'MessageCircle', color: '#22C55E',
+    id: 'campaigns', label: 'حملات واتساب', icon: 'MessageCircle', color: 'var(--green)',
     perms: [
       // الإرسال فعل خارجي يصل العميل — حسّاس عمداً (يُستثنى من preset «قراءة وكتابة»)
       { key: 'campaigns.send',      label: 'إطلاق حملة واتساب (إرسال فعلي للعملاء)', sensitive: true },
@@ -174,7 +174,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'money', label: 'النقد والمدفوعات', icon: 'Wallet', color: '#F59E0B',
+    id: 'money', label: 'النقد والمدفوعات', icon: 'Wallet', color: 'var(--gold)',
     perms: [
       { key: 'money.pnl',          label: 'الوضع المالي — قائمة الدخل من زوهو (أرباح/خسائر)' },
       { key: 'zoho.view',          label: 'زوهو API — تصفّح المرايا ولوحة الفواتير' },
@@ -192,7 +192,7 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'ledger', label: 'الكشوف المحاسبية', icon: 'BookOpenCheck', color: '#F59E0B',
+    id: 'ledger', label: 'الكشوف المحاسبية', icon: 'BookOpenCheck', color: 'var(--brand-navy)',
     perms: [
       { key: 'ledger.view',         label: 'عرض الكشف المحاسبي للشركات' },
       { key: 'ledger.manual_entry', label: 'إضافة قيد يدوي', sensitive: true },
@@ -201,14 +201,14 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
-    id: 'internal_exports', label: 'التصدير للأنظمة الداخلية', icon: 'Send', color: '#0EA5E9',
+    id: 'internal_exports', label: 'التصدير للأنظمة الداخلية', icon: 'Send', color: 'var(--accent3)',
     perms: [
       { key: 'internal_exports.view', label: 'عرض الصفحة' },
       { key: 'internal_exports.pull', label: 'سحب دفعة جديدة للتصدير' },
     ],
   },
   {
-    id: 'reconciliation', label: 'المطابقة (Zoho/لمحه)', icon: 'GitMerge', color: '#8B5CF6',
+    id: 'reconciliation', label: 'المطابقة (Zoho/لمحه)', icon: 'GitMerge', color: 'var(--accent)',
     perms: [
       { key: 'reconciliation.view',   label: 'عرض شاشة المطابقة' },
       { key: 'reconciliation.link',   label: 'ربط/تعيين سجل' },

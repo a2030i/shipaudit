@@ -309,12 +309,12 @@ function ActionDialog({ target, row, onCancel, onConfirm }) {
         {!isClose && (
           <div style={{
             padding: 12, marginBottom: 14, borderRadius: 10,
-            background: 'color-mix(in srgb, #0EA5E9 8%, transparent)',
-            border: '1px solid color-mix(in srgb, #0EA5E9 24%, transparent)',
+            background: 'color-mix(in srgb, var(--accent3) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent3) 24%, transparent)',
             fontSize: 12.5, color: 'var(--text2)',
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-              <Info size={14} color="#0EA5E9"/>
+              <Info size={14} color="var(--accent3)"/>
               <strong style={{ color: 'var(--text)' }}>سبب الفتح يُحفظ في السجل</strong>
             </div>
             اكتب سبباً موجزاً يبقى في الـ activity_log كي يستطيع المراجع الخارجي تتبّع لماذا أُعيد فتح الشهر.

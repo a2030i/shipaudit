@@ -9,7 +9,7 @@ export const SEED_CARRIERS = [
     id: 'smsa',
     name: 'سمسا SMSA',
     logo: '📦',
-    color: '#f5a623',
+    color: '#D97706',
     contracts: [
       {
         id: 'smsa_c1',

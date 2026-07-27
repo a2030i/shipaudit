@@ -24,10 +24,10 @@ import { supabase } from './supabase.js';
 const DAY_MS = 86_400_000;
 
 export const TASK_KIND_META = {
-  cod_remittance: { label: 'تحصيل COD',  icon: '💰', color: '#10B981' },
-  invoice:        { label: 'فاتورة',      icon: '🧾', color: '#3B82F6' },
-  statement:      { label: 'كشف حساب',    icon: '📑', color: '#8B5CF6' },
-  weight_report:  { label: 'تقرير أوزان', icon: '⚖️', color: '#F59E0B' },
+  cod_remittance: { label: 'تحصيل COD',  icon: '💰', color: 'var(--green)' },
+  invoice:        { label: 'فاتورة',      icon: '🧾', color: 'var(--brand)' },
+  statement:      { label: 'كشف حساب',    icon: '📑', color: 'var(--accent)' },
+  weight_report:  { label: 'تقرير أوزان', icon: '⚖️', color: 'var(--gold)' },
 };
 
 export const CADENCE_META = {

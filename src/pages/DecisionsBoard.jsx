@@ -162,7 +162,7 @@ export default function DecisionsBoard({ isActive = true }) {
           {
             key: 'awaiting', active: (d.awaiting?.length || 0) > 0, okLabel: 'لا فواتير تنتظر مراجعة في الوارد',
             props: {
-              color: '#F97316', icon: '🧾', title: 'فواتير تنتظر نظرتك', value: d.awaiting?.length || 0, unit: 'ملف في الوارد',
+              color: 'var(--gold)', icon: '🧾', title: 'فواتير تنتظر نظرتك', value: d.awaiting?.length || 0, unit: 'ملف في الوارد',
               sub: `أقدمها منذ ${Math.max(...(d.awaiting || []).map(a => a.ageDays), 0)} يوماً — استوردها أو اعتمدها بنقرة ⚡`,
               top: (d.awaiting || []).slice(0, 3).map(a => `${a.carrierName || a.sender || '؟'} · ${a.fileName || a.subject || ''} · ${a.ageDays}ي`),
               cta: 'فتح الوارد', onClick: () => navigate('/webhook'),
@@ -236,7 +236,7 @@ export default function DecisionsBoard({ isActive = true }) {
           {
             key: 'held', active: d.held > 0.5, okLabel: 'لا فلوس COD محتجزة في زوهو',
             props: {
-              color: '#0EA5E9', icon: '💰', title: 'فلوس COD محتجزة في زوهو', value: fmt(d.held), unit: 'ر.س',
+              color: 'var(--accent3)', icon: '💰', title: 'فلوس COD محتجزة في زوهو', value: fmt(d.held), unit: 'ر.س',
               sub: d.trUploadedAt ? `${d.trN} خزينة — راجع سحب المحاسب` : 'خزائن COD تحتاج ربط Zoho API',
               cta: 'متابعة المحتجز', onClick: () => navigate('/reconciliation?tab=vendors'),
             },
@@ -244,7 +244,7 @@ export default function DecisionsBoard({ isActive = true }) {
           {
             key: 'vgap', active: d.vgapTotal > 1, okLabel: 'أرصدة الموردين مطابقة لزوهو',
             props: {
-              color: '#8B5CF6', icon: '🧾', title: 'فرق الرصيد بينك وبين زوهو', value: fmt(d.vgapTotal), unit: 'ر.س',
+              color: 'var(--accent)', icon: '🧾', title: 'فرق الرصيد بينك وبين زوهو', value: fmt(d.vgapTotal), unit: 'ر.س',
               sub: `${d.vgaps.length} ناقل يختلف رصيدهم عن Zoho`,
               top: d.vgaps.slice(0, 3).map(v => `${v.carrierName} · ${fmtK(v.diff)} ر.س`),
               cta: 'مطابقة الموردين', onClick: () => navigate('/reconciliation?tab=vendors'),
@@ -284,7 +284,7 @@ export default function DecisionsBoard({ isActive = true }) {
           {
             key: 'due', active: (d.crm?.dueCount || 0) > 0, okLabel: 'لا متابعات مستحقة اليوم',
             props: {
-              color: '#06B6D4', icon: '📞', title: 'متابعات مستحقة اليوم', value: d.crm?.dueCount || 0, unit: 'عميل',
+              color: 'var(--brand)', icon: '📞', title: 'متابعات مستحقة اليوم', value: d.crm?.dueCount || 0, unit: 'عميل',
               sub: 'موعدهم اليوم أو بلا إجراء تالٍ مجدوَل',
               cta: 'قائمة المتابعة', onClick: () => navigate('/crm?tab=queue'),
             },

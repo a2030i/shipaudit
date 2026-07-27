@@ -45,7 +45,7 @@ export const UPLOAD_SOURCES = [
     label:        'دليل المتاجر (stores.xlsx)',
     origin:       'lamha',
     subtitle:     'كشف المتاجر — هاتف، حالة، شحنات، رصيد محفظة',
-    accent:       '#8B5CF6',
+    accent:       'var(--accent)',
     cadenceDays:  30,
     link:         '/merchants',
   },
@@ -54,7 +54,7 @@ export const UPLOAD_SOURCES = [
 // Origin badge metadata — used by the UI to render the small
 // "لمحه" pill on each upload card.
 export const ORIGIN_BADGES = {
-  lamha: { label: 'لمحه', color: '#0EA5E9' },
+  lamha: { label: 'لمحه', color: 'var(--accent3)' },
 };
 
 // ── Per-source last-upload loaders ──

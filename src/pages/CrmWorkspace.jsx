@@ -142,7 +142,7 @@ function QueueTab({ active }) {
       <PageHeader icon={<Headset size={22}/>} title="قائمة المتابعة"
         subtitle="العملاء غير النشطين/المتعثّرين — يدخلون آلياً، مرتّبون بالخطر"
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
-      {enrollMsg && <div style={{ background: '#06B6D415', color: '#0891B2', padding: '8px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>✅ {enrollMsg}</div>}
+      {enrollMsg && <div style={{ background: 'color-mix(in srgb, var(--accent3) 8%, transparent)', color: '#0891B2', padding: '8px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>✅ {enrollMsg}</div>}
       {loading && !rows.length ? <Spin/> : !rows.length ? <Empty icon="✅" title="لا متابعات" sub="لا عملاء يحتاجون متابعة الآن"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -696,10 +696,10 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
         </>}/>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 12 }}>
-        <CrmKpi label="إجمالي العملاء المحتملين" value={fmt0(stats?.total || count)} color="#06B6D4"/>
+        <CrmKpi label="إجمالي العملاء المحتملين" value={fmt0(stats?.total || count)} color="var(--accent3)"/>
         <CrmKpi label="جديدة" value={fmt0(stats?.newCount || 0)} color="var(--green)"/>
         <CrmKpi label="أرقام مكررة" value={fmt0(stats?.duplicateRows || 0)} color="var(--gold)"/>
-        <CrmKpi label="طلعوا عملاء لدينا" value={fmt0(stats?.existingCustomers || 0)} color="#8B5CF6"/>
+        <CrmKpi label="طلعوا عملاء لدينا" value={fmt0(stats?.existingCustomers || 0)} color="var(--accent)"/>
         <CrmKpi label="بدون موظف" value={fmt0(stats?.unassigned || 0)} color="var(--red)"/>
       </div>
 
@@ -841,7 +841,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                   <td data-label="المتجر" style={{ padding: '10px 12px', fontWeight: 700 }}>
                     <div>{l.name}</div>
                     {l.name_en && <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>{l.name_en}</div>}
-                    {l.matched_store_name && <div style={{ fontSize: 11, color: '#8B5CF6', marginTop: 3 }}>لدينا: {l.matched_store_name}</div>}
+                    {l.matched_store_name && <div style={{ fontSize: 11, color: 'var(--accent)', marginTop: 3 }}>لدينا: {l.matched_store_name}</div>}
                   </td>
                   <td data-label="الرقم" style={{ padding: '10px 12px' }}><PhoneLink phone={l.phone_normalized || l.phone} name={l.name}/></td>
                   <td data-label="القسم/المنصة" style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 12 }}>
@@ -851,14 +851,14 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                   <td data-label="التحقق" style={{ padding: '10px 12px' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                       {l.matched_store_id
-                        ? <MiniPill color="#8B5CF6" icon={<CheckCircle2 size={11}/>} label="عميل لدينا"/>
+                        ? <MiniPill color="var(--accent)" icon={<CheckCircle2 size={11}/>} label="عميل لدينا"/>
                         : <MiniPill color="var(--green)" label="خارج المنصّة"/>}
                       {Number(l.duplicate_count) > 1 && <MiniPill color="var(--gold)" icon={<AlertTriangle size={11}/>} label={`${l.duplicate_count} بنفس الرقم`}/>}
                       {l.last_campaign_at && (
-                        <MiniPill color={l.last_campaign_replied_at ? 'var(--green)' : '#0EA5E9'}
+                        <MiniPill color={l.last_campaign_replied_at ? 'var(--green)' : 'var(--accent3)'}
                           label={`📲 حملة قبل ${Math.floor((Date.now() - new Date(l.last_campaign_at).getTime()) / 86_400_000)} يوم${l.last_campaign_replied_at ? ' · ردّ' : ''}`}/>
                       )}
-                      {l.in_hatif && <MiniPill color="#06B6D4" label="📱 في فرص هاتف أيضاً"/>}
+                      {l.in_hatif && <MiniPill color="var(--accent3)" label="📱 في فرص هاتف أيضاً"/>}
                     </div>
                   </td>
                   <td data-label="الموظف" style={{ padding: '10px 12px', minWidth: 150 }} onClick={e => e.stopPropagation()}>
@@ -914,7 +914,7 @@ function leadStatusLabel(status) {
 
 function LeadStatusBadge({ status }) {
   const color = status === 'converted' ? 'var(--green)'
-    : status === 'existing_customer' ? '#8B5CF6'
+    : status === 'existing_customer' ? 'var(--accent)'
     : status === 'lost' ? 'var(--red)'
     : status === 'qualified' ? 'var(--brand)'
     : 'var(--gold)';
@@ -922,7 +922,7 @@ function LeadStatusBadge({ status }) {
 }
 
 function MiniPill({ color, label, icon = null }) {
-  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content', background: `${color}15`, color, border: `1px solid ${color}33`, padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800 }}>{icon}{label}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content', background: `color-mix(in srgb, ${color} 8%, transparent)`, color, border: `1px solid color-mix(in srgb, ${color} 20%, transparent)`, padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800 }}>{icon}{label}</span>;
 }
 
 function CrmKpi({ label, value, color }) {
@@ -1050,13 +1050,13 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
           <>
             <Btn size="sm" variant="ghost" onClick={() => setParsed(null)} style={{ marginTop: 12 }}>← تعديل ربط الأعمدة</Btn>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 8, marginTop: 14 }}>
-              <CrmKpi label="صفوف مقروءة" value={fmt0(s.totalRows)} color="#06B6D4"/>
+              <CrmKpi label="صفوف مقروءة" value={fmt0(s.totalRows)} color="var(--accent3)"/>
               <CrmKpi label="بأرقام صالحة" value={fmt0(s.withPhone)} color="var(--green)"/>
               <CrmKpi label="أرقام غير صالحة" value={fmt0(s.invalidPhone)} color="var(--red)"/>
               <CrmKpi label="أرقام مكررة" value={fmt0(s.duplicateRows)} color="var(--gold)"/>
             </div>
             {s.duplicateRows > 0 && (
-              <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'rgba(245,158,11,.10)', color: 'var(--gold)', fontSize: 12 }}>
+              <div style={{ marginTop: 10, padding: 10, borderRadius: 10, background: 'color-mix(in srgb, var(--gold) 10%, transparent)', color: 'var(--gold)', fontSize: 12 }}>
                 يوجد {fmt0(s.duplicatePhones)} رقم مستخدم في أكثر من متجر. لن نحذفها، سنحفظها مع وسم “نفس الرقم” لتراجعها المبيعات.
               </div>
             )}
@@ -1123,7 +1123,7 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           <Hd label="المنصة" value={lead.platform || '—'}/>
           <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>
           {lead.duplicate_count > 1 && <Hd label="تكرار الرقم" value={`${lead.duplicate_count} متاجر`} color="var(--gold)"/>}
-          <Hd label="آخر حملة واتساب" color={lead.last_campaign_at ? (lead.last_campaign_replied_at ? 'var(--green)' : '#0EA5E9') : 'var(--muted2)'}
+          <Hd label="آخر حملة واتساب" color={lead.last_campaign_at ? (lead.last_campaign_replied_at ? 'var(--green)' : 'var(--accent3)') : 'var(--muted2)'}
             value={lead.last_campaign_at
               ? `${fmtDate(lead.last_campaign_at)} · ${lead.last_campaign_template || ''}${lead.last_campaign_replied_at ? ' · ردّ ✓' : ''}`
               : 'لم تُرسَل له حملة'}/>
@@ -1164,8 +1164,8 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           </div>
         )}
         {lead.matched_store_id && (
-          <Card style={{ padding: 12, background: 'rgba(139,92,246,.08)', borderColor: 'rgba(139,92,246,.22)', marginBottom: 12 }}>
-            <div style={{ fontWeight: 900, color: '#8B5CF6', marginBottom: 6 }}>هذا الرقم موجود عندنا في المنصّة</div>
+          <Card style={{ padding: 12, background: 'color-mix(in srgb, var(--accent) 8%, transparent)', borderColor: 'color-mix(in srgb, var(--accent) 22%, transparent)', marginBottom: 12 }}>
+            <div style={{ fontWeight: 900, color: 'var(--accent)', marginBottom: 6 }}>هذا الرقم موجود عندنا في المنصّة</div>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
               <Hd label="اسم المنصّة" value={lead.matched_store_name}/>
               <Hd label="الحالة" value={lead.matched_store_status || '—'}/>
@@ -1355,7 +1355,7 @@ function TasksTab({ active }) {
           {tasks.map(t => {
             const overdue = new Date(t.due_at).getTime() < now;
             return (
-              <Card key={t.id} style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderRight: `3px solid ${overdue ? 'var(--red)' : '#06B6D4'}` }}>
+              <Card key={t.id} style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderRight: `3px solid ${overdue ? 'var(--red)' : 'var(--accent3)'}` }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
                   <div style={{ fontSize: 11.5, color: overdue ? 'var(--red)' : 'var(--muted)' }}>{t.entity_ref} · {fmtDate(t.due_at)} {overdue ? '· متأخّر' : ''}</div>
@@ -1404,14 +1404,14 @@ function BoardTab({ active }) {
   const convByOwner = new Map(ownerStats.map(o => [o.ownerId, o]));
   const myConv = convByOwner.get(user?.id);
   const cards = [
-    { l: 'مرّات التواصل هذا الأسبوع', v: s.touchesThisWeek, c: '#06B6D4' },
+    { l: 'مرّات التواصل هذا الأسبوع', v: s.touchesThisWeek, c: 'var(--accent3)' },
     { l: 'جهات محتملة مفتوحة', v: s.leadsOpen, c: 'var(--green)' },
     { l: 'أرقام مكررة', v: s.leadsDuplicateRows, c: 'var(--gold)' },
-    { l: 'عملاء لدينا داخل القائمة', v: s.leadsExistingCustomers, c: '#8B5CF6' },
+    { l: 'عملاء لدينا داخل القائمة', v: s.leadsExistingCustomers, c: 'var(--accent)' },
     { l: 'وعود نشطة', v: s.promisesOpen, c: 'var(--gold)' },
     { l: 'وعود محقّقة', v: s.promisesKept, c: 'var(--green)' },
     { l: 'وعود لم تُوفَ', v: s.promisesBroken, c: 'var(--red)' },
-    { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: '#8B5CF6' },
+    { l: 'صفقات مفتوحة', v: s.dealsOpenCount, c: 'var(--accent)' },
     { l: 'قيمة الصفقات المفتوحة', v: `${fmt0(s.pipelineValue)} ر.س`, c: 'var(--brand)' },
   ];
   const employeeName = (id) => id
@@ -1425,15 +1425,15 @@ function BoardTab({ active }) {
 
       {/* «أرقامي» — بطاقة الموظف الشخصية (§1.37) */}
       {myConv && (
-        <Card style={{ padding: '12px 16px', marginBottom: 14, border: '1.5px solid color-mix(in srgb, #F97316 35%, var(--border))', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Card style={{ padding: '12px 16px', marginBottom: 14, border: '1.5px solid color-mix(in srgb, var(--gold) 35%, var(--border))', display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'center' }}>
           <span style={{ fontSize: 13, fontWeight: 900 }}>🎯 أرقامي</span>
-          <MyStat label="فرصي المسندة" v={fmt0(myConv.assigned)} c="#06B6D4"/>
+          <MyStat label="فرصي المسندة" v={fmt0(myConv.assigned)} c="var(--accent3)"/>
           <MyStat label="عملت عليها" v={fmt0(myConv.worked)} c="var(--gold)"/>
           <MyStat label="عادوا/تحوّلوا" v={fmt0(myConv.returned)} c="var(--green)"/>
-          <MyStat label="معدل تحويلي" v={`${myConv.conversionPct}%`} c="#8B5CF6"/>
+          <MyStat label="معدل تحويلي" v={`${myConv.conversionPct}%`} c="var(--accent)"/>
           <MyStat label={`تواصلي (7 أيام)${targets.touches7d ? ` / هدف ${targets.touches7d}` : ''}`}
             v={fmt0(myConv.touches7d)}
-            c={targets.touches7d ? (myConv.touches7d >= targets.touches7d ? 'var(--green)' : 'var(--red)') : '#06B6D4'}/>
+            c={targets.touches7d ? (myConv.touches7d >= targets.touches7d ? 'var(--green)' : 'var(--red)') : 'var(--accent3)'}/>
         </Card>
       )}
 
@@ -1480,7 +1480,7 @@ function BoardTab({ active }) {
                 <td data-label="الموظف" style={{ padding: '10px 12px', fontWeight: 800 }}>{employeeName(row.ownerId)}</td>
                 <td data-label="الجهات" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>{fmt0(row.assignedLeads)}</td>
                 <td data-label="مفتوحة" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: row.openLeads ? 'var(--green)' : 'var(--muted)' }}>{fmt0(row.openLeads)}</td>
-                <td data-label="لمسات أسبوعية" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: targets.touches7d ? (row.touchesThisWeek >= targets.touches7d ? 'var(--green)' : 'var(--red)') : (row.touchesThisWeek ? '#06B6D4' : 'var(--muted)') }}>
+                <td data-label="لمسات أسبوعية" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)', color: targets.touches7d ? (row.touchesThisWeek >= targets.touches7d ? 'var(--green)' : 'var(--red)') : (row.touchesThisWeek ? 'var(--accent3)' : 'var(--muted)') }}>
                   {fmt0(row.touchesThisWeek)}{targets.touches7d ? ` / ${targets.touches7d}` : ''}
                 </td>
                 <td data-label="معدل التحويل" style={{ padding: '10px 12px', fontFamily: 'var(--font-mono)' }}>

@@ -246,7 +246,7 @@ export default function PaymentRequests({ isActive = true }) {
                     {r.receipt_path && (
                       <span title="فيه إيصال مرفق" style={{
                         fontSize: 9.5, padding: '2px 7px', borderRadius: 999,
-                        background: 'rgba(139,92,246,.14)', color: '#8B5CF6',
+                        background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent)',
                         fontWeight: 700, whiteSpace: 'nowrap', flexShrink: 0,
                       }}>📎 إيصال</span>
                     )}

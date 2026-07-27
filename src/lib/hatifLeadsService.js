@@ -9,8 +9,8 @@ import { supabase } from './supabase.js';
 
 export const LEAD_KINDS = {
   mobile_sa:   { label: 'جوال سعودي',   color: 'var(--green)' },
-  service_sa:  { label: 'موحّد/مجاني',  color: '#8B5CF6' },
-  landline_sa: { label: 'ثابت سعودي',   color: '#0EA5E9' },
+  service_sa:  { label: 'موحّد/مجاني',  color: 'var(--accent)' },
+  landline_sa: { label: 'ثابت سعودي',   color: 'var(--accent3)' },
   foreign:     { label: 'أجنبي',        color: 'var(--muted)' },
   other:       { label: 'آخر',          color: 'var(--muted2)' },
 };

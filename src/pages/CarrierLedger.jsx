@@ -38,7 +38,7 @@ const STATUS_META = {
   pending:   { label: '⏳ معلّقة',          color: 'var(--gold)'   },
   audited:   { label: '✓ معتمدة',          color: 'var(--accent)' },
   paid:      { label: '💰 مسدّدة',          color: 'var(--green)'  },
-  partial:   { label: '🟡 مسدّدة جزئياً',   color: '#f59e0b'       },
+  partial:   { label: '🟡 مسدّدة جزئياً',   color: 'var(--gold)'   },
   disputed:  { label: '⚠ متنازع',          color: 'var(--red)'    },
   reviewing: { label: '🔄 مراجعة',          color: 'var(--gold)'   },
 };
@@ -55,8 +55,8 @@ const SHIPMENT_LABEL = {
 // at the ledger answers "what kind of line is this."
 const DOC_TYPE_META = {
   INV: { label: 'فاتورة (مراجعة معتمدة)', icon: '🧾', color: 'var(--accent)' },
-  RV: { label: 'فاتورة (كشف مرفوع)', icon: '📄', color: '#3b82f6' },
-  DR: { label: 'رسوم إضافية', icon: '+',  color: '#f59e0b' },
+  RV: { label: 'فاتورة (كشف مرفوع)', icon: '📄', color: 'var(--brand)' },
+  DR: { label: 'رسوم إضافية', icon: '+',  color: 'var(--gold)' },
   DG: { label: 'مبلغ مُرجَع لك', icon: '↩',  color: 'var(--green)' },
   AB: { label: 'تعديل',       icon: '🔄', color: 'var(--muted)' },
 };
@@ -92,10 +92,10 @@ function DocTypeLegend() {
 // can spot COD-fee lines at a glance, since the math (5 SAR flat) and the
 // audit type are completely different from regular shipping.
 const SHIPMENT_META = {
-  domestic:          { label: 'محلي',        icon: '🇸🇦', color: '#22c55e' },
-  domestic_other:    { label: 'COD محلي',    icon: '💰', color: '#a855f7' },
-  international_in:  { label: 'دولي وارد',   icon: '✈️', color: '#f59e0b' },
-  international_out: { label: 'دولي صادر',   icon: '✈️', color: '#f59e0b' },
+  domestic:          { label: 'محلي',        icon: '🇸🇦', color: 'var(--green)' },
+  domestic_other:    { label: 'COD محلي',    icon: '💰', color: 'var(--accent)' },
+  international_in:  { label: 'دولي وارد',   icon: '✈️', color: 'var(--gold)' },
+  international_out: { label: 'دولي صادر',   icon: '✈️', color: 'var(--gold)' },
 };
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -665,7 +665,7 @@ export default function CarrierLedger({ isActive = true }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 16 }}>
         <AgingCard label="غير مستحق"        sub="موعد سدادها لم يَحِن"     color="var(--green)" {...aging.notDue}/>
         <AgingCard label="متأخر 1–30 يوم"   sub="نطاق طبيعي"               color="var(--gold)"  {...aging.d30}/>
-        <AgingCard label="متأخر 31–60 يوم"  sub="ينبغي المتابعة"           color="#f59e0b"      {...aging.d60}/>
+        <AgingCard label="متأخر 31–60 يوم"  sub="ينبغي المتابعة"           color="color-mix(in srgb, var(--gold) 55%, var(--red))" {...aging.d60}/>
         <AgingCard label="متأخر +60 يوم"    sub="مخاطرة عالية"             color="var(--red)"   {...aging.d90}/>
       </div>
 
@@ -733,7 +733,7 @@ export default function CarrierLedger({ isActive = true }) {
       {periodGaps.length > 0 && (
         <div style={{
           marginBottom: 10, padding: '10px 14px',
-          background: 'linear-gradient(135deg, rgba(248,113,113,.12), rgba(248,113,113,.04))',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--red) 12%, transparent), color-mix(in srgb, var(--red) 4%, transparent))',
           border: '1px solid var(--red)', borderRadius: 11,
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
@@ -760,7 +760,7 @@ export default function CarrierLedger({ isActive = true }) {
       {(counts.unaudited ?? 0) > 0 && statusFilter !== 'unaudited' && (
         <div style={{
           marginBottom: 10, padding: '10px 14px',
-          background: 'linear-gradient(135deg, rgba(251,191,36,.16), rgba(251,191,36,.05))',
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--gold) 16%, transparent), color-mix(in srgb, var(--gold) 5%, transparent))',
           border: '1px solid var(--gold)', borderRadius: 11,
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
@@ -785,13 +785,13 @@ export default function CarrierLedger({ isActive = true }) {
       {(counts.paid_unaudited ?? 0) > 0 && statusFilter !== 'paid_unaudited' && (
         <div style={{
           marginBottom: 10, padding: '10px 14px',
-          background: 'linear-gradient(135deg, rgba(168,85,247,.12), rgba(168,85,247,.04))',
-          border: '1px solid #a855f7', borderRadius: 11,
+          background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, transparent), color-mix(in srgb, var(--accent) 4%, transparent))',
+          border: '1px solid var(--accent)', borderRadius: 11,
           display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
         }}>
           <span style={{ fontSize: 18 }}>💰</span>
           <div style={{ flex: 1 }}>
-            <div style={{ fontWeight: 700, fontSize: 13, color: '#a855f7' }}>
+            <div style={{ fontWeight: 700, fontSize: 13, color: 'var(--accent)' }}>
               {counts.paid_unaudited} فاتورة مسدّدة بدون تدقيق
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted)' }}>
@@ -950,7 +950,7 @@ export default function CarrierLedger({ isActive = true }) {
                                 }}>
                                   <div style={{
                                     width: `${pct}%`, height: '100%',
-                                    background: pct >= 100 ? 'var(--green)' : '#f59e0b',
+                                    background: pct >= 100 ? 'var(--green)' : 'var(--gold)',
                                   }}/>
                                 </div>
                                 <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
@@ -1022,7 +1022,7 @@ export default function CarrierLedger({ isActive = true }) {
                                 <span style={{
                                   display: 'inline-block', marginRight: 6,
                                   padding: '1px 7px', borderRadius: 999,
-                                  background: 'rgba(251,191,36,.16)',
+                                  background: 'color-mix(in srgb, var(--gold) 16%, transparent)',
                                   border: '1px solid var(--gold)',
                                   color: 'var(--gold)', fontSize: 9, fontWeight: 700,
                                 }} title="رُبطت رغم وجود تحقق فاشل">
@@ -1087,8 +1087,8 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
       <Modal title={`💰 تسديد جماعي · ${ops.length} عملية`} onClose={onClose} width={520}>
         <div style={{
           marginBottom: 14, padding: '10px 14px',
-          background: 'rgba(34,197,94,.08)',
-          border: '1px solid rgba(34,197,94,.3)',
+          background: 'color-mix(in srgb, var(--green) 8%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)',
           borderRadius: 9, fontSize: 13,
         }}>
           الإجمالي:{' '}
@@ -1139,7 +1139,7 @@ function ActionModal({ modal, carrierName, onClose, onPaid, onPaidBulk, onDisput
         {isHighValue && (
           <div style={{
             marginTop: 12, padding: '10px 14px',
-            background: 'rgba(248,113,113,.08)',
+            background: 'color-mix(in srgb, var(--red) 8%, transparent)',
             border: '1px solid var(--red)', borderRadius: 9,
           }}>
             <div style={{ fontWeight: 700, color: 'var(--red)', fontSize: 13, marginBottom: 6 }}>
@@ -1641,13 +1641,13 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                       background: eligible
                         ? (matchHint ? 'color-mix(in srgb, var(--accent) 6%, transparent)' : 'var(--surface)')
                         : overridable
-                          ? 'rgba(251,191,36,.06)'
-                          : 'rgba(248,113,113,.04)',
+                          ? 'color-mix(in srgb, var(--gold) 6%, transparent)'
+                          : 'color-mix(in srgb, var(--red) 4%, transparent)',
                       border: `1px solid ${eligible
                         ? (matchHint ? 'var(--accent)' : 'var(--border)')
                         : overridable
-                          ? 'rgba(251,191,36,.35)'
-                          : 'rgba(248,113,113,.25)'}`,
+                          ? 'color-mix(in srgb, var(--gold) 35%, transparent)'
+                          : 'color-mix(in srgb, var(--red) 25%, transparent)'}`,
                       textAlign: 'right', color: 'inherit',
                       opacity: (eligible || overridable) ? 1 : 0.7,
                       fontFamily: 'inherit',
@@ -1713,7 +1713,7 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
       {overrideAudit && (
         <div style={{
           marginTop: 14, padding: '14px 16px',
-          background: 'rgba(251,191,36,.08)',
+          background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
           border: '1.5px solid var(--gold)',
           borderRadius: 11, fontSize: 13, lineHeight: 1.7,
         }}>
@@ -1987,7 +1987,7 @@ function DisputeThreadModal({ op, onClose, onRefresh }) {
       {resolveOpen && op.status === 'disputed' && (
         <div style={{
           padding: '12px 14px',
-          background: 'rgba(34,197,94,.08)', border: '1px solid var(--green)',
+          background: 'color-mix(in srgb, var(--green) 8%, transparent)', border: '1px solid var(--green)',
           borderRadius: 9, marginBottom: 12,
         }}>
           <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--green)', marginBottom: 10 }}>

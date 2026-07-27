@@ -187,9 +187,9 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
 // in src/engine/audit.js — keep in sync.
 const AUDIT_TYPE_META = {
   domestic:      { label: 'محلي',                 icon: '🇸🇦', color: 'var(--green)' },
-  international: { label: 'دولي',                 icon: '🌐', color: '#f59e0b' },
+  international: { label: 'دولي',                 icon: '🌐', color: 'var(--gold)' },
   cod:           { label: 'دفع عند الاستلام',     icon: '💰', color: 'var(--accent)' },
-  mixed:         { label: 'مختلط',                icon: '🔀', color: '#06b6d4' },
+  mixed:         { label: 'مختلط',                icon: '🔀', color: 'var(--accent3)' },
   unknown:       { label: 'غير محدد',             icon: '❓', color: 'var(--muted)' },
 };
 
@@ -472,7 +472,7 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           flexShrink: 0,
                         }}>
-                          <Truck size={20} color={hasIssues ? '#f87171' : 'var(--accent)'}/>
+                          <Truck size={20} color={hasIssues ? 'var(--red)' : 'var(--accent)'}/>
                         </div>
                       </div>
 

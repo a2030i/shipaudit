@@ -41,13 +41,13 @@ const telLink = (p) => { const d = String(p || '').replace(/\D/g, ''); return d 
 
 // المؤشّرات: goodUp = هل ارتفاع الرقم إيجابي (لتلوين فرق الرفعة).
 const KPIS = [
-  { key: 'unique_customers', label: 'عملاء (بلا تكرار)', color: '#06B6D4', goodUp: true },
+  { key: 'unique_customers', label: 'عملاء (بلا تكرار)', color: 'var(--accent3)', goodUp: true },
   { key: 'prio_a',           label: 'أولوية A (اتصال)', color: 'var(--red)', goodUp: false },
-  { key: 'stopped',          label: 'متوقّفون', color: '#F97316', goodUp: false },
+  { key: 'stopped',          label: 'متوقّفون', color: 'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', goodUp: false },
   { key: 'never_shipped',    label: 'سجّلوا ولم يشحنوا', color: 'var(--accent)', goodUp: false },
   { key: 'high_value',       label: 'قيمة عالية', color: 'var(--gold)', goodUp: true },
   { key: 'active',           label: 'نشطون', color: 'var(--green)', goodUp: true },
-  { key: 'with_balance',     label: 'لهم رصيد', color: '#0EA5E9', goodUp: true },
+  { key: 'with_balance',     label: 'لهم رصيد', color: 'var(--brand)', goodUp: true },
   { key: 'negative_balance', label: 'رصيد سالب', color: 'var(--red)', goodUp: false },
 ];
 
@@ -283,7 +283,7 @@ export default function Retargeting({ isActive = true }) {
         {fuStats && (
           <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 12, marginBottom: 12, color: 'var(--text2)' }}>
             <span>📞 مُسنَدون: <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.assigned)}</b></span>
-            <span>⏰ متابعة مستحقّة اليوم: <b style={{ color: '#F97316', fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.dueToday)}</b></span>
+            <span>⏰ متابعة مستحقّة اليوم: <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.dueToday)}</b></span>
             <span>✅ عادوا للشحن: <b style={{ color: 'var(--green)', fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.returned)}</b></span>
             <span>🤝 مهتمّون: <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt0(fuStats.byStatus?.interested || 0)}</b></span>
           </div>
@@ -504,7 +504,7 @@ export default function Retargeting({ isActive = true }) {
                       <td data-label="المتابعة" style={{ padding: '10px 12px' }}>
                         <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 700, color: stm.color, background: `color-mix(in srgb, ${stm.color} 12%, transparent)` }}>{stm.label}</span>
                         {l.ownerName && <div style={{ fontSize: 10, color: 'var(--muted)', marginTop: 2 }}>👤 {l.ownerName}</div>}
-                        {l.nextActionAt && <div style={{ fontSize: 10, color: '#F97316', marginTop: 2 }}>⏰ {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
+                        {l.nextActionAt && <div style={{ fontSize: 10, color: 'var(--gold)', marginTop: 2 }}>⏰ {new Date(l.nextActionAt).toLocaleDateString('en-CA')}</div>}
                         {l.notes && <div title={l.notes} style={{ fontSize: 10, color: 'var(--text2)', marginTop: 2, maxWidth: 170, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>📝 {l.notes}</div>}
                         {(() => { const w = waStatus.get(normalizeSaudiPhone(l.phone)); if (!w) return null;
                           const st = waStatusBadge(w);
@@ -603,9 +603,9 @@ function CampaignView({ campaign, changes }) {
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>شحنات ناتجة (الحملة)</div>
               <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1 }}>{fmt0(rx.workedShipments)}</div>
             </Card>
-            <Card style={{ padding: '12px 14px', borderTop: '3px solid #06B6D4' }}>
+            <Card style={{ padding: '12px 14px', borderTop: '3px solid var(--accent3)' }}>
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>إجمالي العائدين (المنصّة)</div>
-              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: '#06B6D4', lineHeight: 1 }}>{fmt0(rx.allReactivated)}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--accent3)', lineHeight: 1 }}>{fmt0(rx.allReactivated)}</div>
               <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>{fmt0(rx.allShipments)} شحنة إجمالاً</div>
             </Card>
           </div>
@@ -615,11 +615,15 @@ function CampaignView({ campaign, changes }) {
     <SectionTitle>مراحل التحويل (النجاح = عاد للشحن)</SectionTitle>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 16 }} className="hero-grid">
       {steps.map(s => (
-        <Card key={s.k} style={{ padding: '12px 14px', borderTop: `3px solid ${s.green ? 'var(--green)' : '#8B5CF6'}` }}>
+        <div key={s.k} className="stat-card" style={{
+          background: 'var(--card)', border: '1px solid var(--border2)',
+          borderRadius: 'var(--r-lg)', boxShadow: 'var(--shadow-sm)',
+          padding: '12px 14px', '--sc-tone': s.green ? 'var(--green)' : 'var(--accent)',
+        }}>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>{s.label}</div>
           <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: s.green ? 'var(--green)' : 'var(--text)', lineHeight: 1 }}>{fmt0(s.val)}</div>
           <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>{pct(s.val, s.of)}% من السابق</div>
-        </Card>
+        </div>
       ))}
       <Card style={{ padding: '12px 14px', borderTop: '3px solid var(--red)' }}>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 4 }}>خسارة/عوائق</div>

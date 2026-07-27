@@ -105,7 +105,7 @@ export default function SalesToday({ isActive = true }) {
           </Section>
 
           {/* ٣) جهاتي الجديدة */}
-          <Section icon={<UserPlus size={16} color="#0EA5E9"/>} title="جهاتك الجديدة (لم تُكلَّم بعد)" count={d.myNewLeadsCount} color="#0EA5E9">
+          <Section icon={<UserPlus size={16} color="var(--accent3)"/>} title="جهاتك الجديدة (لم تُكلَّم بعد)" count={d.myNewLeadsCount} color="var(--accent3)">
             {!d.myNewLeads.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا جهات جديدة مسندة لك</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.myNewLeads.map((l) => (

@@ -193,11 +193,11 @@ const NAV_SECTIONS = [
   //   • التحصيل + المبيعات → «العملاء» (كل ما يخصّ العميل: تحصيل + بيع + دعم)
   //   • واتساب + التقارير → «الحملات والتقارير» (المخرجات والتواصل)
   //   • الإدارة + النادر (التجهيز/الأوزان/الإقفال/العقود/إدارة الشركات/المهام/المصادر) → «الإعدادات والأدوات»
-  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#3B82F6', hint: 'فواتيرها · تدقيقها · حساباتها' },
+  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#2B68DE', hint: 'فواتيرها · تدقيقها · حساباتها' },
   { id: 'money',     label: 'الأموال',           icon: DollarSign,    accent: '#F59E0B', hint: 'الأرباح · البنك · زوهو · الأعمار' },
   { id: 'customers', label: 'العملاء',           icon: Users,         accent: '#EF4444', hint: 'التحصيل · المبيعات · الدعم' },
   { id: 'outreach',  label: 'الحملات والتقارير', icon: MessageCircle, accent: '#22C55E', hint: 'واتساب · التقارير الجاهزة' },
-  { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#8B5CF6', hint: 'الفريق · الفحوص · الإعداد · النادر' },
+  { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#31D5E1', hint: 'الفريق · الفحوص · الإعداد · النادر' },
 ];
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
@@ -297,8 +297,10 @@ function AppInner({ theme, toggleTheme }) {
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [collapsed,       setCollapsed]       = useState(false);
   // القائمة المتداخلة: الهَب النشط يتوسّع تلقائياً + توسيع يدوي لبقية الهَبات (chevron)
-  const [openHubs, setOpenHubs] = useState(() => new Set());
-  const toggleHub = (id) => setOpenHubs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  // تفضيل المستخدم الصريح (فتح/قفل) يتغلّب على «الهَب النشط يتوسّع تلقائياً» —
+  // بدون override كان الهَب النشط مستحيل الإغلاق (activeFor يفرضه مفتوحاً).
+  const [hubOverrides, setHubOverrides] = useState(() => ({}));
+  const toggleHub = (id, expanded) => setHubOverrides(prev => ({ ...prev, [id]: !expanded }));
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // Per-section open/closed state for the accordion. Persists in
@@ -669,8 +671,8 @@ function AppInner({ theme, toggleTheme }) {
                     {items.map(n => {
                       const activeSubTab = subTabOf(n);
                       const hasSub = !collapsed && n.subTabs?.length;
-                      // القائمة المتداخلة: الهَب النشط يتوسّع تلقائياً، وغيره بالضغط على chevron
-                      const expanded = hasSub && (activeFor(n) || openHubs.has(n.id));
+                      // القائمة المتداخلة: تفضيل المستخدم الصريح أولاً، وإلا النشط يتوسّع تلقائياً
+                      const expanded = hasSub && (hubOverrides[n.id] !== undefined ? hubOverrides[n.id] : activeFor(n));
                       return (
                         <div key={n.id}>
                           <NavBtn
@@ -682,7 +684,7 @@ function AppInner({ theme, toggleTheme }) {
                             nested
                             expandable={hasSub}
                             expanded={expanded}
-                            onToggleExpand={hasSub ? () => toggleHub(n.id) : undefined}
+                            onToggleExpand={hasSub ? () => toggleHub(n.id, expanded) : undefined}
                           />
                           {expanded && (
                             // خط شجري خفيف يربط التبويبات الفرعية بالهَب — للوصول السريع

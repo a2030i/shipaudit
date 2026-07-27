@@ -28,11 +28,11 @@
 import { supabase } from './supabase.js';
 
 const KIND_META = {
-  reminder_sent:  { label: 'تذكير', color: '#3B82F6' },
-  promise_to_pay: { label: 'وعد دفع',  color: '#F59E0B' },
+  reminder_sent:  { label: 'تذكير', color: 'var(--brand)' },
+  promise_to_pay: { label: 'وعد دفع',  color: 'var(--gold)' },
   call_made:      { label: 'مكالمة', color: '#10B981' },
   note:           { label: 'ملاحظة', color: '#71717A' },
-  visit:          { label: 'زيارة', color: '#8B5CF6' },
+  visit:          { label: 'زيارة', color: 'var(--accent)' },
 };
 
 export function interactionKindMeta(kind) {

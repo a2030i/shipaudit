@@ -118,7 +118,7 @@ export default function HatifLeads({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader icon={<UserPlus size={22}/>} iconColor="#F97316"
+      <PageHeader icon={<UserPlus size={22}/>} iconColor="var(--gold)"
         title="فرص من هاتف"
         subtitle="جوّالات سعودية تحدّثت معنا في واتساب وليست في كشف متاجرنا — مستفسرون لم يسجّلوا"
         meta={stats ? `${fmt0(stats.total)} فرصة · ${fmt0(stats.named)} باسم حقيقي` : null}
@@ -134,10 +134,10 @@ export default function HatifLeads({ isActive = true }) {
       ) : (<>
         {/* المؤشّرات */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 10, marginBottom: 14 }} className="hero-grid">
-          <Stat label="إجمالي الفرص" value={stats.total} color="#F97316" sub="جوال سعودي — كلها قابلة للحملات"/>
+          <Stat label="إجمالي الفرص" value={stats.total} color="var(--gold)" sub="جوال سعودي — كلها قابلة للحملات"/>
           <Stat label="معروف 🔗" value={stats.identified} color="var(--green)" sub={`${fmt0(stats.leadMatched)} مرتبط بعميل + مسمّى — ابدأ بهم`}/>
           <Stat label="باسم حقيقي ⭐" value={stats.named} color="var(--accent)" sub="سمّاهم موظف في هاتف"/>
-          <Stat label="لم تُصنَّف بعد" value={stats.byStatus.new || 0} color="#3B82F6"/>
+          <Stat label="لم تُصنَّف بعد" value={stats.byStatus.new || 0} color="var(--brand)"/>
         </div>
 
         {/* الفلاتر */}
@@ -164,7 +164,7 @@ export default function HatifLeads({ isActive = true }) {
             <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--muted)' }}>
               <input type="checkbox" checked={mineOnly} onChange={e => setMineOnly(e.target.checked)}/> المسندة لي
             </label>
-            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: '#F97316', fontWeight: 700 }}>
+            <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12, color: 'var(--gold)', fontWeight: 700 }}>
               <input type="checkbox" checked={dueOnly} onChange={e => setDueOnly(e.target.checked)}/> ⏰ مستحقة اليوم
             </label>
             {isAdmin && (

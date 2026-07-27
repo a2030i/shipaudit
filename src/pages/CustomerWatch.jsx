@@ -183,9 +183,9 @@ function statusPillTone(rawStatus, shipDays) {
   if (isInactive)  return { bg: 'rgba(122,130,196,.14)',fg: 'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', label: s || 'غير نشط' };
   if (isActive) {
     if (shipDays != null && shipDays > 30) {
-      return { bg: 'rgba(245,158,11,.14)', fg: '#B45309', label: 'نشط بلا شحن حديث' };
+      return { bg: 'color-mix(in srgb, var(--gold) 14%, transparent)', fg: 'var(--gold)', label: 'نشط بلا شحن حديث' };
     }
-    return { bg: 'rgba(16,185,129,.14)', fg: '#047857', label: 'شغّال' };
+    return { bg: 'color-mix(in srgb, var(--green) 14%, transparent)', fg: 'var(--green)', label: 'شغّال' };
   }
   return { bg: 'rgba(148,163,184,.16)', fg: 'var(--muted)', label: s || 'غير معروف' };
 }
@@ -193,7 +193,7 @@ function statusPillTone(rawStatus, shipDays) {
 const ANOMALY_META = {
   negative_wallet:    { color: 'var(--red)', icon: AlertOctagon, label: 'رصيد محفظة سالب',     hint: 'دفع مسبق ورصيده ناقص — خطأ تقني' },
   prepaid_with_debt:  { color: '#EF4444', icon: AlertTriangle, label: 'دفع مسبق وعليه دين', hint: 'يدفع من المحفظة لكن عليه فواتير' },
-  active_with_debt:   { color: '#F97316', icon: Flame,         label: 'يشحن الآن وعليه دين', hint: 'آخر شحنة خلال 10 أيام — اتصل اليوم' },
+  active_with_debt:   { color: 'color-mix(in srgb, var(--gold) 50%, var(--red))', icon: Flame,         label: 'يشحن الآن وعليه دين', hint: 'آخر شحنة خلال 10 أيام — اتصل اليوم' },
   postpaid_overdue:   { color: 'var(--gold)', icon: Clock,         label: 'متأخر +60 يوم',       hint: 'مرشّح للإيقاف بعد تنبيه' },
   inactive_with_debt: { color: 'color-mix(in srgb, var(--brand-navy) 55%, var(--muted))', icon: Moon,          label: 'موقوف وعليه دين',     hint: 'حصّل قبل الإغلاق النهائي' },
 };
@@ -693,7 +693,7 @@ export default function CustomerWatch({ isActive = true }) {
             />
             <TopList
               icon={<UserPlus size={14}/>}
-              accent="#8B5CF6"
+              accent="var(--accent)"
               title="أحدث التسجيلات"
               sub="آخر 10 متاجر انضمّت للمنصّة"
               rows={data.top.newest}
@@ -1180,7 +1180,7 @@ function CustomerDrillDown({ entry, customers = [], merchants = [], profile, onS
           <Chip color={m.platformStatus === 'نشط' ? 'var(--green)' : '#71717A'} label={`المنصّة: ${m.platformStatus}`}/>
         )}
         {m?.integrationType && (
-          <Chip color="#8B5CF6" label={m.integrationType}/>
+          <Chip color="var(--accent)" label={m.integrationType}/>
         )}
         {!m && <Chip color="#71717A" label="غير مرتبط بمتجر"/>}
       </div>

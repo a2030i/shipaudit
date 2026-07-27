@@ -62,8 +62,8 @@
   --red2:      #DC2626;
   --gold:      #FBBF24;
   --gold2:     #D97706;
-  --purple:    #C4B5FD;
-  --purple2:   #8B5CF6;
+  --purple:    var(--accent);   /* هوية 2026: البنفسجي محظور — يعاد توجيهه للأزرق الرسمي */
+  --purple2:   var(--accent);
   --warn:      #FB923C;
   --blue:      #6FA0FF;
 
@@ -158,8 +158,8 @@
   --red2:      #B91C1C;
   --gold:      #D97706;
   --gold2:     #B45309;
-  --purple:    #7C3AED;
-  --purple2:   #6D28D9;
+  --purple:    var(--accent);
+  --purple2:   var(--accent);
   --warn:      #EA580C;
   --blue:      #2B68DE;
 
@@ -909,8 +909,8 @@ button:active { transform: scale(.97); }
   --red2:      #B91C1C;
   --gold:      #D97706;
   --gold2:     #B45309;
-  --purple:    #7C3AED;
-  --purple2:   #6D28D9;
+  --purple:    var(--accent);
+  --purple2:   var(--accent);
   --warn:      #EA580C;
 
   --text:      #0F172A;
@@ -1112,8 +1112,8 @@ tr:hover td {
   --red2:      #B91C1C;
   --gold:      #D97706;
   --gold2:     #B45309;
-  --purple:    #7C3AED;
-  --purple2:   #6D28D9;
+  --purple:    var(--accent);
+  --purple2:   var(--accent);
   --warn:      #EA580C;
   --blue:      #2B68DE;
 

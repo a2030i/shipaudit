@@ -57,7 +57,7 @@ function Hero({ carrier, onBack }) {
       padding: '22px 28px',
       marginBottom: 22,
       borderRadius: 'var(--r-lg)',
-      background: '#0A0A0B',
+      background: 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))',
       color: '#fff',
       overflow: 'hidden',
       boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
@@ -308,7 +308,7 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
           تعديل النوع
         </Btn>
       )}
-      accent="#3B82F6"
+      accent="var(--brand)"
     >
       <div style={{ display: 'grid', gap: 12 }}>
         <Row label="نوع الملف" value={
@@ -739,7 +739,7 @@ export default function CarrierProfile() {
           <SectionCard
             title="آخر ملفات الـ Webhook"
             action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/webhook?carrier=${carrierId}`)}>صندوق الوارد</Btn>}
-            accent="#3B82F6"
+            accent="var(--brand)"
           >
             <WebhookList webhooks={webhooks}/>
           </SectionCard>
@@ -749,7 +749,7 @@ export default function CarrierProfile() {
       <SectionCard
         title="آخر الحركات"
         action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/ledger?carrier=${carrierId}`)}>الكشف الكامل</Btn>}
-        accent="#8B5CF6"
+        accent="var(--accent)"
       >
         <OpsList ops={ops}/>
       </SectionCard>

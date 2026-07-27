@@ -6,9 +6,9 @@ import { supabase } from './supabase.js';
 
 // حالات التذكرة — نقطة الحقيقة الواحدة للعرض (المفاتيح تطابق check constraint)
 export const TICKET_STATUSES = {
-  open:             { label: 'جديدة',          color: '#0EA5E9' },
+  open:             { label: 'جديدة',          color: 'var(--accent3)' },
   in_progress:      { label: 'قيد المعالجة',   color: 'var(--gold)' },
-  waiting_customer: { label: 'بانتظار العميل', color: '#8B5CF6' },
+  waiting_customer: { label: 'بانتظار العميل', color: 'var(--accent)' },
   resolved:         { label: 'محلولة',         color: 'var(--green)' },
   closed:           { label: 'مغلقة',          color: 'var(--muted)' },
 };

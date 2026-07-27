@@ -84,7 +84,7 @@ export default function StatementUploadModal({ open, onClose, carrierId, carrier
       ) : state === 'done' ? (
         <div>
           <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-            {[['العمليات', ops.length, '#3B82F6'], ['صافي الكشف', fmt(total), 'var(--accent)'],
+            {[['العمليات', ops.length, 'var(--brand)'], ['صافي الكشف', fmt(total), 'var(--accent)'],
               ['المُصدِر', result?.parserUsed === 'ai' ? 'AI ✨' : (result?.parserUsed === 'smsa' ? 'سمسا' : 'سريع'), 'var(--muted)']].map(([l, v, c]) => (
               <div key={l} style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', textAlign: 'center' }}>
                 <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{l}</div>

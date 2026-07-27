@@ -201,11 +201,11 @@ export default function Forecast({ carriers = [], isActive = true }) {
                 <div style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 600, marginBottom: 4 }}>
                   متوقّع من العملاء (الفترة)
                 </div>
-                <div style={{ fontSize: 14, color: '#0369A1', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
+                <div style={{ fontSize: 14, color: 'var(--accent)', fontFamily: 'var(--font-mono)', fontWeight: 700 }}>
                   {fmt(data.customerInflow)} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
                 </div>
                 {data.receivablesOverdue > 0 && (
-                  <div style={{ fontSize: 10.5, color: '#B45309', marginTop: 2 }}>
+                  <div style={{ fontSize: 10.5, color: 'var(--gold)', marginTop: 2 }}>
                     + {fmt(data.receivablesOverdue)} متأخّرة قابلة للتحصيل
                   </div>
                 )}
@@ -421,7 +421,7 @@ function DateGroup({ dateKey, events }) {
 }
 
 function EventRow({ e, last }) {
-  const directionColor = e.direction === 'in'  ? '#047857'
+  const directionColor = e.direction === 'in'  ? 'var(--green)'
                        : e.direction === 'out' ? 'var(--red)'
                        : 'var(--muted)';
   const sign = e.direction === 'in' ? '+' : e.direction === 'out' ? '−' : '';

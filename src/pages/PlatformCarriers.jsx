@@ -204,7 +204,7 @@ export default function PlatformCarriers({ isActive = true }) {
       {/* عدد الشركات لكل منصّة */}
       {rows && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {[['لمحة', platCounts.lamha, 'var(--accent)'], ['أوتو', platCounts.auto, '#F97316'], ['طرود', platCounts.torod, '#8B5CF6'], ['تريك', platCounts.trek, '#0EA5E9']].map(([lbl, n, col]) => (
+          {[['لمحة', platCounts.lamha, 'var(--brand)'], ['أوتو', platCounts.auto, 'var(--gold)'], ['طرود', platCounts.torod, 'var(--accent)'], ['تريك', platCounts.trek, 'var(--accent3)']].map(([lbl, n, col]) => (
             <div key={lbl} style={{ flex: '1 1 120px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 13px', borderTop: `3px solid ${col}` }}>
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 2 }}>{lbl}</div>
               <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: col }}>{n} <span style={{ fontSize: 11, color: 'var(--muted2)', fontWeight: 400 }}>شركة</span></div>

@@ -32,7 +32,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const BUCKETS = [
   { key: 'b0', label: '0–30 يوم',  color: 'var(--green)' },
   { key: 'b1', label: '31–60',     color: 'var(--gold)' },
-  { key: 'b2', label: '61–90',     color: '#F97316' },
+  { key: 'b2', label: '61–90',     color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
   { key: 'b3', label: '+90',       color: 'var(--red)' },
 ];
 
@@ -730,7 +730,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
     }
   };
 
-  const ageColor = c.oldestDays > 90 ? 'var(--red)' : c.oldestDays > 60 ? '#F97316' : c.oldestDays > 30 ? 'var(--gold)' : 'var(--green)';
+  const ageColor = c.oldestDays > 90 ? 'var(--red)' : c.oldestDays > 60 ? 'color-mix(in srgb, var(--gold) 50%, var(--red))' : c.oldestDays > 30 ? 'var(--gold)' : 'var(--green)';
 
   return (
     <Card style={{ padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -774,7 +774,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           <span style={{ color: 'var(--muted2)' }}>📲 آخر حملة {fmtDate(waStat.lastSentAt)}{waStat.sends > 1 ? ` (${waStat.sends}×)` : ''}</span>
           {waStat.paidAfter
             ? <Chip color="var(--green)">✅ سدّد بعدها {waStat.paidAt ? fmtDate(waStat.paidAt) : ''}</Chip>
-            : waStat.replied ? <Chip color="#3B82F6">💬 ردّ — لم يسدّد</Chip>
+            : waStat.replied ? <Chip color="var(--brand)">💬 ردّ — لم يسدّد</Chip>
             : waStat.read ? <Chip color="var(--muted)">قرأها — لا رد</Chip>
             : waStat.delivered ? <Chip color="var(--muted)">وصلت</Chip>
             : waStat.status === 'Failed' ? <Chip color="var(--red)">فشل الإرسال</Chip>

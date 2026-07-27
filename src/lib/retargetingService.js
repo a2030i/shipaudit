@@ -34,21 +34,21 @@ export async function loadStoreActivationTrend(days = 5, limit = 24) {
 
 // تسميات وألوان الشرائح/الأولوية/القناة — نقطة الحقيقة الواحدة للعرض.
 export const SEGMENTS = {
-  new_active:        { label: 'جديد نشط',            color: '#0EA5E9', icon: '🆕' },
-  topped_no_ship:    { label: 'شحن رصيد ولم يشحن',   color: '#F59E0B', icon: '💳' },
-  linked_no_ship:    { label: 'ربط ولم يشحن',        color: '#8B5CF6', icon: '🔌' },
+  new_active:        { label: 'جديد نشط',            color: 'var(--accent3)', icon: '🆕' },
+  topped_no_ship:    { label: 'شحن رصيد ولم يشحن',   color: 'var(--gold)', icon: '💳' },
+  linked_no_ship:    { label: 'ربط ولم يشحن',        color: 'var(--accent)', icon: '🔌' },
   registered_no_ship:{ label: 'سجّل ولم يشحن',       color: 'var(--muted)', icon: '📝' },
-  stopped_recent:    { label: 'توقّف حديثاً',         color: '#F97316', icon: '⏸️' },
+  stopped_recent:    { label: 'توقّف حديثاً',         color: 'var(--brand-navy)', icon: '⏸️' },
   stopped_long:      { label: 'توقّف قديماً',         color: '#B91C1C', icon: '🕰️' },
   active:            { label: 'نشط',                 color: 'var(--green)', icon: '✅' },
   negative_balance:  { label: 'رصيد سالب',           color: 'var(--red)', icon: '🛑' },
 };
 export const PRIORITIES = {
   A:    { label: 'A — اتصال شخصي', color: 'var(--red)' },
-  B:    { label: 'B — واتساب',     color: '#F97316' },
+  B:    { label: 'B — واتساب',     color: 'var(--accent3)' },
   C:    { label: 'C — تفعيل',      color: 'var(--gold)' },
   D:    { label: 'D — حملة عامة',  color: 'var(--muted)' },
-  FIN:  { label: 'مالية',          color: '#8B5CF6' },
+  FIN:  { label: 'مالية',          color: 'var(--accent)' },
   none: { label: 'نشط (لا استهداف)', color: 'var(--green)' },
 };
 export const CHANNELS = {
@@ -63,11 +63,11 @@ export const CHANNELS = {
 // حالات المتابعة (دورة حياة الـLead + نتيجة التواصل + سبب التوقّف في حقل واحد).
 export const STATUSES = {
   new:               { label: 'جديد',          color: 'var(--muted)' },
-  contacted:         { label: 'تم التواصل',    color: '#0EA5E9' },
-  whatsapp_sent:     { label: 'أُرسل واتساب',   color: '#22C55E' },
+  contacted:         { label: 'تم التواصل',    color: 'var(--accent3)' },
+  whatsapp_sent:     { label: 'أُرسل واتساب',   color: 'var(--brand)' },
   no_answer:         { label: 'لم يرد',        color: 'var(--gold)' },
   interested:        { label: 'مهتم',          color: 'var(--green)' },
-  needs_followup:    { label: 'يحتاج متابعة',  color: '#F97316' },
+  needs_followup:    { label: 'يحتاج متابعة',  color: 'var(--brand-navy)' },
   returned:          { label: 'عاد للشحن',     color: '#16A34A' },
   not_interested:    { label: 'غير مهتم',      color: 'var(--muted2)' },
   price_issue:       { label: 'مشكلة سعر',     color: '#EF4444' },
@@ -75,12 +75,12 @@ export const STATUSES = {
   integration_issue: { label: 'مشكلة ربط',     color: '#EF4444' },
   competitor:        { label: 'انتقل لمنافس',  color: '#B91C1C' },
   closed_business:   { label: 'توقّف نشاطه',    color: '#B91C1C' },
-  finance:           { label: 'تسوية مالية',   color: '#8B5CF6' },
+  finance:           { label: 'تسوية مالية',   color: 'var(--accent)' },
   // توحيد المتابعة (§1.32 تكملة): حالات «فرص من هاتف» انضمّت للمفردات الموحّدة —
   // نظام متابعة واحد (retargeting_followups) لكل تبويبات مركز المبيعات.
   converted:         { label: '✅ تحوّل لعميل',  color: '#16A34A' },
   // حالات الاستبعاد الدائم — تُخفَى من القوائم افتراضياً (لا يُكلَّمون)
-  supplier:          { label: '📦 مورد/شريك',   color: '#8B5CF6', excluded: true },
+  supplier:          { label: '📦 مورد/شريك',   color: 'var(--accent)', excluded: true },
   noise:             { label: 'أرقام غير مهمة', color: 'var(--muted2)', excluded: true },
   blacklist:         { label: '🚫 بلاك لست',    color: '#111827', excluded: true },
   test:              { label: '🧪 متجر تجريبي', color: 'var(--muted2)', excluded: true },

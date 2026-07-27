@@ -231,7 +231,7 @@ export default function UploadsHub({ isActive = true }) {
           are rejected because Books is API-backed now. */}
       <Card style={{
         marginBottom: 20,
-        background: 'linear-gradient(135deg, color-mix(in srgb, #0EA5E9 8%, transparent), color-mix(in srgb, #8B5CF6 6%, transparent))',
+        background: 'linear-gradient(135deg, color-mix(in srgb, var(--accent3) 8%, transparent), color-mix(in srgb, var(--accent) 6%, transparent))',
         border: '2px dashed color-mix(in srgb, #0EA5E9 35%, transparent)',
         padding: 22,
       }}>
@@ -296,7 +296,7 @@ export default function UploadsHub({ isActive = true }) {
 
       {/* Section: workflow shortcuts (uploads that have their own
           multi-step pages — not appropriate to inline-upload here). */}
-      <SectionTitle icon={<ExternalLink size={14}/>} color="#8B5CF6">
+      <SectionTitle icon={<ExternalLink size={14}/>} color="var(--accent)">
         مسارات تشغيل متخصصة
       </SectionTitle>
       <div style={{
@@ -326,7 +326,7 @@ export default function UploadsHub({ isActive = true }) {
         />
         <ShortcutCard
           icon={<FileText size={18}/>}
-          color="#8B5CF6"
+          color="var(--accent)"
           title="كشف حساب شركة شحن"
           subtitle="رفع كشف خارجي من شركة شحن للمطابقة"
           onClick={() => navigate('/aramex-statements')}

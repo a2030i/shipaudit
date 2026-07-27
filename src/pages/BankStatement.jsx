@@ -805,7 +805,7 @@ export default function BankStatement() {
                                   {t.txn_date || '—'}
                                   {t.txn_at && <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted2)', marginInlineStart: 4 }}>{String(t.txn_at).match(/[T ](\d{2}:\d{2})/)?.[1] || ''}</span>}
                                   {savedBank === 'all' && bankSummary.length > 1 && (
-                                    <div style={{ fontSize: 9, fontWeight: 700, color: '#8B5CF6', marginTop: 2 }}>🏦 {(t.bank || 'بنك الإنماء').replace('بنك ', '')}</div>
+                                    <div style={{ fontSize: 9, fontWeight: 700, color: 'var(--accent)', marginTop: 2 }}>🏦 {(t.bank || 'بنك الإنماء').replace('بنك ', '')}</div>
                                   )}
                                 </td>
                                 <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--accent)', whiteSpace: 'nowrap' }}>

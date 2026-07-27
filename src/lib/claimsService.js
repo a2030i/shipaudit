@@ -6,7 +6,7 @@ import { supabase } from './supabase.js';
 
 export const CLAIM_STATUS = {
   open:      { label: 'مكتشفة',        color: '#D97706' },
-  submitted: { label: 'قيد المطالبة',  color: '#3B82F6' },
+  submitted: { label: 'قيد المطالبة',  color: 'var(--brand)' },
   recovered: { label: 'استُردت',       color: '#059669' },
   waived:    { label: 'تنازل عنها',    color: '#6B7280' },
 };

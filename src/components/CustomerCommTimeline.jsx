@@ -10,16 +10,16 @@ const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).to
 const sentLabel = (v) => { const n = Number(v); if (!n) return null; return n >= 4 ? `😊 إيجابي` : n <= 2 ? `😞 سلبي` : `😐 محايد`; };
 
 const KIND = {
-  campaign: { icon: '📲', label: 'حملة واتساب', color: '#0EA5E9' },
-  ivr:      { icon: '🤖', label: 'مكالمة آلية', color: '#8B5CF6' },
+  campaign: { icon: '📲', label: 'حملة واتساب', color: 'var(--accent3)' },
+  ivr:      { icon: '🤖', label: 'مكالمة آلية', color: 'var(--accent)' },
   handled:  { icon: '💬', label: 'تولّى موظف محادثته', color: 'var(--green)' },
 };
 const STATUS_AR = { sent: 'أُرسلت', delivered: 'وصلت', read: 'قُرئت', replied: 'ردّ ✓', failed: 'فشلت' };
-const STATUS_COLOR = { sent: 'var(--muted)', delivered: '#0EA5E9', read: '#8B5CF6', replied: 'var(--green)', failed: 'var(--red)' };
+const STATUS_COLOR = { sent: 'var(--muted)', delivered: 'var(--accent3)', read: 'var(--accent)', replied: 'var(--green)', failed: 'var(--red)' };
 // تصنيف نية ردّ العميل — يبرز مَن مهتمّ بالحملة (طلب المستخدم).
 const INTENT_META = {
-  interested:     { label: '🔥 مهتمّ', color: '#F97316' },
-  wants_call:     { label: '📞 يطلب اتصالاً', color: '#0EA5E9' },
+  interested:     { label: '🔥 مهتمّ', color: 'var(--accent)' },
+  wants_call:     { label: '📞 يطلب اتصالاً', color: 'var(--accent3)' },
   price:          { label: '💰 اعتراض سعر', color: 'var(--gold)' },
   not_interested: { label: '🚫 غير مهتمّ', color: 'var(--muted)' },
 };

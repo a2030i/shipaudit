@@ -81,7 +81,7 @@ export default function Claims({ carriers = [], isActive }) {
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12, marginBottom: 18 }}>
         {[
           { label: 'مكتشفة (بانتظار الإرسال)', v: sum.openTotal,      n: sum.open,      color: '#D97706' },
-          { label: 'قيد المطالبة عند الناقل',   v: sum.submittedTotal, n: sum.submitted, color: '#3B82F6' },
+          { label: 'قيد المطالبة عند الناقل',   v: sum.submittedTotal, n: sum.submitted, color: 'var(--brand)' },
           { label: 'استُردت فعلاً ✓',           v: sum.recoveredTotal, n: sum.recovered, color: 'var(--green2)' },
         ].map(k => (
           <Card key={k.label} style={{ padding: '13px 16px' }}>

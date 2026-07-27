@@ -74,11 +74,11 @@ function fileTypeChip(filename) {
     xlsx: { label: 'XLSX', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: FileSpreadsheet },
     xlsm: { label: 'XLSM', color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: FileSpreadsheet },
     xls:  { label: 'XLS',  color: 'var(--green)', bg: 'rgba(16,185,129,.10)', Icon: FileSpreadsheet },
-    csv:  { label: 'CSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
-    tsv:  { label: 'TSV',  color: '#0EA5E9', bg: 'rgba(14,165,233,.10)', Icon: FileSpreadsheet },
+    csv:  { label: 'CSV',  color: 'var(--accent3)', bg: 'color-mix(in srgb, var(--accent3) 10%, transparent)', Icon: FileSpreadsheet },
+    tsv:  { label: 'TSV',  color: 'var(--accent3)', bg: 'color-mix(in srgb, var(--accent3) 10%, transparent)', Icon: FileSpreadsheet },
     pdf:  { label: 'PDF',  color: '#EF4444', bg: 'rgba(239,68,68,.10)',  Icon: FileType2 },
-    eml:  { label: 'EML',  color: '#8B5CF6', bg: 'rgba(139,92,246,.10)', Icon: Mail },
-    msg:  { label: 'MSG',  color: '#8B5CF6', bg: 'rgba(139,92,246,.10)', Icon: Mail },
+    eml:  { label: 'EML',  color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: Mail },
+    msg:  { label: 'MSG',  color: 'var(--accent)', bg: 'color-mix(in srgb, var(--accent) 10%, transparent)', Icon: Mail },
   };
   return M[ext] || { label: (ext || '?').toUpperCase(), color: 'var(--muted)', bg: 'rgba(122,130,196,.10)', Icon: FileQuestion };
 }

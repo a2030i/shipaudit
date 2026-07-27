@@ -64,8 +64,8 @@ const fmtRel = (iso) => {
 };
 
 const STAGE_COLORS = {
-  todo:      '#0EA5E9',
-  contacted: '#8B5CF6',
+  todo:      'var(--accent3)',
+  contacted: 'var(--accent)',
   promised:  'var(--gold)',
   done:      'var(--green)',
   snoozed:   '#6B7280',
@@ -74,10 +74,10 @@ const STAGE_COLORS = {
 const TRIGGER_COLORS = {
   over_credit_limit:  '#B91C1C',
   aged_90:            'var(--red)',
-  aged_60:            '#F97316',
+  aged_60:            'color-mix(in srgb, var(--gold) 50%, var(--red))',
   aged_30:            'var(--gold)',
   prepaid_with_debt:  '#EF4444',
-  manual:             '#0EA5E9',
+  manual:             'var(--accent3)',
 };
 const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
 

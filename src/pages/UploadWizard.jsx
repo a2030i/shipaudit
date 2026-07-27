@@ -324,12 +324,12 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
           ? 'color-mix(in srgb, var(--accent) 6%, transparent)'
           : !carrierId
             ? 'rgba(251,146,60,.08)'
-            : 'rgba(251,191,36,.06)',
+            : 'color-mix(in srgb, var(--gold) 6%, transparent)',
         border: `1px solid ${detectedOk
           ? 'color-mix(in srgb, var(--accent) 30%, transparent)'
           : !carrierId
             ? 'rgba(251,146,60,.30)'
-            : 'rgba(251,191,36,.30)'}`,
+            : 'color-mix(in srgb, var(--gold) 30%, transparent)'}`,
         borderRadius: 10,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: !carrierId ? 8 : 0 }}>
@@ -403,7 +403,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
 
       {/* AI notes */}
       {aiNotes && (
-        <div style={{ background:'rgba(251,191,36,.08)', border:'1px solid rgba(251,191,36,.2)', borderRadius:8, padding:'9px 13px', marginBottom:14, fontSize:12, color:'var(--gold)' }}>
+        <div style={{ background:'color-mix(in srgb, var(--gold) 8%, transparent)', border:'1px solid color-mix(in srgb, var(--gold) 20%, transparent)', borderRadius:8, padding:'9px 13px', marginBottom:14, fontSize:12, color:'var(--gold)' }}>
           ✨ {aiNotes}
         </div>
       )}
@@ -915,7 +915,7 @@ export default function UploadWizard({ carriers, onComplete }) {
   ];
 
   return (
-    <div style={{ padding: '32px 42px 80px', maxWidth: 1180, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
 
       <PageHeader
         icon={<UploadIcon size={22}/>}

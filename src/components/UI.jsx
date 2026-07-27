@@ -470,7 +470,7 @@ export function SpotlightCard({
   const borderColor = soft ? 'var(--border)' : 'rgba(255,255,255,.08)';
   const cardBg = soft
     ? 'linear-gradient(135deg, color-mix(in srgb, var(--surface) 94%, var(--accent) 6%), var(--surface))'
-    : '#0A0A0B';
+    : 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))';
   return (
     <div style={{
       position: 'relative',
@@ -493,7 +493,7 @@ export function SpotlightCard({
           }}/>
           <div style={{
             position: 'absolute', bottom: -100, left: -40, width: 280, height: 280,
-            background: 'radial-gradient(closest-side, rgba(139,92,246,.18), transparent)',
+            background: 'radial-gradient(closest-side, color-mix(in srgb, var(--accent3) 18%, transparent), transparent)',
             pointerEvents: 'none', filter: 'blur(8px)',
           }}/>
         </>

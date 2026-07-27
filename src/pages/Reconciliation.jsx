@@ -319,7 +319,7 @@ export default function Reconciliation({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Scale size={22}/>}
-        iconColor="#8B5CF6"
+        iconColor="var(--accent)"
         title="مطابقة الأرصدة"
         subtitle={tab === 'customers'
           ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
@@ -348,7 +348,7 @@ export default function Reconciliation({ isActive = true }) {
             <button key={t.id} onClick={() => setTab(t.id)} style={{
               padding: '10px 18px',
               border: 'none', background: 'transparent',
-              borderBottom: `2.5px solid ${active ? '#8B5CF6' : 'transparent'}`,
+              borderBottom: `2.5px solid ${active ? 'var(--accent)' : 'transparent'}`,
               color: active ? 'var(--text)' : 'var(--muted)',
               fontSize: 13, fontWeight: active ? 700 : 500,
               fontFamily: 'var(--font-sans)', cursor: 'pointer',
@@ -367,8 +367,8 @@ export default function Reconciliation({ isActive = true }) {
       {/* توضيح المصدرين: الداخلي كشف مرفوع يتجمد بين الرفعات · زوهو حي من API */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
-        background: 'color-mix(in srgb, #8B5CF6 7%, transparent)',
-        border: '1px solid color-mix(in srgb, #8B5CF6 25%, transparent)',
+        background: 'color-mix(in srgb, var(--accent) 7%, transparent)',
+        border: '1px solid color-mix(in srgb, var(--accent) 25%, transparent)',
         borderRadius: 10, padding: '9px 14px', marginBottom: 14, fontSize: 12.5,
       }}>
         <span>⚡ عمود <b>زوهو حي من الـAPI</b> (لا رفع له) · عمود <b>الداخلي</b> = آخر ملف «استحقاق المتاجر» مرفوع — يتجمد حتى الرفعة التالية.</span>
@@ -565,7 +565,7 @@ export default function Reconciliation({ isActive = true }) {
                 <th style={thStyle}>#</th>
                 <th style={thStyle}>المتجر</th>
                 <th style={{...thStyle, color: '#3B82F6'}}>الداخلي (استحقاق المتاجر — المرجع)</th>
-                <th style={{...thStyle, color: '#8B5CF6'}}>⚡ زوهو (حي من API)</th>
+                <th style={{...thStyle, color: 'var(--accent)'}}>⚡ زوهو (حي من API)</th>
                 <th style={thStyle}>الفرق</th>
                 <th style={thStyle}>الإجراء</th>
               </tr>
@@ -653,7 +653,7 @@ const RECON_STATUS_META = {
   matched:             { label: 'مطابق للهللة',      color: 'var(--green)', icon: '✓' },
   needs_investigation: { label: 'يحتاج تحقيقاً',      color: 'var(--red)',   icon: '⚠' },
   internal_only:       { label: 'رصيد قديم بلا فاتورة في زوهو', color: 'var(--gold)', icon: '◐' },
-  zoho_only:           { label: 'زوهو فقط',           color: '#8B5CF6',      icon: '◑' },
+  zoho_only:           { label: 'زوهو فقط',           color: 'var(--accent)',      icon: '◑' },
 };
 
 function ZohoLiveTab({ isActive = true }) {
@@ -721,7 +721,7 @@ function ZohoLiveTab({ isActive = true }) {
       {/* KPI strip */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(155px,1fr))', gap: 10, marginBottom: 14 }}>
         {[
-          { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: '#8B5CF6' },
+          { k: '', label: 'زوهو (المرجع)', val: kpi.zohoTot, sub: 'فواتير مفتوحة الآن', color: 'var(--accent)' },
           // عمر الكشف ظاهر على البطاقة (2026-07-17) — المستخدم ظن الرقم معطلاً
           // وهو من ملف invoice_details منقطع منذ أسبوع
           { k: '', label: 'استحقاق لمحة', val: kpi.intTot,
@@ -1001,7 +1001,7 @@ function VendorsTab() {
               <Stat label="لهم (ندفع)"       value={stats.we_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.we_owe_sum)})`} color="var(--red)"/>
               <Stat label="لنا (يردّون)"     value={stats.they_owe.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.they_owe_sum)})`} color="#047857"/>
               <Stat label="صفر"              value={stats.zero.toLocaleString('en-US')} color="var(--muted)"/>
-              <Stat label="مورّدون آخرون"    value={stats.otherCount.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="#8B5CF6"/>
+              <Stat label="مورّدون آخرون"    value={stats.otherCount.toLocaleString('en-US')} suffix={`(${fmtCompact(stats.otherTotal)})`} color="var(--accent)"/>
               <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportAll} disabled={!reconcile.length} style={{ marginInlineStart: 'auto' }}>
                 تصدير الكل
               </Btn>
@@ -1067,15 +1067,15 @@ function VendorsTab() {
           {others.length > 0 && (
             <Card style={{
               padding: 0, overflow: 'hidden', marginBottom: 16,
-              border: '1.5px solid color-mix(in srgb, #8B5CF6 30%, transparent)',
+              border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
             }}>
               <div style={{
                 display: 'flex', alignItems: 'center', gap: 10,
                 padding: '12px 16px',
-                background: 'color-mix(in srgb, #8B5CF6 8%, transparent)',
+                background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
                 borderBottom: '1px solid var(--border)',
               }}>
-                <FileSpreadsheet size={15} color="#8B5CF6"/>
+                <FileSpreadsheet size={15} color="var(--accent)"/>
                 <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text)' }}>
                   جهات صرف أخرى في زوهو — {others.length} جهة
                 </span>

@@ -119,7 +119,7 @@ export default function Overview({ carriers = [], isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1280, margin: '0 auto' }}>
       <PageHeader
         icon={<Activity size={22}/>}
-        iconColor="#0EA5E9"
+        iconColor="var(--accent3)"
         title="غرفة العمليات"
         subtitle={`قرارات اليوم ومصدر كل رقم — ${fmtMonth(period)}`}
         meta={`مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
@@ -173,7 +173,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
-      <SectionTitle icon={<Calendar size={14}/>} color="#0EA5E9">
+      <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
         لمحة الشهر — {fmtMonth(period)}
       </SectionTitle>
       <div style={{
@@ -250,7 +250,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       }}>
         <BigStat
-          color="#0EA5E9"
+          color="var(--accent3)"
           icon={<Calendar size={18}/>}
           label="متوسط أيام تحصيلك من العملاء"
           value={data.workingCapital.dso.toFixed(1)}
@@ -346,7 +346,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       }}>
         {/* Top carriers by spend */}
         <Card>
-          <SectionTitle icon={<Building2 size={14}/>} color="#3B82F6" inline>
+          <SectionTitle icon={<Building2 size={14}/>} color="var(--brand)" inline>
             الناقلون — تركّز الإنفاق ({fmtMonth(period)})
           </SectionTitle>
           {data.carrierConcentration.length === 0 ? (
@@ -364,7 +364,7 @@ export default function Overview({ carriers = [], isActive = true }) {
               }))}
               valueUnit="ر.س"
               warnAtPct={50}
-              tint="#3B82F6"
+              tint="var(--brand)"
             />
           )}
         </Card>
@@ -414,7 +414,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         }}>
           <AgingCell label="حديث (0–30ي)"  value={data.aging.totals.current} tone="var(--green)"/>
           <AgingCell label="31–60 يوم"      value={data.aging.totals.d31_60}  tone="var(--gold)"/>
-          <AgingCell label="61–90 يوم"      value={data.aging.totals.d61_90}  tone="#F97316"/>
+          <AgingCell label="61–90 يوم"      value={data.aging.totals.d61_90}  tone="color-mix(in srgb, var(--gold) 45%, var(--red))"/>
           <AgingCell label="+90 يوم"        value={data.aging.totals.d90}     tone="var(--red)"/>
           <AgingCell label="المجموع"        value={data.aging.totals.total}   tone="var(--text)" bold/>
         </div>
@@ -438,7 +438,7 @@ export default function Overview({ carriers = [], isActive = true }) {
                 </div>
                 <AmtCell value={r.current} active={r.current > 0.5} tone="var(--green)"/>
                 <AmtCell value={r.d31_60}  active={r.d31_60 > 0.5}  tone="var(--gold)"/>
-                <AmtCell value={r.d61_90}  active={r.d61_90 > 0.5}  tone="#F97316"/>
+                <AmtCell value={r.d61_90}  active={r.d61_90 > 0.5}  tone="color-mix(in srgb, var(--gold) 45%, var(--red))"/>
                 <AmtCell value={r.d90}     active={r.d90 > 0.5}     tone="var(--red)"/>
                 <AmtCell value={r.total}   active                  tone="var(--text)" bold/>
               </div>
@@ -570,7 +570,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
   const missions = [
     pendingAudits > 0 && {
       icon: <Clock3 size={18}/>,
-      tone: '#F59E0B',
+      tone: 'var(--gold)',
       title: 'تدقيق ينتظر قرارك',
       value: `${pendingAudits}`,
       unit: 'مراجعة',
@@ -580,7 +580,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
     },
     codDue > 0.5 && {
       icon: <Banknote size={18}/>,
-      tone: '#0EA5E9',
+      tone: 'var(--accent3)',
       title: 'COD عند شركات الشحن',
       value: fmtCompact(codDue),
       unit: 'ر.س',
@@ -637,7 +637,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
     {
       label: 'دين العملاء',
       value: data.cashPosition?.arSource === 'zoho' ? 'Zoho API مباشر' : 'نسخة داخلية محفوظة',
-      tone: data.cashPosition?.arSource === 'zoho' ? '#059669' : '#F59E0B',
+      tone: data.cashPosition?.arSource === 'zoho' ? '#059669' : 'var(--gold)',
     },
     {
       label: 'رصيد البنك',
@@ -646,7 +646,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
         : data.cashPosition?.bankSource === 'manual'
           ? 'إدخال يدوي'
           : 'غير محدد',
-      tone: data.cashPosition?.bankSource ? '#0EA5E9' : '#EF4444',
+      tone: data.cashPosition?.bankSource ? 'var(--accent3)' : '#EF4444',
     },
     {
       label: 'دفتر الناقلين',
@@ -679,7 +679,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
       border: '1px solid color-mix(in srgb, var(--accent) 18%, var(--border))',
       borderRadius: 16,
       overflow: 'hidden',
-      background: 'linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--accent) 7%, var(--surface)) 52%, color-mix(in srgb, #F59E0B 8%, var(--surface)) 100%)',
+      background: 'linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--accent) 7%, var(--surface)) 52%, color-mix(in srgb, var(--gold) 8%, var(--surface)) 100%)',
       boxShadow: '0 18px 46px rgba(15, 23, 42, .08)',
     }}>
       <div style={{
@@ -705,8 +705,8 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
               gap: 8,
               padding: '6px 10px',
               borderRadius: 999,
-              background: 'color-mix(in srgb, #0EA5E9 12%, transparent)',
-              color: '#0369A1',
+              background: 'color-mix(in srgb, var(--accent3) 12%, transparent)',
+              color: 'var(--accent)',
               fontSize: 12,
               fontWeight: 800,
             }}>
@@ -722,7 +722,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
               fontSize: 34,
               lineHeight: 1.05,
               fontWeight: 900,
-              color: net == null ? 'var(--muted)' : netPositive ? '#047857' : '#DC2626',
+              color: net == null ? 'var(--muted)' : netPositive ? 'var(--green)' : '#DC2626',
             }}>
               {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
               {net != null && <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginInlineStart: 6 }}>ر.س</span>}
@@ -737,7 +737,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
               marginTop: 18,
             }}>
               {[
-                { label: 'البنك', value: data.cashPosition?.bankBalance == null ? '—' : fmtCompact(data.cashPosition.bankBalance), tone: '#0EA5E9' },
+                { label: 'البنك', value: data.cashPosition?.bankBalance == null ? '—' : fmtCompact(data.cashPosition.bankBalance), tone: 'var(--accent3)' },
                 { label: 'العملاء', value: fmtCompact(data.cashPosition?.totalAR || 0), tone: '#059669' },
                 { label: 'الناقلين', value: fmtCompact(data.cashPosition?.totalAP || 0), tone: '#EF4444' },
               ].map((item) => (
@@ -846,7 +846,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
                   textAlign: 'start',
                   cursor: 'pointer',
                   background: s.active
-                    ? 'color-mix(in srgb, #0EA5E9 13%, var(--surface))'
+                    ? 'color-mix(in srgb, var(--accent3) 13%, var(--surface))'
                     : 'transparent',
                   color: 'var(--text)',
                 }}
@@ -861,7 +861,7 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
                     background: 'var(--border)',
                   }}/>
                 )}
-                <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: s.active ? '#0369A1' : 'var(--muted)' }}>
+                <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: s.active ? 'var(--accent)' : 'var(--muted)' }}>
                   {s.icon}
                   <span style={{ fontSize: 11, fontWeight: 800 }}>{s.label}</span>
                 </span>

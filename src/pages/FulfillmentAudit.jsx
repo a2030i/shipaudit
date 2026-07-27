@@ -109,7 +109,7 @@ export default function FulfillmentAudit({ isActive = true }) {
           </>
         }/>
 
-      <Card style={{ marginBottom: 16, borderRight: '3px solid #8B5CF6' }}>
+      <Card style={{ marginBottom: 16, borderRight: '3px solid var(--accent)' }}>
         <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>📦 رفع فاتورة {warehouses.find((w) => w.id === warehouse)?.name || ''}</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
           ملف Excel بأوراق SHIPPING/SUMMARY (صيغة المورّد). يُكتشف المتجر تلقائياً ويُقارَن بعقده.

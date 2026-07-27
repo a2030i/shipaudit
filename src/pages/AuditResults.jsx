@@ -149,7 +149,7 @@ function ColMapBadges({ colMap }) {
           تعيين الأعمدة المستخدمة
         </span>
         {missing.length > 0
-          ? <span style={{background:'rgba(248,113,113,.15)',color:'var(--red)',fontSize:9,padding:'1px 7px',borderRadius:10,border:'1px solid rgba(248,113,113,.3)'}}>
+          ? <span style={{background:'color-mix(in srgb, var(--red) 15%, transparent)',color:'var(--red)',fontSize:9,padding:'1px 7px',borderRadius:10,border:'1px solid color-mix(in srgb, var(--red) 30%, transparent)'}}>
               ⚠ {missing.length} حقل إلزامي مفقود
             </span>
           : <span style={{background:'rgba(52,211,153,.1)',color:'var(--green)',fontSize:9,padding:'1px 7px',borderRadius:10,border:'1px solid rgba(52,211,153,.25)'}}>
@@ -173,8 +173,8 @@ function ColMapBadges({ colMap }) {
               <div key={field} style={{
                 display:'flex', alignItems:'center', gap:5,
                 padding:'4px 10px', borderRadius:7,
-                background: mapped ? 'color-mix(in srgb, var(--accent) 7%, transparent)' : isReq ? 'rgba(248,113,113,.07)' : 'transparent',
-                border:`1px solid ${mapped?'color-mix(in srgb, var(--accent) 20%, transparent)':isReq?'rgba(248,113,113,.25)':'var(--border)'}`,
+                background: mapped ? 'color-mix(in srgb, var(--accent) 7%, transparent)' : isReq ? 'color-mix(in srgb, var(--red) 7%, transparent)' : 'transparent',
+                border:`1px solid ${mapped?'color-mix(in srgb, var(--accent) 20%, transparent)':isReq?'color-mix(in srgb, var(--red) 25%, transparent)':'var(--border)'}`,
               }}>
                 <span style={{fontSize:10,color:'var(--muted)',fontFamily:'var(--font-mono)'}}>{label}</span>
                 <span style={{fontSize:9,color:'var(--muted3)'}}>→</span>
@@ -305,19 +305,19 @@ function ResultsTable({ results, filter, showDetail, contract }) {
   let infoCols = 5 + (hasServiceType ? 1 : 0) + (hasExcess ? 2 : 0);
 
   // Per-group header styles
-  const GH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid ${c}55`, padding:'5px 6px', fontSize:11, fontWeight:700 });
-  const SH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid ${c}33`, fontSize:10, padding:'4px 8px', fontWeight:600, whiteSpace:'nowrap', minWidth:68 });
+  const GH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid color-mix(in srgb, ${c} 33%, transparent)`, padding:'5px 6px', fontSize:11, fontWeight:700 });
+  const SH = (c, bg) => ({ background:bg, color:c, textAlign:'center', borderBottom:`2px solid color-mix(in srgb, ${c} 20%, transparent)`, fontSize:10, padding:'4px 8px', fontWeight:600, whiteSpace:'nowrap', minWidth:68 });
   const FC = (c, bg) => ({ fontFamily:'var(--font-mono)', fontSize:11, textAlign:'center', background:bg, color:c });
 
   // Build the visible groups dynamically. Always show delivery + total;
   // RSS/fuel/COD appear only when at least one row populates them.
   const allGroups = {
     delivery: { key: 'delivery', label: 'شحن',     color:'#3b9ccc', bg:'rgba(59,156,204,.08)', bgL:'rgba(59,156,204,.04)' },
-    rss:      { key: 'rss',      label: 'رسوم أمنية (RSS)',     color:'#a855f7', bg:'rgba(168,85,247,.08)', bgL:'rgba(168,85,247,.03)' },
+    rss:      { key: 'rss',      label: 'رسوم أمنية (RSS)',     color:'var(--brand-navy)', bg:'color-mix(in srgb, var(--brand-navy) 8%, transparent)', bgL:'color-mix(in srgb, var(--brand-navy) 3%, transparent)' },
     fuel:     { key: 'fuel',     label: 'وقود',    color:'#3aad78', bg:'rgba(58,173,120,.08)', bgL:'rgba(58,173,120,.03)' },
     cod:      { key: 'cod',      label: 'COD',     color:'var(--accent)', bg:'color-mix(in srgb, var(--accent) 10%, transparent)', bgL:'color-mix(in srgb, var(--accent) 4%, transparent)' },
     pos:      { key: 'pos',      label: 'رسوم بطاقة (POS)',     color:'#ec4899', bg:'rgba(236,72,153,.10)', bgL:'rgba(236,72,153,.04)' },
-    total:    { key: 'total',    label: 'الإجمالي',color:'#f59e0b', bg:'rgba(245,158,11,.08)', bgL:'rgba(245,158,11,.04)' },
+    total:    { key: 'total',    label: 'الإجمالي',color:'var(--gold)', bg:'color-mix(in srgb, var(--gold) 8%, transparent)', bgL:'color-mix(in srgb, var(--gold) 4%, transparent)' },
   };
   const groups = [
     allGroups.delivery,
@@ -358,8 +358,8 @@ function ResultsTable({ results, filter, showDetail, contract }) {
   };
 
   // Excess-column header styles (info-side, not a per-group diff trio)
-  const excessColor = '#fbbf24';
-  const excessBg    = 'rgba(251,191,36,.06)';
+  const excessColor = 'var(--gold)';
+  const excessBg    = 'color-mix(in srgb, var(--gold) 6%, transparent)';
 
   return (
     <div style={{ overflowX: 'auto' }}>
@@ -375,8 +375,8 @@ function ResultsTable({ results, filter, showDetail, contract }) {
                 {hasServiceType && <th rowSpan={2} style={{ minWidth:80 }}>نوع الخدمة</th>}
                 <th rowSpan={2} style={{ minWidth:70  }}>الوزن</th>
                 {hasExcess && <>
-                  <th rowSpan={2} style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>وزن زائد</th>
-                  <th rowSpan={2} style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
+                  <th rowSpan={2} style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid color-mix(in srgb, ${excessColor} 33%, transparent)` }}>وزن زائد</th>
+                  <th rowSpan={2} style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid color-mix(in srgb, ${excessColor} 33%, transparent)` }}>رسم زيادة</th>
                 </>}
                 {groups.map(g => (
                   <th key={g.key} colSpan={3} style={GH(g.color, g.bg)}>{g.label}</th>
@@ -400,12 +400,12 @@ function ResultsTable({ results, filter, showDetail, contract }) {
               {hasServiceType && <th style={{ minWidth:80 }}>نوع الخدمة</th>}
               <th style={{ minWidth:70  }}>الوزن</th>
               {hasExcess && <>
-                <th style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>وزن زائد</th>
-                <th style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid ${excessColor}55` }}>رسم زيادة</th>
+                <th style={{ minWidth:78, background:excessBg, color:excessColor, borderBottom:`2px solid color-mix(in srgb, ${excessColor} 33%, transparent)` }}>وزن زائد</th>
+                <th style={{ minWidth:88, background:excessBg, color:excessColor, borderBottom:`2px solid color-mix(in srgb, ${excessColor} 33%, transparent)` }}>رسم زيادة</th>
               </>}
-              <th style={{ background:'rgba(139,92,246,.1)', color:'var(--purple)', borderBottom:'2px solid rgba(139,92,246,.3)', minWidth:90 }}>المطلوب منهم</th>
+              <th style={{ background:'color-mix(in srgb, var(--accent) 10%, transparent)', color:'var(--purple)', borderBottom:'2px solid color-mix(in srgb, var(--accent) 30%, transparent)', minWidth:90 }}>المطلوب منهم</th>
               <th style={{ background:'color-mix(in srgb, var(--accent) 8%, transparent)', color:'var(--green)', borderBottom:'2px solid color-mix(in srgb, var(--accent) 30%, transparent)', minWidth:90 }}>متوقع</th>
-              <th style={{ background:'rgba(248,113,113,.08)', color:'var(--red)', borderBottom:'2px solid rgba(248,113,113,.3)', minWidth:80, fontWeight:700 }}>الفرق</th>
+              <th style={{ background:'color-mix(in srgb, var(--red) 8%, transparent)', color:'var(--red)', borderBottom:'2px solid color-mix(in srgb, var(--red) 30%, transparent)', minWidth:80, fontWeight:700 }}>الفرق</th>
               <th style={{ minWidth:90 }}>الحالة</th>
             </tr>
           )}
@@ -418,7 +418,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
             const iR       = r.invoiced?.rss      ?? r.rss             ?? 0;
             const iF       = r.invoiced?.fuel     ?? r.fuelSurcharge   ?? 0;
             const excess   = hasExcess ? computeExcess(r, contract) : { kg: 0, charge: 0 };
-            const rowBg    = isMis ? 'rgba(248,113,113,.03)' : 'transparent';
+            const rowBg    = isMis ? 'color-mix(in srgb, var(--red) 3%, transparent)' : 'transparent';
             return (
               <tr key={i} style={{ background: rowBg }}>
                 <td style={{ color:'var(--muted)', fontFamily:'var(--font-mono)', fontSize:10 }}>{i + 1}</td>
@@ -453,7 +453,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
                     const c = cellsFor(g, r, iD, iR, iF);
                     const isTotal = g.key === 'total';
                     return [
-                      <td key={`${g.key}-i`} style={{ ...FC(isTotal && isMis ? 'rgba(248,113,113,.9)' : 'var(--text)', g.bgL), ...(isTotal ? { fontWeight:600 } : {}) }}>{num(c.inv)}</td>,
+                      <td key={`${g.key}-i`} style={{ ...FC(isTotal && isMis ? 'color-mix(in srgb, var(--red) 90%, transparent)' : 'var(--text)', g.bgL), ...(isTotal ? { fontWeight:600 } : {}) }}>{num(c.inv)}</td>,
                       <td key={`${g.key}-e`} style={{ ...FC('var(--green)', g.bgL), ...(isTotal ? { fontWeight:600 } : {}) }}>{num(c.exp)}</td>,
                       <td key={`${g.key}-d`} style={{ textAlign:'center', background:g.bgL }}><DiffCell value={c.diff}/></td>,
                     ];
@@ -462,7 +462,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
                   (() => {
                     const totalCell = cellsFor(allGroups.total, r, iD, iR, iF);
                     return <>
-                      <td style={{ fontFamily:'var(--font-mono)', fontWeight:600, color: isMis ? 'rgba(248,113,113,.9)' : 'var(--text)' }}>{num(totalCell.inv)}</td>
+                      <td style={{ fontFamily:'var(--font-mono)', fontWeight:600, color: isMis ? 'color-mix(in srgb, var(--red) 90%, transparent)' : 'var(--text)' }}>{num(totalCell.inv)}</td>
                       <td style={{ fontFamily:'var(--font-mono)', color:'var(--green)', fontWeight:600 }}>{num(totalCell.exp)}</td>
                       <td><DiffCell value={totalCell.diff}/></td>
                     </>;
@@ -879,8 +879,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             {approvalGate.warnings?.length > 0 && (
               <div style={{
                 padding: '8px 12px',
-                background: 'rgba(251,191,36,.06)',
-                border: '1px solid rgba(251,191,36,.22)',
+                background: 'color-mix(in srgb, var(--gold) 6%, transparent)',
+                border: '1px solid color-mix(in srgb, var(--gold) 22%, transparent)',
                 borderRadius: 8,
                 fontSize: 11.5, color: 'var(--muted)',
               }}>
@@ -913,8 +913,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         {reviewStatus === 'rejected' && (
           <div style={{
             marginBottom: 16, padding: '10px 16px', borderRadius: 11,
-            background: 'rgba(248,113,113,.08)',
-            border: '1px solid rgba(248,113,113,.32)',
+            background: 'color-mix(in srgb, var(--red) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--red) 32%, transparent)',
             display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           }}>
             <XCircle size={18} color="var(--red)"/>
@@ -1033,7 +1033,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </div>
             <div style={{
               padding: '12px 14px',
-              background: '#0A0A0B',
+              background: 'linear-gradient(135deg, var(--brand-navy), var(--brand-navy-2))',
               borderRadius: 10,
               color: '#fff',
             }}>
@@ -1047,8 +1047,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
           {summary.taxRoundingAdjustment && summary.taxRoundingAdjustment !== 0 ? (
             <div style={{
               marginTop: 12, padding: '8px 12px',
-              background: 'rgba(251,191,36,.06)',
-              border: '1px solid rgba(251,191,36,.20)',
+              background: 'color-mix(in srgb, var(--gold) 6%, transparent)',
+              border: '1px solid color-mix(in srgb, var(--gold) 20%, transparent)',
               borderRadius: 8, fontSize: 11.5, color: 'var(--gold)',
               display: 'flex', alignItems: 'center', gap: 7,
             }}>
