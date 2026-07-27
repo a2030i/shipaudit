@@ -79,6 +79,8 @@ export default function PlatformCarriers({ isActive = true }) {
         'الهامش': r.markup,
         'سعر التكلفة': r.costPrice ?? '',
         'سعر البيع': r.sellPrice ?? '',
+        'الربح': (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '',
+        'الربح بعد الوقود': (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice - ((r.base || 0) * (r.fuelPct || 0))).toFixed(2)) : '',
         'رجيع مجاني': r.freeReturn ? 'نعم' : 'لا',
         'العقد': r.hasContract ? (r.contractLabel || 'موجود') : 'بلا عقد',
       }));
@@ -117,10 +119,17 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['مفعّلة', 'الشركة', 'التكلفة الأساسية', 'التفاصيل', 'الهامش', 'سعر التكلفة', 'سعر البيع', 'رجيع مجاني'].map(h => <th key={h} style={th}>{h}</th>)}
+                  {['مفعّلة', 'الشركة', 'التكلفة الأساسية', 'التفاصيل', 'الهامش', 'سعر التكلفة', 'سعر البيع', 'الربح', 'رجيع مجاني'].map(h => <th key={h} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
-                  {sorted.map(r => (
+                  {sorted.map(r => {
+                    // الربح = البيع − التكلفة. للناقلين ذوي الوقود (نتحمّله للناقل) نعرض
+                    // «بعد الوقود» = الربح − (الأساس × الوقود%) لصورة أدق.
+                    const profit = (r.sellPrice != null && r.costPrice != null) ? r.sellPrice - r.costPrice : null;
+                    const fuelCost = (r.base != null && r.fuelPct) ? r.base * r.fuelPct : 0;
+                    const profitNet = profit != null ? profit - fuelCost : null;
+                    const pColor = profit == null ? 'var(--muted2)' : profit <= 0 ? 'var(--red)' : profit < 1.5 ? 'var(--gold)' : 'var(--green)';
+                    return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="مفعّلة" style={cell}>
                         <input type="checkbox" checked={r.isActive} disabled={!canEdit}
@@ -159,12 +168,20 @@ export default function PlatformCarriers({ isActive = true }) {
                           </span>
                         ) : (r.sellPrice != null ? `${fmt2(r.sellPrice)} ر.س` : '—')}
                       </td>
+                      <td data-label="الربح" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
+                        {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
+                        {profit != null && fuelCost > 0 && (
+                          <div style={{ fontSize: 9.5, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
+                            بعد الوقود {profitNet > 0 ? '+' : ''}{fmt2(profitNet)}
+                          </div>
+                        )}
+                      </td>
                       <td data-label="رجيع مجاني" style={cell}>
                         <input type="checkbox" checked={r.freeReturn} disabled={!canEdit}
                           onChange={e => patch(r.id, { free_return: e.target.checked })} style={{ cursor: canEdit ? 'pointer' : 'default', width: 16, height: 16 }}/>
                       </td>
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>
