@@ -296,6 +296,9 @@ function AppInner({ theme, toggleTheme }) {
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [collapsed,       setCollapsed]       = useState(false);
+  // القائمة المتداخلة: الهَب النشط يتوسّع تلقائياً + توسيع يدوي لبقية الهَبات (chevron)
+  const [openHubs, setOpenHubs] = useState(() => new Set());
+  const toggleHub = (id) => setOpenHubs(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // Per-section open/closed state for the accordion. Persists in
@@ -673,7 +676,9 @@ function AppInner({ theme, toggleTheme }) {
                     {/* بعض عناصر الـhub تعرض اختصارات فرعية عند الحاجة العملية للوصول السريع. */}
                     {items.map(n => {
                       const activeSubTab = subTabOf(n);
-                      const showSubTabs = !collapsed && n.showSubTabsInNav && n.subTabs?.length;
+                      const hasSub = !collapsed && n.subTabs?.length;
+                      // القائمة المتداخلة: الهَب النشط يتوسّع تلقائياً، وغيره بالضغط على chevron
+                      const expanded = hasSub && (activeFor(n) || openHubs.has(n.id));
                       return (
                         <div key={n.id}>
                           <NavBtn
@@ -683,16 +688,27 @@ function AppInner({ theme, toggleTheme }) {
                             collapsed={collapsed}
                             onClick={() => goto(n.path)}
                             nested
+                            expandable={hasSub}
+                            expanded={expanded}
+                            onToggleExpand={hasSub ? () => toggleHub(n.id) : undefined}
                           />
-                          {showSubTabs && n.subTabs.map(t => (
-                            <NavSubBtn
-                              key={t.tabId}
-                              tab={t}
-                              active={activeSubTab?.tabId === t.tabId}
-                              accent={sec.accent}
-                              onClick={() => goto(`${n.path}?tab=${t.tabId}`)}
-                            />
-                          ))}
+                          {expanded && (
+                            // خط شجري خفيف يربط التبويبات الفرعية بالهَب — للوصول السريع
+                            <div style={{
+                              marginInlineStart: 21, paddingInlineStart: 3, marginBottom: 3,
+                              borderInlineStart: `1.5px solid color-mix(in srgb, ${sec.accent} 28%, transparent)`,
+                            }}>
+                              {n.subTabs.map(t => (
+                                <NavSubBtn
+                                  key={t.tabId}
+                                  tab={t}
+                                  active={activeSubTab?.tabId === t.tabId}
+                                  accent={sec.accent}
+                                  onClick={() => goto(`${n.path}?tab=${t.tabId}`)}
+                                />
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1112,7 +1128,7 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
+function NavBtn({ n, active, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
   const Icon = n.icon;
   // Section-tinted active state — when an `accent` prop is passed
   // (from a sectioned item) the active background, icon and dot all
@@ -1141,7 +1157,21 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested }) {
         />
       </span>
       <span className="nav-label" style={{ flex: 1 }}>{n.label}</span>
-      {active && (
+      {expandable && !collapsed ? (
+        // chevron توسيع/طيّ التبويبات الفرعية — لا يُنقّل (يوقف الانتشار)
+        <span
+          role="button"
+          title={expanded ? 'طيّ' : 'توسيع'}
+          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+            color: active && accent ? accent : 'var(--muted)', cursor: 'pointer',
+          }}
+        >
+          <ChevronDown size={14} style={{ transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'none' }}/>
+        </span>
+      ) : active && (
         <span
           className={accent ? '' : 'nav-dot'}
           style={accent ? {
@@ -1164,9 +1194,9 @@ function NavSubBtn({ tab, active, accent, onClick }) {
       onClick={onClick}
       className={`nav-sub-item ${active ? 'active' : ''}`}
       style={{
-        width: 'calc(100% - 18px)',
-        minHeight: 32,
-        margin: '1px 14px 1px 4px',
+        width: 'calc(100% - 8px)',
+        minHeight: 31,
+        margin: '1px 4px 1px 2px',
         padding: '6px 10px',
         border: 'none',
         borderRadius: 9,
