@@ -29,11 +29,20 @@ export function extractBaseCost(carrier) {
     return { base: null, reason: 'دولي/جدول' };
   }
   const first = arr[0];
-  const base = Number(first.price);
-  if (!Number.isFinite(base)) return { base: null, reason: 'غير محدّد' };
+  const rawBase = Number(first.price);
+  if (!Number.isFinite(rawBase)) return { base: null, reason: 'غير محدّد' };
+  // ⚠️ توحيد أساس الضريبة: كل المقارنة **بدون ضريبة** (أسعار العقود قبل
+  // الضريبة، والمحرّك يضيف 15% لاحقاً). لكن عقد ويبك يحمل
+  // `deliveryInclusiveVat` — أي أن سعره المكتوب **شامل الضريبة** (§2.4c).
+  // بلا القسمة على 1.15 هنا كانت تكلفته تُحتسب من أساس شامل مقابل بيع
+  // غير شامل: تكلفة مضخّمة 1.83 ر.س وربح منقوص بالقدر نفسه.
+  const VAT = 1.15;
+  const inclusiveVat = !!c.deliveryInclusiveVat;
+  const base = inclusiveVat ? Number((rawBase / VAT).toFixed(2)) : rawBase;
   const excess = arr[1]?.pricePerUnit ?? c.excessPerKg ?? null;
   return {
     base,
+    rawBase,                                               // كما كُتب في العقد
     upTo: first.upTo ?? null,                              // حتى كم كغ يشمل الأساس
     excessPerKg: excess != null ? Number(excess) : null,  // /كغ زائد
     fuelPct: Number(c.fuelPct) || 0,
@@ -99,6 +108,7 @@ export async function loadPlatformCarriers() {
       markup: m,
       markupOverride: pc.markup != null ? Number(pc.markup) : null,
       base: cost.base,
+      rawBase: cost.rawBase ?? cost.base,   // كما كُتب في العقد (قد يكون شاملاً)
       costReason: cost.reason,
       upTo: cost.upTo,
       excessPerKg: cost.excessPerKg,

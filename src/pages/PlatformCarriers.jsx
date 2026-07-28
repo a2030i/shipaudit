@@ -259,6 +259,11 @@ export default function PlatformCarriers({ isActive = true }) {
                         {!r.isCompetitor && r.costPrice != null && r.fuelAmt > 0 && (
                           <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>شامل وقود {(r.fuelPct * 100).toFixed(1)}% ({fmt2(r.fuelAmt)})</div>
                         )}
+                        {!r.isCompetitor && r.inclusiveVat && r.rawBase != null && (
+                          <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
+                            العقد {fmt2(r.rawBase)} شامل الضريبة ← {fmt2(r.base)} بدونها
+                          </div>
+                        )}
                       </td>
                       <td data-label="ربح لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
                         {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
