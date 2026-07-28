@@ -507,6 +507,26 @@ export async function loadCustomerMerchantLinks() {
 // The `merchants` argument is kept in the signature for backwards
 // compatibility but is no longer used here — the RPC reads the
 // latest merchants snapshot itself.
+// أسماء عملاء زوهو **الحيّة** (المرآة: العقود + الفواتير) ثم مطابقتها بكشف
+// المتاجر. كانت هذه الخطوة تعيش داخل زر «ربط تلقائي» في الصفحة فقط — فتُنسى
+// بعد كل رفع كشف جديد، ويبقى العملاء الجدد بلا متجر حتى ينتبه أحد.
+// استُخرِجت هنا كي يستدعيها الزر **والرفع** معاً (نقطة منطق واحدة).
+export async function autoLinkFromZoho({ userId } = {}) {
+  const [contactsRes, invoicesRes] = await Promise.all([
+    supabase.from('zoho_contacts').select('contact_name').eq('contact_type', 'customer'),
+    supabase.from('zoho_invoices').select('customer_name'),
+  ]);
+  if (contactsRes.error) throw contactsRes.error;
+  const names = [...new Set([
+    ...(contactsRes.data || []).map(r => r.contact_name),
+    ...(invoicesRes.data || []).map(r => r.customer_name),
+  ].filter(Boolean))];
+  if (!names.length) return { total: 0, matched: 0, unmatched: 0 };
+  const results = await autoLinkCustomers(names, null, { userId });
+  const matched = [...results.values()].filter(r => r.storeId).length;
+  return { total: names.length, matched, unmatched: names.length - matched };
+}
+
 export async function autoLinkCustomers(customerNames, _merchants, { userId } = {}) {
   if (!customerNames?.length) return new Map();
   const existing = await loadCustomerMerchantLinks();

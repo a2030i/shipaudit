@@ -24,10 +24,9 @@ import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone } from '.
 import { useAuth } from '../lib/auth.jsx';
 import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
-  computeMerchantInsights, autoLinkCustomers,
+  computeMerchantInsights, autoLinkFromZoho,
   loadUnmatchedCustomers, setCustomerMerchantLink,
 } from '../lib/merchantsService.js';
-import { supabase } from '../lib/supabase.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -202,6 +201,14 @@ function UploadModal({ onClose, onDone, userId }) {
         parsed, sourceFile: file?.name || null, userId,
       });
       toast(`تم رفع ${fmtCount(res.count)} متجر · ${res.prepaid} دفع مسبق · ${res.postpaid} دفع لاحق`, 'success');
+      // ربط تلقائي فوري: كشف جديد = متاجر جديدة تنتظر ربطها بعملاء زوهو.
+      // كانت خطوة يدوية بزر منفصل تُنسى غالباً، فيبقى العميل الجديد بلا
+      // متجر (بلا هاتف ولا سياق) في كل شاشات التحصيل والحملات.
+      // فشلها لا يُفشل الرفع — الكشف محفوظ والزر اليدوي يبقى متاحاً.
+      try {
+        const link = await autoLinkFromZoho({ userId });
+        if (link.total) toast(`ربط تلقائي: ${link.matched}/${link.total} عميل`, 'info');
+      } catch { /* الزر اليدوي في الصفحة يعيد المحاولة */ }
       onDone();
     } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
     setBusy(false);
@@ -328,19 +335,8 @@ export default function Merchants({ isActive = true }) {
     if (!data.merchants.length) { toast('ارفع المتاجر أولاً', 'warn'); return; }
     setAutoLinking(true);
     try {
-      const [contactsRes, invoicesRes] = await Promise.all([
-        supabase.from('zoho_contacts').select('contact_name').eq('contact_type', 'customer'),
-        supabase.from('zoho_invoices').select('customer_name'),
-      ]);
-      if (contactsRes.error) throw contactsRes.error;
-      const distinct = [...new Set([
-        ...(contactsRes.data || []).map(r => r.contact_name),
-        ...(invoicesRes.data || []).map(r => r.customer_name),
-      ].filter(Boolean))];
-      const results = await autoLinkCustomers(distinct, data.merchants, { userId: user?.id });
-      const matched   = [...results.values()].filter(r => r.storeId).length;
-      const unmatched = distinct.length - matched;
-      toast(`ربط ${matched}/${distinct.length} عميل (${unmatched} غير مرتبط — يحتاج ربط يدوي)`, 'success');
+      const { total, matched, unmatched } = await autoLinkFromZoho({ userId: user?.id });
+      toast(`ربط ${matched}/${total} عميل (${unmatched} غير مرتبط — يحتاج ربط يدوي)`, 'success');
       refreshUnmatchedCount();
     } catch (e) {
       toast(`فشل الربط: ${e.message}`, 'error');
