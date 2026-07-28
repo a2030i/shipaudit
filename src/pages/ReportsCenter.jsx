@@ -6,12 +6,16 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import * as XLSX from 'xlsx';
-import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange } from 'lucide-react';
+import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Select, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { persistAndDownloadExport, loadExportHistory, downloadExportFile } from '../lib/internalExportsService.js';
+import { quarters } from '../lib/zohoReportsService.js';
+
+// أرباع جاهزة للإقرار الضريبي (ربعي في السعودية للأغلب)
+const QUARTERS = quarters(8);
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -25,6 +29,7 @@ const monthLabel = (m) => {
 const KIND_LABEL = {
   monthly: 'تقرير شهري', carrier_soa: 'كشف حساب ناقل', bank_recon: 'مطابقة بنكية',
   cod: 'تحصيلات COD', invoicing: 'فوترة عملاء', weight: 'أوزان زائدة',
+  vat_return: 'الإقرار الضريبي', pnl_statement: 'قائمة الدخل',
 };
 
 export default function ReportsCenter({ isActive = true }) {
@@ -38,6 +43,10 @@ export default function ReportsCenter({ isActive = true }) {
   const [pMonth, setPMonth] = useState('');        // للتقرير الشهري
   const [pCarrier, setPCarrier] = useState('');    // لكشف الناقل
   const [pReconMonth, setPReconMonth] = useState(''); // للمطابقة البنكية ('' = الكل)
+  // تقارير زوهو الرسمية (الإقرار الضريبي ربعي · قائمة الدخل لأي فترة)
+  const [pQuarter, setPQuarter] = useState('');
+  const [pPnlFrom, setPPnlFrom] = useState('');
+  const [pPnlTo, setPPnlTo]     = useState('');
 
   const loadHistory = useCallback(() => {
     loadExportHistory({ limit: 40 }).then(setHistory).catch(() => setHistory([]));
@@ -109,6 +118,22 @@ export default function ReportsCenter({ isActive = true }) {
       r.bankOnly ? 'info' : 'success');
   });
 
+  // ── الإقرار الضريبي (من زوهو — خانات نموذج الهيئة حرفياً) ──
+  const genVat = () => run('vat', async () => {
+    const q = QUARTERS.find(x => x.key === pQuarter) || QUARTERS[0];
+    const { exportVatReturn } = await import('../lib/zohoReportsService.js');
+    const r = await exportVatReturn({ from: q.from, to: q.to, userId: user?.id });
+    const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
+    toast(`صدر الإقرار — ضريبة مخرجات ${fmt(r.totals.outputTax)} · مدخلات ${fmt(r.totals.inputTax)} · المستحق ${fmt(due)} ر.س`, 'success');
+  });
+
+  // ── قائمة الدخل لأي فترة ──
+  const genPnl = () => run('pnl', async () => {
+    const { exportPnlRange } = await import('../lib/zohoReportsService.js');
+    const r = await exportPnlRange({ from: pPnlFrom, to: pPnlTo, userId: user?.id });
+    toast(`صدرت قائمة الدخل — ${r.rowCount} بند${r.net != null ? ` · الصافي ${fmt(r.net)} ر.س` : ''}`, 'success');
+  });
+
   if (!can('carriers.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   return (
@@ -151,6 +176,34 @@ export default function ReportsCenter({ isActive = true }) {
           </Select>
           <Btn variant="accent" size="full" disabled={busy === 'recon'} icon={busy === 'recon' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genRecon}>
             توليد المطابقة
+          </Btn>
+        </ReportCard>
+
+        {/* الإقرار الضريبي — من زوهو بخانات نموذج الهيئة */}
+        <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
+          title="الإقرار الضريبي (القيمة المضافة)"
+          desc="من زوهو مباشرةً بخانات نموذج الهيئة (1..16): المخرجات · المدخلات · الصافي المستحق">
+          <Select value={pQuarter} onChange={e => setPQuarter(e.target.value)}>
+            {QUARTERS.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
+          </Select>
+          <Btn variant="accent" size="full" disabled={busy === 'vat'} icon={busy === 'vat' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genVat}>
+            توليد الإقرار
+          </Btn>
+        </ReportCard>
+
+        {/* قائمة الدخل من زوهو لأي فترة */}
+        <ReportCard icon={<FileBarChart size={18}/>} color="var(--accent3)"
+          title="قائمة الدخل (الأرباح والخسائر)"
+          desc="من زوهو بأساس الاستحقاق — بنفس أقسامه وحساباته حرفياً، لأي فترة تختارها">
+          <div style={{ display: 'flex', gap: 8 }}>
+            <input type="date" value={pPnlFrom} onChange={e => setPPnlFrom(e.target.value)}
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>
+            <input type="date" value={pPnlTo} onChange={e => setPPnlTo(e.target.value)}
+              style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>
+          </div>
+          <Btn variant="accent" size="full" disabled={busy === 'pnl' || !pPnlFrom || !pPnlTo}
+            icon={busy === 'pnl' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genPnl}>
+            توليد القائمة
           </Btn>
         </ReportCard>
       </div>
