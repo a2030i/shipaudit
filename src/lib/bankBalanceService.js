@@ -1,83 +1,121 @@
-// Bank balance tracking — manual ledger entry.
+// أرصدة البنوك — كل حساب مستقل، والإجمالي هو مجموع أحدث رصيد موثوق لكل بنك.
 //
-// The operator opens /overview, sees the cash position, and clicks
-// "تحديث رصيد البنك" to enter the current bank balance whenever
-// they check their account. Each update appends a new row to
-// bank_balance_log so we get a history sparkline + audit trail.
-//
-// Public API:
-//   loadCurrentBalance()  → { balance, recordedAt, notes, ... } | null
-//   setBalance({ balance, notes, userId })
-//   listHistory({ limit })
-//
-// Intentionally minimal — no bank-API integration, no statement
-// parsing. Just a manual entry the operator owns.
+// مصدر الرصيد لكل بنك:
+//   1) آخر كشف مرفوع لذلك البنك.
+//   2) آخر إدخال يدوي لذلك البنك.
+// يفوز الأحدث زمنياً داخل البنك نفسه. لا يجوز لإدخال يدوي لبنك واحد أن
+// يستبدل إجمالي بقية البنوك.
 
 import { supabase } from './supabase.js';
 
-export async function loadCurrentBalance() {
-  const { data, error } = await supabase
+const cleanBankName = (value) => String(value || '').trim();
+const dateValue = (value) => {
+  if (!value) return -1;
+  const time = new Date(value).getTime();
+  return Number.isFinite(time) ? time : -1;
+};
+
+const mapManual = (row) => ({
+  bank: cleanBankName(row.bank) || 'بنك الإنماء',
+  balance: Number(row.balance) || 0,
+  notes: row.notes,
+  asOf: row.recorded_at,
+  recordedAt: row.recorded_at,
+  source: 'manual',
+});
+
+export async function loadCurrentBalance(bank = null) {
+  let query = supabase
     .from('bank_balance_log')
-    .select('*')
+    .select('bank, balance, notes, recorded_at')
     .order('recorded_at', { ascending: false })
     .limit(1);
+
+  if (cleanBankName(bank)) query = query.eq('bank', cleanBankName(bank));
+
+  const { data, error } = await query;
   if (error) throw error;
-  const r = data?.[0];
-  if (!r) return null;
+  return data?.[0] ? mapManual(data[0]) : null;
+}
+
+export async function loadEffectiveBankBalance() {
+  const [manualResult, statementResult] = await Promise.all([
+    supabase
+      .from('bank_balance_log')
+      .select('bank, balance, notes, recorded_at')
+      .order('recorded_at', { ascending: false }),
+    supabase
+      .from('bank_statement_summaries')
+      .select('bank, period_to, closing_balance')
+      .order('period_to', { ascending: false }),
+  ]);
+
+  if (manualResult.error) throw manualResult.error;
+  if (statementResult.error) throw statementResult.error;
+
+  const latestManual = new Map();
+  for (const row of manualResult.data || []) {
+    const item = mapManual(row);
+    if (!latestManual.has(item.bank)) latestManual.set(item.bank, item);
+  }
+
+  const latestStatement = new Map();
+  for (const row of statementResult.data || []) {
+    const bank = cleanBankName(row.bank) || 'بنك الإنماء';
+    if (!latestStatement.has(bank)) {
+      latestStatement.set(bank, {
+        bank,
+        balance: Number(row.closing_balance) || 0,
+        closing: Number(row.closing_balance) || 0,
+        notes: null,
+        asOf: row.period_to,
+        source: 'statement',
+      });
+    }
+  }
+
+  const names = new Set([...latestStatement.keys(), ...latestManual.keys()]);
+  const banks = [...names]
+    .map((bank) => {
+      const statement = latestStatement.get(bank);
+      const manual = latestManual.get(bank);
+      if (!statement) return manual;
+      if (!manual) return statement;
+      return dateValue(manual.asOf) > dateValue(statement.asOf) ? manual : statement;
+    })
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
+
+  if (!banks.length) return null;
+
+  const sources = new Set(banks.map(b => b.source));
+  const latestAsOf = banks.reduce(
+    (latest, bank) => dateValue(bank.asOf) > dateValue(latest) ? bank.asOf : latest,
+    null,
+  );
+
   return {
-    balance:    Number(r.balance) || 0,
-    notes:      r.notes,
-    recordedAt: r.recorded_at,
+    balance: banks.reduce((sum, bank) => sum + bank.balance, 0),
+    source: sources.size === 1 ? banks[0].source : 'mixed',
+    asOf: latestAsOf,
+    notes: `إجمالي ${banks.length} ${banks.length === 1 ? 'بنك مسجّل' : 'بنوك مسجّلة'}`,
+    banks,
   };
 }
 
-// الرصيد الفعّال — نقطة الحقيقة الوحيدة (فحص وكلاء 2026-07-03: الرئيسية
-// كانت تحسم كشف-مقابل-يدوي بينما /forecast يقرأ اليدوي فقط — وهو فارغ —
-// فيختفي التنبؤ رغم وجود ختامي كشف). المنطق: الأحدث تاريخاً يفوز بين
-// ختامي آخر كشف مرفوع (bank_statement_summaries) والإدخال اليدوي.
-// يرجع { balance, source: 'statement'|'manual', asOf, notes } أو null.
-export async function loadEffectiveBankBalance() {
-  // متعدد البنوك (§2026-07-27): رصيد الكشوف = مجموع ختامي آخر كشف لكل بنك (لا بنك
-  // واحد). أحدث فترة عبر البنوك تحدّد asOf. اليدوي يبقى بديلاً حين لا كشوف.
-  const [manual, summaries] = await Promise.all([
-    loadCurrentBalance().catch(() => null),
-    supabase.from('bank_statement_summaries')
-      .select('bank, period_to, closing_balance')
-      .order('period_to', { ascending: false })
-      .then(r => r.data || []).catch(() => []),
-  ]);
-  // ختامي آخر كشف لكل بنك (summaries مرتّبة تنازلياً → أول ظهور = الأحدث)
-  const byBank = new Map();
-  for (const s of summaries) {
-    const b = s.bank || 'بنك الإنماء';
-    if (!byBank.has(b)) byBank.set(b, { closing: Number(s.closing_balance) || 0, asOf: s.period_to });
-  }
-  const banks = [...byBank.entries()].map(([bank, v]) => ({ bank, ...v }));
-  const stmtTotal = banks.reduce((sum, b) => sum + b.closing, 0);
-  const latestAsOf = banks.reduce((mx, b) => (b.asOf && (!mx || b.asOf > mx) ? b.asOf : mx), null);
+export async function setBalance({ bank, balance, notes = null, userId = null }) {
+  const bankName = cleanBankName(bank);
+  const amount = Number(balance);
+  if (!bankName) throw new Error('اسم البنك مطلوب');
+  if (!Number.isFinite(amount)) throw new Error('قيمة الرصيد غير صالحة');
 
-  const manualDate = manual?.recordedAt ? new Date(manual.recordedAt).getTime() : -1;
-  const stmtDate   = latestAsOf ? new Date(latestAsOf).getTime() : -1;
-  if (banks.length && stmtDate >= manualDate) {
-    return {
-      balance: stmtTotal, source: 'statement', asOf: latestAsOf,
-      notes: banks.length > 1 ? `مجموع ${banks.length} بنوك (ختامي آخر كشف لكل بنك)` : `الرصيد الختامي لكشف ${latestAsOf}`,
-      banks,
-    };
-  }
-  if (manual) return { balance: manual.balance, source: 'manual', asOf: manual.recordedAt, notes: manual.notes };
-  return null;
-}
-
-export async function setBalance({ balance, notes = null, userId = null }) {
-  const n = Number(balance);
-  if (!Number.isFinite(n)) throw new Error('قيمة الرصيد غير صالحة');
   const { data, error } = await supabase
     .from('bank_balance_log')
     .insert({
-      balance:      n,
-      notes:        notes?.trim() || null,
-      recorded_by:  userId || null,
+      bank: bankName,
+      balance: amount,
+      notes: notes?.trim() || null,
+      recorded_by: userId || null,
     })
     .select()
     .single();
@@ -85,18 +123,23 @@ export async function setBalance({ balance, notes = null, userId = null }) {
   return data;
 }
 
-export async function listBalanceHistory({ limit = 30 } = {}) {
-  const { data, error } = await supabase
+export async function listBalanceHistory({ bank = null, limit = 30 } = {}) {
+  let query = supabase
     .from('bank_balance_log')
     .select('*')
     .order('recorded_at', { ascending: false })
     .limit(limit);
+
+  if (cleanBankName(bank)) query = query.eq('bank', cleanBankName(bank));
+
+  const { data, error } = await query;
   if (error) throw error;
-  return (data || []).map(r => ({
-    id:         r.id,
-    balance:    Number(r.balance) || 0,
-    notes:      r.notes,
-    recordedAt: r.recorded_at,
-    recordedBy: r.recorded_by,
+  return (data || []).map(row => ({
+    id: row.id,
+    bank: cleanBankName(row.bank) || 'بنك الإنماء',
+    balance: Number(row.balance) || 0,
+    notes: row.notes,
+    recordedAt: row.recorded_at,
+    recordedBy: row.recorded_by,
   }));
 }

@@ -69,7 +69,7 @@ export default function Overview({ carriers = [], isActive = true }) {
     setPeriodRaw(p);
     try { sessionStorage.setItem('sa-overview-period', p); } catch { /* ignore */ }
   }, []);
-  const [bankEdit, setBankEdit] = useState(null);   // { current, notes } when open
+  const [bankEdit, setBankEdit] = useState(false);
 
   const carrierNameById = useMemo(
     () => new Map((carriers || []).map(c => [c.id, c.name])),
@@ -155,31 +155,49 @@ export default function Overview({ carriers = [], isActive = true }) {
         }
       />
 
+      <nav className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
+        <button type="button" onClick={() => document.getElementById('cash-now')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Wallet size={14}/> السيولة الآن
+        </button>
+        <button type="button" onClick={() => document.getElementById('month-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Calendar size={14}/> أداء الشهر
+        </button>
+        <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Users size={14}/> تحصيل العملاء
+        </button>
+        <button type="button" onClick={() => document.getElementById('carriers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Building2 size={14}/> التزامات الناقلين
+        </button>
+        <button type="button" className="is-primary" onClick={() => navigate('/pnl')}>
+          <TrendingUp size={14}/> الربح الفعلي
+        </button>
+      </nav>
+
       {/* أرقام النقد (البنك/العملاء/الناقلين) خلف overview.cash_position —
           overview.view وحدها تعرض الصفحة بلا الوضع النقدي */}
       {can('overview.cash_position') && (
-        <OperationsCommand
-          data={data}
-          vat={vat}
-          period={period}
-          showCashPosition={can('overview.cash_position')}
-          onNavigate={navigate}
-          onRefresh={refresh}
-          onEditBank={canEditBank ? () => setBankEdit({
-            current: data.cashPosition.bankBalance ?? '',
-            notes:   '',
-          }) : null}
-        />
+        <div id="cash-now" className="overview-anchor">
+          <OperationsCommand
+            data={data}
+            vat={vat}
+            period={period}
+            showCashPosition={can('overview.cash_position')}
+            onNavigate={navigate}
+            onRefresh={refresh}
+            onEditBank={canEditBank ? () => setBankEdit(true) : null}
+          />
+        </div>
       )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
-      <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
-        حركة الشهر — {fmtMonth(period)}
-      </SectionTitle>
-      <div style={{
-        display: 'grid', gap: 12, marginBottom: 24,
-        gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-      }}>
+      <div id="month-performance" className="overview-anchor">
+        <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
+          أداء الشهر — {fmtMonth(period)}
+        </SectionTitle>
+        <div style={{
+          display: 'grid', gap: 12, marginBottom: 24,
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+        }}>
         <BigStat
           color="var(--red)"
           icon={<ArrowUpCircle size={18}/>}
@@ -217,6 +235,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           unit="ر.س"
           hint={data.thisMonth.driftTotal < 0 ? 'مبالغ زائدة وفّرناها' : data.thisMonth.driftTotal > 0 ? 'مبالغ ناقصة على فواتير' : 'لا فروق'}
         />
+        </div>
       </div>
 
       {/* Action alerts strip */}
@@ -345,7 +364,8 @@ export default function Overview({ carriers = [], isActive = true }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
       }}>
         {/* Top carriers by spend */}
-        <Card>
+        <div id="carriers-risk" className="overview-anchor">
+          <Card>
           <SectionTitle icon={<Building2 size={14}/>} color="var(--brand)" inline>
             الناقلون — تركّز الإنفاق ({fmtMonth(period)})
           </SectionTitle>
@@ -367,10 +387,12 @@ export default function Overview({ carriers = [], isActive = true }) {
               tint="var(--brand)"
             />
           )}
-        </Card>
+          </Card>
+        </div>
 
         {/* Top customers by debt */}
-        <Card>
+        <div id="customers-risk" className="overview-anchor">
+          <Card>
           <SectionTitle icon={<Users size={14}/>} color="#EF4444" inline>
             أكثر العملاء عليهم ديون{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
@@ -398,7 +420,8 @@ export default function Overview({ carriers = [], isActive = true }) {
               tint="#EF4444"
             />
           )}
-        </Card>
+          </Card>
+        </div>
       </div>
 
       {/* ── Section 3: AP aging ── */}
@@ -536,12 +559,12 @@ export default function Overview({ carriers = [], isActive = true }) {
       {/* Bank balance update modal */}
       {bankEdit && (
         <BankEditModal
-          current={bankEdit.current}
+          banks={data.cashPosition.bankAccounts || []}
           onCancel={() => setBankEdit(null)}
-          onSave={async ({ balance, notes }) => {
+          onSave={async ({ bank, balance, notes }) => {
             try {
-              await setBankBalance({ balance, notes, userId: profile?.id || null });
-              toast(`تم تحديث رصيد البنك إلى ${Number(balance).toLocaleString('en-US')} ر.س`, 'success');
+              await setBankBalance({ bank, balance, notes, userId: profile?.id || null });
+              toast(`تم تحديث ${bank} إلى ${Number(balance).toLocaleString('en-US')} ر.س`, 'success');
               setBankEdit(null);
               await refresh();
             } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
@@ -635,11 +658,13 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
 
   const cashParts = [
     {
-      label: 'رصيد البنك',
+      label: 'إجمالي البنوك المسجّلة',
       value: cash.bankBalance,
       tone: 'var(--accent)',
       Icon: Wallet,
-      helper: cash.bankSource === 'statement' ? 'من آخر كشف بنكي' : cash.bankSource === 'manual' ? 'إدخال يدوي' : 'غير محدّث',
+      helper: cash.bankAccounts?.length
+        ? `${cash.bankAccounts.length} ${cash.bankAccounts.length === 1 ? 'بنك' : 'بنوك'} · اضغط للتفاصيل`
+        : 'لا توجد حسابات مسجّلة',
       onClick: onEditBank,
     },
     {
@@ -677,7 +702,15 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
 
   const sourceChips = [
     { label: 'العملاء', value: cash.arSource === 'zoho' ? 'Zoho مباشر' : 'نسخة داخلية', tone: 'var(--green)' },
-    { label: 'البنك', value: cash.bankSource === 'statement' ? 'آخر كشف' : cash.bankSource === 'manual' ? 'يدوي' : 'غير محدد', tone: 'var(--accent3)' },
+    {
+      label: 'البنوك',
+      value: cash.bankSource === 'mixed'
+        ? 'كشوف + يدوي'
+        : cash.bankSource === 'statement' ? 'آخر كشف لكل بنك'
+        : cash.bankSource === 'manual' ? 'إدخال يدوي'
+        : 'غير محدد',
+      tone: 'var(--accent3)',
+    },
     { label: 'الناقلون', value: 'دفتر القيود', tone: 'var(--accent)' },
     {
       label: 'الفترة',
@@ -691,8 +724,8 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       <div className="ops-command-head">
         <div>
           <div className="ops-command-kicker"><Zap size={14}/> ملخص اليوم</div>
-          <h2>{showCashPosition ? 'الوضع النقدي وما يحتاج تدخلك' : 'ما يحتاج تدخلك اليوم'}</h2>
-          <p>{showCashPosition ? 'رقم واحد واضح، ثم مكوّناته، ثم الإجراءات التي لا ينبغي تأجيلها.' : 'أولويات قابلة للتنفيذ مرتبة حسب أثرها.'}</p>
+          <h2>{showCashPosition ? 'السيولة المسجّلة وما يحتاج تدخلك' : 'ما يحتاج تدخلك اليوم'}</h2>
+          <p>{showCashPosition ? 'الإجمالي يعتمد فقط على الحسابات المسجّلة، وتظهر تفاصيل كل بنك مباشرة تحته.' : 'أولويات قابلة للتنفيذ مرتبة حسب أثرها.'}</p>
         </div>
         <div className="ops-command-actions">
           <Btn size="sm" variant="primary" icon={<Target size={14}/>} onClick={() => onNavigate('/decisions')}>
@@ -709,12 +742,12 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
 
       <div className={`ops-command-grid ${showCashPosition ? '' : 'no-cash'}`}>
         {showCashPosition && <article className="ops-net-card">
-          <span className="ops-net-label">الوضع النقدي الكامل</span>
+          <span className="ops-net-label">السيولة المسجّلة</span>
           <div className={`ops-net-value ${netPositive === false ? 'negative' : ''}`}>
             {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
             {net != null && <small>ر.س</small>}
           </div>
-          <p>رصيد البنك + ما لك عند العملاء − ما عليك للناقلين.</p>
+          <p>إجمالي البنوك المسجّلة + ما لك عند العملاء − ما عليك للناقلين.</p>
 
           <div className="ops-cash-parts">
             {cashParts.map((item) => {
@@ -742,6 +775,22 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
               );
             })}
           </div>
+
+          {cash.bankAccounts?.length > 0 && (
+            <div className="ops-bank-breakdown" aria-label="تفصيل الحسابات البنكية">
+              <div className="ops-bank-breakdown-head">
+                <span>الحسابات الداخلة في الإجمالي</span>
+                {onEditBank && <button type="button" onClick={onEditBank}>إضافة أو تحديث بنك</button>}
+              </div>
+              {cash.bankAccounts.map((account) => (
+                <div className="ops-bank-row" key={account.bank}>
+                  <span className="ops-bank-name">{account.bank}</span>
+                  <small>{account.source === 'statement' ? 'آخر كشف' : 'تحديث يدوي'} · {formatBankDate(account.asOf)}</small>
+                  <strong>{fmt(account.balance ?? account.closing)} <small>ر.س</small></strong>
+                </div>
+              ))}
+            </div>
+          )}
 
           <div className="ops-net-foot">
             <span>صافي المستحقات دون البنك</span>
@@ -801,27 +850,70 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
   );
 }
 
-function BankEditModal({ current, onCancel, onSave }) {
-  const [balance, setBalanceLocal] = useState(current ?? '');
-  const [notes,   setNotes]   = useState('');
+function formatBankDate(value) {
+  if (!value) return 'بلا تاريخ';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function BankEditModal({ banks = [], onCancel, onSave }) {
+  const [bank, setBank] = useState('');
+  const [balance, setBalanceLocal] = useState('');
+  const [notes, setNotes] = useState('');
+
+  const pickBank = (account) => {
+    setBank(account.bank);
+    setBalanceLocal(String(account.balance ?? account.closing ?? ''));
+    setNotes(account.notes || '');
+  };
+
+  const canSave = bank.trim() && balance !== '';
   return (
-    <Modal title="تحديث رصيد البنك" onClose={onCancel} width={460}>
+    <Modal title="إدارة الحسابات البنكية" onClose={onCancel} width={560}>
       <form autoComplete="off"
-            onSubmit={(e) => { e.preventDefault(); if (balance !== '') onSave({ balance, notes }); }}
+            onSubmit={(e) => { e.preventDefault(); if (canSave) onSave({ bank: bank.trim(), balance, notes }); }}
             style={{ padding: '4px 4px 0' }}>
-        <div style={{
-          padding: 12, marginBottom: 12, borderRadius: 8,
-          background: 'var(--surface2)', border: '1px solid var(--border)',
-          fontSize: 12, color: 'var(--muted)', lineHeight: 1.7,
-        }}>
-          أدخل رصيد البنك الحالي. كل تحديث يُحفظ كسجل (يبقى التاريخ مرئياً) — فلا داعي لتعديل القيم القديمة.
+        <div className="bank-modal-intro">
+          كل بنك حساب مستقل. اختر بنكاً لتحديثه، أو اكتب اسم البنك الثالث لإضافته إلى الإجمالي.
         </div>
+        {banks.length > 0 && (
+          <div className="bank-modal-accounts">
+            {banks.map(account => (
+              <button type="button" key={account.bank} onClick={() => pickBank(account)}>
+                <span>
+                  <strong>{account.bank}</strong>
+                  <small>{account.source === 'statement' ? 'آخر كشف بنكي' : 'آخر تحديث يدوي'} · {formatBankDate(account.asOf)}</small>
+                </span>
+                <b>{fmt(account.balance ?? account.closing)} <small>ر.س</small></b>
+              </button>
+            ))}
+          </div>
+        )}
+        <label style={{ display: 'block', marginBottom: 10 }}>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
+            اسم البنك أو الحساب
+          </span>
+          <input
+            type="text" autoFocus value={bank}
+            onChange={(e) => setBank(e.target.value)}
+            placeholder="مثال: البنك الأهلي"
+            name="bank_name"
+            autoComplete="off" data-form-type="other"
+            style={{
+              width: '100%', padding: '10px 12px', fontSize: 14,
+              border: '1.5px solid var(--border)', borderRadius: 8,
+              background: 'var(--surface)', color: 'var(--text)',
+              fontFamily: 'var(--font-sans)', boxSizing: 'border-box',
+            }}
+          />
+        </label>
         <label style={{ display: 'block', marginBottom: 10 }}>
           <span style={{ fontSize: 11.5, color: 'var(--muted)', fontWeight: 600, display: 'block', marginBottom: 5 }}>
             الرصيد الحالي (ر.س)
           </span>
           <input
-            type="number" step="0.01" autoFocus value={balance}
+            type="number" step="0.01" value={balance}
             onChange={(e) => setBalanceLocal(e.target.value)}
             name="bank_balance"
             autoComplete="off" data-form-type="other" data-lpignore="true"
@@ -852,8 +944,8 @@ function BankEditModal({ current, onCancel, onSave }) {
           />
         </label>
         <div style={{ display: 'flex', gap: 8 }}>
-          <Btn size="md" variant="accent" disabled={balance === ''} onClick={() => onSave({ balance, notes })}>
-            احفظ
+          <Btn size="md" variant="accent" disabled={!canSave} onClick={() => onSave({ bank: bank.trim(), balance, notes })}>
+            حفظ رصيد الحساب
           </Btn>
           <Btn size="md" variant="ghost" onClick={onCancel}>إلغاء</Btn>
         </div>

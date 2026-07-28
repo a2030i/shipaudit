@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
+import WorkspaceContext from '../components/WorkspaceContext.jsx';
 
 import SalesToday  from './SalesToday.jsx';
 import StoreActivation from './StoreActivation.jsx';
@@ -24,13 +25,48 @@ import Merchants   from './Merchants.jsx';
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
 const TABS = [
   // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
-  { id: 'today',       label: 'خطة اليوم',           icon: Sunrise,     component: SalesToday },
-  { id: 'activation',  label: 'هدف التنشيط',        icon: TrendingUp,  component: StoreActivation },
-  { id: 'retargeting', label: 'إعادة الاستهداف',    icon: Target,      component: Retargeting, perm: 'sales.view' },
-  { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.hatif_leads' },
-  { id: 'external',    label: 'عملاء خارج المنصّة', icon: Store,       component: LeadsTab,    perm: 'sales.external_leads', activeProp: true },
-  { id: 'segments',    label: 'مجموعات العملاء',    icon: Layers,      component: Segments,    perm: 'sales.segments' },
-  { id: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, component: Merchants,   perm: 'merchants.view' },
+  {
+    id: 'today', label: 'خطة المبيعات اليوم', icon: Sunrise, component: SalesToday,
+    eyebrow: 'بوصلة الموظف', purpose: 'ابدأ بأعلى الفرص قيمة اليوم',
+    description: 'تلخّص ما يستحق الاتصال الآن وتمنع تشتيت الفريق بين القوائم. هذه هي نقطة البداية اليومية وليست قاعدة بيانات جديدة.',
+    outcome: 'أولوية واتصال ونتيجة', tone: 'var(--brand)',
+  },
+  {
+    id: 'activation', label: 'تفعيل المتاجر الجديدة', icon: TrendingUp, component: StoreActivation,
+    eyebrow: 'نمو مبكر', purpose: 'حوّل التسجيل الجديد إلى أول شحنة',
+    description: 'للعملاء الذين انضموا ولم يبدؤوا الاستخدام بعد. هدفها تقصير الوقت من التسجيل إلى أول قيمة حقيقية للعميل.',
+    outcome: 'أول شحنة ناجحة', tone: 'var(--green)',
+  },
+  {
+    id: 'retargeting', label: 'استعادة العملاء الخاملين', icon: Target, component: Retargeting, perm: 'sales.view',
+    eyebrow: 'استعادة الإيراد', purpose: 'أعد العملاء الذين شحنوا ثم توقفوا',
+    description: 'تعطي الأولوية للعملاء ذوي التاريخ الفعلي، برسالة عودة مناسبة بدل معاملتهم كعملاء جدد.',
+    outcome: 'عودة عميل ذي قيمة', tone: 'var(--gold)',
+  },
+  {
+    id: 'hatif', label: 'العملاء المهتمون', icon: UserPlus, component: HatifLeads, perm: 'sales.hatif_leads',
+    eyebrow: 'طلب وارد', purpose: 'تابع من أبدى اهتماماً ولم يكمل التسجيل',
+    description: 'فرص دخلت عبر هاتف أو قناة تواصل. دور الشاشة تحويل الاهتمام إلى تسجيل، مع منع ضياع الطلب بين الموظفين.',
+    outcome: 'تحويل الاهتمام إلى تسجيل', tone: 'var(--accent3)',
+  },
+  {
+    id: 'external', label: 'العملاء المحتملون', icon: Store, component: LeadsTab, perm: 'sales.external_leads', activeProp: true,
+    eyebrow: 'استحواذ جديد', purpose: 'أدر القوائم الخارجية قبل دخول العميل للمنصة',
+    description: 'للعملاء الذين لم يسجلوا ولم يطلبوا التواصل بعد. تبقى منفصلة عن العملاء المهتمين حتى لا تختلط حرارة الفرص.',
+    outcome: 'عميل مؤهل وجاهز للتواصل', tone: 'var(--red)',
+  },
+  {
+    id: 'segments', label: 'شرائح الجمهور', icon: Layers, component: Segments, perm: 'sales.segments',
+    eyebrow: 'رسائل أدق', purpose: 'قسّم العملاء حسب القيمة والسلوك',
+    description: 'أداة تخطيط للحملات وليست قائمة اتصال مستقلة. استخدم الشريحة لاختيار الرسالة، ثم نفّذ من مسار الحملة المناسب.',
+    outcome: 'جمهور واضح ورسالة مناسبة', tone: 'var(--accent)',
+  },
+  {
+    id: 'merchants', label: 'دليل المتاجر', icon: ShoppingBag, component: Merchants, perm: 'merchants.view',
+    eyebrow: 'مرجع العملاء', purpose: 'ابحث في بيانات المتاجر وحالتها التشغيلية',
+    description: 'مرجع معلومات المتجر وربطه، وليس مسار متابعة مبيعات. لا تسجّل نشاطاً بيعياً هنا حتى تبقى المسؤوليات واضحة.',
+    outcome: 'بيانات متجر موثوقة', tone: 'var(--muted)',
+  },
 ];
 
 const LEGACY_PATH_TO_TAB = {
@@ -55,6 +91,7 @@ export default function SalesHub({ isActive = true }) {
     return visibleTabs[0]?.id || 'retargeting';
   };
   const [tab, setTab] = useState(getInitialTab);
+  const activeTab = visibleTabs.find(t => t.id === tab) || visibleTabs[0];
 
   useEffect(() => {
     if (!isActive) return;
@@ -101,6 +138,8 @@ export default function SalesHub({ isActive = true }) {
           );
         })}
       </div>
+
+      <WorkspaceContext tab={activeTab}/>
 
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {

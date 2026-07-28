@@ -11,6 +11,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HandCoins, PhoneCall, Scale, FileText } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
+import WorkspaceContext from '../components/WorkspaceContext.jsx';
 
 import CustomerMoney       from './CustomerMoney.jsx';
 import Collections         from './Collections.jsx';
@@ -18,10 +19,30 @@ import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
 
 const TABS = [
-  { id: 'money',    label: 'أرصدة العملاء',   icon: HandCoins, component: CustomerMoney,       perm: 'receivables.view' },
-  { id: 'queue',    label: 'قائمة التحصيل',   icon: PhoneCall, component: Collections,          perm: 'collections.view' },
-  { id: 'legal',    label: 'التصعيد القانوني', icon: Scale,     component: LegalEscalation,      perm: 'legal.view' },
-  { id: 'internal', label: 'الكشف الداخلي',   icon: FileText,  component: CustomerReceivables,  perm: 'receivables.view' },
+  {
+    id: 'money', label: 'من يدين لك؟', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
+    eyebrow: 'مرجع الدين', purpose: 'اعرف المبلغ الحقيقي المستحق من كل عميل',
+    description: 'يعرض فواتير زوهو المفتوحة ويقودك مباشرة إلى العميل والفواتير المتأخرة. هذه الشاشة للقرار المالي، وليست سجل اتصالات.',
+    outcome: 'عميل ومبلغ وفواتير واضحة', tone: 'var(--green)',
+  },
+  {
+    id: 'queue', label: 'متابعة التحصيل', icon: PhoneCall, component: Collections, perm: 'collections.view',
+    eyebrow: 'تنفيذ يومي', purpose: 'اتصل، سجّل الوعد، وحدّد المتابعة التالية',
+    description: 'قائمة عمل فريق التحصيل. استخدمها بعد معرفة الدين لتوثيق المحاولات والوعود ومنع تكرار الاتصال من أكثر من موظف.',
+    outcome: 'مالك واضح وخطوة تالية', tone: 'var(--red)',
+  },
+  {
+    id: 'legal', label: 'الحالات القانونية', icon: Scale, component: LegalEscalation, perm: 'legal.view',
+    eyebrow: 'تصعيد مضبوط', purpose: 'انقل فقط الحالات التي استنفدت التحصيل المعتاد',
+    description: 'لا تبدأ الحالة من هنا. تصل بعد محاولات موثقة، ثم تُدار المستندات والإجراءات القانونية دون خلطها بقائمة الاتصالات اليومية.',
+    outcome: 'ملف قانوني مكتمل المسار', tone: 'var(--gold)',
+  },
+  {
+    id: 'internal', label: 'مطابقة النظام الداخلي', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
+    eyebrow: 'تدقيق ومطابقة', purpose: 'قارن كشف النظام الداخلي مع المرجع المالي',
+    description: 'هذه شاشة فحص فروقات وربط بيانات، وليست المصدر الذي يُطالب العميل بناءً عليه. المطالبة تبدأ من «من يدين لك؟».',
+    outcome: 'فروقات معروفة بلا تضارب', tone: 'var(--accent3)',
+  },
 ];
 
 const LEGACY_PATH_TO_TAB = {
@@ -46,6 +67,7 @@ export default function CollectionsHub({ isActive = true }) {
     return visibleTabs[0]?.id || 'money';
   };
   const [tab, setTab] = useState(getInitialTab);
+  const activeTab = visibleTabs.find(t => t.id === tab) || visibleTabs[0];
 
   useEffect(() => {
     if (!isActive) return;
@@ -92,6 +114,8 @@ export default function CollectionsHub({ isActive = true }) {
           );
         })}
       </div>
+
+      <WorkspaceContext tab={activeTab}/>
 
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
