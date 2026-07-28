@@ -42,7 +42,7 @@ function shell({ title, subtitle, periodLine, bodyHtml, footNote }) {
 <style>
   /* هوامش ضيّقة + مقاسات مضغوطة كي يقع الإقرار في **صفحة واحدة**
      (كان يفيض بضعة بكسلات فتُطبَع صفحة ثانية فارغة — بلاغ 2026-07-28) */
-  @page { size: A4; margin: 9mm 8mm 8mm; }
+  @page { size: A4; margin: 8mm 5mm 7mm; }
   * { box-sizing: border-box; }
   html, body { height: auto; }
   body {
