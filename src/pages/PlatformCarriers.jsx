@@ -18,7 +18,6 @@ export default function PlatformCarriers({ isActive = true }) {
   const [markup, setMarkup] = useState(2);
   const [markupInput, setMarkupInput] = useState('2');
   const [savingMk, setSavingMk] = useState(false);
-  const [priceDraft, setPriceDraft] = useState({});   // `${carrierId}:${platform}` → نص السعر قيد التحرير
   const [showAll, setShowAll] = useState(false);       // إظهار غير المفعّلة (إدارة فقط)
 
   const load = useCallback(async () => {
@@ -95,62 +94,21 @@ export default function PlatformCarriers({ isActive = true }) {
     setSavingMk(false);
   };
 
-  // حفظ سعر منصّة واحدة (لمحة/أوتو/طرود) — تحديث متفائل للحقل الصحيح.
-  const PRICE_COLS = { lamha: ['sell_price', 'sellPrice'], auto: ['sell_auto', 'sellAuto'], torod: ['sell_torod', 'sellTorod'] };
-  const savePrice = async (id, plat) => {
-    const k = `${id}:${plat}`;
-    const raw = priceDraft[k];
-    const v = raw === '' || raw == null ? null : Number(raw);
-    if (v != null && !Number.isFinite(v)) { toast('قيمة غير صالحة', 'error'); return; }
-    const rowKey = plat === 'cost' ? 'costPrice' : PRICE_COLS[plat][1];
-    const row = (rows || []).find(r => r.id === id);
-    setRows(prev => prev.map(r => r.id === id ? { ...r, [rowKey]: v } : r));
-    setPriceDraft(d => { const n = { ...d }; delete n[k]; return n; });
-    try {
-      if (row?.isCompetitor) {
-        // جدول المنافسين: لمحة→sell_lamha · التكلفة→cost · البقية كما هي
-        const compCol = plat === 'lamha' ? 'sell_lamha' : plat === 'cost' ? 'cost' : PRICE_COLS[plat][0];
-        await savePlatformCompetitor(row.compId, { [compCol]: v }, user?.id);
-      } else await savePlatformCarrier(id, { [PRICE_COLS[plat][0]]: v }, user?.id);
-    } catch (e) { toast(`تعذّر الحفظ: ${e.message}`, 'error'); load(); }
-  };
+  // مفاتيح صفوف أسعار المنصّات (للعرض فقط — لا تحرير من الشاشة)
+  const PRICE_COLS = { lamha: 'sellPrice', auto: 'sellAuto', torod: 'sellTorod' };
 
-  // خلية التكلفة القابلة للتحرير — لصفوف لمحة بلا عقد (يدخل المستخدم التكلفة يدوياً)
-  const costCellNode = (r) => {
-    const cur = r.costPrice;
-    const k = `${r.id}:cost`;
-    const dirty = priceDraft[k] != null && priceDraft[k] !== String(cur ?? '');
-    return (
-      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-        <input type="number" step="0.5" placeholder="التكلفة"
-          value={priceDraft[k] ?? (cur ?? '')}
-          onChange={e => setPriceDraft(d => ({ ...d, [k]: e.target.value }))}
-          onKeyDown={e => { if (e.key === 'Enter') savePrice(r.id, 'cost'); }}
-          style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: '1px dashed var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}/>
-        {dirty && <button onClick={() => savePrice(r.id, 'cost')} title="حفظ" style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 6, cursor: 'pointer', padding: '4px 6px', display: 'flex' }}><Save size={12}/></button>}
-      </span>
-    );
-  };
-
-  // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود)
+  // خلية سعر — **للعرض فقط** (قرار المستخدم 2026-07-29).
+  //
+  // كانت قابلة للتحرير مباشرةً، والتحرير السريع هو ما ينتج الأخطاء التي
+  // اصطدنا اليوم: سعر شامل الضريبة يُكتب في عمود بلا ضريبة (فرق 13%)، أو
+  // سعر النسخة V2 يُكتب على سجلّ العقد V1 (الحصري)، أو خانة فارغة تُقرأ
+  // «غير متاحة». كل هذه أخطاء **صامتة** لا يكشفها الجدول.
+  // فالأسعار تُدخَل من مسار واحد مضبوط، والشاشة تعرض لا تحرّر.
   const priceCellNode = (r, plat) => {
     // منصّة لا تقدّم هذا الناقل → «غير متاحة» (لا تدخل المقارنة)
     if ((r.unavailable || []).includes(plat)) return <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>غير متاحة</span>;
-    const rowKey = PRICE_COLS[plat][1];
-    const cur = r[rowKey];
-    const k = `${r.id}:${plat}`;
-    const dirty = priceDraft[k] != null && priceDraft[k] !== String(cur ?? '');
-    if (!canEdit) return <span style={{ fontFamily: 'var(--font-mono)' }}>{cur != null ? fmt2(cur) : '—'}</span>;
-    return (
-      <span style={{ display: 'inline-flex', gap: 4, alignItems: 'center' }} onClick={e => e.stopPropagation()}>
-        <input type="number" step="0.5" placeholder="—"
-          value={priceDraft[k] ?? (cur ?? '')}
-          onChange={e => setPriceDraft(d => ({ ...d, [k]: e.target.value }))}
-          onKeyDown={e => { if (e.key === 'Enter') savePrice(r.id, plat); }}
-          style={{ width: 68, padding: '5px 7px', borderRadius: 7, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', textAlign: 'center' }}/>
-        {dirty && <button onClick={() => savePrice(r.id, plat)} title="حفظ" style={{ border: 'none', background: 'var(--accent)', color: '#fff', borderRadius: 6, cursor: 'pointer', padding: '4px 6px', display: 'flex' }}><Save size={12}/></button>}
-      </span>
-    );
+    const cur = r[PRICE_COLS[plat]];
+    return <span style={{ fontFamily: 'var(--font-mono)' }}>{cur != null ? fmt2(cur) : '—'}</span>;
   };
 
   const exportXlsx = async () => {
@@ -314,7 +272,8 @@ export default function PlatformCarriers({ isActive = true }) {
         ) : null}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted2)', marginTop: 8 }}>
-        <b>كل الأرقام بدون ضريبة.</b> أسعار طرود وصلت شاملة الضريبة وأُدخلت مقسومة على 1.15 (لا مضروبة في 0.85 — الفرق ~1.7% لكل سعر).
+        <b>كل الأرقام بدون ضريبة</b>، و<b>أسعار البيع للعرض فقط</b> — تُدخَل من مسار واحد مضبوط لا من الجدول، لأن الخطأ هنا صامت (سعر شامل الضريبة في عمود بلا ضريبة، أو سعر النسخة القياسية على سجلّ النسخة الحصرية).
+        أسعار طرود وصلت شاملة الضريبة وأُدخلت مقسومة على 1.15 (لا مضروبة في 0.85 — الفرق ~1.7% لكل سعر).
         الخانة الفارغة تعني <b>لم يُدخَل سعر</b>، و«غير متاحة» تعني أن المنصّة لا تقدّم هذه الشركة. و«أفضل سعر» لا يُعلن فائزاً إلا بوجود سعرين فأكثر. سعر التكلفة يتبع العقد.
       </div>
     </Pad>
