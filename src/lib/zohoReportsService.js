@@ -196,3 +196,31 @@ export function quarters(max = 12, today = new Date()) {
   }
   return out;
 }
+
+// ── ضريبة الربع الجاري (حيّة) ──────────────────────────────────────────
+// تُقرأ من كاش `vat_snapshots` الذي يحدّثه كرون `zoho-vat-refresh` كل 30
+// دقيقة مع مزامنة زوهو — فالشاشات تعرضها فوراً بلا استدعاء API بطيء.
+export async function loadCurrentVat() {
+  const { data, error } = await supabase.rpc('vat_current_quarter');
+  if (error) throw error;
+  const r = Array.isArray(data) ? data[0] : data;
+  if (!r) return null;
+  const n = (v) => Number(v) || 0;
+  return {
+    quarter: r.quarter, from: r.period_from, to: r.period_to,
+    outputTax: n(r.output_tax), inputTax: n(r.input_tax), netDue: n(r.net_due),
+    sales: n(r.output_amount), isClosed: !!r.is_closed,
+    fetchedAt: r.fetched_at, daysLeft: Number(r.days_left) || 0,
+    prevNetDue: r.prev_net_due == null ? null : n(r.prev_net_due),
+  };
+}
+
+// تحديث فوري بضغطة (لا ينتظر الكرون) — للمدير/صاحب صلاحية الوضع المالي.
+export async function refreshCurrentVat() {
+  const { data, error } = await supabase.functions.invoke('zoho-reports', {
+    body: { action: 'refresh_vat' },
+  });
+  if (error) throw new Error(error.message || 'تعذّر التحديث من زوهو');
+  if (data?.error) throw new Error(data.error);
+  return data?.snapshot || null;
+}

@@ -112,6 +112,51 @@ Deno.serve(async (req) => {
       return json({ ok: true, results: out });
     }
 
+    // ── تحديث كاش ضريبة الربع (يستدعيه الكرون كل 30د مع المزامنة) ──
+    // الواجهة تقرأ `vat_snapshots` فوراً بدل استدعاء زوهو عند كل فتح شاشة.
+    // بلا وسائط = الربع الجاري؛ ويقبل quarter='YYYY-Qn' لإعادة بناء ربع بعينه.
+    if (action === 'refresh_vat') {
+      const now = new Date();
+      let qy = now.getUTCFullYear();
+      let qn = Math.floor(now.getUTCMonth() / 3) + 1;
+      const asked = String(body.quarter || '');
+      const m = asked.match(/^(\d{4})-Q([1-4])$/);
+      if (m) { qy = Number(m[1]); qn = Number(m[2]); }
+      const m0 = (qn - 1) * 3;
+      const qFrom = `${qy}-${String(m0 + 1).padStart(2, '0')}-01`;
+      const endM = m0 + 3;
+      const lastDay = new Date(Date.UTC(qy, endM, 0)).getUTCDate();
+      const qTo = `${qy}-${String(endM).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+
+      const qs = new URLSearchParams({
+        organization_id: orgId, from_date: qFrom, to_date: qTo,
+        cash_based: 'false', filter_by: 'TransactionDate.CustomDate',
+      });
+      const r = await fetch(`${apiDomain}/books/v3/reports/vatsummary?${qs}`, { headers: auth_h });
+      const j = await r.json().catch(() => ({}));
+      if (j.code !== 0) return json({ error: `zoho: ${j.message || 'vatsummary failed'}` }, 400);
+      const s = j.vat_summary || {};
+      const pick = (arr: Record<string, unknown>[], no: string) =>
+        (arr || []).find((b) => String(b.box_no) === no) || {};
+      const out6  = pick(s.output_boxes, '6');
+      const in12  = pick(s.input_boxes, '12');
+      const net13 = pick(s.net_vat_due_boxes, '13');
+      const num = (v: unknown) => Number(v) || 0;
+
+      const row = {
+        quarter: `${qy}-Q${qn}`,
+        period_from: qFrom, period_to: qTo,
+        output_amount: num(out6.amount), output_tax: num(out6.tax_amount),
+        input_amount:  num(in12.amount), input_tax:  num(in12.tax_amount),
+        net_due: num(net13.tax_amount),
+        is_closed: new Date(`${qTo}T23:59:59Z`) < now,
+        fetched_at: new Date().toISOString(),
+      };
+      const { error } = await db.from('vat_snapshots').upsert(row);
+      if (error) return json({ error: `save failed: ${error.message}` }, 500);
+      return json({ ok: true, snapshot: row });
+    }
+
     const from = String(body.from || '');
     const to   = String(body.to || '');
     if (!isDate(from) || !isDate(to)) return json({ error: 'bad from/to — YYYY-MM-DD' }, 400);

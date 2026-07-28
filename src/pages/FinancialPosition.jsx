@@ -37,10 +37,18 @@ export default function FinancialPosition({ isActive = true }) {
   const [sel, setSel] = useState(currentPnlPeriod());
   const [busy, setBusy] = useState(false);
   const [dl, setDl] = useState(null);   // 'vat' | 'pnl' أثناء التصدير
+  const [vatNow, setVatNow] = useState(null);   // ضريبة الربع الجاري (كاش زوهو)
   const [billedByMonth, setBilledByMonth] = useState(new Map());   // دفترنا (فحص الفجوة)
   const [invCol, setInvCol] = useState(null);                      // فوترنا/حصّلنا للشهر المحدد
   const [events, setEvents] = useState(null);                      // آخر الحركات (webhooks)
   const [claims, setClaims] = useState(null);                      // عدّاد الاسترداد التراكمي
+
+  // ضريبة الربع الجاري — من كاش زوهو (كرون كل 30د). فشلها صامت.
+  useEffect(() => {
+    if (!isActive) return;
+    import('../lib/zohoReportsService.js')
+      .then(m => m.loadCurrentVat()).then(setVatNow).catch(() => {});
+  }, [isActive]);
 
   // عدّاد الاسترداد — تحميل كسول مرة واحدة (المطالبات قليلة)
   useEffect(() => {
@@ -213,6 +221,55 @@ export default function FinancialPosition({ isActive = true }) {
           </Btn>
         </>}
       />
+
+      {/* ضريبة الربع الجاري — التزام قادم يُرى فوراً بلا سحب تقرير.
+          المصدر كاش زوهو (كرون كل 30د) + زر تحديث فوري. */}
+      {vatNow && (
+        <Card style={{ marginBottom: 14, padding: '14px 18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+            <span className="stat-icon-tile" style={{ '--sc-tone': 'var(--gold)' }}><Receipt size={17}/></span>
+            <div style={{ minWidth: 190 }}>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                ضريبة القيمة المضافة · {vatNow.quarter.replace('-Q', ' — الربع ')}
+                {!vatNow.isClosed && <span style={{ color: 'var(--accent3)' }}> · جارٍ</span>}
+              </div>
+              <div style={{ fontSize: 24, fontWeight: 800, fontFamily: 'var(--font-mono)',
+                color: vatNow.netDue < 0 ? 'var(--green)' : 'var(--gold)' }}>
+                {fmt(Math.abs(vatNow.netDue))} <span style={{ fontSize: 13 }}>ر.س</span>
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--muted2)' }}>
+                {vatNow.netDue < 0 ? 'رصيد دائن لصالحك' : 'مستحقة للهيئة حتى الآن'}
+                {!vatNow.isClosed && ` · باقٍ ${vatNow.daysLeft} يوم على انتهاء الربع`}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 18, flexWrap: 'wrap', fontSize: 12 }}>
+              <div><div style={{ color: 'var(--muted)', fontSize: 11 }}>ضريبة المبيعات</div>
+                <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(vatNow.outputTax)}</b></div>
+              <div><div style={{ color: 'var(--muted)', fontSize: 11 }}>ضريبة المشتريات</div>
+                <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(vatNow.inputTax)}</b></div>
+              <div><div style={{ color: 'var(--muted)', fontSize: 11 }}>مبيعات خاضعة</div>
+                <b style={{ fontFamily: 'var(--font-mono)' }}>{fmtK(vatNow.sales)}</b></div>
+            </div>
+            <div style={{ marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8 }}>
+              <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>
+                آخر تحديث من زوهو: {vatNow.fetchedAt ? new Date(vatNow.fetchedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : '—'}
+              </span>
+              <Btn size="sm" variant="ghost" disabled={dl === 'vatnow'}
+                icon={dl === 'vatnow' ? <Spinner size={12}/> : <RefreshCw size={13}/>}
+                onClick={async () => {
+                  setDl('vatnow');
+                  try {
+                    const m = await import('../lib/zohoReportsService.js');
+                    await m.refreshCurrentVat();
+                    setVatNow(await m.loadCurrentVat());
+                    toast('حُدّثت الضريبة من زوهو ✓', 'success');
+                  } catch (e) { toast(`تعذّر التحديث: ${e.message}`, 'error'); }
+                  setDl(null);
+                }}>تحديث الآن</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* مبدّل الشهور — الصافي مصغّراً تحت كل شهر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>

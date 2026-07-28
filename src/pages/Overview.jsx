@@ -23,7 +23,7 @@ import {
   AlertTriangle, Building2, Users, Banknote, Activity,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
   Heart, Shield, ArrowRight, Target, Clock3,
-  CheckCircle2, Zap,
+  CheckCircle2, Zap, Receipt,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
@@ -57,6 +57,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   const canEditBank = can('bank.set_balance');
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
+  const [vat, setVat]         = useState(null);   // ضريبة الربع الجاري (كاش زوهو)
   // Selected month persists for the session (sessionStorage) so a
   // historical month being examined survives a refresh / navigating
   // away and back — but resets to the current month on a fresh login.
@@ -87,6 +88,15 @@ export default function Overview({ carriers = [], isActive = true }) {
   }, [period]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  // ضريبة الربع الجاري — قراءة كاش خفيفة (يحدّثه كرون زوهو كل 30د)، فشلها صامت
+  useEffect(() => {
+    if (!isActive) return;
+    import('../lib/zohoReportsService.js')
+      .then(m => m.loadCurrentVat())
+      .then(setVat)
+      .catch(() => {});
+  }, [isActive, location.pathname]);
 
   // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
   // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).
@@ -150,6 +160,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       {can('overview.cash_position') && (
         <OperationsCommand
           data={data}
+          vat={vat}
           period={period}
           showCashPosition={can('overview.cash_position')}
           onNavigate={navigate}
@@ -541,7 +552,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   );
 }
 
-function OperationsCommand({ data, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
+function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
   const codDue = Number(data.codOutstanding?.total) || 0;
   const ap90 = Number(data.aging?.totals?.d90) || 0;
@@ -649,6 +660,19 @@ function OperationsCommand({ data, period, showCashPosition, onNavigate, onRefre
       prefix: '−',
       onClick: () => onNavigate('/ledger'),
     },
+    // ضريبة الربع الجاري — التزام قادم يجب أن يظهر مع النقد لا بعده.
+    // المصدر كاش زوهو (يُحدَّث كل 30د مع المزامنة) فالعرض فوري.
+    ...(vat ? [{
+      label: `ضريبة ${vat.quarter.replace('-Q', ' — الربع ')}`,
+      value: vat.netDue,
+      tone: vat.netDue < 0 ? 'var(--green)' : 'var(--gold)',
+      Icon: Receipt,
+      helper: vat.netDue < 0
+        ? 'رصيد دائن لصالحك'
+        : `تُسدَّد بعد انتهاء الربع · باقٍ ${vat.daysLeft} يوم`,
+      prefix: vat.netDue < 0 ? '' : '−',
+      onClick: () => onNavigate('/pnl'),
+    }] : []),
   ];
 
   const sourceChips = [
