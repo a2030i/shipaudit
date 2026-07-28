@@ -23,8 +23,8 @@ import Merchants   from './Merchants.jsx';
 // تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
 const TABS = [
-  // «يومي» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
-  { id: 'today',       label: 'يومي',               icon: Sunrise,     component: SalesToday },
+  // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
+  { id: 'today',       label: 'خطة اليوم',           icon: Sunrise,     component: SalesToday },
   { id: 'activation',  label: 'هدف التنشيط',        icon: TrendingUp,  component: StoreActivation },
   { id: 'retargeting', label: 'إعادة الاستهداف',    icon: Target,      component: Retargeting, perm: 'sales.view' },
   { id: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    component: HatifLeads,  perm: 'sales.hatif_leads' },

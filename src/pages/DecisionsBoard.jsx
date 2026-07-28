@@ -193,7 +193,7 @@ export default function DecisionsBoard({ isActive = true }) {
               color: 'var(--red)', icon: '⏰', title: 'متابعات تجاوزت SLA',
               value: d.sla?.total || 0, unit: 'متابعة متأخّرة',
               sub: `${d.sla?.stale || 0} راكدة (+3 أيام بلا تواصل) · ${d.sla?.overdue || 0} تجاوزت موعدها · أقدمها ${d.sla?.oldestDays || 0} يوماً — الفريق يتجاهل عملاء مُسنَدين`,
-              cta: 'الفعل التالي', onClick: () => navigate('/next-actions'),
+              cta: 'مهام العملاء اليوم', onClick: () => navigate('/next-actions'),
             },
           },
           {

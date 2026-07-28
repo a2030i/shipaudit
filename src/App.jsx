@@ -88,8 +88,8 @@ const NAV_ITEMS = [
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
-  // الفعل التالي — قائمة إجراءات لكل عميل (ردّ/دين/محفظة/توقّف) — «آلة القرار».
-  { id: 'next-actions', path: '/next-actions', label: 'الفعل التالي', icon: Target, section: 'customers', permAny: ['collections.view', 'sales.view', 'overview.view'] },
+  // قائمة اليوم العابرة للتحصيل والمبيعات — اسمها يشرح أنها مهام، لا شاشة تحليل أخرى.
+  { id: 'next-actions', path: '/next-actions', label: 'مهام العملاء اليوم', icon: Target, section: 'customers', permAny: ['collections.view', 'sales.view', 'overview.view'] },
 
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
@@ -130,32 +130,32 @@ const NAV_ITEMS = [
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
+  { id: 'customer-watch',  path: '/customer-360',    label: 'ملفات العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view' },
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
   // §1.32 مرحلة 2: مركز التحصيل = تحصيل العملاء + قائمة التحصيل + القانوني + الكشف الداخلي
-  { id: 'collections-hub', path: '/customer-money',  label: 'مركز التحصيل',  icon: HandCoins, section: 'customers', permKey: 'receivables.view',
+  { id: 'collections-hub', path: '/customer-money',  label: 'الديون والتحصيل',  icon: HandCoins, section: 'customers', permKey: 'receivables.view',
     subTabs: [
-      { tabId: 'money',    label: 'تحصيل العملاء',   icon: HandCoins },
-      { tabId: 'queue',    label: 'مهام التحصيل',    icon: Phone,  legacy: '/collections' },
+      { tabId: 'money',    label: 'أرصدة العملاء',   icon: HandCoins },
+      { tabId: 'queue',    label: 'قائمة التحصيل',    icon: Phone,  legacy: '/collections' },
       { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
   // §1.32 مرحلة 3: مركز المبيعات = إعادة الاستهداف + فرص هاتف + خارج المنصّة + الشرائح + المتاجر
   // مركز المبيعات: صلاحية مستقلة لكل تبويب (تفصيص 2026-07-16) — permAny = يظهر
   // العنصر لمن يملك أياً منها، وSalesHub يفلتر تبويباته بالمفتاح الدقيق.
-  { id: 'sales-hub',       path: '/retargeting',     label: 'مركز المبيعات',  icon: Target,    section: 'customers',
+  { id: 'sales-hub',       path: '/retargeting',     label: 'فرص البيع',  icon: Target,    section: 'customers',
     permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
-      { tabId: 'today',       label: 'يومي',               icon: Target },
+      { tabId: 'today',       label: 'خطة اليوم',           icon: Target },
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
       { tabId: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    legacy: '/hatif-leads' },
       { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
       { tabId: 'segments',    label: 'مجموعات العملاء',      icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
-  { id: 'customer-watch',  path: '/customer-360',    label: 'متابعة العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view' },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'متابعة المبيعات (CRM)', icon: Headset,   section: 'customers', permKey: 'crm.view',
+  { id: 'crm',             path: '/crm',             label: 'الصفقات والمتابعات', icon: TrendingUp, section: 'customers', permKey: 'crm.view',
     subTabs: [
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
@@ -163,7 +163,7 @@ const NAV_ITEMS = [
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
     ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
-  { id: 'support',         path: '/support',         label: 'تذاكر خدمة العملاء', icon: LifeBuoy, section: 'customers', permKey: 'support.view' },
+  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', permKey: 'support.view' },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'بيانات زوهو',       icon: BookOpen,   section: 'money', permKey: 'zoho.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو مع لمحة', icon: GitCompare, section: 'money', permKey: 'reconciliation.view' },
 
@@ -195,7 +195,7 @@ const NAV_SECTIONS = [
   //   • الإدارة + النادر (التجهيز/الأوزان/الإقفال/العقود/إدارة الشركات/المهام/المصادر) → «الإعدادات والأدوات»
   { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#2B68DE', hint: 'فواتيرها · تدقيقها · حساباتها' },
   { id: 'money',     label: 'الأموال',           icon: DollarSign,    accent: '#F59E0B', hint: 'الأرباح · البنك · زوهو · الأعمار' },
-  { id: 'customers', label: 'العملاء',           icon: Users,         accent: '#EF4444', hint: 'التحصيل · المبيعات · الدعم' },
+  { id: 'customers', label: 'العملاء والمبيعات',  icon: Users,         accent: '#EF4444', hint: 'ملفات · ديون · فرص · صفقات · دعم' },
   { id: 'outreach',  label: 'الحملات والتقارير', icon: MessageCircle, accent: '#22C55E', hint: 'واتساب · التقارير الجاهزة' },
   { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#31D5E1', hint: 'الفريق · الفحوص · الإعداد · النادر' },
 ];

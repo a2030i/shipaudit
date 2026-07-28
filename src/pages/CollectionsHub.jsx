@@ -18,8 +18,8 @@ import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
 
 const TABS = [
-  { id: 'money',    label: 'تحصيل العملاء',   icon: HandCoins, component: CustomerMoney,       perm: 'receivables.view' },
-  { id: 'queue',    label: 'مهام التحصيل',   icon: PhoneCall, component: Collections,          perm: 'collections.view' },
+  { id: 'money',    label: 'أرصدة العملاء',   icon: HandCoins, component: CustomerMoney,       perm: 'receivables.view' },
+  { id: 'queue',    label: 'قائمة التحصيل',   icon: PhoneCall, component: Collections,          perm: 'collections.view' },
   { id: 'legal',    label: 'التصعيد القانوني', icon: Scale,     component: LegalEscalation,      perm: 'legal.view' },
   { id: 'internal', label: 'الكشف الداخلي',   icon: FileText,  component: CustomerReceivables,  perm: 'receivables.view' },
 ];

@@ -22,7 +22,7 @@ import {
   RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
   AlertTriangle, Building2, Users, Banknote, Activity,
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
-  Heart, Shield, Edit3, ArrowRight, Target, Database, Clock3,
+  Heart, Shield, ArrowRight, Target, Clock3,
   CheckCircle2, Zap,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
@@ -116,13 +116,13 @@ export default function Overview({ carriers = [], isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1280, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 1400, margin: '0 auto' }}>
       <PageHeader
         icon={<Activity size={22}/>}
         iconColor="var(--accent3)"
-        title="غرفة العمليات"
-        subtitle={`قرارات اليوم ومصدر كل رقم — ${fmtMonth(period)}`}
-        meta={`مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
+        title="الرئيسية"
+        subtitle="ملخص السيولة، أهم التنبيهات، وحركة الشحن والتحصيل"
+        meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
           <div style={{ display: 'flex', gap: 6 }}>
             <Btn size="sm" variant="ghost" onClick={goPrev} title="الشهر السابق">
@@ -151,30 +151,19 @@ export default function Overview({ carriers = [], isActive = true }) {
         <OperationsCommand
           data={data}
           period={period}
-          carrierNameById={carrierNameById}
+          showCashPosition={can('overview.cash_position')}
           onNavigate={navigate}
           onRefresh={refresh}
+          onEditBank={canEditBank ? () => setBankEdit({
+            current: data.cashPosition.bankBalance ?? '',
+            notes:   '',
+          }) : null}
         />
-      )}
-
-      {/* ── HERO: Cash position — the headline answer ──
-          Edit-bank click only fires for users with bank.set_balance.
-          Read-only viewers still see the tile but it's not clickable. */}
-      {can('overview.cash_position') && (
-      <CashHero
-        cash={data.cashPosition}
-        codOutstanding={data.codOutstanding}
-        onOpenCod={() => navigate('/money?tab=cod')}
-        onEditBank={canEditBank ? () => setBankEdit({
-          current: data.cashPosition.bankBalance ?? '',
-          notes:   '',
-        }) : null}
-      />
       )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
       <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
-        لمحة الشهر — {fmtMonth(period)}
+        حركة الشهر — {fmtMonth(period)}
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 12, marginBottom: 24,
@@ -183,7 +172,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--red)"
           icon={<ArrowUpCircle size={18}/>}
-          label="إنفاق على الشركات"
+          label="تكلفة الشحن المعتمدة"
           value={fmt(data.thisMonth.carrierSpend)}
           unit="ر.س"
           delta={data.deltas.carrierSpend}
@@ -193,7 +182,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--green)"
           icon={<ArrowDownCircle size={18}/>}
-          label="COD مُستلَم"
+          label="تحصيل COD المستلم"
           value={fmt(data.thisMonth.codReceived)}
           unit="ر.س"
           delta={data.deltas.codReceived}
@@ -202,7 +191,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          label="الداخل ناقص الخارج مع شركات الشحن"
+          label="صافي حركة الناقلين"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
           unit="ر.س"
           delta={data.deltas.net}
@@ -212,7 +201,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <BigStat
           color="var(--accent)"
           icon={<AlertTriangle size={18}/>}
-          label="الفروق المُكتشفة"
+          label="فروق التدقيق"
           value={fmt(data.thisMonth.driftTotal)}
           unit="ر.س"
           hint={data.thisMonth.driftTotal < 0 ? 'مبالغ زائدة وفّرناها' : data.thisMonth.driftTotal > 0 ? 'مبالغ ناقصة على فواتير' : 'لا فروق'}
@@ -243,7 +232,7 @@ export default function Overview({ carriers = [], isActive = true }) {
 
       {/* ── Section 1.5: Working capital — CFO health metrics ── */}
       <SectionTitle icon={<TrendingUp size={14}/>} color="var(--accent)">
-        سرعة دوران فلوسك — تحصيل مقابل سداد
+        دورة التحصيل والسداد
       </SectionTitle>
       <div style={{
         display: 'grid', gap: 12, marginBottom: 12,
@@ -552,14 +541,14 @@ export default function Overview({ carriers = [], isActive = true }) {
   );
 }
 
-function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefresh }) {
+function OperationsCommand({ data, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
   const codDue = Number(data.codOutstanding?.total) || 0;
   const ap90 = Number(data.aging?.totals?.d90) || 0;
   const drift = Number(data.thisMonth?.driftTotal) || 0;
   const topCustomer = data.customerConcentration?.[0] || null;
-  const topCarrier = data.carrierConcentration?.[0] || null;
-  const net = data.cashPosition?.net;
+  const cash = data.cashPosition || {};
+  const net = cash.net;
   const netPositive = net == null ? null : net >= 0;
   const customerPath = topCustomer
     ? (data.arSource === 'zoho'
@@ -633,433 +622,158 @@ function OperationsCommand({ data, period, carrierNameById, onNavigate, onRefres
     });
   }
 
-  const sourceChips = [
-    {
-      label: 'دين العملاء',
-      value: data.cashPosition?.arSource === 'zoho' ? 'Zoho API مباشر' : 'نسخة داخلية محفوظة',
-      tone: data.cashPosition?.arSource === 'zoho' ? '#059669' : 'var(--gold)',
-    },
+  const cashParts = [
     {
       label: 'رصيد البنك',
-      value: data.cashPosition?.bankSource === 'statement'
-        ? 'آخر كشف بنكي'
-        : data.cashPosition?.bankSource === 'manual'
-          ? 'إدخال يدوي'
-          : 'غير محدد',
-      tone: data.cashPosition?.bankSource ? 'var(--accent3)' : '#EF4444',
+      value: cash.bankBalance,
+      tone: 'var(--accent)',
+      Icon: Wallet,
+      helper: cash.bankSource === 'statement' ? 'من آخر كشف بنكي' : cash.bankSource === 'manual' ? 'إدخال يدوي' : 'غير محدّث',
+      onClick: onEditBank,
     },
     {
-      label: 'دفتر الناقلين',
-      value: 'قيود النظام',
-      tone: '#6366F1',
+      label: 'لك عند العملاء',
+      value: cash.totalAR,
+      tone: 'var(--green)',
+      Icon: ArrowDownCircle,
+      helper: cash.arSource === 'zoho' ? 'فواتير Zoho المفتوحة' : 'آخر كشف داخلي',
+      prefix: '+',
+      onClick: () => onNavigate('/customer-money'),
     },
+    {
+      label: 'عليك للناقلين',
+      value: cash.totalAP,
+      tone: 'var(--red)',
+      Icon: ArrowUpCircle,
+      helper: 'الفواتير والقيود المفتوحة',
+      prefix: '−',
+      onClick: () => onNavigate('/ledger'),
+    },
+  ];
+
+  const sourceChips = [
+    { label: 'العملاء', value: cash.arSource === 'zoho' ? 'Zoho مباشر' : 'نسخة داخلية', tone: 'var(--green)' },
+    { label: 'البنك', value: cash.bankSource === 'statement' ? 'آخر كشف' : cash.bankSource === 'manual' ? 'يدوي' : 'غير محدد', tone: 'var(--accent3)' },
+    { label: 'الناقلون', value: 'دفتر القيود', tone: 'var(--accent)' },
     {
       label: 'الفترة',
       value: fmtMonth(period),
-      tone: '#64748B',
+      tone: 'var(--muted)',
     },
-  ];
-
-  const stages = [
-    {
-      label: 'الناقل الأعلى',
-      value: topCarrier ? (carrierNameById.get(topCarrier.carrierId) || topCarrier.carrierId) : 'لا ضغط',
-      icon: <Database size={15}/>,
-      path: topCarrier ? `/carrier?id=${topCarrier.carrierId}` : '/hub',
-      active: topCarrier && Number(topCarrier.sharePct) >= 50,
-    },
-    { label: 'التدقيق', value: pendingAudits ? `${pendingAudits} عالق` : 'مغلق', icon: <Target size={15}/>, path: '/audits', active: pendingAudits > 0 },
-    { label: 'التحصيل', value: codDue > 0.5 ? `${fmtCompact(codDue)} ر.س` : 'مستقر', icon: <Banknote size={15}/>, path: '/money?tab=cod', active: codDue > 0.5 },
-    { label: 'العملاء', value: topCustomer ? `${fmtCompact(topCustomer.debt)} ر.س` : 'بلا ضغط', icon: <Users size={15}/>, path: customerPath, active: topCustomer && Number(topCustomer.debt) > 0.5 },
   ];
 
   return (
-    <section style={{
-      marginBottom: 24,
-      border: '1px solid color-mix(in srgb, var(--accent) 18%, var(--border))',
-      borderRadius: 16,
-      overflow: 'hidden',
-      background: 'linear-gradient(135deg, var(--surface) 0%, color-mix(in srgb, var(--accent) 7%, var(--surface)) 52%, color-mix(in srgb, var(--gold) 8%, var(--surface)) 100%)',
-      boxShadow: '0 18px 46px rgba(15, 23, 42, .08)',
-    }}>
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 320px), 1fr))',
-        gap: 18,
-        padding: 18,
-      }}>
-        <div style={{
-          minHeight: 260,
-          borderRadius: 14,
-          padding: 18,
-          background: 'color-mix(in srgb, var(--surface) 82%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--text) 8%, transparent)',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'space-between',
-        }}>
-          <div>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '6px 10px',
-              borderRadius: 999,
-              background: 'color-mix(in srgb, var(--accent3) 12%, transparent)',
-              color: 'var(--accent)',
-              fontSize: 12,
-              fontWeight: 800,
-            }}>
-              <Zap size={14}/>
-              وضعك الآن باختصار
-            </div>
-            <div style={{ marginTop: 18, fontSize: 13, color: 'var(--muted)', fontWeight: 700 }}>
-              الوضع النقدي الكامل
-            </div>
-            <div style={{
-              marginTop: 6,
-              fontFamily: 'var(--font-mono)',
-              fontSize: 34,
-              lineHeight: 1.05,
-              fontWeight: 900,
-              color: net == null ? 'var(--muted)' : netPositive ? 'var(--green)' : '#DC2626',
-            }}>
-              {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
-              {net != null && <span style={{ fontSize: 13, color: 'var(--muted)', fontWeight: 700, marginInlineStart: 6 }}>ر.س</span>}
-            </div>
-            <div style={{ marginTop: 10, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.8 }}>
-              هذا الرقم لا يعيش وحده: البنك + دين العملاء من زوهو + ما علينا للناقلين.
-            </div>
-            <div style={{
-              display: 'grid',
-              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
-              gap: 8,
-              marginTop: 18,
-            }}>
-              {[
-                { label: 'البنك', value: data.cashPosition?.bankBalance == null ? '—' : fmtCompact(data.cashPosition.bankBalance), tone: 'var(--accent3)' },
-                { label: 'العملاء', value: fmtCompact(data.cashPosition?.totalAR || 0), tone: '#059669' },
-                { label: 'الناقلين', value: fmtCompact(data.cashPosition?.totalAP || 0), tone: '#EF4444' },
-              ].map((item) => (
-                <div
-                  key={item.label}
-                  style={{
-                    padding: '10px 8px',
-                    borderRadius: 10,
-                    background: `color-mix(in srgb, ${item.tone} 9%, var(--surface))`,
-                    border: `1px solid color-mix(in srgb, ${item.tone} 16%, transparent)`,
-                  }}
-                >
-                  <div style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 800 }}>{item.label}</div>
-                  <div style={{ marginTop: 4, fontFamily: 'var(--font-mono)', color: item.tone, fontSize: 15, fontWeight: 900 }}>
-                    {item.value}
-                    {item.value !== '—' && <span style={{ fontSize: 9.5, color: 'var(--muted)', marginInlineStart: 3 }}>ر.س</span>}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 18 }}>
-            <Btn size="sm" variant="primary" icon={<Target size={14}/>} onClick={() => onNavigate('/decisions')}>
-              قرارات اليوم
-            </Btn>
-            <Btn size="sm" variant="ghost" icon={<ArrowRight size={14}/>} onClick={() => onNavigate('/drop')}>
-              مركز الإدخال
-            </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={onRefresh}>
-              تحديث
-            </Btn>
-          </div>
+    <section className="ops-command">
+      <div className="ops-command-head">
+        <div>
+          <div className="ops-command-kicker"><Zap size={14}/> ملخص اليوم</div>
+          <h2>{showCashPosition ? 'الوضع النقدي وما يحتاج تدخلك' : 'ما يحتاج تدخلك اليوم'}</h2>
+          <p>{showCashPosition ? 'رقم واحد واضح، ثم مكوّناته، ثم الإجراءات التي لا ينبغي تأجيلها.' : 'أولويات قابلة للتنفيذ مرتبة حسب أثرها.'}</p>
         </div>
+        <div className="ops-command-actions">
+          <Btn size="sm" variant="primary" icon={<Target size={14}/>} onClick={() => onNavigate('/decisions')}>
+            القرارات
+          </Btn>
+          <Btn size="sm" variant="ghost" icon={<ArrowRight size={14}/>} onClick={() => onNavigate('/drop')}>
+            إدخال ملف
+          </Btn>
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={onRefresh}>
+            تحديث
+          </Btn>
+        </div>
+      </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 14, minWidth: 0 }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))',
-            gap: 10,
-          }}>
+      <div className={`ops-command-grid ${showCashPosition ? '' : 'no-cash'}`}>
+        {showCashPosition && <article className="ops-net-card">
+          <span className="ops-net-label">الوضع النقدي الكامل</span>
+          <div className={`ops-net-value ${netPositive === false ? 'negative' : ''}`}>
+            {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
+            {net != null && <small>ر.س</small>}
+          </div>
+          <p>رصيد البنك + ما لك عند العملاء − ما عليك للناقلين.</p>
+
+          <div className="ops-cash-parts">
+            {cashParts.map((item) => {
+              const Icon = item.Icon;
+              const known = item.value != null && Number.isFinite(Number(item.value));
+              return (
+                <button
+                  key={item.label}
+                  type="button"
+                  className="ops-cash-part"
+                  style={{ '--tone': item.tone }}
+                  onClick={item.onClick}
+                  disabled={!item.onClick}
+                >
+                  <span className="ops-cash-icon"><Icon size={16}/></span>
+                  <span className="ops-cash-copy">
+                    <strong>{item.label}</strong>
+                    <small>{item.helper}</small>
+                  </span>
+                  <span className="ops-cash-amount">
+                    {known ? `${item.prefix || ''}${fmt(Math.abs(Number(item.value)))}` : '—'}
+                    {known && <small>ر.س</small>}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="ops-net-foot">
+            <span>صافي المستحقات دون البنك</span>
+            <strong>{cash.netNoBank == null ? '—' : `${cash.netNoBank >= 0 ? '+' : '−'}${fmt(Math.abs(cash.netNoBank))} ر.س`}</strong>
+          </div>
+        </article>}
+
+        <aside className="ops-attention">
+          <div className="ops-attention-head">
+            <div>
+              <span>يحتاج انتباهك</span>
+              <strong>{missions[0]?.title === 'لا يوجد قرار عاجل' ? 'الوضع مستقر' : `${missions.length} أولويات`}</strong>
+            </div>
+            <span className="ops-attention-count">{missions[0]?.title === 'لا يوجد قرار عاجل' ? '✓' : missions.length}</span>
+          </div>
+
+          <div className="ops-missions">
             {missions.map((m) => (
               <button
                 key={m.title}
                 type="button"
+                className="ops-mission"
+                style={{ '--tone': m.tone }}
                 onClick={() => onNavigate(m.path)}
-                style={{
-                  border: `1px solid color-mix(in srgb, ${m.tone} 24%, var(--border))`,
-                  background: 'color-mix(in srgb, var(--surface) 90%, transparent)',
-                  borderRadius: 12,
-                  padding: 14,
-                  textAlign: 'start',
-                  minHeight: 146,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  gap: 10,
-                  boxShadow: '0 10px 24px rgba(15, 23, 42, .05)',
-                }}
               >
-                <span style={{
-                  width: 34,
-                  height: 34,
-                  borderRadius: 10,
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  color: m.tone,
-                  background: `color-mix(in srgb, ${m.tone} 13%, transparent)`,
-                }}>
-                  {m.icon}
+                <span className="ops-mission-icon">{m.icon}</span>
+                <span className="ops-mission-copy">
+                  <strong>{m.title}</strong>
+                  <small>{m.body}</small>
                 </span>
-                <span style={{ fontSize: 12, color: 'var(--muted)', fontWeight: 800 }}>{m.title}</span>
-                <span style={{ display: 'flex', alignItems: 'baseline', gap: 5, minWidth: 0 }}>
-                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 900, color: m.tone }}>{m.value}</span>
-                  {m.unit && <span style={{ fontSize: 10.5, color: 'var(--muted)', fontWeight: 700 }}>{m.unit}</span>}
+                <span className="ops-mission-value">
+                  {m.value}
+                  {m.unit && <small>{m.unit}</small>}
                 </span>
-                <span style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.55 }}>{m.body}</span>
-                <span style={{ marginTop: 'auto', fontSize: 11.5, color: m.tone, fontWeight: 800, display: 'inline-flex', alignItems: 'center', gap: 5 }}>
-                  {m.action}
-                  <ChevronLeft size={13}/>
-                </span>
+                <ChevronLeft size={15}/>
               </button>
             ))}
           </div>
-
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-            gap: 8,
-            padding: 10,
-            borderRadius: 12,
-            background: 'color-mix(in srgb, var(--surface) 78%, transparent)',
-            border: '1px solid color-mix(in srgb, var(--text) 8%, transparent)',
-          }}>
-            {stages.map((s, idx) => (
-              <button
-                key={s.label}
-                type="button"
-                onClick={() => onNavigate(s.path)}
-                style={{
-                  position: 'relative',
-                  border: '0',
-                  borderRadius: 10,
-                  padding: '11px 12px',
-                  textAlign: 'start',
-                  cursor: 'pointer',
-                  background: s.active
-                    ? 'color-mix(in srgb, var(--accent3) 13%, var(--surface))'
-                    : 'transparent',
-                  color: 'var(--text)',
-                }}
-              >
-                {idx > 0 && (
-                  <span style={{
-                    position: 'absolute',
-                    insetInlineEnd: -8,
-                    top: '50%',
-                    width: 8,
-                    height: 1,
-                    background: 'var(--border)',
-                  }}/>
-                )}
-                <span style={{ display: 'flex', alignItems: 'center', gap: 7, color: s.active ? 'var(--accent)' : 'var(--muted)' }}>
-                  {s.icon}
-                  <span style={{ fontSize: 11, fontWeight: 800 }}>{s.label}</span>
-                </span>
-                <span style={{ display: 'block', marginTop: 6, fontSize: 12, color: 'var(--text)', fontWeight: 800, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {s.value}
-                </span>
-              </button>
-            ))}
-          </div>
-        </div>
+        </aside>
       </div>
 
-      <div style={{
-        display: 'flex',
-        gap: 8,
-        flexWrap: 'wrap',
-        padding: '0 18px 18px',
-      }}>
+      {showCashPosition && <div className="ops-sources">
+        <span className="ops-sources-label">مصادر الأرقام</span>
         {sourceChips.map((s) => (
           <span
             key={s.label}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: 7,
-              padding: '7px 10px',
-              borderRadius: 999,
-              background: `color-mix(in srgb, ${s.tone} 10%, var(--surface))`,
-              border: `1px solid color-mix(in srgb, ${s.tone} 18%, transparent)`,
-              color: 'var(--text)',
-              fontSize: 11.5,
-              fontWeight: 700,
-            }}
+            className="ops-source"
+            style={{ '--tone': s.tone }}
           >
-            <span style={{ width: 7, height: 7, borderRadius: 99, background: s.tone }}/>
-            <span style={{ color: 'var(--muted)' }}>{s.label}</span>
-            <span>{s.value}</span>
+            <i/>
+            <span>{s.label}</span>
+            <strong>{s.value}</strong>
           </span>
         ))}
-      </div>
+      </div>}
     </section>
-  );
-}
-
-// ─── Cash-position hero ─────────────────────────────────────────
-// Single-screen answer to "كيف وضعنا اليوم؟". Five tiles:
-//   💰 Bank        — manual entry, with last-updated timestamp
-//   📥 AR          — customer debt (from working_capital_now)
-//   📤 AP          — vendor debt (carrier_operations open)
-//   📊 Net no-bank — AR − AP (operational net excluding cash on hand)
-//   🏁 Net total   — bank + AR − AP (the bottom-line cash picture if
-//                    we fully collect AR and pay AP today)
-function CashHero({ cash, codOutstanding, onEditBank, onOpenCod }) {
-  const fmtRel = (iso) => {
-    if (!iso) return 'غير محدّث';
-    const ms = Date.now() - new Date(iso).getTime();
-    const days = Math.floor(ms / 86_400_000);
-    if (days <= 0) return `حُدّث اليوم`;
-    if (days === 1) return 'حُدّث أمس';
-    if (days < 7)   return `حُدّث قبل ${days} أيام`;
-    return `حُدّث قبل ${Math.floor(days / 7)} أسابيع — قد يكون قديماً`;
-  };
-  const isBankStale = cash.bankUpdated && (Date.now() - new Date(cash.bankUpdated).getTime()) > 7 * 86_400_000;
-  return (
-    <Card style={{
-      padding: 20, marginBottom: 22,
-      background: 'var(--surface)',
-      border: '1px solid var(--border2)',
-    }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
-        <span style={{
-          width: 32, height: 32, borderRadius: 8,
-          background: 'color-mix(in srgb, var(--green) 16%, transparent)',
-          color: 'var(--green2)', display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}><Wallet size={17}/></span>
-        <div style={{ flex: 1 }}>
-          <div style={{ fontSize: 14, fontWeight: 800, color: 'var(--text)' }}>نظرة السيولة</div>
-          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            البنك + المستحق علينا + المستحق لنا = الوضع النقدي الكامل
-          </div>
-        </div>
-      </div>
-
-      <div style={{
-        display: 'grid', gap: 12,
-        gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-      }}>
-        {/* Bank balance — تلقائي من ختامي آخر كشف مرفوع، واليدوي بينهما */}
-        <CashTile
-          icon={<Wallet size={18}/>}
-          color={isBankStale ? 'var(--gold)' : 'var(--green2)'}
-          label={cash.bankSource === 'statement' ? 'رصيد البنك (آخر كشف)' : 'رصيد البنك'}
-          value={cash.bankBalance == null ? '—' : fmt(cash.bankBalance)}
-          unit={cash.bankBalance == null ? '' : 'ر.س'}
-          hint={cash.bankSource === 'statement' ? (cash.bankNotes || fmtRel(cash.bankUpdated)) : fmtRel(cash.bankUpdated)}
-          onClick={onEditBank || undefined}
-          editable={!!onEditBank}
-        />
-        <CashTile
-          icon={<ArrowDownCircle size={18}/>}
-          color="var(--green)"
-          label={cash.arSource === 'zoho' ? 'مستحق لنا (العملاء) · زوهو حي' : 'مستحق لنا (العملاء)'}
-          value={fmt(cash.totalAR)}
-          unit="ر.س"
-          hint={cash.arSource === 'zoho' ? 'فواتير زوهو المفتوحة — نفس رقم «تحصيل العملاء»' : 'من آخر كشف داخلي مرفوع'}
-        />
-        <CashTile
-          icon={<ArrowUpCircle size={18}/>}
-          color="var(--red)"
-          label="مستحق علينا (الموردون)"
-          value={fmt(cash.totalAP)}
-          unit="ر.س"
-          hint="ما ندين به للشركات"
-        />
-        {codOutstanding && codOutstanding.total > 0.5 && (
-          <CashTile
-            icon={<Banknote size={18}/>}
-            color="var(--gold)"
-            label="COD لم يُحصَّل بعد"
-            value={fmt(codOutstanding.total)}
-            unit="ر.س"
-            hint={`${codOutstanding.carriersDue} شركة لم تورّد — اضغط للتفاصيل`}
-            onClick={onOpenCod}
-          />
-        )}
-        <CashTile
-          icon={cash.netNoBank >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
-          color={cash.netNoBank >= 0 ? 'var(--green2)' : 'var(--red)'}
-          label="مستحق لك ناقص مستحق عليك"
-          value={(cash.netNoBank >= 0 ? '+' : '−') + fmt(Math.abs(cash.netNoBank))}
-          unit="ر.س"
-          hint="مستحق لنا − مستحق علينا"
-        />
-        <CashTile
-          icon={<Banknote size={18}/>}
-          color={cash.net == null ? 'var(--muted)' : cash.net >= 0 ? 'var(--green2)' : 'var(--red)'}
-          label="الوضع النقدي الكامل"
-          value={cash.net == null ? '—' : (cash.net >= 0 ? '+' : '−') + fmt(Math.abs(cash.net))}
-          unit={cash.net == null ? '' : 'ر.س'}
-          hint={cash.bankBalance == null ? 'حدّث رصيد البنك للحساب' : 'البنك + (مستحق لك ناقص مستحق عليك)'}
-          big
-        />
-      </div>
-
-      {isBankStale && (
-        <div style={{
-          marginTop: 14, padding: '10px 14px', borderRadius: 8,
-          background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
-          border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
-          fontSize: 12, color: 'var(--warn)', display: 'flex', alignItems: 'center', gap: 8,
-        }}>
-          <AlertTriangle size={14}/>
-          رصيد البنك قديم — اضغط على البطاقة لتحديثه برصيدك الحالي
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function CashTile({ icon, color, label, value, unit, hint, onClick, editable = false, big = false }) {
-  return (
-    <div
-      onClick={onClick}
-      style={{
-        padding: 14, borderRadius: 10,
-        background: 'var(--surface)',
-        border: `1px solid color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)`,
-        cursor: onClick ? 'pointer' : 'default',
-        position: 'relative',
-        transition: 'border-color .15s',
-      }}
-      onMouseEnter={onClick ? (e) => e.currentTarget.style.borderColor = color : undefined}
-      onMouseLeave={onClick ? (e) => e.currentTarget.style.borderColor = `color-mix(in srgb, ${color} ${big ? 28 : 14}%, transparent)` : undefined}
-    >
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-        <span style={{
-          width: 26, height: 26, borderRadius: 7,
-          background: `color-mix(in srgb, ${color} 14%, transparent)`,
-          color, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>{icon}</span>
-        <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--muted)', letterSpacing: .4, flex: 1 }}>
-          {label}
-        </span>
-        {editable && (
-          <Edit3 size={11} color="var(--muted2)"/>
-        )}
-      </div>
-      <div style={{
-        fontSize: big ? 26 : 21, fontWeight: 800,
-        color, fontFamily: 'var(--font-mono)', letterSpacing: -0.5,
-      }}>
-        {value}
-        {unit && <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500, marginInlineStart: 5 }}>{unit}</span>}
-      </div>
-      {hint && (
-        <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 5 }}>{hint}</div>
-      )}
-    </div>
   );
 }
 

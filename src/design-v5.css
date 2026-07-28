@@ -661,6 +661,392 @@ tbody tr:hover td:first-child {
   color: var(--brand);
 }
 
+/* ── الرئيسية: ملخص واحد للسيولة ثم الأولويات ─────────────────────── */
+.ops-command {
+  margin-bottom: 28px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
+}
+
+.ops-command-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 20px 22px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ops-command-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 7px;
+  color: var(--brand);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.ops-command-head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.ops-command-head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.ops-command-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ops-command-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(330px, .65fr);
+}
+
+.ops-command-grid.no-cash {
+  grid-template-columns: 1fr;
+}
+
+.ops-net-card {
+  min-width: 0;
+  padding: 26px 24px 22px;
+  border-inline-end: 1px solid var(--border);
+}
+
+.ops-net-label {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.ops-net-value {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 8px;
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: clamp(34px, 4vw, 48px);
+  font-weight: 800;
+  line-height: 1.15;
+  direction: ltr;
+}
+
+.ops-net-value.negative {
+  color: var(--red);
+}
+
+.ops-net-value small {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ops-net-card > p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.ops-cash-parts {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.ops-cash-part {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 9px;
+  min-width: 0;
+  padding: 12px;
+  color: inherit;
+  text-align: start;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease, transform .14s ease;
+}
+
+.ops-cash-part:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--tone) 30%, var(--border));
+  background: color-mix(in srgb, var(--tone) 5%, var(--surface));
+  transform: translateY(-1px);
+}
+
+.ops-cash-part:focus-visible,
+.ops-mission:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--brand) 62%, transparent);
+  outline-offset: 3px;
+}
+
+.ops-cash-part:disabled {
+  color: inherit;
+  cursor: default;
+  opacity: 1;
+}
+
+.ops-cash-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 10%, var(--surface));
+  border-radius: 9px;
+}
+
+.ops-cash-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding-top: 1px;
+}
+
+.ops-cash-copy strong {
+  overflow: hidden;
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-cash-copy small {
+  overflow: hidden;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-cash-amount {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-end;
+  gap: 4px;
+  margin-top: 11px;
+  color: var(--tone);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 800;
+  direction: ltr;
+}
+
+.ops-cash-amount small {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 9px;
+}
+
+.ops-net-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 15px;
+  padding-top: 14px;
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+}
+
+.ops-net-foot strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+}
+
+.ops-attention {
+  min-width: 0;
+  padding: 22px;
+  background: var(--surface2);
+}
+
+.ops-attention-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 4px;
+}
+
+.ops-attention-head > div {
+  display: flex;
+  flex-direction: column;
+}
+
+.ops-attention-head span {
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.ops-attention-head strong {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.ops-attention-count {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  color: var(--brand) !important;
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--brand) 15%, var(--border));
+  border-radius: 10px;
+  font-family: var(--font-mono);
+  font-size: 13px !important;
+  font-weight: 800 !important;
+}
+
+.ops-missions {
+  margin-top: 8px;
+}
+
+.ops-mission {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 12px 0;
+  color: inherit;
+  text-align: start;
+  background: transparent;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+}
+
+.ops-mission:last-child {
+  border-bottom: 0;
+}
+
+.ops-mission:hover .ops-mission-copy strong {
+  color: var(--tone);
+}
+
+.ops-mission-icon {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  color: var(--tone);
+  background: color-mix(in srgb, var(--tone) 9%, var(--surface));
+  border-radius: 10px;
+}
+
+.ops-mission-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.ops-mission-copy strong {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 11.5px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: color .14s ease;
+}
+
+.ops-mission-copy small {
+  overflow: hidden;
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 9.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ops-mission-value {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--tone);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 800;
+  direction: ltr;
+  white-space: nowrap;
+}
+
+.ops-mission-value small {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 8.5px;
+}
+
+.ops-mission > svg {
+  color: var(--muted);
+}
+
+.ops-sources {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 12px 22px;
+  border-top: 1px solid var(--border);
+}
+
+.ops-sources-label {
+  margin-inline-end: 3px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.ops-source {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 8px;
+  color: var(--muted);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 9.5px;
+}
+
+.ops-source i {
+  width: 6px;
+  height: 6px;
+  background: var(--tone);
+  border-radius: 50%;
+}
+
+.ops-source strong {
+  color: var(--text2);
+  font-size: 9.5px;
+}
+
 /* الدخول يحتفظ بالهوية لكن بلا نقش أو وهج صاخب. */
 .login-hero {
   background:
@@ -680,6 +1066,15 @@ tbody tr:hover td:first-child {
 }
 
 @container workspace (max-width: 720px) {
+  .ops-command-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-net-card {
+    border-inline-end: 0;
+    border-bottom: 1px solid var(--border);
+  }
+
   .page-hero-band {
     align-items: flex-start;
   }
@@ -695,6 +1090,52 @@ tbody tr:hover td:first-child {
 }
 
 @media (max-width: 768px) {
+  .ops-command-head {
+    align-items: flex-start;
+    flex-direction: column;
+    padding: 18px;
+  }
+
+  .ops-command-actions {
+    width: 100%;
+  }
+
+  .ops-command-actions .ui-btn {
+    flex: 1 1 auto;
+  }
+
+  .ops-net-card,
+  .ops-attention {
+    padding: 18px;
+  }
+
+  .ops-cash-parts {
+    grid-template-columns: 1fr;
+  }
+
+  .ops-cash-part {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .ops-cash-copy small {
+    white-space: normal;
+  }
+
+  .ops-cash-amount {
+    grid-column: auto;
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .ops-sources {
+    padding: 12px 18px;
+  }
+
+  .ops-sources-label {
+    width: 100%;
+  }
+
   .sidebar {
     width: min(88vw, 330px);
     border-inline-end: 1px solid var(--border);

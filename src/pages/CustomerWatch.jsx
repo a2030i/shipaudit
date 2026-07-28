@@ -320,8 +320,8 @@ export default function CustomerWatch({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Users size={22}/>}
-        title="متابعة العملاء"
-        subtitle="رؤية موحّدة لكل عميل ومتجر — مديونيات، شحنات، محافظ، تنبيهات"
+        title="ملفات العملاء"
+        subtitle="ابحث عن أي عميل وافتح ملفه الكامل — مديونيات، شحنات، محافظ، وتنبيهات"
         meta={data?.snapshot?.receivables
           ? `بيانات الفواتير: snapshot ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · المتاجر: ${data.snapshot.merchants.id}` : ''}`
           : null}

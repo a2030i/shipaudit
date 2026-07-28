@@ -71,7 +71,7 @@ export default function NextActions({ isActive = true }) {
 
   return (
     <Pad>
-      <PageHeader icon={<Phone size={22}/>} title="الفعل التالي" subtitle="قائمة اليوم — كل عميل يحتاج إجراءً الآن، بسببه والإجراء المقترح وأزرار تنفيذه"
+      <PageHeader icon={<Phone size={22}/>} title="مهام العملاء اليوم" subtitle="قائمة تنفيذ موحّدة — من تتصل به، ولماذا، وما الخطوة المقترحة الآن"
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
       {/* شريط الملخّص */}
@@ -132,7 +132,7 @@ export default function NextActions({ isActive = true }) {
           </div>
         )}
 
-      <WhatsAppSendModal open={!!wa} onClose={() => setWa(null)} recipients={wa ? [wa] : []} bucketLabel="الفعل التالي"/>
+      <WhatsAppSendModal open={!!wa} onClose={() => setWa(null)} recipients={wa ? [wa] : []} bucketLabel="مهام العملاء اليوم"/>
     </Pad>
   );
 }
