@@ -149,11 +149,19 @@ export default function FinancialPosition({ isActive = true }) {
     setDl('vat');
     try {
       const [y, m] = sel.split('-').map(Number);
-      const q0 = Math.floor((m - 1) / 3) * 3 + 1;          // أول شهر في الربع
-      const from = `${y}-${String(q0).padStart(2, '0')}-01`;
-      const qEnd = q0 + 2;
-      const to = `${y}-${String(qEnd).padStart(2, '0')}-${new Date(y, qEnd, 0).getDate()}`;
-      const { printVatReturnPdf } = await import('../lib/zohoReportsService.js');
+      const q = Math.floor((m - 1) / 3) + 1;
+      const { printVatReturnPdf, quarterRange, isQuarterClosed, FIRST_VAT_QUARTER } =
+        await import('../lib/zohoReportsService.js');
+      // إقرار ربع لم ينتهِ = أرقام ناقصة، وقبل أول فترة ضريبية = بلا معنى.
+      if (y < FIRST_VAT_QUARTER.year || (y === FIRST_VAT_QUARTER.year && q < FIRST_VAT_QUARTER.q)) {
+        toast(`أول فترة ضريبية للمنشأة هي الربع ${FIRST_VAT_QUARTER.q} — ${FIRST_VAT_QUARTER.year}`, 'info');
+        setDl(null); return;
+      }
+      if (!isQuarterClosed(y, q)) {
+        toast(`الربع ${q} — ${y} لم ينتهِ بعد؛ الإقرار يُصدر بعد اكتمال الربع`, 'info');
+        setDl(null); return;
+      }
+      const { from, to } = quarterRange(y, q);
       const r = await printVatReturnPdf({ from, to, userId: user?.id });
       const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
       toast(`الإقرار (${from} → ${to}) — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س · اضغط «حفظ PDF» في النافذة`, 'success');

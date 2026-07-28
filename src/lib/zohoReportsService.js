@@ -164,18 +164,33 @@ export async function exportPnlRange({ from, to, userId }) {
   return { rowCount: rows.length - 6, net: grandNet };
 }
 
-// أرباع السنة الميلادية — الإقرار الضريبي في السعودية ربعي للأغلب
-export function quarters(count = 6) {
+// أول فترة ضريبية للمنشأة — لا إقرار قبلها (قرار المستخدم 2026-07-28).
+export const FIRST_VAT_QUARTER = { year: 2026, q: 1 };
+
+export const quarterRange = (y, q) => {
+  const m0 = (q - 1) * 3;
+  const endM = m0 + 3;
+  return {
+    from: `${y}-${String(m0 + 1).padStart(2, '0')}-01`,
+    to:   `${y}-${String(endM).padStart(2, '0')}-${new Date(y, endM, 0).getDate()}`,
+  };
+};
+
+// هل انتهى الربع فعلاً؟ إقرار ربع جارٍ = أرقام ناقصة → **لا يُعرَض ولا يُولَّد**.
+export const isQuarterClosed = (y, q, today = new Date()) =>
+  new Date(`${quarterRange(y, q).to}T23:59:59`) < today;
+
+// أرباع الإقرار: **المنتهية فقط**، ولا تنزل قبل أول فترة ضريبية للمنشأة.
+export function quarters(max = 12, today = new Date()) {
   const out = [];
-  const now = new Date();
-  let y = now.getFullYear();
-  let q = Math.floor(now.getMonth() / 3) + 1;
-  for (let i = 0; i < count; i++) {
-    const m0 = (q - 1) * 3;
-    const from = `${y}-${String(m0 + 1).padStart(2, '0')}-01`;
-    const endM = m0 + 3;
-    const to = `${y}-${String(endM).padStart(2, '0')}-${new Date(y, endM, 0).getDate()}`;
-    out.push({ key: `${y}-Q${q}`, label: `الربع ${q} — ${y}`, from, to });
+  let y = today.getFullYear();
+  let q = Math.floor(today.getMonth() / 3) + 1;
+  while (out.length < max) {
+    // لا ننزل قبل أول ربع ضريبي
+    if (y < FIRST_VAT_QUARTER.year || (y === FIRST_VAT_QUARTER.year && q < FIRST_VAT_QUARTER.q)) break;
+    if (isQuarterClosed(y, q, today)) {
+      out.push({ key: `${y}-Q${q}`, label: `الربع ${q} — ${y}`, ...quarterRange(y, q) });
+    }
     q -= 1;
     if (q === 0) { q = 4; y -= 1; }
   }

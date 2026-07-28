@@ -40,54 +40,64 @@ function shell({ title, subtitle, periodLine, bodyHtml, footNote }) {
 <meta charset="utf-8">
 <title>${esc(title)}</title>
 <style>
-  @page { size: A4; margin: 14mm 12mm 16mm; }
+  /* هوامش ضيّقة + مقاسات مضغوطة كي يقع الإقرار في **صفحة واحدة**
+     (كان يفيض بضعة بكسلات فتُطبَع صفحة ثانية فارغة — بلاغ 2026-07-28) */
+  @page { size: A4; margin: 9mm 8mm 8mm; }
   * { box-sizing: border-box; }
+  html, body { height: auto; }
   body {
     margin: 0; color: ${INK};
     font-family: 'PingARLT','Janna LT','IBM Plex Sans Arabic','Segoe UI',Tahoma,sans-serif;
-    font-size: 11.5px; line-height: 1.6; -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    font-size: 10.8px; line-height: 1.45; -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .hdr {
-    display: flex; align-items: center; justify-content: space-between; gap: 16px;
-    padding: 14px 18px; border-radius: 12px; color: #fff;
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    padding: 11px 15px; border-radius: 10px; color: #fff;
     background: linear-gradient(120deg, ${NAVY} 0%, #2E3F9E 60%, ${BLUE} 130%);
   }
-  .hdr h1 { margin: 0; font-size: 17px; font-weight: 800; letter-spacing: 0; }
-  .hdr .sub { font-size: 11px; opacity: .82; margin-top: 3px; }
-  .hdr .period { font-size: 11.5px; color: ${TEAL}; font-weight: 700; margin-top: 5px; }
-  .hdr img { height: 34px; }
-  .sec { margin-top: 18px; }
+  .hdr h1 { margin: 0; font-size: 15.5px; font-weight: 800; letter-spacing: 0; }
+  .hdr .sub { font-size: 10.5px; opacity: .82; margin-top: 2px; }
+  .hdr .period { font-size: 11px; color: ${TEAL}; font-weight: 700; margin-top: 3px; }
+  .hdr img { height: 30px; }
+  .sec { margin-top: 11px; }
   .sec h2 {
-    font-size: 12.5px; font-weight: 800; color: ${NAVY}; margin: 0 0 7px;
-    padding-inline-start: 9px; border-inline-start: 3px solid ${BLUE};
+    font-size: 11.5px; font-weight: 800; color: ${NAVY}; margin: 0 0 5px;
+    padding-inline-start: 8px; border-inline-start: 3px solid ${BLUE};
   }
   table { width: 100%; border-collapse: collapse; }
-  th, td { padding: 6px 9px; border-bottom: 1px solid ${LINE}; text-align: right; vertical-align: top; }
+  th, td { padding: 3.6px 8px; border-bottom: 1px solid ${LINE}; text-align: right; vertical-align: top; }
   thead th {
-    background: #F3F5FB; color: ${NAVY}; font-size: 10.5px; font-weight: 800;
+    background: #F3F5FB; color: ${NAVY}; font-size: 10px; font-weight: 800;
     border-bottom: 1.5px solid ${LINE};
   }
   td.num, th.num { text-align: left; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  td.box { color: ${MUTED}; font-weight: 700; width: 42px; }
+  td.box { color: ${MUTED}; font-weight: 700; width: 38px; }
   tr.zero td { color: #9AA1AF; }
   tr.total td { font-weight: 800; background: #FAFBFF; border-top: 1.5px solid ${LINE}; }
   .net {
-    margin-top: 16px; padding: 12px 16px; border-radius: 11px;
+    margin-top: 11px; padding: 9px 14px; border-radius: 10px;
     background: color-mix(in srgb, ${BLUE} 7%, #fff); border: 1.5px solid color-mix(in srgb, ${BLUE} 28%, #fff);
     display: flex; align-items: center; justify-content: space-between;
   }
-  .net .lbl { font-weight: 800; color: ${NAVY}; font-size: 13px; }
-  .net .val { font-weight: 800; font-size: 19px; color: ${BLUE}; font-variant-numeric: tabular-nums; }
+  .net .lbl { font-weight: 800; color: ${NAVY}; font-size: 12.5px; }
+  .net .val { font-weight: 800; font-size: 18px; color: ${BLUE}; font-variant-numeric: tabular-nums; }
   .net .val.credit { color: #059669; }
   .foot {
-    margin-top: 22px; padding-top: 10px; border-top: 1px solid ${LINE};
-    color: ${MUTED}; font-size: 10px; display: flex; justify-content: space-between; gap: 12px;
+    margin-top: 12px; padding-top: 7px; border-top: 1px solid ${LINE};
+    color: ${MUTED}; font-size: 9.5px; display: flex; justify-content: space-between; gap: 12px;
   }
-  .sign { margin-top: 26px; display: flex; gap: 40px; }
+  .sign { margin-top: 14px; display: flex; gap: 40px; }
   .sign div { flex: 1; }
-  .sign .line { margin-top: 30px; border-top: 1px solid #B9BEE3; padding-top: 5px; font-size: 10px; color: ${MUTED}; }
-  .note { margin-top: 10px; font-size: 10px; color: ${MUTED}; }
-  @media print { .noprint { display: none !important; } }
+  .sign .line { margin-top: 22px; border-top: 1px solid #B9BEE3; padding-top: 4px; font-size: 9.5px; color: ${MUTED}; }
+  .note { margin-top: 7px; font-size: 9.5px; color: ${MUTED}; }
+  @media print {
+    .noprint { display: none !important; }
+    /* لا صفحة ثانية فارغة: آخر عنصر بلا هامش سفلي ولا فاصل بعده،
+       والكتل لا تُقسَّم بين صفحتين. */
+    body > *:last-child { margin-bottom: 0 !important; page-break-after: avoid; }
+    .sec, .net, .sign, table { page-break-inside: avoid; }
+    tr { page-break-inside: avoid; }
+  }
   .noprint {
     position: fixed; inset-block-start: 10px; inset-inline-start: 10px;
     background: ${BLUE}; color: #fff; border: 0; border-radius: 9px;
