@@ -19,6 +19,10 @@ export default function PlatformCarriers({ isActive = true }) {
   const [markupInput, setMarkupInput] = useState('2');
   const [savingMk, setSavingMk] = useState(false);
   const [showAll, setShowAll] = useState(false);       // إظهار غير المفعّلة (إدارة فقط)
+  // الافتراض: **شركات لمحة النشطة فقط** — هي محلّ القرار. الشركات غير
+  // الموجودة في لمحة (منافس صرف) تُخفى حتى تُطلَب صراحةً، وإلا اختلط
+  // «ما نبيعه» بـ«ما يبيعه غيرنا» في جدول واحد (قرار المستخدم 2026-07-29).
+  const [showComp, setShowComp] = useState(false);
 
   const load = useCallback(async () => {
     setRows(null);
@@ -52,9 +56,13 @@ export default function PlatformCarriers({ isActive = true }) {
   }, [rows]);
   // صفحة مقارنة منافسين → تعرض فقط الناقلين الموجودين في إكسل أسعار البيع (المفعّلين).
   // غير الموجودين (بوليصة/فارنير/داخلية) لا تظهر إطلاقاً. «إظهار الكل» للإدارة فقط.
-  const visible = useMemo(() => showAll ? sorted : sorted.filter(r => r.isActive), [sorted, showAll]);
+  const visible = useMemo(() => sorted.filter(r =>
+    (showAll  || r.isActive) &&          // النشطة فقط ما لم يُطلب غيرها
+    (showComp || !r.competitorOnly)      // شركات لمحة فقط ما لم تُطلب الخارجية
+  ), [sorted, showAll, showComp]);
   const activeCount = useMemo(() => (rows || []).filter(r => r.isActive && !r.isCompetitor).length, [rows]);
   const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive).length, [rows]);
+  const compCount   = useMemo(() => (rows || []).filter(r => r.competitorOnly && r.isActive).length, [rows]);
   // عدد الشركات النشطة لكل منصّة — للمقارنة
   const platCounts = useMemo(() => {
     const rs = (rows || []).filter(r => r.isActive);
@@ -159,6 +167,12 @@ export default function PlatformCarriers({ isActive = true }) {
         {canEdit && Number(markupInput) !== markup && (
           <Btn size="sm" variant="accent" icon={<Save size={13}/>} onClick={saveMarkup} disabled={savingMk}>حفظ الهامش</Btn>
         )}
+        {compCount > 0 && (
+          <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={showComp} onChange={e => setShowComp(e.target.checked)}/>
+            إظهار الشركات غير الموجودة في لمحة ({compCount})
+          </label>
+        )}
         {hiddenCount > 0 && (
           <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
             <input type="checkbox" checked={showAll} onChange={e => setShowAll(e.target.checked)}/>
@@ -220,15 +234,10 @@ export default function PlatformCarriers({ isActive = true }) {
                             </span>}
                       </td>
                       <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
+                        {/* الرقم وحده — بلا أسطر شرح تحته (قرار المستخدم).
+                            تفصيل الوقود وتحويل الضريبة يبقى محسوباً داخل
+                            الرقم، وشرحه في حاشية الصفحة لا في كل صفّ. */}
                         {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
-                        {!r.isCompetitor && r.costPrice != null && r.fuelAmt > 0 && (
-                          <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>شامل وقود {(r.fuelPct * 100).toFixed(1)}% ({fmt2(r.fuelAmt)})</div>
-                        )}
-                        {!r.isCompetitor && r.inclusiveVat && r.rawBase != null && (
-                          <div style={{ fontSize: 9, color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>
-                            العقد {fmt2(r.rawBase)} شامل الضريبة ← {fmt2(r.base)} بدونها
-                          </div>
-                        )}
                       </td>
                       <td data-label="ربح لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
                         {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
