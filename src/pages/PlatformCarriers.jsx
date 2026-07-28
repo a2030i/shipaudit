@@ -63,6 +63,9 @@ export default function PlatformCarriers({ isActive = true }) {
   const activeCount = useMemo(() => (rows || []).filter(r => r.isActive && !r.isCompetitor).length, [rows]);
   const hiddenCount = useMemo(() => (rows || []).filter(r => !r.isActive).length, [rows]);
   const compCount   = useMemo(() => (rows || []).filter(r => r.competitorOnly && r.isActive).length, [rows]);
+  // شركات لمحة النشطة التي لا تُعرف تكلفتها — لا ربح محسوب ولا تدقيق ممكن
+  const noCostRows  = useMemo(() => (rows || [])
+    .filter(r => r.isActive && !r.competitorOnly && r.costPrice == null), [rows]);
   // عدد الشركات النشطة لكل منصّة — للمقارنة
   const platCounts = useMemo(() => {
     const rs = (rows || []).filter(r => r.isActive);
@@ -195,6 +198,34 @@ export default function PlatformCarriers({ isActive = true }) {
         </div>
       )}
 
+      {/* تنبيه جامع: شركات نشطة تبيع بلا تكلفة معروفة — تظهر أعلى الصفحة
+          كي لا تحتاج تمريراً لاكتشافها (طلب المستخدم 2026-07-29). */}
+      {noCostRows.length > 0 && (
+        <Card style={{ marginBottom: 12, padding: '12px 16px',
+          borderColor: 'color-mix(in srgb, var(--red) 35%, transparent)',
+          background: 'color-mix(in srgb, var(--red) 7%, transparent)' }}>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 6 }}>
+            ⚠️ {noCostRows.length} شركة نشطة تبيع بلا تكلفة معروفة
+          </div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 8, lineHeight: 1.7 }}>
+            ربحها غير محسوب، وفواتيرها <b>لا يمكن تدقيقها</b> — المحرّك يقيس المفوتر على العقد وبلا عقد لا مرجع.
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {noCostRows.map(r => (
+              <span key={r.id} style={{
+                fontSize: 11, padding: '3px 10px', borderRadius: 20,
+                background: 'var(--surface)', border: '1px solid var(--border)',
+              }}>
+                {r.displayName}
+                {r.sellPrice != null && (
+                  <b style={{ color: 'var(--red)', fontFamily: 'var(--font-mono)' }}> · تبيع بـ{fmt2(r.sellPrice)}</b>
+                )}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
+
       {rows == null ? <div style={{ padding: 50, textAlign: 'center' }}><Spinner/></div>
         : !visible.length ? <Card><Empty icon="🚚" title="لا شركات في المقارنة" sub="فعّل الشركات الموجودة في إكسل أسعار البيع"/></Card>
         : (
@@ -240,7 +271,21 @@ export default function PlatformCarriers({ isActive = true }) {
                       <td data-label="تكلفة الناقل" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
                         {r.costPrice != null
                           ? fmt2(r.costPrice - (r.markup || 0))
-                          : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                          : (
+                            // ⚠️ شركة **نشطة تبيع بلا تكلفة معروفة** — لا ربح
+                            // محسوب، ولا فاتورة قابلة للتدقيق (المحرّك يقيس
+                            // المفوتر على العقد). العلامة تجعلها ظاهرة بدل أن
+                            // تُكتشف بالصدفة (طلب المستخدم 2026-07-29).
+                            <span title="نشطة وتبيع بلا تكلفة معروفة — الربح غير محسوب وفواتيرها لا تُدقَّق"
+                              style={{
+                                fontFamily: 'var(--font-sans)', fontWeight: 700, fontSize: 10.5,
+                                color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 12%, transparent)',
+                                border: '1px solid color-mix(in srgb, var(--red) 35%, transparent)',
+                                borderRadius: 20, padding: '2px 9px', whiteSpace: 'nowrap',
+                              }}>
+                              ⚠️ {r.costReason || 'بلا تكلفة'}
+                            </span>
+                          )}
                       </td>
                       <td data-label="رسوم لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--brand)' }}>
                         {r.costPrice != null ? fmt2(r.markup || 0) : '—'}
