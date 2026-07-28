@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
 import './index.css'
+import './design-v5.css'
 
 // توقيت السعودية عالمياً: قاعدة البيانات تخزّن UTC، ونريد العرض بتوقيت الرياض مهما كان
 // جهاز المتصفّح. نحقن timeZone='Asia/Riyadh' في كل دوال Date.toLocale* حين لا يُمرَّر

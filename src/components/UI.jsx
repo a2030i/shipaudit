@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useId } from 'react';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle, Upload as UploadIcon } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
@@ -19,18 +19,18 @@ const VARIANTS = {
   // RADICAL v3: primary = تدرّج أزرق ملكي رسمي بلمعة علوية — الدلالة كما هي
   // (§1.20: الفعل الرئيسي الواحد للسياق)، الشكل صار متدرّجاً متوهّجاً.
   primary: {
-    background: 'linear-gradient(135deg, #2F73F2 0%, #2456C9 100%)',
+    background: 'var(--brand)',
     color: '#FFFFFF',
-    border: '1px solid transparent',
-    boxShadow: '0 8px 20px rgba(43,104,222,.32), inset 0 1px 0 rgba(255,255,255,.22)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 28px rgba(43,104,222,.45), inset 0 1px 0 rgba(255,255,255,.22)' },
+    border: '1px solid var(--brand)',
+    boxShadow: '0 1px 2px rgba(15,23,42,.08)',
+    _hover: { background: 'var(--brand-strong)', borderColor: 'var(--brand-strong)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px var(--accent-glow)' },
   },
   accent: {
-    background: 'linear-gradient(135deg, var(--green), var(--green2))',
+    background: 'var(--green)',
     color: '#fff',
-    border: '1px solid var(--green2)',
-    boxShadow: '0 8px 18px rgba(5,150,105,.18), inset 0 1px 0 rgba(255,255,255,.18)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(5,150,105,.26)' },
+    border: '1px solid var(--green)',
+    boxShadow: '0 1px 2px rgba(15,23,42,.08)',
+    _hover: { background: 'var(--green2)', borderColor: 'var(--green2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(5,150,105,.18)' },
   },
   navy: {   // مهمل ≡ primary — مُحاذى لنفس براند design-v2 حتى لا يختلف قديمُ الكود
     background: 'var(--brand, var(--accent))',
@@ -40,11 +40,11 @@ const VARIANTS = {
     _hover: { transform: 'translateY(-1px)' },
   },
   danger: {
-    background: 'linear-gradient(135deg, #EF4444, var(--red2))',
+    background: 'var(--red)',
     color: '#fff',
-    border: '1px solid var(--red2)',
-    boxShadow: '0 8px 18px rgba(220,38,38,.18)',
-    _hover: { transform: 'translateY(-1px)', boxShadow: '0 12px 26px rgba(220,38,38,.28)' },
+    border: '1px solid var(--red)',
+    boxShadow: '0 1px 2px rgba(15,23,42,.08)',
+    _hover: { background: 'var(--red2)', borderColor: 'var(--red2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(220,38,38,.18)' },
   },
   success: {
     background: 'linear-gradient(135deg, var(--green), var(--green2))',
@@ -54,18 +54,18 @@ const VARIANTS = {
     _hover: { transform: 'translateY(-1px)' },
   },
   gold: {
-    background: 'linear-gradient(135deg, #F59E0B, var(--gold2))',
-    color: '#fff',
-    border: '1px solid var(--gold2)',
-    boxShadow: '0 8px 18px rgba(217,119,6,.18)',
-    _hover: { transform: 'translateY(-1px)' },
+    background: 'var(--gold-soft)',
+    color: 'var(--gold-ink)',
+    border: '1px solid var(--gold-border)',
+    boxShadow: 'none',
+    _hover: { background: 'var(--gold-soft-hover)', transform: 'translateY(-1px)' },
   },
   ghost: {
     background: 'var(--surface)',
     color: 'var(--text2)',
     border: '1px solid var(--border2)',
-    boxShadow: '0 1px 2px rgba(15,23,42,.04)',
-    _hover: { background: 'var(--surface2)', border: '1px solid var(--border3)' },
+    boxShadow: 'none',
+    _hover: { background: 'var(--surface2)', color: 'var(--text)', border: '1px solid var(--border3)' },
   },
   outline: {
     background: 'transparent',
@@ -97,8 +97,10 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
   const { _hover, ...baseV } = v;
   return (
     <button
+      className={`ui-btn ui-btn-${variant} ui-btn-${size}`}
       type={type}
       disabled={!!disabled}
+      aria-disabled={!!disabled}
       onClick={disabled ? undefined : onClick}
       title={title}
       onMouseEnter={() => setHovered(true)}
@@ -110,7 +112,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
         borderRadius: s.borderRadius,
         padding: s.padding, fontSize: s.fontSize,
         width: s.width, justifyContent: s.justifyContent,
-        minHeight: 34,
+        minHeight: size === 'sm' ? 38 : 42,
         transition: 'transform .16s cubic-bezier(.4,0,.2,1), box-shadow .16s, background .16s, border-color .16s',
         whiteSpace: 'nowrap',
         ...baseV,
@@ -138,12 +140,13 @@ export function Card({ children, style = {}, accent, hover = false, onClick }) {
       onClick={onClick}
       onMouseEnter={() => isInteractive && setHovered(true)}
       onMouseLeave={() => isInteractive && setHovered(false)}
+      className={`ui-card ${onClick ? 'ui-card-interactive' : ''}`}
       style={{
         background: 'var(--card)',
         // Lamha cards carry a subtle visible border (not transparent).
         border: '1px solid var(--border2)',
         borderRadius: 'var(--r-lg)',
-        padding: 24,
+        padding: 20,
         cursor: onClick ? 'pointer' : undefined,
         transition: 'transform .18s, box-shadow .18s, border-color .18s',
         transform: hovered && isInteractive ? 'translateY(-2px)' : 'none',
@@ -174,7 +177,15 @@ export function StatCard({ label, value, sub, color, onClick, icon, trend, chang
   const chgColor = down ? 'var(--red)' : 'var(--green)';
   return (
     <div
-      className="stat-card"
+      className={`stat-card ${onClick ? 'stat-card-interactive' : ''}`}
+      role={onClick ? 'button' : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={onClick ? (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      } : undefined}
       onClick={onClick}
       onMouseEnter={() => onClick && setHovered(true)}
       onMouseLeave={() => onClick && setHovered(false)}
@@ -245,36 +256,27 @@ export function PageHeader({
   iconColor = 'var(--accent)',   // يُحتفظ به للتوافق — البلاطة زجاجية موحّدة الآن
 }) {
   return (
-    <div className="page-hero-band">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 15, minWidth: 0 }}>
+    <div className="page-hero-band" style={{ '--page-accent': iconColor }}>
+      <div className="page-hero-main">
         {avatar !== undefined ? (
-          <div className="hero-icon-tile" style={{ fontSize: 19, fontWeight: 700 }}>
+          <div className="hero-icon-tile" style={{ fontSize: 18, fontWeight: 800 }}>
             {avatar?.letter || '?'}
           </div>
         ) : icon && (
           <div className="hero-icon-tile">{icon}</div>
         )}
-        <div style={{ minWidth: 0 }}>
-          <h1 style={{
-            fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800,
-            margin: 0, lineHeight: 1.2, letterSpacing: 0,
-            whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
-          }}>{title}</h1>
+        <div className="page-hero-copy">
+          <h1>{title}</h1>
           {subtitle && (
-            <p className="hero-sub" style={{ fontSize: 12.5, margin: 0, marginTop: 4 }}>
-              {subtitle}
-            </p>
+            <p className="hero-sub">{subtitle}</p>
           )}
           {meta && (
-            <div className="hero-meta" style={{
-              fontSize: 11.5, marginTop: 6, fontFamily: 'var(--font-mono)',
-              letterSpacing: 0.3, fontWeight: 600,
-            }}>{meta}</div>
+            <div className="hero-meta">{meta}</div>
           )}
         </div>
       </div>
       {actions && (
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>{actions}</div>
+        <div className="page-hero-actions">{actions}</div>
       )}
     </div>
   );
@@ -307,26 +309,18 @@ export function PageHero({
     <div style={{
       position: 'relative',
       borderRadius: 'var(--r-xl)',
-      padding: dark ? '30px 34px' : '24px 28px',
+      padding: '22px 24px',
       marginBottom: 24,
       background: dark
-        ? 'linear-gradient(135deg, #101828 0%, #172033 100%)'
-        : 'linear-gradient(180deg, #FFFFFF 0%, #FBFCFE 100%)',
+        ? '#111827'
+        : 'var(--surface)',
       color: dark ? '#fff' : 'var(--text)',
-      border: dark ? '1px solid rgba(255,255,255,.08)' : '1px solid var(--border)',
+      border: dark ? '1px solid rgba(255,255,255,.10)' : '1px solid var(--border)',
       boxShadow: dark
-        ? '0 18px 42px rgba(15,23,42,.18), 0 4px 12px rgba(15,23,42,.08)'
+        ? '0 8px 24px rgba(15,23,42,.16)'
         : 'var(--shadow-sm)',
       overflow: 'hidden',
     }}>
-      {/* Decorative emerald glow blob on dark variant */}
-      {dark && (
-        <div style={{
-          position: 'absolute', top: -100, right: -80, width: 320, height: 320,
-          background: `radial-gradient(closest-side, ${accent}24, transparent)`,
-          pointerEvents: 'none', filter: 'blur(8px)',
-        }}/>
-      )}
       <div className="hero-grid" style={{
         position: 'relative',
         display: 'grid',
@@ -373,7 +367,7 @@ export function PageHero({
               )
             )}
             <h1 style={{
-              fontFamily: 'var(--font-sans)', fontSize: 26, fontWeight: 700,
+              fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800,
               color: dark ? '#fff' : 'var(--text)',
               margin: 0, lineHeight: 1.15, letterSpacing: 0,
             }}>{title}</h1>
@@ -964,8 +958,8 @@ export function DropZone({ onFile, accept = '.xlsx,.xls,.csv', title = 'اختر
         padding: 34, textAlign: 'center', cursor: 'pointer',
         border: `1.5px dashed ${dragOver ? accent : 'var(--border2)'}`,
         background: dragOver
-          ? 'linear-gradient(180deg, var(--accent-dim), #fff)'
-          : 'linear-gradient(180deg, #FFFFFF 0%, #F8FAFC 100%)',
+          ? 'var(--accent-dim)'
+          : 'var(--surface2)',
         borderRadius: 'var(--r-xl)',
         boxShadow: dragOver ? '0 14px 34px rgba(37,99,235,.14)' : 'inset 0 1px 0 rgba(255,255,255,.8)',
         transition: 'border-color .15s, background .15s, transform .15s, box-shadow .15s',
@@ -1033,39 +1027,49 @@ export function Badge({ status, label }) {
 
 // ─── Input ─────────────────────────────────────────────────────────────────────
 export function Input({ label, hint, error, style: outerStyle = {}, ...props }) {
+  const generatedId = useId();
+  const inputId = props.id || generatedId;
+  const hintId = hint ? `${inputId}-hint` : undefined;
+  const errorId = error ? `${inputId}-error` : undefined;
+  const describedBy = [hintId, errorId].filter(Boolean).join(' ') || undefined;
   return (
-    <div style={{ ...outerStyle }}>
+    <div className="ui-field" style={{ ...outerStyle }}>
       {label && (
-        <label style={{ display: 'block', color: error ? 'var(--red)' : 'var(--muted)', fontSize: 11, marginBottom: 5, fontFamily: 'var(--font-mono)', letterSpacing: .3 }}>
+        <label htmlFor={inputId} className={error ? 'ui-label error' : 'ui-label'}>
           {label}
         </label>
       )}
       <input
+        {...props}
+        id={inputId}
+        aria-invalid={!!error}
+        aria-describedby={describedBy}
         style={{
-          width: '100%', padding: '8px 12px',
-          borderRadius: 'var(--r-md)', fontSize: 13,
+          width: '100%',
           borderColor: error ? 'var(--red)' : undefined,
           ...(props.style || {}),
         }}
-        {...{ ...props, style: undefined }}
       />
-      {hint  && <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 4 }}>{hint}</div>}
-      {error && <div style={{ color: 'var(--red)', fontSize: 10, marginTop: 4 }}>{error}</div>}
+      {hint  && <div id={hintId} className="ui-field-hint">{hint}</div>}
+      {error && <div id={errorId} className="ui-field-error">{error}</div>}
     </div>
   );
 }
 
 export function Select({ label, children, style: outerStyle = {}, ...props }) {
+  const generatedId = useId();
+  const selectId = props.id || generatedId;
   return (
-    <div style={{ ...outerStyle }}>
+    <div className="ui-field" style={{ ...outerStyle }}>
       {label && (
-        <label style={{ display: 'block', color: 'var(--muted)', fontSize: 11, marginBottom: 5, fontFamily: 'var(--font-mono)', letterSpacing: .3 }}>
+        <label htmlFor={selectId} className="ui-label">
           {label}
         </label>
       )}
       <select
-        style={{ width: '100%', padding: '8px 12px', borderRadius: 'var(--r-md)', fontSize: 13, cursor: 'pointer', ...(props.style || {}) }}
-        {...{ ...props, style: undefined }}
+        {...props}
+        id={selectId}
+        style={{ width: '100%', cursor: 'pointer', ...(props.style || {}) }}
       >
         {children}
       </select>
@@ -1075,8 +1079,9 @@ export function Select({ label, children, style: outerStyle = {}, ...props }) {
 
 // ─── Modal ─────────────────────────────────────────────────────────────────────
 export function Modal({ title, children, onClose, width = 520 }) {
+  const titleId = useId();
   useEffect(() => {
-    const fn = (e) => e.key === 'Escape' && onClose();
+    const fn = (e) => e.key === 'Escape' && onClose?.();
     window.addEventListener('keydown', fn);
     return () => window.removeEventListener('keydown', fn);
   }, [onClose]);
@@ -1091,11 +1096,13 @@ export function Modal({ title, children, onClose, width = 520 }) {
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         zIndex: 1000,
       }}
-      onClick={e => e.target === e.currentTarget && onClose()}
+      onClick={e => e.target === e.currentTarget && onClose?.()}
     >
       <div
-        className="scale-in"
+        className="scale-in modal-panel"
         role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
         style={{
           background: 'var(--card)',
           border: '1px solid var(--border)',
@@ -1107,11 +1114,12 @@ export function Modal({ title, children, onClose, width = 520 }) {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
-          <h3 style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 15, fontWeight: 800, letterSpacing: 0 }}>
+          <h3 id={titleId} style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 16, fontWeight: 800, letterSpacing: 0 }}>
             {title}
           </h3>
           <button
-            onClick={onClose}
+            aria-label="إغلاق"
+            onClick={() => onClose?.()}
             style={{
               background: 'var(--surface)', border: '1px solid var(--border)',
               color: 'var(--muted)', borderRadius: 8,
@@ -1131,7 +1139,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
 // ─── Spinner ───────────────────────────────────────────────────────────────────
 export function Spinner({ size = 20, color = 'var(--accent)' }) {
   return (
-    <div style={{
+    <div role="status" aria-label="جارٍ التحميل" style={{
       width: size, height: size, borderRadius: '50%',
       border: `2px solid color-mix(in srgb, ${color} 18%, transparent)`,
       borderTopColor: color,

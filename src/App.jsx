@@ -89,7 +89,7 @@ const NAV_ITEMS = [
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
   // الفعل التالي — قائمة إجراءات لكل عميل (ردّ/دين/محفظة/توقّف) — «آلة القرار».
-  { id: 'next-actions', path: '/next-actions', label: 'الفعل التالي', icon: Target, pinned: true, permAny: ['collections.view', 'sales.view', 'overview.view'] },
+  { id: 'next-actions', path: '/next-actions', label: 'الفعل التالي', icon: Target, section: 'customers', permAny: ['collections.view', 'sales.view', 'overview.view'] },
 
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
@@ -296,11 +296,6 @@ function AppInner({ theme, toggleTheme }) {
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
   const [collapsed,       setCollapsed]       = useState(false);
-  // القائمة المتداخلة: الهَب النشط يتوسّع تلقائياً + توسيع يدوي لبقية الهَبات (chevron)
-  // تفضيل المستخدم الصريح (فتح/قفل) يتغلّب على «الهَب النشط يتوسّع تلقائياً» —
-  // بدون override كان الهَب النشط مستحيل الإغلاق (activeFor يفرضه مفتوحاً).
-  const [hubOverrides, setHubOverrides] = useState(() => ({}));
-  const toggleHub = (id, expanded) => setHubOverrides(prev => ({ ...prev, [id]: !expanded }));
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // Per-section open/closed state for the accordion. Persists in
@@ -402,6 +397,12 @@ function AppInner({ theme, toggleTheme }) {
       navigate('/overview', { replace: true });
     }
   }, [profile, location.pathname]);
+
+  useEffect(() => {
+    const title = PAGE_TITLES[rawPath]
+      ?? (rawPath.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
+    document.title = `${title} — ShipAudit Pro`;
+  }, [rawPath]);
 
   // ── Load carriers ──
   const reloadCarriers = useCallback(async () => {
@@ -537,23 +538,23 @@ function AppInner({ theme, toggleTheme }) {
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
 
-          {/* الشعار الرسمي الأبيض على الكحلي (RADICAL v3) — مركز عمليات لمحة */}
+          {/* هوية هادئة: الشعار الملون على السطح الفاتح، والأبيض في الداكن. */}
           <div className="sidebar-logo">
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:7, width:'100%', alignItems:'flex-start' }}>
-                <LamhaLogo height={40} variant="white"/>
-                <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+                <LamhaLogo height={36} variant={theme === 'light' ? 'color' : 'white'}/>
+                <div className="sidebar-product-label" style={{ display:'flex', alignItems:'center', gap:7 }}>
                   <span className="live-dot"/>
-                  <span style={{ color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', fontSize:10.5, letterSpacing:1.6, fontWeight:700, fontFamily:'var(--font-mono)' }}>
-                    OPERATIONS CENTER
+                  <span style={{ fontSize:10.5, fontWeight:700 }}>
+                    منصة العمليات المالية
                   </span>
                 </div>
               </div>
             )}
             {mobileOpen && (
-              <button onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', marginRight:'auto', padding:4 }}>
+              <button aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', marginRight:'auto', padding:4 }}>
                 <X size={16}/>
               </button>
             )}
@@ -578,134 +579,49 @@ function AppInner({ theme, toggleTheme }) {
             ))}
 
             {/* Accordion sections */}
-            {NAV_SECTIONS.map((sec, idx) => {
+            {NAV_SECTIONS.map((sec) => {
               const items = visibleNav.filter(n => n.section === sec.id);
               if (!items.length) return null;
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              const rowCount = items.reduce((sum, n) => (
-                sum + 1 + (!collapsed && n.showSubTabsInNav && n.subTabs ? n.subTabs.length : 0)
-              ), 0);
-              // Accordion remains one-section-at-a-time. Navigation opens
-              // the active section so action links are not hidden.
-              // design-v2 (يتجاوز قرار الأكورديون v4): المجموعات ظاهرة دائماً
-              // تحت عناوين خافتة — كالمعاينة المعتمدة direction-mock-v1.
-              const isOpen = true;
+              const rowCount = items.length;
+              // في الوضع المصغّر تبقى الأيقونات متاحة. في الوضع الكامل يعمل
+              // أكورديون قسم واحد حتى تظل مساحة العمل قصيرة وواضحة.
+              const isOpen = collapsed || !collapsedSecs.has(sec.id);
               const SecIcon = sec.icon;
               return (
-                <div key={sec.id} style={{ marginTop: idx === 0 ? 14 : 18 }}>
+                <div key={sec.id} className={`nav-section ${isOpen ? 'open' : ''} ${sectionHasActive ? 'has-active' : ''}`}>
                   {collapsed ? (
-                    // Collapsed mode: just a thin divider tinted with
-                    // the section accent — gives a sense of grouping
-                    // even when labels are hidden.
-                    <div style={{
-                      height: 2, margin: '10px 12px 8px',
-                      borderRadius: 1,
-                      background: `color-mix(in srgb, ${sec.accent} 30%, transparent)`,
-                    }}/>
+                    <div className="nav-section-divider"/>
                   ) : (
-                    <>
-                      {/* Thin top divider — except above the very first
-                          section since the pinned items above already
-                          provide visual separation. */}
-                      {idx > 0 && (
-                        <div style={{
-                          height: 1, margin: '0 8px 12px',
-                          background: 'var(--border)',
-                        }}/>
-                      )}
-                      {/* design-v2: العنوان تسمية ثابتة لا زرّ طيّ */}
-                      <div
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 9,
-                          width: '100%', padding: '10px 14px 6px',
-                          background: 'transparent', border: 'none',
-                          fontFamily: 'var(--font-sans)',
-                          textAlign: 'right',
-                        }}
-                      >
-                        <SecIcon
-                          size={13}
-                          strokeWidth={2}
-                          style={{
-                            color: sec.accent,
-                            opacity: sectionHasActive ? 1 : 0.7,
-                            flexShrink: 0,
-                          }}
-                        />
-                        <div style={{
-                          flex: 1,
-                          minWidth: 0,
-                          overflow: 'hidden',
-                        }}>
-                          <div style={{
-                            fontSize: 11.5,
-                            fontWeight: 800,
-                            letterSpacing: 0,
-                            color: sectionHasActive ? sec.accent : 'var(--nav-label-color)',
-                            minWidth: 0,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {sec.label}
-                          </div>
-                          <div style={{
-                            fontSize: 9.8,
-                            fontWeight: 600,
-                            letterSpacing: 0,
-                            color: 'var(--nav-hint-color, rgba(199,210,254,.58))',
-                            marginTop: 2,
-                            minWidth: 0,
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}>
-                            {sec.hint}
-                          </div>
-                        </div>
-                      </div>
-                    </>
+                    <button
+                      type="button"
+                      className="nav-section-trigger"
+                      aria-expanded={isOpen}
+                      onClick={() => toggleSection(sec.id)}
+                    >
+                      <span className="nav-section-icon"><SecIcon size={15} strokeWidth={2}/></span>
+                      <span className="nav-section-copy">
+                        <strong>{sec.label}</strong>
+                        <small>{sec.hint}</small>
+                      </span>
+                      <ChevronDown className="nav-section-chevron" size={15}/>
+                    </button>
                   )}
-                  <div style={{
-                    /* design-v2: لا أكورديون — سقف الارتفاع القديم (rowCount×42) كان
-                       يقصّ آخر عناصر كل قسم بعد تكبير الصفوف (بلاغ المستخدم). */
-                    paddingInlineEnd: collapsed ? 0 : 6,
-                  }}>
-                    {/* بعض عناصر الـhub تعرض اختصارات فرعية عند الحاجة العملية للوصول السريع. */}
-                    {items.map(n => {
-                      const activeSubTab = subTabOf(n);
-                      const hasSub = !collapsed && n.subTabs?.length;
-                      // القائمة المتداخلة: تفضيل المستخدم الصريح أولاً، وإلا النشط يتوسّع تلقائياً
-                      const expanded = hasSub && (hubOverrides[n.id] !== undefined ? hubOverrides[n.id] : activeFor(n));
-                      return (
-                        <div key={n.id}>
-                          <NavBtn
-                            n={n}
-                            active={activeFor(n)}
-                            accent={sec.accent}
-                            collapsed={collapsed}
-                            onClick={() => goto(n.path)}
-                            nested
-                            expandable={hasSub}
-                            expanded={expanded}
-                            onToggleExpand={hasSub ? () => toggleHub(n.id, expanded) : undefined}
-                          />
-                          {expanded && (
-                            // خط شجري خفيف يربط التبويبات الفرعية بالهَب — للوصول السريع
-                            <div style={{
-                              marginInlineStart: 21, paddingInlineStart: 3, marginBottom: 3,
-                              borderInlineStart: `1.5px solid color-mix(in srgb, ${sec.accent} 28%, transparent)`,
-                            }}>
-                              {n.subTabs.map(t => (
-                                <NavSubBtn
-                                  key={t.tabId}
-                                  tab={t}
-                                  active={activeSubTab?.tabId === t.tabId}
-                                  accent={sec.accent}
-                                  onClick={() => goto(`${n.path}?tab=${t.tabId}`)}
-                                />
-                              ))}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                  <div
+                    className="nav-section-items"
+                    style={{ maxHeight: isOpen ? `${rowCount * 48 + 12}px` : 0 }}
+                  >
+                    {items.map(n => (
+                      <NavBtn
+                        key={n.id}
+                        n={n}
+                        active={activeFor(n)}
+                        accent={sec.accent}
+                        collapsed={collapsed}
+                        onClick={() => goto(n.path)}
+                        nested
+                      />
+                    ))}
                   </div>
                 </div>
               );
@@ -766,7 +682,7 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Topbar */}
           <div className="topbar">
-            <button className="hamburger-btn" onClick={() => setMobileOpen(true)}>
+            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => setMobileOpen(true)}>
               <Menu size={16}/>
             </button>
 
@@ -793,7 +709,7 @@ function AppInner({ theme, toggleTheme }) {
                 style={{
                   marginInlineStart: 'auto', display: 'flex', alignItems: 'center', gap: 8,
                   padding: '8px 12px', borderRadius: 12, cursor: 'pointer',
-                  background: '#FFFFFF', border: '1px solid var(--border2)',
+                  background: 'var(--surface)', border: '1px solid var(--border2)',
                   color: 'var(--text2)', fontFamily: 'var(--font-sans)', fontSize: 12.5,
                   maxWidth: 320, minWidth: 220,
                   boxShadow: '0 1px 2px rgba(15,23,42,.04)',
@@ -806,7 +722,7 @@ function AppInner({ theme, toggleTheme }) {
             </div>
 
             {/* Theme toggle */}
-            <button onClick={toggleTheme} title={theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'} style={{
+            <button className="theme-toggle" aria-label={theme === 'dark' ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'} onClick={toggleTheme} title={theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'} style={{
               background:'transparent', border:'1px solid var(--border2)',
               color:'var(--muted)', cursor:'pointer', padding:'7px 9px',
               borderRadius:8, display:'flex', alignItems:'center',

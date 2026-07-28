@@ -1512,23 +1512,6 @@ thead th { letter-spacing: .3px; }
    لمحة الداخلي) + دخول أسطوري + تكثيف النمط السداسي.
 ═══════════════════════════════════════════════════════════════════════ */
 
-/* خط الهوية الرسمي — الملفات تُوضع في public/fonts/ (رخصة المستخدم).
-   حتى وصولها: طلب 404 صامت والسقوط لـPingARLT، لا كسر. */
-@font-face {
-  font-family: 'Janna LT';
-  src: url('/fonts/JannaLT-Regular.woff2') format('woff2'),
-       url('/fonts/JannaLT-Regular.ttf') format('truetype');
-  font-weight: 400 500;
-  font-display: swap;
-}
-@font-face {
-  font-family: 'Janna LT';
-  src: url('/fonts/JannaLT-Bold.woff2') format('woff2'),
-       url('/fonts/JannaLT-Bold.ttf') format('truetype');
-  font-weight: 600 900;
-  font-display: swap;
-}
-
 /* ── بطاقة KPI (StatCard في UI.jsx): شريط علوي بلون الدلالة + بلاطة أيقونة ── */
 .stat-card {
   position: relative;

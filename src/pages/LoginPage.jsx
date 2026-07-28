@@ -1,11 +1,10 @@
 import { useState } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { Spinner } from '../components/UI.jsx';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
-// «الدخول الأسطوري» (RADICAL v4) — عالم كحلي كامل بألوان الهوية الرسمية:
-// تدرّج #1D1C40→#333062→أزرق ملكي + نمط سداسيات الشعار + توهّجات تركوازية،
-// الشعار الأبيض الكامل، ونموذج زجاجي (login-glass). الأصناف في index.css.
+// دخول هادئ ومتسق مع مساحة العمل المالية. الأصناف النهائية في design-v5.css.
 export default function LoginPage() {
   const { signIn } = useAuth();
   const [email,    setEmail]    = useState('');
@@ -148,12 +147,13 @@ export default function LoginPage() {
                   value={password} onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••"
                 />
-                <button type="button" onClick={() => setShowPw(v => !v)} style={{
+                <button type="button" aria-label={showPw ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'} onClick={() => setShowPw(v => !v)} style={{
                   position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
                   background: 'none', border: 'none', cursor: 'pointer',
-                  color: 'rgba(255,255,255,.55)', fontSize: 15, padding: 0,
+                  color: 'rgba(255,255,255,.55)', padding: 4,
+                  display: 'flex', alignItems: 'center',
                 }}>
-                  {showPw ? '🙈' : '👁'}
+                  {showPw ? <EyeOff size={17}/> : <Eye size={17}/>}
                 </button>
               </div>
             </div>
@@ -174,13 +174,13 @@ export default function LoginPage() {
               width: '100%', padding: '13px 0', borderRadius: 12,
               background: loading
                 ? 'rgba(255,255,255,.10)'
-                : 'linear-gradient(135deg, #2F73F2 0%, #2456C9 100%)',
+                : 'var(--brand)',
               border: 'none',
               color: loading ? 'rgba(255,255,255,.5)' : '#fff',
               fontWeight: 700, fontSize: 14,
               cursor: loading ? 'not-allowed' : 'pointer',
               display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
-              boxShadow: loading ? 'none' : '0 10px 28px rgba(43,104,222,.45), inset 0 1px 0 rgba(255,255,255,.25)',
+              boxShadow: loading ? 'none' : '0 8px 22px rgba(37,99,235,.28)',
               transition: 'opacity .2s, box-shadow .2s',
               fontFamily: 'var(--font-sans)',
             }}>
