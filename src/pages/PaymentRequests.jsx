@@ -297,6 +297,46 @@ export default function PaymentRequests({ isActive = true }) {
 }
 
 // ── Detail / workflow modal ─────────────────────────────────────
+// عرض الإيصال برابط موقّت (الـbucket صار خاصاً — لا رابط عام).
+function ReceiptView({ path }) {
+  const [url, setUrl] = useState(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    let alive = true;
+    receiptUrl(path)
+      .then(u => { if (alive) { u ? setUrl(u) : setFailed(true); } })
+      .catch(() => { if (alive) setFailed(true); });
+    return () => { alive = false; };
+  }, [path]);
+
+  if (failed) return <div style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 38 }}>تعذّر فتح الإيصال</div>;
+  if (!url)   return <div style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 38 }}>يفتح الإيصال…</div>;
+
+  const isPdf = /\.pdf$/i.test(path);
+  return (
+    <div style={{ marginInlineStart: 38 }}>
+      {isPdf ? (
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{
+          display: 'inline-flex', alignItems: 'center', gap: 6,
+          padding: '8px 14px', borderRadius: 999,
+          background: 'var(--brand)', color: '#fff', textDecoration: 'none',
+          fontSize: 12.5, fontWeight: 600,
+        }}>
+          📎 افتح إيصال التحويل (PDF) ↗
+        </a>
+      ) : (
+        <a href={url} target="_blank" rel="noopener noreferrer" style={{
+          display: 'block', borderRadius: 10, overflow: 'hidden',
+          border: '1px solid color-mix(in srgb, var(--brand) 28%, transparent)',
+          maxWidth: 320,
+        }}>
+          <img src={url} alt="إيصال" style={{ width: '100%', height: 'auto', display: 'block' }}/>
+        </a>
+      )}
+    </div>
+  );
+}
+
 function PaymentRequestModal({ row, profile, onClose, onChanged }) {
   const [adminNotes, setAdminNotes] = useState(row.admin_notes || '');
   const [busy, setBusy] = useState(false);
@@ -464,32 +504,9 @@ function PaymentRequestModal({ row, profile, onClose, onChanged }) {
               العميل حوّل بنكياً
             </div>
           </div>
-          {row.receipt_path ? (() => {
-            const url = receiptUrl(row.receipt_path);
-            const isPdf = /\.pdf$/i.test(row.receipt_path);
-            return (
-              <div style={{ marginInlineStart: 38 }}>
-                {isPdf ? (
-                  <a href={url} target="_blank" rel="noopener noreferrer" style={{
-                    display: 'inline-flex', alignItems: 'center', gap: 6,
-                    padding: '8px 14px', borderRadius: 999,
-                    background: 'var(--brand)', color: '#fff', textDecoration: 'none',
-                    fontSize: 12.5, fontWeight: 600,
-                  }}>
-                    📎 افتح إيصال التحويل (PDF) ↗
-                  </a>
-                ) : (
-                  <a href={url} target="_blank" rel="noopener noreferrer" style={{
-                    display: 'block', borderRadius: 10, overflow: 'hidden',
-                    border: '1px solid rgba(59,130,246,.28)',
-                    maxWidth: 320,
-                  }}>
-                    <img src={url} alt="إيصال" style={{ width: '100%', height: 'auto', display: 'block' }}/>
-                  </a>
-                )}
-              </div>
-            );
-          })() : (
+          {row.receipt_path ? (
+            <ReceiptView path={row.receipt_path}/>
+          ) : (
             <div style={{ fontSize: 12, color: 'var(--muted)', marginInlineStart: 38 }}>
               لم يُرفق إيصال
             </div>

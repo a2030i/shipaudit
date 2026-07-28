@@ -113,16 +113,20 @@ export async function uploadReceipt(file) {
     .from('payment-receipts')
     .upload(path, file, { contentType: file.type || 'application/octet-stream' });
   if (error) throw error;
-  const { data } = supabase.storage.from('payment-receipts').getPublicUrl(path);
-  return { path, publicUrl: data?.publicUrl || null };
+  return { path };
 }
 
-// Build a public URL for an already-stored receipt path (used by the
-// admin page to render the receipt link).
-export function receiptUrl(path) {
+// رابط موقّت للإيصال (ساعة). كان `getPublicUrl` والـbucket عاماً + سياسة
+// SELECT للـanon — أي زائر مجهول يسرد ويحمّل **كل** إيصالات تحويلات العملاء
+// (تدقيق خارجي 2026-07-28، مؤكَّد بالسياسات الحية). الآن الـbucket خاص
+// والقراءة للمسجَّلين فقط عبر رابط موقّع. **ممنوع إرجاع getPublicUrl هنا.**
+export async function receiptUrl(path) {
   if (!path) return null;
-  const { data } = supabase.storage.from('payment-receipts').getPublicUrl(path);
-  return data?.publicUrl || null;
+  const { data, error } = await supabase.storage
+    .from('payment-receipts')
+    .createSignedUrl(path, 3600);
+  if (error) return null;
+  return data?.signedUrl || null;
 }
 
 // ── Admin ──────────────────────────────────────────────────────

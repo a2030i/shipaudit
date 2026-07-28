@@ -84,7 +84,12 @@ const SIZES = {
   full: { padding: '12px 24px', fontSize: 14, borderRadius: 12, gap: 7, width: '100%', justifyContent: 'center' },
 };
 
-export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, style = {} }) {
+// ⚠️ `type` افتراضه 'button' عمداً (تدقيق خارجي 2026-07-28): بدونه يرث الزر
+// type="submit" داخل أي <form> — وكل نماذج النظام تجمع `onSubmit` مع `onClick`
+// لنفس العملية، فكانت الضغطة تنفّذ الوعد/الشطب/إقفال الفترة **مرتين**.
+// أي زر إرسال حقيقي يمرّر type="submit" صراحةً. و`disabled` صار سمة فعلية
+// (كان يُزيل onClick فقط — فالزر يبقى قابلاً للتركيز ويُرسل النموذج).
+export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, style = {}, type = 'button' }) {
   const [hovered, setHovered] = useState(false);
   const s = SIZES[size];
   const v = VARIANTS[variant] || VARIANTS.ghost;
@@ -92,6 +97,8 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
   const { _hover, ...baseV } = v;
   return (
     <button
+      type={type}
+      disabled={!!disabled}
       onClick={disabled ? undefined : onClick}
       title={title}
       onMouseEnter={() => setHovered(true)}
