@@ -1,52 +1,17 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-
-Deno.serve(async (req) => {
-  const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-  const serviceKey  = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-  const anonKey     = Deno.env.get('SUPABASE_ANON_KEY')!;
-
-  // Accept service role key OR anon key (pg_cron uses anon key; direct calls use service role)
-  const authHeader = req.headers.get('Authorization') || '';
-  const token = authHeader.replace('Bearer ', '');
-  if (token !== serviceKey && token !== anonKey) {
-    return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401 });
-  }
-
-  const adminClient = createClient(supabaseUrl, serviceKey);
-
-  // Get all active Gmail connections
-  const { data: connections, error } = await adminClient
-    .from('gmail_connections')
-    .select('user_id')
-    .not('refresh_token', 'is', null);
-
-  if (error || !connections?.length) {
-    return new Response(JSON.stringify({ message: 'No active connections', error: error?.message }), {
-      headers: { 'Content-Type': 'application/json' },
-    });
-  }
-
-  // Sync each user sequentially to avoid overloading
-  const results: { user_id: string; ok: boolean; error?: string }[] = [];
-  for (const { user_id } of connections) {
-    try {
-      const res = await fetch(`${supabaseUrl}/functions/v1/gmail-sync`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${serviceKey}`,
-          'Content-Type':  'application/json',
-        },
-        body: JSON.stringify({ cron_user_id: user_id }),
-      });
-      // gmail-sync streams NDJSON — just drain it
-      await res.body?.cancel();
-      results.push({ user_id, ok: res.ok });
-    } catch (e: any) {
-      results.push({ user_id, ok: false, error: e.message });
-    }
-  }
-
-  return new Response(JSON.stringify({ synced: results.length, results }), {
-    headers: { 'Content-Type': 'application/json' },
-  });
-});
+// ⛔ مُوقَفة — تكامل Gmail أُلغي بالكامل (2026-07-29، قرار المستخدم).
+//
+// السبب: آخر صفّ كتبته المزامنة بتاريخ 6 مايو (12 أسبوعاً بلا إنتاج)، وصفر
+// استدعاء من الواجهة، والفواتير تصل عبر InboxDone → webhook-intake لا Gmail.
+//
+// وأُغلق معها في `gmail-callback` نوعان مؤكَّدان من الثغرات: `state` غير
+// موقّع كان يُؤخذ منه `userId` (account-linking CSRF) و`returnUrl` يُمرَّر
+// لـredirect بلا قائمة سماح (open redirect).
+//
+// السرّ GOOGLE_CLIENT_SECRET حُذف من قاعدة البيانات، والكرون أُوقف، وتوكن
+// التحديث المخزَّن حُذف. تُحذف هذه الدوال نهائياً من لوحة Supabase.
+Deno.serve(() =>
+  new Response(
+    JSON.stringify({ error: 'gone', message: 'تكامل Gmail مُوقَف — الفواتير تصل عبر InboxDone' }),
+    { status: 410, headers: { 'Content-Type': 'application/json' } },
+  )
+);

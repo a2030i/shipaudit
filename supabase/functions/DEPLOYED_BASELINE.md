@@ -33,12 +33,12 @@
 |---|---|---|---|---|
 | `create-user` | v7 | `true` | `c8be2d9dd50d72ce…` | 2026-04-24 17:19:57 |
 | `reset-admin` | v7 | `true` | `d9aea98d7382bb8c…` | 2026-07-21 10:03:27 |
-| `gmail-auth` | v7 | `true` | `1964dc180caabebc…` | 2026-04-24 21:04:55 |
-| `gmail-callback` | v6 | **`false`** | `020620c5d772802c…` | 2026-04-24 17:23:39 |
-| `gmail-sync` | v38 | `true` | `49a0e26589efa5c2…` | 2026-04-27 00:14:10 |
-| `gmail-fetch-attachment` | v6 | `true` | `c7d10c67458022e1…` | 2026-04-24 22:52:14 |
+| `gmail-auth` | v8 | `true` | `b58ad575b79f488d…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
+| `gmail-callback` | v7 | **`false`** | `684ea568da709eb1…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
+| `gmail-sync` | v39 | `true` | `78c663b1da9c00d1…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
+| `gmail-fetch-attachment` | v7 | `true` | `5e8ca0630e95e03d…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
 | `manage-users` | v7 | `true` | `9f60b4cef6ce35c1…` | 2026-05-23 12:44:46 |
-| `gmail-sync-cron` | v7 | `true` | `9bda594207a8c969…` | 2026-04-25 14:16:52 |
+| `gmail-sync-cron` | v8 | `true` | `778cbb4238ad5bbf…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
 | `webhook-intake` | v19 | **`false`** | `a7c3d7202bbf3caa…` | 2026-07-28 06:13:25 |
 | `zoho-intake` | v12 | **`false`** | `37bee4145e8ec464…` | 2026-07-03 15:00:49 |
 | `whatsapp-send` | v7 | **`false`** | `1c1bfbfffb629ad5…` | 2026-07-14 18:01:53 |
