@@ -1,11 +1,17 @@
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-/* ── Lamha corporate font (PingAR+LT) — same family the internal system uses ── */
-@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Light.otf')   format('opentype'); font-weight: 300; font-display: swap; }
-@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
-@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Medium.otf')  format('opentype'); font-weight: 500; font-display: swap; }
-@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Bold.otf')    format('opentype'); font-weight: 700; font-display: swap; }
-@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Heavy.otf')   format('opentype'); font-weight: 800; font-display: swap; }
+/* ── Lamha corporate font (PingAR+LT) — same family the internal system uses ──
+   WOFF2 أولاً ثم OTF سقوطاً (2026-07-29): الخطوط الثلاثة المستعملة فعلاً كانت
+   تُنزَّل بصيغة OTF بـ457KB على **شاشة الدخول** — أي ٧٠٪ من حمل الإقلاع
+   الحقيقي، أكبر من حزمة الجافاسكربت كلها. التحويل لـWOFF2 وفّر ٦٠٪ بلا أي
+   تغيير في الشكل (نفس الخط حرفياً، ترميز أكفأ). الترتيب مهم: المتصفّح يأخذ
+   أول صيغة يدعمها، وWOFF2 مدعوم في كل متصفّح حديث فلا يُنزَّل الـOTF إطلاقاً.
+   التحويل: `node tools/fonts-to-woff2.cjs` (wawoff2). */
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Light.woff2')   format('woff2'), url('/fonts/PingARLT-Light.otf')   format('opentype'); font-weight: 300; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Regular.woff2') format('woff2'), url('/fonts/PingARLT-Regular.otf') format('opentype'); font-weight: 400; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Medium.woff2')  format('woff2'), url('/fonts/PingARLT-Medium.otf')  format('opentype'); font-weight: 500; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Bold.woff2')    format('woff2'), url('/fonts/PingARLT-Bold.otf')    format('opentype'); font-weight: 700; font-display: swap; }
+@font-face { font-family: 'PingARLT'; src: url('/fonts/PingARLT-Heavy.woff2')   format('woff2'), url('/fonts/PingARLT-Heavy.otf')   format('opentype'); font-weight: 800; font-display: swap; }
 
 /* ══════════════════════════════════════════════
    LAMHA BRAND COLORS
