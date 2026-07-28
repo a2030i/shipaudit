@@ -132,7 +132,8 @@ export default function PlatformCarriers({ isActive = true }) {
         return {
           'اسم شركة الشحن': r.displayName,
           'الحالة في لمحة': r.competitorOnly ? 'منافس' : (r.isActive ? 'نشط' : 'غير نشط'),
-          'سعر التكلفة في لمحة': r.costPrice ?? '',
+          'تكلفة الناقل': r.costPrice != null ? Number((r.costPrice - (r.markup||0)).toFixed(2)) : '',
+          'رسوم لمحة': r.costPrice != null ? (r.markup||0) : '',
           'ربح لمحة': profit,
           'البيع في لمحة': r.sellPrice ?? '',
           'البيع في أوتو': r.sellAuto ?? '',
@@ -201,7 +202,7 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['اسم شركة الشحن', 'الحالة في لمحة', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  {['اسم شركة الشحن', 'الحالة في لمحة', 'تكلفة الناقل', 'رسوم لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {visible.map(r => {
@@ -233,11 +234,16 @@ export default function PlatformCarriers({ isActive = true }) {
                               {r.isActive ? 'نشط' : 'غير نشط'}
                             </span>}
                       </td>
-                      <td data-label="سعر التكلفة في لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
-                        {/* الرقم وحده — بلا أسطر شرح تحته (قرار المستخدم).
-                            تفصيل الوقود وتحويل الضريبة يبقى محسوباً داخل
-                            الرقم، وشرحه في حاشية الصفحة لا في كل صفّ. */}
-                        {r.costPrice != null ? fmt2(r.costPrice) : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                      {/* تكلفة الناقل وحدها — بلا رسوم لمحة. كانت مدموجتين في
+                          رقم واحد اسمه «سعر التكلفة»، فيختفي ما تكسبه لمحة
+                          داخل بند اسمه «تكلفة» (قرار المستخدم 2026-07-29). */}
+                      <td data-label="تكلفة الناقل" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: 'var(--accent)' }}>
+                        {r.costPrice != null
+                          ? fmt2(r.costPrice - (r.markup || 0))
+                          : <span style={{ color: 'var(--muted2)', fontFamily: 'var(--font-sans)', fontWeight: 400 }}>{r.costReason || '—'}</span>}
+                      </td>
+                      <td data-label="رسوم لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--brand)' }}>
+                        {r.costPrice != null ? fmt2(r.markup || 0) : '—'}
                       </td>
                       <td data-label="ربح لمحة" style={{ ...cell, fontFamily: 'var(--font-mono)', fontWeight: 800, color: pColor }}>
                         {profit != null ? `${profit > 0 ? '+' : ''}${fmt2(profit)}` : '—'}
