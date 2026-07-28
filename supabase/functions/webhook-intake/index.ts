@@ -1,4 +1,9 @@
-// webhook-intake v11 — inbound endpoint for carrier invoice files.
+// webhook-intake v12 — inbound endpoint for carrier invoice files.
+//
+// v12: auth-observability phase (2026-07-28). Every request is logged to
+//      `webhook_auth_log` with whether it carried X-Webhook-Secret and
+//      whether that secret was valid. NOTHING is rejected yet — see the
+//      comment block inside the handler before changing that.
 //
 // v11: tolerant request parsing — accepts JSON, multipart/form-data, and
 //      empty/verification-ping bodies (older code 400'd everything that
@@ -262,9 +267,31 @@ Deno.serve(async (req) => {
   // (it's not guessable and only shared with the user's email
   // automation). Junk files surface as 'awaiting_assignment' in the
   // /webhook page and the admin can delete or classify them.
-  // If WEBHOOK_SHARED_SECRET is set later, requests carrying a
-  // matching X-Webhook-Secret still get the same treatment — but
-  // we no longer reject calls that omit it.
+  //
+  // ── المرحلة أ لتأمين الوارد (2026-07-28): رصد بلا رفض ──
+  // نسجّل كل طلب وهل حمل السرّ وهل كان صحيحاً، **بلا رفض أي شيء** كي لا
+  // ينقطع الوارد. حين يُظهر `webhook_secret_readiness(48)` أن المرسِل
+  // (InboxDone) صار يرسل الهيدر بثبات، تُفعَّل المرحلة ب: رفض إلزامي +
+  // timestamp/replay protection.
+  // ⚠️ ممنوع تفعيل الرفض هنا قبل قراءة السجل والتأكد من التزام المصدر.
+  const gotSecret   = req.headers.get("x-webhook-secret") || "";
+  const hadSecret   = gotSecret.length > 0;
+  const secretValid = SHARED_SECRET ? (hadSecret && gotSecret === SHARED_SECRET) : null;
+  // fire-and-forget — فشل الرصد لا يُفشل الاستقبال أبداً
+  try {
+    createClient(SUPABASE_URL, SERVICE_ROLE)
+      .from("webhook_auth_log")
+      .insert({
+        fn: "webhook-intake",
+        had_secret: hadSecret,
+        secret_valid: secretValid,
+        source_ip: (req.headers.get("x-forwarded-for") || "").split(",")[0].trim() || null,
+        user_agent: req.headers.get("user-agent"),
+        content_type: req.headers.get("content-type"),
+        outcome: "accepted",
+      })
+      .then(() => {}, (e: unknown) => console.error("auth_log_failed", e));
+  } catch (e) { console.error("auth_log_threw", e); }
 
   // Tolerant body parsing (v11): accept JSON, multipart/form-data, and
   // empty bodies. Many email forwarders post multipart or send an empty

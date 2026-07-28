@@ -39,7 +39,7 @@
 | `gmail-fetch-attachment` | v6 | `true` | `c7d10c67458022e1…` | 2026-04-24 22:52:14 |
 | `manage-users` | v7 | `true` | `9f60b4cef6ce35c1…` | 2026-05-23 12:44:46 |
 | `gmail-sync-cron` | v7 | `true` | `9bda594207a8c969…` | 2026-04-25 14:16:52 |
-| `webhook-intake` | v17 | **`false`** | `06b41fb5bc003bfa…` | 2026-06-08 08:55:04 |
+| `webhook-intake` | v19 | **`false`** | `a7c3d7202bbf3caa…` | 2026-07-28 06:13:25 |
 | `zoho-intake` | v12 | **`false`** | `37bee4145e8ec464…` | 2026-07-03 15:00:49 |
 | `whatsapp-send` | v7 | **`false`** | `1c1bfbfffb629ad5…` | 2026-07-14 18:01:53 |
 | `assistant` | v7 | `true` | `457f7cc73e4126a4…` | 2026-06-13 18:54:32 |
