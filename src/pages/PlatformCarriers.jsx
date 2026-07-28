@@ -153,7 +153,8 @@ export default function PlatformCarriers({ isActive = true }) {
       const data = sorted.filter(r => r.isActive).map(r => {
         const profit = (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '';
         const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null);
-        const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+        // نفس حارس الشاشة: سعر واحد ليس مقارنة (انظر التعليق في جدول الصفحة)
+        const best = prices.length >= 2 ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
         return {
           'اسم شركة الشحن': r.displayName,
           'الحالة في لمحة': r.competitorOnly ? 'منافس' : (r.isActive ? 'نشط' : 'غير نشط'),
@@ -164,7 +165,8 @@ export default function PlatformCarriers({ isActive = true }) {
           'البيع في طرود': r.sellTorod ?? '',
           'البيع في تريك': r.sellTrek ?? '',
           'أفضل سعر': best ? best[1] : '',
-          'أرخص منصّة': best ? best[0] : '',
+          'أرخص منصّة': best ? best[0] : (prices.length === 1 ? 'لا سعر منافس مُدخَل' : ''),
+          'منصّات بسعر مُدخَل': prices.length,
         };
       });
       const wb = XLSX.utils.book_new();
@@ -227,10 +229,17 @@ export default function PlatformCarriers({ isActive = true }) {
                     // التكلفة تشمل الوقود، فالربح = البيع − التكلفة صافٍ مباشرة
                     const profit = (r.sellPrice != null && r.costPrice != null) ? r.sellPrice - r.costPrice : null;
                     const pColor = profit == null ? 'var(--muted2)' : profit <= 0 ? 'var(--red)' : profit < 1.5 ? 'var(--gold)' : 'var(--green)';
-                    // أفضل سعر = الأقل بين المنصّات الأربع (يُحسب حيّاً من الصف)
+                    // أفضل سعر = الأقل بين المنصّات الأربع (يُحسب حيّاً من الصف).
+                    // ⚠️ الخانة الفارغة تعني «لم يُدخَل سعر» لا «غير متاح على تلك
+                    // المنصّة» — فمقارنة سعر لمحة وحده بلا منافس ليست مقارنة.
+                    // بلا هذا الحارس كانت الشاشة تعلن «🟢 لمحة الأرخص» لخمسة
+                    // ناقلين لا نملك عنهم أي سعر منافس (إيمايل · J&T · ثابت ·
+                    // ويبك · أتاك) — استنتاج تسعيري خاطئ من غياب البيانات.
                     const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null && Number.isFinite(v));
-                    const best = prices.length ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
+                    const comparable = prices.length >= 2;
+                    const best = comparable ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
                     const bestIsLamha = best && best[0] === 'لمحة';
+                    const missingCount = 4 - prices.length;
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
@@ -265,8 +274,20 @@ export default function PlatformCarriers({ isActive = true }) {
                             <span style={{ fontSize: 10, fontWeight: 700, color: bestIsLamha ? 'var(--green)' : 'var(--gold)' }}>
                               {bestIsLamha ? '🟢 لمحة الأرخص' : `🟡 ${best[0]} أرخص`}
                             </span>
+                            {missingCount > 0 && (
+                              <span style={{ fontSize: 9, fontWeight: 400, color: 'var(--muted2)', fontFamily: 'var(--font-sans)' }}>
+                                من {prices.length} منصّات · {missingCount} بلا سعر
+                              </span>
+                            )}
                           </span>
-                        ) : '—'}
+                        ) : (
+                          <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25 }}>
+                            <span style={{ color: 'var(--muted2)' }}>—</span>
+                            <span style={{ fontSize: 9.5, fontWeight: 400, color: 'var(--muted2)', fontFamily: 'var(--font-sans)' }}>
+                              {prices.length === 1 ? 'لا سعر منافس مُدخَل' : 'لا أسعار مُدخَلة'}
+                            </span>
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );})}
@@ -282,7 +303,7 @@ export default function PlatformCarriers({ isActive = true }) {
         ) : null}
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted2)', marginTop: 8 }}>
-        أسعار أوتو · طرود · تريك تُملأ عند توفّرها — «أفضل سعر» يأخذ الأقل بين المنصّات الأربع تلقائياً. سعر التكلفة يتبع العقد.
+        الخانة الفارغة تعني <b>لم يُدخَل سعر</b> — لا أن الشركة غير متاحة على تلك المنصّة. و«أفضل سعر» لا يُعلن فائزاً إلا بوجود سعرين فأكثر. سعر التكلفة يتبع العقد.
       </div>
     </Pad>
   );
