@@ -414,6 +414,10 @@ export async function loadWhatsAppCampaignStatus() {
       replied: !!r.replied, replyAt: r.reply_at,
       sends: r.sends_count || 1,
       paidAfter: !!r.paid_after, paidAt: r.paid_at,
+      // «آخر رسالة» ≠ «آخر محاولة»: من فشلت رسالته لم تصله رسالة أصلاً
+      // (بلاغ 2026-07-28 — 3,273 رقماً كان يظهر كأنه راسَلناه بنجاح).
+      lastDeliveredAt: r.last_delivered_at || null,
+      lastAttemptFailed: !!r.last_attempt_failed,
     });
   }
   return map;
@@ -578,4 +582,24 @@ export async function loadWhatsAppCampaigns({ limit = 50 } = {}) {
     .order('created_at', { ascending: false }).limit(limit);
   if (error) throw error;
   return data || [];
+}
+
+// إحصائيات حملة واحدة للعرض الحي (مودال يُحدَّث دورياً بلا ضغط تحديث).
+// أخف من جلب رسائل الحملة كلها: صفّ واحد + أسباب الفشل + آخر الأحداث.
+export async function loadCampaignStats(campaignName) {
+  if (!campaignName) return null;
+  const { data, error } = await supabase.rpc('whatsapp_campaign_stats', { p_campaign: campaignName });
+  if (error) throw error;
+  const r = Array.isArray(data) ? data[0] : data;
+  if (!r) return null;
+  const n = (v) => Number(v) || 0;
+  return {
+    name: r.campaign_name, template: r.template_name,
+    targets: n(r.targets), delivered: n(r.delivered), read: n(r.read_count),
+    replied: n(r.replied), botReplies: n(r.bot_replies), failed: n(r.failed),
+    pending: n(r.pending), assigned: n(r.assigned),
+    firstSent: r.first_sent, lastSent: r.last_sent, lastEvent: r.last_event,
+    failReasons: Array.isArray(r.fail_reasons) ? r.fail_reasons : [],
+    recent: Array.isArray(r.recent) ? r.recent : [],
+  };
 }

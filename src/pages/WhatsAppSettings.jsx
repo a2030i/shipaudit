@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Trash2 } from 'lucide-react';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
-import { Card, Btn, Spinner, Empty, PageHeader, Input, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, PageHeader, Input, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
@@ -729,12 +729,20 @@ function AgentActivityTab() {
 
 // تاب سجل الحملات — تقرير مجمَّع لكل حملة (كواجهة هاتف: مستهدفون/وصلت/قُرئت/ردود)
 // + سجل الرسائل: نقرة الحملة تفتح حالة كل رقم فيها، مع تصدير Excel للحملة.
+// مشتركان بين تبويب الحملات ومودال الإحصائيات الحي
+const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
+const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
+  : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
+  : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
+  : /invalid|not.*valid/i.test(r) ? 'رقم غير صالح' : r;
+
 function CampaignsTab() {
   const { user, can } = useAuth();
   const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [report, setReport] = useState([]);        // صف لكل حملة
   const [camp, setCamp] = useState('');            // الحملة المفتوحة (فلتر سيرفري)
+  const [liveCamp, setLiveCamp] = useState('');    // حملة مفتوحة في مودال الإحصائيات الحي
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [q, setQ] = useState('');
@@ -868,16 +876,11 @@ function CampaignsTab() {
   if (rows == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
 
   const pct = (n, d) => d ? `${Math.round(n / d * 100)}%` : '—';
-  const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
   const anyStatus = report.some(c => c.delivered || c.read || c.replied);
   const rth = { padding: '9px 11px', fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap', textAlign: 'right' };
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
   const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
-  const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
-    : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
-    : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
-    : /invalid|not.*valid/i.test(r) ? 'رقم غير صالح' : r;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
@@ -929,7 +932,7 @@ function CampaignsTab() {
           </tr></thead>
           <tbody>
             {report.map(c => (
-              <tr key={c.name} onClick={() => setCamp(camp === c.name ? '' : c.name)}
+              <tr key={c.name} onClick={() => setLiveCamp(c.name)}
                 style={{ borderTop: '1px solid var(--border)', cursor: 'pointer',
                   background: camp === c.name ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent' }}>
                 <td data-label="" style={{ ...rtd, fontWeight: 700, whiteSpace: 'normal' }}>{camp === c.name ? '▾ ' : ''}{c.name}</td>
@@ -1048,7 +1051,128 @@ function CampaignsTab() {
           lockedTemplate={failWa.template}
           onClose={() => setFailWa(null)} onSent={() => { setFailWa(null); load(); }}/>
       )}
+
+      {liveCamp && (
+        <CampaignLiveModal name={liveCamp}
+          onClose={() => setLiveCamp('')}
+          onShowMessages={() => { setCamp(liveCamp); setLiveCamp(''); }}/>
+      )}
     </div>
+  );
+}
+
+// ── مودال إحصائيات الحملة — يتحدّث تلقائياً كل 5 ثوانٍ بلا ضغط تحديث ──
+// (البث الحي غير مفعّل على الجدول، فالتحديث الدوري أبسط وأضمن ويعمل فقط
+//  أثناء فتح المودال.)
+function CampaignLiveModal({ name, onClose, onShowMessages }) {
+  const [s, setS] = useState(null);
+  const [err, setErr] = useState('');
+  const [tick, setTick] = useState(0);      // نبضة الحياة (تُظهر أن التحديث يعمل)
+
+  useEffect(() => {
+    let alive = true;
+    const pull = async () => {
+      try {
+        const { loadCampaignStats } = await import('../lib/whatsappService.js');
+        const r = await loadCampaignStats(name);
+        if (alive) { setS(r); setErr(''); setTick(t => t + 1); }
+      } catch (e) { if (alive) setErr(e.message); }
+    };
+    pull();
+    const id = setInterval(pull, 5000);
+    return () => { alive = false; clearInterval(id); };
+  }, [name]);
+
+  const p = (v, t) => (!t ? '0%' : `${Math.round((v / t) * 100)}%`);
+  const when = (d) => {
+    if (!d) return '—';
+    const mins = Math.round((Date.now() - new Date(d).getTime()) / 60000);
+    if (mins < 1) return 'الآن';
+    if (mins < 60) return `قبل ${mins} دقيقة`;
+    const h = Math.round(mins / 60);
+    return h < 24 ? `قبل ${h} ساعة` : `قبل ${Math.round(h / 24)} يوم`;
+  };
+
+  const tiles = s ? [
+    { k: 'المستهدفون', v: s.targets,  c: 'var(--text)' },
+    { k: 'وصلت',       v: s.delivered, c: 'var(--accent3)', sub: p(s.delivered, s.targets) },
+    { k: 'قُرئت',      v: s.read,      c: 'var(--green)',   sub: p(s.read, s.targets) },
+    { k: 'ردّوا',      v: s.replied,   c: 'var(--brand)',   sub: `+${s.botReplies} آلي` },
+    { k: 'أُسندت لموظف', v: s.assigned, c: 'var(--accent)' },
+    { k: 'فشل',        v: s.failed,    c: 'var(--red)',     sub: p(s.failed, s.targets) },
+    { k: 'قيد الإرسال', v: s.pending,  c: 'var(--muted)' },
+  ] : [];
+
+  return (
+    <Modal title={`📊 ${name}`} onClose={onClose} width={760}>
+      {err && <div style={{ color: 'var(--red)', fontSize: 12, marginBottom: 10 }}>تعذّر التحديث: {err}</div>}
+      {!s ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={22}/></div> : (
+        <>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, fontSize: 11.5, color: 'var(--muted)' }}>
+            <span className="live-dot"/>
+            <span>يتحدّث تلقائياً كل 5 ثوانٍ</span>
+            <span style={{ color: 'var(--muted2)' }}>· آخر حدث: {when(s.lastEvent)}</span>
+            <span style={{ marginInlineStart: 'auto', fontFamily: 'var(--font-mono)', fontSize: 11 }}>{s.template || '—'}</span>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(104px, 1fr))', gap: 8, marginBottom: 14 }}>
+            {tiles.map(t => (
+              <div key={t.k} className="stat-card" style={{
+                background: 'var(--card)', border: '1px solid var(--border2)',
+                borderRadius: 'var(--r-lg)', padding: '10px 12px', '--sc-tone': t.c,
+              }}>
+                <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{t.k}</div>
+                <div style={{ fontSize: 19, fontWeight: 800, color: t.c, fontFamily: 'var(--font-mono)' }}>{fmt0(t.v)}</div>
+                {t.sub && <div style={{ fontSize: 10, color: 'var(--muted2)' }}>{t.sub}</div>}
+              </div>
+            ))}
+          </div>
+
+          {/* شريط التقدّم — نسب الحالات من الإجمالي */}
+          <div style={{ display: 'flex', height: 8, borderRadius: 999, overflow: 'hidden', marginBottom: 4, background: 'var(--surface2)' }}>
+            {[['var(--green)', s.read], ['var(--accent3)', s.delivered - s.read], ['var(--red)', s.failed], ['var(--muted3)', s.pending]]
+              .filter(([, v]) => v > 0)
+              .map(([c, v], i) => <div key={i} style={{ width: `${(v / Math.max(s.targets, 1)) * 100}%`, background: c }}/>)}
+          </div>
+          <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginBottom: 14 }}>
+            قُرئت · وصلت ولم تُقرأ · فشل · قيد الإرسال
+          </div>
+
+          {s.failReasons.length > 0 && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>أسباب الفشل</div>
+              {s.failReasons.map((r, i) => (
+                <div key={i} style={{ display: 'flex', gap: 8, fontSize: 11.5, padding: '3px 0' }}>
+                  <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)', minWidth: 44 }}>{fmt0(r.n)}</span>
+                  <span style={{ flex: 1 }}>{reasonAr(r.reason)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {s.recent.length > 0 && (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>آخر الأحداث</div>
+              <div className="m-flow" style={{ maxHeight: 170, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}>
+                {s.recent.map((e, i) => (
+                  <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+                    borderTop: i ? '1px solid var(--border)' : 'none', fontSize: 11.5 }}>
+                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{e.name || e.phone}</span>
+                    <span style={{ color: e.kind === 'ردّ' ? 'var(--brand)' : e.kind === 'قُرئت' ? 'var(--green)' : 'var(--muted)' }}>{e.kind}</span>
+                    <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>{when(e.at)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn size="sm" variant="ghost" onClick={onShowMessages}>عرض رسائل الحملة</Btn>
+            <Btn size="sm" variant="ghost" onClick={onClose}>إغلاق</Btn>
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 

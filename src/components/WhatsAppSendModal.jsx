@@ -273,6 +273,21 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // (120 سابقاً لامست المهلة وقُتلت 504 على حملة 290). الكبير الأفضل جدولته.
   const SEND_CHUNK = 60;
   const lastSentOf = (to) => waStatus.get(to)?.lastSentAt || null;
+  // «آخر رسالة» تعني رسالة **وصلت** فعلاً. المحاولة الفاشلة لا تُحتسب —
+  // كانت تُعرض «آخر رسالة: اليوم» لمن لم تصله رسالة قط (بلاغ 2026-07-28).
+  const contactStateOf = (to) => {
+    const s = waStatus.get(to);
+    if (!s) return { text: 'لم تُراسَل من قبل', tone: 'var(--muted2)' };
+    if (s.lastDeliveredAt) {
+      const t = daysAgoTxt(s.lastDeliveredAt);
+      return { text: `آخر رسالة وصلته: ${t}`, tone: 'var(--gold)' };
+    }
+    if (s.lastAttemptFailed || s.lastSentAt) {
+      const t = daysAgoTxt(s.lastSentAt);
+      return { text: `لم تصله رسالة قط · آخر محاولة فشلت${t ? ` (${t})` : ''}`, tone: 'var(--red)' };
+    }
+    return { text: 'لم تُراسَل من قبل', tone: 'var(--muted2)' };
+  };
   const daysAgoTxt = (iso) => {
     if (!iso) return null;
     const d = Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
@@ -565,15 +580,15 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
           <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
             {valid.slice(0, 400).map((r, i) => {
-              const last = daysAgoTxt(lastSentOf(r.to));
+              const st = contactStateOf(r.to);
               return (
                 <label key={r._rk} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
                   borderTop: i ? '1px solid var(--border)' : 'none', cursor: 'pointer' }}>
                   <input type="checkbox" checked={selected.has(r._rk)} onChange={() => toggle(r._rk)}/>
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
                     <span style={{ display: 'block', fontWeight: 600, fontSize: 12.5, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name || r.to}</span>
-                    <span style={{ display: 'block', fontSize: 10.5, color: last ? 'var(--gold)' : 'var(--muted2)' }}>
-                      {last ? `آخر رسالة: ${last}` : 'لم تُراسَل من قبل'}
+                    <span style={{ display: 'block', fontSize: 10.5, color: st.tone }}>
+                      {st.text}
                     </span>
                   </span>
                   <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)', direction: 'ltr' }}>{r.to}</span>
