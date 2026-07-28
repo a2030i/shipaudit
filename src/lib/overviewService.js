@@ -34,14 +34,13 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
-  const { loadCurrentBalance }   = await import('./bankBalanceService.js');
+  const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
-  // الرصيد الختامي لآخر كشف بنكي مرفوع (bank_statement_summaries §1.15) —
-  // المصدر التلقائي للرصيد؛ الإدخال اليدوي يبقى للتحديث بين الكشوف.
-  const latestClosingQ = supabase.from('bank_statement_summaries')
-    .select('period_to, closing_balance, file_name')
-    .order('period_to', { ascending: false }).limit(1)
-    .then(r => r.data?.[0] || null).catch(() => null);
+  // رصيد البنك = نقطة الحقيقة المشتركة `loadEffectiveBankBalance` (تجمع ختامي
+  // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
+  // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
+  // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
+  const bankEffQ = loadEffectiveBankBalance().catch(() => null);
   const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
@@ -50,12 +49,12 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     rpc('customer_debt_concentration', { p_limit: topN }),
     rpc('carrier_health_kpis', {}),
     rpc('working_capital_now', {}),
-    loadCurrentBalance().catch(() => null),
+    bankEffQ,
     // Company-wide uncollected COD — carriers that collected cash on our
     // behalf and haven't remitted it yet (net = SUM(out) − SUM(in) > 0).
     // Previously only visible per-carrier inside /money; surfaced here.
     loadCarrierNetBalances().catch(() => new Map()),
-    latestClosingQ,
+    Promise.resolve(null),   // (خانة محجوزة — الرصيد صار من bankEffQ أعلاه)
     // مرجع دين العملاء = زوهو الحي (فحص وكلاء 2026-07-03: كانت الرئيسية
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
@@ -175,17 +174,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // to us, how much we owe, where's the net".
     cashPosition: (() => {
       const wc = wcArr[0] || {};
-      // مصدران للرصيد: الختامي التلقائي لآخر كشف مرفوع (موثوق، بتاريخ نهاية
-      // فترته) + الإدخال اليدوي (bank_balance_log — للتحديث بين الكشوف).
-      // الأحدث تاريخاً يفوز؛ نُظهر المصدر للمستخدم.
-      // نفس منطق loadEffectiveBankBalance في bankBalanceService (نقطة الحقيقة
-      // المشتركة مع /forecast) — يبقى inline هنا لأن المدخلين مُحمَّلان سلفاً
-      // في الـ Promise.all أعلاه. أي تعديل للقاعدة يعدَّل هناك وهنا معاً.
-      const manualDate    = bankBalance?.recordedAt ? new Date(bankBalance.recordedAt).getTime() : -1;
-      const statementDate = latestClosing?.period_to ? new Date(latestClosing.period_to).getTime() : -1;
-      const useStatement  = latestClosing && statementDate >= manualDate;
-      const bank = useStatement ? (Number(latestClosing.closing_balance) || 0)
-                 : (bankBalance?.balance ?? null);
+      // الرصيد من نقطة الحقيقة الوحيدة `loadEffectiveBankBalance` (مجموع ختامي
+      // آخر كشف لكل بنك، أو اليدوي حين لا كشوف). **ممنوع إعادة حسابه هنا** —
+      // النسخة المكرّرة السابقة كانت تعرض بنكاً واحداً فقط (§1.47).
+      const bank = bankBalance?.balance ?? null;
       // AR من زوهو الحي إن توفّر (نفس رقم «تحصيل العملاء» و/zoho-data) —
       // كان من snapshot غير مفلتر (314K) يخالف /receivables (191K) وزوهو (250K)
       const zohoAr  = Number(zohoDash?.open_ar);
@@ -202,9 +194,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const net       = bank == null ? null : bank + netNoBank;
       return {
         bankBalance:  bank,
-        bankUpdated:  useStatement ? latestClosing.period_to : (bankBalance?.recordedAt || null),
-        bankSource:   useStatement ? 'statement' : (bankBalance ? 'manual' : null),
-        bankNotes:    useStatement ? `الرصيد الختامي لكشف ${latestClosing.period_to}` : (bankBalance?.notes || null),
+        bankUpdated:  bankBalance?.asOf || null,
+        bankSource:   bankBalance?.source || null,
+        bankNotes:    bankBalance?.notes || null,
+        bankAccounts: bankBalance?.banks || [],   // تفصيل كل بنك وختاميه
         totalAR,                         // owed to us (customers)
         arSource: arFromZoho ? 'zoho' : 'snapshot',
         totalAP,                         // we owe (vendors/carriers)

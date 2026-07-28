@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, Component } from 'react';
+import { useState, useEffect, useCallback, useRef, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
@@ -1026,15 +1026,30 @@ class SlotBoundary extends Component {
 }
 
 function PageSlot({ active, scroll = false, children }) {
+  // ── تجميد المحتوى غير النشط (2026-07-28) ──
+  // كل تنقّل يغيّر `location` فيُعاد رسم AppInner ومعه **كل** الصفحات الـ59
+  // المركَّبة (props جديدة لكل PageSlot) — فصارت الضغطة الواحدة تُعيد رسم
+  // النظام كاملاً. بالاحتفاظ بمرجع آخر children رُسمت وهي نشطة، يرى React
+  // نفس عنصر JSX للصفحات الخاملة فيتخطّى إعادة رسمها كلياً. الصفحة تُجمَّد
+  // على آخر حالة لها وتستأنف بأحدث props فور تنشيطها.
+  const frozen = useRef(children);
+  if (active) frozen.current = children;
+  const content = active ? children : frozen.current;
   return (
     <div className="page-slot" style={{
       position: 'absolute', inset: 0,
       overflow: scroll ? 'auto' : 'hidden',
       visibility: active ? 'visible' : 'hidden',
+      // `visibility:hidden` يُخفي لكن المتصفح **يظل يحسب التخطيط ويرسم** كل
+      // الصفحات الـ59 المركَّبة — ومع الهيدر المتدرّج ذي الضبابية في كل صفحة
+      // صار كل تنقّل ثقيلاً (بلاغ المستخدم 2026-07-28). `content-visibility`
+      // يُلغي رسم وتخطيط محتوى الصفحة غير النشطة **مع بقاء DOM وحالة React**
+      // كما هي (بعكس display:none الذي يفقد قياسات التمرير).
+      contentVisibility: active ? 'visible' : 'hidden',
       pointerEvents: active ? 'auto' : 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'stretch',
     }}>
-      <SlotBoundary>{children}</SlotBoundary>
+      <SlotBoundary>{content}</SlotBoundary>
     </div>
   );
 }
