@@ -917,9 +917,14 @@ export async function loadStaleDisputes({ thresholdDays = 30 } = {}) {
 // allocations: [{ opId, amount }] — explicit per-op coverage. opIds is
 // kept as a backwards-compat shim; when passed, each op gets its full
 // outstanding amount allocated. Mixed callers are NOT supported.
+// creditOffset: مبلغ مقاصّ بإشعارات دائنة لم يمر بالبنك (نمط أرامكس §1.11c —
+// تخصم إشعاراتها من الفاتورة وتحوّل الصافي). سقف التوزيع في الحارس السيرفري =
+// amount + creditOffset، فبدونه تُرفض أي دفعة مقاصّة. **إلزامي معه توثيق
+// أرقام الإشعارات في creditOffsetNote** (قاعدة: لا فرق بلا مستند).
 export async function createPaymentRecord({
   carrierId, paidAt, amount, paymentRef, notes,
   opIds, allocations, userId, userEmail,
+  creditOffset = 0, creditOffsetNote = null,
 }) {
   if (!carrierId) throw new Error('carrier_id مطلوب');
   let allocs = allocations;
@@ -940,6 +945,11 @@ export async function createPaymentRecord({
     throw new Error('opIds أو allocations مطلوبة');
   }
 
+  const offset = Math.max(Number(creditOffset) || 0, 0);
+  if (offset > 0 && !String(creditOffsetNote || '').trim()) {
+    throw new Error('المقاصّة تتطلب توثيق أرقام الإشعارات الدائنة في الملاحظة');
+  }
+
   const { data, error } = await supabase
     .from('payments')
     .insert({
@@ -949,6 +959,8 @@ export async function createPaymentRecord({
       payment_ref: paymentRef || null,
       notes:       notes || null,
       created_by:  userId || null,
+      credit_offset:      offset,
+      credit_offset_note: offset > 0 ? String(creditOffsetNote).trim() : null,
     })
     .select('id, paid_at, amount, payment_ref, notes, created_at')
     .single();

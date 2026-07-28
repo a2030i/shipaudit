@@ -402,6 +402,7 @@ export default function CarrierLedger({ isActive = true }) {
     // offset the cash, not paid. The recorded cash = debits − credits.
     const allocations = [];
     const creditOpIds = [];
+    const creditDocs = [];          // مستند كل إشعار — يُوثَّق مع المقاصّة
     let creditTotal = 0;
     for (const o of ops) {
       const owed = (Number(o.amount_dr) || 0) - (Number(o.amount_cr) || 0);
@@ -411,6 +412,7 @@ export default function CarrierLedger({ isActive = true }) {
       } else if (owed < 0) {
         creditOpIds.push(o.id);
         creditTotal += Math.abs(owed);
+        creditDocs.push(`${o.doc_no || o.id} (${o.doc_date || '—'}، ${Math.abs(owed).toFixed(2)})`);
       }
     }
     if (!allocations.length && !creditOpIds.length) {
@@ -429,6 +431,12 @@ export default function CarrierLedger({ isActive = true }) {
           paymentRef:  ref,
           allocations,                       // debits fully covered → marked paid
           userId:      null,
+          // التوزيع يغطي كامل المدين بينما النقد صافٍ بعد الإشعارات — فالفرق
+          // يُمثَّل كمقاصّة موثَّقة بمستنداتها (وإلا رفضه الحارس السيرفري).
+          creditOffset:     +creditTotal.toFixed(2),
+          creditOffsetNote: creditTotal > 0
+            ? `مقاصّة إشعارات دائنة: ${creditDocs.join(' + ')}`
+            : null,
         });
         if (ref) {
           await Promise.allSettled(
