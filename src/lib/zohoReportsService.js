@@ -67,8 +67,28 @@ export async function loadVatReturn({ from, to }) {
   return { from, to, output, input, net, totals };
 }
 
-export async function exportVatReturn({ from, to, userId }) {
+// المخرج الرسمي = PDF بهوية لمحة (طلب المستخدم 2026-07-28). Excel يبقى
+// متاحاً للمحاسب عبر `exportVatReturn` — لكن الافتراضي في الواجهة هو PDF.
+// نُخزّن نسخة Excel في السجل أيضاً كي يبقى المستند قابلاً لإعادة التحميل
+// (الـPDF يُنتَج من نافذة الطباعة فلا يمر بالتخزين).
+export async function printVatReturnPdf({ from, to, userId, orgName }) {
   const r = await loadVatReturn({ from, to });
+  const { printVatReturn } = await import('./officialPdf.js');
+  printVatReturn(r, { orgName });
+  // أرشفة صامتة — فشلها لا يمنع المستند
+  exportVatReturn({ from, to, userId, preloaded: r, silent: true }).catch(() => {});
+  return r;
+}
+
+export async function printPnlPdf({ from, to, orgName }) {
+  const data = await loadPnlRange({ from, to });
+  const { printPnl } = await import('./officialPdf.js');
+  printPnl(data, { orgName });
+  return data;
+}
+
+export async function exportVatReturn({ from, to, userId, preloaded }) {
+  const r = preloaded || await loadVatReturn({ from, to });
   const rows = [
     ['الإقرار الضريبي (ضريبة القيمة المضافة)'],
     [`الفترة: من ${from} إلى ${to}`],

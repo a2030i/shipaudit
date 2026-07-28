@@ -121,17 +121,17 @@ export default function ReportsCenter({ isActive = true }) {
   // ── الإقرار الضريبي (من زوهو — خانات نموذج الهيئة حرفياً) ──
   const genVat = () => run('vat', async () => {
     const q = QUARTERS.find(x => x.key === pQuarter) || QUARTERS[0];
-    const { exportVatReturn } = await import('../lib/zohoReportsService.js');
-    const r = await exportVatReturn({ from: q.from, to: q.to, userId: user?.id });
+    const { printVatReturnPdf } = await import('../lib/zohoReportsService.js');
+    const r = await printVatReturnPdf({ from: q.from, to: q.to, userId: user?.id });
     const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
-    toast(`صدر الإقرار — ضريبة مخرجات ${fmt(r.totals.outputTax)} · مدخلات ${fmt(r.totals.inputTax)} · المستحق ${fmt(due)} ر.س`, 'success');
+    toast(`الإقرار جاهز — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${fmt(Math.abs(due))} ر.س · اضغط «حفظ PDF» في النافذة`, 'success');
   });
 
   // ── قائمة الدخل لأي فترة ──
   const genPnl = () => run('pnl', async () => {
-    const { exportPnlRange } = await import('../lib/zohoReportsService.js');
-    const r = await exportPnlRange({ from: pPnlFrom, to: pPnlTo, userId: user?.id });
-    toast(`صدرت قائمة الدخل — ${r.rowCount} بند${r.net != null ? ` · الصافي ${fmt(r.net)} ر.س` : ''}`, 'success');
+    const { printPnlPdf } = await import('../lib/zohoReportsService.js');
+    await printPnlPdf({ from: pPnlFrom, to: pPnlTo });
+    toast('قائمة الدخل جاهزة — اضغط «حفظ PDF» في النافذة', 'success');
   });
 
   if (!can('carriers.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
@@ -181,8 +181,8 @@ export default function ReportsCenter({ isActive = true }) {
 
         {/* الإقرار الضريبي — من زوهو بخانات نموذج الهيئة */}
         <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
-          title="الإقرار الضريبي (القيمة المضافة)"
-          desc="من زوهو مباشرةً بخانات نموذج الهيئة (1..16): المخرجات · المدخلات · الصافي المستحق">
+          title="الإقرار الضريبي PDF (القيمة المضافة)"
+          desc="PDF رسمي بهوية لمحة — خانات نموذج الهيئة (1..16): المخرجات · المدخلات · الصافي المستحق">
           <Select value={pQuarter} onChange={e => setPQuarter(e.target.value)}>
             {QUARTERS.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
           </Select>
@@ -193,8 +193,8 @@ export default function ReportsCenter({ isActive = true }) {
 
         {/* قائمة الدخل من زوهو لأي فترة */}
         <ReportCard icon={<FileBarChart size={18}/>} color="var(--accent3)"
-          title="قائمة الدخل (الأرباح والخسائر)"
-          desc="من زوهو بأساس الاستحقاق — بنفس أقسامه وحساباته حرفياً، لأي فترة تختارها">
+          title="قائمة الدخل PDF (الأرباح والخسائر)"
+          desc="PDF رسمي بهوية لمحة — بنفس أقسام زوهو وحساباته حرفياً، لأي فترة تختارها">
           <div style={{ display: 'flex', gap: 8 }}>
             <input type="date" value={pPnlFrom} onChange={e => setPPnlFrom(e.target.value)}
               style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>

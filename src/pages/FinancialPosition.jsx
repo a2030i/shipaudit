@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RefreshCw, TrendingUp, TrendingDown, Wallet, AlertTriangle, ChevronLeft } from 'lucide-react';
+import { RefreshCw, TrendingUp, TrendingDown, Wallet, AlertTriangle, ChevronLeft, Receipt, FileSpreadsheet } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -32,10 +32,11 @@ const STALE_MS = 6 * 3600_000;   // الشهر الجاري يُحدَّث تل�
 
 export default function FinancialPosition({ isActive = true }) {
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, user } = useAuth();
   const [snaps, setSnaps] = useState(null);
   const [sel, setSel] = useState(currentPnlPeriod());
   const [busy, setBusy] = useState(false);
+  const [dl, setDl] = useState(null);   // 'vat' | 'pnl' أثناء التصدير
   const [billedByMonth, setBilledByMonth] = useState(new Map());   // دفترنا (فحص الفجوة)
   const [invCol, setInvCol] = useState(null);                      // فوترنا/حصّلنا للشهر المحدد
   const [events, setEvents] = useState(null);                      // آخر الحركات (webhooks)
@@ -140,6 +141,39 @@ export default function FinancialPosition({ isActive = true }) {
     return { billedPreTax, grossBilled, cogs, diff, threshold };
   }, [snap, billedByMonth, sel]);
 
+  // ── تصدير المستندين الرسميين من هنا مباشرةً ──
+  // الإقرار للربع الذي يقع فيه الشهر المعروض (الإقرار ربعي)، والقائمة للشهر
+  // المعروض نفسه — كلاهما يمرّ بـpersistAndDownloadExport فيُحفظ في السجل.
+  const genVat = async () => {
+    if (!sel) return;
+    setDl('vat');
+    try {
+      const [y, m] = sel.split('-').map(Number);
+      const q0 = Math.floor((m - 1) / 3) * 3 + 1;          // أول شهر في الربع
+      const from = `${y}-${String(q0).padStart(2, '0')}-01`;
+      const qEnd = q0 + 2;
+      const to = `${y}-${String(qEnd).padStart(2, '0')}-${new Date(y, qEnd, 0).getDate()}`;
+      const { printVatReturnPdf } = await import('../lib/zohoReportsService.js');
+      const r = await printVatReturnPdf({ from, to, userId: user?.id });
+      const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
+      toast(`الإقرار (${from} → ${to}) — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س · اضغط «حفظ PDF» في النافذة`, 'success');
+    } catch (e) { toast(`تعذّر الإقرار: ${e.message}`, 'error'); }
+    setDl(null);
+  };
+  const genPnl = async () => {
+    if (!sel) return;
+    setDl('pnl');
+    try {
+      const [y, m] = sel.split('-').map(Number);
+      const from = `${sel}-01`;
+      const to = `${sel}-${String(new Date(y, m, 0).getDate()).padStart(2, '0')}`;
+      const { printPnlPdf } = await import('../lib/zohoReportsService.js');
+      await printPnlPdf({ from, to });
+      toast('فُتحت قائمة الدخل — اضغط «حفظ PDF» في النافذة', 'success');
+    } catch (e) { toast(`تعذّر التصدير: ${e.message}`, 'error'); }
+    setDl(null);
+  };
+
   if (!can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
   if (snaps == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
@@ -154,12 +188,22 @@ export default function FinancialPosition({ isActive = true }) {
         icon={<Wallet size={22}/>} iconColor="var(--green)"
         title="الوضع المالي"
         subtitle="قائمة الدخل الرسمية من Zoho Books — بلغة بسيطة"
-        actions={
+        actions={<>
+          {/* المستندان الرسميان في سياقهما الطبيعي — كان الوصول الوحيد
+              «مكتبة التقارير» داخل قسم الحملات ولم يجدهما المستخدم. */}
+          <Btn size="sm" variant="ghost" icon={dl === 'vat' ? <Spinner size={13}/> : <Receipt size={14}/>}
+            disabled={!!dl} onClick={genVat} title="PDF رسمي بخانات نموذج الهيئة — للربع الذي يقع فيه الشهر المعروض">
+            الإقرار الضريبي PDF
+          </Btn>
+          <Btn size="sm" variant="ghost" icon={dl === 'pnl' ? <Spinner size={13}/> : <FileSpreadsheet size={14}/>}
+            disabled={!!dl} onClick={genPnl} title="PDF رسمي لقائمة الدخل — للشهر المعروض">
+            قائمة الدخل PDF
+          </Btn>
           <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>}
             disabled={busy} onClick={() => refresh(sel)}>
             تحديث من زوهو
           </Btn>
-        }
+        </>}
       />
 
       {/* مبدّل الشهور — الصافي مصغّراً تحت كل شهر */}
