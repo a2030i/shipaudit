@@ -32,11 +32,20 @@ export default function PlatformCarriers({ isActive = true }) {
 
   const sorted = useMemo(() => {
     if (!rows) return [];
+    // ترتيب القرار (قاعدة المستخدم 2026-07-29): الأهم هو ما **يمكن مقارنته**.
+    //   ١) نشطة في لمحة ولها سعر في أوتو **و** طرود  → مقارنة كاملة
+    //   ٢) نشطة في لمحة ولها سعر في أوتو **أو** طرود → مقارنة جزئية
+    //   ٣) الباقي (بلا منافس مُدخَل) ثم المنافس الصرف
+    // وداخل كل مرتبة: الأرخص أولاً.
+    const tier = (r) => {
+      if (r.sellPrice == null) return 3;                       // منافس صرف
+      const n = (r.sellAuto != null ? 1 : 0) + (r.sellTorod != null ? 1 : 0);
+      if (!r.isActive) return 2 + (n ? 0 : 0.5);               // غير نشطة تحت النشطة
+      return n === 2 ? 0 : n === 1 ? 1 : 2;
+    };
     return [...rows].sort((a, b) => {
-      // شركات لمحة (لها سعر بيع) فوق · المنافس الصرف (لمحة غير متاحة) تحت
-      const ag = a.sellPrice != null ? 0 : 1, bg = b.sellPrice != null ? 0 : 1;
-      if (ag !== bg) return ag - bg;
-      // ثم بسعر البيع من الأقل للأعلى (لمحة للمجموعة الأولى · أوتو للمنافس)
+      const ta = tier(a), tb = tier(b);
+      if (ta !== tb) return ta - tb;
       const ap = a.sellPrice != null ? a.sellPrice : (a.sellAuto ?? 1e9);
       const bp = b.sellPrice != null ? b.sellPrice : (b.sellAuto ?? 1e9);
       return ap - bp;
@@ -54,7 +63,6 @@ export default function PlatformCarriers({ isActive = true }) {
       lamha: rs.filter(r => !r.competitorOnly).length,   // كل شركات لمحة (بسعر أو بلا)
       auto:  rs.filter(r => r.sellAuto != null).length,
       torod: rs.filter(r => r.sellTorod != null).length,
-      trek:  rs.filter(r => r.sellTrek != null).length,
     };
   }, [rows]);
 
@@ -87,8 +95,8 @@ export default function PlatformCarriers({ isActive = true }) {
     setSavingMk(false);
   };
 
-  // حفظ سعر منصّة واحدة (لمحة/أوتو/طرود/تريك) — تحديث متفائل للحقل الصحيح.
-  const PRICE_COLS = { lamha: ['sell_price', 'sellPrice'], auto: ['sell_auto', 'sellAuto'], torod: ['sell_torod', 'sellTorod'], trek: ['sell_trek', 'sellTrek'] };
+  // حفظ سعر منصّة واحدة (لمحة/أوتو/طرود) — تحديث متفائل للحقل الصحيح.
+  const PRICE_COLS = { lamha: ['sell_price', 'sellPrice'], auto: ['sell_auto', 'sellAuto'], torod: ['sell_torod', 'sellTorod'] };
   const savePrice = async (id, plat) => {
     const k = `${id}:${plat}`;
     const raw = priceDraft[k];
@@ -124,7 +132,7 @@ export default function PlatformCarriers({ isActive = true }) {
     );
   };
 
-  // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود/تريك)
+  // خلية سعر قابلة للتحرير لمنصّة (لمحة/أوتو/طرود)
   const priceCellNode = (r, plat) => {
     // منصّة لا تقدّم هذا الناقل → «غير متاحة» (لا تدخل المقارنة)
     if ((r.unavailable || []).includes(plat)) return <span style={{ fontSize: 10.5, color: 'var(--muted2)' }}>غير متاحة</span>;
@@ -152,7 +160,7 @@ export default function PlatformCarriers({ isActive = true }) {
       const { persistAndDownloadExport } = await import('../lib/internalExportsService.js');
       const data = sorted.filter(r => r.isActive).map(r => {
         const profit = (r.sellPrice != null && r.costPrice != null) ? Number((r.sellPrice - r.costPrice).toFixed(2)) : '';
-        const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null);
+        const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod]].filter(([, v]) => v != null);
         // نفس حارس الشاشة: سعر واحد ليس مقارنة (انظر التعليق في جدول الصفحة)
         const best = prices.length >= 2 ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
         return {
@@ -163,7 +171,6 @@ export default function PlatformCarriers({ isActive = true }) {
           'البيع في لمحة': r.sellPrice ?? '',
           'البيع في أوتو': r.sellAuto ?? '',
           'البيع في طرود': r.sellTorod ?? '',
-          'البيع في تريك': r.sellTrek ?? '',
           'أفضل سعر': best ? best[1] : '',
           'أرخص منصّة': best ? best[0] : (prices.length === 1 ? 'لا سعر منافس مُدخَل' : ''),
           'منصّات بسعر مُدخَل': prices.length,
@@ -181,7 +188,7 @@ export default function PlatformCarriers({ isActive = true }) {
     <Pad>
       <PageHeader icon={<Truck size={22}/>} iconColor="var(--brand)"
         title="شركات المنصّة المفعّلة"
-        subtitle="مقارنة أسعار البيع: لمحة مقابل أوتو · طرود · تريك — مع تكلفة لمحة (من العقد + هامش) وربحها، و«أفضل سعر» يبرز الأرخص. كل الأرقام هنا بدون ضريبة."
+        subtitle="مقارنة أسعار البيع: لمحة مقابل أوتو وطرود — مع تكلفة لمحة (من العقد + هامش) وربحها، و«أفضل سعر» يبرز الأرخص. كل الأرقام هنا بدون ضريبة."
         meta={rows ? `${activeCount} شركة في المقارنة` : null}
         actions={<Btn size="sm" variant="ghost" onClick={load} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
@@ -206,7 +213,7 @@ export default function PlatformCarriers({ isActive = true }) {
       {/* عدد الشركات لكل منصّة */}
       {rows && (
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
-          {[['لمحة', platCounts.lamha, 'var(--brand)'], ['أوتو', platCounts.auto, 'var(--gold)'], ['طرود', platCounts.torod, 'var(--accent)'], ['تريك', platCounts.trek, 'var(--accent3)']].map(([lbl, n, col]) => (
+          {[['لمحة', platCounts.lamha, 'var(--brand)'], ['أوتو', platCounts.auto, 'var(--gold)'], ['طرود', platCounts.torod, 'var(--accent)']].map(([lbl, n, col]) => (
             <div key={lbl} style={{ flex: '1 1 120px', background: 'var(--surface)', border: '1px solid var(--border)', borderRadius: 10, padding: '9px 13px', borderTop: `3px solid ${col}` }}>
               <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 2 }}>{lbl}</div>
               <div style={{ fontSize: 19, fontWeight: 800, fontFamily: 'var(--font-mono)', color: col }}>{n} <span style={{ fontSize: 11, color: 'var(--muted2)', fontWeight: 400 }}>شركة</span></div>
@@ -222,7 +229,7 @@ export default function PlatformCarriers({ isActive = true }) {
             <div style={{ overflowX: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse' }}>
                 <thead><tr style={{ background: 'var(--surface2)' }}>
-                  {['اسم شركة الشحن', 'الحالة في لمحة', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'البيع في تريك', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
+                  {['اسم شركة الشحن', 'الحالة في لمحة', 'سعر التكلفة في لمحة', 'ربح لمحة', 'البيع في لمحة', 'البيع في أوتو', 'البيع في طرود', 'أفضل سعر'].map((h, i) => <th key={i} style={th}>{h}</th>)}
                 </tr></thead>
                 <tbody>
                   {visible.map(r => {
@@ -235,11 +242,11 @@ export default function PlatformCarriers({ isActive = true }) {
                     // بلا هذا الحارس كانت الشاشة تعلن «🟢 لمحة الأرخص» لخمسة
                     // ناقلين لا نملك عنهم أي سعر منافس (إيمايل · J&T · ثابت ·
                     // ويبك · أتاك) — استنتاج تسعيري خاطئ من غياب البيانات.
-                    const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod], ['تريك', r.sellTrek]].filter(([, v]) => v != null && Number.isFinite(v));
+                    const prices = [['لمحة', r.sellPrice], ['أوتو', r.sellAuto], ['طرود', r.sellTorod]].filter(([, v]) => v != null && Number.isFinite(v));
                     const comparable = prices.length >= 2;
                     const best = comparable ? prices.reduce((a, b) => (b[1] < a[1] ? b : a)) : null;
                     const bestIsLamha = best && best[0] === 'لمحة';
-                    const missingCount = 4 - prices.length;
+                    const missingCount = 3 - prices.length;
                     return (
                     <tr key={r.id} style={{ borderTop: '1px solid var(--border)', opacity: r.isActive ? 1 : 0.5 }}>
                       <td data-label="اسم شركة الشحن" style={{ ...cell, fontWeight: 700 }}>
@@ -271,7 +278,6 @@ export default function PlatformCarriers({ isActive = true }) {
                       <td data-label="البيع في لمحة" style={cell}>{priceCellNode(r, 'lamha')}</td>
                       <td data-label="البيع في أوتو" style={cell}>{priceCellNode(r, 'auto')}</td>
                       <td data-label="البيع في طرود" style={cell}>{priceCellNode(r, 'torod')}</td>
-                      <td data-label="البيع في تريك" style={cell}>{priceCellNode(r, 'trek')}</td>
                       <td data-label="أفضل سعر" style={{ ...cell, fontWeight: 800 }}>
                         {best ? (
                           <span style={{ display: 'inline-flex', flexDirection: 'column', lineHeight: 1.25 }}>

@@ -87,7 +87,6 @@ export async function loadPlatformCarriers() {
       { key: 'lamha', label: 'لمحة',  v: sellPrice },
       { key: 'auto',  label: 'أوتو',  v: pc.sell_auto  != null ? Number(pc.sell_auto)  : null },
       { key: 'torod', label: 'طرود',  v: pc.sell_torod != null ? Number(pc.sell_torod) : null },
-      { key: 'trek',  label: 'تريك',  v: pc.sell_trek  != null ? Number(pc.sell_trek)  : null },
     ].filter(x => x.v != null && Number.isFinite(x.v));
     const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
@@ -101,7 +100,6 @@ export async function loadPlatformCarriers() {
       sellPrice,
       sellAuto:  pc.sell_auto  != null ? Number(pc.sell_auto)  : null,
       sellTorod: pc.sell_torod != null ? Number(pc.sell_torod) : null,
-      sellTrek:  pc.sell_trek  != null ? Number(pc.sell_trek)  : null,
       bestPrice: best ? best.v : null,
       bestPlatform: best ? best.label : null,
       bestIsLamha: best ? best.key === 'lamha' : false,
@@ -132,7 +130,6 @@ export async function loadPlatformCarriers() {
       { key: 'lamha', label: 'لمحة', v: lamhaPrice },
       { key: 'auto',  label: 'أوتو', v: c.sell_auto  != null ? Number(c.sell_auto)  : null },
       { key: 'torod', label: 'طرود', v: c.sell_torod != null ? Number(c.sell_torod) : null },
-      { key: 'trek',  label: 'تريك', v: c.sell_trek  != null ? Number(c.sell_trek)  : null },
     ].filter(x => x.v != null && Number.isFinite(x.v));
     const best = plat.length ? plat.reduce((a, b) => (b.v < a.v ? b : a)) : null;
     return {
@@ -147,7 +144,6 @@ export async function loadPlatformCarriers() {
       sellPrice: lamhaPrice,
       sellAuto:  c.sell_auto  != null ? Number(c.sell_auto)  : null,
       sellTorod: c.sell_torod != null ? Number(c.sell_torod) : null,
-      sellTrek:  c.sell_trek  != null ? Number(c.sell_trek)  : null,
       bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
       base: null, costReason: null, fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
@@ -159,7 +155,7 @@ export async function loadPlatformCarriers() {
   return [...ourRows, ...compRows];
 }
 
-// حفظ سعر منافس (أوتو/طرود/تريك) — للشركات الموجودة لدى المنافسين فقط.
+// حفظ سعر منافس (أوتو/طرود) — للشركات الموجودة لدى المنافسين فقط.
 export async function savePlatformCompetitor(compId, patch, userId = null) {
   const { error } = await supabase.from('platform_competitors')
     .update({ ...patch, updated_at: new Date().toISOString(), updated_by: userId }).eq('id', compId);
