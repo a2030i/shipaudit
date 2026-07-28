@@ -1,15 +1,14 @@
-// ivr-runner v1 (2026-07-22) — cron: يعالج طابور المكالمات المجدولة/المُعاد محاولتها.
-// يحترم **ساعات الاتصال** (نافذة KSA من ivr_config.callHours) فلا يتصل ليلاً، ويطلق
-// المكالمات المستحقّة (run_at<=now) عبر Voxa. إعادة المحاولة تُدرِجها ivr-webhook.
-// الأمان: X-Cron-Key ضد zoho_auth.cron_key (نمط campaign-runner/morning-brief).
+// ivr-runner v4 (2026-07-23) — cron: يعالج طابور المكالمات المجدولة/المُعاد محاولتها.
+// v4: إعدادات لكل سكربت (صوت/تكرار/مهلة) مع رجوع للعام. v3: صوت رد لكل خيار.
+// يحترم ساعات الاتصال (KSA). الأمان: X-Cron-Key ضد zoho_auth.cron_key.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
-const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
-const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const svc = () => createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
+const env = (...n) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-function norm(raw: unknown) {
+function norm(raw) {
   let d = String(raw || '').replace(/\D/g, '');
   if (!d) return '';
   if (d.startsWith('00')) d = d.slice(2);
@@ -23,9 +22,9 @@ async function accessToken() {
   if (!id || !secret) throw new Error('no hatif secrets');
   const r = await fetch('https://api.voxa.sa/connect/token', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'client_credentials', client_id: id, client_secret: secret, scope: 'VoxaAPI' }) });
-  const j = await r.json(); if (!j.access_token) throw new Error('token failed'); return j.access_token as string;
+  const j = await r.json(); if (!j.access_token) throw new Error('token failed'); return j.access_token;
 }
-async function getChannelId(token: string, cfgChannel: string) {
+async function getChannelId(token, cfgChannel) {
   const fixed = env('hatif_channel_id', 'HATIF_CHANNEL_ID'); if (fixed) return fixed;
   if (cfgChannel) return cfgChannel;
   const r = await fetch('https://api.voxa.sa/v1/channels/service-account', { headers: { Authorization: `Bearer ${token}` } });
@@ -34,19 +33,19 @@ async function getChannelId(token: string, cfgChannel: string) {
 const AR_ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
 const AR_TENS = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
 const AR_HUND = ['', 'مئة', 'مئتان', 'ثلاثمئة', 'أربعمئة', 'خمسمئة', 'ستمئة', 'سبعمئة', 'ثمانمئة', 'تسعمئة'];
-function arBelow1000(x: number): string { const p: string[] = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
-function arNum(nRaw: unknown): string {
+function arBelow1000(x) { const p = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
+function arNum(nRaw) {
   const n = Math.round(Math.abs(Number(nRaw) || 0)); if (n === 0) return 'صفر';
-  const p: string[] = []; const th = Math.floor(n / 1000), r = n % 1000;
+  const p = []; const th = Math.floor(n / 1000), r = n % 1000;
   if (th) { if (th === 1) p.push('ألف'); else if (th === 2) p.push('ألفان'); else if (th <= 10) p.push(arBelow1000(th) + ' آلاف'); else p.push(arBelow1000(th) + ' ألف'); }
   if (r) p.push(arBelow1000(r));
   return p.join(' و');
 }
 const AMOUNT_KEYS = new Set(['amount', 'overdue', 'wallet', 'debt', 'مبلغ']);
-function fillTts(tpl: string, name: string | null, fields: Record<string, unknown> | null, speakWords = false) {
-  const f = fields || {}; const map: Record<string, string> = { name: name || String(f.name || ''), 'اسم': name || String(f.name || '') };
+function fillTts(tpl, name, fields, speakWords = false) {
+  const f = fields || {}; const map = { name: name || String(f.name || ''), 'اسم': name || String(f.name || '') };
   for (const [k, v] of Object.entries(f)) map[k] = (speakWords && AMOUNT_KEYS.has(k) && v !== '' && v != null && Number.isFinite(Number(v))) ? arNum(v) + ' ريال' : String(v ?? '');
-  const alias: Record<string, string> = { amount: 'amount', 'مبلغ': 'amount' };
+  const alias = { amount: 'amount', 'مبلغ': 'amount' };
   return String(tpl || '').replace(/\{([^}]+)\}/g, (_m, key) => { const k = String(key).trim(); if (map[k] != null && map[k] !== '') return map[k]; const a = alias[k]; if (a && map[a] != null) return map[a]; return ''; }).replace(/\s{2,}/g, ' ').trim();
 }
 
@@ -57,10 +56,9 @@ Deno.serve(async (req) => {
   if (!za?.cron_key || cronKey !== za.cron_key) return new Response('forbidden', { status: 403 });
 
   const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
-  let cfg: Record<string, any> = {}; try { cfg = cfgRow?.value ? JSON.parse(cfgRow.value) : {}; } catch { /* */ }
+  let cfg = {}; try { cfg = cfgRow?.value ? JSON.parse(cfgRow.value) : {}; } catch { /* */ }
   if (cfg.enabled === false) return json({ ok: true, skipped: 'disabled' });
 
-  // ساعات الاتصال بتوقيت السعودية (UTC+3) — لا نتصل خارج النافذة
   const h = (new Date().getUTCHours() + 3) % 24;
   const start = Number(cfg.callHours?.start ?? 9), end = Number(cfg.callHours?.end ?? 21);
   const within = start <= end ? (h >= start && h < end) : (h >= start || h < end);
@@ -71,21 +69,21 @@ Deno.serve(async (req) => {
   if (!due?.length) return json({ ok: true, placed: 0, note: 'no due' });
 
   const scripts = Array.isArray(cfg.scripts) ? cfg.scripts : [];
-  let token = ''; try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+  let token = ''; try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
   const channelId = await getChannelId(token, String(cfg.channelId || ''));
   if (!channelId) return json({ ok: false, error: 'no channel' });
   const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ivr-webhook?key=${encodeURIComponent(za.webhook_key || '')}`;
-  const ttsVoice = (cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female';
-  const blocked = new Set<string>();
-  try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || []) as { phone: string }[]) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
+  const cfgVoice = (cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female';
+  const blocked = new Set();
+  try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || [])) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
 
   const t0 = Date.now(); let placed = 0, failed = 0, skipped = 0;
   for (const q of due) {
-    if (Date.now() - t0 > 120000) break;   // ميزانية وقت
+    if (Date.now() - t0 > 120000) break;
     const to = norm(q.phone);
     if (!to || to.length < 11) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'bad_phone' }).eq('id', q.id); failed++; continue; }
     if (blocked.has(to)) { await db.from('ivr_queue').update({ status: 'cancelled', last_result: 'blocked' }).eq('id', q.id); skipped++; continue; }
-    const script = scripts.find((s: Record<string, any>) => s.key === q.script_key) || scripts.find((s: Record<string, any>) => s.key === cfg.defaultScript) || scripts[0];
+    const script = scripts.find((s) => s.key === q.script_key) || scripts.find((s) => s.key === cfg.defaultScript) || scripts[0];
     if (!script) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'no_script' }).eq('id', q.id); failed++; continue; }
     const options = Array.isArray(script.options) ? script.options : [];
     if (!options.length) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'no_options' }).eq('id', q.id); failed++; continue; }
@@ -95,6 +93,10 @@ Deno.serve(async (req) => {
     const ttsText = fillTts(String(script.ttsText || ''), q.name, q.fields, cfg.speakNumbersWords === true);
     const attempt = (Number(q.attempts) || 0) + 1;
     const maxAtt = Number(q.max_attempts) || 1;
+    const sVoice = (script.ttsVoice === 'Male' || script.ttsVoice === 'Female') ? script.ttsVoice : cfgVoice;
+    const sMaxRetries = Number(script.maxAudioRetries ?? cfg.maxAudioRetries ?? 2);
+    const sInputTimeout = Number(script.inputTimeoutMs ?? cfg.inputTimeoutMs ?? 6000);
+    const sDigitTimeout = Number(script.digitTimeoutMs ?? cfg.digitTimeoutMs ?? 3000);
 
     const { data: ins } = await db.from('ivr_calls').insert({
       phone: to, name: q.name || null, campaign_name: q.campaign_name, script_key: script.key,
@@ -105,9 +107,9 @@ Deno.serve(async (req) => {
     if (callRowId) await db.from('ivr_calls').update({ external_id: callRowId }).eq('id', callRowId);
 
     try {
-      const payload: Record<string, unknown> = { channelId, destinationNumber: to, externalId: callRowId, webhookUrl, ttsVoice,
-        options: options.map((o: Record<string, any>) => { const op: Record<string, unknown> = { Digit: String(o.digit), Description: String(o.description || o.digit) }; if (o.responseAudioUrl && String(o.responseAudioUrl).trim()) op.ResponseMessageFileUrl = String(o.responseAudioUrl).trim(); return op; }),
-        maxAudioRetries: Number(cfg.maxAudioRetries ?? 2), inputTimeoutMs: Number(cfg.inputTimeoutMs ?? 6000), digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000) };
+      const payload = { channelId, destinationNumber: to, externalId: callRowId, webhookUrl, ttsVoice: sVoice,
+        options: options.map((o) => { const op = { Digit: String(o.digit), Description: String(o.description || o.digit) }; if (o.responseAudioUrl && String(o.responseAudioUrl).trim()) op.ResponseMessageFileUrl = String(o.responseAudioUrl).trim(); return op; }),
+        maxAudioRetries: sMaxRetries, inputTimeoutMs: sInputTimeout, digitTimeoutMs: sDigitTimeout };
       if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
       const successUrl = String(script.successAudioUrl || '').trim(); if (successUrl) payload.successMessageFileUrl = successUrl;
       const vr = await fetch('https://api.voxa.sa/v1/outbound-ivr', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
@@ -123,7 +125,7 @@ Deno.serve(async (req) => {
         failed++;
       }
     } catch (e) {
-      await db.from('ivr_queue').update({ status: 'failed', attempts: attempt, last_result: String((e as Error).message || e).slice(0, 100) }).eq('id', q.id);
+      await db.from('ivr_queue').update({ status: 'failed', attempts: attempt, last_result: String(e.message || e).slice(0, 100) }).eq('id', q.id);
       failed++;
     }
     await sleep(400);

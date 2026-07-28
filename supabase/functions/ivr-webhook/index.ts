@@ -1,5 +1,8 @@
-// ivr-webhook v6 (2026-07-23) — يستقبل نتيجة مكالمة IVR ويحدّث ivr_calls، ثم press→action
-// + أتمتة القوالب (بمتغيّرات الاسم/المبلغ/العدد) + إعادة المحاولة على «لم يُرد».
+// ivr-webhook v7 (2026-07-27) — يستقبل نتيجة مكالمة IVR ويحدّث ivr_calls، ثم press→action
+// + أتمتة القوالب + إعادة المحاولة على «لم يُرد».
+// v7: (١) متغيرات القالب لا تُرسَل فارغة أبداً — متغير فارغ = واتساب يرفض القالب
+// كاملاً (حادثة 27-07: 3 مكالمات سداد رُدّ عليها ولم يصل القالب — {{3}} عدد الفواتير
+// كان فارغاً لمكالمات المحافظ). (٢) فشل إرسال القالب يُسجَّل في error_message — لا ابتلاع صامت.
 // v6 (خطة هاتف البند 9): إعادة المحاولة **لا للفشل الدائم** — retry.onResults=NoAnswer/Busy.
 // Voxa يرسل status/result أرقاماً؛ الإشارات الموثوقة = pressedDigit + answeredAt.
 // verify_jwt=false — الحماية ?key= ضد zoho_auth.webhook_key.
@@ -52,8 +55,9 @@ async function sendTemplate(db: ReturnType<typeof svc>, phone: string, name: str
   const token = await accessToken();
   const channelId = await getChannelId(token);
   if (!channelId) return { ok: false, error: 'no channel' };
-  // متغيّرات القالب: [اسم, مبلغ, عدد] لقالب التحصيل (sadad). فارغ → الاسم فقط.
-  const values = (vars && vars.length ? vars : (name ? [name] : [])).map(v => ({ Type: 'text', Text: String(v ?? '') }));
+  // v7: متغير فارغ = رفض القالب كاملاً من واتساب — نعوّض أي فراغ بـ«—»
+  const values = (vars && vars.length ? vars : (name ? [name] : []))
+    .map(v => { const s = String(v ?? '').trim(); return { Type: 'text', Text: s || '—' }; });
   const payload = { ChannelId: channelId, TemplateName: templateName, Language: 'ar', ToNumber: phone,
     Parameters: values.length ? [{ Type: 'Body', Values: values }] : [] };
   const r = await fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
@@ -156,21 +160,29 @@ Deno.serve(async (req) => {
       : (answered && script.onAnswerTemplate && String(script.onAnswerTemplate).trim() ? String(script.onAnswerTemplate).trim() : '');
     if (tpl) {
       try {
-        // متغيّرات قالب التحصيل: {{1}} الاسم · {{2}} المبلغ · {{3}} عدد الفواتير (من retry_fields)
+        // متغيّرات قالب التحصيل: {{1}} الاسم · {{2}} المبلغ · {{3}} عدد الفواتير —
+        // v7: لا فراغات (sendTemplate يعوّض بـ«—») ولا متغير count فارغ
         const rf = (row.retry_fields && typeof row.retry_fields === 'object') ? row.retry_fields : {};
-        const amt = rf.amount ?? rf.overdue;
+        const amt = rf.amount ?? rf.overdue ?? rf.wallet;
+        const cnt = rf.invoices_count ?? rf.count;
         const vars = (amt != null && amt !== '')
-          ? [row.name || '', String(Math.round(Number(amt) || 0)), String(rf.invoices_count ?? rf.count ?? '')]
+          ? [row.name || row.phone, String(Math.abs(Math.round(Number(amt) || 0))), String(cnt ?? '—')]
           : (row.name ? [row.name] : []);
         const res = await sendTemplate(db, row.phone, row.name || null, tpl, `IVR: ${row.script_key || ''}`, vars);
         if (res.ok || res.skipped) patch.template_sent_at = when;
-      } catch (e) { console.error('ivr answer/press→template failed:', (e as Error).message); }
+        else {
+          // v7: لا ابتلاع — الفشل يُسجَّل في صف المكالمة ويظهر للمستخدم
+          patch.error_message = `template ${tpl}: ${res.error || 'failed'}`.slice(0, 300);
+          console.error('ivr template send failed:', tpl, res.error);
+        }
+      } catch (e) {
+        patch.error_message = `template ${tpl}: ${(e as Error).message}`.slice(0, 300);
+        console.error('ivr answer/press→template failed:', (e as Error).message);
+      }
     }
   }
 
   // ── إعادة المحاولة على «لم يُرد» فقط — لا للفشل الدائم (البند 9) ──
-  // retry.onResults = NoAnswer/Busy. Voxa يرسل result نصاً أو رقماً، فنحرس بنمط «فشل دائم»
-  // على result+hangupCause (fail/reject/invalid/dtmf/success) بدل مطابقة رقمية هشّة.
   const retrySig = `${String(result ?? '')} ${String(p.hangupCause ?? p.HangupCause ?? '')}`.toLowerCase();
   const permanentFail = /fail|reject|invalid|unalloc|blocked|dtmf|success/.test(retrySig);
   if (!answered && !permanentFail && Number(row.attempt || 1) < Number(row.max_attempts || 1)) {

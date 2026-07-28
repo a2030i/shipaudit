@@ -1,9 +1,6 @@
-// hatif-ivr v8 (2026-07-23) — إطلاق مكالمات آلية (Outbound IVR) عبر Voxa/Hatif.
-// v8: التجربة تُعرَف بـtest:true **أو** باسم «تجربة IVR» (يعمل مع الواجهة القديمة فوراً).
-// v7 (خطة التجربة): مكالمة التجربة (`test:true` بمستلِم واحد) **تتجاوز قائمة الحظر**
-// — فعل إداري متعمّد لرقمك لسماع الصوت، لا حملة. الحملات العادية تظلّ محكومة بالحظر.
-// v6: صوت رد لكل خيار (ResponseMessageFileUrl). v5: نطق المبالغ بالعربي.
-// v4: إعادة محاولة. v3: رسالة ختام. v2: صوت مرفوع. الحارس: campaigns.ivr.
+// hatif-ivr v9 (2026-07-23) — إعدادات لكل سكربت (صوت/تكرار/مهلة) مع رجوع للإعداد العام.
+// v9: script.ttsVoice/maxAudioRetries/inputTimeoutMs يتجاوزان cfg؛ الغياب = وراثة العام.
+// v8: التجربة تُعرَف بـtest:true أو باسم «تجربة IVR». الحارس: campaigns.ivr.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -12,16 +9,16 @@ const CORS = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
 };
-const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
-const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-const env = (...names: string[]) => { for (const n of names) { const v = Deno.env.get(n); if (v && v.trim()) return v.trim(); } return ''; };
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+const svc = () => createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
+const env = (...names) => { for (const n of names) { const v = Deno.env.get(n); if (v && v.trim()) return v.trim(); } return ''; };
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
 const TOKEN_URL = 'https://api.voxa.sa/connect/token';
 const IVR_URL = 'https://api.voxa.sa/v1/outbound-ivr';
 const CHANNELS_URL = 'https://api.voxa.sa/v1/channels/service-account';
 
-function norm(raw: unknown) {
+function norm(raw) {
   let d = String(raw || '').replace(/\D/g, '');
   if (!d) return '';
   if (d.startsWith('00')) d = d.slice(2);
@@ -31,7 +28,7 @@ function norm(raw: unknown) {
   return d;
 }
 
-let tokenCache: { token: string; exp: number } | null = null;
+let tokenCache = null;
 async function accessToken() {
   if (tokenCache && tokenCache.exp > Date.now()) return tokenCache.token;
   const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
@@ -44,54 +41,52 @@ async function accessToken() {
   return tokenCache.token;
 }
 
-let channelCache: { id: string; exp: number } | null = null;
-async function fetchChannels(token: string) {
+let channelCache = null;
+async function fetchChannels(token) {
   const r = await fetch(CHANNELS_URL, { headers: { Authorization: `Bearer ${token}` } });
   const j = await r.json().catch(() => ({}));
   return Array.isArray(j.items) ? j.items : [];
 }
-async function getChannelId(token: string) {
+async function getChannelId(token) {
   const fixed = env('hatif_channel_id', 'HATIF_CHANNEL_ID');
   if (fixed) return fixed;
   if (channelCache && channelCache.exp > Date.now()) return channelCache.id;
   const items = await fetchChannels(token);
   const id = items[0]?.id || '';
-  if (id) channelCache = { id, exp: Date.now() + 3600_000 };
+  if (id) channelCache = { id, exp: Date.now() + 3600000 };
   return id;
 }
 
-async function requireUser(req: Request, db: ReturnType<typeof svc>) {
+async function requireUser(req, db) {
   const authHeader = req.headers.get('Authorization') || '';
-  const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, { global: { headers: { Authorization: authHeader } } });
+  const uc = createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_ANON_KEY'), { global: { headers: { Authorization: authHeader } } });
   const { data: { user } } = await uc.auth.getUser();
   if (!user) return null;
   const { data: p } = await db.from('profiles').select('role, permissions').eq('id', user.id).maybeSingle();
   return { id: user.id, role: p?.role || null, permissions: p?.permissions || {} };
 }
 
-// نطق عدد صحيح بالعربي (0..999999) — لتوضيح المبالغ في TTS
 const AR_ONES = ['', 'واحد', 'اثنان', 'ثلاثة', 'أربعة', 'خمسة', 'ستة', 'سبعة', 'ثمانية', 'تسعة', 'عشرة', 'أحد عشر', 'اثنا عشر', 'ثلاثة عشر', 'أربعة عشر', 'خمسة عشر', 'ستة عشر', 'سبعة عشر', 'ثمانية عشر', 'تسعة عشر'];
 const AR_TENS = ['', '', 'عشرون', 'ثلاثون', 'أربعون', 'خمسون', 'ستون', 'سبعون', 'ثمانون', 'تسعون'];
 const AR_HUND = ['', 'مئة', 'مئتان', 'ثلاثمئة', 'أربعمئة', 'خمسمئة', 'ستمئة', 'سبعمئة', 'ثمانمئة', 'تسعمئة'];
-function arBelow1000(x: number): string { const p: string[] = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
-function arNum(nRaw: unknown): string {
+function arBelow1000(x) { const p = []; const h = Math.floor(x / 100), r = x % 100; if (h) p.push(AR_HUND[h]); if (r) { if (r < 20) p.push(AR_ONES[r]); else { const t = Math.floor(r / 10), o = r % 10; p.push(o ? AR_ONES[o] + ' و' + AR_TENS[t] : AR_TENS[t]); } } return p.join(' و'); }
+function arNum(nRaw) {
   const n = Math.round(Math.abs(Number(nRaw) || 0)); if (n === 0) return 'صفر';
-  const p: string[] = []; const th = Math.floor(n / 1000), r = n % 1000;
+  const p = []; const th = Math.floor(n / 1000), r = n % 1000;
   if (th) { if (th === 1) p.push('ألف'); else if (th === 2) p.push('ألفان'); else if (th <= 10) p.push(arBelow1000(th) + ' آلاف'); else p.push(arBelow1000(th) + ' ألف'); }
   if (r) p.push(arBelow1000(r));
   return p.join(' و');
 }
 const AMOUNT_KEYS = new Set(['amount', 'overdue', 'wallet', 'debt', 'مبلغ']);
 
-// ملء متغيّرات السكربت الصوتي من حقول المستلِم — {name}/{اسم}, {amount}/{مبلغ}, {أي حقل}.
-function fillTts(tpl: string, r: { name?: string; fields?: Record<string, unknown> }, speakWords = false) {
+function fillTts(tpl, r, speakWords = false) {
   const f = r.fields || {};
-  const num = (k: string, v: unknown) => (speakWords && AMOUNT_KEYS.has(k) && v !== '' && v != null && Number.isFinite(Number(v))) ? arNum(v) + ' ريال' : String(v ?? '');
-  const map: Record<string, string> = {
+  const num = (k, v) => (speakWords && AMOUNT_KEYS.has(k) && v !== '' && v != null && Number.isFinite(Number(v))) ? arNum(v) + ' ريال' : String(v ?? '');
+  const map = {
     name: r.name || String(f.name || f['اسم'] || ''), 'اسم': r.name || String(f.name || f['اسم'] || ''),
   };
   for (const [k, v] of Object.entries(f)) map[k] = num(k, v);
-  const alias: Record<string, string> = { amount: 'amount', 'مبلغ': 'amount', debt: 'amount' };
+  const alias = { amount: 'amount', 'مبلغ': 'amount', debt: 'amount' };
   return String(tpl || '').replace(/\{([^}]+)\}/g, (_m, key) => {
     const k = String(key).trim();
     if (map[k] != null && map[k] !== '') return map[k];
@@ -104,7 +99,7 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const db = svc();
   const url = new URL(req.url);
-  let body: Record<string, unknown> = {};
+  let body = {};
   try { body = await req.json(); } catch { /* */ }
   const action = String(body.action || url.searchParams.get('action') || 'status');
 
@@ -115,56 +110,57 @@ Deno.serve(async (req) => {
 
   if (action === 'verify') {
     try { await accessToken(); return json({ ok: true, provider: 'hatif-ivr' }); }
-    catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    catch (e) { return json({ ok: false, error: String(e.message || e) }); }
   }
 
   if (action === 'channels') {
     try {
       const t = await accessToken();
       const items = await fetchChannels(t);
-      return json({ ok: true, channels: items.map((c: Record<string, any>) => ({ id: c.id, name: c.name, number: c.phoneNumber?.number || null })) });
-    } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+      return json({ ok: true, channels: items.map((c) => ({ id: c.id, name: c.name, number: c.phoneNumber?.number || null })) });
+    } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
   }
 
   if (action === 'call') {
-    const recipients = Array.isArray(body.recipients) ? body.recipients as { phone: string; name?: string; fields?: Record<string, unknown> }[] : [];
+    const recipients = Array.isArray(body.recipients) ? body.recipients : [];
     const scriptKey = String(body.script_key || '');
     const campaignName = String(body.campaign_name || '') || null;
     if (!recipients.length) return json({ ok: false, error: 'لا مستلمين' });
-    // تجربة إدارية بمستلِم واحد → تتجاوز قائمة الحظر (لسماع الصوت على رقمك). لا للحملات.
-    // نتعرّف عليها بـtest:true (الواجهة الجديدة) أو باسم «تجربة IVR» (زر التجربة القديم أيضاً)
-    // — فيعمل التجاوز فوراً بلا انتظار نشر الواجهة.
     const isTest = (body.test === true || campaignName === 'تجربة IVR') && recipients.length === 1;
 
     const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'ivr_config').maybeSingle();
-    let cfg: Record<string, any> = {};
+    let cfg = {};
     try { cfg = cfgRow?.value ? JSON.parse(cfgRow.value) : {}; } catch { cfg = {}; }
-    if (cfg.enabled === false) return json({ ok: false, error: 'مكالمات IVR غير مُفعَّلة — فعّلها من الإعدادات' });
+    if (cfg.enabled === false) return json({ ok: false, error: 'مكالمات IVR غير مُفعّلة — فعّلها من الإعدادات' });
     const scripts = Array.isArray(cfg.scripts) ? cfg.scripts : [];
-    const script = scripts.find((s: Record<string, any>) => s.key === (scriptKey || cfg.defaultScript)) || scripts[0];
-    if (!script) return json({ ok: false, error: 'لا يوجد سكربت صوتي مُعرَّف' });
+    const script = scripts.find((s) => s.key === (scriptKey || cfg.defaultScript)) || scripts[0];
+    if (!script) return json({ ok: false, error: 'لا يوجد سكربت صوتي مُعَرّف' });
     const options = Array.isArray(script.options) ? script.options : [];
     if (!options.length) return json({ ok: false, error: 'السكربت بلا خيارات (options) — Voxa يتطلّب خياراً واحداً على الأقل' });
 
-    let token: string;
-    try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
+    let token;
+    try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
     let channelId = String(body.channel_id || cfg.channelId || '');
     if (!channelId) { try { channelId = await getChannelId(token); } catch { /* */ } }
     if (!channelId) return json({ ok: false, error: 'لا قناة متاحة — ثبّت HATIF_CHANNEL_ID أو راجع قنوات Hatif' });
 
-    const blocked = new Set<string>();
-    try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || []) as { phone: string }[]) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
+    const blocked = new Set();
+    try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || [])) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
 
     const webhookKey = (await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle()).data?.webhook_key || '';
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ivr-webhook?key=${encodeURIComponent(webhookKey)}`;
-    const voxaOptions = options.map((o: Record<string, any>) => {
-      const opt: Record<string, unknown> = { Digit: String(o.digit), Description: String(o.description || o.digit) };
+    const voxaOptions = options.map((o) => {
+      const opt = { Digit: String(o.digit), Description: String(o.description || o.digit) };
       if (o.responseAudioUrl && String(o.responseAudioUrl).trim()) opt.ResponseMessageFileUrl = String(o.responseAudioUrl).trim();
       return opt;
     });
-    const ttsVoice = (cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female';
+    const ttsVoice = (script.ttsVoice === 'Male' || script.ttsVoice === 'Female') ? script.ttsVoice
+      : ((cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female');
+    const sMaxRetries = Number(script.maxAudioRetries ?? cfg.maxAudioRetries ?? 2);
+    const sInputTimeout = Number(script.inputTimeoutMs ?? cfg.inputTimeoutMs ?? 6000);
+    const sDigitTimeout = Number(script.digitTimeoutMs ?? cfg.digitTimeoutMs ?? 3000);
 
-    const results: unknown[] = []; let placed = 0, failed = 0, skipped = 0;
+    const results = []; let placed = 0, failed = 0, skipped = 0;
     for (const r of recipients) {
       const to = norm(r.phone);
       if (!to || to.length < 11) { results.push({ phone: r.phone, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
@@ -184,12 +180,12 @@ Deno.serve(async (req) => {
       await db.from('ivr_calls').update({ external_id: callRowId }).eq('id', callRowId);
 
       try {
-        const payload: Record<string, unknown> = {
+        const payload = {
           channelId, destinationNumber: to, externalId: callRowId, webhookUrl,
           ttsVoice, options: voxaOptions,
-          maxAudioRetries: Number(cfg.maxAudioRetries ?? 2),
-          inputTimeoutMs: Number(cfg.inputTimeoutMs ?? 6000),
-          digitTimeoutMs: Number(cfg.digitTimeoutMs ?? 3000),
+          maxAudioRetries: sMaxRetries,
+          inputTimeoutMs: sInputTimeout,
+          digitTimeoutMs: sDigitTimeout,
         };
         if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
         const successUrl = String(script.successAudioUrl || '').trim();
@@ -208,8 +204,8 @@ Deno.serve(async (req) => {
         }
       } catch (e) {
         failed++;
-        await db.from('ivr_calls').update({ status: 'Failed', error_message: String((e as Error).message || e).slice(0, 300) }).eq('id', callRowId);
-        results.push({ phone: to, ok: false, error: String((e as Error).message || e) });
+        await db.from('ivr_calls').update({ status: 'Failed', error_message: String(e.message || e).slice(0, 300) }).eq('id', callRowId);
+        results.push({ phone: to, ok: false, error: String(e.message || e) });
       }
       await sleep(400);
     }

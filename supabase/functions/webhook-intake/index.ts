@@ -330,7 +330,7 @@ Deno.serve(async (req) => {
   if (cErr) return json({ error: "carriers_load_failed", detail: cErr.message }, 500);
   const carriersList = (carriers || []) as Array<{ id: string; name: string; file_signature: FileSignature | null }>;
 
-  // ── Shape A: single-file payload ──────────────────────────────
+  // ── Shape A: single-file payload ──────────────────────
   const fileName = firstString(body, ["file_name", "fileName", "filename"]);
   const fileB64  = firstString(body, ["file_base64", "content", "contentBytes", "base64"]);
   if (fileName && fileB64) {
@@ -340,7 +340,7 @@ Deno.serve(async (req) => {
     return json(r, r.ok ? 200 : 500);
   }
 
-  // ── Shape B: email envelope with attachments[] ────────────────
+  // ── Shape B: email envelope with attachments[] ────────────
   const attachments = Array.isArray(body.attachments)
     ? (body.attachments as Array<Record<string, unknown>>)
     : [];

@@ -1,0 +1,5 @@
+# مصدر الدوال الطرفية = نسخة الإنتاج حرفياً (supabase/functions/DEPLOYED_BASELINE.md).
+# بلا هذا السطر يحوّل core.autocrlf الأسطر لـCRLF عند أول لمسة، فيختلف المستودع
+# بايتياً عن المنشور رغم تطابق المحتوى — وتضيع القدرة على المقارنة بالبصمة.
+supabase/functions/** text eol=lf
+supabase/migrations/** text eol=lf

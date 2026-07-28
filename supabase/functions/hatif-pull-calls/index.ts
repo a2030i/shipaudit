@@ -1,7 +1,7 @@
 // يسحب سجلّ مكالمات هاتف (GET /v1/call/list) إلى hatif_call_log — تسجيل + ملخّص
-// AI + مشاعر + أوقات لكل مكالمة (مصدر لوحة أداء الفريق). يتصفّح newest-first
+// AI + مشاعر + أوقات لكل مكالمة (مصدر لوحة أداء الفريق). تصفّح newest-first
 // ويتوقّف عند صفحة كلّها معروفة (تحديث) أو نهاية القائمة (backfill).
-// حارس: X-Cron-Key أو مدير. verify_jwt=false. cron كل 30د. المسار من فريق هاتف 2026-07-26.
+// حارس: X-Cron-Key أو مدير. verify_jwt=false. cron كل 30د.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });

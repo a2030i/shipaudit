@@ -256,16 +256,10 @@ Deno.serve(async (req) => {
           zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        // الإشعارات الدائنة — مرآة. **سحب كامل (noDelta) + مصالحة الحذف**:
-        // تطبيق الإشعار على فاتورة (POST …/invoices) لا يُحرّك last_modified_time،
-        // والحذف/الإلغاء يُخرجه من القائمة — فالدلتا وupsert يتركانه عالقاً
-        // برصيد وهمي (CN-00029 بقي open/1000 وقد حُذف). full + reconcile يصحّح.
         { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true, reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
-        // expenses: زوهو لا يدعم فرز last_modified_time لهذه القائمة → فرز
-        // date + سحب كامل بلا early-stop — upsert يمتص التكرار.
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
           map: (it, lm, now) => ({
           zoho_id: it.expense_id, date: it.date || null,
@@ -288,8 +282,6 @@ Deno.serve(async (req) => {
           date: it.journal_date || it.date || null,
           notes: (it.notes as string) || null, total: Number(it.total) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
-        // contacts (v11): الرصيد المستحق لكل عميل/مورد مباشرة من زوهو —
-        // يشمل السلف والإشعارات الدائنة (unused_credits). سحب كامل بلا دلتا.
         { ent: 'contacts', listKey: 'contacts', table: 'zoho_contacts', sortColumn: 'contact_name', noDelta: true,
           map: (it, lm, now) => ({
           zoho_id: it.contact_id, contact_name: (it.contact_name as string) || null,
@@ -336,9 +328,6 @@ Deno.serve(async (req) => {
             page++;
           }
           if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
-          // مصالحة الحذف: المزامنة upsert فقط فلا تلتقط ما حُذف/أُلغي في زوهو (يبقى
-          // عالقاً برصيد وهمي). آمنة حصراً لكيان كامل (noDelta) اكتمل سحبه (more=false؛
-          // لم يُقصّ بحدّ الصفحات). أحذف ما لم يُلمَس هذه الدورة (synced_at قبل البداية).
           if (cfg.reconcileDeletes && !more) {
             await db.from(cfg.table).delete().lt('synced_at', runStart);
           }

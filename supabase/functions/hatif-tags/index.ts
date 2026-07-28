@@ -1,4 +1,5 @@
-// hatif-tags v1 (2026-07-23) — وسم محادثات هاتف/Voxa يدوياً بحالة العميل.
+// hatif-tags v2 (2026-07-23) — وسم محادثات هاتف/Voxa يدوياً بحالة العميل.
+// v2: List Tags بـmaxResultCount=500 (الافتراضي 10 فقط). الرد {totalCount, items:[{id,name,...}]}.
 // action list  → GET /v1/tags/service-account (التاقات المتاحة).
 // action apply → POST /v2/conversations/service-account/{convId}/tags {tagIds}
 //   يجد أحدث conversation_id للعميل من whatsapp_campaign_sends بالهاتف ثم يطبّق.

@@ -1,14 +1,8 @@
 // zoho-events v1 — مستقبِل ويبهوكس Zoho Books (فاتورة أُنشئت / دفعة استُلمت).
-//
-// المصادقة (زوهو ليس مستخدماً): زوهو يُرسَل معه ترويستان تُضبطان في إعداد
-// الويبهوك بواجهة زوهو:
-//   Authorization: Bearer <anon key>   ← يمرّر بوابة verify_jwt للمنصة
-//   X-Webhook-Secret: <السر المشترك>   ← الحماية الفعلية (env ZOHO_WEBHOOK_SECRET)
-//
-// من خطة الوكلاء: الحمولة الفعلية غير موثّقة — المستقبِل متسامح: يستخرج
-// الحقول الشائعة إن وُجدت ويخزّن الـpayload الخام دائماً للفحص.
-// dedup_key فريد كامل (درس §1.15/§6) — retry زوهو لا يكرّر الصف.
-// القاعدة الثابتة: الأحداث للنبض والعرض فقط — لا تدخل حساب الربح أبداً.
+// المصادقة: Authorization Bearer <anon> (بوابة المنصة) + X-Webhook-Secret
+// مطابق لـenv ZOHO_WEBHOOK_SECRET (الحماية الفعلية). المستقبِل متسامح مع
+// الحمولة (غير موثّقة) ويخزّن الخام دائماً. dedup_key فريد كامل.
+// الأحداث للنبض فقط — لا تدخل حساب الربح أبداً.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -18,13 +12,11 @@ const json = (b: unknown, s = 200) =>
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok');
 
-  // الحماية: السر المشترك إلزامي ومطابق
   const secret = Deno.env.get('ZOHO_WEBHOOK_SECRET');
   if (!secret) return json({ error: 'ZOHO_WEBHOOK_SECRET غير مضبوط في الأسرار' }, 500);
   const got = req.headers.get('X-Webhook-Secret') || req.headers.get('x-webhook-secret') || '';
   if (got !== secret) return json({ error: 'forbidden' }, 403);
 
-  // الحمولة: JSON أو form-encoded فيه حقل JSONString (نمط زوهو الشائع)
   let payload: Record<string, unknown> = {};
   const ct = req.headers.get('content-type') || '';
   try {
@@ -41,7 +33,6 @@ Deno.serve(async (req) => {
     }
   } catch { payload = {}; }
 
-  // استخراج متسامح: فاتورة أم دفعة أم مجهول
   const inv = (payload.invoice || payload.Invoice) as Record<string, unknown> | undefined;
   const pay = (payload.payment || payload.customerpayment || payload.Payment) as Record<string, unknown> | undefined;
   const src = inv || pay || payload;
@@ -68,7 +59,7 @@ Deno.serve(async (req) => {
     occurred_at: occurred && !Number.isNaN(new Date(occurred).getTime()) ? new Date(occurred).toISOString() : new Date().toISOString(),
     payload,
     received_at: new Date().toISOString(),
-  }, { onConflict: 'dedup_key' });   // فهرس فريد كامل — لا فخّ 42P10
+  }, { onConflict: 'dedup_key' });
   if (error) return json({ error: error.message }, 500);
 
   return json({ ok: true, event_type: eventType });

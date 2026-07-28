@@ -1,7 +1,7 @@
 // zoho-authurl — يبني رابط موافقة Zoho بالصلاحيات الموسّعة (قراءة كاملة +
-// invoices.UPDATE فقط للكتابة، لا CREATE/DELETE) ليمنح المدير صلاحية «تطبيق
-// الرصيد الدائن» بنقرة داخل النظام. الاستبدال يُتمّه zoho-sync (exchange_web
-// force) عبر /zoho-callback. لا يمسّ التطبيق الداخلي القديم. admin فقط.
+// كتابة محدودة) ليمنح المدير صلاحية «تطبيق الرصيد الدائن» بنقرة داخل
+// النظام. الاستبدال يُتمّه zoho-sync (exchange_web force) عبر /zoho-callback.
+// لا يمسّ التطبيق الداخلي القديم. admin فقط.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 

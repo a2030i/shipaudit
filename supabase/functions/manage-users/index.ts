@@ -36,7 +36,7 @@ Deno.serve(async (req) => {
     const body        = await req.json();
     const { action }  = body;
 
-    // ── Create ──────────────────────────────────────────────────────────────
+    // ── Create ─────────────────────────────────────────────────────
     if (action === 'create') {
       const { email, password, name, role, avatar_color, permissions } = body;
       if (!email || !password) throw new Error('البريد وكلمة المرور مطلوبان');
@@ -67,7 +67,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── Delete ──────────────────────────────────────────────────────────────
+    // ── Delete ─────────────────────────────────────────────────────
     if (action === 'delete') {
       const { user_id } = body;
       if (user_id === user.id) throw new Error('لا يمكنك حذف حسابك الحالي');
