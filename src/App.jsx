@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, Component } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, History, Settings,
@@ -11,51 +11,53 @@ import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
-import CarrierProfile from './pages/CarrierProfile.jsx';
-import CustomerPortal from './pages/CustomerPortal.jsx';
-import InternalExports from './pages/InternalExports.jsx';
-import CarrierManager from './pages/CarrierManager.jsx';
-import UploadWizard   from './pages/UploadWizard.jsx';
-import AuditResults   from './pages/AuditResults.jsx';
-import { SettingsPage, AuditsHistory } from './pages/Settings.jsx';
-import LoginPage      from './pages/LoginPage.jsx';
-import EmployeeManager from './pages/EmployeeManager.jsx';
-import CarrierStatements from './pages/CarrierStatements.jsx';
-import CarrierLedger     from './pages/CarrierLedger.jsx';
-import PlatformCarriers  from './pages/PlatformCarriers.jsx';
-import ActivityLog       from './pages/ActivityLog.jsx';
-import WeightBilling     from './pages/WeightBilling.jsx';
-import WebhookEvents     from './pages/WebhookEvents.jsx';
-import ContractsOverview from './pages/ContractsOverview.jsx';
-import Tasks            from './pages/Tasks.jsx';
-import CustomerWatch    from './pages/CustomerWatch.jsx';
-import CarriersWorkspace from './pages/CarriersWorkspace.jsx';
-import CrmWorkspace      from './pages/CrmWorkspace.jsx';
-import FulfillmentAudit  from './pages/FulfillmentAudit.jsx';
-import MoneyHub          from './pages/MoneyHub.jsx';
-import Periods          from './pages/Periods.jsx';
-import Forecast         from './pages/Forecast.jsx';
-import MonthlyReport     from './pages/MonthlyReport.jsx';
-import ReportsCenter     from './pages/ReportsCenter.jsx';
-import ZohoCallback      from './pages/ZohoCallback.jsx';
-import FinancialPosition from './pages/FinancialPosition.jsx';
-import ZohoData          from './pages/ZohoData.jsx';
-import CollectionsHub    from './pages/CollectionsHub.jsx';
-import SalesHub          from './pages/SalesHub.jsx';
-import WhatsAppSettings   from './pages/WhatsAppSettings.jsx';
-import SmartDrop         from './pages/SmartDrop.jsx';
-import CashAging         from './pages/CashAging.jsx';
-import IntegrityCheck    from './pages/IntegrityCheck.jsx';
+const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
+const CustomerPortal = lazy(() => import('./pages/CustomerPortal.jsx'));
+const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
+const CarrierManager = lazy(() => import('./pages/CarrierManager.jsx'));
+const UploadWizard = lazy(() => import('./pages/UploadWizard.jsx'));
+const AuditResults = lazy(() => import('./pages/AuditResults.jsx'));
+// ملف واحد يُصدِّر صفحتين → lazy لكل تصدير على حدة (وإلا شدّ معه
+// `engine/export.js` ومكتبة الإكسل كاملةً إلى حزمة الدخول — §الأداء).
+const SettingsPage   = lazy(() => import('./pages/Settings.jsx').then(m => ({ default: m.SettingsPage })));
+const AuditsHistory  = lazy(() => import('./pages/Settings.jsx').then(m => ({ default: m.AuditsHistory })));
+import LoginPage from './pages/LoginPage.jsx';
+const EmployeeManager = lazy(() => import('./pages/EmployeeManager.jsx'));
+const CarrierStatements = lazy(() => import('./pages/CarrierStatements.jsx'));
+const CarrierLedger = lazy(() => import('./pages/CarrierLedger.jsx'));
+const PlatformCarriers = lazy(() => import('./pages/PlatformCarriers.jsx'));
+const ActivityLog = lazy(() => import('./pages/ActivityLog.jsx'));
+const WeightBilling = lazy(() => import('./pages/WeightBilling.jsx'));
+const WebhookEvents = lazy(() => import('./pages/WebhookEvents.jsx'));
+const ContractsOverview = lazy(() => import('./pages/ContractsOverview.jsx'));
+const Tasks = lazy(() => import('./pages/Tasks.jsx'));
+const CustomerWatch = lazy(() => import('./pages/CustomerWatch.jsx'));
+const CarriersWorkspace = lazy(() => import('./pages/CarriersWorkspace.jsx'));
+const CrmWorkspace = lazy(() => import('./pages/CrmWorkspace.jsx'));
+const FulfillmentAudit = lazy(() => import('./pages/FulfillmentAudit.jsx'));
+const MoneyHub = lazy(() => import('./pages/MoneyHub.jsx'));
+const Periods = lazy(() => import('./pages/Periods.jsx'));
+const Forecast = lazy(() => import('./pages/Forecast.jsx'));
+const MonthlyReport = lazy(() => import('./pages/MonthlyReport.jsx'));
+const ReportsCenter = lazy(() => import('./pages/ReportsCenter.jsx'));
+const ZohoCallback = lazy(() => import('./pages/ZohoCallback.jsx'));
+const FinancialPosition = lazy(() => import('./pages/FinancialPosition.jsx'));
+const ZohoData = lazy(() => import('./pages/ZohoData.jsx'));
+const CollectionsHub = lazy(() => import('./pages/CollectionsHub.jsx'));
+const SalesHub = lazy(() => import('./pages/SalesHub.jsx'));
+const WhatsAppSettings = lazy(() => import('./pages/WhatsAppSettings.jsx'));
+const SmartDrop = lazy(() => import('./pages/SmartDrop.jsx'));
+const CashAging = lazy(() => import('./pages/CashAging.jsx'));
+const IntegrityCheck = lazy(() => import('./pages/IntegrityCheck.jsx'));
 // Claims now renders inside CarriersWorkspace (claims tab), not a top-level route.
-import DecisionsBoard   from './pages/DecisionsBoard.jsx';
-import NextActions      from './pages/NextActions.jsx';
+const DecisionsBoard = lazy(() => import('./pages/DecisionsBoard.jsx'));
+const NextActions = lazy(() => import('./pages/NextActions.jsx'));
 import CommandPalette    from './components/CommandPalette.jsx';
-import Overview         from './pages/Overview.jsx';
-import Reconciliation   from './pages/Reconciliation.jsx';
-import UploadsHub       from './pages/UploadsHub.jsx';
-import TicketForm       from './pages/TicketForm.jsx';
-import SupportBoard     from './pages/SupportBoard.jsx';
-
+const Overview = lazy(() => import('./pages/Overview.jsx'));
+const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
+const UploadsHub = lazy(() => import('./pages/UploadsHub.jsx'));
+const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
+const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
 //
@@ -1026,12 +1028,17 @@ class SlotBoundary extends Component {
 }
 
 function PageSlot({ active, scroll = false, children }) {
-  // ── تجميد المحتوى غير النشط (2026-07-28) ──
-  // كل تنقّل يغيّر `location` فيُعاد رسم AppInner ومعه **كل** الصفحات الـ59
-  // المركَّبة (props جديدة لكل PageSlot) — فصارت الضغطة الواحدة تُعيد رسم
-  // النظام كاملاً. بالاحتفاظ بمرجع آخر children رُسمت وهي نشطة، يرى React
-  // نفس عنصر JSX للصفحات الخاملة فيتخطّى إعادة رسمها كلياً. الصفحة تُجمَّد
-  // على آخر حالة لها وتستأنف بأحدث props فور تنشيطها.
+  // ── (١) لا تُنشأ الصفحة قبل أول زيارة (2026-07-28) ──
+  // كانت الـ41 صفحة تُركَّب كلها عند أول تحميل — عمل ضخم قبل ظهور أي شيء.
+  // الآن الصفحة تُركَّب عند أول تنشيط فقط، ثم تبقى (يُحفظ سلوك keep-alive:
+  // الحالة والتمرير والبيانات المحمَّلة لا تضيع عند التنقّل).
+  const seen = useRef(false);
+  if (active) seen.current = true;
+
+  // ── (٢) تجميد المحتوى غير النشط ──
+  // كل تنقّل يغيّر `location` فيُعاد رسم AppInner ومعه كل الصفحات المركَّبة
+  // (props جديدة لكل PageSlot). بالاحتفاظ بمرجع آخر children رُسمت وهي نشطة،
+  // يرى React نفس عنصر JSX للصفحات الخاملة فيتخطّى إعادة رسمها كلياً.
   const frozen = useRef(children);
   if (active) frozen.current = children;
   const content = active ? children : frozen.current;
@@ -1049,7 +1056,19 @@ function PageSlot({ active, scroll = false, children }) {
       pointerEvents: active ? 'auto' : 'none',
       display: 'flex', flexDirection: 'column', alignItems: 'stretch',
     }}>
-      <SlotBoundary>{content}</SlotBoundary>
+      {seen.current && (
+        <SlotBoundary>
+          {/* الصفحات تُحمَّل كسولاً (React.lazy) — Suspense داخل الخانة كي
+              يبقى انتظار أول فتح محصوراً في الصفحة لا في التطبيق كله. */}
+          <Suspense fallback={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 260 }}>
+              <Spinner size={26}/>
+            </div>
+          }>
+            {content}
+          </Suspense>
+        </SlotBoundary>
+      )}
     </div>
   );
 }

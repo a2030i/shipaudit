@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageCircle, X, Send, RefreshCw, Sparkles, Paperclip, Save } from 'lucide-react';
-import * as XLSX from 'xlsx';
 import { Spinner, toast } from './UI.jsx';
 import { buildAssistantContext, askAssistantAgent, loadMyChat, saveMyChat, clearMyChat } from '../engine/aiAssistant.js';
-import { parseAramexStatement } from '../engine/aramexStatementParser.js';
-import { parseStatementWithAI } from '../engine/aiStatementParser.js';
+// محلّلا الـPDF يجرّان pdfjs (~420KB). المساعد مركَّب في كل صفحة، فالاستيراد
+// الثابت كان يُنزِّل المكتبة مع **شاشة الدخول**. تُحمَّل عند أول كشف PDF فعلي.
 import { saveCarrierStatement } from '../lib/carrierStatementsService.js';
 import {
   detectHeaderRow, buildHeaders, detectColumns, mapRows, auditAll, buildSummary,
@@ -122,6 +121,10 @@ export default function AIChat() {
   const processStatementPdf = async (file, carriers) => {
     setMessages(m => [...m, { role: 'assistant', content: '⏳ يقرأ الكشف...' }]);
     const buf = await file.arrayBuffer();
+    const [{ parseAramexStatement }, { parseStatementWithAI }] = await Promise.all([
+      import('../engine/aramexStatementParser.js'),
+      import('../engine/aiStatementParser.js'),
+    ]);
     let parsed;
     try { parsed = await parseAramexStatement(buf); } catch { parsed = null; }
     if (!parsed || parsed.operations.length === 0) {
@@ -151,6 +154,9 @@ export default function AIChat() {
   const processInvoiceExcel = async (file, carriers) => {
     setMessages(m => [...m, { role: 'assistant', content: '⏳ يدقّق الفاتورة...' }]);
     const buf = await file.arrayBuffer();
+    // تحميل كسول: مكتبة الإكسل ~420KB — لا تُحمَّل إلا عند رفع ملف فعلاً
+    // (كانت تُحمَّل مع الحزمة الأولى لأن المساعد مركَّب دائماً).
+    const XLSX = await import('xlsx');
     const wb = XLSX.read(buf, { type: 'array' });
     const ws = wb.Sheets[wb.SheetNames[0]];
     const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });

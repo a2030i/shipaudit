@@ -28,6 +28,9 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
   const [rows, setRows] = useState(null);
   const [users, setUsers] = useState([]);
   const [open, setOpen] = useState(null);
+  // مطوي افتراضياً — بطاقة العميل صارت طويلة جداً بسجلّ ١٠+ أحداث (طلب
+  // المستخدم 2026-07-28). الترويسة تُلخّص (العدد + آخر تواصل) والنقر يفتح.
+  const [expanded, setExpanded] = useState(false);
 
   useEffect(() => { setRows(null); if (phone) loadCustomerCommTimeline(phone).then(setRows).catch(() => setRows([])); else setRows([]); }, [phone]);
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
@@ -39,19 +42,29 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
   const convId = rows.find(r => r.conversation_id)?.conversation_id;
   const inboxUrl = hatifInboxUrl(convId);
 
+  const last = rows[0]?.occurred_at;
+
   return (
     <div style={{ display: 'grid', gap: 8 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div onClick={() => setExpanded(v => !v)}
+        style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', cursor: 'pointer',
+          background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '8px 10px' }}>
+        <span style={{ color: 'var(--muted2)', fontSize: 11 }}>{expanded ? '▲' : '▼'}</span>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>🕘 {title}</div>
+        {rows.length > 0 && (
+          <span style={{ padding: '1px 8px', borderRadius: 20, fontSize: 10.5, fontWeight: 800,
+            background: 'color-mix(in srgb, var(--accent) 15%, transparent)', color: 'var(--accent)' }}>{rows.length}</span>
+        )}
+        {!expanded && last && <span style={{ fontSize: 11, color: 'var(--muted)' }}>آخر تواصل: {fmtWhen(last)}</span>}
         {inboxUrl && (
-          <a href={inboxUrl} target="_blank" rel="noopener noreferrer"
+          <a href={inboxUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()}
             style={{ marginInlineStart: 'auto', fontSize: 11.5, fontWeight: 700, color: '#fff', background: '#25D366',
               padding: '5px 11px', borderRadius: 999, textDecoration: 'none', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
             💬 افتح المحادثة في هاتف ↗
           </a>
         )}
       </div>
-      {!rows.length ? (
+      {!expanded ? null : !rows.length ? (
         <div style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 2px' }}>
           لا تواصل مسجَّل لهذا الرقم بعد (حملات/مكالمات آلية/محادثات). المكالمات الصوتية اليدوية لا تُنسَب للعميل بعد — بانتظار هاتف.
         </div>
