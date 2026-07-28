@@ -647,28 +647,13 @@ async function loadLeadMeta({ force = false } = {}) {
     return normalized;
   })().catch(async (rpcError) => {
     metaCache.promise = null;
-    console.warn('crm_leads_dashboard_meta failed, falling back to client aggregation', rpcError);
-    const rows = await selectAllRows(() => supabase
-      .from('crm_leads')
-      .select('status, owner_id, duplicate_count, matched_store_id, category, platform')
-      .order('created_at', { ascending: false }));
-    const fallback = normalizeMeta({
-      stats: {
-        total: rows.length,
-        newCount: rows.filter(r => r.status === 'new').length,
-        existingCustomers: rows.filter(r => r.matched_store_id || r.status === 'existing_customer').length,
-        duplicateRows: rows.filter(r => Number(r.duplicate_count) > 1).length,
-        unassigned: rows.filter(r => !r.owner_id).length,
-        converted: rows.filter(r => r.status === 'converted').length,
-      },
-      options: {
-        categories: [...new Set((rows || []).map(r => r.category).filter(Boolean))].sort(),
-        platforms: [...new Set((rows || []).map(r => r.platform).filter(Boolean))].sort(),
-        statuses: [...new Set((rows || []).map(r => r.status).filter(Boolean))].sort(),
-      },
-    });
-    metaCache = { at: Date.now(), data: fallback, promise: null };
-    return fallback;
+    // ⚠️ الاحتياطي القديم كان **يسحب الـ94 ألف صف كاملة للمتصفّح** ليحسب ٦
+    // أرقام و٣ قوائم. القياس على الإنتاج: هذا النمط استهلك **54% من زمن
+    // قاعدة البيانات كلّه** (متوسّط 2.2 ثانية للصفحة، 95 صفحة لكل تحميل).
+    // فشل الـRPC حالة نادرة تستحق خطأ ظاهراً — لا انهياراً صامتاً في الأداء
+    // يخفي العطل. (§الأداء 2026-07-29)
+    console.warn('crm_leads_dashboard_meta failed', rpcError);
+    throw rpcError;
   });
   return metaCache.promise;
 }
@@ -683,33 +668,9 @@ export async function loadLeadStats(options = {}) {
   return meta.stats;
 }
 
-export async function loadLeadOptionsLegacy() {
-  const data = await selectAllRows(() => supabase
-    .from('crm_leads')
-    .select('category, platform, status')
-    .order('created_at', { ascending: false }));
-  return {
-    categories: [...new Set((data || []).map(r => r.category).filter(Boolean))].sort(),
-    platforms: [...new Set((data || []).map(r => r.platform).filter(Boolean))].sort(),
-    statuses: [...new Set((data || []).map(r => r.status).filter(Boolean))].sort(),
-  };
-}
-
-export async function loadLeadStatsLegacy() {
-  const data = await selectAllRows(() => supabase
-    .from('crm_leads')
-    .select('status, owner_id, duplicate_count, matched_store_id, created_at')
-    .order('created_at', { ascending: false }));
-  const rows = data || [];
-  return {
-    total: rows.length,
-    newCount: rows.filter(r => r.status === 'new').length,
-    existingCustomers: rows.filter(r => r.matched_store_id || r.status === 'existing_customer').length,
-    duplicateRows: rows.filter(r => Number(r.duplicate_count) > 1).length,
-    unassigned: rows.filter(r => !r.owner_id).length,
-    converted: rows.filter(r => r.status === 'converted').length,
-  };
-}
+// (حُذفت `loadLeadOptionsLegacy` و`loadLeadStatsLegacy` — كودٌ ميت لا يستدعيه
+//  أحد، وكانتا تسحبان الجدول كاملاً للمتصفّح. البديل RPC
+//  `crm_leads_dashboard_meta` عبر `loadLeadOptions`/`loadLeadStats`.)
 
 export async function createLead({
   name, nameEn = null, phone = null, whatsapp = null, email = null, city = null,

@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, RefreshCw, ArrowLeft, Wrench } from 'lucide-react';
 import { Card, Btn, Spinner, toast, PageHeader } from '../components/UI.jsx';
-import { loadIntegrityChecks, FIXES } from '../lib/integrityService.js';
+import { loadIntegrityChecks, loadCronHealth, FIXES } from '../lib/integrityService.js';
 
 const SEV = {
   red:   { bg: 'rgba(239,68,68,.07)',  bd: 'rgba(239,68,68,.35)',  color: 'var(--red)' },
@@ -20,13 +20,17 @@ const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: 2 
 export default function IntegrityCheck({ isActive }) {
   const navigate = useNavigate();
   const [checks, setChecks]   = useState(null);
+  const [crons, setCrons]     = useState(null);
   const [loading, setLoading] = useState(false);
   const [fixing, setFixing]   = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setChecks(await loadIntegrityChecks()); }
-    catch (e) { toast(`تعذّر الفحص: ${e.message}`, 'error'); }
+    // صحّة المهام تُجلَب بالتوازي وفشلها لا يُسقط فحص السلامة
+    const [c, h] = await Promise.allSettled([loadIntegrityChecks(), loadCronHealth()]);
+    if (c.status === 'fulfilled') setChecks(c.value);
+    else toast(`تعذّر الفحص: ${c.reason?.message || c.reason}`, 'error');
+    setCrons(h.status === 'fulfilled' ? h.value : []);
     setLoading(false);
   }, []);
   useEffect(() => { if (isActive && !checks) refresh(); }, [isActive, checks, refresh]);
@@ -116,6 +120,58 @@ export default function IntegrityCheck({ isActive }) {
               </Card>
             );
           })}
+
+          {/* صحّة المهام المجدولة — تُقاس بالأثر لا برد الشبكة (سجلّ الكرون
+              يقول «نجح» دائماً لأنه يقيس إرسال الطلب فقط). */}
+          {crons && crons.length > 0 && (() => {
+            const late = crons.filter(c => !c.healthy);
+            return (
+              <Card style={{ marginBottom: 12, padding: '16px 18px',
+                borderColor: late.length ? SEV.amber.bd : SEV.ok.bd,
+                background:  late.length ? SEV.amber.bg : SEV.ok.bg }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+                  <span style={{ fontSize: 16 }}>{late.length ? '⏱️' : '✅'}</span>
+                  <div style={{ fontWeight: 700, fontSize: 13.5 }}>
+                    المهام التلقائية — {late.length
+                      ? `${late.length} متأخّرة عن أثرها المتوقّع`
+                      : `الـ${crons.length} كلها تعمل وتترك أثرها`}
+                  </div>
+                  <span style={{ fontSize: 11, color: 'var(--muted)', marginInlineStart: 'auto' }}>
+                    تُقاس بآخر صف كتبته المهمة فعلاً، لا برد الشبكة
+                  </span>
+                </div>
+                <div style={{ display: 'grid', gap: 6 }}>
+                  {crons.map(c => (
+                    <div key={c.job} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                      fontSize: 12.5, padding: '6px 10px', borderRadius: 8,
+                      background: c.healthy ? 'transparent' : SEV.amber.bg,
+                      border: `1px solid ${c.healthy ? 'var(--border)' : SEV.amber.bd}`,
+                    }}>
+                      <span style={{ color: c.healthy ? SEV.ok.color : SEV.amber.color, fontWeight: 700 }}>
+                        {c.healthy ? '✓' : '⚠'}
+                      </span>
+                      <b style={{ minWidth: 150 }}>{c.label}</b>
+                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', direction: 'ltr' }}>
+                        {c.schedule}
+                      </span>
+                      <span style={{ color: 'var(--muted)', flex: 1, minWidth: 180 }}>{c.detail}</span>
+                      {c.gapMinutes != null && (
+                        <span style={{
+                          fontFamily: 'var(--font-mono)', fontSize: 11,
+                          color: c.healthy ? 'var(--muted)' : SEV.amber.color,
+                        }}>
+                          منذ {c.gapMinutes < 90
+                            ? `${Math.round(c.gapMinutes)} د`
+                            : `${(c.gapMinutes / 60).toFixed(1)} س`}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            );
+          })()}
 
           {/* Healthy checks — compact roll-up */}
           {healthy.length > 0 && (

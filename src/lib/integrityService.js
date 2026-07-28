@@ -93,3 +93,26 @@ export async function resetWronglySkipped(auditIds) {
 }
 
 export const FIXES = { resetWronglySkipped };
+
+// ── صحّة المهام المجدولة ────────────────────────────────────────────────────
+// `cron.job_run_details` تقول «نجح» دائماً — لأنها تقيس **إرسال** طلب HTTP لا
+// نتيجته (pg_net يتوقّف عن الانتظار بعد 5 ثوانٍ بينما الدالة تكمل خلفياً).
+// القياس على الإنتاج: 105 من 250 استدعاءً خلال 24 ساعة «انتهت مهلتها» بلا أي
+// إثبات نجاح. لذلك نقيس **الأثر في البيانات** (آخر صف كتبته المهمة فعلاً،
+// أو طابور عالق حان وقته ولم يُعالَج) بدل الاعتماد على رد الشبكة.
+export async function loadCronHealth() {
+  const { data, error } = await supabase.rpc('cron_health');
+  if (error) throw error;
+  return (data ?? []).map(r => ({
+    job:        r.job,
+    label:      r.label,
+    schedule:   r.schedule,
+    active:     !!r.active,
+    lastEffect: r.last_effect,
+    gapMinutes: r.gap_minutes == null ? null : Number(r.gap_minutes),
+    maxGapMin:  r.max_gap_min == null ? null : Number(r.max_gap_min),
+    status:     r.status,          // سليمة | متأخّرة | بلا أثر | معطّلة
+    detail:     r.detail,
+    healthy:    r.status === 'سليمة',
+  }));
+}
