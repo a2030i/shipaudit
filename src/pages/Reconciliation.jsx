@@ -31,6 +31,7 @@ import {
   loadVendorReconciliation, loadVendorOthers,
   loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
+import { syncZohoDocs } from '../lib/pnlService.js';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -76,6 +77,7 @@ export default function Reconciliation({ isActive = true }) {
     new URLSearchParams(location.search).get('tab') === 'customers' ? 'store' : 'customer');
   const [custRows, setCustRows]     = useState(null);   // صفوف مِرساة العميل (مشتركة بين العرضين)
   const [autolinkBusy, setAutolinkBusy] = useState(false);
+  const [syncing, setSyncing]       = useState(false);  // مزامنة زوهو الفورية
 
   // المسارات القديمة تهبط على عرضها: ?tab=zoho_live → عرض العميل ·
   // ?tab=customers → عرض المتجر · ?tab=vendors → تبويب الناقلين.
@@ -194,6 +196,27 @@ export default function Reconciliation({ isActive = true }) {
   };
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  // ── مزامنة زوهو الآن ثم إعادة المطابقة ──
+  // الكرون يسحب كل 30 دقيقة، والويبهوك فوري لما تُضبَط له قاعدة في زوهو.
+  // لكن بعض العمليات (تطبيق رصيد دائن على فاتورة) **لا تُحرّك
+  // `last_modified_time`** فتفوتها مزامنة الدلتا — §1.26b — فالزرّ هنا هو
+  // المخرج المضمون بعد أي تعديل يدوي في زوهو.
+  const syncZohoNow = async () => {
+    if (syncing) return;
+    setSyncing(true);
+    try {
+      const r = await syncZohoDocs();
+      const parts = Object.entries(r || {})
+        .filter(([k, v]) => k !== 'ok' && typeof v === 'number' && v > 0)
+        .map(([k, v]) => `${k}: ${v}`);
+      toast(parts.length ? `تمّت المزامنة — ${parts.join(' · ')}` : 'تمّت المزامنة — لا جديد', 'success');
+      await refresh();
+    } catch (e) {
+      toast(`فشلت المزامنة: ${e.message}`, 'error');
+    }
+    setSyncing(false);
+  };
 
   // Reframe every row around the INTERNAL anchor. Internal system
   // is the source of truth; Zoho should match it; receivables is a
@@ -352,9 +375,19 @@ export default function Reconciliation({ isActive = true }) {
           ? 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'
           : 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر استحقاق لمحة'}
         actions={
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
-            تحديث
-          </Btn>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            {/* «تحديث» يعيد قراءة المرآة · «مزامنة زوهو» تسحب من زوهو أولاً.
+                الفرق مهم: عملية تمّت في زوهو للتوّ لا تظهر بالتحديث وحده —
+                الكرون كل 30 دقيقة، وهذا الزر يختصر الانتظار. */}
+            <Btn size="sm" variant="accent" icon={<Zap size={13}/>}
+                 onClick={syncZohoNow} disabled={syncing}
+                 title="يسحب أحدث الفواتير والدفعات والإشعارات من زوهو ثم يعيد المطابقة">
+              {syncing ? 'يزامن…' : '⚡ مزامنة زوهو'}
+            </Btn>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={syncing}>
+              تحديث
+            </Btn>
+          </div>
         }
       />
 
