@@ -244,7 +244,9 @@ export async function loadCustomerMoneyDashboard() {
     collectedPrevMonth: Number(d.collected_prev_month) || 0,
     monthlyCollected: Array.isArray(d.monthly_collected) ? d.monthly_collected : [],
     customers: (Array.isArray(d.customers) ? d.customers : []).map(c => ({
-      name: c.name, storeName: c.store_name, phone: c.phone,
+      // `storeId` = رقم المتجر في نظام لمحة — المفتاح الذي يُبحَث به في
+      // المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53، والرقم لا يتكرّر).
+      name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
       owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,

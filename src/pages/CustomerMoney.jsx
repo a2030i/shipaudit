@@ -155,22 +155,25 @@ export default function CustomerMoney({ isActive = true }) {
   const exportXlsx = async () => {
     if (!filtered.length) return;
     const campLabel = buckets.size ? 'مبلغ الشرائح المختارة' : 'مبلغ التحصيل';
-    const headers = ['العميل', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
+    // «رقم المتجر» = معرّفه في نظام لمحة — يسبق الاسم لأنه المفتاح الذي
+    // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
+    const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
       'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
     const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
-      ...filtered.map(c => [c.name, c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
+      ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
         c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', '', '', '', '', owedTotal, '', '', '', '', '', '', '', '', '', '', '', filteredTotal],
+      ['الإجمالي', '', '', '', '', '', owedTotal, '', '', '', '', '', '', '', '', '', '', '', filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 32 : (i === 1 ? 24 : 12) }));
+    // 0 = العميل · 1 = رقم المتجر (ضيّق) · 2 = اسم المتجر
+    ws['!cols'] = headers.map((_, i) => ({ wch: i === 0 ? 32 : i === 1 ? 10 : i === 2 ? 24 : 12 }));
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'تحصيل العملاء');
     try {
@@ -755,6 +758,12 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           </div>
           {c.storeName && c.storeName !== c.name && (
             <div style={{ fontSize: 10.5, color: 'var(--muted2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</div>
+          )}
+          {/* رقم المتجر في لمحة — للبحث في المنصّة الداخلية بلا التباس أسماء */}
+          {c.storeId && (
+            <div style={{ fontSize: 9.5, color: 'var(--muted2)', fontFamily: 'var(--font-mono)', marginTop: 1 }}>
+              متجر #{c.storeId}
+            </div>
           )}
         </div>
         <div style={{ textAlign: 'left' }}>
