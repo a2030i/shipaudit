@@ -8,13 +8,17 @@
 // اختيار موظف). كل بند ينقل لتبويبه الصحيح.
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sunrise, RefreshCw, Phone, MessageCircle, CalendarClock, UserPlus, CheckCircle2 } from 'lucide-react';
+import { Sunrise, RefreshCw, MessageCircle, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadSalesToday, statusMeta } from '../lib/retargetingService.js';
 import WaActions from '../components/WaActions.jsx';
 
 const fmtWhen = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d || '').slice(0, 16); } };
+const leadStageLabel = (s) => ({
+  new: 'جديد', attempting: 'جارٍ التواصل', contacted: 'تم الرد', qualified: 'مؤهّل',
+  proposal: 'عرض مقدّم', negotiation: 'تفاوض', nurture: 'متابعة لاحقة',
+}[s] || s || '—');
 
 function Section({ icon, title, count, color, children }) {
   return (
@@ -36,18 +40,30 @@ export default function SalesToday({ isActive = true }) {
   const navigate = useNavigate();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
   const refresh = async () => {
     setBusy(true);
+    setError('');
     try { setD(await loadSalesToday()); }
-    catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setD(prev => prev || { dueFollowups: [], replies: [], myNewLeads: [], myTasks: [], myNewLeadsCount: 0, myFollowupsTotal: 0 }); }
+    catch (e) { setError(e.message); toast(`فشل التحميل: ${e.message}`, 'error'); }
     setBusy(false);
   };
   useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
 
+  if (d == null && error) return (
+    <div style={{ padding: 40, maxWidth: 720, margin: '0 auto' }}>
+      <Card style={{ borderColor: 'var(--red)', textAlign: 'center' }}>
+        <AlertTriangle size={28} color="var(--red)" style={{ marginBottom: 8 }}/>
+        <div style={{ fontWeight: 900 }}>تعذّر تحميل قائمة العمل</div>
+        <div style={{ color: 'var(--muted)', fontSize: 12, margin: '6px 0 14px' }}>لم نعرض قائمة فارغة لأن الخطأ لا يعني عدم وجود فرص.</div>
+        <Btn variant="primary" onClick={refresh}>إعادة المحاولة</Btn>
+      </Card>
+    </div>
+  );
   if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
-  const nothing = !d.dueFollowups.length && !d.replies.length && !d.myNewLeads.length && !d.myTasks.length;
+  const nothing = !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.replies.length && !d.myNewLeads.length && !d.myTasks.length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -61,6 +77,40 @@ export default function SalesToday({ isActive = true }) {
         <Card><Empty icon="🎉" title="لا شيء عاجلاً الآن" sub="لا متابعات مستحقّة ولا ردود جديدة — افتح «إعادة الاستهداف» واعمل على فرص جديدة"/></Card>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+
+          <Section icon={<AlertTriangle size={16} color="var(--red)"/>} title="وارد جديد بلا مسؤول" count={d.unassignedInbound?.length || 0} color="var(--red)">
+            {!d.unassignedInbound?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>كل المهتمين الجدد مسندون ✓</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {d.unassignedInbound.map(l => (
+                  <div key={l.id} style={rowStyle}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800 }}>{l.name}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--red)' }}>{l.campaign_name || 'حملة واردة'} · وصل {fmtWhen(l.received_at)}</div>
+                    </div>
+                    <Btn size="sm" variant="primary" onClick={() => navigate('/retargeting?tab=external')}>إسناد</Btn>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
+
+          <Section icon={<TimerReset size={16} color="var(--gold)"/>} title="إجراءات Leads مستحقة" count={d.leadActions?.length || 0} color="var(--gold)">
+            {!d.leadActions?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مواعيد Leads مستحقة ✓</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {d.leadActions.map(l => (
+                  <div key={l.id} style={rowStyle}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800 }}>{l.name}</div>
+                      <div style={{ fontSize: 10.5, color: new Date(l.next_at) < new Date() ? 'var(--red)' : 'var(--muted2)' }}>
+                        {leadStageLabel(l.status)} · {fmtWhen(l.next_at)}
+                      </div>
+                    </div>
+                    <WaActions phone={l.phone} name={l.name} campaignLabel="موعد Lead" size={14}/>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Section>
 
           {/* ١) الردود — أحرّ الفرص أولاً */}
           <Section icon={<MessageCircle size={16} color="var(--green)"/>} title="ردّوا عليك (آخر 48 ساعة)" count={d.replies.length} color="var(--green)">
@@ -105,16 +155,16 @@ export default function SalesToday({ isActive = true }) {
           </Section>
 
           {/* ٣) جهاتي الجديدة */}
-          <Section icon={<UserPlus size={16} color="var(--accent3)"/>} title="جهاتك الجديدة (لم تُكلَّم بعد)" count={d.myNewLeadsCount} color="var(--accent3)">
-            {!d.myNewLeads.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا جهات جديدة مسندة لك</div> : (
+          <Section icon={<UserPlus size={16} color="var(--accent3)"/>} title="مهتمون جدد من الحملات" count={d.myNewLeadsCount} color="var(--accent3)">
+            {!d.myNewLeads.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مهتمين جدد مسندين لك</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.myNewLeads.map((l) => (
                   <div key={l.id} style={rowStyle}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700 }}>{l.name}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{l.category || ''}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{l.campaign_name || l.category || 'حملة واردة'} · {fmtWhen(l.received_at)}</div>
                     </div>
-                    <WaActions phone={l.phone} name={l.name} campaignLabel="جهة جديدة" size={14}/>
+                    <WaActions phone={l.phone} name={l.name} campaignLabel="مهتم جديد" size={14}/>
                   </div>
                 ))}
                 {d.myNewLeadsCount > d.myNewLeads.length && (

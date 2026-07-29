@@ -20,8 +20,9 @@ import {
   upsertStatus, deleteStatus, upsertStage, deleteStage,
 } from '../lib/crmService.js';
 import {
-  loadLeads, createLead, convertLead, parseLeadsRows, detectLeadColumns, uploadLeadsSnapshot, bulkAssignLeads,
+  loadLeads, createLead, parseLeadsRows, detectLeadColumns, uploadLeadsSnapshot, bulkAssignLeads,
   assignLeadsByIds, updateLead, loadLeadStats, loadLeadOptions, loadLeadsByPhone,
+  recordLeadOutcome, closeLead,
 } from '../lib/crmLeadsService.js';
 import { effectiveDebt, walletDebtOf } from '../lib/customerRisk.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
@@ -533,6 +534,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   const [filters, setFilters] = useState({
     q: '',
     status: '',
+    leadKind: '',
     ownerId: '',
     category: '',
     platform: '',
@@ -697,10 +699,11 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10, marginBottom: 12 }}>
         <CrmKpi label="إجمالي العملاء المحتملين" value={fmt0(stats?.total || count)} color="var(--accent3)"/>
-        <CrmKpi label="جديدة" value={fmt0(stats?.newCount || 0)} color="var(--green)"/>
+        <CrmKpi label="مهتمون جدد من الحملات" value={fmt0(stats?.inboundNew || 0)} color="var(--green)"/>
+        <CrmKpi label="تجاوزوا مهلة أول اتصال" value={fmt0(stats?.overdueSla || 0)} color="var(--red)"/>
         <CrmKpi label="أرقام مكررة" value={fmt0(stats?.duplicateRows || 0)} color="var(--gold)"/>
         <CrmKpi label="طلعوا عملاء لدينا" value={fmt0(stats?.existingCustomers || 0)} color="var(--accent)"/>
-        <CrmKpi label="بدون موظف" value={fmt0(stats?.unassigned || 0)} color="var(--red)"/>
+        <CrmKpi label="مهتمون بلا مسؤول" value={fmt0(stats?.inboundUnassigned || 0)} color="var(--red)"/>
       </div>
 
       <Card style={{ padding: 12, marginBottom: 12 }}>
@@ -717,6 +720,12 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
           <Select value={filters.status} onChange={e => setFilter({ status: e.target.value })}>
             <option value="">كل الحالات</option>
             {LEAD_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+          </Select>
+          <Select value={filters.leadKind} onChange={e => setFilter({ leadKind: e.target.value })}>
+            <option value="">كل أنواع الفرص</option>
+            <option value="inbound">مهتمون من حملات</option>
+            <option value="cold">قوائم استهداف باردة</option>
+            <option value="referral">إحالات</option>
           </Select>
           <Select value={filters.ownerId} onChange={e => setFilter({ ownerId: e.target.value, unassignedOnly: false })}>
             <option value="">كل الموظفين</option>
@@ -854,6 +863,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                         ? <MiniPill color="var(--accent)" icon={<CheckCircle2 size={11}/>} label="عميل لدينا"/>
                         : <MiniPill color="var(--green)" label="خارج المنصّة"/>}
                       {Number(l.duplicate_count) > 1 && <MiniPill color="var(--gold)" icon={<AlertTriangle size={11}/>} label={`${l.duplicate_count} بنفس الرقم`}/>}
+                      {l.lead_kind === 'inbound' && <MiniPill color="var(--green)" label={`⚡ مهتم${l.campaign_name ? ` · ${l.campaign_name}` : ''}`}/>}
                       {l.last_campaign_at && (
                         <MiniPill color={l.last_campaign_replied_at ? 'var(--green)' : 'var(--accent3)'}
                           label={`📲 حملة قبل ${Math.floor((Date.now() - new Date(l.last_campaign_at).getTime()) / 86_400_000)} يوم${l.last_campaign_replied_at ? ' · ردّ' : ''}`}/>
@@ -873,8 +883,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                     <LeadStatusBadge status={l.status}/>
                   </td>
                   <td style={{ padding: '10px 12px' }} onClick={e => e.stopPropagation()}>
-                    {l.status !== 'converted' && can('crm.convert_lead') &&
-                      <Btn size="sm" variant="ghost" onClick={async () => { await convertLead(l.id, { customerName: l.matched_store_name || l.name, storeId: l.matched_store_id }); toast('حُوّلت لعميل', 'success'); refresh(); }}>تحويل</Btn>}
+                    <Btn size="sm" variant="ghost" onClick={() => setSel(l)}>إدارة</Btn>
                   </td>
                 </tr>
               ))}
@@ -901,11 +910,35 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
 
 const LEAD_STATUS_OPTIONS = [
   { id: 'new', label: 'جديد' },
-  { id: 'contacted', label: 'تم التواصل' },
+  { id: 'attempting', label: 'جارٍ التواصل' },
+  { id: 'contacted', label: 'تم الرد' },
   { id: 'qualified', label: 'مؤهّل' },
+  { id: 'proposal', label: 'عرض مقدّم' },
+  { id: 'negotiation', label: 'تفاوض' },
+  { id: 'nurture', label: 'متابعة لاحقة' },
   { id: 'existing_customer', label: 'عميل لدينا' },
-  { id: 'converted', label: 'تحوّل لعميل' },
-  { id: 'lost', label: 'غير مناسب' },
+  { id: 'converted', label: 'أُغلقت رابحة' },
+  { id: 'activated', label: 'مفعّل فعلياً' },
+  { id: 'lost', label: 'أُغلقت خاسرة' },
+];
+
+const LEAD_DISPOSITIONS = [
+  { id: 'answered', label: 'ردّ العميل' },
+  { id: 'interested', label: 'مهتم' },
+  { id: 'callback', label: 'طلب اتصالاً لاحقاً' },
+  { id: 'no_answer', label: 'لم يرد' },
+  { id: 'busy', label: 'مشغول' },
+];
+
+const LOSS_REASONS = [
+  { id: 'price', label: 'السعر' },
+  { id: 'competitor', label: 'اختار منافساً' },
+  { id: 'no_need', label: 'لا يحتاج الخدمة الآن' },
+  { id: 'no_budget', label: 'لا توجد ميزانية' },
+  { id: 'no_response', label: 'تعذر الوصول بعد المحاولات' },
+  { id: 'out_of_scope', label: 'خارج نطاق الخدمة' },
+  { id: 'duplicate', label: 'فرصة مكررة' },
+  { id: 'wrong_number', label: 'رقم غير صحيح' },
 ];
 
 function leadStatusLabel(status) {
@@ -913,7 +946,7 @@ function leadStatusLabel(status) {
 }
 
 function LeadStatusBadge({ status }) {
-  const color = status === 'converted' ? 'var(--green)'
+  const color = ['converted','activated'].includes(status) ? 'var(--green)'
     : status === 'existing_customer' ? 'var(--accent)'
     : status === 'lost' ? 'var(--red)'
     : status === 'qualified' ? 'var(--brand)'
@@ -955,6 +988,8 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
   const [parsed, setParsed] = useState(null);
   const [assignMode, setAssignMode] = useState('me');
   const [ownerId, setOwnerId] = useState(userId || '');
+  const [leadKind, setLeadKind] = useState('inbound');
+  const [campaignName, setCampaignName] = useState('');
   const [busy, setBusy] = useState(false);
 
   const onFile = async (file) => {
@@ -1005,6 +1040,9 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
         userId,
         ownerId: targetOwner,
         assigneeIds,
+        leadKind,
+        sourceChannel: 'excel',
+        campaignName,
       });
       toast(`أضيف ${res.added} جهة محتملة · تخطي ${res.skipped}${res.skippedExisting ? ` (منهم ${res.skippedExisting} عميل لدينا مستبعَد)` : ''}`, 'success');
       onSaved();
@@ -1061,6 +1099,21 @@ function LeadUploadModal({ employees, userId, onClose, onSaved }) {
               </div>
             )}
             <Card style={{ padding: 12, marginTop: 12 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>نوع الملف ومصدر الفرص</div>
+              <Select value={leadKind} onChange={e => setLeadKind(e.target.value)}>
+                <option value="inbound">مهتمون من حملة — يدخلون SLA ويظهرون في «يومي»</option>
+                <option value="cold">قائمة استهداف باردة — لا تبدأ مهلة اتصال تلقائياً</option>
+              </Select>
+              {leadKind === 'inbound' && (
+                <Input style={{ marginTop: 8 }} label="اسم الحملة"
+                  placeholder="مثال: حملة أغسطس — Meta"
+                  value={campaignName} onChange={e => setCampaignName(e.target.value)}/>
+              )}
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
+                المهتم من الحملة يحصل على مهلة أول تواصل 15 دقيقة. اختر «قائمة باردة» للدلائل وقوائم الاستهداف فقط.
+              </div>
+            </Card>
+            <Card style={{ padding: 12, marginTop: 12 }}>
               <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 10 }}>إسناد العملاء المحتملين بعد الرفع</div>
               <Select value={assignMode} onChange={e => setAssignMode(e.target.value)}>
                 <option value="me">إسناد لي</option>
@@ -1107,9 +1160,16 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
     } else setSiblings([]);
   }, [lead.id, lead.duplicate_count, lead.phone_normalized, lead.phone]);
 
-  const act = async (fn, ok) => {
+  const act = async (fn, ok, closeAfter = false) => {
     setBusy(true);
-    try { await fn(); toast(ok, 'success'); setForm({ mode: null }); await reload(); onChanged?.(); }
+    try {
+      await fn();
+      toast(ok, 'success');
+      setForm({ mode: null });
+      onChanged?.();
+      if (closeAfter) onClose();
+      else await reload();
+    }
     catch (e) { toast(e.message, 'error'); }
     setBusy(false);
   };
@@ -1122,6 +1182,10 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
           <Hd label="القسم" value={lead.category || '—'}/>
           <Hd label="المنصة" value={lead.platform || '—'}/>
           <Hd label="الحالة" value={<LeadStatusBadge status={lead.status}/>}/>
+          <Hd label="المصدر" value={lead.lead_kind === 'inbound' ? (lead.campaign_name || 'حملة واردة') : 'قائمة استهداف'}/>
+          <Hd label="محاولات التواصل" value={fmt0(lead.contact_attempts || 0)}/>
+          <Hd label="الإجراء التالي" value={lead.next_action_at ? new Date(lead.next_action_at).toLocaleString('ar-SA') : 'غير محدد'}
+            color={lead.next_action_at && new Date(lead.next_action_at) < new Date() ? 'var(--red)' : undefined}/>
           {lead.duplicate_count > 1 && <Hd label="تكرار الرقم" value={`${lead.duplicate_count} متاجر`} color="var(--gold)"/>}
           <Hd label="آخر حملة واتساب" color={lead.last_campaign_at ? (lead.last_campaign_replied_at ? 'var(--green)' : 'var(--accent3)') : 'var(--muted2)'}
             value={lead.last_campaign_at
@@ -1178,17 +1242,24 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
         )}
 
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-          {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<Phone size={13}/>} onClick={() => setForm({ mode: 'call', body: '' })}>مكالمة</Btn>}
+          {can('crm.change_status') && !['converted','activated','lost','existing_customer'].includes(lead.status) &&
+            <Btn size="sm" variant="primary" icon={<Phone size={13}/>}
+              onClick={() => setForm({ mode: 'outcome', disposition: 'answered', status: lead.status === 'new' ? 'contacted' : lead.status, next: '', notes: '' })}>
+              تسجيل نتيجة التواصل
+            </Btn>}
           {can('crm.log_activity') && <Btn size="sm" variant="ghost" icon={<StickyNote size={13}/>} onClick={() => setForm({ mode: 'note', body: '' })}>ملاحظة</Btn>}
           {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" icon={<CalendarClock size={13}/>} onClick={() => setForm({ mode: 'task', title: '', due: '' })}>جدولة</Btn>}
           {can('crm.assign') && <Btn size="sm" variant="ghost" icon={<UserCog size={13}/>} onClick={() => setForm({ mode: 'assign', ownerId: lead.owner_id || '' })}>إسناد</Btn>}
-          <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: 'status', status: lead.status || 'new' })}>تغيير الحالة</Btn>
+          {can('crm.convert_lead') && !['converted','activated','lost','existing_customer'].includes(lead.status) &&
+            <Btn size="sm" variant="accent" onClick={() => setForm({ mode: 'won', notes: '' })}>إغلاق رابح</Btn>}
+          {can('crm.change_status') && !['converted','activated','lost','existing_customer'].includes(lead.status) &&
+            <Btn size="sm" variant="danger" onClick={() => setForm({ mode: 'lost', reason: '', notes: '' })}>إغلاق خاسر</Btn>}
           {/* §1.37: صفقة مربوطة بالجهة بنقرة — كانت الصفقات تُنشأ باسم حر منفصل */}
           {can('crm.manage_deals') && (
             <Btn size="sm" variant="accent" icon={<TrendingUp size={13}/>} disabled={busy}
               onClick={() => act(async () => {
                 await createDeal({
-                  title: `صفقة — ${lead.name}`, entityType: 'lead', entityRef: lead.name,
+                  title: `صفقة — ${lead.name}`, entityType: 'lead', entityRef: lead.id,
                   value: 0, ownerId: lead.owner_id || user?.id, userId: user?.id,
                 });
               }, `أُنشئت صفقة مربوطة بـ${lead.name} — تابعها في «صفقات المبيعات»`)}>
@@ -1199,12 +1270,28 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
 
         {form.mode && (
           <Card style={{ padding: 12, background: 'var(--surface2)', marginBottom: 12 }}>
-            {form.mode === 'call' && <>
-              <Input label="ملخص المكالمة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
-              <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(async () => {
-                await logActivity({ entityType: 'lead', entityRef: lead.id, kind: 'call', summary: form.body || 'مكالمة مبيعات', body: form.body, userId: user?.id });
-                await updateLead(lead.id, { status: lead.status === 'new' ? 'contacted' : lead.status });
-              }, 'تم تسجيل المكالمة')}>حفظ المكالمة</Btn>
+            {form.mode === 'outcome' && <>
+              <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 10 }}>نتيجة التواصل والخطوة التالية</div>
+              <Select label="ماذا حدث؟" value={form.disposition} onChange={e => setForm({ ...form, disposition: e.target.value })}>
+                {LEAD_DISPOSITIONS.map(d => <option key={d.id} value={d.id}>{d.label}</option>)}
+              </Select>
+              <Select label="مرحلة الفرصة" style={{ marginTop: 8 }} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+                {LEAD_STATUS_OPTIONS.filter(s => !['converted','activated','lost','existing_customer'].includes(s.id)).map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              </Select>
+              <Input label="موعد الإجراء التالي" type="datetime-local" style={{ marginTop: 8 }}
+                value={form.next} onChange={e => setForm({ ...form, next: e.target.value })}/>
+              <Input label="ملخص التواصل" style={{ marginTop: 8 }} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}/>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: null })}>إلغاء</Btn>
+                <Btn size="sm" variant="accent" disabled={busy || !form.next} onClick={() => act(async () => {
+                  await recordLeadOutcome(lead.id, {
+                    disposition: form.disposition,
+                    status: form.status,
+                    nextActionAt: new Date(form.next).toISOString(),
+                    notes: form.notes,
+                  });
+                }, 'حُفظت النتيجة والموعد التالي', true)}>حفظ النتيجة</Btn>
+              </div>
             </>}
             {form.mode === 'note' && <>
               <Input label="الملاحظة" value={form.body} onChange={e => setForm({ ...form, body: e.target.value })}/>
@@ -1222,11 +1309,36 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
               </Select>
               <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => assignOwner({ entityType: 'lead', entityRef: lead.id, ownerId: form.ownerId || null, ownerName: employees.find(e => e.id === form.ownerId)?.name, userId: user?.id }), 'تم الإسناد')}>حفظ</Btn>
             </>}
-            {form.mode === 'status' && <>
-              <Select label="الحالة" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-                {LEAD_STATUS_OPTIONS.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            {form.mode === 'won' && <>
+              <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--green)', marginBottom: 8 }}>تأكيد إغلاق البيع</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 10 }}>
+                هذا يعني أن البيع أُغلق. تفعيل المتجر وأول شحنة يبقيان مرحلة مستقلة قابلة للقياس.
+              </div>
+              <Input label="ملاحظة الإغلاق" value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}/>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: null })}>إلغاء</Btn>
+                <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => closeLead(lead.id, {
+                  won: true,
+                  notes: form.notes,
+                  customerName: lead.matched_store_name || lead.name,
+                  storeId: lead.matched_store_id,
+                }), 'أُغلقت الفرصة رابحة', true)}>تأكيد البيع</Btn>
+              </div>
+            </>}
+            {form.mode === 'lost' && <>
+              <div style={{ fontSize: 13, fontWeight: 900, color: 'var(--red)', marginBottom: 8 }}>إغلاق الفرصة خاسرة</div>
+              <Select label="سبب الخسارة" value={form.reason} onChange={e => setForm({ ...form, reason: e.target.value })}>
+                <option value="">— اختر السبب —</option>
+                {LOSS_REASONS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
               </Select>
-              <Btn size="sm" variant="accent" disabled={busy} onClick={() => act(() => updateLead(lead.id, { status: form.status }), 'تم تحديث الحالة')}>حفظ</Btn>
+              <Input label="تفاصيل تساعد الفريق" style={{ marginTop: 8 }} value={form.notes} onChange={e => setForm({ ...form, notes: e.target.value })}/>
+              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 10 }}>
+                <Btn size="sm" variant="ghost" onClick={() => setForm({ mode: null })}>إلغاء</Btn>
+                <Btn size="sm" variant="danger" disabled={busy || !form.reason}
+                  onClick={() => act(() => closeLead(lead.id, { won: false, reason: form.reason, notes: form.notes }), 'أُغلقت الفرصة مع حفظ السبب', true)}>
+                  إغلاق خاسر
+                </Btn>
+              </div>
             </>}
           </Card>
         )}
@@ -1251,13 +1363,14 @@ function LeadDrawer({ lead, employees, onClose, onChanged }) {
 }
 
 function NewLeadModal({ onClose, onSaved, userId }) {
-  const [f, setF] = useState({ name: '', phone: '', city: '', notes: '' });
+  const [f, setF] = useState({ name: '', phone: '', city: '', campaignName: '', notes: '' });
   const [busy, setBusy] = useState(false);
   return (
     <Modal title="جهة جديدة" onClose={onClose} width={440}>
       <Input label="اسم المتجر/الجهة" value={f.name} onChange={e => setF({ ...f, name: e.target.value })}/>
       <Input label="الجوال" value={f.phone} onChange={e => setF({ ...f, phone: e.target.value })}/>
       <Input label="المدينة" value={f.city} onChange={e => setF({ ...f, city: e.target.value })}/>
+      <Input label="مصدر/اسم الحملة" value={f.campaignName} onChange={e => setF({ ...f, campaignName: e.target.value })}/>
       <Input label="ملاحظات" value={f.notes} onChange={e => setF({ ...f, notes: e.target.value })}/>
       <Btn variant="accent" disabled={busy || !f.name} onClick={async () => { setBusy(true); try { await createLead({ ...f, ownerId: userId, userId }); toast('أُضيفت', 'success'); onSaved(); } catch (e) { toast(e.message, 'error'); } setBusy(false); }}>حفظ</Btn>
     </Modal>
@@ -1300,7 +1413,22 @@ function DealsTab({ active }) {
                   <Card key={d.id} style={{ padding: 10, marginBottom: 6 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 600 }}>{d.title}</div>
                     <div style={{ fontSize: 11.5, color: 'var(--muted)', margin: '2px 0' }}>{fmt(d.value)} ر.س · {d.entity_ref}</div>
-                    {can('crm.manage_deals') && <Select style={{ marginTop: 4 }} value={d.stage_id} onChange={async e => { await moveDeal(d.id, e.target.value, { userId: user?.id }); refresh(); }}>
+                    {can('crm.manage_deals') && <Select style={{ marginTop: 4 }} value={d.stage_id} onChange={async e => {
+                      const target = stages.find(s => s.id === e.target.value);
+                      try {
+                        if (target?.is_lost) {
+                          const reason = window.prompt('سبب خسارة الصفقة (مطلوب):');
+                          if (!reason?.trim()) return;
+                          await closeDeal(d.id, { won: false, lostReason: reason.trim(), userId: user?.id });
+                        } else if (target?.is_won) {
+                          if (!window.confirm('تأكيد إغلاق الصفقة رابحة؟')) return;
+                          await closeDeal(d.id, { won: true, userId: user?.id });
+                        } else {
+                          await moveDeal(d.id, e.target.value, { userId: user?.id });
+                        }
+                        refresh();
+                      } catch (err) { toast(err.message, 'error'); }
+                    }}>
                       {stages.map(s => <option key={s.id} value={s.id}>{s.label_ar}</option>)}
                     </Select>}
                   </Card>

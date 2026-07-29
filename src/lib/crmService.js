@@ -406,7 +406,17 @@ export async function createDeal({ title, entityType, entityRef, stageId = null,
     title, entity_type: entityType, entity_ref: String(entityRef), stage_id: stage,
     value: Number(value) || 0, expected_close: expectedClose, owner_id: ownerId, created_by: userId,
   }).select().single();
-  if (error) throw error;
+  if (error) {
+    // Lead OS: صفقة مفتوحة واحدة لكل Lead. في سباق نقر/طلبين نعيد الموجودة
+    // بدلاً من إنشاء صفقة ثانية أو إظهار خطأ غير مفهوم للمستخدم.
+    if (error.code === '23505' && entityType === 'lead') {
+      const { data: existing, error: existingError } = await supabase.from('crm_deals')
+        .select('*').eq('entity_type', 'lead').eq('entity_ref', String(entityRef)).eq('status', 'open').maybeSingle();
+      if (existingError) throw existingError;
+      if (existing) return existing;
+    }
+    throw error;
+  }
   await logActivity({ entityType, entityRef, kind: 'system', summary: `أُنشئت صفقة: ${title}`, userId });
   return data;
 }

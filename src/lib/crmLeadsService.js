@@ -27,6 +27,12 @@ const LEAD_COLUMNS = [
   'matched_store_last_shipment_at', 'matched_store_wallet',
   // من view crm_leads_campaign: آخر حملة واتساب لكل جهة (2026-07-16)
   'last_campaign_at', 'last_campaign_status', 'last_campaign_template', 'last_campaign_replied_at',
+  'in_hatif',
+  // Lead OS phase 1
+  'lead_kind', 'source_channel', 'campaign_name', 'campaign_meta', 'received_at',
+  'first_response_due_at', 'first_attempt_at', 'first_connected_at', 'last_touch_at',
+  'next_action_at', 'last_disposition', 'contact_attempts', 'loss_reason', 'loss_notes',
+  'won_at', 'activated_at', 'converted_by', 'status_changed_at',
 ].join(',');
 
 const listCache = new Map();
@@ -440,6 +446,9 @@ export async function uploadLeadsSnapshot({
   ownerId = null,
   assigneeIds = [],
   platformMerchants = null,
+  leadKind = 'cold',
+  sourceChannel = 'excel',
+  campaignName = null,
 } = {}) {
   const parsed = asParsed(rows);
   const inputRows = parsed.rows || [];
@@ -449,10 +458,17 @@ export async function uploadLeadsSnapshot({
   const merchants = platformMerchants || (await loadLatestMerchants().catch(() => ({ merchants: [] }))).merchants || [];
   const matchedPlatform = matchPlatformByPhone(inputRows, merchants);
 
-  const existing = await selectAllRows(() => supabase
-    .from('crm_leads')
-    .select('name_normalized, phone, phone_normalized')
-    .order('created_at', { ascending: true }));
+  // لا نسحب جدول crm_leads كاملاً إلى المتصفح. نسأل الخادم فقط عن الأرقام
+  // الموجودة في هذا الملف، بدفعات صغيرة تناسب PostgREST.
+  const phones = [...new Set(inputRows.map(r => r.phoneNormalized).filter(Boolean))];
+  const existing = [];
+  for (let i = 0; i < phones.length; i += 500) {
+    const { data, error } = await supabase.rpc('crm_find_existing_leads', {
+      p_phones: phones.slice(i, i + 500),
+    });
+    if (error) throw error;
+    existing.push(...(data || []));
+  }
   const existingIdentities = new Set();
   const existingPhones = new Map();
   for (const r of existing || []) {
@@ -473,6 +489,9 @@ export async function uploadLeadsSnapshot({
   let skippedExisting = 0;   // عملاء لدينا (مطابقون للمنصّة) — لا يدخلون الخارجية
   const batchSeen = new Set();
 
+  const inbound = leadKind === 'inbound';
+  const receivedAt = new Date().toISOString();
+  const firstResponseDueAt = inbound ? new Date(Date.now() + 15 * 60_000).toISOString() : null;
   for (const r of inputRows) {
     const nameNorm = r.nameNormalized || normalizeName(r.name);
     if (!nameNorm) { skippedNoName++; continue; }
@@ -506,7 +525,13 @@ export async function uploadLeadsSnapshot({
       social_links: cleanSocialLinks(r.socialLinks),
       raw_payload: r.rawPayload || {},
       notes: r.notes || null,
-      source: 'external_directory',
+      source: inbound ? 'campaign_excel' : 'external_directory',
+      lead_kind: inbound ? 'inbound' : 'cold',
+      source_channel: sourceChannel || 'excel',
+      campaign_name: campaignName?.trim() || null,
+      campaign_meta: { import_file: true },
+      received_at: receivedAt,
+      first_response_due_at: firstResponseDueAt,
       snapshot_id: snapshotId,
       source_row_number: r.rowNumber || null,
       duplicate_key: duplicateCount > 1 ? r.phoneNormalized : null,
@@ -563,12 +588,13 @@ export async function loadLeads({
   matchedOnly = false,
   matched = '',          // '' الكل | 'yes' موجود في المنصّة | 'no' خارجها (طلب المستخدم 2026-07-16)
   campaign = '',         // '' الكل | 'none' بلا حملة | 'within7' | 'within30' | 'older30'
+  leadKind = '',
   unassignedOnly = false,
   page = 0,
   limit = PAGE,
   force = false,
 } = {}) {
-  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, matched, campaign, unassignedOnly, page, limit });
+  const key = cacheKey({ status, ownerId, q, category, platform, duplicateOnly, matchedOnly, matched, campaign, leadKind, unassignedOnly, page, limit });
   const cached = listCache.get(key);
   if (!force && cached && Date.now() - cached.at < CACHE_TTL_MS) return cached.data;
 
@@ -578,13 +604,17 @@ export async function loadLeads({
   // security_invoker فيحترم RLS. الكتابة تبقى على crm_leads الأساسي.
   let query = supabase
     .from('crm_leads_campaign')
-    .select(LEAD_COLUMNS, { count: 'exact' })
+    // العدّ الدقيق على view يقيّم ربط آخر حملة لكل 94K صف قبل pagination وقد
+    // يتجاوز statement_timeout. planned يعطينا عدّاً فورياً مناسباً للتصفح،
+    // بينما بطاقات الإجمالي الدقيقة تأتي من crm_leads_dashboard_meta.
+    .select(LEAD_COLUMNS, { count: 'planned' })
     .order('updated_at', { ascending: false })
     .order('id', { ascending: true })   // قاعدة §6: tiebreaker فريد لكل .range()
     .range(from, to);
 
   if (status) query = query.eq('status', status);
   if (ownerId) query = query.eq('owner_id', ownerId);
+  if (leadKind) query = query.eq('lead_kind', leadKind);
   if (unassignedOnly) query = query.is('owner_id', null);
   if (category) query = query.eq('category', category);
   // '__none__' = غير سلة ولا زد (فارغ أو منصّة أخرى) — يشمل null والفراغ
@@ -626,6 +656,9 @@ function normalizeMeta(data) {
       duplicateRows: Number(payload.stats?.duplicateRows) || 0,
       unassigned: Number(payload.stats?.unassigned) || 0,
       converted: Number(payload.stats?.converted) || 0,
+      inboundNew: Number(payload.stats?.inboundNew) || 0,
+      inboundUnassigned: Number(payload.stats?.inboundUnassigned) || 0,
+      overdueSla: Number(payload.stats?.overdueSla) || 0,
     },
     options: {
       categories: Array.isArray(payload.options?.categories) ? payload.options.categories : [],
@@ -676,7 +709,7 @@ export async function createLead({
   name, nameEn = null, phone = null, whatsapp = null, email = null, city = null,
   category = null, website = null, platform = null, storeUrl = null,
   instagram = null, socialLinks = null, notes = null,
-  ownerId = null, userId = null,
+  ownerId = null, userId = null, leadKind = 'inbound', campaignName = null,
 }) {
   if (!name?.trim()) throw new Error('الاسم مطلوب');
   if (!isRealSaudiMobile(phone)) throw new Error('رقم الجوال غير صالح — يجب أن يبدأ بـ 9665 ويتكوّن من 12 رقماً (9665 ثم 8 أرقام)، وألّا يكون رقماً وهمياً');
@@ -700,6 +733,11 @@ export async function createLead({
     social_links: links,
     notes,
     source: 'manual',
+    source_channel: 'manual',
+    lead_kind: leadKind,
+    campaign_name: campaignName?.trim() || null,
+    received_at: new Date().toISOString(),
+    first_response_due_at: leadKind === 'inbound' ? new Date(Date.now() + 15 * 60_000).toISOString() : null,
     status: 'new',
     owner_id: ownerId,
     created_by: userId,
@@ -713,7 +751,7 @@ export async function createLead({
 // (لا حلقة 7000 طلب). نفس شروط loadLeads بالضبط، ثم update واحد.
 export async function bulkAssignLeads({
   status = null, ownerId = null, q = '', category = '', platform = '',
-  duplicateOnly = false, matched = '', campaign = '', unassignedOnly = false,
+  duplicateOnly = false, matched = '', campaign = '', leadKind = '', unassignedOnly = false,
   newOwnerId,
 } = {}) {
   // فلتر الحملة يعيش في الـview فقط (لا يُفلتَر به update على الجدول الأساسي):
@@ -721,7 +759,7 @@ export async function bulkAssignLeads({
   if (campaign) {
     const ids = [];
     for (let off = 0; off < 40000; off += 1000) {
-      const r = await loadLeads({ status, ownerId, q, category, platform, duplicateOnly, matched, campaign, unassignedOnly, page: off / 1000, limit: 1000, force: true });
+      const r = await loadLeads({ status, ownerId, q, category, platform, duplicateOnly, matched, campaign, leadKind, unassignedOnly, page: off / 1000, limit: 1000, force: true });
       ids.push(...r.rows.map(x => x.id));
       if (r.rows.length < 1000 || ids.length >= r.count) break;
     }
@@ -738,6 +776,7 @@ export async function bulkAssignLeads({
   let query = supabase.from('crm_leads').update({ owner_id: newOwnerId || null });
   if (status) query = query.eq('status', status);
   if (ownerId) query = query.eq('owner_id', ownerId);
+  if (leadKind) query = query.eq('lead_kind', leadKind);
   if (unassignedOnly) query = query.is('owner_id', null);
   if (category) query = query.eq('category', category);
   // '__none__' = غير سلة ولا زد (فارغ أو منصّة أخرى) — يشمل null والفراغ
@@ -754,7 +793,7 @@ export async function bulkAssignLeads({
       : query.or(`name.ilike.%${term}%,name_en.ilike.%${term}%,email.ilike.%${term}%,category.ilike.%${term}%,platform.ilike.%${term}%,website.ilike.%${term}%,store_url.ilike.%${term}%`);
   }
   // حارس ضد التحويل الأعمى: لا update بلا أي شرط إطلاقاً (كل الجدول!)
-  if (!status && !ownerId && !unassignedOnly && !category && !platform && !duplicateOnly && !matched && !term) {
+  if (!status && !ownerId && !leadKind && !unassignedOnly && !category && !platform && !duplicateOnly && !matched && !term) {
     query = query.gte('created_at', '1970-01-01'); // شرط صوري يبقي العملية صريحة القصد
   }
   const { data, error } = await query.select('id');
@@ -820,12 +859,62 @@ export async function loadLeadsByPhone(phone, excludeId = null) {
 
 export async function convertLead(id, { customerName = null, storeId = null } = {}) {
   if (!id) throw new Error('id مطلوب');
-  return updateLead(id, {
-    status: 'converted',
-    converted_at: new Date().toISOString(),
-    converted_customer: customerName,
-    converted_store_id: storeId,
+  return closeLead(id, {
+    won: true,
+    customerName,
+    storeId,
   });
+}
+
+export async function recordLeadOutcome(id, {
+  disposition,
+  status,
+  nextActionAt,
+  notes = null,
+} = {}) {
+  if (!id) throw new Error('id مطلوب');
+  const { data, error } = await supabase.rpc('crm_record_lead_outcome', {
+    p_lead_id: id,
+    p_disposition: disposition,
+    p_status: status,
+    p_next_action: nextActionAt || null,
+    p_notes: notes || null,
+  });
+  if (error) throw error;
+  invalidateLeadCaches();
+  return data;
+}
+
+export async function closeLead(id, {
+  won,
+  reason = null,
+  notes = null,
+  customerName = null,
+  storeId = null,
+} = {}) {
+  if (!id) throw new Error('id مطلوب');
+  const { data, error } = await supabase.rpc('crm_close_lead', {
+    p_lead_id: id,
+    p_won: !!won,
+    p_reason: reason || null,
+    p_notes: notes || null,
+    p_customer_name: customerName || null,
+    p_store_id: storeId || null,
+  });
+  if (error) throw error;
+  invalidateLeadCaches();
+  return data;
+}
+
+export async function loadLeadHistory(id, limit = 50) {
+  if (!id) return [];
+  const { data, error } = await supabase.from('crm_lead_history')
+    .select('*')
+    .eq('lead_id', id)
+    .order('created_at', { ascending: false })
+    .limit(Math.max(1, Math.min(Number(limit) || 50, 100)));
+  if (error) throw error;
+  return data || [];
 }
 
 export async function deleteLead(id) {
