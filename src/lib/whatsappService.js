@@ -463,10 +463,17 @@ export async function loadWhatsAppQuality(dim = 'template', days = 30) {
     sent: Number(r.sent || 0), delivered: Number(r.delivered || 0),
     read: Number(r.read_n || 0), replied: Number(r.replied || 0),
     failed: Number(r.failed || 0), ecosystem: Number(r.ecosystem || 0),
-    undeliverable: Number(r.undeliverable || 0), otherFail: Number(r.other_fail || 0),
+    undeliverable: Number(r.undeliverable || 0),
+    // «تجربة لدى المنصة» رفضٌ من ميتا لا خلل عندنا — خانة مستقلة، وإلا
+    // أظهرت الواجهة «فشل تقني» كاذباً (109 رسالة وقت البناء).
+    experiment: Number(r.experiment || 0),
+    otherFail: Number(r.other_fail || 0),        // الفشل التقني وحده
+    pending: Number(r.pending || 0),             // أُرسلت بلا حالة نهائية ملتقَطة
     deliveryRate: r.delivery_rate == null ? null : Number(r.delivery_rate),
     replyRate:    r.reply_rate    == null ? null : Number(r.reply_rate),
     ecosystemRate: r.ecosystem_rate == null ? null : Number(r.ecosystem_rate),
+    undeliverableRate: r.undeliverable_rate == null ? null : Number(r.undeliverable_rate),
+    pendingRate:  r.pending_rate  == null ? null : Number(r.pending_rate),
     firstSent: r.first_sent, lastSent: r.last_sent,
     verdict: r.verdict,
   }));
@@ -474,10 +481,11 @@ export async function loadWhatsAppQuality(dim = 'template', days = 30) {
 
 // لون الحكم — نقطة حقيقة واحدة (نفس نمط waStatusBadge)
 export function qualityTone(verdict) {
-  if (verdict === 'أوقفه — ميتا تخنقه') return 'var(--red)';
-  if (verdict === 'راجعه — خنق مرتفع')  return 'var(--gold)';
-  if (verdict === 'ضعيف — أرقام رديئة') return 'var(--gold)';
-  if (verdict === 'جيد')                return 'var(--green)';
+  if (verdict === 'أوقفه — ميتا تخنقه')  return 'var(--red)';
+  if (verdict === 'راجعه — خنق مرتفع')   return 'var(--gold)';
+  if (verdict === 'أرقام رديئة')         return 'var(--gold)';
+  if (verdict === 'بيانات غير مكتملة')   return 'var(--accent)';   // ليس حكماً على الأداء
+  if (verdict === 'جيد')                 return 'var(--green)';
   return 'var(--muted)';
 }
 

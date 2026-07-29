@@ -1029,7 +1029,7 @@ function CampaignsTab() {
           <div className="m-flow" style={{ overflowX: 'auto' }}>
             <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
-                {['القالب', 'أُرسل', 'وصلت', 'ردّوا', 'خنق ميتا', 'بلا واتساب', 'الحكم'].map(h =>
+                {['القالب', 'أُرسل', 'وصلت', 'ردّوا', 'خنق ميتا', 'بلا واتساب', 'بلا حالة', 'الحكم'].map(h =>
                   <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
               </tr></thead>
               <tbody>
@@ -1049,8 +1049,17 @@ function CampaignsTab() {
                       color: t.ecosystemRate >= 10 ? 'var(--red)' : t.ecosystemRate > 0 ? 'var(--gold)' : 'var(--muted)' }}>
                       {t.ecosystemRate == null ? '—' : `${t.ecosystemRate}%`}
                     </td>
-                    <td data-label="بلا واتساب" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                    <td data-label="بلا واتساب" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)',
+                      color: t.undeliverableRate >= 25 ? 'var(--gold)' : 'var(--muted)' }}>
                       {t.undeliverable.toLocaleString('en-US')}
+                      {t.undeliverableRate > 0 && <span style={{ fontSize: 10, color: 'var(--muted2)' }}> ({t.undeliverableRate}%)</span>}
+                    </td>
+                    {/* «بلا حالة» = أُرسلت ولم يصلنا تسليم/فشل — نقص التقاط لا ضعف أداء
+                        (webhook هاتف). بدونها يُقرأ انخفاض التسليم حكماً على الجمهور خطأً. */}
+                    <td data-label="بلا حالة" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)',
+                      color: t.pendingRate >= 40 ? 'var(--accent)' : 'var(--muted2)' }}>
+                      {t.pending.toLocaleString('en-US')}
+                      {t.pendingRate > 0 && <span style={{ fontSize: 10 }}> ({t.pendingRate}%)</span>}
                     </td>
                     <td data-label="الحكم" style={{ padding: '8px 10px' }}>
                       <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700,
@@ -1066,6 +1075,16 @@ function CampaignsTab() {
           {qual.some(t => t.otherFail > 0) && (
             <div style={{ fontSize: 11.5, color: 'var(--red)' }}>
               ⚠️ يوجد فشل تقني ({qual.reduce((s, t) => s + t.otherFail, 0)} رسالة) — ليس رفضاً من ميتا، راجع السجل.
+            </div>
+          )}
+          {qual.some(t => t.experiment > 0) && (
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+              ℹ️ {qual.reduce((s, t) => s + t.experiment, 0)} رسالة رفضتها ميتا بسبب «تجربة على رقم المستلم» — خارج سيطرتنا، لا تُحسَب فشلاً تقنياً.
+            </div>
+          )}
+          {qual.some(t => t.pendingRate >= 40) && (
+            <div style={{ fontSize: 11.5, color: 'var(--accent)' }}>
+              ℹ️ بعض القوالب لم تصلنا حالات رسائلها — اضبط رابط الـwebhook في هاتف ليصير التسليم والقراءة والردّ مقيسين بدقّة.
             </div>
           )}
         </Card>
