@@ -62,15 +62,32 @@ export default function Reconciliation({ isActive = true }) {
   const [linkTarget, setLinkTarget] = useState(null);    // { rawName, source, balance }
   // Tab between customer side (المتاجر/العملاء) and vendor side
   // (شركات الشحن). Each side has its own data + uploads.
-  const [tab, setTab]               = useState(() => new URLSearchParams(location.search).get('tab') || 'zoho_live');
+  //
+  // 2026-07-29 — دمج التبويبين: كان «العملاء — زوهو API» و«مطابقة لمحة
+  // الداخلية» تبويبين منفصلين يقرآن **نفس المصدرين** بعد توحيد §1.52،
+  // والفرق الوحيد المِرساة: عميل زوهو مقابل رقم المتجر. ومِرساة المتجر
+  // **تُخفي** كل عميل بلا رابط متجر (999 ر.س وقت الدمج) — وهو الفخّ الذي
+  // أوقعنا فيه مرتين في يوم واحد. صارا عرضين لتبويب واحد، والرفع وربط
+  // غير المرتبط مشتركان بينهما.
+  const [tab, setTab]               = useState(() =>
+    new URLSearchParams(location.search).get('tab') === 'vendors' ? 'vendors' : 'customers');
+  // 'customer' = مِرساة عميل زوهو (الافتراضي، لا يُخفي أحداً) · 'store' = مِرساة المتجر
+  const [view, setView]             = useState(() =>
+    new URLSearchParams(location.search).get('tab') === 'customers' ? 'store' : 'customer');
+  const [custRows, setCustRows]     = useState(null);   // صفوف مِرساة العميل (مشتركة بين العرضين)
   const [autolinkBusy, setAutolinkBusy] = useState(false);
 
+  // المسارات القديمة تهبط على عرضها: ?tab=zoho_live → عرض العميل ·
+  // ?tab=customers → عرض المتجر · ?tab=vendors → تبويب الناقلين.
   useEffect(() => {
     const wanted = new URLSearchParams(location.search).get('tab');
-    if (wanted && ['zoho_live', 'customers', 'vendors'].includes(wanted) && wanted !== tab) {
-      setTab(wanted);
+    if (!wanted) return;
+    if (wanted === 'vendors') { setTab('vendors'); return; }
+    if (wanted === 'customers' || wanted === 'zoho_live') {
+      setTab('customers');
+      setView(wanted === 'customers' ? 'store' : 'customer');
     }
-  }, [location.search, tab]);
+  }, [location.search]);
 
   // One-click backfill for the common case where the store_balances
   // upload happened before the merchants snapshot, leaving rows
@@ -111,14 +128,16 @@ export default function Reconciliation({ isActive = true }) {
         }
       } catch { /* silent — fall through to load anyway */ }
 
-      const [r, s, u] = await Promise.all([
+      const [r, s, u, c] = await Promise.all([
         loadReconciliation().catch(() => []),
         listBalanceSnapshots().catch(() => []),
         loadUnmatchedBalances().catch(() => []),
+        loadCustomerBalanceRecon().catch(() => []),
       ]);
       setReconcile(r);
       setSnapshots(s);
       setUnmatched(u);
+      setCustRows(c);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -238,6 +257,14 @@ export default function Reconciliation({ isActive = true }) {
 
   const latestInternal = snapshots.find(s => s.source === 'internal');
 
+  // كم يُخفي عرض «حسب المتجر»؟ العميل بلا رابط متجر يأخذ مِرساة اسمية
+  // (`n:`) فيسقط من الجدول المُفهرَس بالمتجر. نُظهر المبلغ صراحةً بدل
+  // أن يبتلعه العرض بصمت (الفخّ الذي كشفه المستخدم في «كوبرا دريل»).
+  const noStoreAnchor = useMemo(() => {
+    const hidden = (custRows || []).filter(r => String(r.anchor || '').startsWith('n:') && r.zoho > 0.5);
+    return { count: hidden.length, total: +hidden.reduce((s, r) => s + r.zoho, 0).toFixed(2) };
+  }, [custRows]);
+
   // ── upload handlers ──
   const handleUpload = async (file) => {
     try {
@@ -321,11 +348,9 @@ export default function Reconciliation({ isActive = true }) {
         icon={<Scale size={22}/>}
         iconColor="var(--accent)"
         title="مطابقة الأرصدة"
-        subtitle={tab === 'customers'
-          ? 'العملاء — قارن رصيد النظام الداخلي مقابل Zoho'
-          : tab === 'zoho_live'
-          ? 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر استحقاق لمحة'
-          : 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'}
+        subtitle={tab === 'vendors'
+          ? 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'
+          : 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر استحقاق لمحة'}
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
             تحديث
@@ -339,8 +364,7 @@ export default function Reconciliation({ isActive = true }) {
         borderBottom: '1px solid var(--border)',
       }}>
         {[
-          { id: 'zoho_live', label: 'العملاء — زوهو API', icon: '⚡' },
-          { id: 'customers', label: 'مطابقة لمحة الداخلية', icon: '🏪' },
+          { id: 'customers', label: 'العملاء — مطابقة الأرصدة', icon: '⚡' },
           { id: 'vendors',   label: 'شركات الشحن — زوهو', icon: '🚚' },
         ].map(t => {
           const active = tab === t.id;
@@ -361,7 +385,6 @@ export default function Reconciliation({ isActive = true }) {
       </div>
 
       {tab === 'vendors' && <VendorsTab/>}
-      {tab === 'zoho_live' && <ZohoLiveTab isActive={isActive}/>}
       {tab === 'customers' && <>
 
       {/* توضيح المصدرين: الداخلي كشف مرفوع يتجمد بين الرفعات · زوهو حي من API */}
@@ -412,7 +435,7 @@ export default function Reconciliation({ isActive = true }) {
       </div>
 
       {/* "Internal is the source of truth" banner */}
-      {reconcile.length > 0 && (
+      {view === 'store' && reconcile.length > 0 && (
         <Card style={{
           marginBottom: 14,
           background: 'color-mix(in srgb, #3B82F6 6%, transparent)',
@@ -430,7 +453,7 @@ export default function Reconciliation({ isActive = true }) {
       )}
 
       {/* Stats strip */}
-      {reconcile.length > 0 && (
+      {view === 'store' && reconcile.length > 0 && (
         <Card style={{ marginBottom: 16 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 22, flexWrap: 'wrap' }}>
             <Stat label="إجمالي المتاجر"  value={stats.total.toLocaleString('en-US')}        color="#0EA5E9"/>
@@ -548,8 +571,42 @@ export default function Reconciliation({ isActive = true }) {
         </Card>
       )}
 
+      {/* مبدّل المِرساة — العرضان يقرآن نفس المصدرين، والفرق مَن يمثّل الصفّ.
+          عرض المتجر يُخفي كل عميل بلا رابط متجر، فبانر التحذير أدناه إلزامي. */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>العرض:</span>
+        {[
+          { id: 'customer', label: '👤 حسب العميل', hint: 'مِرساة عميل زوهو — يشمل من لا متجر له' },
+          { id: 'store',    label: '🏪 حسب المتجر', hint: 'مِرساة رقم المتجر — يشمل المتاجر بلا رصيد' },
+        ].map(v => (
+          <Btn key={v.id} size="sm" variant={view === v.id ? 'primary' : 'outline'}
+               title={v.hint} onClick={() => setView(v.id)}>{v.label}</Btn>
+        ))}
+      </div>
+
+      {view === 'customer' && <ZohoLiveTab rows={custRows}/>}
+
       {/* Reconciliation table — anchored on internal (المرجع) */}
-      {reconcile.length === 0 ? (
+      {view === 'store' && (noStoreAnchor.count > 0) && (
+        <Card style={{
+          marginBottom: 14, padding: '10px 14px',
+          background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 12.5 }}>
+            <AlertTriangle size={15} color="var(--gold)" style={{ flexShrink: 0 }}/>
+            <span>
+              <b>{noStoreAnchor.count}</b> عميلاً بدين <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(noStoreAnchor.total)}</b> ر.س
+              {' '}<b>لا يظهرون في هذا العرض</b> — لا رابط متجر لهم.
+            </span>
+            <Btn size="sm" variant="ghost" onClick={() => setView('customer')} style={{ marginInlineStart: 'auto' }}>
+              اعرضهم حسب العميل ←
+            </Btn>
+          </div>
+        </Card>
+      )}
+
+      {view === 'store' && (reconcile.length === 0 ? (
         <Empty
           icon="🧮"
           title="لا توجد بيانات للمطابقة"
@@ -608,7 +665,7 @@ export default function Reconciliation({ isActive = true }) {
             </div>
           )}
         </Card>
-      )}
+      ))}
 
       {linkTarget && (
         <MerchantPickerModal
@@ -619,7 +676,7 @@ export default function Reconciliation({ isActive = true }) {
       )}
 
       {/* Educational footer */}
-      <div style={{
+      {view === 'store' && <div style={{
         marginTop: 16, padding: 14, borderRadius: 10,
         background: 'var(--surface2)', border: '1px solid var(--border)',
         fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.7,
@@ -633,7 +690,7 @@ export default function Reconciliation({ isActive = true }) {
           <strong style={{ color: '#F97316' }}>زائد في زوهو</strong> = الفرق موجب → في Zoho عملية ليست في الداخلي (تحقّق من التكرار أو دفعة غير مرتبطة).{' '}
           الحد المقبول للفرق قابل للضبط (افتراضي 0.50 ر.س).
         </div>
-      </div>
+      </div>}
 
       </>}
     </div>
@@ -656,19 +713,11 @@ const RECON_STATUS_META = {
   zoho_only:           { label: 'زوهو فقط',           color: 'var(--accent)',      icon: '◑' },
 };
 
-function ZohoLiveTab({ isActive = true }) {
-  const [rows, setRows]     = useState(null);
+// عرض «حسب العميل» — الصفوف تأتي من الأب (جلبة واحدة يتقاسمها العرضان،
+// ويحسب منها الأب كم يُخفي عرض المتجر).
+function ZohoLiveTab({ rows }) {
   const [q, setQ]           = useState('');
   const [st, setSt]         = useState('');
-
-  useEffect(() => {
-    if (!isActive) return;
-    let live = true;
-    loadCustomerBalanceRecon()
-      .then(r => { if (live) setRows(r); })
-      .catch(e => { toast(`فشل التحميل: ${e.message}`, 'error'); if (live) setRows([]); });
-    return () => { live = false; };
-  }, [isActive]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
