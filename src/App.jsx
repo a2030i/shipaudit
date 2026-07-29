@@ -96,16 +96,16 @@ const NAV_ITEMS = [
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
   { id: 'hub',          path: '/hub',               label: 'حالة الشركات',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
     subTabs: [
-      { tabId: 'hub',    label: 'البطاقات',     icon: Building2 },
-      { tabId: 'kpi',    label: 'أداء الشركات', icon: BarChart3, legacy: '/carrier-kpi' },
-      { tabId: 'claims', label: 'المطالبات',    icon: Scale,     legacy: '/claims' },
+      { tabId: 'hub',    label: 'حالة الشركات',         icon: Building2 },
+      { tabId: 'kpi',    label: 'مقارنة الأداء',        icon: BarChart3, legacy: '/carrier-kpi' },
+      { tabId: 'claims', label: 'المطالبات والاسترداد', icon: Scale,     legacy: '/claims' },
     ] },
   { id: 'drop',         path: '/drop',              label: 'رفع ملف',          icon: Upload,    section: 'carriers', permKey: 'audits.create' },
   { id: 'webhook',      path: '/webhook',           label: 'وارد الفواتير',    icon: Inbox,     section: 'carriers', permKey: 'webhook.view' },
   { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', permKey: 'audits.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف حساب الشركات', icon: FileText, section: 'carriers', permKey: 'carriers.view' },
   { id: 'ledger',       path: '/ledger',            label: 'حسابات الشركات',   icon: BookOpen,  section: 'carriers', permKey: 'ledger.view' },
-  { id: 'platform-carriers', path: '/platform-carriers', label: 'شركات المنصّة المفعّلة', icon: DollarSign, section: 'carriers', permKey: 'carriers.view' },
+  { id: 'platform-carriers', path: '/platform-carriers', label: 'مقارنة أسعار المنصّات', icon: DollarSign, section: 'carriers', permKey: 'carriers.view' },
   // فواتير التجهيز — نادرة → «الأدوات»
   { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'tools', permKey: 'audits.view' },
 
@@ -117,13 +117,13 @@ const NAV_ITEMS = [
 
   // ── نظام الأموال — هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل ──
   { id: 'pnl',       path: '/pnl',      label: 'الأرباح والخسائر',  icon: TrendingUp, section: 'money', permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'البنك والمدفوعات',  icon: Banknote,   section: 'money', permKey: 'payments.view',
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', permKey: 'payments.view',
     subTabs: [
-      { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
-      { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
-      { tabId: 'bank',     label: 'كشف البنك',    icon: Wallet,     legacy: '/bank' },
+      { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements' },
+      { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments' },
+      { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank' },
     ] },
-  { id: 'cash-aging', path: '/cash-aging', label: 'أعمار الديون',  icon: Wallet,     section: 'money', permKey: 'ledger.view' },
+  { id: 'cash-aging', path: '/cash-aging', label: 'توقيت التحصيل والسداد', icon: Wallet, section: 'money', permKey: 'ledger.view' },
   { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', permKey: 'forecast.view' },
 
   // ── Customers (AR side) ───────────────────────────────────────
@@ -193,11 +193,11 @@ const NAV_SECTIONS = [
   //   • التحصيل + المبيعات → «العملاء» (كل ما يخصّ العميل: تحصيل + بيع + دعم)
   //   • واتساب + التقارير → «الحملات والتقارير» (المخرجات والتواصل)
   //   • الإدارة + النادر (التجهيز/الأوزان/الإقفال/العقود/إدارة الشركات/المهام/المصادر) → «الإعدادات والأدوات»
-  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#2B68DE', hint: 'فواتيرها · تدقيقها · حساباتها' },
-  { id: 'money',     label: 'الأموال',           icon: DollarSign,    accent: '#F59E0B', hint: 'الأرباح · البنك · زوهو · الأعمار' },
-  { id: 'customers', label: 'العملاء والمبيعات',  icon: Users,         accent: '#EF4444', hint: 'ملفات · ديون · فرص · صفقات · دعم' },
-  { id: 'outreach',  label: 'الحملات والتقارير', icon: MessageCircle, accent: '#22C55E', hint: 'واتساب · التقارير الجاهزة' },
-  { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#31D5E1', hint: 'الفريق · الفحوص · الإعداد · النادر' },
+  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#2B68DE', hint: 'استقبال · تدقيق · حسابات' },
+  { id: 'money',     label: 'الأموال',           icon: DollarSign,    accent: '#F59E0B', hint: 'سيولة · دفعات · زوهو · توقع' },
+  { id: 'customers', label: 'العملاء والمبيعات',  icon: Users,         accent: '#EF4444', hint: 'ديون · متابعة · بيع · دعم' },
+  { id: 'outreach',  label: 'الحملات والتقارير', icon: MessageCircle, accent: '#22C55E', hint: 'واتساب · تقارير · تصدير' },
+  { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#31D5E1', hint: 'فريق · عقود · سلامة البيانات' },
 ];
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
@@ -653,7 +653,7 @@ function AppInner({ theme, toggleTheme }) {
                   <div style={{ fontSize:13, fontWeight:600, color:'var(--sidebar-brand-text, #fff)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
                   <div style={{ fontSize:11, color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
                 </div>
-                <button onClick={signOut} title="تسجيل خروج" style={{
+                <button onClick={signOut} title="تسجيل خروج" aria-label="تسجيل الخروج" style={{
                   background:'var(--sidebar-logout-bg, rgba(255,255,255,.06))', border:'1px solid var(--sidebar-logout-border, rgba(255,255,255,.12))',
                   color:'var(--sidebar-logout-color, rgba(199,210,254,.82))',
                   cursor:'pointer', padding:'6px 7px', borderRadius:8,
@@ -668,7 +668,12 @@ function AppInner({ theme, toggleTheme }) {
             )}
           </div>
 
-          <button className="sidebar-toggle" onClick={() => setCollapsed(c => !c)}>
+          <button
+            type="button"
+            className="sidebar-toggle"
+            aria-label={collapsed ? 'توسيع القائمة الجانبية' : 'تصغير القائمة الجانبية'}
+            onClick={() => setCollapsed(c => !c)}
+          >
             {collapsed ? <ChevronLeft size={12}/> : <ChevronRight size={12}/>}
           </button>
         </aside>

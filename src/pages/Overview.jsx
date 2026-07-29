@@ -57,6 +57,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   const canEditBank = can('bank.set_balance');
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [vat, setVat]         = useState(null);   // ضريبة الربع الجاري (كاش زوهو)
   // Selected month persists for the session (sessionStorage) so a
   // historical month being examined survives a refresh / navigating
@@ -78,13 +79,16 @@ export default function Overview({ carriers = [], isActive = true }) {
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError(null);
     try {
       const result = await loadOverview({ period, topN: 5 });
       setData(result);
     } catch (e) {
+      setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [period]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
@@ -104,10 +108,35 @@ export default function Overview({ carriers = [], isActive = true }) {
     return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض الصفحة الرئيسية» — تُمنح من شاشة الفريق"/></div>;
   }
 
-  if (loading || !data) {
+  // لا نعرض بيانات شهر سابق تحت عنوان الشهر الجديد أثناء الانتقال أو عند
+  // فشل تحميله. الاحتفاظ بالبيانات القديمة مسموح فقط عند تحديث نفس الشهر.
+  const hasCurrentData = data?.period === period;
+
+  if (!hasCurrentData && loadError) {
     return (
-      <div style={{ padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+      <div className="overview-page workspace-page">
+        <PageHeader
+          icon={<Activity size={22}/>}
+          iconColor="var(--accent3)"
+          title="الرئيسية"
+          subtitle="تعذّر جلب الملخص المالي — لم نعرض أصفاراً بديلة حتى لا تُفهم كأرقام حقيقية"
+        />
+        <div className="data-load-error" role="alert">
+          <AlertTriangle size={22}/>
+          <div>
+            <strong>البيانات لم تصل من المصدر</strong>
+            <span>{loadError.message || 'تحقق من الاتصال ثم أعد المحاولة.'}</span>
+          </div>
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>إعادة المحاولة</Btn>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasCurrentData) {
+    return (
+      <div className="overview-page workspace-page">
+        <div className="workspace-loading-state">
           <Spinner size={28}/>
         </div>
       </div>
@@ -126,7 +155,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1400, margin: '0 auto' }}>
+    <div className="overview-page workspace-page">
       <PageHeader
         icon={<Activity size={22}/>}
         iconColor="var(--accent3)"
@@ -148,12 +177,23 @@ export default function Overview({ carriers = [], isActive = true }) {
                 العودة للشهر الحالي
               </Btn>
             )}
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
-              تحديث
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
+              {loading ? 'يُحدّث…' : 'تحديث'}
             </Btn>
           </div>
         }
       />
+
+      {loadError && (
+        <div className="data-load-error is-inline" role="status">
+          <AlertTriangle size={17}/>
+          <div>
+            <strong>التحديث الأخير لم يكتمل</strong>
+            <span>نعرض آخر بيانات نجحت بدل استبدالها بأرقام فارغة.</span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={refresh}>حاول مجدداً</Btn>
+        </div>
+      )}
 
       <nav className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
         <button type="button" onClick={() => document.getElementById('cash-now')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -194,7 +234,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
           أداء الشهر — {fmtMonth(period)}
         </SectionTitle>
-        <div style={{
+        <div className="overview-stat-grid" style={{
           display: 'grid', gap: 12, marginBottom: 24,
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         }}>
@@ -1037,9 +1077,12 @@ function ConcentrationBars({ rows, valueUnit, warnAtPct, tint }) {
         const widthPct = Math.max(2, (r.value / maxValue) * 100);
         const warn = r.share >= warnAtPct;
         return (
-          <div
+          <button
             key={r.key}
+            type="button"
             onClick={r.onClick}
+            disabled={!r.onClick}
+            className="concentration-row"
             style={{ cursor: r.onClick ? 'pointer' : 'default', padding: '4px 0' }}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
@@ -1069,9 +1112,7 @@ function ConcentrationBars({ rows, valueUnit, warnAtPct, tint }) {
               <div style={{
                 position: 'absolute', insetInlineEnd: 0, top: 0, bottom: 0,
                 width: `${widthPct}%`,
-                background: warn
-                  ? 'linear-gradient(to left, #DC2626, color-mix(in srgb, var(--red) 60%, transparent))'
-                  : `linear-gradient(to left, ${tint}, color-mix(in srgb, ${tint} 60%, transparent))`,
+                background: warn ? 'var(--red)' : tint,
                 borderRadius: 3,
               }}/>
             </div>
@@ -1081,7 +1122,7 @@ function ConcentrationBars({ rows, valueUnit, warnAtPct, tint }) {
             }}>
               {fmtCompact(r.value)} {valueUnit}
             </div>
-          </div>
+          </button>
         );
       })}
     </div>

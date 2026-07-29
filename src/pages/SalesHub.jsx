@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
-import WorkspaceContext from '../components/WorkspaceContext.jsx';
+import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 import SalesToday  from './SalesToday.jsx';
 import StoreActivation from './StoreActivation.jsx';
@@ -111,35 +111,15 @@ export default function SalesHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{
-        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
-        padding: '12px 24px 0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--surface)',
-        position: 'sticky', top: 0, zIndex: 5,
-      }}>
-        {visibleTabs.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => handleTabChange(t.id)}
-              style={{
-                padding: '10px 18px', border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? 'var(--gold)' : 'transparent'}`,
-                color: active ? 'var(--text)' : 'var(--muted)',
-                fontSize: 13, fontWeight: active ? 700 : 500,
-                fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                transition: 'all .15s', marginBottom: -1,
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-              }}>
-              <Icon size={14}/>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <WorkspaceContext tab={activeTab}/>
+      <WorkspaceTabs
+        scope="sales"
+        title="فرص البيع"
+        subtitle="خطة اليوم، تفعيل الجدد، واستعادة العملاء"
+        tabs={visibleTabs}
+        activeId={activeTab?.id}
+        onChange={handleTabChange}
+        tone="var(--gold)"
+      />
 
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
@@ -147,7 +127,14 @@ export default function SalesHub({ isActive = true }) {
           const active = tab === t.id;
           const activeVal = isActive && active;
           return (
-            <div key={t.id} className="ws-tab-panel" style={{ display: active ? 'block' : 'none', height: '100%' }}>
+            <div
+              key={t.id}
+              id={workspacePanelId('sales', t.id)}
+              aria-labelledby={workspaceTabId('sales', t.id)}
+              role="tabpanel"
+              className="ws-tab-panel"
+              style={{ display: active ? 'block' : 'none', height: '100%' }}
+            >
               {/* LeadsTab يستقبل prop باسم active (لا isActive) — إرث CRM */}
               {t.activeProp ? <Cmp active={activeVal}/> : <Cmp isActive={activeVal}/>}
             </div>

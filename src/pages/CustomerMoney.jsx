@@ -41,6 +41,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [searchParams] = useSearchParams();
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const [q, setQ] = useState('');
   const [buckets, setBuckets] = useState(() => new Set());   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
   const toggleBucket = (key) => setBuckets(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -62,9 +63,15 @@ export default function CustomerMoney({ isActive = true }) {
 
   const refresh = async () => {
     setBusy(true);
-    try { setD(await loadCustomerMoneyDashboard()); }
-    catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setD(prev => prev || { customers: [], aging: {} }); }
-    setBusy(false);
+    setLoadError(null);
+    try {
+      setD(await loadCustomerMoneyDashboard());
+    } catch (e) {
+      setLoadError(e);
+      toast(`فشل التحميل: ${e.message}`, 'error');
+    } finally {
+      setBusy(false);
+    }
   };
   const handleSyncZoho = async () => {
     setSyncingZoho(true);
@@ -186,7 +193,22 @@ export default function CustomerMoney({ isActive = true }) {
   };
 
   if (!can('receivables.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض المديونيات»"/></div>;
-  if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
+  if (d == null && loadError) return (
+    <div className="customer-money-page workspace-page">
+      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+        title="تحصيل العملاء"
+        subtitle="تعذّر جلب مديونيات زوهو — لم نعرض قائمة فارغة حتى لا تُفهم أن الديون صفر"/>
+      <div className="data-load-error" role="alert">
+        <HandCoins size={22}/>
+        <div>
+          <strong>تعذّر الوصول إلى بيانات التحصيل</strong>
+          <span>{loadError.message || 'تحقق من الاتصال ثم أعد المحاولة.'}</span>
+        </div>
+        <Btn size="sm" variant="ghost" onClick={refresh}>إعادة المحاولة</Btn>
+      </div>
+    </div>
+  );
+  if (d == null) return <div className="customer-money-page workspace-page"><div className="workspace-loading-state"><Spinner size={26}/></div></div>;
 
   const agingTotal = BUCKETS.reduce((s, b) => s + (d.aging[b.key] || 0), 0) || 1;
   const colDelta = d.collectedPrevMonth > 0
@@ -197,7 +219,7 @@ export default function CustomerMoney({ isActive = true }) {
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="customer-money-page workspace-page">
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
         title="تحصيل العملاء"
         subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"
@@ -208,6 +230,17 @@ export default function CustomerMoney({ isActive = true }) {
             </Btn>
           </>
         }/>
+
+      {loadError && (
+        <div className="data-load-error is-inline" role="status">
+          <HandCoins size={17}/>
+          <div>
+            <strong>التحديث الأخير لم يكتمل</strong>
+            <span>ما زالت آخر بيانات ناجحة ظاهرة ويمكن إعادة المحاولة بأمان.</span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={refresh}>حاول مجدداً</Btn>
+        </div>
+      )}
 
       <DataConfidenceBar
         active={isActive}
@@ -221,6 +254,7 @@ export default function CustomerMoney({ isActive = true }) {
       />
 
       {/* ── البطل: كم لك بالخارج ── */}
+      <div className="customer-money-hero">
       <Card style={{ padding: '18px 20px', marginBottom: 12 }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 14 }}>
           <div>
@@ -286,6 +320,7 @@ export default function CustomerMoney({ isActive = true }) {
           </div>
         </div>
       </Card>
+      </div>
 
       {/* ── أرصدة دائنة غير مستخدمة — طبّقها في زوهو لتصفير الدين ── */}
       {credits && credits.rows.length > 0 && (
@@ -379,7 +414,7 @@ export default function CustomerMoney({ isActive = true }) {
       )}
 
       {/* ── أدوات القائمة ── */}
-      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      <div className="customer-money-toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 170 }}>
           <Search size={14} style={{ position: 'absolute', right: 12, top: 10, color: 'var(--muted)' }}/>
           <input value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالعميل/المتجر/الهاتف…"
@@ -418,7 +453,7 @@ export default function CustomerMoney({ isActive = true }) {
 
       {/* ── بطاقات العملاء ── */}
       {!filtered.length ? <Card><Empty icon="🎉" title="لا ديون في هذا العرض" sub="جرّب فلتراً آخر"/></Card> : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
+        <div className="customer-money-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
           {filtered.map(c => (
             <CustomerCard key={c.name} c={c} highlight={buckets}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}

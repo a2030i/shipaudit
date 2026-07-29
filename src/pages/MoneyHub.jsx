@@ -15,11 +15,27 @@ import { Banknote, CreditCard, Wallet } from 'lucide-react';
 import CodSettlements   from './CodSettlements.jsx';
 import Payments         from './Payments.jsx';
 import BankStatement    from './BankStatement.jsx';
+import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
-  { id: 'cod',      label: 'تسويات COD',  icon: Banknote,   component: CodSettlements   },
-  { id: 'payments', label: 'الدفعات',      icon: CreditCard, component: Payments         },
-  { id: 'bank',     label: 'كشف بنكي',     icon: Wallet,     component: BankStatement    },
+  {
+    id: 'cod', label: 'تحصيل شركات الشحن', icon: Banknote, component: CodSettlements,
+    eyebrow: 'أمانات العملاء', purpose: 'قارن المتوقع بما حوّلته شركة الشحن فعلاً',
+    description: 'هذه الأموال ليست دخلاً. الشاشة تتابع شحنات COD من الاستحقاق إلى الاستلام وتظهر الفرق بوضوح.',
+    outcome: 'تحصيل مستلم وفروقات معروفة', tone: 'var(--gold)',
+  },
+  {
+    id: 'payments', label: 'دفعات الناقلين', icon: CreditCard, component: Payments,
+    eyebrow: 'تسوية الالتزامات', purpose: 'سجّل ما دُفع للشركات واربطه بقيوده الصحيحة',
+    description: 'استخدمها للدفعات الخارجة والتوزيعات، مع إبقاء التحصيل الوارد منفصلاً حتى لا تختلط حركة النقد.',
+    outcome: 'دفعة موزعة بلا ازدواج', tone: 'var(--red)',
+  },
+  {
+    id: 'bank', label: 'الحسابات البنكية', icon: Wallet, component: BankStatement,
+    eyebrow: 'مصدر الرصيد', purpose: 'راجع أرصدة البنوك وحركتها من الكشوف',
+    description: 'يعرض كل حساب بنكي على حدة ويجعل الرصيد الإجمالي نتيجة مجموع الحسابات، لا رصيد كشف واحد.',
+    outcome: 'رصيد بنكي قابل للتتبع', tone: 'var(--brand)',
+  },
 ];
 
 const LEGACY_PATH_TO_TAB = {
@@ -58,44 +74,29 @@ export default function MoneyHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{
-        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
-        padding: '12px 24px 0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--surface)',
-        position: 'sticky', top: 0, zIndex: 5,
-      }}>
-        {TABS.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => handleTabChange(t.id)}
-              style={{
-                padding: '10px 18px',
-                border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? 'var(--brand)' : 'transparent'}`,
-                color: active ? 'var(--text)' : 'var(--muted)',
-                fontSize: 13, fontWeight: active ? 700 : 500,
-                fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                transition: 'all .15s', marginBottom: -1,
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-              }}
-            >
-              <Icon size={14}/>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <WorkspaceTabs
+        scope="money"
+        title="حركة الأموال"
+        subtitle="التحصيل الوارد، الدفعات الخارجة، ثم مصدر الرصيد"
+        tabs={TABS}
+        activeId={tab}
+        onChange={handleTabChange}
+        tone="var(--green)"
+      />
 
-      <div style={{ position: 'relative', flex: 1, minHeight: 0 }}>
+      <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {TABS.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
           return (
-            <div key={t.id} style={{ display: active ? 'block' : 'none', height: '100%' }}>
+            <div
+              key={t.id}
+              id={workspacePanelId('money', t.id)}
+              aria-labelledby={workspaceTabId('money', t.id)}
+              role="tabpanel"
+              className="ws-tab-panel"
+              style={{ display: active ? 'block' : 'none', height: '100%' }}
+            >
               <Cmp isActive={isActive && active}/>
             </div>
           );

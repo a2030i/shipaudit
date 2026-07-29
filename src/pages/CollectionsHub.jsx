@@ -11,7 +11,7 @@ import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { HandCoins, PhoneCall, Scale, FileText } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
-import WorkspaceContext from '../components/WorkspaceContext.jsx';
+import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 import CustomerMoney       from './CustomerMoney.jsx';
 import Collections         from './Collections.jsx';
@@ -87,42 +87,29 @@ export default function CollectionsHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{
-        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
-        padding: '12px 24px 0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--surface)',
-        position: 'sticky', top: 0, zIndex: 5,
-      }}>
-        {visibleTabs.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => handleTabChange(t.id)}
-              style={{
-                padding: '10px 18px', border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? 'var(--red)' : 'transparent'}`,
-                color: active ? 'var(--text)' : 'var(--muted)',
-                fontSize: 13, fontWeight: active ? 700 : 500,
-                fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                transition: 'all .15s', marginBottom: -1,
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-              }}>
-              <Icon size={14}/>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
-
-      <WorkspaceContext tab={activeTab}/>
+      <WorkspaceTabs
+        scope="collections"
+        title="الديون والتحصيل"
+        subtitle="من معرفة الدين إلى المتابعة ثم التصعيد"
+        tabs={visibleTabs}
+        activeId={activeTab?.id}
+        onChange={handleTabChange}
+        tone="var(--red)"
+      />
 
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
           return (
-            <div key={t.id} className="ws-tab-panel" style={{ display: active ? 'block' : 'none', height: '100%' }}>
+            <div
+              key={t.id}
+              id={workspacePanelId('collections', t.id)}
+              aria-labelledby={workspaceTabId('collections', t.id)}
+              role="tabpanel"
+              className="ws-tab-panel"
+              style={{ display: active ? 'block' : 'none', height: '100%' }}
+            >
               <Cmp isActive={isActive && active}/>
             </div>
           );

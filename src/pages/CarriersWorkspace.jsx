@@ -15,11 +15,27 @@ import { Building2, BarChart3, Scale } from 'lucide-react';
 import CarriersHub from './CarriersHub.jsx';
 import CarrierKpi  from './CarrierKpi.jsx';
 import Claims      from './Claims.jsx';
+import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
-  { id: 'hub',    label: 'كشف الشركات',  icon: Building2, component: CarriersHub },
-  { id: 'kpi',    label: 'أداء الناقلين', icon: BarChart3, component: CarrierKpi },
-  { id: 'claims', label: 'المطالبات',     icon: Scale,     component: Claims },
+  {
+    id: 'hub', label: 'حالة الشركات', icon: Building2, component: CarriersHub,
+    eyebrow: 'صورة تشغيلية', purpose: 'اعرف ما لدى كل شركة وما يحتاج متابعة الآن',
+    description: 'تجمع الرصيد والتحصيل والفواتير غير المدققة وآخر مراجعة في مكان واحد، لتبدأ يومك من الاستثناء لا من البحث.',
+    outcome: 'شركة واضحة وخطوة تالية', tone: 'var(--brand)',
+  },
+  {
+    id: 'kpi', label: 'مقارنة الأداء', icon: BarChart3, component: CarrierKpi,
+    eyebrow: 'قرار تشغيلي', purpose: 'قارن الجودة والتكلفة والالتزام بين الشركات',
+    description: 'استخدمها عند تقييم الأداء أو توزيع الشحنات، لا لمتابعة معاملة يومية بعينها.',
+    outcome: 'مقارنة عادلة قابلة للقرار', tone: 'var(--accent3)',
+  },
+  {
+    id: 'claims', label: 'المطالبات والاسترداد', icon: Scale, component: Claims,
+    eyebrow: 'حماية الهامش', purpose: 'تابع الفروقات من الاكتشاف حتى استردادها',
+    description: 'تحوّل أخطاء التدقيق إلى مطالبة قابلة للمتابعة وتفصل المبلغ المكتشف عن المبلغ المسترد فعلاً.',
+    outcome: 'مطالبة موثقة وحالة تحصيل', tone: 'var(--gold)',
+  },
 ];
 
 const LEGACY_PATH_TO_TAB = {
@@ -56,44 +72,29 @@ export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{
-        display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6,
-        padding: '12px 24px 0',
-        borderBottom: '1px solid var(--border)',
-        background: 'var(--surface)',
-        position: 'sticky', top: 0, zIndex: 5,
-      }}>
-        {TABS.map(t => {
-          const Icon = t.icon;
-          const active = tab === t.id;
-          return (
-            <button
-              key={t.id}
-              onClick={() => handleTabChange(t.id)}
-              style={{
-                padding: '10px 18px',
-                border: 'none', background: 'transparent',
-                borderBottom: `2.5px solid ${active ? 'var(--brand)' : 'transparent'}`,
-                color: active ? 'var(--text)' : 'var(--muted)',
-                fontSize: 13, fontWeight: active ? 700 : 500,
-                fontFamily: 'var(--font-sans)', cursor: 'pointer',
-                transition: 'all .15s', marginBottom: -1,
-                display: 'inline-flex', alignItems: 'center', gap: 7,
-              }}
-            >
-              <Icon size={14}/>
-              {t.label}
-            </button>
-          );
-        })}
-      </div>
+      <WorkspaceTabs
+        scope="carriers"
+        title="شركات الشحن"
+        subtitle="الحالة، المقارنة، ثم استرداد الفروقات"
+        tabs={TABS}
+        activeId={tab}
+        onChange={handleTabChange}
+        tone="var(--brand)"
+      />
 
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {TABS.map(t => {
           const Cmp = t.component;
           const active = tab === t.id;
           return (
-            <div key={t.id} className="ws-tab-panel" style={{ display: active ? 'block' : 'none', height: '100%' }}>
+            <div
+              key={t.id}
+              id={workspacePanelId('carriers', t.id)}
+              aria-labelledby={workspaceTabId('carriers', t.id)}
+              role="tabpanel"
+              className="ws-tab-panel"
+              style={{ display: active ? 'block' : 'none', height: '100%' }}
+            >
               <Cmp isActive={isActive && active} carriers={carriers}/>
             </div>
           );
