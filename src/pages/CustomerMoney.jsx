@@ -733,6 +733,19 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
 
   const ageColor = c.oldestDays > 90 ? 'var(--red)' : c.oldestDays > 60 ? 'color-mix(in srgb, var(--gold) 50%, var(--red))' : c.oldestDays > 30 ? 'var(--gold)' : 'var(--green)';
 
+  // الرقم البارز يتبع الفلتر: عند اختيار شرائح أعمار يصير **مبلغ تلك
+  // الشرائح** لا كامل الدين — لأن الغرض مطالبة التاجر بمبلغ محدَّد،
+  // ومطالبته بكامل دينه بينما الفلتر على 61–90 مطالبةٌ خاطئة.
+  // وكامل الدين يبقى ظاهراً تحته فلا يُخفى شيء (قاعدة: أي عرض مفلتر
+  // يعلن ما يستبعده).
+  const bandKeys = highlight instanceof Set ? [...highlight] : [];
+  const bandSum  = bandKeys.reduce((s, k) => s + (Number(c[k]) || 0), 0);
+  const banded   = bandKeys.length > 0;
+  const headline = banded ? bandSum : (c.owed || 0);
+  const bandLabel = banded
+    ? bandKeys.map(k => (BUCKETS.find(b => b.key === k) || {}).label).filter(Boolean).join(' + ')
+    : null;
+
   return (
     <Card style={{ padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 8 }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
@@ -745,8 +758,16 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           )}
         </div>
         <div style={{ textAlign: 'left' }}>
-          <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', whiteSpace: 'nowrap' }}>{fmt(c.owed)}</div>
-          <div style={{ fontSize: 9.5, color: 'var(--muted2)' }}>ر.س مستحقة</div>
+          <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)',
+            color: banded ? 'var(--red)' : 'var(--gold)', whiteSpace: 'nowrap' }}>{fmt(headline)}</div>
+          <div style={{ fontSize: 9.5, color: 'var(--muted2)' }}>
+            {banded ? 'ر.س — المطلوب سداده' : 'ر.س مستحقة'}
+          </div>
+          {banded && (
+            <div style={{ fontSize: 9.5, color: 'var(--muted2)', marginTop: 2, whiteSpace: 'nowrap' }}>
+              {bandLabel} · من أصل {fmt(c.owed)}
+            </div>
+          )}
         </div>
       </div>
 
@@ -795,8 +816,10 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {digits && (
+          /* `amount` = المطلوب سداده (يتبع الفلتر) كي ينطق النص الآلي نفس
+             الرقم الظاهر على البطاقة — لا كامل الدين. */
           <IvrCallButton phone={digits} name={c.storeName || c.name}
-            fields={{ name: c.storeName || c.name, amount: c.owed, overdue: c.overdue, wallet: c.walletBalance,
+            fields={{ name: c.storeName || c.name, amount: headline, overdue: c.overdue, wallet: c.walletBalance,
               invoices_count: c.invCnt, oldest_days: c.oldestDays, last_shipment: c.lastShipmentAt }}
             label size={13} style={{ flex: 1, justifyContent: 'center', padding: '8px 0', fontSize: 12, fontWeight: 700 }}/>
         )}

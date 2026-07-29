@@ -15,7 +15,6 @@ import { OR_MODELS, testConnection } from '../engine/openrouter.js';
 
 const TABS = [
   { id: 'ai',          label: '✨ الذكاء الاصطناعي' },
-  { id: 'payments',    label: '💳 الدفع الإلكتروني' },
   { id: 'data',        label: '🗄️ البيانات' },
 ];
 
@@ -82,8 +81,6 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
         ))}
       </div>
 
-      {/* Payments tab — Moyasar publishable key */}
-      {tab === 'payments' && <PaymentsTab/>}
 
       {/* Nav Permissions tab */}
 
@@ -683,123 +680,5 @@ function AuditsFilter({ audits, children }) {
       </Card>
       {children(filtered)}
     </>
-  );
-}
-
-// ── Payments tab: Moyasar publishable key ──────────────────────
-// Stored in app_settings → exposed to the public /portal via the
-// SECURITY DEFINER `get_payment_config` RPC. Admins can flip
-// between test and live keys here without redeploying.
-function PaymentsTab() {
-  const [value, setValue]   = useState('');
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const { getPaymentConfig } = await import('../lib/paymentRequestsService.js');
-        const cfg = await getPaymentConfig({ force: true });
-        setValue(cfg.moyasarPublishableKey || '');
-      } catch (e) {
-        console.warn('payment config load failed:', e.message);
-      }
-      setLoading(false);
-    })();
-  }, []);
-
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      const { setMoyasarPublishableKey } = await import('../lib/paymentRequestsService.js');
-      await setMoyasarPublishableKey(value);
-      toast('تم حفظ مفتاح ميسر ✓', 'success');
-    } catch (e) {
-      toast(`فشل الحفظ: ${e.message}`, 'error');
-    }
-    setSaving(false);
-  };
-
-  const isTest = value.startsWith('pk_test_');
-  const isLive = value.startsWith('pk_live_');
-  const looksValid = isTest || isLive;
-
-  return (
-    <Card style={{ marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, fontWeight: 700, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <span>💳</span> Moyasar — مفتاح الدفع الإلكتروني
-      </h3>
-      <p style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 14, lineHeight: 1.7 }}>
-        أدخل الـ Publishable Key من لوحة Moyasar. هذا المفتاح آمن للنشر (لا يسمح بسحب أو استرداد)،
-        ويستخدم لفتح نموذج الدفع في صفحة /portal فقط. لو مالك حساب،{' '}
-        <a href="https://moyasar.com" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
-          سجّل في Moyasar
-        </a>
-        {' '}واحصل على المفتاح من{' '}
-        <a href="https://dashboard.moyasar.com/settings/api-keys" target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent)', textDecoration: 'underline' }}>
-          Dashboard → API Keys
-        </a>.
-      </p>
-
-      {loading ? (
-        <div style={{ padding: 20, textAlign: 'center' }}><Spinner size={20}/></div>
-      ) : (
-        <>
-          <div style={{ marginBottom: 12 }}>
-            <label style={{ display: 'block', color: 'var(--muted)', fontSize: 11, marginBottom: 5, fontWeight: 600 }}>
-              Publishable Key
-            </label>
-            <input
-              type="text"
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              placeholder="pk_test_xxxxxxxxxxxxxxxxx"
-              autoComplete="off"
-              data-lpignore="true"
-              style={{
-                width: '100%', padding: '10px 12px', borderRadius: 10,
-                fontSize: 13, fontFamily: 'var(--font-mono)', direction: 'ltr',
-                borderColor: value && !looksValid ? 'var(--gold)' : undefined,
-              }}
-            />
-            {value && !looksValid && (
-              <div style={{ fontSize: 11, color: 'var(--gold)', marginTop: 4 }}>
-                ⚠ المفتاح يجب أن يبدأ بـ pk_test_ أو pk_live_
-              </div>
-            )}
-            {looksValid && (
-              <div style={{ fontSize: 11, color: isLive ? 'var(--accent)' : 'var(--gold)', marginTop: 4, fontWeight: 600 }}>
-                {isLive ? '✓ وضع الإنتاج (المدفوعات حقيقية)' : 'ℹ وضع اختبار — استخدم بطاقات Moyasar التجريبية'}
-              </div>
-            )}
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-            <Btn size="sm" variant="accent" onClick={handleSave} disabled={saving}>
-              {saving ? 'جارٍ الحفظ…' : 'حفظ المفتاح'}
-            </Btn>
-            {value && (
-              <Btn size="sm" variant="ghost" onClick={() => setValue('')}>
-                مسح
-              </Btn>
-            )}
-          </div>
-
-          <div style={{
-            marginTop: 16, padding: '12px 14px',
-            background: 'var(--surface)', borderRadius: 10,
-            border: '1px solid var(--border)',
-            fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.7,
-          }}>
-            <strong style={{ color: 'var(--text2)' }}>كيف يعمل:</strong>
-            <ul style={{ margin: '6px 0 0 0', paddingInlineStart: 18 }}>
-              <li>عند فراغ المفتاح: زر "دفع أون لاين" يختفي من بوابة العميل، تبقى الحوالة البنكية فقط.</li>
-              <li>عند تعبئة المفتاح: العميل يشوف نموذج الدفع مباشرة (mada / Visa / Apple Pay).</li>
-              <li>التغيير فوري — مالك تعمل redeploy.</li>
-            </ul>
-          </div>
-        </>
-      )}
-    </Card>
   );
 }

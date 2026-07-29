@@ -185,10 +185,6 @@ export const PERMISSION_CATALOG = [
       { key: 'payments.create',    label: 'تسجيل دفعة جديدة' },
       { key: 'payments.allocate',  label: 'توزيع دفعة على القيود' },
       { key: 'payments.delete',    label: 'حذف دفعة', sensitive: true },
-      { key: 'payment_requests.view',    label: 'عرض طلبات الدفع' },
-      { key: 'payment_requests.create',  label: 'إنشاء طلب دفع' },
-      { key: 'payment_requests.approve', label: 'اعتماد طلب دفع', sensitive: true },
-      { key: 'payment_requests.reject',  label: 'رفض طلب دفع', sensitive: true },
     ],
   },
   {

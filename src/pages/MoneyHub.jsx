@@ -3,7 +3,6 @@
 //   /cod-settlements   → tab: تسويات COD     (CodSettlements)
 //   /payments          → tab: الدفعات         (Payments)
 //   /bank              → tab: كشف بنكي        (BankStatement)
-//   /payment-requests  → tab: طلبات السداد    (PaymentRequests)
 //
 // Same pattern as CustomerHub / CarriersWorkspace: each tab renders
 // the existing page component with isActive guarding. Legacy routes
@@ -11,25 +10,22 @@
 
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Banknote, CreditCard, Wallet, Inbox } from 'lucide-react';
+import { Banknote, CreditCard, Wallet } from 'lucide-react';
 
 import CodSettlements   from './CodSettlements.jsx';
 import Payments         from './Payments.jsx';
 import BankStatement    from './BankStatement.jsx';
-import PaymentRequests  from './PaymentRequests.jsx';
 
 const TABS = [
   { id: 'cod',      label: 'تسويات COD',  icon: Banknote,   component: CodSettlements   },
   { id: 'payments', label: 'الدفعات',      icon: CreditCard, component: Payments         },
   { id: 'bank',     label: 'كشف بنكي',     icon: Wallet,     component: BankStatement    },
-  { id: 'requests', label: 'طلبات السداد', icon: Inbox,      component: PaymentRequests  },
 ];
 
 const LEGACY_PATH_TO_TAB = {
   '/cod-settlements':  'cod',
   '/payments':         'payments',
   '/bank':             'bank',
-  '/payment-requests': 'requests',
 };
 
 export default function MoneyHub({ isActive = true }) {

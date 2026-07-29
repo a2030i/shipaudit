@@ -12,7 +12,6 @@ import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
-const CustomerPortal = lazy(() => import('./pages/CustomerPortal.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
 const CarrierManager = lazy(() => import('./pages/CarrierManager.jsx'));
 const UploadWizard = lazy(() => import('./pages/UploadWizard.jsx'));
@@ -123,7 +122,6 @@ const NAV_ITEMS = [
       { tabId: 'cod',      label: 'تسويات COD',  icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'الدفعات',      icon: CreditCard, legacy: '/payments' },
       { tabId: 'bank',     label: 'كشف البنك',    icon: Wallet,     legacy: '/bank' },
-      { tabId: 'requests', label: 'طلبات السداد', icon: Inbox,      legacy: '/payment-requests' },
     ] },
   { id: 'cash-aging', path: '/cash-aging', label: 'أعمار الديون',  icon: Wallet,     section: 'money', permKey: 'ledger.view' },
   { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', permKey: 'forecast.view' },
@@ -230,9 +228,9 @@ const SALES_HUB_PATHS = ['/retargeting', '/hatif-leads', '/segments', '/merchant
 const COLLECTIONS_HUB_PATHS = ['/customer-money', '/collections', '/legal', '/receivables'];
 // /hub, /carrier-kpi, /claims all render the CarriersWorkspace (3 tabs).
 const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
-// /money hosts cod-settlements / payments / bank / payment-requests
+// /money hosts cod-settlements / payments / bank
 // as four tabs. Legacy paths land on the right tab automatically.
-const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank', '/payment-requests'];
+const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank'];
 
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
@@ -255,17 +253,13 @@ export default function App() {
   );
 }
 
-// Routes that should render standalone, OUTSIDE the authenticated app
-// shell (sidebar / topbar / auth check). Customer-facing surfaces live
-// here. Add public paths to this list as they appear.
-const PUBLIC_PATHS = ['/portal'];
+// مسارات تُرسَم مستقلّةً خارج غلاف التطبيق (بلا جانبية/شريط/تحقّق دخول).
+// **فارغة الآن**: بوابة التاجر للدفع أُلغيت بالكامل (2026-07-29، قرار
+// المستخدم) — التحصيل يتم عبر حملات واتساب والتحويل البنكي المباشر.
+// أي سطح عام جديد يُضاف هنا ويُوثَّق سبب كونه عاماً.
+const PUBLIC_PATHS = [];
 
 function AppShell(props) {
-  const location = useLocation();
-  // Public surfaces bypass auth and the sidebar/topbar layout entirely.
-  if (PUBLIC_PATHS.some(p => location.pathname === p || location.pathname.startsWith(p + '/'))) {
-    if (location.pathname.startsWith('/portal')) return <CustomerPortal/>;
-  }
   return <AppInner {...props}/>;
 }
 
@@ -292,7 +286,7 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/payment-requests','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/platform-carriers','/next-actions'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/platform-carriers','/next-actions'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -820,7 +814,7 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/platform-carriers'} scroll>
               <PlatformCarriers isActive={pathname==='/platform-carriers'}/>
             </PageSlot>
-            {/* /cod-settlements + /payments + /bank + /payment-requests
+            {/* /cod-settlements + /payments + /bank
                 all funnel through MoneyHub which selects the right tab
                 based on the path. */}
             <PageSlot active={MONEY_HUB_PATHS.includes(pathname)} scroll>
