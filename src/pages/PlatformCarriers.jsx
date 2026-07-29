@@ -41,9 +41,12 @@ export default function PlatformCarriers({ isActive = true }) {
     //   ٣) الباقي (بلا منافس مُدخَل) ثم المنافس الصرف
     // وداخل كل مرتبة: الأرخص أولاً.
     const tier = (r) => {
-      if (r.sellPrice == null) return 3;                       // منافس صرف
+      if (r.sellPrice == null) return 5;                       // منافس صرف
+      if (!r.isActive) return 4;                               // غير نشطة
+      // نشطة بلا تكلفة معروفة → **آخر النشطة** مهما كانت تغطيتها التنافسية:
+      // صفّها بلا ربح محسوب فلا يصلح للمقارنة (طلب المستخدم 2026-07-29).
+      if (r.costPrice == null) return 3;
       const n = (r.sellAuto != null ? 1 : 0) + (r.sellTorod != null ? 1 : 0);
-      if (!r.isActive) return 2 + (n ? 0 : 0.5);               // غير نشطة تحت النشطة
       return n === 2 ? 0 : n === 1 ? 1 : 2;
     };
     return [...rows].sort((a, b) => {
