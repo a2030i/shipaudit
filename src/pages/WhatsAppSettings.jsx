@@ -10,6 +10,7 @@ import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadZatcaAlertConfig, saveZatcaAlertConfig, previewZatcaAlert, sendZatcaAlertNow,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
+  loadWhatsAppQuality, qualityTone,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
   loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
   loadCallTargets, saveCallTargets, loadOutreachImpact, loadCampaignTemplateStats, loadCampaignHourStats, loadMessageOpenHours,
@@ -741,6 +742,7 @@ function CampaignsTab() {
   const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [report, setReport] = useState([]);        // صف لكل حملة
+  const [qual, setQual] = useState([]);            // جودة القوالب (30 يوماً)
   const [camp, setCamp] = useState('');            // الحملة المفتوحة (فلتر سيرفري)
   const [liveCamp, setLiveCamp] = useState('');    // حملة مفتوحة في مودال الإحصائيات الحي
   const [loading, setLoading] = useState(false);
@@ -791,14 +793,15 @@ function CampaignsTab() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [log, rep, nw, blk, hl] = await Promise.all([
+      const [log, rep, nw, blk, hl, q] = await Promise.all([
         loadWhatsAppLog({ limit: camp ? 1000 : 500, campaign: camp || null }),
         loadWhatsAppCampaignReport(),
         loadNoWhatsappList().catch(() => []),
         loadBlocklist().catch(() => []),
         loadWhatsAppDeliveryHealth().catch(() => null),
+        loadWhatsAppQuality('template', 30).catch(() => []),
       ]);
-      setRows(log); setReport(rep); setNoWa(nw); setBlock(blk); setHealth(hl);
+      setRows(log); setReport(rep); setNoWa(nw); setBlock(blk); setHealth(hl); setQual(q);
     } catch { setRows([]); }
     setLoading(false);
   }, [camp]);
@@ -1005,6 +1008,68 @@ function CampaignsTab() {
           </div>
         )}
       </Card>
+
+      {/* ── جودة القوالب — الإنذار التجاري الحقيقي ──
+          «فشل» رقم واحد مضلِّل: الفشل التقني عندنا صفر، والرفض كله من ميتا،
+          ونوعاه مختلفان تماماً في الدلالة والعلاج:
+            · خنق ميتا  = حكم على استهدافك ومحتواك ← يخفّض تصنيف رقمك
+            · غير قابل للتسليم = الرقم بلا واتساب ← جودة قائمة الأرقام
+          فالجدول يفصلهما بدل أن يجمعهما. */}
+      {qual.length > 0 && (
+        <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+            <span style={{ fontSize: 18 }}>🎯</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 13, fontWeight: 700 }}>جودة القوالب — آخر 30 يوماً</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)' }}>
+                «خنق ميتا» = رفض واتساب للحفاظ على جودة المنظومة. تراكمه يخفّض تصنيف رقمك ثم حدّ إرسالك اليومي — راقبه قبل أي شيء آخر.
+              </div>
+            </div>
+          </div>
+          <div className="m-flow" style={{ overflowX: 'auto' }}>
+            <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
+              <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
+                {['القالب', 'أُرسل', 'وصلت', 'ردّوا', 'خنق ميتا', 'بلا واتساب', 'الحكم'].map(h =>
+                  <th key={h} style={{ padding: '8px 10px', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>)}
+              </tr></thead>
+              <tbody>
+                {qual.map(t => (
+                  <tr key={t.label} style={{ borderTop: '1px solid var(--border)' }}>
+                    <td data-label="" style={{ padding: '8px 10px', fontWeight: 700 }}>{t.label}</td>
+                    <td data-label="أُرسل" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{t.sent.toLocaleString('en-US')}</td>
+                    <td data-label="وصلت" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)',
+                      color: t.deliveryRate >= 70 ? 'var(--green)' : t.deliveryRate >= 50 ? 'var(--text)' : 'var(--red)' }}>
+                      {t.deliveryRate == null ? '—' : `${t.deliveryRate}%`}
+                    </td>
+                    <td data-label="ردّوا" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)',
+                      color: t.replyRate >= 5 ? 'var(--green)' : 'var(--muted)' }}>
+                      {t.replyRate == null ? '—' : `${t.replyRate}%`}
+                    </td>
+                    <td data-label="خنق ميتا" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', fontWeight: 700,
+                      color: t.ecosystemRate >= 10 ? 'var(--red)' : t.ecosystemRate > 0 ? 'var(--gold)' : 'var(--muted)' }}>
+                      {t.ecosystemRate == null ? '—' : `${t.ecosystemRate}%`}
+                    </td>
+                    <td data-label="بلا واتساب" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>
+                      {t.undeliverable.toLocaleString('en-US')}
+                    </td>
+                    <td data-label="الحكم" style={{ padding: '8px 10px' }}>
+                      <span style={{ display: 'inline-block', padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700,
+                        color: qualityTone(t.verdict), background: `color-mix(in srgb, ${qualityTone(t.verdict)} 13%, transparent)` }}>
+                        {t.verdict}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {qual.some(t => t.otherFail > 0) && (
+            <div style={{ fontSize: 11.5, color: 'var(--red)' }}>
+              ⚠️ يوجد فشل تقني ({qual.reduce((s, t) => s + t.otherFail, 0)} رسالة) — ليس رفضاً من ميتا، راجع السجل.
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ── سجل الرسائل (المفلتر على الحملة المفتوحة إن وُجدت) ── */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>

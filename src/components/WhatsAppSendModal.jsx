@@ -5,7 +5,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { MessageCircle, ShieldCheck, Send, X, AlertTriangle, CheckCircle2, Clock, Plus, Minus } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
-import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet } from '../lib/whatsappService.js';
+import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet, loadWhatsAppQuality, qualityTone } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -94,6 +94,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const [noWa, setNoWa]          = useState(() => new Set());
   const [hatifTouched, setHatifTouched] = useState(() => new Map()); // يتواصل معهم الفريق في هاتف
   const [weak, setWeak] = useState(() => new Set());  // أرقام ضعيفة (لا تسليم قط) — تُستبعَد لحماية الرقم الآن
+  const [qual, setQual] = useState([]);               // جودة القوالب (30ي) — تحذير عند اختيار قالب يخنقه ميتا
   // «رسالة لكل متجر»: افتراضياً OFF (يُدمَج تكرار الهاتف — الأأمن ضد الحظر). لمّا
   // يملك رقم عدة متاجر ويُفعَّل → كل متجر رسالة مستقلة ببياناته. المفتاح يتحوّل
   // من الهاتف إلى معرّف المتجر (r._rk) ليُميَّز متجران على نفس الرقم.
@@ -139,10 +140,16 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       })
       .catch(() => { setCfg({ templates: [], templateName: '', templateLanguage: 'ar' }); setTpl(''); setVarMap([{ src: 'legacy', text: '' }]); });
     loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
+    loadWhatsAppQuality('template', 30).then(setQual).catch(() => {});
   }, [open]);
 
   // تغيير القالب → تحميل ربطه المحفوظ (أو الافتراضي)
   const pickTemplate = (t) => { setTpl(t); setVarMap(defaultMapFor(t, cfg)); };
+
+  // أداء القالب المختار خلال 30 يوماً — يُعرَض **لحظة القرار** لا في تقرير
+  // يُفتَح لاحقاً. تحذير فقط بلا منع: قرار الإطلاق للمستخدم، لكن لا يُطلق
+  // وهو يجهل أن ميتا ترفض خُمس رسائل هذا القالب.
+  const tplQuality = useMemo(() => qual.find(x => x.label === tpl) || null, [qual, tpl]);
 
   // اختيار سياق المتجر الصحيح للمستلم (حادثة TREVU/farnearapp — رقم واحد بمتاجر
   // عدة): متجر واحد على الرقم = يُؤخذ؛ متاجر عدة = فقط ما يطابق اسم المستلم؛
@@ -497,6 +504,30 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/></span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/></span>}
           </div>
+
+          {/* أداء القالب المختار — لحظة القرار لا بعده */}
+          {tplQuality && tplQuality.sent >= 30 && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 12,
+              fontSize: 12, borderRadius: 9, padding: '8px 12px',
+              color: 'var(--text2)',
+              background: `color-mix(in srgb, ${qualityTone(tplQuality.verdict)} 8%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${qualityTone(tplQuality.verdict)} 30%, transparent)`,
+            }}>
+              <span style={{ fontWeight: 700, color: qualityTone(tplQuality.verdict) }}>{tplQuality.verdict}</span>
+              <span style={{ color: 'var(--muted)' }}>
+                آخر 30 يوماً · {tplQuality.sent.toLocaleString('en-US')} رسالة ·
+                وصلت <b style={{ fontFamily: 'var(--font-mono)' }}>{tplQuality.deliveryRate}%</b> ·
+                ردّوا <b style={{ fontFamily: 'var(--font-mono)' }}>{tplQuality.replyRate ?? 0}%</b>
+                {tplQuality.ecosystemRate > 0 && <> · خنق ميتا <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--red)' }}>{tplQuality.ecosystemRate}%</b></>}
+              </span>
+              {tplQuality.ecosystemRate >= 10 && (
+                <span style={{ fontSize: 11, color: 'var(--muted2)', width: '100%' }}>
+                  ميتا ترفض جزءاً من هذا القالب للحفاظ على جودة المنظومة — الاستمرار يخفّض تصنيف رقمك وحدّك اليومي. جرّب شريحة أدقّ أو صياغة أقل تسويقية.
+                </span>
+              )}
+            </div>
+          )}
 
           {/* ── ربط متغيرات القالب بأعمدة الصفحة (يُحفَظ لكل قالب) ── */}
           <div style={{ border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', marginBottom: 12, background: 'var(--surface2)' }}>

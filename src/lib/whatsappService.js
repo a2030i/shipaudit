@@ -449,6 +449,38 @@ export async function loadWhatsAppCampaignReport() {
   }));
 }
 
+// جودة القوالب/الحملات — الفصل بين ثلاثة أنواع فشل لا جمعها في «فشل»:
+//  · «خنق ميتا» (healthy ecosystem) = حكم على استهدافك ومحتواك، وتراكمه يخفّض
+//    تصنيف جودة رقمك ثم حدّك اليومي. هذا الرقم هو الإنذار الحقيقي.
+//  · «غير قابل للتسليم» = الرقم بلا واتساب (جودة قائمة الأرقام).
+//  · فشل تقني = خلل عندنا (المقيس اليوم: **صفر**).
+// dim: 'template' | 'campaign'
+export async function loadWhatsAppQuality(dim = 'template', days = 30) {
+  const { data, error } = await supabase.rpc('whatsapp_quality', { p_dim: dim, p_days: days });
+  if (error || !Array.isArray(data)) return [];
+  return data.map(r => ({
+    label: r.label,
+    sent: Number(r.sent || 0), delivered: Number(r.delivered || 0),
+    read: Number(r.read_n || 0), replied: Number(r.replied || 0),
+    failed: Number(r.failed || 0), ecosystem: Number(r.ecosystem || 0),
+    undeliverable: Number(r.undeliverable || 0), otherFail: Number(r.other_fail || 0),
+    deliveryRate: r.delivery_rate == null ? null : Number(r.delivery_rate),
+    replyRate:    r.reply_rate    == null ? null : Number(r.reply_rate),
+    ecosystemRate: r.ecosystem_rate == null ? null : Number(r.ecosystem_rate),
+    firstSent: r.first_sent, lastSent: r.last_sent,
+    verdict: r.verdict,
+  }));
+}
+
+// لون الحكم — نقطة حقيقة واحدة (نفس نمط waStatusBadge)
+export function qualityTone(verdict) {
+  if (verdict === 'أوقفه — ميتا تخنقه') return 'var(--red)';
+  if (verdict === 'راجعه — خنق مرتفع')  return 'var(--gold)';
+  if (verdict === 'ضعيف — أرقام رديئة') return 'var(--gold)';
+  if (verdict === 'جيد')                return 'var(--green)';
+  return 'var(--muted)';
+}
+
 // أرقام وصلها قالب معيّن (أي وقت، أي حملة) — Set بالهاتف المطبَّع. تُستخدم لفلتر
 // «لم تصلهم مطالبة» في مركز التحصيل (من لم يصله sadad قط). مصفّح (§6).
 export async function loadTemplateSentSet(templateName) {
