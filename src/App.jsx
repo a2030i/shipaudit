@@ -534,13 +534,13 @@ function AppInner({ theme, toggleTheme }) {
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
 
-          {/* هوية هادئة: الشعار الملون على السطح الفاتح، والأبيض في الداكن. */}
+          {/* الجانبية داكنة في الثيمين، لذلك يبقى الشعار الأبيض ثابتاً وواضحاً. */}
           <div className="sidebar-logo">
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
               <div style={{ display:'flex', flexDirection:'column', gap:7, width:'100%', alignItems:'flex-start' }}>
-                <LamhaLogo height={36} variant={theme === 'light' ? 'color' : 'white'}/>
+                <LamhaLogo height={36} variant="white"/>
                 <div className="sidebar-product-label" style={{ display:'flex', alignItems:'center', gap:7 }}>
                   <span className="live-dot"/>
                   <span style={{ fontSize:10.5, fontWeight:700 }}>
