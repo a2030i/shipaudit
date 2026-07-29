@@ -17,7 +17,7 @@ import { LamhaLogo } from '../components/BrandLogo.jsx';
 import { Spinner, toast, ToastContainer } from '../components/UI.jsx';
 import {
   portalLookup, submitPaymentRequest, attachMoyasarPayment,
-  uploadReceipt, getPaymentConfig,
+  uploadReceipt, getPaymentConfig, openPortalByToken,
 } from '../lib/paymentRequestsService.js';
 import { DropZone } from '../components/UI.jsx';
 
@@ -105,6 +105,39 @@ export default function CustomerPortal() {
   // they can check-select multiple stores on step 2 and pay them all
   // together in a single request. Stays a Set of store_ids.
   const [selectedStoreIds, setSelectedStoreIds] = useState(new Set());
+  // فتح البوابة برابط موقَّع: 'checking' أثناء التحقّق · 'ok' نجح · سبب الرفض
+  const [tokenState, setTokenState] = useState(() =>
+    new URLSearchParams(window.location.search).get('t') ? 'checking' : null);
+
+  // ── الدخول برابط موقَّع (المسار الآمن) ──────────────────────
+  // الرمز يأتي في `?t=` من رسالة التحصيل. عند نجاح الفتح **يُمسَح من شريط
+  // العنوان فوراً** (replaceState) فلا يبقى في سجل المتصفّح ولا يتسرّب في
+  // Referer، والجلسة تكمل بكوكي HttpOnly لا يقرؤه JS.
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get('t');
+    if (!t) return;
+    let live = true;
+    openPortalByToken(t).then(res => {
+      if (!live) return;
+      window.history.replaceState({}, '', window.location.pathname);
+      if (!res?.ok) { setTokenState(res?.reason || 'invalid'); return; }
+      const p = res.portal || {};
+      setLookup({
+        phone: null,
+        stores: [{
+          store_id: p.store_id || null,
+          store_name: p.customer_name,
+          customer_name: p.customer_name,
+          total_due: Number(p.total_due) || 0,
+          invoices: p.invoices || [],
+        }],
+      });
+      setSelectedStoreIds(new Set([p.store_id || p.customer_name]));
+      setTokenState('ok');
+      setStep('invoices');
+    }).catch(() => { if (live) setTokenState('invalid'); });
+    return () => { live = false; };
+  }, []);
 
   // ── Step 1: phone lookup ────────────────────────────────────
   const handleLookup = async () => {

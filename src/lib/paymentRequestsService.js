@@ -13,6 +13,33 @@
 
 import { supabase } from './supabase.js';
 
+// ── فتح البوابة برابط موقَّع (المسار الآمن الجديد) ──────────────
+// البحث الحرّ بالجوال يُثبت الهوية **بالمعرفة**: من يعرف رقم تاجر يقرأ
+// ذمّته. الرابط الموقَّع يُثبتها **بالحيازة** — يُرسَل ضمن رسالة التحصيل
+// فيصل لصاحبه وحده. الرمز 32 بايت عشوائية، لا يُخزَّن (sha256 فقط)،
+// صالح 72 ساعة، ويتحوّل عند الفتح لجلسة 30 دقيقة في كوكي HttpOnly.
+//
+// `credentials:'include'` ضروري كي يُرسَل الكوكي في `refresh`.
+const PORTAL_FN = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/portal-access`;
+
+export async function openPortalByToken(token) {
+  const r = await fetch(`${PORTAL_FN}?action=open`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'include',
+    body: JSON.stringify({ token }),
+  });
+  return r.json().catch(() => ({ ok: false, reason: 'server' }));
+}
+
+// تحديث داخل الجلسة — الكوكي وحده، بلا رمز في الرابط (فلا يبقى في التاريخ)
+export async function refreshPortalSession() {
+  const r = await fetch(`${PORTAL_FN}?action=refresh`, {
+    method: 'POST', credentials: 'include',
+  });
+  return r.json().catch(() => ({ ok: false, reason: 'server' }));
+}
+
 // ── Payment configuration (anon-callable read) ────────────────
 // Reads the Moyasar publishable key from app_settings via the
 // SECURITY DEFINER `get_payment_config` RPC. Cached in-memory for
