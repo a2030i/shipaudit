@@ -29,20 +29,16 @@ export function extractBaseCost(carrier) {
     return { base: null, reason: 'دولي/جدول' };
   }
   const first = arr[0];
-  const rawBase = Number(first.price);
-  if (!Number.isFinite(rawBase)) return { base: null, reason: 'غير محدّد' };
-  // ⚠️ توحيد أساس الضريبة: كل المقارنة **بدون ضريبة** (أسعار العقود قبل
-  // الضريبة، والمحرّك يضيف 15% لاحقاً). لكن عقد ويبك يحمل
-  // `deliveryInclusiveVat` — أي أن سعره المكتوب **شامل الضريبة** (§2.4c).
-  // بلا القسمة على 1.15 هنا كانت تكلفته تُحتسب من أساس شامل مقابل بيع
-  // غير شامل: تكلفة مضخّمة 1.83 ر.س وربح منقوص بالقدر نفسه.
-  const VAT = 1.15;
-  const inclusiveVat = !!c.deliveryInclusiveVat;
-  const base = inclusiveVat ? Number((rawBase / VAT).toFixed(2)) : rawBase;
+  const base = Number(first.price);
+  if (!Number.isFinite(base)) return { base: null, reason: 'غير محدّد' };
+  // ⚠️ **لا تقسم على 1.15 هنا.** سعر العقد **قبل الضريبة دائماً** — بما فيه
+  // ويبك. العلم `deliveryInclusiveVat` يصف **عمود الفاتورة** لا سعر العقد:
+  // ويبك تكتب التوصيل في فاتورتها شاملاً الضريبة، فيقسمه `auditRow` على
+  // 1.15 ليطابق **سعر العقد قبل الضريبة** (انظر التعليق في engine/audit.js).
+  // قسمة الأساس هنا تُنقص التكلفة 1.83 ر.س وتُظهر ربحاً وهمياً.
   const excess = arr[1]?.pricePerUnit ?? c.excessPerKg ?? null;
   return {
     base,
-    rawBase,                                               // كما كُتب في العقد
     upTo: first.upTo ?? null,                              // حتى كم كغ يشمل الأساس
     excessPerKg: excess != null ? Number(excess) : null,  // /كغ زائد
     fuelPct: Number(c.fuelPct) || 0,
@@ -106,7 +102,6 @@ export async function loadPlatformCarriers() {
       markup: m,
       markupOverride: pc.markup != null ? Number(pc.markup) : null,
       base: cost.base,
-      rawBase: cost.rawBase ?? cost.base,   // كما كُتب في العقد (قد يكون شاملاً)
       costReason: cost.reason,
       upTo: cost.upTo,
       excessPerKg: cost.excessPerKg,
@@ -147,8 +142,12 @@ export async function loadPlatformCarriers() {
       bestPrice: best ? best.v : null, bestPlatform: best ? best.label : null, bestIsLamha: best ? best.key === 'lamha' : false,
       markup, markupOverride: null,
       base: null, costReason: null, fuelPct: 0, fuelAmt: 0, codFee: 0, posFeePct: 0,
-      // تكلفة يدوية للصفوف بلا عقد (يدخلها المستخدم) — لحساب الربح
-      costPrice: c.cost != null ? Number(c.cost) : null, hasContract: false, notes: c.note || null,
+      // تكلفة يدوية للصفوف بلا عقد. عمود `cost` يحمل **تكلفة الناقل وحدها**،
+      // بينما `costPrice` في صفوف عقودنا يشمل رسوم لمحة — فنضيفها هنا ليصير
+      // المعنى واحداً في الجدول كله (وإلا طُرحت رسوم لم تُضَف: صفوف V2 كانت
+      // تعرض تكلفة ناقل أقل بـ2 ر.س وربحاً أعلى بالقدر نفسه).
+      costPrice: c.cost != null ? Number((Number(c.cost) + markup).toFixed(2)) : null,
+      hasContract: false, notes: c.note || null,
     };
   });
 
