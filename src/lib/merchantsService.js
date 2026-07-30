@@ -242,6 +242,18 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     }
     if (error) throw error;
   }
+  // التقط انتقالات دورة حياة المتجر بعد اكتمال كل دفعات الـsnapshot.
+  // الإثراء best-effort عمداً: غياب المهاجرة أثناء النشر المتدرّج أو فشل
+  // التحليل لا يحوّل رفعاً ناجحاً إلى فشل. الرفع هو مصدر الحقيقة، والـRPC
+  // idempotent ويمكن استدعاؤه لاحقاً لنفس snapshot بلا تكرار.
+  let lifecycle = null;
+  const { data: lifecycleData, error: lifecycleError } = await supabase
+    .rpc('capture_merchant_lifecycle_events', { p_snapshot_id: snapshotId });
+  if (lifecycleError) {
+    console.info('Merchant lifecycle capture deferred:', lifecycleError.message);
+  } else {
+    lifecycle = lifecycleData || null;
+  }
   // كشف متاجر جديد يغيّر حالة/شحنات كثير من المتاجر → أطلق مزامنة تاقات هاتف فوراً
   // (بدل انتظار الكرون 20د). fire-and-forget — الفشل صامت (الكرون شبكة أمان).
   supabase.rpc('trigger_tag_sync').then(() => {}, () => {});
@@ -256,6 +268,7 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     vatRegistered: inserts.filter(r => r.vat_registered).length,
     zatcaDone:     inserts.filter(r => r.zatca_completed).length,
     verified:      inserts.filter(r => r.verification_status === 'موثق').length,
+    lifecycle,
   };
 }
 

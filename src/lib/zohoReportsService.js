@@ -16,6 +16,7 @@ import { supabase } from './supabase.js';
 import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { persistAndDownloadExport } from './internalExportsService.js';
+import { reconcileVatReturn } from './vatReconciliation.js';
 
 const FN = 'zoho-reports';
 
@@ -64,7 +65,21 @@ export async function loadVatReturn({ from, to }) {
     inputTax:     pick(input, '12')?.tax    ?? input.reduce((t, b) => t + b.tax, 0),
     netDue:       pick(net, '13')?.tax ?? null,
   };
-  return { from, to, output, input, net, totals };
+  const reconciliation = reconcileVatReturn({ output, input, net, totals });
+  return {
+    from,
+    to,
+    output: reconciliation.output,
+    input: reconciliation.input,
+    net: reconciliation.net,
+    totals: {
+      ...totals,
+      filingOutputTax: reconciliation.filing.outputTax,
+      filingInputTax: reconciliation.filing.inputTax,
+      filingNetDue: reconciliation.filing.netDue,
+    },
+    reconciliation,
+  };
 }
 
 // المخرج الرسمي = PDF بهوية لمحة (طلب المستخدم 2026-07-28). Excel يبقى
@@ -92,33 +107,33 @@ export async function exportVatReturn({ from, to, userId, preloaded }) {
   const rows = [
     ['الإقرار الضريبي (ضريبة القيمة المضافة)'],
     [`الفترة: من ${from} إلى ${to}`],
-    ['المصدر: زوهو بوكس — تقرير VAT الرسمي (نفس خانات نموذج الهيئة)'],
+    ['المصدر: زوهو بوكس — مع مطابقة حسابية مستقلة للخانتين 1 و7 حسب احتساب زاتكا'],
     [`أُنشئ: ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`],
     [],
     ['المخرجات — المبيعات'],
-    ['الخانة', 'البيان', 'المبلغ (قبل الضريبة)', 'الضريبة', 'التعديلات'],
-    ...r.output.map(b => [b.boxNo, b.label, b.amount, b.tax, b.adjustment]),
+    ['الخانة', 'البيان', 'المبلغ (قبل الضريبة)', 'ضريبة زوهو', 'ضريبة الإيداع', 'الفرق', 'التعديلات'],
+    ...r.output.map(b => [b.boxNo, b.label, b.amount, b.tax, b.filingTax, b.taxVariance, b.adjustment]),
     [],
     ['المدخلات — المشتريات'],
-    ['الخانة', 'البيان', 'المبلغ (قبل الضريبة)', 'الضريبة', 'التعديلات'],
-    ...r.input.map(b => [b.boxNo, b.label, b.amount, b.tax, b.adjustment]),
+    ['الخانة', 'البيان', 'المبلغ (قبل الضريبة)', 'ضريبة زوهو', 'ضريبة الإيداع', 'الفرق', 'التعديلات'],
+    ...r.input.map(b => [b.boxNo, b.label, b.amount, b.tax, b.filingTax, b.taxVariance, b.adjustment]),
     [],
     ['صافي الضريبة'],
-    ['الخانة', 'البيان', '', 'المبلغ', ''],
-    ...r.net.map(b => [b.boxNo, b.label, '', b.tax, '']),
+    ['الخانة', 'البيان', '', 'زوهو', 'الإيداع', 'الفرق', ''],
+    ...r.net.map(b => [b.boxNo, b.label, '', b.tax, b.filingTax, b.taxVariance, '']),
     [],
     ['الخلاصة'],
-    ['ضريبة المخرجات', '', r.totals.outputAmount, r.totals.outputTax, ''],
-    ['ضريبة المدخلات', '', r.totals.inputAmount, r.totals.inputTax, ''],
-    ['الصافي المستحق للهيئة', '', '', r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax), ''],
+    ['ضريبة المخرجات', '', r.totals.outputAmount, r.totals.outputTax, r.totals.filingOutputTax, r.reconciliation.variance.outputTax, ''],
+    ['ضريبة المدخلات', '', r.totals.inputAmount, r.totals.inputTax, r.totals.filingInputTax, r.reconciliation.variance.inputTax, ''],
+    ['الصافي المستحق للهيئة', '', '', r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax), r.totals.filingNetDue, r.reconciliation.variance.netDue, ''],
   ];
   const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{ wch: 8 }, { wch: 58 }, { wch: 18 }, { wch: 14 }, { wch: 12 }];
+  ws['!cols'] = [{ wch: 8 }, { wch: 52 }, { wch: 18 }, { wch: 14 }, { wch: 14 }, { wch: 12 }, { wch: 12 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'الإقرار الضريبي');
   await persistAndDownloadExport({
     wb: rtl(wb), fileName: `الإقرار_الضريبي_${from}_${to}.xlsx`, kind: 'vat_return',
-    rowCount: r.output.length + r.input.length, total: r.totals.netDue ?? 0, userId,
+    rowCount: r.output.length + r.input.length, total: r.totals.filingNetDue ?? 0, userId,
   });
   return r;
 }

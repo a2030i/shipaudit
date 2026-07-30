@@ -258,12 +258,31 @@ export async function bulkSetFollowups(phones, { ownerId = null, status = null, 
 
 // «مهامي اليوم» — يوم موظف المبيعات في استدعاء واحد
 export async function loadSalesToday(userId = null) {
-  const { data, error } = await supabase.rpc('sales_today', { p_user: userId || null });
-  if (error) throw error;
+  // الإشارات الإضافية RPC مستقل كي يبقى sales_today المستقر بلا استبدال.
+  // كلا الاستدعاءين thenables تحل إلى {data,error}؛ فشل الإثراء غير قاتل
+  // أثناء النشر المتدرّج، بينما فشل قائمة اليوم نفسها يظل خطأً صريحاً.
+  const [todayRes, signalsRes] = await Promise.all([
+    supabase.rpc('sales_today', { p_user: userId || null }),
+    supabase.rpc('merchant_sales_signals'),
+  ]);
+  if (todayRes.error) throw todayRes.error;
+  const data = todayRes.data || {};
+  const signals = signalsRes?.error ? {} : (signalsRes?.data || {});
+  if (signalsRes?.error) console.info('Merchant sales signals unavailable:', signalsRes.error.message);
+  const detailsByPhone = new Map(
+    (signals.opportunity_details || []).map(row => [row.phone, row]),
+  );
+  const platformOpportunities = (data.platform_opportunities || []).map(row => ({
+    ...row,
+    ...(detailsByPhone.get(row.phone) || {}),
+  }));
   return {
     dueFollowups: data?.due_followups || [],
-    platformOpportunities: data?.platform_opportunities || [],
+    platformOpportunities,
     platformOpportunityCount: Number(data?.platform_opportunity_count) || 0,
+    platformSummary: signals.summary || {},
+    activationReady: signals.activation_ready || [],
+    activationReadyCount: Number(signals.activation_ready_count) || 0,
     leadActions: data?.lead_actions || [],
     myNewLeads: data?.my_new_leads || [],
     myNewLeadsCount: Number(data?.my_new_leads_count) || 0,

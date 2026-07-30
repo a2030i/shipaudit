@@ -123,8 +123,14 @@ export default function ReportsCenter({ isActive = true }) {
     const q = QUARTERS.find(x => x.key === pQuarter) || QUARTERS[0];
     const { printVatReturnPdf } = await import('../lib/zohoReportsService.js');
     const r = await printVatReturnPdf({ from: q.from, to: q.to, userId: user?.id });
-    const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
-    toast(`الإقرار جاهز — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${fmt(Math.abs(due))} ر.س · اضغط «حفظ PDF» في النافذة`, 'success');
+    const due = r.totals.filingNetDue ?? r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
+    const diff = r.reconciliation?.variance?.netDue || 0;
+    toast(
+      `مسودة الإقرار جاهزة — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${fmt(Math.abs(due))} ر.س`
+      + (Math.abs(diff) > 0.01 ? ` · فرق زوهو/زاتكا ${fmt(diff)} ر.س موضح داخل التقرير` : '')
+      + ' · اضغط «حفظ PDF» في النافذة',
+      Math.abs(diff) > 0.01 ? 'info' : 'success',
+    );
   });
 
   // ── قائمة الدخل لأي فترة ──
@@ -181,8 +187,8 @@ export default function ReportsCenter({ isActive = true }) {
 
         {/* الإقرار الضريبي — من زوهو بخانات نموذج الهيئة */}
         <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
-          title="الإقرار الضريبي PDF (القيمة المضافة)"
-          desc="PDF رسمي بهوية لمحة — خانات نموذج الهيئة (1..16): المخرجات · المدخلات · الصافي المستحق">
+          title="مسودة الإقرار الضريبي PDF (القيمة المضافة)"
+          desc="خانات نموذج الهيئة (1..16) من زوهو + مطابقة مستقلة لضريبة الخانتين 1 و7 قبل الإيداع">
           <Select value={pQuarter} onChange={e => setPQuarter(e.target.value)}>
             {QUARTERS.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
           </Select>

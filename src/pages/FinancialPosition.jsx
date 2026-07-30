@@ -171,8 +171,14 @@ export default function FinancialPosition({ isActive = true }) {
       }
       const { from, to } = quarterRange(y, q);
       const r = await printVatReturnPdf({ from, to, userId: user?.id });
-      const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
-      toast(`الإقرار (${from} → ${to}) — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س · اضغط «حفظ PDF» في النافذة`, 'success');
+      const due = r.totals.filingNetDue ?? r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
+      const diff = r.reconciliation?.variance?.netDue || 0;
+      toast(
+        `مسودة الإقرار (${from} → ${to}) — ${due < 0 ? 'رصيد دائن' : 'المستحق'} ${Math.abs(due).toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س`
+        + (Math.abs(diff) > 0.01 ? ` · فرق زوهو/زاتكا ${diff.toLocaleString('en-US', { minimumFractionDigits: 2 })} ر.س موضح في التقرير` : '')
+        + ' · اضغط «حفظ PDF» في النافذة',
+        Math.abs(diff) > 0.01 ? 'info' : 'success',
+      );
     } catch (e) { toast(`تعذّر الإقرار: ${e.message}`, 'error'); }
     setDl(null);
   };

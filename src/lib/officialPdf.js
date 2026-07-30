@@ -156,7 +156,7 @@ export function printVatReturn(r, { orgName = 'شركة لمحة' } = {}) {
       <td class="box">${esc(b.boxNo)}</td>
       <td>${esc(b.label)}</td>
       <td class="num">${money(b.amount)}</td>
-      <td class="num">${money(b.tax)}</td>
+      <td class="num">${money(b.filingTax ?? b.tax)}</td>
       <td class="num">${money(b.adjustment)}</td>
     </tr>`).join('');
 
@@ -165,8 +165,18 @@ export function printVatReturn(r, { orgName = 'شركة لمحة' } = {}) {
       <th class="num">المبلغ (قبل الضريبة)</th><th class="num">الضريبة</th><th class="num">التعديلات</th>
     </tr></thead>`;
 
-  const due = r.totals.netDue ?? (r.totals.outputTax - r.totals.inputTax);
+  const due = r.totals.filingNetDue
+    ?? r.totals.netDue
+    ?? (r.totals.outputTax - r.totals.inputTax);
   const credit = due < 0;
+  const rec = r.reconciliation;
+  const reconciliationNote = rec?.hasMismatch ? `
+    <div class="note" style="border:1px solid #F2B84B;background:#FFF8E8;color:#704A00">
+      مطابقة زاتكا: صافي زوهو ${money(rec.zoho.netDue)} ر.س ·
+      المتوقع عند الإيداع ${money(rec.filing.netDue)} ر.س ·
+      الفرق ${money(rec.variance.netDue)} ر.س.
+      أُعيد احتساب الخانتين 1 و7 فقط بنسبة 15%، وبقية التصنيف بقي كما هو من زوهو.
+    </div>` : '';
 
   const body = `
     <div class="sec">
@@ -182,7 +192,7 @@ export function printVatReturn(r, { orgName = 'شركة لمحة' } = {}) {
       <table><thead><tr><th class="box">الخانة</th><th>البيان</th><th class="num">المبلغ</th></tr></thead>
       <tbody>${r.net.map(b => `
         <tr class="${b.tax ? '' : 'zero'}">
-          <td class="box">${esc(b.boxNo)}</td><td>${esc(b.label)}</td><td class="num">${money(b.tax)}</td>
+          <td class="box">${esc(b.boxNo)}</td><td>${esc(b.label)}</td><td class="num">${money(b.filingTax ?? b.tax)}</td>
         </tr>`).join('')}</tbody></table>
     </div>
     <div class="net">
@@ -190,16 +200,17 @@ export function printVatReturn(r, { orgName = 'شركة لمحة' } = {}) {
       <span class="val ${credit ? 'credit' : ''}">${money(Math.abs(due))} ر.س</span>
     </div>
     <div class="note">
-      ضريبة المخرجات ${money(r.totals.outputTax)} ر.س على مبيعات ${money(r.totals.outputAmount)} ر.س ·
-      ضريبة المدخلات ${money(r.totals.inputTax)} ر.س على مشتريات ${money(r.totals.inputAmount)} ر.س.
-    </div>`;
+      ضريبة المخرجات للإيداع ${money(r.totals.filingOutputTax ?? r.totals.outputTax)} ر.س على مبيعات ${money(r.totals.outputAmount)} ر.س ·
+      ضريبة المدخلات للإيداع ${money(r.totals.filingInputTax ?? r.totals.inputTax)} ر.س على مشتريات ${money(r.totals.inputAmount)} ر.س.
+    </div>
+    ${reconciliationNote}`;
 
   const html = shell({
-    title: 'الإقرار الضريبي — ضريبة القيمة المضافة',
+    title: 'مسودة الإقرار الضريبي — ضريبة القيمة المضافة',
     subtitle: orgName,
     periodLine: `الفترة الضريبية: ${arDate(r.from)} — ${arDate(r.to)}`,
     bodyHtml: body,
-    footNote: 'المصدر: زوهو بوكس — أرقام الخانات مطابقة لنموذج الهيئة',
+    footNote: 'المصدر: زوهو بوكس · مطابقة حسابية مستقلة للخانتين 1 و7 قبل الإيداع في زاتكا',
   });
   return openPrint(html, `الإقرار_الضريبي_${r.from}_${r.to}`);
 }

@@ -9,7 +9,7 @@
 // اختيار موظف). كل بند ينقل لتبويبه الصحيح.
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sunrise, RefreshCw, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset, Store, WalletCards, RotateCcw } from 'lucide-react';
+import { Sunrise, RefreshCw, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset, Store, WalletCards, RotateCcw, PlugZap, Layers3, ShieldCheck } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { loadSalesToday, segmentMeta, setRetargetingFollowup, statusMeta } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -21,12 +21,40 @@ const leadStageLabel = (s) => ({
   proposal: 'عرض مقدّم', negotiation: 'تفاوض', nurture: 'متابعة لاحقة',
 }[s] || s || '—');
 const platformReason = (o) => {
+  if (o.next_step) return o.next_step;
   if (o.segment === 'topped_no_ship') return `شحن رصيد ${Number(o.wallet || 0).toLocaleString('en-US')} ر.س ولم يبدأ الشحن`;
   if (o.segment === 'stopped_recent') return `توقّف منذ ${o.days_since_last || '—'} يوم · ${Number(o.total_shipments || 0).toLocaleString('en-US')} شحنة سابقة`;
   if (o.segment === 'stopped_long') return `عميل مرتفع القيمة متوقف · ${Number(o.total_shipments || 0).toLocaleString('en-US')} شحنة سابقة`;
   if (o.segment === 'linked_no_ship') return 'أكمل الربط ولم ينفّذ أول شحنة';
   return 'سجّل حديثاً ولم ينفّذ أول شحنة';
 };
+
+const routeLabel = (route) => ({
+  sales_activation: 'تفعيل مبيعات',
+  sales_recovery: 'استعادة',
+  onboarding: 'تهيئة المتجر',
+  account_management: 'حساب رئيسي',
+  sales_growth: 'تنمية',
+  collections: 'تحصيل',
+}[route] || '');
+
+function OpportunityContext({ opportunity }) {
+  const chips = [
+    opportunity.readiness_score != null ? `جاهزية ${opportunity.readiness_score}%` : null,
+    opportunity.store_count > 1 ? `${opportunity.store_count} متاجر` : null,
+    routeLabel(opportunity.team_route),
+  ].filter(Boolean);
+  if (!chips.length) return null;
+  return (
+    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+      {chips.map(chip => (
+        <span key={chip} style={{ fontSize: 9.5, color: 'var(--brand)', background: 'color-mix(in srgb, var(--brand) 9%, var(--surface))', border: '1px solid color-mix(in srgb, var(--brand) 20%, var(--border))', borderRadius: 999, padding: '2px 6px', fontWeight: 700 }}>
+          {chip}
+        </span>
+      ))}
+    </div>
+  );
+}
 
 function Section({ icon, title, count, color, children }) {
   return (
@@ -85,15 +113,34 @@ export default function SalesToday({ isActive = true }) {
   );
   if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
-  const nothing = !d.platformOpportunities?.length && !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.myNewLeads.length && !d.myTasks.length;
+  const nothing = !d.platformOpportunities?.length && !d.activationReady?.length && !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.myNewLeads.length && !d.myTasks.length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Sunrise size={22}/>} iconColor="var(--gold)"
         title="يومي — بمن أبدأ الآن؟"
         subtitle="الأولوية لمتاجر المنصّة: فعّل الجديد، تابع من شحن رصيداً، واستعد العميل المتوقف"
-        meta={`${d.myFollowupsTotal} متابعة لك · ${d.platformOpportunityCount} فرصة منصة جاهزة`}
+        meta={`${d.myFollowupsTotal} متابعة لك · ${d.platformOpportunityCount} فرصة منصة · ${d.activationReadyCount || 0} جاهزة بالكامل`}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>تحديث</Btn>}/>
+
+      {!!Object.keys(d.platformSummary || {}).length && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: 14 }}>
+          {[
+            { icon: <PlugZap size={16}/>, label: 'جاهزون لأول شحنة', value: d.platformSummary.ready_to_activate || 0, tone: 'var(--accent)' },
+            { icon: <RotateCcw size={16}/>, label: 'توقفوا خلال 30 يومًا', value: d.platformSummary.stopped_30d || 0, tone: 'var(--gold)' },
+            { icon: <Layers3 size={16}/>, label: 'حسابات متعددة المتاجر', value: d.platformSummary.multi_store_accounts || 0, tone: 'var(--brand)' },
+            { icon: <ShieldCheck size={16}/>, label: 'امتثال يحتاج متابعة', value: d.platformSummary.compliance_pending || 0, tone: 'var(--purple)' },
+          ].map(item => (
+            <Card key={item.label} style={{ padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 9, borderInlineStart: `3px solid ${item.tone}` }}>
+              <span style={{ color: item.tone }}>{item.icon}</span>
+              <div>
+                <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{item.label}</div>
+                <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'var(--font-mono)', color: item.tone }}>{item.value}</div>
+              </div>
+            </Card>
+          ))}
+        </div>
+      )}
 
       {nothing ? (
         <Card><Empty icon="🎉" title="لا شيء عاجلاً الآن" sub="لا متابعات مستحقّة ولا فرص منصة جاهزة — راجع العملاء الخارجيين أو خطّط لحملة جديدة"/></Card>
@@ -115,6 +162,7 @@ export default function SalesToday({ isActive = true }) {
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontSize: 12.5, fontWeight: 800 }}>{o.store || o.phone}</div>
                         <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{platformReason(o)}</div>
+                        <OpportunityContext opportunity={o}/>
                       </div>
                       <Btn size="sm" variant="accent" disabled={!!claiming} onClick={() => claimPlatformLead(o)}>
                         {claiming === o.phone ? 'جارٍ الاستلام…' : 'استلام'}
@@ -125,6 +173,34 @@ export default function SalesToday({ isActive = true }) {
                 {d.platformOpportunityCount > d.platformOpportunities.length && (
                   <button onClick={() => navigate('/retargeting?tab=activation')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--brand)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
                     +{d.platformOpportunityCount - d.platformOpportunities.length} فرصة أخرى — فتح قوائم التفعيل والاستعادة
+                  </button>
+                )}
+              </div>
+            )}
+          </Section>
+
+          <Section icon={<PlugZap size={16} color="var(--accent)"/>} title="جاهزون بالكامل لأول شحنة" count={d.activationReadyCount || 0} color="var(--accent)">
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
+              ملف مكتمل · موثق · مربوط. ظهرت منفصلة لأنها أقدم من 30 يومًا ولم تدخل قائمة الجديد.
+            </div>
+            {!d.activationReady?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا توجد فرص جاهزة غير مستلمة ✓</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {d.activationReady.map(o => (
+                  <div key={o.phone} style={rowStyle}>
+                    <PlugZap size={15} color="var(--accent)"/>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800 }}>{o.store || o.phone}</div>
+                      <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{o.next_step || 'مساعدته على تنفيذ أول شحنة'}</div>
+                      <OpportunityContext opportunity={o}/>
+                    </div>
+                    <Btn size="sm" variant="accent" disabled={!!claiming} onClick={() => claimPlatformLead(o)}>
+                      {claiming === o.phone ? 'جارٍ الاستلام…' : 'استلام'}
+                    </Btn>
+                  </div>
+                ))}
+                {d.activationReadyCount > d.activationReady.length && (
+                  <button onClick={() => navigate('/retargeting?tab=activation')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
+                    +{d.activationReadyCount - d.activationReady.length} فرصة جاهزة أخرى
                   </button>
                 )}
               </div>
