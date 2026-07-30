@@ -1,7 +1,7 @@
 // «مركز المبيعات» — دمج المرحلة 3 من خطة الموديولات (§1.32):
 // كل «فرص النمو» في مكان واحد بدل 4 صفحات متفرّقة:
 //   /retargeting  → إعادة الاستهداف (متاجرنا الخاملة — الافتراضي)
-//   /hatif-leads  → فرص من هاتف (كلّمونا ولم يسجّلوا)
+//   /hatif-leads  → مرجع طلبات التواصل في هاتف (لا يفتح Lead من مجرد رد)
 //   (من /crm)     → عملاء خارج المنصّة (قوائم خارجية — LeadsTab المُصدَّر من CRM)
 //   /segments     → شرائح العملاء (كان داخل ملف العملاء)
 //   /merchants    → متاجر المنصّة (الدليل — كان داخل ملف العملاء)
@@ -44,10 +44,10 @@ const TABS = [
     outcome: 'عودة عميل ذي قيمة', tone: 'var(--gold)',
   },
   {
-    id: 'hatif', label: 'العملاء المهتمون', icon: UserPlus, component: HatifLeads, perm: 'sales.hatif_leads',
-    eyebrow: 'طلب وارد', purpose: 'تابع من أبدى اهتماماً ولم يكمل التسجيل',
-    description: 'فرص دخلت عبر هاتف أو قناة تواصل. دور الشاشة تحويل الاهتمام إلى تسجيل، مع منع ضياع الطلب بين الموظفين.',
-    outcome: 'تحويل الاهتمام إلى تسجيل', tone: 'var(--accent3)',
+    id: 'hatif', label: 'مرجع طلبات هاتف', icon: UserPlus, component: HatifLeads, perm: 'sales.hatif_leads',
+    eyebrow: 'مرجع قناة التواصل', purpose: 'راجع الطلبات الواردة عند الحاجة',
+    description: 'مرجع لما ظهر في هاتف، وليس مولّد Leads تلقائياً. رد العميل يبقى لدى فريق هاتف ولا يفتح فرصة بيع في نظامنا.',
+    outcome: 'سياق إضافي بلا ازدواج متابعة', tone: 'var(--accent3)',
   },
   {
     id: 'external', label: 'العملاء المحتملون', icon: Store, component: LeadsTab, perm: 'sales.external_leads', activeProp: true,
@@ -114,7 +114,7 @@ export default function SalesHub({ isActive = true }) {
       <WorkspaceTabs
         scope="sales"
         title="فرص البيع"
-        subtitle="خطة اليوم، تفعيل الجدد، واستعادة العملاء"
+        subtitle="متاجر المنصّة أولاً: تفعيل الجدد، استعادة المتوقفين، ثم الوارد الخارجي"
         tabs={visibleTabs}
         activeId={activeTab?.id}
         onChange={handleTabChange}

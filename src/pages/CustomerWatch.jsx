@@ -207,6 +207,8 @@ export default function CustomerWatch({ isActive = true }) {
   const [loading, setLoading] = useState(true);
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [search, setSearch] = useState('');
+  const [view, setView] = useState('overview');
+  const [listGroup, setListGroup] = useState('finance');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
 
@@ -240,7 +242,10 @@ export default function CustomerWatch({ isActive = true }) {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const incoming = params.get('customer') || params.get('q');
-    if (incoming) setSearch(incoming);
+    if (incoming) {
+      setSearch(incoming);
+      setView('overview');
+    }
   }, [location.search]);
 
   const t = data?.totals;
@@ -321,32 +326,38 @@ export default function CustomerWatch({ isActive = true }) {
       <PageHeader
         icon={<Users size={22}/>}
         title="ملفات العملاء"
-        subtitle="ابحث عن أي عميل وافتح ملفه الكامل — مديونيات، شحنات، محافظ، وتنبيهات"
+        subtitle="مرجع موحّد للعميل — هويته، وضعه المالي، نشاطه، وتاريخ التواصل"
         meta={data?.snapshot?.receivables
           ? `بيانات الفواتير: snapshot ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · المتاجر: ${data.snapshot.merchants.id}` : ''}`
           : null}
         actions={
           <>
-            <Btn size="md" variant="primary" onClick={() => navigate('/customer-360?tab=receivables')}>
-              فتح المديونيات
+            <Btn size="md" variant="ghost" onClick={() => navigate('/customer-money?tab=money')}>
+              الديون والتحصيل
             </Btn>
           </>
         }
       />
 
-      <DataConfidenceBar
-        active={isActive}
-        sourceLabel="Zoho Books API + دليل المتاجر"
-        snapshotMeta={data?.snapshot?.receivables
-          ? `فواتير ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · متاجر ${data.snapshot.merchants.id}` : ''}`
-          : null}
-        canSync={can?.('money.pnl')}
-        syncing={syncingZoho}
-        refreshing={loading}
-        onSync={syncZohoAndRefresh}
-        onRefresh={refresh}
-        sourcePath="/zoho-data?type=invoices"
-      />
+      <details className="customer-source-details">
+        <summary>
+          <span>مصادر البيانات والتحديث</span>
+          <small>زوهو + دليل متاجر لمحة</small>
+        </summary>
+        <DataConfidenceBar
+          active={isActive}
+          sourceLabel="Zoho Books API + دليل المتاجر"
+          snapshotMeta={data?.snapshot?.receivables
+            ? `فواتير ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · متاجر ${data.snapshot.merchants.id}` : ''}`
+            : null}
+          canSync={can?.('money.pnl')}
+          syncing={syncingZoho}
+          refreshing={loading}
+          onSync={syncZohoAndRefresh}
+          onRefresh={refresh}
+          sourcePath="/zoho-data?type=invoices"
+        />
+      </details>
 
       {loading && !data ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
@@ -360,21 +371,32 @@ export default function CustomerWatch({ isActive = true }) {
         </Card>
       ) : (
         <>
-          <CustomerPulseSummary t={t} />
-
           {/* ── SEARCH BAR ─────────────────────────────────────── */}
-          <Card style={{ padding: '12px 16px', marginBottom: 24, position: 'relative' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <Search size={16} color="var(--muted)"/>
+          <Card className="customer-search-hero" style={{ padding: '20px 22px', marginBottom: 16, position: 'relative' }}>
+            <div className="customer-search-copy">
+              <div>
+                <div className="customer-search-eyebrow">ابدأ من هنا</div>
+                <h2>افتح ملف عميل</h2>
+                <p>ابحث بالاسم أو رقم المتجر أو الجوال، ثم راجع كل معلوماته في ملف واحد.</p>
+              </div>
+              <div className="customer-search-scope">
+                <span>المديونية</span>
+                <span>المحفظة</span>
+                <span>الشحن</span>
+                <span>التواصل</span>
+              </div>
+            </div>
+            <div className="customer-search-input">
+              <Search size={19} color="var(--brand)"/>
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="ابحث عن عميل أو متجر بالاسم، الـ ID، أو الهاتف…"
+                placeholder="اسم العميل، اسم المتجر، رقم المتجر، أو الجوال…"
                 autoComplete="off"
                 data-lpignore="true" data-form-type="other"
                 name="customer-watch-search"
                 style={{
                   flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                  fontSize: 14, padding: '6px 0', color: 'var(--text)',
+                  fontSize: 15, padding: '8px 0', color: 'var(--text)',
                   boxShadow: 'none',
                 }}
               />
@@ -438,8 +460,30 @@ export default function CustomerWatch({ isActive = true }) {
             )}
           </Card>
 
+          <div className="customer-view-tabs" role="tablist" aria-label="أقسام ملفات العملاء">
+            {[
+              ['overview', 'ملخص العملاء', 'الأرقام الرئيسية واتجاه النشاط'],
+              ['risks', 'مراقبة المخاطر', `${fmtCount(t.anomalyCount)} حالة تحتاج انتباه`],
+              ['lists', 'القوائم المرجعية', 'الأعلى نشاطاً وديناً والأحدث'],
+            ].map(([id, label, sub]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={view === id}
+                className={view === id ? 'active' : ''}
+                onClick={() => setView(id)}
+              >
+                <strong>{label}</strong>
+                <span>{sub}</span>
+              </button>
+            ))}
+          </div>
+
+          {view === 'overview' && <CustomerPulseSummary t={t} />}
+
           {/* ── MONTHLY INVOICING TREND ────────────────────────── */}
-          {chartData && chartData.series[0].data.some(v => v > 0) && (
+          {view === 'overview' && chartData && chartData.series[0].data.some(v => v > 0) && (
             <Card style={{ padding: '24px 28px', marginBottom: 24 }}>
               <SectionTitle
                 tag="الاتجاه · 12 شهراً"
@@ -451,15 +495,15 @@ export default function CustomerWatch({ isActive = true }) {
           )}
 
           {/* ── TODAY'S PRIORITIES ─────────────────────────────── */}
-          {data.todayActions?.length > 0 && (
+          {view === 'risks' && data.todayActions?.length > 0 && (
             <Card style={{ padding: '20px 24px', marginBottom: 28 }}>
               <SectionTitle
                 tag="أولويات اليوم"
                 title="اليوم تحتاج"
                 color="var(--gold)"
                 action={
-                  <Btn size="sm" variant="ghost" onClick={() => navigate('/receivables')}>
-                    كل التنبيهات
+                  <Btn size="sm" variant="ghost" onClick={() => navigate('/customer-money?tab=internal')}>
+                    فتح المطابقة الداخلية
                   </Btn>
                 }
               />
@@ -517,30 +561,34 @@ export default function CustomerWatch({ isActive = true }) {
           )}
 
           {/* ── QUICK STATS (merchant-side) ─────────────────────── */}
-          <SectionTitle tag="المتاجر" title="بيانات المتاجر"/>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-            gap: 12, marginBottom: 28,
-          }}>
-            <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
-            <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
-            <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="var(--brand)"/>
-            <QuickStat icon={<ZapOff/>}       label="لم يشحن أبداً"        value={fmtCount(t.neverShipped)} hint="تسرّب بين التسجيل والشحن" color="#EF4444"/>
-            <QuickStat icon={<Wallet/>}       label="أرصدة موجبة"          value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
-            <QuickStat icon={<Wallet/>}       label="أرصدة سالبة"          value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
-          </div>
+          {view === 'overview' && (
+            <>
+              <SectionTitle tag="حجم القاعدة" title="حالة متاجر العملاء"/>
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                gap: 12, marginBottom: 28,
+              }}>
+                <QuickStat icon={<ShoppingBag/>}  label="إجمالي المتاجر"      value={fmtCount(t.merchantsCount)} color="var(--green)"/>
+                <QuickStat icon={<UserPlus/>}     label="نشط حالياً"           value={fmtCount(t.activeCount)} hint={`${t.inactiveCount} غير نشط`} color="var(--green)"/>
+                <QuickStat icon={<TrendingUp/>}   label="جدد آخر 30 يوم"       value={fmtCount(t.newLast30Days)} hint={`${t.newThisMonth} هذا الشهر`} color="var(--brand)"/>
+                <QuickStat icon={<ZapOff/>}       label="لم يبدأ الشحن"        value={fmtCount(t.neverShipped)} hint="سجّل ولم ينفّذ أول شحنة" color="#EF4444"/>
+                <QuickStat icon={<Wallet/>}       label="أرصدة محافظ موجبة"    value={`${fmtCompact(t.walletPositiveTotal)} ر.س`} color="var(--green)"/>
+                <QuickStat icon={<Wallet/>}       label="أرصدة محافظ سالبة"    value={`${fmtCompact(Math.abs(t.walletNegativeTotal))} ر.س`} color="var(--red)"/>
+              </div>
+            </>
+          )}
 
           {/* ── ANOMALIES — five tiles, click to drill into receivables ── */}
-          {t.anomalyCount > 0 && (
+          {view === 'risks' && t.anomalyCount > 0 && (
             <>
               <SectionTitle
                 tag="التنبيهات"
                 title={`تنبيهات تحتاج إجراء (${t.anomalyCount})`}
                 color="#EF4444"
                 action={
-                  <Btn size="sm" variant="ghost" onClick={() => navigate('/receivables')}>
-                    افتح صفحة التنبيهات
+                  <Btn size="sm" variant="ghost" onClick={() => navigate('/customer-money?tab=internal')}>
+                    فتح المطابقة الداخلية
                   </Btn>
                 }
               />
@@ -606,12 +654,29 @@ export default function CustomerWatch({ isActive = true }) {
           )}
 
           {/* ── TOP-N LISTS ──────────────────────────────────────── */}
-          <SectionTitle tag="أهم القوائم" title="أهم القوائم"/>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(380px, 1fr))',
-            gap: 14, marginBottom: 28,
-          }}>
+          {view === 'lists' && (
+            <>
+          <SectionTitle tag="مرجع سريع" title="استكشف قاعدة العملاء"/>
+          <div className="customer-list-groups" role="tablist" aria-label="نوع القائمة">
+            {[
+              ['finance', 'المال والمخاطر'],
+              ['activity', 'الاستخدام والنشاط'],
+              ['growth', 'النمو والاستعادة'],
+            ].map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={listGroup === id}
+                className={listGroup === id ? 'active' : ''}
+                onClick={() => setListGroup(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="customer-reference-grid">
+            {listGroup === 'finance' && (
             <TopList
               icon={<AlertTriangle size={14}/>}
               accent="#EF4444"
@@ -631,6 +696,8 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم العميل', 'المتجر', 'الهاتف', 'الإجمالي', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
                 : [c.name, c.merchant?.storeName || '', c.merchant?.phone || '', c.total?.toFixed(2) || 0, c.invoiceCount || 0, c.oldestInvoiceDate || '', c.daysOutstanding || ''])}
             />
+            )}
+            {listGroup === 'activity' && (
             <TopList
               icon={<TrendingUp size={14}/>}
               accent="var(--green)"
@@ -651,6 +718,8 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'حالة المتجر', 'نوع الفوترة']
                 : [m.store_name, m.store_id, m.phone || '', m.shipment_count, m.last_shipment_at || '', m.status || '', m.billing_type || ''])}
             />
+            )}
+            {listGroup === 'finance' && (
             <TopList
               icon={<Wallet size={14}/>}
               accent="var(--brand)"
@@ -671,6 +740,8 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد', 'آخر شحن للمحفظة']
                 : [m.store_name, m.store_id, m.phone || '', Number(m.wallet_balance).toFixed(2), m.last_topup_at || ''])}
             />
+            )}
+            {listGroup === 'finance' && (
             <TopList
               icon={<AlertOctagon size={14}/>}
               accent="var(--red)"
@@ -691,6 +762,8 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'نوع الفوترة']
                 : [m.store_name, m.store_id, m.phone || '', Number(m.wallet_balance).toFixed(2), m.billing_type || ''])}
             />
+            )}
+            {listGroup === 'growth' && (
             <TopList
               icon={<UserPlus size={14}/>}
               accent="var(--accent)"
@@ -711,6 +784,8 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'تاريخ التسجيل', 'عدد الشحنات', 'حالة المتجر']
                 : [m.store_name, m.store_id, m.phone || '', m.created_at_platform || '', m.shipment_count || 0, m.status || ''])}
             />
+            )}
+            {listGroup === 'growth' && (
             <TopList
               icon={<ZapOff size={14}/>}
               accent="color-mix(in srgb, var(--brand-navy) 55%, var(--muted))"
@@ -731,7 +806,10 @@ export default function CustomerWatch({ isActive = true }) {
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'تاريخ التسجيل']
                 : [m.store_name, m.store_id, m.phone || '', m.shipment_count || 0, m.last_shipment_at || '', m.created_at_platform || ''])}
             />
+            )}
           </div>
+            </>
+          )}
         </>
       )}
 

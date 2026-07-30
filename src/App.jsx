@@ -50,7 +50,6 @@ const CashAging = lazy(() => import('./pages/CashAging.jsx'));
 const IntegrityCheck = lazy(() => import('./pages/IntegrityCheck.jsx'));
 // Claims now renders inside CarriersWorkspace (claims tab), not a top-level route.
 const DecisionsBoard = lazy(() => import('./pages/DecisionsBoard.jsx'));
-const NextActions = lazy(() => import('./pages/NextActions.jsx'));
 import CommandPalette    from './components/CommandPalette.jsx';
 const Overview = lazy(() => import('./pages/Overview.jsx'));
 const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
@@ -89,9 +88,6 @@ const NAV_ITEMS = [
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
-  // قائمة اليوم العابرة للتحصيل والمبيعات — اسمها يشرح أنها مهام، لا شاشة تحليل أخرى.
-  { id: 'next-actions', path: '/next-actions', label: 'مهام العملاء اليوم', icon: Target, section: 'customers', permAny: ['collections.view', 'sales.view', 'overview.view'] },
-
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
   { id: 'hub',          path: '/hub',               label: 'حالة الشركات',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
@@ -147,8 +143,9 @@ const NAV_ITEMS = [
     permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
       { tabId: 'today',       label: 'خطة اليوم',           icon: Target },
+      { tabId: 'activation',  label: 'تفعيل المتاجر',       icon: TrendingUp },
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
-      { tabId: 'hatif',       label: 'فرص من هاتف',        icon: UserPlus,    legacy: '/hatif-leads' },
+      { tabId: 'hatif',       label: 'مرجع طلبات هاتف',    icon: UserPlus,    legacy: '/hatif-leads' },
       { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
       { tabId: 'segments',    label: 'مجموعات العملاء',      icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
@@ -745,9 +742,11 @@ function AppInner({ theme, toggleTheme }) {
               <DecisionsBoard isActive={pathname==='/decisions'}/>
             </PageSlot>
 
-            <PageSlot active={pathname==='/next-actions'} scroll>
-              <NextActions isActive={pathname==='/next-actions'}/>
-            </PageSlot>
+            {/* المسار القديم كان يكرر التحصيل والمبيعات في قائمة واحدة غامضة.
+                نحتفظ بالرابط فقط، ونرسله إلى قائمة المبيعات اليومية القانونية. */}
+            {pathname === '/next-actions' && (
+              <Navigate to="/retargeting?tab=today" replace/>
+            )}
             {/* /hub + /carrier-kpi + /claims all render this workspace;
                 CarriersWorkspace reads ?tab= or the legacy path to pick
                 the right inner tab (cards / KPIs / claims). */}

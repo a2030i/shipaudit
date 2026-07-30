@@ -1,24 +1,32 @@
 // «يومي» — أول تبويب في مركز المبيعات (§1.37): يوم موظف المبيعات في شاشة
 // واحدة. يجيب سؤالاً واحداً: بمن أبدأ الآن؟
 //   ١) متابعاتي المستحقّة/المتأخرة (الأولوية القصوى)
-//   ٢) مهام مفتوحة نتجت عن ردود حملات آخر 48 ساعة (لا كل الردود الخام)
-//   ٣) جهاتي الخارجية الجديدة التي لم أكلّمها
+//   ٢) أعلى فرص متاجر المنصّة غير المستلمة
+//   ٣) الجهات الخارجية الجديدة التي وصلت من ملف/ويب هوك
 //   ٤) مهامي/مواعيدي المستحقّة
+// ردود واتساب لا تفتح Lead هنا: المحادثة ومسؤوليتها التشغيلية داخل هاتف.
 // المصدر: RPC sales_today() — استدعاء واحد. المدير يرى نفسه (ويستطيع لاحقاً
 // اختيار موظف). كل بند ينقل لتبويبه الصحيح.
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sunrise, RefreshCw, MessageCircle, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset } from 'lucide-react';
+import { Sunrise, RefreshCw, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset, Store, WalletCards, RotateCcw } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
-import { loadSalesToday, statusMeta } from '../lib/retargetingService.js';
+import { loadSalesToday, segmentMeta, setRetargetingFollowup, statusMeta } from '../lib/retargetingService.js';
+import { useAuth } from '../lib/auth.jsx';
 import WaActions from '../components/WaActions.jsx';
-import { hatifInboxUrl } from '../lib/whatsappService.js';
 
 const fmtWhen = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d || '').slice(0, 16); } };
 const leadStageLabel = (s) => ({
   new: 'جديد', attempting: 'جارٍ التواصل', contacted: 'تم الرد', qualified: 'مؤهّل',
   proposal: 'عرض مقدّم', negotiation: 'تفاوض', nurture: 'متابعة لاحقة',
 }[s] || s || '—');
+const platformReason = (o) => {
+  if (o.segment === 'topped_no_ship') return `شحن رصيد ${Number(o.wallet || 0).toLocaleString('en-US')} ر.س ولم يبدأ الشحن`;
+  if (o.segment === 'stopped_recent') return `توقّف منذ ${o.days_since_last || '—'} يوم · ${Number(o.total_shipments || 0).toLocaleString('en-US')} شحنة سابقة`;
+  if (o.segment === 'stopped_long') return `عميل مرتفع القيمة متوقف · ${Number(o.total_shipments || 0).toLocaleString('en-US')} شحنة سابقة`;
+  if (o.segment === 'linked_no_ship') return 'أكمل الربط ولم ينفّذ أول شحنة';
+  return 'سجّل حديثاً ولم ينفّذ أول شحنة';
+};
 
 function Section({ icon, title, count, color, children }) {
   return (
@@ -37,8 +45,10 @@ const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px
 
 export default function SalesToday({ isActive = true }) {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [claiming, setClaiming] = useState('');
   const [error, setError] = useState('');
 
   const refresh = async () => {
@@ -49,6 +59,19 @@ export default function SalesToday({ isActive = true }) {
     setBusy(false);
   };
   useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
+
+  const claimPlatformLead = async (lead) => {
+    if (!user?.id || claiming) return;
+    setClaiming(lead.phone);
+    try {
+      await setRetargetingFollowup(lead.phone, { ownerId: user.id, status: 'new' });
+      toast(`أُسند متجر «${lead.store || lead.phone}» لك`, 'success');
+      await refresh();
+    } catch (e) {
+      toast(`تعذّر استلام الفرصة: ${e.message}`, 'error');
+    }
+    setClaiming('');
+  };
 
   if (d == null && error) return (
     <div style={{ padding: 40, maxWidth: 720, margin: '0 auto' }}>
@@ -62,20 +85,51 @@ export default function SalesToday({ isActive = true }) {
   );
   if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
-  const nothing = !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.replies.length && !d.myNewLeads.length && !d.myTasks.length;
+  const nothing = !d.platformOpportunities?.length && !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.myNewLeads.length && !d.myTasks.length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Sunrise size={22}/>} iconColor="var(--gold)"
         title="يومي — بمن أبدأ الآن؟"
-        subtitle="المهام المفتوحة والمتابعات المستحقّة والجهات الجديدة — دون افتراض أن رد واتساب لم يعالجه فريق هاتف"
-        meta={`${d.myFollowupsTotal} متابعة نشطة مسندة لك`}
+        subtitle="الأولوية لمتاجر المنصّة: فعّل الجديد، تابع من شحن رصيداً، واستعد العميل المتوقف"
+        meta={`${d.myFollowupsTotal} متابعة لك · ${d.platformOpportunityCount} فرصة منصة جاهزة`}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>تحديث</Btn>}/>
 
       {nothing ? (
-        <Card><Empty icon="🎉" title="لا شيء عاجلاً الآن" sub="لا متابعات مستحقّة ولا ردود جديدة — افتح «إعادة الاستهداف» واعمل على فرص جديدة"/></Card>
+        <Card><Empty icon="🎉" title="لا شيء عاجلاً الآن" sub="لا متابعات مستحقّة ولا فرص منصة جاهزة — راجع العملاء الخارجيين أو خطّط لحملة جديدة"/></Card>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
+
+          <Section icon={<Store size={16} color="var(--brand)"/>} title="فرص متاجر المنصّة" count={d.platformOpportunityCount} color="var(--brand)">
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
+              يولّدها سلوك المتجر داخل لمحة، لا ردود واتساب. استلم الفرصة لتدخل متابعاتك.
+            </div>
+            {!d.platformOpportunities?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا فرص منصة غير مستلمة الآن ✓</div> : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {d.platformOpportunities.map((o) => {
+                  const segment = segmentMeta(o.segment);
+                  const SignalIcon = o.segment === 'topped_no_ship' ? WalletCards : o.segment?.startsWith('stopped') ? RotateCcw : UserPlus;
+                  return (
+                    <div key={o.phone} style={rowStyle}>
+                      <SignalIcon size={15} color={segment.color}/>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 12.5, fontWeight: 800 }}>{o.store || o.phone}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{platformReason(o)}</div>
+                      </div>
+                      <Btn size="sm" variant="accent" disabled={!!claiming} onClick={() => claimPlatformLead(o)}>
+                        {claiming === o.phone ? 'جارٍ الاستلام…' : 'استلام'}
+                      </Btn>
+                    </div>
+                  );
+                })}
+                {d.platformOpportunityCount > d.platformOpportunities.length && (
+                  <button onClick={() => navigate('/retargeting?tab=activation')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--brand)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
+                    +{d.platformOpportunityCount - d.platformOpportunities.length} فرصة أخرى — فتح قوائم التفعيل والاستعادة
+                  </button>
+                )}
+              </div>
+            )}
+          </Section>
 
           <Section icon={<AlertTriangle size={16} color="var(--red)"/>} title="وارد جديد بلا مسؤول" count={d.unassignedInbound?.length || 0} color="var(--red)">
             {!d.unassignedInbound?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>كل المهتمين الجدد مسندون ✓</div> : (
@@ -105,37 +159,6 @@ export default function SalesToday({ isActive = true }) {
                       </div>
                     </div>
                     <WaActions phone={l.phone} name={l.name} campaignLabel="موعد Lead" size={14}/>
-                  </div>
-                ))}
-              </div>
-            )}
-          </Section>
-
-          {/* الردود لا تظهر لمجرد وصولها: تظهر فقط إن بقيت لها مهمة مفتوحة في نظامنا */}
-          <Section icon={<MessageCircle size={16} color="var(--green)"/>} title="ردود حملات تحتاج إجراء" count={d.replies.length} color="var(--green)">
-            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
-              مهمة مفتوحة في نظامنا؛ المحادثة نفسها قد تكون مسندة ومُعالجة داخل هاتف.
-            </div>
-            {!d.replies.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مهام مفتوحة من ردود الحملات ✓</div> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {d.replies.map((r, i) => (
-                  <div key={r.task_id || i} style={{ ...rowStyle, alignItems: 'flex-start' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 700 }}>{r.name || r.phone}</div>
-                      {r.reply && <div style={{ fontSize: 11.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💬 {r.reply}</div>}
-                      <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{fmtWhen(r.replied_at)} · {r.template}</div>
-                      <div style={{ marginTop: 4, fontSize: 9.5, fontWeight: 700, color: r.hatif_assigned ? 'var(--green)' : 'var(--gold)' }}>
-                        {r.hatif_assigned ? '✓ مسندة داخل هاتف' : '⚠ تحقّق من الإسناد في هاتف'}
-                      </div>
-                    </div>
-                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                      {r.conversation_id ? (
-                        <Btn size="sm" variant="ghost" onClick={() => window.open(hatifInboxUrl(r.conversation_id), '_blank', 'noopener')}>فتح هاتف</Btn>
-                      ) : (
-                        <WaActions phone={r.phone} name={r.name} campaignLabel="متابعة رد" size={14}/>
-                      )}
-                      <Btn size="sm" variant="accent" onClick={() => navigate('/crm?tab=tasks')}>فتح المهمة</Btn>
-                    </div>
                   </div>
                 ))}
               </div>

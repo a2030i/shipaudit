@@ -262,8 +262,9 @@ export async function loadSalesToday(userId = null) {
   if (error) throw error;
   return {
     dueFollowups: data?.due_followups || [],
+    platformOpportunities: data?.platform_opportunities || [],
+    platformOpportunityCount: Number(data?.platform_opportunity_count) || 0,
     leadActions: data?.lead_actions || [],
-    replies: data?.replies || [],
     myNewLeads: data?.my_new_leads || [],
     myNewLeadsCount: Number(data?.my_new_leads_count) || 0,
     unassignedInbound: data?.unassigned_inbound || [],
