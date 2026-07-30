@@ -1,7 +1,7 @@
 // supportService.js — تذاكر خدمة العملاء (§1.35)
 // المشكلة: مشاكل العملاء في محادثات هاتف تضيع. الحل: تذكرة برقم مرجعي
 // (TKT-0042) + حالة + مسؤول + سجل أحداث. كل تغيير يُسجَّل في
-// support_ticket_events — وهو ما سيغذّي إشعارات واتساب مستقبلاً.
+// support_ticket_events. السجل داخلي ولا يرسل شيئاً إلى هاتف أو العميل.
 import { supabase } from './supabase.js';
 
 // حالات التذكرة — نقطة الحقيقة الواحدة للعرض (المفاتيح تطابق check constraint)
@@ -15,6 +15,26 @@ export const TICKET_STATUSES = {
 export const OPEN_STATUSES = ['open', 'in_progress', 'waiting_customer'];
 export function ticketStatusMeta(k) { return TICKET_STATUSES[k] || { label: k, color: 'var(--muted)' }; }
 export function ticketRef(no) { return `TKT-${String(no).padStart(4, '0')}`; }
+
+// أولوية المتابعة الإدارية — لا تحاول استنتاجها من محادثة هاتف.
+export const TICKET_PRIORITIES = {
+  normal: { label: 'عادية', color: 'var(--accent3)' },
+  high:   { label: 'عالية', color: 'var(--gold)' },
+  urgent: { label: 'عاجلة', color: 'var(--red)' },
+};
+export function ticketPriorityMeta(k) { return TICKET_PRIORITIES[k] || TICKET_PRIORITIES.normal; }
+
+// سبب الإغلاق إلزامي كي لا تتحول «مغلقة» إلى طريقة لإخفاء العمل المعلّق.
+export const CLOSURE_REASONS = {
+  resolved:             'حُلّت المشكلة',
+  carrier_confirmed:    'أكّدت شركة الشحن الحل',
+  billing_corrected:    'صُحّحت الفاتورة/التسوية',
+  customer_informed:    'أُبلغ العميل بالنتيجة النهائية',
+  no_customer_response: 'لم يرد العميل بعد المتابعة',
+  duplicate:            'مكررة/مرتبطة بتذكرة أخرى',
+  rejected_with_reason: 'رُفض الطلب بسبب موثّق',
+  other:                'سبب آخر',
+};
 
 // أنواع التذكرة — نقطة الحقيقة الواحدة (المفتاح يُخزَّن في support_tickets.category)
 export const TICKET_CATEGORIES = {
@@ -40,6 +60,10 @@ export async function loadTicketStats() {
     waiting:    Number(data?.waiting) || 0,
     stale3d:    Number(data?.stale3d) || 0,
     resolved7d: Number(data?.resolved7d) || 0,
+    overdue:    Number(data?.overdue) || 0,
+    due24h:     Number(data?.due_24h) || 0,
+    unassigned: Number(data?.unassigned) || 0,
+    noFollowup: Number(data?.without_followup) || 0,
     total:      Number(data?.total) || 0,
   };
 }
@@ -60,6 +84,7 @@ function mapTicket(r) {
     carrierName: r.carrier_name,
     awb: r.awb,
     category: r.category || 'other',
+    priority: r.priority || 'normal',
     status: r.status,
     source: r.source,
     createdBy: r.created_by,
@@ -69,11 +94,15 @@ function mapTicket(r) {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     resolvedAt: r.resolved_at,
+    nextFollowupAt: r.next_followup_at,
+    lastFollowupAt: r.last_followup_at,
+    closureReason: r.closure_reason,
+    resolutionSummary: r.resolution_summary,
   };
 }
 
 // قائمة التذاكر مع الفلاتر. قاعدة §6: أي .range() يلزمه .order('id') tiebreaker.
-export async function loadTickets({ status = '', carrierId = '', assignedTo = '', category = '', q = '', openOnly = false, from = 0, limit = 200 } = {}) {
+export async function loadTickets({ status = '', carrierId = '', assignedTo = '', category = '', q = '', attention = '', openOnly = false, from = 0, limit = 200 } = {}) {
   let query = supabase.from('support_tickets')
     .select(TICKET_SELECT, { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -86,6 +115,12 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
   if (category) query = category === 'other'
     ? query.or('category.eq.other,category.is.null')
     : query.eq('category', category);
+  if (attention === 'overdue') query = query.in('status', OPEN_STATUSES).lt('next_followup_at', new Date().toISOString());
+  if (attention === 'due24h') query = query.in('status', OPEN_STATUSES)
+    .gte('next_followup_at', new Date().toISOString())
+    .lte('next_followup_at', new Date(Date.now() + 86_400_000).toISOString());
+  if (attention === 'unassigned') query = query.in('status', OPEN_STATUSES).is('assigned_to', null);
+  if (attention === 'without_followup') query = query.in('status', OPEN_STATUSES).is('next_followup_at', null);
   const s = q.trim();
   if (s) {
     // بحث حر: المتجر/العنوان/AWB/الهاتف — ولو كان رقم تذكرة (TKT-0042 أو 42) نلتقطه
@@ -103,7 +138,7 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
 //   • محلولة/مغلقة → **إعادة فتح تلقائية** + إلحاق التفاصيل الجديدة (reopened)
 //   • مفتوحة أصلاً → لا تذكرة مكررة؛ تُلحق التفاصيل بها (existing)
 // وإلا تُنشأ جديدة (created). يرجع { ticket, created|reopened|existing }.
-export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, assignedTo, assigneeName, userId }) {
+export async function createTicket({ storeId, storeName, customerPhone, title, description, carrierId, carrierName, awb, category, priority = 'normal', nextFollowupAt = null, assignedTo, assigneeName, userId }) {
   // العنوان أُلغي من النموذج (قرار المستخدم 2026-07-16) — النوع + الوصف يكفيان.
   // عمود title باقٍ (not null) فيتولّد من تسمية النوع إن لم يُمرَّر.
   const effTitle = (title || '').trim() || ticketCategoryMeta(category || 'other').label;
@@ -120,7 +155,11 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
       const detail = `مشكلة جديدة على نفس الشحنة (${effTitle})${description ? `: ${description}` : ''}`;
       if (dup.status === 'resolved' || dup.status === 'closed') {
         const { error: upErr } = await supabase.from('support_tickets')
-          .update({ status: 'open', resolved_at: null }).eq('id', dup.id);
+          .update({
+            status: 'open', resolved_at: null, closure_reason: null, resolution_summary: null,
+            priority, next_followup_at: nextFollowupAt || null,
+            assigned_to: dup.assigned_to || assignedTo || null,
+          }).eq('id', dup.id);
         if (upErr) throw upErr;
         await supabase.from('support_ticket_events').insert([
           { ticket_id: dup.id, user_id: userId || null, kind: 'status', old_status: dup.status, new_status: 'open',
@@ -133,6 +172,12 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
       await supabase.from('support_ticket_events').insert({
         ticket_id: dup.id, user_id: userId || null, kind: 'comment', note: detail, internal: true,
       });
+      if (!dup.assigned_to && assignedTo) {
+        await supabase.from('support_tickets').update({ assigned_to: assignedTo }).eq('id', dup.id);
+      }
+      if (nextFollowupAt && (!dup.next_followup_at || new Date(nextFollowupAt) < new Date(dup.next_followup_at))) {
+        await supabase.from('support_tickets').update({ next_followup_at: nextFollowupAt }).eq('id', dup.id);
+      }
       return { ticket: mapTicket(dup), existing: true };
     }
   }
@@ -146,6 +191,8 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
     carrier_name: carrierName || null,
     awb: awbNorm || null,
     category: category || 'other',
+    priority,
+    next_followup_at: nextFollowupAt || null,
     assigned_to: assignedTo || null,
     created_by: userId || null,
   }).select(TICKET_SELECT).single();
@@ -157,29 +204,37 @@ export async function createTicket({ storeId, storeName, customerPhone, title, d
 }
 
 // تغيير الحالة (+ resolved_at عند الحل/الإغلاق) وتسجيل الحدث
-export async function updateTicketStatus(ticketId, { newStatus, oldStatus, userId, note = null }) {
-  const patch = { status: newStatus };
-  patch.resolved_at = (newStatus === 'resolved' || newStatus === 'closed') ? new Date().toISOString() : null;
-  const { data, error } = await supabase.from('support_tickets')
-    .update(patch).eq('id', ticketId).select('id');
-  if (error) throw error;
-  if (!data?.length) throw new Error('لم يُحدَّث أي صف (تحقّق من الصلاحيات)');
-  await supabase.from('support_ticket_events').insert({
-    ticket_id: ticketId, user_id: userId || null, kind: 'status',
-    old_status: oldStatus || null, new_status: newStatus, note,
+export async function updateTicketStatus(ticketId, { newStatus, closureReason = null, resolutionSummary = null, note = null }) {
+  const { data, error } = await supabase.rpc('support_update_status', {
+    p_ticket: ticketId,
+    p_status: newStatus,
+    p_closure_reason: closureReason || null,
+    p_resolution_summary: resolutionSummary || null,
+    p_note: note || null,
   });
+  if (error) throw error;
+  return data;
 }
 
 // إسناد التذكرة لموظف
-export async function assignTicket(ticketId, { assigneeId, assigneeName, userId }) {
-  const { data, error } = await supabase.from('support_tickets')
-    .update({ assigned_to: assigneeId || null }).eq('id', ticketId).select('id');
-  if (error) throw error;
-  if (!data?.length) throw new Error('لم يُحدَّث أي صف (تحقّق من الصلاحيات)');
-  await supabase.from('support_ticket_events').insert({
-    ticket_id: ticketId, user_id: userId || null, kind: 'assign',
-    note: assigneeName ? `أُسندت إلى ${assigneeName}` : 'أُلغي الإسناد',
+export async function assignTicket(ticketId, { assigneeId }) {
+  const { data, error } = await supabase.rpc('support_assign_ticket', {
+    p_ticket: ticketId, p_assignee: assigneeId || null,
   });
+  if (error) throw error;
+  return data;
+}
+
+// تسجيل موعد المتابعة والأولوية في خطوة واحدة مع حدث تدقيق ذري.
+export async function updateTicketFollowup(ticketId, { priority = 'normal', nextFollowupAt = null, note = null }) {
+  const { data, error } = await supabase.rpc('support_update_followup', {
+    p_ticket: ticketId,
+    p_priority: priority,
+    p_next: nextFollowupAt || null,
+    p_note: note || null,
+  });
+  if (error) throw error;
+  return data;
 }
 
 // تعليق على التذكرة. internal=true (الافتراض) = ملاحظة داخلية للفريق فقط —
@@ -213,6 +268,13 @@ export async function loadSupportDashboard() {
     byStatus: data?.by_status || {},
     byCategory: (data?.by_category || []).map(r => ({ category: r.category, total: Number(r.total) || 0, open: Number(r.open) || 0 })),
     byCarrier: (data?.by_carrier || []).map(r => ({ carrierId: r.carrier_id, carrierName: r.carrier_name || 'بدون شركة', total: Number(r.total) || 0, open: Number(r.open) || 0 })),
+    byOwner: (data?.by_owner || []).map(r => ({
+      ownerId: r.owner_id, ownerName: r.owner_name || 'بلا مسؤول',
+      open: Number(r.open) || 0, overdue: Number(r.overdue) || 0,
+      due24h: Number(r.due_24h) || 0, resolved30d: Number(r.resolved_30d) || 0,
+      avgResolutionHours: r.avg_resolution_hours == null ? null : Number(r.avg_resolution_hours),
+    })),
+    byPriority: data?.by_priority || {},
     avgResolutionHours: data?.avg_resolution_hours == null ? null : Number(data.avg_resolution_hours),
     created30d: Number(data?.created_30d) || 0,
     resolved30d: Number(data?.resolved_30d) || 0,

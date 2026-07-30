@@ -1,9 +1,9 @@
 // «/support» — لوحة متابعة تذاكر خدمة العملاء (§1.35).
 // سؤال واحد تجيبه: ما مشاكل العملاء المفتوحة الآن ومَن يتابعها؟
 // تغيير الحالة من الصف مباشرة (بلا مودال) + درج تفاصيل بسجل الأحداث.
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip } from 'lucide-react';
+import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip, Clock3, CalendarClock } from 'lucide-react';
 import { useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -15,13 +15,21 @@ import { loadCarriers } from '../lib/coreService.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   TICKET_STATUSES, TICKET_CATEGORIES, ticketStatusMeta, ticketCategoryMeta,
+  TICKET_PRIORITIES, CLOSURE_REASONS, ticketPriorityMeta,
   loadTickets, loadTicketStats, loadSupportDashboard,
-  updateTicketStatus, assignTicket, addTicketComment, loadTicketEvents, deleteTicket,
+  updateTicketStatus, assignTicket, updateTicketFollowup, addTicketComment, loadTicketEvents, deleteTicket,
   loadTicketAttachments, uploadTicketAttachments, getAttachmentUrl,
 } from '../lib/supportService.js';
 
 const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const fmtDateTime = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d).slice(0, 16); } };
+const fmtInputDateTime = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  if (Number.isNaN(date.getTime())) return '';
+  const local = new Date(date.getTime() - date.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 const ageDays = (d) => Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000);
 
 function StatusPill({ status }) {
@@ -32,6 +40,18 @@ function StatusPill({ status }) {
       fontSize: 11, fontWeight: 700, color: m.color,
       background: `color-mix(in srgb, ${m.color} 13%, transparent)`,
       border: `1px solid color-mix(in srgb, ${m.color} 30%, transparent)`,
+    }}>{m.label}</span>
+  );
+}
+
+function PriorityPill({ priority }) {
+  const m = ticketPriorityMeta(priority);
+  return (
+    <span style={{
+      display: 'inline-block', padding: '2px 9px', borderRadius: 20, whiteSpace: 'nowrap',
+      fontSize: 10.5, fontWeight: 700, color: m.color,
+      background: `color-mix(in srgb, ${m.color} 12%, transparent)`,
+      border: `1px solid color-mix(in srgb, ${m.color} 28%, transparent)`,
     }}>{m.label}</span>
   );
 }
@@ -69,12 +89,20 @@ export default function SupportBoard({ isActive = true }) {
   const [carrierId, setCarrierId] = useState('');
   const [assignedTo, setAssignedTo] = useState('');
   const [category, setCategory] = useState('');
+  const [attention, setAttention] = useState('');
   const [view, setView] = useState('list');         // list | dash
   const [dash, setDash] = useState(null);           // بيانات لوحة الأرقام
   const [drawer, setDrawer] = useState(null);       // التذكرة المفتوحة في الدرج
   const [events, setEvents] = useState(null);
   const [comment, setComment] = useState('');
-  const [commentInternal, setCommentInternal] = useState(true); // 🔒 الافتراض: داخلية
+  const [followupPriority, setFollowupPriority] = useState('normal');
+  const [followupAt, setFollowupAt] = useState('');
+  const [followupNote, setFollowupNote] = useState('');
+  const [followupBusy, setFollowupBusy] = useState(false);
+  const [closing, setClosing] = useState(null);
+  const [closureReason, setClosureReason] = useState('');
+  const [resolutionSummary, setResolutionSummary] = useState('');
+  const [closureBusy, setClosureBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);          // مودال «تذكرة جديدة»
   const [attachments, setAttachments] = useState(null);         // مرفقات التذكرة المفتوحة
   const [attBusy, setAttBusy] = useState(false);
@@ -85,14 +113,14 @@ export default function SupportBoard({ isActive = true }) {
     try {
       const [s, t] = await Promise.all([
         loadTicketStats(),
-        loadTickets({ status, carrierId, assignedTo, category, q, openOnly: !status && openOnly, limit: PAGE }),
+        loadTickets({ status, carrierId, assignedTo, category, q, attention, openOnly: !status && !attention && openOnly, limit: PAGE }),
       ]);
       setStats(s); setRows(t.rows); setCount(t.count);
       loadSupportDashboard().then(setDash).catch(() => {});
     } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setRows(prev => prev || []); }
     setBusy(false);
   };
-  useEffect(() => { if (isActive) refresh(); }, [isActive, status, carrierId, assignedTo, category, openOnly, location.pathname]); // eslint-disable-line
+  useEffect(() => { if (isActive) refresh(); }, [isActive, status, carrierId, assignedTo, category, attention, openOnly, location.pathname]); // eslint-disable-line
   // بحث حر بتأخير بسيط
   useEffect(() => {
     if (!isActive) return;
@@ -106,6 +134,9 @@ export default function SupportBoard({ isActive = true }) {
 
   const openDrawer = async (t) => {
     setDrawer(t); setEvents(null); setComment(''); setAttachments(null);
+    setFollowupPriority(t.priority || 'normal');
+    setFollowupAt(fmtInputDateTime(t.nextFollowupAt));
+    setFollowupNote('');
     loadTicketAttachments(t.id).then(setAttachments).catch(() => setAttachments([]));
     try { setEvents(await loadTicketEvents(t.id)); } catch { setEvents([]); }
   };
@@ -132,20 +163,54 @@ export default function SupportBoard({ isActive = true }) {
 
   const changeStatus = async (t, newStatus) => {
     if (!can('support.manage')) return toast('تحتاج صلاحية «تغيير حالة التذاكر»', 'error');
+    if (newStatus === 'resolved' || newStatus === 'closed') {
+      setClosing({ ticket: t, status: newStatus });
+      setClosureReason('');
+      setResolutionSummary('');
+      return;
+    }
     try {
-      await updateTicketStatus(t.id, { newStatus, oldStatus: t.status, userId: user?.id });
+      await updateTicketStatus(t.id, { newStatus });
       toast(`${t.ref} → ${ticketStatusMeta(newStatus).label}`, 'success');
-      if (drawer?.id === t.id) { setDrawer({ ...drawer, status: newStatus }); loadTicketEvents(t.id).then(setEvents).catch(() => {}); }
+      if (drawer?.id === t.id) {
+        setDrawer({ ...drawer, status: newStatus, closureReason: null, resolutionSummary: null });
+        loadTicketEvents(t.id).then(setEvents).catch(() => {});
+      }
       refresh(true);
     } catch (e) { toast(`فشل التحديث: ${e.message}`, 'error'); }
   };
 
+  const confirmClosure = async () => {
+    if (!closing || !closureReason || !resolutionSummary.trim()) return;
+    setClosureBusy(true);
+    try {
+      const t = closing.ticket;
+      await updateTicketStatus(t.id, {
+        newStatus: closing.status,
+        closureReason,
+        resolutionSummary: resolutionSummary.trim(),
+      });
+      toast(`${t.ref} → ${ticketStatusMeta(closing.status).label}`, 'success');
+      if (drawer?.id === t.id) {
+        setDrawer({
+          ...drawer, status: closing.status, closureReason,
+          resolutionSummary: resolutionSummary.trim(), nextFollowupAt: null,
+        });
+        loadTicketEvents(t.id).then(setEvents).catch(() => {});
+      }
+      setClosing(null);
+      refresh(true);
+    } catch (e) { toast(`فشل الإغلاق: ${e.message}`, 'error'); }
+    setClosureBusy(false);
+  };
+
   const changeAssignee = async (t, assigneeId) => {
-    if (!can('support.manage')) return toast('تحتاج صلاحية «تغيير حالة التذاكر»', 'error');
+    if (!can('support.manage')) return toast('تحتاج صلاحية «إدارة التذاكر»', 'error');
     const emp = employees.find(e => e.id === assigneeId);
     try {
-      await assignTicket(t.id, { assigneeId: assigneeId || null, assigneeName: emp?.name || null, userId: user?.id });
+      await assignTicket(t.id, { assigneeId: assigneeId || null });
       toast(emp ? `${t.ref} أُسندت إلى ${emp.name}` : `${t.ref} — أُلغي الإسناد`, 'success');
+      if (drawer?.id === t.id) setDrawer({ ...drawer, assignedTo: assigneeId || null, assigneeName: emp?.name || null });
       refresh(true);
     } catch (e) { toast(`فشل الإسناد: ${e.message}`, 'error'); }
   };
@@ -154,10 +219,29 @@ export default function SupportBoard({ isActive = true }) {
     const note = comment.trim();
     if (!note || !drawer) return;
     try {
-      await addTicketComment(drawer.id, { note, userId: user?.id, internal: commentInternal });
+      await addTicketComment(drawer.id, { note, userId: user?.id, internal: true });
       setComment('');
       setEvents(await loadTicketEvents(drawer.id));
     } catch (e) { toast(`فشل حفظ التعليق: ${e.message}`, 'error'); }
+  };
+
+  const saveFollowup = async () => {
+    if (!drawer || !can('support.manage')) return;
+    setFollowupBusy(true);
+    try {
+      await updateTicketFollowup(drawer.id, {
+        priority: followupPriority,
+        nextFollowupAt: followupAt ? new Date(followupAt).toISOString() : null,
+        note: followupNote.trim() || null,
+      });
+      const next = followupAt ? new Date(followupAt).toISOString() : null;
+      setDrawer({ ...drawer, priority: followupPriority, nextFollowupAt: next });
+      setFollowupNote('');
+      setEvents(await loadTicketEvents(drawer.id));
+      toast('حُفظت المتابعة الإدارية', 'success');
+      refresh(true);
+    } catch (e) { toast(`فشل حفظ المتابعة: ${e.message}`, 'error'); }
+    setFollowupBusy(false);
   };
 
   const removeTicket = async (t) => {
@@ -171,17 +255,19 @@ export default function SupportBoard({ isActive = true }) {
 
   const exportXlsx = async () => {
     if (!rows?.length) return;
-    const headers = ['الرقم', 'المتجر', 'الهاتف', 'النوع', 'شركة الشحن', 'AWB', 'الحالة', 'المسؤول', 'أنشأها', 'التاريخ', 'العمر (يوم)', 'الوصف'];
+    const headers = ['الرقم', 'المتجر', 'الهاتف', 'النوع', 'شركة الشحن', 'AWB', 'الحالة', 'الأولوية', 'المسؤول', 'المتابعة القادمة', 'أنشأها', 'التاريخ', 'العمر (يوم)', 'سبب الإغلاق', 'خلاصة الحل', 'الوصف'];
     const aoa = [
       ['تذاكر خدمة العملاء', '', new Date().toISOString().slice(0, 10)],
       [],
       headers,
       ...rows.map(t => [t.ref, t.storeName, t.customerPhone || '', ticketCategoryMeta(t.category).label, t.carrierName || '', t.awb || '',
-        ticketStatusMeta(t.status).label, t.assigneeName || '', t.creatorName || '',
-        new Date(t.createdAt).toLocaleDateString('en-CA'), ageDays(t.createdAt), t.description || '']),
+        ticketStatusMeta(t.status).label, ticketPriorityMeta(t.priority).label, t.assigneeName || '',
+        t.nextFollowupAt ? new Date(t.nextFollowupAt).toLocaleString('en-CA') : '', t.creatorName || '',
+        new Date(t.createdAt).toLocaleDateString('en-CA'), ageDays(t.createdAt),
+        CLOSURE_REASONS[t.closureReason] || '', t.resolutionSummary || '', t.description || '']),
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
-    ws['!cols'] = [{ wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 16 }, { wch: 16 }, { wch: 11 }, { wch: 10 }, { wch: 44 }];
+    ws['!cols'] = [{ wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 16 }, { wch: 14 }, { wch: 16 }, { wch: 13 }, { wch: 11 }, { wch: 16 }, { wch: 18 }, { wch: 16 }, { wch: 11 }, { wch: 10 }, { wch: 20 }, { wch: 34 }, { wch: 44 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'التذاكر');
     rtl(wb);
@@ -194,15 +280,19 @@ export default function SupportBoard({ isActive = true }) {
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
-  const carrierName = useMemo(() => new Map(carriers.map(c => [c.id, c.name])), [carriers]);
-
   if (!can('support.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض لوحة التذاكر»"/></div>;
   if (rows == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
   const pickStat = (key) => {
+    setAttention('');
     if (key === 'all') { setStatus(''); setOpenOnly(false); }
     else if (key === 'openOnly') { setStatus(''); setOpenOnly(true); }
-    else { setStatus(key); }
+    else { setStatus(key); setOpenOnly(false); }
+  };
+  const pickAttention = (key) => {
+    setStatus('');
+    setOpenOnly(false);
+    setAttention(attention === key ? '' : key);
   };
 
   return (
@@ -239,16 +329,24 @@ export default function SupportBoard({ isActive = true }) {
       </div>
 
       {view === 'list' && (<>
-      {/* ── بطاقات الحالة (النقر يفلتر) ── */}
+      {/* ── ما يحتاج متابعة إدارية الآن ── */}
       {stats && (
-        <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 10, marginBottom: 16 }}>
-          <StatCard label="جديدة" value={stats.open} color="var(--accent3)" active={status === 'open'} onClick={() => pickStat('open')}/>
-          <StatCard label="قيد المعالجة" value={stats.inProgress} color="var(--gold)" active={status === 'in_progress'} onClick={() => pickStat('in_progress')}/>
-          <StatCard label="بانتظار العميل" value={stats.waiting} color="var(--accent)" active={status === 'waiting_customer'} onClick={() => pickStat('waiting_customer')}/>
-          <StatCard label="مفتوحة +3 أيام" value={stats.stale3d} color="var(--red)" active={!status && openOnly} onClick={() => pickStat('openOnly')}/>
-          <StatCard label="حُلّت آخر 7 أيام" value={stats.resolved7d} color="var(--green)" active={status === 'resolved'} onClick={() => pickStat('resolved')}/>
-          <StatCard label="الكل" value={stats.total} color="var(--muted)" active={!status && !openOnly} onClick={() => pickStat('all')}/>
-        </div>
+        <>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 7 }}>ما يحتاج انتباهك الآن</div>
+          <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 10 }}>
+            <StatCard label="متابعة متأخرة" value={stats.overdue} color="var(--red)" active={attention === 'overdue'} onClick={() => pickAttention('overdue')}/>
+            <StatCard label="مستحقة خلال 24 ساعة" value={stats.due24h} color="var(--gold)" active={attention === 'due24h'} onClick={() => pickAttention('due24h')}/>
+            <StatCard label="بلا مسؤول" value={stats.unassigned} color="var(--accent3)" active={attention === 'unassigned'} onClick={() => pickAttention('unassigned')}/>
+            <StatCard label="بلا موعد متابعة" value={stats.noFollowup} color="var(--muted)" active={attention === 'without_followup'} onClick={() => pickAttention('without_followup')}/>
+          </div>
+          <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 16 }}>
+            <StatCard label="جديدة" value={stats.open} color="var(--accent3)" active={status === 'open'} onClick={() => pickStat('open')}/>
+            <StatCard label="قيد المعالجة" value={stats.inProgress} color="var(--gold)" active={status === 'in_progress'} onClick={() => pickStat('in_progress')}/>
+            <StatCard label="بانتظار العميل" value={stats.waiting} color="var(--accent)" active={status === 'waiting_customer'} onClick={() => pickStat('waiting_customer')}/>
+            <StatCard label="حُلّت آخر 7 أيام" value={stats.resolved7d} color="var(--green)" active={status === 'resolved'} onClick={() => pickStat('resolved')}/>
+            <StatCard label="الكل" value={stats.total} color="var(--muted)" active={!status && !attention && !openOnly} onClick={() => pickStat('all')}/>
+          </div>
+        </>
       )}
 
       {/* ── شريط الفلاتر ── */}
@@ -286,7 +384,7 @@ export default function SupportBoard({ isActive = true }) {
           <div className="m-flow" style={{ overflowX: 'auto' }}>
             <table className="m-cards" style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface)' }}>
-                <tr>{['الرقم', 'المتجر', 'المشكلة', 'النوع', 'الشركة', 'الحالة', 'المسؤول', 'العمر', ''].map(h => (
+                <tr>{['الرقم', 'المتجر', 'المشكلة', 'الأولوية', 'الحالة', 'المسؤول', 'المتابعة', 'العمر', ''].map(h => (
                   <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}</tr>
               </thead>
@@ -294,13 +392,19 @@ export default function SupportBoard({ isActive = true }) {
                 {rows.map(t => {
                   const age = ageDays(t.createdAt);
                   const stale = age >= 3 && !['resolved', 'closed'].includes(t.status);
+                  const overdue = t.nextFollowupAt && new Date(t.nextFollowupAt).getTime() < Date.now() && !['resolved', 'closed'].includes(t.status);
                   return (
                     <tr key={t.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => openDrawer(t)}>
                       <td data-label="" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{t.ref}</td>
                       <td data-label="المتجر" style={{ padding: '8px 12px', fontWeight: 600 }}>{t.storeName}</td>
-                      <td data-label="المشكلة" style={{ padding: '8px 12px', color: 'var(--muted)', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || t.title}</td>
-                      <td data-label="النوع" style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontSize: 11.5 }}>{ticketCategoryMeta(t.category).icon} {ticketCategoryMeta(t.category).label}</td>
-                      <td data-label="الشركة" style={{ padding: '8px 12px', whiteSpace: 'nowrap' }}>{t.carrierName || carrierName.get(t.carrierId) || '—'}</td>
+                      <td data-label="المشكلة" style={{ padding: '8px 12px', maxWidth: 320 }}>
+                        <div style={{ color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.description || t.title}</div>
+                        <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 2 }}>
+                          {ticketCategoryMeta(t.category).icon} {ticketCategoryMeta(t.category).label}
+                          {t.carrierName ? ` · ${t.carrierName}` : ''}
+                        </div>
+                      </td>
+                      <td data-label="الأولوية" style={{ padding: '8px 12px' }}><PriorityPill priority={t.priority}/></td>
                       <td data-label="الحالة" style={{ padding: '8px 12px' }} onClick={(e) => e.stopPropagation()}>
                         {can('support.manage') ? (
                           <select value={t.status} onChange={(e) => changeStatus(t, e.target.value)}
@@ -328,6 +432,9 @@ export default function SupportBoard({ isActive = true }) {
                           </select>
                         ) : (t.assigneeName || '—')}
                       </td>
+                      <td data-label="المتابعة" style={{ padding: '8px 12px', whiteSpace: 'nowrap', color: overdue ? 'var(--red)' : 'var(--muted)', fontWeight: overdue ? 700 : 400 }}>
+                        {t.nextFollowupAt ? <>{overdue ? '⚠ ' : ''}{fmtDateTime(t.nextFollowupAt)}</> : 'غير محددة'}
+                      </td>
                       <td data-label="العمر" style={{ padding: '8px 12px', whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)', color: stale ? 'var(--red)' : 'var(--muted)', fontWeight: stale ? 700 : 400 }}>
                         {age === 0 ? 'اليوم' : `${age} يوم`}{stale ? ' ⚠' : ''}
                       </td>
@@ -349,6 +456,7 @@ export default function SupportBoard({ isActive = true }) {
             {[
               { label: 'إجمالي التذاكر', value: stats?.total ?? 0, color: 'var(--accent)' },
               { label: 'مفتوحة الآن', value: (stats?.open ?? 0) + (stats?.inProgress ?? 0) + (stats?.waiting ?? 0), color: 'var(--accent3)' },
+              { label: 'متابعة متأخرة', value: stats?.overdue ?? 0, color: 'var(--red)' },
               { label: 'متوسط زمن الحل', value: dash.avgResolutionHours == null ? '—' : (dash.avgResolutionHours >= 48 ? `${(dash.avgResolutionHours / 24).toFixed(1)} يوم` : `${dash.avgResolutionHours} ساعة`), color: 'var(--gold)' },
               { label: 'أُنشئت آخر 30 يوم', value: dash.created30d, color: 'var(--accent)' },
               { label: 'حُلّت آخر 30 يوم', value: dash.resolved30d, color: 'var(--green)' },
@@ -361,6 +469,31 @@ export default function SupportBoard({ isActive = true }) {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(290px,1fr))', gap: 12 }}>
+            {/* المتابعة حسب المسؤول — القياس الإداري الأساسي */}
+            <Card style={{ padding: '14px 16px', gridColumn: '1 / -1' }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text)', marginBottom: 4 }}>متابعة الفريق</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>العمل المفتوح والمواعيد المتأخرة داخل نظامنا فقط؛ لا يفترض حالة الرد في هاتف.</div>
+              {!dash.byOwner.length ? <Empty icon="👥" title="لا بيانات بعد"/> : (
+                <div className="m-flow" style={{ overflowX: 'auto' }}>
+                  <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead><tr>{['المسؤول', 'مفتوحة', 'متأخرة', 'خلال 24 ساعة', 'حُلّت 30 يوم', 'متوسط الحل'].map(h => (
+                      <th key={h} style={{ padding: '7px 9px', textAlign: 'right', color: 'var(--muted)', borderBottom: '1px solid var(--border)', fontSize: 10.5 }}>{h}</th>
+                    ))}</tr></thead>
+                    <tbody>{dash.byOwner.map(r => (
+                      <tr key={r.ownerId || 'none'} style={{ borderBottom: '1px solid var(--border)' }}>
+                        <td data-label="المسؤول" style={{ padding: '8px 9px', fontWeight: 700 }}>{r.ownerName}</td>
+                        <td data-label="مفتوحة" style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)' }}>{r.open}</td>
+                        <td data-label="متأخرة" style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: r.overdue ? 'var(--red)' : 'var(--muted)', fontWeight: r.overdue ? 800 : 400 }}>{r.overdue}</td>
+                        <td data-label="خلال 24 ساعة" style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: r.due24h ? 'var(--gold)' : 'var(--muted)' }}>{r.due24h}</td>
+                        <td data-label="حُلّت 30 يوم" style={{ padding: '8px 9px', fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{r.resolved30d}</td>
+                        <td data-label="متوسط الحل" style={{ padding: '8px 9px' }}>{r.avgResolutionHours == null ? '—' : `${r.avgResolutionHours} ساعة`}</td>
+                      </tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+              )}
+            </Card>
+
             {/* حسب الحالة */}
             <Card style={{ padding: '14px 16px' }}>
               <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 10 }}>حسب الحالة</div>
@@ -465,9 +598,7 @@ export default function SupportBoard({ isActive = true }) {
               <div><span style={{ color: 'var(--muted2)' }}>التاريخ: </span>{fmtDateTime(drawer.createdAt)}</div>
               <div style={{ gridColumn: '1 / -1' }}>
                 <span style={{ color: 'var(--muted2)' }}>الحالة: </span><StatusPill status={drawer.status}/>
-                {drawer.status === 'waiting_customer' && (
-                  <span style={{ fontSize: 10.5, color: 'var(--gold)', marginInlineStart: 8 }}>⏳ تُغلق تلقائياً بعد 3 أيام بلا رد</span>
-                )}
+                <span style={{ marginInlineStart: 8 }}><PriorityPill priority={drawer.priority}/></span>
               </div>
             </div>
 
@@ -476,6 +607,50 @@ export default function SupportBoard({ isActive = true }) {
                 {drawer.description}
               </div>
             )}
+
+            {/* ── متابعة إدارية داخل نظامنا ── */}
+            <div style={{
+              padding: 12, borderRadius: 12, marginBottom: 14,
+              border: '1px solid color-mix(in srgb, var(--accent3) 30%, var(--border))',
+              background: 'color-mix(in srgb, var(--accent3) 6%, var(--card))',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, marginBottom: 3, fontSize: 12.5, fontWeight: 800 }}>
+                <CalendarClock size={15} color="var(--accent3)"/> المتابعة الإدارية
+              </div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 10 }}>هذه بيانات داخلية للتنظيم؛ المحادثة والرد على العميل يستمران في هاتف.</div>
+              {can('support.manage') ? (
+                <>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'minmax(110px,.7fr) minmax(180px,1.3fr)', gap: 8 }}>
+                    <label style={{ fontSize: 10.5, color: 'var(--muted)' }}>
+                      الأولوية
+                      <Select value={followupPriority} onChange={(e) => setFollowupPriority(e.target.value)} style={{ width: '100%', marginTop: 4 }}>
+                        {Object.entries(TICKET_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+                      </Select>
+                    </label>
+                    <label style={{ fontSize: 10.5, color: 'var(--muted)' }}>
+                      موعد المتابعة القادمة
+                      <input type="datetime-local" value={followupAt} onChange={(e) => setFollowupAt(e.target.value)}
+                        style={{ width: '100%', marginTop: 4, padding: '8px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 11.5 }}/>
+                    </label>
+                  </div>
+                  <textarea value={followupNote} onChange={(e) => setFollowupNote(e.target.value)}
+                    placeholder="ما الذي تم؟ وما الخطوة القادمة؟ (اختياري)"
+                    style={{ width: '100%', minHeight: 58, resize: 'vertical', marginTop: 8, padding: '8px 9px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 11.5 }}/>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, marginTop: 7 }}>
+                    <span style={{ fontSize: 10.5, color: drawer.nextFollowupAt && new Date(drawer.nextFollowupAt) < new Date() ? 'var(--red)' : 'var(--muted)' }}>
+                      {drawer.nextFollowupAt ? `المسجل: ${fmtDateTime(drawer.nextFollowupAt)}` : 'لم يُحدد موعد بعد'}
+                    </span>
+                    <Btn size="sm" variant="accent" onClick={saveFollowup} disabled={followupBusy}
+                      icon={followupBusy ? <Spinner size={12}/> : <Clock3 size={12}/>}>حفظ المتابعة</Btn>
+                  </div>
+                </>
+              ) : (
+                <div style={{ fontSize: 12 }}>
+                  <b>{ticketPriorityMeta(drawer.priority).label}</b>
+                  <span style={{ color: 'var(--muted)' }}> · {drawer.nextFollowupAt ? fmtDateTime(drawer.nextFollowupAt) : 'بلا موعد متابعة'}</span>
+                </div>
+              )}
+            </div>
 
             {/* ── المرفقات ── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
@@ -530,6 +705,7 @@ export default function SupportBoard({ isActive = true }) {
                       {e.kind === 'status' && <>🔄 {ticketStatusMeta(e.oldStatus).label} ← <b style={{ color: ticketStatusMeta(e.newStatus).color }}>{ticketStatusMeta(e.newStatus).label}</b></>}
                       {e.kind === 'assign' && `👤 ${e.note || 'تغيير الإسناد'}`}
                       {e.kind === 'attach' && `${e.note || '📎 مرفق جديد'}`}
+                      {e.kind === 'followup' && `⏱ ${e.note || 'تحديث المتابعة الإدارية'}`}
                       {e.kind === 'comment' && (
                         <>
                           {e.internal ? '🔒' : '💬'} {e.note}
@@ -543,7 +719,7 @@ export default function SupportBoard({ isActive = true }) {
                         </>
                       )}
                     </div>
-                    {e.kind === 'status' && e.note && <div style={{ color: 'var(--muted)', marginTop: 2 }}>{e.note}</div>}
+                    {(e.kind === 'status' || e.kind === 'followup') && e.note && e.kind !== 'followup' && <div style={{ color: 'var(--muted)', marginTop: 2 }}>{e.note}</div>}
                     <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 2 }}>{e.userName} · {fmtDateTime(e.createdAt)}</div>
                   </div>
                 ))}
@@ -553,20 +729,18 @@ export default function SupportBoard({ isActive = true }) {
             <div style={{ display: 'flex', gap: 6 }}>
               <input value={comment} onChange={(e) => setComment(e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') sendComment(); }}
-                placeholder={commentInternal ? 'ملاحظة داخلية للفريق…' : 'تحديث سيصل للعميل (عند تفعيل واتساب)…'}
+                placeholder="ملاحظة داخلية للفريق…"
                 style={{
                   flex: 1, padding: '8px 10px', borderRadius: 9,
-                  border: `1.5px solid ${commentInternal ? 'var(--border)' : 'var(--green)'}`,
+                  border: '1.5px solid var(--border)',
                   background: 'var(--surface)', color: 'var(--text)',
                   fontSize: 12.5, fontFamily: 'var(--font-sans)', outline: 'none',
                 }}/>
-              <Btn size="sm" variant="accent" onClick={sendComment} disabled={!comment.trim()}>إرسال</Btn>
+              <Btn size="sm" variant="accent" onClick={sendComment} disabled={!comment.trim()}>حفظ</Btn>
             </div>
-            {/* الافتراض: داخلية — لا يصل أي تنبيه للتاجر أبداً من الملاحظات الداخلية */}
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 7, fontSize: 11.5, color: 'var(--muted)', cursor: 'pointer' }}>
-              <input type="checkbox" checked={commentInternal} onChange={(e) => setCommentInternal(e.target.checked)} style={{ accentColor: 'var(--accent)' }}/>
-              <Lock size={11}/> ملاحظة داخلية — لا تصل للتاجر أبداً
-            </label>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 7, fontSize: 11.5, color: 'var(--muted)' }}>
+              <Lock size={11}/> داخلية فقط — لا تُرسل إلى هاتف أو إلى العميل
+            </div>
 
             {(isAdmin || can('support.delete')) && (
               <div style={{ marginTop: 18, textAlign: 'end' }}>
@@ -575,6 +749,34 @@ export default function SupportBoard({ isActive = true }) {
             )}
           </div>
         </div>
+      )}
+
+      {closing && (
+        <Modal title={`${ticketStatusMeta(closing.status).label} ${closing.ticket.ref}`} width={500} onClose={() => !closureBusy && setClosing(null)}>
+          <div className="m-flow" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ padding: '9px 11px', borderRadius: 9, background: 'var(--surface)', color: 'var(--muted)', fontSize: 11.5 }}>
+              الإغلاق توثيق إداري فقط. لا يغيّر حالة المحادثة في هاتف ولا يرسل شيئاً للعميل.
+            </div>
+            <label style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+              سبب الإغلاق *
+              <Select value={closureReason} onChange={(e) => setClosureReason(e.target.value)} style={{ width: '100%', marginTop: 5 }}>
+                <option value="">اختر السبب</option>
+                {Object.entries(CLOSURE_REASONS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+              </Select>
+            </label>
+            <label style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+              خلاصة ما تم *
+              <textarea value={resolutionSummary} onChange={(e) => setResolutionSummary(e.target.value)}
+                placeholder="اكتب النتيجة النهائية بشكل يفهمه المدير أو الموظف التالي…"
+                style={{ width: '100%', minHeight: 100, resize: 'vertical', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)' }}/>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn variant="ghost" onClick={() => setClosing(null)} disabled={closureBusy}>إلغاء</Btn>
+              <Btn variant="accent" onClick={confirmClosure} disabled={!closureReason || !resolutionSummary.trim() || closureBusy}
+                icon={closureBusy ? <Spinner size={13}/> : null}>تأكيد الإغلاق</Btn>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

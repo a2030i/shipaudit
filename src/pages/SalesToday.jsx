@@ -1,7 +1,7 @@
 // «يومي» — أول تبويب في مركز المبيعات (§1.37): يوم موظف المبيعات في شاشة
 // واحدة. يجيب سؤالاً واحداً: بمن أبدأ الآن؟
 //   ١) متابعاتي المستحقّة/المتأخرة (الأولوية القصوى)
-//   ٢) ردود واتساب آخر 48 ساعة (أحرّ الفرص)
+//   ٢) مهام مفتوحة نتجت عن ردود حملات آخر 48 ساعة (لا كل الردود الخام)
 //   ٣) جهاتي الخارجية الجديدة التي لم أكلّمها
 //   ٤) مهامي/مواعيدي المستحقّة
 // المصدر: RPC sales_today() — استدعاء واحد. المدير يرى نفسه (ويستطيع لاحقاً
@@ -10,9 +10,9 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sunrise, RefreshCw, MessageCircle, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
-import { useAuth } from '../lib/auth.jsx';
 import { loadSalesToday, statusMeta } from '../lib/retargetingService.js';
 import WaActions from '../components/WaActions.jsx';
+import { hatifInboxUrl } from '../lib/whatsappService.js';
 
 const fmtWhen = (d) => { try { return new Date(d).toLocaleString('ar-SA', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch { return String(d || '').slice(0, 16); } };
 const leadStageLabel = (s) => ({
@@ -36,7 +36,6 @@ function Section({ icon, title, count, color, children }) {
 const rowStyle = { display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--surface)', border: '1px solid var(--border)' };
 
 export default function SalesToday({ isActive = true }) {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [d, setD] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -69,7 +68,7 @@ export default function SalesToday({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Sunrise size={22}/>} iconColor="var(--gold)"
         title="يومي — بمن أبدأ الآن؟"
-        subtitle="متابعاتك المستحقّة، مَن ردّ عليك، جهاتك الجديدة، ومواعيدك — في شاشة واحدة"
+        subtitle="المهام المفتوحة والمتابعات المستحقّة والجهات الجديدة — دون افتراض أن رد واتساب لم يعالجه فريق هاتف"
         meta={`${d.myFollowupsTotal} متابعة نشطة مسندة لك`}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>تحديث</Btn>}/>
 
@@ -112,18 +111,31 @@ export default function SalesToday({ isActive = true }) {
             )}
           </Section>
 
-          {/* ١) الردود — أحرّ الفرص أولاً */}
-          <Section icon={<MessageCircle size={16} color="var(--green)"/>} title="ردّوا عليك (آخر 48 ساعة)" count={d.replies.length} color="var(--green)">
-            {!d.replies.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا ردود جديدة</div> : (
+          {/* الردود لا تظهر لمجرد وصولها: تظهر فقط إن بقيت لها مهمة مفتوحة في نظامنا */}
+          <Section icon={<MessageCircle size={16} color="var(--green)"/>} title="ردود حملات تحتاج إجراء" count={d.replies.length} color="var(--green)">
+            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
+              مهمة مفتوحة في نظامنا؛ المحادثة نفسها قد تكون مسندة ومُعالجة داخل هاتف.
+            </div>
+            {!d.replies.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مهام مفتوحة من ردود الحملات ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.replies.map((r, i) => (
-                  <div key={i} style={rowStyle}>
+                  <div key={r.task_id || i} style={{ ...rowStyle, alignItems: 'flex-start' }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 12.5, fontWeight: 700 }}>{r.name || r.phone}</div>
                       {r.reply && <div style={{ fontSize: 11.5, color: 'var(--muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>💬 {r.reply}</div>}
                       <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{fmtWhen(r.replied_at)} · {r.template}</div>
+                      <div style={{ marginTop: 4, fontSize: 9.5, fontWeight: 700, color: r.hatif_assigned ? 'var(--green)' : 'var(--gold)' }}>
+                        {r.hatif_assigned ? '✓ مسندة داخل هاتف' : '⚠ تحقّق من الإسناد في هاتف'}
+                      </div>
                     </div>
-                    <WaActions phone={r.phone} name={r.name} campaignLabel="متابعة رد" size={14}/>
+                    <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                      {r.conversation_id ? (
+                        <Btn size="sm" variant="ghost" onClick={() => window.open(hatifInboxUrl(r.conversation_id), '_blank', 'noopener')}>فتح هاتف</Btn>
+                      ) : (
+                        <WaActions phone={r.phone} name={r.name} campaignLabel="متابعة رد" size={14}/>
+                      )}
+                      <Btn size="sm" variant="accent" onClick={() => navigate('/crm?tab=tasks')}>فتح المهمة</Btn>
+                    </div>
                   </div>
                 ))}
               </div>

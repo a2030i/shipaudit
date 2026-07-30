@@ -9,13 +9,19 @@ import { useAuth } from '../lib/auth.jsx';
 import { loadCarriers } from '../lib/coreService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import { loadEmployees } from '../lib/employeeService.js';
-import { createTicket, uploadTicketAttachments, TICKET_CATEGORIES, AWB_REQUIRED_CATEGORIES } from '../lib/supportService.js';
+import { createTicket, uploadTicketAttachments, TICKET_CATEGORIES, TICKET_PRIORITIES, AWB_REQUIRED_CATEGORIES } from '../lib/supportService.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+
+const defaultFollowup = () => {
+  const d = new Date(Date.now() + 24 * 60 * 60 * 1000);
+  const local = new Date(d.getTime() - d.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+};
 
 // نتيجة الإنشاء بأنواعها الثلاثة — لكلٍّ رسالتها وأيقونتها
 const RESULT_META = {
   created:  { icon: CheckCircle2, color: 'var(--green)',  title: 'تم إنشاء التذكرة',
-              sub: (t) => 'أعطِ العميل هذا الرقم للمتابعة' },
+              sub: (t) => 'سُجّلت للمتابعة الداخلية ويمكن فتحها من لوحة خدمة العملاء' },
   reopened: { icon: RotateCcw,    color: '#F97316',       title: 'أُعيد فتح التذكرة تلقائياً',
               sub: (t) => 'نفس رقم الشحنة لتذكرة سابقة محلولة — أُلحقت التفاصيل الجديدة بها' },
   existing: { icon: Link2,        color: '#0EA5E9',       title: 'التذكرة مفتوحة مسبقاً لنفس الشحنة',
@@ -33,7 +39,9 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   const [category, setCategory] = useState('delayed');
   const [carrierId, setCarrierId] = useState('');
   const [awb, setAwb] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
+  const [assignedTo, setAssignedTo] = useState(user?.id || '');
+  const [priority, setPriority] = useState('normal');
+  const [nextFollowupAt, setNextFollowupAt] = useState(defaultFollowup);
   const [desc, setDesc] = useState('');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);         // { ticket, created|reopened|existing }
@@ -108,6 +116,8 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         carrierName: carrier?.name || null,
         awb: awb.trim() || null,
         category,
+        priority,
+        nextFollowupAt: nextFollowupAt ? new Date(nextFollowupAt).toISOString() : null,
         assignedTo: assignedTo || null,
         assigneeName: emp?.name || null,
         userId: user?.id || null,
@@ -126,7 +136,8 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
 
   const resetForm = () => {
     setResult(null); setStore(null); setStoreQ('');
-    setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(''); setDesc(''); setFiles([]);
+    setCategory('delayed'); setCarrierId(''); setAwb(''); setAssignedTo(user?.id || '');
+    setPriority('normal'); setNextFollowupAt(defaultFollowup()); setDesc(''); setFiles([]);
   };
 
   if (!can('support.create')) return (
@@ -218,6 +229,17 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         </Select>
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,.75fr) minmax(190px,1.25fr)', gap: 10, marginBottom: 14 }}>
+        <Select label="الأولوية" value={priority} onChange={(e) => setPriority(e.target.value)}>
+          {Object.entries(TICKET_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </Select>
+        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
+          موعد المتابعة القادمة
+          <input type="datetime-local" value={nextFollowupAt} onChange={(e) => setNextFollowupAt(e.target.value)}
+            style={{ width: '100%', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 12 }}/>
+        </label>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
         <div>
           <Input label={awbRequired ? 'رقم الشحنة AWB *' : 'رقم الشحنة AWB'} value={awb}
@@ -283,7 +305,7 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         {busy ? 'يُنشئ…' : 'إنشاء التذكرة'}
       </Btn>
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', textAlign: 'center', marginTop: 8 }}>
-        تُسجَّل باسمك: {profile?.name || '—'}
+        تُسجَّل باسمك: {profile?.name || '—'} · هذه متابعة داخلية ولا تُرسل إلى العميل
       </div>
     </div>
   );
