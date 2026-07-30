@@ -9,10 +9,11 @@
 // والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?tab=<id>.
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp } from 'lucide-react';
+import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Workflow } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
+import PlatformSalesCrm from './PlatformSalesCrm.jsx';
 import SalesToday  from './SalesToday.jsx';
 import StoreActivation from './StoreActivation.jsx';
 import Retargeting from './Retargeting.jsx';
@@ -24,23 +25,29 @@ import Merchants   from './Merchants.jsx';
 // تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
 const TABS = [
+  {
+    id: 'pipeline', label: 'مسار عملاء المنصّة', icon: Workflow, component: PlatformSalesCrm, perm: 'sales.view',
+    eyebrow: 'CRM المبيعات', purpose: 'تابع العميل من التسجيل إلى الاستمرار أو الخسارة',
+    description: 'قاعدة العمل اليومية للفريق: مرحلة بيع، مسؤول، ملاحظة، موعد تواصل، وسجل موضوعي لما فعله المتجر داخل المنصّة.',
+    outcome: 'عميل واضح وخطوة تالية محددة', tone: 'var(--brand)',
+  },
   // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
   {
-    id: 'today', label: 'خطة المبيعات اليوم', icon: Sunrise, component: SalesToday,
+    id: 'today', label: 'قائمة العمل اليوم', icon: Sunrise, component: SalesToday,
     eyebrow: 'بوصلة الموظف', purpose: 'ابدأ بأعلى الفرص قيمة اليوم',
     description: 'تلخّص ما يستحق الاتصال الآن وتمنع تشتيت الفريق بين القوائم. هذه هي نقطة البداية اليومية وليست قاعدة بيانات جديدة.',
     outcome: 'أولوية واتصال ونتيجة', tone: 'var(--brand)',
   },
   {
-    id: 'activation', label: 'تفعيل المتاجر الجديدة', icon: TrendingUp, component: StoreActivation,
+    id: 'activation', label: 'تحليل التفعيل', icon: TrendingUp, component: StoreActivation,
     eyebrow: 'نمو مبكر', purpose: 'حوّل التسجيل الجديد إلى أول شحنة',
-    description: 'للعملاء الذين انضموا ولم يبدؤوا الاستخدام بعد. هدفها تقصير الوقت من التسجيل إلى أول قيمة حقيقية للعميل.',
+    description: 'لوحة قياس لفهم سرعة الوصول لأول شحنة؛ المتابعة الفردية وتسجيل الملاحظات تتم من «مسار عملاء المنصّة».',
     outcome: 'أول شحنة ناجحة', tone: 'var(--green)',
   },
   {
-    id: 'retargeting', label: 'استعادة العملاء الخاملين', icon: Target, component: Retargeting, perm: 'sales.view',
+    id: 'retargeting', label: 'حملات الاستعادة', icon: Target, component: Retargeting, perm: 'sales.view',
     eyebrow: 'استعادة الإيراد', purpose: 'أعد العملاء الذين شحنوا ثم توقفوا',
-    description: 'تعطي الأولوية للعملاء ذوي التاريخ الفعلي، برسالة عودة مناسبة بدل معاملتهم كعملاء جدد.',
+    description: 'مساحة تقسيم وتنفيذ حملات عودة جماعية. متابعة العميل الفردية ومواعيده تبقى في مسار العملاء.',
     outcome: 'عودة عميل ذي قيمة', tone: 'var(--gold)',
   },
   {
@@ -70,7 +77,7 @@ const TABS = [
 ];
 
 const LEGACY_PATH_TO_TAB = {
-  '/retargeting': 'retargeting',
+  '/retargeting': 'pipeline',
   '/hatif-leads': 'hatif',
   '/segments':    'segments',
   '/merchants':   'merchants',

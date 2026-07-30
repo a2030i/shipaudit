@@ -303,6 +303,74 @@ export async function loadSalesOwnerStats() {
   }));
 }
 
+// ── CRM متاجر المنصّة (2026-07-31) ──────────────────────────────────
+// الحالة التشغيلية مشتقة من ملف المتاجر، ومرحلة البيع/الموعد/الملاحظات
+// من retargeting_followups. لا تستورد ردود هاتف ولا تنشئ Lead منها.
+export async function loadPlatformSalesPipeline({
+  bucket = 'new', ownerId = null, unassigned = false,
+  search = null, page = 0, limit = 50,
+} = {}) {
+  const { data, error } = await supabase.rpc('platform_sales_pipeline', {
+    p_bucket: bucket || 'all',
+    p_owner: ownerId || null,
+    p_unassigned: !!unassigned,
+    p_search: search || null,
+    p_limit: limit,
+    p_offset: Math.max(0, page) * limit,
+  });
+  if (error) throw error;
+  return {
+    summary: data?.summary || {},
+    rows: Array.isArray(data?.rows) ? data.rows : [],
+    count: Number(data?.count) || 0,
+    page,
+    limit,
+  };
+}
+
+export async function loadPlatformSalesAccount(phone) {
+  if (!phone) throw new Error('رقم العميل مطلوب');
+  const { data, error } = await supabase.rpc('platform_sales_account', {
+    p_phone: String(phone),
+  });
+  if (error) throw error;
+  return {
+    account: data?.account || null,
+    activities: Array.isArray(data?.activities) ? data.activities : [],
+    lifecycle: Array.isArray(data?.lifecycle) ? data.lifecycle : [],
+    statusChanges: Array.isArray(data?.status_changes) ? data.status_changes : [],
+  };
+}
+
+export async function recordPlatformSalesActivity({
+  phone,
+  stage = null,
+  outcome = null,
+  activityType = 'note',
+  nextAt = null,
+  nextType = 'call',
+  note = null,
+  ownerId = null,
+  lossReason = null,
+  touch = false,
+} = {}) {
+  if (!phone) throw new Error('رقم العميل مطلوب');
+  const { data, error } = await supabase.rpc('record_platform_sales_activity', {
+    p_phone: String(phone),
+    p_stage: stage || null,
+    p_outcome: outcome || null,
+    p_activity_type: activityType || 'note',
+    p_next: nextAt || null,
+    p_next_type: nextType || 'call',
+    p_note: note || null,
+    p_owner: ownerId || null,
+    p_loss_reason: lossReason || null,
+    p_touch: !!touch,
+  });
+  if (error) throw error;
+  return data;
+}
+
 // جدولة حملة (طابور campaign_queue — ينفّذها campaign-runner كل 15 دقيقة)
 export async function scheduleCampaign({ scheduledAt, templateName, recipients, bucketLabel, userId }) {
   // تقسيم 100/صف طابور (2026-07-21): مهلة campaign-runner ~150ث والقياس الفعلي
