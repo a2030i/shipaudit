@@ -3,7 +3,7 @@
 // تغيير الحالة من الصف مباشرة (بلا مودال) + درج تفاصيل بسجل الأحداث.
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip, Clock3, CalendarClock } from 'lucide-react';
+import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip, Clock3, CalendarClock, ListChecks } from 'lucide-react';
 import { useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -11,13 +11,13 @@ import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Select, Modal } from '../components/UI.jsx';
 import TicketCreateForm from '../components/TicketCreateForm.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadCarriers } from '../lib/coreService.js';
+import { loadLamhaCarrierOptions } from '../lib/platformCarriersService.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
   TICKET_STATUSES, TICKET_CATEGORIES, ticketStatusMeta, ticketCategoryMeta,
   TICKET_PRIORITIES, CLOSURE_REASONS, ticketPriorityMeta,
   loadTickets, loadTicketStats, loadSupportDashboard,
-  updateTicketStatus, assignTicket, updateTicketFollowup, addTicketComment, loadTicketEvents, deleteTicket,
+  updateTicketStatus, assignTicket, updateTicketFollowup, bulkUpdateTickets, addTicketComment, loadTicketEvents, deleteTicket,
   loadTicketAttachments, uploadTicketAttachments, getAttachmentUrl,
 } from '../lib/supportService.js';
 
@@ -103,6 +103,17 @@ export default function SupportBoard({ isActive = true }) {
   const [closureReason, setClosureReason] = useState('');
   const [resolutionSummary, setResolutionSummary] = useState('');
   const [closureBusy, setClosureBusy] = useState(false);
+  const [selected, setSelected] = useState(() => new Set());
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [bulkPriority, setBulkPriority] = useState('');
+  const [bulkAssignee, setBulkAssignee] = useState('__keep__');
+  const [bulkFollowupMode, setBulkFollowupMode] = useState('keep');
+  const [bulkFollowupAt, setBulkFollowupAt] = useState('');
+  const [bulkClosureReason, setBulkClosureReason] = useState('');
+  const [bulkResolution, setBulkResolution] = useState('');
+  const [bulkNote, setBulkNote] = useState('');
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);          // مودال «تذكرة جديدة»
   const [attachments, setAttachments] = useState(null);         // مرفقات التذكرة المفتوحة
   const [attBusy, setAttBusy] = useState(false);
@@ -127,8 +138,9 @@ export default function SupportBoard({ isActive = true }) {
     const h = setTimeout(() => refresh(true), 350);
     return () => clearTimeout(h);
   }, [q]); // eslint-disable-line
+  useEffect(() => { setSelected(new Set()); }, [q, status, carrierId, assignedTo, category, attention, openOnly]);
   useEffect(() => {
-    loadCarriers().then(setCarriers).catch(() => {});
+    loadLamhaCarrierOptions().then(setCarriers).catch(() => {});
     loadEmployees().then(setEmployees).catch(() => {});
   }, []);
 
@@ -242,6 +254,55 @@ export default function SupportBoard({ isActive = true }) {
       refresh(true);
     } catch (e) { toast(`فشل حفظ المتابعة: ${e.message}`, 'error'); }
     setFollowupBusy(false);
+  };
+
+  const toggleSelected = (id) => {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = () => {
+    const ids = (rows || []).map(r => r.id);
+    const allOn = ids.length > 0 && ids.every(id => selected.has(id));
+    setSelected(allOn ? new Set() : new Set(ids));
+  };
+
+  const openBulk = () => {
+    if (!selected.size) return;
+    setBulkStatus(''); setBulkPriority(''); setBulkAssignee('__keep__');
+    setBulkFollowupMode('keep'); setBulkFollowupAt('');
+    setBulkClosureReason(''); setBulkResolution(''); setBulkNote('');
+    setBulkOpen(true);
+  };
+
+  const applyBulk = async () => {
+    const closingBulk = bulkStatus === 'resolved' || bulkStatus === 'closed';
+    const hasChange = bulkStatus || bulkPriority || bulkAssignee !== '__keep__'
+      || bulkFollowupMode !== 'keep' || bulkNote.trim();
+    if (!hasChange) return toast('اختر إجراءً واحداً على الأقل', 'error');
+    if (bulkFollowupMode === 'set' && !bulkFollowupAt) return toast('حدد موعد المتابعة', 'error');
+    if (closingBulk && (!bulkClosureReason || !bulkResolution.trim())) return toast('سبب الإغلاق وخلاصة الحل إلزاميان', 'error');
+    setBulkBusy(true);
+    try {
+      const r = await bulkUpdateTickets([...selected], {
+        status: bulkStatus || null,
+        priority: bulkPriority || null,
+        assigneeMode: bulkAssignee === '__keep__' ? 'keep' : bulkAssignee === '__clear__' ? 'clear' : 'set',
+        assigneeId: !bulkAssignee.startsWith('__') ? bulkAssignee : null,
+        followupMode: bulkFollowupMode,
+        nextFollowupAt: bulkFollowupMode === 'set' ? new Date(bulkFollowupAt).toISOString() : null,
+        closureReason: closingBulk ? bulkClosureReason : null,
+        resolutionSummary: closingBulk ? bulkResolution.trim() : null,
+        note: bulkNote.trim() || null,
+      });
+      toast(`حُدّثت ${r.updated} تذكرة بنجاح`, 'success');
+      setSelected(new Set()); setBulkOpen(false);
+      refresh(true);
+    } catch (e) { toast(`فشل التحديث الجماعي: ${e.message}`, 'error'); }
+    setBulkBusy(false);
   };
 
   const removeTicket = async (t) => {
@@ -376,6 +437,21 @@ export default function SupportBoard({ isActive = true }) {
         <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{count} تذكرة</span>
       </div>
 
+      {selected.size > 0 && can('support.manage') && (
+        <div style={{
+          display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap',
+          padding: '9px 11px', marginBottom: 10, borderRadius: 10,
+          border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--border))',
+          background: 'color-mix(in srgb, var(--accent) 6%, var(--card))',
+        }}>
+          <ListChecks size={16} color="var(--accent)"/>
+          <b style={{ fontSize: 12.5 }}>{selected.size} محددة</b>
+          <span style={{ fontSize: 11, color: 'var(--muted)' }}>غيّر الحالة أو المسؤول أو الأولوية أو موعد المتابعة دفعة واحدة</span>
+          <Btn size="sm" variant="accent" onClick={openBulk} style={{ marginInlineStart: 'auto' }}>تحديث جماعي</Btn>
+          <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>إلغاء التحديد</Btn>
+        </div>
+      )}
+
       {/* ── الجدول ── */}
       {!rows.length ? (
         <Card><Empty icon="🎉" title="لا تذاكر هنا" sub={openOnly && !status ? 'لا مشاكل مفتوحة الآن' : 'جرّب تعديل الفلاتر'}/></Card>
@@ -384,9 +460,18 @@ export default function SupportBoard({ isActive = true }) {
           <div className="m-flow" style={{ overflowX: 'auto' }}>
             <table className="m-cards" style={{ width: '100%', fontSize: 12.5, borderCollapse: 'collapse' }}>
               <thead style={{ background: 'var(--surface)' }}>
-                <tr>{['الرقم', 'المتجر', 'المشكلة', 'الأولوية', 'الحالة', 'المسؤول', 'المتابعة', 'العمر', ''].map(h => (
-                  <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{h}</th>
-                ))}</tr>
+                <tr>
+                  {can('support.manage') && (
+                    <th style={{ padding: '9px 10px', width: 34 }}>
+                      <input type="checkbox" aria-label="تحديد كل التذاكر الظاهرة"
+                        checked={rows.length > 0 && rows.every(r => selected.has(r.id))}
+                        onChange={toggleAllVisible}/>
+                    </th>
+                  )}
+                  {['الرقم', 'المتجر', 'المشكلة', 'الأولوية', 'الحالة', 'المسؤول', 'المتابعة', 'العمر', ''].map(h => (
+                    <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', textAlign: 'right', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
               </thead>
               <tbody>
                 {rows.map(t => {
@@ -395,6 +480,11 @@ export default function SupportBoard({ isActive = true }) {
                   const overdue = t.nextFollowupAt && new Date(t.nextFollowupAt).getTime() < Date.now() && !['resolved', 'closed'].includes(t.status);
                   return (
                     <tr key={t.id} style={{ borderTop: '1px solid var(--border)', cursor: 'pointer' }} onClick={() => openDrawer(t)}>
+                      {can('support.manage') && (
+                        <td data-label="تحديد" style={{ padding: '8px 10px' }} onClick={(e) => e.stopPropagation()}>
+                          <input type="checkbox" aria-label={`تحديد ${t.ref}`} checked={selected.has(t.id)} onChange={() => toggleSelected(t.id)}/>
+                        </td>
+                      )}
                       <td data-label="" style={{ padding: '8px 12px', fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)', whiteSpace: 'nowrap' }}>{t.ref}</td>
                       <td data-label="المتجر" style={{ padding: '8px 12px', fontWeight: 600 }}>{t.storeName}</td>
                       <td data-label="المشكلة" style={{ padding: '8px 12px', maxWidth: 320 }}>
@@ -774,6 +864,68 @@ export default function SupportBoard({ isActive = true }) {
               <Btn variant="ghost" onClick={() => setClosing(null)} disabled={closureBusy}>إلغاء</Btn>
               <Btn variant="accent" onClick={confirmClosure} disabled={!closureReason || !resolutionSummary.trim() || closureBusy}
                 icon={closureBusy ? <Spinner size={13}/> : null}>تأكيد الإغلاق</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {bulkOpen && (
+        <Modal title={`تحديث ${selected.size} تذكرة`} width={560} onClose={() => !bulkBusy && setBulkOpen(false)}>
+          <div className="m-flow" style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)', padding: '8px 10px', borderRadius: 9, background: 'var(--surface)' }}>
+              اترك أي حقل على «بلا تغيير» للحفاظ على قيمته الحالية. تُنفّذ المجموعة كاملة أو لا يُنفّذ شيء.
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(180px,1fr))', gap: 9 }}>
+              <Select label="الحالة" value={bulkStatus} onChange={(e) => setBulkStatus(e.target.value)}>
+                <option value="">بلا تغيير</option>
+                {Object.entries(TICKET_STATUSES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </Select>
+              <Select label="الأولوية" value={bulkPriority} onChange={(e) => setBulkPriority(e.target.value)}>
+                <option value="">بلا تغيير</option>
+                {Object.entries(TICKET_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+              </Select>
+              <Select label="المسؤول" value={bulkAssignee} onChange={(e) => setBulkAssignee(e.target.value)}>
+                <option value="__keep__">بلا تغيير</option>
+                <option value="__clear__">إلغاء الإسناد</option>
+                {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+              </Select>
+              <Select label="موعد المتابعة" value={bulkFollowupMode} onChange={(e) => setBulkFollowupMode(e.target.value)}>
+                <option value="keep">بلا تغيير</option>
+                <option value="set">تحديد موعد موحّد</option>
+                <option value="clear">إلغاء الموعد</option>
+              </Select>
+            </div>
+            {bulkFollowupMode === 'set' && (
+              <label style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                الموعد الجديد *
+                <input type="datetime-local" value={bulkFollowupAt} onChange={(e) => setBulkFollowupAt(e.target.value)}
+                  style={{ width: '100%', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)' }}/>
+              </label>
+            )}
+            {(bulkStatus === 'resolved' || bulkStatus === 'closed') && (
+              <>
+                <Select label="سبب الإغلاق *" value={bulkClosureReason} onChange={(e) => setBulkClosureReason(e.target.value)}>
+                  <option value="">اختر السبب</option>
+                  {Object.entries(CLOSURE_REASONS).map(([k, label]) => <option key={k} value={k}>{label}</option>)}
+                </Select>
+                <label style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+                  خلاصة الحل المشتركة *
+                  <textarea value={bulkResolution} onChange={(e) => setBulkResolution(e.target.value)}
+                    placeholder="النتيجة التي تنطبق على جميع التذاكر المحددة…"
+                    style={{ width: '100%', minHeight: 76, resize: 'vertical', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)' }}/>
+                </label>
+              </>
+            )}
+            <label style={{ fontSize: 11.5, color: 'var(--muted)' }}>
+              ملاحظة مشتركة للسجل (اختياري)
+              <input value={bulkNote} onChange={(e) => setBulkNote(e.target.value)}
+                placeholder="مثال: تمت مراجعتها في اجتماع الفريق"
+                style={{ width: '100%', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)' }}/>
+            </label>
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              <Btn variant="ghost" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>إلغاء</Btn>
+              <Btn variant="accent" onClick={applyBulk} disabled={bulkBusy}
+                icon={bulkBusy ? <Spinner size={13}/> : <ListChecks size={13}/>}>تطبيق على {selected.size}</Btn>
             </div>
           </div>
         </Modal>

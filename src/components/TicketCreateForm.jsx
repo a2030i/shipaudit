@@ -6,7 +6,7 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { LifeBuoy, Search, CheckCircle2, RotateCcw, Link2, Paperclip, X } from 'lucide-react';
 import { Btn, Input, Select, Spinner, toast, Empty } from './UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadCarriers } from '../lib/coreService.js';
+import { loadLamhaCarrierOptions } from '../lib/platformCarriersService.js';
 import { loadLatestMerchants } from '../lib/merchantsService.js';
 import { loadEmployees } from '../lib/employeeService.js';
 import { createTicket, uploadTicketAttachments, TICKET_CATEGORIES, TICKET_PRIORITIES, AWB_REQUIRED_CATEGORIES } from '../lib/supportService.js';
@@ -60,15 +60,23 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
     if (fileRef.current) fileRef.current.value = '';
   };
 
-  const awbRequired = AWB_REQUIRED_CATEGORIES.includes(category);
+  const shippingRelated = AWB_REQUIRED_CATEGORIES.includes(category);
+  const followupSummary = nextFollowupAt
+    ? new Date(nextFollowupAt).toLocaleString('ar-SA', {
+        day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
+      })
+    : 'بلا موعد';
 
   useEffect(() => {
-    loadCarriers().then(setCarriers).catch(() => setCarriers([]));
+    loadLamhaCarrierOptions().then(setCarriers).catch(() => setCarriers([]));
     loadLatestMerchants()
       .then(({ merchants: m }) => setMerchants(m || []))
       .catch(() => setMerchants([]));
     loadEmployees().then(setEmployees).catch(() => setEmployees([]));
   }, []);
+  useEffect(() => {
+    if (user?.id && !assignedTo) setAssignedTo(user.id);
+  }, [user?.id]); // eslint-disable-line
 
   // ?phone= → اختيار المتجر تلقائياً بالهاتف المطبَّع
   useEffect(() => {
@@ -102,7 +110,8 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
     const storeName = (store?.store_name || storeQ).trim();
     if (!storeName) return toast('اختر المتجر أو اكتب اسمه', 'error');
     if (!desc.trim()) return toast('اكتب وصف المشكلة', 'error');
-    if (awbRequired && !awb.trim()) return toast(`رقم الشحنة AWB إلزامي لنوع «${TICKET_CATEGORIES[category].label}»`, 'error');
+    if (shippingRelated && !carrierId) return toast('اختر شركة الشحن من شركات لمحة', 'error');
+    if (shippingRelated && !awb.trim()) return toast(`رقم الشحنة AWB إلزامي لنوع «${TICKET_CATEGORIES[category].label}»`, 'error');
     setBusy(true);
     try {
       const carrier = carriers.find(c => c.id === carrierId);
@@ -112,9 +121,9 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         storeName,
         customerPhone: store?.phone ? normalizeSaudiPhone(store.phone) : null,
         description: desc.trim(),
-        carrierId: carrierId || null,
-        carrierName: carrier?.name || null,
-        awb: awb.trim() || null,
+        carrierId: shippingRelated ? (carrierId || null) : null,
+        carrierName: shippingRelated ? (carrier?.name || null) : null,
+        awb: shippingRelated ? (awb.trim() || null) : null,
         category,
         priority,
         nextFollowupAt: nextFollowupAt ? new Date(nextFollowupAt).toISOString() : null,
@@ -219,56 +228,84 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
         )}
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-        <Select label="نوع المشكلة" value={category} onChange={(e) => setCategory(e.target.value)}>
-          {Object.entries(TICKET_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-        </Select>
-        <Select label="شركة الشحن" value={carrierId} onChange={(e) => setCarrierId(e.target.value)}>
-          <option value="">غير متعلقة بشركة</option>
-          {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
+      <div style={{ marginBottom: 14 }}>
+        <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 6 }}>
+          نوع المشكلة <span style={{ color: 'var(--red)' }}>*</span>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(115px,1fr))', gap: 6 }}>
+          {Object.entries(TICKET_CATEGORIES).map(([k, v]) => {
+            const on = category === k;
+            return (
+              <button key={k} type="button" onClick={() => {
+                setCategory(k);
+                if (!AWB_REQUIRED_CATEGORIES.includes(k)) { setCarrierId(''); setAwb(''); }
+              }} style={{
+                padding: '8px 7px', borderRadius: 9, cursor: 'pointer',
+                border: `1.5px solid ${on ? 'var(--accent)' : 'var(--border)'}`,
+                background: on ? 'color-mix(in srgb, var(--accent) 9%, var(--card))' : 'var(--surface)',
+                color: on ? 'var(--accent)' : 'var(--text)', fontFamily: 'var(--font-sans)',
+                fontSize: 11.5, fontWeight: on ? 800 : 600,
+              }}>{v.icon} {v.label}</button>
+            );
+          })}
+        </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(120px,.75fr) minmax(190px,1.25fr)', gap: 10, marginBottom: 14 }}>
-        <Select label="الأولوية" value={priority} onChange={(e) => setPriority(e.target.value)}>
-          {Object.entries(TICKET_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
-        </Select>
-        <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)' }}>
-          موعد المتابعة القادمة
-          <input type="datetime-local" value={nextFollowupAt} onChange={(e) => setNextFollowupAt(e.target.value)}
-            style={{ width: '100%', marginTop: 5, padding: '9px 10px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 12 }}/>
-        </label>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 14 }}>
-        <div>
-          <Input label={awbRequired ? 'رقم الشحنة AWB *' : 'رقم الشحنة AWB'} value={awb}
+      {shippingRelated && (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 10, marginBottom: 14,
+          padding: 11, borderRadius: 11, border: '1px solid color-mix(in srgb, var(--accent3) 28%, var(--border))',
+          background: 'color-mix(in srgb, var(--accent3) 5%, var(--card))',
+        }}>
+          <Select label="شركة الشحن في لمحة *" value={carrierId} onChange={(e) => setCarrierId(e.target.value)}>
+            <option value="">اختر الشركة</option>
+            {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          <div>
+          <Input label="رقم الشحنة AWB *" value={awb}
             onChange={(e) => setAwb(e.target.value)}
-            placeholder={awbRequired ? 'إلزامي لمشاكل الشحنات' : 'اختياري'}/>
+            placeholder="الصق رقم الشحنة"/>
           {awb.trim() && (
             <div style={{ fontSize: 10.5, color: 'var(--muted2)', marginTop: 3 }}>
               لو سبق فتح تذكرة لنفس الرقم، تُلحق بها تلقائياً بدل التكرار
             </div>
           )}
+          </div>
         </div>
-        <Select label="إسنادها لموظف" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
-          <option value="">بلا مسؤول الآن</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Select>
-      </div>
+      )}
 
-      <div style={{ marginBottom: 18 }}>
+      <div style={{ marginBottom: 12 }}>
         <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--muted)', marginBottom: 5 }}>
           وصف المشكلة <span style={{ color: 'var(--red)' }}>*</span>
         </label>
-        <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={4}
-          placeholder="ما قاله العميل بالضبط + أي تفاصيل تساعد على الحل…"
+        <textarea value={desc} onChange={(e) => setDesc(e.target.value)} rows={3}
+          placeholder="اكتب المشكلة والنتيجة المطلوبة باختصار…"
           style={{
             width: '100%', padding: '10px 12px', borderRadius: 10, resize: 'vertical',
             border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)',
             fontSize: 13.5, fontFamily: 'var(--font-sans)', outline: 'none',
           }}/>
       </div>
+
+      <details style={{ marginBottom: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)' }}>
+        <summary style={{ padding: '9px 11px', cursor: 'pointer', fontSize: 11.5, fontWeight: 700, color: 'var(--muted)' }}>
+          تنظيم المتابعة · {employees.find(e => e.id === assignedTo)?.name || 'بلا مسؤول'} · {TICKET_PRIORITIES[priority]?.label} · {followupSummary}
+        </summary>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 8, padding: '3px 11px 11px' }}>
+          <Select label="المسؤول" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+            <option value="">بلا مسؤول</option>
+            {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+          </Select>
+          <Select label="الأولوية" value={priority} onChange={(e) => setPriority(e.target.value)}>
+            {Object.entries(TICKET_PRIORITIES).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+          </Select>
+          <label style={{ display: 'block', fontSize: 11, fontWeight: 600, color: 'var(--muted)' }}>
+            المتابعة القادمة
+            <input type="datetime-local" value={nextFollowupAt} onChange={(e) => setNextFollowupAt(e.target.value)}
+              style={{ width: '100%', marginTop: 5, padding: '8px 7px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--card)', color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 11 }}/>
+          </label>
+        </div>
+      </details>
 
       {/* المرفقات — صور/PDF/إكسل، حتى 10MB للملف */}
       <div style={{ marginBottom: 18 }}>

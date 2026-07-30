@@ -237,6 +237,40 @@ export async function updateTicketFollowup(ticketId, { priority = 'normal', next
   return data;
 }
 
+// تحديث مجموعة تذاكر في معاملة واحدة. القاعدة تُسجّل حدثاً لكل تذكرة
+// وتمنع الإغلاق الجماعي بلا سبب وخلاصة موحدة.
+export async function bulkUpdateTickets(ticketIds, {
+  status = null,
+  priority = null,
+  assigneeMode = 'keep',
+  assigneeId = null,
+  followupMode = 'keep',
+  nextFollowupAt = null,
+  closureReason = null,
+  resolutionSummary = null,
+  note = null,
+} = {}) {
+  const ids = [...new Set(ticketIds || [])];
+  if (!ids.length) throw new Error('اختر تذكرة واحدة على الأقل');
+  const { data, error } = await supabase.rpc('support_bulk_update', {
+    p_tickets: ids,
+    p_status: status || null,
+    p_priority: priority || null,
+    p_assignee_mode: assigneeMode,
+    p_assignee: assigneeId || null,
+    p_followup_mode: followupMode,
+    p_next: nextFollowupAt || null,
+    p_closure_reason: closureReason || null,
+    p_resolution_summary: resolutionSummary || null,
+    p_note: note || null,
+  });
+  if (error) throw error;
+  return {
+    updated: Number(data?.updated) || 0,
+    eventKind: data?.event_kind || null,
+  };
+}
+
 // تعليق على التذكرة. internal=true (الافتراض) = ملاحظة داخلية للفريق فقط —
 // القاعدة الدائمة: أي إشعار واتساب مستقبلي يُرسَل فقط للأحداث internal=false.
 export async function addTicketComment(ticketId, { note, userId, internal = true }) {

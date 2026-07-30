@@ -154,6 +154,21 @@ export async function loadPlatformCarriers() {
   return [...ourRows, ...compRows];
 }
 
+// خيارات شركات الشحن كما يراها موظف لمحة في صفحة المقارنة بالضبط.
+// لا نعرض منافسي المنصّات ولا الشركات غير النشطة، ونحفظ displayName مع
+// التذكرة حتى يبقى الاسم التجاري واضحاً حتى لو تغيّر لاحقاً في الإعدادات.
+export async function loadLamhaCarrierOptions() {
+  const rows = await loadPlatformCarriers();
+  return rows
+    .filter(r => r.isActive && !r.competitorOnly)
+    .map(r => ({
+      id: r.id,
+      name: r.displayName || r.name,
+      sourceName: r.name,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'ar'));
+}
+
 // حفظ سعر منافس (أوتو/طرود) — للشركات الموجودة لدى المنافسين فقط.
 export async function savePlatformCompetitor(compId, patch, userId = null) {
   const { error } = await supabase.from('platform_competitors')
