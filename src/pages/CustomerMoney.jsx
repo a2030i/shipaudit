@@ -36,6 +36,20 @@ const BUCKETS = [
   { key: 'b3', label: '+90',       color: 'var(--red)' },
 ];
 
+const platformStatusKey = (customer) => {
+  const raw = String(customer?.platformStatus || '').trim().toLowerCase();
+  if (raw === 'نشط' || raw === 'active') return 'active';
+  if (raw === 'غير نشط' || raw === 'inactive') return 'inactive';
+  return 'unknown';
+};
+
+const platformStatusMeta = (customer) => {
+  const key = platformStatusKey(customer);
+  if (key === 'active') return { key, label: 'نشط في المنصّة', color: 'var(--green)' };
+  if (key === 'inactive') return { key, label: 'غير نشط في المنصّة', color: 'var(--muted)' };
+  return { key, label: 'حالة المنصّة غير متوفرة', color: 'var(--gold)' };
+};
+
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
   const [searchParams] = useSearchParams();
@@ -46,6 +60,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [buckets, setBuckets] = useState(() => new Set());   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
   const toggleBucket = (key) => setBuckets(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
   const [sortBy, setSortBy] = useState('owed');    // owed | oldest
+  const [platformFilter, setPlatformFilter] = useState('all'); // all | active | inactive | unknown
   const [waOpen, setWaOpen] = useState(false);
   const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
   const [waStatus, setWaStatus] = useState(() => new Map()); // حالة آخر حملة لكل هاتف
@@ -136,14 +151,23 @@ export default function CustomerMoney({ isActive = true }) {
     if (!d) return [];
     let list = d.customers;
     if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
+    if (platformFilter !== 'all') list = list.filter(c => platformStatusKey(c) === platformFilter);
     // «لم تصلهم مطالبة» = له هاتف ولم يصله قالب sadad قط
     if (unclaimedOnly) list = list.filter(c => c.phone && !sadadSet.has(normalizeSaudiPhone(c.phone)));
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
-  }, [d, q, buckets, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
+  }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
+  const platformCounts = useMemo(() => {
+    const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
+    for (const customer of d?.customers || []) {
+      counts.all += 1;
+      counts[platformStatusKey(customer)] += 1;
+    }
+    return counts;
+  }, [d]);
 
   const waRecipients = useMemo(() => filtered
     .filter(c => c.phone && bandAmt(c) > 0.5)
@@ -424,6 +448,14 @@ export default function CustomerMoney({ isActive = true }) {
           <option value="owed">الأكبر ديناً أولاً</option>
           <option value="oldest">الأقدم ديناً أولاً</option>
         </select>
+        <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}
+          aria-label="فلتر حالة المتجر في المنصّة"
+          style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12.5 }}>
+          <option value="all">كل حالات المنصّة ({platformCounts.all})</option>
+          <option value="active">نشط — راجع الإيقاف ({platformCounts.active})</option>
+          <option value="inactive">غير نشط ({platformCounts.inactive})</option>
+          <option value="unknown">بلا حالة مرتبطة ({platformCounts.unknown})</option>
+        </select>
         {/* «لم تصلهم مطالبة» — مدينون بهاتف لم يصلهم قالب sadad قط (سدّ فجوة الـ29) */}
         {(() => {
           const unclaimedCount = (d?.customers || []).filter(c =>
@@ -445,6 +477,9 @@ export default function CustomerMoney({ isActive = true }) {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {d.customers.length} عميلاً
+        {platformFilter !== 'all' ? ` — حالة المنصّة: ${
+          platformFilter === 'active' ? 'نشط' : platformFilter === 'inactive' ? 'غير نشط' : 'غير متوفرة'
+        }` : ''}
         {buckets.size ? ` — شرائح ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : ''} ·
         {buckets.size ? 'مجموع الشرائح المختارة ' : 'إجمالي المعروض '}
         <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(filteredTotal)}</b> ر.س
@@ -759,6 +794,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
   const [invs, setInvs] = useState(null);
   const digits = String(c.phone || '').replace(/\D/g, '');
   const waChat = digits ? `https://wa.me/${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
+  const storeStatus = platformStatusMeta(c);
 
   const toggleInvoices = async () => {
     const next = !open;
@@ -816,6 +852,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 10.5 }}>
+        <Chip color={storeStatus.color}>{storeStatus.label}</Chip>
         <Chip color={ageColor}>أقدم فاتورة {c.oldestDays} يوم</Chip>
         <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
         {c.lastPaymentDate
