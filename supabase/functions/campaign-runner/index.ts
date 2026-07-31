@@ -14,6 +14,7 @@
 // الحماية: X-Cron-Key ضد zoho_auth.cron_key (نمط morning-brief). verify_jwt=false.
 // الإرسال مرآة منطق hatif-send (نفس sendTemplate + التسجيل في whatsapp_campaign_sends).
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { claimHatifSend, finishHatifSendClaim } from '../_shared/hatifReliability.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const env = (...names: string[]) => { for (const n of names) { const v = Deno.env.get(n); if (v && v.trim()) return v.trim(); } return ''; };
@@ -146,15 +147,26 @@ Deno.serve(async (req) => {
       const recipients: any[] = Array.isArray(job.recipients) ? job.recipients : [];
       let sent = 0, failed = 0, skipped = 0;
       const campaignName = (job.bucket_label || '').trim() || 'مجدولة';
-      for (const it of recipients.slice(0, 200)) {
+      for (const [recipientIndex, it] of recipients.slice(0, 200).entries()) {
         const to = norm(it.to);
         if (!to || to.length < 11) { failed++; continue; }
         if (blockSet.has(to)) { skipped++; continue; }   // محظور — لا نراسله
         const base: Record<string, unknown> = { phone: to, name: it.name || null, template_name: job.template_name,
           channel_id: channelId, campaign_name: campaignName, campaign_bucket: job.bucket_label || null,
           amount: it.amount ?? null, sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' };
+        const claim = await claimHatifSend(db, {
+          source: 'scheduled', phone: to, templateName: job.template_name,
+          campaignName, sourceReference: it.idempotency_ref || `${job.id}:${recipientIndex}`,
+        });
+        if (!claim.claimed) { skipped++; continue; }
         try {
           const res = await sendTemplate(token, { channelId, templateName: job.template_name, to, vars: it.vars || [] });
+          try {
+            await finishHatifSendClaim(db, claim.idempotencyKey, res.ok ? 'sent' : 'failed', {
+              messageId: res.id, contactId: res.contactId, conversationId: res.conversationId,
+              providerStatus: res.status, error: res.error,
+            });
+          } catch (e) { console.error('campaign-runner claim finalization failed:', String((e as Error).message || e)); }
           if (res.ok) {
             sent++;
             // تسجيل فوري (نفس إصلاح hatif-send v11) — الانقطاع لا يضيع السجل
@@ -165,8 +177,11 @@ Deno.serve(async (req) => {
             await logSend(db, { ...base, status: 'failed', error_reason: String(res.error || 'send failed').slice(0, 300) });
           }
         } catch (e) {
+          const message = String((e as Error).message || e).slice(0, 300);
+          try { await finishHatifSendClaim(db, claim.idempotencyKey, 'unknown', { error: message }); }
+          catch (markError) { console.error('campaign-runner unknown marker failed:', String((markError as Error).message || markError)); }
           failed++;
-          await logSend(db, { ...base, status: 'failed', error_reason: String((e as Error).message || e).slice(0, 300) });
+          await logSend(db, { ...base, status: 'unknown', error_reason: message });
         }
         await sleep(300);   // مع الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
       }
@@ -210,8 +225,19 @@ Deno.serve(async (req) => {
           const sentAt = new Date().toISOString();
           for (const c of cold) {
             if (blockSet.has(c.phone)) { donePhones.push(c.phone); continue; }   // محظور — لا نلاحقه
+            const claim = await claimHatifSend(db, {
+              source: 'drip', phone: c.phone, templateName: drip.template,
+              campaignName: 'متابعة تلقائية', sourceReference: String(c.id),
+            });
+            if (!claim.claimed) { donePhones.push(c.phone); continue; }
             try {
               const res = await sendTemplate(token, { channelId, templateName: drip.template, to: c.phone, vars: [c.name || ''] });
+              try {
+                await finishHatifSendClaim(db, claim.idempotencyKey, res.ok ? 'sent' : 'failed', {
+                  messageId: res.id, contactId: res.contactId, conversationId: res.conversationId,
+                  providerStatus: res.status, error: res.error,
+                });
+              } catch (e) { console.error('drip claim finalization failed:', String((e as Error).message || e)); }
               donePhones.push(c.phone);   // نعلّم كل صفوف الرقم — لا نلاحقه ثانية
               if (res.ok) {
                 (out.drip_sent as number)++;
@@ -220,7 +246,12 @@ Deno.serve(async (req) => {
                   campaign_name: 'متابعة تلقائية', campaign_bucket: `بعد ${after} يوم بلا رد`,
                   status: res.status || 'accepted', sent_at: sentAt, sent_by: 'auto-drip', followed_up: true });
               }
-            } catch { donePhones.push(c.phone); }
+            } catch (e) {
+              const message = String((e as Error).message || e).slice(0, 300);
+              try { await finishHatifSendClaim(db, claim.idempotencyKey, 'unknown', { error: message }); }
+              catch (markError) { console.error('drip unknown marker failed:', String((markError as Error).message || markError)); }
+              donePhones.push(c.phone);
+            }
             await sleep(350);
           }
           if (logRows.length) { try { await db.from('whatsapp_campaign_sends').insert(logRows); } catch { /* */ } }

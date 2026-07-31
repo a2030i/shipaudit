@@ -27,7 +27,7 @@
 
 ---
 
-## الجدول — الحالة المنشورة بتاريخ 2026-07-28
+## الجدول — الحالة المنشورة بتاريخ 2026-07-31
 
 | الدالة (slug) | النسخة | verify_jwt | بصمة ezbr_sha256 | آخر تحديث (UTC) |
 |---|---|---|---|---|
@@ -51,15 +51,15 @@
 | `zoho-webhook` | v10 | **`false`** | `182db99229e5e0bf…` | 2026-07-21 10:55:16 |
 | `lamha-sync` | v4 | **`false`** | `8e11825ad7aa63ee…` | 2026-07-05 22:12:15 |
 | `zoho-debug` | v4 | **`false`** | `13d350dd38fb645c…` | 2026-07-05 22:26:39 |
-| `hatif-send` | v16 | `true` | `d152ef505b207886…` | 2026-07-31 |
-| `hatif-webhook` | v15 | **`false`** | `cabae1c2fb1d0de3…` | 2026-07-31 |
+| `hatif-send` | v18 | `true` | `7bc64ba3c37cf0cb…` | 2026-07-31 · حارس إرسال ذري |
+| `hatif-webhook` | v17 | **`false`** | `135e5a8228610ab5…` | 2026-07-31 · صندوق أحداث متين |
 | `zatca-alert` | v3 | **`false`** | `dde6016630237768…` | 2026-07-15 14:04:52 |
 | `hatif-contacts-sync` | v24 | **`false`** | `445b5b2ec63f297a…` | 2026-07-21 14:07:12 |
 | `track-activity` | v1 | `true` | `1d97743cd5f944f2…` | 2026-07-16 16:24:36 |
-| `campaign-runner` | v5 | **`false`** | `79dd233763c340ad…` | 2026-07-23 07:34:04 |
+| `campaign-runner` | v7 | **`false`** | `2ddaa1f3e09c0193…` | 2026-07-31 · حارس المجدول وdrip |
 | `hatif-ivr` | v9 | `true` | `fb891c48d1e370c8…` | 2026-07-23 10:37:35 |
 | `ivr-webhook` | v7 | **`false`** | `de244229f069c8c4…` | 2026-07-27 17:04:09 |
-| `hatif-call-webhook` | v6 | **`false`** | `7f2b92437baa082d…` | 2026-07-31 |
+| `hatif-call-webhook` | v8 | **`false`** | `a99765bec9b79b28…` | 2026-07-31 · صندوق أحداث متين |
 | `ivr-runner` | v4 | **`false`** | `43fac93a68a2eba2…` | 2026-07-23 10:38:55 |
 | `hatif-tags` | v3 | `true` | `866efec293c365b4…` | 2026-07-31 |
 | `hatif-tag-sync` | v9 | **`false`** | `1f35e29a95d1a313…` | 2026-07-31 |
@@ -69,8 +69,10 @@
 | `hatif-probe` | v16 | `true` | `f14070cf1efb2c8f…` | 2026-07-26 12:44:58 |
 | `hatif-resolve-contacts` | v1 | **`false`** | `dedba3c39a85471a…` | 2026-07-26 11:27:40 |
 | `hatif-pull-calls` | v1 | **`false`** | `71c51238e1ffe6b4…` | 2026-07-26 11:33:40 |
+| `zoho-reports` | v6 | **`false`** | `f9b1bfdcd096c51b…` | 2026-07-28 |
+| `portal-access` | v3 | **`false`** | `4c709c40b3e0ab26…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
 
-**المجموع:** 38 دالة — **24 بـ`verify_jwt=false`** · 14 بـ`true`.
+**المجموع:** 40 دالة — **26 بـ`verify_jwt=false`** · 14 بـ`true`.
 
 البصمات مقصوصة للعرض (أول 16 حرفاً). البصمة الكاملة تُجلَب وقت الحاجة عبر `list_edge_functions`، وتغيّرها بعد نشرٍ لم تقصده = انحراف يستحق الفحص.
 

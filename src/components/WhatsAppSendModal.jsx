@@ -341,7 +341,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     try {
       const batches = await scheduleCampaign({
         scheduledAt: new Date(schedAt).toISOString(), templateName: tpl,
-        recipients: selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount })),
+        recipients: selectedValid.map(v => ({
+          to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount,
+          idempotency_ref: v._rk,
+        })),
         bucketLabel: campName.trim(), userId: user?.id || null,
       });
       if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
@@ -360,8 +363,11 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
     setSending(true);
-    const items = selectedValid.map(v => ({ to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount }));
-    const agg = { ok: true, total: items.length, sent: 0, failed: 0, results: [] };
+    const items = selectedValid.map(v => ({
+      to: v.to, vars: resolveVarsFor(v), name: v.name, amount: v.amount,
+      idempotency_ref: v._rk,
+    }));
+    const agg = { ok: true, total: items.length, sent: 0, failed: 0, skipped: 0, results: [] };
     const batches = Math.ceil(items.length / SEND_CHUNK);
     setProgress({ done: 0, total: items.length, sent: 0, failed: 0, batch: 1, batches });
     let hardError = null;
@@ -383,7 +389,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
         });
       } finally { clearInterval(ticker); }
       if (r?.ok) {
-        agg.sent += r.sent || 0; agg.failed += r.failed || 0;
+        agg.sent += r.sent || 0; agg.failed += r.failed || 0; agg.skipped += r.skipped || 0;
         if (Array.isArray(r.results)) agg.results.push(...r.results);
       } else {
         // فشل الدفعة كلها (شبكة/مهلة) — نتوقف ونعرض ما أُنجز حتى لا نكرّر المُرسَل
@@ -398,7 +404,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setSending(false); setProgress(null);
     setResults(agg);
     if (hardError) toast(`توقّف الإرسال: ${hardError} — نجحت ${agg.sent} قبل التوقف`, 'error');
-    else toast(`تم الإرسال — ${agg.sent} نجحت · ${agg.failed} فشلت`, (agg.failed ? 'warn' : 'success'));
+    else toast(`تمت المعالجة — ${agg.sent} أُرسلت · ${agg.skipped} لم تُكرّر · ${agg.failed} فشلت`, (agg.failed ? 'warn' : 'success'));
     onSent?.(agg);
   };
 
@@ -409,6 +415,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
         <div>
           <div style={{ display: 'flex', gap: 12, marginBottom: 14 }}>
             <ResultStat label="نجحت" value={results.sent || 0} color="var(--green2)"/>
+            {!!results.skipped && <ResultStat label="لم تُكرّر" value={results.skipped} color="var(--gold)"/>}
             <ResultStat label="فشلت" value={results.failed || 0} color={results.failed ? 'var(--red)' : '#6B7280'}/>
             <ResultStat label="الإجمالي" value={results.total || valid.length} color="var(--brand)"/>
           </div>
@@ -424,10 +431,12 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
               ))}
             </div>
           )}
-          {results.sent > 0 && !results.failed && (
+          {(results.sent > 0 || results.skipped > 0) && !results.failed && (
             <div style={{ fontSize: 12, color: 'var(--green2)', background: 'color-mix(in srgb, var(--green) 8%, transparent)',
               border: '1px solid color-mix(in srgb, var(--green) 28%, transparent)', borderRadius: 8, padding: '9px 12px' }}>
-              ✅ أُرسلت كل الرسائل بنجاح — تابع حالتها (وصلت/قُرئت/ردّ) في «سجل الحملات».
+              {results.skipped > 0
+                ? `🛡️ أُرسلت ${results.sent || 0} رسالة جديدة، ومنع النظام تكرار ${results.skipped} رسالة سبق تنفيذها أو ما زالت نتيجتها غير محسومة.`
+                : '✅ أُرسلت كل الرسائل بنجاح — تابع حالتها (وصلت/قُرئت/ردّ) في «سجل الحملات».'}
             </div>
           )}
           <div style={{ marginTop: 16, textAlign: 'left' }}>

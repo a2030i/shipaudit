@@ -18,6 +18,7 @@
 // client_id · secret (أو HATIF_CLIENT_ID/SECRET). التوكن client-credentials مع كاش.
 // إرسال قالب: POST api.voxa.sa/v1/whatsapp/service-account/sendTemplate.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { claimHatifSend, finishHatifSendClaim } from '../_shared/hatifReliability.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -156,7 +157,9 @@ Deno.serve(async (req) => {
   }
 
   if (action === 'send') {
-    const items = Array.isArray(body.items) ? body.items as { to: string; vars?: unknown[] }[] : [];
+    const items = Array.isArray(body.items) ? body.items as {
+      to: string; vars?: unknown[]; idempotency_ref?: string; name?: string; amount?: unknown;
+    }[] : [];
     const templateName = String(body.template_name || '');
     const language = String(body.template_language || 'ar');
     const campaign = (body.campaign && typeof body.campaign === 'object') ? body.campaign as Record<string, unknown> : {};
@@ -178,28 +181,68 @@ Deno.serve(async (req) => {
       console.error('campaign blocked: no_whatsapp_phones unavailable', String((e as Error).message || e));
       return json({ ok: false, error: 'تعذّر التحقق من قائمة الحظر — أوقِف الإرسال حفاظاً على العملاء ثم أعد المحاولة' }, 503);
     }
-    const results: unknown[] = []; let sent = 0, failed = 0, skipped = 0;
+    const results: unknown[] = [];
+    let sent = 0, failed = 0, skipped = 0, durabilityWarnings = 0;
     for (const it of items) {
       const to = norm(it.to);
       if (!to || to.length < 11) { results.push({ to: it.to, ok: false, error: 'رقم غير صالح' }); failed++; continue; }
       if (blocked.has(to)) { results.push({ to, ok: false, skipped: true, error: 'محظور — لا يُراسَل (بلا واتساب/قائمة حظر)' }); skipped++; continue; }
+
+      let claim;
+      try {
+        claim = await claimHatifSend(db, {
+          source: 'immediate', phone: to, templateName,
+          campaignName: String(campaign.name || ''),
+          sourceReference: it.idempotency_ref || null,
+        });
+      } catch (e) {
+        console.error('campaign stopped: idempotency claim unavailable', String((e as Error).message || e));
+        return json({ ok: false, error: 'تعذّر تثبيت حارس منع التكرار — أُوقف الإرسال قبل مخاطبة هاتف', sent, failed, skipped, results }, 503);
+      }
+      if (!claim.claimed) {
+        results.push({ to, ok: true, skipped: true, duplicate: true, status: claim.status });
+        skipped++;
+        continue;
+      }
+
       try {
         const res = await sendTemplate(token, { channelId, templateName, language, to, vars: it.vars || [] });
+        try {
+          await finishHatifSendClaim(db, claim.idempotencyKey, res.ok ? 'sent' : 'failed', {
+            messageId: res.id, contactId: res.contactId, conversationId: res.conversationId,
+            providerStatus: res.status, error: res.error,
+          });
+        } catch (e) {
+          durabilityWarnings++;
+          console.error('hatif send claim finalization failed:', String((e as Error).message || e));
+        }
         if (res.ok) sent++; else failed++;
         results.push({ to, ok: res.ok, id: res.id, error: res.error });
-        // تسجيل فوري (v11) — لا تجميع للنهاية: انقطاع المهلة كان يضيع السجل كله
-        if (res.ok) { try { await db.from('whatsapp_campaign_sends').insert({
-          phone: to, name: (it as Record<string, unknown>).name || null,
-          template_name: templateName, channel_id: channelId,
-          contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
-          campaign_name: campaign.name || null, campaign_bucket: campaign.bucket || null,
-          amount: (it as Record<string, unknown>).amount ?? null,
-          status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: auth.id,
-        }); } catch { /* لا يُفشل الإرسال */ } }
-      } catch (e) { failed++; results.push({ to, ok: false, error: String((e as Error).message || e) }); }
+        // The provider result is already guarded by the claim. A log failure is
+        // surfaced for repair, but must never cause an automatic duplicate send.
+        if (res.ok) {
+          const { error: logError } = await db.from('whatsapp_campaign_sends').insert({
+            phone: to, name: it.name || null,
+            template_name: templateName, channel_id: channelId,
+            contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
+            campaign_name: campaign.name || null, campaign_bucket: campaign.bucket || null,
+            amount: it.amount ?? null,
+            status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: auth.id,
+          });
+          if (logError) { durabilityWarnings++; console.error('hatif send log failed:', logError.message); }
+        }
+      } catch (e) {
+        const message = String((e as Error).message || e);
+        // A thrown network error is ambiguous: Hatif may have accepted the
+        // request. `unknown` is deliberately not eligible for auto-retry.
+        try { await finishHatifSendClaim(db, claim.idempotencyKey, 'unknown', { error: message }); }
+        catch (markError) { durabilityWarnings++; console.error('hatif unknown claim marker failed:', String((markError as Error).message || markError)); }
+        failed++;
+        results.push({ to, ok: false, error: message, deliveryUnknown: true });
+      }
       await sleep(300);   // مع زمن الإرسال والتسجيل ≈ ثانية/رسالة — تحت حصة Voxa
     }
-    return json({ ok: true, total: items.length, sent, failed, skipped, results, provider: 'hatif' });
+    return json({ ok: true, total: items.length, sent, failed, skipped, durability_warnings: durabilityWarnings, results, provider: 'hatif' });
   }
 
   return json({ error: 'unknown action (probe|verify|channels|send)' }, 400);

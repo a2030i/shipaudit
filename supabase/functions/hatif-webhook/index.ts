@@ -14,9 +14,13 @@
 // verify_jwt=false — الحماية الأساسية توقيع HMAC؛ ?key= انتقال مؤقت حتى تفعيل السر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { authorizeHatifWebhook } from '../_shared/hatifWebhookAuth.ts';
+import { claimHatifWebhookEvent, failHatifWebhookEvent, finishHatifWebhookEvent } from '../_shared/hatifReliability.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+const retry = (message: string) => new Response(JSON.stringify({ ok: false, retry: true, error: message }), {
+  status: 500, headers: { 'Content-Type': 'application/json' },
+});
 
 // توكن Voxa (client-credentials) — لإسناد المحادثة عند رد العميل (v8).
 const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k); if (v && v.trim()) return v.trim(); } return ''; };
@@ -72,81 +76,113 @@ Deno.serve(async (req) => {
   const status         = String(p.status || p.Status || '');
   const body           = p.body || p.Body || null;
   const when           = p.creationTime || p.CreationTime || new Date().toISOString();
-  if (!messageId && !conversationId && !contactId) return ok();
+  let eventKey = '';
 
-  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, message_id, sent_at, template_name, hatif_assigned_at';
-  let row: Record<string, any> | null = null;
-  // المعرّف الخاص بالرسالة هو الارتباط الحتمي. conversation/contact fallback فقط
-  // للرسائل التاريخية التي لم تُرجِع المنصة لها messageId عند الإرسال.
-  if (messageId) {
-    const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
-      .eq('message_id', messageId).order('sent_at', { ascending: false }).limit(1);
-    row = data?.[0] || null;
-  }
-  if (!row && conversationId) {
-    const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
-      .eq('conversation_id', conversationId).order('sent_at', { ascending: false }).limit(1);
-    row = data?.[0] || null;
-  }
-  if (!row && contactId) {
-    const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
-      .eq('contact_id', contactId).order('sent_at', { ascending: false }).limit(1);
-    row = data?.[0] || null;
-  }
-  if (!row) return ok();
-
-  const patch: Record<string, any> = {};
-  if (conversationId && !row.conversation_id) patch.conversation_id = conversationId;
-  if (direction === 'inbound') {
-    // آلي = مطابق لعبارة آلية أو وصل خلال ≤60ث من الإرسال (أقوى إشارة)
-    let secs: number | null = null;
-    if (row.sent_at) { const d = (new Date(when).getTime() - new Date(row.sent_at).getTime()) / 1000; if (Number.isFinite(d)) secs = d; }
-    const auto = isAutoText(body) || (secs !== null && secs >= 0 && secs <= 60);
-    // نافذة أتمتتنا = 3 أيام من الإرسال فقط (قرار المستخدم). بعدها المحادثة قديمة
-    // (سياق مختلف) → تمشي على أتمتة هاتف، فلا إسناد ولا مهمة منّا.
-    const within3d = secs === null || secs <= 3 * 86400;
-    if (auto) {
-      patch.reply_is_auto = true;
-      patch.auto_reply_at = when;
-      if (body) patch.reply_body = String(body).slice(0, 500);
-    } else if (!row.replied_at) {
-      // تسجيل أول رد ذرّياً للقياس فقط. لا ينشئ Lead/متابعة/مهمة؛ الفريق يتابع
-      // المحادثة داخل هاتف، والتحويل إلى نظامنا يحتاج إشارة عمل صريحة.
-      await db.from('whatsapp_campaign_sends')
-        .update({ replied_at: when, reply_body: body ? String(body).slice(0, 500) : null, reply_is_auto: false })
-        .eq('id', row.id).is('replied_at', null);
+  try {
+    const claim = await claimHatifWebhookEvent(db, {
+      source: 'whatsapp', rawBody, payload: p,
+      eventType: String(p.eventType || p.EventType || status || direction || 'message'),
+      messageId, conversationId, contactId,
+    });
+    eventKey = claim.eventKey;
+    if (!claim.claimed) return ok();
+    if (!messageId && !conversationId && !contactId) {
+      await finishHatifWebhookEvent(db, eventKey, 'ignored');
+      return ok();
     }
-    // إسناد المحادثة في هاتف على أول رد (آلي أو حقيقي) داخل نافذة الـ3 أيام — مرة واحدة.
-    if (!row.hatif_assigned_at && within3d) {
-      try {
-        let hatifUserId: string | null = null;
-        const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
-        if (cfgRow?.value && row.template_name) hatifUserId = (JSON.parse(cfgRow.value).templateAgents || {})[row.template_name] || null;
-        if (!hatifUserId && row.sent_by && row.sent_by.length > 20) {
-          const { data: prof } = await db.from('profiles').select('hatif_user_id').eq('id', row.sent_by).maybeSingle();
-          hatifUserId = prof?.hatif_user_id || null;
-        }
-        const convId = conversationId || row.conversation_id;
-        if (hatifUserId && convId) {
-          const tok = await accessToken();
-          const ar = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/assign`, {
-            method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
-            body: JSON.stringify({ assignedUserId: hatifUserId }),
-          });
-          if (ar.ok) patch.hatif_assigned_at = when;
-          else console.error('assign conversation http', ar.status);
-        }
-      } catch (e) { console.error('assign conversation failed:', (e as Error).message); }
-    }
-  } else {
-    if (status) patch.status = status;
-    if (status === 'Delivered') patch.delivered_at = when;
-    if (status === 'Read')      { patch.read_at = when; patch.delivered_at = when; }
-    if (status === 'Failed')    patch.error_reason = p.errorReason || p.ErrorReason || String(p.errorCode || 'failed');
-  }
-  if (Object.keys(patch).length) {
-    try { await db.from('whatsapp_campaign_sends').update(patch).eq('id', row.id); } catch { /* */ }
-  }
 
-  return ok();
+    const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, message_id, sent_at, template_name, hatif_assigned_at';
+    let row: Record<string, any> | null = null;
+    // messageId is authoritative. conversation/contact remain compatibility
+    // fallbacks for historical sends without a provider message identifier.
+    if (messageId) {
+      const { data, error } = await db.from('whatsapp_campaign_sends').select(SEL)
+        .eq('message_id', messageId).order('sent_at', { ascending: false }).limit(1);
+      if (error) throw error;
+      row = data?.[0] || null;
+    }
+    if (!row && conversationId) {
+      const { data, error } = await db.from('whatsapp_campaign_sends').select(SEL)
+        .eq('conversation_id', conversationId).order('sent_at', { ascending: false }).limit(1);
+      if (error) throw error;
+      row = data?.[0] || null;
+    }
+    if (!row && contactId) {
+      const { data, error } = await db.from('whatsapp_campaign_sends').select(SEL)
+        .eq('contact_id', contactId).order('sent_at', { ascending: false }).limit(1);
+      if (error) throw error;
+      row = data?.[0] || null;
+    }
+    if (!row) {
+      await finishHatifWebhookEvent(db, eventKey, 'unmatched');
+      return ok();
+    }
+
+    const patch: Record<string, any> = {};
+    if (conversationId && !row.conversation_id) patch.conversation_id = conversationId;
+    if (direction === 'inbound') {
+      let secs: number | null = null;
+      if (row.sent_at) {
+        const elapsed = (new Date(when).getTime() - new Date(row.sent_at).getTime()) / 1000;
+        if (Number.isFinite(elapsed)) secs = elapsed;
+      }
+      const auto = isAutoText(body) || (secs !== null && secs >= 0 && secs <= 60);
+      const within3d = secs === null || secs <= 3 * 86400;
+      if (auto) {
+        patch.reply_is_auto = true;
+        patch.auto_reply_at = when;
+        if (body) patch.reply_body = String(body).slice(0, 500);
+      } else if (!row.replied_at) {
+        // Measurement only. Conversation handling remains inside Hatif.
+        const { error } = await db.from('whatsapp_campaign_sends')
+          .update({ replied_at: when, reply_body: body ? String(body).slice(0, 500) : null, reply_is_auto: false })
+          .eq('id', row.id).is('replied_at', null);
+        if (error) throw error;
+      }
+
+      // Assignment is an operational convenience in Hatif.  Its API failure
+      // must not discard a safely recorded delivery/reply event.
+      if (!row.hatif_assigned_at && within3d) {
+        try {
+          let hatifUserId: string | null = null;
+          const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
+          if (cfgRow?.value && row.template_name) {
+            const cfg = typeof cfgRow.value === 'string' ? JSON.parse(cfgRow.value) : cfgRow.value;
+            hatifUserId = (cfg?.templateAgents || {})[row.template_name] || null;
+          }
+          if (!hatifUserId && row.sent_by && row.sent_by.length > 20) {
+            const { data: prof } = await db.from('profiles').select('hatif_user_id').eq('id', row.sent_by).maybeSingle();
+            hatifUserId = prof?.hatif_user_id || null;
+          }
+          const convId = conversationId || row.conversation_id;
+          if (hatifUserId && convId) {
+            const tok = await accessToken();
+            const ar = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/assign`, {
+              method: 'POST', headers: { Authorization: `Bearer ${tok}`, 'content-type': 'application/json' },
+              body: JSON.stringify({ assignedUserId: hatifUserId }),
+            });
+            if (ar.ok) patch.hatif_assigned_at = when;
+            else console.error('assign conversation http', ar.status);
+          }
+        } catch (e) { console.error('assign conversation failed:', (e as Error).message); }
+      }
+    } else {
+      if (status) patch.status = status;
+      if (status === 'Delivered') patch.delivered_at = when;
+      if (status === 'Read') { patch.read_at = when; patch.delivered_at = when; }
+      if (status === 'Failed') patch.error_reason = p.errorReason || p.ErrorReason || String(p.errorCode || 'failed');
+    }
+    if (Object.keys(patch).length) {
+      const { error } = await db.from('whatsapp_campaign_sends').update(patch).eq('id', row.id);
+      if (error) throw error;
+    }
+
+    await finishHatifWebhookEvent(db, eventKey, 'processed');
+    return ok();
+  } catch (e) {
+    const message = String((e as Error).message || e);
+    console.error('hatif webhook processing failed:', message);
+    if (eventKey) await failHatifWebhookEvent(db, eventKey, e);
+    return retry(message);
+  }
 });
