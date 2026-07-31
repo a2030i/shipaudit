@@ -678,13 +678,30 @@ tbody tr:hover td:first-child {
   background: rgba(10, 13, 18, .52) !important;
   backdrop-filter: blur(8px) !important;
   -webkit-backdrop-filter: blur(8px) !important;
+  box-sizing: border-box;
 }
 
 .modal-panel {
+  display: flex !important;
+  flex-direction: column !important;
+  min-height: 0;
+  overflow: hidden !important;
   padding: 24px !important;
   border: 1px solid var(--border2) !important;
   border-radius: 16px !important;
   box-shadow: var(--shadow-xl) !important;
+}
+
+.modal-header {
+  flex: 0 0 auto;
+}
+
+.modal-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 .bottom-nav {
@@ -1675,6 +1692,16 @@ tbody tr:hover td:first-child {
 }
 
 @media (max-width: 768px) {
+  /* PageSlot هو عنصر التمرير الحقيقي، لا .page-content. وضع مساحة الشريط
+     السفلي على الحاوية الأب كان يترك آخر 56px خلف الشريط في Safari. */
+  .page-slot {
+    box-sizing: border-box;
+    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+  }
+
   .workspace-page {
     padding: 16px 14px 92px;
   }
@@ -1859,8 +1886,41 @@ tbody tr:hover td:first-child {
     min-height: 40px;
   }
 
-  .modal-panel {
-    padding: 20px !important;
+  /* specificity matches the historical mobile override in index.css
+     (.modal-overlay [role=dialog]) so this final theme layer can replace it. */
+  .modal-overlay .modal-panel {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+    height: auto !important;
+    margin: 0 !important;
+    padding: 16px !important;
+    overflow: hidden !important;
+  }
+
+  /* نافذة واحدة بتمرير واحد: الرأس يبقى ظاهراً، والمحتوى وحده يتحرك.
+     هذا يلغي overlay-scroll + inner-scroll الذي يحبس إصبع iOS. */
+  .modal-overlay {
+    align-items: center !important;
+    height: 100vh;
+    height: 100dvh;
+    max-height: 100dvh;
+    padding:
+      max(10px, env(safe-area-inset-top, 0px))
+      12px
+      max(10px, env(safe-area-inset-bottom, 0px));
+    overflow: hidden !important;
+  }
+
+  .modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto !important;
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .modal-header {
+    margin-bottom: 14px !important;
   }
 }
 

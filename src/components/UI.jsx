@@ -1109,11 +1109,13 @@ export function Modal({ title, children, onClose, width = 520 }) {
           borderRadius: 'var(--r-xl)',
           padding: 28, width,
           maxWidth: '95vw', maxHeight: '90vh',
-          overflowY: 'auto',
+          overflow: 'hidden',
+          display: 'flex', flexDirection: 'column',
+          boxSizing: 'border-box',
           boxShadow: 'var(--shadow-lg)',
         }}
       >
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22 }}>
+        <div className="modal-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 22, flexShrink: 0 }}>
           <h3 id={titleId} style={{ color: 'var(--text)', fontFamily: 'var(--font-sans)', fontSize: 16, fontWeight: 800, letterSpacing: 0 }}>
             {title}
           </h3>
@@ -1130,7 +1132,9 @@ export function Modal({ title, children, onClose, width = 520 }) {
             <X size={14}/>
           </button>
         </div>
-        {children}
+        <div className="modal-body">
+          {children}
+        </div>
       </div>
     </div>
   );
