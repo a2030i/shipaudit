@@ -6,7 +6,7 @@
 
 .psc-summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin: 4px 0 16px;
 }
@@ -272,7 +272,7 @@
 }
 
 .psc-table td {
-  max-width: 210px;
+  max-width: 250px;
   padding: 11px 12px;
   color: var(--text2);
   border-bottom: 1px solid var(--border);
@@ -314,6 +314,7 @@
 
 .psc-state-pill,
 .psc-stage-pill,
+.psc-signal-pill,
 .psc-account-actions > span {
   display: inline-flex;
   align-items: center;
@@ -326,6 +327,15 @@
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.psc-signal-reason {
+  display: block;
+  max-width: 270px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 9.5px;
+  line-height: 1.55;
 }
 
 .psc-unassigned,
@@ -416,9 +426,70 @@
 
 .psc-facts {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   margin: 12px 0;
+}
+
+.psc-routing-brief {
+  --route-tone: var(--brand);
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 11px;
+  align-items: start;
+  margin-bottom: 12px;
+  padding: 13px 14px;
+  color: var(--text);
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--route-tone) 11%, var(--card)), var(--card) 72%);
+  border: 1px solid color-mix(in srgb, var(--route-tone) 31%, var(--border));
+  border-radius: 12px;
+}
+
+.psc-routing-brief.blocked {
+  box-shadow: inset 3px 0 0 color-mix(in srgb, var(--red) 74%, transparent);
+}
+
+.psc-routing-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  color: var(--route-tone);
+  background: color-mix(in srgb, var(--route-tone) 10%, var(--card));
+  border-radius: 11px;
+}
+
+.psc-routing-brief > div {
+  display: grid;
+  gap: 2px;
+}
+
+.psc-routing-brief small,
+.psc-routing-brief em {
+  color: var(--muted2);
+  font-size: 9.5px;
+  font-style: normal;
+}
+
+.psc-routing-brief strong {
+  color: var(--route-tone);
+  font-size: 13px;
+}
+
+.psc-routing-brief p,
+.psc-financial-block p {
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.psc-financial-block > .ui-card {
+  height: 100%;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--red) 7%, var(--card)), var(--card));
+  border-color: color-mix(in srgb, var(--red) 24%, var(--border2)) !important;
 }
 
 .psc-facts > div {

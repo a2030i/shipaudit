@@ -262,8 +262,8 @@ export async function loadSalesToday(userId = null) {
   // كلا الاستدعاءين thenables تحل إلى {data,error}؛ فشل الإثراء غير قاتل
   // أثناء النشر المتدرّج، بينما فشل قائمة اليوم نفسها يظل خطأً صريحاً.
   const [todayRes, signalsRes] = await Promise.all([
-    supabase.rpc('sales_today', { p_user: userId || null }),
-    supabase.rpc('merchant_sales_signals'),
+    supabase.rpc('sales_today_routed', { p_user: userId || null }),
+    supabase.rpc('platform_commercial_signals'),
   ]);
   if (todayRes.error) throw todayRes.error;
   const data = todayRes.data || {};
@@ -307,10 +307,10 @@ export async function loadSalesOwnerStats() {
 // الحالة التشغيلية مشتقة من ملف المتاجر، ومرحلة البيع/الموعد/الملاحظات
 // من retargeting_followups. لا تستورد ردود هاتف ولا تنشئ Lead منها.
 export async function loadPlatformSalesPipeline({
-  bucket = 'new', ownerId = null, unassigned = false,
+  bucket = 'hot_live_new', ownerId = null, unassigned = false,
   search = null, page = 0, limit = 50,
 } = {}) {
-  const { data, error } = await supabase.rpc('platform_sales_pipeline', {
+  const { data, error } = await supabase.rpc('platform_commercial_pipeline', {
     p_bucket: bucket || 'all',
     p_owner: ownerId || null,
     p_unassigned: !!unassigned,
@@ -330,7 +330,7 @@ export async function loadPlatformSalesPipeline({
 
 export async function loadPlatformSalesAccount(phone) {
   if (!phone) throw new Error('رقم العميل مطلوب');
-  const { data, error } = await supabase.rpc('platform_sales_account', {
+  const { data, error } = await supabase.rpc('platform_commercial_account', {
     p_phone: String(phone),
   });
   if (error) throw error;

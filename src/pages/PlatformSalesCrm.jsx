@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, CalendarClock, CheckCircle2, Clock3,
-  History, MessageSquareText, PhoneCall, RefreshCw, RotateCcw,
-  Search, Store, Target, TrendingUp, UserRoundCheck, UserRoundX,
-  UsersRound, WalletCards,
+  History, Link2Off, MessageSquareText, PhoneCall, RefreshCw, RotateCcw,
+  Search, ShieldAlert, Store, Target, TrendingUp, UserRoundCheck, UserRoundX,
+  UsersRound, WalletCards, Zap,
 } from 'lucide-react';
 import {
   Btn, Card, Empty, Input, Modal, PageHeader, Select, Spinner, toast,
@@ -86,6 +87,13 @@ const PIPELINE_BUCKETS = [
   { id: 'all', label: 'الكل', icon: UsersRound },
 ];
 
+const SMART_BUCKETS = [
+  { id: 'hot_live_new', label: 'لايف جديد عالي النية', icon: Zap },
+  { id: 'recent_stop', label: 'انقطاع شحن حديث', icon: PhoneCall },
+  { id: 'wallet_stranded', label: 'رصيد يحتاج حلًا', icon: WalletCards },
+  { id: 'live_inactive', label: 'ربط لايف غير نشط', icon: Link2Off },
+];
+
 const PLATFORM_BUCKETS = [
   { id: 'active', label: 'بدأوا ويعملون', icon: TrendingUp },
   { id: 'stopped', label: 'اشتغلوا ثم توقفوا', icon: RotateCcw },
@@ -123,7 +131,29 @@ const platformState = row => {
   if (row.platform_state === 'active') return { label: 'يعمل الآن', color: 'var(--green)' };
   if (row.platform_state === 'stopped') return { label: 'اشتغل ثم توقف', color: 'var(--gold)' };
   if (row.platform_state === 'financial_hold') return { label: 'موقوف ماليًا', color: 'var(--red)' };
+  if (row.live_inactive) return { label: 'ربط مباشر غير نشط', color: 'var(--purple)' };
   return { label: 'لم ينفّذ أول شحنة', color: 'var(--brand)' };
+};
+
+const signalMeta = row => {
+  const map = {
+    hot_live_topped: { label: 'جاهز لأول شحنة', color: 'var(--green)' },
+    hot_live_new: { label: 'لايف جديد', color: 'var(--brand)' },
+    recent_stop: { label: 'انقطاع حديث', color: 'var(--gold)' },
+    wallet_stranded: { label: 'رصيد عالق', color: 'var(--accent3)' },
+    live_inactive: { label: 'فكّ الربط', color: 'var(--purple)' },
+    live_no_first_shipment: { label: 'لايف بلا شحنة', color: 'var(--brand-navy)' },
+    manual_trial: { label: 'تجربة يدوية', color: 'var(--muted2)' },
+    collections_hold: { label: 'للتحصيل', color: 'var(--red)' },
+  };
+  return map[row.commercial_signal] || { label: 'متابعة', color: 'var(--muted)' };
+};
+
+const integrationLabel = account => {
+  if (account.direct_live) return 'ربط مباشر (سلة/زد)';
+  if (account.integration_class === 'automation') return `تكامل آلي (${account.integration_type || 'API'})`;
+  if (account.integration_class === 'manual') return 'تسجيل يدوي بلا ربط';
+  return account.integration_type || 'غير مربوط';
 };
 
 const lifecycleLabels = {
@@ -280,6 +310,10 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
   }, [payload, hatif]);
 
   const save = async () => {
+    if (payload?.account?.financial_hold) {
+      toast('هذا العميل محوّل للتحصيل، ولا تُسجّل له متابعة مبيعات حتى تُحل المعلّقات المالية', 'warning');
+      return;
+    }
     const touch = form.activityType !== 'note';
     const openStage = !['won', 'lost', 'disqualified'].includes(form.stage);
     if (touch && openStage && !form.nextAt) {
@@ -317,6 +351,7 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
         next_action_required: 'موعد الإجراء التالي مطلوب بعد التواصل',
         loss_reason_required: 'سبب الخسارة مطلوب',
         assign_not_allowed: 'ليست لديك صلاحية إسناد العميل لموظف آخر',
+        financial_hold: 'العميل محوّل للتحصيل بسبب معلّقات مالية، وأُوقفت متابعة المبيعات',
       };
       toast(messages[error.message] || `تعذّر الحفظ: ${error.message}`, 'error');
     }
@@ -325,14 +360,16 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
 
   const account = payload?.account || {};
   const state = platformState({
-    platform_state: account.segment === 'negative_balance'
+    platform_state: account.financial_hold
       ? 'financial_hold'
       : account.total_shipments === 0
         ? 'pending_first_shipment'
         : account.segment === 'active'
           ? 'active'
           : 'stopped',
+    live_inactive: account.live_inactive,
   });
+  const signal = signalMeta(account);
 
   return (
     <Modal title="ملف متابعة العميل" onClose={onClose} width={1160}>
@@ -355,14 +392,52 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
           <div className="psc-facts">
             <div><small>إجمالي الشحنات</small><strong>{fmtNumber(account.total_shipments)}</strong></div>
             <div><small>آخر شحنة</small><strong>{fmtDate(account.last_shipment).split('،')[0]}</strong></div>
-            <div><small>المحفظة</small><strong>{fmtMoney(account.wallet)}</strong></div>
-            <div><small>الربط</small><strong>{account.integration_type || 'غير مربوط'}</strong></div>
+            <div><small>الرصيد المتاح</small><strong>{fmtMoney(account.positive_wallet)}</strong></div>
+            <div><small>مديونية زوهو</small><strong>{fmtMoney(account.debt)}</strong></div>
+            <div><small>الربط</small><strong>{integrationLabel(account)}</strong></div>
             <div><small>محاولات التواصل</small><strong>{fmtNumber(account.contact_attempts)}</strong></div>
             <div><small>المسؤول</small><strong>{account.owner_name || 'بلا مسؤول'}</strong></div>
+            <div><small>درجة الأولوية</small><strong>{fmtNumber(account.signal_score)} / 100</strong></div>
           </div>
 
+          <section
+            className={`psc-routing-brief${account.financial_hold ? ' blocked' : ''}`}
+            style={{ '--route-tone': account.financial_hold ? 'var(--red)' : signal.color }}
+          >
+            <span className="psc-routing-icon">
+              {account.financial_hold ? <ShieldAlert size={19}/> : <Target size={19}/>}
+            </span>
+            <div>
+              <small>{account.financial_hold ? 'توجيه إلزامي' : 'لماذا هذا العميل مهم الآن؟'}</small>
+              <strong>{account.financial_hold ? 'التحصيل قبل أي تواصل مبيعات' : signal.label}</strong>
+              <p>{account.signal_reason || account.next_step || 'راجع حالة العميل وحدّد الإجراء التالي.'}</p>
+              {account.financial_hold && (
+                <em>
+                  {fmtMoney(account.debt)} مديونية زوهو · {fmtMoney(account.negative_wallet)} محفظة سالبة
+                </em>
+              )}
+            </div>
+          </section>
+
           <div className="psc-drawer-grid">
-            <div className="psc-editor-card">
+            {account.financial_hold ? (
+              <div className="psc-financial-block">
+              <Card style={{ padding: 18 }}>
+                <div className="psc-card-heading">
+                  <ShieldAlert size={18}/>
+                  <div>
+                    <strong>متابعة المبيعات متوقفة</strong>
+                    <small>يعود العميل للمبيعات تلقائيًا بعد تصفير مديونية زوهو والمحفظة السالبة.</small>
+                  </div>
+                </div>
+                <p>
+                  لم نحذف سجل المبيعات أو ملاحظاته، لكن منعنا الاتصال والاستلام والجدولة حتى لا يُعاد
+                  تنشيط عميل لديه معلّقات مالية.
+                </p>
+              </Card>
+              </div>
+            ) : (
+              <div className="psc-editor-card">
             <Card style={{ padding: 18 }}>
               <div className="psc-card-heading">
                 <Target size={17}/>
@@ -457,7 +532,8 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
                 )}
               </div>
             </Card>
-            </div>
+              </div>
+            )}
 
             <Card style={{ padding: 18 }}>
               <div className="psc-card-heading">
@@ -482,8 +558,9 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
 
 export default function PlatformSalesCrm({ isActive = true }) {
   const { can, isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [lens, setLens] = useState('pipeline');
-  const [bucket, setBucket] = useState('new');
+  const [bucket, setBucket] = useState('hot_live_new');
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [owner, setOwner] = useState('');
@@ -525,11 +602,11 @@ export default function PlatformSalesCrm({ isActive = true }) {
   const summary = data?.summary || {};
   const lensItems = lens === 'schedule'
     ? SCHEDULE_BUCKETS
-    : [...PIPELINE_BUCKETS, ...PLATFORM_BUCKETS];
+    : [...SMART_BUCKETS, ...PIPELINE_BUCKETS, ...PLATFORM_BUCKETS];
 
   const chooseLens = nextLens => {
     setLens(nextLens);
-    setBucket(nextLens === 'schedule' ? 'recontact_due' : 'new');
+    setBucket(nextLens === 'schedule' ? 'recontact_due' : 'hot_live_new');
   };
 
   const chooseBucket = nextBucket => {
@@ -568,40 +645,49 @@ export default function PlatformSalesCrm({ isActive = true }) {
 
       <div className="psc-summary-grid">
         <SummaryCard
-          icon={<Store size={18}/>}
-          label="جدد خلال 30 يومًا"
-          value={summary.new}
+          icon={<Zap size={18}/>}
+          label="لايف جديد عالي النية"
+          value={summary.hot_live_new}
           tone="var(--brand)"
-          active={bucket === 'new'}
-          onClick={() => { setLens('pipeline'); chooseBucket('new'); }}
-          hint="لم ينفّذوا أول شحنة"
+          active={bucket === 'hot_live_new'}
+          onClick={() => { setLens('pipeline'); chooseBucket('hot_live_new'); }}
+          hint="ربط مباشر خلال 5 أيام"
         />
         <SummaryCard
-          icon={<CalendarClock size={18}/>}
-          label="إعادة تواصل مستحقة"
-          value={summary.recontact_due}
-          tone="var(--red)"
-          active={bucket === 'recontact_due'}
-          onClick={() => { setLens('schedule'); chooseBucket('recontact_due'); }}
-          hint="موعدها الآن أو متأخر"
-        />
-        <SummaryCard
-          icon={<RotateCcw size={18}/>}
-          label="اشتغلوا ثم توقفوا"
-          value={summary.stopped}
+          icon={<PhoneCall size={18}/>}
+          label="انقطاع شحن حديث"
+          value={summary.recent_stop}
           tone="var(--gold)"
-          active={bucket === 'stopped'}
-          onClick={() => { setLens('pipeline'); chooseBucket('stopped'); }}
-          hint="لهم شحنات سابقة"
+          active={bucket === 'recent_stop'}
+          onClick={() => { setLens('pipeline'); chooseBucket('recent_stop'); }}
+          hint="آخر شحنة قبل 1–5 أيام"
         />
         <SummaryCard
-          icon={<UserRoundX size={18}/>}
-          label="خسرناهم"
-          value={summary.lost}
+          icon={<WalletCards size={18}/>}
+          label="رصيد يحتاج حلًا"
+          value={summary.wallet_stranded}
+          tone="var(--accent3)"
+          active={bucket === 'wallet_stranded'}
+          onClick={() => { setLens('pipeline'); chooseBucket('wallet_stranded'); }}
+          hint="رصيد موجب بلا شحن حديث"
+        />
+        <SummaryCard
+          icon={<Link2Off size={18}/>}
+          label="ربط لايف غير نشط"
+          value={summary.live_inactive}
+          tone="var(--purple)"
+          active={bucket === 'live_inactive'}
+          onClick={() => { setLens('pipeline'); chooseBucket('live_inactive'); }}
+          hint="يحتاج فهم سبب فك الربط"
+        />
+        <SummaryCard
+          icon={<ShieldAlert size={18}/>}
+          label="محوّلون للتحصيل"
+          value={summary.collections_hold}
           tone="var(--red)"
-          active={bucket === 'lost'}
-          onClick={() => { setLens('pipeline'); chooseBucket('lost'); }}
-          hint="بسبب مسجل وقابل للتحليل"
+          active={false}
+          onClick={() => navigate('/customer-money')}
+          hint="لا يظهرون لقوائم المبيعات"
         />
       </div>
 
@@ -639,6 +725,10 @@ export default function PlatformSalesCrm({ isActive = true }) {
         <div className="psc-bucket-groups">
           {lens === 'pipeline' ? (
             <>
+              <div>
+                <small>إشارات البيع الذكية</small>
+                <BucketTabs items={SMART_BUCKETS} current={bucket} summary={summary} onPick={chooseBucket}/>
+              </div>
               <div>
                 <small>مرحلة البيع</small>
                 <BucketTabs items={PIPELINE_BUCKETS} current={bucket} summary={summary} onPick={chooseBucket}/>
@@ -683,6 +773,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
               <thead>
                 <tr>
                   <th>العميل</th>
+                  <th>لماذا الآن؟</th>
                   <th>حالة المنصّة</th>
                   <th>مرحلة البيع</th>
                   <th>المسؤول</th>
@@ -696,6 +787,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
                 {(data?.rows || []).map(row => {
                   const stage = stageMeta(row.sales_stage);
                   const state = platformState(row);
+                  const signal = signalMeta(row);
                   const due = row.next_action_at && new Date(row.next_action_at) <= new Date();
                   return (
                     <tr key={row.phone}>
@@ -704,6 +796,12 @@ export default function PlatformSalesCrm({ isActive = true }) {
                           <strong>{row.primary_store || row.phone}</strong>
                           <small>{row.phone}{Number(row.store_count) > 1 ? ` · ${row.store_count} متاجر` : ''}</small>
                         </button>
+                      </td>
+                      <td data-label="لماذا الآن؟">
+                        <span className="psc-signal-pill" style={{ '--pill-tone': signal.color }}>
+                          {signal.label} · {fmtNumber(row.signal_score)}
+                        </span>
+                        <small className="psc-signal-reason">{row.signal_reason || row.next_step || '—'}</small>
                       </td>
                       <td data-label="حالة المنصّة">
                         <span className="psc-state-pill" style={{ '--pill-tone': state.color }}>{state.label}</span>
