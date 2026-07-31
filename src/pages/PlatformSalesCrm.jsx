@@ -89,7 +89,7 @@ const PIPELINE_BUCKETS = [
 
 const SMART_BUCKETS = [
   { id: 'hot_live_new', label: 'لايف جديد عالي النية', icon: Zap },
-  { id: 'recent_stop', label: 'انقطاع شحن حديث', icon: PhoneCall },
+  { id: 'recent_stop', label: 'تجاوز 5 أيام بلا شحن', icon: PhoneCall },
   { id: 'wallet_stranded', label: 'رصيد يحتاج حلًا', icon: WalletCards },
   { id: 'live_inactive', label: 'ربط لايف غير نشط', icon: Link2Off },
 ];
@@ -139,7 +139,7 @@ const signalMeta = row => {
   const map = {
     hot_live_topped: { label: 'جاهز لأول شحنة', color: 'var(--green)' },
     hot_live_new: { label: 'لايف جديد', color: 'var(--brand)' },
-    recent_stop: { label: 'انقطاع حديث', color: 'var(--gold)' },
+    recent_stop: { label: 'متوقف +5 أيام', color: 'var(--gold)' },
     wallet_stranded: { label: 'رصيد عالق', color: 'var(--accent3)' },
     live_inactive: { label: 'فكّ الربط', color: 'var(--purple)' },
     live_no_first_shipment: { label: 'لايف بلا شحنة', color: 'var(--brand-navy)' },
@@ -655,12 +655,12 @@ export default function PlatformSalesCrm({ isActive = true }) {
         />
         <SummaryCard
           icon={<PhoneCall size={18}/>}
-          label="انقطاع شحن حديث"
+          label="تجاوز 5 أيام بلا شحن"
           value={summary.recent_stop}
           tone="var(--gold)"
           active={bucket === 'recent_stop'}
           onClick={() => { setLens('pipeline'); chooseBucket('recent_stop'); }}
-          hint="آخر شحنة قبل 1–5 أيام"
+          hint="يبدأ من اليوم السادس"
         />
         <SummaryCard
           icon={<WalletCards size={18}/>}
