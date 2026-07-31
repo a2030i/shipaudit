@@ -9,9 +9,9 @@
 // اختيار موظف). كل بند ينقل لتبويبه الصحيح.
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Sunrise, RefreshCw, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset, Store, WalletCards, RotateCcw, PlugZap, Layers3, ShieldCheck } from 'lucide-react';
+import { Sunrise, RefreshCw, CalendarClock, UserPlus, CheckCircle2, AlertTriangle, TimerReset, Store, WalletCards, RotateCcw, Archive, Gauge } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
-import { loadSalesToday, segmentMeta, setRetargetingFollowup, statusMeta } from '../lib/retargetingService.js';
+import { claimPlatformSalesOpportunity, loadSalesToday, segmentMeta, statusMeta } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 import WaActions from '../components/WaActions.jsx';
 
@@ -56,9 +56,12 @@ function OpportunityContext({ opportunity }) {
   );
 }
 
-function Section({ icon, title, count, color, children }) {
+const DAILY_PLATFORM_LIMIT = 12;
+const DAILY_CONTACT_TARGET = 20;
+
+function Section({ icon, title, count, color, order = 0, children }) {
   return (
-    <Card style={{ padding: '14px 16px', borderTop: `3px solid ${color}` }}>
+    <Card style={{ padding: '14px 16px', borderTop: `3px solid ${color}`, order }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         {icon}
         <span style={{ fontSize: 13.5, fontWeight: 800, color: 'var(--text)' }}>{title}</span>
@@ -92,11 +95,16 @@ export default function SalesToday({ isActive = true }) {
     if (!user?.id || claiming) return;
     setClaiming(lead.phone);
     try {
-      await setRetargetingFollowup(lead.phone, { ownerId: user.id, status: 'new' });
-      toast(`أُسند متجر «${lead.store || lead.phone}» لك`, 'success');
+      await claimPlatformSalesOpportunity(lead.phone, new Date().toISOString());
+      toast(`أُضيف متجر «${lead.store || lead.phone}» إلى قائمة اليوم`, 'success');
       await refresh();
     } catch (e) {
-      toast(`تعذّر استلام الفرصة: ${e.message}`, 'error');
+      if (String(e.message).includes('already_claimed')) {
+        toast('سبق أن استلم موظف آخر هذه الفرصة — حُدّثت القائمة', 'warning');
+        await refresh();
+      } else {
+        toast(`تعذّر إضافة الفرصة: ${e.message}`, 'error');
+      }
     }
     setClaiming('');
   };
@@ -113,23 +121,66 @@ export default function SalesToday({ isActive = true }) {
   );
   if (d == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
-  const nothing = !d.platformOpportunities?.length && !d.activationReady?.length && !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.myNewLeads.length && !d.myTasks.length;
+  const dailyPlatform = (d.platformOpportunities || []).slice(0, DAILY_PLATFORM_LIMIT);
+  const mandatoryCount = d.dueFollowups.length
+    + d.leadActions.length
+    + d.myNewLeads.length
+    + d.myTasks.length;
+  const dailyQueueCount = mandatoryCount + dailyPlatform.length;
+  const poolCount = d.platformOpportunityCount || 0;
+  const targetFill = Math.min(100, Math.round((dailyQueueCount / DAILY_CONTACT_TARGET) * 100));
+  const nothing = !dailyPlatform.length && !d.unassignedInbound?.length && !d.leadActions?.length && !d.dueFollowups.length && !d.myNewLeads.length && !d.myTasks.length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Sunrise size={22}/>} iconColor="var(--gold)"
         title="يومي — بمن أبدأ الآن؟"
-        subtitle="الأولوية لمتاجر المنصّة: فعّل الجديد، تابع من شحن رصيداً، واستعد العميل المتوقف"
-        meta={`${d.myFollowupsTotal} متابعة لك · ${d.platformOpportunityCount} فرصة منصة · ${d.activationReadyCount || 0} جاهزة بالكامل`}
+        subtitle="قائمة تنفيذ محدودة: المستحق أولًا، ثم أعلى فرص المنصّة قيمة"
+        meta={`${mandatoryCount} إجراء ملزم الآن · ${dailyPlatform.length} فرصة مقترحة · ${poolCount} في مخزون الفرص`}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={refresh} disabled={busy}>تحديث</Btn>}/>
 
-      {!!Object.keys(d.platformSummary || {}).length && (
+      <Card style={{
+        padding: '18px 20px', marginBottom: 14,
+        background: 'linear-gradient(135deg, color-mix(in srgb, var(--brand) 13%, var(--surface)) 0%, color-mix(in srgb, var(--accent) 7%, var(--surface)) 100%)',
+        borderColor: 'color-mix(in srgb, var(--brand) 25%, var(--border))',
+      }}>
+        <div style={{ display: 'flex', gap: 18, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{
+            width: 48, height: 48, borderRadius: 15, display: 'grid', placeItems: 'center',
+            color: 'var(--brand)', background: 'var(--surface)', border: '1px solid var(--border)',
+          }}><Gauge size={24}/></span>
+          <div style={{ flex: 1, minWidth: 260 }}>
+            <div style={{ color: 'var(--brand)', fontSize: 11, fontWeight: 900, marginBottom: 3 }}>حصتك الواقعية اليوم</div>
+            <h2 style={{ margin: 0, fontSize: 21, color: 'var(--text)' }}>
+              أمامك {dailyQueueCount} حالة الآن — وليس {poolCount} اتصالًا
+            </h2>
+            <p style={{ margin: '5px 0 0', color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.7 }}>
+              الرقم الكبير هو مخزون فرص للفريق. ابدأ بالإجراءات الملزمة، ثم اختر من المقترحات الأعلى أولوية.
+              ردود واتساب تبقى لدى فريق هاتف ولا تنشئ Lead هنا.
+            </p>
+          </div>
+          <div style={{ minWidth: 210 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 11, marginBottom: 7 }}>
+              <span style={{ color: 'var(--muted)' }}>نطاق يوم نوعي</span>
+              <strong style={{ color: 'var(--brand)' }}>{dailyQueueCount} / {DAILY_CONTACT_TARGET}</strong>
+            </div>
+            <div style={{ height: 7, borderRadius: 99, background: 'var(--surface2)', overflow: 'hidden', marginBottom: 10 }}>
+              <div style={{ width: `${targetFill}%`, height: '100%', borderRadius: 99, background: 'linear-gradient(90deg, var(--brand), var(--accent))' }}/>
+            </div>
+            <Btn size="sm" variant="ghost" onClick={() => navigate('/retargeting?tab=pipeline')}>
+              استعراض مخزون الفرص
+            </Btn>
+          </div>
+        </div>
+      </Card>
+
+      {(
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 10, marginBottom: 14 }}>
           {[
-            { icon: <PlugZap size={16}/>, label: 'جاهزون لأول شحنة', value: d.platformSummary.ready_to_activate || 0, tone: 'var(--accent)' },
-            { icon: <RotateCcw size={16}/>, label: 'توقفوا خلال 30 يومًا', value: d.platformSummary.stopped_30d || 0, tone: 'var(--gold)' },
-            { icon: <Layers3 size={16}/>, label: 'حسابات متعددة المتاجر', value: d.platformSummary.multi_store_accounts || 0, tone: 'var(--brand)' },
-            { icon: <ShieldCheck size={16}/>, label: 'امتثال يحتاج متابعة', value: d.platformSummary.compliance_pending || 0, tone: 'var(--purple)' },
+            { icon: <CalendarClock size={16}/>, label: 'ملزم الآن', value: mandatoryCount, tone: mandatoryCount ? 'var(--red)' : 'var(--green)' },
+            { icon: <Store size={16}/>, label: 'دفعة المنصّة المقترحة', value: dailyPlatform.length, tone: 'var(--brand)' },
+            { icon: <UserPlus size={16}/>, label: 'مهتمون جدد لك', value: d.myNewLeadsCount, tone: 'var(--accent3)' },
+            { icon: <Archive size={16}/>, label: 'مخزون مؤهل للفريق', value: poolCount, tone: 'var(--muted)' },
           ].map(item => (
             <Card key={item.label} style={{ padding: '11px 13px', display: 'flex', alignItems: 'center', gap: 9, borderInlineStart: `3px solid ${item.tone}` }}>
               <span style={{ color: item.tone }}>{item.icon}</span>
@@ -147,13 +198,13 @@ export default function SalesToday({ isActive = true }) {
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 14 }}>
 
-          <Section icon={<Store size={16} color="var(--brand)"/>} title="فرص متاجر المنصّة" count={d.platformOpportunityCount} color="var(--brand)">
+          <Section icon={<Store size={16} color="var(--brand)"/>} title="دفعة المنصّة المقترحة اليوم" count={`${dailyPlatform.length} فقط`} color="var(--brand)" order={4}>
             <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
-              يولّدها سلوك المتجر داخل لمحة، لا ردود واتساب. استلم الفرصة لتدخل متابعاتك.
+              أعلى فرص غير مستلمة حسب النية والقيمة. «أضف لليوم» يسندها لك ويضع موعدها الآن؛ الباقي يبقى مخزونًا للفريق.
             </div>
-            {!d.platformOpportunities?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا فرص منصة غير مستلمة الآن ✓</div> : (
+            {!dailyPlatform.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا فرص منصة غير مستلمة الآن ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {d.platformOpportunities.map((o) => {
+                {dailyPlatform.map((o) => {
                   const segment = segmentMeta(o.segment);
                   const SignalIcon = o.segment === 'topped_no_ship' ? WalletCards : o.segment?.startsWith('stopped') ? RotateCcw : UserPlus;
                   return (
@@ -165,49 +216,21 @@ export default function SalesToday({ isActive = true }) {
                         <OpportunityContext opportunity={o}/>
                       </div>
                       <Btn size="sm" variant="accent" disabled={!!claiming} onClick={() => claimPlatformLead(o)}>
-                        {claiming === o.phone ? 'جارٍ الاستلام…' : 'استلام'}
+                        {claiming === o.phone ? 'جارٍ الإضافة…' : 'أضف لليوم'}
                       </Btn>
                     </div>
                   );
                 })}
-                {d.platformOpportunityCount > d.platformOpportunities.length && (
-                  <button onClick={() => navigate('/retargeting?tab=activation')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--brand)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
-                    +{d.platformOpportunityCount - d.platformOpportunities.length} فرصة أخرى — فتح قوائم التفعيل والاستعادة
+                {poolCount > dailyPlatform.length && (
+                  <button onClick={() => navigate('/retargeting?tab=pipeline')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--brand)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
+                    {poolCount - dailyPlatform.length} فرصة أخرى في المخزون — ليست مطلوبة كلها اليوم
                   </button>
                 )}
               </div>
             )}
           </Section>
 
-          <Section icon={<PlugZap size={16} color="var(--accent)"/>} title="جاهزون بالكامل لأول شحنة" count={d.activationReadyCount || 0} color="var(--accent)">
-            <div style={{ fontSize: 10.5, color: 'var(--muted)', margin: '-4px 0 9px' }}>
-              ملف مكتمل · موثق · مربوط. ظهرت منفصلة لأنها أقدم من 30 يومًا ولم تدخل قائمة الجديد.
-            </div>
-            {!d.activationReady?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا توجد فرص جاهزة غير مستلمة ✓</div> : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {d.activationReady.map(o => (
-                  <div key={o.phone} style={rowStyle}>
-                    <PlugZap size={15} color="var(--accent)"/>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12.5, fontWeight: 800 }}>{o.store || o.phone}</div>
-                      <div style={{ fontSize: 10.5, color: 'var(--muted2)' }}>{o.next_step || 'مساعدته على تنفيذ أول شحنة'}</div>
-                      <OpportunityContext opportunity={o}/>
-                    </div>
-                    <Btn size="sm" variant="accent" disabled={!!claiming} onClick={() => claimPlatformLead(o)}>
-                      {claiming === o.phone ? 'جارٍ الاستلام…' : 'استلام'}
-                    </Btn>
-                  </div>
-                ))}
-                {d.activationReadyCount > d.activationReady.length && (
-                  <button onClick={() => navigate('/retargeting?tab=activation')} style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: 'var(--accent)', fontSize: 12, fontWeight: 700, fontFamily: 'var(--font-sans)', padding: 4 }}>
-                    +{d.activationReadyCount - d.activationReady.length} فرصة جاهزة أخرى
-                  </button>
-                )}
-              </div>
-            )}
-          </Section>
-
-          <Section icon={<AlertTriangle size={16} color="var(--red)"/>} title="وارد جديد بلا مسؤول" count={d.unassignedInbound?.length || 0} color="var(--red)">
+          <Section icon={<AlertTriangle size={16} color="var(--red)"/>} title="وارد جديد بلا مسؤول" count={d.unassignedInbound?.length || 0} color="var(--red)" order={5}>
             {!d.unassignedInbound?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>كل المهتمين الجدد مسندون ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.unassignedInbound.map(l => (
@@ -223,7 +246,7 @@ export default function SalesToday({ isActive = true }) {
             )}
           </Section>
 
-          <Section icon={<TimerReset size={16} color="var(--gold)"/>} title="إجراءات Leads مستحقة" count={d.leadActions?.length || 0} color="var(--gold)">
+          <Section icon={<TimerReset size={16} color="var(--gold)"/>} title="إجراءات Leads مستحقة" count={d.leadActions?.length || 0} color="var(--gold)" order={2}>
             {!d.leadActions?.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مواعيد Leads مستحقة ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.leadActions.map(l => (
@@ -242,7 +265,7 @@ export default function SalesToday({ isActive = true }) {
           </Section>
 
           {/* ٢) المتابعات المستحقّة */}
-          <Section icon={<CalendarClock size={16} color="var(--red)"/>} title="متابعات مستحقّة اليوم / متأخرة" count={d.dueFollowups.length} color="var(--red)">
+          <Section icon={<CalendarClock size={16} color="var(--red)"/>} title="متابعات مستحقّة اليوم / متأخرة" count={d.dueFollowups.length} color="var(--red)" order={1}>
             {!d.dueFollowups.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا متابعات مستحقّة ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.dueFollowups.map((f, i) => {
@@ -266,7 +289,7 @@ export default function SalesToday({ isActive = true }) {
           </Section>
 
           {/* ٣) جهاتي الجديدة */}
-          <Section icon={<UserPlus size={16} color="var(--accent3)"/>} title="مهتمون جدد من الحملات" count={d.myNewLeadsCount} color="var(--accent3)">
+          <Section icon={<UserPlus size={16} color="var(--accent3)"/>} title="مهتمون جدد من الحملات" count={d.myNewLeadsCount} color="var(--accent3)" order={3}>
             {!d.myNewLeads.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مهتمين جدد مسندين لك</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.myNewLeads.map((l) => (
@@ -288,7 +311,7 @@ export default function SalesToday({ isActive = true }) {
           </Section>
 
           {/* ٤) مهامي/مواعيدي */}
-          <Section icon={<CheckCircle2 size={16} color="var(--gold)"/>} title="مهامك ومواعيدك المستحقّة" count={d.myTasks.length} color="var(--gold)">
+          <Section icon={<CheckCircle2 size={16} color="var(--gold)"/>} title="مهامك ومواعيدك المستحقّة" count={d.myTasks.length} color="var(--gold)" order={6}>
             {!d.myTasks.length ? <div style={{ fontSize: 12, color: 'var(--muted2)' }}>لا مهام مستحقّة ✓</div> : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 {d.myTasks.map((t) => (

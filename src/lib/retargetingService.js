@@ -292,6 +292,18 @@ export async function loadSalesToday(userId = null) {
   };
 }
 
+// استلام ذري لفرصة منصة ووضعها مباشرةً في قائمة اليوم. لا نستخدم
+// set_retargeting_followup هنا لأن upsert العام قد يعيد إسناد فرصة سبق أن
+// استلمها موظف آخر، كما أن الاستلام بلا موعد يصنع Backlog غير قابل للإدارة.
+export async function claimPlatformSalesOpportunity(phone, nextAt = new Date().toISOString()) {
+  const { data, error } = await supabase.rpc('claim_platform_sales_opportunity', {
+    p_phone: String(phone || ''),
+    p_next: nextAt,
+  });
+  if (error) throw error;
+  return data;
+}
+
 // معدل التحويل بالموظف — نقطة الحقيقة للوحة الأداء والأهداف
 export async function loadSalesOwnerStats() {
   const { data, error } = await supabase.rpc('sales_owner_stats');
