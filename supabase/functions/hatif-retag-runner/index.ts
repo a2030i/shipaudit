@@ -1,4 +1,5 @@
-// hatif-retag-runner v1 (2026-07-23) — المستهلك الخفيف لقائمة إعادة الوسم الحدثية.
+// hatif-retag-runner — المستهلك الخفيف لقائمة إعادة الوسم الحدثية.
+// 2026-07-31: يحفظ تاقات الموظفين والإحالات اليدوية عند تحديث تاقات لمحة.
 // المنتِجون: تريجرات (زوهو/بلاك لست/محادثة جديدة) يضعون الأرقام المتأثّرة في
 // hatif_retag_dirty. هذا المشغّل (cron كل 5د) يطبّق المتأثّرين فقط على هاتف بسرعة —
 // يفصل حجم الأحداث عن نداءات Voxa (لا يتصل بهاتف إلا لمن تغيّر تاقه فعلاً).
@@ -13,6 +14,10 @@ const env = (...n: string[]) => { for (const k of n) { const v = Deno.env.get(k)
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 const norm = (v: string) => String(v || '').trim();
 const V = 'https://api.voxa.sa';
+const SYSTEM_TAG_NAMES = new Set([
+  'عليه مديونية', 'متأخر سداد', 'رصيد سالب', 'VIP', 'نشط', 'متوقف', 'جديد',
+  'دفع مسبق', 'دفع لاحق', 'عميل محتمل', 'بلاك لست',
+].map(norm));
 
 async function accessToken() {
   const id = env('client_id', 'HATIF_CLIENT_ID'), secret = env('secret', 'HATIF_CLIENT_SECRET');
@@ -28,6 +33,22 @@ async function listTags(token: string): Promise<Map<string, string>> {
   const m = new Map<string, string>();
   for (const t of items) { const id = t.id || t.tagId; const nm = t.name || t.title; if (id && nm) m.set(norm(nm), String(id)); }
   return m;
+}
+
+async function mergeWithHumanTags(token: string, conversationId: string, systemIds: string[]) {
+  const r = await fetch(`${V}/v2/conversations/service-account/${conversationId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) throw new Error(`conversation read http ${r.status}`);
+  const j = await r.json().catch(() => ({}));
+  const current = Array.isArray(j.tags) ? j.tags : [];
+  const humanIds: string[] = [];
+  for (const t of current) {
+    const id = t?.id || t?.tagId;
+    const name = norm(t?.name || t?.title || '');
+    if (id && (!name || !SYSTEM_TAG_NAMES.has(name))) humanIds.push(String(id));
+  }
+  return { ids: [...new Set([...humanIds, ...systemIds])], preserved: humanIds.length };
 }
 
 async function requireAuth(req: Request, db: ReturnType<typeof svc>) {
@@ -70,7 +91,7 @@ Deno.serve(async (req) => {
 
   const eqSet = (x: string[], y: string[]) => x.length === y.length && [...x].sort().join('|') === [...y].sort().join('|');
   const t0 = Date.now();
-  let applied = 0, unchanged = 0, noconv = 0, failed = 0;
+  let applied = 0, unchanged = 0, noconv = 0, failed = 0, preserved = 0;
   const done: string[] = [];   // أرقام عولجت (تُحذف من القائمة)
 
   for (const phone of dirty) {
@@ -86,16 +107,17 @@ Deno.serve(async (req) => {
     const wantIds = desired.map(n => tagMap.get(norm(n))).filter(Boolean) as string[];
     if (desired.length > 0 && wantIds.length < desired.length) { failed++; continue; }   // تعيين ناقص → أبقِه للمرّة القادمة
     try {
+      const merged = await mergeWithHumanTags(token, convId, wantIds);
       const rr = await fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: wantIds }) });
+        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: merged.ids }) });
       if (rr.ok) {
         await db.from('hatif_conversation_tags').upsert({ phone, conversation_id: convId, tag_names: desired, applied_at: new Date().toISOString() }, { onConflict: 'phone' });
-        applied++; done.push(phone);
+        applied++; preserved += merged.preserved; done.push(phone);
       } else { failed++; }
     } catch { failed++; }
     await sleep(200);
   }
 
   if (done.length) await db.from('hatif_retag_dirty').delete().in('phone', done);
-  return json({ ok: true, dirty: dirty.length, applied, unchanged, noconv, failed, remaining: Math.max(0, dirty.length - done.length) });
+  return json({ ok: true, dirty: dirty.length, applied, unchanged, noconv, failed, preserved, remaining: Math.max(0, dirty.length - done.length) });
 });

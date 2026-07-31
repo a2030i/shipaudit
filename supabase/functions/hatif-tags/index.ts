@@ -1,9 +1,11 @@
-// hatif-tags v2 (2026-07-23) — وسم محادثات هاتف/Voxa يدوياً بحالة العميل.
+// hatif-tags — وسم محادثات هاتف/Voxa يدوياً بحالة العميل.
+// 2026-07-31: جلب الاختيار الحالي قبل التحرير حتى لا تمسح الواجهة تاقات الموظفين
+// أو تاقات لمحة التي لم تكن ظاهرة في حالة الزر المحلية.
 // v2: List Tags بـmaxResultCount=500 (الافتراضي 10 فقط). الرد {totalCount, items:[{id,name,...}]}.
 // action list  → GET /v1/tags/service-account (التاقات المتاحة).
 // action apply → POST /v2/conversations/service-account/{convId}/tags {tagIds}
 //   يجد أحدث conversation_id للعميل من whatsapp_campaign_sends بالهاتف ثم يطبّق.
-//   tagIds فارغة = إزالة كل التاقات (بعد إنهاء الفريق). الحارس: campaigns.send.
+//   tagIds فارغة = إزالة كل التاقات صراحةً. الحارس: campaigns.send.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -45,6 +47,25 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   return { id: user.id, role: p?.role || null, permissions: p?.permissions || {} };
 }
 
+async function latestConversationId(db: ReturnType<typeof svc>, phone: string) {
+  const { data: sends } = await db.from('whatsapp_campaign_sends').select('conversation_id')
+    .eq('phone', phone).not('conversation_id', 'is', null).order('sent_at', { ascending: false }).limit(1);
+  return sends?.[0]?.conversation_id || null;
+}
+
+async function selectedTagIds(token: string, conversationId: string | null) {
+  if (!conversationId) return [] as string[];
+  const r = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${conversationId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!r.ok) return [] as string[];
+  const j = await r.json().catch(() => ({}));
+  return (Array.isArray(j.tags) ? j.tags : [])
+    .map((t: Record<string, any>) => t.id || t.tagId)
+    .filter(Boolean)
+    .map(String);
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const db = svc();
@@ -65,7 +86,15 @@ Deno.serve(async (req) => {
       const r = await fetch('https://api.voxa.sa/v1/tags/service-account?maxResultCount=500&skipCount=0', { headers: { Authorization: `Bearer ${token}` } });
       const j = await r.json().catch(() => ({}));
       const items = Array.isArray(j) ? j : (j.items || j.tags || []);
-      return json({ ok: true, tags: items.map((t: Record<string, any>) => ({ id: t.id || t.tagId, name: t.name || t.title, color: t.color || t.colour || null })) });
+      const phone = norm(body.phone);
+      const conversationId = phone ? await latestConversationId(db, phone) : null;
+      const selected = await selectedTagIds(token, conversationId);
+      return json({
+        ok: true,
+        tags: items.map((t: Record<string, any>) => ({ id: t.id || t.tagId, name: t.name || t.title, color: t.color || t.colour || null })),
+        selectedTagIds: selected,
+        conversationId,
+      });
     } catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
   }
 
@@ -74,9 +103,7 @@ Deno.serve(async (req) => {
     const tagIds = Array.isArray(body.tagIds) ? body.tagIds.map(String) : [];
     if (!phone) return json({ ok: false, error: 'لا رقم' });
     // أحدث محادثة لهذا العميل
-    const { data: sends } = await db.from('whatsapp_campaign_sends').select('conversation_id')
-      .eq('phone', phone).not('conversation_id', 'is', null).order('sent_at', { ascending: false }).limit(1);
-    const convId = sends?.[0]?.conversation_id;
+    const convId = await latestConversationId(db, phone);
     if (!convId) return json({ ok: false, error: 'لا محادثة واتساب لهذا العميل في هاتف — أرسل له حملة أولاً' });
     try {
       const r = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${convId}/tags`, {

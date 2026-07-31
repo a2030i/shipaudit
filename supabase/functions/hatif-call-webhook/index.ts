@@ -1,9 +1,11 @@
-// hatif-call-webhook v5 (2026-07-25) — webhook هاتف/Voxa.
+// hatif-call-webhook — webhook هاتف/Voxa.
+// 2026-07-31: تحقق HMAC من النص الخام، والمكالمة العادية أصبحت حدثاً تحليلياً فقط.
 // v5: يسجّل **كل** أحداث مساحة العمل {data, eventType} في hatif_events (تعيين/نشاط
 // محادثة… أساس تتبّع الإسناد والأداء) + يلتقط أحداث المكالمات في hatif_calls.
-// v4: دعم مغلّف {data, eventType}. v3: مكالمة واردة = متابعة + مهمة.
-// verify_jwt=false — الحماية ?key=. يرجع 200 دائماً.
+// v4: دعم مغلّف {data, eventType}.
+// verify_jwt=false — الحماية الأساسية توقيع HMAC؛ ?key= انتقال مؤقت حتى تفعيل السر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { authorizeHatifWebhook } from '../_shared/hatifWebhookAuth.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -29,13 +31,16 @@ const pick = (o, ...keys) => { for (const k of keys) { const v = o?.[k]; if (v !
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok');
   const db = svc();
-  const url = new URL(req.url);
-  const key = url.searchParams.get('key') || '';
-  const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
-  if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
+  const rawBody = await req.text();
+  const auth = await authorizeHatifWebhook(req, db, rawBody);
+  if (!auth.ok) {
+    console.warn('hatif call webhook rejected:', auth.reason);
+    return new Response('forbidden', { status: 403 });
+  }
+  if (auth.mode === 'legacy_key') console.warn('hatif call webhook accepted through transitional legacy key');
 
   let p = {};
-  try { p = await req.json(); } catch { return ok(); }
+  try { p = JSON.parse(rawBody); } catch { return ok(); }
 
   // مغلّف مساحة العمل {data, eventType}: سجّل كل حدث (لا ترمي شيئاً)،
   // ثم إن كان مكالمة أكمل لـhatif_calls، وإلا (حدث محادثة) يكتفي بالتسجيل.
@@ -95,36 +100,5 @@ Deno.serve(async (req) => {
     else await db.from('hatif_calls').insert(row);
   } catch (e) { console.error('hatif_calls insert failed:', e.message); }
 
-  if (row.provider_call_id && row.call_type === 1 && row.phone) {
-    try {
-      const { data: won } = await db.from('hatif_calls')
-        .update({ followup_created: true })
-        .eq('provider_call_id', row.provider_call_id).eq('followup_created', false).select('provider_call_id');
-      if (won && won.length) {
-        const { data: fu } = await db.from('retargeting_followups').select('phone, status, owner_id').eq('phone', row.phone).maybeSingle();
-        let owner = fu?.owner_id ?? null;
-        let known = !!fu;
-        if (!owner) {
-          const { data: cs } = await db.from('whatsapp_campaign_sends').select('sent_by')
-            .eq('phone', row.phone).not('sent_by', 'is', null).order('sent_at', { ascending: false }).limit(1);
-          if (cs?.[0]) { known = true; if (cs[0].sent_by && String(cs[0].sent_by).length > 20) owner = cs[0].sent_by; }
-        }
-        if (known) {
-          const nowIso = new Date().toISOString();
-          const FINAL = new Set(['converted', 'returned', 'supplier', 'noise', 'blacklist', 'test']);
-          if (!fu || !FINAL.has(fu.status)) {
-            await db.from('retargeting_followups').upsert({ phone: row.phone, status: 'needs_followup', owner_id: owner, last_touch_at: nowIso, updated_at: nowIso }, { onConflict: 'phone' });
-          }
-          if (owner) {
-            await db.from('crm_tasks').insert({
-              title: `📞 مكالمة واردة من ${row.phone} — تابِعها`,
-              kind: 'followup', entity_type: 'retargeting', entity_ref: row.phone,
-              assigned_to: owner, due_at: nowIso, priority: 'high', status: 'open',
-            });
-          }
-        }
-      }
-    } catch (e) { console.error('inbound call followup failed:', e.message); }
-  }
   return ok();
 });

@@ -1,6 +1,6 @@
 // TagButton — وسم محادثة العميل في هاتف يدوياً بحالته (VIP/عليه مديونية/متوقف…).
-// يجلب التاقات من هاتف (List Tags)، يقترح تاقات من حالة العميل، ويطبّق المختار
-// على أحدث محادثة له (POST tags). فارغ = إزالة كل التاقات. الحارس campaigns.send.
+// يجلب التاقات والاختيار الحالي من هاتف، ثم يطبّق القائمة الكاملة على أحدث محادثة.
+// قراءة الحالة أولاً تمنع مسح تاقات الموظفين أو تاقات لمحة بلا قصد.
 import { useState } from 'react';
 import { Tag, X } from 'lucide-react';
 import { Modal, Btn, Spinner, toast } from './UI.jsx';
@@ -20,11 +20,15 @@ export default function TagButton({ phone, name, suggest = [], size = 13, compac
   const openModal = async () => {
     setOpen(true);
     if (tags == null) {
-      const t = await loadHatifTags();
+      const current = await loadHatifTags(digits);
+      const t = current.tags || [];
       setTags(t);
-      // علّم مبدئياً التاقات المقترحة من حالة العميل (مطابقة بالاسم)
+      // ابدأ بما هو مطبّق فعلاً، ثم أضف المقترحات المبنية على حالة العميل.
       const sg = new Set((suggest || []).map(s => String(s).trim()));
-      setSel(new Set(t.filter(x => sg.has(String(x.name).trim())).map(x => x.id)));
+      setSel(new Set([
+        ...(current.selectedTagIds || []),
+        ...t.filter(x => sg.has(String(x.name).trim())).map(x => x.id),
+      ]));
     }
   };
   const toggle = (id) => setSel(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -32,7 +36,7 @@ export default function TagButton({ phone, name, suggest = [], size = 13, compac
   const apply = async () => {
     setBusy(true);
     try {
-      const r = await applyConversationTags(digits, Array.from(sel));
+      await applyConversationTags(digits, Array.from(sel));
       toast(sel.size ? `وُسِم بـ${sel.size} تاق ✓` : 'أُزيلت كل التاقات ✓', 'success');
       setOpen(false);
     } catch (e) { toast(e.message || 'فشل الوسم', 'error'); }

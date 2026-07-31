@@ -37,7 +37,7 @@ export async function saveWhatsAppConfig(cfg) {
     // ربط متغيرات القوالب (2026-07-21): { [templateName]: [{src, text?}, ...] }
     templateVars:     cfg.templateVars || {},
     // ربط القالب بموظف مسؤول (2026-07-22): { [templateName]: <supabase user id> } —
-    // ردّ العميل على هذا القالب يُسند لهذا الموظف (مهمة + محادثة هاتف).
+    // ردّ العميل على هذا القالب يُسند لهذا الموظف داخل هاتف فقط؛ لا تُنشأ مهمة CRM.
     templateAgents:   cfg.templateAgents || {},
   });
   const { error } = await supabase.from('app_settings')
@@ -339,10 +339,14 @@ export async function loadHatifCalls({ days = 30, userId = null, limit = 100 } =
 }
 
 // تاقات هاتف — سرد المتاح + تطبيق يدوي على محادثة العميل (بالهاتف)
-export async function loadHatifTags() {
-  const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'list' } });
-  if (error || !data?.ok) return [];
-  return (data.tags || []).filter(t => t.id);
+export async function loadHatifTags(phone = null) {
+  const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'list', phone } });
+  if (error || !data?.ok) return { tags: [], selectedTagIds: [], conversationId: null };
+  return {
+    tags: (data.tags || []).filter(t => t.id),
+    selectedTagIds: Array.isArray(data.selectedTagIds) ? data.selectedTagIds : [],
+    conversationId: data.conversationId || null,
+  };
 }
 export async function applyConversationTags(phone, tagIds) {
   const { data, error } = await supabase.functions.invoke('hatif-tags', { body: { action: 'apply', phone, tagIds } });

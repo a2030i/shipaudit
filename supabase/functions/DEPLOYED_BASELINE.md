@@ -51,20 +51,20 @@
 | `zoho-webhook` | v10 | **`false`** | `182db99229e5e0bf…` | 2026-07-21 10:55:16 |
 | `lamha-sync` | v4 | **`false`** | `8e11825ad7aa63ee…` | 2026-07-05 22:12:15 |
 | `zoho-debug` | v4 | **`false`** | `13d350dd38fb645c…` | 2026-07-05 22:26:39 |
-| `hatif-send` | v15 | `true` | `cc045313d392e390…` | 2026-07-22 10:27:41 |
-| `hatif-webhook` | v14 | **`false`** | `f4cf697f1bda9a83…` | 2026-07-27 16:59:34 |
+| `hatif-send` | v16 | `true` | `d152ef505b207886…` | 2026-07-31 |
+| `hatif-webhook` | v15 | **`false`** | `cabae1c2fb1d0de3…` | 2026-07-31 |
 | `zatca-alert` | v3 | **`false`** | `dde6016630237768…` | 2026-07-15 14:04:52 |
 | `hatif-contacts-sync` | v24 | **`false`** | `445b5b2ec63f297a…` | 2026-07-21 14:07:12 |
 | `track-activity` | v1 | `true` | `1d97743cd5f944f2…` | 2026-07-16 16:24:36 |
 | `campaign-runner` | v5 | **`false`** | `79dd233763c340ad…` | 2026-07-23 07:34:04 |
 | `hatif-ivr` | v9 | `true` | `fb891c48d1e370c8…` | 2026-07-23 10:37:35 |
 | `ivr-webhook` | v7 | **`false`** | `de244229f069c8c4…` | 2026-07-27 17:04:09 |
-| `hatif-call-webhook` | v5 | **`false`** | `b2cb0b45733abf42…` | 2026-07-25 23:35:54 |
+| `hatif-call-webhook` | v6 | **`false`** | `7f2b92437baa082d…` | 2026-07-31 |
 | `ivr-runner` | v4 | **`false`** | `43fac93a68a2eba2…` | 2026-07-23 10:38:55 |
-| `hatif-tags` | v2 | `true` | `0fcafee85c3d6f97…` | 2026-07-23 01:59:01 |
-| `hatif-tag-sync` | v8 | **`false`** | `df688d5069af7934…` | 2026-07-23 02:59:08 |
+| `hatif-tags` | v3 | `true` | `866efec293c365b4…` | 2026-07-31 |
+| `hatif-tag-sync` | v9 | **`false`** | `1f35e29a95d1a313…` | 2026-07-31 |
 | `hatif-lead-names` | v1 | **`false`** | `187de021ea6ba928…` | 2026-07-23 05:56:33 |
-| `hatif-retag-runner` | v1 | **`false`** | `c4a1df5b410ff941…` | 2026-07-23 06:32:17 |
+| `hatif-retag-runner` | v2 | **`false`** | `9edbd5429f360d53…` | 2026-07-31 |
 | `hatif-workspace-webhook` | v1 | **`false`** | `e26960f425ce5a32…` | 2026-07-25 23:47:46 |
 | `hatif-probe` | v16 | `true` | `f14070cf1efb2c8f…` | 2026-07-26 12:44:58 |
 | `hatif-resolve-contacts` | v1 | **`false`** | `dedba3c39a85471a…` | 2026-07-26 11:27:40 |

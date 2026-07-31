@@ -1,4 +1,6 @@
-// hatif-webhook v14 — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// hatif-webhook — يستقبل أحداث Hatif/Voxa (تسليم + ردود) ويحدّث whatsapp_campaign_sends.
+// 2026-07-31: توقيع X-Voxa-Signature على النص الخام + إلغاء إنشاء مهام CRM من
+// الرد العادي. هاتف هو صندوق المحادثة؛ لمحة تقيس القناة فقط ما لم توجد إحالة صريحة.
 // v14 (2026-07-27): **توسيع كاشف بوتات المتاجر** — حادثة: قائمة «عميل حار» امتلأت
 // بردّادات ترحيب المتاجر المتأخرة (>60ث): «حياك الله في…»/«عزيزي العميل»/«في أقرب
 // وقت ممكن»/«تم تغيير رقم خدمة العملاء». النمط مُوحَّد مع SQL reply_intent().
@@ -8,9 +10,10 @@
 // 3 أيام فقط؛ رد بعدها → تمشي المحادثة على أتمتة هاتف (سياق مختلف).
 // v11 (2026-07-22): **الإسناد على أول رد حتى لو آلي** (قرار المستخدم) — الإسناد توجيه
 // لا يزعج أحداً، فيتمّ على أول رد وارد (آلي أو حقيقي) مرة واحدة (hatif_assigned_at).
-// المهمة CRM تبقى للرد الحقيقي فقط. templateAgents = Voxa userId (الفريق في هاتف).
-// verify_jwt=false — الحماية ?key= ضد zoho_auth.webhook_key.
+// templateAgents = Voxa userId (الفريق في هاتف). لا تُنشأ مهام لمجرد الرد.
+// verify_jwt=false — الحماية الأساسية توقيع HMAC؛ ?key= انتقال مؤقت حتى تفعيل السر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { authorizeHatifWebhook } from '../_shared/hatifWebhookAuth.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const ok = () => new Response(JSON.stringify({ ok: true }), { status: 200, headers: { 'Content-Type': 'application/json' } });
@@ -51,25 +54,36 @@ const isAutoText = (b: string | null) => !!b && AUTO_REPLY_RE.test(String(b));
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok');
   const db = svc();
-  const url = new URL(req.url);
-  const key = url.searchParams.get('key') || '';
-  const { data: za } = await db.from('zoho_auth').select('webhook_key').eq('id', 1).maybeSingle();
-  if (!za?.webhook_key || key !== za.webhook_key) return new Response('forbidden', { status: 403 });
+  const rawBody = await req.text();
+  const auth = await authorizeHatifWebhook(req, db, rawBody);
+  if (!auth.ok) {
+    console.warn('hatif webhook rejected:', auth.reason);
+    return new Response('forbidden', { status: 403 });
+  }
+  if (auth.mode === 'legacy_key') console.warn('hatif webhook accepted through transitional legacy key');
 
   let p: Record<string, any> = {};
-  try { p = await req.json(); } catch { return ok(); }
+  try { p = JSON.parse(rawBody); } catch { return ok(); }
 
   const conversationId = p.conversationId || p.ConversationId || null;
   const contactId      = p.contactId || p.ContactId || null;
+  const messageId      = p.messageId || p.MessageId || null;
   const direction      = String(p.direction || p.Direction || '').toLowerCase();
   const status         = String(p.status || p.Status || '');
   const body           = p.body || p.Body || null;
   const when           = p.creationTime || p.CreationTime || new Date().toISOString();
-  if (!conversationId && !contactId) return ok();
+  if (!messageId && !conversationId && !contactId) return ok();
 
-  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, sent_at, template_name, hatif_assigned_at';
+  const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, message_id, sent_at, template_name, hatif_assigned_at';
   let row: Record<string, any> | null = null;
-  if (conversationId) {
+  // المعرّف الخاص بالرسالة هو الارتباط الحتمي. conversation/contact fallback فقط
+  // للرسائل التاريخية التي لم تُرجِع المنصة لها messageId عند الإرسال.
+  if (messageId) {
+    const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
+      .eq('message_id', messageId).order('sent_at', { ascending: false }).limit(1);
+    row = data?.[0] || null;
+  }
+  if (!row && conversationId) {
     const { data } = await db.from('whatsapp_campaign_sends').select(SEL)
       .eq('conversation_id', conversationId).order('sent_at', { ascending: false }).limit(1);
     row = data?.[0] || null;
@@ -83,7 +97,6 @@ Deno.serve(async (req) => {
 
   const patch: Record<string, any> = {};
   if (conversationId && !row.conversation_id) patch.conversation_id = conversationId;
-  let firstReply = false;
   if (direction === 'inbound') {
     // آلي = مطابق لعبارة آلية أو وصل خلال ≤60ث من الإرسال (أقوى إشارة)
     let secs: number | null = null;
@@ -97,12 +110,11 @@ Deno.serve(async (req) => {
       patch.auto_reply_at = when;
       if (body) patch.reply_body = String(body).slice(0, 500);
     } else if (!row.replied_at) {
-      // حجز ذرّي (البند 3): من يكسب الصفّ (replied_at IS NULL) وحده يُنشئ المهمة —
-      // يمنع ازدواج المهام/المتابعات عند وصول نفس الرد مرتين متزامناً (read-then-write).
-      const { data: won } = await db.from('whatsapp_campaign_sends')
+      // تسجيل أول رد ذرّياً للقياس فقط. لا ينشئ Lead/متابعة/مهمة؛ الفريق يتابع
+      // المحادثة داخل هاتف، والتحويل إلى نظامنا يحتاج إشارة عمل صريحة.
+      await db.from('whatsapp_campaign_sends')
         .update({ replied_at: when, reply_body: body ? String(body).slice(0, 500) : null, reply_is_auto: false })
-        .eq('id', row.id).is('replied_at', null).select('id');
-      if (won && won.length && within3d) firstReply = true;   // مهمة/متابعة داخل النافذة فقط
+        .eq('id', row.id).is('replied_at', null);
     }
     // إسناد المحادثة في هاتف على أول رد (آلي أو حقيقي) داخل نافذة الـ3 أيام — مرة واحدة.
     if (!row.hatif_assigned_at && within3d) {
@@ -136,29 +148,5 @@ Deno.serve(async (req) => {
     try { await db.from('whatsapp_campaign_sends').update(patch).eq('id', row.id); } catch { /* */ }
   }
 
-  if (firstReply && row.phone) {
-    try {
-      const { data: fu } = await db.from('retargeting_followups')
-        .select('phone, status, owner_id').eq('phone', row.phone).maybeSingle();
-      const FINAL = new Set(['converted', 'returned', 'supplier', 'noise', 'blacklist', 'test']);
-      if (!fu || !FINAL.has(fu.status)) {
-        await db.from('retargeting_followups').upsert({
-          phone: row.phone, status: 'needs_followup',
-          owner_id: fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null),
-          last_touch_at: when, updated_at: new Date().toISOString(),
-        }, { onConflict: 'phone' });
-      }
-      // مهمة CRM (اختيارية) لمالك المتابعة/المُرسِل — موظف نظامنا فقط (الرد الحقيقي فقط).
-      const taskAssignee = fu?.owner_id ?? (row.sent_by && row.sent_by.length > 20 ? row.sent_by : null);
-      if (taskAssignee) {
-        const { error: taskErr } = await db.from('crm_tasks').insert({
-          title: `↩️ ردّ وارد من ${row.name || row.phone} — تابِعه الآن`,
-          kind: 'followup', entity_type: 'retargeting', entity_ref: row.phone,
-          assigned_to: taskAssignee, due_at: new Date().toISOString(), priority: 'high', status: 'open',
-        });
-        if (taskErr) console.error('crm_task insert failed on reply:', taskErr.message);
-      }
-    } catch (e) { console.error('reply→task handler failed:', (e as Error).message); }
-  }
   return ok();
 });

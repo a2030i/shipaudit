@@ -171,9 +171,13 @@ Deno.serve(async (req) => {
     // يشمل بلا-واتساب (undeliverable) + قائمة الحظر اليدوية (رقم المالك).
     const blocked = new Set<string>();
     try {
-      const { data: bl } = await db.rpc('no_whatsapp_phones');
+      const { data: bl, error: blocklistError } = await db.rpc('no_whatsapp_phones');
+      if (blocklistError) throw blocklistError;
       for (const r of (bl || []) as { phone: string }[]) if (r.phone) blocked.add(r.phone);
-    } catch { /* فشل الجلب لا يُفشل الإرسال — لكنه لا يستثني، فنسجّله */ }
+    } catch (e) {
+      console.error('campaign blocked: no_whatsapp_phones unavailable', String((e as Error).message || e));
+      return json({ ok: false, error: 'تعذّر التحقق من قائمة الحظر — أوقِف الإرسال حفاظاً على العملاء ثم أعد المحاولة' }, 503);
+    }
     const results: unknown[] = []; let sent = 0, failed = 0, skipped = 0;
     for (const it of items) {
       const to = norm(it.to);
