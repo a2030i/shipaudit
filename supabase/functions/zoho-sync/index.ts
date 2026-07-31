@@ -1,4 +1,5 @@
-// zoho-sync v14 — مصالحة الدفعات ذات الرصيد المفتوح: تطبيق الدفعة على فاتورة
+// zoho-sync v21 — سجل دائم لكل دورة + اكتمال pagination + معرّفات العملاء/الموردين.
+// v14 — مصالحة الدفعات ذات الرصيد المفتوح: تطبيق الدفعة على فاتورة
 // لا يُحرّك last_modified لها (نفس فخّ الإشعارات §1.26b) فتبقى «غير مستخدمة»
 // وهمياً في المرآة (دفعة 12,197 لعميل OUT OF LINE بقيت عالقة 3 أيام).
 // العلاج: إعادة جلب موجّهة لكل دفعة unused>0 عندنا (قائمة صغيرة، سقف 40/دورة).
@@ -13,6 +14,7 @@
 // v8: sync شامل 6 كيانات. v6/v7: مصادقة داخلية + TTL + محلّل + CORS.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { beginSyncRun, finishSyncRun } from '../_shared/zohoReliability.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -243,21 +245,29 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'sync') {
+      const triggerSource = cronKey ? 'cron' : body.full === true ? 'full_rebuild' : 'manual';
+      const run = await beginSyncRun(db, triggerSource, auth.user?.id || null);
+      let apiCalls = 0;
+      const results: Record<string, number | string> = {};
+      try {
       const { token, apiDomain, orgId } = await accessToken(db);
       const ENTITIES: { ent: string; listKey: string; table: string;
         sortColumn?: string; noDelta?: boolean; reconcileDeletes?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
-          zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_name: it.customer_name,
-          date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
+          zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_id: it.customer_id || null,
+          customer_name: it.customer_name, date: it.date || null, due_date: it.due_date || null,
+          total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now,
           einvoice_status: (it.einvoice_status as string) || null }) },
         { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
-          zoho_id: it.payment_id, customer_name: it.customer_name, date: it.date || null,
+          zoho_id: it.payment_id, customer_id: it.customer_id || null,
+          customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
         { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true, reconcileDeletes: true, map: (it, lm, now) => ({
-          zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number, customer_name: it.customer_name,
+          zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number,
+          customer_id: it.customer_id || null, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
@@ -268,12 +278,14 @@ Deno.serve(async (req) => {
           description: (it.description as string) || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
         { ent: 'bills', listKey: 'bills', table: 'zoho_bills', map: (it, lm, now) => ({
-          zoho_id: it.bill_id, bill_number: it.bill_number || null, vendor_name: it.vendor_name || null,
+          zoho_id: it.bill_id, bill_number: it.bill_number || null,
+          vendor_id: it.vendor_id || null, vendor_name: it.vendor_name || null,
           date: it.date || null, due_date: it.due_date || null,
           total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
         { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', map: (it, lm, now) => ({
-          zoho_id: it.payment_id, vendor_name: it.vendor_name || null, date: it.date || null,
+          zoho_id: it.payment_id, vendor_id: it.vendor_id || null,
+          vendor_name: it.vendor_name || null, date: it.date || null,
           amount: Number(it.amount) || 0, mode: it.payment_mode || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
         { ent: 'journals', listKey: 'journals', table: 'zoho_journals', map: (it, lm, now) => ({
@@ -292,14 +304,17 @@ Deno.serve(async (req) => {
           unused_credits_payable: Number(it.unused_credits_payable_amount) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
       ];
-      const results: Record<string, number | string> = {};
       for (const cfg of ENTITIES) {
         try {
-          const { data: st } = await db.from('zoho_sync_state').select('last_sync').eq('entity', cfg.ent).maybeSingle();
-          const since = cfg.noDelta ? null : (st?.last_sync ? new Date(st.last_sync).getTime() : null);
+          const { data: st, error: stateReadError } = await db.from('zoho_sync_state')
+            .select('last_sync').eq('entity', cfg.ent).maybeSingle();
+          if (stateReadError) throw new Error(`state read: ${stateReadError.message}`);
+          const since = (cfg.noDelta || body.full === true)
+            ? null : (st?.last_sync ? new Date(st.last_sync).getTime() : null);
           const runStart = new Date().toISOString();
           let page = 1, saved = 0, more = true, entErr: string | null = null;
-          while (more && page <= 25) {
+          const MAX_PAGES = 500;
+          while (more && page <= MAX_PAGES) {
             const qs = new URLSearchParams({
               organization_id: orgId, per_page: '200', page: String(page),
               sort_column: cfg.sortColumn || 'last_modified_time', sort_order: 'D',
@@ -307,6 +322,7 @@ Deno.serve(async (req) => {
             const r = await fetch(`${apiDomain}/books/v3/${cfg.ent}?${qs}`, {
               headers: { Authorization: `Zoho-oauthtoken ${token}` },
             });
+            apiCalls++;
             const j = await r.json();
             if (j.code !== 0) { entErr = j.message || `code ${j.code}`; break; }
             const rows: Record<string, unknown>[] = j[cfg.listKey] || [];
@@ -327,15 +343,28 @@ Deno.serve(async (req) => {
             more = !reachedOld && !!(j.page_context?.has_more_page);
             page++;
           }
+          if (more) entErr = `تجاوز حد الأمان ${MAX_PAGES} صفحة دون اكتمال`;
           if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
           if (cfg.reconcileDeletes && !more) {
-            await db.from(cfg.table).delete().lt('synced_at', runStart);
+            const { error: deleteError } = await db.from(cfg.table).delete().lt('synced_at', runStart);
+            if (deleteError) throw new Error(`reconcile deletes: ${deleteError.message}`);
           }
-          await db.from('zoho_sync_state').upsert({
-            entity: cfg.ent, last_sync: new Date().toISOString(), last_count: saved, updated_at: new Date().toISOString(),
+          const { error: stateWriteError } = await db.from('zoho_sync_state').upsert({
+            entity: cfg.ent, last_sync: new Date().toISOString(), last_count: saved,
+            last_status: 'succeeded', last_error: null, last_run_id: run.id,
+            updated_at: new Date().toISOString(),
           });
+          if (stateWriteError) throw new Error(`state write: ${stateWriteError.message}`);
           results[cfg.ent] = saved;
-        } catch (e) { results[cfg.ent] = `خطأ: ${String((e as Error).message || e)}`; }
+        } catch (e) {
+          const message = String((e as Error).message || e);
+          results[cfg.ent] = `خطأ: ${message}`;
+          const { error: stateError } = await db.from('zoho_sync_state').upsert({
+            entity: cfg.ent, last_status: 'failed', last_error: message.slice(0, 2000),
+            last_run_id: run.id, updated_at: new Date().toISOString(),
+          });
+          if (stateError) console.error('[zoho-sync] state failure log:', stateError.message);
+        }
       }
 
       // v14: مصالحة الدفعات ذات الرصيد المفتوح — تطبيق الدفعة على فاتورة لا
@@ -350,10 +379,12 @@ Deno.serve(async (req) => {
           const r = await fetch(`${apiDomain}/books/v3/customerpayments/${p.zoho_id}?organization_id=${orgId}`, {
             headers: { Authorization: `Zoho-oauthtoken ${token}` },
           });
+          apiCalls++;
           const j = await r.json().catch(() => ({} as Record<string, unknown>));
           const pay = (j as Record<string, any>)?.payment;
           if ((j as Record<string, unknown>).code === 0 && pay) {
-            await db.from('zoho_payments').update({
+            const { error: refreshError } = await db.from('zoho_payments').update({
+              customer_id: pay.customer_id || null,
               amount: Number(pay.amount) || 0,
               unused_amount: Number(pay.unused_amount) || 0,
               invoice_numbers: Array.isArray(pay.invoices)
@@ -362,9 +393,11 @@ Deno.serve(async (req) => {
               last_modified: pay.last_modified_time ? new Date(pay.last_modified_time as string).toISOString() : null,
               synced_at: new Date().toISOString(),
             }).eq('zoho_id', p.zoho_id);
+            if (refreshError) throw new Error(`payment refresh save: ${refreshError.message}`);
             refreshed++;
           } else if (r.status === 404) {
-            await db.from('zoho_payments').delete().eq('zoho_id', p.zoho_id);
+            const { error: deleteError } = await db.from('zoho_payments').delete().eq('zoho_id', p.zoho_id);
+            if (deleteError) throw new Error(`payment refresh delete: ${deleteError.message}`);
             refreshed++;
           }
           await new Promise(res => setTimeout(res, 120));
@@ -372,7 +405,14 @@ Deno.serve(async (req) => {
         results['payments_refetch'] = refreshed;
       } catch (e) { results['payments_refetch'] = `خطأ: ${String((e as Error).message || e)}`; }
 
-      return json({ ok: true, results });
+      const partial = Object.values(results).some(v => typeof v === 'string' && v.startsWith('خطأ:'));
+      await finishSyncRun(db, run.id, partial ? 'partial' : 'succeeded', results, apiCalls);
+      return json({ ok: !partial, partial, run_id: run.id, api_calls: apiCalls, results });
+      } catch (e) {
+        const message = String((e as Error).message || e);
+        await finishSyncRun(db, run.id, 'failed', results, apiCalls, message);
+        throw e;
+      }
     }
 
     return json({ error: 'unknown action' }, 400);

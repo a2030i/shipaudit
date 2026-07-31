@@ -1,4 +1,5 @@
-// zoho-apply-credits v12 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
+// zoho-apply-credits v19 — سجل كتابة دائم + idempotency قبل أول طلب تغيير لزوهو.
+// v12 — تطبيق أرصدة العميل الدائنة على فواتيره المفتوحة.
 // v12: كاش التوكن يُبطَل فور إعادة المنح (يقارن zoho_auth.updated_at) — فالنطاق
 //      الجديد (creditnotes.CREATE) يسري لحظياً لا بعد 55 دقيقة.
 // مهمة واحدة: لا إنشاء فواتير · لا حذف · لا شيء آخر.
@@ -31,6 +32,7 @@
 // الصلاحيات: customerpayments.UPDATE + creditnotes.UPDATE (مُنِحت).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { claimWriteOperation, finishWriteOperation } from '../_shared/zohoReliability.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -234,6 +236,7 @@ Deno.serve(async (req) => {
   try { body = await req.json(); } catch { /* */ }
   const action = String(body.action || '');
   const contactId = String(body.contact_id || '');
+  const idempotencyKey = String(body.idempotency_key || '').trim();
 
   const auth = await requireUser(req, db);
   if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
@@ -246,7 +249,12 @@ Deno.serve(async (req) => {
     return json({ error: 'forbidden — تحتاج صلاحية «تطبيق أرصدة دائنة»' }, 403);
   }
   if (!contactId) return json({ error: 'contact_id مطلوب' }, 400);
+  if (action === 'apply' && !/^[A-Za-z0-9:_-]{16,200}$/.test(idempotencyKey)) {
+    return json({ error: 'idempotency_key صالح مطلوب لتنفيذ العملية' }, 400);
+  }
 
+  let operationId: number | null = null;
+  let operationApplied = 0;
   try {
     const { token, apiDomain, orgId } = await accessToken(db);
 
@@ -257,9 +265,38 @@ Deno.serve(async (req) => {
 
     if (action === 'apply') {
       if (!isAdmin) return json({ error: 'forbidden — التطبيق للمدير فقط' }, 403);
+      const claim = await claimWriteOperation(db, {
+        idempotencyKey,
+        action: 'apply_credits',
+        contactId,
+        requestedBy: auth.user.id,
+        payload: { contact_id: contactId },
+      });
+      if (!claim.claimed) {
+        const prior = claim.prior as Record<string, any>;
+        if (prior.status === 'succeeded' || prior.status === 'partial') {
+          return json({ ...(prior.result_payload || {}), duplicate: true, operation_status: prior.status });
+        }
+        return json({
+          ok: false,
+          duplicate: true,
+          operation_status: prior.status,
+          error: prior.status === 'running'
+            ? 'العملية نفسها قيد التنفيذ الآن'
+            : 'هذه العملية مسجلة بنتيجة غير مؤكدة؛ راجع زوهو قبل إعادة التنفيذ',
+        }, prior.status === 'running' ? 409 : 200);
+      }
+      operationId = claim.id;
+      const complete = async (payload: Record<string, unknown>, status: 'succeeded' | 'partial' | 'failed') => {
+        const applied = Number(payload.applied) || 0;
+        operationApplied = applied;
+        await finishWriteOperation(db, operationId!, status, payload, applied,
+          status === 'succeeded' ? null : String(payload.error || 'نتيجة جزئية'));
+        return json(payload);
+      };
       const result = await getPlan(db, token, apiDomain, orgId, contactId);
       planCache.delete(contactId);   // الأرصدة ستتغيّر بالكتابة — أبطِل الكاش
-      if (!result.plan.length) return json({ ok: true, applied: 0, results: [], note: 'لا شيء للتطبيق' });
+      if (!result.plan.length) return await complete({ ok: true, applied: 0, results: [], note: 'لا شيء للتطبيق' }, 'succeeded');
 
       const H = { Authorization: `Zoho-oauthtoken ${token}`, 'Content-Type': 'application/json' };
       const results: any[] = [];
@@ -333,9 +370,10 @@ Deno.serve(async (req) => {
 
           const ok = res1.ok;
           if (ok) appliedTotal = r2(appliedTotal + sum); else refund(list);
+          operationApplied = appliedTotal;
           results.push({ source: `إشعار ${app.number}`, applied: ok ? sum : 0, ok, error: res1.err });
-          if (!ok && (res1.r.status === 429 || rateLimited(res1.err))) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true });
-          if (!ok && authErr(res1.err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+          if (!ok && (res1.r.status === 429 || rateLimited(res1.err))) return await complete({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true }, 'partial');
+          if (!ok && authErr(res1.err)) return await complete({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true }, 'partial');
         } catch (e) {
           results.push({ source: `إشعار ${app.number}`, applied: 0, ok: false, error: String((e as Error).message || e) });
         }
@@ -389,20 +427,29 @@ Deno.serve(async (req) => {
 
           const ok = res2.ok;
           if (ok) appliedTotal = r2(appliedTotal + sum); else refund(newList);
+          operationApplied = appliedTotal;
           results.push({ source: `دفعة ${app.ref}`, applied: ok ? sum : 0, ok, error: res2.err });
-          if (!ok && (res2.r.status === 429 || rateLimited(res2.err))) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true });
-          if (!ok && authErr(res2.err)) return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true });
+          if (!ok && (res2.r.status === 429 || rateLimited(res2.err))) return await complete({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, rate_limited: true }, 'partial');
+          if (!ok && authErr(res2.err)) return await complete({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results, role_error: true }, 'partial');
         } catch (e) {
           results.push({ source: `دفعة ${app.ref}`, applied: 0, ok: false, error: String((e as Error).message || e) });
         }
       }
 
-      return json({ ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results });
+      const payload = { ok: true, applied: appliedTotal, count: results.filter(x => x.ok).length, results };
+      return await complete(payload, results.some(x => !x.ok) ? 'partial' : 'succeeded');
     }
 
     return json({ error: 'action غير معروف (plan | apply)' }, 400);
   } catch (e) {
     const msg = String((e as Error).message || e);
+    if (operationId) {
+      try {
+        await finishWriteOperation(db, operationId, 'unknown', { ok: false, error: msg }, operationApplied, msg);
+      } catch (auditError) {
+        console.error('[zoho-apply-credits] failed to persist operation failure', auditError);
+      }
+    }
     // تجاوز حصة زوهو → رسالة ودّية (200) بدل 500 حتى تعرضها الواجهة بوضوح.
     if (rateLimited(msg)) return json({ ok: false, rate_limited: true, error: 'حصة زوهو ممتلئة مؤقتاً (~100 طلب/دقيقة). انتظر دقيقة وأعد المحاولة.' });
     return json({ error: msg }, 500);

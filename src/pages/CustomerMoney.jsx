@@ -4,7 +4,7 @@
 // لكل مفهوم» 2026-07-03) — نفس أرقام /zoho-data ومتابعة العملاء.
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -404,7 +404,7 @@ export default function CustomerMoney({ isActive = true }) {
                         {r.applicable > 0.5 ? (r.clearsFully ? '✓ صفر' : fmt(r.remainingAfter)) : 'رصيد بلا فواتير مفتوحة'}
                       </td>
                       <td data-label="" style={{ padding: '8px 12px', whiteSpace: 'nowrap', display: 'flex', gap: 8, alignItems: 'center' }}>
-                        {can('zoho.apply_credits') && r.applicable > 0.5 && (
+                        {isAdmin && can('zoho.apply_credits') && r.applicable > 0.5 && (
                           <button onClick={() => setApplyTarget({ zohoId: r.zohoId, name: r.name, zohoUrl: r.zohoUrl })}
                             style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--green)', background: 'color-mix(in srgb, var(--green) 12%, transparent)',
                               border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)', borderRadius: 7, padding: '4px 10px', cursor: 'pointer' }}>
@@ -520,6 +520,7 @@ export default function CustomerMoney({ isActive = true }) {
 
 // مودال «طبّق للكل» — تطبيق أرصدة كل العملاء تسلسلياً مع تقدّم حيّ
 function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
+  const operationGroup = useRef(crypto.randomUUID());
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(false);
   const [idx, setIdx] = useState(0);
@@ -534,7 +535,7 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
     for (let i = 0; i < rows.length; i++) {
       setIdx(i + 1);
       const r = rows[i];
-      const res = await applyZohoCredits(r.zohoId);
+      const res = await applyZohoCredits(r.zohoId, `${operationGroup.current}:${r.zohoId}`);
       // تجاوز حصة زوهو → أوقف واعرض بانر (يُكمل المستخدم لاحقاً بأمان)
       if (res?.rate_limited) { setRateHit(true); break; }
       const entry = res?.ok
@@ -619,6 +620,7 @@ function BulkApplyModal({ rows, onClose, onDone, onGrant }) {
 
 // مودال تطبيق الأرصدة الدائنة — معاينة (قراءة) ثم تأكيد التطبيق (كتابة في زوهو)
 function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
+  const operationKey = useRef(`${crypto.randomUUID()}:${target.zohoId}`);
   const [plan, setPlan] = useState(null);   // null=جارٍ · {ok,...} · {error}
   const [applying, setApplying] = useState(false);
   const [done, setDone] = useState(null);
@@ -629,7 +631,7 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
 
   const doApply = async () => {
     setApplying(true);
-    const r = await applyZohoCredits(target.zohoId);
+    const r = await applyZohoCredits(target.zohoId, operationKey.current);
     setApplying(false);
     if (r?.rate_limited) { toast('حصة زوهو ممتلئة مؤقتاً — انتظر دقيقة وأعد المحاولة', 'info'); if (r.applied > 0) setDone(r); return; }
     if (r?.ok) { setDone(r); if (!r.results?.some(x => !x.ok)) toast(`تم تطبيق ${fmt(r.applied)} ر.س ✓`, 'success'); }

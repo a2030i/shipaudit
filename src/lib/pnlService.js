@@ -341,9 +341,9 @@ export async function planZohoApplyCredits(contactId) {
 }
 // تنفيذ الخطة فعلياً في زوهو (كتابة — admin + صلاحية invoices.UPDATE).
 // العملية الوحيدة: تطبيق رصيد موجود على فاتورة موجودة. لا إنشاء/حذف.
-export async function applyZohoCredits(contactId) {
+export async function applyZohoCredits(contactId, idempotencyKey = crypto.randomUUID()) {
   const { data, error } = await supabase.functions.invoke('zoho-apply-credits', {
-    body: { action: 'apply', contact_id: contactId },
+    body: { action: 'apply', contact_id: contactId, idempotency_key: idempotencyKey },
   });
   if (error) return { ok: false, error: error.message };
   return data;
