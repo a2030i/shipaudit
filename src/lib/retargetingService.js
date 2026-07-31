@@ -32,6 +32,36 @@ export async function loadStoreActivationTrend(days = 5, limit = 24) {
   }));
 }
 
+// مركز قيادة هدف العملاء النشطين. العدّ هنا على رقم العميل الموحّد، لا صف المتجر؛
+// ويجمع حركة الدخول/الخروج، دين المتابعة، والنتائج الموضوعية من Snapshot المنصة.
+export async function loadCustomerActivationCommandCenter(days = 5, target = 500, limit = 24) {
+  const { data, error } = await supabase.rpc('customer_activation_command_center', {
+    p_days: days,
+    p_target: target,
+    p_limit: limit,
+  });
+  if (error) throw error;
+  const value = data || {};
+  return {
+    current: value.current || {},
+    movement: value.movement || {},
+    execution: value.execution || {},
+    outcomes30d: value.outcomes_30d || {},
+    sync: value.sync || {},
+    trend: Array.isArray(value.trend) ? value.trend.map(row => ({
+      snapshotId: row.snapshot_id,
+      snapDate: row.snapshot_date,
+      uploadedAt: row.uploaded_at,
+      totalCustomers: Number(row.total_customers) || 0,
+      totalStores: Number(row.total_stores) || 0,
+      active: Number(row.active) || 0,
+      active30: Number(row.active_30d) || 0,
+      prepaid: Number(row.prepaid_active) || 0,
+      postpaid: Number(row.postpaid_active) || 0,
+    })) : [],
+  };
+}
+
 // تسميات وألوان الشرائح/الأولوية/القناة — نقطة الحقيقة الواحدة للعرض.
 export const SEGMENTS = {
   new_active:        { label: 'جديد نشط',            color: 'var(--accent3)', icon: '🆕' },

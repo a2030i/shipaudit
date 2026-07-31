@@ -1,20 +1,76 @@
-// داشبورد «هدف تنشيط المتاجر» (2026-07-21) — يقيس أثر فريق المبيعات:
-// عدد المتاجر النشطة (آخر شحنة خلال N يوم) مقابل هدف ثابت، واتجاهه عبر لقطات
-// كشف المتاجر (stores.xlsx). المصدر الوحيد: RPC store_activation_trend
-// (لا حساب محلي — §1.25). الهدف/النافذة في app_settings عبر retargetingService.
+// مركز قيادة هدف العملاء النشطين. العميل = رقم هاتف فريد مهما تعددت متاجره.
+// النجاح الموضوعي = آخر شحنة خلال نافذة النشاط؛ ردود واتساب في هاتف لا تنشئ Lead.
 import { useState, useEffect, useCallback } from 'react';
-import { TrendingUp, Target as TargetIcon, RefreshCw, Save } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, PageHeader, StatCard, toast } from '../components/UI.jsx';
+import { useNavigate } from 'react-router-dom';
+import {
+  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock,
+  CheckCircle2, CircleDollarSign, Clock3, PlugZap, RefreshCw, Save,
+  ShieldAlert, Target as TargetIcon, TrendingUp, UserRoundCheck, UsersRound,
+} from 'lucide-react';
+import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadStoreActivationTrend, loadActivationConfig, saveActivationConfig } from '../lib/retargetingService.js';
+import {
+  loadActivationConfig,
+  loadCustomerActivationCommandCenter,
+  saveActivationConfig,
+} from '../lib/retargetingService.js';
 
-const fmt = (n) => Number(n || 0).toLocaleString('en-US');
-const fmtDate = (d) => { try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(5, 10); } };
+const fmt = value => Number(value || 0).toLocaleString('en-US');
+const pct = value => `${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
+const fmtDate = value => {
+  if (!value) return '—';
+  try { return new Date(value).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); }
+  catch { return String(value).slice(0, 10); }
+};
+const fmtAge = minutes => {
+  const value = Number(minutes || 0);
+  if (value < 60) return `منذ ${fmt(value)} دقيقة`;
+  if (value < 1440) return `منذ ${fmt(Math.floor(value / 60))} ساعة`;
+  return `منذ ${fmt(Math.floor(value / 1440))} يوم`;
+};
+
+function Metric({ icon, label, value, sub, color = 'var(--accent3)', tone = 'blue' }) {
+  return (
+    <div style={{
+      padding: '15px 16px', borderRadius: 16,
+      border: `1px solid color-mix(in srgb, ${color} 22%, var(--border))`,
+      background: `linear-gradient(145deg, color-mix(in srgb, ${color} 9%, var(--surface)) 0%, var(--surface) 72%)`,
+      minWidth: 0,
+    }} data-tone={tone}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--muted)', fontSize: 12.5, marginBottom: 9 }}>
+        <span style={{ display: 'grid', placeItems: 'center', color }}>{icon}</span>
+        <span>{label}</span>
+      </div>
+      <div style={{ fontSize: 25, fontWeight: 800, fontFamily: 'var(--font-mono)', color, lineHeight: 1.15 }}>{fmt(value)}</div>
+      {sub && <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.7, marginTop: 5 }}>{sub}</div>}
+    </div>
+  );
+}
+
+function QueueRow({ label, value, hint, color, icon, onClick }) {
+  return (
+    <button type="button" onClick={onClick} style={{
+      width: '100%', display: 'grid', gridTemplateColumns: '40px minmax(0,1fr) auto',
+      alignItems: 'center', gap: 10, padding: '11px 12px', borderRadius: 13,
+      border: '1px solid var(--border)', background: 'var(--surface2)', color: 'var(--text)',
+      cursor: onClick ? 'pointer' : 'default', textAlign: 'start', fontFamily: 'inherit',
+    }}>
+      <span style={{ width: 36, height: 36, borderRadius: 11, display: 'grid', placeItems: 'center', color,
+        background: `color-mix(in srgb, ${color} 11%, var(--surface))` }}>{icon}</span>
+      <span style={{ minWidth: 0 }}>
+        <strong style={{ display: 'block', fontSize: 13 }}>{label}</strong>
+        <small style={{ color: 'var(--muted)', lineHeight: 1.6 }}>{hint}</small>
+      </span>
+      <strong style={{ color, fontFamily: 'var(--font-mono)', fontSize: 18 }}>{fmt(value)}</strong>
+    </button>
+  );
+}
 
 export default function StoreActivation({ isActive = true }) {
   const { isAdmin } = useAuth();
-  const [cfg, setCfg]     = useState(null);
-  const [rows, setRows]   = useState(null);
+  const navigate = useNavigate();
+  const [cfg, setCfg] = useState(null);
+  const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [editTarget, setEditTarget] = useState('');
   const [saving, setSaving] = useState(false);
@@ -22,114 +78,202 @@ export default function StoreActivation({ isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const c = await loadActivationConfig();
-      setCfg(c); setEditTarget(String(c.target));
-      const r = await loadStoreActivationTrend(c.days, 24);
-      setRows(r);
-    } catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); }
-    setLoading(false);
+      const config = await loadActivationConfig();
+      setCfg(config);
+      setEditTarget(String(config.target));
+      setData(await loadCustomerActivationCommandCenter(config.days, config.target, 24));
+    } catch (error) {
+      toast(`فشل تحميل مركز القيادة: ${error.message}`, 'error');
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
   const saveTarget = async () => {
-    const t = Math.round(Number(editTarget) || 0);
-    if (t < 1) { toast('أدخل هدفاً صحيحاً', 'warn'); return; }
+    const target = Math.round(Number(editTarget) || 0);
+    if (target < 1) { toast('أدخل هدفًا صحيحًا', 'warn'); return; }
     setSaving(true);
-    try { await saveActivationConfig({ target: t, days: cfg.days }); setCfg({ ...cfg, target: t }); toast('حُفظ الهدف ✓', 'success'); }
-    catch (e) { toast(`فشل الحفظ: ${e.message}`, 'error'); }
-    setSaving(false);
+    try {
+      await saveActivationConfig({ target, days: cfg.days });
+      setCfg({ ...cfg, target });
+      setData(await loadCustomerActivationCommandCenter(cfg.days, target, 24));
+      toast('حُفظ الهدف ✓', 'success');
+    } catch (error) {
+      toast(`فشل الحفظ: ${error.message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (!cfg || rows == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
-  if (!rows.length) return <div style={{ padding: '24px 28px' }}><Empty icon="📈" title="لا لقطات متاجر بعد" sub="ارفع كشف المتاجر (stores.xlsx) لبناء الاتجاه"/></div>;
+  if (!cfg || data == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
+  if (!data.trend.length) return (
+    <div style={{ padding: '24px 28px' }}>
+      <Empty icon="📈" title="لا توجد لقطات متاجر بعد" sub="ارفع كشف المتاجر أو أرسل لقطة كاملة عبر Webhook"/>
+    </div>
+  );
 
-  const cur  = rows[rows.length - 1];
-  const prev = rows.length > 1 ? rows[rows.length - 2] : null;
-  const first = rows[0];
-  const pct = Math.min(100, Math.round((cur.active / cfg.target) * 100));
-  const gap = Math.max(0, cfg.target - cur.active);
-  const dChange = prev ? cur.active - prev.active : 0;         // مقابل اللقطة السابقة
-  const totalChange = cur.active - first.active;               // منذ أول لقطة معروضة
-  const onTrack = cur.active >= cfg.target;
-  const maxActive = Math.max(cfg.target, ...rows.map(r => r.active));
+  const current = data.current;
+  const movement = data.movement;
+  const execution = data.execution;
+  const outcomes = data.outcomes30d;
+  const sync = data.sync;
+  const progress = Math.min(100, Number(current.progress_pct) || 0);
+  const entered = Number(movement.entered) || 0;
+  const exited = Number(movement.exited) || 0;
+  const net = Number(movement.net) || 0;
+  const maxActive = Math.max(Number(current.target) || 1, ...data.trend.map(row => row.active));
+  const openPipeline = (bucket = 'all', work = 'all') => navigate(`/retargeting?tab=pipeline&bucket=${bucket}&work=${work}`);
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader icon={<TrendingUp size={22}/>} iconColor="var(--green)"
-        title="هدف تنشيط المتاجر"
-        subtitle={`المتاجر النشطة = آخر شحنة خلال ${cfg.days} أيام · الهدف ${fmt(cfg.target)} متجر — لقياس أثر فريق المبيعات`}
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
+    <div style={{ padding: '24px 28px 96px', maxWidth: 1380, margin: '0 auto' }}>
+      <PageHeader
+        icon={<TrendingUp size={22}/>} iconColor="var(--green)"
+        title={`مركز قيادة ${fmt(current.target)} عميل نشط`}
+        subtitle={`العميل النشط = رقم هاتف فريد نفّذ شحنة خلال آخر ${cfg.days} أيام؛ تعدد المتاجر لا يكرر العميل`}
+        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading} title="تحديث"><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+      />
 
-      {/* الحالة مقابل الهدف — بطاقة رئيسية */}
-      <Card style={{ padding: '18px 20px', marginBottom: 14, border: `1.5px solid ${onTrack ? 'color-mix(in srgb, var(--green) 40%, var(--border))' : 'color-mix(in srgb, var(--gold) 40%, var(--border))'}` }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
-          <span style={{ fontSize: 40, fontWeight: 800, fontFamily: 'var(--font-mono)', color: onTrack ? 'var(--green2)' : 'var(--text)', lineHeight: 1 }}>{fmt(cur.active)}</span>
-          <span style={{ fontSize: 16, color: 'var(--muted)' }}>من هدف {fmt(cfg.target)} متجر نشط</span>
-          <span style={{ marginInlineStart: 'auto', display: 'inline-flex', gap: 8, alignItems: 'center', fontSize: 13 }}>
-            {dChange !== 0 && (
-              <span style={{ fontWeight: 700, color: dChange > 0 ? 'var(--green2)' : 'var(--red)' }}>
-                {dChange > 0 ? '▲' : '▼'} {fmt(Math.abs(dChange))} عن الكشف السابق
-              </span>
-            )}
-          </span>
+      <Card style={{
+        overflow: 'hidden', marginBottom: 14,
+        border: '1px solid color-mix(in srgb, var(--brand) 24%, var(--border))',
+        background: 'linear-gradient(135deg, color-mix(in srgb, var(--brand-navy) 97%, black) 0%, color-mix(in srgb, var(--brand) 78%, var(--brand-navy)) 100%)',
+        color: '#fff',
+      }}>
+        <div style={{ padding: '22px 24px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 24 }}>
+          <div>
+            <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 12.5, marginBottom: 7 }}>العملاء النشطون الآن</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
+              <strong style={{ fontSize: 50, lineHeight: 1, fontFamily: 'var(--font-mono)' }}>{fmt(current.active)}</strong>
+              <span style={{ color: 'rgba(255,255,255,.72)', fontSize: 15 }}>من {fmt(current.target)}</span>
+            </div>
+            <div style={{ height: 12, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,.16)', overflow: 'hidden' }}>
+              <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#2DD4BF,#A7F3D0)', borderRadius: 999 }}/>
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8, fontSize: 12.5, color: 'rgba(255,255,255,.76)', flexWrap: 'wrap' }}>
+              <span>{pct(progress)} من الهدف</span>
+              <span>الفجوة: <strong style={{ color: '#fff' }}>{fmt(current.gap)} عميل</strong></span>
+            </div>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
+            <div style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
+              <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>دخلوا النشاط أسبوعيًا</div>
+              <strong style={{ display: 'block', fontSize: 25, color: '#A7F3D0', marginTop: 5, fontFamily: 'var(--font-mono)' }}>+{fmt(entered)}</strong>
+            </div>
+            <div style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
+              <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>خرجوا من النشاط</div>
+              <strong style={{ display: 'block', fontSize: 25, color: '#FECACA', marginTop: 5, fontFamily: 'var(--font-mono)' }}>−{fmt(exited)}</strong>
+            </div>
+            <div style={{ gridColumn: '1 / -1', padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+              <span style={{ color: 'rgba(255,255,255,.78)', fontSize: 12 }}>صافي الأسبوع</span>
+              <strong style={{ color: net >= 0 ? '#A7F3D0' : '#FECACA', fontFamily: 'var(--font-mono)', fontSize: 20 }}>{net >= 0 ? '+' : ''}{fmt(net)}</strong>
+            </div>
+          </div>
         </div>
-        {/* شريط التقدّم نحو الهدف */}
-        <div style={{ height: 14, background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 999, overflow: 'hidden' }}>
-          <div style={{ height: '100%', width: `${pct}%`, background: onTrack ? 'var(--green)' : 'var(--gold)', transition: 'width .5s' }}/>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--muted)', marginTop: 6 }}>
-          <span>{pct}% من الهدف{gap > 0 ? ` · يتبقّى ${fmt(gap)} متجر` : ' · تحقّق الهدف 🎉'}</span>
-          <span>{totalChange >= 0 ? `▲ ${fmt(totalChange)}` : `▼ ${fmt(Math.abs(totalChange))}`} منذ {fmtDate(first.snapDate)}</span>
+        <div style={{ padding: '11px 24px', background: 'rgba(0,0,0,.13)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'rgba(255,255,255,.72)' }}>
+          <span>آخر بيانات: {fmtAge(sync.age_minutes)} · {sync.source === 'webhook' ? 'تحديث آلي عبر API' : 'رفع Excel يدوي'}</span>
+          <span>{fmt(current.total_customers)} عميل فريد · {fmt(current.total_stores)} متجر</span>
         </div>
       </Card>
 
-      {/* بطاقات فرعية */}
-      <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 14 }}>
-        <StatCard label={`نشط (${cfg.days} أيام)`} value={fmt(cur.active)} color="var(--green2)" icon="✅"
-          sub={prev ? `${dChange >= 0 ? '+' : ''}${dChange} عن السابق` : null}/>
-        <StatCard label="نشط (30 يوم)" value={fmt(cur.active30)} color="var(--accent3)" icon="📦"/>
-        <StatCard label="نشط دفع مسبق" value={fmt(cur.prepaid)} color="var(--accent)" icon="💳"/>
-        <StatCard label="نشط دفع لاحق" value={fmt(cur.postpaid)} color="var(--gold)" icon="🧾"/>
-        <StatCard label="إجمالي المتاجر" value={fmt(cur.total)} color="var(--muted)" icon="🏪"
-          sub={`${Math.round((cur.active / cur.total) * 100)}% منها نشط`}/>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginBottom: 14 }}>
+        <Metric icon={<TargetIcon size={17}/>} label="المطلوب إدخالهم أسبوعيًا" value={current.required_weekly_entrants}
+          sub="لإغلاق الفجوة خلال 4 أسابيع مع تعويض من يخرج" color="var(--brand)"/>
+        <Metric icon={<UserRoundCheck size={17}/>} label={`نشط خلال ${cfg.days} أيام`} value={current.active}
+          sub={`${fmt(current.active_30d)} نشط خلال 30 يومًا`} color="var(--green2)"/>
+        <Metric icon={<ShieldAlert size={17}/>} label="نشط وعليه معلّق مالي" value={current.active_financial_hold}
+          sub="يظل ضمن الهدف التشغيلي، لكن لا يذهب للمبيعات" color="var(--red)"/>
+        <Metric icon={<UsersRound size={17}/>} label="عملاء متاحون للمبيعات" value={current.active_sales_eligible}
+          sub="نشطون بلا مديونية زوهو أو محفظة سالبة" color="var(--accent3)"/>
       </div>
 
-      {/* الاتجاه — أعمدة عبر اللقطات */}
-      <Card style={{ padding: '16px 20px', marginBottom: 14 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 14 }}>📈 اتجاه المتاجر النشطة عبر كشوف المتاجر</div>
-        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 6, height: 200, position: 'relative', paddingTop: 20 }}>
-          {/* خط الهدف */}
-          <div style={{ position: 'absolute', left: 0, right: 0, top: `${20 + (1 - cfg.target / maxActive) * 180}px`,
-            borderTop: '2px dashed color-mix(in srgb, var(--green) 55%, transparent)', pointerEvents: 'none' }}>
-            <span style={{ position: 'absolute', right: 0, top: -16, fontSize: 10.5, color: 'var(--green2)', fontWeight: 700 }}>الهدف {fmt(cfg.target)}</span>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(330px,100%),1fr))', gap: 14, marginBottom: 14 }}>
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
+            <Activity size={18} style={{ color: 'var(--brand)' }}/>
+            <div>
+              <strong style={{ display: 'block', fontSize: 14 }}>روافع الوصول إلى 500</strong>
+              <small style={{ color: 'var(--muted)' }}>مخزون فرص، لا يعني الاتصال بها كلها اليوم</small>
+            </div>
           </div>
-          {rows.map((r, i) => {
-            const h = Math.max(3, Math.round((r.active / maxActive) * 180));
-            const hit = r.active >= cfg.target;
+          <div style={{ display: 'grid', gap: 8 }}>
+            <QueueRow label="لايف جديد عالي النية" value={execution.hot_live} hint="ربط متجره خلال 5 أيام ولم يبدأ" color="var(--brand)" icon={<PlugZap size={17}/>} onClick={() => openPipeline('hot_live_new')}/>
+            <QueueRow label="تجاوز 5 أيام بلا شحنة" value={execution.recent_stop} hint="الأقرب للتوقف أولًا، لا الأقدم" color="var(--gold)" icon={<Clock3 size={17}/>} onClick={() => openPipeline('recent_stop')}/>
+            <QueueRow label="رصيد عالق بلا نشاط" value={execution.wallet_stranded} hint="نفهم العائق قبل أن تُهجر المحفظة" color="var(--green2)" icon={<CircleDollarSign size={17}/>} onClick={() => openPipeline('wallet_stranded')}/>
+            <QueueRow label="لايف أصبح غير نشط" value={execution.live_inactive} hint="نعرف سبب فك الربط أو تعطله" color="var(--red)" icon={<AlertTriangle size={17}/>} onClick={() => openPipeline('live_inactive')}/>
+          </div>
+        </Card>
+
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
+            <CalendarClock size={18} style={{ color: 'var(--gold)' }}/>
+            <div>
+              <strong style={{ display: 'block', fontSize: 14 }}>انضباط تنفيذ الفريق</strong>
+              <small style={{ color: 'var(--muted)' }}>الفجوات التي تمنع الإدارة من قيادة العمل</small>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gap: 8 }}>
+            <QueueRow label="لم نتواصل معهم" value={execution.never_contacted} hint="فرص مؤهلة بلا أول محاولة مسجلة" color="var(--red)" icon={<ArrowUpRight size={17}/>} onClick={() => openPipeline('all', 'never_contacted')}/>
+            <QueueRow label="بلا مسؤول" value={execution.unassigned} hint="لا يملكها موظف محدد" color="var(--gold)" icon={<UsersRound size={17}/>} onClick={() => openPipeline('all', 'unassigned')}/>
+            <QueueRow label="متابعة مستحقة" value={execution.overdue} hint="موعدها انتهى وتحتاج إجراء الآن" color="var(--red)" icon={<Clock3 size={17}/>} onClick={() => openPipeline('all', 'due')}/>
+            <QueueRow label="تواصل بلا موعد تالٍ" value={execution.contacted_no_next} hint="سجل مفتوح قد يضيع من الفريق" color="var(--gold)" icon={<ArrowDownRight size={17}/>} onClick={() => openPipeline('all', 'contacted_no_next')}/>
+          </div>
+        </Card>
+
+        <Card style={{ padding: 18 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 13 }}>
+            <CheckCircle2 size={18} style={{ color: 'var(--green2)' }}/>
+            <div>
+              <strong style={{ display: 'block', fontSize: 14 }}>النتيجة الموضوعية — آخر 30 يومًا</strong>
+              <small style={{ color: 'var(--muted)' }}>من Snapshot المنصة، لا من ادعاء مرحلة البيع</small>
+            </div>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 9, marginBottom: 12 }}>
+            <Metric label="أول شحنة" value={outcomes.first_shipments} color="var(--green2)" icon={<PlugZap size={15}/>}/>
+            <Metric label="عاد للشحن" value={outcomes.resumed} color="var(--accent3)" icon={<RefreshCw size={15}/>}/>
+            <Metric label="بعد تواصل مسجل" value={outcomes.attributed_after_contact} color="var(--brand)" icon={<UserRoundCheck size={15}/>}/>
+            <Metric label="معلّم فائزًا" value={outcomes.marked_won} color="var(--gold)" icon={<TargetIcon size={15}/>}/>
+          </div>
+          <div style={{ padding: '10px 12px', borderRadius: 12, background: 'color-mix(in srgb, var(--gold) 9%, var(--surface2))', border: '1px solid color-mix(in srgb, var(--gold) 24%, var(--border))', color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.7 }}>
+            النجاح يُثبت عندما تظهر أول شحنة أو عودة شحن. إذا ارتفع النجاح الموضوعي وبقي «معلّم فائزًا» منخفضًا فالمشكلة في تسجيل الفريق، لا في المنصة.
+          </div>
+        </Card>
+      </div>
+
+      <Card style={{ padding: '17px 20px', marginBottom: 14 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginBottom: 14 }}>
+          <div>
+            <strong style={{ display: 'block', fontSize: 14 }}>اتجاه العملاء النشطين عبر لقطات المنصة</strong>
+            <small style={{ color: 'var(--muted)' }}>كل عمود = عملاء فريدون بالهاتف، وليس عدد المتاجر</small>
+          </div>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>الأسبوع: +{fmt(entered)} دخل · −{fmt(exited)} خرج · الصافي {net >= 0 ? '+' : ''}{fmt(net)}</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: 7, height: 210, position: 'relative', paddingTop: 22 }}>
+          <div style={{ position: 'absolute', insetInline: 0, top: `${22 + (1 - Number(current.target) / maxActive) * 170}px`, borderTop: '2px dashed color-mix(in srgb, var(--green) 60%, transparent)', pointerEvents: 'none' }}>
+            <span style={{ position: 'absolute', insetInlineEnd: 0, top: -17, fontSize: 10.5, color: 'var(--green2)', fontWeight: 700 }}>الهدف {fmt(current.target)}</span>
+          </div>
+          {data.trend.map(row => {
+            const height = Math.max(3, Math.round((row.active / maxActive) * 170));
             return (
-              <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4, minWidth: 0 }}
-                title={`${fmtDate(r.snapDate)}: ${r.active} نشط من ${r.total}`}>
-                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{r.active}</span>
-                <div style={{ width: '100%', maxWidth: 34, height: h, borderRadius: '5px 5px 0 0',
-                  background: hit ? 'var(--green)' : 'color-mix(in srgb, var(--gold) 75%, transparent)' }}/>
-                <span style={{ fontSize: 9.5, color: 'var(--muted2)', whiteSpace: 'nowrap', transform: 'rotate(-40deg)', transformOrigin: 'center', marginTop: 4 }}>{fmtDate(r.snapDate)}</span>
+              <div key={row.snapshotId} style={{ flex: 1, minWidth: 0, height: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', alignItems: 'center', gap: 4 }} title={`${fmtDate(row.snapDate)}: ${fmt(row.active)} عميل نشط من ${fmt(row.totalCustomers)}`}>
+                <span style={{ fontSize: 10, fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{fmt(row.active)}</span>
+                <div style={{ width: '100%', maxWidth: 36, height, borderRadius: '6px 6px 2px 2px', background: row.active >= current.target ? 'var(--green)' : 'linear-gradient(180deg,var(--brand),var(--accent3))' }}/>
+                <span style={{ fontSize: 9.5, color: 'var(--muted2)', whiteSpace: 'nowrap', transform: 'rotate(-40deg)', transformOrigin: 'center', marginTop: 5 }}>{fmtDate(row.snapDate)}</span>
               </div>
             );
           })}
         </div>
       </Card>
 
-      {/* إعداد الهدف — للمدير */}
       {isAdmin && (
-        <Card style={{ padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <TargetIcon size={16} style={{ color: 'var(--muted)' }}/>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>هدف المتاجر النشطة:</span>
-          <input type="number" value={editTarget} onChange={e => setEditTarget(e.target.value)}
-            style={{ width: 110, padding: '6px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 14 }}/>
+        <Card style={{ padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <TargetIcon size={17} style={{ color: 'var(--brand)' }}/>
+          <span style={{ fontSize: 13, fontWeight: 700 }}>هدف العملاء النشطين:</span>
+          <input type="number" value={editTarget} onChange={event => setEditTarget(event.target.value)} style={{ width: 110, padding: '7px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--bg)', color: 'var(--text)', fontFamily: 'var(--font-mono)', fontSize: 14 }}/>
           <Btn size="sm" variant="accent" onClick={saveTarget} disabled={saving} icon={<Save size={13}/>}>{saving ? 'يحفظ…' : 'حفظ الهدف'}</Btn>
-          <span style={{ fontSize: 11.5, color: 'var(--muted)', marginInlineStart: 'auto' }}>
-            نافذة النشاط: آخر {cfg.days} أيام (تعريف المتجر النشط)
-          </span>
+          <span style={{ fontSize: 11.5, color: 'var(--muted)', marginInlineStart: 'auto' }}>نافذة النشاط: آخر {cfg.days} أيام · القياس على العميل الفريد</span>
         </Card>
       )}
     </div>

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, CalendarClock, CheckCircle2, Clock3,
   History, Link2Off, MessageSquareText, PhoneCall, RefreshCw, RotateCcw,
@@ -117,6 +117,14 @@ const WORK_FILTERS = [
   { id: 'contacted', label: 'تم التواصل' },
   { id: 'unassigned', label: 'بلا مسؤول' },
 ];
+
+const PIPELINE_BUCKET_IDS = new Set([
+  ...SMART_BUCKETS,
+  ...PIPELINE_BUCKETS,
+  ...PLATFORM_BUCKETS,
+  ...SCHEDULE_BUCKETS,
+].map(item => item.id));
+const WORK_FILTER_IDS = new Set(WORK_FILTERS.map(item => item.id));
 
 const SORT_OPTIONS = [
   ['recommended', 'الترتيب المقترح'],
@@ -644,12 +652,16 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
 export default function PlatformSalesCrm({ isActive = true }) {
   const { can, isAdmin } = useAuth();
   const navigate = useNavigate();
-  const [lens, setLens] = useState('pipeline');
-  const [bucket, setBucket] = useState('hot_live_new');
+  const [searchParams] = useSearchParams();
+  const routeBucket = searchParams.get('bucket');
+  const routeWork = searchParams.get('work');
+  const initialBucket = PIPELINE_BUCKET_IDS.has(routeBucket) ? routeBucket : 'hot_live_new';
+  const [lens, setLens] = useState(SCHEDULE_BUCKETS.some(item => item.id === initialBucket) ? 'schedule' : 'pipeline');
+  const [bucket, setBucket] = useState(initialBucket);
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [owner, setOwner] = useState('');
-  const [workFilter, setWorkFilter] = useState('all');
+  const [workFilter, setWorkFilter] = useState(WORK_FILTER_IDS.has(routeWork) ? routeWork : 'all');
   const [sort, setSort] = useState('recommended');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
@@ -682,6 +694,18 @@ export default function PlatformSalesCrm({ isActive = true }) {
     if (!isActive) return;
     refresh();
   }, [isActive, bucket, owner, workFilter, sort, appliedSearch, page]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!isActive) return;
+    const nextBucket = searchParams.get('bucket');
+    const nextWork = searchParams.get('work');
+    if (PIPELINE_BUCKET_IDS.has(nextBucket)) {
+      setLens(SCHEDULE_BUCKETS.some(item => item.id === nextBucket) ? 'schedule' : 'pipeline');
+      setBucket(nextBucket);
+    }
+    if (WORK_FILTER_IDS.has(nextWork)) setWorkFilter(nextWork);
+    setPage(0);
+  }, [isActive, searchParams]);
 
   useEffect(() => {
     if (!isActive || (!isAdmin && !can('crm.view_all') && !can('crm.assign'))) return;
