@@ -107,6 +107,7 @@ export const PERMISSION_CATALOG = [
     id: 'collections', label: 'حملة التحصيل', icon: 'PhoneCall', color: '#EF4444',
     perms: [
       { key: 'collections.view',         label: 'عرض قائمة المهمات' },
+      { key: 'collections.view_all',     label: 'عرض مهام فريق التحصيل كاملة', sensitive: true },
       { key: 'collections.regenerate',   label: 'إعادة توليد المهمات' },
       { key: 'collections.update_stage', label: 'تحديث مرحلة المهمة' },
       { key: 'collections.record_promise', label: 'تسجيل وعد دفع (PTP)' },

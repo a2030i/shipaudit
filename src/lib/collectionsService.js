@@ -62,9 +62,6 @@ export async function listTasks({ stage = null, customer = null, includeDone = f
 // loadLatestReceivables). Skips customers that already have an open
 // task with the same trigger thanks to the partial unique index —
 // the upsert returns ON CONFLICT DO NOTHING silently.
-// أولوية الأسباب (الأسوأ أولاً) — مهمة واحدة لكل عميل بأسوأ سبب فقط، فلا
-// يتكرّر العميل في قائمة التحصيل (كان trigger منفصلاً يُنشئ صفاً لكل سبب).
-const TRIGGER_PRIORITY = ['over_credit_limit', 'aged_90', 'aged_60', 'aged_30', 'prepaid_with_debt'];
 const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
 
 export async function reconcileStaleOpenTasks({ customers = [], userId = null } = {}) {
@@ -111,75 +108,19 @@ export async function reconcileStaleOpenTasks({ customers = [], userId = null } 
 }
 
 export async function regenerateTasks({ customers, userId = null }) {
-  if (!Array.isArray(customers)) return { created: 0, byTrigger: {} };
-  const candidates = [];
-  const worstByCustomer = new Map();   // customer_name → أسوأ trigger
-  for (const c of customers) {
-    const total = Number(c.total) || 0;
-    if (total <= 0.5) continue;
-    const days = c.daysOutstanding || 0;
-    const triggers = [];
-    if (c.overLimit)                triggers.push('over_credit_limit');
-    if (days > 90)                  triggers.push('aged_90');
-    else if (days > 60)             triggers.push('aged_60');
-    else if (days > 30)             triggers.push('aged_30');
-    if (c.merchant?.billingType === 'دفع مسبق' && total > 0.5) triggers.push('prepaid_with_debt');
-    if (!triggers.length) continue;
-    // أسوأ سبب واحد فقط لكل عميل
-    const worst = TRIGGER_PRIORITY.find(t => triggers.includes(t)) || triggers[0];
-    worstByCustomer.set(c.name, worst);
-    candidates.push({
-      customer_name:     c.name,
-      trigger:           worst,
-      debt_at_creation:  +total.toFixed(2),
-      credit_limit:      c.creditLimit ?? null,
-      days_outstanding:  days,
-      assigned_to:       userId,
-    });
-  }
-  const staleResult = await reconcileStaleOpenTasks({ customers, userId });
-  if (!candidates.length) return { created: 0, byTrigger: {}, closed: staleResult.closed };
-
-  // ألغِ أي مهمة مفتوحة لعميل بسبب لم يعد الأسوأ (تجنّب تراكم مكرّرات حين
-  // ينتقل العميل من متأخر-60 لمتأخر-90 مثلاً) — يبقى صفّ واحد لكل عميل.
-  for (const [name, worst] of worstByCustomer) {
-    await supabase.from('collection_tasks')
-      .update({ stage: 'cancelled', notes: 'دمج مكرّر — أُبقيت مهمة الأسوأ', updated_at: new Date().toISOString() })
-      .eq('customer_name', name).neq('trigger', worst)
-      .in('stage', ['todo', 'contacted', 'snoozed']);   // لا نلغِ promised (فيه وعد فعّال)
-  }
-
-  // INSERT ... ON CONFLICT DO NOTHING using the partial unique
-  // index. We can't use upsert() with a partial index cleanly via
-  // PostgREST, so we just attempt insert and swallow conflict
-  // errors per chunk. Postgres ignores rows that hit the index.
-  const CHUNK = 200;
-  let created = 0;
-  const byTrigger = {};
-  for (let i = 0; i < candidates.length; i += CHUNK) {
-    const chunk = candidates.slice(i, i + CHUNK);
-    // Use upsert with ignoreDuplicates to skip conflicts cleanly
-    const { data, error } = await supabase
-      .from('collection_tasks')
-      .upsert(chunk, { onConflict: 'customer_name,trigger', ignoreDuplicates: true })
-      .select();
-    if (error) {
-      // Fallback: insert one-by-one and skip conflicts
-      for (const row of chunk) {
-        const { error: insertError } = await supabase.from('collection_tasks').insert(row);
-        if (!insertError) {
-          created++;
-          byTrigger[row.trigger] = (byTrigger[row.trigger] || 0) + 1;
-        }
-      }
-    } else if (data) {
-      for (const r of data) {
-        created++;
-        byTrigger[r.trigger] = (byTrigger[r.trigger] || 0) + 1;
-      }
-    }
-  }
-  return { created, byTrigger, closed: staleResult.closed };
+  // المصدر والحسم والتوزيع أصبحت ذرية في القاعدة. إبقاء الوسيط هنا يحافظ
+  // على عقد الاستدعاء القديم للصفحة من دون كتابة عشرات الصفوف من المتصفح.
+  void customers;
+  void userId;
+  const { data, error } = await supabase.rpc('refresh_collection_tasks');
+  if (error) throw error;
+  return {
+    created: Number(data?.created) || 0,
+    closed: Number(data?.closed) || 0,
+    cancelled: Number(data?.cancelled) || 0,
+    reassigned: Number(data?.reassigned) || 0,
+    promisesChecked: Number(data?.promises?.checked) || 0,
+  };
 }
 
 export async function updateTaskStage(id, stage, patch = {}) {
@@ -199,12 +140,14 @@ export async function updateTaskStage(id, stage, patch = {}) {
 
 export async function recordPromise(id, { amount, date, notes }) {
   if (!amount || !date) throw new Error('مبلغ وتاريخ مطلوبان');
-  return updateTaskStage(id, 'promised', {
-    promise_amount: Number(amount),
-    promise_date:   date,
-    promise_status: 'pending',
-    notes:          notes?.trim() || undefined,
+  const { data, error } = await supabase.rpc('collection_record_promise', {
+    p_task_id: id,
+    p_amount: Number(amount),
+    p_date: date,
+    p_notes: notes?.trim() || null,
   });
+  if (error) throw error;
+  return data;
 }
 
 export async function completePromise(id, { honoredAmount, userId = null }) {

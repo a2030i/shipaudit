@@ -32,7 +32,7 @@ import {
   TRIGGER_LABELS, STAGE_LABELS,
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
-  loadCollectionCandidates, reconcileStaleOpenTasks, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
+  loadCollectionCandidates, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -80,15 +80,30 @@ const TRIGGER_COLORS = {
   manual:             'var(--accent3)',
 };
 const OPEN_STAGES = ['todo', 'contacted', 'promised', 'snoozed'];
+const PROMISE_STATUS_LABELS = {
+  pending: 'بانتظار السداد',
+  partial: 'سداد جزئي',
+  honored: 'تحقق',
+  broken: 'لم يتحقق',
+};
+const DAILY_COLLECTION_LIMIT = 25;
+const RIYADH_TODAY = () => new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+}).format(new Date());
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
   const { profile, can } = useAuth();
   const canApproveWriteoff = can('receivables.approve_writeoff');
+  const canRequestWriteoff = can('receivables.request_writeoff');
+  const canRegenerate = can('collections.regenerate');
+  const canUpdateStage = can('collections.update_stage');
+  const canRecordPromise = can('collections.record_promise');
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
   const [stageFilter, setStageFilter] = useState('open');  // open|all|<stage>
+  const [workScope, setWorkScope] = useState('today'); // today|backlog
   const [drawer, setDrawer]     = useState(null);
   const [ptpOpen, setPtpOpen]   = useState(null);
   const [snoozeOpen, setSnoozeOpen] = useState(null);
@@ -112,11 +127,7 @@ export default function Collections({ isActive = true }) {
         loadAgingTrend().catch(() => null),
       ]);
       const liveCustomers = Array.isArray(recs) ? recs : [];
-      const stale = candidatesOk
-        ? await reconcileStaleOpenTasks({ customers: liveCustomers, userId: profile?.id || null }).catch(() => null)
-        : null;
       const t = await listTasks({ includeDone: stageFilter !== 'open' });
-      if (stale?.closed > 0) toast(`أُغلقت ${stale.closed} مهمة مدفوعة في زوهو تلقائياً`, 'success');
       setTasks(t);
       setCustomers(liveCustomers);
       setCandidatesReady(candidatesOk);
@@ -126,7 +137,7 @@ export default function Collections({ isActive = true }) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, [stageFilter, profile?.id]);
+  }, [stageFilter]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -148,16 +159,16 @@ export default function Collections({ isActive = true }) {
     try {
       const r = await regenerateTasks({ customers, userId: profile?.id || null });
       if (r.created > 0) {
-        toast(`✓ تم إضافة ${r.created} مهمة جديدة`, 'success');
+        toast(`أضيفت ${r.created} مهمة جديدة · أُغلقت ${r.closed || 0} · أُعيد توزيع ${r.reassigned || 0}`, 'success');
       } else {
-        toast('لا توجد مهام جديدة — كل الحالات مغطّاة', 'info');
+        toast(`القائمة متزامنة مع زوهو · أُغلقت ${r.closed || 0} · أُعيد توزيع ${r.reassigned || 0}`, 'info');
       }
       await refresh();
     } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
   };
 
   // Filter + sort tasks for the visible table.
-  const visibleTasks = useMemo(() => {
+  const prioritizedTasks = useMemo(() => {
     let pool = tasks;
     if (stageFilter === 'open') {
       pool = pool.filter(t => OPEN_STAGES.includes(t.stage));
@@ -174,14 +185,33 @@ export default function Collections({ isActive = true }) {
       if (!cur || (rank[t.stage] || 0) > (rank[cur.stage] || 0)) byCustomer.set(t.customer_name, t);
     }
     const deduped = [...byCustomer.values()];
-    // Sort: snoozed-overdue first, then by debt desc, then by created
+    // يوم المحصّل: الوعد المتأخر/اليوم، ثم التأجيل المنتهي، ثم الخلل
+    // المالي، ثم الأقدم والأعلى مبلغاً. المخزون لا يتحول كله إلى عمل اليوم.
+    const today = RIYADH_TODAY();
+    const priorityOf = (task) => {
+      if (task.stage === 'promised' && task.promise_date && task.promise_date < today) return 0;
+      if (task.stage === 'promised' && task.promise_date === today) return 1;
+      if (task.stage === 'snoozed' && task.snooze_until && new Date(task.snooze_until) <= new Date()) return 2;
+      if (task.trigger === 'prepaid_with_debt') return 3;
+      if (task.trigger === 'over_credit_limit') return 4;
+      if (task.trigger === 'aged_90') return 5;
+      if (task.trigger === 'aged_60') return 6;
+      if (task.trigger === 'aged_30') return 7;
+      return 8;
+    };
     return deduped.sort((a, b) => {
-      const aOverdueSnooze = a.stage === 'snoozed' && a.snooze_until && new Date(a.snooze_until) < new Date();
-      const bOverdueSnooze = b.stage === 'snoozed' && b.snooze_until && new Date(b.snooze_until) < new Date();
-      if (aOverdueSnooze !== bOverdueSnooze) return aOverdueSnooze ? -1 : 1;
+      const priorityDiff = priorityOf(a) - priorityOf(b);
+      if (priorityDiff) return priorityDiff;
       return taskDebt(b) - taskDebt(a);
     });
   }, [tasks, stageFilter, isLiveTask, taskDebt]);
+
+  const visibleTasks = useMemo(() => {
+    if (stageFilter !== 'open') return prioritizedTasks;
+    return workScope === 'today'
+      ? prioritizedTasks.slice(0, DAILY_COLLECTION_LIMIT)
+      : prioritizedTasks.slice(DAILY_COLLECTION_LIMIT);
+  }, [prioritizedTasks, stageFilter, workScope]);
 
   const stats = useMemo(() => {
     const open    = tasks.filter(t => OPEN_STAGES.includes(t.stage) && isLiveTask(t));
@@ -204,6 +234,8 @@ export default function Collections({ isActive = true }) {
       promiseDueToday: promiseDueToday.length,
       promiseOverdue: promiseOverdue.length,
       totalDebt: +open.reduce((s, t) => s + taskDebt(t), 0).toFixed(2),
+      daily: Math.min(open.length, DAILY_COLLECTION_LIMIT),
+      backlog: Math.max(0, open.length - DAILY_COLLECTION_LIMIT),
     };
   }, [tasks, isLiveTask, taskDebt]);
 
@@ -264,13 +296,15 @@ export default function Collections({ isActive = true }) {
         icon={<Phone size={22}/>}
         iconColor="var(--red)"
         title="قائمة التحصيل"
-        subtitle="مهام مولّدة تلقائياً من العملاء اللي تجاوزوا السقف أو تأخّروا"
-        meta={`${stats.open} مهمة مفتوحة · ${fmt(stats.totalDebt)} ر.س مفتوح`}
+        subtitle="ابدأ بوعود الدفع والمخاطر الأعلى — هذه قائمة يوم وليست كل المديونين"
+        meta={`${stats.daily} لليوم · ${stats.backlog} في المخزون · ${fmt(stats.totalDebt)} ر.س مفتوح`}
         actions={
           <div style={{ display: 'flex', gap: 6 }}>
-            <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate}>
-              توليد مهام جديدة
-            </Btn>
+            {canRegenerate && (
+              <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate}>
+                مزامنة من زوهو
+              </Btn>
+            )}
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportTasks} disabled={!visibleTasks.length}>
               تصدير
             </Btn>
@@ -280,6 +314,33 @@ export default function Collections({ isActive = true }) {
           </div>
         }
       />
+
+      <Card style={{
+        marginBottom: 16, padding: 16,
+        background: 'color-mix(in srgb, var(--accent3) 7%, var(--card))',
+        border: '1px solid color-mix(in srgb, var(--accent3) 24%, var(--border))',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
+          <div style={{ flex: 1, minWidth: 240 }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>
+              خطة اليوم: {stats.daily} حسابًا مرتبة حسب الاستحقاق والخطر
+            </div>
+            <div style={{ marginTop: 4, fontSize: 11, color: 'var(--muted)', lineHeight: 1.6 }}>
+              الوعود المتأخرة أولًا، ثم التأجيل المنتهي، ثم الحالات المالية الحرجة. لا يُطلب من الموظف معالجة المخزون كاملًا.
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 6 }}>
+            <Btn size="sm" variant={workScope === 'today' ? 'primary' : 'outline'}
+                 onClick={() => { setStageFilter('open'); setWorkScope('today'); }}>
+              عمل اليوم ({stats.daily})
+            </Btn>
+            <Btn size="sm" variant={workScope === 'backlog' ? 'primary' : 'outline'}
+                 onClick={() => { setStageFilter('open'); setWorkScope('backlog'); }}>
+              المخزون ({stats.backlog})
+            </Btn>
+          </div>
+        </div>
+      </Card>
 
       {/* Stats strip */}
       <div style={{
@@ -388,7 +449,7 @@ export default function Collections({ isActive = true }) {
             color: stageFilter === s ? 'var(--red)' : 'var(--text2)',
             fontSize: 11.5, fontWeight: 600, fontFamily: 'var(--font-sans)',
           }}>
-            {s === 'open' ? 'كل المفتوحة' : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
+            {s === 'open' ? (workScope === 'today' ? 'عمل اليوم' : 'مخزون مفتوح') : s === 'all' ? 'الكل' : STAGE_LABELS[s] || s}
           </button>
         ))}
       </div>
@@ -397,8 +458,8 @@ export default function Collections({ isActive = true }) {
       {visibleTasks.length === 0 ? (
         <Empty
           icon="✓"
-          title="لا توجد مهام في هذا التبويب"
-          sub="اضغط 'توليد مهام جديدة' لإنشاء مهام من آخر كشف مديونيات"
+          title={workScope === 'backlog' && stageFilter === 'open' ? 'لا يوجد مخزون مؤجل' : 'لا توجد مهام في هذا التبويب'}
+          sub={canRegenerate ? "اضغط «مزامنة من زوهو» لتحديث القائمة عند الحاجة" : 'لا توجد حالات مسندة لك الآن'}
         />
       ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -462,6 +523,11 @@ export default function Collections({ isActive = true }) {
                       {t.stage === 'promised' ? (
                         <span style={{ color: isPromiseOverdue ? 'var(--red)' : 'var(--gold)', fontWeight: 600 }}>
                           {fmtCompact(t.promise_amount)} يوم {fmtDate(t.promise_date)}
+                          {Number(t.promise_paid_amount) > 0.5 && (
+                            <small style={{ display: 'block', marginTop: 2, color: 'var(--green)' }}>
+                              رُصد {fmtCompact(Number(t.promise_paid_amount))}
+                            </small>
+                          )}
                           {isPromiseOverdue && ' ⚠'}
                         </span>
                       ) : t.stage === 'snoozed' ? (
@@ -472,18 +538,21 @@ export default function Collections({ isActive = true }) {
                       ) : '—'}
                     </td>
                     <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={(e) => e.stopPropagation()}>
-                      <QuickActions task={t}
-                        onContact={async () => { await updateTaskStage(t.id, 'contacted'); refresh(); }}
-                        onPromise={() => setPtpOpen(t)}
-                        onDone={async () => { await updateTaskStage(t.id, 'done', { userId: profile?.id }); refresh(); }}
-                        onSnooze={() => setSnoozeOpen(t)}
-                        onCancel={async () => {
-                          if (confirm('إلغاء هذه المهمة؟')) {
-                            await cancelTask(t.id, 'ملغاة من العامل');
-                            refresh();
-                          }
-                        }}
-                      />
+                      {canUpdateStage ? (
+                        <QuickActions task={t}
+                          canPromise={canRecordPromise}
+                          onContact={async () => { await updateTaskStage(t.id, 'contacted'); refresh(); }}
+                          onPromise={() => setPtpOpen(t)}
+                          onDone={async () => { await updateTaskStage(t.id, 'done', { userId: profile?.id }); refresh(); }}
+                          onSnooze={() => setSnoozeOpen(t)}
+                          onCancel={async () => {
+                            if (confirm('إلغاء هذه المهمة؟')) {
+                              await cancelTask(t.id, 'ملغاة من العامل');
+                              refresh();
+                            }
+                          }}
+                        />
+                      ) : <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>عرض فقط</span>}
                     </td>
                   </tr>
                 );
@@ -500,8 +569,9 @@ export default function Collections({ isActive = true }) {
           customer={customerByName.get(drawer.customer_name)}
           onClose={() => setDrawer(null)}
           onRefresh={refresh}
-          onPromise={() => { setPtpOpen(drawer); setDrawer(null); }}
-          onWriteoff={() => { setWriteoffOpen(drawer); setDrawer(null); }}
+          onPromise={canRecordPromise ? () => { setPtpOpen(drawer); setDrawer(null); } : null}
+          onWriteoff={canRequestWriteoff ? () => { setWriteoffOpen(drawer); setDrawer(null); } : null}
+          canUpdate={canUpdateStage}
         />
       )}
       {writeoffOpen && (
@@ -600,13 +670,13 @@ function SummaryStat({ label, value, color }) {
   );
 }
 
-function QuickActions({ task, onContact, onPromise, onDone, onSnooze, onCancel }) {
+function QuickActions({ task, canPromise, onContact, onPromise, onDone, onSnooze, onCancel }) {
   return (
     <div style={{ display: 'flex', gap: 4 }}>
       {task.stage === 'todo' && (
         <Btn size="sm" variant="ghost" title="تواصلت" icon={<MessageSquare size={11}/>} onClick={onContact}/>
       )}
-      {(task.stage === 'todo' || task.stage === 'contacted') && (
+      {canPromise && (task.stage === 'todo' || task.stage === 'contacted') && (
         <Btn size="sm" variant="ghost" title="وعد دفع" icon={<Calendar size={11}/>} onClick={onPromise}/>
       )}
       <Btn size="sm" variant="ghost" title="مكتملة" icon={<CheckCircle2 size={11}/>} onClick={onDone}/>
@@ -616,7 +686,7 @@ function QuickActions({ task, onContact, onPromise, onDone, onSnooze, onCancel }
   );
 }
 
-function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff }) {
+function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff, canUpdate }) {
   return (
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
@@ -640,22 +710,33 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff 
           {task.promise_amount && (
             <KV label="الوعد الحالي" value={`${fmt(task.promise_amount)} ر.س يوم ${fmtDate(task.promise_date)}`}/>
           )}
+          {task.promise_status && (
+            <KV label="تحقق الوعد" value={
+              `${PROMISE_STATUS_LABELS[task.promise_status] || task.promise_status} · رُصد ${fmt(Number(task.promise_paid_amount) || 0)} ر.س`
+            }/>
+          )}
           {task.notes && <KV label="ملاحظات" value={task.notes}/>}
           <KV label="منشأة" value={fmtRel(task.created_at)}/>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-          <Btn size="md" variant="primary" icon={<Calendar size={13}/>} onClick={onPromise}>
-            سجّل وعد دفع
-          </Btn>
-          <Btn size="md" variant="ghost" icon={<CheckCircle2 size={13}/>} onClick={async () => {
-            await updateTaskStage(task.id, 'done');
-            onClose(); onRefresh();
-          }}>
-            مكتملة
-          </Btn>
-          <Btn size="md" variant="danger" icon={<Trash2 size={13}/>} onClick={onWriteoff}>
-            اطلب شطب الدين
-          </Btn>
+          {onPromise && (
+            <Btn size="md" variant="primary" icon={<Calendar size={13}/>} onClick={onPromise}>
+              سجّل وعد دفع
+            </Btn>
+          )}
+          {canUpdate && (
+            <Btn size="md" variant="ghost" icon={<CheckCircle2 size={13}/>} onClick={async () => {
+              await updateTaskStage(task.id, 'done');
+              onClose(); onRefresh();
+            }}>
+              مكتملة
+            </Btn>
+          )}
+          {onWriteoff && (
+            <Btn size="md" variant="danger" icon={<Trash2 size={13}/>} onClick={onWriteoff}>
+              اطلب شطب الدين
+            </Btn>
+          )}
           <Btn size="md" variant="ghost" icon={<Download size={13}/>}
                onClick={async () => {
                  try {
