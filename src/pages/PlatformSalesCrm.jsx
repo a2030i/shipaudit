@@ -106,6 +106,26 @@ const SCHEDULE_BUCKETS = [
   { id: 'unscheduled', label: 'متابعة بلا موعد', icon: Clock3 },
 ];
 
+const WORK_FILTERS = [
+  { id: 'all', label: 'كل الحالات' },
+  { id: 'action_now', label: 'يحتاج إجراء الآن' },
+  { id: 'never_contacted', label: 'لم نتواصل' },
+  { id: 'no_answer', label: 'لم يرد' },
+  { id: 'due', label: 'متابعة مستحقة' },
+  { id: 'contacted_no_next', label: 'تواصل بلا موعد' },
+  { id: 'scheduled', label: 'موعد قادم' },
+  { id: 'contacted', label: 'تم التواصل' },
+  { id: 'unassigned', label: 'بلا مسؤول' },
+];
+
+const SORT_OPTIONS = [
+  ['recommended', 'الترتيب المقترح'],
+  ['recent_first', 'الأقرب للتوقف أولًا'],
+  ['action_first', 'الإجراء العاجل أولًا'],
+  ['largest', 'الأعلى شحنًا أولًا'],
+  ['least_contacted', 'الأقل تواصلًا أولًا'],
+];
+
 const stageMeta = key => SALES_STAGES[key] || { label: key || 'جديد', color: 'var(--muted)' };
 const fmtNumber = value => Number(value || 0).toLocaleString('en-US');
 const fmtMoney = value => `${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س`;
@@ -115,6 +135,16 @@ const fmtDate = value => {
     return new Date(value).toLocaleString('ar-SA', {
       day: 'numeric', month: 'short', year: 'numeric',
       hour: '2-digit', minute: '2-digit',
+    });
+  } catch {
+    return String(value);
+  }
+};
+const fmtShortDate = value => {
+  if (!value) return '—';
+  try {
+    return new Date(value).toLocaleDateString('ar-SA', {
+      day: 'numeric', month: 'short', year: 'numeric',
     });
   } catch {
     return String(value);
@@ -147,6 +177,61 @@ const signalMeta = row => {
     collections_hold: { label: 'للتحصيل', color: 'var(--red)' },
   };
   return map[row.commercial_signal] || { label: 'متابعة', color: 'var(--muted)' };
+};
+
+const workMeta = row => {
+  const days = Number(row.days_since_last) || 0;
+  const urgentStop = row.commercial_signal === 'recent_stop' && days >= 6 && days <= 14;
+  const map = {
+    due: {
+      label: 'نفّذ المتابعة الآن',
+      detail: 'الموعد مستحق أو متأخر',
+      color: 'var(--red)',
+    },
+    no_answer: {
+      label: 'أعد المحاولة',
+      detail: `${fmtNumber(row.contact_attempts)} محاولة بلا رد`,
+      color: 'var(--gold)',
+    },
+    scheduled: {
+      label: 'موعد قادم',
+      detail: fmtDate(row.next_action_at),
+      color: 'var(--accent3)',
+    },
+    contacted_no_next: {
+      label: 'حدّد الخطوة التالية',
+      detail: 'تم التواصل ولا يوجد موعد قادم',
+      color: 'var(--gold)',
+    },
+    contacted: {
+      label: 'تم التواصل',
+      detail: OUTCOMES[row.last_outcome] || 'المتابعة مسجلة',
+      color: 'var(--green)',
+    },
+    unassigned: {
+      label: 'يحتاج مسؤولًا',
+      detail: 'لم تُسند المتابعة بعد',
+      color: 'var(--red)',
+    },
+  };
+  if (row.work_state === 'never_contacted') {
+    return urgentStop
+      ? {
+          label: 'اتصل الآن',
+          detail: `دخل يومه ${days} بلا شحن`,
+          color: 'var(--red)',
+        }
+      : {
+          label: 'لم نتواصل بعد',
+          detail: 'لا توجد محاولة مسجلة',
+          color: 'var(--brand)',
+        };
+  }
+  return map[row.work_state] || {
+    label: 'راجع الحالة',
+    detail: 'حدّد الإجراء التالي',
+    color: 'var(--muted)',
+  };
 };
 
 const integrationLabel = account => {
@@ -564,6 +649,8 @@ export default function PlatformSalesCrm({ isActive = true }) {
   const [data, setData] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [owner, setOwner] = useState('');
+  const [workFilter, setWorkFilter] = useState('all');
+  const [sort, setSort] = useState('recommended');
   const [search, setSearch] = useState('');
   const [appliedSearch, setAppliedSearch] = useState('');
   const [page, setPage] = useState(0);
@@ -579,6 +666,8 @@ export default function PlatformSalesCrm({ isActive = true }) {
         bucket,
         ownerId: owner && owner !== 'unassigned' ? owner : null,
         unassigned: owner === 'unassigned',
+        workFilter,
+        sort,
         search: appliedSearch,
         page: targetPage,
         limit: 40,
@@ -592,7 +681,7 @@ export default function PlatformSalesCrm({ isActive = true }) {
   useEffect(() => {
     if (!isActive) return;
     refresh();
-  }, [isActive, bucket, owner, appliedSearch, page]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isActive, bucket, owner, workFilter, sort, appliedSearch, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!isActive || (!isAdmin && !can('crm.view_all') && !can('crm.assign'))) return;
@@ -600,17 +689,27 @@ export default function PlatformSalesCrm({ isActive = true }) {
   }, [isActive, isAdmin]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const summary = data?.summary || {};
+  const workSummary = data?.workSummary || {};
   const lensItems = lens === 'schedule'
     ? SCHEDULE_BUCKETS
     : [...SMART_BUCKETS, ...PIPELINE_BUCKETS, ...PLATFORM_BUCKETS];
 
   const chooseLens = nextLens => {
     setLens(nextLens);
+    setWorkFilter('all');
+    setSort('recommended');
     setBucket(nextLens === 'schedule' ? 'recontact_due' : 'hot_live_new');
   };
 
   const chooseBucket = nextBucket => {
     setBucket(nextBucket);
+    setWorkFilter('all');
+    setSort('recommended');
+    setPage(0);
+  };
+
+  const chooseWorkFilter = nextFilter => {
+    setWorkFilter(nextFilter);
     setPage(0);
   };
 
@@ -746,6 +845,36 @@ export default function PlatformSalesCrm({ isActive = true }) {
           )}
         </div>
 
+        <div className="psc-work-controls">
+          <div className="psc-work-controls-copy">
+            <Target size={17}/>
+            <div>
+              <strong>من يحتاج ماذا الآن؟</strong>
+              <small>فلترة تشغيلية لكل النتائج قبل تقسيم الصفحات</small>
+            </div>
+          </div>
+          <div className="psc-work-filter-list" role="group" aria-label="فلتر حالة التواصل">
+            {WORK_FILTERS.map(item => (
+              <button
+                type="button"
+                key={item.id}
+                className={workFilter === item.id ? 'active' : ''}
+                aria-pressed={workFilter === item.id}
+                onClick={() => chooseWorkFilter(item.id)}
+              >
+                <span>{item.label}</span>
+                <b>{fmtNumber(workSummary[item.id === 'all' ? 'total' : item.id])}</b>
+              </button>
+            ))}
+          </div>
+          <label className="psc-sort-control">
+            <span>الترتيب</span>
+            <select value={sort} onChange={event => { setPage(0); setSort(event.target.value); }}>
+              {SORT_OPTIONS.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+        </div>
+
         {summary.unscheduled > 0 && lens === 'schedule' && (
           <button type="button" className="psc-discipline-alert" onClick={() => chooseBucket('unscheduled')}>
             <AlertTriangle size={16}/>
@@ -756,7 +885,10 @@ export default function PlatformSalesCrm({ isActive = true }) {
         <div className="psc-table-head">
           <div>
             <strong>{lensItems.find(item => item.id === bucket)?.label || 'كل العملاء'}</strong>
-            <small>{fmtNumber(data?.count)} عميل مطابق</small>
+            <small>
+              عرض {fmtNumber(data?.count)} من {fmtNumber(workSummary.total)} عميل
+              {workFilter !== 'all' ? ` · ${WORK_FILTERS.find(item => item.id === workFilter)?.label}` : ''}
+            </small>
           </div>
           {busy && <Spinner size={17}/>}
         </div>
@@ -773,12 +905,10 @@ export default function PlatformSalesCrm({ isActive = true }) {
               <thead>
                 <tr>
                   <th>العميل</th>
-                  <th>لماذا الآن؟</th>
-                  <th>حالة المنصّة</th>
-                  <th>مرحلة البيع</th>
-                  <th>المسؤول</th>
-                  <th>آخر تواصل</th>
-                  <th>التواصل القادم</th>
+                  <th>الإجراء الآن</th>
+                  <th>سبب الفرصة</th>
+                  <th>حالة التواصل</th>
+                  <th>المسؤول والمتابعة</th>
                   <th>ملاحظة</th>
                   <th></th>
                 </tr>
@@ -788,43 +918,69 @@ export default function PlatformSalesCrm({ isActive = true }) {
                   const stage = stageMeta(row.sales_stage);
                   const state = platformState(row);
                   const signal = signalMeta(row);
+                  const work = workMeta(row);
                   const due = row.next_action_at && new Date(row.next_action_at) <= new Date();
+                  const daysSinceLast = Number(row.days_since_last) || 0;
+                  const daysOverThreshold = Math.max(0, daysSinceLast - 5);
                   return (
-                    <tr key={row.phone}>
+                    <tr
+                      key={row.phone}
+                      className={Number(row.work_rank) <= 2 ? 'psc-row-urgent' : ''}
+                    >
                       <td data-label="العميل">
                         <button type="button" className="psc-customer-link" onClick={() => setSelectedPhone(row.phone)}>
                           <strong>{row.primary_store || row.phone}</strong>
                           <small>{row.phone}{Number(row.store_count) > 1 ? ` · ${row.store_count} متاجر` : ''}</small>
                         </button>
-                      </td>
-                      <td data-label="لماذا الآن؟">
-                        <span className="psc-signal-pill" style={{ '--pill-tone': signal.color }}>
-                          {signal.label} · {fmtNumber(row.signal_score)}
-                        </span>
-                        <small className="psc-signal-reason">{row.signal_reason || row.next_step || '—'}</small>
-                      </td>
-                      <td data-label="حالة المنصّة">
                         <span className="psc-state-pill" style={{ '--pill-tone': state.color }}>{state.label}</span>
-                        <small className="psc-cell-sub">{fmtNumber(row.total_shipments)} شحنة</small>
+                        <small className="psc-cell-sub">
+                          {fmtNumber(row.total_shipments)} شحنة · {integrationLabel(row)}
+                        </small>
                       </td>
-                      <td data-label="مرحلة البيع">
+                      <td data-label="الإجراء الآن">
+                        <span className="psc-action-pill" style={{ '--pill-tone': work.color }}>
+                          {work.label}
+                        </span>
+                        <strong className="psc-action-detail">{work.detail}</strong>
+                        <small className="psc-priority-score">أولوية {fmtNumber(row.signal_score)} / 100</small>
+                      </td>
+                      <td data-label="سبب الفرصة">
+                        <span className="psc-signal-pill" style={{ '--pill-tone': signal.color }}>{signal.label}</span>
+                        <small className="psc-signal-reason">{row.signal_reason || row.next_step || '—'}</small>
+                        {daysSinceLast > 0 && (
+                          <small className="psc-age-detail">
+                            آخر شحنة قبل {fmtNumber(daysSinceLast)} يومًا
+                            {row.commercial_signal === 'recent_stop' && ` · تجاوز الحد بـ${fmtNumber(daysOverThreshold)} يوم`}
+                          </small>
+                        )}
+                      </td>
+                      <td data-label="حالة التواصل">
                         <span className="psc-stage-pill" style={{ '--pill-tone': stage.color }}>{stage.label}</span>
-                        <small className="psc-cell-sub">{OUTCOMES[row.last_outcome] || row.last_outcome || '—'}</small>
+                        <strong className="psc-contact-outcome">{OUTCOMES[row.last_outcome] || row.last_outcome || 'بلا نتيجة بعد'}</strong>
+                        <small className="psc-cell-sub">
+                          {fmtNumber(row.contact_attempts)} محاولة · آخر تواصل {fmtShortDate(row.last_touch_at)}
+                        </small>
                       </td>
-                      <td data-label="المسؤول">{row.owner_name || <span className="psc-unassigned">بلا مسؤول</span>}</td>
-                      <td data-label="آخر تواصل">{fmtDate(row.last_touch_at)}</td>
-                      <td data-label="التواصل القادم">
+                      <td data-label="المسؤول والمتابعة">
+                        <strong className={row.owner_name ? 'psc-owner-name' : 'psc-unassigned'}>
+                          {row.owner_name || 'بلا مسؤول'}
+                        </strong>
                         {row.next_action_at ? (
-                          <span className={due ? 'psc-due' : ''}>
+                          <small className={due ? 'psc-due' : 'psc-next-date'}>
                             {NEXT_TYPES[row.next_action_type] || 'إجراء'} · {fmtDate(row.next_action_at)}
-                          </span>
-                        ) : <span className="psc-missing-date">غير مجدول</span>}
+                          </small>
+                        ) : <small className="psc-missing-date">لا يوجد موعد قادم</small>}
                       </td>
                       <td data-label="ملاحظة">
-                        <span className="psc-note-preview">{row.notes || '—'}</span>
+                        <span className={`psc-note-preview${row.notes ? '' : ' empty'}`}>
+                          {row.notes || 'لا توجد ملاحظة مسجلة'}
+                        </span>
                       </td>
-                      <td>
-                        <Btn size="sm" variant="ghost" onClick={() => setSelectedPhone(row.phone)}>فتح الملف</Btn>
+                      <td data-label="إجراءات">
+                        <div className="psc-row-actions">
+                          <WaActions phone={row.phone} name={row.primary_store} campaignLabel="متابعة مبيعات" size={16}/>
+                          <Btn size="sm" variant="ghost" onClick={() => setSelectedPhone(row.phone)}>التفاصيل</Btn>
+                        </div>
                       </td>
                     </tr>
                   );

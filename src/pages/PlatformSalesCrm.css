@@ -211,6 +211,106 @@
   color: var(--brand);
 }
 
+.psc-work-controls {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 13px 16px;
+  background:
+    linear-gradient(120deg, color-mix(in srgb, var(--brand) 6%, var(--card)), var(--card) 62%);
+  border-bottom: 1px solid var(--border);
+}
+
+.psc-work-controls-copy {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 190px;
+  color: var(--brand);
+}
+
+.psc-work-controls-copy > div {
+  display: grid;
+  gap: 2px;
+}
+
+.psc-work-controls-copy strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.psc-work-controls-copy small {
+  color: var(--muted2);
+  font-size: 9px;
+}
+
+.psc-work-filter-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.psc-work-filter-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  padding: 5px 9px;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.psc-work-filter-list button b {
+  min-width: 20px;
+  padding: 1px 5px;
+  color: var(--muted2);
+  background: var(--card);
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+}
+
+.psc-work-filter-list button.active {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 10%, var(--card));
+  border-color: color-mix(in srgb, var(--brand) 38%, var(--border));
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--brand) 65%, transparent);
+}
+
+.psc-work-filter-list button.active b {
+  color: var(--brand);
+}
+
+.psc-sort-control {
+  display: grid;
+  gap: 4px;
+  min-width: 172px;
+}
+
+.psc-sort-control span {
+  color: var(--muted2);
+  font-size: 9px;
+  font-weight: 800;
+}
+
+.psc-sort-control select {
+  min-height: 36px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  font-family: var(--font-sans);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 .psc-discipline-alert {
   display: flex;
   align-items: center;
@@ -257,6 +357,7 @@
 
 .psc-table {
   width: 100%;
+  min-width: 1160px;
   border-collapse: collapse;
 }
 
@@ -288,6 +389,11 @@
   background: color-mix(in srgb, var(--brand) 3%, var(--card));
 }
 
+.psc-table tbody tr.psc-row-urgent {
+  background: color-mix(in srgb, var(--red) 2.5%, var(--card));
+  box-shadow: inset -3px 0 0 color-mix(in srgb, var(--red) 58%, transparent);
+}
+
 .psc-customer-link {
   display: grid;
   gap: 2px;
@@ -315,6 +421,7 @@
 .psc-state-pill,
 .psc-stage-pill,
 .psc-signal-pill,
+.psc-action-pill,
 .psc-account-actions > span {
   display: inline-flex;
   align-items: center;
@@ -327,6 +434,41 @@
   font-size: 10px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.psc-customer-link + .psc-state-pill {
+  margin-top: 7px;
+}
+
+.psc-action-detail,
+.psc-contact-outcome,
+.psc-owner-name,
+.psc-next-date {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.psc-action-detail {
+  color: var(--pill-tone, var(--text));
+}
+
+.psc-priority-score,
+.psc-age-detail {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted2);
+  font-family: var(--font-mono);
+  font-size: 9px;
+  line-height: 1.45;
+}
+
+.psc-age-detail {
+  color: var(--text2);
+  font-family: var(--font-sans);
+  font-weight: 700;
 }
 
 .psc-signal-reason {
@@ -356,6 +498,18 @@
   color: var(--muted);
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 2;
+}
+
+.psc-note-preview.empty {
+  color: var(--muted2);
+  font-style: italic;
+}
+
+.psc-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .psc-pagination {
@@ -723,6 +877,27 @@
     width: 100%;
   }
 
+  .psc-work-controls {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .psc-work-filter-list {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scroll-snap-type: x proximity;
+  }
+
+  .psc-work-filter-list button {
+    flex: 0 0 auto;
+    scroll-snap-align: start;
+  }
+
+  .psc-sort-control {
+    width: 100%;
+  }
+
   .psc-lens-toggle button {
     flex: 1;
     justify-content: center;
@@ -742,6 +917,14 @@
 
   .psc-table.m-cards td {
     max-width: none;
+  }
+
+  .psc-table {
+    min-width: 0;
+  }
+
+  .psc-row-actions {
+    justify-content: flex-start;
   }
 
   .psc-account-hero,

@@ -320,10 +320,13 @@ export async function loadSalesOwnerStats() {
 // من retargeting_followups. لا تستورد ردود هاتف ولا تنشئ Lead منها.
 export async function loadPlatformSalesPipeline({
   bucket = 'hot_live_new', ownerId = null, unassigned = false,
+  workFilter = 'all', sort = 'recommended',
   search = null, page = 0, limit = 50,
 } = {}) {
-  const { data, error } = await supabase.rpc('platform_commercial_pipeline', {
+  const { data, error } = await supabase.rpc('platform_commercial_pipeline_v2', {
     p_bucket: bucket || 'all',
+    p_work_filter: workFilter || 'all',
+    p_sort: sort || 'recommended',
     p_owner: ownerId || null,
     p_unassigned: !!unassigned,
     p_search: search || null,
@@ -333,6 +336,7 @@ export async function loadPlatformSalesPipeline({
   if (error) throw error;
   return {
     summary: data?.summary || {},
+    workSummary: data?.work_summary || {},
     rows: Array.isArray(data?.rows) ? data.rows : [],
     count: Number(data?.count) || 0,
     page,
