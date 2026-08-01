@@ -116,7 +116,7 @@ export default function ContractsOverview({ isActive = true }) {
         subtitle="نظرة شاملة على شروط التسعير والرسوم لكل شركة — جاهزة للطباعة أو التصدير"
         actions={
           <>
-            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>تحديث</Btn>
+            <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>تحديث بيانات العقود</Btn>
             <Btn size="md" variant="ghost" icon={<FileSpreadsheet size={14}/>} onClick={handleExport}>Excel</Btn>
             <Btn size="md" variant="primary" icon={<Printer size={14}/>} onClick={handlePrint}>طباعة</Btn>
           </>

@@ -112,7 +112,7 @@ export default function IntegrityCheck({ isActive }) {
                     )}
                     {c.goto && (
                       <Btn size="sm" variant="ghost" onClick={() => navigate(c.goto)}>
-                        فتح <ArrowLeft size={13}/>
+                        عرض موضع المشكلة <ArrowLeft size={13}/>
                       </Btn>
                     )}
                   </div>

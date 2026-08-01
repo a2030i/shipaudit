@@ -1,12 +1,13 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
-  LayoutDashboard, Truck, Upload, History, Settings,
+  LayoutDashboard, Truck, Upload, Download, History, Settings,
   ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
+import CenterWorkspace from './components/CenterWorkspace.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
@@ -232,6 +233,8 @@ const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank'];
+const REPORTS_WORKSPACE_PATHS = ['/reports', '/monthly-report', '/uploads', '/integrity', '/activity-log', '/internal-exports'];
+const SETTINGS_WORKSPACE_PATHS = ['/carriers', '/contracts', '/employees'];
 
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
@@ -274,8 +277,10 @@ function AppInner({ theme, toggleTheme }) {
   // (لا عرض ولا جلب بيانات) ويسقط في تحويلة «مسار مجهول» → أول صفحة مسموحة.
   const rawPath   = location.pathname;
   const pathPermKey = rawPath.startsWith('/settings') ? 'system.view_settings' : PATH_PERM.get(rawPath);
-  const pathAllowed = isAdmin || !pathPermKey
-    || (Array.isArray(pathPermKey) ? pathPermKey.some(k => can(k)) : can(pathPermKey));
+  const pathAllowed = rawPath === '/employees'
+    ? isAdmin
+    : (isAdmin || !pathPermKey
+      || (Array.isArray(pathPermKey) ? pathPermKey.some(k => can(k)) : can(pathPermKey)));
   const pathname  = pathAllowed ? rawPath : '__locked__';
   const isSettingsPath = pathAllowed && rawPath.startsWith('/settings');
 
@@ -734,11 +739,23 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/carrier'} scroll>
               <CarrierProfile/>
             </PageSlot>
-            <PageSlot active={pathname==='/carriers'}>
-              <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/contracts'} scroll>
-              <ContractsOverview isActive={pathname==='/contracts'}/>
+            <PageSlot active={SETTINGS_WORKSPACE_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="settings-center"
+                title="الإعدادات"
+                subtitle="الفريق وشركات الشحن والعقود في مكان واحد"
+                tone="#31D5E1"
+                activePath={pathname}
+                onNavigate={navigate}
+                tabs={[
+                  ...(isAdmin || can('carriers.view') ? [{ id: 'carriers', path: '/carriers', label: 'شركات الشحن', icon: Truck,
+                    render: () => <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/> }] : []),
+                  ...(isAdmin || can('carriers.edit_contract') ? [{ id: 'contracts', path: '/contracts', label: 'العقود والأسعار', icon: ClipboardList,
+                    render: () => <ContractsOverview isActive={pathname==='/contracts'}/> }] : []),
+                  ...(isAdmin ? [{ id: 'employees', path: '/employees', label: 'الفريق والصلاحيات', icon: UserCog,
+                    render: () => <EmployeeManager/> }] : []),
+                ]}
+              />
             </PageSlot>
             <PageSlot active={pathname==='/upload'} scroll>
               <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>
@@ -752,8 +769,27 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/aramex-statements'} scroll>
               <CarrierStatements carriers={carriers}/>
             </PageSlot>
-            <PageSlot active={pathname==='/reports'} scroll>
-              <ReportsCenter isActive={pathname==='/reports'}/>
+            <PageSlot active={REPORTS_WORKSPACE_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="reports-center"
+                title="التقارير والرقابة"
+                subtitle="التقارير، مزامنة المصادر، سلامة البيانات وسجل النظام"
+                tone="#22C55E"
+                activePath={pathname}
+                onNavigate={navigate}
+                tabs={[
+                  ...(isAdmin || can('carriers.view') ? [
+                    { id: 'reports', path: '/reports', label: 'التقارير', icon: FileText, render: () => <ReportsCenter isActive={pathname==='/reports'}/> },
+                    { id: 'monthly', path: '/monthly-report', label: 'التقرير الشهري', icon: CalendarRange, render: () => <MonthlyReport isActive={pathname==='/monthly-report'}/> },
+                  ] : []),
+                  ...(isAdmin || can('uploads.view') ? [{ id: 'sources', path: '/uploads', label: 'مزامنة المصادر', icon: Layers, render: () => <UploadsHub isActive={pathname==='/uploads'}/> }] : []),
+                  ...(isAdmin || can('system.view_audit_log') ? [
+                    { id: 'integrity', path: '/integrity', label: 'سلامة البيانات', icon: FileCheck, render: () => <IntegrityCheck isActive={pathname==='/integrity'}/> },
+                    { id: 'activity', path: '/activity-log', label: 'سجل النظام', icon: Activity, render: () => <ActivityLog isActive={pathname==='/activity-log'}/> },
+                  ] : []),
+                  ...(isAdmin || can('internal_exports.view') ? [{ id: 'exports', path: '/internal-exports', label: 'الملفات المصدّرة', icon: Download, render: () => <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/> }] : []),
+                ]}
+              />
             </PageSlot>
             {/* هبوط موافقة زوهو OAuth — بلا عنصر قائمة */}
             <PageSlot active={pathname==='/zoho-callback'} scroll>
@@ -780,17 +816,11 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/pnl'} scroll>
               <FinancialPosition isActive={pathname==='/pnl'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/monthly-report'} scroll>
-              <MonthlyReport isActive={pathname==='/monthly-report'}/>
-            </PageSlot>
             <PageSlot active={pathname==='/drop'} scroll>
               <SmartDrop carriers={carriers}/>
             </PageSlot>
             <PageSlot active={pathname==='/cash-aging'} scroll>
               <CashAging isActive={pathname==='/cash-aging'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/integrity'} scroll>
-              <IntegrityCheck isActive={pathname==='/integrity'}/>
             </PageSlot>
             {/* /claims now renders inside CarriersWorkspace (claims tab) above */}
             <PageSlot active={pathname==='/ledger'} scroll>
@@ -830,17 +860,8 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/reconciliation'} scroll>
               <Reconciliation isActive={pathname==='/reconciliation'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/uploads'} scroll>
-              <UploadsHub isActive={pathname==='/uploads'}/>
-            </PageSlot>
             <PageSlot active={pathname==='/weight-billing'} scroll>
               <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/internal-exports'} scroll>
-              <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/activity-log'} scroll>
-              <ActivityLog isActive={pathname==='/activity-log'}/>
             </PageSlot>
             <PageSlot active={pathname==='/webhook'} scroll>
               <WebhookEvents carriers={carriers} isActive={pathname==='/webhook'}/>
@@ -848,17 +869,6 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/tasks'} scroll>
               <Tasks carriers={carriers} isActive={pathname==='/tasks'}/>
             </PageSlot>
-            {/* Employees page is the one truly admin-only page —
-                gated even from accountants who hold every other
-                permission. EmployeeManager itself further checks
-                can('system.manage_employees') / .manage_permissions
-                so wider read access could be granted later. */}
-            {isAdmin && (
-              <PageSlot active={pathname==='/employees'} scroll>
-                <EmployeeManager/>
-              </PageSlot>
-            )}
-
             <PageSlot active={isSettingsPath} scroll>
               <SettingsPage
                 carriers={carriers}

@@ -158,7 +158,7 @@ export default function UploadsHub({ isActive = true }) {
         subtitle="زوهو يعمل عبر API مباشر؛ هنا تتابع الملفات اليدوية غير المرتبطة بزوهـو"
         actions={
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh}>
-            تحديث
+            تحديث حالة المصادر
           </Btn>
         }
       />
@@ -188,7 +188,7 @@ export default function UploadsHub({ isActive = true }) {
           </div>
         </div>
         <Btn size="sm" variant="primary" icon={<ExternalLink size={13}/>} onClick={() => navigate('/zoho-data')}>
-          افتح زوهو API
+          عرض زوهو والحسابات
         </Btn>
       </Card>
 
@@ -374,7 +374,7 @@ export default function UploadsHub({ isActive = true }) {
                     🏷️ شركات بلا ناقل مطابق (تُجوهلت): {unmapped.map(u => `${u.name} (${u.n})`).join(' · ')}
                   </div>
                 )}
-                <div style={{ marginTop: 14, textAlign: 'left' }}><Btn variant="primary" onClick={() => setConsolidated(null)}>تم</Btn></div>
+                <div style={{ marginTop: 14, textAlign: 'left' }}><Btn variant="ghost" onClick={() => setConsolidated(null)}>إغلاق ملخص الدمج</Btn></div>
               </>
             );
           })() : null}
@@ -641,7 +641,7 @@ function UploadSourceCard({ source, busy, onUpload, onNavigate }) {
         onMouseEnter={(e) => e.currentTarget.style.color = accent}
         onMouseLeave={(e) => e.currentTarget.style.color = 'var(--muted)'}
       >
-        افتح الصفحة المرتبطة
+        عرض الصفحة المرتبطة
         <ChevronLeft size={11}/>
       </button>
     </Card>

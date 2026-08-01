@@ -262,7 +262,7 @@ export default function InternalExports({ carriers = [], isActive = true }) {
         subtitle="ملفات Excel جاهزة لإدخالها في النظام المالي / نظام الفوترة الخارجي"
         actions={
           <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={anyLoading ? 'spin' : ''}/>} onClick={refresh} disabled={anyLoading}>
-            تحديث
+            تحديث سجل الملفات
           </Btn>
         }
       />

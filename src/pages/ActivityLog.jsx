@@ -57,7 +57,7 @@ export default function ActivityLog({ isActive = true }) {
         title="سجل النشاط"
         subtitle="مَن فعَل ماذا ومتى — مرجع للمراجعة الداخلية ومتابعة فِرق العمل."
         actions={
-          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
+          <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث سجل النظام</Btn>
         }
       />
 

@@ -110,7 +110,7 @@ export default function MonthlyReport({ isActive }) {
         actions={
           <div className="no-print" style={{ display: 'flex', gap: 8 }}>
             <Btn variant="ghost" size="sm" onClick={refresh} disabled={loading}>
-              <RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث
+              <RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث التقرير الشهري
             </Btn>
             <Btn variant="ghost" size="sm" onClick={exportXlsx} disabled={!rows.length}>
               <Download size={14}/> تصدير Excel

@@ -627,7 +627,7 @@ export default function EmployeeManager() {
         subtitle={`${employees.length} في الفريق · ${roleCounts.admin} مدير · ${roleCounts.accountant} موظف`}
         actions={<>
           <Btn variant="ghost" size="sm" icon={<RefreshCw size={13}/>} onClick={reload}>
-            تحديث
+            تحديث قائمة الفريق
           </Btn>
           {canManageEmployees && (
             <Btn size="sm" icon={<UserPlus size={14}/>} onClick={() => setModal({ type: 'add' })}>

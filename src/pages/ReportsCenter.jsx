@@ -230,7 +230,7 @@ export default function ReportsCenter({ isActive = true }) {
           <option value="all">كل الأنواع ({history?.length || 0})</option>
           {Object.entries(KIND_LABEL).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
         </select>
-        <Btn size="sm" variant="ghost" title="تحديث سجل التقارير" icon={<RefreshCw size={13}/>} onClick={loadHistory}/>
+        <Btn size="sm" variant="ghost" title="تحديث سجل التقارير" icon={<RefreshCw size={13}/>} onClick={loadHistory}>تحديث سجل التقارير</Btn>
       </div>
       {history == null ? <Card style={{ padding: 30, textAlign: 'center' }}><Spinner size={20}/></Card>
         : !history.length ? <Card><Empty icon="📁" title="لا تقارير محفوظة بعد" sub="كل تقرير تولّده يُخزَّن هنا تلقائياً"/></Card>
