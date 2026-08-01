@@ -475,9 +475,32 @@ button:active { transform: scale(.97); }
 .zoho-records-card input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
 .zoho-invoice-selection-count { color: var(--muted); font-size: 12px; margin-inline-end: auto; }
 
+.zoho-link-alert {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-bottom: 14px; padding: 12px 14px; border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--gold) 42%, var(--border));
+  background: color-mix(in srgb, var(--gold) 9%, var(--surface));
+}
+.zoho-link-alert > div { display: grid; gap: 3px; }
+.zoho-link-alert strong { color: var(--text); font-size: 13px; }
+.zoho-link-alert span { color: var(--muted); font-size: 11.5px; }
+.zoho-workspace-nav {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px; margin-bottom: 14px;
+}
+.zoho-workspace-group {
+  display: grid; gap: 7px; padding: 10px; border: 1px solid var(--border);
+  border-radius: 11px; background: var(--surface);
+}
+.zoho-workspace-group > span { color: var(--muted); font-size: 10.5px; font-weight: 800; }
+.zoho-workspace-group > div { display: flex; gap: 5px; flex-wrap: wrap; }
+
 @media (max-width: 768px) {
   .zoho-invoice-selection { position: sticky; top: 0; z-index: 3; }
   .zoho-invoice-selection .ui-btn { flex: 1 1 auto; }
+  .zoho-link-alert { align-items: stretch; flex-direction: column; }
+  .zoho-link-alert .ui-btn { width: 100%; }
+  .zoho-workspace-nav { grid-template-columns: 1fr; }
 }
 
 /* ── Hamburger (mobile only) ── */

@@ -10,6 +10,7 @@ import AIChat from './components/AIChat.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
+import { NAV_SECTIONS as NAV_SECTION_MODEL, applyNavigationIA } from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
@@ -77,7 +78,7 @@ const Marketers = lazy(() => import('./pages/Marketers.jsx'));
 // accountants see only items whose `permKey` is granted. `adminOnly`
 // items never appear for accountants regardless of permissions —
 // reserved for the meta-admin actions (manage employees themselves).
-const NAV_ITEMS = [
+const ROUTE_ITEMS = [
   // ── Pinned top-level ───────────────────────────────────────────
   // /overview is the canonical home as of 2026-05-22 — /dashboard
   // was the legacy snapshot view that overlapped 100% with overview.
@@ -193,15 +194,12 @@ const NAV_ITEMS = [
 //   1. The section icon (always)
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
-const NAV_SECTIONS = [
-  // التجميع حسب رحلة العمل (2026-08-01): لا تُدفن عمليات الفوترة أو الرقابة
-  // داخل الإعدادات، ولا تخلط الحملات التشغيلية مع التقارير المرجعية.
-  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,      accent: '#2B68DE', hint: 'استقبال · تدقيق · حسابات' },
-  { id: 'money',     label: 'الأموال والتحصيل',  icon: DollarSign, accent: '#F59E0B', hint: 'سيولة · تحصيل · زوهو · فوترة' },
-  { id: 'customers', label: 'العملاء والنمو',     icon: Users,      accent: '#EF4444', hint: 'عملاء · مبيعات · دعم · حملات' },
-  { id: 'outreach',  label: 'التقارير والرقابة', icon: FileCheck,  accent: '#22C55E', hint: 'تقارير · جودة · سلامة' },
-  { id: 'tools',     label: 'الإعدادات',          icon: Settings,   accent: '#31D5E1', hint: 'فريق · شركات · عقود' },
-];
+const NAV_ITEMS = applyNavigationIA(ROUTE_ITEMS);
+const SECTION_ICONS = { Truck, Users, Target, DollarSign, FileCheck, Settings };
+const NAV_SECTIONS = NAV_SECTION_MODEL.map(section => ({
+  ...section,
+  icon: SECTION_ICONS[section.icon] || Layers,
+}));
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
 // العنوان يرى كل المال (القائمة تخفي العنصر لكن الصفحة تُعرض).
@@ -462,7 +460,7 @@ function AppInner({ theme, toggleTheme }) {
   //   • `adminOnly` items are hidden for accountants regardless of perms
   // Items without a `permKey` fall through as visible (legacy / global
   // items like the topbar shortcuts — add a permKey when gating them).
-  const visibleNav = isAdmin
+  const permissionNav = isAdmin
     ? NAV_ITEMS
     : NAV_ITEMS.filter(n => {
         if (n.adminOnly) return false;
@@ -470,6 +468,7 @@ function AppInner({ theme, toggleTheme }) {
         if (!n.permKey)  return true;
         return can(n.permKey);
       });
+  const visibleNav = permissionNav.filter(n => !n.navHidden);
 
   const currentTitle = PAGE_TITLES[location.pathname]
     ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');

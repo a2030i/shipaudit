@@ -4,7 +4,7 @@
 // zoho-sync (دلتا) ولا تُعدَّل هنا أبداً.
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { RefreshCw, Search, Database, Download, Landmark, Link2, ShieldCheck, AlertTriangle } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -88,10 +88,17 @@ function agoAr(iso) {
   return `منذ ${Math.floor(sec / 86400)} يوم`;
 }
 const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إشعار خصم/إرجاع' };
+const ZOHO_WORKSPACES = [
+  { id: 'customers', label: 'العملاء', types: ['invoices', 'payments'] },
+  { id: 'vendors', label: 'الموردون والمصروفات', types: ['bills', 'vendor_payments', 'expenses', 'vendor_credits'] },
+  { id: 'accounts', label: 'القيود والحسابات', types: ['journals', 'chart_accounts'] },
+  { id: 'banks', label: 'البنوك والخزائن', types: ['bank_accounts'] },
+];
 
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [type, setType] = useState('invoices');
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
@@ -419,13 +426,13 @@ export default function ZohoData({ isActive = true }) {
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
-        title="زوهو: الفواتير والربط"
+        title="زوهو والحسابات"
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
         actions={
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
             {can('zoho.configure') ? (
               <Btn size="sm" variant="primary" icon={<ShieldCheck size={14}/>} onClick={reauthorize}>
-                إعادة ربط زوهو
+                إعادة تفويض صلاحيات زوهو
               </Btn>
             ) : null}
             <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} disabled={busy} onClick={doSync}>
@@ -443,13 +450,27 @@ export default function ZohoData({ isActive = true }) {
         onOpenAccount={() => setType('bank_accounts')}
       />
 
-      {/* مبدّل الأنواع */}
-      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 }}>
-        {Object.entries(ZOHO_MIRRORS).map(([id, m]) => (
-          <Btn key={id} size="sm" variant={type === id ? 'primary' : 'outline'} onClick={() => setType(id)}>
-            {m.label}
-          </Btn>
+      {/* أقسام مساحة العمل — أسماء المجموعة تسبق أنواع البيانات، فلا تبدو
+          التسعة أزرار كصفحات متساوية أو إجراءات غامضة. */}
+      <div className="zoho-workspace-nav" aria-label="أقسام زوهو والحسابات">
+        {ZOHO_WORKSPACES.map(group => (
+          <div className="zoho-workspace-group" key={group.id}>
+            <span>{group.label}</span>
+            <div>
+              {group.types.map(id => (
+                <Btn key={id} size="sm" variant={type === id ? 'primary' : 'outline'} onClick={() => setType(id)}>
+                  {ZOHO_MIRRORS[id].label.replace(/^[^\s]+\s/, '')}
+                </Btn>
+              ))}
+            </div>
+          </div>
         ))}
+        {can('reconciliation.view') ? (
+          <div className="zoho-workspace-group">
+            <span>المطابقة</span>
+            <div><Btn size="sm" variant="outline" onClick={() => navigate('/reconciliation')}>مطابقة الحسابات مع زوهو</Btn></div>
+          </div>
+        ) : null}
       </div>
 
       {/* ── مؤشر صحة المزامنة: نبضة webhook اللحظية + آخر مزامنة دورية ── */}
@@ -641,7 +662,7 @@ export default function ZohoData({ isActive = true }) {
                             row: r,
                             sourceType: type === 'bank_accounts' ? 'bank_account' : 'chart_account',
                             existing: (financial?.links || []).find(l => l.source_type === (type === 'bank_accounts' ? 'bank_account' : 'chart_account') && l.zoho_account_id === r.zoho_id) || null,
-                          })}>ربط</Btn>
+                          })}>ربط الحساب ببنك داخلي</Btn>
                         </td>
                       ) : null}
                     </tr>
@@ -697,6 +718,7 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
   const unknown = Object.values(capabilities).some(c => c?.status === 'unknown');
   const usagePct = usage?.configured_budget
     ? Math.min(100, (Number(usage.api_calls || 0) / Number(usage.configured_budget)) * 100) : null;
+  const missingBanks = Math.max(0, Number(bank.expected_bank_count || 3) - Number(bank.linked_bank_count || 0));
   const vendorKpis = [
     { label: 'فواتير موردين مفتوحة', value: `${fmt(bills.open_balance)} ر.س`, sub: `${Number(bills.open_count || 0)} فاتورة · ${Number(bills.overdue_count || 0)} متأخرة بقيمة ${fmt(bills.overdue_balance)}`, tone: 'var(--red)' },
     { label: 'إجمالي ذمم الموردين', value: `${fmt(vendor.outstanding_payable)} ر.س`, sub: `${Number(vendor.payable_vendors || 0)} مورّد له رصيد إجمالي`, tone: 'var(--gold)' },
@@ -727,11 +749,11 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
           {(needsAuth || unknown) && canConfigure ? (
             <Btn size="sm" variant="accent" icon={<ShieldCheck size={14}/>} onClick={onReauthorize}>
-              إعادة ربط زوهو وتفعيل البنوك
+              إعادة تفويض صلاحيات زوهو
             </Btn>
           ) : null}
           <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} disabled={busy} onClick={onSync}>
-            تحديث البنوك والخزائن
+            تحديث أرصدة البنوك
           </Btn>
         </div>
       </div>
@@ -739,7 +761,19 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
       {needsAuth ? (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '9px 11px', borderRadius: 9, marginBottom: 12,
           color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 9%, transparent)', fontSize: 11.5 }}>
-          <AlertTriangle size={15}/><span>ربط زوهو يعمل للفواتير، لكن قراءة البنوك غير مفعّلة. اضغط «إعادة ربط زوهو وتفعيل البنوك»؛ سيفتح Zoho للموافقة ثم يعيدك إلى هذه الصفحة.</span>
+          <AlertTriangle size={15}/><span>ربط زوهو يعمل للفواتير، لكن قراءة البنوك غير مفعّلة. اختر «إعادة تفويض صلاحيات زوهو»؛ سيفتح Zoho للموافقة ثم يعيدك إلى هذه الصفحة.</span>
+        </div>
+      ) : null}
+
+      {missingBanks > 0 ? (
+        <div className="zoho-link-alert">
+          <div>
+            <strong>بقي ربط {missingBanks} {missingBanks === 1 ? 'حساب بنكي' : 'حسابات بنكية'}</strong>
+            <span>حدّد البنك الداخلي المقابل لكل حساب لمنع المطابقة الخاطئة.</span>
+          </div>
+          <Btn size="sm" variant="accent" icon={<Link2 size={14}/>} onClick={onOpenAccount}>
+            أكمل ربط الحسابات
+          </Btn>
         </div>
       ) : null}
 
@@ -831,7 +865,7 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 11, fontSize: 11 }}>
         <button type="button" onClick={onOpenAccount} style={{ border: 0, padding: 0, background: 'transparent', color: 'var(--accent)', font: 'inherit', fontWeight: 700, cursor: 'pointer' }}>
-          فتح كل الحسابات وتصنيفها وربطها ←
+          عرض كل الحسابات وتصنيفها وربطها ←
         </button>
         <span style={{ color: 'var(--muted)' }}>
           {usage ? `استهلاك API اليوم: ${Number(usage.api_calls || 0).toLocaleString('en-US')}${usage.configured_budget ? ` من ${Number(usage.configured_budget).toLocaleString('en-US')} (${usagePct.toFixed(0)}%)` : ''}` : 'يبدأ قياس استهلاك API مع أول مزامنة جديدة'}
@@ -918,7 +952,7 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
           <div>{target.existing ? <Btn variant="danger" size="sm" disabled={saving} onClick={remove}>إزالة الربط</Btn> : null}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-            <Btn variant="accent" disabled={saving} icon={saving ? <Spinner size={13}/> : <Link2 size={14}/>} onClick={save}>حفظ الربط</Btn>
+            <Btn variant="accent" disabled={saving} icon={saving ? <Spinner size={13}/> : <Link2 size={14}/>} onClick={save}>حفظ تصنيف الحساب</Btn>
           </div>
         </div>
       </div>
