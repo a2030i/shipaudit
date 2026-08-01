@@ -1,7 +1,7 @@
 // CrmWorkspace.jsx — وحدة المتابعة/التحصيل + المبيعات (CRM).
 //
-// 5 تبويبات: قائمة المتابعة · الجهات الخارجية · صفقات المبيعات · المواعيد ·
-// أداء التحصيل. بطاقة العميل (drawer) تجمع الـtimeline + الإجراءات السريعة.
+// مساحة مساندة لصفقات المبيعات ومواعيدها وقياس الأداء. «قائمة المتابعة»
+// تقاعدت لصالح مركز فرص المنصة كي لا توجد قائمتان للعمل اليومي.
 // نمط CarriersWorkspace (§1.11f): تبويبات تقرأ ?tab=، داخل PageSlot.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
@@ -29,6 +29,8 @@ import { loadLatestMerchants } from '../lib/merchantsService.js';
 import WaActions from '../components/WaActions.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
+import { loadHatifCallCommitments, hatifCommitmentMeta, summarizeHatifCommitments } from '../lib/hatifCommitmentsService.js';
+import { saDateTime, saTime } from '../lib/saTime.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -45,15 +47,12 @@ const shuffle = (arr) => {
 };
 
 const TABS = [
-  // §1.32 مرحلة 2: «قائمة التحصيل» انتقلت لمركز التحصيل (/customer-money?tab=queue)
-  // — CRM صار للمتابعة والمبيعات فقط. /collections القديم يهبط هناك (App.jsx).
-  { id: 'queue', label: 'قائمة المتابعة', icon: Headset },
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
-  { id: 'board', label: 'أداء التحصيل', icon: BarChart3 },
+  { id: 'board', label: 'أداء المبيعات', icon: BarChart3 },
   { id: 'settings', label: 'الإعدادات', icon: Sliders, perm: 'crm.manage_statuses' },
 ];
-const LEGACY = { '/crm': 'queue' };
+const LEGACY = { '/crm': 'deals' };
 
 export default function CrmWorkspace({ isActive = true }) {
   const location = useLocation();
@@ -62,7 +61,8 @@ export default function CrmWorkspace({ isActive = true }) {
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
   const initial = () => {
     const q = new URLSearchParams(location.search).get('tab');
-    const want = (q && TABS.some(t => t.id === q)) ? q : (LEGACY[location.pathname] || 'queue');
+    const normalized = q === 'queue' ? 'deals' : q;
+    const want = (normalized && TABS.some(t => t.id === normalized)) ? normalized : (LEGACY[location.pathname] || 'deals');
     // محاسب بلا صلاحية التبويب المطلوب → أول تبويب مرئي له
     return visibleTabs.some(t => t.id === want) ? want : (visibleTabs[0]?.id || 'queue');
   };
@@ -94,7 +94,12 @@ export default function CrmWorkspace({ isActive = true }) {
         })}
       </div>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
-        {tab === 'queue' && <QueueTab active={isActive && tab === 'queue'}/>}
+        <div style={{ margin: '12px 24px 0', padding: '9px 13px', borderRadius: 10,
+          background: 'color-mix(in srgb, var(--accent3) 7%, var(--surface))',
+          border: '1px solid color-mix(in srgb, var(--accent3) 22%, var(--border))',
+          color: 'var(--text2)', fontSize: 12.5 }}>
+          هذه المساحة للصفقات والمواعيد وقياس الأداء فقط. قائمة الاتصال اليومية والعملاء الجدد والمتوقفون في <b>فرص المنصة</b>؛ وردود واتساب تبقى لدى فريق هاتف.
+        </div>
         {tab === 'deals' && <DealsTab active={isActive && tab === 'deals'}/>}
         {tab === 'tasks' && <TasksTab active={isActive && tab === 'tasks'}/>}
         {tab === 'board' && <BoardTab active={isActive && tab === 'board'}/>}
@@ -142,7 +147,7 @@ function QueueTab({ active }) {
     <Pad>
       <PageHeader icon={<Headset size={22}/>} title="قائمة المتابعة"
         subtitle="العملاء غير النشطين/المتعثّرين — يدخلون آلياً، مرتّبون بالخطر"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
+        actions={<Btn size="sm" variant="ghost" title="تحديث قائمة المتابعة" ariaLabel="تحديث قائمة المتابعة" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
       {enrollMsg && <div style={{ background: 'color-mix(in srgb, var(--accent3) 8%, transparent)', color: '#0891B2', padding: '8px 14px', borderRadius: 10, fontSize: 13, marginBottom: 12 }}>✅ {enrollMsg}</div>}
       {loading && !rows.length ? <Spin/> : !rows.length ? <Empty icon="✅" title="لا متابعات" sub="لا عملاء يحتاجون متابعة الآن"/> : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
@@ -397,7 +402,7 @@ function SalesTab({ active }) {
     <Pad>
       <PageHeader icon={<PhoneCall size={22}/>} title="قوائم المبيعات"
         subtitle="قوائم اتصال جاهزة من كشف المتاجر — تفعيل · استرجاع · إنعاش"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
+        actions={<Btn size="sm" variant="ghost" title="تحديث صفقات المبيعات" ariaLabel="تحديث صفقات المبيعات" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
 
       {/* مبدّل القوائم مع عدّاداتها */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
@@ -688,7 +693,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
     <Pad>
       <PageHeader icon={<Store size={22}/>} title="جهات محتملة" subtitle="تنظيف قوائم المتاجر الخارجية، كشف التكرارات، ومطابقة أرقام عملاء المنصّة"
         actions={<>
-          <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+          <Btn size="sm" variant="ghost" title="تحديث بيانات الصفقة" ariaLabel="تحديث بيانات الصفقة" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
           {/* إطلاق حملة قالب للصفحة المعروضة (المودال يوضّح الصلاحية لمن لا يملكها) */}
           <Btn size="sm" variant="accent" icon={<Phone size={13}/>} onClick={() => launchCampaign(leads)}>
             إطلاق حملة للمعروضين ({leads.filter(l => l.phone_normalized || l.phone).length})
@@ -1463,10 +1468,20 @@ function NewDealModal({ stages, onClose, onSaved, userId }) {
 function TasksTab({ active }) {
   const { user, can } = useAuth();
   const [tasks, setTasks] = useState([]);
+  const [commitments, setCommitments] = useState([]);
+  const [commitmentFilter, setCommitmentFilter] = useState('work');
   const [loading, setLoading] = useState(false);
   const refresh = useCallback(async () => {
     setLoading(true);
-    try { setTasks(await loadTasks({ assignee: can('crm.view_all') ? null : user?.id, openOnly: true })); }
+    try {
+      const [taskRows, commitmentRows] = await Promise.all([
+        loadTasks({ assignee: can('crm.view_all') ? null : user?.id, openOnly: true }),
+        (can('crm.view_all') || can('whatsapp.view_log'))
+          ? loadHatifCallCommitments().catch(() => []) : Promise.resolve([]),
+      ]);
+      setTasks(taskRows);
+      setCommitments(commitmentRows);
+    }
     catch (e) { toast(e.message, 'error'); }
     setLoading(false);
   }, [user?.id, can]);
@@ -1474,11 +1489,80 @@ function TasksTab({ active }) {
 
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
   const now = Date.now();
+  const summary = summarizeHatifCommitments(commitments, now);
+  const filteredCommitments = commitments.filter(row => {
+    if (commitmentFilter === 'all') return true;
+    if (commitmentFilter === 'done') return ['on_time_answered', 'on_time_no_answer'].includes(row.status);
+    if (commitmentFilter === 'breach') return ['late_answered', 'late_no_answer', 'missed'].includes(row.status);
+    if (commitmentFilter === 'review') return row.status === 'needs_confirmation';
+    return row.status === 'pending';
+  }).sort((a, b) => {
+    const aTime = new Date(a.window_start || a.source_call_at).getTime();
+    const bTime = new Date(b.window_start || b.source_call_at).getTime();
+    return commitmentFilter === 'work' ? aTime - bTime : bTime - aTime;
+  });
   return (
     <Pad>
-      <PageHeader icon={<CalendarClock size={22}/>} title="المواعيد" subtitle="مهامك المجدوَلة — مرتّبة بالاستحقاق"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh}><RefreshCw size={14}/></Btn>}/>
-      {loading && !tasks.length ? <Spin/> : !tasks.length ? <Empty icon="⏰" title="لا مواعيد" sub="لا مهام مجدوَلة"/> : (
+      <PageHeader icon={<CalendarClock size={22}/>} title="المواعيد والالتزامات" subtitle="المواعيد الداخلية + وعود الاتصال المطابقة تلقائياً مع سجل هاتف"
+        actions={<Btn size="sm" variant="ghost" title="تحديث المواعيد" ariaLabel="تحديث المواعيد" onClick={refresh}><RefreshCw size={14}/></Btn>}/>
+
+      {(can('crm.view_all') || can('whatsapp.view_log')) && (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
+            <CrmKpi label="مواعيد قادمة" value={summary.upcoming} color="var(--blue)"/>
+            <CrmKpi label="مستحقة اليوم" value={summary.dueToday} color="var(--accent3)"/>
+            <CrmKpi label="تمت في الموعد" value={summary.onTime} color="var(--green)"/>
+            <CrmKpi label="حاول في الموعد بلا رد" value={summary.attemptedNoAnswer} color="var(--accent3)"/>
+            <CrmKpi label="متأخرة أو فائتة" value={summary.breached} color="var(--red)"/>
+          </div>
+          <Card style={{ padding: 14, marginBottom: 16, borderTop: '3px solid var(--blue)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+              <div>
+                <div style={{ fontWeight: 900, fontSize: 14 }}>التزام الاتصال من هاتف</div>
+                <div style={{ color: 'var(--muted)', fontSize: 11.5, marginTop: 2 }}>لا يعتمد على ضغط زر؛ يطابق المكالمة الصادرة واسم الموظف ووقت الرد الفعلي.</div>
+              </div>
+              <div style={{ marginInlineStart: 'auto', display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {[['work','القادمة'],['done','في الموعد'],['breach','المتأخرة/الفائتة'],['review',`تحتاج تأكيد (${summary.review})`],['all','الكل']].map(([id, label]) => (
+                  <Btn key={id} size="sm" variant={commitmentFilter === id ? 'primary' : 'outline'} onClick={() => setCommitmentFilter(id)}>{label}</Btn>
+                ))}
+              </div>
+            </div>
+            {!filteredCommitments.length ? (
+              <Empty icon="📞" title="لا التزامات في هذا العرض" sub="الوعد الواضح في ملخص مكالمة هاتف يُلتقط آلياً، والغامض ينتظر تأكيداً بدلاً من إنشاء موعد خاطئ."/>
+            ) : (
+              <div style={{ display: 'grid', gap: 8 }}>
+                {filteredCommitments.map(row => {
+                  const meta = hatifCommitmentMeta(row, now);
+                  const mismatch = row.owner_match === false && row.actual_agent_name;
+                  return (
+                    <div key={row.id} style={{ border: '1px solid var(--border)', borderInlineStart: `4px solid ${meta.color}`, borderRadius: 10, padding: '10px 12px', background: 'var(--surface2)' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                        <b style={{ fontSize: 13 }}>{row.phone}</b>
+                        <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 10.5, fontWeight: 800, color: meta.color, background: `color-mix(in srgb, ${meta.color} 10%, transparent)` }}>{meta.label}</span>
+                        {mismatch && <span style={{ color: 'var(--gold)', fontSize: 11, fontWeight: 800 }}>نفذها {row.actual_agent_name} بدل {row.expected_agent_name || 'الموظف المتوقع'}</span>}
+                        <a href={`tel:+${row.phone}`} style={{ marginInlineStart: 'auto', color: 'var(--accent)', fontSize: 11.5, fontWeight: 800, textDecoration: 'none' }}>اتصال</a>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 8, marginTop: 8, fontSize: 11.5 }}>
+                        <Hd label="نافذة الاتصال" value={row.window_start ? `${saDateTime(row.window_start)} – ${saTime(row.window_end)}` : 'غير واضحة — تحتاج تأكيد'}/>
+                        <Hd label="الموظف المتوقع" value={row.expected_agent_name || 'غير محدد'}/>
+                        <Hd label="المنفذ فعلياً" value={row.actual_agent_name || 'لم تُطابق مكالمة بعد'} color={mismatch ? 'var(--gold)' : undefined}/>
+                        <Hd label="وقت المحاولة" value={row.attempted_at ? saDateTime(row.attempted_at) : '—'}/>
+                      </div>
+                      <details style={{ marginTop: 7, fontSize: 11.5, color: 'var(--muted)' }}>
+                        <summary style={{ cursor: 'pointer', fontWeight: 700 }}>مصدر الالتزام من ملخص المكالمة</summary>
+                        <div style={{ marginTop: 5, lineHeight: 1.7 }}>{row.source_text}</div>
+                      </details>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </>
+      )}
+
+      <div style={{ fontWeight: 900, fontSize: 14, margin: '4px 0 10px' }}>المواعيد الداخلية المفتوحة</div>
+      {loading && !tasks.length ? <Spin/> : !tasks.length ? <Empty icon="⏰" title="لا مواعيد داخلية" sub="لا مهام مجدوَلة"/> : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {tasks.map(t => {
             const overdue = new Date(t.due_at).getTime() < now;
@@ -1486,7 +1570,7 @@ function TasksTab({ active }) {
               <Card key={t.id} style={{ padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, borderRight: `3px solid ${overdue ? 'var(--red)' : 'var(--accent3)'}` }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
-                  <div style={{ fontSize: 11.5, color: overdue ? 'var(--red)' : 'var(--muted)' }}>{t.entity_ref} · {fmtDate(t.due_at)} {overdue ? '· متأخّر' : ''}</div>
+                  <div style={{ fontSize: 11.5, color: overdue ? 'var(--red)' : 'var(--muted)' }}>{t.entity_ref} · {saDateTime(t.due_at)} {overdue ? '· متأخّر' : ''}</div>
                 </div>
                 {can('crm.manage_tasks') && <Btn size="sm" variant="ghost" onClick={async () => { await completeTask(t.id, user?.id); refresh(); }}>إنهاء</Btn>}
               </Card>
@@ -1507,7 +1591,11 @@ function BoardTab({ active }) {
   const [ownerStats, setOwnerStats] = useState([]);
   const [targets, setTargets] = useState({ touches7d: 0, conversions: 0 });
   const [targetEdit, setTargetEdit] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const refresh = useCallback(async () => {
+    setLoading(true);
+    setError('');
     try {
       const [stats, emp] = await Promise.all([loadBoardStats(), loadEmployees().catch(() => [])]);
       setS(stats);
@@ -1516,7 +1604,12 @@ function BoardTab({ active }) {
       import('../lib/supabase.js').then(({ supabase }) =>
         supabase.from('app_settings').select('value').eq('key', 'sales_targets').maybeSingle()
           .then(({ data }) => { if (data?.value) setTargets({ touches7d: Number(data.value.touches7d) || 0, conversions: Number(data.value.conversions) || 0 }); }));
-    } catch (e) { toast(e.message, 'error'); }
+    } catch (e) {
+      setError(e.message || 'تعذّر تحميل مؤشرات الأداء');
+      toast(e.message, 'error');
+    } finally {
+      setLoading(false);
+    }
   }, []);
   const saveTargets = async () => {
     try {
@@ -1528,6 +1621,8 @@ function BoardTab({ active }) {
   };
   useEffect(() => { if (active) refresh(); }, [active, refresh]);
   if (!can('crm.view')) return <Pad><Empty icon="🔒" title="لا صلاحية"/></Pad>;
+  if (!s && loading) return <Pad><Card style={{ padding: 32, textAlign: 'center' }}><Spinner size={24}/><div style={{ marginTop: 10, color: 'var(--muted)', fontSize: 12 }}>نجمّع مؤشرات الفريق داخل القاعدة…</div></Card></Pad>;
+  if (!s && error) return <Pad><Card style={{ padding: 28, textAlign: 'center' }}><AlertTriangle size={25} color="var(--red)"/><div style={{ margin: '9px 0 14px' }}>{error}</div><Btn variant="primary" onClick={refresh}>إعادة المحاولة</Btn></Card></Pad>;
   if (!s) return <Pad><Spin/></Pad>;
   const convByOwner = new Map(ownerStats.map(o => [o.ownerId, o]));
   const myConv = convByOwner.get(user?.id);
@@ -1549,7 +1644,7 @@ function BoardTab({ active }) {
     <Pad>
       <PageHeader icon={<BarChart3 size={22}/>} title="أداء المبيعات والمتابعة"
         subtitle="من عنده جهات؟ من تواصل؟ ومعدل تحويل كل موظف مقابل الهدف"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh}><RefreshCw size={14}/></Btn>}/>
+        actions={<Btn size="sm" variant="ghost" title="تحديث مؤشرات الأداء" disabled={loading} onClick={refresh}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}/>
 
       {/* «أرقامي» — بطاقة الموظف الشخصية (§1.37) */}
       {myConv && (

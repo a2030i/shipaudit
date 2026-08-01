@@ -189,7 +189,7 @@ export default function CommandPalette({ open, onClose, navItems = [], carriers 
             </div>
           )}
 
-          {results.length === 0 ? (
+          {!remoteLoading && results.length === 0 ? (
             <div style={{ padding: '28px 16px', textAlign: 'center', color: 'var(--muted)', fontSize: 13 }}>
               لا نتائج لـ «{q}»
             </div>

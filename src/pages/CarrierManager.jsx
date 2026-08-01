@@ -897,8 +897,8 @@ export default function CarrierManager({ carriers, setCarriers }) {
                             </span>
                           </div>
                           <div style={{display:'flex',gap:6}}>
-                            <Btn size="sm" variant="ghost" onClick={()=>{setEditContract(ct);setShowContract(true);}}>✏️</Btn>
-                            <Btn size="sm" variant="danger" onClick={()=>handleDeleteContract(ct.id)}>🗑</Btn>
+                            <Btn size="sm" variant="ghost" title={`تعديل عقد ${ct.label}`} ariaLabel={`تعديل عقد ${ct.label}`} onClick={()=>{setEditContract(ct);setShowContract(true);}}>✏️</Btn>
+                            <Btn size="sm" variant="danger" title={`حذف عقد ${ct.label}`} ariaLabel={`حذف عقد ${ct.label}`} onClick={()=>handleDeleteContract(ct.id)}>🗑</Btn>
                           </div>
                         </div>
                         <div style={{padding:'12px 16px'}}>

@@ -17,7 +17,7 @@ const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
 // الصلاحيات الموسّعة: قراءة كاملة + كتابة محدودة على الوحدات غير الحسّاسة.
-// **صفر DELETE · صفر banking · صفر settings.UPDATE.**
+// **صفر DELETE · banking.READ فقط · صفر banking.CREATE/UPDATE · صفر settings.UPDATE.**
 // تطبيق الرصيد: الدفعة الزائدة = PUT customerpayments (UPDATE)؛ والإشعار الدائن
 // = POST /creditnotes/{id}/invoices الذي يعتبره زوهو CREATE فيحتاج
 // **creditnotes.CREATE** (بدونها «not authorized» — مُثبَت على Tine 2026-07-06).
@@ -31,6 +31,7 @@ const SCOPE = [
   'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
   'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ',
   'ZohoBooks.vendorpayments.READ', 'ZohoBooks.accountants.READ',
+  'ZohoBooks.banking.READ', 'ZohoBooks.debitnotes.READ',
   'ZohoBooks.settings.READ', 'ZohoBooks.reports.READ',
 ].join(',');
 

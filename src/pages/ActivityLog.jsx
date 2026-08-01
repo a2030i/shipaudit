@@ -4,6 +4,7 @@ import { Card, Btn, Empty, Spinner, toast, PageHeader } from '../components/UI.j
 import { loadActivityLog } from '../lib/carrierStatementsService.js';
 
 const ACTION_META = {
+  'audit.approve':     { icon: '✓',  label: 'اعتماد مراجعة ناقل',       color: 'var(--green)' },
   payment_created:   { icon: '💰', label: 'دفعة جديدة',           color: 'var(--green)' },
   dispute_opened:    { icon: '⚠️', label: 'فتح نزاع',             color: 'var(--red)'   },
   dispute_resolved:  { icon: '✓',  label: 'حلّ نزاع',              color: 'var(--green)' },
@@ -146,6 +147,13 @@ function LogRow({ r }) {
 
 function describeRow(r) {
   const p = r.payload ?? {};
+  if (r.action === 'audit.approve') {
+    const carrier = p.carrier_name || r.carrier_id || 'شركة شحن';
+    const period = p.period ? ` · ${p.period}` : '';
+    const rows = p.row_count != null ? ` · ${Number(p.row_count).toLocaleString('en-US')} شحنة` : '';
+    const amount = p.total_billed != null ? ` · ${fmt(p.total_billed)} ر.س` : '';
+    return `${carrier}${period}${rows}${amount}`;
+  }
   if (r.action === 'payment_created') {
     return `${fmt(p.amount)} ر.س · ${p.ops_count} عملية${p.payment_ref ? ` · ${p.payment_ref}` : ''}`;
   }

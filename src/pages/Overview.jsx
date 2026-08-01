@@ -244,9 +244,9 @@ export default function Overview({ carriers = [], isActive = true }) {
           label="تكلفة الشحن المعتمدة"
           value={fmt(data.thisMonth.carrierSpend)}
           unit="ر.س"
-          delta={data.deltas.carrierSpend}
+          delta={Math.abs(data.thisMonth.carrierSpend) < 0.01 ? null : data.deltas.carrierSpend}
           deltaInverted    /* spend going up is bad, so red arrow */
-          hint={`${data.thisMonth.auditsApproved} مراجعة معتمدة هذا الشهر`}
+          hint={Math.abs(data.thisMonth.carrierSpend) < 0.01 ? 'لا حركة شحن معتمدة في الشهر الجاري بعد' : `${data.thisMonth.auditsApproved} مراجعة معتمدة هذا الشهر`}
         />
         <BigStat
           color="var(--green)"
@@ -254,8 +254,8 @@ export default function Overview({ carriers = [], isActive = true }) {
           label="تحصيل COD المستلم"
           value={fmt(data.thisMonth.codReceived)}
           unit="ر.س"
-          delta={data.deltas.codReceived}
-          hint="من ملفات تحصيل الشركات"
+          delta={Math.abs(data.thisMonth.codReceived) < 0.01 ? null : data.deltas.codReceived}
+          hint={Math.abs(data.thisMonth.codReceived) < 0.01 ? 'لا تحصيل COD مسجّل في الشهر الجاري بعد' : 'من ملفات تحصيل الشركات'}
         />
         <BigStat
           color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
@@ -263,7 +263,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           label="صافي حركة الناقلين"
           value={(data.thisMonth.net >= 0 ? '+' : '−') + fmt(Math.abs(data.thisMonth.net))}
           unit="ر.س"
-          delta={data.deltas.net}
+          delta={Math.abs(data.thisMonth.net) < 0.01 ? null : data.deltas.net}
           hint="COD مُستلَم − إنفاق — تدفّق نقدي وليس ربحاً (الربح في «الوضع المالي»)"
           big
         />
@@ -446,7 +446,9 @@ export default function Overview({ carriers = [], isActive = true }) {
                 value:      r.debt,
                 share:      r.sharePct,
                 rank:       r.rank,
-                meta:       `${r.invoiceCount} فاتورة`,
+                meta:       Number(r.invoiceCount) > 0
+                  ? `${r.invoiceCount} فاتورة مفتوحة`
+                  : 'رصيد افتتاحي بلا فاتورة مفتوحة',
                 // زوهو حي → «تحصيل العملاء» (العميل موجود هناك حتماً —
                 // كان النقر ينقل لـ/receivables وقد يكون العميل مستبعداً منها)
                 onClick:    () => navigate(
@@ -616,6 +618,7 @@ export default function Overview({ carriers = [], isActive = true }) {
 }
 
 function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
+  const EXPECTED_BANK_ACCOUNTS = 3;
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
   const codDue = Number(data.codOutstanding?.total) || 0;
   const ap90 = Number(data.aging?.totals?.d90) || 0;
@@ -624,6 +627,9 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
   const cash = data.cashPosition || {};
   const net = cash.net;
   const netPositive = net == null ? null : net >= 0;
+  const vatReserve = Math.max(0, Number(vat?.netDue) || 0);
+  const availableAfterVat = net == null ? null : net - vatReserve;
+  const registeredBankCount = cash.bankAccounts?.length || 0;
   const customerPath = topCustomer
     ? (data.arSource === 'zoho'
         ? `/customer-money?customer=${encodeURIComponent(topCustomer.customerName)}`
@@ -657,7 +663,9 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       title: 'عميل يضغط السيولة',
       value: fmtCompact(topCustomer.debt),
       unit: 'ر.س',
-      body: `${topCustomer.customerName} · ${topCustomer.invoiceCount} فاتورة مفتوحة.`,
+      body: Number(topCustomer.invoiceCount) > 0
+        ? `${topCustomer.customerName} · ${topCustomer.invoiceCount} فاتورة مفتوحة.`
+        : `${topCustomer.customerName} · رصيد افتتاحي بلا فاتورة مفتوحة.`,
       action: 'افتح العميل',
       path: customerPath,
     },
@@ -702,8 +710,8 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       value: cash.bankBalance,
       tone: 'var(--accent)',
       Icon: Wallet,
-      helper: cash.bankAccounts?.length
-        ? `${cash.bankAccounts.length} ${cash.bankAccounts.length === 1 ? 'بنك' : 'بنوك'} · اضغط للتفاصيل`
+      helper: registeredBankCount
+        ? `${registeredBankCount} من ${EXPECTED_BANK_ACCOUNTS} حسابات بنكية · اضغط للتفاصيل`
         : 'لا توجد حسابات مسجّلة',
       onClick: onEditBank,
     },
@@ -782,12 +790,12 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
 
       <div className={`ops-command-grid ${showCashPosition ? '' : 'no-cash'}`}>
         {showCashPosition && <article className="ops-net-card">
-          <span className="ops-net-label">السيولة المسجّلة</span>
+          <span className="ops-net-label">السيولة المسجّلة قبل الضريبة</span>
           <div className={`ops-net-value ${netPositive === false ? 'negative' : ''}`}>
             {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
             {net != null && <small>ر.س</small>}
           </div>
-          <p>إجمالي البنوك المسجّلة + ما لك عند العملاء − ما عليك للناقلين.</p>
+          <p>إجمالي البنوك المسجّلة + ما لك عند العملاء − ما عليك للناقلين. الضريبة تظهر كحجز مستقل أدناه.</p>
 
           <div className="ops-cash-parts">
             {cashParts.map((item) => {
@@ -816,6 +824,14 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
             })}
           </div>
 
+          <CashBridge
+            bank={cash.bankBalance}
+            receivables={cash.totalAR}
+            payables={cash.totalAP}
+            vatReserve={vatReserve}
+            result={availableAfterVat}
+          />
+
           {cash.bankAccounts?.length > 0 && (
             <div className="ops-bank-breakdown" aria-label="تفصيل الحسابات البنكية">
               <div className="ops-bank-breakdown-head">
@@ -829,6 +845,14 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
                   <strong>{fmt(account.balance ?? account.closing)} <small>ر.س</small></strong>
                 </div>
               ))}
+              {registeredBankCount < EXPECTED_BANK_ACCOUNTS && (
+                <button type="button" className="ops-bank-row" onClick={onEditBank}
+                  style={{ width: '100%', border: '1px dashed var(--gold)', background: 'color-mix(in srgb, var(--gold) 7%, transparent)', cursor: onEditBank ? 'pointer' : 'default', textAlign: 'right' }}>
+                  <span className="ops-bank-name" style={{ color: 'var(--gold)' }}>حساب بنكي غير مسجّل</span>
+                  <small>الإجمالي الحالي لا يشمل {EXPECTED_BANK_ACCOUNTS - registeredBankCount} من الحسابات المتوقعة</small>
+                  <strong style={{ color: 'var(--gold)' }}>{onEditBank ? 'أضف الرصيد' : 'يحتاج صلاحية'}</strong>
+                </button>
+              )}
             </div>
           )}
 
@@ -836,6 +860,12 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
             <span>صافي المستحقات دون البنك</span>
             <strong>{cash.netNoBank == null ? '—' : `${cash.netNoBank >= 0 ? '+' : '−'}${fmt(Math.abs(cash.netNoBank))} ر.س`}</strong>
           </div>
+          {vat && (
+            <div className="ops-net-foot" style={{ color: availableAfterVat < 0 ? 'var(--red)' : 'var(--text)' }}>
+              <span>المتاح بعد حجز الضريبة ({fmt(vatReserve)} ر.س)</span>
+              <strong>{availableAfterVat == null ? '—' : `${availableAfterVat >= 0 ? '+' : '−'}${fmt(Math.abs(availableAfterVat))} ر.س`}</strong>
+            </div>
+          )}
         </article>}
 
         <aside className="ops-attention">
@@ -895,6 +925,43 @@ function formatBankDate(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleDateString('ar-SA', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function CashBridge({ bank, receivables, payables, vatReserve, result }) {
+  const rows = [
+    { label: 'البنوك المسجّلة', value: bank, sign: '+', color: 'var(--accent)' },
+    { label: 'ذمم العملاء (زوهو)', value: receivables, sign: '+', color: 'var(--green)' },
+    { label: 'التزامات الناقلين', value: payables, sign: '−', color: 'var(--red)' },
+    ...(vatReserve > 0.5 ? [{ label: 'حجز الضريبة', value: vatReserve, sign: '−', color: 'var(--gold)' }] : []),
+  ].filter(row => row.value != null && Number.isFinite(Number(row.value)));
+  if (!rows.length || result == null) return null;
+  const max = Math.max(...rows.map(row => Math.abs(Number(row.value) || 0)), Math.abs(Number(result) || 0), 1);
+  return (
+    <div style={{ marginTop: 13, padding: '12px 13px', borderRadius: 12, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center', marginBottom: 9 }}>
+        <strong style={{ fontSize: 11.5 }}>جسر السيولة — كيف وصلنا للمتاح</strong>
+        <span style={{ fontSize: 10, color: 'var(--muted)' }}>مرجع بصري، لا قيد محاسبي جديد</span>
+      </div>
+      <div style={{ display: 'grid', gap: 7 }}>
+        {rows.map(row => {
+          const value = Math.abs(Number(row.value) || 0);
+          return (
+            <div key={row.label} style={{ display: 'grid', gridTemplateColumns: 'minmax(120px, 1fr) minmax(90px, 2.2fr) auto', gap: 9, alignItems: 'center' }}>
+              <span style={{ fontSize: 10.5, color: 'var(--muted)' }}>{row.label}</span>
+              <span style={{ height: 7, borderRadius: 999, background: 'var(--surface)', overflow: 'hidden' }}>
+                <span style={{ display: 'block', width: `${Math.max(3, (value / max) * 100)}%`, height: '100%', borderRadius: 999, background: row.color }}/>
+              </span>
+              <strong style={{ minWidth: 92, textAlign: 'left', fontSize: 10.5, color: row.color, fontFamily: 'var(--font-mono)' }}>{row.sign}{fmt(value)}</strong>
+            </div>
+          );
+        })}
+        <div style={{ borderTop: '1px dashed var(--border2)', paddingTop: 8, display: 'flex', justifyContent: 'space-between', gap: 10 }}>
+          <strong style={{ fontSize: 11.5 }}>المتاح بعد الضريبة والالتزامات</strong>
+          <strong style={{ color: result >= 0 ? 'var(--green)' : 'var(--red)', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{result >= 0 ? '+' : '−'}{fmt(Math.abs(result))} ر.س</strong>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function BankEditModal({ banks = [], onCancel, onSave }) {

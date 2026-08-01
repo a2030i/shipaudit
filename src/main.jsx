@@ -15,11 +15,14 @@ import './design-v5.css'
   for (const m of ['toLocaleString', 'toLocaleDateString', 'toLocaleTimeString']) {
     const orig = Date.prototype[m];
     Date.prototype[m] = function (locale, opts) {
-      return orig.call(this, locale, {
+      const displayLocale = locale || 'en-GB';
+      return orig.call(this, displayLocale, {
         ...(opts || {}),
         timeZone: opts?.timeZone || TZ,
         // ar-SA defaults to Umm al-Qura on many devices. Product dates are Gregorian.
         calendar: 'gregory',
+        // ثبّت أرقام التاريخ على 0-9 حتى لا يظهر نفس التاريخ بصيغ رقمية مختلفة.
+        numberingSystem: 'latn',
       });
     };
   }

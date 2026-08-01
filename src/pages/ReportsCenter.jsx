@@ -4,7 +4,7 @@
 // persistAndDownloadExport (تخزين + سجل + تنزيل — قاعدة §1.13) فيبقى
 // قابلاً لإعادة التحميل من «السحبات السابقة» أسفل الصفحة.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
 import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Select, toast, PageHeader } from '../components/UI.jsx';
@@ -38,6 +38,8 @@ export default function ReportsCenter({ isActive = true }) {
   const [monthlyData, setMonthlyData] = useState(null);
   const [carriers, setCarriers] = useState([]);
   const [history, setHistory] = useState(null);
+  const [historyKind, setHistoryKind] = useState('all');
+  const [historyPage, setHistoryPage] = useState(0);
   const [busy, setBusy] = useState(null);          // معرّف التقرير قيد التوليد
   // معاملات البطاقات
   const [pMonth, setPMonth] = useState('');        // للتقرير الشهري
@@ -49,8 +51,13 @@ export default function ReportsCenter({ isActive = true }) {
   const [pPnlTo, setPPnlTo]     = useState('');
 
   const loadHistory = useCallback(() => {
-    loadExportHistory({ limit: 40 }).then(setHistory).catch(() => setHistory([]));
+    loadExportHistory({ limit: 100 }).then(rows => { setHistory(rows); setHistoryPage(0); }).catch(() => setHistory([]));
   }, []);
+
+  const filteredHistory = useMemo(() => (history || []).filter(row => historyKind === 'all' || row.kind === historyKind), [history, historyKind]);
+  const HISTORY_PAGE_SIZE = 10;
+  const historyPages = Math.max(1, Math.ceil(filteredHistory.length / HISTORY_PAGE_SIZE));
+  const pagedHistory = filteredHistory.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE);
 
   useEffect(() => {
     if (!isActive || monthlyData) return;
@@ -217,7 +224,13 @@ export default function ReportsCenter({ isActive = true }) {
       {/* سجل السحبات — مشترك مع صفحة التصدير الداخلي */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 800 }}>📁 التقارير الصادرة سابقاً</div>
-        <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={loadHistory}/>
+        <select value={historyKind} onChange={e => { setHistoryKind(e.target.value); setHistoryPage(0); }}
+          aria-label="فلترة التقارير الصادرة حسب النوع"
+          style={{ marginInlineStart: 'auto', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }}>
+          <option value="all">كل الأنواع ({history?.length || 0})</option>
+          {Object.entries(KIND_LABEL).map(([kind, label]) => <option key={kind} value={kind}>{label}</option>)}
+        </select>
+        <Btn size="sm" variant="ghost" title="تحديث سجل التقارير" icon={<RefreshCw size={13}/>} onClick={loadHistory}/>
       </div>
       {history == null ? <Card style={{ padding: 30, textAlign: 'center' }}><Spinner size={20}/></Card>
         : !history.length ? <Card><Empty icon="📁" title="لا تقارير محفوظة بعد" sub="كل تقرير تولّده يُخزَّن هنا تلقائياً"/></Card>
@@ -229,7 +242,7 @@ export default function ReportsCenter({ isActive = true }) {
                   <th key={h} style={{ padding: '9px 12px', fontSize: 11, color: 'var(--muted)', fontWeight: 600 }}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {history.map(h => (
+                {pagedHistory.map(h => (
                   <tr key={`${h.kind}_${h.id}`} style={{ borderTop: '1px solid var(--border)' }}>
                     <td data-label="التاريخ" style={{ padding: '9px 12px', color: 'var(--muted)', whiteSpace: 'nowrap' }}>{fmtDate(h.pulledAt)}</td>
                     <td data-label="النوع" style={{ padding: '9px 12px' }}>{KIND_LABEL[h.kind] || 'تقرير'}</td>
@@ -240,12 +253,20 @@ export default function ReportsCenter({ isActive = true }) {
                         title={h.filePath ? 'إعادة التحميل' : 'ملف قديم قبل التخزين'}
                         onClick={async () => {
                           try { await downloadExportFile(h); } catch (e) { toast(e.message, 'error'); }
-                        }}/>
+                        }}>تحميل نسخة</Btn>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: 11.5, color: 'var(--muted)' }}>
+              <span>عرض {pagedHistory.length} من {filteredHistory.length} · الأحدث أولاً</span>
+              <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                <Btn size="sm" variant="ghost" disabled={historyPage === 0} onClick={() => setHistoryPage(p => Math.max(0, p - 1))}>السابق</Btn>
+                <span>{historyPage + 1} / {historyPages}</span>
+                <Btn size="sm" variant="ghost" disabled={historyPage + 1 >= historyPages} onClick={() => setHistoryPage(p => Math.min(historyPages - 1, p + 1))}>التالي</Btn>
+              </span>
+            </div>
           </Card>
         )}
     </div>

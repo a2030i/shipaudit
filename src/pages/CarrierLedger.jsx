@@ -995,33 +995,31 @@ export default function CarrierLedger({ isActive = true }) {
                                 🔗 ربط مراجعة
                               </Btn>
                             )}
-                            {o.audit_id && (
-                              <Btn size="sm" variant="ghost" onClick={() => unlinkAudit(o)}>
-                                🔗✕ إلغاء الربط
-                              </Btn>
-                            )}
                             {/* Pay */}
                             {o.status !== 'paid' && (
                               <Btn size="sm" variant="accent" onClick={() => setModal({ op: o, action: 'paid' })}>
                                 💰 تسديد
                               </Btn>
                             )}
-                            {/* Open new dispute */}
-                            {o.status !== 'disputed' && o.status !== 'paid' && (
-                              <Btn size="sm" variant="ghost" onClick={() => setModal({ op: o, action: 'dispute' })}>
-                                ⚠ نزاع
-                              </Btn>
-                            )}
-                            {/* Open dispute thread (drawer) for already-disputed ops */}
-                            {o.status === 'disputed' && (
-                              <Btn size="sm" variant="ghost" onClick={() => setModal({ op: o, action: 'dispute-thread' })}>
-                                💬 سجل النزاع
-                              </Btn>
-                            )}
-                            {/* Reopen — for paid only; disputed gets reopen via thread */}
-                            {o.status === 'paid' && (
-                              <Btn size="sm" variant="ghost" onClick={() => reopen(o)}>↩ إعادة فتح</Btn>
-                            )}
+                            {/* الإجراءات الحساسة/الأقل تكراراً في قائمة ثانوية حتى يبقى
+                                «تسديد» هو الفعل المالي الواضح ولا تتكرر 4 أزرار بكل صف. */}
+                  <details className="ledger-row-more">
+                                <summary aria-label={`إجراءات إضافية للعملية ${o.doc_no}`}>••• المزيد</summary>
+                                <div className="ledger-row-more-menu">
+                                  {o.audit_id && (
+                                    <button type="button" onClick={() => unlinkAudit(o)}>🔗✕ إلغاء ربط المراجعة</button>
+                                  )}
+                                  {o.status !== 'disputed' && o.status !== 'paid' && (
+                                    <button type="button" onClick={() => setModal({ op: o, action: 'dispute' })}>⚠ فتح نزاع</button>
+                                  )}
+                                  {o.status === 'disputed' && (
+                                    <button type="button" onClick={() => setModal({ op: o, action: 'dispute-thread' })}>💬 سجل النزاع</button>
+                                  )}
+                                  {o.status === 'paid' && (
+                                    <button type="button" onClick={() => reopen(o)}>↩ إعادة فتح العملية</button>
+                                  )}
+                                </div>
+                  </details>
                           </div>
                           {o.audit_id && (
                             <div style={{ marginTop: 4, fontSize: 10, color: 'var(--accent)', fontFamily: 'var(--font-mono)' }}>

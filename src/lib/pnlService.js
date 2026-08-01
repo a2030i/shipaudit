@@ -49,6 +49,83 @@ export async function syncZohoDocs() {
   return data;   // { invoices: N, customerpayments: M }
 }
 
+// مزامنة الطبقة المالية المرجعية فقط: البنوك + دليل الحسابات + أرصدة الموردين الدائنة.
+// قراءة من Zoho حصراً؛ force يتجاوز مهلة الكاش ولا يضيف أي صلاحية كتابة.
+export async function syncZohoFinancial({ force = false } = {}) {
+  const { data, error } = await supabase.functions.invoke('zoho-sync', {
+    body: { action: 'sync_financial', force },
+  });
+  if (error) throw new Error(error.message);
+  if (!data?.ok) throw new Error(data?.error || 'فشل مزامنة الحسابات المالية');
+  return data;
+}
+
+export async function loadZohoFinancialDashboard() {
+  const { data, error } = await supabase.rpc('zoho_financial_control_dashboard');
+  if (error) throw error;
+  return data || {};
+}
+
+export async function setZohoFinancialAccountLink({
+  sourceType,
+  zohoAccountId,
+  linkKind = null,
+  internalBankName = null,
+  carrierId = null,
+  notes = null,
+}) {
+  const { data, error } = await supabase.rpc('zoho_set_financial_account_link', {
+    p_source_type: sourceType,
+    p_zoho_account_id: zohoAccountId,
+    p_link_kind: linkKind,
+    p_internal_bank_name: internalBankName,
+    p_carrier_id: carrierId,
+    p_notes: notes,
+  });
+  if (error) throw error;
+  return data;
+}
+
+// تنزيل مستند من زوهو عبر الدالة الطرفية فقط (لا توكن زوهو في المتصفح).
+// فواتير العملاء: PDF رسمي مُنشأ من Zoho Books.
+// فواتير الموردين: المرفق الأصلي إن كان موجوداً (قد يكون PDF/صورة/Excel).
+export async function downloadZohoDocument({ type, zohoId, reference }) {
+  const documentType = type === 'invoices' ? 'invoice_pdf'
+    : type === 'bills' ? 'bill_attachment' : null;
+  if (!documentType) throw new Error('هذا النوع لا يدعم تنزيل مستند');
+  const { data, error } = await supabase.functions.invoke('zoho-sync', {
+    body: { action: 'download_document', document_type: documentType, document_id: String(zohoId || '') },
+  });
+  if (error) {
+    let message = error.message;
+    try {
+      const payload = await error.context?.json();
+      if (payload?.error) message = payload.error;
+    } catch { /* الاستجابة ليست JSON */ }
+    throw new Error(message || 'تعذّر تنزيل المستند');
+  }
+  if (!(data instanceof Blob) || !data.size) throw new Error('عاد زوهو بملف فارغ');
+
+  const extByMime = {
+    'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+    'application/vnd.ms-excel': 'xls',
+  };
+  const ext = documentType === 'invoice_pdf' ? 'pdf' : (extByMime[data.type] || 'bin');
+  const safeRef = String(reference || zohoId || 'document').replace(/[^\p{L}\p{N}._-]+/gu, '_');
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(data);
+  a.href = url;
+  a.download = `${documentType === 'invoice_pdf' ? 'فاتورة' : 'مرفق_فاتورة_مورد'}_${safeRef}.${ext}`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  return { size: data.size, mime: data.type, fileName: a.download };
+}
+
 // «فوترنا × وحصّلنا ص» لشهر — من مرايا zoho_invoices/zoho_payments.
 export async function loadInvoicedVsCollected(period) {
   const from = `${period}-01`;
@@ -143,6 +220,9 @@ export const ZOHO_MIRRORS = {
   bills:           { table: 'zoho_bills',           label: '📄 فواتير الموردين', amount: 'total' },
   vendor_payments: { table: 'zoho_vendor_payments', label: '💸 دفعات الموردين',  amount: 'amount' },
   journals:        { table: 'zoho_journals',        label: '📒 القيود اليومية',  amount: 'total' },
+  bank_accounts:   { table: 'zoho_bank_accounts',   label: '🏦 البنوك والخزائن', amount: 'book_balance', dateField: false, order: 'account_name' },
+  chart_accounts:  { table: 'zoho_chart_accounts',  label: '🗂️ دليل الحسابات',  amount: 'current_balance', dateField: false, order: 'account_name' },
+  vendor_credits:  { table: 'zoho_vendor_credits',  label: '↩️ أرصدة الموردين الدائنة', amount: 'total' },
 };
 
 // آخر يوم في شهر 'YYYY-MM'
@@ -162,11 +242,11 @@ export async function loadZohoMirror(type, { period = null, periodFrom = null, p
   let f = 0;
   while (true) {
     let q = supabase.from(cfg.table).select('*')
-      .order('date', { ascending: false })
+      .order(cfg.order || 'date', { ascending: cfg.dateField === false })
       .order('zoho_id', { ascending: true })
       .range(f, f + 999);
-    if (from) q = q.gte('date', `${from}-01`);
-    if (to)   q = q.lte('date', monthEnd(to));
+    if (cfg.dateField !== false && from) q = q.gte('date', `${from}-01`);
+    if (cfg.dateField !== false && to)   q = q.lte('date', monthEnd(to));
     const { data, error } = await q;
     if (error) throw error;
     if (!data?.length) break;
@@ -330,6 +410,10 @@ export async function getZohoWriteAuthUrl() {
   if (error) return { ok: false, error: error.message };
   return data;
 }
+
+// الاسم العام لبوابة إعادة التفويض. الرابط نفسه يطلب حزمة الصلاحيات المعتمدة،
+// ومنها banking.READ فقط (لا استيراد كشف ولا كتابة بنكية).
+export const getZohoAuthUrl = getZohoWriteAuthUrl;
 
 // خطة تطبيق الأرصدة الدائنة لعميل (قراءة فقط — لا كتابة). ترجع الفواتير
 // وأي رصيد يُطبَّق على كلٍّ منها. عبر edge function zoho-apply-credits.

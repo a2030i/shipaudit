@@ -182,19 +182,43 @@ export async function loadIvrCalls({ campaign = null, phone = null, limit = 300 
   return data || [];
 }
 
-// سجل مكالمات هاتف (يدوية + آلية) لعميل واحد — تسجيل/ملخّص/مشاعر من hatif_calls
+// سجل مكالمات هاتف الكامل لعميل واحد. المصدر hatif_call_log لأنه يحمل الرقم
+// واسم الموظف لكل المكالمات المسحوبة، بخلاف webhook القديم الذي قد ينقصه أحدهما.
 const norm966 = (p) => { let d = String(p || '').replace(/\D/g, ''); if (d.startsWith('00')) d = d.slice(2); if (d.startsWith('966')) return d; if (d.length === 10 && d.startsWith('05')) return '966' + d.slice(1); if (d.length === 9 && d.startsWith('5')) return '966' + d; return d; };
 export async function loadHatifCallsByPhone(phone, limit = 20) {
   const p = norm966(phone); if (!p) return [];
-  const { data, error } = await supabase.from('hatif_calls').select('*').eq('phone', p).order('started_at', { ascending: false, nullsFirst: false }).limit(limit);
+  const { data, error } = await supabase.from('hatif_call_log')
+    .select('id, user_id, user_name, contact_phone, call_type, status, creation_time, pickup_time, hangup_time, talk_seconds, recording_url, ai_summary, sentiment')
+    .eq('contact_phone', p)
+    .order('creation_time', { ascending: false, nullsFirst: false })
+    .limit(limit);
   if (error) return [];
-  return data || [];
+  const summaryText = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') return value;
+    if (Array.isArray(value)) return value.map(summaryText).filter(Boolean).join(' · ');
+    if (typeof value === 'object') return Object.values(value).map(summaryText).filter(Boolean).join(' · ');
+    return '';
+  };
+  return (data || []).map(row => ({
+    ...row,
+    agent_id: row.user_id,
+    agent_name: row.user_name,
+    started_at: row.creation_time,
+    duration_seconds: row.talk_seconds,
+    summary: summaryText(row.ai_summary?.summary) || null,
+    sentiment: row.sentiment == null ? 'Unknown'
+      : Number(row.sentiment) >= 4 ? 'Positive'
+      : Number(row.sentiment) <= 2 ? 'Negative' : 'Neutral',
+  }));
 }
 export const HATIF_SENTIMENT = {
   Positive: { t: 'إيجابي', e: '😊', c: '#16A34A' }, Neutral: { t: 'محايد', e: '😐', c: '#9CA3AF' },
   Negative: { t: 'سلبي', e: '😟', c: '#DC2626' }, Mixed: { t: 'مختلط', e: '😕', c: 'var(--gold)' }, Unknown: { t: '—', e: '', c: '#9CA3AF' },
 };
 export const HATIF_CALL_STATUS = {
+  0: 'جارية', 1: 'مكتملة', 2: 'لم يُردّ', 3: 'رفضها المتصل', 4: 'رفضها العميل',
+  5: 'لا رد', 6: 'أُلغيت', 7: 'فشلت', 8: 'رنين',
   Completed: 'مكتملة', Missed: 'لم يُردّ', NoAnswer: 'لا رد', Busy: 'مشغول', Failed: 'فشلت',
   RejectedByCaller: 'رُفضت', RejectedByCallee: 'رُفضت', Cancelled: 'أُلغيت', Ringing: 'رنين', Active: 'جارية',
 };

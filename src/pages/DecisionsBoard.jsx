@@ -24,6 +24,7 @@ import { loadIntegrityChecks } from '../lib/integrityService.js';
 import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
 import { loadHatifCallOps, loadWhatsAppNumberHealth } from '../lib/whatsappService.js';
 import { loadSlaBreaches } from '../lib/nextActionsService.js';
+import { loadCompanyOperatingPulse } from '../lib/companyOpsService.js';
 
 // تسميات فئات مشاكل المكالمات (متطابقة مع تبويب تحليل المكالمات).
 const CALL_PROBLEM_AR = {
@@ -40,9 +41,23 @@ export default function DecisionsBoard({ isActive = true }) {
   const { can } = useAuth();
   const [d, setD] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [pulse, setPulse] = useState(null);
+  const [pulseLoading, setPulseLoading] = useState(false);
+  const [pulseError, setPulseError] = useState('');
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ forcePulse = false } = {}) => {
     setLoading(true);
+    setPulseLoading(true);
+    setPulseError('');
+    // هذا الملخص أخف من بقية لوحة القرارات؛ نعرضه فور اكتماله ولا نحبسه
+    // خلف أبطأ استعلام مالي في الصفحة. فشله مستقل ولا يحجب بقية الإشارات.
+    loadCompanyOperatingPulse({ force: forcePulse })
+      .then(data => {
+        setPulse(data);
+        setPulseError('');
+      })
+      .catch(error => setPulseError(error?.message || 'تعذّر تحميل نبض الفرق'))
+      .finally(() => setPulseLoading(false));
     try {
       const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps, waHealth, sla] = await Promise.all([
         loadCustomerWatch().catch(() => null),
@@ -127,7 +142,15 @@ export default function DecisionsBoard({ isActive = true }) {
         icon={<Gauge size={22}/>}
         title="لوحة القرارات"
         subtitle="شاشة الصباح — كل ما يحتاج قراراً اليوم، مجموعاً في مكان واحد"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+        actions={<Btn size="sm" variant="ghost" title="تحديث لوحة القرارات" ariaLabel="تحديث لوحة القرارات" onClick={() => refresh({ forcePulse: true })} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+      />
+
+      <OperatingPulse
+        pulse={pulse}
+        loading={pulseLoading}
+        error={pulseError}
+        onRetry={() => refresh({ forcePulse: true })}
+        navigate={navigate}
       />
 
       {!d && loading ? (
@@ -317,6 +340,124 @@ export default function DecisionsBoard({ isActive = true }) {
           )}
         </>);
       })()}
+    </div>
+  );
+}
+
+function OperatingPulse({ pulse, loading, error, onRetry, navigate }) {
+  const teams = [
+    pulse?.sales && {
+      key: 'sales', icon: '🎯', title: 'المبيعات', color: 'var(--brand)',
+      path: '/retargeting?tab=today', data: pulse.sales,
+      thirdLabel: 'متأخر', thirdValue: pulse.sales.overdue,
+      detail: `بلا إجراء تالٍ ${pulse.sales.withoutNextAction} · بلا مسؤول ${pulse.sales.unassigned}`,
+      warning: pulse.sales.financialHoldConflicts > 0
+        ? `${pulse.sales.financialHoldConflicts} متابعة تاريخية على حسابات محجوزة ماليًا`
+        : '',
+    },
+    pulse?.collections && {
+      key: 'collections', icon: '💳', title: 'التحصيل', color: 'var(--green)',
+      path: '/collections', data: pulse.collections,
+      thirdLabel: 'وعود متأخرة', thirdValue: pulse.collections.promiseOverdue,
+      detail: `${fmt(pulse.collections.openAmount)} ر.س مفتوحة · بلا مسؤول ${pulse.collections.unassigned}`,
+      warning: pulse.collections.snoozeExpired > 0
+        ? `${pulse.collections.snoozeExpired} تأجيل انتهى ويحتاج عودة للعمل`
+        : '',
+    },
+    pulse?.support && {
+      key: 'support', icon: '🎧', title: 'خدمة العملاء', color: 'var(--accent3)',
+      path: '/support', data: pulse.support,
+      thirdLabel: 'متأخر', thirdValue: pulse.support.overdue,
+      detail: `بلا مسؤول ${pulse.support.unassigned} · بلا موعد ${pulse.support.withoutFollowup}`,
+      warning: pulse.support.urgent > 0
+        ? `${pulse.support.urgent} تذكرة عاجلة`
+        : '',
+    },
+  ].filter(Boolean);
+
+  if (!teams.length && !error && !loading) return null;
+
+  return (
+    <section style={{
+      marginBottom: 18, padding: 16, borderRadius: 16,
+      border: '1px solid color-mix(in srgb, var(--brand) 18%, var(--border))',
+      background: 'color-mix(in srgb, var(--brand) 4%, var(--card))',
+    }} aria-label="نبض تشغيل الفرق">
+      <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>نبض تشغيل الفرق</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 3 }}>
+            ملخص إداري من قوائم الفرق الأصلية — لا ينشئ طابورًا موازيًا ولا يحوّل المخزون كله إلى عمل اليوم.
+          </div>
+        </div>
+        {pulse?.generatedAt && (
+          <span style={{ fontSize: 10.5, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+            حُسب {new Date(pulse.generatedAt).toLocaleTimeString('ar-SA', { hour: '2-digit', minute: '2-digit' })}
+          </span>
+        )}
+      </div>
+
+      {error ? (
+        <div className="data-load-error" style={{ margin: 0 }}>
+          <span>تعذّر تحميل نبض الفرق، وبقية لوحة القرارات ما زالت تعمل.</span>
+          <Btn size="sm" variant="ghost" onClick={onRetry}>إعادة المحاولة</Btn>
+        </div>
+      ) : loading && !teams.length ? (
+        <div style={{ padding: 18, textAlign: 'center' }}><Spinner/></div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(245px, 1fr))', gap: 10 }}>
+          {teams.map(team => (
+            <PulseTeamCard key={team.key} {...team} onClick={() => navigate(team.path)}/>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function PulseTeamCard({ icon, title, color, data, thirdLabel, thirdValue, detail, warning, onClick }) {
+  const scope = data.scope === 'team' ? 'الفريق' : 'مهامي';
+  return (
+    <div role="button" tabIndex={0} aria-label={`فتح مساحة ${title}`} onClick={onClick}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onClick();
+        }
+      }} style={{ height: '100%', outlineOffset: 3 }}>
+      <Card hover style={{
+        cursor: 'pointer', padding: '13px 14px', borderInlineStart: `3px solid ${color}`,
+        display: 'flex', flexDirection: 'column', gap: 9, minHeight: 140, height: '100%',
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+          <span>{icon}</span>
+          <strong style={{ fontSize: 12.5 }}>{title}</strong>
+          <span style={{ marginInlineStart: 'auto', fontSize: 10, color: 'var(--muted)' }}>{scope}</span>
+          <ChevronLeft size={13} style={{ color }}/>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 6 }}>
+          <PulseMetric label="عمل اليوم" value={data.today} color={color}/>
+          <PulseMetric label="مخزون" value={data.backlog}/>
+          <PulseMetric label={thirdLabel} value={thirdValue} color={thirdValue > 0 ? 'var(--red)' : 'var(--green)'}/>
+        </div>
+        <div style={{ fontSize: 10.5, lineHeight: 1.5, color: 'var(--muted)' }}>{detail}</div>
+        {warning && (
+          <div style={{
+            fontSize: 10.5, lineHeight: 1.45, color: 'var(--red)', fontWeight: 700,
+            padding: '6px 8px', borderRadius: 8,
+            background: 'color-mix(in srgb, var(--red) 8%, transparent)',
+          }}>⚠ {warning}</div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+function PulseMetric({ label, value, color = 'var(--text)' }) {
+  return (
+    <div style={{ padding: '7px 6px', borderRadius: 9, background: 'var(--surface2)', textAlign: 'center' }}>
+      <div style={{ fontSize: 17, fontWeight: 850, lineHeight: 1, color, fontFamily: 'var(--font-mono)' }}>{value || 0}</div>
+      <div style={{ fontSize: 9.5, color: 'var(--muted)', marginTop: 5 }}>{label}</div>
     </div>
   );
 }

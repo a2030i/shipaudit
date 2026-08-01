@@ -89,7 +89,7 @@ const SIZES = {
 // لنفس العملية، فكانت الضغطة تنفّذ الوعد/الشطب/إقفال الفترة **مرتين**.
 // أي زر إرسال حقيقي يمرّر type="submit" صراحةً. و`disabled` صار سمة فعلية
 // (كان يُزيل onClick فقط — فالزر يبقى قابلاً للتركيز ويُرسل النموذج).
-export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, style = {}, type = 'button' }) {
+export function Btn({ children, onClick, variant = 'primary', size = 'md', disabled, icon, title, ariaLabel, style = {}, type = 'button' }) {
   const [hovered, setHovered] = useState(false);
   const s = SIZES[size];
   const v = VARIANTS[variant] || VARIANTS.ghost;
@@ -103,6 +103,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
       aria-disabled={!!disabled}
       onClick={disabled ? undefined : onClick}
       title={title}
+      aria-label={ariaLabel || (!children ? title : undefined)}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{

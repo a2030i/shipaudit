@@ -449,85 +449,16 @@ export async function closeDeal(id, { won, lostReason = null, userId = null }) {
 // لوحة الأداء (board) — تجميعات
 // ─────────────────────────────────────────────────────────────────────
 export async function loadBoardStats() {
-  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
-  const [acts, promises, deals, leads, tasks] = await Promise.all([
-    selectAllRows(() => supabase.from('crm_activities')
-      .select('kind, owner_id, occurred_at')
-      .gte('occurred_at', weekAgo)
-      .order('occurred_at', { ascending: false })),
-    selectAllRows(() => supabase.from('crm_activities')
-      .select('promise_status, promise_amount, kept_amount, occurred_at')
-      .eq('kind', 'promise')
-      .order('occurred_at', { ascending: false })),
-    selectAllRows(() => supabase.from('crm_deals')
-      .select('status, value, stage_id, owner_id, closed_at, updated_at')
-      .order('updated_at', { ascending: false })),
-    selectAllRows(() => supabase.from('crm_leads')
-      .select('status, owner_id, matched_store_id, duplicate_count, created_at')
-      .order('created_at', { ascending: false })),
-    selectAllRows(() => supabase.from('crm_tasks')
-      .select('status, assigned_to, completed_at, due_at, updated_at')
-      .order('updated_at', { ascending: false })),
-  ]);
-  const touchesThisWeek = acts.filter(a => ['call', 'whatsapp', 'note', 'visit', 'meeting'].includes(a.kind)).length;
-  const p = promises;
-  const promisesOpen = p.filter(x => x.promise_status === 'open').length;
-  const promisesKept = p.filter(x => x.promise_status === 'kept').length;
-  const promisesBroken = p.filter(x => x.promise_status === 'broken').length;
-  const d = deals;
-  const dealsOpen = d.filter(x => x.status === 'open');
-  const pipelineValue = dealsOpen.reduce((s, x) => s + (Number(x.value) || 0), 0);
-  const wonValue = d.filter(x => x.status === 'won').reduce((s, x) => s + (Number(x.value) || 0), 0);
-  const leadRows = leads;
-  const taskRows = tasks;
-  const byOwner = new Map();
-  const bucket = (id) => {
-    const key = id || '__unassigned__';
-    if (!byOwner.has(key)) byOwner.set(key, {
-      ownerId: id || null,
-      assignedLeads: 0,
-      openLeads: 0,
-      existingCustomers: 0,
-      touchesThisWeek: 0,
-      tasksOpen: 0,
-      tasksDoneThisWeek: 0,
-      dealsOpen: 0,
-      dealsWon: 0,
-      wonValue: 0,
-    });
-    return byOwner.get(key);
-  };
-  for (const l of leadRows) {
-    const b = bucket(l.owner_id);
-    b.assignedLeads++;
-    if (!['converted', 'lost', 'existing_customer'].includes(l.status)) b.openLeads++;
-    if (l.matched_store_id || l.status === 'existing_customer') b.existingCustomers++;
-  }
-  for (const a of acts) {
-    if (!['call', 'whatsapp', 'note', 'visit', 'meeting'].includes(a.kind)) continue;
-    bucket(a.owner_id).touchesThisWeek++;
-  }
-  for (const t of taskRows) {
-    const b = bucket(t.assigned_to);
-    if (t.status === 'open') b.tasksOpen++;
-    if (t.status === 'done' && t.completed_at && t.completed_at >= weekAgo) b.tasksDoneThisWeek++;
-  }
-  for (const deal of d) {
-    const b = bucket(deal.owner_id);
-    if (deal.status === 'open') b.dealsOpen++;
-    if (deal.status === 'won') {
-      b.dealsWon++;
-      b.wonValue += Number(deal.value) || 0;
-    }
-  }
-  return {
-    touchesThisWeek, promisesOpen, promisesKept, promisesBroken,
-    dealsOpenCount: dealsOpen.length, pipelineValue, wonValue,
-    leadsTotal: leadRows.length,
-    leadsOpen: leadRows.filter(l => !['converted', 'lost', 'existing_customer'].includes(l.status)).length,
-    leadsExistingCustomers: leadRows.filter(l => l.matched_store_id || l.status === 'existing_customer').length,
-    leadsDuplicateRows: leadRows.filter(l => Number(l.duplicate_count) > 1).length,
-    byOwner: [...byOwner.values()].sort((a, b) => b.touchesThisWeek - a.touchesThisWeek || b.openLeads - a.openLeads),
+  // The old implementation downloaded every lead/task/deal and counted in
+  // the browser. At 94k leads that meant ~95 REST pages before rendering.
+  // Keep the same response contract while moving the aggregation to Postgres.
+  const { data, error } = await supabase.rpc('crm_board_stats');
+  if (error) throw error;
+  return data || {
+    touchesThisWeek: 0, promisesOpen: 0, promisesKept: 0, promisesBroken: 0,
+    dealsOpenCount: 0, pipelineValue: 0, wonValue: 0,
+    leadsTotal: 0, leadsOpen: 0, leadsExistingCustomers: 0,
+    leadsDuplicateRows: 0, byOwner: [],
   };
 }
 

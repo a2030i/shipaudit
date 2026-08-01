@@ -55,7 +55,8 @@ export default function CarrierKpi({ isActive = true }) {
           {/* Overall totals */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px,1fr))', gap: 12, marginBottom: 18 }}>
             <Stat label="إجمالي الفواتير" value={totals.ops} color="var(--accent)" big/>
-            <Stat label="إجمالي مفوتر" value={fmt(totals.totalBilled)} suffix="ر.س" color="var(--text)" big/>
+            <Stat label="صافي حركة دفتر الناقلين" value={fmt(totals.totalBilled)} suffix="ر.س" color={totals.totalBilled >= 0 ? 'var(--text)' : 'var(--green)'} big
+              hint="الفواتير والخصومات والتحصيلات؛ السالب يعني صافي رصيد لصالحك وليس فاتورة سالبة"/>
             <Stat label="استرداد عبر التدقيق" value={fmt(totals.overchargeAmt)} suffix="ر.س"
               hint={`${totals.overcharges} مراجعة بفروق`} color="var(--green)"/>
             <Stat label="نزاعات مفتوحة" value={totals.disputesOpen} color="var(--red)"/>
@@ -97,7 +98,7 @@ function CarrierCard({ k }) {
             {k.carrierName}
           </div>
           <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-            {k.ops} عملية · {fmt(k.totalBilled)} ر.س مفوتر
+            {k.ops} حركة · صافي الدفتر {fmt(k.totalBilled)} ر.س
           </div>
         </div>
         <div style={{ textAlign: 'center' }}>

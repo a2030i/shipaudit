@@ -12,16 +12,24 @@ const sentLabel = (v) => { const n = Number(v); if (!n) return null; return n >=
 const KIND = {
   campaign: { icon: '📲', label: 'حملة واتساب', color: 'var(--accent3)' },
   ivr:      { icon: '🤖', label: 'مكالمة آلية', color: 'var(--accent)' },
+  voice_call: { icon: '📞', label: 'مكالمة هاتف', color: 'var(--blue)' },
   handled:  { icon: '💬', label: 'تولّى موظف محادثته', color: 'var(--green)' },
 };
-const STATUS_AR = { sent: 'أُرسلت', delivered: 'وصلت', read: 'قُرئت', replied: 'ردّ ✓', failed: 'فشلت' };
-const STATUS_COLOR = { sent: 'var(--muted)', delivered: 'var(--accent3)', read: 'var(--accent)', replied: 'var(--green)', failed: 'var(--red)' };
+const STATUS_AR = { sent: 'أُرسلت', delivered: 'وصلت', read: 'قُرئت', replied: 'ردّ ✓', failed: 'فشلت', answered: 'تم الرد', not_answered: 'لم يُردّ' };
+const STATUS_COLOR = { sent: 'var(--muted)', delivered: 'var(--accent3)', read: 'var(--accent)', replied: 'var(--green)', failed: 'var(--red)', answered: 'var(--green)', not_answered: 'var(--gold)' };
 // تصنيف نية ردّ العميل — يبرز مَن مهتمّ بالحملة (طلب المستخدم).
 const INTENT_META = {
   interested:     { label: '🔥 مهتمّ', color: 'var(--accent)' },
   wants_call:     { label: '📞 يطلب اتصالاً', color: 'var(--accent3)' },
   price:          { label: '💰 اعتراض سعر', color: 'var(--gold)' },
   not_interested: { label: '🚫 غير مهتمّ', color: 'var(--muted)' },
+};
+const summaryPoints = (value) => {
+  if (!value) return [];
+  if (typeof value === 'string') return [value];
+  if (Array.isArray(value)) return value.flatMap(summaryPoints);
+  if (typeof value === 'object') return Object.values(value).flatMap(summaryPoints);
+  return [];
 };
 
 export default function CustomerCommTimeline({ phone, title = 'سجلّ تواصل العميل' }) {
@@ -66,13 +74,13 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
       </div>
       {!expanded ? null : !rows.length ? (
         <div style={{ fontSize: 12, color: 'var(--muted)', padding: '6px 2px' }}>
-          لا تواصل مسجَّل لهذا الرقم بعد (حملات/مكالمات آلية/محادثات). المكالمات الصوتية اليدوية لا تُنسَب للعميل بعد — بانتظار هاتف.
+          لا تواصل مسجَّل لهذا الرقم بعد (حملات/مكالمات/محادثات).
         </div>
       ) : rows.map((r, i) => {
         const k = KIND[r.kind] || { icon: '•', label: r.kind, color: 'var(--muted)' };
         const isOpen = open === i;
-        const sum = r.ai_summary?.summary;
-        const expandable = r.recording_url || (Array.isArray(sum) && sum.length) || r.reply_body;
+        const sum = summaryPoints(r.ai_summary?.summary);
+        const expandable = r.recording_url || sum.length || r.reply_body;
         return (
           <div key={i} style={{ border: '1px solid var(--border)', borderRadius: 9, overflow: 'hidden' }}>
             <div onClick={() => expandable && setOpen(isOpen ? null : i)}
@@ -101,7 +109,7 @@ export default function CustomerCommTimeline({ phone, title = 'سجلّ تواص
               <div style={{ padding: '4px 12px 12px', borderTop: '1px solid var(--border)', display: 'grid', gap: 8, fontSize: 12.5 }}>
                 {r.reply_body && <div style={{ background: 'color-mix(in srgb, var(--green) 8%, transparent)', borderRadius: 8, padding: '6px 10px' }}><b>ردّ العميل:</b> {r.reply_body}</div>}
                 {r.recording_url && <audio controls preload="none" src={r.recording_url} style={{ width: '100%', height: 34 }}/>}
-                {Array.isArray(sum) && sum.length > 0 && (
+                {sum.length > 0 && (
                   <div>
                     <div style={{ fontWeight: 700, marginBottom: 4 }}>📄 ملخّص المكالمة</div>
                     <ul style={{ margin: 0, paddingInlineStart: 18, lineHeight: 1.8 }}>{sum.map((s, j) => <li key={j}>{s}</li>)}</ul>

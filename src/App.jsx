@@ -152,17 +152,16 @@ const NAV_ITEMS = [
     ] },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'مسار المبيعات CRM', icon: TrendingUp, section: 'customers', navOrder: 30, permKey: 'crm.view',
+  { id: 'crm',             path: '/crm',             label: 'صفقات ومواعيد المبيعات', icon: TrendingUp, section: 'customers', navOrder: 30, permKey: 'crm.view',
     subTabs: [
-      { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
-      { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
+      { tabId: 'board', label: 'أداء المبيعات',    icon: BarChart3 },
     ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
   { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
   { id: 'marketers',       path: '/marketers',       label: 'المسوّقون والعمولات', icon: BadgeDollarSign, section: 'customers', navOrder: 60, permKey: 'marketers.view' },
-  { id: 'zoho-data',       path: '/zoho-data',       label: 'فواتير ودفعات زوهو', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view' },
+  { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view' },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
   // ── الحملات والاتصالات — ضمن رحلة العملاء والنمو ────────────────
@@ -295,7 +294,11 @@ function AppInner({ theme, toggleTheme }) {
 
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
-  const [collapsed,       setCollapsed]       = useState(false);
+  // على اللابتوب/التابلت الأفقي كان الشريط الكامل يترك قرابة 600px فقط
+  // للمحتوى. ابدأ مصغّراً بين 769–1100px، مع بقاء زر التوسيع متاحاً.
+  const [collapsed,       setCollapsed]       = useState(() => (
+    typeof window !== 'undefined' && window.matchMedia('(min-width: 769px) and (max-width: 1100px)').matches
+  ));
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // Accordion rule: every app entry starts with all sections closed. During
@@ -306,6 +309,12 @@ function AppInner({ theme, toggleTheme }) {
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(min-width: 769px) and (max-width: 1100px)');
+    const onViewport = (event) => setCollapsed(event.matches);
+    mq.addEventListener?.('change', onViewport);
+    return () => mq.removeEventListener?.('change', onViewport);
+  }, []);
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -572,7 +581,7 @@ function AppInner({ theme, toggleTheme }) {
                   )}
                   <div
                     className="nav-section-items"
-                    style={{ maxHeight: isOpen ? `${rowCount * 48 + 12}px` : 0 }}
+                    style={{ maxHeight: isOpen ? `${rowCount * 64 + 20}px` : 0 }}
                   >
                     {items.map(n => (
                       <NavBtn

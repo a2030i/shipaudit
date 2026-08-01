@@ -390,6 +390,27 @@ button:active { transform: scale(.97); }
 }
 .sidebar.collapsed .nav-divider { margin: 8px 8px; }
 
+/* دفتر الناقلين: الفعل المالي الرئيسي ظاهر، والبقية قائمة هادئة داخل الصف. */
+.ledger-row-more { position: relative; }
+.ledger-row-more > summary {
+  list-style: none; cursor: pointer; white-space: nowrap;
+  border: 1px solid var(--border2); border-radius: 8px;
+  padding: 6px 9px; color: var(--muted); background: var(--surface);
+  font-size: 11px; font-weight: 700;
+}
+.ledger-row-more > summary::-webkit-details-marker { display: none; }
+.ledger-row-more-menu {
+  position: absolute; z-index: 30; inset-inline-end: 0; top: calc(100% + 5px);
+  min-width: 170px; padding: 5px; border: 1px solid var(--border2);
+  border-radius: 10px; background: var(--card); box-shadow: var(--shadow-lg);
+}
+.ledger-row-more-menu button {
+  display: block; width: 100%; padding: 8px 9px; border: 0;
+  border-radius: 7px; background: transparent; color: var(--text);
+  text-align: start; cursor: pointer; font: inherit; font-size: 11.5px;
+}
+.ledger-row-more-menu button:hover { background: var(--surface2); }
+
 /* Light mode: inputs and cards adapt */
 [data-theme="light"] input,
 [data-theme="light"] select,
@@ -471,6 +492,7 @@ button:active { transform: scale(.97); }
 }
 
 @media (max-width: 768px) {
+  :root { --sw: min(88vw, 350px); }
   html, body { height: 100%; overflow: hidden; }
   /* iOS: ‏100vh أطول من المرئي (شريط سفاري) — dvh يصحّح، والقديم fallback */
   #root { height: 100vh; height: 100dvh; }
@@ -504,8 +526,7 @@ button:active { transform: scale(.97); }
     visibility: hidden;
     transition: transform .3s cubic-bezier(.4,0,.2,1), visibility 0s linear .3s;
     box-shadow: var(--shadow-lg);
-    overflow-y: auto !important;
-    -webkit-overflow-scrolling: touch;
+    overflow: hidden !important;
     padding-bottom: env(safe-area-inset-bottom, 0);
   }
   .sidebar.mobile-open {
@@ -517,10 +538,23 @@ button:active { transform: scale(.97); }
   .sidebar.collapsed.mobile-open { transform: translateX(0); visibility: visible; }
 
   /* Show all labels in mobile sidebar (never collapsed) */
-  .sidebar .nav-label { display: block !important; }
+  .sidebar .nav-label {
+    display: block !important;
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    line-height: 1.35;
+  }
   .sidebar .nav-dot   { display: block !important; }
   .sidebar .section-label { display: block !important; }
-  .sidebar .nav-item { padding: 10px 12px !important; justify-content: flex-start !important; gap: 10px !important; }
+  .sidebar .nav-item {
+    min-height: 46px;
+    padding: 9px 12px !important;
+    justify-content: flex-start !important;
+    gap: 10px !important;
+    white-space: normal !important;
+    font-size: 14px;
+  }
   .sidebar .sidebar-toggle { display: none; }
   .sidebar.collapsed .sidebar-footer { padding: 10px 10px; }
   .sidebar.collapsed .sidebar-logo { justify-content: flex-start; padding: 16px 14px; }
@@ -528,8 +562,13 @@ button:active { transform: scale(.97); }
   /* Inner nav can no longer be flex:1 with overflow:auto when the parent is
      scrollable — let it grow to fit its content so footer follows naturally. */
   .sidebar-nav {
-    flex: 0 0 auto !important;
-    overflow: visible !important;
+    flex: 1 1 auto !important;
+    min-height: 0;
+    overflow-y: auto !important;
+    overflow-x: hidden !important;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 18px;
   }
   .sidebar-footer { flex-shrink: 0; }
 
@@ -782,7 +821,7 @@ button:active { transform: scale(.97); }
 @media (max-width: 480px) {
   /* Drawer ~85% width (capped 320px) — a real side drawer that leaves a
      sliver of dimmed page behind, NOT a full-screen takeover. */
-  :root { --sw: min(85vw, 320px); }
+  :root { --sw: min(90vw, 350px); }
 
   /* Round the inner (leading) edge so it reads as a floating panel. */
   .sidebar { border-top-left-radius: 18px; border-bottom-left-radius: 18px; }

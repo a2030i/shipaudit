@@ -855,8 +855,14 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 10.5 }}>
         <Chip color={storeStatus.color}>{storeStatus.label}</Chip>
-        <Chip color={ageColor}>أقدم فاتورة {c.oldestDays} يوم</Chip>
-        <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
+        {c.invCnt > 0 ? (
+          <>
+            <Chip color={ageColor}>أقدم فاتورة {c.oldestDays} يوم</Chip>
+            <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
+          </>
+        ) : (
+          <Chip color="var(--gold)">رصيد افتتاحي بلا فاتورة مفتوحة</Chip>
+        )}
         {c.lastPaymentDate
           ? <Chip color="var(--green)">آخر دفعة {c.lastPaymentDate} ({fmtK(c.lastPaymentAmount)})</Chip>
           : <Chip color="var(--red)">لم يدفع شيئاً بعد</Chip>}
@@ -923,17 +929,17 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           </a>
         )}
         {!digits && <span style={{ flex: 1, textAlign: 'center', fontSize: 11, color: 'var(--muted2)' }}>لا هاتف — اربط المتجر في /merchants</span>}
-        <button onClick={toggleInvoices} title="الفواتير المفتوحة"
+        <button onClick={toggleInvoices} title={c.invCnt > 0 ? 'الفواتير المفتوحة' : 'تفاصيل الرصيد'}
           style={{ display: 'flex', alignItems: 'center', gap: 3, padding: '8px 10px', borderRadius: 8,
             background: 'transparent', border: '1px solid var(--border)', color: 'var(--muted)', cursor: 'pointer', fontSize: 11.5 }}>
-          الفواتير <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}/>
+          {c.invCnt > 0 ? 'الفواتير' : 'تفاصيل الرصيد'} <ChevronDown size={12} style={{ transform: open ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}/>
         </button>
       </div>
 
       {open && (
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 8 }}>
           {invs == null ? <div style={{ textAlign: 'center', padding: 8 }}><Spinner size={16}/></div>
-            : !invs.length ? <div style={{ fontSize: 11, color: 'var(--muted2)' }}>لا فواتير مفتوحة</div>
+            : !invs.length ? <div style={{ fontSize: 11, color: 'var(--muted2)' }}>هذا رصيد افتتاحي/داخلي ولا توجد له فاتورة زوهو مفتوحة.</div>
             : invs.map(inv => (
               <div key={inv.invoice_number} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', fontSize: 11.5 }}>
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{inv.invoice_number}</span>

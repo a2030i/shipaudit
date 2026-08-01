@@ -24,10 +24,13 @@
 
 import { supabase } from './supabase.js';
 import { listSchedules, partitionByDueness, TASK_KIND_META } from './tasksService.js';
-import { loadOpenBalance }                                    from './carrierStatementsService.js';
 import { loadCarrierNetBalances }                             from './codSettlementService.js';
 
 const DAY_MS = 86_400_000;
+const withTimeout = (promise, label, ms = 15_000) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(`تأخر تحميل ${label} أكثر من ${Math.round(ms / 1000)} ثانية`)), ms)),
+]);
 
 export async function loadCarrierRemittanceAvg(batches = 3) {
   const { data, error } = await supabase.rpc('carrier_recent_remittance_avg', { p_batches: batches });
@@ -53,37 +56,27 @@ export async function loadCarrierRemittanceAvg(batches = 3) {
 // but timing-uncertain — surfaced separately, NOT folded into the running
 // balance so we don't overstate near-term cash).
 async function loadReceivablesInflow(now, horizonEnd, termsDays = 30) {
-  // مرآة زوهو الحيّة (§1.23): كان يقرأ customer_receivables المجمّد منذ 10 يوليو
-  // فيعدّ ديون من سدّدوا فعلاً كنقد قابل للتحصيل. الآن الفواتير المفتوحة الحيّة.
-  const rows = [];
-  let from = 0;
-  while (true) {
-    const { data, error } = await supabase
-      .from('zoho_invoices')
-      .select('date, balance')
-      .gt('balance', 0.5)
-      .order('zoho_id', { ascending: true })
-      .range(from, from + 999);
-    if (error) throw error;
-    if (!data?.length) break;
-    rows.push(...data.map(r => ({ invoice_date: r.date, balance_amount: r.balance })));
-    if (data.length < 1000) break;
-    from += 1000;
-  }
-
+  const horizonDays = Math.max(1, Math.ceil((horizonEnd.getTime() - now.getTime()) / DAY_MS));
+  const { data, error } = await supabase.rpc('forecast_receivables_rollup', {
+    p_horizon_days: horizonDays,
+    p_terms_days: termsDays,
+  });
+  if (error) throw error;
   const byDate = new Map();
-  let withinTotal = 0, overdue = 0;
-  for (const r of rows) {
-    const amt = Number(r.balance_amount) || 0;
-    if (amt <= 0 || !r.invoice_date) continue;
-    const exp = new Date(new Date(r.invoice_date).getTime() + termsDays * DAY_MS);
-    if (exp < now)         { overdue += amt; continue; }   // past terms → uncertain
-    if (exp > horizonEnd)  continue;                       // beyond horizon
-    const key = exp.toISOString().slice(0, 10);
-    byDate.set(key, (byDate.get(key) || 0) + amt);
-    withinTotal += amt;
+  for (const row of (data?.buckets || [])) {
+    if (row?.date) byDate.set(row.date, Number(row.amount) || 0);
   }
-  return { byDate, withinTotal: +withinTotal.toFixed(2), overdue: +overdue.toFixed(2) };
+  return {
+    byDate,
+    withinTotal: Number(data?.withinTotal) || 0,
+    overdue: Number(data?.overdue) || 0,
+  };
+}
+
+async function loadCarrierOpenBalancesAll() {
+  const { data, error } = await supabase.rpc('carrier_open_balances_all');
+  if (error) throw error;
+  return new Map((data || []).map(row => [row.carrier_id, Number(row.balance) || 0]));
 }
 
 // One-shot loader for the whole forecast page. Returns:
@@ -107,31 +100,17 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
   // (فارغ) فيختفي التنبؤ رغم وجود ختامي كشف (فحص وكلاء 2026-07-03)
   const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   // Pull the data sources in parallel
-  const [schedules, avgMap, codNet, bank] = await Promise.all([
-    listSchedules({ activeOnly: true }),
-    loadCarrierRemittanceAvg(3),
-    loadCarrierNetBalances().catch(() => new Map()),
-    loadEffectiveBankBalance().catch(() => null),
+  const [schedules, avgMap, codNet, bank, openBalances, receivables] = await Promise.all([
+    withTimeout(listSchedules({ activeOnly: true }), 'جداول الناقلين'),
+    withTimeout(loadCarrierRemittanceAvg(3), 'متوسط التحصيلات'),
+    withTimeout(loadCarrierNetBalances(), 'تحصيلات COD').catch(() => new Map()),
+    withTimeout(loadEffectiveBankBalance(), 'أرصدة البنوك').catch(() => null),
+    withTimeout(loadCarrierOpenBalancesAll(), 'أرصدة الناقلين'),
+    withTimeout(loadReceivablesInflow(now, horizonEnd, 30), 'فواتير العملاء').catch(() => ({ byDate: new Map(), withinTotal: 0, overdue: 0 })),
   ]);
   const bankBalance = bank?.balance ?? null;
 
   const carrierNames = new Map((carriers || []).map(c => [c.id, c.name]));
-
-  // For "invoice" estimation we need each carrier's current open
-  // balance. Only fetch for carriers that actually have an invoice
-  // schedule, otherwise we'd hammer N RPCs for nothing.
-  const invoiceCarrierIds = new Set(
-    schedules
-      .filter(s => s.task_kind === 'invoice')
-      .map(s => s.carrier_id)
-  );
-  const openBalances = new Map();
-  await Promise.all([...invoiceCarrierIds].map(async (cid) => {
-    try {
-      const b = await loadOpenBalance(cid);
-      openBalances.set(cid, b.balance);
-    } catch { /* ignore — carrier may not have any ops yet */ }
-  }));
 
   // Group schedules by due-state. We forecast only the ones whose
   // dueAt falls inside [now, now+horizon]. Anything overdue is
@@ -202,12 +181,10 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
   // invoice_date + terms → bucketed inflow events. Folded into the same
   // inflow stream (chart + projected balance). Best-effort.
   const RECEIVABLES_TERMS_DAYS = 30;
-  let receivablesOverdue = 0, customerInflow = 0;
-  try {
-    const rec = await loadReceivablesInflow(now, horizonEnd, RECEIVABLES_TERMS_DAYS);
-    receivablesOverdue = rec.overdue;
-    customerInflow = rec.withinTotal;
-    for (const [dateKey, amt] of rec.byDate) {
+  let receivablesOverdue = receivables.overdue;
+  let customerInflow = receivables.withinTotal;
+  {
+    for (const [dateKey, amt] of receivables.byDate) {
       const dueAt = new Date(`${dateKey}T12:00:00`);
       events.push({
         scheduleId: `rec_${dateKey}`,
@@ -227,7 +204,7 @@ export async function loadCashflowForecast({ horizonDays = 7, carriers = [] } = 
       });
       inflowTotal += amt;
     }
-  } catch { /* receivables overlay optional */ }
+  }
 
   // Sort by dueness — overdue first, then by date asc
   events.sort((a, b) => {

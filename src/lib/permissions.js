@@ -188,6 +188,7 @@ export const PERMISSION_CATALOG = [
     perms: [
       { key: 'money.pnl',          label: 'الوضع المالي — قائمة الدخل من زوهو (أرباح/خسائر)' },
       { key: 'zoho.view',          label: 'زوهو API — تصفّح المرايا ولوحة الفواتير' },
+      { key: 'zoho.configure',     label: 'ربط حسابات زوهو بالبنوك والخزائن الداخلية', sensitive: true },
       { key: 'zoho.apply_credits', label: 'تطبيق أرصدة دائنة على فواتير زوهو (كتابة مالية)', sensitive: true },
       { key: 'bank.view',          label: 'عرض رصيد البنك وسجل التحديثات' },
       { key: 'bank.set_balance',   label: 'تحديث رصيد البنك يدوياً', sensitive: true },

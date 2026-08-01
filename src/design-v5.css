@@ -2133,6 +2133,8 @@ tbody tr:hover td:first-child {
 }
 
 @media (max-width: 768px) {
+  :root { --sw: min(90vw, 350px); }
+
   .customer-search-copy {
     align-items: flex-start;
     flex-direction: column;

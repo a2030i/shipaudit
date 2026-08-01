@@ -1,4 +1,6 @@
-// zoho-sync v21 — سجل دائم لكل دورة + اكتمال pagination + معرّفات العملاء/الموردين.
+// zoho-sync v24 — + تنزيل PDF الرسمي لفاتورة العميل ومرفق فاتورة المورد (قراءة فقط).
+// v23 — رقابة مالية للقراءة + retry/429 + قياس الحصة + مزامنة البنوك والخزائن.
+// v21 — سجل دائم لكل دورة + اكتمال pagination + معرّفات العملاء/الموردين.
 // v14 — مصالحة الدفعات ذات الرصيد المفتوح: تطبيق الدفعة على فاتورة
 // لا يُحرّك last_modified لها (نفس فخّ الإشعارات §1.26b) فتبقى «غير مستخدمة»
 // وهمياً في المرآة (دفعة 12,197 لعميل OUT OF LINE بقيت عالقة 3 أيام).
@@ -16,6 +18,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { beginSyncRun, finishSyncRun } from '../_shared/zohoReliability.ts';
 import { verifyZohoOAuthState } from '../_shared/zohoOAuthState.ts';
+import { fetchZohoJson, fetchZohoRaw, isZohoAuthorizationError, recordZohoUsage, type ZohoApiStats } from '../_shared/zohoClient.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -49,6 +52,8 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
 }
 const canPnl = (a: { role: string | null; permissions: Record<string, unknown> }) =>
   a.role === 'admin' || a.permissions?.['money.pnl'] === true;
+const canZohoRead = (a: { role: string | null; permissions: Record<string, unknown> }) =>
+  canPnl(a) || a.permissions?.['zoho.view'] === true;
 
 async function accessToken(db: ReturnType<typeof svc>) {
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
@@ -225,7 +230,7 @@ Deno.serve(async (req) => {
   try {
     let auth: Awaited<ReturnType<typeof requireUser>> = null;
     const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
-    if (cronKey && (action === 'sync' || action === 'pnl_month')) {
+    if (cronKey && (action === 'sync' || action === 'sync_financial' || action === 'pnl_month')) {
       const { data: za } = await db.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
       if (za?.cron_key && za.cron_key === cronKey) {
         auth = { user: null as never, role: 'admin', permissions: {} };
@@ -345,6 +350,50 @@ Deno.serve(async (req) => {
       return json({ ok: true });
     }
 
+    if (action === 'download_document') {
+      if (!canZohoRead(auth)) return json({ error: 'forbidden — تحتاج صلاحية قراءة زوهو' }, 403);
+      const documentType = String(body.document_type || '');
+      const documentId = String(body.document_id || '');
+      if (!/^\d+$/.test(documentId)) return json({ error: 'invalid_document_id' }, 400);
+      if (!['invoice_pdf', 'bill_attachment'].includes(documentType)) {
+        return json({ error: 'invalid_document_type' }, 400);
+      }
+
+      const { token, apiDomain, orgId } = await accessToken(db);
+      const stats: ZohoApiStats = { apiCalls: 0, rateLimited: 0 };
+      const path = documentType === 'invoice_pdf'
+        ? `/books/v3/invoices/${documentId}?organization_id=${orgId}&accept=pdf`
+        : `/books/v3/bills/${documentId}/attachment?organization_id=${orgId}`;
+      const upstream = await fetchZohoRaw({
+        url: `${apiDomain}${path}`,
+        token,
+        stats,
+        headers: documentType === 'invoice_pdf' ? { Accept: 'application/pdf' } : {},
+      });
+      await recordZohoUsage(db, orgId, stats);
+
+      const contentType = upstream.headers.get('content-type') || 'application/octet-stream';
+      if (!upstream.ok || contentType.includes('application/json')) {
+        const payload = await upstream.json().catch(() => ({} as Record<string, unknown>));
+        const message = String(payload?.message || (documentType === 'bill_attachment'
+          ? 'لا يوجد مرفق أصلي لهذه الفاتورة'
+          : `تعذّر إنشاء ملف PDF (HTTP ${upstream.status})`));
+        return json({ error: message }, upstream.status === 404 ? 404 : 400);
+      }
+
+      return new Response(upstream.body, {
+        status: 200,
+        headers: {
+          ...CORS,
+          'Content-Type': contentType,
+          'Cache-Control': 'private, no-store',
+          'Content-Disposition': documentType === 'invoice_pdf'
+            ? `attachment; filename="invoice-${documentId}.pdf"`
+            : `attachment; filename="bill-${documentId}-attachment"`,
+        },
+      });
+    }
+
     if (!canPnl(auth)) return json({ error: 'forbidden — تحتاج صلاحية «الوضع المالي»' }, 403);
 
     if (action === 'status') {
@@ -399,15 +448,25 @@ Deno.serve(async (req) => {
       return json({ ok: true, snapshot: row, computed_net: parsed.computed_net });
     }
 
-    if (action === 'sync') {
-      const triggerSource = cronKey ? 'cron' : body.full === true ? 'full_rebuild' : 'manual';
+    if (action === 'sync' || action === 'sync_financial') {
+      const financialOnly = action === 'sync_financial';
+      // zoho_sync_runs يقبل manual/cron/full_rebuild فقط. نوع الكيانات المالية
+      // ظاهر أصلاً في results؛ لا نخترع trigger_source يكسره القيد.
+      const triggerSource = cronKey ? 'cron'
+        : body.full === true ? 'full_rebuild' : 'manual';
       const run = await beginSyncRun(db, triggerSource, auth.user?.id || null);
-      let apiCalls = 0;
+      const stats: ZohoApiStats = { apiCalls: 0, rateLimited: 0 };
+      let usageOrgId = '';
+      let usageRecorded = false;
       const results: Record<string, number | string> = {};
       try {
       const { token, apiDomain, orgId } = await accessToken(db);
+      usageOrgId = orgId;
       const ENTITIES: { ent: string; listKey: string; table: string;
         sortColumn?: string; noDelta?: boolean; reconcileDeletes?: boolean;
+        minIntervalMinutes?: number; financial?: boolean; capability?: string; omitSort?: boolean;
+        params?: Record<string, string>;
+        requiredScope?: string; optionalScope?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
           zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_id: it.customer_id || null,
@@ -420,12 +479,14 @@ Deno.serve(async (req) => {
           customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
           invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
-        { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true, reconcileDeletes: true, map: (it, lm, now) => ({
+        { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true,
+          minIntervalMinutes: 360, reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number,
           customer_id: it.customer_id || null, customer_name: it.customer_name,
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
+          minIntervalMinutes: 360,
           map: (it, lm, now) => ({
           zoho_id: it.expense_id, date: it.date || null,
           account_name: it.account_name || null, vendor_name: it.vendor_name || null,
@@ -450,6 +511,7 @@ Deno.serve(async (req) => {
           notes: (it.notes as string) || null, total: Number(it.total) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
         { ent: 'contacts', listKey: 'contacts', table: 'zoho_contacts', sortColumn: 'contact_name', noDelta: true,
+          minIntervalMinutes: 120,
           map: (it, lm, now) => ({
           zoho_id: it.contact_id, contact_name: (it.contact_name as string) || null,
           contact_type: (it.contact_type as string) || null,
@@ -458,29 +520,87 @@ Deno.serve(async (req) => {
           unused_credits_receivable: Number(it.unused_credits_receivable_amount) || 0,
           unused_credits_payable: Number(it.unused_credits_payable_amount) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
+        { ent: 'bankaccounts', listKey: 'bankaccounts', table: 'zoho_bank_accounts',
+          omitSort: true, noDelta: true, minIntervalMinutes: 30,
+          reconcileDeletes: true, financial: true, capability: 'banking_read',
+          requiredScope: 'ZohoBooks.banking.READ', optionalScope: true,
+          map: (it, lm, now) => ({
+            zoho_id: it.account_id, account_name: it.account_name || it.bank_name || it.account_id,
+            account_code: it.account_code || null, account_type: it.account_type || null,
+            currency_code: it.currency_code || null,
+            status: it.is_active === false ? 'inactive' : (it.status || 'active'),
+            book_balance: Number(it.balance ?? it.book_balance) || 0,
+            bank_balance: it.bank_balance == null ? null : Number(it.bank_balance) || 0,
+            bcy_balance: it.bcy_balance == null ? null : Number(it.bcy_balance) || 0,
+            uncategorized_count: Number(it.uncategorized_transactions) || 0,
+            feed_status: it.refresh_status_code
+              || (it.is_feeds_active === true ? 'active' : it.is_feeds_subscribed === true ? 'subscribed' : null),
+            last_refreshed_at: it.feeds_last_refresh_date || null,
+            last_modified: lm, synced_at: now, raw: it,
+          }) },
+        { ent: 'chartofaccounts', listKey: 'chartofaccounts', table: 'zoho_chart_accounts',
+          omitSort: true, params: { showbalance: 'true' }, noDelta: true, minIntervalMinutes: 360,
+          reconcileDeletes: true, financial: true, capability: 'chart_of_accounts_read',
+          requiredScope: 'ZohoBooks.accountants.READ',
+          map: (it, lm, now) => ({
+            zoho_id: it.account_id, account_name: it.account_name || it.account_id,
+            account_code: it.account_code || null, account_type: it.account_type || null,
+            account_type_formatted: it.account_type_formatted || it.account_type || null,
+            currency_code: it.currency_code || null,
+            status: it.is_active === false ? 'inactive' : (it.status || 'active'),
+            current_balance: it.current_balance == null && it.balance == null
+              ? null : Number(it.current_balance ?? it.balance) || 0,
+            is_user_created: it.is_user_created == null ? null : it.is_user_created === true,
+            last_modified: lm, synced_at: now, raw: it,
+          }) },
+        { ent: 'vendorcredits', listKey: 'vendorcredits', table: 'zoho_vendor_credits',
+          sortColumn: 'date', noDelta: true, minIntervalMinutes: 120,
+          reconcileDeletes: true, financial: true, capability: 'vendor_credits_read',
+          requiredScope: 'ZohoBooks.debitnotes.READ', optionalScope: true,
+          map: (it, lm, now) => ({
+            zoho_id: it.vendor_credit_id, credit_number: it.vendor_credit_number || it.creditnote_number || null,
+            vendor_id: it.vendor_id || null, vendor_name: it.vendor_name || null,
+            date: it.date || null, total: Number(it.total) || 0,
+            balance: Number(it.balance) || 0, status: it.status || null,
+            reference_number: it.reference_number || null, last_modified: lm, synced_at: now,
+          }) },
       ];
-      for (const cfg of ENTITIES) {
+      for (const cfg of ENTITIES.filter(cfg => !financialOnly || cfg.financial)) {
         try {
           const { data: st, error: stateReadError } = await db.from('zoho_sync_state')
             .select('last_sync').eq('entity', cfg.ent).maybeSingle();
           if (stateReadError) throw new Error(`state read: ${stateReadError.message}`);
+          const lastSyncMs = st?.last_sync ? new Date(st.last_sync).getTime() : 0;
+          if (cfg.minIntervalMinutes && body.full !== true && body.force !== true
+            && lastSyncMs > Date.now() - cfg.minIntervalMinutes * 60_000) {
+            results[cfg.ent] = 'حديث — لم يُسحب مجدداً';
+            continue;
+          }
           const since = (cfg.noDelta || body.full === true)
             ? null : (st?.last_sync ? new Date(st.last_sync).getTime() : null);
           const runStart = new Date().toISOString();
-          let page = 1, saved = 0, more = true, entErr: string | null = null;
+          let page = 1, saved = 0, more = true, entErr: string | null = null, authBlocked = false;
           const MAX_PAGES = 500;
           while (more && page <= MAX_PAGES) {
             const qs = new URLSearchParams({
               organization_id: orgId, per_page: '200', page: String(page),
-              sort_column: cfg.sortColumn || 'last_modified_time', sort_order: 'D',
             });
-            const r = await fetch(`${apiDomain}/books/v3/${cfg.ent}?${qs}`, {
-              headers: { Authorization: `Zoho-oauthtoken ${token}` },
+            if (!cfg.omitSort) {
+              qs.set('sort_column', cfg.sortColumn || 'last_modified_time');
+              qs.set('sort_order', 'D');
+            }
+            for (const [key, value] of Object.entries(cfg.params || {})) qs.set(key, value);
+            const { response: r, payload: j } = await fetchZohoJson({
+              url: `${apiDomain}/books/v3/${cfg.ent}?${qs}`,
+              token,
+              stats,
             });
-            apiCalls++;
-            const j = await r.json();
-            if (j.code !== 0) { entErr = j.message || `code ${j.code}`; break; }
-            const rows: Record<string, unknown>[] = j[cfg.listKey] || [];
+            if (!r.ok || (j as Record<string, unknown>).code !== 0) {
+              authBlocked = isZohoAuthorizationError(r, j as Record<string, unknown>);
+              entErr = String((j as Record<string, unknown>).message || `HTTP ${r.status} · code ${(j as Record<string, unknown>).code}`);
+              break;
+            }
+            const rows: Record<string, unknown>[] = (j as Record<string, any>)[cfg.listKey] || [];
             let reachedOld = false;
             const now = new Date().toISOString();
             const mapped: Record<string, unknown>[] = [];
@@ -495,11 +615,32 @@ Deno.serve(async (req) => {
               if (error) { entErr = `save: ${error.message}`; break; }
               saved += mapped.length;
             }
-            more = !reachedOld && !!(j.page_context?.has_more_page);
+            more = !reachedOld && !!((j as Record<string, any>).page_context?.has_more_page);
             page++;
           }
           if (more) entErr = `تجاوز حد الأمان ${MAX_PAGES} صفحة دون اكتمال`;
-          if (entErr) { results[cfg.ent] = `خطأ: ${entErr}`; continue; }
+          if (entErr) {
+            const stateStatus = authBlocked && cfg.optionalScope ? 'needs_reauthorization' : 'failed';
+            results[cfg.ent] = authBlocked && cfg.optionalScope
+              ? `يتطلب إعادة تفويض (${cfg.requiredScope})`
+              : `خطأ: ${entErr}`;
+            await db.from('zoho_sync_state').upsert({
+              entity: cfg.ent, last_status: stateStatus, last_error: entErr.slice(0, 2000),
+              last_run_id: run.id, updated_at: new Date().toISOString(),
+            });
+            if (cfg.capability) {
+              await db.from('zoho_integration_capabilities').upsert({
+                capability: cfg.capability,
+                endpoint: `/books/v3/${cfg.ent}`,
+                required_scope: cfg.requiredScope || null,
+                status: authBlocked ? 'needs_reauthorization' : 'error',
+                last_checked_at: new Date().toISOString(),
+                error_message: entErr.slice(0, 2000),
+                updated_at: new Date().toISOString(),
+              });
+            }
+            continue;
+          }
           if (cfg.reconcileDeletes && !more) {
             const { error: deleteError } = await db.from(cfg.table).delete().lt('synced_at', runStart);
             if (deleteError) throw new Error(`reconcile deletes: ${deleteError.message}`);
@@ -510,6 +651,20 @@ Deno.serve(async (req) => {
             updated_at: new Date().toISOString(),
           });
           if (stateWriteError) throw new Error(`state write: ${stateWriteError.message}`);
+          if (cfg.capability) {
+            const { error: capabilityError } = await db.from('zoho_integration_capabilities').upsert({
+              capability: cfg.capability,
+              endpoint: `/books/v3/${cfg.ent}`,
+              required_scope: cfg.requiredScope || null,
+              status: 'available',
+              last_checked_at: new Date().toISOString(),
+              last_success_at: new Date().toISOString(),
+              error_message: null,
+              metadata: { rows: saved },
+              updated_at: new Date().toISOString(),
+            });
+            if (capabilityError) throw new Error(`capability save: ${capabilityError.message}`);
+          }
           results[cfg.ent] = saved;
         } catch (e) {
           const message = String((e as Error).message || e);
@@ -526,16 +681,16 @@ Deno.serve(async (req) => {
       // يُحرّك last_modified لها (نفس فخّ الإشعارات) فتبقى «غير مستخدمة» وهمياً
       // وتُفشل «طبّق للكل» بـ«أكثر من الرصيد». القائمة صغيرة دائماً → إعادة جلب
       // موجّهة لكل دفعة unused>0 (سقف 40/دورة). 404 = حُذفت في زوهو → تُحذف عندنا.
-      try {
+      if (!financialOnly) try {
         const { data: openPays } = await db.from('zoho_payments')
           .select('zoho_id').gt('unused_amount', 0.01).limit(40);
         let refreshed = 0;
         for (const p of openPays || []) {
-          const r = await fetch(`${apiDomain}/books/v3/customerpayments/${p.zoho_id}?organization_id=${orgId}`, {
-            headers: { Authorization: `Zoho-oauthtoken ${token}` },
+          const { response: r, payload: j } = await fetchZohoJson({
+            url: `${apiDomain}/books/v3/customerpayments/${p.zoho_id}?organization_id=${orgId}`,
+            token,
+            stats,
           });
-          apiCalls++;
-          const j = await r.json().catch(() => ({} as Record<string, unknown>));
           const pay = (j as Record<string, any>)?.payment;
           if ((j as Record<string, unknown>).code === 0 && pay) {
             const { error: refreshError } = await db.from('zoho_payments').update({
@@ -561,11 +716,15 @@ Deno.serve(async (req) => {
       } catch (e) { results['payments_refetch'] = `خطأ: ${String((e as Error).message || e)}`; }
 
       const partial = Object.values(results).some(v => typeof v === 'string' && v.startsWith('خطأ:'));
-      await finishSyncRun(db, run.id, partial ? 'partial' : 'succeeded', results, apiCalls);
-      return json({ ok: !partial, partial, run_id: run.id, api_calls: apiCalls, results });
+      await recordZohoUsage(db, usageOrgId, stats);
+      usageRecorded = true;
+      await finishSyncRun(db, run.id, partial ? 'partial' : 'succeeded', results, stats.apiCalls);
+      return json({ ok: !partial, partial, run_id: run.id, api_calls: stats.apiCalls,
+        rate_limited: stats.rateLimited, results });
       } catch (e) {
         const message = String((e as Error).message || e);
-        await finishSyncRun(db, run.id, 'failed', results, apiCalls, message);
+        if (!usageRecorded) await recordZohoUsage(db, usageOrgId, stats);
+        await finishSyncRun(db, run.id, 'failed', results, stats.apiCalls, message);
         throw e;
       }
     }

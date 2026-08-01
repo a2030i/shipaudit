@@ -1,5 +1,5 @@
-// سجل مكالمات العميل — مكالمات هاتف (يدوية للفريق + آلية) مع التسجيل والملخّص والمشاعر.
-// يتغذّى من hatif_calls (webhook «ما بعد المكالمة»). قابل للطيّ، يُحمّل عند الفتح.
+// سجل مكالمات العميل — سجل هاتف الكامل (يدوية للفريق + آلية) مع اسم الموظف
+// والتسجيل والملخّص. قابل للطيّ، ويُحمّل عند الفتح.
 import { useState } from 'react';
 import { PhoneCall, ChevronDown } from 'lucide-react';
 import { loadHatifCallsByPhone, HATIF_SENTIMENT, HATIF_CALL_STATUS } from '../lib/ivrService.js';
@@ -30,7 +30,7 @@ export default function CustomerCallLog({ phone, compact = true }) {
       {open && (
         <div style={{ marginTop: 6, display: 'grid', gap: 6 }}>
           {loading ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>جارٍ التحميل…</div>
-          : !calls?.length ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>لا مكالمات مسجّلة — فعّل webhook «ما بعد المكالمة» في هاتف لتظهر مكالمات الفريق هنا.</div>
+          : !calls?.length ? <div style={{ fontSize: 11, color: 'var(--muted)' }}>لا مكالمات مسجّلة لهذا الرقم في سجل هاتف.</div>
           : calls.map(c => {
             const sent = HATIF_SENTIMENT[c.sentiment] || null;
             const st = HATIF_CALL_STATUS[c.status] || c.status || '';

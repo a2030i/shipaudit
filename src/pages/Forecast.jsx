@@ -56,16 +56,20 @@ export default function Forecast({ carriers = [], isActive = true }) {
   const [loading, setLoading]   = useState(true);
   const [horizon, setHorizon]   = useState(30);   // default to the month — fuller forecast view
   const [data, setData]         = useState(null);
+  const [error, setError]       = useState('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setError('');
     try {
       const result = await loadCashflowForecast({ horizonDays: horizon, carriers });
       setData(result);
     } catch (e) {
+      setError(e.message || 'تعذّر تحميل التوقع');
       toast(`فشل التحميل: ${e.message}`, 'error');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [horizon, carriers]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
@@ -88,12 +92,27 @@ export default function Forecast({ carriers = [], isActive = true }) {
     return [...groups.entries()];
   }, [data]);
 
-  if (loading || !data) {
+  if (loading && !data) {
     return (
       <div style={{ padding: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center', justifyContent: 'center', minHeight: 320 }}>
           <Spinner size={28}/>
+          <strong style={{ fontSize: 14 }}>نجمّع أرصدة البنوك والناقلين وفواتير العملاء…</strong>
+          <span style={{ fontSize: 12, color: 'var(--muted)' }}>عادةً تظهر خلال ثوانٍ، ولن تبقى الصفحة فارغة عند تعطل مصدر.</span>
         </div>
+      </div>
+    );
+  }
+
+  if (!data && error) {
+    return (
+      <div style={{ padding: '40px 28px', maxWidth: 760, margin: '0 auto' }}>
+        <Card style={{ textAlign: 'center', padding: 28, borderColor: 'color-mix(in srgb, var(--red) 35%, var(--border))' }}>
+          <AlertTriangle size={28} color="var(--red)" style={{ marginBottom: 10 }}/>
+          <div style={{ fontSize: 16, fontWeight: 800, marginBottom: 7 }}>تعذّر تجهيز التوقع</div>
+          <div style={{ color: 'var(--muted)', fontSize: 12.5, marginBottom: 16 }}>{error}</div>
+          <Btn variant="primary" icon={<RefreshCw size={14}/>} onClick={refresh}>إعادة المحاولة</Btn>
+        </Card>
       </div>
     );
   }
