@@ -239,6 +239,17 @@ export async function loadHatifCallStats(days = 30) {
   if (error) return [];
   return data || [];
 }
+
+// Latest successful Hatif pull. This is operational freshness, not the latest call time.
+export async function loadHatifCallSyncHealth() {
+  const { data, error } = await supabase.from('hatif_call_log')
+    .select('synced_at, creation_time')
+    .order('synced_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) return null;
+  return data || null;
+}
 // رابط فتح محادثة في واجهة هاتف مباشرة (القناة الرئيسية ثابتة — قناة واحدة).
 // يسدّ فجوة «لا نرى نصّ المحادثة»: بنقرة تفتح المحادثة نفسها في هاتف.
 export const HATIF_CHANNEL_ID = '3a1e515d-a31e-eace-2286-713745be95cc';

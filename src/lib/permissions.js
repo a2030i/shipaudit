@@ -165,6 +165,15 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'marketers', label: 'المسوّقون والعمولات', icon: 'Wallet', color: 'var(--gold)',
+    perms: [
+      { key: 'marketers.view',         label: 'عرض أداء المسوّقين وتكاليفهم' },
+      { key: 'marketers.manage',       label: 'إضافة المسوّقين وخطط التعويض', sensitive: true },
+      { key: 'marketers.record_month', label: 'تسجيل عدد الطلبات الشهري' },
+      { key: 'marketers.close_month',  label: 'اعتماد النتيجة وإقفال الشهر', sensitive: true },
+    ],
+  },
+  {
     id: 'campaigns', label: 'حملات واتساب', icon: 'MessageCircle', color: 'var(--green)',
     perms: [
       // الإرسال فعل خارجي يصل العميل — حسّاس عمداً (يُستثنى من preset «قراءة وكتابة»)

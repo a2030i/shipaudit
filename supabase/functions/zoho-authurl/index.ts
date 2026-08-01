@@ -1,9 +1,11 @@
 // zoho-authurl — يبني رابط موافقة Zoho بالصلاحيات الموسّعة (قراءة كاملة +
 // كتابة محدودة) ليمنح المدير صلاحية «تطبيق الرصيد الدائن» بنقرة داخل
-// النظام. الاستبدال يُتمّه zoho-sync (exchange_web force) عبر /zoho-callback.
+// النظام. الاستبدال يحتاج تأكيداً صريحاً في /zoho-callback، وOAuth state
+// الموقّع يربط الرد بالمدير الذي بدأ العملية.
 // لا يمسّ التطبيق الداخلي القديم. admin فقط.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createZohoOAuthState } from '../_shared/zohoOAuthState.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -46,11 +48,13 @@ Deno.serve(async (req) => {
   if (prof?.role !== 'admin') return json({ error: 'forbidden — للمدير فقط' }, 403);
 
   const id = Deno.env.get('ZOHO_CLIENT_ID');
-  if (!id) return json({ error: 'missing_client_id' }, 400);
+  const secret = Deno.env.get('ZOHO_CLIENT_SECRET');
+  if (!id || !secret) return json({ error: 'missing_oauth_secrets' }, 400);
   const { data: za } = await db.from('zoho_auth').select('accounts_domain').eq('id', 1).maybeSingle();
   const acc = za?.accounts_domain || 'accounts.zoho.com';
+  const state = await createZohoOAuthState(user.id, secret);
   const url = `https://${acc}/oauth/v2/auth?response_type=code&client_id=${encodeURIComponent(id)}`
     + `&scope=${encodeURIComponent(SCOPE)}&redirect_uri=${encodeURIComponent(`${APP_ORIGIN}/zoho-callback`)}`
-    + `&access_type=offline&prompt=consent`;
+    + `&access_type=offline&prompt=consent&state=${encodeURIComponent(state)}`;
   return json({ ok: true, url });
 });

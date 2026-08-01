@@ -15,6 +15,7 @@
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { beginSyncRun, finishSyncRun } from '../_shared/zohoReliability.ts';
+import { verifyZohoOAuthState } from '../_shared/zohoOAuthState.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -24,6 +25,7 @@ const CORS = {
 };
 const REDIRECT_URI = `${APP_ORIGIN}/zoho-callback`;
 const PNL_TTL_MS = 10 * 60_000;
+const OAUTH_PENDING_TTL_MS = 10 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -66,24 +68,96 @@ async function accessToken(db: ReturnType<typeof svc>) {
   return { token: j.access_token as string, apiDomain: data.api_domain as string, orgId: data.org_id as string };
 }
 
-async function saveGrant(db: ReturnType<typeof svc>, j: Record<string, unknown>, dc: string) {
-  const apiDomain = (j.api_domain as string) || `https://www.zohoapis.${dc}`;
-  let orgId: string | null = null, orgName: string | null = null;
-  try {
-    const or = await fetch(`${apiDomain}/books/v3/organizations`, {
-      headers: { Authorization: `Zoho-oauthtoken ${j.access_token}` },
-    });
-    const oj = await or.json();
-    orgId = oj?.organizations?.[0]?.organization_id ?? null;
-    orgName = oj?.organizations?.[0]?.name ?? null;
-  } catch { /* اختياري */ }
+type ZohoOrganization = {
+  id: string;
+  name: string;
+  currency: string | null;
+  isDefault: boolean;
+  isActive: boolean;
+};
+
+async function persistGrant(
+  db: ReturnType<typeof svc>,
+  grant: { refreshToken: string; accountsDomain: string; apiDomain: string },
+  organization: ZohoOrganization,
+) {
   const { error } = await db.from('zoho_auth').upsert({
-    id: 1, refresh_token: j.refresh_token,
-    accounts_domain: `accounts.zoho.${dc}`, api_domain: apiDomain,
-    org_id: orgId, updated_at: new Date().toISOString(),
+    id: 1,
+    refresh_token: grant.refreshToken,
+    accounts_domain: grant.accountsDomain,
+    api_domain: grant.apiDomain,
+    org_id: organization.id,
+    updated_at: new Date().toISOString(),
   });
   if (error) throw new Error(`save failed: ${error.message}`);
-  return { orgId, orgName, dc };
+  return { orgId: organization.id, orgName: organization.name };
+}
+
+async function inspectGrant(j: Record<string, unknown>, dc: string) {
+  const apiDomain = (j.api_domain as string) || `https://www.zohoapis.${dc}`;
+  const r = await fetch(`${apiDomain}/books/v3/organizations`, {
+    headers: { Authorization: `Zoho-oauthtoken ${j.access_token}` },
+  });
+  const payload = await r.json().catch(() => ({}));
+  if (!r.ok || payload?.code !== 0 || !Array.isArray(payload?.organizations)) {
+    throw new Error(`organizations failed: ${payload?.message || r.status}`);
+  }
+  const organizations: ZohoOrganization[] = payload.organizations
+    .filter((o: Record<string, unknown>) => o.organization_id && o.is_org_active !== false)
+    .map((o: Record<string, unknown>) => ({
+      id: String(o.organization_id),
+      name: String(o.name || o.organization_id),
+      currency: o.currency_code ? String(o.currency_code) : null,
+      isDefault: o.is_default_org === true,
+      isActive: o.is_org_active !== false,
+    }));
+  if (!organizations.length) throw new Error('لا توجد مؤسسة Zoho Books نشطة لهذا الحساب');
+  return {
+    grant: {
+      refreshToken: String(j.refresh_token),
+      accountsDomain: `accounts.zoho.${dc}`,
+      apiDomain,
+    },
+    organizations,
+  };
+}
+
+async function stageOrPersistGrant(
+  db: ReturnType<typeof svc>,
+  j: Record<string, unknown>,
+  dc: string,
+  userId: string,
+  existingOrgId: string | null,
+  replaceExisting: boolean,
+) {
+  const { grant, organizations } = await inspectGrant(j, dc);
+  if (organizations.length === 1) {
+    return { ok: true, ...(await persistGrant(db, grant, organizations[0])), dc };
+  }
+
+  // تنظيف مؤقتات هذا المدير المنتهية قبل إنشاء جلسة اختيار جديدة.
+  await db.from('zoho_oauth_pending_grants')
+    .delete().eq('user_id', userId).lt('expires_at', new Date().toISOString());
+  const expiresAt = new Date(Date.now() + OAUTH_PENDING_TTL_MS).toISOString();
+  const { data: pending, error } = await db.from('zoho_oauth_pending_grants').insert({
+    user_id: userId,
+    refresh_token: grant.refreshToken,
+    accounts_domain: grant.accountsDomain,
+    api_domain: grant.apiDomain,
+    organizations,
+    existing_org_id: existingOrgId,
+    replace_existing: replaceExisting,
+    expires_at: expiresAt,
+  }).select('id').single();
+  if (error || !pending?.id) throw new Error(`pending grant failed: ${error?.message || 'no id'}`);
+  return {
+    ok: false,
+    organization_required: true,
+    pending_id: pending.id,
+    organizations,
+    current_org_id: existingOrgId,
+    expires_at: expiresAt,
+  };
 }
 
 const SEC_ORDERED: [string, RegExp[]][] = [
@@ -165,8 +239,12 @@ Deno.serve(async (req) => {
       const id = Deno.env.get('ZOHO_CLIENT_ID');
       const secret = Deno.env.get('ZOHO_CLIENT_SECRET');
       const code = body.code as string;
+      const oauthState = body.state as string;
       if (!id || !secret) return json({ error: 'missing_secrets' }, 400);
       if (!code) return json({ error: 'missing_code' }, 400);
+      if (!oauthState || !await verifyZohoOAuthState(oauthState, auth.user.id, secret)) {
+        return json({ error: 'invalid_oauth_state — انتهت جلسة الربط أو لم تبدأ من هذا الحساب' }, 403);
+      }
       const { data: existing } = await db.from('zoho_auth').select('refresh_token, org_id').eq('id', 1).maybeSingle();
       if (existing?.refresh_token && body.force !== true) {
         return json({ error: 'already_connected — الربط قائم؛ أعد الربط بـforce:true إن كنت تقصد استبداله', org_id: existing.org_id }, 409);
@@ -183,11 +261,88 @@ Deno.serve(async (req) => {
             }),
           });
           const j = await r.json();
-          if (j.refresh_token) return json({ ok: true, ...(await saveGrant(db, j, dc)) });
+          if (j.refresh_token) {
+            try {
+              return json(await stageOrPersistGrant(
+                db,
+                j,
+                dc,
+                auth.user.id,
+                existing?.org_id || null,
+                body.force === true,
+              ));
+            } catch (setupError) {
+              // The authorization code is single-use. Once Zoho returns a refresh token,
+              // retrying the same code against another data center only hides the real
+              // setup failure behind a misleading `exchange_failed` response.
+              return json({
+                error: 'grant_setup_failed',
+                detail: setupError instanceof Error ? setupError.message : String(setupError),
+              }, 500);
+            }
+          }
           errors[dc] = (j.error as string) || JSON.stringify(j);
         } catch (e) { errors[dc] = String(e); }
       }
       return json({ error: 'exchange_failed', details: errors }, 400);
+    }
+
+    if (action === 'finalize_organization') {
+      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
+      const pendingId = String(body.pending_id || '');
+      const organizationId = String(body.organization_id || '');
+      if (!/^[0-9a-f-]{36}$/i.test(pendingId) || !/^\d+$/.test(organizationId)) {
+        return json({ error: 'invalid organization selection' }, 400);
+      }
+      const consumedAt = new Date().toISOString();
+      const { data: pending, error: claimError } = await db.from('zoho_oauth_pending_grants')
+        .update({ consumed_at: consumedAt })
+        .eq('id', pendingId)
+        .eq('user_id', auth.user.id)
+        .is('consumed_at', null)
+        .gt('expires_at', consumedAt)
+        .select('*')
+        .maybeSingle();
+      if (claimError) return json({ error: `organization claim failed: ${claimError.message}` }, 500);
+      if (!pending) return json({ error: 'organization_selection_expired — ابدأ الربط من جديد' }, 410);
+
+      const organizations = Array.isArray(pending.organizations)
+        ? pending.organizations as ZohoOrganization[] : [];
+      const selected = organizations.find(o => o.id === organizationId && o.isActive !== false);
+      if (!selected || !pending.refresh_token) {
+        await db.from('zoho_oauth_pending_grants').update({ consumed_at: null }).eq('id', pendingId);
+        return json({ error: 'organization_not_authorized' }, 403);
+      }
+      const { data: current } = await db.from('zoho_auth')
+        .select('refresh_token').eq('id', 1).maybeSingle();
+      if (current?.refresh_token && pending.replace_existing !== true) {
+        await db.from('zoho_oauth_pending_grants').update({ consumed_at: null }).eq('id', pendingId);
+        return json({ error: 'already_connected — أعد الربط وأكّد الاستبدال أولاً' }, 409);
+      }
+      try {
+        const result = await persistGrant(db, {
+          refreshToken: pending.refresh_token,
+          accountsDomain: pending.accounts_domain,
+          apiDomain: pending.api_domain,
+        }, selected);
+        const { error: clearError } = await db.from('zoho_oauth_pending_grants')
+          .delete().eq('id', pendingId).eq('consumed_at', consumedAt);
+        if (clearError) console.error('[zoho-sync] pending grant cleanup:', clearError.message);
+        return json({ ok: true, ...result });
+      } catch (e) {
+        await db.from('zoho_oauth_pending_grants').update({ consumed_at: null }).eq('id', pendingId);
+        throw e;
+      }
+    }
+
+    if (action === 'cancel_organization') {
+      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
+      const pendingId = String(body.pending_id || '');
+      if (!/^[0-9a-f-]{36}$/i.test(pendingId)) return json({ error: 'invalid pending grant' }, 400);
+      const { error } = await db.from('zoho_oauth_pending_grants')
+        .delete().eq('id', pendingId).eq('user_id', auth.user.id);
+      if (error) return json({ error: `cancel failed: ${error.message}` }, 500);
+      return json({ ok: true });
     }
 
     if (!canPnl(auth)) return json({ error: 'forbidden — تحتاج صلاحية «الوضع المالي»' }, 403);

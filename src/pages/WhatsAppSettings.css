@@ -1,0 +1,310 @@
+.hatif-center {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.hatif-center__body {
+  width: min(1240px, calc(100% - 40px));
+  margin: 0 auto;
+  padding: 22px 0 80px;
+}
+
+.hatif-center__panel {
+  min-width: 0;
+}
+
+.hatif-overview {
+  display: grid;
+  gap: 16px;
+}
+
+.hatif-overview__hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 16px;
+  overflow: hidden;
+  padding: 22px;
+  border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--border));
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 10% 0%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 42%),
+    linear-gradient(135deg, color-mix(in srgb, var(--brand) 95%, #111827), color-mix(in srgb, var(--brand) 72%, #0f766e));
+  color: #fff;
+  box-shadow: 0 18px 40px color-mix(in srgb, var(--brand) 18%, transparent);
+}
+
+.hatif-overview__hero::after {
+  content: '';
+  position: absolute;
+  inset: auto -42px -74px auto;
+  width: 210px;
+  height: 210px;
+  border: 42px solid rgba(255, 255, 255, .06);
+  border-radius: 50%;
+  pointer-events: none;
+}
+
+.hatif-overview__hero.is-attention {
+  border-color: color-mix(in srgb, var(--gold) 48%, var(--border));
+}
+
+.hatif-overview__hero-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border: 1px solid rgba(255, 255, 255, .22);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .12);
+  backdrop-filter: blur(10px);
+}
+
+.hatif-overview__hero-copy {
+  min-width: 0;
+}
+
+.hatif-overview__hero-copy > span {
+  display: block;
+  margin-bottom: 4px;
+  color: rgba(255, 255, 255, .72);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+.hatif-overview__hero-copy h2 {
+  margin: 0;
+  font-size: clamp(20px, 2vw, 28px);
+  line-height: var(--lh-snug);
+}
+
+.hatif-overview__hero-copy p {
+  max-width: 760px;
+  margin: 7px 0 0;
+  color: rgba(255, 255, 255, .76);
+  font-size: 12.5px;
+  line-height: var(--lh-relaxed);
+}
+
+.hatif-overview__hero .ui-btn {
+  position: relative;
+  z-index: 1;
+  border-color: rgba(255, 255, 255, .24) !important;
+  background: rgba(255, 255, 255, .12) !important;
+  color: #fff !important;
+}
+
+.hatif-pulse-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hatif-pulse-card {
+  --pulse-tone: var(--muted);
+  min-width: 0;
+}
+
+.hatif-pulse-card.tone-green { --pulse-tone: var(--green); }
+.hatif-pulse-card.tone-gold { --pulse-tone: var(--gold); }
+.hatif-pulse-card.tone-blue { --pulse-tone: var(--brand); }
+.hatif-pulse-card.tone-violet { --pulse-tone: var(--accent3); }
+
+.hatif-pulse-card > div {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 176px;
+  padding: 16px !important;
+  overflow: hidden;
+  border-top: 3px solid var(--pulse-tone) !important;
+  background:
+    linear-gradient(145deg, color-mix(in srgb, var(--pulse-tone) 8%, var(--surface)) 0%, var(--surface) 58%) !important;
+}
+
+.hatif-pulse-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pulse-tone);
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+.hatif-pulse-card strong {
+  display: block;
+  margin-top: 16px;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: clamp(20px, 2vw, 26px);
+  line-height: 1.2;
+}
+
+.hatif-pulse-card p {
+  margin: 7px 0 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.65;
+}
+
+.hatif-pulse-card button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  width: fit-content;
+  margin-top: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pulse-tone);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.hatif-pulse-card button:focus-visible,
+.hatif-subtabs button:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 34%, transparent);
+  outline-offset: 3px;
+}
+
+.hatif-overview__sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.hatif-source-card > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 15px 16px !important;
+}
+
+.hatif-source-card__icon {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 13px;
+}
+
+.hatif-source-card__icon.zoho {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+}
+
+.hatif-source-card__icon.boundary {
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 11%, transparent);
+}
+
+.hatif-source-card span,
+.hatif-source-card strong,
+.hatif-source-card small {
+  display: block;
+}
+
+.hatif-source-card span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.hatif-source-card strong {
+  margin-top: 2px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.hatif-source-card small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.hatif-subtabs {
+  position: sticky;
+  z-index: 4;
+  top: 0;
+  display: flex;
+  gap: 6px;
+  width: fit-content;
+  max-width: 100%;
+  padding: 5px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, .06);
+  backdrop-filter: blur(14px);
+}
+
+.hatif-subtabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 38px;
+  padding: 8px 13px;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.hatif-subtabs button:hover {
+  color: var(--text);
+  background: var(--surface2);
+}
+
+.hatif-subtabs button.is-active {
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--border));
+  background: color-mix(in srgb, var(--brand) 10%, var(--surface));
+  color: var(--brand);
+}
+
+@media (max-width: 980px) {
+  .hatif-pulse-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 768px) {
+  .hatif-center__body {
+    width: min(100% - 24px, 1240px);
+    padding-top: 14px;
+  }
+
+  .hatif-overview__hero {
+    grid-template-columns: auto minmax(0, 1fr);
+    padding: 18px;
+  }
+
+  .hatif-overview__hero .ui-btn {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+  }
+
+  .hatif-overview__sources { grid-template-columns: 1fr; }
+  .hatif-subtabs { width: 100%; }
+}
+
+@media (max-width: 480px) {
+  .hatif-pulse-grid { grid-template-columns: 1fr; }
+  .hatif-pulse-card > div { min-height: 156px; }
+  .hatif-overview__hero-icon { width: 44px; height: 44px; }
+  .hatif-overview__hero-copy h2 { font-size: 19px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hatif-pulse-card button,
+  .hatif-subtabs button { transition: none; }
+}

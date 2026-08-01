@@ -1,6 +1,6 @@
 # خط الأساس المنشور — Supabase Edge Functions
 
-> **مسحوب من الإنتاج بتاريخ 2026-07-28** من المشروع `pubtkfwmznfmffavyzsy` عبر `list_edge_functions` + `get_edge_function` (MCP).
+> **محدّث من الإنتاج بتاريخ 2026-08-01** من المشروع `pubtkfwmznfmffavyzsy` عبر `list_edge_functions` + `get_edge_function` (MCP).
 
 ## لماذا هذا الملف موجود
 
@@ -27,7 +27,7 @@
 
 ---
 
-## الجدول — الحالة المنشورة بتاريخ 2026-07-31
+## الجدول — الحالة المنشورة بتاريخ 2026-08-01
 
 | الدالة (slug) | النسخة | verify_jwt | بصمة ezbr_sha256 | آخر تحديث (UTC) |
 |---|---|---|---|---|
@@ -43,11 +43,11 @@
 | `zoho-intake` | v12 | **`false`** | `37bee4145e8ec464…` | 2026-07-03 15:00:49 |
 | `whatsapp-send` | v7 | **`false`** | `1c1bfbfffb629ad5…` | 2026-07-14 18:01:53 |
 | `assistant` | v7 | `true` | `457f7cc73e4126a4…` | 2026-06-13 18:54:32 |
-| `zoho-sync` | v18 | **`false`** | `2e6f0cc8b691f46d…` | 2026-07-21 06:28:20 |
+| `zoho-sync` | v22 | **`false`** | `923165727c43bc2…` | 2026-08-01 02:28:53 |
 | `zoho-events` | v4 | `true` | `e472311e43fa2a09…` | 2026-07-02 11:59:52 |
-| `morning-brief` | v7 | **`false`** | `9bf9917fd2f00fc0…` | 2026-07-15 14:04:52 |
+| `morning-brief` | v10 | **`false`** | `3f1aeb408b12c3c7…` | 2026-08-01 02:28:53 |
 | `zoho-apply-credits` | v16 | **`false`** | `bdfe36644e3c6268…` | 2026-07-15 16:36:02 |
-| `zoho-authurl` | v6 | **`false`** | `58470c004f9baf0d…` | 2026-07-05 21:51:57 |
+| `zoho-authurl` | v9 | **`false`** | `8b10585473989937…` | 2026-08-01 02:28:53 |
 | `zoho-webhook` | v10 | **`false`** | `182db99229e5e0bf…` | 2026-07-21 10:55:16 |
 | `lamha-sync` | v4 | **`false`** | `8e11825ad7aa63ee…` | 2026-07-05 22:12:15 |
 | `zoho-debug` | v4 | **`false`** | `13d350dd38fb645c…` | 2026-07-05 22:26:39 |
@@ -68,7 +68,7 @@
 | `hatif-workspace-webhook` | v1 | **`false`** | `e26960f425ce5a32…` | 2026-07-25 23:47:46 |
 | `hatif-probe` | v16 | `true` | `f14070cf1efb2c8f…` | 2026-07-26 12:44:58 |
 | `hatif-resolve-contacts` | v1 | **`false`** | `dedba3c39a85471a…` | 2026-07-26 11:27:40 |
-| `hatif-pull-calls` | v1 | **`false`** | `71c51238e1ffe6b4…` | 2026-07-26 11:33:40 |
+| `hatif-pull-calls` | v4 | **`false`** | `06b519e1fcca0f2b…` | 2026-08-01 02:28:53 |
 | `zoho-reports` | v6 | **`false`** | `f9b1bfdcd096c51b…` | 2026-07-28 |
 | `portal-access` | v3 | **`false`** | `4c709c40b3e0ab26…` | 2026-07-29 · ⛔ **شاهد قبر 410 — مُوقَفة** |
 

@@ -323,7 +323,8 @@ export async function loadZohoUnusedCredits() {
 
 // رابط موافقة زوهو بالصلاحيات الموسّعة (قراءة كاملة + invoices.UPDATE) —
 // لتفعيل «تطبيق الرصيد الدائن». admin فقط. يُفتح في نافذة، والموافقة تعود
-// لـ/zoho-callback الذي يستبدل التوكن (force). لا يمسّ التطبيق الداخلي.
+// لـ/zoho-callback الذي يطلب تأكيداً صريحاً قبل استبدال ربط قائم، مع OAuth
+// state موقّع مربوط بالمدير الذي بدأ العملية. لا يمسّ التطبيق الداخلي.
 export async function getZohoWriteAuthUrl() {
   const { data, error } = await supabase.functions.invoke('zoho-authurl', { body: {} });
   if (error) return { ok: false, error: error.message };

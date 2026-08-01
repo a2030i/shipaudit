@@ -75,7 +75,9 @@ Deno.serve(async (req) => {
     .map((c: any) => `${(c.store_name || c.name || '').slice(0, 22)} ${fmt(c.owed)}`)
     .join(' · ') || 'لا مدينين';
 
-  const today = new Date().toLocaleDateString('ar-SA', { weekday: 'long', day: 'numeric', month: 'long' });
+  const today = new Date().toLocaleDateString('ar-SA-u-ca-gregory', {
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Riyadh',
+  });
   const vars = [
     today,
     `${fmt(dash?.outstanding)} ر.س (${dash?.outstanding_cnt || 0} عميل)`,

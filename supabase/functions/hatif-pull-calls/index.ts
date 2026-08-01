@@ -23,19 +23,22 @@ Deno.serve(async (req) => {
     method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body: new URLSearchParams({ grant_type: 'client_credentials', client_id: env('client_id', 'HATIF_CLIENT_ID'), client_secret: env('secret', 'HATIF_CLIENT_SECRET'), scope: 'VoxaAPI' }),
   });
-  const token = (await tr.json())?.access_token;
-  if (!token) return json({ error: 'token' }, 502);
+  const tokenBody = await tr.json().catch(() => ({}));
+  const token = tokenBody?.access_token;
+  if (!tr.ok || !token) return json({ error: 'hatif_token_failed', status: tr.status }, 502);
 
   const url = new URL(req.url);
   const SIZE = 100;
-  const MAX_PAGES = Number(url.searchParams.get('maxPages')) || 40;
+  const MAX_PAGES = Math.min(100, Math.max(1, Number(url.searchParams.get('maxPages')) || 40));
   let fetched = 0, inserted = 0, page = 0;
+  let latestCall: string | null = null;
   for (; page < MAX_PAGES; page++) {
     const r = await fetch(`https://api.voxa.sa/v1/call/list?skipCount=${page * SIZE}&maxResultCount=${SIZE}&sorting=creationTime%20desc`, { headers: { Authorization: `Bearer ${token}` } });
-    if (!r.ok) break;
-    const body = await r.json();
+    if (!r.ok) return json({ error: 'hatif_calls_failed', status: r.status, page }, 502);
+    const body = await r.json().catch(() => ({}));
     const items = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) break;
+    if (!latestCall && items[0]?.creationTime) latestCall = String(items[0].creationTime);
     fetched += items.length;
     const ids = items.map((c: Record<string, unknown>) => c.id as string);
     const { data: known } = await supa.from('hatif_call_log').select('id').in('id', ids);
@@ -58,12 +61,13 @@ Deno.serve(async (req) => {
       sentiment: c.aiSummary?.sentiment ?? null,
       synced_at: new Date().toISOString(),
     }));
-    await supa.from('hatif_call_log').upsert(rows, { onConflict: 'id' });
+    const { error: upsertError } = await supa.from('hatif_call_log').upsert(rows, { onConflict: 'id' });
+    if (upsertError) return json({ error: 'hatif_call_log_upsert_failed', detail: upsertError.message, page }, 500);
     const newCount = ids.filter((id: string) => !knownSet.has(id)).length;
     inserted += newCount;
     if (items.length < SIZE) break;      // نهاية القائمة
     if (newCount === 0) break;           // لحقنا المخزّن (تشغيلة تحديث)
     await new Promise((res) => setTimeout(res, 120));
   }
-  return json({ ok: true, pages: page, fetched, inserted });
+  return json({ ok: true, pages: page, fetched, inserted, latestCall, syncedAt: new Date().toISOString() });
 });

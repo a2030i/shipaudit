@@ -1,10 +1,14 @@
-// إعدادات واتساب (Hatif · هاتف/Voxa) — مكان ثابت لضبط القالب والقناة والتحقّق،
-// بدل تكرار الإعداد داخل مودال الإرسال. يُخزَّن في app_settings key='whatsapp_config'
-// ويُستخدَم في حملات التحصيل (/customer-money) وإعادة الاستهداف. اللغة ثابتة ar.
+// مركز هاتف — مساحة تشغيل وتحليل للتكامل مع هاتف/Voxa. المحادثات والردود
+// وإسنادها تبقى داخل هاتف؛ هذه الصفحة للحملات وIVR والقياس والإعدادات فقط.
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { MessageCircle, RefreshCw, ShieldCheck, CheckCircle2, X, Save, Plus, Trash2 } from 'lucide-react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import {
+  Activity, BadgeDollarSign, BarChart3, CheckCircle2, Headphones,
+  Megaphone, MessagesSquare, PhoneCall, Plus, RefreshCw,
+  Save, Settings2, ShieldCheck, Tags, Trash2, Users, X,
+} from 'lucide-react';
 import IvrCampaignModal from '../components/IvrCampaignModal.jsx';
-import { Card, Btn, Spinner, Empty, PageHeader, Input, Modal, toast } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, Input, Modal, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import IvrTab from '../components/IvrSettingsTab.jsx';
 import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
@@ -12,7 +16,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
   loadWhatsAppLog, loadWhatsAppCampaignReport, loadCampaignFailures, loadNoWhatsappList,
   loadWhatsAppQuality, qualityTone,
   loadBlocklist, addToBlocklist, removeFromBlocklist, loadWhatsAppDeliveryHealth, loadHatifUsers,
-  loadHatifAgentActivity, loadHatifCallStats, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
+  loadHatifAgentActivity, loadHatifCallStats, loadHatifCallSyncHealth, loadHatifCalls, loadHatifCallProblems, loadHatifProblemCalls,
   loadCallTargets, saveCallTargets, loadOutreachImpact, loadCampaignTemplateStats, loadCampaignHourStats, loadMessageOpenHours,
   runHatifTagSync, loadTagSyncStatus, loadHatifTags } from '../lib/whatsappService.js';
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
@@ -21,9 +25,67 @@ import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import { loadZohoWebhookHealth } from '../lib/pnlService.js';
+import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
+import './WhatsAppSettings.css';
+
+const HATIF_TABS = [
+  {
+    id: 'overview', label: 'نظرة عامة', icon: Activity, perm: 'whatsapp.view_log',
+    eyebrow: 'صحة التكامل', purpose: 'اعرف هل قناة التواصل والقياس يعملان قبل أي حملة',
+    description: 'ملخص هادئ لنبض واتساب والمكالمات والتاقات ومصدر بيانات التحصيل، بلا عرض محادثات أو إنشاء مهام بديلة عن هاتف.',
+    outcome: 'تكامل واضح وتنبيه قابل للتصرف', tone: 'var(--brand)',
+  },
+  {
+    id: 'campaigns', label: 'الحملات والرسائل', icon: Megaphone, perm: 'whatsapp.view_log',
+    eyebrow: 'تشغيل الحملات', purpose: 'راقب الوصول والردود وجودة القوالب من مكان واحد',
+    description: 'ابدأ من أداء الحملة، ثم انتقل للجودة أو لسجل رسالة بعينها عند الحاجة؛ الرد الفعلي يبقى داخل هاتف.',
+    outcome: 'حملة مقيسة وقرار استهداف أوضح', tone: 'var(--green)',
+  },
+  {
+    id: 'impact', label: 'التحصيل المرتبط', icon: BadgeDollarSign, perm: 'whatsapp.view_log',
+    eyebrow: 'قراءة تجارية', purpose: 'اربط التواصل بالتحصيل اللاحق دون ادعاء السببية',
+    description: 'يعرض دفعات زوهو التي حدثت خلال 14 يوماً بعد التواصل كمؤشر ارتباط زمني، لا كعائد مالي مؤكد للحملة.',
+    outcome: 'اتجاه تجاري قابل للمقارنة', tone: 'var(--gold)',
+  },
+  {
+    id: 'ivr', label: 'المكالمات وIVR', icon: PhoneCall, anyPerm: ['whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr'],
+    eyebrow: 'قناة آلية', purpose: 'اضبط السكربتات ونفّذ حملات الاتصال وتابع نتائجها',
+    description: 'للوصول إلى من لا يملك واتساب أو لا يستجيب له. المكالمات البشرية والمحادثات اليومية تبقى في هاتف.',
+    outcome: 'مكالمة آلية مضبوطة ونتيجة قابلة للقياس', tone: 'var(--accent3)',
+  },
+  {
+    id: 'agents', label: 'نشاط فريق هاتف', icon: Users, perm: 'whatsapp.view_log',
+    eyebrow: 'متابعة إدارية', purpose: 'راجع حجم المكالمات والإسنادات الفعلية للفريق',
+    description: 'مؤشرات نشاط من سجل هاتف وأحداث الإسناد. لا نعرضها كزمن استجابة أو SLA ما لم يصلنا توقيت موثوق من هاتف.',
+    outcome: 'حجم عمل واضح بلا استنتاجات زائدة', tone: 'var(--accent)',
+  },
+  {
+    id: 'problems', label: 'جودة التواصل', icon: Headphones, perm: 'whatsapp.view_log',
+    eyebrow: 'صوت العميل', purpose: 'اكتشف الموضوعات المتكررة في المكالمات المحللة',
+    description: 'إشارات مبنية على ملخصات وكلمات مفتاحية مع عينات مسموعة؛ ليست تدقيق جودة شامل لكل محادثات هاتف.',
+    outcome: 'موضوع متكرر وعينة وخطوة تحسين', tone: 'var(--red)',
+  },
+  {
+    id: 'settings', label: 'الربط والأتمتة', icon: Settings2, perm: 'whatsapp.configure',
+    eyebrow: 'إدارة القناة', purpose: 'اضبط القوالب والإسناد والمتابعة والتاقات والتنبيهات',
+    description: 'قسم إداري فقط. أي حفظ هنا يغيّر تشغيل الحملات أو الأتمتة، لذلك لا يظهر لحامل صلاحية السجل وحدها.',
+    outcome: 'إعداد موثق ومحمي بالصلاحية', tone: 'var(--muted)',
+  },
+];
+
+const tabAllowed = (tab, can) => tab.anyPerm ? tab.anyPerm.some(can) : can(tab.perm);
 
 export default function WhatsAppSettings({ isActive = true }) {
   const { can, isAdmin } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can));
+  const tabFromUrl = () => {
+    const requested = new URLSearchParams(location.search).get('tab');
+    if (requested && visibleTabs.some(t => t.id === requested)) return requested;
+    return visibleTabs.find(t => t.id === 'overview')?.id || visibleTabs[0]?.id || 'overview';
+  };
   const [cfg, setCfg] = useState(null);
   const [newTpl, setNewTpl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -33,20 +95,37 @@ export default function WhatsAppSettings({ isActive = true }) {
   const [zatca, setZatca] = useState(null);        // إعداد تنبيه زاتكا المسائي
   const [zBusy, setZBusy] = useState(false);
   const [zPrev, setZPrev] = useState(null);
-  const [tab, setTab] = useState('settings');      // settings | campaigns
+  const [tab, setTab] = useState(tabFromUrl);
 
   const [hatifUsers, setHatifUsers] = useState([]);   // موظفو هاتف (الفريق يردّ هناك)
   const load = useCallback(async () => {
+    if (!can('whatsapp.configure')) return;
     setLoading(true);
     try {
       const [c, z, hu] = await Promise.all([loadWhatsAppConfig(), loadZatcaAlertConfig().catch(() => null), loadHatifUsers().catch(() => [])]);
       setCfg(c); setZatca(z || { enabled: false, phone: '', templateName: '' }); setHatifUsers(hu || []);
     } catch (e) { toast(e.message, 'error'); }
     setLoading(false);
-  }, []);
+  }, [can]);
   useEffect(() => { if (isActive) load(); }, [isActive, load]);
 
-  if (!can('whatsapp.configure') && !can('whatsapp.view_log')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  useEffect(() => {
+    if (!isActive) return;
+    const next = tabFromUrl();
+    if (next !== tab) setTab(next);
+    // visibleTabs مشتقة من الصلاحيات الحالية، وتتجدد عند تغيّر الجلسة.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isActive, location.pathname, location.search]);
+
+  const changeTab = (next) => {
+    if (!visibleTabs.some(t => t.id === next)) return;
+    setTab(next);
+    const params = new URLSearchParams(location.search);
+    params.set('tab', next);
+    navigate(`/whatsapp-settings?${params.toString()}`, { replace: true });
+  };
+
+  if (!visibleTabs.length) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
   const templates = Array.isArray(cfg?.templates) ? cfg.templates : [];
   const addTpl = () => {
@@ -95,31 +174,34 @@ export default function WhatsAppSettings({ isActive = true }) {
     setZBusy(false);
   };
 
+  const activeMeta = visibleTabs.find(t => t.id === tab) || visibleTabs[0];
+
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: (tab === 'campaigns' || tab === 'ivr') ? 1180 : 960, margin: '0 auto' }}>
-      <PageHeader icon={<MessageCircle size={22}/>} iconColor="var(--green)"
-        title="منصة هاتف"
-        subtitle="الربط مع هاتف (Voxa) — قوالب واتساب + المكالمات الآلية + التاقات + جهات الاتصال"
-        actions={<Btn size="sm" variant="ghost" onClick={load} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+    <div className="hatif-center workspace-page">
+      <WorkspaceTabs
+        scope="hatif"
+        title="مركز هاتف"
+        subtitle="الحملات والمكالمات والتحليل الإداري — بينما يبقى رد الفريق داخل هاتف"
+        tabs={visibleTabs}
+        activeId={activeMeta?.id}
+        onChange={changeTab}
+        tone="var(--green)"
       />
 
-      {/* مبدّل: الإعدادات / سجل الحملات */}
-      <div style={{ display: 'flex', gap: 6, rowGap: 6, marginBottom: 16, flexWrap: 'wrap' }}>
-        {[['settings', '⚙️ الإعدادات'], ['campaigns', '📋 سجل الحملات'], ['impact', '💰 الأثر بالريال'], ['ivr', '📞 المكالمات الآلية'], ['agents', '👥 أداء الفريق'], ['problems', '🧩 تحليل المكالمات']].map(([v, lbl]) => (
-          <button key={v} onClick={() => setTab(v)} style={{
-            padding: '8px 16px', borderRadius: 9, cursor: 'pointer', fontSize: 12.5, fontWeight: 700,
-            border: `1.5px solid ${tab === v ? 'var(--green)' : 'var(--border)'}`,
-            background: tab === v ? 'color-mix(in srgb, var(--green) 12%, transparent)' : 'transparent', color: 'var(--text)',
-          }}>{lbl}</button>
-        ))}
-      </div>
-
-      {tab === 'ivr' ? <IvrTab/> :
+      <div className="hatif-center__body">
+        <div
+          id={workspacePanelId('hatif', activeMeta?.id)}
+          aria-labelledby={workspaceTabId('hatif', activeMeta?.id)}
+          role="tabpanel"
+          className="hatif-center__panel"
+        >
+      {tab === 'overview' ? <HatifOverviewTab isActive={isActive} onOpen={changeTab} availableTabs={visibleTabs.map(t => t.id)}/> :
+      tab === 'ivr' ? <IvrTab/> :
       tab === 'impact' ? <OutreachImpactTab/> :
       tab === 'problems' ? <CallProblemsTab/> :
       tab === 'agents' ? <AgentActivityTab/> :
       tab === 'campaigns' ? <CampaignsTab/> :
-      !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : (
+      tab === 'settings' && !cfg ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div> : tab === 'settings' ? (
         <Card style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
           <div style={{ fontSize: 12.5, color: 'var(--muted)', background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 9, padding: '10px 12px', lineHeight: 1.7 }}>
             📡 المزوّد: <b style={{ color: 'var(--text)' }}>Hatif · هاتف (Voxa)</b> · اللغة: <b>ar</b> (ثابتة) · الأسرار
@@ -164,7 +246,7 @@ export default function WhatsAppSettings({ isActive = true }) {
           </div>
 
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Btn variant="accent" icon={<Save size={14}/>} onClick={save} disabled={saving}>{saving ? 'جارٍ الحفظ…' : 'حفظ'}</Btn>
+            <Btn variant="accent" icon={<Save size={14}/>} onClick={save} disabled={saving}>{saving ? 'جارٍ الحفظ…' : 'حفظ القوالب والمتابعة'}</Btn>
             <Btn variant="ghost" icon={<ShieldCheck size={14}/>} onClick={verify} disabled={verifying}>{verifying ? 'جارٍ التحقّق…' : 'تحقّق من الاتصال'}</Btn>
             {verified === true && <span style={{ color: 'var(--green2)', fontSize: 12, display: 'inline-flex', gap: 4, alignItems: 'center' }}><CheckCircle2 size={13}/> يعمل</span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12, display: 'inline-flex', gap: 4, alignItems: 'center' }}><X size={13}/> فشل — راجع الأسرار</span>}
@@ -177,7 +259,7 @@ export default function WhatsAppSettings({ isActive = true }) {
             • ملخّص الصباح له إعداده الخاص (زر 🌅 في فلوسي عند العملاء).
           </div>
         </Card>
-      )}
+      ) : null}
 
       {/* ── إسناد المحادثات تلقائياً في هاتف — القالب يحدّد المسؤول (الفريق في هاتف) ── */}
       {tab === 'settings' && can('whatsapp.configure') && (
@@ -263,7 +345,7 @@ export default function WhatsAppSettings({ isActive = true }) {
             </div>
           </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Btn variant="accent" icon={<Save size={14}/>} onClick={zSave} disabled={zBusy}>حفظ</Btn>
+            <Btn variant="accent" icon={<Save size={14}/>} onClick={zSave} disabled={zBusy}>حفظ تنبيه زاتكا</Btn>
             <Btn variant="ghost" onClick={zPreviewRun} disabled={zBusy}>معاينة الأرقام</Btn>
             <Btn variant="ghost" onClick={zSendTest} disabled={zBusy}>إرسال تجريبي الآن</Btn>
           </div>
@@ -275,11 +357,154 @@ export default function WhatsAppSettings({ isActive = true }) {
           )}
         </Card>
       )}
+        </div>
+      </div>
     </div>
   );
 }
 
-// تاب «الأثر بالريال» — محرّك النتائج: كم حصّلت كل حملة فعلاً (تواصل → سدّد).
+function agoAr(iso) {
+  if (!iso) return 'لا يوجد نشاط مسجّل';
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms)) return 'وقت غير معروف';
+  const minutes = Math.max(0, Math.round(ms / 60000));
+  if (minutes < 2) return 'الآن';
+  if (minutes < 60) return `قبل ${minutes} دقيقة`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `قبل ${hours} ساعة`;
+  const days = Math.round(hours / 24);
+  return `قبل ${days} يوم`;
+}
+
+function HatifOverviewTab({ isActive, onOpen, availableTabs = [] }) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    setRefreshing(true); setError('');
+    try {
+      const [delivery, campaigns, callRows, tags, zoho] = await Promise.all([
+        loadWhatsAppDeliveryHealth().catch(() => null),
+        loadWhatsAppCampaignReport().catch(() => []),
+        loadHatifCallStats(30).catch(() => []),
+        loadTagSyncStatus().catch(() => null),
+        loadZohoWebhookHealth().catch(() => null),
+      ]);
+      const latestCampaign = [...(campaigns || [])]
+        .filter(c => c.lastSent)
+        .sort((a, b) => new Date(b.lastSent) - new Date(a.lastSent))[0] || null;
+      const callTotal = (callRows || []).reduce((sum, r) => sum + (Number(r.calls) || 0), 0);
+      const answered = (callRows || []).reduce((sum, r) => sum + (Number(r.answered) || 0), 0);
+      setData({ delivery, latestCampaign, campaignCount: campaigns?.length || 0, callTotal, answered, tags, zoho });
+    } catch (e) {
+      setError(e.message || 'تعذّر تحميل نبض التكامل');
+    } finally { setRefreshing(false); }
+  }, []);
+
+  useEffect(() => { if (isActive) load(); }, [isActive, load]);
+
+  if (!data && refreshing) return <div className="workspace-loading-state"><Spinner/></div>;
+  if (!data && error) return (
+    <div className="data-load-error">
+      <b>تعذّر تحميل نبض مركز هاتف</b><span>{error}</span>
+      <Btn size="sm" variant="ghost" onClick={load}>إعادة المحاولة</Btn>
+    </div>
+  );
+  if (!data) return null;
+
+  const d = data.delivery || {};
+  const total = Number(d.total) || 0;
+  const pending = Number(d.pending) || 0;
+  const observed = Math.max(0, total - pending);
+  const coverage = total ? Math.round((observed / total) * 100) : null;
+  const callsAnswered = data.callTotal ? Math.round((data.answered / data.callTotal) * 100) : null;
+  const zohoAge = data.zoho?.lastSyncAt ? Date.now() - new Date(data.zoho.lastSyncAt).getTime() : Infinity;
+  const zohoFresh = zohoAge < 2 * 60 * 60 * 1000;
+  const needsAttention = (coverage != null && coverage < 60) || !zohoFresh;
+
+  const pulses = [
+    {
+      key: 'messages', icon: MessagesSquare, tone: coverage == null ? 'muted' : coverage >= 60 ? 'green' : 'gold',
+      label: 'تغطية حالات واتساب', value: coverage == null ? 'لا بيانات' : `${coverage}%`,
+      detail: total ? `${observed.toLocaleString('en-US')} من ${total.toLocaleString('en-US')} رسالة لها حالة مرصودة` : 'تظهر بعد أول حملة مسجلة',
+      action: 'افتح الحملات', tab: 'campaigns',
+    },
+    {
+      key: 'campaign', icon: Megaphone, tone: data.latestCampaign ? 'blue' : 'muted',
+      label: 'آخر حملة مسجلة', value: data.latestCampaign ? agoAr(data.latestCampaign.lastSent) : 'لا توجد حملة',
+      detail: data.latestCampaign ? `${data.latestCampaign.name} · ${data.latestCampaign.targets || 0} مستهدف` : `${data.campaignCount} حملة في السجل`,
+      action: 'راجع الأداء', tab: 'campaigns',
+    },
+    {
+      key: 'calls', icon: PhoneCall, tone: data.callTotal ? 'violet' : 'muted',
+      label: 'مكالمات آخر 30 يوماً', value: data.callTotal.toLocaleString('en-US'),
+      detail: callsAnswered == null ? 'لا مكالمات في الفترة' : `${callsAnswered}% منها مردودة`,
+      action: 'نشاط الفريق', tab: 'agents',
+    },
+    {
+      key: 'tags', icon: Tags, tone: data.tags?.applied == null ? 'muted' : data.tags.applied >= data.tags.tagged ? 'green' : 'gold',
+      label: 'تاقات لمحة في هاتف', value: data.tags?.applied == null ? 'غير متاح' : Number(data.tags.applied).toLocaleString('en-US'),
+      detail: data.tags?.tagged == null ? 'لا توجد نتيجة مزامنة' : `آخر تطبيق: ${Number(data.tags.applied).toLocaleString('en-US')} · المستهدف حالياً: ${Number(data.tags.tagged).toLocaleString('en-US')}`,
+      action: 'إدارة الأتمتة', tab: 'settings',
+    },
+  ];
+
+  return (
+    <div className="hatif-overview">
+      <section className={`hatif-overview__hero ${needsAttention ? 'is-attention' : 'is-healthy'}`}>
+        <div className="hatif-overview__hero-icon"><Activity size={25}/></div>
+        <div className="hatif-overview__hero-copy">
+          <span>نبض التكامل الآن</span>
+          <h2>{needsAttention ? 'القنوات تعمل، لكن اكتمال القياس يحتاج متابعة' : 'القنوات والقياس في حالة جيدة'}</h2>
+          <p>هذه الشاشة لا تستبدل صندوق المحادثات في هاتف؛ وظيفتها أن تخبرك هل الحملات والمكالمات والتاقات وبيانات التحصيل تصل إلى لمحة بوضوح.</p>
+        </div>
+        <Btn size="sm" variant="ghost" onClick={load} disabled={refreshing} title="تحديث نبض التكامل">
+          <RefreshCw size={14} className={refreshing ? 'spin' : ''}/> تحديث
+        </Btn>
+      </section>
+
+      <div className="hatif-pulse-grid">
+        {pulses.map(p => {
+          const Icon = p.icon;
+          return (
+            <div key={p.key} className={`hatif-pulse-card tone-${p.tone}`}>
+              <Card style={{ height: '100%' }}>
+                <div className="hatif-pulse-card__head"><Icon size={18}/><span>{p.label}</span></div>
+                <strong>{p.value}</strong>
+                <p>{p.detail}</p>
+                {availableTabs.includes(p.tab) && (
+                  <button type="button" onClick={() => onOpen(p.tab)}>{p.action} <span aria-hidden="true">←</span></button>
+                )}
+              </Card>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="hatif-overview__sources">
+        <div className="hatif-source-card"><Card style={{ height: '100%' }}>
+            <div className="hatif-source-card__icon zoho"><BadgeDollarSign size={20}/></div>
+            <div>
+              <span>مصدر التحصيل للحملات</span>
+              <strong>Zoho Books · {zohoFresh ? 'المزامنة حديثة' : 'تحتاج مراجعة آخر مزامنة'}</strong>
+              <small>{data.zoho?.lastSyncAt ? `آخر مزامنة ${agoAr(data.zoho.lastSyncAt)}` : 'لا يوجد وقت مزامنة متاح'}</small>
+            </div>
+        </Card></div>
+        <div className="hatif-source-card"><Card style={{ height: '100%' }}>
+            <div className="hatif-source-card__icon boundary"><ShieldCheck size={20}/></div>
+            <div>
+              <span>حدود المسؤولية</span>
+              <strong>المحادثات والردود تُدار داخل هاتف</strong>
+              <small>لمحة تقيس وتطلق الحملات وIVR وتحدّث التاقات فقط؛ رد العميل لا يفتح Lead أو مهمة مبيعات.</small>
+            </div>
+        </Card></div>
+      </div>
+    </div>
+  );
+}
+
+// تبويب «التحصيل المرتبط» — ارتباط زمني بين التواصل ودفعة زوهو اللاحقة، لا سببية.
 function OutreachImpactTab() {
   const [days, setDays] = useState(90);
   const [rows, setRows] = useState(null);
@@ -302,8 +527,8 @@ function OutreachImpactTab() {
     <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>💰 الأثر بالريال — هل تواصلنا يجلب فلوساً؟</div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>لكل حملة: كم عميلاً تواصلنا معه، وكم سدّد خلال 14 يوماً بعدها، والمبلغ المُحصَّل.</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>💰 التحصيل المرتبط بالحملات</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>دفعات زوهو التي حدثت خلال 14 يوماً بعد التواصل — مؤشر ارتباط زمني للمقارنة، وليس إثباتاً أن الحملة سببت السداد.</div>
         </div>
         <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value={30}>آخر 30 يوماً</option>
@@ -315,7 +540,7 @@ function OutreachImpactTab() {
       {/* بانر الإجمالي */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10 }}>
         <div style={{ padding: '12px 14px', borderRadius: 12, background: 'color-mix(in srgb, var(--green) 12%, transparent)', border: '1px solid color-mix(in srgb, var(--green) 30%, var(--border))' }}>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 حُصِّل بعد التواصل</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>تحصيل مرتبط زمنياً</div>
           <div style={{ fontSize: 22, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{fmt2(totals.collected)} <span style={{ fontSize: 12 }}>ر.س</span></div>
         </div>
         <div style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
@@ -424,7 +649,7 @@ function OutreachImpactTab() {
       )}
 
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-        «سدّد» = عميل تواصلنا معه ثم وصلت دفعة زوهو خلال 14 يوماً (ارتباط بالاسم، تقريبي — لا يثبت السببية القطعية). حملات الجهات الجديدة (خارج المنصّة) لا تُطابَق (ليسوا عملاء زوهو بعد).
+        «سدّد» = عميل تواصلنا معه ثم وصلت دفعة زوهو خلال 14 يوماً. المطابقة بالاسم وتقيس الارتباط الزمني فقط، ولا تنسب العائد المالي للحملة. حملات الجهات الجديدة لا تُطابَق لأنهم ليسوا عملاء زوهو بعد.
       </div>
     </Card>
   );
@@ -462,8 +687,8 @@ function CallProblemsTab() {
     <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>🧩 تحليل المكالمات — أكثر المشاكل</div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>تصنيف آلي من نصوص المكالمات المحلَّلة. انقر فئة لسماع نماذجها.</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>🧩 موضوعات المكالمات المتكررة</div>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>إشارات آلية من ملخصات المكالمات المتاحة. افتح الموضوع لسماع العينات التي بُني عليها التصنيف.</div>
         </div>
         <select value={days} onChange={e => setDays(Number(e.target.value))} style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value={30}>آخر 30 يوماً</option>
@@ -528,7 +753,7 @@ function CallProblemsTab() {
           );
         })}
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-        التصنيف آلي بالكلمات المفتاحية من ملخّص كل مكالمة (يستبعد قوائم IVR الترحيبية). الاتجاه = آخر {days} يوماً مقابل الفترة السابقة مثلها.
+        هذا تحليل إشارات بالكلمات المفتاحية، وليس تدقيق جودة شامل لكل مكالمات الفريق. يستبعد قوائم IVR الترحيبية، والاتجاه يقارن آخر {days} يوماً بالفترة السابقة مثلها.
       </div>
     </Card>
   );
@@ -546,10 +771,30 @@ function AgentActivityTab() {
   const [openCall, setOpenCall] = useState(null); // مكالمة مفتوحة (ملخّص)
   const [users, setUsers] = useState([]);
   const [target, setTarget] = useState(0);        // هدف مكالمات أسبوعي/موظف
+  const [syncHealth, setSyncHealth] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
 
-  useEffect(() => { loadHatifAgentActivity(days).then(setRows).catch(() => setRows([])); }, [days]);
-  useEffect(() => { loadHatifCallStats(days).then(setCalls).catch(() => setCalls([])); }, [days]);
-  useEffect(() => { setRecent(null); loadHatifCalls({ days, userId: agentFilter, limit: 60 }).then(setRecent).catch(() => setRecent([])); }, [days, agentFilter]);
+  const refreshActivity = useCallback(async ({ showSpinner = false } = {}) => {
+    if (showSpinner) setRecent(null);
+    setRefreshing(true);
+    const [activityResult, callsResult, recentResult, healthResult] = await Promise.allSettled([
+      loadHatifAgentActivity(days),
+      loadHatifCallStats(days),
+      loadHatifCalls({ days, userId: agentFilter, limit: 60 }),
+      loadHatifCallSyncHealth(),
+    ]);
+    setRows(activityResult.status === 'fulfilled' ? activityResult.value : []);
+    setCalls(callsResult.status === 'fulfilled' ? callsResult.value : []);
+    setRecent(recentResult.status === 'fulfilled' ? recentResult.value : []);
+    setSyncHealth(healthResult.status === 'fulfilled' ? healthResult.value : null);
+    setRefreshing(false);
+  }, [days, agentFilter]);
+
+  useEffect(() => {
+    refreshActivity({ showSpinner: true });
+    const timer = window.setInterval(() => refreshActivity(), 60_000);
+    return () => window.clearInterval(timer);
+  }, [refreshActivity]);
   useEffect(() => { loadHatifUsers().then(setUsers).catch(() => {}); }, []);
   useEffect(() => { loadCallTargets().then(t => setTarget(t.weekly || 0)).catch(() => {}); }, []);
   const winTarget = target > 0 ? Math.round(target * days / 7) : 0;  // الهدف مقيّساً على النافذة
@@ -564,6 +809,13 @@ function AgentActivityTab() {
   const fmtWhen = (iso) => { if (!iso) return '—'; try { return new Date(iso).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' }); } catch { return String(iso).slice(0, 16); } };
   const fmtDur = (s) => { const n = Number(s) || 0; if (!n) return '—'; const m = Math.floor(n / 60); const sec = n % 60; return m ? `${m}د ${sec}ث` : `${sec}ث`; };
   const sentLabel = (v) => { const n = Number(v); if (!n) return '—'; return n >= 4 ? `😊 ${n.toFixed(1)}` : n <= 2 ? `😞 ${n.toFixed(1)}` : `😐 ${n.toFixed(1)}`; };
+  const syncAgeMinutes = syncHealth?.synced_at
+    ? Math.max(0, Math.floor((Date.now() - new Date(syncHealth.synced_at).getTime()) / 60_000))
+    : null;
+  const syncFresh = syncAgeMinutes != null && syncAgeMinutes <= 15;
+  const syncLabel = syncAgeMinutes == null ? 'تعذّر التحقق من المزامنة'
+    : syncAgeMinutes < 1 ? 'تزامن هاتف الآن'
+    : `آخر مزامنة قبل ${syncAgeMinutes} د`;
   // بلا موظف = مكالمة آلية (IVR/نظام) — لا يمكن صادر بلا موظف إلا آلياً (قرار المستخدم).
   const agentName = (id) => !id ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>🤖 آلي (IVR)</span>
     : (nameById.get(String(id)) || <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }} title={String(id)}>{String(id).slice(0, 8)}…</span>);
@@ -572,12 +824,24 @@ function AgentActivityTab() {
     <Card style={{ padding: 18, display: 'grid', gap: 12 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
         <div>
-          <div style={{ fontSize: 14, fontWeight: 800 }}>👥 أداء الفريق — الإسناد والنشاط</div>
+          <div style={{ fontSize: 14, fontWeight: 800 }}>👥 نشاط فريق هاتف</div>
           <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 3 }}>
-            مَن يتولّى المحادثات في هاتف — من أحداث «تعيين الموظف» (webhook مساحة العمل).
+            حجم المكالمات والإسنادات المسجلة. لا تُقرأ هذه الأرقام كزمن استجابة أو SLA قبل وصول توقيتات موثوقة من هاتف.
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+          <span title={syncHealth?.synced_at ? fmtWhen(syncHealth.synced_at) : ''} style={{
+            display: 'inline-flex', alignItems: 'center', gap: 5, padding: '6px 9px', borderRadius: 999,
+            fontSize: 11.5, fontWeight: 700,
+            color: syncFresh ? 'var(--green)' : 'var(--red)',
+            background: syncFresh ? 'color-mix(in srgb, var(--green) 10%, transparent)' : 'color-mix(in srgb, var(--red) 10%, transparent)',
+            border: `1px solid ${syncFresh ? 'color-mix(in srgb, var(--green) 28%, transparent)' : 'color-mix(in srgb, var(--red) 28%, transparent)'}`,
+          }}>
+            <span aria-hidden="true">{syncFresh ? '●' : '!'}</span> {syncLabel}
+          </span>
+          <Btn size="sm" variant="ghost" title="تحديث بيانات المكالمات" disabled={refreshing} onClick={() => refreshActivity()}>
+            <RefreshCw size={14}/> {refreshing ? 'جارٍ التحديث' : 'تحديث'}
+          </Btn>
           {/* هدف مكالمات أسبوعي لكل موظف — المدير يحرّره، الجدول يلوّن مقابله */}
           <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, fontSize: 11.5, color: 'var(--muted)' }}>
             🎯 هدف أسبوعي/موظف:
@@ -600,7 +864,7 @@ function AgentActivityTab() {
       <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)', marginTop: 4 }}>📞 المكالمات (وارد + صادر)</div>
       {calls == null ? <div style={{ padding: 20, textAlign: 'center' }}><Spinner/></div>
         : !calls.length ? (
-          <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 2px' }}>لا مكالمات في هذه الفترة (السحب كل 30 دقيقة).</div>
+          <div style={{ fontSize: 12, color: 'var(--muted)', padding: '8px 2px' }}>لا مكالمات في هذه الفترة. راقب حالة المزامنة أعلاه.</div>
         ) : (
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ textAlign: 'right', color: 'var(--muted)', fontSize: 11.5 }}>
@@ -721,7 +985,7 @@ function AgentActivityTab() {
         )}
 
       <div style={{ fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7, borderTop: '1px solid var(--border)', paddingTop: 8 }}>
-        <b>المكالمات</b> تُسحب من سجلّ هاتف (GET /v1/call/list) كل 30 دقيقة — مع التسجيل والملخّص والمشاعر لكل مكالمة.
+        <b>المكالمات</b> تُسحب من سجلّ هاتف (GET /v1/call/list) كل 5 دقائق، وتُحدّث هذه الشاشة تلقائياً كل دقيقة — مع التسجيل والملخّص والمشاعر لكل مكالمة.
         <b> إسناد المحادثات</b> من أحداث «تعيين الموظف» (webhook مساحة العمل). أسماء الموظفين من موظفي هاتف.
       </div>
     </Card>
@@ -735,10 +999,13 @@ const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتساب (دائم)'
   : /healthy ecosystem/i.test(r) ? 'خنق جودة من ميتا (تسويق لغير متفاعلين)'
   : /experiment/i.test(r) ? 'تجربة ميتا مؤقتة'
+  : /document format|not supported by whatsapp|supported formats/i.test(r) ? 'صيغة المرفق غير مدعومة في واتساب'
   : /invalid|not.*valid/i.test(r) ? 'رقم غير صالح' : r;
 
 function CampaignsTab() {
   const { user, can } = useAuth();
+  const [view, setView] = useState('summary');
+  const [showAllCampaigns, setShowAllCampaigns] = useState(false);
   const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
   const [report, setReport] = useState([]);        // صف لكل حملة
@@ -884,9 +1151,25 @@ function CampaignsTab() {
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
   const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
+  const campaignViews = [
+    ['summary', 'أداء الحملات', BarChart3],
+    ['quality', 'جودة القوالب', ShieldCheck],
+    ['messages', 'مستكشف الرسائل', MessagesSquare],
+    ...(can('whatsapp.configure') ? [['controls', 'ضوابط الإرسال', Tags]] : []),
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      <div className="hatif-subtabs" role="tablist" aria-label="تفاصيل الحملات والرسائل">
+        {campaignViews.map(([id, label, Icon]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id}
+            className={view === id ? 'is-active' : ''} onClick={() => setView(id)}>
+            <Icon size={15}/><span>{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {view === 'summary' && <>
       {/* ── صحة التسليم عبر كل الحملات (تسليم/قراءة/رفض + أسباب) ── */}
       {health && health.total > 0 && (
         <Card style={{ padding: '14px 16px' }}>
@@ -934,7 +1217,7 @@ function CampaignsTab() {
             {['الحملة', 'القالب', 'آخر إرسال', 'المستهدفون', 'وصلت', 'قُرئت', 'ردّوا', 'فشل'].map(h => <th key={h} style={rth}>{h}</th>)}
           </tr></thead>
           <tbody>
-            {report.map(c => (
+            {(showAllCampaigns ? report : report.slice(0, 12)).map(c => (
               <tr key={c.name} onClick={() => setLiveCamp(c.name)}
                 style={{ borderTop: '1px solid var(--border)', cursor: 'pointer',
                   background: camp === c.name ? 'color-mix(in srgb, var(--accent) 8%, transparent)' : 'transparent' }}>
@@ -960,9 +1243,17 @@ function CampaignsTab() {
           </tbody>
         </table>
       </div>
+      {report.length > 12 && (
+        <div style={{ display: 'flex', justifyContent: 'center' }}>
+          <Btn size="sm" variant="ghost" onClick={() => setShowAllCampaigns(v => !v)}>
+            {showAllCampaigns ? 'عرض أحدث 12 حملة فقط' : `عرض كل الحملات (${report.length})`}
+          </Btn>
+        </div>
+      )}
+      </>}
 
       {/* ── أرقام بلا واتساب (للاتصال) — تُستبعَد آلياً من كل حملة ── */}
-      {noWa.length > 0 && (
+      {view === 'controls' && noWa.length > 0 && (
         <Card style={{ padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
           border: '1.5px solid color-mix(in srgb, var(--red) 30%, var(--border))', background: 'color-mix(in srgb, var(--red) 5%, transparent)' }}>
           <span style={{ fontSize: 20 }}>🚫</span>
@@ -974,13 +1265,13 @@ function CampaignsTab() {
           {can('campaigns.ivr') && <Btn size="sm" variant="accent" onClick={() => setIvrOpen(true)}>📞 مكالمة آلية</Btn>}
         </Card>
       )}
-      {ivrOpen && (
+      {view === 'controls' && ivrOpen && (
         <IvrCampaignModal open={ivrOpen} onClose={() => setIvrOpen(false)} bucketLabel="اتصال بلا واتساب"
           recipients={noWa.map(r => ({ phone: r.phone, name: r.name, fields: { name: r.name } }))} />
       )}
 
       {/* ── قائمة الحظر الدائمة — أرقام لا تُراسَل أبداً (رقم شخصي/منصّة/متجر لا يُحذف) ── */}
-      <Card style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+      {view === 'controls' && <Card style={{ padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 18 }}>⛔</span>
           <div style={{ flex: 1, minWidth: 180 }}>
@@ -1007,7 +1298,7 @@ function CampaignsTab() {
             ))}
           </div>
         )}
-      </Card>
+      </Card>}
 
       {/* ── جودة القوالب — الإنذار التجاري الحقيقي ──
           «فشل» رقم واحد مضلِّل: الفشل التقني عندنا صفر، والرفض كله من ميتا،
@@ -1015,7 +1306,7 @@ function CampaignsTab() {
             · خنق ميتا  = حكم على استهدافك ومحتواك ← يخفّض تصنيف رقمك
             · غير قابل للتسليم = الرقم بلا واتساب ← جودة قائمة الأرقام
           فالجدول يفصلهما بدل أن يجمعهما. */}
-      {qual.length > 0 && (
+      {view === 'quality' && qual.length > 0 && (
         <Card style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 18 }}>🎯</span>
@@ -1089,8 +1380,10 @@ function CampaignsTab() {
           )}
         </Card>
       )}
+      {view === 'quality' && qual.length === 0 && <Empty icon="🎯" title="لا توجد بيانات جودة في آخر 30 يوماً" sub="تظهر جودة القوالب بعد تسجيل حالات إرسال كافية."/>}
 
       {/* ── سجل الرسائل (المفلتر على الحملة المفتوحة إن وُجدت) ── */}
+      {view === 'messages' && <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 6 }}>
         <span style={{ fontSize: 13, fontWeight: 700 }}>✉️ سجل الرسائل{camp ? ` — ${camp}` : ''}</span>
         {camp && <Btn size="sm" variant="ghost" onClick={() => setCamp('')}>عرض الكل ✕</Btn>}
@@ -1128,6 +1421,7 @@ function CampaignsTab() {
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>عرض {filtered.length} من {stats.total} رسالة</div>
       <CampaignLogTable rows={filtered}/>
+      </>}
 
       {failWa && (
         <WhatsAppSendModal open recipients={failWa.recs}
@@ -1139,7 +1433,7 @@ function CampaignsTab() {
       {liveCamp && (
         <CampaignLiveModal name={liveCamp}
           onClose={() => setLiveCamp('')}
-          onShowMessages={() => { setCamp(liveCamp); setLiveCamp(''); }}/>
+          onShowMessages={() => { setCamp(liveCamp); setView('messages'); setLiveCamp(''); }}/>
       )}
     </div>
   );
@@ -1294,7 +1588,7 @@ function TagSystemCard() {
       <div style={{ fontSize: 13.5, fontWeight: 700 }}>🏷️ نظام التاقات المؤتمت</div>
       <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.8 }}>
         يوسم محادثة كل عميل في هاتف <b>تلقائياً بحالته</b> من بياناتنا (11 تاق تحليلي). رقم بعدة متاجر = يؤخذ <b>الأعلى شحناً</b>.
-        <b>نظام مؤتمت بالكامل — صفر تاق يدوي:</b> يُنشئ الناقص بإيموجي مثبّتة، و<b>يحذف أي تاق يدوي</b> (اجتماع/شكوى/…)، ويطبّق المتغيّر فقط. مزامنة كل 20 دقيقة.
+        يدير النظام تاقات لمحة الأحد عشر فقط: ينشئ الناقص ويحدّث الحالة المتغيّرة، مع <b>الحفاظ على كل تاق أضافه الموظف</b> مثل اجتماع أو شكوى أو إحالة. المزامنة كل 20 دقيقة.
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 7 }}>
         {TAGS.map(([n, c]) => (
@@ -1323,7 +1617,7 @@ function TagSystemCard() {
       </div>
       {allTags && allTags !== 'loading' && (
         <div style={{ borderTop: '1px solid var(--border)', paddingTop: 10 }}>
-          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>تاقات هاتف ({allTags.length}) — <span style={{ color: 'var(--green2)' }}>المخضّرة يديرها النظام</span>، وغيرها يدوية <b>ستُحذف</b> في المزامنة القادمة:</div>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>تاقات هاتف ({allTags.length}) — <span style={{ color: 'var(--green2)' }}>المخضّرة تديرها لمحة</span>، وبقية تاقات الموظفين <b>تبقى محفوظة</b> عند المزامنة:</div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {allTags.map(t => {
               const ours = OURS.has(String(t.name).trim());
