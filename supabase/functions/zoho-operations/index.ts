@@ -146,8 +146,16 @@ Deno.serve(async req => {
       const ordered = [...(txs || [])].sort((a: any, b: any) => localTxnDate(a).localeCompare(localTxnDate(b))
         || String(a.id).localeCompare(String(b.id)));
       const access = await accessToken(db);
-      const importedStatementAnchor = await lastImportedBankAnchor(access, accountId);
-      const anchor = importedStatementAnchor || await latestZohoBankTransactionAnchor(access, accountId);
+      const { data: manualAnchor } = await db.from('zoho_bank_import_anchors')
+        .select('reference_number,anchor_date,local_transaction_id').eq('zoho_account_id', accountId).maybeSingle();
+      const importedStatementAnchor = manualAnchor ? null : await lastImportedBankAnchor(access, accountId);
+      const anchor = manualAnchor ? {
+        date: String(manualAnchor.anchor_date || '').slice(0, 10),
+        reference: String(manualAnchor.reference_number || ''),
+        transactionId: '', statementId: '', source: 'manual_reference',
+        knownReferences: new Set([normalizedRef(manualAnchor.reference_number)].filter(Boolean)),
+        knownTransactionIds: new Set<string>(),
+      } : importedStatementAnchor || await latestZohoBankTransactionAnchor(access, accountId);
       // لا نعرض كامل التاريخ عند غياب مرساة زوهو؛ البداية الأولى تُنشأ في زوهو
       // أو بعد ظهور أول عملية بنكية هناك، ثم تعمل المعاينة من المرجع التالي.
       let afterAnchor = anchor ? ordered : [];

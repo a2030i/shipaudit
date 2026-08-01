@@ -894,13 +894,17 @@ function BankImportModal({ state, onClose, onImport }) {
           <div style={{ padding: '11px 12px', borderRadius: 10, marginBottom: 12,
             border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
             background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))' }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10.5, marginBottom: 4 }}>نقطة البداية من آخر عملية موجودة في زوهو</div>
+            <div style={{ color: 'var(--muted)', fontSize: 10.5, marginBottom: 4 }}>
+              {p.zoho_anchor.source === 'manual_reference' ? 'نقطة البداية المعتمدة يدويًا' : 'نقطة البداية من آخر عملية موجودة في زوهو'}
+            </div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
               <b dir="ltr" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{p.zoho_anchor.reference || p.zoho_anchor.transaction_id || 'بلا رقم مرجعي'}</b>
               <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.zoho_anchor.date || ''}</span>
             </div>
             <div style={{ color: 'var(--muted2)', fontSize: 10.5, marginTop: 4 }}>
-              ستظهر العمليات الأحدث من هذه النقطة فقط{p.zoho_anchor.matched_locally ? '' : '، مع استبعاد المراجع الموجودة في زوهو'}.
+              {p.zoho_anchor.source === 'manual_reference'
+                ? 'سيبدأ الاستيراد بعد هذا الرقم المرجعي تحديدًا، ولن تستبدله عملية أحدث في زوهو.'
+                : `ستظهر العمليات الأحدث من هذه النقطة فقط${p.zoho_anchor.matched_locally ? '' : '، مع استبعاد المراجع الموجودة في زوهو'}.`}
             </div>
           </div>
         ) : (
