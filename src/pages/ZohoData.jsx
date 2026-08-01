@@ -824,7 +824,7 @@ export default function ZohoData({ isActive = true }) {
                             })}>{treasuryAccount ? (existingLink ? 'تعديل تصنيف الخزينة' : 'تصنيف الخزينة') : existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
                             {type === 'bank_accounts' && !treasuryAccount && existingLink?.link_kind === 'bank' ? (
                               <Btn size="sm" variant="accent" icon={<Download size={13}/>} onClick={() => openBankImport(r)}>
-                                استيراد عمليات البنك إلى زوهو
+                                فحص العمليات الجديدة
                               </Btn>
                             ) : null}
                           </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>لا يحتاج ربطًا بنكيًا</span>}
@@ -890,34 +890,16 @@ function BankImportModal({ state, onClose, onImport }) {
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
           سيُنشئ هذا كشفًا بنكيًا في Zoho للحساب المربوط فقط. لن يصنّف المصروفات أو يسجل دفعات العملاء تلقائيًا.
         </div>
-        {p?.zoho_anchor ? (
-          <div style={{ padding: '11px 12px', borderRadius: 10, marginBottom: 12,
-            border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
-            background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))' }}>
-            <div style={{ color: 'var(--muted)', fontSize: 10.5, marginBottom: 4 }}>
-              {p.zoho_anchor.source === 'manual_reference' ? 'نقطة البداية المعتمدة يدويًا' : 'نقطة البداية من آخر عملية موجودة في زوهو'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
-              <b dir="ltr" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{p.zoho_anchor.reference || p.zoho_anchor.transaction_id || 'بلا رقم مرجعي'}</b>
-              <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.zoho_anchor.date || ''}</span>
-            </div>
-            <div style={{ color: 'var(--muted2)', fontSize: 10.5, marginTop: 4 }}>
-              {p.zoho_anchor.source === 'manual_reference'
-                ? 'سيبدأ الاستيراد بعد هذا الرقم المرجعي تحديدًا، ولن تستبدله عملية أحدث في زوهو.'
-                : `ستظهر العمليات الأحدث من هذه النقطة فقط${p.zoho_anchor.matched_locally ? '' : '، مع استبعاد المراجع الموجودة في زوهو'}.`}
-            </div>
-          </div>
-        ) : (
+        {!p?.zoho_anchor ? (
           <div style={{ padding: '9px 11px', borderRadius: 9, marginBottom: 12, color: 'var(--gold)',
             background: 'color-mix(in srgb, var(--gold) 8%, transparent)', fontSize: 11.5 }}>
             لم نجد عملية بنكية سابقة في زوهو لتحديد نقطة البداية. حفاظًا على سلامة البيانات لن يعرض النظام كامل السجل؛ أنشئ أو استورد أول كشف في زوهو ثم أعد المعاينة.
           </div>
-        )}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
+        ) : null}
+        {p?.count ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
           <MiniValue label="عمليات جديدة" value={p?.count || 0}/><MiniValue label="إيداعات" value={`${fmt(p?.deposits || 0)} ر.س`}/><MiniValue label="سحوبات" value={`${fmt(p?.withdrawals || 0)} ر.س`}/>
-        </div>
-        {p?.duplicates ? <div style={{ color: 'var(--gold)', fontSize: 11, marginBottom: 8 }}>استُبعدت {p.duplicates} عملية أقدم من مرجع زوهو أو سبق استيرادها أو غير صالحة.</div> : null}
-        <div className="m-flow" style={{ maxHeight: 330, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+        </div> : null}
+        {p?.count ? <div className="m-flow" style={{ maxHeight: 330, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
           <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
             <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th></tr></thead>
             <tbody>{(p?.transactions || []).map(t => {
@@ -933,11 +915,11 @@ function BankImportModal({ state, onClose, onImport }) {
               </tr>;
             })}</tbody>
           </table>
-        </div>
-        {!p?.count ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 700, fontSize: 12, padding: 14 }}>لا توجد عمليات جديدة بعد آخر مرجع في زوهو.</div> : null}
+        </div> : null}
+        {!p?.count ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 800, fontSize: 14, padding: '26px 14px' }}>كل العمليات مرحّلة إلى زوهو ✓</div> : null}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn variant="accent" disabled={state.busy || !p?.count} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد {p?.count || 0} عملية جديدة إلى زوهو</Btn>
+          {p?.count ? <Btn variant="accent" disabled={state.busy} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد {p.count} عملية جديدة إلى زوهو</Btn> : null}
         </div>
       </>}
     </Modal>
