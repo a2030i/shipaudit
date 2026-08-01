@@ -905,7 +905,17 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
   }, [target]);
   if (!target) return null;
   const isBank = target.sourceType === 'bank_account';
-  const internalBanks = Array.isArray(dashboard?.internal_banks) ? dashboard.internal_banks.filter(Boolean) : [];
+  const currentBankName = String(target.existing?.internal_bank_name || '').trim();
+  const allInternalBanks = [...new Set([
+    ...(Array.isArray(dashboard?.internal_banks) ? dashboard.internal_banks : []),
+    currentBankName,
+  ].map(name => String(name || '').trim()).filter(Boolean))];
+  const usedByOtherAccount = new Set((dashboard?.links || [])
+    .filter(link => link.link_kind === 'bank'
+      && !(link.source_type === target.sourceType && String(link.zoho_account_id) === String(target.row.zoho_id)))
+    .map(link => String(link.internal_bank_name || '').trim().toLocaleLowerCase('ar'))
+    .filter(Boolean));
+  const internalBanks = allInternalBanks.filter(name => !usedByOtherAccount.has(name.toLocaleLowerCase('ar')));
   const save = async () => {
     if (kind === 'bank' && !bankName.trim()) { toast('اختر اسم البنك الداخلي', 'error'); return; }
     if (kind === 'cod_treasury' && !carrierId) { toast('اختر شركة الشحن المرتبطة بالخزينة', 'error'); return; }
@@ -953,7 +963,7 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
               {internalBanks.map(b => <option key={b} value={b}>{b}</option>)}
             </select>
             <span style={{ color: 'var(--muted)', fontSize: 10.5, fontWeight: 500 }}>
-              اختر البنك الداخلي الذي يقابل حساب زوهو «{target.row.account_name}».
+              اختر البنك الداخلي الذي يقابل حساب زوهو «{target.row.account_name}». البنوك المرتبطة بحساب آخر لا تظهر هنا.
             </span>
             {!internalBanks.length ? (
               <span style={{ color: 'var(--red)', fontSize: 10.5 }}>لا توجد حسابات بنكية داخلية مسجلة بعد.</span>
