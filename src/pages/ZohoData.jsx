@@ -619,7 +619,20 @@ export default function ZohoData({ isActive = true }) {
                   {referenceType && can('zoho.configure') ? <th style={{ padding: '10px 12px' }}>الربط</th> : null}</tr>
                 </thead>
                 <tbody>
-                  {displayed.map(r => (
+                  {displayed.map(r => {
+                    const sourceType = type === 'bank_accounts' ? 'bank_account' : 'chart_account';
+                    const existingLink = referenceType
+                      ? (financial?.links || []).find(l => l.source_type === sourceType && String(l.zoho_account_id) === String(r.zoho_id)) || null
+                      : null;
+                    const linkedCarrier = existingLink?.carrier_id
+                      ? (financial?.carriers || []).find(c => String(c.id) === String(existingLink.carrier_id))?.name
+                      : null;
+                    const linkDescription = existingLink?.internal_bank_name
+                      ? `مربوط مع ${existingLink.internal_bank_name}`
+                      : linkedCarrier ? `مربوط مع ${linkedCarrier}`
+                      : existingLink?.link_kind === 'cash' ? 'مصنّف صندوق/نقد'
+                      : existingLink ? 'التصنيف محفوظ' : null;
+                    return (
                     <tr key={r.zoho_id} style={{ borderTop: '1px solid var(--border)' }}>
                       {type === 'invoices' ? (
                         <td data-label="تحديد" style={{ padding: '9px 12px' }}>
@@ -658,15 +671,16 @@ export default function ZohoData({ isActive = true }) {
                       ) : null}
                       {referenceType && can('zoho.configure') ? (
                         <td data-label="الربط" style={{ padding: '9px 12px' }}>
+                          {linkDescription ? <div className="zoho-link-status"><Link2 size={12}/>{linkDescription}</div> : null}
                           <Btn size="sm" variant="ghost" icon={<Link2 size={13}/>} onClick={() => setMapTarget({
                             row: r,
-                            sourceType: type === 'bank_accounts' ? 'bank_account' : 'chart_account',
-                            existing: (financial?.links || []).find(l => l.source_type === (type === 'bank_accounts' ? 'bank_account' : 'chart_account') && l.zoho_account_id === r.zoho_id) || null,
-                          })}>ربط الحساب ببنك داخلي</Btn>
+                            sourceType,
+                            existing: existingLink,
+                          })}>{existingLink ? 'تعديل الربط' : 'ربط الحساب ببنك داخلي'}</Btn>
                         </td>
                       ) : null}
                     </tr>
-                  ))}
+                  );})}
                 </tbody>
               </table>
             </div>

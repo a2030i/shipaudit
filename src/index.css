@@ -494,6 +494,11 @@ button:active { transform: scale(.97); }
 }
 .zoho-workspace-group > span { color: var(--muted); font-size: 10.5px; font-weight: 800; }
 .zoho-workspace-group > div { display: flex; gap: 5px; flex-wrap: wrap; }
+.zoho-link-status {
+  display: inline-flex; align-items: center; gap: 5px; margin-bottom: 6px;
+  padding: 4px 7px; border-radius: 999px; color: var(--green); font-size: 10.5px;
+  font-weight: 800; background: color-mix(in srgb, var(--green) 10%, transparent);
+}
 
 .center-workspace { width: 100%; min-height: 100%; }
 .center-workspace__panel { min-width: 0; }
