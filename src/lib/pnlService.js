@@ -446,6 +446,7 @@ export const ZOHO_STATUS_AR = {
   viewed: 'تمت المشاهدة', open: 'مفتوحة', pending: 'معلّقة', pending_approval: 'بانتظار الاعتماد',
   approved: 'معتمدة', declined: 'مرفوضة', stopped: 'موقوفة', expired: 'منتهية',
   partiallypaid: 'مدفوعة جزئياً', partially_refunded: 'مُستردّة جزئياً',
+  active: 'نشط', inactive: 'غير نشط', closed: 'مغلق', categorized: 'مصنّفة', uncategorized: 'غير مصنّفة',
 };
 export const zohoStatusAr = (s) => {
   if (!s) return '—';

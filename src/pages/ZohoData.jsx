@@ -12,7 +12,7 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal } from '../componen
 import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth,
-  loadZohoFinancialDashboard, syncZohoFinancial, setZohoFinancialAccountLink,
+  loadZohoFinancialDashboard, setZohoFinancialAccountLink,
   getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument } from '../lib/pnlService.js';
 import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
@@ -36,6 +36,41 @@ const monthOptions = () => {
   }
   return out;
 };
+
+const ACCOUNT_TYPE_AR = {
+  bank: 'حساب بنكي', cash: 'نقد وصندوق', equity: 'حقوق ملكية', income: 'إيرادات', expense: 'مصروفات',
+  other_income: 'إيرادات أخرى', other_expense: 'مصروفات أخرى', cost_of_goods_sold: 'تكلفة المبيعات',
+  accounts_receivable: 'ذمم العملاء', accounts_payable: 'ذمم الموردين', fixed_asset: 'أصول ثابتة',
+  other_asset: 'أصول أخرى', other_current_asset: 'أصول متداولة أخرى',
+  other_current_liability: 'التزامات متداولة أخرى', other_liability: 'التزامات أخرى',
+  long_term_liability: 'التزامات طويلة الأجل', credit_card: 'بطاقة ائتمانية', stock: 'مخزون',
+  payment_clearing: 'حساب تسوية مدفوعات',
+};
+const ACCOUNT_NAME_AR = {
+  'dimension adjustments': 'تسويات الأبعاد', drawings: 'مسحوبات المالك',
+  'input excise tax': 'ضريبة السلع الانتقائية للمدخلات', 'input vat': 'ضريبة القيمة المضافة للمدخلات',
+  'output excise tax': 'ضريبة السلع الانتقائية للمخرجات', 'output vat': 'ضريبة القيمة المضافة للمخرجات',
+  'accounts receivable': 'ذمم العملاء', 'accounts payable': 'ذمم الموردين',
+  'undeposited funds': 'أموال غير مودعة', 'petty cash': 'العهدة النقدية',
+  sales: 'المبيعات', purchases: 'المشتريات', 'retained earnings': 'الأرباح المبقاة',
+  'opening balance adjustments': 'تسويات الرصيد الافتتاحي',
+};
+const accountTypeAr = value => {
+  if (!value) return '—';
+  const key = String(value).trim().toLowerCase().replace(/[\s-]+/g, '_');
+  return ACCOUNT_TYPE_AR[key] || value;
+};
+const accountNameAr = value => ACCOUNT_NAME_AR[String(value || '').trim().toLowerCase()] || null;
+const isArabic = value => /[\u0600-\u06ff]/.test(String(value || ''));
+
+const WORKSPACE_SECTIONS = [
+  { id: 'overview', label: 'نظرة عامة', types: [] },
+  { id: 'customers', label: 'العملاء والفواتير', types: ['invoices', 'payments'] },
+  { id: 'vendors', label: 'الموردون والمصروفات', types: ['bills', 'vendor_payments', 'expenses', 'vendor_credits'] },
+  { id: 'banks', label: 'البنوك والمطابقة', types: ['bank_accounts'] },
+  { id: 'accounts', label: 'القيود والحسابات', types: ['journals', 'chart_accounts'] },
+];
+const sectionForType = type => WORKSPACE_SECTIONS.find(section => section.types.includes(type))?.id || 'overview';
 
 // أعمدة العرض لكل نوع (label + مفتاح + نوع القيمة)
 const COLS = {
@@ -89,23 +124,16 @@ function agoAr(iso) {
   return `منذ ${Math.floor(sec / 86400)} يوم`;
 }
 const KIND_AR = { invoice: 'فاتورة', payment: 'دفعة', creditnote: 'إشعار خصم/إرجاع' };
-const ZOHO_WORKSPACES = [
-  { id: 'customers', label: 'العملاء', types: ['invoices', 'payments'] },
-  { id: 'vendors', label: 'الموردون والمصروفات', types: ['bills', 'vendor_payments', 'expenses', 'vendor_credits'] },
-  { id: 'accounts', label: 'القيود والحسابات', types: ['journals', 'chart_accounts'] },
-  { id: 'banks', label: 'البنوك والخزائن', types: ['bank_accounts'] },
-];
-
 export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const [type, setType] = useState('invoices');
+  const [section, setSection] = useState('overview');
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
   const [health, setHealth] = useState(null);       // صحة مزامنة زوهو (webhook + دوري)
   const [financial, setFinancial] = useState(null); // البنوك والخزائن والموردون + قدرات API
-  const [financialBusy, setFinancialBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState(() => new Set());
   const [bulkPdf, setBulkPdf] = useState({ busy: false, done: 0, total: 0 });
@@ -183,7 +211,10 @@ export default function ZohoData({ isActive = true }) {
     const params = new URLSearchParams(location.search);
     const requestedType = params.get('type');
     const incomingQ = params.get('q');
-    if (requestedType && ZOHO_MIRRORS[requestedType]) setType(requestedType);
+    if (requestedType && ZOHO_MIRRORS[requestedType]) {
+      setType(requestedType);
+      setSection(sectionForType(requestedType));
+    }
     if (incomingQ) {
       setQ(incomingQ);
       setPeriod('');
@@ -250,17 +281,6 @@ export default function ZohoData({ isActive = true }) {
     setBusy(false);
   };
 
-  const doFinancialSync = async () => {
-    setFinancialBusy(true);
-    try {
-      const r = await syncZohoFinancial({ force: true });
-      const authNeeded = Object.values(r.results || {}).filter(v => String(v).includes('إعادة تفويض')).length;
-      toast(authNeeded ? 'تم تحديث المتاح، وتوجد صلاحيات تحتاج إعادة تفويض زوهو' : 'تحدّثت البنوك والخزائن من زوهو ✓', authNeeded ? 'info' : 'success');
-      await Promise.all([loadFinancial(), load(type, period, periodTo)]);
-    } catch (e) { toast(`فشل تحديث الحسابات المالية: ${e.message}`, 'error'); }
-    setFinancialBusy(false);
-  };
-
   const reauthorize = async () => {
     try {
       const r = await getZohoAuthUrl();
@@ -287,6 +307,13 @@ export default function ZohoData({ isActive = true }) {
   const cols = COLS[type];
   const referenceType = type === 'bank_accounts' || type === 'chart_accounts';
   const downloadableType = type === 'invoices' || type === 'bills';
+  const openType = (nextType) => { setType(nextType); setSection(sectionForType(nextType)); };
+  const selectSection = (nextSection) => {
+    setSection(nextSection);
+    const firstType = WORKSPACE_SECTIONS.find(item => item.id === nextSection)?.types?.[0];
+    if (firstType) setType(firstType);
+  };
+  const needsZohoAuth = Object.values(financial?.capabilities || {}).some(capability => capability?.status === 'needs_reauthorization');
 
   // الحالات المتاحة فعلياً في البيانات المحمّلة (ديناميكي لكل نوع)
   const statuses = useMemo(() => {
@@ -296,9 +323,14 @@ export default function ZohoData({ isActive = true }) {
 
   const displayRows = useMemo(() => {
     if (!rows) return [];
-    if (type !== 'bank_accounts') return rows;
+    const localized = rows.map(row => ({
+      ...row,
+      account_name_ar: accountNameAr(row.account_name),
+      account_type_ar: accountTypeAr(row.account_type || row.account_type_formatted),
+    }));
+    if (type !== 'bank_accounts') return localized;
     const financialBanks = new Map((financial?.banks || []).map(bank => [String(bank.zoho_id), bank]));
-    return rows.map(row => ({ ...row, ...(financialBanks.get(String(row.zoho_id)) || {}) }));
+    return localized.map(row => ({ ...row, ...(financialBanks.get(String(row.zoho_id)) || {}) }));
   }, [rows, type, financial]);
 
   const filtered = useMemo(() => {
@@ -417,7 +449,10 @@ export default function ZohoData({ isActive = true }) {
       [`زوهو API — ${cfg.label.replace(/^[^\s]+\s/, '')}${period ? ` — ${monthLabel(period)}${periodTo && periodTo !== period ? ` حتى ${monthLabel(periodTo)}` : ''}` : ''}`],
       [],
       cols.map(c => c[0]),
-      ...filtered.map(r => cols.map(c => c[1] === 'status' ? zohoStatusAr(r[c[1]]) : (r[c[1]] ?? ''))),
+      ...filtered.map(r => cols.map(c => c[1] === 'status' ? zohoStatusAr(r[c[1]])
+        : c[1] === 'account_name' ? (r.account_name_ar || r.account_name || '')
+        : c[1] === 'account_type_formatted' ? accountTypeAr(r.account_type || r.account_type_formatted)
+        : (r[c[1]] ?? ''))),
       [],
       ['الإجمالي', ...Array(cols.length - 2).fill(''), total],
     ];
@@ -438,7 +473,7 @@ export default function ZohoData({ isActive = true }) {
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
         actions={
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {can('zoho.configure') ? (
+            {needsZohoAuth && can('zoho.configure') ? (
               <Btn size="sm" variant="primary" icon={<ShieldCheck size={14}/>} onClick={reauthorize}>
                 إعادة تفويض صلاحيات زوهو
               </Btn>
@@ -449,36 +484,13 @@ export default function ZohoData({ isActive = true }) {
           </div>
         }/>
 
-      <FinancialControlPanel
-        data={financial}
-        busy={financialBusy}
-        canConfigure={can('zoho.configure')}
-        onSync={doFinancialSync}
-        onReauthorize={reauthorize}
-        onOpenAccount={() => setType('bank_accounts')}
-      />
-
-      {/* أقسام مساحة العمل — أسماء المجموعة تسبق أنواع البيانات، فلا تبدو
-          التسعة أزرار كصفحات متساوية أو إجراءات غامضة. */}
-      <div className="zoho-workspace-nav" aria-label="أقسام زوهو والحسابات">
-        {ZOHO_WORKSPACES.map(group => (
-          <div className="zoho-workspace-group" key={group.id}>
-            <span>{group.label}</span>
-            <div>
-              {group.types.map(id => (
-                <Btn key={id} size="sm" variant={type === id ? 'primary' : 'outline'} onClick={() => setType(id)}>
-                  {ZOHO_MIRRORS[id].label.replace(/^[^\s]+\s/, '')}
-                </Btn>
-              ))}
-            </div>
-          </div>
+      <div className="zoho-section-tabs" role="tablist" aria-label="أقسام زوهو والحسابات">
+        {WORKSPACE_SECTIONS.map(item => (
+          <button key={item.id} type="button" role="tab" aria-selected={section === item.id}
+            className={section === item.id ? 'active' : ''} onClick={() => selectSection(item.id)}>
+            {item.label}
+          </button>
         ))}
-        {can('reconciliation.view') ? (
-          <div className="zoho-workspace-group">
-            <span>المطابقة</span>
-            <div><Btn size="sm" variant="outline" onClick={() => navigate('/reconciliation')}>مطابقة الحسابات مع زوهو</Btn></div>
-          </div>
-        ) : null}
       </div>
 
       {/* ── مؤشر صحة المزامنة: نبضة webhook اللحظية + آخر مزامنة دورية ── */}
@@ -509,10 +521,31 @@ export default function ZohoData({ isActive = true }) {
         );
       })()}
 
+      {section === 'overview' ? (
+        <FinancialControlPanel
+          data={financial}
+          canConfigure={can('zoho.configure')}
+          onReauthorize={reauthorize}
+          onOpenAccount={() => openType('bank_accounts')}
+          onOpenVendors={() => openType('bills')}
+        />
+      ) : (
+        <div className="zoho-subtabs" aria-label={`تفاصيل ${WORKSPACE_SECTIONS.find(item => item.id === section)?.label || ''}`}>
+          {(WORKSPACE_SECTIONS.find(item => item.id === section)?.types || []).map(id => (
+            <Btn key={id} size="sm" variant={type === id ? 'primary' : 'outline'} onClick={() => openType(id)}>
+              {ZOHO_MIRRORS[id].label.replace(/^[^\s]+\s/, '')}
+            </Btn>
+          ))}
+          {section === 'banks' && can('reconciliation.view') ? (
+            <Btn size="sm" variant="ghost" onClick={() => navigate('/reconciliation')}>فتح مطابقة الحسابات مع زوهو</Btn>
+          ) : null}
+        </div>
+      )}
+
       {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
       {/* النقر على مدين = كامل دينه عبر كل الشهور — كان فلتر الشهر يبقى مفعّلاً
           فيُخفي فواتير خارج الشهر ويُظهر «متبقٍّ» أقل من الحقيقي (بلاغ 2026-07-15) */}
-      {type === 'invoices' && dash && (
+      {section !== 'overview' && type === 'invoices' && dash && (
         <InvoiceDashboard dash={dash} onPick={(name) => { setQ(name); setPeriod(''); setPeriodTo(''); }}
           onShowOverdue={() => {
             // المتأخرات موزّعة على أشهر قديمة — افتح كل الفترات وفلترها
@@ -523,6 +556,7 @@ export default function ZohoData({ isActive = true }) {
           } : null}/>
       )}
 
+      {section !== 'overview' ? <>
       {/* الفلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 8 }}>
         {cfg.dateField !== false ? <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -629,6 +663,8 @@ export default function ZohoData({ isActive = true }) {
                 <tbody>
                   {displayed.map(r => {
                     const sourceType = type === 'bank_accounts' ? 'bank_account' : 'chart_account';
+                    const accountTypeKey = String(r.account_type || r.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
+                    const linkableRow = type === 'bank_accounts' || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
                     const existingLink = referenceType
                       ? (financial?.links || []).find(l => l.source_type === sourceType && String(l.zoho_account_id) === String(r.zoho_id)) || null
                       : null;
@@ -664,7 +700,10 @@ export default function ZohoData({ isActive = true }) {
                             } : {}),
                             ...(key === 'description' || key === 'notes' ? { maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}),
                           }}>
-                          {kind === 'internal-balance' ? (
+                          {key === 'account_name' && r.account_name_ar && !isArabic(r.account_name) ? (
+                            <div><b>{r.account_name_ar}</b><div dir="ltr" style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 3 }}>{r.account_name}</div></div>
+                          ) : key === 'account_type_formatted' ? accountTypeAr(r.account_type || r[key])
+                          : kind === 'internal-balance' ? (
                             r[key] == null ? (
                               <div><b style={{ color: 'var(--muted2)' }}>غير مسجل</b><div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>ارفع كشف البنك أو سجّل رصيده</div></div>
                             ) : (
@@ -692,12 +731,14 @@ export default function ZohoData({ isActive = true }) {
                       ) : null}
                       {referenceType && can('zoho.configure') ? (
                         <td data-label="الربط" style={{ padding: '9px 12px' }}>
-                          {linkDescription ? <div className="zoho-link-status"><Link2 size={12}/>{linkDescription}</div> : null}
-                          <Btn size="sm" variant="ghost" icon={<Link2 size={13}/>} onClick={() => setMapTarget({
-                            row: r,
-                            sourceType,
-                            existing: existingLink,
-                          })}>{existingLink ? 'تعديل الربط' : 'ربط الحساب ببنك داخلي'}</Btn>
+                          {linkableRow ? <>
+                            {linkDescription ? <div className="zoho-link-status"><Link2 size={12}/>{linkDescription}</div> : null}
+                            <Btn size="sm" variant="ghost" icon={<Link2 size={13}/>} onClick={() => setMapTarget({
+                              row: r,
+                              sourceType,
+                              existing: existingLink,
+                            })}>{existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
+                          </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>لا يحتاج ربطًا بنكيًا</span>}
                         </td>
                       ) : null}
                     </tr>
@@ -716,6 +757,7 @@ export default function ZohoData({ isActive = true }) {
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12, textAlign: 'center' }}>
         قراءة فقط — أي تعديل يتم في Zoho Books نفسه ثم «مزامنة». الرواتب: نوع «المصاريف» ← حساب «أجور الموظفين».
       </div>
+      </> : null}
 
       <WhatsAppSendModal
         open={waOpen}
@@ -738,7 +780,7 @@ export default function ZohoData({ isActive = true }) {
   );
 }
 
-function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize, onOpenAccount }) {
+function FinancialControlPanel({ data, canConfigure, onReauthorize, onOpenAccount, onOpenVendors }) {
   if (!data) {
     return <Card style={{ padding: 18, marginBottom: 14, textAlign: 'center' }}><Spinner size={18}/></Card>;
   }
@@ -787,9 +829,6 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
               إعادة تفويض صلاحيات زوهو
             </Btn>
           ) : null}
-          <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} disabled={busy} onClick={onSync}>
-            تحديث أرصدة البنوك
-          </Btn>
         </div>
       </div>
 
@@ -840,7 +879,7 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
               <th style={{ padding: '8px 10px' }}>الصافي</th>
               <th style={{ padding: '8px 10px' }}>القرار</th>
             </tr></thead>
-            <tbody>{positions.map(v => {
+            <tbody>{positions.slice(0, 5).map(v => {
               const net = Number(v.net_payable) || 0;
               return <tr key={v.zoho_id} style={{ borderTop: '1px solid var(--border)' }}>
                 <td data-label="" style={{ padding: '8px 10px', fontWeight: 700 }}>{v.vendor_name || 'مورد بلا اسم'}</td>
@@ -852,6 +891,9 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
             })}</tbody>
           </table>
         </div>
+      ) : null}
+      {positions.length > 5 ? (
+        <button type="button" className="zoho-overview-link" onClick={onOpenVendors}>عرض جميع الموردين والفواتير ←</button>
       ) : null}
 
       <div style={{ height: 1, background: 'var(--border)', margin: '16px 0 12px' }}/>
@@ -881,7 +923,7 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
               <th style={{ padding: '8px 10px' }}>غير مصنّفة</th>
               <th style={{ padding: '8px 10px' }}>الحالة</th>
             </tr></thead>
-            <tbody>{data.banks.map(b => {
+            <tbody>{data.banks.filter(b => b.internal_bank_name || b.display_kind === 'unclassified').slice(0, 5).map(b => {
               const linked = !!b.internal_bank_name;
               const mismatch = b.internal_vs_book != null && Math.abs(Number(b.internal_vs_book)) > 0.5;
               return <tr key={b.zoho_id} style={{ borderTop: '1px solid var(--border)' }}>
@@ -908,8 +950,8 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
       ) : null}
 
       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap', marginTop: 11, fontSize: 11 }}>
-        <button type="button" onClick={onOpenAccount} style={{ border: 0, padding: 0, background: 'transparent', color: 'var(--accent)', font: 'inherit', fontWeight: 700, cursor: 'pointer' }}>
-          عرض كل الحسابات وتصنيفها وربطها ←
+        <button type="button" onClick={onOpenAccount} className="zoho-overview-link">
+          عرض جميع الحسابات والبنوك ←
         </button>
         <span style={{ color: 'var(--muted)' }}>
           {usage ? `استهلاك API اليوم: ${Number(usage.api_calls || 0).toLocaleString('en-US')}${usage.configured_budget ? ` من ${Number(usage.configured_budget).toLocaleString('en-US')} (${usagePct.toFixed(0)}%)` : ''}` : 'يبدأ قياس استهلاك API مع أول مزامنة جديدة'}
@@ -1027,6 +1069,7 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
 const STATUS_TONE = {
   paid: 'green', unpaid: 'gold', overdue: 'red', draft: 'muted',
   sent: 'accent', partially_paid: 'gold', partiallypaid: 'gold', void: 'muted', voided: 'muted',
+  active: 'green', inactive: 'muted', categorized: 'green', uncategorized: 'gold',
 };
 function StatusPill({ status }) {
   if (!status) return <span style={{ color: 'var(--muted2)' }}>—</span>;
