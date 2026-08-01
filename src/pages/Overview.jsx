@@ -630,6 +630,7 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
   const vatReserve = Math.max(0, Number(vat?.netDue) || 0);
   const availableAfterVat = net == null ? null : net - vatReserve;
   const registeredBankCount = cash.bankAccounts?.length || 0;
+  const zohoBankTotal = (cash.zohoBankAccounts || []).reduce((sum, account) => sum + Number(account.bookBalance || 0), 0);
   const customerPath = topCustomer
     ? (data.arSource === 'zoho'
         ? `/customer-money?customer=${encodeURIComponent(topCustomer.customerName)}`
@@ -853,6 +854,34 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
                   <strong style={{ color: 'var(--gold)' }}>{onEditBank ? 'أضف الرصيد' : 'يحتاج صلاحية'}</strong>
                 </button>
               )}
+            </div>
+          )}
+
+          {cash.zohoBankAccounts?.length > 0 && (
+            <div className="ops-bank-breakdown" aria-label="أرصدة البنوك في زوهو">
+              <div className="ops-bank-breakdown-head">
+                <span>أرصدة البنوك في زوهو</span>
+                <button type="button" onClick={() => onNavigate('/zoho-data?section=banks')}>عرض المطابقة</button>
+              </div>
+              {cash.zohoBankAccounts.map((account) => {
+                const mismatch = account.difference != null && Math.abs(account.difference) > 0.5;
+                return (
+                  <div className="ops-bank-row" key={account.id}>
+                    <span className="ops-bank-name">{account.internalName || account.name}</span>
+                    <small>
+                      رصيد زوهو الدفتري
+                      {account.statementBalance != null ? ` · الختامي ${fmt(account.statementBalance)} ر.س` : ' · لا يوجد رصيد ختامي'}
+                      {account.asOf ? ` · ${formatBankDate(account.asOf)}` : ''}
+                      {account.difference != null ? <b style={{ display: 'block', marginTop: 3, color: mismatch ? 'var(--gold)' : 'var(--green)' }}>الفرق {fmt(account.difference)} ر.س</b> : null}
+                    </small>
+                    <strong>{fmt(account.bookBalance)} <small>ر.س</small></strong>
+                  </div>
+                );
+              })}
+              <div className="ops-net-foot" style={{ marginTop: 6 }}>
+                <span>إجمالي البنكين في زوهو</span>
+                <strong>{fmt(zohoBankTotal)} ر.س</strong>
+              </div>
             </div>
           )}
 

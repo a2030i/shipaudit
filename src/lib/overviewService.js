@@ -41,7 +41,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
   // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
   const bankEffQ = loadEffectiveBankBalance().catch(() => null);
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -59,6 +59,8 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
     supabase.rpc('zoho_invoice_dashboard').then(r => r.data || null).catch(() => null),
+    // قراءة خفيفة من المرآة المحلية فقط؛ لا تضرب Zoho API عند كل فتح للرئيسية.
+    supabase.rpc('zoho_financial_control_dashboard').then(r => r.data || null).catch(() => null),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -198,6 +200,17 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         bankSource:   bankBalance?.source || null,
         bankNotes:    bankBalance?.notes || null,
         bankAccounts: bankBalance?.banks || [],   // تفصيل كل بنك وختاميه
+        zohoBankAccounts: (zohoFinancial?.banks || [])
+          .filter(b => b.display_kind === 'bank' && b.internal_bank_name)
+          .map(b => ({
+            id: b.zoho_id,
+            name: b.account_name,
+            internalName: b.internal_bank_name,
+            bookBalance: Number(b.book_balance) || 0,
+            statementBalance: b.internal_balance == null ? null : Number(b.internal_balance),
+            difference: b.internal_vs_book == null ? null : Number(b.internal_vs_book),
+            asOf: b.internal_as_of || null,
+          })),
         totalAR,                         // owed to us (customers)
         arSource: arFromZoho ? 'zoho' : 'snapshot',
         totalAP,                         // we owe (vendors/carriers)
