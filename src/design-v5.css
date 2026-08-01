@@ -1696,10 +1696,20 @@ tbody tr:hover td:first-child {
      السفلي على الحاوية الأب كان يترك آخر 56px خلف الشريط في Safari. */
   .page-slot {
     box-sizing: border-box;
-    padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
-    scroll-padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: calc(88px + env(safe-area-inset-bottom, 0px));
     -webkit-overflow-scrolling: touch;
     touch-action: pan-y;
+  }
+
+  /* Safari لا يحتسب padding السفلي دائماً كنهاية قابلة للتمرير عندما يكون
+     PageSlot حاوية flex مطلقة. فاصل حقيقي يرفع آخر زر فوق شريط الجوال. */
+  .page-slot::after {
+    content: '';
+    display: block;
+    flex: 0 0 calc(88px + env(safe-area-inset-bottom, 0px));
+    width: 100%;
+    pointer-events: none;
   }
 
   /* جدول زوهو يتحول إلى بطاقات ويتدفق مع تمرير الصفحة. overflow:hidden على

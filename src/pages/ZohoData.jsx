@@ -65,6 +65,8 @@ const accountTypeAr = value => {
 };
 const accountNameAr = value => ACCOUNT_NAME_AR[String(value || '').trim().toLowerCase()] || null;
 const isArabic = value => /[\u0600-\u06ff]/.test(String(value || ''));
+const isZohoTreasuryAccount = row => row?.display_kind === 'operating_treasury'
+  || /^\s*خزينة(?:\s|$)/i.test(String(row?.account_name_ar || row?.account_name || ''));
 
 const WORKSPACE_SECTIONS = [
   { id: 'overview', label: 'نظرة عامة', types: [] },
@@ -103,7 +105,7 @@ const COLS = {
   ],
   bank_accounts: [
     ['الحساب', 'account_name', 'main'], ['الرمز', 'account_code', 'mono'],
-    ['العملة', 'currency_code'], ['رصيد زوهو الدفتري', 'book_balance', 'money'],
+    ['التصنيف', 'display_kind', 'display-kind'], ['العملة', 'currency_code'], ['رصيد زوهو الدفتري', 'book_balance', 'money'],
     ['الرصيد الختامي للبنك', 'internal_balance', 'internal-balance'],
     ['الفرق عن زوهو', 'internal_vs_book', 'money-gap'], ['غير مصنّفة', 'uncategorized_count'],
   ],
@@ -739,6 +741,7 @@ export default function ZohoData({ isActive = true }) {
                 <tbody>
                   {displayed.map(r => {
                     const sourceType = type === 'bank_accounts' ? 'bank_account' : 'chart_account';
+                    const treasuryAccount = isZohoTreasuryAccount(r);
                     const accountTypeKey = String(r.account_type || r.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
                     const linkableRow = type === 'bank_accounts' || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
                     const existingLink = referenceType
@@ -779,7 +782,12 @@ export default function ZohoData({ isActive = true }) {
                           {key === 'account_name' && r.account_name_ar && !isArabic(r.account_name) ? (
                             <div><b>{r.account_name_ar}</b><div dir="ltr" style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 3 }}>{r.account_name}</div></div>
                           ) : key === 'account_type_formatted' ? accountTypeAr(r.account_type || r[key])
-                          : kind === 'internal-balance' ? (
+                          : kind === 'display-kind' ? ({ bank: 'بنك مربوط', operating_treasury: 'خزينة تشغيلية', cod_treasury: 'خزينة ناقل', cash: 'نقد/صندوق', unclassified: 'غير مصنّف' }[r[key]] || (treasuryAccount ? 'خزينة تشغيلية' : 'حساب بنكي'))
+                          : kind === 'internal-balance' && treasuryAccount ? (
+                            <div><b style={{ color: 'var(--muted)' }}>لا ينطبق على الخزينة</b><div style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 3 }}>هذا رصيد دفتري وليس كشف بنك</div></div>
+                          ) : kind === 'money-gap' && treasuryAccount ? (
+                            <span style={{ color: 'var(--muted2)' }}>لا ينطبق</span>
+                          ) : kind === 'internal-balance' ? (
                             r[key] == null ? (
                               <div><b style={{ color: 'var(--muted2)' }}>غير مسجل</b><div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>ارفع كشف البنك أو سجّل رصيده</div></div>
                             ) : (
@@ -813,8 +821,8 @@ export default function ZohoData({ isActive = true }) {
                               row: r,
                               sourceType,
                               existing: existingLink,
-                            })}>{existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
-                            {type === 'bank_accounts' && existingLink?.link_kind === 'bank' ? (
+                            })}>{treasuryAccount ? (existingLink ? 'تعديل تصنيف الخزينة' : 'تصنيف الخزينة') : existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
+                            {type === 'bank_accounts' && !treasuryAccount && existingLink?.link_kind === 'bank' ? (
                               <Btn size="sm" variant="accent" icon={<Download size={13}/>} onClick={() => openBankImport(r)}>
                                 استيراد عمليات البنك إلى زوهو
                               </Btn>
@@ -1141,13 +1149,14 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
   useEffect(() => {
     if (!target) return;
     const existing = target.existing || {};
-    setKind(existing.link_kind || (target.sourceType === 'bank_account' ? 'bank' : 'cod_treasury'));
+    setKind(existing.link_kind || (isZohoTreasuryAccount(target.row) ? 'cod_treasury' : target.sourceType === 'bank_account' ? 'bank' : 'cod_treasury'));
     setBankName(existing.internal_bank_name || '');
     setCarrierId(existing.carrier_id || '');
     setNotes(existing.notes || '');
   }, [target]);
   if (!target) return null;
-  const isBank = target.sourceType === 'bank_account';
+  const treasuryAccount = isZohoTreasuryAccount(target.row);
+  const isBank = target.sourceType === 'bank_account' && !treasuryAccount;
   const currentBankName = String(target.existing?.internal_bank_name || '').trim();
   const allInternalBanks = [...new Set([
     ...(Array.isArray(dashboard?.internal_banks) ? dashboard.internal_banks : []),
@@ -1186,13 +1195,13 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
   };
   const fieldStyle = { width: '100%', padding: '10px 12px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', color: 'var(--text)' };
   return (
-    <Modal title={`ربط حساب زوهو — ${target.row.account_name}`} onClose={onClose} width={560}>
+    <Modal title={`${treasuryAccount ? 'تصنيف خزينة زوهو' : 'ربط حساب زوهو'} — ${target.row.account_name}`} onClose={onClose} width={560}>
       <div className="m-flow" style={{ display: 'grid', gap: 14 }}>
         <div style={{ padding: 11, borderRadius: 9, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 11.5 }}>
           الربط تسمية ومطابقة داخل لمحة فقط، ولا يعدّل الحساب أو رصيده داخل زوهو.
         </div>
         {!isBank ? (
-          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700 }}>وظيفة الحساب
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700 }}>{treasuryAccount ? 'وظيفة الخزينة' : 'وظيفة الحساب'}
             <select value={kind} onChange={e => setKind(e.target.value)} style={fieldStyle}>
               <option value="cod_treasury">خزينة تحصيل لشركة شحن</option>
               <option value="cash">صندوق/نقد عام</option>
