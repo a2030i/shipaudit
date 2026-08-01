@@ -71,6 +71,26 @@ async function lastImportedBankAnchor(access: { token: string; apiDomain: string
   };
 }
 
+async function latestZohoBankTransactionAnchor(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
+  const url = `${access.apiDomain}/books/v3/banktransactions?organization_id=${encodeURIComponent(access.orgId)}&account_id=${encodeURIComponent(accountId)}&page=1&per_page=200`;
+  const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+  if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_bank_transactions:${String(z.body?.message || z.r.status)}`);
+  const rows = (Array.isArray(z.body?.banktransactions) ? z.body.banktransactions : [])
+    .filter((row: any) => !row.account_id || String(row.account_id) === accountId)
+    .sort((a: any, b: any) => String(a.date || a.transaction_date || '').localeCompare(String(b.date || b.transaction_date || ''))
+      || String(a.transaction_id || a.bank_transaction_id || '').localeCompare(String(b.transaction_id || b.bank_transaction_id || '')));
+  const last = rows.at(-1);
+  if (!last) return null;
+  const reference = String(last.reference_number || last.reference || '');
+  const transactionId = String(last.transaction_id || last.bank_transaction_id || '');
+  return {
+    date: String(last.date || last.transaction_date || '').slice(0, 10), reference, transactionId,
+    statementId: '', source: 'latest_bank_transaction',
+    knownReferences: new Set(rows.map((t: any) => normalizedRef(t.reference_number || t.reference)).filter(Boolean)),
+    knownTransactionIds: new Set(rows.map((t: any) => String(t.transaction_id || t.bank_transaction_id || '')).filter(Boolean)),
+  };
+}
+
 async function sha256(value: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -126,8 +146,11 @@ Deno.serve(async req => {
       const ordered = [...(txs || [])].sort((a: any, b: any) => localTxnDate(a).localeCompare(localTxnDate(b))
         || String(a.id).localeCompare(String(b.id)));
       const access = await accessToken(db);
-      const anchor = await lastImportedBankAnchor(access, accountId);
-      let afterAnchor = ordered;
+      const importedStatementAnchor = await lastImportedBankAnchor(access, accountId);
+      const anchor = importedStatementAnchor || await latestZohoBankTransactionAnchor(access, accountId);
+      // لا نعرض كامل التاريخ عند غياب مرساة زوهو؛ البداية الأولى تُنشأ في زوهو
+      // أو بعد ظهور أول عملية بنكية هناك، ثم تعمل المعاينة من المرجع التالي.
+      let afterAnchor = anchor ? ordered : [];
       let anchorMatchedLocally = false;
       if (anchor) {
         const anchorIndex = ordered.findLastIndex((t: any) =>
@@ -152,7 +175,8 @@ Deno.serve(async req => {
         history_excluded: ordered.length - afterAnchor.length,
         zoho_anchor: anchor ? { date: anchor.date, reference: anchor.reference,
           transaction_id: anchor.transactionId, statement_id: anchor.statementId,
-          matched_locally: anchorMatchedLocally } : null,
+          matched_locally: anchorMatchedLocally, source: anchor.source || 'last_imported_statement' } : null,
+        anchor_required: !anchor,
         transactions: fresh.map((t: any) => ({ id: t.id, date: String(t.txn_at || t.txn_date || '').slice(0, 10),
           reference: t.reference, description: t.description, debit: Number(t.debit || 0), credit: Number(t.credit || 0) })) };
       if (action === 'bank_preview') return json({ ok: true, ...summary });

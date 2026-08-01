@@ -1,4 +1,5 @@
 import { useState, useEffect, useId } from 'react';
+import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle, Upload as UploadIcon } from 'lucide-react';
 
 // ─── Button ────────────────────────────────────────────────────────────────────
@@ -1087,7 +1088,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
     return () => window.removeEventListener('keydown', fn);
   }, [onClose]);
 
-  return (
+  return createPortal((
     <div
       className="modal-overlay"
       style={{
@@ -1138,7 +1139,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
         </div>
       </div>
     </div>
-  );
+  ), document.body);
 }
 
 // ─── Spinner ───────────────────────────────────────────────────────────────────

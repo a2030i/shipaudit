@@ -900,13 +900,13 @@ function BankImportModal({ state, onClose, onImport }) {
               <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.zoho_anchor.date || ''}</span>
             </div>
             <div style={{ color: 'var(--muted2)', fontSize: 10.5, marginTop: 4 }}>
-              ستظهر العمليات الأحدث من هذه النقطة فقط{p.zoho_anchor.matched_locally ? '' : '، مع استبعاد مراجع آخر كشف في زوهو'}.
+              ستظهر العمليات الأحدث من هذه النقطة فقط{p.zoho_anchor.matched_locally ? '' : '، مع استبعاد المراجع الموجودة في زوهو'}.
             </div>
           </div>
         ) : (
           <div style={{ padding: '9px 11px', borderRadius: 9, marginBottom: 12, color: 'var(--gold)',
             background: 'color-mix(in srgb, var(--gold) 8%, transparent)', fontSize: 11.5 }}>
-            لا يوجد كشف مستورد سابق في زوهو؛ لذلك تُعد العمليات المحلية غير المستوردة بداية الكشف الأول.
+            لم نجد عملية بنكية سابقة في زوهو لتحديد نقطة البداية. حفاظًا على سلامة البيانات لن يعرض النظام كامل السجل؛ أنشئ أو استورد أول كشف في زوهو ثم أعد المعاينة.
           </div>
         )}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
