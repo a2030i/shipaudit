@@ -13,7 +13,8 @@ import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth,
   loadZohoFinancialDashboard, syncZohoFinancial, setZohoFinancialAccountLink,
-  getZohoAuthUrl, downloadZohoDocument } from '../lib/pnlService.js';
+  getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument } from '../lib/pnlService.js';
+import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -98,6 +99,8 @@ export default function ZohoData({ isActive = true }) {
   const [financial, setFinancial] = useState(null); // البنوك والخزائن والموردون + قدرات API
   const [financialBusy, setFinancialBusy] = useState(false);
   const [downloadingId, setDownloadingId] = useState(null);
+  const [selectedInvoices, setSelectedInvoices] = useState(() => new Set());
+  const [bulkPdf, setBulkPdf] = useState({ busy: false, done: 0, total: 0 });
   const [mapTarget, setMapTarget] = useState(null);
   const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
   const [waOpen, setWaOpen] = useState(false);
@@ -181,7 +184,10 @@ export default function ZohoData({ isActive = true }) {
   }, [location.search]);
 
   // إعادة ضبط الفلاتر عند تغيير النوع (الحالات تختلف)
-  useEffect(() => { setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' }); }, [type]);
+  useEffect(() => {
+    setStatus(''); setAmtMin(''); setAmtMax(''); setSort({ col: 'date', dir: 'desc' });
+    setSelectedInvoices(new Set());
+  }, [type]);
 
   const load = useCallback(async (t, pFrom, pTo) => {
     setRows(null);
@@ -305,6 +311,54 @@ export default function ZohoData({ isActive = true }) {
       return dir === 'asc' ? cmp : -cmp;
     });
   }, [rows, q, status, amtMin, amtMax, sort, cfg]);
+  const displayed = useMemo(() => filtered.slice(0, 800), [filtered]);
+  const displayedInvoiceIds = useMemo(() => type === 'invoices'
+    ? displayed.map(r => String(r.zoho_id)) : [], [type, displayed]);
+  const allDisplayedSelected = displayedInvoiceIds.length > 0
+    && displayedInvoiceIds.every(id => selectedInvoices.has(id));
+
+  const toggleInvoice = (id) => setSelectedInvoices(current => {
+    const next = new Set(current);
+    const key = String(id);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    return next;
+  });
+  useEffect(() => {
+    const visible = new Set(displayedInvoiceIds);
+    setSelectedInvoices(current => {
+      const next = new Set([...current].filter(id => visible.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [displayedInvoiceIds]);
+  const toggleDisplayedInvoices = () => setSelectedInvoices(current => {
+    const next = new Set(current);
+    if (allDisplayedSelected) displayedInvoiceIds.forEach(id => next.delete(id));
+    else displayedInvoiceIds.forEach(id => next.add(id));
+    return next;
+  });
+
+  const downloadSelectedInvoices = async () => {
+    const selectedRows = filtered.filter(r => selectedInvoices.has(String(r.zoho_id)));
+    if (!selectedRows.length) return;
+    setBulkPdf({ busy: true, done: 0, total: selectedRows.length });
+    try {
+      const blobs = [];
+      // تسلسلي عمداً: Zoho Books يحدّ عدد الطلبات، والدمج يحافظ على ترتيب العرض.
+      for (let i = 0; i < selectedRows.length; i += 1) {
+        const { blob } = await fetchZohoDocument({ type: 'invoices', zohoId: selectedRows[i].zoho_id });
+        blobs.push(blob);
+        setBulkPdf({ busy: true, done: i + 1, total: selectedRows.length });
+      }
+      const merged = await mergePdfBlobs(blobs);
+      const date = new Date().toISOString().slice(0, 10);
+      downloadBlob(merged, `فواتير_زوهو_${date}_${selectedRows.length}.pdf`);
+      toast(`نُزّلت ${selectedRows.length} فاتورة في ملف PDF واحد ✓`, 'success');
+    } catch (e) {
+      toast(`تعذّر تجهيز ملف PDF الموحّد: ${e.message}`, 'error');
+    } finally {
+      setBulkPdf({ busy: false, done: 0, total: 0 });
+    }
+  };
 
   const filtersActive = !!(q.trim() || status || amtMin || amtMax);
   const toggleSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'date' ? 'desc' : 'asc' });
@@ -502,16 +556,36 @@ export default function ZohoData({ isActive = true }) {
         </div>
       )}
 
+      {type === 'invoices' && filtered.length > 0 && (
+        <div className="zoho-invoice-selection" role="toolbar" aria-label="تحديد فواتير PDF">
+          <label className="zoho-invoice-select-all">
+            <input type="checkbox" checked={allDisplayedSelected} onChange={toggleDisplayedInvoices}/>
+            <span>تحديد كل الفواتير المعروضة</span>
+          </label>
+          <span className="zoho-invoice-selection-count">المحدد: {selectedInvoices.size}</span>
+          {selectedInvoices.size > 0 && (
+            <Btn size="sm" variant="ghost" onClick={() => setSelectedInvoices(new Set())} disabled={bulkPdf.busy}>
+              إلغاء التحديد
+            </Btn>
+          )}
+          <Btn size="sm" variant="ghost" icon={bulkPdf.busy ? <Spinner size={12}/> : <Download size={13}/>}
+            onClick={downloadSelectedInvoices} disabled={!selectedInvoices.size || bulkPdf.busy}
+            title="تحميل الفواتير المحددة مرتبة في ملف PDF واحد">
+            {bulkPdf.busy ? `تجهيز ${bulkPdf.done} من ${bulkPdf.total}` : `تحميل PDF موحّد (${selectedInvoices.size})`}
+          </Btn>
+        </div>
+      )}
+
       {rows == null ? <Card style={{ padding: 50, textAlign: 'center' }}><Spinner size={24}/></Card>
         : !filtered.length ? (
           <Card><Empty icon="📭" title="لا سجلات"
             sub={rows.length ? 'جرّب بحثاً مختلفاً' : 'اضغط «مزامنة من زوهو» — أو أعد الموافقة بالصلاحيات الموسّعة إن كان النوع جديداً'}/></Card>
         ) : (
-          <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <Card className="zoho-records-card" style={{ padding: 0, overflow: 'hidden' }}>
             <div className="m-flow" style={{ maxHeight: 640, overflowY: 'auto' }}>
               <table className="m-cards" style={{ width: '100%', fontSize: 12.5 }}>
                 <thead style={{ position: 'sticky', top: 0, zIndex: 1, background: 'var(--surface)' }}>
-                  <tr>{cols.map(c => {
+                  <tr>{type === 'invoices' ? <th style={{ padding: '10px 12px' }}>تحديد</th> : null}{cols.map(c => {
                     const active = sort.col === c[1];
                     return (
                       <th key={c[0]} onClick={() => toggleSort(c[1])} title="ترتيب"
@@ -524,8 +598,15 @@ export default function ZohoData({ isActive = true }) {
                   {referenceType && can('zoho.configure') ? <th style={{ padding: '10px 12px' }}>الربط</th> : null}</tr>
                 </thead>
                 <tbody>
-                  {filtered.slice(0, 800).map(r => (
+                  {displayed.map(r => (
                     <tr key={r.zoho_id} style={{ borderTop: '1px solid var(--border)' }}>
+                      {type === 'invoices' ? (
+                        <td data-label="تحديد" style={{ padding: '9px 12px' }}>
+                          <input type="checkbox" checked={selectedInvoices.has(String(r.zoho_id))}
+                            onChange={() => toggleInvoice(r.zoho_id)}
+                            aria-label={`تحديد الفاتورة ${r.invoice_number || r.zoho_id}`}/>
+                        </td>
+                      ) : null}
                       {cols.map(([label, key, kind]) => (
                         <td key={key} data-label={kind === 'main' ? '' : label}
                           style={{

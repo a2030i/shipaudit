@@ -459,6 +459,27 @@ button:active { transform: scale(.97); }
   box-shadow: var(--shadow-sm);
 }
 
+.zoho-invoice-selection {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+.zoho-invoice-select-all { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 700; }
+.zoho-invoice-select-all input,
+.zoho-records-card input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+.zoho-invoice-selection-count { color: var(--muted); font-size: 12px; margin-inline-end: auto; }
+
+@media (max-width: 768px) {
+  .zoho-invoice-selection { position: sticky; top: 0; z-index: 3; }
+  .zoho-invoice-selection .ui-btn { flex: 1 1 auto; }
+}
+
 /* ── Hamburger (mobile only) ── */
 .hamburger-btn {
   display: none;

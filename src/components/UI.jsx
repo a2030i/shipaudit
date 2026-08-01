@@ -133,7 +133,7 @@ export function Btn({ children, onClick, variant = 'primary', size = 'md', disab
 // Elevated white surface, no visible border, soft layered shadow. Modern
 // SaaS card pattern — looks like Stripe/Linear/Notion. Hover adds a
 // 1px lift + tighter shadow ring.
-export function Card({ children, style = {}, accent, hover = false, onClick }) {
+export function Card({ children, style = {}, accent, hover = false, onClick, className = '' }) {
   const [hovered, setHovered] = useState(false);
   const isInteractive = !!onClick || hover;
   return (
@@ -141,7 +141,7 @@ export function Card({ children, style = {}, accent, hover = false, onClick }) {
       onClick={onClick}
       onMouseEnter={() => isInteractive && setHovered(true)}
       onMouseLeave={() => isInteractive && setHovered(false)}
-      className={`ui-card ${onClick ? 'ui-card-interactive' : ''}`}
+      className={`ui-card ${onClick ? 'ui-card-interactive' : ''} ${className}`.trim()}
       style={{
         background: 'var(--card)',
         // Lamha cards carry a subtle visible border (not transparent).

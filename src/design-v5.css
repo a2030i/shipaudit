@@ -1702,6 +1702,12 @@ tbody tr:hover td:first-child {
     touch-action: pan-y;
   }
 
+  /* جدول زوهو يتحول إلى بطاقات ويتدفق مع تمرير الصفحة. overflow:hidden على
+     بطاقة سطح المكتب كان يقص البطاقات في Safari بعد إلغاء التمرير الداخلي. */
+  .zoho-records-card {
+    overflow: visible !important;
+  }
+
   .workspace-page {
     padding: 16px 14px 92px;
   }

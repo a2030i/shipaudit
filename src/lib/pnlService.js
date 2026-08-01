@@ -89,7 +89,7 @@ export async function setZohoFinancialAccountLink({
 // تنزيل مستند من زوهو عبر الدالة الطرفية فقط (لا توكن زوهو في المتصفح).
 // فواتير العملاء: PDF رسمي مُنشأ من Zoho Books.
 // فواتير الموردين: المرفق الأصلي إن كان موجوداً (قد يكون PDF/صورة/Excel).
-export async function downloadZohoDocument({ type, zohoId, reference }) {
+export async function fetchZohoDocument({ type, zohoId }) {
   const documentType = type === 'invoices' ? 'invoice_pdf'
     : type === 'bills' ? 'bill_attachment' : null;
   if (!documentType) throw new Error('هذا النوع لا يدعم تنزيل مستند');
@@ -106,6 +106,11 @@ export async function downloadZohoDocument({ type, zohoId, reference }) {
   }
   if (!(data instanceof Blob) || !data.size) throw new Error('عاد زوهو بملف فارغ');
 
+  return { blob: data, documentType };
+}
+
+export async function downloadZohoDocument({ type, zohoId, reference }) {
+  const { blob: data, documentType } = await fetchZohoDocument({ type, zohoId });
   const extByMime = {
     'application/pdf': 'pdf',
     'image/jpeg': 'jpg',
