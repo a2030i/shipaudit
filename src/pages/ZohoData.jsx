@@ -65,8 +65,9 @@ const COLS = {
   ],
   bank_accounts: [
     ['الحساب', 'account_name', 'main'], ['الرمز', 'account_code', 'mono'],
-    ['العملة', 'currency_code'], ['الرصيد الدفتري', 'book_balance', 'money'],
-    ['رصيد التغذية البنكية', 'bank_balance', 'money-warn'], ['غير مصنّفة', 'uncategorized_count'],
+    ['العملة', 'currency_code'], ['رصيد زوهو الدفتري', 'book_balance', 'money'],
+    ['الرصيد الختامي للبنك', 'internal_balance', 'internal-balance'],
+    ['الفرق عن زوهو', 'internal_vs_book', 'money-gap'], ['غير مصنّفة', 'uncategorized_count'],
   ],
   chart_accounts: [
     ['الحساب', 'account_name', 'main'], ['الرمز', 'account_code', 'mono'],
@@ -293,9 +294,16 @@ export default function ZohoData({ isActive = true }) {
     return [...new Set(rows.map(r => r.status).filter(Boolean))].sort();
   }, [rows]);
 
+  const displayRows = useMemo(() => {
+    if (!rows) return [];
+    if (type !== 'bank_accounts') return rows;
+    const financialBanks = new Map((financial?.banks || []).map(bank => [String(bank.zoho_id), bank]));
+    return rows.map(row => ({ ...row, ...(financialBanks.get(String(row.zoho_id)) || {}) }));
+  }, [rows, type, financial]);
+
   const filtered = useMemo(() => {
     if (!rows) return [];
-    let list = rows;
+    let list = displayRows;
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(r => Object.values(r).some(v => String(v ?? '').toLowerCase().includes(s)));
     if (status) list = list.filter(r => r.status === status);
@@ -309,7 +317,7 @@ export default function ZohoData({ isActive = true }) {
     }
     // الترتيب بالعمود المختار (نصّي أو رقمي)
     const { col, dir } = sort;
-    const numeric = ['total', 'amount', 'balance', 'book_balance', 'bank_balance', 'current_balance', 'uncategorized_count'].includes(col);
+    const numeric = ['total', 'amount', 'balance', 'book_balance', 'bank_balance', 'internal_balance', 'internal_vs_book', 'current_balance', 'uncategorized_count'].includes(col);
     return [...list].sort((a, b) => {
       let av = a[col], bv = b[col];
       if (numeric) { av = Number(av) || 0; bv = Number(bv) || 0; }
@@ -317,7 +325,7 @@ export default function ZohoData({ isActive = true }) {
       const cmp = numeric ? av - bv : av.localeCompare(bv, 'ar');
       return dir === 'asc' ? cmp : -cmp;
     });
-  }, [rows, q, status, amtMin, amtMax, sort, cfg]);
+  }, [rows, displayRows, q, status, amtMin, amtMax, sort, cfg]);
   const displayed = useMemo(() => filtered.slice(0, 800), [filtered]);
   const displayedInvoiceIds = useMemo(() => type === 'invoices'
     ? displayed.map(r => String(r.zoho_id)) : [], [type, displayed]);
@@ -651,11 +659,24 @@ export default function ZohoData({ isActive = true }) {
                               fontFamily: 'var(--font-mono)', fontWeight: 600, whiteSpace: 'nowrap',
                               color: kind === 'money-green' ? 'var(--green)'
                                    : kind === 'money-warn' ? (Number(r[key]) > 0.5 ? 'var(--gold)' : 'var(--muted2)')
+                                   : kind === 'money-gap' ? (Math.abs(Number(r[key])) > 0.5 ? 'var(--gold)' : 'var(--green)')
                                    : 'var(--text)',
                             } : {}),
                             ...(key === 'description' || key === 'notes' ? { maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } : {}),
                           }}>
-                          {kind?.startsWith('money') ? fmt(r[key])
+                          {kind === 'internal-balance' ? (
+                            r[key] == null ? (
+                              <div><b style={{ color: 'var(--muted2)' }}>غير مسجل</b><div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>ارفع كشف البنك أو سجّل رصيده</div></div>
+                            ) : (
+                              <div style={{ whiteSpace: 'nowrap' }}>
+                                <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(r[key])}</b>
+                                <div style={{ color: 'var(--muted)', fontSize: 10, marginTop: 3 }}>
+                                  {r.internal_source === 'statement' ? 'من كشف البنك' : 'رصيد مدخل يدويًا'}
+                                  {r.internal_as_of ? ` · حتى ${String(r.internal_as_of).slice(0, 10)}` : ''}
+                                </div>
+                              </div>
+                            )
+                          ) : kind?.startsWith('money') ? (r[key] == null ? '—' : fmt(r[key]))
                             : key === 'status' ? <StatusPill status={r[key]}/>
                             : (r[key] ?? '—')}
                         </td>
@@ -743,7 +764,7 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
     { label: 'حسابات مالية في زوهو', value: Number(bank.count || 0).toLocaleString('en-US'), sub: `${Number(bank.operating_treasury_count || 0)} منها خزائن تشغيلية داخلية`, tone: 'var(--accent)' },
     { label: 'البنوك المربوطة فعلياً', value: `${Number(bank.linked_bank_count || 0)}/${Number(bank.expected_bank_count || 3)}`, sub: Number(bank.linked_bank_count || 0) < Number(bank.expected_bank_count || 3) ? 'الناقص يظهر كحساب غير مربوط — بلا تخمين' : 'اكتملت البنوك التشغيلية', tone: Number(bank.linked_bank_count || 0) < Number(bank.expected_bank_count || 3) ? 'var(--gold)' : 'var(--green)' },
     { label: 'الرصيد الدفتري لكل الحسابات', value: `${fmt(bank.book_balance)} ر.س`, sub: 'يشمل البنوك والخزائن وبوابات الدفع', tone: 'var(--green)' },
-    { label: 'الرصيد البنكي الفعلي', value: bank.bank_balance == null ? 'غير متصل' : `${fmt(bank.bank_balance)} ر.س`, sub: bank.bank_balance == null ? 'زوهو لا يستقبل تغذية مصرفية حيّة حالياً' : `${Number(bank.feed_available_count || 0)} حساب بتغذية بنكية`, tone: bank.bank_balance == null ? 'var(--muted)' : 'var(--accent)' },
+    { label: 'أحدث أرصدة ختامية مربوطة', value: bank.internal_balance == null ? 'غير مسجلة' : `${fmt(bank.internal_balance)} ر.س`, sub: bank.internal_balance == null ? 'تظهر بعد رفع كشف البنك أو تسجيل الرصيد' : `الفرق عن دفتر زوهو ${fmt(bank.internal_vs_book)} ر.س`, tone: bank.internal_balance == null ? 'var(--muted)' : Math.abs(Number(bank.internal_vs_book)) > 0.5 ? 'var(--gold)' : 'var(--green)' },
   ];
   const vendorTone = (n) => Number(n) > 0.5 ? 'var(--gold)' : Number(n) < -0.5 ? 'var(--green)' : 'var(--muted)';
   const bankKind = (b) => ({
@@ -854,8 +875,9 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
             <thead><tr>
               <th style={{ padding: '8px 10px' }}>الحساب</th>
               <th style={{ padding: '8px 10px' }}>التصنيف</th>
-              <th style={{ padding: '8px 10px' }}>دفتر زوهو</th>
-              <th style={{ padding: '8px 10px' }}>الرصيد البنكي الفعلي</th>
+              <th style={{ padding: '8px 10px' }}>رصيد زوهو</th>
+              <th style={{ padding: '8px 10px' }}>الرصيد الختامي للبنك</th>
+              <th style={{ padding: '8px 10px' }}>الفرق</th>
               <th style={{ padding: '8px 10px' }}>غير مصنّفة</th>
               <th style={{ padding: '8px 10px' }}>الحالة</th>
             </tr></thead>
@@ -865,8 +887,16 @@ function FinancialControlPanel({ data, busy, canConfigure, onSync, onReauthorize
               return <tr key={b.zoho_id} style={{ borderTop: '1px solid var(--border)' }}>
                 <td data-label="" style={{ padding: '8px 10px', fontWeight: 700 }}>{b.account_name}<div style={{ color: 'var(--muted2)', fontSize: 10 }}>{b.internal_bank_name || 'غير مربوط'}</div></td>
                 <td data-label="التصنيف" style={{ padding: '8px 10px', color: b.display_kind === 'unclassified' ? 'var(--gold)' : 'var(--text)' }}>{bankKind(b)}</td>
-                <td data-label="دفتر زوهو" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{fmt(b.book_balance)}</td>
-                <td data-label="الرصيد البنكي الفعلي" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', color: b.feed_available ? 'var(--text)' : 'var(--muted2)' }}>{b.feed_available ? fmt(b.bank_balance) : 'غير متصل'}</td>
+                <td data-label="رصيد زوهو" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)' }}>{fmt(b.book_balance)}</td>
+                <td data-label="الرصيد الختامي للبنك" style={{ padding: '8px 10px' }}>
+                  {b.internal_balance == null ? <span style={{ color: 'var(--muted2)' }}>غير مسجل</span> : <>
+                    <b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(b.internal_balance)}</b>
+                    <div style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 2 }}>
+                      {b.internal_source === 'statement' ? 'من كشف البنك' : 'مدخل يدويًا'}{b.internal_as_of ? ` · ${String(b.internal_as_of).slice(0, 10)}` : ''}
+                    </div>
+                  </>}
+                </td>
+                <td data-label="الفرق" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', color: mismatch ? 'var(--gold)' : b.internal_vs_book == null ? 'var(--muted2)' : 'var(--green)' }}>{b.internal_vs_book == null ? '—' : fmt(b.internal_vs_book)}</td>
                 <td data-label="غير مصنّفة" style={{ padding: '8px 10px', fontFamily: 'var(--font-mono)', color: Number(b.uncategorized_count) ? 'var(--gold)' : 'var(--muted2)' }}>{Number(b.uncategorized_count || 0).toLocaleString('en-US')}</td>
                 <td data-label="الحالة" style={{ padding: '8px 10px', color: !linked || mismatch ? 'var(--gold)' : 'var(--green)', fontWeight: 700 }}>
                   {!linked ? (b.display_kind === 'operating_treasury' ? 'خزينة غير مربوطة' : 'يحتاج تصنيف') : mismatch ? `فرق ${fmt(b.internal_vs_book)}` : 'متطابق'}
