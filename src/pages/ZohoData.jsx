@@ -521,9 +521,9 @@ export default function ZohoData({ isActive = true }) {
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
         actions={
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {needsZohoAuth && can('zoho.configure') ? (
+            {can('zoho.configure') ? (
               <Btn size="sm" variant="primary" icon={<ShieldCheck size={14}/>} onClick={reauthorize}>
-                إعادة تفويض صلاحيات زوهو
+                إدارة صلاحيات وربط زوهو
               </Btn>
             ) : null}
             <Btn size="sm" variant="ghost" icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} disabled={busy} onClick={doSync}>
