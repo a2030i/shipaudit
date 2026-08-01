@@ -91,46 +91,45 @@ const NAV_ITEMS = [
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
-  { id: 'hub',          path: '/hub',               label: 'حالة الشركات',   icon: Building2,  section: 'carriers', permKey: 'carriers.view',
+  { id: 'hub',          path: '/hub',               label: 'نظرة الناقلين',   icon: Building2,  section: 'carriers', navOrder: 10, permKey: 'carriers.view',
     subTabs: [
       { tabId: 'hub',    label: 'حالة الشركات',         icon: Building2 },
       { tabId: 'kpi',    label: 'مقارنة الأداء',        icon: BarChart3, legacy: '/carrier-kpi' },
       { tabId: 'claims', label: 'المطالبات والاسترداد', icon: Scale,     legacy: '/claims' },
     ] },
-  { id: 'drop',         path: '/drop',              label: 'رفع ملف',          icon: Upload,    section: 'carriers', permKey: 'audits.create' },
-  { id: 'webhook',      path: '/webhook',           label: 'وارد الفواتير',    icon: Inbox,     section: 'carriers', permKey: 'webhook.view' },
-  { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', permKey: 'audits.view' },
-  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف حساب الشركات', icon: FileText, section: 'carriers', permKey: 'carriers.view' },
-  { id: 'ledger',       path: '/ledger',            label: 'حسابات الشركات',   icon: BookOpen,  section: 'carriers', permKey: 'ledger.view' },
-  { id: 'platform-carriers', path: '/platform-carriers', label: 'مقارنة أسعار المنصّات', icon: DollarSign, section: 'carriers', permKey: 'carriers.view' },
-  // فواتير التجهيز — نادرة → «الأدوات»
-  { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'tools', permKey: 'audits.view' },
+  { id: 'drop',         path: '/drop',              label: 'رفع ملف',          icon: Upload,    section: 'carriers', navOrder: 20, permKey: 'audits.create' },
+  { id: 'webhook',      path: '/webhook',           label: 'وارد الفواتير',    icon: Inbox,     section: 'carriers', navOrder: 30, permKey: 'webhook.view' },
+  { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', navOrder: 40, permKey: 'audits.view' },
+  { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الناقلين',    icon: FileText,  section: 'carriers', navOrder: 50, permKey: 'carriers.view' },
+  { id: 'ledger',       path: '/ledger',            label: 'دفتر حساب الناقلين', icon: BookOpen, section: 'carriers', navOrder: 60, permKey: 'ledger.view' },
+  { id: 'platform-carriers', path: '/platform-carriers', label: 'مقارنة أسعار المنصّات', icon: DollarSign, section: 'carriers', navOrder: 70, permKey: 'carriers.view' },
+  { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'money', navOrder: 80, permKey: 'audits.view' },
 
-  // ── الحملات والتقارير ───────────────────────────────────────────
-  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',        icon: FileText,      section: 'outreach', permKey: 'carriers.view' },
-  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',        icon: CalendarRange, section: 'outreach', permKey: 'carriers.view' },
-  { id: 'weight-billing',   path: '/weight-billing',   label: 'فوترة الأوزان الزائدة', icon: Scale,         section: 'tools',    permKey: 'internal_exports.view' },
-  { id: 'internal-exports', path: '/internal-exports', label: 'التصدير وسجل الملفات',  icon: FileText,      section: 'outreach', permKey: 'internal_exports.view' },
+  // ── التقارير والرقابة ───────────────────────────────────────────
+  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permKey: 'carriers.view' },
+  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',         icon: CalendarRange, section: 'outreach', navOrder: 20, permKey: 'carriers.view' },
+  { id: 'weight-billing',   path: '/weight-billing',   label: 'فوترة الأوزان الزائدة', icon: Scale,         section: 'money',    navOrder: 90, permKey: 'internal_exports.view' },
+  { id: 'internal-exports', path: '/internal-exports', label: 'سجل التقارير المصدّرة',  icon: FileText,      section: 'outreach', navOrder: 30, permKey: 'internal_exports.view' },
 
   // ── نظام الأموال — هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل ──
-  { id: 'pnl',       path: '/pnl',      label: 'الأرباح والخسائر',  icon: TrendingUp, section: 'money', permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', permKey: 'payments.view',
+  { id: 'pnl',       path: '/pnl',      label: 'الربح الفعلي',  icon: TrendingUp, section: 'money', navOrder: 30, permKey: 'money.pnl' },
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permKey: 'payments.view',
     subTabs: [
       { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements' },
       { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments' },
       { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank' },
     ] },
-  { id: 'cash-aging', path: '/cash-aging', label: 'توقيت التحصيل والسداد', icon: Wallet, section: 'money', permKey: 'ledger.view' },
-  { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', permKey: 'forecast.view' },
+  { id: 'cash-aging', path: '/cash-aging', label: 'توقيت التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
+  { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', navOrder: 50, permKey: 'forecast.view' },
 
-  // ── Customers (AR side) ───────────────────────────────────────
+  // ── العملاء والنمو ─────────────────────────────────────────────
   // Customers + receivables + segments + merchants merged into
   // /customer-360 — kept the legacy routes alive in App so any
   // existing deep links still land on the right tab.
-  { id: 'customer-watch',  path: '/customer-360',    label: 'ملفات العملاء', icon: Users,     section: 'customers', permKey: 'receivables.view' },
+  { id: 'customer-watch',  path: '/customer-360',    label: 'ملف العميل 360', icon: Users,     section: 'customers', navOrder: 10, permKey: 'receivables.view' },
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
   // §1.32 مرحلة 2: مركز التحصيل = تحصيل العملاء + قائمة التحصيل + القانوني + الكشف الداخلي
-  { id: 'collections-hub', path: '/customer-money',  label: 'الديون والتحصيل',  icon: HandCoins, section: 'customers', permKey: 'receivables.view',
+  { id: 'collections-hub', path: '/customer-money',  label: 'الديون والتحصيل',  icon: HandCoins, section: 'money', navOrder: 20, permKey: 'receivables.view',
     subTabs: [
       { tabId: 'money',    label: 'أرصدة العملاء',   icon: HandCoins },
       { tabId: 'queue',    label: 'قائمة التحصيل',    icon: Phone,  legacy: '/collections' },
@@ -140,7 +139,7 @@ const NAV_ITEMS = [
   // §1.32 مرحلة 3: مركز المبيعات = إعادة الاستهداف + فرص هاتف + خارج المنصّة + الشرائح + المتاجر
   // مركز المبيعات: صلاحية مستقلة لكل تبويب (تفصيص 2026-07-16) — permAny = يظهر
   // العنصر لمن يملك أياً منها، وSalesHub يفلتر تبويباته بالمفتاح الدقيق.
-  { id: 'sales-hub',       path: '/retargeting',     label: 'فرص البيع',  icon: Target,    section: 'customers',
+  { id: 'sales-hub',       path: '/retargeting',     label: 'فرص المنصة',  icon: Target,    section: 'customers', navOrder: 20,
     permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
       { tabId: 'today',       label: 'خطة اليوم',           icon: Target },
@@ -153,7 +152,7 @@ const NAV_ITEMS = [
     ] },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
   // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'الصفقات والمتابعات', icon: TrendingUp, section: 'customers', permKey: 'crm.view',
+  { id: 'crm',             path: '/crm',             label: 'مسار المبيعات CRM', icon: TrendingUp, section: 'customers', navOrder: 30, permKey: 'crm.view',
     subTabs: [
       { tabId: 'queue', label: 'قائمة المتابعة',  icon: Headset },
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
@@ -161,13 +160,13 @@ const NAV_ITEMS = [
       { tabId: 'board', label: 'الأداء',           icon: BarChart3 },
     ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
-  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', permKey: 'support.view' },
-  { id: 'marketers',       path: '/marketers',       label: 'المسوّقون والعمولات', icon: BadgeDollarSign, section: 'customers', permKey: 'marketers.view' },
-  { id: 'zoho-data',       path: '/zoho-data',       label: 'بيانات زوهو',       icon: BookOpen,   section: 'money', permKey: 'zoho.view' },
-  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو مع لمحة', icon: GitCompare, section: 'money', permKey: 'reconciliation.view' },
+  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
+  { id: 'marketers',       path: '/marketers',       label: 'المسوّقون والعمولات', icon: BadgeDollarSign, section: 'customers', navOrder: 60, permKey: 'marketers.view' },
+  { id: 'zoho-data',       path: '/zoho-data',       label: 'فواتير ودفعات زوهو', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view' },
+  { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
-  // ── الحملات والتقارير ───────────────────────────────────────────
-  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'مركز هاتف', icon: MessageCircle, section: 'outreach',
+  // ── الحملات والاتصالات — ضمن رحلة العملاء والنمو ────────────────
+  { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'الحملات والاتصالات', icon: MessageCircle, section: 'customers', navOrder: 50,
     permAny: ['whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr'],
     subTabs: [
       { tabId: 'overview',  label: 'نظرة عامة',       icon: Activity },
@@ -179,15 +178,15 @@ const NAV_ITEMS = [
       { tabId: 'settings',  label: 'الربط والأتمتة',   icon: Settings },
     ] },
 
-  // ── الإعدادات والأدوات (الأقل استخداماً + الإعداد + النادر) ──────
-  { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', adminOnly: true },
-  { id: 'carriers',     path: '/carriers',     label: 'إدارة الشركات',      icon: Truck,         section: 'tools', permKey: 'carriers.view' },
-  { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',    icon: ClipboardList, section: 'tools', permKey: 'carriers.edit_contract' },
-  { id: 'periods',      path: '/periods',      label: 'إقفال الشهور',       icon: Lock,          section: 'tools', permKey: 'system.period_close' },
-  { id: 'tasks',        path: '/tasks',        label: 'المهام',             icon: ListTodo,      section: 'tools', permKey: 'audits.view' },
-  { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,       section: 'tools', permKey: 'uploads.view' },
-  { id: 'integrity',    path: '/integrity',    label: 'فحص سلامة البيانات', icon: FileCheck,     section: 'tools', permKey: 'system.view_audit_log' },
-  { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'tools', permKey: 'system.view_audit_log' },
+  // ── الإعدادات الفعلية + عناصر التشغيل المنقولة لأقسامها ─────────
+  { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', navOrder: 10, adminOnly: true },
+  { id: 'carriers',     path: '/carriers',     label: 'إدارة شركات الشحن',  icon: Truck,         section: 'tools', navOrder: 20, permKey: 'carriers.view' },
+  { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',    icon: ClipboardList, section: 'tools', navOrder: 30, permKey: 'carriers.edit_contract' },
+  { id: 'periods',      path: '/periods',      label: 'إقفال الشهور',       icon: Lock,          section: 'money', navOrder: 100, permKey: 'system.period_close' },
+  { id: 'tasks',        path: '/tasks',        label: 'مهام شركات الشحن',   icon: ListTodo,      section: 'carriers', navOrder: 80, permKey: 'audits.view' },
+  { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,       section: 'outreach', navOrder: 40, permKey: 'uploads.view' },
+  { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات',     icon: FileCheck,     section: 'outreach', navOrder: 50, permKey: 'system.view_audit_log' },
+  { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -196,17 +195,13 @@ const NAV_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_SECTIONS = [
-  // دمج الأقسام (2026-07-21، قرار المستخدم «التبويبات كثيرة ومشتتة»): 7 أقسام → 5.
-  // المبدأ: التجميع حسب مَن يستعملها/الوظيفة اليومية، والنادر/المرجعي يُنزَل لـ«الأدوات».
-  //   • المالية + (البنك/COD/الدفعات) → «الأموال» (مالنا نحن)
-  //   • التحصيل + المبيعات → «العملاء» (كل ما يخصّ العميل: تحصيل + بيع + دعم)
-  //   • واتساب + التقارير → «الحملات والتقارير» (المخرجات والتواصل)
-  //   • الإدارة + النادر (التجهيز/الأوزان/الإقفال/العقود/إدارة الشركات/المهام/المصادر) → «الإعدادات والأدوات»
-  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,         accent: '#2B68DE', hint: 'استقبال · تدقيق · حسابات' },
-  { id: 'money',     label: 'الأموال',           icon: DollarSign,    accent: '#F59E0B', hint: 'سيولة · دفعات · زوهو · توقع' },
-  { id: 'customers', label: 'العملاء والمبيعات',  icon: Users,         accent: '#EF4444', hint: 'ديون · متابعة · بيع · دعم' },
-  { id: 'outreach',  label: 'الحملات والتقارير', icon: MessageCircle, accent: '#22C55E', hint: 'واتساب · تقارير · تصدير' },
-  { id: 'tools',     label: 'الإعدادات والأدوات', icon: Briefcase,    accent: '#31D5E1', hint: 'فريق · عقود · سلامة البيانات' },
+  // التجميع حسب رحلة العمل (2026-08-01): لا تُدفن عمليات الفوترة أو الرقابة
+  // داخل الإعدادات، ولا تخلط الحملات التشغيلية مع التقارير المرجعية.
+  { id: 'carriers',  label: 'شركات الشحن',       icon: Truck,      accent: '#2B68DE', hint: 'استقبال · تدقيق · حسابات' },
+  { id: 'money',     label: 'الأموال والتحصيل',  icon: DollarSign, accent: '#F59E0B', hint: 'سيولة · تحصيل · زوهو · فوترة' },
+  { id: 'customers', label: 'العملاء والنمو',     icon: Users,      accent: '#EF4444', hint: 'عملاء · مبيعات · دعم · حملات' },
+  { id: 'outreach',  label: 'التقارير والرقابة', icon: FileCheck,  accent: '#22C55E', hint: 'تقارير · جودة · سلامة' },
+  { id: 'tools',     label: 'الإعدادات',          icon: Settings,   accent: '#31D5E1', hint: 'فريق · شركات · عقود' },
 ];
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
@@ -303,33 +298,11 @@ function AppInner({ theme, toggleTheme }) {
   const [collapsed,       setCollapsed]       = useState(false);
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
-  // Per-section open/closed state for the accordion. Persists in
-  // localStorage so the operator's preferred layout survives reloads.
-  // Default on first visit: open the carriers section (most-trafficked
-  // group) and the section containing the current route.
-  // Auto-accordion (v3): a section is open when it CONTAINS the active
-  // route, or when the user explicitly peeked it (not persisted — the
-  // sidebar should always come back short). This keeps the visible list
-  // at ~8 doors + the active door's children, instead of every section
-  // dumped open (the old v2 persisted-map behaviour).
-  // Sidebar sections are OPEN by default (nothing buried — the #1 nav
-  // complaint). The user may collapse the ones they don't want; that
-  // preference is remembered. Stored as the SET of collapsed section ids.
-  // v3 key: the reorg made التقارير + الإعدادات/النظام collapsed-by-default
-  // (all occasional/rare) so the resting sidebar is short. Bumping the key
-  // means every user gets the new default once, then their own toggles win.
-  // v5 (2026-07-02، قرار المستخدم): أكورديون قسم-واحد — فتح قسم يقفل البقية
-  // («لو فتحت قسم مفروض يقفل قسم حتى يكون سلس»). الافتراضي: **كل الأقسام
-  // مقفلة** بما فيها شركات الشحن («الأفضل حتى قسم شركات الشحن افتراضياً
-  // مقفل») — الجانبية تفتح دائماً على رؤوس الأقسام فقط + المثبّتين.
-  // المفتاح الجديد يطبّق الافتراض مرة واحدة ثم تفضيل المستخدم يفوز.
+  // Accordion rule: every app entry starts with all sections closed. During
+  // the session, opening one section closes the rest; route changes never
+  // force a section open and the open section is not persisted across reloads.
   const ALL_SECTION_IDS = NAV_SECTIONS.map(s => s.id);
-  const [collapsedSecs, setCollapsedSecs] = useState(() => {
-    try {
-      const stored = localStorage.getItem('sa-nav-collapsed-v6');
-      return new Set(stored ? JSON.parse(stored) : ALL_SECTION_IDS);
-    } catch { return new Set(ALL_SECTION_IDS); }
-  });
+  const [collapsedSecs, setCollapsedSecs] = useState(() => new Set(ALL_SECTION_IDS));
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -373,25 +346,8 @@ function AppInner({ theme, toggleTheme }) {
     const wasCollapsed = prev.has(id);
     const next = new Set(ALL_SECTION_IDS);
     if (wasCollapsed) next.delete(id);
-    try { localStorage.setItem('sa-nav-collapsed-v6', JSON.stringify([...next])); } catch { /* ignore */ }
     return next;
   });
-
-  useEffect(() => {
-    const activeItem = NAV_ITEMS.find(n => {
-      if (!n.section) return false;
-      if (location.pathname === n.path) return true;
-      return n.subTabs?.some(s => s.legacy === location.pathname);
-    });
-    if (!activeItem?.section) return;
-    setCollapsedSecs(prev => {
-      if (!prev.has(activeItem.section)) return prev;
-      const next = new Set(ALL_SECTION_IDS);
-      next.delete(activeItem.section);
-      try { localStorage.setItem('sa-nav-collapsed-v6', JSON.stringify([...next])); } catch { /* ignore */ }
-      return next;
-    });
-  }, [location.pathname]);
 
   // ── Default redirect after login: always go to /overview ──
   // /overview was promoted to be the home page; /dashboard is kept
@@ -585,7 +541,9 @@ function AppInner({ theme, toggleTheme }) {
 
             {/* Accordion sections */}
             {NAV_SECTIONS.map((sec) => {
-              const items = visibleNav.filter(n => n.section === sec.id);
+              const items = visibleNav
+                .filter(n => n.section === sec.id)
+                .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
               if (!items.length) return null;
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
               const rowCount = items.length;

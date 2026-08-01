@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js';
 
 const money = (value, digits = 2) => Number(Number(value || 0).toFixed(digits));
+const AUTO_TIER_RATIOS = [0.50, 0.65, 0.80, 0.90];
 
 export function normalizeCommissionTiers(tiers = []) {
   return [...tiers]
@@ -28,6 +29,46 @@ export function validateCommissionTiers(tiers = []) {
     } else if (tier.toOrder !== null) {
       return 'اترك نهاية آخر شريحة مفتوحة لتغطية جميع الطلبات.';
     }
+  }
+  return null;
+}
+
+export function buildAutomaticCommissionTiers({ monthlySalary, targetCostPerOrder }) {
+  const salary = Math.max(0, Number(monthlySalary) || 0);
+  const target = Number(targetCostPerOrder) || 0;
+  if (salary <= 0 || target <= 0) return null;
+
+  const rates = AUTO_TIER_RATIOS.map((ratio) => {
+    const belowTarget = Math.max(0, target - 0.0001);
+    return Math.min(money(target * ratio, 4), money(belowTarget, 4));
+  });
+  const firstMargin = target - rates[0];
+  if (firstMargin <= 0) return null;
+
+  // The first boundary is the exact break-even quantity. Later tiers use the
+  // same width, while the final rate remains 10% below the cost ceiling.
+  const width = Math.max(1, Math.ceil(salary / firstMargin));
+  return rates.map((ratePerOrder, index) => ({
+    fromOrder: (index * width) + 1,
+    toOrder: index === rates.length - 1 ? null : (index + 1) * width,
+    ratePerOrder,
+  }));
+}
+
+export function validateCommissionPlan({ tiers = [], targetCostPerOrder }) {
+  const tierError = validateCommissionTiers(tiers);
+  if (tierError) return tierError;
+
+  const target = Number(targetCostPerOrder) || 0;
+  if (target <= 0) return 'أدخل سقف تكلفة صحيحاً لكل طلب.';
+  const rows = normalizeCommissionTiers(tiers);
+  for (let index = 1; index < rows.length; index += 1) {
+    if (rows[index].ratePerOrder < rows[index - 1].ratePerOrder) {
+      return 'عمولة كل شريحة يجب أن تساوي أو تزيد عن الشريحة السابقة.';
+    }
+  }
+  if (rows[rows.length - 1].ratePerOrder >= target) {
+    return 'عمولة الشريحة الأخيرة يجب أن تبقى أقل من سقف تكلفة المسوّق لكل طلب.';
   }
   return null;
 }
@@ -152,6 +193,8 @@ function rpcError(error) {
     not_allowed: 'لا تملك الصلاحية المطلوبة.',
     tiers_required: 'أضف شريحة عمولة واحدة على الأقل.',
     tiers_must_be_contiguous_and_open_ended: 'شرائح العمولة يجب أن تبدأ من 1، تكون متصلة، وتنتهي بشريحة مفتوحة.',
+    tiers_must_be_non_decreasing: 'عمولة كل شريحة يجب أن تساوي أو تزيد عن الشريحة السابقة.',
+    last_tier_must_be_below_target: 'عمولة الشريحة الأخيرة يجب أن تبقى أقل من سقف تكلفة المسوّق لكل طلب.',
     month_already_closed: 'هذا الشهر مقفل ولا يمكن تعديله.',
     month_not_finished: 'لا يمكن اعتماد النتيجة الرسمية قبل انتهاء الشهر.',
     close_months_in_order: 'أقفل الأشهر بالترتيب الزمني حتى لا تتشوّه حركة اللون.',
@@ -164,7 +207,10 @@ function rpcError(error) {
 }
 
 export async function createMarketer(payload) {
-  const errorMessage = validateCommissionTiers(payload.tiers);
+  const errorMessage = validateCommissionPlan({
+    tiers: payload.tiers,
+    targetCostPerOrder: payload.targetCostPerOrder,
+  });
   if (errorMessage) throw new Error(errorMessage);
   const { data, error } = await supabase.rpc('marketing_create_marketer', {
     p_name: payload.name,
@@ -185,7 +231,10 @@ export async function createMarketer(payload) {
 }
 
 export async function createCompensationPlan(marketerId, payload) {
-  const errorMessage = validateCommissionTiers(payload.tiers);
+  const errorMessage = validateCommissionPlan({
+    tiers: payload.tiers,
+    targetCostPerOrder: payload.targetCostPerOrder,
+  });
   if (errorMessage) throw new Error(errorMessage);
   const { data, error } = await supabase.rpc('marketing_create_plan', {
     p_marketer_id: marketerId,

@@ -6,13 +6,14 @@ import {
 import { Btn, Card, Empty, Input, Modal, PageHeader, Spinner, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import {
+  buildAutomaticCommissionTiers,
   closeMarketerMonth,
   computeBreakEvenOrders,
   createCompensationPlan,
   createMarketer,
   loadMarketersDashboard,
   saveMarketerMonth,
-  validateCommissionTiers,
+  validateCommissionPlan,
 } from '../lib/marketersService.js';
 import './Marketers.css';
 
@@ -38,6 +39,7 @@ const pct = (value) => `${Math.max(0, Math.min(100, Number(value) || 0))}%`;
 const EMPTY_FORM = {
   name: '', phone: '', startMonth: saMonth(), effectiveMonth: saMonth(),
   monthlySalary: '', targetCostPerOrder: '', monthlyOrderTarget: '', notes: '',
+  tierMode: 'auto',
   tiers: [{ fromOrder: 1, toOrder: null, ratePerOrder: '' }],
 };
 
@@ -65,8 +67,18 @@ function Kpi({ icon, label, value, sub, tone = 'blue' }) {
   );
 }
 
-function TierEditor({ tiers, onChange }) {
+function TierEditor({ tiers, onChange, mode, onModeChange, suggestedTiers }) {
   const update = (index, patch) => onChange(tiers.map((tier, i) => i === index ? { ...tier, ...patch } : tier));
+  const updateEnd = (index, rawValue) => {
+    const next = tiers.map((tier) => ({ ...tier }));
+    next[index].toOrder = rawValue === '' ? null : Number(rawValue);
+    for (let nextIndex = index + 1; nextIndex < next.length; nextIndex += 1) {
+      const previousEnd = next[nextIndex - 1].toOrder;
+      if (previousEnd === null) break;
+      next[nextIndex].fromOrder = Number(previousEnd) + 1;
+    }
+    onChange(next);
+  };
   const addTier = () => {
     const last = tiers[tiers.length - 1];
     const end = Math.max(Number(last.fromOrder) || 1, Number(last.toOrder) || ((Number(last.fromOrder) || 1) + 999));
@@ -85,22 +97,32 @@ function TierEditor({ tiers, onChange }) {
   return (
     <div className="mk-tier-editor">
       <div className="mk-field-heading">
-        <div><strong>شرائح العمولة</strong><span>العمولة متدرجة على الطلبات داخل كل شريحة.</span></div>
+        <div><strong>شرائح العمولة</strong><span>كل بداية = نهاية الشريحة السابقة + 1، والعمولة متدرجة داخل كل شريحة.</span></div>
         <div className="mk-tier-actions">
-          {tiers.length > 1 && <Btn size="sm" variant="ghost" onClick={removeLast}>حذف الأخيرة</Btn>}
-          <Btn size="sm" variant="ghost" icon={<Plus size={14}/>} onClick={addTier}>إضافة شريحة</Btn>
+          {mode === 'auto' ? (
+            <Btn size="sm" variant="ghost" onClick={() => onModeChange('custom')}>تخصيص يدوي</Btn>
+          ) : <>
+            <Btn size="sm" variant="ghost" disabled={!suggestedTiers} onClick={() => {
+              if (!suggestedTiers) return;
+              onChange(suggestedTiers);
+              onModeChange('auto');
+            }}>توليد تلقائي</Btn>
+            {tiers.length > 1 && <Btn size="sm" variant="ghost" onClick={removeLast}>حذف الأخيرة</Btn>}
+            <Btn size="sm" variant="ghost" icon={<Plus size={14}/>} onClick={addTier}>إضافة شريحة</Btn>
+          </>}
         </div>
       </div>
+      {mode === 'auto' && <div className="mk-tier-auto-note">توليد ذكي: 50% ← 65% ← 80% ← 90% من سقف التكلفة، وآخر شريحة تبقى دونه دائمًا.</div>}
       {tiers.map((tier, index) => (
         <div className="mk-tier-row" key={`${index}-${tier.fromOrder}`}>
           <Input label="من الطلب" type="number" min="1" value={tier.fromOrder}
-            disabled={index === 0}
-            onChange={(event) => update(index, { fromOrder: Number(event.target.value) })}/>
+            disabled/>
           <Input label="إلى الطلب" type="number" min={tier.fromOrder} value={tier.toOrder ?? ''}
             placeholder={index === tiers.length - 1 ? 'مفتوحة' : ''}
-            disabled={index === tiers.length - 1}
-            onChange={(event) => update(index, { toOrder: event.target.value === '' ? null : Number(event.target.value) })}/>
+            disabled={mode === 'auto' || index === tiers.length - 1}
+            onChange={(event) => updateEnd(index, event.target.value)}/>
           <Input label="عمولة كل طلب (ر.س)" type="number" min="0" step="0.01" value={tier.ratePerOrder}
+            disabled={mode === 'auto'}
             onChange={(event) => update(index, { ratePerOrder: event.target.value })}/>
         </div>
       ))}
@@ -109,6 +131,18 @@ function TierEditor({ tiers, onChange }) {
 }
 
 function PlanFields({ form, setForm, includeIdentity = false }) {
+  const suggestedTiers = useMemo(() => buildAutomaticCommissionTiers({
+    monthlySalary: form.monthlySalary,
+    targetCostPerOrder: form.targetCostPerOrder,
+  }), [form.monthlySalary, form.targetCostPerOrder]);
+
+  useEffect(() => {
+    if (form.tierMode !== 'auto' || !suggestedTiers) return;
+    setForm((current) => JSON.stringify(current.tiers) === JSON.stringify(suggestedTiers)
+      ? current
+      : { ...current, tiers: suggestedTiers });
+  }, [form.tierMode, setForm, suggestedTiers]);
+
   const previewBreakEven = computeBreakEvenOrders({
     monthlySalary: form.monthlySalary,
     targetCostPerOrder: form.targetCostPerOrder,
@@ -129,7 +163,7 @@ function PlanFields({ form, setForm, includeIdentity = false }) {
           : { ...current, effectiveMonth: event.target.value })}/>
       <Input label="الراتب الشهري (ر.س)" type="number" min="0" step="0.01" value={form.monthlySalary}
         onChange={(event) => setForm((current) => ({ ...current, monthlySalary: event.target.value }))}/>
-      <Input label="التكلفة المستهدفة للطلب *" hint="راتب + عمولة ÷ عدد الطلبات" type="number" min="0.0001" step="0.01"
+      <Input label="أقصى تكلفة للمسوّق لكل طلب *" hint="(الراتب + العمولة) ÷ عدد الطلبات" type="number" min="0.0001" step="0.01"
         value={form.targetCostPerOrder}
         onChange={(event) => setForm((current) => ({ ...current, targetCostPerOrder: event.target.value }))}/>
       <Input label="هدف الطلبات التشغيلي" hint="اختياري، منفصل عن نقطة التعادل" type="number" min="0"
@@ -143,7 +177,13 @@ function PlanFields({ form, setForm, includeIdentity = false }) {
           : 'يتغير الرقم مباشرة عند تعديل الراتب أو العمولة.'}</small>
       </div>
       <div className="mk-form-wide">
-        <TierEditor tiers={form.tiers} onChange={(tiers) => setForm((current) => ({ ...current, tiers }))}/>
+        <TierEditor
+          tiers={form.tiers}
+          mode={form.tierMode}
+          suggestedTiers={suggestedTiers}
+          onModeChange={(tierMode) => setForm((current) => ({ ...current, tierMode }))}
+          onChange={(tiers) => setForm((current) => ({ ...current, tiers }))}
+        />
       </div>
       {includeIdentity && <div className="mk-form-wide">
         <label className="mk-textarea-label">ملاحظات التعاقد</label>
@@ -195,7 +235,7 @@ export default function Marketers({ isActive = true }) {
   const currentMonth = month === saMonth();
 
   const openAdd = () => {
-    setForm({ ...EMPTY_FORM, startMonth: month, effectiveMonth: month, tiers: [{ fromOrder: 1, toOrder: null, ratePerOrder: '' }] });
+    setForm({ ...EMPTY_FORM, startMonth: month, effectiveMonth: month, tierMode: 'auto', tiers: [{ fromOrder: 1, toOrder: null, ratePerOrder: '' }] });
     setAddOpen(true);
   };
   const openPlan = (marketer) => {
@@ -206,6 +246,7 @@ export default function Marketers({ isActive = true }) {
       monthlySalary: source?.monthly_salary ?? '',
       targetCostPerOrder: source?.target_cost_per_order ?? '',
       monthlyOrderTarget: source?.monthly_order_target ?? '',
+      tierMode: 'custom',
       tiers: source?.tiers?.length
         ? source.tiers.map((tier) => ({ fromOrder: tier.from_order, toOrder: tier.to_order, ratePerOrder: tier.rate_per_order }))
         : [{ fromOrder: 1, toOrder: null, ratePerOrder: '' }],
@@ -219,7 +260,7 @@ export default function Marketers({ isActive = true }) {
 
   const submitNew = async () => {
     if (!form.name.trim() || !form.targetCostPerOrder || !form.startMonth) return toast('أكمل الاسم والشهر والتكلفة المستهدفة.', 'warn');
-    const tierError = validateCommissionTiers(form.tiers);
+    const tierError = validateCommissionPlan({ tiers: form.tiers, targetCostPerOrder: form.targetCostPerOrder });
     if (tierError) return toast(tierError, 'warn');
     setSaving(true);
     try {
@@ -231,7 +272,7 @@ export default function Marketers({ isActive = true }) {
     finally { setSaving(false); }
   };
   const submitPlan = async () => {
-    const tierError = validateCommissionTiers(form.tiers);
+    const tierError = validateCommissionPlan({ tiers: form.tiers, targetCostPerOrder: form.targetCostPerOrder });
     if (tierError) return toast(tierError, 'warn');
     if (!form.targetCostPerOrder || !form.effectiveMonth) return toast('أكمل شهر بداية الخطة والتكلفة المستهدفة.', 'warn');
     setSaving(true);

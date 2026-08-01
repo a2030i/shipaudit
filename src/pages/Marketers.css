@@ -83,6 +83,7 @@
 .mk-field-heading strong { color: var(--text); font-size: 12px; }
 .mk-field-heading span { color: var(--muted); font-size: 10px; }
 .mk-tier-actions { display: flex; gap: 6px; }
+.mk-tier-auto-note { margin-bottom: 9px; padding: 9px 11px; border-radius: 10px; color: var(--accent); background: var(--accent-dim); border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--border)); font-size: 10px; line-height: 1.6; }
 .mk-tier-row { display: grid; grid-template-columns: 1fr 1fr 1.4fr; gap: 10px; padding: 12px; margin-bottom: 8px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface2); }
 .mk-break-even-preview { align-self: stretch; display: flex; flex-direction: column; justify-content: center; gap: 3px; min-height: 76px; padding: 12px 14px; border-radius: 12px; color: var(--green); background: color-mix(in srgb, var(--green) 8%, var(--surface)); border: 1px solid color-mix(in srgb, var(--green) 22%, var(--border)); }
 .mk-break-even-preview.impossible { color: var(--red); background: color-mix(in srgb, var(--red) 7%, var(--surface)); border-color: color-mix(in srgb, var(--red) 22%, var(--border)); }
