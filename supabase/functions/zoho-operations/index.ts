@@ -45,6 +45,32 @@ async function zjson(url: string, init: RequestInit) {
   return { r, body };
 }
 
+const normalizedRef = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
+const localTxnDate = (t: any) => String(t?.txn_at || t?.txn_date || '').slice(0, 10);
+
+async function lastImportedBankAnchor(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
+  const url = `${access.apiDomain}/books/v3/bankaccounts/${encodeURIComponent(accountId)}/statement/lastimported?organization_id=${encodeURIComponent(access.orgId)}`;
+  const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+  const message = String(z.body?.message || '');
+  if (z.r.status === 404 || /no .*statement|not found/i.test(message)) return null;
+  if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_last_statement:${message || z.r.status}`);
+  const statements = Array.isArray(z.body?.statement) ? z.body.statement : [];
+  const transactions = statements.flatMap((statement: any) => Array.isArray(statement?.transactions)
+    ? statement.transactions.map((transaction: any) => ({ ...transaction, statement_id: statement.statement_id })) : []);
+  transactions.sort((a: any, b: any) => String(a.date || '').localeCompare(String(b.date || ''))
+    || String(a.transaction_id || '').localeCompare(String(b.transaction_id || '')));
+  const last = transactions.at(-1);
+  if (!last) return null;
+  return {
+    date: String(last.date || '').slice(0, 10),
+    reference: String(last.reference_number || ''),
+    transactionId: String(last.transaction_id || ''),
+    statementId: String(last.statement_id || ''),
+    knownReferences: new Set(transactions.map((t: any) => normalizedRef(t.reference_number)).filter(Boolean)),
+    knownTransactionIds: new Set(transactions.map((t: any) => String(t.transaction_id || '')).filter(Boolean)),
+  };
+}
+
 async function sha256(value: string) {
   const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
   return [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, '0')).join('');
@@ -90,18 +116,43 @@ Deno.serve(async req => {
         .select('zoho_account_id,internal_bank_name,link_kind').eq('zoho_account_id', accountId).maybeSingle();
       if (!link?.internal_bank_name || link.link_kind !== 'bank') return json({ error: 'bank_account_not_linked' }, 400);
       let query = db.from('bank_transactions').select('id,dedup_key,txn_date,txn_at,reference,description,debit,credit,bank')
-        .eq('bank', link.internal_bank_name).order('txn_at', { ascending: true }).limit(500);
+        .eq('bank', link.internal_bank_name).order('txn_date', { ascending: false }).order('id', { ascending: false }).limit(1000);
       if (Array.isArray(input.transaction_ids) && input.transaction_ids.length) query = query.in('id', input.transaction_ids.map(String));
       const { data: txs, error } = await query;
       if (error) throw new Error(`bank_read:${error.message}`);
       const { data: prior } = await db.from('zoho_write_operations').select('request_payload')
         .eq('action', 'bank_statement_import').eq('status', 'succeeded').limit(1000);
       const imported = new Set((prior || []).flatMap((r: any) => r.request_payload?.transaction_ids || []).map(String));
-      const fresh = (txs || []).filter((t: any) => !imported.has(String(t.id)) && (Number(t.debit) > 0 || Number(t.credit) > 0));
+      const ordered = [...(txs || [])].sort((a: any, b: any) => localTxnDate(a).localeCompare(localTxnDate(b))
+        || String(a.id).localeCompare(String(b.id)));
+      const access = await accessToken(db);
+      const anchor = await lastImportedBankAnchor(access, accountId);
+      let afterAnchor = ordered;
+      let anchorMatchedLocally = false;
+      if (anchor) {
+        const anchorIndex = ordered.findLastIndex((t: any) =>
+          (anchor.transactionId && String(t.dedup_key || '') === anchor.transactionId)
+          || (anchor.reference && normalizedRef(t.reference) === normalizedRef(anchor.reference)));
+        if (anchorIndex >= 0) {
+          anchorMatchedLocally = true;
+          afterAnchor = ordered.slice(anchorIndex + 1);
+        } else {
+          // قد يبدأ الملف المحلي بعد آخر كشف زوهو. نبقي يوم المرساة لاستيعاب
+          // عمليات أحدث في اليوم نفسه، ونستبعد كل ما يعرفه آخر كشف بالمعرّف/المرجع.
+          afterAnchor = ordered.filter((t: any) => !anchor.date || localTxnDate(t) >= anchor.date)
+            .filter((t: any) => !anchor.knownTransactionIds.has(String(t.dedup_key || ''))
+              && !anchor.knownReferences.has(normalizedRef(t.reference)));
+        }
+      }
+      const fresh = afterAnchor.filter((t: any) => !imported.has(String(t.id)) && (Number(t.debit) > 0 || Number(t.credit) > 0));
       const summary = { account_id: accountId, bank: link.internal_bank_name, count: fresh.length,
         deposits: fresh.reduce((s: number, t: any) => s + Number(t.credit || 0), 0),
         withdrawals: fresh.reduce((s: number, t: any) => s + Number(t.debit || 0), 0),
-        duplicates: (txs || []).length - fresh.length,
+        duplicates: ordered.length - fresh.length,
+        history_excluded: ordered.length - afterAnchor.length,
+        zoho_anchor: anchor ? { date: anchor.date, reference: anchor.reference,
+          transaction_id: anchor.transactionId, statement_id: anchor.statementId,
+          matched_locally: anchorMatchedLocally } : null,
         transactions: fresh.map((t: any) => ({ id: t.id, date: String(t.txn_at || t.txn_date || '').slice(0, 10),
           reference: t.reference, description: t.description, debit: Number(t.debit || 0), credit: Number(t.credit || 0) })) };
       if (action === 'bank_preview') return json({ ok: true, ...summary });
@@ -112,7 +163,6 @@ Deno.serve(async req => {
       const key = `bank_statement:${accountId}:${await sha256(ids.join(','))}`;
       const audit = await begin(db, key, 'bank_statement_import', user.id, { account_id: accountId, bank: link.internal_bank_name, transaction_ids: ids });
       if (audit.done) return json({ ok: true, idempotent: true, result: audit.result });
-      const access = await accessToken(db);
       const dates = fresh.map((t: any) => String(t.txn_at || t.txn_date || '').slice(0, 10)).sort();
       const payload = { account_id: accountId, start_date: dates[0], end_date: dates[dates.length - 1],
         transactions: fresh.map((t: any) => ({ transaction_id: String(t.dedup_key || t.id),

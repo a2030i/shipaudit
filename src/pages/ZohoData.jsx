@@ -879,21 +879,53 @@ function BankImportModal({ state, onClose, onImport }) {
   return (
     <Modal open title={`استيراد كشف البنك — ${state.row.account_name || ''}`} onClose={onClose}>
       {state.busy && !p ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={22}/></div> : <>
-        <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
+        <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
           سيُنشئ هذا كشفًا بنكيًا في Zoho للحساب المربوط فقط. لن يصنّف المصروفات أو يسجل دفعات العملاء تلقائيًا.
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
+        {p?.zoho_anchor ? (
+          <div style={{ padding: '11px 12px', borderRadius: 10, marginBottom: 12,
+            border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
+            background: 'color-mix(in srgb, var(--accent) 7%, var(--surface))' }}>
+            <div style={{ color: 'var(--muted)', fontSize: 10.5, marginBottom: 4 }}>نقطة البداية من آخر عملية موجودة في زوهو</div>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+              <b dir="ltr" style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{p.zoho_anchor.reference || p.zoho_anchor.transaction_id || 'بلا رقم مرجعي'}</b>
+              <span style={{ color: 'var(--muted)', fontSize: 11 }}>{p.zoho_anchor.date || ''}</span>
+            </div>
+            <div style={{ color: 'var(--muted2)', fontSize: 10.5, marginTop: 4 }}>
+              ستظهر العمليات الأحدث من هذه النقطة فقط{p.zoho_anchor.matched_locally ? '' : '، مع استبعاد مراجع آخر كشف في زوهو'}.
+            </div>
+          </div>
+        ) : (
+          <div style={{ padding: '9px 11px', borderRadius: 9, marginBottom: 12, color: 'var(--gold)',
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)', fontSize: 11.5 }}>
+            لا يوجد كشف مستورد سابق في زوهو؛ لذلك تُعد العمليات المحلية غير المستوردة بداية الكشف الأول.
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
           <MiniValue label="عمليات جديدة" value={p?.count || 0}/><MiniValue label="إيداعات" value={`${fmt(p?.deposits || 0)} ر.س`}/><MiniValue label="سحوبات" value={`${fmt(p?.withdrawals || 0)} ر.س`}/>
         </div>
-        {p?.duplicates ? <div style={{ color: 'var(--gold)', fontSize: 11, marginBottom: 8 }}>استُبعدت {p.duplicates} عملية سبق استيرادها أو غير صالحة.</div> : null}
-        <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-          {(p?.transactions || []).map(t => <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 110px', gap: 8, padding: 8, borderTop: '1px solid var(--border)', fontSize: 11 }}>
-            <span>{t.date}</span><span>{t.description || t.reference || 'عملية بنكية'}</span><b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(t.credit || t.debit)}</b>
-          </div>)}
+        {p?.duplicates ? <div style={{ color: 'var(--gold)', fontSize: 11, marginBottom: 8 }}>استُبعدت {p.duplicates} عملية أقدم من مرجع زوهو أو سبق استيرادها أو غير صالحة.</div> : null}
+        <div className="m-flow" style={{ maxHeight: 330, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
+            <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th></tr></thead>
+            <tbody>{(p?.transactions || []).map(t => {
+              const incoming = Number(t.credit) > 0;
+              return <tr key={t.id} style={{ borderTop: '1px solid var(--border)' }}>
+                <td data-label="التاريخ" style={{ padding: 8, whiteSpace: 'nowrap' }}>{t.date}</td>
+                <td data-label="" style={{ padding: 8, minWidth: 0 }}>
+                  <b dir="ltr" style={{ display: 'block', fontFamily: 'var(--font-mono)', fontSize: 10.5, overflowWrap: 'anywhere' }}>{t.reference || 'بلا مرجع'}</b>
+                  <span style={{ display: 'block', color: 'var(--muted)', marginTop: 4, lineHeight: 1.55 }}>{t.description || 'عملية بنكية'}</span>
+                </td>
+                <td data-label="الاتجاه" style={{ padding: 8, color: incoming ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>{incoming ? 'إيداع' : 'سحب'}</td>
+                <td data-label="المبلغ" style={{ padding: 8, fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(incoming ? t.credit : t.debit)} ر.س</td>
+              </tr>;
+            })}</tbody>
+          </table>
         </div>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+        {!p?.count ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 700, fontSize: 12, padding: 14 }}>لا توجد عمليات جديدة بعد آخر مرجع في زوهو.</div> : null}
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-          <Btn variant="accent" disabled={state.busy || !p?.count} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد العمليات المحددة إلى زوهو</Btn>
+          <Btn variant="accent" disabled={state.busy || !p?.count} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد {p?.count || 0} عملية جديدة إلى زوهو</Btn>
         </div>
       </>}
     </Modal>
