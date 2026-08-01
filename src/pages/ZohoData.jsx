@@ -891,6 +891,7 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
   }, [target]);
   if (!target) return null;
   const isBank = target.sourceType === 'bank_account';
+  const internalBanks = Array.isArray(dashboard?.internal_banks) ? dashboard.internal_banks.filter(Boolean) : [];
   const save = async () => {
     if (kind === 'bank' && !bankName.trim()) { toast('اختر اسم البنك الداخلي', 'error'); return; }
     if (kind === 'cod_treasury' && !carrierId) { toast('اختر شركة الشحن المرتبطة بالخزينة', 'error'); return; }
@@ -933,8 +934,16 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
         ) : null}
         {kind === 'bank' ? (
           <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700 }}>الحساب البنكي الداخلي
-            <input value={bankName} onChange={e => setBankName(e.target.value)} list="zoho-internal-banks" placeholder="مثال: بنك الإنماء" style={fieldStyle}/>
-            <datalist id="zoho-internal-banks">{(dashboard?.internal_banks || []).map(b => <option key={b} value={b}/>)}</datalist>
+            <select value={bankName} onChange={e => setBankName(e.target.value)} style={fieldStyle} required>
+              <option value="">اختر الحساب البنكي الداخلي…</option>
+              {internalBanks.map(b => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <span style={{ color: 'var(--muted)', fontSize: 10.5, fontWeight: 500 }}>
+              اختر البنك الداخلي الذي يقابل حساب زوهو «{target.row.account_name}».
+            </span>
+            {!internalBanks.length ? (
+              <span style={{ color: 'var(--red)', fontSize: 10.5 }}>لا توجد حسابات بنكية داخلية مسجلة بعد.</span>
+            ) : null}
           </label>
         ) : null}
         {kind === 'cod_treasury' ? (
@@ -952,7 +961,7 @@ function FinancialAccountLinkModal({ target, dashboard, onClose, onSaved }) {
           <div>{target.existing ? <Btn variant="danger" size="sm" disabled={saving} onClick={remove}>إزالة الربط</Btn> : null}</div>
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
-            <Btn variant="accent" disabled={saving} icon={saving ? <Spinner size={13}/> : <Link2 size={14}/>} onClick={save}>حفظ تصنيف الحساب</Btn>
+            <Btn variant="accent" disabled={saving || (kind === 'bank' && !internalBanks.length)} icon={saving ? <Spinner size={13}/> : <Link2 size={14}/>} onClick={save}>حفظ تصنيف الحساب</Btn>
           </div>
         </div>
       </div>
