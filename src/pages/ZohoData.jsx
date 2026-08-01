@@ -13,7 +13,10 @@ import { useAuth } from '../lib/auth.jsx';
 import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth,
   loadZohoFinancialDashboard, setZohoFinancialAccountLink,
-  getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument } from '../lib/pnlService.js';
+  getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument,
+  markZohoInvoicesSent, pushZohoInvoicesToZatca,
+  previewZohoBankImport, importZohoBankStatement,
+  loadZohoWebhookFailures, retryZohoWebhook } from '../lib/pnlService.js';
 import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
@@ -76,7 +79,7 @@ const sectionForType = type => WORKSPACE_SECTIONS.find(section => section.types.
 const COLS = {
   invoices: [
     ['التاريخ', 'date'], ['الرقم', 'invoice_number', 'mono'], ['العميل', 'customer_name', 'main'],
-    ['الحالة', 'status'], ['المبلغ', 'total', 'money'], ['المتبقي', 'balance', 'money-warn'],
+    ['الحالة', 'status'], ['حالة زاتكا', 'einvoice_status'], ['المبلغ', 'total', 'money'], ['المتبقي', 'balance', 'money-warn'],
   ],
   payments: [
     ['التاريخ', 'date'], ['العميل', 'customer_name', 'main'], ['الطريقة', 'mode'],
@@ -137,6 +140,11 @@ export default function ZohoData({ isActive = true }) {
   const [downloadingId, setDownloadingId] = useState(null);
   const [selectedInvoices, setSelectedInvoices] = useState(() => new Set());
   const [bulkPdf, setBulkPdf] = useState({ busy: false, done: 0, total: 0 });
+  const [invoiceOperation, setInvoiceOperation] = useState(null);
+  const [operationResult, setOperationResult] = useState(null);
+  const [bankImport, setBankImport] = useState(null);
+  const [webhookFailures, setWebhookFailures] = useState([]);
+  const [retryingWebhook, setRetryingWebhook] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
   const [campaign, setCampaign] = useState(null);   // صفوف حملة المتأخرين (تحميل كسول)
   const [waOpen, setWaOpen] = useState(false);
@@ -258,6 +266,11 @@ export default function ZohoData({ isActive = true }) {
     const iv = setInterval(tick, 60_000);
     return () => { live = false; clearInterval(iv); };
   }, [isActive]);
+  const refreshWebhookFailures = useCallback(() => {
+    if (!can('zoho.configure')) return;
+    loadZohoWebhookFailures().then(r => setWebhookFailures(r?.rows || [])).catch(() => {});
+  }, [can]);
+  useEffect(() => { if (isActive) refreshWebhookFailures(); }, [isActive, refreshWebhookFailures]);
 
   const loadFinancial = useCallback(async () => {
     try { setFinancial(await loadZohoFinancialDashboard()); }
@@ -407,6 +420,41 @@ export default function ZohoData({ isActive = true }) {
     }
   };
 
+  const runInvoiceOperation = async (kind) => {
+    const ids = [...selectedInvoices];
+    if (!ids.length) return;
+    const selectedRows = filtered.filter(r => selectedInvoices.has(String(r.zoho_id)));
+    const eligible = kind === 'sent'
+      ? selectedRows.filter(r => String(r.status).toLowerCase() === 'draft')
+      : selectedRows.filter(r => String(r.einvoice_status).toLowerCase() === 'yet_to_be_pushed');
+    if (!eligible.length) {
+      toast(kind === 'sent' ? 'المحدد لا يحتوي مسودات' : 'المحدد لا يحتوي فواتير جاهزة لزاتكا', 'info');
+      return;
+    }
+    setInvoiceOperation(kind);
+    try {
+      const result = kind === 'sent'
+        ? await markZohoInvoicesSent(eligible.map(r => r.zoho_id))
+        : await pushZohoInvoicesToZatca(eligible.map(r => r.zoho_id));
+      setOperationResult({ kind, ...result });
+      setSelectedInvoices(new Set());
+      await load(type, period, periodTo);
+      toast(kind === 'sent' ? 'اكتمل تحويل المسودات' : 'اكتمل إرسال زاتكا عبر زوهو', result.failed ? 'info' : 'success');
+    } catch (e) {
+      toast(`تعذّر التنفيذ: ${e.message}`, 'error');
+    } finally { setInvoiceOperation(null); }
+  };
+
+  const openBankImport = async (row) => {
+    setBankImport({ row, busy: true, preview: null });
+    try {
+      const preview = await previewZohoBankImport(row.zoho_id);
+      setBankImport({ row, busy: false, preview });
+    } catch (e) {
+      setBankImport(null); toast(`تعذّرت معاينة كشف البنك: ${e.message}`, 'error');
+    }
+  };
+
   const filtersActive = !!(q.trim() || status || amtMin || amtMax);
   const toggleSort = (col) => setSort(s => s.col === col ? { col, dir: s.dir === 'asc' ? 'desc' : 'asc' } : { col, dir: col === 'date' ? 'desc' : 'asc' });
   const total = useMemo(() => +filtered.reduce((s, r) => s + (Number(r[cfg.amount]) || 0), 0).toFixed(2), [filtered, cfg]);
@@ -520,6 +568,24 @@ export default function ZohoData({ isActive = true }) {
           </div>
         );
       })()}
+
+      {webhookFailures.length > 0 && can('zoho.configure') ? (
+        <Card style={{ padding: 12, marginBottom: 14, borderColor: 'color-mix(in srgb, var(--red) 30%, var(--border))' }}>
+          <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>
+            أحداث زوهو تحتاج إعادة معالجة ({webhookFailures.length})
+          </div>
+          {webhookFailures.slice(0, 8).map(e => <div key={e.event_key} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 0', borderTop: '1px solid var(--border)', fontSize: 11.5 }}>
+            <div style={{ flex: 1 }}><b>{KIND_AR[e.entity_type] || e.entity_type || 'حدث زوهو'}</b> · {e.entity_id || 'بلا معرف'}<div style={{ color: 'var(--muted)' }}>{e.last_error || `متوقف في حالة ${e.status}`}</div></div>
+            <Btn size="sm" variant="ghost" disabled={retryingWebhook === e.event_key}
+              icon={retryingWebhook === e.event_key ? <Spinner size={12}/> : <RefreshCw size={13}/>} onClick={async () => {
+                setRetryingWebhook(e.event_key);
+                try { await retryZohoWebhook(e.event_key); toast('أعيدت المزامنة والتحقق من الحدث', 'success'); refreshWebhookFailures(); }
+                catch (err) { toast(`فشلت إعادة المعالجة: ${err.message}`, 'error'); }
+                finally { setRetryingWebhook(null); }
+              }}>إعادة مزامنة هذا الحدث</Btn>
+          </div>)}
+        </Card>
+      ) : null}
 
       {section === 'overview' ? (
         <FinancialControlPanel
@@ -636,6 +702,16 @@ export default function ZohoData({ isActive = true }) {
             title="تحميل الفواتير المحددة مرتبة في ملف PDF واحد">
             {bulkPdf.busy ? `تجهيز ${bulkPdf.done} من ${bulkPdf.total}` : `تحميل PDF موحّد (${selectedInvoices.size})`}
           </Btn>
+          <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
+            icon={invoiceOperation === 'sent' ? <Spinner size={12}/> : null}
+            onClick={() => runInvoiceOperation('sent')}>
+            تحويل المسودات المحددة إلى مرسلة
+          </Btn>
+          <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
+            icon={invoiceOperation === 'zatca' ? <Spinner size={12}/> : null}
+            onClick={() => runInvoiceOperation('zatca')}>
+            إرسال المحدد إلى زاتكا عبر زوهو
+          </Btn>
         </div>
       )}
 
@@ -738,6 +814,11 @@ export default function ZohoData({ isActive = true }) {
                               sourceType,
                               existing: existingLink,
                             })}>{existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
+                            {type === 'bank_accounts' && existingLink?.link_kind === 'bank' ? (
+                              <Btn size="sm" variant="accent" icon={<Download size={13}/>} onClick={() => openBankImport(r)}>
+                                استيراد عمليات البنك إلى زوهو
+                              </Btn>
+                            ) : null}
                           </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>لا يحتاج ربطًا بنكيًا</span>}
                         </td>
                       ) : null}
@@ -755,7 +836,7 @@ export default function ZohoData({ isActive = true }) {
         )}
 
       <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 12, textAlign: 'center' }}>
-        قراءة فقط — أي تعديل يتم في Zoho Books نفسه ثم «مزامنة». الرواتب: نوع «المصاريف» ← حساب «أجور الموظفين».
+        الكتابة محصورة في الإجراءات الظاهرة: دورة الفاتورة، إرسال زاتكا، واستيراد كشف بنك بعد المعاينة. لا حذف ولا تصنيف مالي تلقائي.
       </div>
       </> : null}
 
@@ -776,8 +857,66 @@ export default function ZohoData({ isActive = true }) {
           toast('حُفظ الربط المالي ✓', 'success');
         }}
       />
+      <BankImportModal state={bankImport} onClose={() => setBankImport(null)} onImport={async () => {
+        const ids = bankImport?.preview?.transactions?.map(t => t.id) || [];
+        if (!ids.length) return;
+        setBankImport(s => ({ ...s, busy: true }));
+        try {
+          const result = await importZohoBankStatement(bankImport.row.zoho_id, ids);
+          setOperationResult({ kind: 'bank', ...result });
+          setBankImport(null); await loadFinancial();
+          toast(`استورد Zoho ${result.count || ids.length} عملية بنكية`, 'success');
+        } catch (e) { setBankImport(s => ({ ...s, busy: false })); toast(`فشل الاستيراد: ${e.message}`, 'error'); }
+      }}/>
+      <OperationResultModal result={operationResult} onClose={() => setOperationResult(null)}/>
     </div>
   );
+}
+
+function BankImportModal({ state, onClose, onImport }) {
+  if (!state) return null;
+  const p = state.preview;
+  return (
+    <Modal open title={`استيراد كشف البنك — ${state.row.account_name || ''}`} onClose={onClose}>
+      {state.busy && !p ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={22}/></div> : <>
+        <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12 }}>
+          سيُنشئ هذا كشفًا بنكيًا في Zoho للحساب المربوط فقط. لن يصنّف المصروفات أو يسجل دفعات العملاء تلقائيًا.
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
+          <MiniValue label="عمليات جديدة" value={p?.count || 0}/><MiniValue label="إيداعات" value={`${fmt(p?.deposits || 0)} ر.س`}/><MiniValue label="سحوبات" value={`${fmt(p?.withdrawals || 0)} ر.س`}/>
+        </div>
+        {p?.duplicates ? <div style={{ color: 'var(--gold)', fontSize: 11, marginBottom: 8 }}>استُبعدت {p.duplicates} عملية سبق استيرادها أو غير صالحة.</div> : null}
+        <div style={{ maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+          {(p?.transactions || []).map(t => <div key={t.id} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 110px', gap: 8, padding: 8, borderTop: '1px solid var(--border)', fontSize: 11 }}>
+            <span>{t.date}</span><span>{t.description || t.reference || 'عملية بنكية'}</span><b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(t.credit || t.debit)}</b>
+          </div>)}
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 14 }}>
+          <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
+          <Btn variant="accent" disabled={state.busy || !p?.count} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد العمليات المحددة إلى زوهو</Btn>
+        </div>
+      </>}
+    </Modal>
+  );
+}
+
+function OperationResultModal({ result, onClose }) {
+  if (!result) return null;
+  const title = result.kind === 'sent' ? 'نتيجة تحويل المسودات' : result.kind === 'zatca' ? 'نتيجة إرسال زاتكا' : 'نتيجة استيراد البنك';
+  return <Modal open title={title} onClose={onClose}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
+      <MiniValue label="نجح" value={result.succeeded ?? result.count ?? 0}/><MiniValue label="تجاوز" value={result.skipped || 0}/><MiniValue label="فشل" value={result.failed || 0}/>
+    </div>
+    {(result.results || []).map((r, i) => <div key={`${r.invoice_id || i}`} style={{ padding: 9, borderTop: '1px solid var(--border)', fontSize: 12 }}>
+      <b>{r.number || r.invoice_id}</b> — <span style={{ color: r.outcome === 'failed' ? 'var(--red)' : r.outcome === 'succeeded' ? 'var(--green)' : 'var(--gold)' }}>{r.outcome}</span>
+      {r.error ? <div style={{ color: 'var(--red)', marginTop: 3 }}>{r.error}</div> : null}
+    </div>)}
+    <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><Btn variant="ghost" onClick={onClose}>إغلاق النتيجة</Btn></div>
+  </Modal>;
+}
+
+function MiniValue({ label, value }) {
+  return <div style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface2)' }}><div style={{ color: 'var(--muted)', fontSize: 10 }}>{label}</div><div style={{ fontWeight: 800, marginTop: 3 }}>{value}</div></div>;
 }
 
 function FinancialControlPanel({ data, canConfigure, onReauthorize, onOpenAccount, onOpenVendors }) {

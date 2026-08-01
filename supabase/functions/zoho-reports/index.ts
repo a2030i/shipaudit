@@ -203,6 +203,24 @@ Deno.serve(async (req) => {
       return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j });
     }
 
+    // تقارير مالية إضافية — قائمة بيضاء فقط. بعض مؤسسات Zoho قد لا تتيح
+    // تقريراً وفق الخطة/الدولة؛ نعيد رسالة Zoho الصريحة ولا نخمن الأرقام.
+    if (action === 'financial_report') {
+      const report = String(body.report || '');
+      const allowed: Record<string, string> = {
+        balance_sheet: 'balancesheet', cash_flow: 'cashflow',
+        trial_balance: 'trialbalance', general_ledger: 'generalledger',
+      };
+      const endpoint = allowed[report];
+      if (!endpoint) return json({ error: 'unsupported_report' }, 400);
+      const qs = new URLSearchParams({ organization_id: orgId, from_date: from, to_date: to,
+        cash_based: 'false', filter_by: 'TransactionDate.CustomDate' });
+      const r = await fetch(`${apiDomain}/books/v3/reports/${endpoint}?${qs}`, { headers: auth_h });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.code !== 0) return json({ error: `zoho: ${j.message || r.status}`, code: j.code }, 400);
+      return json({ ok: true, report, from, to, data: j });
+    }
+
     return json({ error: 'unknown action' }, 400);
   } catch (e) {
     return json({ error: String((e as Error).message || e) }, 500);

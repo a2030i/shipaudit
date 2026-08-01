@@ -25,13 +25,19 @@ const json = (b: unknown, s = 200) =>
 // مستنداً أبداً (لا استدعاء POST /creditnotes). قرار المستخدم صراحةً: المصدر
 // (إشعار/دفعة) يجب ألّا يفرّق في التسديد.
 const SCOPE = [
-  'ZohoBooks.invoices.READ', 'ZohoBooks.invoices.UPDATE',
+  // invoices.CREATE is required by Zoho's e-invoice push endpoint. The
+  // application still never creates an invoice; this grant is used only by
+  // zatca-auto-push to submit an existing Zoho invoice to Fatoora.
+  'ZohoBooks.invoices.READ', 'ZohoBooks.invoices.UPDATE', 'ZohoBooks.invoices.CREATE',
   'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE', 'ZohoBooks.creditnotes.CREATE',
   'ZohoBooks.customerpayments.READ', 'ZohoBooks.customerpayments.UPDATE',
   'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
   'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ',
   'ZohoBooks.vendorpayments.READ', 'ZohoBooks.accountants.READ',
-  'ZohoBooks.banking.READ', 'ZohoBooks.debitnotes.READ',
+  // banking.CREATE is limited in application code to importing an approved
+  // statement into an explicitly linked Zoho bank account. No categorization
+  // or deletion is performed automatically.
+  'ZohoBooks.banking.READ', 'ZohoBooks.banking.CREATE', 'ZohoBooks.debitnotes.READ',
   'ZohoBooks.settings.READ', 'ZohoBooks.reports.READ',
 ].join(',');
 

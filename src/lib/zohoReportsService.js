@@ -179,6 +179,39 @@ export async function exportPnlRange({ from, to, userId }) {
   return { rowCount: rows.length - 6, net: grandNet };
 }
 
+const FINANCIAL_REPORT_LABELS = {
+  balance_sheet: 'الميزانية العمومية', cash_flow: 'التدفق النقدي',
+  trial_balance: 'ميزان المراجعة', general_ledger: 'دفتر الأستاذ العام',
+};
+
+// يحافظ على بنية Zoho كما أعادها، ويحوّلها إلى ورقة مراجعة قابلة للبحث دون
+// إعادة تصنيف محاسبي محلي. المسار الخام يبقى في العمود الأول للتدقيق.
+export async function exportZohoFinancialReport({ report, from, to, userId }) {
+  const d = await callFn({ action: 'financial_report', report, from, to });
+  const label = FINANCIAL_REPORT_LABELS[report] || report;
+  const rows = [[label], [`الفترة: ${from} — ${to}`], ['المصدر: Zoho Books'], [], ['المسار', 'البيان', 'القيمة']];
+  const walk = (value, path = '') => {
+    if (Array.isArray(value)) return value.forEach((item, i) => walk(item, `${path}[${i}]`));
+    if (value && typeof value === 'object') {
+      const obj = value;
+      const name = obj.name || obj.account_name || obj.display_name || obj.label || obj.description || '';
+      const amount = obj.total ?? obj.amount ?? obj.balance ?? obj.debit ?? obj.credit;
+      if (name || amount != null) rows.push([path, name, amount ?? '']);
+      Object.entries(obj).forEach(([k, v]) => {
+        if (!['name','account_name','display_name','label','description','total','amount','balance','debit','credit'].includes(k)) walk(v, path ? `${path}.${k}` : k);
+      });
+    }
+  };
+  walk(d.data || {});
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 44 }, { wch: 48 }, { wch: 18 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, label.slice(0, 28));
+  await persistAndDownloadExport({ wb: rtl(wb), fileName: `${label}_${from}_${to}.xlsx`,
+    kind: report, rowCount: Math.max(0, rows.length - 5), total: 0, userId });
+  return { rowCount: Math.max(0, rows.length - 5) };
+}
+
 // أول فترة ضريبية للمنشأة — لا إقرار قبلها (قرار المستخدم 2026-07-28).
 export const FIRST_VAT_QUARTER = { year: 2026, q: 1 };
 

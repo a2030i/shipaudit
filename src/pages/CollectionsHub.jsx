@@ -20,13 +20,13 @@ import CustomerReceivables from './CustomerReceivables.jsx';
 
 const TABS = [
   {
-    id: 'money', label: 'من يدين لك؟', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
+    id: 'money', label: 'نظرة عامة وأعمار الدين', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
     eyebrow: 'مرجع الدين', purpose: 'اعرف المبلغ الحقيقي المستحق من كل عميل',
     description: 'يعرض فواتير زوهو المفتوحة ويقودك مباشرة إلى العميل والفواتير المتأخرة. هذه الشاشة للقرار المالي، وليست سجل اتصالات.',
     outcome: 'عميل ومبلغ وفواتير واضحة', tone: 'var(--green)',
   },
   {
-    id: 'queue', label: 'متابعة التحصيل', icon: PhoneCall, component: Collections, perm: 'collections.view',
+    id: 'queue', label: 'إجراء اليوم ووعود السداد', icon: PhoneCall, component: Collections, perm: 'collections.view',
     eyebrow: 'تنفيذ يومي', purpose: 'اتصل، سجّل الوعد، وحدّد المتابعة التالية',
     description: 'قائمة عمل فريق التحصيل. استخدمها بعد معرفة الدين لتوثيق المحاولات والوعود ومنع تكرار الاتصال من أكثر من موظف.',
     outcome: 'مالك واضح وخطوة تالية', tone: 'var(--red)',
@@ -38,7 +38,7 @@ const TABS = [
     outcome: 'ملف قانوني مكتمل المسار', tone: 'var(--gold)',
   },
   {
-    id: 'internal', label: 'مطابقة النظام الداخلي', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
+    id: 'internal', label: 'الأرصدة والمطابقة', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
     eyebrow: 'تدقيق ومطابقة', purpose: 'قارن كشف النظام الداخلي مع المرجع المالي',
     description: 'هذه شاشة فحص فروقات وربط بيانات، وليست المصدر الذي يُطالب العميل بناءً عليه. المطالبة تبدأ من «من يدين لك؟».',
     outcome: 'فروقات معروفة بلا تضارب', tone: 'var(--accent3)',
@@ -89,8 +89,8 @@ export default function CollectionsHub({ isActive = true }) {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
       <WorkspaceTabs
         scope="collections"
-        title="الديون والتحصيل"
-        subtitle="من معرفة الدين إلى المتابعة ثم التصعيد"
+        title="مديونيات العملاء"
+        subtitle="نظرة موحدة: الأعمار، إجراء اليوم، الوعود، الأرصدة والمطابقة"
         tabs={visibleTabs}
         activeId={activeTab?.id}
         onChange={handleTabChange}

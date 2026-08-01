@@ -420,6 +420,34 @@ export async function getZohoWriteAuthUrl() {
 // ومنها banking.READ فقط (لا استيراد كشف ولا كتابة بنكية).
 export const getZohoAuthUrl = getZohoWriteAuthUrl;
 
+async function invokeZohoOperation(body) {
+  const { data, error } = await supabase.functions.invoke('zoho-operations', { body });
+  if (error && !data) throw new Error(error.message);
+  if (data?.error) throw new Error(data.error);
+  return data;
+}
+
+// دورة الفاتورة — كل عملية تُنفَّذ على المعرّفات المحددة فقط، مع نتيجة
+// مستقلة لكل فاتورة وسجل منع تكرار في الخادم.
+export const markZohoInvoicesSent = invoiceIds => invokeZohoOperation({
+  action: 'invoice_mark_sent', invoice_ids: invoiceIds,
+});
+export const pushZohoInvoicesToZatca = invoiceIds => invokeZohoOperation({
+  action: 'invoice_push_zatca', invoice_ids: invoiceIds,
+});
+
+// كشف البنك: المعاينة لا تكتب. الاستيراد لا يقبل التنفيذ دون قائمة صريحة
+// للعمليات التي وافق عليها المدير في نفس المعاينة.
+export const previewZohoBankImport = accountId => invokeZohoOperation({
+  action: 'bank_preview', account_id: accountId,
+});
+export const importZohoBankStatement = (accountId, transactionIds) => invokeZohoOperation({
+  action: 'bank_import', account_id: accountId, transaction_ids: transactionIds,
+});
+
+export const loadZohoWebhookFailures = () => invokeZohoOperation({ action: 'webhook_failures' });
+export const retryZohoWebhook = eventKey => invokeZohoOperation({ action: 'webhook_retry', event_key: eventKey });
+
 // خطة تطبيق الأرصدة الدائنة لعميل (قراءة فقط — لا كتابة). ترجع الفواتير
 // وأي رصيد يُطبَّق على كلٍّ منها. عبر edge function zoho-apply-credits.
 export async function planZohoApplyCredits(contactId) {

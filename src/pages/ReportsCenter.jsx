@@ -30,6 +30,8 @@ const KIND_LABEL = {
   monthly: 'تقرير شهري', carrier_soa: 'كشف حساب ناقل', bank_recon: 'مطابقة بنكية',
   cod: 'تحصيلات COD', invoicing: 'فوترة عملاء', weight: 'أوزان زائدة',
   vat_return: 'الإقرار الضريبي', pnl_statement: 'قائمة الدخل',
+  balance_sheet: 'الميزانية العمومية', cash_flow: 'التدفق النقدي',
+  trial_balance: 'ميزان المراجعة', general_ledger: 'دفتر الأستاذ العام',
 };
 
 export default function ReportsCenter({ isActive = true }) {
@@ -49,6 +51,7 @@ export default function ReportsCenter({ isActive = true }) {
   const [pQuarter, setPQuarter] = useState('');
   const [pPnlFrom, setPPnlFrom] = useState('');
   const [pPnlTo, setPPnlTo]     = useState('');
+  const [pFinReport, setPFinReport] = useState('balance_sheet');
 
   const loadHistory = useCallback(() => {
     loadExportHistory({ limit: 100 }).then(rows => { setHistory(rows); setHistoryPage(0); }).catch(() => setHistory([]));
@@ -146,6 +149,12 @@ export default function ReportsCenter({ isActive = true }) {
     await printPnlPdf({ from: pPnlFrom, to: pPnlTo });
     toast('قائمة الدخل جاهزة — اضغط «حفظ PDF» في النافذة', 'success');
   });
+  const genFinancial = () => run('financial', async () => {
+    if (!pPnlFrom || !pPnlTo) throw new Error('اختر تاريخ البداية والنهاية');
+    const { exportZohoFinancialReport } = await import('../lib/zohoReportsService.js');
+    const r = await exportZohoFinancialReport({ report: pFinReport, from: pPnlFrom, to: pPnlTo, userId: user?.id });
+    toast(`تم توليد التقرير — ${r.rowCount} سطر`, 'success');
+  });
 
   if (!can('carriers.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
 
@@ -217,6 +226,22 @@ export default function ReportsCenter({ isActive = true }) {
           <Btn variant="accent" size="full" disabled={busy === 'pnl' || !pPnlFrom || !pPnlTo}
             icon={busy === 'pnl' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genPnl}>
             توليد القائمة
+          </Btn>
+        </ReportCard>
+
+        <ReportCard icon={<FileBarChart size={18}/>} color="var(--gold)"
+          title="التقارير المالية الرسمية من زوهو"
+          desc="ميزانية عمومية · تدفق نقدي · ميزان مراجعة · دفتر أستاذ — مع حفظ نسخة في سجل التقارير">
+          <Select value={pFinReport} onChange={e => setPFinReport(e.target.value)}>
+            <option value="balance_sheet">الميزانية العمومية</option>
+            <option value="cash_flow">التدفق النقدي</option>
+            <option value="trial_balance">ميزان المراجعة</option>
+            <option value="general_ledger">دفتر الأستاذ العام</option>
+          </Select>
+          <div style={{ fontSize: 11, color: 'var(--muted)' }}>يستخدم تاريخي قائمة الدخل أعلاه.</div>
+          <Btn variant="accent" size="full" disabled={busy === 'financial' || !pPnlFrom || !pPnlTo}
+            icon={busy === 'financial' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genFinancial}>
+            توليد التقرير المحدد
           </Btn>
         </ReportCard>
       </div>
