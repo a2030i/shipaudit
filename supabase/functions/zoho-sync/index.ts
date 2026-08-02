@@ -473,6 +473,7 @@ Deno.serve(async (req) => {
         { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
           zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_id: it.customer_id || null,
           customer_name: it.customer_name, date: it.date || null, due_date: it.due_date || null,
+          invoice_type: (it.type as string) || null,
           total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now,
           einvoice_status: (it.einvoice_status as string) || null }) },

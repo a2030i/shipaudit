@@ -1,4 +1,7 @@
-// zoho-webhook v13 — صندوق وارد دائم + idempotency + منع الحدث القديم من دهس الأحدث.
+// zoho-webhook v14 — يحدّث رصيد جهة الاتصال من لقطة الفاتورة نفسها.
+// Zoho يرسل contact.customer_balance وunused_customer_credits داخل حدث الفاتورة؛
+// وهذا يمنع بقاء الرصيد الافتتاحي كدين بعد وصول دفعة تسدده.
+// v13 — صندوق وارد دائم + idempotency + منع الحدث القديم من دهس الأحدث.
 // v7 — يستقبل Webhooks زوهو ويحدّث المرآة المحلية فوراً (0 استدعاء
 // زوهو). يُلغي نافذة تقادم الـ30 دقيقة: أي تغيّر في فاتورة/إشعار/دفعة يصل لحظياً.
 // مُتحقَّق حيّاً 2026-07-06: زوهو يرسل {invoice:{…}}/{payment:{…}} (وفيه
@@ -116,6 +119,7 @@ Deno.serve(async (req) => {
         zoho_id: s(inv.invoice_id), invoice_number: s(inv.invoice_number),
         customer_id: s(inv.customer_id), customer_name: s(inv.customer_name), date: inv.date || null,
         due_date: inv.due_date || null,
+        invoice_type: s(inv.type),
         total: num(inv.total), balance: balOf(inv.status, inv.balance), status: s(inv.status),
         last_modified: providerModifiedAt || now, synced_at: now };
       // لا تكتب einvoice_status=null فوق قيمة مخزونة (webhook بلا einvoice_details
@@ -123,6 +127,16 @@ Deno.serve(async (req) => {
       if (ein) row.einvoice_status = ein;
       const { error } = await db.from('zoho_invoices').upsert(row);
       if (error) throw new Error(`save invoice: ${error.message}`);
+      const customerBalance = inv.contact?.customer_balance;
+      if (inv.customer_id && customerBalance != null && Number.isFinite(Number(customerBalance))) {
+        const { error: contactError } = await db.from('zoho_contacts').update({
+          outstanding_receivable: Number(customerBalance),
+          unused_credits_receivable: num(inv.contact?.unused_customer_credits),
+          last_modified: providerModifiedAt || now,
+          synced_at: now,
+        }).eq('zoho_id', s(inv.customer_id));
+        if (contactError) throw new Error(`save invoice contact balance: ${contactError.message}`);
+      }
     } else if (cn?.creditnote_id) {
       const { error } = await db.from('zoho_creditnotes').upsert({
         zoho_id: s(cn.creditnote_id), creditnote_number: s(cn.creditnote_number),

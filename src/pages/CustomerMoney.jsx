@@ -34,7 +34,6 @@ const BUCKETS = [
   { key: 'b1', label: '31–60',     color: 'var(--gold)' },
   { key: 'b2', label: '61–90',     color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
   { key: 'b3', label: '+90',       color: 'var(--red)' },
-  { key: 'opening', label: 'رصيد افتتاحي', color: 'var(--muted)' },
 ];
 
 const platformStatusKey = (customer) => {
@@ -860,10 +859,10 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
           <>
             <Chip color={ageColor}>أقدم استحقاق {c.oldestDays} يوم</Chip>
             <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
-            {c.opening > 0.5 && <Chip color="var(--muted)">رصيد افتتاحي {fmt(c.opening)} — عمر غير معروف</Chip>}
+            {c.opening > 0.5 && <Chip color="var(--gold)">رصيد افتتاحي {fmt(c.opening)} — من 10 يناير 2026</Chip>}
           </>
         ) : (
-          <Chip color="var(--muted)">رصيد افتتاحي {fmt(c.opening)} بلا فاتورة مفتوحة — عمر غير معروف</Chip>
+          <Chip color="var(--gold)">رصيد افتتاحي {fmt(c.opening)} — من 10 يناير 2026</Chip>
         )}
         {c.lastPaymentDate
           ? <Chip color="var(--green)">آخر دفعة {c.lastPaymentDate} ({fmtK(c.lastPaymentAmount)})</Chip>
