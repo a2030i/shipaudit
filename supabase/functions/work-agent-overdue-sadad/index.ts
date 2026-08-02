@@ -36,7 +36,14 @@ Deno.serve(async (req) => {
     else byPhone.set(phone,{...r,phone,owed:Number(r.owed||0),invoice_count:Number(r.invoice_count||0),customers:[r.customer_name]});
   }
   const candidates=[...byPhone.values()];
-  if (body.action==='preview') return json({ok:true,total:candidates.length,missing_phone:missingPhone,total_owed:candidates.reduce((s,r)=>s+r.owed,0),sample:candidates.slice(0,10)});
+  if (body.action==='preview') return json({
+    ok:true,total:candidates.length,missing_phone:missingPhone,
+    total_owed:candidates.reduce((s,r)=>s+r.owed,0),
+    items:candidates.map(r=>({
+      customer_name:r.customer_name,store_name:r.store_name,phone:r.phone,
+      owed:r.owed,invoice_count:r.invoice_count,oldest_due:r.oldest_due,
+    })),
+  });
 
   const now=new Date();
   const riyadh=new Date(now.getTime()+3*3600000);
