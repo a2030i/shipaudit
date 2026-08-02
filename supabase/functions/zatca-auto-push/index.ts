@@ -82,7 +82,10 @@ async function zohoJson(url: string, init: RequestInit) {
 }
 
 function liveStatus(invoice: Record<string, unknown>) {
-  return String(invoice.einvoice_status || invoice.e_invoice_status || '').toLowerCase();
+  const details = invoice.einvoice_details && typeof invoice.einvoice_details === 'object'
+    ? invoice.einvoice_details as Record<string, unknown>
+    : {};
+  return String(details.status || invoice.einvoice_status || invoice.e_invoice_status || '').toLowerCase();
 }
 
 Deno.serve(async (req) => {
@@ -122,12 +125,51 @@ Deno.serve(async (req) => {
   const excluded = pending.filter(isOpeningBalance).map(row => ({
     ...row, exclusion_reason: 'opening_balance_requires_manual_review',
   }));
-  const candidates = pending.filter(row => !isOpeningBalance(row));
+  let candidates = pending.filter(row => !isOpeningBalance(row));
 
-  if (preview) return json({
-    ok: true, preview: true, saudiDate, count: candidates.length,
-    excludedCount: excluded.length, excluded, invoices: candidates,
-  });
+  if (preview) {
+    let access: Awaited<ReturnType<typeof getZohoAccess>>;
+    try { access = await getZohoAccess(service); }
+    catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return json({ error: message }, 502);
+    }
+
+    const verified: Candidate[] = [];
+    const synchronized: Array<Candidate & { live_status: string }> = [];
+    const verificationFailed: Array<Candidate & { exclusion_reason: string }> = [];
+    const headers = { Authorization: `Zoho-oauthtoken ${access.token}` };
+    const query = new URLSearchParams({ organization_id: access.orgId });
+
+    // A preview is an approval surface, so the local mirror is not sufficient.
+    // Check Zoho live and repair stale mirror statuses before showing candidates.
+    for (const invoice of candidates) {
+      const checkUrl = `${access.apiDomain}/books/v3/invoices/${invoice.zoho_id}?${query}`;
+      const checked = await zohoJson(checkUrl, { headers });
+      if (!checked.response.ok || checked.payload.code !== 0) {
+        verificationFailed.push({ ...invoice, exclusion_reason: 'live_verification_failed' });
+        continue;
+      }
+      const status = liveStatus(checked.payload.invoice || {});
+      if (status === 'yet_to_be_pushed') {
+        verified.push(invoice);
+        continue;
+      }
+      if (status) {
+        await service.from('zoho_invoices').update({ einvoice_status: status }).eq('zoho_id', invoice.zoho_id);
+        synchronized.push({ ...invoice, einvoice_status: status, live_status: status });
+      } else {
+        verificationFailed.push({ ...invoice, exclusion_reason: 'live_status_unavailable' });
+      }
+    }
+    candidates = verified;
+    return json({
+      ok: true, preview: true, saudiDate, count: candidates.length,
+      excludedCount: excluded.length + verificationFailed.length,
+      excluded: [...excluded, ...verificationFailed], invoices: candidates,
+      synchronizedCount: synchronized.length, synchronized,
+    });
+  }
   const { data: run } = await service.from('work_agent_runs').insert({
     agent_id: agent?.id, status: 'running', trigger_type: auth.cron ? 'schedule' : 'manual',
     checked_count: pending.length, approved_by: auth.userId,
@@ -219,6 +261,7 @@ Deno.serve(async (req) => {
         status: 'succeeded', result_payload: pushed.payload,
         finished_at: new Date().toISOString(),
       }).eq('idempotency_key', key);
+      await service.from('zoho_invoices').update({ einvoice_status: 'pushed' }).eq('zoho_id', invoice.zoho_id);
       results.push({ ...base, outcome: 'pushed', zoho_message: pushed.payload.message || null });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
