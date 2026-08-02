@@ -110,6 +110,7 @@ export default function CustomerMoney({ isActive = true }) {
   // 29 من 40 مديناً بهاتف لم يُطالَبوا قط). يُعاد تحميله بعد كل إرسال.
   const [sadadSet, setSadadSet] = useState(() => new Set());
   const [unclaimedOnly, setUnclaimedOnly] = useState(false);
+  const [openingOnly, setOpeningOnly] = useState(false);
   const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
   useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
@@ -152,13 +153,14 @@ export default function CustomerMoney({ isActive = true }) {
     let list = d.customers;
     if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
     if (platformFilter !== 'all') list = list.filter(c => platformStatusKey(c) === platformFilter);
+    if (openingOnly) list = list.filter(c => (c.opening || 0) > 0.5);
     // «لم تصلهم مطالبة» = له هاتف ولم يصله قالب sadad قط
     if (unclaimedOnly) list = list.filter(c => c.phone && !sadadSet.has(normalizeSaudiPhone(c.phone)));
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
-  }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
+  }, [d, q, buckets, platformFilter, sortBy, openingOnly, unclaimedOnly, sadadSet]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
   const platformCounts = useMemo(() => {
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
@@ -456,6 +458,12 @@ export default function CustomerMoney({ isActive = true }) {
           <option value="inactive">غير نشط ({platformCounts.inactive})</option>
           <option value="unknown">بلا حالة مرتبطة ({platformCounts.unknown})</option>
         </select>
+        <Btn size="sm" variant={openingOnly ? 'primary' : 'outline'}
+          onClick={() => setOpeningOnly(v => !v)}
+          title="عرض العملاء الذين ما زال لديهم رصيد افتتاحي قائم"
+          aria-pressed={openingOnly}>
+          رصيد افتتاحي ({(d?.customers || []).filter(c => (c.opening || 0) > 0.5).length})
+        </Btn>
         {/* «لم تصلهم مطالبة» — مدينون بهاتف لم يصلهم قالب sadad قط (سدّ فجوة الـ29) */}
         {(() => {
           const unclaimedCount = (d?.customers || []).filter(c =>
@@ -480,6 +488,7 @@ export default function CustomerMoney({ isActive = true }) {
         {platformFilter !== 'all' ? ` — حالة المنصّة: ${
           platformFilter === 'active' ? 'نشط' : platformFilter === 'inactive' ? 'غير نشط' : 'غير متوفرة'
         }` : ''}
+        {openingOnly ? ' — لديهم رصيد افتتاحي قائم' : ''}
         {buckets.size ? ` — شرائح ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : ''} ·
         {buckets.size ? 'مجموع الشرائح المختارة ' : 'إجمالي المعروض '}
         <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(filteredTotal)}</b> ر.س
