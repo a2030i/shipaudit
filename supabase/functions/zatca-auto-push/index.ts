@@ -165,8 +165,11 @@ Deno.serve(async (req) => {
     candidates = verified;
     return json({
       ok: true, preview: true, saudiDate, count: candidates.length,
-      excludedCount: excluded.length + verificationFailed.length,
-      excluded: [...excluded, ...verificationFailed], invoices: candidates,
+      // Opening balances are an internal accounting safeguard. They are not
+      // actionable ZATCA invoices, so do not surface them in the operator UI.
+      excludedCount: verificationFailed.length,
+      excluded: verificationFailed, invoices: candidates,
+      ignoredOpeningBalanceCount: excluded.length,
       synchronizedCount: synchronized.length, synchronized,
     });
   }
