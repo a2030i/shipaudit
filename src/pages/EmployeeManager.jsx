@@ -76,6 +76,8 @@ function EmployeeModal({ employee, onClose, onSave }) {
     password:     '',
     role:         employee?.role         || 'accountant',
     avatar_color: employee?.avatar_color || 'var(--accent)',
+    lead_notification_phone: employee?.lead_notification_phone || '',
+    accepts_campaign_leads: employee?.accepts_campaign_leads === true,
   });
   const [saving, setSaving] = useState(false);
 
@@ -133,6 +135,15 @@ function EmployeeModal({ employee, onClose, onSave }) {
           {field('البريد الإلكتروني', 'email', 'email', 'example@company.com')}
           {field('كلمة المرور', 'password', 'password', '6 أحرف على الأقل')}
         </>}
+
+        {field('رقم واتساب لاستقبال تنبيهات العملاء الجدد', 'lead_notification_phone', 'tel', '05xxxxxxxx')}
+        <label style={{ display: 'flex', gap: 9, alignItems: 'flex-start', marginBottom: 16, padding: '10px 12px',
+          border: '1px solid var(--border2)', borderRadius: 8, background: 'var(--surface)' }}>
+          <input type="checkbox" checked={form.accepts_campaign_leads}
+            onChange={e => set('accepts_campaign_leads', e.target.checked)} style={{ marginTop: 2 }}/>
+          <span><b style={{ display: 'block', fontSize: 12 }}>استقبال العملاء الجدد من الحملات</b>
+            <small style={{ color: 'var(--muted)' }}>يدخل الموظف في التوزيع التلقائي، ويصله قالب واتساب ببيانات العميل.</small></span>
+        </label>
 
         {/* Role */}
         <div style={{ marginBottom: 14 }}>
@@ -595,6 +606,8 @@ export default function EmployeeManager() {
         name:         form.name,
         role:         form.role,
         avatar_color: form.avatar_color,
+        lead_notification_phone: form.lead_notification_phone,
+        accepts_campaign_leads: form.accepts_campaign_leads,
       });
       toast('تم تحديث بيانات الموظف', 'success');
     }

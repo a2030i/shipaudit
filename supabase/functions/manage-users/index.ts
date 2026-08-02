@@ -38,7 +38,7 @@ Deno.serve(async (req) => {
 
     // ── Create ─────────────────────────────────────────────────────
     if (action === 'create') {
-      const { email, password, name, role, avatar_color, permissions } = body;
+      const { email, password, name, role, avatar_color, permissions, lead_notification_phone, accepts_campaign_leads } = body;
       if (!email || !password) throw new Error('البريد وكلمة المرور مطلوبان');
 
       // Normalise legacy role names from any stale UI version still
@@ -60,6 +60,8 @@ Deno.serve(async (req) => {
         role:         safeRole,
         avatar_color: avatar_color || '#38bdf8',
         permissions:  (permissions && typeof permissions === 'object') ? permissions : {},
+        lead_notification_phone: lead_notification_phone || null,
+        accepts_campaign_leads: accepts_campaign_leads === true,
       });
 
       return new Response(JSON.stringify({ success: true, user_id: data.user.id }), {
