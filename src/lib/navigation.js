@@ -10,33 +10,64 @@ export const NAV_SECTIONS = [
   { id: 'settings',  label: 'الإعدادات',           icon: 'Settings',   accent: '#31D5E1', hint: 'فريق · شركات · عقود · تكاملات' },
 ];
 
+// المستوى الثاني داخل كل قسم رئيسي. هذه المجموعات عناوين تنظيمية ثابتة
+// وليست أكورديوناً إضافياً؛ فتح القسم الرئيسي يكشف المجموعات وصفحاتها معاً
+// حتى تبقى الجانبية شاملة من دون مضاعفة عدد النقرات على الجوال.
+export const NAV_GROUPS = {
+  shipping: [
+    { id: 'carrier_ops', label: 'إدارة الشحن' },
+    { id: 'invoice_ops', label: 'الرفع والفوترة' },
+  ],
+  customers: [
+    { id: 'customer_ops', label: 'ملفات وخدمة العملاء' },
+    { id: 'collection_ops', label: 'المديونيات والتحصيل' },
+  ],
+  sales: [
+    { id: 'sales_ops', label: 'الفرص والصفقات' },
+    { id: 'outreach_ops', label: 'التواصل والنمو' },
+  ],
+  finance: [
+    { id: 'cash_ops', label: 'النقد والبنوك' },
+    { id: 'zoho_ops', label: 'المحاسبة وزوهو' },
+  ],
+  reports: [
+    { id: 'report_ops', label: 'التقارير' },
+    { id: 'automation_ops', label: 'الرقابة والأتمتة' },
+  ],
+  settings: [
+    { id: 'team_ops', label: 'الفريق والإدارة' },
+    { id: 'shipping_settings', label: 'إعدادات الشحن' },
+    { id: 'system_settings', label: 'النظام والتكاملات' },
+  ],
+};
+
 // العناصر غير المذكورة تبقى مسارات محمية لكنها لا تظهر كخيارات متساوية
 // في القائمة. الوصول إليها يكون من مركز العمل أو من رابط قديم محفوظ.
 export const NAV_ITEM_IA = {
   overview:          { label: 'الرئيسية', visible: true },
   decisions:         { label: 'مهام وقرارات اليوم', visible: true },
-  hub:               { label: 'مركز شركات الشحن', section: 'shipping', order: 10, visible: true },
-  drop:              { label: 'الرفع والوارد', section: 'shipping', order: 20, visible: true },
-  audits:            { label: 'تدقيق الفواتير', section: 'shipping', order: 30, visible: true },
-  fulfillment:       { label: 'فوترة الخدمات', section: 'shipping', order: 40, visible: true },
-  'customer-watch':  { label: 'ملف العميل', section: 'customers', order: 10, visible: true },
-  'collections-hub': { label: 'تحصيل العملاء', section: 'customers', order: 20, visible: true },
-  support:           { label: 'خدمة العملاء', section: 'customers', order: 30, visible: true },
-  'sales-hub':       { label: 'فرص البيع من بيانات المنصة', section: 'sales', order: 10, visible: true },
-  crm:                { label: 'إدارة المبيعات', section: 'sales', order: 20, visible: true },
-  'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', order: 30, visible: true },
-  marketers:          { label: 'المسوّقون والعمولات', section: 'sales', order: 40, visible: true },
-  money:              { label: 'تحويلات الناقلين والبنوك', section: 'finance', order: 10, visible: true },
-  pnl:                { label: 'قائمة الدخل والربحية', section: 'finance', order: 20, visible: true },
-  'zoho-data':        { label: 'زوهو والحسابات', section: 'finance', order: 30, visible: true },
-  reconciliation:     { label: 'مطابقة الحسابات مع زوهو', section: 'finance', order: 40, visible: true },
-  reports:            { label: 'التقارير', section: 'reports', order: 10, visible: true },
-  'work-agents':      { label: 'وكلاء العمل', section: 'reports', order: 20, visible: true },
+  hub:               { label: 'مركز شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 10, visible: true },
+  drop:              { label: 'الرفع والوارد', section: 'shipping', group: 'invoice_ops', order: 20, visible: true },
+  audits:            { label: 'تدقيق الفواتير', section: 'shipping', group: 'invoice_ops', order: 30, visible: true },
+  fulfillment:       { label: 'فوترة الخدمات', section: 'shipping', group: 'invoice_ops', order: 40, visible: true },
+  'customer-watch':  { label: 'ملف العميل', section: 'customers', group: 'customer_ops', order: 10, visible: true },
+  'collections-hub': { label: 'تحصيل العملاء', section: 'customers', group: 'collection_ops', order: 20, visible: true },
+  support:           { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 30, visible: true },
+  'sales-hub':       { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
+  crm:                { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: true },
+  'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
+  marketers:          { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: true },
+  money:              { label: 'تحويلات الناقلين والبنوك', section: 'finance', group: 'cash_ops', order: 10, visible: true },
+  pnl:                { label: 'قائمة الدخل والربحية', section: 'finance', group: 'zoho_ops', order: 20, visible: true },
+  'zoho-data':        { label: 'زوهو والحسابات', section: 'finance', group: 'zoho_ops', order: 30, visible: true },
+  reconciliation:     { label: 'مطابقة الحسابات مع زوهو', section: 'finance', group: 'zoho_ops', order: 40, visible: true },
+  reports:            { label: 'التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
+  'work-agents':      { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 20, visible: true },
   uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
-  employees:          { label: 'الفريق والصلاحيات', section: 'settings', order: 10, visible: true },
-  carriers:           { label: 'شركات الشحن', section: 'settings', order: 20, visible: true },
-  contracts:          { label: 'العقود والأسعار', section: 'settings', order: 30, visible: true },
-  'app-settings':     { label: 'التكاملات والذكاء الاصطناعي', section: 'settings', order: 40, visible: true },
+  employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
+  carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },
+  contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: true },
+  'app-settings':     { label: 'التكاملات والذكاء الاصطناعي', section: 'settings', group: 'system_settings', order: 40, visible: true },
 };
 
 export function applyNavigationIA(items) {
@@ -46,6 +77,7 @@ export function applyNavigationIA(items) {
       ...item,
       ...(ia?.label ? { label: ia.label } : {}),
       ...(ia?.section ? { section: ia.section } : {}),
+      ...(ia?.group ? { navGroup: ia.group } : {}),
       ...(ia?.order != null ? { navOrder: ia.order } : {}),
       navHidden: ia?.visible !== true,
     };

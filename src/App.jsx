@@ -11,7 +11,7 @@ import CenterWorkspace from './components/CenterWorkspace.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
-import { NAV_SECTIONS as NAV_SECTION_MODEL, applyNavigationIA } from './lib/navigation.js';
+import { NAV_SECTIONS as NAV_SECTION_MODEL, NAV_GROUPS as NAV_GROUP_MODEL, applyNavigationIA } from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
@@ -208,6 +208,25 @@ const NAV_SECTIONS = NAV_SECTION_MODEL.map(section => ({
   ...section,
   icon: SECTION_ICONS[section.icon] || Layers,
 }));
+
+function groupNavItems(sectionId, items, compact) {
+  if (compact) return [{ id: `${sectionId}-all`, label: '', items }];
+
+  const definitions = NAV_GROUP_MODEL[sectionId] || [];
+  const buckets = new Map(definitions.map(group => [group.id, []]));
+  const ungrouped = [];
+  for (const item of items) {
+    const bucket = buckets.get(item.navGroup);
+    if (bucket) bucket.push(item);
+    else ungrouped.push(item);
+  }
+
+  const groups = definitions
+    .map(group => ({ ...group, items: buckets.get(group.id) || [] }))
+    .filter(group => group.items.length > 0);
+  if (ungrouped.length > 0) groups.push({ id: `${sectionId}-other`, label: 'أخرى', items: ungrouped });
+  return groups;
+}
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
 // العنوان يرى كل المال (القائمة تخفي العنصر لكن الصفحة تُعرض).
@@ -570,6 +589,8 @@ function AppInner({ theme, toggleTheme }) {
               // أكورديون قسم واحد حتى تظل مساحة العمل قصيرة وواضحة.
               const isOpen = collapsed || !collapsedSecs.has(sec.id);
               const SecIcon = sec.icon;
+              const itemGroups = groupNavItems(sec.id, items, collapsed);
+              const groupHeaderCount = collapsed ? 0 : itemGroups.length;
               return (
                 <div key={sec.id} className={`nav-section ${isOpen ? 'open' : ''} ${sectionHasActive ? 'has-active' : ''}`}>
                   {collapsed ? (
@@ -591,19 +612,52 @@ function AppInner({ theme, toggleTheme }) {
                   )}
                   <div
                     className="nav-section-items"
-                    style={{ maxHeight: isOpen ? `${rowCount * 64 + 20}px` : 0 }}
+                    style={{ maxHeight: isOpen ? `${rowCount * 64 + groupHeaderCount * 30 + 20}px` : 0 }}
                   >
-                    {items.map(n => (
-                      <NavBtn
-                        key={n.id}
-                        n={n}
-                        active={activeFor(n)}
-                        accent={sec.accent}
-                        collapsed={collapsed}
-                        onClick={() => goto(n.path)}
-                        nested
-                      />
-                    ))}
+                    {itemGroups.map((group, groupIndex) => {
+                      const groupHasActive = group.items.some(n => activeFor(n));
+                      return (
+                        <div
+                          key={group.id}
+                          role="group"
+                          aria-label={group.label || sec.label}
+                          style={{ marginTop: !collapsed && groupIndex > 0 ? 4 : 0 }}
+                        >
+                          {!collapsed && (
+                            <div style={{
+                              minHeight: 26,
+                              padding: '7px 14px 5px 16px',
+                              display: 'flex', alignItems: 'center', gap: 7,
+                              color: groupHasActive ? sec.accent : 'var(--sidebar-brand-muted, rgba(199,210,254,.62))',
+                              fontSize: 10.5, fontWeight: 800, lineHeight: 1.25,
+                            }}>
+                              <span aria-hidden="true" style={{
+                                width: 4, height: 4, borderRadius: '50%', flexShrink: 0,
+                                background: groupHasActive ? sec.accent : 'currentColor',
+                              }}/>
+                              <span>{group.label}</span>
+                              <span aria-hidden="true" style={{
+                                height: 1, flex: 1,
+                                background: groupHasActive
+                                  ? `color-mix(in srgb, ${sec.accent} 30%, transparent)`
+                                  : 'rgba(199,210,254,.10)',
+                              }}/>
+                            </div>
+                          )}
+                          {group.items.map(n => (
+                            <NavBtn
+                              key={n.id}
+                              n={n}
+                              active={activeFor(n)}
+                              accent={sec.accent}
+                              collapsed={collapsed}
+                              onClick={() => goto(n.path)}
+                              nested
+                            />
+                          ))}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               );
