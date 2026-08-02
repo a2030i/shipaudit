@@ -34,6 +34,7 @@ const BUCKETS = [
   { key: 'b1', label: '31–60',     color: 'var(--gold)' },
   { key: 'b2', label: '61–90',     color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
   { key: 'b3', label: '+90',       color: 'var(--red)' },
+  { key: 'opening', label: 'رصيد افتتاحي', color: 'var(--muted)' },
 ];
 
 const platformStatusKey = (customer) => {
@@ -189,18 +190,18 @@ export default function CustomerMoney({ isActive = true }) {
     // «رقم المتجر» = معرّفه في نظام لمحة — يسبق الاسم لأنه المفتاح الذي
     // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
     const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
-      'فواتير', 'أقدم (يوم)', '0-30', '31-60', '61-90', '+90', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
+      'فواتير', 'أقدم استحقاق (يوم)', '0-30', '31-60', '61-90', '+90', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
     const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
       ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
-        c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3,
+        c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3, c.opening,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', '', '', '', '', '', owedTotal, '', '', '', '', '', '', '', '', '', '', '', filteredTotal],
+      ['الإجمالي', ...Array(5).fill(''), owedTotal, ...Array(12).fill(''), filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     // 0 = العميل · 1 = رقم المتجر (ضيّق) · 2 = اسم المتجر
@@ -857,11 +858,12 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
         <Chip color={storeStatus.color}>{storeStatus.label}</Chip>
         {c.invCnt > 0 ? (
           <>
-            <Chip color={ageColor}>أقدم فاتورة {c.oldestDays} يوم</Chip>
+            <Chip color={ageColor}>أقدم استحقاق {c.oldestDays} يوم</Chip>
             <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
+            {c.opening > 0.5 && <Chip color="var(--muted)">رصيد افتتاحي {fmt(c.opening)} — عمر غير معروف</Chip>}
           </>
         ) : (
-          <Chip color="var(--gold)">رصيد افتتاحي بلا فاتورة مفتوحة</Chip>
+          <Chip color="var(--muted)">رصيد افتتاحي {fmt(c.opening)} بلا فاتورة مفتوحة — عمر غير معروف</Chip>
         )}
         {c.lastPaymentDate
           ? <Chip color="var(--green)">آخر دفعة {c.lastPaymentDate} ({fmtK(c.lastPaymentAmount)})</Chip>
@@ -943,7 +945,7 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
             : invs.map(inv => (
               <div key={inv.invoice_number} style={{ display: 'flex', gap: 8, alignItems: 'center', padding: '4px 0', fontSize: 11.5 }}>
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{inv.invoice_number}</span>
-                <span style={{ color: 'var(--muted2)' }}>{inv.date}</span>
+                <span style={{ color: 'var(--muted2)' }}>استحقاق {inv.due_date || inv.date}</span>
                 <span style={{ marginInlineStart: 'auto', fontSize: 10, color: 'var(--muted)' }}>{zohoStatusAr(inv.status)}</span>
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(inv.balance)}</span>
               </div>

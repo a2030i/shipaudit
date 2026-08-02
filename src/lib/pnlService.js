@@ -324,6 +324,7 @@ export async function loadCustomerMoneyDashboard() {
     aging: {
       b0: Number(d.aging?.b0_30) || 0,  b1: Number(d.aging?.b31_60) || 0,
       b2: Number(d.aging?.b61_90) || 0, b3: Number(d.aging?.b90p) || 0,
+      opening: Number(d.aging?.opening_balance) || 0,
     },
     collectedThisMonth: Number(d.collected_this_month) || 0,
     collectedPrevMonth: Number(d.collected_prev_month) || 0,
@@ -335,6 +336,7 @@ export async function loadCustomerMoneyDashboard() {
       owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
+      opening: Number(c.opening_balance) || 0,
       lastPaymentDate: c.last_payment_date, lastPaymentAmount: Number(c.last_payment_amount) || 0,
       // سياق المتجر (من كشف المتاجر) — لملف الحملة
       billingType: c.billing_type || '', platformStatus: c.platform_status || '',
@@ -346,7 +348,7 @@ export async function loadCustomerMoneyDashboard() {
 // الفواتير المفتوحة لعميل واحد (drill-down في بطاقة العميل)
 export async function loadZohoOpenInvoices(customerName) {
   const { data, error } = await supabase.from('zoho_invoices')
-    .select('invoice_number, date, total, balance, status')
+    .select('invoice_number, date, due_date, total, balance, status')
     .eq('customer_name', customerName)
     .gt('balance', 0.5)
     .order('date', { ascending: true });
