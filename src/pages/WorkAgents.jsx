@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, CalendarClock, CheckCircle2, Clock3, Database, PlayCircle, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import { Btn, Card, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { configureOverdueSadadAgent, loadRecentAgentRuns, loadWorkAgents, previewOverdueSadadAgent, runOverdueSadadAgent } from '../lib/workAgentService.js';
+import { configureOverdueSadadAgent, configureZatcaWorkAgent, loadRecentAgentRuns, loadWorkAgents, previewOverdueSadadAgent, previewZatcaWorkAgent, runOverdueSadadAgent, runZatcaWorkAgent } from '../lib/workAgentService.js';
 
 const SAFETY = {
   monitor: { label: 'مراقبة فقط', color: 'var(--accent)', text: 'يقرأ وينبه دون تعديل البيانات.' },
@@ -70,12 +70,15 @@ export default function WorkAgents({ isActive = true }) {
       setForm({ enabled: agent.status === 'active', dayOfWeek: c.day_of_week ?? 6, hour: c.hour ?? 18,
         minute: c.minute ?? 0, minDays: c.min_overdue_days ?? 30, minBalance: c.min_balance ?? 0.5,
         maxRecipients: c.max_recipients ?? 500 });
+    } else if (agent.agent_key === 'zatca_nightly') {
+      const c = agent.config || {};
+      setForm({ enabled: agent.status === 'active', hour: c.hour ?? 23, minute: c.minute ?? 45, maxInvoices: c.max_invoices ?? 200 });
     } else setForm(null);
   };
 
-  const saveAgent = async () => { setSaving(true); setNotice(''); try { await configureOverdueSadadAgent(form); setNotice('تم حفظ الشروط وإعادة الجدولة.'); await load(); } catch(e) { setNotice(e?.message || 'تعذر الحفظ'); } finally { setSaving(false); } };
-  const previewAgent = async () => { setSaving(true); setNotice(''); try { setPreview(await previewOverdueSadadAgent()); } catch(e) { setNotice(e?.message || 'تعذرت المعاينة'); } finally { setSaving(false); } };
-  const runAgent = async () => { if (!preview || !window.confirm(`سيتم تجهيز ${preview.total} رسالة بقالب sadad للإرسال الآن. هل تعتمد التشغيل؟`)) return; setSaving(true); try { const r=await runOverdueSadadAgent(); setNotice(`تمت جدولة ${r.queued} رسالة، ويعالجها هاتف الآن.`); await load(); } catch(e) { setNotice(e?.message || 'تعذر التشغيل'); } finally { setSaving(false); } };
+  const saveAgent = async () => { setSaving(true); setNotice(''); try { if(selected.agent_key==='zatca_nightly') await configureZatcaWorkAgent(form); else await configureOverdueSadadAgent(form); setNotice('تم حفظ الشروط وإعادة الجدولة.'); await load(); } catch(e) { setNotice(e?.message || 'تعذر الحفظ'); } finally { setSaving(false); } };
+  const previewAgent = async () => { setSaving(true); setNotice(''); try { setPreview(selected.agent_key==='zatca_nightly' ? await previewZatcaWorkAgent() : await previewOverdueSadadAgent()); } catch(e) { setNotice(e?.message || 'تعذرت المعاينة'); } finally { setSaving(false); } };
+  const runAgent = async () => { if (!preview) return; const isZatca=selected.agent_key==='zatca_nightly'; const count=isZatca?preview.count:preview.total; if (!window.confirm(isZatca?`سيتم إرسال ${count} فاتورة إلى زاتكا عبر Zoho الآن. هل تعتمد التنفيذ؟`:`سيتم تجهيز ${count} رسالة بقالب sadad للإرسال الآن. هل تعتمد التشغيل؟`)) return; setSaving(true); try { const r=isZatca?await runZatcaWorkAgent():await runOverdueSadadAgent(); setNotice(isZatca?`اكتمل التشغيل: أُرسلت ${r.pushed||0}، وتجاوز ${r.skipped||0}، وفشل ${r.failed||0}.`:`تمت جدولة ${r.queued} رسالة، ويعالجها هاتف الآن.`); await load(); } catch(e) { setNotice(e?.message || 'تعذر التشغيل'); } finally { setSaving(false); } };
 
   const load = useCallback(async () => {
     if (!isActive) return;
@@ -148,6 +151,16 @@ export default function WorkAgents({ isActive = true }) {
             {preview && <div style={{padding:14,border:'1px solid var(--green)',borderRadius:12,background:'var(--green-soft)',lineHeight:1.8}}><b>نتيجة المعاينة: {preview.total} متجر</b><br/>إجمالي المستحق: {Number(preview.total_owed||0).toLocaleString('en-US',{maximumFractionDigits:2})} ر.س · بلا هاتف: {preview.missing_phone}</div>}
             {notice && <div style={{color:notice.includes('تعذر')?'var(--red)':'var(--green)',fontWeight:700}}>{notice}</div>}
             <div style={{ display: 'flex', flexWrap:'wrap', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><Btn variant="ghost" onClick={() => setSelected(null)}>إغلاق</Btn><Btn variant="ghost" disabled={saving} onClick={previewAgent}>معاينة المستحقين</Btn>{can('agents.run')&&<Btn variant="accent" disabled={saving||!preview?.total} onClick={runAgent}>تشغيل وإرسال الآن</Btn>}<Btn variant="primary" disabled={saving||!can('agents.manage')} onClick={saveAgent}>حفظ وإعادة الجدولة</Btn></div>
+          </> : selected.agent_key === 'zatca_nightly' && form ? <>
+            <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface2)', color: 'var(--text2)', lineHeight: 1.8, fontSize: 13 }}><b>الإجراء:</b> يفحص الحالة الحية لكل فاتورة في Zoho، ثم يرسل الجاهزة إلى زاتكا من خلال تكامل Zoho. الأرصدة الافتتاحية مستبعدة دائمًا.</div>
+            <label className="agent-toggle"><input type="checkbox" checked={form.enabled} onChange={e=>setForm({...form,enabled:e.target.checked})}/><span><b>تشغيل الفحص الليلي</b><small>{form.enabled?'سيعمل يوميًا حسب الوقت المحدد':'لن يحدث إرسال تلقائي'}</small></span></label>
+            <div className="agent-form-grid">
+              <label>وقت التشغيل<input type="time" value={`${String(form.hour).padStart(2,'0')}:${String(form.minute).padStart(2,'0')}`} onChange={e=>{const [hour,minute]=e.target.value.split(':').map(Number);setForm({...form,hour,minute});}}/></label>
+              <label>أقصى عدد فواتير في الدورة<input type="number" min="1" max="500" value={form.maxInvoices} onChange={e=>setForm({...form,maxInvoices:e.target.value})}/></label>
+            </div>
+            {preview && <div style={{padding:14,border:'1px solid var(--gold)',borderRadius:12,background:'var(--gold-soft)',lineHeight:1.8}}><b>نتيجة المعاينة: {preview.count} فاتورة جاهزة</b><br/>مستبعد للمراجعة اليدوية: {preview.excludedCount||0}</div>}
+            {notice && <div style={{color:notice.includes('تعذر')||notice.includes('فشل')?'var(--red)':'var(--green)',fontWeight:700}}>{notice}</div>}
+            <div style={{ display:'flex',flexWrap:'wrap',justifyContent:'flex-end',gap:10,marginTop:20 }}><Btn variant="ghost" onClick={()=>setSelected(null)}>إغلاق</Btn><Btn variant="ghost" disabled={saving} onClick={previewAgent}>معاينة فواتير زاتكا</Btn>{can('agents.approve_sensitive')&&<Btn variant="accent" disabled={saving||!preview?.count} onClick={runAgent}>اعتماد الإرسال الآن</Btn>}<Btn variant="primary" disabled={saving||!can('agents.manage')} onClick={saveAgent}>حفظ وإعادة الجدولة</Btn></div>
           </> : <><div style={{ padding: 14, borderRadius: 12, background: 'var(--surface2)', color: 'var(--text2)', lineHeight: 1.8, fontSize: 13 }}><b>الحالة:</b> هذا الوكيل ما زال قيد التأسيس ولن ينفذ أي إجراء.</div><div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}><Btn variant="ghost" onClick={() => setSelected(null)}>إغلاق</Btn></div></>}
         </Card>
       </div>}

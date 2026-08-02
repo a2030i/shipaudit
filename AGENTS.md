@@ -868,3 +868,10 @@
 - مفتاح منع التكرار هو `work-agent:overdue-sadad:<cycle>:<phone>`؛ إعادة المحاولة في دورة واحدة لا تعيد الرسالة، والدورة الأسبوعية التالية تسمح بتذكير جديد إن بقي الدين.
 - التشغيل اليدوي يفرض معاينة ثم تأكيدًا صريحًا. صلاحية الإعداد `agents.manage` والتشغيل `agents.run`، وكل دورة تسجّل في `work_agent_runs`.
 - نقطة الحقيقة التنفيذية: `supabase/functions/work-agent-overdue-sadad/index.ts`، والشروط والجدولة في `work_agents.config` وRPC `configure_overdue_sadad_agent`.
+
+### 28.2 الوكيل الثاني: زاتكا الليلي ✅ (2026-08-02)
+- الوكيل `zatca_nightly` هو الواجهة التشغيلية لمهمة `zatca-auto-push` الحالية؛ يعمل يوميًا 23:45 بتوقيت السعودية ويمكن تشغيله/إيقافه وإعادة جدولته من `/work-agents`.
+- المصدر `zoho_invoices.einvoice_status='yet_to_be_pushed'`. قبل كل كتابة يجلب الفاتورة حيًا من Zoho، ثم يرسلها إلى ZATCA عبر endpoint زوهو `einvoice/push`؛ لا يوجد تكامل مباشر موازٍ مع زاتكا.
+- الأرصدة الافتتاحية مستبعدة دائمًا. `zoho_write_operations` ومفتاح `zatca_push:<zoho_id>` يمنعان التكرار ويحفظان نتيجة كل فاتورة.
+- التشغيل اليدوي يفرض معاينة ثم تأكيدًا صريحًا وصلاحية `agents.approve_sensitive`. كل دورة مجدولة أو يدوية تسجّل في `work_agent_runs`.
+- نقطة الحقيقة: `supabase/functions/zatca-auto-push/index.ts`، وإعداداته في `work_agents.config` وRPC `configure_zatca_work_agent`.

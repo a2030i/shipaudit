@@ -47,6 +47,29 @@ export async function runOverdueSadadAgent() {
   return data;
 }
 
+export async function configureZatcaWorkAgent(values) {
+  const { data, error } = await supabase.rpc('configure_zatca_work_agent', {
+    p_enabled: !!values.enabled, p_hour: Number(values.hour), p_minute: Number(values.minute),
+    p_max_invoices: Number(values.maxInvoices),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function previewZatcaWorkAgent() {
+  const { data, error } = await supabase.functions.invoke('zatca-auto-push', { body: { action: 'preview' } });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || 'تعذرت معاينة فواتير زاتكا');
+  return data;
+}
+
+export async function runZatcaWorkAgent() {
+  const { data, error } = await supabase.functions.invoke('zatca-auto-push', { body: { action: 'run', trigger: 'manual_agent' } });
+  if (error) throw error;
+  if (data?.ok === false || data?.error) throw new Error(data?.error || 'تعذر تشغيل وكيل زاتكا');
+  return data;
+}
+
 export async function loadRecentAgentRuns(limit = 12) {
   const { data, error } = await supabase
     .from('work_agent_runs')

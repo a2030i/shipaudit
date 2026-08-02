@@ -31,19 +31,20 @@ type Candidate = {
   einvoice_status: string | null;
 };
 
-async function isAuthorized(req: Request, service: ReturnType<typeof db>) {
+async function authorize(req: Request, service: ReturnType<typeof db>, action: string) {
   const cronKey = req.headers.get('X-Cron-Key') || req.headers.get('x-cron-key');
   if (cronKey) {
     const { data } = await service.from('zoho_auth').select('cron_key').eq('id', 1).maybeSingle();
-    if (data?.cron_key && data.cron_key === cronKey) return true;
+    if (data?.cron_key && data.cron_key === cronKey) return { ok: true, cron: true, userId: null };
   }
 
   const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-  if (!token) return false;
+  if (!token) return { ok: false, cron: false, userId: null };
   const { data: auth } = await service.auth.getUser(token);
-  if (!auth?.user) return false;
-  const { data: profile } = await service.from('profiles').select('role').eq('id', auth.user.id).maybeSingle();
-  return profile?.role === 'admin';
+  if (!auth?.user) return { ok: false, cron: false, userId: null };
+  const { data: profile } = await service.from('profiles').select('role,permissions').eq('id', auth.user.id).maybeSingle();
+  const permission = action === 'preview' ? 'agents.view' : 'agents.approve_sensitive';
+  return { ok: profile?.role === 'admin' || !!profile?.permissions?.[permission], cron: false, userId: auth.user.id };
 }
 
 async function getZohoAccess(service: ReturnType<typeof db>) {
@@ -88,12 +89,15 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
 
-  const service = db();
-  if (!(await isAuthorized(req, service))) return json({ error: 'unauthorized' }, 401);
-
   let input: Record<string, unknown> = {};
   try { input = await req.json(); } catch { /* empty cron body */ }
   const preview = input.action === 'preview';
+  const service = db();
+  const auth = await authorize(req, service, preview ? 'preview' : 'run');
+  if (!auth.ok) return json({ error: 'unauthorized' }, 401);
+  const { data: agent } = await service.from('work_agents').select('*').eq('agent_key', 'zatca_nightly').maybeSingle();
+  if (auth.cron && agent?.status !== 'active') return json({ ok: true, skipped: true, reason: 'agent_paused' });
+  const maxInvoices = Math.min(500, Math.max(1, Number(agent?.config?.max_invoices || 200)));
   const saudiDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
@@ -105,7 +109,7 @@ Deno.serve(async (req) => {
     .eq('einvoice_status', 'yet_to_be_pushed')
     .lte('date', saudiDate)
     .order('date', { ascending: true })
-    .limit(200);
+    .limit(maxInvoices);
   if (error) return json({ error: `candidate_query_failed:${error.message}` }, 500);
   const pending = (data || []) as Candidate[];
   // Opening-balance documents are migration/accounting setup records, not new
@@ -124,14 +128,27 @@ Deno.serve(async (req) => {
     ok: true, preview: true, saudiDate, count: candidates.length,
     excludedCount: excluded.length, excluded, invoices: candidates,
   });
-  if (!candidates.length) return json({
-    ok: true, saudiDate, pushed: 0, skipped: 0, failed: 0,
-    excludedCount: excluded.length, excluded, results: [],
-  });
+  const { data: run } = await service.from('work_agent_runs').insert({
+    agent_id: agent?.id, status: 'running', trigger_type: auth.cron ? 'schedule' : 'manual',
+    checked_count: pending.length, approved_by: auth.userId,
+    details: { saudi_date: saudiDate, excluded_count: excluded.length },
+  }).select('id').maybeSingle();
+  if (!candidates.length) {
+    if (run?.id) await service.from('work_agent_runs').update({ status:'succeeded', finished_at:new Date().toISOString(), summary:'لا توجد فواتير معلقة لزاتكا' }).eq('id',run.id);
+    if (agent?.id) await service.from('work_agents').update({ last_run_at:new Date().toISOString() }).eq('id',agent.id);
+    return json({ ok: true, saudiDate, pushed: 0, skipped: 0, failed: 0, excludedCount: excluded.length, excluded, results: [] });
+  }
 
   let access: Awaited<ReturnType<typeof getZohoAccess>>;
   try { access = await getZohoAccess(service); }
-  catch (error) { return json({ error: error instanceof Error ? error.message : String(error) }, 502); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (run?.id) await service.from('work_agent_runs').update({
+      status:'failed', finished_at:new Date().toISOString(), failed_count:candidates.length,
+      summary:'تعذر الاتصال بزوهو قبل الإرسال', details:{ error:message, candidates:candidates.length },
+    }).eq('id',run.id);
+    return json({ error: message }, 502);
+  }
 
   const headers = { Authorization: `Zoho-oauthtoken ${access.token}` };
   const results: Record<string, unknown>[] = [];
@@ -216,6 +233,13 @@ Deno.serve(async (req) => {
   const pushed = results.filter(row => row.outcome === 'pushed').length;
   const skipped = results.filter(row => row.outcome === 'skipped').length;
   const failed = results.filter(row => row.outcome === 'failed').length;
+  if (run?.id) await service.from('work_agent_runs').update({
+    status: failed ? (pushed ? 'partial' : 'failed') : 'succeeded', finished_at:new Date().toISOString(),
+    action_count:pushed, failed_count:failed,
+    summary:`أرسل ${pushed} فاتورة إلى زاتكا${failed ? ` · فشل ${failed}` : ''}`,
+    details:{ saudi_date:saudiDate, candidates:candidates.length, pushed, skipped, failed, excluded_count:excluded.length },
+  }).eq('id',run.id);
+  if (agent?.id) await service.from('work_agents').update({ last_run_at:new Date().toISOString() }).eq('id',agent.id);
   console.log('zatca-auto-push completed', { saudiDate, candidates: candidates.length, pushed, skipped, failed });
   return json({
     ok: failed === 0, saudiDate, candidates: candidates.length, pushed, skipped, failed,
