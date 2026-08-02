@@ -2,7 +2,7 @@
 // كتابة محدودة) ليمنح المدير صلاحية «تطبيق الرصيد الدائن» بنقرة داخل
 // النظام. الاستبدال يحتاج تأكيداً صريحاً في /zoho-callback، وOAuth state
 // الموقّع يربط الرد بالمدير الذي بدأ العملية.
-// لا يمسّ التطبيق الداخلي القديم. admin فقط.
+// لا يمسّ التطبيق الداخلي القديم. admin أو صلاحية zoho.manage_connection.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import { createZohoOAuthState } from '../_shared/zohoOAuthState.ts';
@@ -45,14 +45,16 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-  // مصادقة داخلية: admin فقط (نفس نمط zoho-sync).
+  // مصادقة داخلية: المدير أو موظف مُنح صلاحية الاتصال الحساسة صراحةً.
   const authHeader = req.headers.get('Authorization') || '';
   const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: authHeader } } });
   const { data: { user } } = await uc.auth.getUser();
   if (!user) return json({ error: 'unauthorized' }, 401);
-  const { data: prof } = await db.from('profiles').select('role').eq('id', user.id).maybeSingle();
-  if (prof?.role !== 'admin') return json({ error: 'forbidden — للمدير فقط' }, 403);
+  const { data: prof } = await db.from('profiles').select('role,permissions').eq('id', user.id).maybeSingle();
+  if (prof?.role !== 'admin' && prof?.permissions?.['zoho.manage_connection'] !== true) {
+    return json({ error: 'forbidden — تحتاج صلاحية إعادة تفويض زوهو' }, 403);
+  }
 
   const id = Deno.env.get('ZOHO_CLIENT_ID');
   const secret = Deno.env.get('ZOHO_CLIENT_SECRET');

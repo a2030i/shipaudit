@@ -193,13 +193,32 @@ export const PERMISSION_CATALOG = [
     ],
   },
   {
+    id: 'reports', label: 'التقارير والرقابة', icon: 'FileBarChart', color: 'var(--green)',
+    perms: [
+      { key: 'reports.view_operational', label: 'عرض تقارير التشغيل والناقلين', hint: 'يعرض التقارير الشهرية وتقارير أداء شركات الشحن.' },
+      { key: 'reports.view_financial', label: 'عرض التقارير المالية والضريبية', hint: 'يتضمن قائمة الدخل وضريبة القيمة المضافة والملخصات المالية.' },
+      { key: 'reports.view_bank_reconciliation', label: 'عرض تقارير البنوك والمطابقة', hint: 'يعرض فروقات الأرصدة وتقارير المطابقة البنكية.' },
+      { key: 'reports.export', label: 'إنشاء وتنزيل ملفات التقارير', hint: 'يسمح بتوليد ملفات PDF وExcel وتنزيل سجل التقارير.' },
+    ],
+  },
+  {
     id: 'money', label: 'النقد والمدفوعات', icon: 'Wallet', color: 'var(--gold)',
     perms: [
       { key: 'money.pnl',          label: 'الوضع المالي — قائمة الدخل من زوهو (أرباح/خسائر)' },
       { key: 'zoho.view',          label: 'زوهو API — تصفّح المرايا ولوحة الفواتير' },
-      { key: 'zoho.configure',     label: 'ربط حسابات زوهو بالبنوك والخزائن الداخلية', sensitive: true },
+      { key: 'zoho.configure',     label: 'تصنيف وربط حسابات زوهو داخلياً', hint: 'يربط حساب زوهو ببنك أو خزينة داخل النظام فقط.', sensitive: true },
+      { key: 'zoho.manage_connection', label: 'إعادة تفويض اتصال زوهو', hint: 'يفتح شاشة OAuth ويغيّر الصلاحيات الممنوحة للنظام.', sensitive: true },
+      { key: 'zoho.bank_import',   label: 'استيراد كشف البنك إلى زوهو', hint: 'ينشئ عمليات كشف بنكي فعلية في Zoho Books.', sensitive: true },
+      { key: 'zoho.invoice_mark_sent', label: 'تحويل مسودات زوهو إلى مرسلة', hint: 'يغيّر الحالة المحاسبية للفواتير المحددة.', sensitive: true },
+      { key: 'zoho.invoice_push_zatca', label: 'إرسال الفواتير إلى زاتكا عبر زوهو', hint: 'إجراء خارجي نهائي يخضع لفحص الجاهزية ومنع التكرار.', sensitive: true },
+      { key: 'zoho.retry_webhook', label: 'إعادة تشغيل أحداث زوهو الفاشلة', hint: 'يعيد معالجة حدث تكامل فشل سابقاً.', sensitive: true },
       { key: 'zoho.apply_credits', label: 'تطبيق أرصدة دائنة على فواتير زوهو (كتابة مالية)', sensitive: true },
       { key: 'bank.view',          label: 'عرض رصيد البنك وسجل التحديثات' },
+      { key: 'bank.upload_statement', label: 'رفع ومعاينة كشف بنكي' },
+      { key: 'bank.edit_note',     label: 'تعديل وصف أو ملاحظة عملية بنكية' },
+      { key: 'bank.reconcile',     label: 'مطابقة عملية البنك وتسجيل سدادها', hint: 'يغيّر حالة القيود والدفعات المرتبطة بالعملية.', sensitive: true },
+      { key: 'bank.delete_transaction', label: 'حذف عملية بنكية محفوظة', sensitive: true },
+      { key: 'bank.export',        label: 'تصدير كشف وحركة البنك' },
       { key: 'bank.set_balance',   label: 'تحديث رصيد البنك يدوياً', sensitive: true },
       { key: 'payments.view',      label: 'عرض الدفعات' },
       { key: 'payments.create',    label: 'تسجيل دفعة جديدة' },
@@ -251,7 +270,7 @@ export const ALL_PERMISSION_KEYS = PERMISSION_CATALOG.flatMap(s => s.perms.map(p
 // Read-only preset: every "view" + "export" key. Useful for read-only
 // observers (the admin's manager, an external auditor).
 export const READ_ONLY_KEYS = ALL_PERMISSION_KEYS.filter(k =>
-  /\.(view|export)$/.test(k),
+  /\.(view(?:_.+)?|export)$/.test(k),
 );
 
 // Read + write preset: everything except sensitive actions (delete,

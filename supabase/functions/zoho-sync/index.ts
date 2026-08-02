@@ -56,6 +56,8 @@ const canPnl = (a: { role: string | null; permissions: Record<string, unknown> }
   a.role === 'admin' || a.permissions?.['money.pnl'] === true;
 const canZohoRead = (a: { role: string | null; permissions: Record<string, unknown> }) =>
   canPnl(a) || a.permissions?.['zoho.view'] === true;
+const canManageConnection = (a: { role: string | null; permissions: Record<string, unknown> }) =>
+  a.role === 'admin' || a.permissions?.['zoho.manage_connection'] === true;
 
 async function accessToken(db: ReturnType<typeof svc>) {
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
@@ -242,7 +244,7 @@ Deno.serve(async (req) => {
     if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
 
     if (action === 'exchange_web') {
-      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
+      if (!canManageConnection(auth)) return json({ error: 'forbidden — تحتاج صلاحية إعادة تفويض زوهو' }, 403);
       const id = Deno.env.get('ZOHO_CLIENT_ID');
       const secret = Deno.env.get('ZOHO_CLIENT_SECRET');
       const code = body.code as string;
@@ -295,7 +297,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'finalize_organization') {
-      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
+      if (!canManageConnection(auth)) return json({ error: 'forbidden — تحتاج صلاحية إعادة تفويض زوهو' }, 403);
       const pendingId = String(body.pending_id || '');
       const organizationId = String(body.organization_id || '');
       if (!/^[0-9a-f-]{36}$/i.test(pendingId) || !/^\d+$/.test(organizationId)) {
@@ -343,7 +345,7 @@ Deno.serve(async (req) => {
     }
 
     if (action === 'cancel_organization') {
-      if (auth.role !== 'admin') return json({ error: 'forbidden — الربط للمدير فقط' }, 403);
+      if (!canManageConnection(auth)) return json({ error: 'forbidden — تحتاج صلاحية إعادة تفويض زوهو' }, 403);
       const pendingId = String(body.pending_id || '');
       if (!/^[0-9a-f-]{36}$/i.test(pendingId)) return json({ error: 'invalid pending grant' }, 400);
       const { error } = await db.from('zoho_oauth_pending_grants')

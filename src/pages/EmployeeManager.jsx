@@ -3,6 +3,7 @@ import {
   UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
   Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy, History,
+  FileBarChart,
 } from 'lucide-react';
 import { Card, Btn, Modal, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import {
@@ -31,6 +32,7 @@ const AVATAR_COLORS = [
 const SECTION_ICONS = {
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
   Store, Wallet, BookOpenCheck, Send, GitMerge, Settings, LifeBuoy,
+  FileBarChart,
 };
 
 function RoleBadge({ role }) {
@@ -225,6 +227,17 @@ function PermissionsModal({ employee, onClose, onSave }) {
     () => Object.values(perms).filter(Boolean).length,
     [perms],
   );
+  const sensitiveKeys = useMemo(() => new Set(
+    PERMISSION_CATALOG.flatMap(section => section.perms.filter(item => item.sensitive).map(item => item.key)),
+  ), []);
+  const grantedSensitiveCount = useMemo(
+    () => Object.entries(perms).filter(([key, value]) => value && sensitiveKeys.has(key)).length,
+    [perms, sensitiveKeys],
+  );
+  const unknownGranted = useMemo(() => {
+    const known = new Set(ALL_PERMISSION_KEYS);
+    return Object.entries(perms).filter(([key, value]) => value && !known.has(key)).map(([key]) => key);
+  }, [perms]);
 
   const toggle = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
 
@@ -265,6 +278,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
         ...section,
         perms: section.perms.filter(p =>
           p.label.toLowerCase().includes(searchLower) ||
+          String(p.hint || '').toLowerCase().includes(searchLower) ||
           p.key.toLowerCase().includes(searchLower)   ||
           section.label.toLowerCase().includes(searchLower),
         ),
@@ -321,6 +335,19 @@ function PermissionsModal({ employee, onClose, onSave }) {
             </Btn>
           ))}
         </div>
+        {grantedSensitiveCount > 0 ? (
+          <div style={{ marginTop: 10, padding: '8px 10px', borderRadius: 8, fontSize: 11.5,
+            color: 'var(--red)', background: 'color-mix(in srgb, var(--red) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--red) 24%, var(--border))' }}>
+            <b>{grantedSensitiveCount} صلاحيات حساسة مفعّلة.</b> تسمح بإجراء مالي، حذف، إرسال خارجي أو تغيير اتصال؛ راجعها قبل الحفظ.
+          </div>
+        ) : null}
+        {unknownGranted.length > 0 ? (
+          <div style={{ marginTop: 8, padding: '8px 10px', borderRadius: 8, fontSize: 11,
+            color: 'var(--gold)', background: 'color-mix(in srgb, var(--gold) 8%, transparent)' }}>
+            توجد {unknownGranted.length} صلاحية قديمة غير موجودة في الكتالوج الحالي، وستُزال عند الحفظ: {unknownGranted.join('، ')}
+          </div>
+        ) : null}
       </div>
 
       {/* Sections */}
@@ -401,6 +428,9 @@ function PermissionsModal({ employee, onClose, onSave }) {
                             </span>
                           )}
                         </div>
+                        {p.hint ? (
+                          <div style={{ marginTop: 3, fontSize: 10.5, lineHeight: 1.55, color: 'var(--muted)' }}>{p.hint}</div>
+                        ) : null}
                       </div>
                     </label>
                   );

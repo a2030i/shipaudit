@@ -109,18 +109,18 @@ const ROUTE_ITEMS = [
   { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'money', navOrder: 80, permKey: 'audits.view' },
 
   // ── التقارير والرقابة ───────────────────────────────────────────
-  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permKey: 'carriers.view' },
-  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',         icon: CalendarRange, section: 'outreach', navOrder: 20, permKey: 'carriers.view' },
+  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permAny: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
+  { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',         icon: CalendarRange, section: 'outreach', navOrder: 20, permKey: 'reports.view_operational' },
   { id: 'weight-billing',   path: '/weight-billing',   label: 'فوترة الأوزان الزائدة', icon: Scale,         section: 'money',    navOrder: 90, permKey: 'internal_exports.view' },
   { id: 'internal-exports', path: '/internal-exports', label: 'سجل التقارير المصدّرة',  icon: FileText,      section: 'outreach', navOrder: 30, permKey: 'internal_exports.view' },
 
   // ── نظام الأموال — هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل ──
   { id: 'pnl',       path: '/pnl',      label: 'الربح الفعلي',  icon: TrendingUp, section: 'money', navOrder: 30, permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permKey: 'payments.view',
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permAny: ['cod.view', 'payments.view', 'bank.view'],
     subTabs: [
-      { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements' },
-      { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments' },
-      { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank' },
+      { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements', perm: 'cod.view' },
+      { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments', perm: 'payments.view' },
+      { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank', perm: 'bank.view' },
     ] },
   { id: 'cash-aging', path: '/cash-aging', label: 'توقيت التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
   { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', navOrder: 50, permKey: 'forecast.view' },
@@ -214,7 +214,7 @@ for (const it of NAV_ITEMS) {
   const pk = it.permAny || it.permKey;   // permAny = مصفوفة «أيّ منها يكفي»
   if (!pk) continue;
   PATH_PERM.set(it.path, pk);
-  for (const s of it.subTabs || []) if (s.legacy) PATH_PERM.set(s.legacy, pk);
+  for (const s of it.subTabs || []) if (s.legacy) PATH_PERM.set(s.legacy, s.perm || pk);
 }
 // مسارات لا تظهر في القائمة
 PATH_PERM.set('/carrier',   'carriers.view');
@@ -783,8 +783,10 @@ function AppInner({ theme, toggleTheme }) {
                 activePath={pathname}
                 onNavigate={navigate}
                 tabs={[
-                  ...(isAdmin || can('carriers.view') ? [
+                  ...(isAdmin || can('reports.view_operational') || can('reports.view_financial') || can('reports.view_bank_reconciliation') ? [
                     { id: 'reports', path: '/reports', label: 'التقارير', icon: FileText, render: () => <ReportsCenter isActive={pathname==='/reports'}/> },
+                  ] : []),
+                  ...(isAdmin || can('reports.view_operational') ? [
                     { id: 'monthly', path: '/monthly-report', label: 'التقرير الشهري', icon: CalendarRange, render: () => <MonthlyReport isActive={pathname==='/monthly-report'}/> },
                   ] : []),
                   ...(isAdmin || can('uploads.view') ? [{ id: 'sources', path: '/uploads', label: 'مزامنة المصادر', icon: Layers, render: () => <UploadsHub isActive={pathname==='/uploads'}/> }] : []),

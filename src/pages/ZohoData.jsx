@@ -269,7 +269,7 @@ export default function ZohoData({ isActive = true }) {
     return () => { live = false; clearInterval(iv); };
   }, [isActive]);
   const refreshWebhookFailures = useCallback(() => {
-    if (!can('zoho.configure')) return;
+    if (!can('zoho.retry_webhook')) return;
     loadZohoWebhookFailures().then(r => setWebhookFailures(r?.rows || [])).catch(() => {});
   }, [can]);
   useEffect(() => { if (isActive) refreshWebhookFailures(); }, [isActive, refreshWebhookFailures]);
@@ -297,6 +297,10 @@ export default function ZohoData({ isActive = true }) {
   };
 
   const reauthorize = async () => {
+    if (!can('zoho.manage_connection')) {
+      toast('لا تملك صلاحية إعادة تفويض اتصال زوهو', 'error');
+      return;
+    }
     try {
       const r = await getZohoAuthUrl();
       if (!r?.ok || !r.url) throw new Error(r?.error || 'تعذّر إنشاء رابط زوهو');
@@ -423,6 +427,11 @@ export default function ZohoData({ isActive = true }) {
   };
 
   const runInvoiceOperation = async (kind) => {
+    const required = kind === 'sent' ? 'zoho.invoice_mark_sent' : 'zoho.invoice_push_zatca';
+    if (!can(required)) {
+      toast('لا تملك صلاحية تنفيذ هذا الإجراء في زوهو', 'error');
+      return;
+    }
     const ids = [...selectedInvoices];
     if (!ids.length) return;
     const selectedRows = filtered.filter(r => selectedInvoices.has(String(r.zoho_id)));
@@ -448,6 +457,10 @@ export default function ZohoData({ isActive = true }) {
   };
 
   const openBankImport = async (row) => {
+    if (!can('zoho.bank_import')) {
+      toast('لا تملك صلاحية استيراد كشف البنك إلى زوهو', 'error');
+      return;
+    }
     setBankImport({ row, busy: true, preview: null });
     try {
       const preview = await previewZohoBankImport(row.zoho_id);
@@ -523,7 +536,7 @@ export default function ZohoData({ isActive = true }) {
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
         actions={
           <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-            {can('zoho.configure') ? (
+            {can('zoho.manage_connection') ? (
               <Btn size="sm" variant="primary" icon={<ShieldCheck size={14}/>} onClick={reauthorize}>
                 إدارة صلاحيات وربط زوهو
               </Btn>
@@ -571,7 +584,7 @@ export default function ZohoData({ isActive = true }) {
         );
       })()}
 
-      {webhookFailures.length > 0 && can('zoho.configure') ? (
+      {webhookFailures.length > 0 && can('zoho.retry_webhook') ? (
         <Card style={{ padding: 12, marginBottom: 14, borderColor: 'color-mix(in srgb, var(--red) 30%, var(--border))' }}>
           <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--red)', marginBottom: 8 }}>
             أحداث زوهو تحتاج إعادة معالجة ({webhookFailures.length})
@@ -592,7 +605,7 @@ export default function ZohoData({ isActive = true }) {
       {section === 'overview' ? (
         <FinancialControlPanel
           data={financial}
-          canConfigure={can('zoho.configure')}
+          canManageConnection={can('zoho.manage_connection')}
           onReauthorize={reauthorize}
           onOpenAccount={() => openType('bank_accounts')}
           onOpenVendors={() => openType('bills')}
@@ -704,16 +717,20 @@ export default function ZohoData({ isActive = true }) {
             title="تحميل الفواتير المحددة مرتبة في ملف PDF واحد">
             {bulkPdf.busy ? `تجهيز ${bulkPdf.done} من ${bulkPdf.total}` : `تحميل PDF موحّد (${selectedInvoices.size})`}
           </Btn>
-          <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
-            icon={invoiceOperation === 'sent' ? <Spinner size={12}/> : null}
-            onClick={() => runInvoiceOperation('sent')}>
-            تحويل المسودات المحددة إلى مرسلة
-          </Btn>
-          <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
-            icon={invoiceOperation === 'zatca' ? <Spinner size={12}/> : null}
-            onClick={() => runInvoiceOperation('zatca')}>
-            إرسال المحدد إلى زاتكا عبر زوهو
-          </Btn>
+          {can('zoho.invoice_mark_sent') ? (
+            <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
+              icon={invoiceOperation === 'sent' ? <Spinner size={12}/> : null}
+              onClick={() => runInvoiceOperation('sent')}>
+              تحويل المسودات المحددة إلى مرسلة
+            </Btn>
+          ) : null}
+          {can('zoho.invoice_push_zatca') ? (
+            <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
+              icon={invoiceOperation === 'zatca' ? <Spinner size={12}/> : null}
+              onClick={() => runInvoiceOperation('zatca')}>
+              إرسال المحدد إلى زاتكا عبر زوهو
+            </Btn>
+          ) : null}
         </div>
       )}
 
@@ -822,7 +839,7 @@ export default function ZohoData({ isActive = true }) {
                               sourceType,
                               existing: existingLink,
                             })}>{treasuryAccount ? (existingLink ? 'تعديل تصنيف الخزينة' : 'تصنيف الخزينة') : existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
-                            {type === 'bank_accounts' && !treasuryAccount && existingLink?.link_kind === 'bank' ? (
+                            {type === 'bank_accounts' && !treasuryAccount && existingLink?.link_kind === 'bank' && can('zoho.bank_import') ? (
                               <Btn size="sm" variant="accent" icon={<Download size={13}/>} onClick={() => openBankImport(r)}>
                                 فحص العمليات الجديدة
                               </Btn>
@@ -945,7 +962,7 @@ function MiniValue({ label, value }) {
   return <div style={{ padding: 10, border: '1px solid var(--border)', borderRadius: 9, background: 'var(--surface2)' }}><div style={{ color: 'var(--muted)', fontSize: 10 }}>{label}</div><div style={{ fontWeight: 800, marginTop: 3 }}>{value}</div></div>;
 }
 
-function FinancialControlPanel({ data, canConfigure, onReauthorize, onOpenAccount, onOpenVendors }) {
+function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpenAccount, onOpenVendors }) {
   if (!data) {
     return <Card style={{ padding: 18, marginBottom: 14, textAlign: 'center' }}><Spinner size={18}/></Card>;
   }
@@ -989,7 +1006,7 @@ function FinancialControlPanel({ data, canConfigure, onReauthorize, onOpenAccoun
           </div>
         </div>
         <div style={{ display: 'flex', gap: 7, flexWrap: 'wrap' }}>
-          {(needsAuth || unknown) && canConfigure ? (
+          {(needsAuth || unknown) && canManageConnection ? (
             <Btn size="sm" variant="accent" icon={<ShieldCheck size={14}/>} onClick={onReauthorize}>
               إعادة تفويض صلاحيات زوهو
             </Btn>

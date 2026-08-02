@@ -36,6 +36,11 @@ const KIND_LABEL = {
 
 export default function ReportsCenter({ isActive = true }) {
   const { user, can } = useAuth();
+  const canOperational = can('reports.view_operational');
+  const canFinancial = can('reports.view_financial');
+  const canBankReconciliation = can('reports.view_bank_reconciliation');
+  const canExport = can('reports.export');
+  const canViewAny = canOperational || canFinancial || canBankReconciliation;
   const [months, setMonths] = useState([]);
   const [monthlyData, setMonthlyData] = useState(null);
   const [carriers, setCarriers] = useState([]);
@@ -63,20 +68,28 @@ export default function ReportsCenter({ isActive = true }) {
   const pagedHistory = filteredHistory.slice(historyPage * HISTORY_PAGE_SIZE, (historyPage + 1) * HISTORY_PAGE_SIZE);
 
   useEffect(() => {
-    if (!isActive || monthlyData) return;
-    loadMonthlyReport().then(r => {
-      setMonthlyData(r);
-      setMonths(r.months || []);
-      setPMonth(cur => cur || r.months?.[0] || '');
-    }).catch(e => toast(`تعذّر تحميل الأشهر: ${e.message}`, 'error'));
-    loadCarriers().then(rows => {
-      setCarriers(rows || []);
-      setPCarrier(cur => cur || rows?.[0]?.id || '');
-    }).catch(() => {});
-    loadHistory();
-  }, [isActive, monthlyData, loadHistory]);
+    if (!isActive) return;
+    if ((canOperational || canBankReconciliation) && !monthlyData) {
+      loadMonthlyReport().then(r => {
+        setMonthlyData(r);
+        setMonths(r.months || []);
+        setPMonth(cur => cur || r.months?.[0] || '');
+      }).catch(e => toast(`تعذّر تحميل الأشهر: ${e.message}`, 'error'));
+    }
+    if (canOperational && !carriers.length) {
+      loadCarriers().then(rows => {
+        setCarriers(rows || []);
+        setPCarrier(cur => cur || rows?.[0]?.id || '');
+      }).catch(() => {});
+    }
+    if (canExport && history == null) loadHistory();
+  }, [isActive, monthlyData, carriers.length, history, loadHistory, canOperational, canBankReconciliation, canExport]);
 
   const run = async (id, fn) => {
+    if (!canExport) {
+      toast('تحتاج صلاحية إنشاء وتنزيل ملفات التقارير', 'error');
+      return;
+    }
     setBusy(id);
     try { await fn(); loadHistory(); }
     catch (e) { toast(`فشل التوليد: ${e.message}`, 'error'); }
@@ -156,7 +169,7 @@ export default function ReportsCenter({ isActive = true }) {
     toast(`تم توليد التقرير — ${r.rowCount} سطر`, 'success');
   });
 
-  if (!can('carriers.view')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية"/></div>;
+  if (!canViewAny) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية عرض نوع واحد على الأقل من التقارير."/></div>;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -164,6 +177,7 @@ export default function ReportsCenter({ isActive = true }) {
         subtitle="تقارير رسمية بمعاملات — كل تقرير يُخزَّن تلقائياً ويُعاد تحميله من السجل أدناه"/>
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 26 }}>
+        {canOperational ? <>
         {/* التقرير الشهري */}
         <ReportCard icon={<CalendarRange size={18}/>} color="var(--green)"
           title="التقرير الشهري للناقلين"
@@ -171,7 +185,7 @@ export default function ReportsCenter({ isActive = true }) {
           <Select value={pMonth} onChange={e => setPMonth(e.target.value)}>
             {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </Select>
-          <Btn variant="accent" size="full" disabled={busy === 'monthly' || !pMonth} icon={busy === 'monthly' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genMonthly}>
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'monthly' || !pMonth} icon={busy === 'monthly' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genMonthly}>
             توليد التقرير
           </Btn>
         </ReportCard>
@@ -183,12 +197,14 @@ export default function ReportsCenter({ isActive = true }) {
           <Select value={pCarrier} onChange={e => setPCarrier(e.target.value)}>
             {carriers.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
           </Select>
-          <Btn variant="accent" size="full" disabled={busy === 'soa' || !pCarrier} icon={busy === 'soa' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genCarrierSoa}>
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'soa' || !pCarrier} icon={busy === 'soa' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genCarrierSoa}>
             توليد الكشف
           </Btn>
         </ReportCard>
+        </> : null}
 
         {/* المطابقة البنكية */}
+        {canBankReconciliation ? (
         <ReportCard icon={<Landmark size={18}/>} color="var(--gold)"
           title="المطابقة البنكية (بنك × دفتر)"
           desc="3 أوراق: مطابَق · حركة بنك بلا سداد مسجّل (الخطر) · سداد مسجّل لم يظهر في البنك">
@@ -196,19 +212,21 @@ export default function ReportsCenter({ isActive = true }) {
             <option value="">كل الفترات</option>
             {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </Select>
-          <Btn variant="accent" size="full" disabled={busy === 'recon'} icon={busy === 'recon' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genRecon}>
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'recon'} icon={busy === 'recon' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genRecon}>
             توليد المطابقة
           </Btn>
         </ReportCard>
+        ) : null}
 
         {/* الإقرار الضريبي — من زوهو بخانات نموذج الهيئة */}
+        {canFinancial ? <>
         <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
           title="مسودة الإقرار الضريبي PDF (القيمة المضافة)"
           desc="خانات نموذج الهيئة (1..16) من زوهو + مطابقة مستقلة لضريبة الخانتين 1 و7 قبل الإيداع">
           <Select value={pQuarter} onChange={e => setPQuarter(e.target.value)}>
             {QUARTERS.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
           </Select>
-          <Btn variant="accent" size="full" disabled={busy === 'vat'} icon={busy === 'vat' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genVat}>
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'vat'} icon={busy === 'vat' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genVat}>
             توليد الإقرار
           </Btn>
         </ReportCard>
@@ -223,7 +241,7 @@ export default function ReportsCenter({ isActive = true }) {
             <input type="date" value={pPnlTo} onChange={e => setPPnlTo(e.target.value)}
               style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>
           </div>
-          <Btn variant="accent" size="full" disabled={busy === 'pnl' || !pPnlFrom || !pPnlTo}
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'pnl' || !pPnlFrom || !pPnlTo}
             icon={busy === 'pnl' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genPnl}>
             توليد القائمة
           </Btn>
@@ -239,14 +257,16 @@ export default function ReportsCenter({ isActive = true }) {
             <option value="general_ledger">دفتر الأستاذ العام</option>
           </Select>
           <div style={{ fontSize: 11, color: 'var(--muted)' }}>يستخدم تاريخي قائمة الدخل أعلاه.</div>
-          <Btn variant="accent" size="full" disabled={busy === 'financial' || !pPnlFrom || !pPnlTo}
+          <Btn variant="accent" size="full" disabled={!canExport || busy === 'financial' || !pPnlFrom || !pPnlTo}
             icon={busy === 'financial' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genFinancial}>
             توليد التقرير المحدد
           </Btn>
         </ReportCard>
+        </> : null}
       </div>
 
       {/* سجل السحبات — مشترك مع صفحة التصدير الداخلي */}
+      {canExport ? <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 800 }}>📁 التقارير الصادرة سابقاً</div>
         <select value={historyKind} onChange={e => { setHistoryKind(e.target.value); setHistoryPage(0); }}
@@ -294,6 +314,11 @@ export default function ReportsCenter({ isActive = true }) {
             </div>
           </Card>
         )}
+      </> : (
+        <Card style={{ padding: 18 }}>
+          <Empty icon="🔒" title="العرض متاح دون تنزيل" sub="يمكنك قراءة التقارير المسموحة لك، لكن إنشاء الملفات وسجل التنزيلات يحتاجان صلاحية مستقلة."/>
+        </Card>
+      )}
     </div>
   );
 }

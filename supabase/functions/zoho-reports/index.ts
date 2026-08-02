@@ -44,8 +44,10 @@ async function requireUser(req: Request, db: ReturnType<typeof svc>) {
     .select('role, permissions').eq('id', user.id).maybeSingle();
   return { user, role: profile?.role || null, permissions: profile?.permissions || {} };
 }
-const canPnl = (a: { role: string | null; permissions: Record<string, unknown> }) =>
-  a.role === 'admin' || a.permissions?.['money.pnl'] === true;
+const canFinancialReport = (a: { role: string | null; permissions: Record<string, unknown> }) =>
+  a.role === 'admin'
+  || a.permissions?.['money.pnl'] === true
+  || (a.permissions?.['reports.view_financial'] === true && a.permissions?.['reports.export'] === true);
 
 async function accessToken(db: ReturnType<typeof svc>) {
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
@@ -87,7 +89,7 @@ Deno.serve(async (req) => {
     }
     if (!auth) auth = await requireUser(req, db);
     if (!auth) return json({ error: 'unauthorized — سجّل دخولك' }, 401);
-    if (!canPnl(auth)) return json({ error: 'forbidden — تحتاج صلاحية «الوضع المالي»' }, 403);
+    if (!canFinancialReport(auth)) return json({ error: 'forbidden — تحتاج صلاحية التقارير المالية والتصدير' }, 403);
 
     const { token, apiDomain, orgId } = await accessToken(db);
     const auth_h = { Authorization: `Zoho-oauthtoken ${token}` };

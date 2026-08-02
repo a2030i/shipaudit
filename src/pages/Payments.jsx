@@ -8,6 +8,7 @@ import {
   deletePaymentRecord,
   loadCarriersOverview,
 } from '../lib/carrierStatementsService.js';
+import { useAuth } from '../lib/auth.jsx';
 
 const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
@@ -21,6 +22,7 @@ const SHIPMENT_LABEL = {
 };
 
 export default function Payments({ isActive = true }) {
+  const { can } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const [carrier, setCarrier] = useState(() => searchParams.get('carrier') || '');
   const [carrierList, setCarrierList] = useState([]);
@@ -85,6 +87,10 @@ export default function Payments({ isActive = true }) {
   };
 
   const handleDelete = async (paymentId) => {
+    if (!can('payments.delete')) {
+      toast('لا تملك صلاحية حذف الدفعات', 'error');
+      return;
+    }
     try {
       await deletePaymentRecord(paymentId);
       toast('تم إلغاء الدفعة وإعادة العمليات إلى "معلّقة"', 'info');
@@ -189,6 +195,7 @@ export default function Payments({ isActive = true }) {
                       isExpanded={expanded === p.id}
                       ops={opsOf[p.id]}
                       onToggle={() => toggleExpand(p.id)}
+                      canDelete={can('payments.delete')}
                       onDelete={() => setConfirmDelete(p)}
                     />
                   ))}
@@ -199,7 +206,7 @@ export default function Payments({ isActive = true }) {
         </>
       )}
 
-      {confirmDelete && (
+      {confirmDelete && can('payments.delete') && (
         <Modal title="⚠️ إلغاء الدفعة" onClose={() => setConfirmDelete(null)} width={420}>
           <div style={{ fontSize: 13, lineHeight: 1.7, color: 'var(--text)', marginBottom: 14 }}>
             سيتم حذف الدفعة #{confirmDelete.id} (<span style={{ fontFamily: 'var(--font-mono)' }}>{fmt(confirmDelete.amount)} ر.س</span>)،
@@ -219,7 +226,7 @@ export default function Payments({ isActive = true }) {
 }
 
 // ── PaymentRow ────────────────────────────────────────────────────────────
-function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete }) {
+function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete, canDelete }) {
   return (
     <div style={{ borderBottom: '1px solid var(--border)' }}>
       <button onClick={onToggle}
@@ -259,14 +266,16 @@ function PaymentRow({ payment, isExpanded, ops, onToggle, onDelete }) {
             {payment.opsCount} عملية
           </div>
         </div>
-        <div onClick={e => { e.stopPropagation(); onDelete(); }}
-          style={{
-            cursor: 'pointer', color: 'var(--red)',
-            padding: '6px 10px', borderRadius: 6, fontSize: 11,
-          }}
-          title="إلغاء الدفعة">
-          <Trash2 size={14}/>
-        </div>
+        {canDelete ? (
+          <div onClick={e => { e.stopPropagation(); onDelete(); }}
+            style={{
+              cursor: 'pointer', color: 'var(--red)',
+              padding: '6px 10px', borderRadius: 6, fontSize: 11,
+            }}
+            title="إلغاء الدفعة">
+            <Trash2 size={14}/>
+          </div>
+        ) : <span/>}
       </button>
 
       {isExpanded && (

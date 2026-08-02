@@ -26,7 +26,7 @@ const CARRIER_ALIASES = {
 };
 
 export default function BankStatement() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [state, setState] = useState('idle');           // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
   const [result, setResult] = useState(null);            // { transactions, summary, hiddenFees, fileName }
@@ -68,6 +68,10 @@ export default function BankStatement() {
 
   // Persist the parsed statement so uploads accumulate across periods.
   const handleSave = async () => {
+    if (!can('bank.upload_statement')) {
+      toast('لا تملك صلاحية حفظ كشف بنكي', 'error');
+      return;
+    }
     if (!result) return;
     setSaving(true);
     try {
@@ -148,6 +152,10 @@ export default function BankStatement() {
 
   // التصدير يتبع المعروض (بعد الفلاتر) — يعيد استخدام صيغة الكشف الصافي.
   const handleExportSaved = () => {
+    if (!can('bank.export')) {
+      toast('لا تملك صلاحية تصدير حركة البنك', 'error');
+      return;
+    }
     try {
       // نمرّر rejected ليحذفها generateCleanExcel (نفس سلوك الكشف الصافي).
       const rows = savedFiltered.map(t => ({
@@ -211,6 +219,10 @@ export default function BankStatement() {
   }, [periodClosing, saved]);
 
   const handleDeleteSaved = async (id) => {
+    if (!can('bank.delete_transaction')) {
+      toast('لا تملك صلاحية حذف العمليات البنكية', 'error');
+      return;
+    }
     try {
       await deleteBankTransaction(id);
       setSaved(prev => (prev || []).filter(t => t.id !== id));
@@ -237,6 +249,10 @@ export default function BankStatement() {
   // ── File handling ──────────────────────────────────────────────────────────
   const processFile = useCallback((file) => {
     if (!file) return;
+    if (!can('bank.upload_statement')) {
+      toast('لا تملك صلاحية رفع كشف بنكي', 'error');
+      return;
+    }
     setState('processing');
     setErrorMsg('');
 
@@ -259,7 +275,7 @@ export default function BankStatement() {
       setState('error');
     };
     reader.readAsArrayBuffer(file);
-  }, []);
+  }, [can]);
 
   const handleDrop = (e) => {
     e.preventDefault();
@@ -355,6 +371,10 @@ export default function BankStatement() {
   // ── Export ────────────────────────────────────────────────────────────────
   const handleExport = () => {
     if (!result) return;
+    if (!can('bank.export')) {
+      toast('لا تملك صلاحية تصدير كشف البنك', 'error');
+      return;
+    }
     try {
       const bytes = generateCleanExcel(result.transactions, result.summary);
       const blob  = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
@@ -393,7 +413,7 @@ export default function BankStatement() {
 
       {view === 'current' && (<>
       {/* IDLE — drop zone */}
-      {state === 'idle' && (
+      {state === 'idle' && can('bank.upload_statement') && (
         <div
           onDragOver={e => { e.preventDefault(); setDrag(true); }}
           onDragLeave={() => setDrag(false)}
@@ -415,6 +435,9 @@ export default function BankStatement() {
           <input id="bs-file" type="file" accept=".xlsx,.xls,.csv" style={{ display: 'none' }}
             onChange={handlePick}/>
         </div>
+      )}
+      {state === 'idle' && !can('bank.upload_statement') && (
+        <Card><Empty icon="🔒" title="عرض فقط" sub="يمكنك مراجعة الكشوف المحفوظة، لكن رفع كشف جديد يحتاج صلاحية مستقلة."/></Card>
       )}
 
       {/* PROCESSING */}
@@ -539,17 +562,21 @@ export default function BankStatement() {
 
           {/* Toolbar */}
           <div style={{ display: 'flex', gap: 8, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Btn variant="accent" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
-              {saving ? 'جارٍ الحفظ…' : 'حفظ في الدفتر'}
-            </Btn>
+            {can('bank.upload_statement') ? (
+              <Btn variant="accent" icon={saving ? <Spinner size={13}/> : <Save size={14}/>} onClick={handleSave} disabled={saving}>
+                {saving ? 'جارٍ الحفظ…' : 'حفظ في الدفتر'}
+              </Btn>
+            ) : null}
             {/* البنك المكتشَف — يُحفظ منفصلاً (§متعدد البنوك) */}
             <span style={{ padding: '5px 12px', borderRadius: 999, fontSize: 12, fontWeight: 800, background: 'color-mix(in srgb, var(--accent) 14%, transparent)', color: 'var(--accent)', display: 'inline-flex', gap: 5, alignItems: 'center' }}>
               🏦 {result?.bank || 'بنك الإنماء'}
             </span>
-            <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExport}>
-              تصدير الكشف الصافي
-            </Btn>
-            {carrierTransfers.length > 0 && (
+            {can('bank.export') ? (
+              <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExport}>
+                تصدير الكشف الصافي
+              </Btn>
+            ) : null}
+            {carrierTransfers.length > 0 && can('bank.reconcile') && (
               <Btn variant="gold" icon={<Link2 size={14}/>} onClick={() => setReconcileOpen(true)}>
                 💼 ربط تحويلاتك لشركات الشحن ({carrierTransfers.length})
               </Btn>
@@ -769,9 +796,11 @@ export default function BankStatement() {
                       مسح الفلاتر
                     </Btn>
                   )}
-                  <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExportSaved} disabled={!savedFiltered.length}>
-                    تصدير المعروض
-                  </Btn>
+                  {can('bank.export') ? (
+                    <Btn variant="ghost" size="sm" icon={<Download size={14}/>} onClick={handleExportSaved} disabled={!savedFiltered.length}>
+                      تصدير المعروض
+                    </Btn>
+                  ) : null}
                 </div>
 
                 {/* عدّاد النتائج تحت الفلترة */}
@@ -831,10 +860,13 @@ export default function BankStatement() {
                                 </td>
                                 <td data-label="إجراء">
                                   <div style={{ display: 'flex', gap: 5 }}>
-                                    <button title="ملاحظة" onClick={() => { setNoteFor(t); setNoteText(t.note || ''); }}
+                                    {can('bank.edit_note') ? <button title="ملاحظة" onClick={() => { setNoteFor(t); setNoteText(t.note || ''); }}
                                       style={{ border: `1px solid ${t.note ? 'var(--gold)' : 'var(--border2)'}`, background: t.note ? 'color-mix(in srgb, var(--gold) 14%, transparent)' : 'var(--surface)', color: t.note ? 'var(--gold)' : 'var(--muted)', borderRadius: 8, padding: '5px 7px', cursor: 'pointer', fontSize: 12 }}>📝</button>
-                                    <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
-                                      onClick={() => setConfirmDel(t)}/>
+                                    : null}
+                                    {can('bank.delete_transaction') ? (
+                                      <Btn variant="danger" size="sm" title="حذف العملية" icon={<Trash2 size={12}/>}
+                                        onClick={() => setConfirmDel(t)}/>
+                                    ) : null}
                                   </div>
                                 </td>
                               </tr>
@@ -849,7 +881,7 @@ export default function BankStatement() {
             )
       )}
 
-      {confirmDel && (
+      {confirmDel && can('bank.delete_transaction') && (
         <Modal title="⚠️ تأكيد حذف العملية" onClose={() => !deleting && setConfirmDel(null)} width={460}>
           <div style={{ fontSize: 13, marginBottom: 12 }}>
             سيُحذف هذا القيد نهائياً من الكشوف المحفوظة. <b style={{ color: 'var(--red)' }}>لا يمكن التراجع.</b>
@@ -882,7 +914,7 @@ export default function BankStatement() {
       )}
 
       {/* ملاحظة على عملية بنكية */}
-      {noteFor && (
+      {noteFor && can('bank.edit_note') && (
         <Modal title="📝 ملاحظة على العملية" onClose={() => setNoteFor(null)} width={460}>
           <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 8 }}>
             {noteFor.txn_date} · {noteFor.reference} · <span style={{ color: (Number(noteFor.debit) > 0) ? 'var(--red)' : 'var(--green)' }}>{fmtMoney(Number(noteFor.debit) > 0 ? noteFor.debit : noteFor.credit)} ر.س</span>
@@ -905,7 +937,7 @@ export default function BankStatement() {
         </Modal>
       )}
 
-      {reconcileOpen && (
+      {reconcileOpen && can('bank.reconcile') && (
         <ReconcileModal
           transfers={carrierTransfers}
           carriers={carriers}

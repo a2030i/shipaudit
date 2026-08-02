@@ -1,6 +1,6 @@
 // Controlled Zoho Books writes: invoice lifecycle and bank statement import.
-// Every action is admin/zoho.configure only, idempotent, audited, and scoped to
-// existing documents/accounts. It never creates an invoice or deletes data.
+// Every action requires its own explicit permission, is idempotent, audited,
+// and scoped to existing documents/accounts. It never creates an invoice or deletes data.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -14,14 +14,14 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-async function requireWriter(req: Request, db: ReturnType<typeof svc>) {
+async function requirePermission(req: Request, db: ReturnType<typeof svc>, permission: string) {
   const auth = req.headers.get('Authorization') || '';
   const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
     { global: { headers: { Authorization: auth } } });
   const { data: { user } } = await uc.auth.getUser();
   if (!user) return null;
   const { data: p } = await db.from('profiles').select('role,permissions').eq('id', user.id).maybeSingle();
-  if (p?.role !== 'admin' && p?.permissions?.['zoho.configure'] !== true) return null;
+  if (p?.role !== 'admin' && p?.permissions?.[permission] !== true) return null;
   return user;
 }
 
@@ -123,11 +123,21 @@ Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
   const db = svc();
-  const user = await requireWriter(req, db);
-  if (!user) return json({ error: 'forbidden' }, 403);
   let input: any = {};
   try { input = await req.json(); } catch { return json({ error: 'invalid_json' }, 400); }
   const action = String(input.action || '');
+  const permissionByAction: Record<string, string> = {
+    bank_preview: 'zoho.bank_import',
+    bank_import: 'zoho.bank_import',
+    invoice_mark_sent: 'zoho.invoice_mark_sent',
+    invoice_push_zatca: 'zoho.invoice_push_zatca',
+    webhook_failures: 'zoho.retry_webhook',
+    webhook_retry: 'zoho.retry_webhook',
+  };
+  const requiredPermission = permissionByAction[action];
+  if (!requiredPermission) return json({ error: 'unknown_action' }, 400);
+  const user = await requirePermission(req, db, requiredPermission);
+  if (!user) return json({ error: 'forbidden', permission: requiredPermission }, 403);
 
   try {
     if (action === 'bank_preview' || action === 'bank_import') {
