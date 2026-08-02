@@ -92,6 +92,12 @@ export default function WorkAgents({ isActive = true }) {
   }, [isActive]);
 
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    if (!selected) return undefined;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = previous; };
+  }, [selected]);
 
   const totals = useMemo(() => ({
     active: agents.filter(a => a.status === 'active').length,
@@ -133,8 +139,8 @@ export default function WorkAgents({ isActive = true }) {
         {runs.length === 0 ? <p style={{ margin: 0, color: 'var(--muted)', lineHeight: 1.8 }}>لا توجد عمليات تشغيل بعد. سيظهر هنا وقت التشغيل، وعدد السجلات المفحوصة، والإجراءات المنفذة، والأخطاء.</p> : runs.map(run => <div key={run.id}>{run.summary || run.status}</div>)}
       </Card>
 
-      {selected && <div role="dialog" aria-modal="true" aria-label="تأسيس وكيل العمل" onClick={() => setSelected(null)} style={{ position: 'fixed', inset: 0, zIndex: 1200, background: 'rgba(15,23,42,.58)', display: 'grid', placeItems: 'center', padding: 16 }}>
-        <Card onClick={e => e.stopPropagation()} style={{ width: 'min(560px,100%)', padding: 24 }}>
+      {selected && <div className="work-agent-dialog-backdrop" role="dialog" aria-modal="true" aria-label="تأسيس وكيل العمل" onClick={() => setSelected(null)}>
+        <Card className="work-agent-dialog-card" onClick={e => e.stopPropagation()}>
           <StatusPill status={selected.status}/>
           <h2 style={{ margin: '14px 0 8px' }}>{selected.name}</h2>
           <p style={{ color: 'var(--text2)', lineHeight: 1.8 }}>{selected.description}</p>
@@ -165,7 +171,7 @@ export default function WorkAgents({ isActive = true }) {
         </Card>
       </div>}
 
-      <style>{`.agent-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.agent-form-grid label{display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--text2)}.agent-form-grid input,.agent-form-grid select{min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit}.agent-toggle{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:12px}.agent-toggle span{display:grid;gap:3px}.agent-toggle small{color:var(--muted)} @media(max-width:1000px){.work-agents-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}} @media(max-width:680px){.work-agents-grid,.work-agents-stats,.agent-form-grid{grid-template-columns:1fr!important}}`}</style>
+      <style>{`.work-agent-dialog-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(15,23,42,.58);display:grid;place-items:center;padding:16px;overscroll-behavior:contain}.work-agent-dialog-card{width:min(560px,100%);max-height:calc(100dvh - 32px);overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;padding:24px!important}.agent-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.agent-form-grid label{display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--text2)}.agent-form-grid input,.agent-form-grid select{min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit}.agent-toggle{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:12px}.agent-toggle span{display:grid;gap:3px}.agent-toggle small{color:var(--muted)} @media(max-width:1000px){.work-agents-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}} @media(max-width:680px){.work-agents-grid,.work-agents-stats,.agent-form-grid{grid-template-columns:1fr!important}.work-agent-dialog-backdrop{place-items:end center;padding:10px 10px calc(10px + env(safe-area-inset-bottom))}.work-agent-dialog-card{width:100%;max-height:calc(100dvh - 86px);padding:18px 16px calc(24px + env(safe-area-inset-bottom))!important;border-radius:18px 18px 14px 14px!important}}`}</style>
     </div>
   );
 }
