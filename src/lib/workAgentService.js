@@ -70,6 +70,19 @@ export async function runZatcaWorkAgent() {
   return data;
 }
 
+export async function configureManagementReportAgent(values) {
+  const { data, error } = await supabase.rpc('configure_management_report_agent', { p_enabled:!!values.enabled,p_hour:Number(values.hour),p_minute:Number(values.minute) });
+  if (error) throw error; return data;
+}
+export async function previewManagementReportAgent() {
+  const { data, error } = await supabase.functions.invoke('work-agent-management-report',{body:{action:'preview'}});
+  if (error) throw error; if(!data?.ok) throw new Error(data?.error||'تعذرت معاينة تقرير الإدارة'); return data;
+}
+export async function runManagementReportAgent() {
+  const { data, error } = await supabase.functions.invoke('work-agent-management-report',{body:{action:'run',trigger:'manual'}});
+  if (error) throw error; if(!data?.ok) throw new Error(data?.error||'تعذر إنشاء تقرير الإدارة'); return data;
+}
+
 export async function loadRecentAgentRuns(limit = 12) {
   const { data, error } = await supabase
     .from('work_agent_runs')
