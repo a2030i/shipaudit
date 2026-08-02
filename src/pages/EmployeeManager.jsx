@@ -11,7 +11,6 @@ import {
 } from '../lib/employeeService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { pageTitle } from '../lib/pageTitles.js';
-import './EmployeeManager.css';
 import {
   PERMISSION_CATALOG, PRESETS, ALL_PERMISSION_KEYS, FULL_ACCOUNTANT_KEYS,
 } from '../lib/permissions.js';
@@ -633,7 +632,7 @@ export default function EmployeeManager() {
   }, {});
 
   return (
-    <div className="employee-manager-page" style={{ padding: '24px 28px 80px', maxWidth: 920, margin: '0 auto' }}>
+    <div style={{ padding: '24px 28px 80px', maxWidth: 920, margin: '0 auto' }}>
 
       <PageHeader
         icon={<Users size={22}/>}
@@ -787,8 +786,6 @@ export default function EmployeeManager() {
           })}
         </div>
       )}
-
-      <div className="employee-manager-scroll-end" aria-hidden="true" />
 
       {modal?.type === 'activity' && (
         <ActivityModal employee={modal.employee} onClose={() => setModal(null)}/>

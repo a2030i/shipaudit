@@ -1063,6 +1063,7 @@ function PageSlot({ active, scroll = false, children }) {
           </Suspense>
         </SlotBoundary>
       )}
+      {scroll && <div className="page-slot-scroll-end" aria-hidden="true" />}
     </div>
   );
 }

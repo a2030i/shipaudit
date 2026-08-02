@@ -1,0 +1,31 @@
+/*
+ * Mobile Safari must receive a real in-flow element at the end of every
+ * scrollable PageSlot. Padding and generated ::after content are not a
+ * reliable contribution to scrollHeight inside an absolute flex scroller.
+ * This file is imported after the historical and theme layers so the layout
+ * contract wins globally without page-specific exceptions.
+ */
+.page-slot-scroll-end {
+  display: none;
+}
+
+@media (max-width: 768px) {
+  .page-slot {
+    padding-bottom: 0 !important;
+    scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .page-slot::after {
+    content: none !important;
+    display: none !important;
+  }
+
+  .page-slot-scroll-end {
+    display: block;
+    width: 100%;
+    height: calc(112px + env(safe-area-inset-bottom, 0px));
+    min-height: calc(112px + env(safe-area-inset-bottom, 0px));
+    flex: 0 0 calc(112px + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+}
