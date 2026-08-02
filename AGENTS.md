@@ -887,3 +887,4 @@
 - هو وكيل مراقبة فقط: لا يعيد تشغيل التكاملات ولا يعدّل البيانات تلقائيًا. النتيجة تحفظ في `work_agent_runs.details.snapshot`، والحالة `partial` عند وجود مصادر تحتاج مراجعة.
 - من `/work-agents` يمكن تشغيله/إيقافه، تغيير التكرار (15/30/60 دقيقة)، وضبط حدود قدم كل مصدر، مع معاينة حيّة دون كتابة.
 - نقطة الحقيقة: `work-agent-integration-health` وRPC الخدمة `integration_health_snapshot` والتحكم عبر `configure_integration_health_agent`.
+- الكتالوج التشغيلي الحالي مقصور على الوكلاء الأربعة المفعّلين أعلاه؛ حُذفت مسودات `new_leads` و`bank_reconciliation` و`monthly_close` في 2026-08-02، ولا تُعرض بطاقات غير مؤسسة في `/work-agents`.
