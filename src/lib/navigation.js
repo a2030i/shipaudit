@@ -7,7 +7,7 @@ export const NAV_SECTIONS = [
   { id: 'sales',     label: 'المبيعات والتواصل',   icon: 'Target',     accent: '#8B5CF6', hint: 'فرص · مبيعات · حملات · عمولات' },
   { id: 'finance',   label: 'المالية وزوهو',       icon: 'DollarSign', accent: '#F59E0B', hint: 'ربحية · بنوك · زوهو · مطابقة' },
   { id: 'reports',   label: 'التقارير والرقابة',   icon: 'FileCheck',  accent: '#22C55E', hint: 'تقارير · مزامنة · سلامة' },
-  { id: 'settings',  label: 'الإعدادات',           icon: 'Settings',   accent: '#31D5E1', hint: 'فريق · شركات · عقود' },
+  { id: 'settings',  label: 'الإعدادات',           icon: 'Settings',   accent: '#31D5E1', hint: 'فريق · شركات · عقود · تكاملات' },
 ];
 
 // العناصر غير المذكورة تبقى مسارات محمية لكنها لا تظهر كخيارات متساوية
@@ -33,8 +33,10 @@ export const NAV_ITEM_IA = {
   reports:            { label: 'التقارير', section: 'reports', order: 10, visible: true },
   'work-agents':      { label: 'وكلاء العمل', section: 'reports', order: 20, visible: true },
   uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
-  employees:          { label: 'الفريق والصلاحيات', section: 'settings', order: 10, visible: false },
-  carriers:           { label: 'شركات الشحن والعقود', section: 'settings', order: 20, visible: true },
+  employees:          { label: 'الفريق والصلاحيات', section: 'settings', order: 10, visible: true },
+  carriers:           { label: 'شركات الشحن', section: 'settings', order: 20, visible: true },
+  contracts:          { label: 'العقود والأسعار', section: 'settings', order: 30, visible: true },
+  'app-settings':     { label: 'التكاملات والذكاء الاصطناعي', section: 'settings', order: 40, visible: true },
 };
 
 export function applyNavigationIA(items) {

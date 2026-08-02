@@ -184,6 +184,11 @@ const ROUTE_ITEMS = [
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', navOrder: 10, adminOnly: true },
   { id: 'carriers',     path: '/carriers',     label: 'إدارة شركات الشحن',  icon: Truck,         section: 'tools', navOrder: 20, permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',    icon: ClipboardList, section: 'tools', navOrder: 30, permKey: 'carriers.edit_contract' },
+  { id: 'app-settings', path: '/settings/ai',  label: 'التكاملات والذكاء الاصطناعي', icon: Settings, section: 'tools', navOrder: 40, permKey: 'system.view_settings',
+    subTabs: [
+      { tabId: 'ai',   label: 'الذكاء الاصطناعي', icon: Bot },
+      { tabId: 'data', label: 'البيانات والتكاملات', icon: Layers, legacy: '/settings/data' },
+    ] },
   { id: 'periods',      path: '/periods',      label: 'إقفال الشهور',       icon: Lock,          section: 'money', navOrder: 100, permKey: 'system.period_close' },
   { id: 'tasks',        path: '/tasks',        label: 'مهام شركات الشحن',   icon: ListTodo,      section: 'carriers', navOrder: 80, permKey: 'audits.view' },
   { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,       section: 'outreach', navOrder: 40, permKey: 'uploads.view' },
@@ -236,7 +241,6 @@ const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank'];
 const REPORTS_WORKSPACE_PATHS = ['/reports', '/monthly-report', '/uploads', '/integrity', '/activity-log', '/internal-exports'];
-const SETTINGS_WORKSPACE_PATHS = ['/carriers', '/contracts', '/employees'];
 
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
@@ -608,13 +612,6 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Footer */}
           <div className="sidebar-footer">
-            <NavBtn
-              n={{ id:'settings', path:'/settings/ai', label:'إعدادات التطبيق', icon:Settings }}
-              active={location.pathname.startsWith('/settings')}
-              collapsed={collapsed}
-              onClick={() => goto('/settings/ai')}
-            />
-
             {!collapsed && (
               <div style={{
                 marginTop:10, display:'flex', alignItems:'center', gap:11,
@@ -744,23 +741,16 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/carrier'} scroll>
               <CarrierProfile/>
             </PageSlot>
-            <PageSlot active={SETTINGS_WORKSPACE_PATHS.includes(pathname)} scroll>
-              <CenterWorkspace
-                scope="settings-center"
-                title="الإعدادات"
-                subtitle="الفريق وشركات الشحن والعقود في مكان واحد"
-                tone="#31D5E1"
-                activePath={pathname}
-                onNavigate={navigate}
-                tabs={[
-                  ...(isAdmin || can('carriers.view') ? [{ id: 'carriers', path: '/carriers', label: 'شركات الشحن', icon: Truck,
-                    render: () => <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/> }] : []),
-                  ...(isAdmin || can('carriers.edit_contract') ? [{ id: 'contracts', path: '/contracts', label: 'العقود والأسعار', icon: ClipboardList,
-                    render: () => <ContractsOverview isActive={pathname==='/contracts'}/> }] : []),
-                  ...(isAdmin ? [{ id: 'employees', path: '/employees', label: 'الفريق والصلاحيات', icon: UserCog,
-                    render: () => <EmployeeManager/> }] : []),
-                ]}
-              />
+            {/* صفحات الإعدادات مستقلة: القائمة الجانبية هي نقطة التنقل الوحيدة،
+                فلا نكررها كشريط تبويبات غير متوافق داخل صفحة شركات الشحن. */}
+            <PageSlot active={pathname==='/carriers'} scroll>
+              <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/contracts'} scroll>
+              <ContractsOverview isActive={pathname==='/contracts'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/employees'} scroll>
+              <EmployeeManager/>
             </PageSlot>
             <PageSlot active={pathname==='/upload'} scroll>
               <UploadWizard carriers={carriers} onComplete={handleAuditComplete}/>
