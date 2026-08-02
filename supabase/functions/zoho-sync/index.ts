@@ -1,4 +1,6 @@
-// zoho-sync v24 — + تنزيل PDF الرسمي لفاتورة العميل ومرفق فاتورة المورد (قراءة فقط).
+// zoho-sync v25 — مصالحة أرصدة العملاء التفصيلية للحالات التي يظهر فيها فرق بلا فاتورة.
+// قائمة جهات الاتصال قد تبقي رصيداً افتتاحياً مسدداً؛ بطاقة العميل التفصيلية هي المرجع النهائي.
+// v24 — + تنزيل PDF الرسمي لفاتورة العميل ومرفق فاتورة المورد (قراءة فقط).
 // v23 — رقابة مالية للقراءة + retry/429 + قياس الحصة + مزامنة البنوك والخزائن.
 // v21 — سجل دائم لكل دورة + اكتمال pagination + معرّفات العملاء/الموردين.
 // v14 — مصالحة الدفعات ذات الرصيد المفتوح: تطبيق الدفعة على فاتورة
@@ -675,6 +677,72 @@ Deno.serve(async (req) => {
           });
           if (stateError) console.error('[zoho-sync] state failure log:', stateError.message);
         }
+      }
+
+      // قائمة contacts قد تُرجع رصيداً افتتاحياً قديماً بعد تسديده، بينما
+      // GET /contacts/{id} وصفحة العميل في Zoho يعرضان الرصيد الحالي الصحيح.
+      // لا نجلب تفاصيل كل العملاء: نراجع فقط من لديهم فرق موجب بين رصيد جهة
+      // الاتصال ومجموع الفواتير المفتوحة. الرصيد الافتتاحي الحقيقي سيبقى كما هو،
+      // والمسدد سيهبط إلى الرصيد التفصيلي الفعلي.
+      if (!financialOnly) try {
+        const { data: detailState, error: detailStateError } = await db.from('zoho_sync_state')
+          .select('last_sync').eq('entity', 'contact_balance_details').maybeSingle();
+        if (detailStateError) throw detailStateError;
+        const detailLastSyncMs = detailState?.last_sync
+          ? new Date(detailState.last_sync).getTime() : 0;
+        const shouldRefreshDetails = body.force === true
+          || detailLastSyncMs <= Date.now() - 120 * 60_000;
+        if (!shouldRefreshDetails) {
+          results.contact_balance_details = 'fresh — skipped';
+        } else {
+        const { data: balanceCandidates, error: candidatesError } = await db
+          .from('customer_ar')
+          .select('zoho_id')
+          .gt('opening_due', 0.5)
+          .limit(100);
+        if (candidatesError) throw candidatesError;
+        let refreshed = 0;
+        let failed = 0;
+        for (const candidate of balanceCandidates || []) {
+          const { response, payload } = await fetchZohoJson({
+            url: `${apiDomain}/books/v3/contacts/${candidate.zoho_id}?organization_id=${orgId}`,
+            token,
+            stats,
+          });
+          const detail = (payload as Record<string, any>)?.contact;
+          if (!response.ok || (payload as Record<string, unknown>).code !== 0 || !detail) {
+            failed++;
+            continue;
+          }
+          const { error: updateError } = await db.from('zoho_contacts').update({
+            outstanding_receivable: Number(detail.outstanding_receivable_amount) || 0,
+            outstanding_payable: Number(detail.outstanding_payable_amount) || 0,
+            unused_credits_receivable: Number(detail.unused_credits_receivable_amount) || 0,
+            unused_credits_payable: Number(detail.unused_credits_payable_amount) || 0,
+            last_modified: detail.last_modified_time
+              ? new Date(detail.last_modified_time as string).toISOString() : null,
+            synced_at: new Date().toISOString(),
+          }).eq('zoho_id', candidate.zoho_id);
+          if (updateError) failed++;
+          else refreshed++;
+        }
+        results.contact_balance_details = failed
+          ? `${refreshed} updated · ${failed} failed`
+          : refreshed;
+        await db.from('zoho_sync_state').upsert({
+          entity: 'contact_balance_details', last_sync: new Date().toISOString(),
+          last_count: refreshed, last_status: failed ? 'failed' : 'succeeded',
+          last_error: failed ? `${failed} contact detail requests failed` : null,
+          last_run_id: run.id, updated_at: new Date().toISOString(),
+        });
+        }
+      } catch (e) {
+        results.contact_balance_details = `error: ${String((e as Error).message || e)}`;
+        await db.from('zoho_sync_state').upsert({
+          entity: 'contact_balance_details', last_status: 'failed',
+          last_error: String((e as Error).message || e).slice(0, 2000),
+          last_run_id: run.id, updated_at: new Date().toISOString(),
+        });
       }
 
       // v14: مصالحة الدفعات ذات الرصيد المفتوح — تطبيق الدفعة على فاتورة لا
