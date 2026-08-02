@@ -1,6 +1,6 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-const cors = { 'Access-Control-Allow-Origin':'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers':'authorization, apikey, content-type' };
+const cors = { 'Access-Control-Allow-Origin':'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type' };
 const json = (body: unknown, status=200) => new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json'}});
 const norm = (v: unknown) => String(v || '').replace(/\D/g,'');
 
