@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign, Bot,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
@@ -59,6 +59,7 @@ const UploadsHub = lazy(() => import('./pages/UploadsHub.jsx'));
 const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
 const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
 const Marketers = lazy(() => import('./pages/Marketers.jsx'));
+const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
 //
@@ -188,6 +189,7 @@ const ROUTE_ITEMS = [
   { id: 'uploads',      path: '/uploads',      label: 'حالة مصادر البيانات', icon: Layers,       section: 'outreach', navOrder: 40, permKey: 'uploads.view' },
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات',     icon: FileCheck,     section: 'outreach', navOrder: 50, permKey: 'system.view_audit_log' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
+  { id: 'work-agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -292,7 +294,7 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -723,6 +725,9 @@ function AppInner({ theme, toggleTheme }) {
 
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/work-agents'} scroll>
+              <WorkAgents isActive={pathname==='/work-agents'}/>
             </PageSlot>
 
             {/* المسار القديم كان يكرر التحصيل والمبيعات في قائمة واحدة غامضة.

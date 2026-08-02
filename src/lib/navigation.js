@@ -31,6 +31,7 @@ export const NAV_ITEM_IA = {
   'zoho-data':        { label: 'زوهو والحسابات', section: 'finance', order: 30, visible: true },
   reconciliation:     { label: 'مطابقة الحسابات مع زوهو', section: 'finance', order: 40, visible: true },
   reports:            { label: 'التقارير', section: 'reports', order: 10, visible: true },
+  'work-agents':      { label: 'وكلاء العمل', section: 'reports', order: 20, visible: true },
   uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
   employees:          { label: 'الفريق والصلاحيات', section: 'settings', order: 10, visible: false },
   carriers:           { label: 'شركات الشحن والعقود', section: 'settings', order: 20, visible: true },

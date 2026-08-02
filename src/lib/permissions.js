@@ -27,6 +27,15 @@
 // ────────────────────────────────────────────────────────────────────
 export const PERMISSION_CATALOG = [
   {
+    id: 'agents', label: 'وكلاء العمل', icon: 'Bot', color: '#6366F1',
+    perms: [
+      { key: 'agents.view', label: 'عرض وكلاء العمل وسجل التشغيل' },
+      { key: 'agents.manage', label: 'إعداد الجداول والشروط ومصادر البيانات' },
+      { key: 'agents.run', label: 'تشغيل وكيل يدويًا' },
+      { key: 'agents.approve_sensitive', label: 'اعتماد تنفيذ الوكلاء الحساس', sensitive: true },
+    ],
+  },
+  {
     id: 'overview', label: 'الرئيسية والتقارير', icon: 'LayoutDashboard', color: 'var(--accent3)',
     perms: [
       { key: 'overview.view',       label: 'عرض الصفحة الرئيسية' },
