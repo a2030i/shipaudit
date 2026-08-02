@@ -6,6 +6,20 @@
 @media (max-width: 768px) {
   .page-content .page-slot .employee-manager-page {
     box-sizing: border-box;
-    padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
+    padding-bottom: 24px !important;
+  }
+
+  .employee-manager-scroll-end {
+    display: block;
+    width: 100%;
+    height: calc(112px + env(safe-area-inset-bottom, 0px));
+    min-height: calc(112px + env(safe-area-inset-bottom, 0px));
+    pointer-events: none;
+  }
+}
+
+@media (min-width: 769px) {
+  .employee-manager-scroll-end {
+    display: none;
   }
 }

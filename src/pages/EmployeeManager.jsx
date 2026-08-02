@@ -788,6 +788,8 @@ export default function EmployeeManager() {
         </div>
       )}
 
+      <div className="employee-manager-scroll-end" aria-hidden="true" />
+
       {modal?.type === 'activity' && (
         <ActivityModal employee={modal.employee} onClose={() => setModal(null)}/>
       )}
