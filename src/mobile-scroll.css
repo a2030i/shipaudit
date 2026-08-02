@@ -20,6 +20,14 @@
     display: none !important;
   }
 
+  /* A page workspace may be taller than the viewport. Letting the first flex
+     item shrink keeps its overflowing children visible but places the spacer
+     before their real end, so Safari reports a false maximum scroll offset. */
+  .page-slot > :not(.page-slot-scroll-end) {
+    flex-shrink: 0;
+    width: 100%;
+  }
+
   .page-slot-scroll-end {
     display: block;
     width: 100%;
