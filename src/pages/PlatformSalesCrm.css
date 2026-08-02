@@ -905,18 +905,123 @@
 
   .psc-table-wrap {
     overflow: visible;
-    padding: 0 12px;
+    padding: 0 8px;
   }
 
   .psc-table.m-cards tbody tr {
-    margin-bottom: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+    margin-bottom: 12px;
+    padding: 0 14px 12px;
     border: 1px solid var(--border);
-    border-radius: 12px;
-    box-shadow: var(--shadow-sm);
+    border-radius: 16px;
+    background: var(--card);
+    box-shadow: 0 5px 18px color-mix(in srgb, var(--navy) 7%, transparent);
+    overflow: hidden;
   }
 
-  .psc-table.m-cards td {
+  .page-content .psc-table.m-cards td {
+    display: grid;
+    grid-template-columns: minmax(86px, 28%) minmax(0, 1fr);
+    align-items: start;
+    justify-content: stretch;
+    gap: 10px;
     max-width: none;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--border2) !important;
+    text-align: start;
+  }
+
+  .page-content .psc-table.m-cards td::before {
+    padding-top: 2px;
+    color: var(--muted2);
+    font-size: 10.5px;
+    line-height: 1.45;
+    white-space: normal;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="العميل"] {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px 10px;
+    margin: 0 -14px;
+    padding: 14px;
+    background: color-mix(in srgb, var(--brand) 4%, var(--card));
+    border-bottom: 1px solid var(--border) !important;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="العميل"]::before {
+    content: none;
+  }
+
+  .psc-customer-link {
+    min-width: 0;
+  }
+
+  .psc-customer-link strong {
+    font-size: 14px;
+    line-height: 1.5;
+  }
+
+  .psc-customer-link small,
+  .psc-cell-sub {
+    font-size: 10.5px;
+  }
+
+  .psc-customer-link + .psc-state-pill {
+    grid-column: 2;
+    grid-row: 1;
+    margin-top: 0;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="العميل"] > .psc-cell-sub {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .psc-action-detail,
+  .psc-contact-outcome,
+  .psc-owner-name,
+  .psc-next-date,
+  .psc-unassigned,
+  .psc-missing-date,
+  .psc-due {
+    font-size: 11.5px;
+    line-height: 1.55;
+  }
+
+  .psc-signal-reason,
+  .psc-priority-score,
+  .psc-age-detail {
+    font-size: 10px;
+    line-height: 1.6;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="ملاحظة"] {
+    grid-template-columns: 1fr;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="ملاحظة"]::before {
+    content: none;
+  }
+
+  .psc-note-preview {
+    padding: 9px 10px;
+    border-radius: 9px;
+    background: var(--surface);
+    -webkit-line-clamp: 3;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="إجراءات"] {
+    display: block;
+    padding: 12px 0 0;
+    border-bottom: 0 !important;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="إجراءات"]::before {
+    content: none;
   }
 
   .psc-table {
@@ -924,7 +1029,9 @@
   }
 
   .psc-row-actions {
-    justify-content: flex-start;
+    justify-content: space-between;
+    width: 100%;
+    gap: 10px;
   }
 
   .psc-account-hero,
