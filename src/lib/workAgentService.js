@@ -82,6 +82,9 @@ export async function runManagementReportAgent() {
   const { data, error } = await supabase.functions.invoke('work-agent-management-report',{body:{action:'run',trigger:'manual'}});
   if (error) throw error; if(!data?.ok) throw new Error(data?.error||'تعذر إنشاء تقرير الإدارة'); return data;
 }
+export async function configureIntegrationHealthAgent(v){const{data,error}=await supabase.rpc('configure_integration_health_agent',{p_enabled:!!v.enabled,p_interval_minutes:Number(v.intervalMinutes),p_zoho_minutes:Number(v.zohoMinutes),p_hatif_minutes:Number(v.hatifMinutes),p_platform_hours:Number(v.platformHours)});if(error)throw error;return data;}
+export async function previewIntegrationHealthAgent(){const{data,error}=await supabase.functions.invoke('work-agent-integration-health',{body:{action:'preview'}});if(error)throw error;if(!data?.ok)throw new Error(data?.error||'تعذر فحص التكاملات');return data;}
+export async function runIntegrationHealthAgent(){const{data,error}=await supabase.functions.invoke('work-agent-integration-health',{body:{action:'run',trigger:'manual'}});if(error)throw error;if(!data?.ok)throw new Error(data?.error||'تعذر تشغيل فحص التكاملات');return data;}
 
 export async function loadRecentAgentRuns(limit = 12) {
   const { data, error } = await supabase
