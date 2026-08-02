@@ -4,7 +4,7 @@
  * inset to the scroll height (scroll-padding alone does not do that in Safari).
  */
 @media (max-width: 768px) {
-  .page-slot .employee-manager-page {
+  .page-content .page-slot .employee-manager-page {
     box-sizing: border-box;
     padding-bottom: calc(120px + env(safe-area-inset-bottom, 0px)) !important;
   }
