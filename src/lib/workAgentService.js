@@ -13,10 +13,38 @@ export const WORK_AGENT_BLUEPRINTS = [
 export async function loadWorkAgents() {
   const { data, error } = await supabase
     .from('work_agents')
-    .select('id, agent_key, name, description, category, status, cadence_label, safety_level, sources, last_run_at, next_run_at, created_at, updated_at')
-    .order('created_at', { ascending: true });
+    .select('id, agent_key, name, description, category, status, cadence_label, cron_expression, timezone, safety_level, sources, config, last_run_at, next_run_at, created_at, updated_at')
+    .order('status', { ascending: true }).order('created_at', { ascending: true });
   if (error) throw error;
   return data || [];
+}
+
+export async function configureOverdueSadadAgent(values) {
+  const { data, error } = await supabase.rpc('configure_overdue_sadad_agent', {
+    p_enabled: !!values.enabled,
+    p_day_of_week: Number(values.dayOfWeek),
+    p_hour: Number(values.hour),
+    p_minute: Number(values.minute),
+    p_min_days: Number(values.minDays),
+    p_min_balance: Number(values.minBalance),
+    p_max_recipients: Number(values.maxRecipients),
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function previewOverdueSadadAgent() {
+  const { data, error } = await supabase.functions.invoke('work-agent-overdue-sadad', { body: { action: 'preview' } });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || 'تعذرت معاينة المستحقين');
+  return data;
+}
+
+export async function runOverdueSadadAgent() {
+  const { data, error } = await supabase.functions.invoke('work-agent-overdue-sadad', { body: { action: 'run', trigger: 'manual' } });
+  if (error) throw error;
+  if (!data?.ok) throw new Error(data?.error || 'تعذر تشغيل الوكيل');
+  return data;
 }
 
 export async function loadRecentAgentRuns(limit = 12) {

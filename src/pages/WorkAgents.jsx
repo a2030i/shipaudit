@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Bot, CalendarClock, CheckCircle2, Clock3, Database, PlayCircle, RefreshCw, ShieldCheck, Sparkles } from 'lucide-react';
 import { Btn, Card, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadRecentAgentRuns, loadWorkAgents } from '../lib/workAgentService.js';
+import { configureOverdueSadadAgent, loadRecentAgentRuns, loadWorkAgents, previewOverdueSadadAgent, runOverdueSadadAgent } from '../lib/workAgentService.js';
 
 const SAFETY = {
   monitor: { label: 'مراقبة فقط', color: 'var(--accent)', text: 'يقرأ وينبه دون تعديل البيانات.' },
@@ -58,6 +58,24 @@ export default function WorkAgents({ isActive = true }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selected, setSelected] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [form, setForm] = useState(null);
+
+  const openAgent = agent => {
+    setSelected(agent); setPreview(null); setNotice('');
+    if (agent.agent_key === 'overdue_sadad') {
+      const c = agent.config || {};
+      setForm({ enabled: agent.status === 'active', dayOfWeek: c.day_of_week ?? 6, hour: c.hour ?? 18,
+        minute: c.minute ?? 0, minDays: c.min_overdue_days ?? 30, minBalance: c.min_balance ?? 0.5,
+        maxRecipients: c.max_recipients ?? 500 });
+    } else setForm(null);
+  };
+
+  const saveAgent = async () => { setSaving(true); setNotice(''); try { await configureOverdueSadadAgent(form); setNotice('تم حفظ الشروط وإعادة الجدولة.'); await load(); } catch(e) { setNotice(e?.message || 'تعذر الحفظ'); } finally { setSaving(false); } };
+  const previewAgent = async () => { setSaving(true); setNotice(''); try { setPreview(await previewOverdueSadadAgent()); } catch(e) { setNotice(e?.message || 'تعذرت المعاينة'); } finally { setSaving(false); } };
+  const runAgent = async () => { if (!preview || !window.confirm(`سيتم تجهيز ${preview.total} رسالة بقالب sadad للإرسال الآن. هل تعتمد التشغيل؟`)) return; setSaving(true); try { const r=await runOverdueSadadAgent(); setNotice(`تمت جدولة ${r.queued} رسالة، ويعالجها هاتف الآن.`); await load(); } catch(e) { setNotice(e?.message || 'تعذر التشغيل'); } finally { setSaving(false); } };
 
   const load = useCallback(async () => {
     if (!isActive) return;
@@ -103,7 +121,7 @@ export default function WorkAgents({ isActive = true }) {
         <Card accent="var(--red)"><strong style={{ color: 'var(--red)' }}>تعذر فتح مركز الوكلاء</strong><p style={{ color: 'var(--muted)', marginBottom: 0 }}>{error}</p></Card>
       ) : (
         <div className="work-agents-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 16 }}>
-          {agents.map(agent => <AgentCard key={agent.id || agent.agent_key} agent={agent} onStart={setSelected}/>) }
+          {agents.map(agent => <AgentCard key={agent.id || agent.agent_key} agent={agent} onStart={openAgent}/>) }
         </div>
       )}
 
@@ -117,12 +135,24 @@ export default function WorkAgents({ isActive = true }) {
           <StatusPill status={selected.status}/>
           <h2 style={{ margin: '14px 0 8px' }}>{selected.name}</h2>
           <p style={{ color: 'var(--text2)', lineHeight: 1.8 }}>{selected.description}</p>
-          <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface2)', color: 'var(--text2)', lineHeight: 1.8, fontSize: 13 }}><b>الخطوة التالية:</b> سنعرّف شروط هذا الوكيل، الإجراء المسموح، المسؤول عن الاعتماد، ثم نختبره بوضع المعاينة قبل تشغيل الجدول السحابي.</div>
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><Btn variant="ghost" onClick={() => setSelected(null)}>إغلاق</Btn><Btn variant="accent" disabled>التفعيل بعد اكتمال الإعداد</Btn></div>
+          {selected.agent_key === 'overdue_sadad' && form ? <>
+            <div style={{ padding: 14, borderRadius: 12, background: 'var(--surface2)', color: 'var(--text2)', lineHeight: 1.8, fontSize: 13 }}><b>الإجراء:</b> قراءة فواتير زوهو فقط، ربطها بدليل المتاجر، ثم إرسال قالب <b>sadad</b> عبر هاتف. لا ينشئ عملاء ولا يعدّل زوهو.</div>
+            <label className="agent-toggle"><input type="checkbox" checked={form.enabled} onChange={e=>setForm({...form,enabled:e.target.checked})}/><span><b>تشغيل الجدول الأسبوعي</b><small>{form.enabled?'الوكيل سيعمل تلقائيًا':'لن يحدث إرسال مجدول'}</small></span></label>
+            <div className="agent-form-grid">
+              <label>اليوم<select value={form.dayOfWeek} onChange={e=>setForm({...form,dayOfWeek:e.target.value})}>{['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'].map((x,i)=><option key={i} value={i}>{x}</option>)}</select></label>
+              <label>الوقت<input type="time" value={`${String(form.hour).padStart(2,'0')}:${String(form.minute).padStart(2,'0')}`} onChange={e=>{const [hour,minute]=e.target.value.split(':').map(Number);setForm({...form,hour,minute});}}/></label>
+              <label>التأخير أكثر من (يوم)<input type="number" min="1" max="3650" value={form.minDays} onChange={e=>setForm({...form,minDays:e.target.value})}/></label>
+              <label>أقل رصيد مستحق<input type="number" min="0" step="0.01" value={form.minBalance} onChange={e=>setForm({...form,minBalance:e.target.value})}/></label>
+              <label>حد المستلمين في التشغيل<input type="number" min="1" max="2000" value={form.maxRecipients} onChange={e=>setForm({...form,maxRecipients:e.target.value})}/></label>
+            </div>
+            {preview && <div style={{padding:14,border:'1px solid var(--green)',borderRadius:12,background:'var(--green-soft)',lineHeight:1.8}}><b>نتيجة المعاينة: {preview.total} متجر</b><br/>إجمالي المستحق: {Number(preview.total_owed||0).toLocaleString('en-US',{maximumFractionDigits:2})} ر.س · بلا هاتف: {preview.missing_phone}</div>}
+            {notice && <div style={{color:notice.includes('تعذر')?'var(--red)':'var(--green)',fontWeight:700}}>{notice}</div>}
+            <div style={{ display: 'flex', flexWrap:'wrap', justifyContent: 'flex-end', gap: 10, marginTop: 20 }}><Btn variant="ghost" onClick={() => setSelected(null)}>إغلاق</Btn><Btn variant="ghost" disabled={saving} onClick={previewAgent}>معاينة المستحقين</Btn>{can('agents.run')&&<Btn variant="accent" disabled={saving||!preview?.total} onClick={runAgent}>تشغيل وإرسال الآن</Btn>}<Btn variant="primary" disabled={saving||!can('agents.manage')} onClick={saveAgent}>حفظ وإعادة الجدولة</Btn></div>
+          </> : <><div style={{ padding: 14, borderRadius: 12, background: 'var(--surface2)', color: 'var(--text2)', lineHeight: 1.8, fontSize: 13 }}><b>الحالة:</b> هذا الوكيل ما زال قيد التأسيس ولن ينفذ أي إجراء.</div><div style={{display:'flex',justifyContent:'flex-end',marginTop:20}}><Btn variant="ghost" onClick={() => setSelected(null)}>إغلاق</Btn></div></>}
         </Card>
       </div>}
 
-      <style>{`@media(max-width:1000px){.work-agents-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}} @media(max-width:680px){.work-agents-grid,.work-agents-stats{grid-template-columns:1fr!important}}`}</style>
+      <style>{`.agent-form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin-top:14px}.agent-form-grid label{display:grid;gap:6px;font-size:12px;font-weight:800;color:var(--text2)}.agent-form-grid input,.agent-form-grid select{min-height:44px;border:1px solid var(--border);border-radius:10px;background:var(--surface);color:var(--text);padding:8px 10px;font:inherit}.agent-toggle{display:flex;align-items:center;gap:10px;margin-top:14px;padding:12px;border:1px solid var(--border2);border-radius:12px}.agent-toggle span{display:grid;gap:3px}.agent-toggle small{color:var(--muted)} @media(max-width:1000px){.work-agents-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}} @media(max-width:680px){.work-agents-grid,.work-agents-stats,.agent-form-grid{grid-template-columns:1fr!important}}`}</style>
     </div>
   );
 }
