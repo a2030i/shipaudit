@@ -243,36 +243,50 @@ export async function deleteBalanceSnapshot(id) {
   return { ok: true };
 }
 
-// ── Unmatched rows from the latest snapshot per source ──
-// The balance_reconciliation() RPC hides anything without a
-// store_id (it can't join on null). That makes the operator blind
-// to "Zoho has 3K SAR for X but we don't know which store X is".
-// This loader surfaces those names so they can be linked manually.
+// ── Unmatched rows from the current source of truth ──
+// Internal balances still come from the latest uploaded snapshot.
+// Zoho balances MUST come from customer_balance_recon_zoho(), which
+// reads the live Zoho API mirror. Historical Zoho Excel snapshots are
+// retained for audit only and must never drive the current UI.
 export async function loadUnmatchedBalances() {
-  // Latest snapshot id per source (one query each — only 2 rows total)
-  const [intRes, zohoRes] = await Promise.all([
+  const [intRes, liveReconRes] = await Promise.all([
     supabase.from('store_balance_snapshots')
       .select('id').eq('source', 'internal')
       .order('uploaded_at', { ascending: false }).limit(1),
-    supabase.from('store_balance_snapshots')
-      .select('id').eq('source', 'zoho')
-      .order('uploaded_at', { ascending: false }).limit(1),
+    supabase.rpc('customer_balance_recon_zoho'),
   ]);
-  const ids = [intRes.data?.[0]?.id, zohoRes.data?.[0]?.id].filter(Boolean);
-  if (!ids.length) return [];
-  const { data, error } = await supabase
-    .from('store_balances')
-    .select('source, raw_name, balance, match_method, snapshot_id')
-    .in('snapshot_id', ids)
-    .is('store_id', null)
-    .order('balance', { ascending: false, nullsFirst: false });
-  if (error) throw error;
-  return (data || []).map(r => ({
-    source:    r.source,
-    rawName:   r.raw_name,
-    balance:   Number(r.balance) || 0,
-    method:    r.match_method,
-  }));
+  if (intRes.error) throw intRes.error;
+  if (liveReconRes.error) throw liveReconRes.error;
+
+  const internalSnapshotId = intRes.data?.[0]?.id;
+  let internalRows = [];
+  if (internalSnapshotId) {
+    const { data, error } = await supabase
+      .from('store_balances')
+      .select('source, raw_name, balance, match_method')
+      .eq('snapshot_id', internalSnapshotId)
+      .is('store_id', null)
+      .order('balance', { ascending: false, nullsFirst: false });
+    if (error) throw error;
+    internalRows = (data || []).map(r => ({
+      source:  'internal',
+      rawName: r.raw_name,
+      balance: Number(r.balance) || 0,
+      method:  r.match_method,
+    }));
+  }
+
+  const liveZohoRows = (liveReconRes.data || [])
+    .filter(r => !r.store_id && Number(r.zoho_balance) > 0.005)
+    .map(r => ({
+      source:  'zoho',
+      rawName: r.zoho_names?.[0] || String(r.anchor || '').replace(/^n:/, ''),
+      balance: Number(r.zoho_balance) || 0,
+      method:  'live-api-unmatched',
+    }));
+
+  return [...internalRows, ...liveZohoRows]
+    .sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance));
 }
 
 // Manually link an unmatched raw_name → store_id. Persists into
@@ -360,24 +374,17 @@ export async function loadMerchantsForPicker({ includeLinked = true } = {}) {
 // linkInternalRowToZohoRow uses the picked row's existing store_id
 // when present instead of generating a synthetic anchor.
 export async function loadUnmatchedZohoForPicker() {
-  const { data: latest } = await supabase
-    .from('store_balance_snapshots')
-    .select('id')
-    .eq('source', 'zoho')
-    .order('uploaded_at', { ascending: false })
-    .limit(1);
-  if (!latest?.length) return [];
-  const { data } = await supabase
-    .from('store_balances')
-    .select('raw_name, balance, match_method, store_id')
-    .eq('snapshot_id', latest[0].id)
-    .order('raw_name');
-  return (data || []).map(r => ({
-    rawName:        r.raw_name,
-    balance:        Number(r.balance) || 0,
-    method:         r.match_method,
-    existingStoreId: r.store_id || null,   // null = still unmatched
-  }));
+  const { data, error } = await supabase.rpc('customer_balance_recon_zoho');
+  if (error) throw error;
+  return (data || [])
+    .filter(r => Number(r.zoho_balance) > 0.005)
+    .map(r => ({
+      rawName:         r.zoho_names?.[0] || String(r.anchor || '').replace(/^n:/, ''),
+      balance:         Number(r.zoho_balance) || 0,
+      method:          r.store_id ? 'live-api-linked' : 'live-api-unmatched',
+      existingStoreId: r.store_id || null,
+    }))
+    .sort((a, b) => a.rawName.localeCompare(b.rawName, 'ar'));
 }
 
 // Backfill every unmatched store_balances row whose raw_name is an
