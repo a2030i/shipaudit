@@ -69,6 +69,7 @@ export default function CustomerMoney({ isActive = true }) {
   const [briefOpen, setBriefOpen] = useState(false);
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
   const [creditsOpen, setCreditsOpen] = useState(false);
+  const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
 
   useEffect(() => {
@@ -190,19 +191,22 @@ export default function CustomerMoney({ isActive = true }) {
     const campLabel = buckets.size ? 'مبلغ الشرائح المختارة' : 'مبلغ التحصيل';
     // «رقم المتجر» = معرّفه في نظام لمحة — يسبق الاسم لأنه المفتاح الذي
     // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
-    const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة', 'المستحق', 'متأخر',
+    const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة',
+      'الرصيد المدين في زوهو', 'الرصيد الدائن المقابل', 'المطلوب تحصيله', 'متأخر',
       'فواتير', 'أقدم استحقاق (يوم)', '0-30', '31-60', '61-90', '+90', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
+    const grossTotal = +filtered.reduce((s, c) => s + (c.grossDue || 0), 0).toFixed(2);
+    const creditTotal = +filtered.reduce((s, c) => s + (c.creditOffset || 0), 0).toFixed(2);
     const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
       ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
-        c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3, c.opening,
+        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3, c.opening,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', ...Array(5).fill(''), owedTotal, ...Array(12).fill(''), filteredTotal],
+      ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(12).fill(''), filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     // 0 = العميل · 1 = رقم المتجر (ضيّق) · 2 = اسم المتجر
@@ -282,13 +286,27 @@ export default function CustomerMoney({ isActive = true }) {
       {/* ── البطل: كم لك بالخارج ── */}
       <div className="customer-money-hero">
       <Card style={{ padding: '18px 20px', marginBottom: 12 }}>
-        <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(170px,1fr))', gap: 14 }}>
+        <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 لك عند العملاء الآن</div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>الرصيد المدين في زوهو</div>
+            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
+              {fmt(d.grossOutstanding)}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>قبل احتساب الأرصدة الدائنة</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>رصيد دائن يغطي منه</div>
+            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
+              {fmt(d.creditOffset)}
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.settlementCount} تسوية مطلوبة في زوهو</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 المطلوب تحصيله</div>
             <div style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', lineHeight: 1.2 }}>
               {fmt(d.outstanding)}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.outstandingCnt} عميلاً — فواتير زوهو المفتوحة</div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.outstandingCnt} عميلاً يدخلون حملات التحصيل</div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>⏰ منها متأخّرة</div>
@@ -347,6 +365,47 @@ export default function CustomerMoney({ isActive = true }) {
         </div>
       </Card>
       </div>
+
+      {d.settlements.length > 0 && (
+        <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden',
+          border: '1.5px solid color-mix(in srgb, var(--gold) 38%, var(--border))' }}>
+          <button type="button" onClick={() => setSettlementsOpen(v => !v)}
+            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '12px 16px',
+              background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: 0, cursor: 'pointer', textAlign: 'right' }}>
+            <span style={{ fontSize: 18 }}>⚖️</span>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>تسويات زوهو المطلوبة ({d.settlementCount})</div>
+              <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
+                مدين ودائن لنفس العميل بقيمة {fmt(d.settlementTotal)} ر.س — مستبعدة من حملات التحصيل حتى تتم التسوية
+              </div>
+            </div>
+            <ChevronDown size={16} style={{ transform: settlementsOpen ? 'rotate(180deg)' : 'none', transition: 'transform .15s' }}/>
+          </button>
+          {settlementsOpen && (
+            <div style={{ padding: 12, display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(280px,100%),1fr))', gap: 8,
+              borderTop: '1px solid var(--border)' }}>
+              {d.settlements.map(row => (
+                <div key={row.name} style={{ padding: 12, border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface2)' }}>
+                  <div style={{ fontWeight: 800, fontSize: 12.5, marginBottom: 8 }}>{row.storeName || row.name}</div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '5px 12px', fontSize: 11.5 }}>
+                    <span style={{ color: 'var(--muted)' }}>الرصيد المدين</span><b style={{ fontFamily: 'var(--font-mono)' }}>{fmt(row.grossDue)}</b>
+                    <span style={{ color: 'var(--muted)' }}>الرصيد الدائن المقابل</span><b style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>− {fmt(row.creditOffset)}</b>
+                    <span style={{ color: 'var(--muted)' }}>المطلوب تحصيله</span><b style={{ fontFamily: 'var(--font-mono)', color: row.coveredFully ? 'var(--green)' : 'var(--gold)' }}>{fmt(row.collectibleDue)}</b>
+                  </div>
+                  <div style={{ fontSize: 10.5, color: row.coveredFully ? 'var(--green)' : 'var(--gold)', marginTop: 8, lineHeight: 1.6 }}>
+                    {row.coveredFully
+                      ? 'مغطى بالكامل — لا يُطالَب العميل، لكنه لا يُعد مسددًا حتى تنخفض المديونية في زوهو.'
+                      : 'تسوية جزئية — تُغطّى الأرصدة الأقدم أولًا، ويُطالَب العميل بالباقي فقط.'}
+                  </div>
+                </div>
+              ))}
+              <div style={{ gridColumn: '1 / -1', fontSize: 10.5, color: 'var(--muted2)', lineHeight: 1.7 }}>
+                هذه معاينة تشغيلية فقط؛ لم يُعدّل النظام أي فاتورة أو رصيد في زوهو. الرصيد الافتتاحي بتاريخ 10 يناير 2026 يُغطّى قبل الفواتير الأحدث.
+              </div>
+            </div>
+          )}
+        </Card>
+      )}
 
       {/* ── أرصدة دائنة غير مستخدمة — طبّقها في زوهو لتصفير الدين ── */}
       {credits && credits.rows.length > 0 && (
@@ -864,6 +923,13 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
 
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', fontSize: 10.5 }}>
         <Chip color={storeStatus.color}>{storeStatus.label}</Chip>
+        {c.creditOffset > 0.005 && (
+          <>
+            <Chip color="var(--muted)">مدين زوهو {fmt(c.grossDue)}</Chip>
+            <Chip color="var(--green)">دائن مقابل −{fmt(c.creditOffset)}</Chip>
+            <Chip color="var(--gold)">يُحصّل {fmt(c.owed)}</Chip>
+          </>
+        )}
         {c.invCnt > 0 ? (
           <>
             <Chip color={ageColor}>أقدم استحقاق {c.oldestDays} يوم</Chip>
@@ -955,6 +1021,11 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
                 <span style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{inv.invoice_number}</span>
                 <span style={{ color: 'var(--muted2)' }}>استحقاق {inv.due_date || inv.date}</span>
                 <span style={{ marginInlineStart: 'auto', fontSize: 10, color: 'var(--muted)' }}>{zohoStatusAr(inv.status)}</span>
+                {inv.allocatedCredit > 0.005 && (
+                  <span style={{ fontSize: 10, color: 'var(--green)', whiteSpace: 'nowrap' }}>
+                    بعد دائن −{fmt(inv.allocatedCredit)}
+                  </span>
+                )}
                 <span style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(inv.balance)}</span>
               </div>
             ))}

@@ -318,13 +318,20 @@ export async function loadCustomerMoneyDashboard() {
   if (error) throw error;
   const d = data || {};
   return {
+    grossOutstanding: Number(d.gross_outstanding) || 0,
+    creditOffset:     Number(d.credit_offset) || 0,
+    unusedCredits:    Number(d.unused_credits) || 0,
+    creditSurplus:    Number(d.credit_surplus) || 0,
     outstanding:    Number(d.outstanding) || 0,
     outstandingCnt: Number(d.outstanding_cnt) || 0,
+    settlementCount: Number(d.settlement_count) || 0,
+    settlementTotal: Number(d.settlement_total) || 0,
     overdueAmt:     Number(d.overdue_amt) || 0,
     aging: {
       b0: Number(d.aging?.b0_30) || 0,  b1: Number(d.aging?.b31_60) || 0,
       b2: Number(d.aging?.b61_90) || 0, b3: Number(d.aging?.b90p) || 0,
       opening: Number(d.aging?.opening_balance) || 0,
+      openingGross: Number(d.aging?.opening_gross) || 0,
     },
     collectedThisMonth: Number(d.collected_this_month) || 0,
     collectedPrevMonth: Number(d.collected_prev_month) || 0,
@@ -333,27 +340,52 @@ export async function loadCustomerMoneyDashboard() {
       // `storeId` = رقم المتجر في نظام لمحة — المفتاح الذي يُبحَث به في
       // المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53، والرقم لا يتكرّر).
       name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
+      grossDue: Number(c.gross_due) || 0,
+      unusedCredit: Number(c.unused_credit) || 0,
+      creditOffset: Number(c.credit_offset) || 0,
+      creditSurplus: Number(c.credit_surplus) || 0,
+      needsZohoSettlement: !!c.needs_zoho_settlement,
       owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
       opening: Number(c.opening_balance) || 0,
+      openingGross: Number(c.opening_gross) || 0,
       lastPaymentDate: c.last_payment_date, lastPaymentAmount: Number(c.last_payment_amount) || 0,
       // سياق المتجر (من كشف المتاجر) — لملف الحملة
       billingType: c.billing_type || '', platformStatus: c.platform_status || '',
       walletBalance: Number(c.wallet_balance) || 0, lastShipmentAt: c.last_shipment_at || null,
+    })),
+    settlements: (Array.isArray(d.settlements) ? d.settlements : []).map(c => ({
+      name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
+      grossDue: Number(c.gross_due) || 0,
+      unusedCredit: Number(c.unused_credit) || 0,
+      creditOffset: Number(c.credit_offset) || 0,
+      collectibleDue: Number(c.collectible_due) || 0,
+      creditSurplus: Number(c.credit_surplus) || 0,
+      openingGross: Number(c.opening_gross) || 0,
+      openingCollectible: Number(c.opening_collectible) || 0,
+      coveredFully: !!c.covered_fully,
     })),
   };
 }
 
 // الفواتير المفتوحة لعميل واحد (drill-down في بطاقة العميل)
 export async function loadZohoOpenInvoices(customerName) {
-  const { data, error } = await supabase.from('zoho_invoices')
-    .select('invoice_number, date, due_date, total, balance, status')
-    .eq('customer_name', customerName)
-    .gt('balance', 0.5)
-    .order('date', { ascending: true });
+  const { data, error } = await supabase.from('customer_collectible_lines')
+    .select('invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status')
+    .eq('contact_name', customerName)
+    .eq('line_kind', 'invoice')
+    .gt('collectible_amount', 0.005)
+    .order('due_date', { ascending: true })
+    .order('line_date', { ascending: true });
   if (error) throw error;
-  return data || [];
+  return (data || []).map(row => ({
+    ...row,
+    date: row.line_date,
+    balance: Number(row.collectible_amount) || 0,
+    grossBalance: Number(row.gross_amount) || 0,
+    allocatedCredit: Number(row.allocated_credit) || 0,
+  }));
 }
 
 // فواتير زوهو لم تُرسَل لبوابة فاتورة (زاتكا) بعد — إشارة حارس نفس اليوم.
