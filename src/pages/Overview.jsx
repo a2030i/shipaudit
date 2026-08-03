@@ -199,16 +199,19 @@ export default function Overview({ carriers = [], isActive = true }) {
         <button type="button" onClick={() => document.getElementById('cash-now')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Wallet size={14}/> السيولة الآن
         </button>
-        <button type="button" onClick={() => document.getElementById('month-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Calendar size={14}/> أداء الشهر
-        </button>
         <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> تحصيل العملاء
         </button>
-        <button type="button" onClick={() => document.getElementById('carriers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+        <button type="button" onClick={() => document.getElementById('bank-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+          <Building2 size={14}/> البنوك
+        </button>
+        <button type="button" className="overview-jump-extra" onClick={() => document.getElementById('month-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Calendar size={14}/> أداء الشهر
+        </button>
+        <button type="button" className="overview-jump-extra" onClick={() => document.getElementById('carriers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Building2 size={14}/> التزامات الناقلين
         </button>
-        <button type="button" className="is-primary" onClick={() => navigate('/pnl')}>
+        <button type="button" className="is-primary overview-jump-extra" onClick={() => navigate('/pnl')}>
           <TrendingUp size={14}/> الربح الفعلي
         </button>
       </nav>
@@ -626,9 +629,9 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
   const topCustomer = data.customerConcentration?.[0] || null;
   const cash = data.cashPosition || {};
   const net = cash.net;
-  const netPositive = net == null ? null : net >= 0;
   const vatReserve = Math.max(0, Number(vat?.netDue) || 0);
   const availableAfterVat = net == null ? null : net - vatReserve;
+  const availablePositive = availableAfterVat == null ? null : availableAfterVat >= 0;
   const registeredBankCount = cash.bankAccounts?.length || 0;
   const zohoBankTotal = (cash.zohoBankAccounts || []).reduce((sum, account) => sum + Number(account.bookBalance || 0), 0);
   const customerPath = topCustomer
@@ -690,7 +693,7 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       action: 'افتح المطالبات',
       path: '/hub?tab=claims',
     },
-  ].filter(Boolean).slice(0, 4);
+  ].filter(Boolean).slice(0, 3);
 
   if (missions.length === 0) {
     missions.push({
@@ -766,7 +769,14 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       value: fmtMonth(period),
       tone: 'var(--muted)',
     },
+    ...(cash.bankUpdated ? [{
+      label: 'آخر تحديث بنكي',
+      value: formatBankDate(cash.bankUpdated),
+      tone: 'var(--green)',
+    }] : []),
   ];
+
+  const leadMission = missions[0];
 
   return (
     <section className="ops-command">
@@ -789,14 +799,50 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
         </div>
       </div>
 
+      <aside className="ops-attention" aria-label="الأولويات التي تحتاج تدخلاً">
+        <div className="ops-attention-head">
+          <div>
+            <span>يحتاج تدخلك اليوم</span>
+            <strong>{missions[0]?.title === 'لا يوجد قرار عاجل' ? 'الوضع مستقر' : `${missions.length} أولويات مرتبة حسب الأثر`}</strong>
+          </div>
+          <button type="button" className="ops-attention-all" onClick={() => onNavigate('/decisions')}>
+            عرض الكل
+            <ChevronLeft size={14}/>
+          </button>
+        </div>
+
+        <div className="ops-missions">
+          {missions.map((m) => (
+            <button
+              key={m.title}
+              type="button"
+              className="ops-mission"
+              style={{ '--tone': m.tone }}
+              onClick={() => onNavigate(m.path)}
+            >
+              <span className="ops-mission-icon">{m.icon}</span>
+              <span className="ops-mission-copy">
+                <strong>{m.title}</strong>
+                <small>{m.body}</small>
+              </span>
+              <span className="ops-mission-value">
+                {m.value}
+                {m.unit && <small>{m.unit}</small>}
+              </span>
+              <ChevronLeft size={15}/>
+            </button>
+          ))}
+        </div>
+      </aside>
+
       <div className={`ops-command-grid ${showCashPosition ? '' : 'no-cash'}`}>
         {showCashPosition && <article className="ops-net-card">
-          <span className="ops-net-label">السيولة المسجّلة قبل الضريبة</span>
-          <div className={`ops-net-value ${netPositive === false ? 'negative' : ''}`}>
-            {net == null ? '—' : `${netPositive ? '+' : '−'}${fmt(Math.abs(net))}`}
-            {net != null && <small>ر.س</small>}
+          <span className="ops-net-label">المتاح الفعلي بعد الالتزامات والضريبة</span>
+          <div className={`ops-net-value ${availablePositive === false ? 'negative' : ''}`}>
+            {availableAfterVat == null ? '—' : `${availablePositive ? '+' : '−'}${fmt(Math.abs(availableAfterVat))}`}
+            {availableAfterVat != null && <small>ر.س</small>}
           </div>
-          <p>إجمالي البنوك المسجّلة + ما لك عند العملاء − ما عليك للناقلين. الضريبة تظهر كحجز مستقل أدناه.</p>
+          <p>أرصدة البنوك + ذمم العملاء − التزامات الناقلين − حجز الضريبة. هذا ملخص إداري حي وليس قيدًا محاسبيًا جديدًا.</p>
 
           <div className="ops-cash-parts">
             {cashParts.map((item) => {
@@ -834,7 +880,12 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
           />
 
           {cash.bankAccounts?.length > 0 && (
-            <div className="ops-bank-breakdown" aria-label="تفصيل الحسابات البنكية">
+            <details id="bank-details" className="ops-details">
+              <summary>
+                <span>تفاصيل الأرصدة البنكية المسجّلة</span>
+                <strong>{registeredBankCount} حسابات</strong>
+              </summary>
+              <div className="ops-bank-breakdown" aria-label="تفصيل الحسابات البنكية">
               <div className="ops-bank-breakdown-head">
                 <span>الحسابات الداخلة في الإجمالي</span>
                 {onEditBank && <button type="button" onClick={onEditBank}>إضافة أو تحديث بنك</button>}
@@ -854,11 +905,17 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
                   <strong style={{ color: 'var(--gold)' }}>{onEditBank ? 'أضف الرصيد' : 'يحتاج صلاحية'}</strong>
                 </button>
               )}
-            </div>
+              </div>
+            </details>
           )}
 
           {cash.zohoBankAccounts?.length > 0 && (
-            <div className="ops-bank-breakdown" aria-label="أرصدة البنوك في زوهو">
+            <details className="ops-details">
+              <summary>
+                <span>مطابقة أرصدة زوهو مع البنوك</span>
+                <strong>{cash.zohoBankAccounts.length} حسابات</strong>
+              </summary>
+              <div className="ops-bank-breakdown" aria-label="أرصدة البنوك في زوهو">
               <div className="ops-bank-breakdown-head">
                 <span>أرصدة البنوك في زوهو</span>
                 <button type="button" onClick={() => onNavigate('/zoho-data?section=banks')}>عرض المطابقة</button>
@@ -882,7 +939,8 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
                 <span>إجمالي البنكين في زوهو</span>
                 <strong>{fmt(zohoBankTotal)} ر.س</strong>
               </div>
-            </div>
+              </div>
+            </details>
           )}
 
           <div className="ops-net-foot">
@@ -891,43 +949,24 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
           </div>
           {vat && (
             <div className="ops-net-foot" style={{ color: availableAfterVat < 0 ? 'var(--red)' : 'var(--text)' }}>
-              <span>المتاح بعد حجز الضريبة ({fmt(vatReserve)} ر.س)</span>
-              <strong>{availableAfterVat == null ? '—' : `${availableAfterVat >= 0 ? '+' : '−'}${fmt(Math.abs(availableAfterVat))} ر.س`}</strong>
+              <span>السيولة قبل حجز الضريبة</span>
+              <strong>{net == null ? '—' : `${net >= 0 ? '+' : '−'}${fmt(Math.abs(net))} ر.س`}</strong>
             </div>
           )}
         </article>}
 
-        <aside className="ops-attention">
-          <div className="ops-attention-head">
-            <div>
-              <span>يحتاج انتباهك</span>
-              <strong>{missions[0]?.title === 'لا يوجد قرار عاجل' ? 'الوضع مستقر' : `${missions.length} أولويات`}</strong>
-            </div>
-            <span className="ops-attention-count">{missions[0]?.title === 'لا يوجد قرار عاجل' ? '✓' : missions.length}</span>
-          </div>
-
-          <div className="ops-missions">
-            {missions.map((m) => (
-              <button
-                key={m.title}
-                type="button"
-                className="ops-mission"
-                style={{ '--tone': m.tone }}
-                onClick={() => onNavigate(m.path)}
-              >
-                <span className="ops-mission-icon">{m.icon}</span>
-                <span className="ops-mission-copy">
-                  <strong>{m.title}</strong>
-                  <small>{m.body}</small>
-                </span>
-                <span className="ops-mission-value">
-                  {m.value}
-                  {m.unit && <small>{m.unit}</small>}
-                </span>
-                <ChevronLeft size={15}/>
-              </button>
-            ))}
-          </div>
+        <aside className="ops-priority-inspector" style={{ '--tone': leadMission.tone }}>
+          <span className="ops-inspector-kicker">مفتش التنبيه الأول</span>
+          <div className="ops-inspector-icon">{leadMission.icon}</div>
+          <h3>{leadMission.title}</h3>
+          <div className="ops-inspector-value">{leadMission.value} <small>{leadMission.unit}</small></div>
+          <p>{leadMission.body}</p>
+          <Btn size="sm" variant="primary" onClick={() => onNavigate(leadMission.path)}>
+            {leadMission.action}
+          </Btn>
+          <button type="button" className="ops-inspector-link" onClick={() => onNavigate('/decisions')}>
+            عرض بقية القرارات
+          </button>
         </aside>
       </div>
 
