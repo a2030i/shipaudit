@@ -1,120 +1,192 @@
-// assistant — مساعد ShipAudit الذكي (agentic).
-// LLM key stays server-side. The model answers by writing READ-ONLY SQL via
-// the run_sql tool (assistant_readonly_sql RPC enforces SELECT-only + a
-// read-only transaction). It loops tool→result→tool until it can answer.
-//
-// Body: { messages: [{role,content}], model? }
-// Returns: { ok, answer, queries: [{sql, rows}] }  |  { ok:false, error }
-
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const OR_BASE = 'https://openrouter.ai/api/v1/chat/completions';
-const CORS = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+const DEFAULT_ORIGINS = [
+  'https://shipaudit-five.vercel.app',
+  'http://127.0.0.1:5173',
+  'http://localhost:5173',
+];
+
+const allowedOrigins = new Set([
+  ...DEFAULT_ORIGINS,
+  ...(Deno.env.get('ASSISTANT_ALLOWED_ORIGINS') || '').split(',').map(v => v.trim()).filter(Boolean),
+]);
+
+function cors(req: Request) {
+  const origin = req.headers.get('origin') || '';
+  return {
+    'Access-Control-Allow-Origin': allowedOrigins.has(origin) ? origin : DEFAULT_ORIGINS[0],
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Vary': 'Origin',
+  };
+}
+
+function json(req: Request, body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { ...cors(req), 'Content-Type': 'application/json', 'Cache-Control': 'no-store' },
+  });
+}
+
+const REPORT_SQL: Record<string, string> = {
+  receivables_summary: `
+    select
+      count(*) filter (where coalesce(balance, 0) > 0.5) as open_invoice_count,
+      round(coalesce(sum(balance) filter (where coalesce(balance, 0) > 0.5), 0)::numeric, 2) as outstanding_sar,
+      count(*) filter (where coalesce(balance, 0) > 0.5 and due_date < current_date) as overdue_invoice_count,
+      round(coalesce(sum(balance) filter (where coalesce(balance, 0) > 0.5 and due_date < current_date), 0)::numeric, 2) as overdue_sar
+    from public.zoho_invoices`,
+  receivables_aging: `
+    select bucket, count(*) as invoice_count, round(sum(balance)::numeric, 2) as balance_sar
+    from (
+      select balance,
+        case
+          when current_date - coalesce(due_date, invoice_date) <= 30 then '0_30'
+          when current_date - coalesce(due_date, invoice_date) <= 60 then '31_60'
+          when current_date - coalesce(due_date, invoice_date) <= 90 then '61_90'
+          else 'over_90'
+        end as bucket
+      from public.zoho_invoices
+      where coalesce(balance, 0) > 0.5
+    ) x group by bucket order by bucket`,
+  carrier_summary: `
+    select c.name as carrier,
+      round(coalesce(sum(o.amount_dr), 0)::numeric, 2) as debit_sar,
+      round(coalesce(sum(o.amount_cr), 0)::numeric, 2) as credit_sar,
+      round((coalesce(sum(o.amount_dr), 0) - coalesce(sum(o.amount_cr), 0))::numeric, 2) as net_sar
+    from public.carriers c
+    left join public.carrier_operations o on o.carrier_id = c.id
+    group by c.id, c.name order by abs(coalesce(sum(o.amount_dr), 0) - coalesce(sum(o.amount_cr), 0)) desc
+    limit 20`,
+  audit_summary: `
+    select
+      count(*) as audit_count,
+      count(*) filter (where review_status = 'approved') as approved_count,
+      count(*) filter (where coalesce(mismatch_count, 0) > 0) as audits_with_mismatches,
+      round(coalesce(sum(total_billed), 0)::numeric, 2) as total_billed_sar
+    from public.audits`,
+  merchant_summary: `
+    with latest as (
+      select snapshot_id from public.merchants order by uploaded_at desc limit 1
+    )
+    select status, billing_type, count(*) as merchant_count,
+      round(coalesce(sum(wallet_balance), 0)::numeric, 2) as wallet_sar
+    from public.merchants
+    where snapshot_id = (select snapshot_id from latest)
+    group by status, billing_type order by status, billing_type`,
 };
-const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-const SCHEMA = `الجداول المتاحة (Postgres):
-• merchants(store_id, store_name, phone, status['نشط'|'غير نشط'], billing_type['دفع مسبق'|'دفع لاحق'], integration_type, shipment_count, last_shipment_at, created_at_platform, last_topup_at, wallet_balance, snapshot_id, uploaded_at) — snapshots، الأحدث يسود. دائماً افلتر snapshot_id=(SELECT snapshot_id FROM merchants ORDER BY uploaded_at DESC LIMIT 1)
-• customer_receivables(customer_name, invoice_date, balance_amount, is_summary, snapshot_id, uploaded_at) — ذمم زوهو (snapshots). مهم: عند جمع balance_amount استبعد دائماً is_summary (WHERE NOT coalesce(is_summary,false)) — صف الملخّص يضاعف الإجمالي. الأحدث: snapshot_id=(SELECT snapshot_id FROM customer_receivables ORDER BY uploaded_at DESC LIMIT 1). لا تحمل store_id — الربط عبر customer_merchant_links
-• customer_merchant_links(customer_name, store_id, match_method, confidence) — ربط عميل زوهو ↔ متجر
-• customer_segments(name, filters jsonb, color) — شرائح محفوظة
-• carriers(id, name, contracts jsonb, file_signature jsonb) — شركات الشحن
-• carrier_operations(carrier_id, doc_type['INV'|'RV'|'COD'|'DG'...], doc_no, doc_date, amount_dr, amount_cr, status, audit_id) — الدفتر. الرصيد=SUM(amount_dr)-SUM(amount_cr)
-• audits(id, carrier_name, period, row_count, mismatch_count, review_status, weight_billing_status, total_billed, total_tax, approved_at)
-• audit_shipments(audit_id, awb, weight_kg, is_cod, dest_country, status, invoiced_total, expected_total, diff_total)
-• cod_settlement(carrier_id, awb, amount, direction['in'|'out'], upload_id, reference_no)
-• whatsapp_campaigns(name, template_name, total, sent, failed, amount_total, created_at) + whatsapp_messages(campaign_id, phone, amount, success)
-RPCs جاهزة (استدعِها بـ SELECT * FROM fn(...)):
-• integrity_check() — فحوص التناقضات
-• carrier_cod_net_balances() — صافي COD لكل ناقل
-• resolve_snapshot_names(ARRAY['اسم']) — مطابقة اسم عميل → store_id`;
-
-const sysPrompt = (today: string) => `أنت «المحاسب الذكي» — محلّل مالي ومستشار قرارات داخل شركة لمحة (وسيط شحن: تدقيق فواتير شركات الشحن، تحصيل COD، مديونيات تجار المنصّة).
-اليوم: ${today}.
-
-مبدأ حاكم: **لا تجاوب أبداً من معرفة عامة أو نصائح إدارية عامة.** كل جواب يجب أن يستند لأرقام فعلية استعلمتها بـrun_sql من قاعدة بيانات الشركة.
-
-عندما يسأل المدير حتى سؤال رأي/قرار (مثل «وش رايك بالديون؟»):
-1. استعلِم أولاً البيانات ذات الصلة (قد تحتاج عدّة استعلامات: الإجمالي، التوزيع، أكبر العملاء، الأعمار).
-2. اعرض الأرقام المفتاحية بإيجاز (أرقام فعلية، لا تعابير عامة).
-3. أعطِ **توصية محددة وقابلة للتنفيذ داخل النظام**: من بالضبط (أسماء/أعداد)، بأي مبلغ، بأي أداة (حملة واتساب لشريحة، تحويل دفع لاحق→مسبق، إيقاف عميل، فحص سلامة البيانات).
-
-أدوات القرار المتاحة في النظام (اربط توصيتك بها): صفحة الشرائح (تصنيف وتصدير)، حملات واتساب تحصيل، سجل المطالبات، فحص سلامة البيانات، الدفتر.
-
-أسلوب الرد:
-- احترافي، موجز، بلغة أعمال — لا حشو ولا جمل إنشائية (مثل «الديون تمثل تحدياً» — ممنوعة).
-- الأرقام بـ«ر.س». نبّه بـ⚠️ للخلل/الخطر وـ💰 للفرص المالية.
-- لو البيانات غير كافية، قل بوضوح ما الناقص وأين يُرفع في النظام.
-- لا تعتذر بأنك «لا تتخذ قرارات» — دورك أن توصي بقرار مدعوم بالأرقام بوضوح وثقة.
-
-مثال على جواب جيد لـ«وش رايك بالديون؟» (بعد استعلام):
-«إجمالي المديونيات 294,070 ر.س على 84 عميل. ⚠️ أخطر بند: 38 عميل دفع مسبق عليهم 86,256 ر.س (خلل — الدفع المسبق لا يفترض عليه دين). أكبر 3 مدينين: س... (X ر.س). توصيتي: (1) شغّل فحص سلامة البيانات للـڀڃ الدفع المسبق أولاً — غالباً خطأ ربط. (2) أرسل حملة واتساب لشريحة +90 يوم.»
-
-${SCHEMA}`;
+const SYSTEM_PROMPT = `أنت المساعد المالي الداخلي لمنصة ShipAudit.
+تعتمد إجاباتك فقط على التقارير المجمعة المتاحة عبر run_report.
+لا تطلب أسماء عملاء أو هواتف أو أرقام فواتير، ولا تخمّن بيانات غير موجودة.
+اكتب بالعربية بإيجاز، واذكر الأرقام بوحدة ر.س مع توصية عملية واضحة.`;
 
 const TOOLS = [{
   type: 'function',
   function: {
-    name: 'run_sql',
-    description: 'ينفّذ استعلام SELECT للقراءة فقط ويرجّع الصفوف JSON (حد 500 صف). لا يسمح بأي كتابة.',
-    parameters: { type: 'object', properties: { query: { type: 'string', description: 'جملة SELECT واحدة' } }, required: ['query'] },
+    name: 'run_report',
+    description: 'يشغّل تقريراً مالياً مجمعاً ومحدداً مسبقاً بلا SQL حر أو بيانات عملاء شخصية.',
+    parameters: {
+      type: 'object',
+      properties: {
+        report: {
+          type: 'string',
+          enum: Object.keys(REPORT_SQL),
+        },
+      },
+      required: ['report'],
+      additionalProperties: false,
+    },
   },
 }];
 
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
-  const key = Deno.env.get('OPENROUTER_API_KEY');
-  if (!key) return json({ ok: false, error: 'أضِف OPENROUTER_API_KEY في أسرار الدالة' }, 400);
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors(req) });
+  if (req.method !== 'POST') return json(req, { ok: false, error: 'Method not allowed' }, 405);
+
+  const authorization = req.headers.get('authorization') || '';
+  if (!authorization.startsWith('Bearer ')) {
+    return json(req, { ok: false, error: 'يلزم تسجيل الدخول' }, 401);
+  }
+
+  const url = Deno.env.get('SUPABASE_URL');
+  const anonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  const openRouterKey = Deno.env.get('OPENROUTER_API_KEY');
+  if (!url || !anonKey || !serviceKey || !openRouterKey) {
+    return json(req, { ok: false, error: 'إعدادات الخادم غير مكتملة' }, 503);
+  }
+
+  const scoped = createClient(url, anonKey, { global: { headers: { Authorization: authorization } } });
+  const { data: authData, error: authError } = await scoped.auth.getUser();
+  if (authError || !authData.user) return json(req, { ok: false, error: 'جلسة غير صالحة' }, 401);
+
+  const admin = createClient(url, serviceKey, { auth: { persistSession: false } });
+  const { data: profile, error: profileError } = await admin
+    .from('profiles')
+    .select('role, permissions')
+    .eq('id', authData.user.id)
+    .maybeSingle();
+  if (profileError || !profile) return json(req, { ok: false, error: 'ملف المستخدم غير موجود' }, 403);
+  const allowed = profile.role === 'admin' || profile.permissions?.['system.ai_assistant'] === true;
+  if (!allowed) return json(req, { ok: false, error: 'لا تملك صلاحية المساعد المالي' }, 403);
 
   let payload: any;
-  try { payload = await req.json(); } catch { return json({ ok: false, error: 'جسم غير صالح' }, 400); }
-  const userMessages = Array.isArray(payload?.messages) ? payload.messages : [];
-  const model = payload?.model || Deno.env.get('ASSISTANT_MODEL') || 'google/gemini-2.0-flash-001';
-  if (!userMessages.length) return json({ ok: false, error: 'لا توجد رسائل' }, 400);
+  try { payload = await req.json(); } catch { return json(req, { ok: false, error: 'جسم غير صالح' }, 400); }
+  const messages = (Array.isArray(payload?.messages) ? payload.messages : [])
+    .filter((m: any) => (m?.role === 'user' || m?.role === 'assistant') && typeof m?.content === 'string')
+    .slice(-12)
+    .map((m: any) => ({ role: m.role, content: m.content.slice(0, 2000) }));
+  if (!messages.length) return json(req, { ok: false, error: 'لا توجد رسالة' }, 400);
 
-  const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
-  const today = new Date().toISOString().slice(0, 10);
-  const messages: any[] = [{ role: 'system', content: sysPrompt(today) }, ...userMessages];
-  const queries: any[] = [];
+  const llmMessages: any[] = [{ role: 'system', content: SYSTEM_PROMPT }, ...messages];
+  const queries: Array<{ report: string; rowCount: number }> = [];
+  const model = Deno.env.get('ASSISTANT_MODEL') || 'google/gemini-2.0-flash-001';
 
-  const callLLM = async () => {
-    const r = await fetch(OR_BASE, {
+  const callLlm = async () => {
+    const response = await fetch(OR_BASE, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'ShipAudit Assistant' },
-      body: JSON.stringify({ model, temperature: 0.2, max_tokens: 1400, tools: TOOLS, tool_choice: 'auto', messages }),
+      headers: {
+        Authorization: `Bearer ${openRouterKey}`,
+        'Content-Type': 'application/json',
+        'X-Title': 'ShipAudit Assistant',
+      },
+      body: JSON.stringify({ model, temperature: 0.1, max_tokens: 900, tools: TOOLS, tool_choice: 'auto', messages: llmMessages }),
     });
-    const data = await r.json();
-    if (!r.ok) throw new Error(data?.error?.message || `LLM ${r.status}`);
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error?.message || `LLM ${response.status}`);
     return data?.choices?.[0]?.message;
   };
 
   try {
-    for (let step = 0; step < 7; step++) {
-      const msg = await callLLM();
-      messages.push(msg);
-      const calls = msg?.tool_calls || [];
-      if (!calls.length) {
-        return json({ ok: true, answer: msg?.content || '', queries });
-      }
-      for (const call of calls) {
-        let out: any;
+    for (let step = 0; step < 4; step += 1) {
+      const message = await callLlm();
+      if (!message) throw new Error('لم يصل رد من النموذج');
+      llmMessages.push(message);
+      const calls = Array.isArray(message.tool_calls) ? message.tool_calls : [];
+      if (!calls.length) return json(req, { ok: true, answer: message.content || '', queries });
+
+      for (const call of calls.slice(0, 3)) {
+        let output: unknown;
         try {
           const args = JSON.parse(call.function?.arguments || '{}');
-          const sql = String(args.query || '');
+          const report = String(args.report || '');
+          const sql = REPORT_SQL[report];
+          if (!sql) throw new Error('التقرير غير مسموح');
           const { data, error } = await admin.rpc('assistant_readonly_sql', { q: sql });
-          if (error) out = { error: error.message };
-          else { out = data; queries.push({ sql, rowCount: Array.isArray(data) ? data.length : 0 }); }
-        } catch (e) { out = { error: String(e?.message || e) }; }
-        messages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out).slice(0, 12000) });
+          if (error) throw error;
+          const rows = Array.isArray(data) ? data.slice(0, 50) : data;
+          queries.push({ report, rowCount: Array.isArray(rows) ? rows.length : 0 });
+          output = rows;
+        } catch (error) {
+          output = { error: String((error as any)?.message || error) };
+        }
+        llmMessages.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(output).slice(0, 8000) });
       }
     }
-    messages.push({ role: 'user', content: 'لخّص الإجابة الآن بأرقام وتوصية محددة بلا استعلامات إضافية.' });
-    const final = await callLLM();
-    return json({ ok: true, answer: final?.content || 'لم أتمكّن من إكمال التحليل.', queries });
-  } catch (e) {
-    return json({ ok: false, error: String(e?.message || e), queries }, 200);
+    return json(req, { ok: false, error: 'تعذر إكمال التحليل ضمن الحد الآمن', queries }, 422);
+  } catch (error) {
+    return json(req, { ok: false, error: String((error as any)?.message || error), queries }, 502);
   }
 });

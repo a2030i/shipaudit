@@ -2,16 +2,15 @@ import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
-  Wifi, WifiOff, ExternalLink, Package, History, Search, Filter, Trash2,
+  ExternalLink, Package, History, Search, Filter, Trash2,
   CheckCircle2, AlertTriangle, Calendar, FileText, Truck, X,
 } from 'lucide-react';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import { History as HistoryIcon } from 'lucide-react';
-import { loadSettings, saveSettings } from '../data/carriers.js';
 import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers, loadAuditShipments } from '../lib/coreService.js';
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { exportMergedExcessWeights } from '../engine/export.js';
-import { OR_MODELS, testConnection } from '../engine/openrouter.js';
+import { useAuth } from '../lib/auth.jsx';
 
 const TABS = [
   { id: 'ai',          label: '✨ الذكاء الاصطناعي' },
@@ -20,35 +19,14 @@ const TABS = [
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 export function SettingsPage({ carriers = [], tab = 'ai' }) {
+  const { can } = useAuth();
   const navigate = useNavigate();
   const setTab = (id) => navigate(`/settings/${id}`);
-  const [s,       setS]       = useState(loadSettings());
-  const [vis,     setVis]     = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [testOk,  setTestOk]  = useState(null);
-
-  const save = () => {
-    saveSettings(s);
-    toast('تم حفظ الإعدادات ✓', 'success');
-    setTestOk(null);
-  };
-
-  const handleTest = async () => {
-    saveSettings(s);
-    setTesting(true);
-    setTestOk(null);
-    try {
-      await testConnection();
-      setTestOk(true);
-      toast('الاتصال يعمل بشكل صحيح ✓', 'success');
-    } catch (e) {
-      setTestOk(false);
-      toast(`فشل الاتصال: ${e.message}`, 'error');
-    }
-    setTesting(false);
-  };
-
   const handleExport = async () => {
+    if (!can('reports.export')) {
+      toast('لا تملك صلاحية إنشاء وتنزيل النسخة الاحتياطية', 'error');
+      return;
+    }
     try {
       const audits = await loadAuditsFromDB(200);
       const data = { carriers, audits };
@@ -89,9 +67,9 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
         <Card>
           <h3 style={{fontSize:14,fontWeight:700,marginBottom:14}}>🗄️ البيانات</h3>
           <div style={{display:'flex',gap:10}}>
-            <Btn size="sm" variant="ghost" onClick={handleExport}>
+            {can('reports.export') && <Btn size="sm" variant="ghost" onClick={handleExport}>
               ⬇️ تصدير نسخة احتياطية
-            </Btn>
+            </Btn>}
           </div>
         </Card>
       </div>
@@ -100,79 +78,20 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
       {tab === 'ai' && <>
       <Card style={{marginBottom:20}}>
         <h3 style={{fontSize:14,fontWeight:700,marginBottom:16,display:'flex',alignItems:'center',gap:8}}>
-          <span>✨</span> OpenRouter AI
+          <span>✨</span> الذكاء الاصطناعي الآمن
         </h3>
 
-        <div style={{marginBottom:14}}>
-          <label style={{display:'block',color:'var(--muted)',fontSize:11,marginBottom:5}}>
-            API Key
-            <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer"
-              style={{color:'var(--accent)',marginRight:6,textDecoration:'none',fontSize:10}}>
-              احصل على مفتاح ↗
-            </a>
-          </label>
-          <div style={{display:'flex',gap:8}}>
-            <input
-              type={vis?'text':'password'}
-              value={s.openrouterKey}
-              onChange={e=>setS({...s,openrouterKey:e.target.value})}
-              placeholder="sk-or-..."
-              style={{flex:1,padding:'8px 11px',borderRadius:7,fontSize:13,fontFamily:'var(--font-mono)'}}/>
-            <Btn size="sm" variant="ghost" onClick={()=>setVis(v=>!v)}>{vis?'🙈':'👁'}</Btn>
-          </div>
-        </div>
-
-        <div style={{marginBottom:16}}>
-          <label style={{display:'block',color:'var(--muted)',fontSize:11,marginBottom:5}}>النموذج</label>
-          <div style={{display:'flex',flexDirection:'column',gap:7}}>
-            {OR_MODELS.map(m=>(
-              <button key={m.id} onClick={()=>setS({...s,openrouterModel:m.id})}
-                style={{
-                  display:'grid',gridTemplateColumns:'1fr auto',gap:'4px 12px',
-                  padding:'10px 14px',borderRadius:9,cursor:'pointer',textAlign:'right',
-                  background:s.openrouterModel===m.id?'color-mix(in srgb, var(--accent) 10%, transparent)':'var(--surface)',
-                  border:`1px solid ${s.openrouterModel===m.id?'color-mix(in srgb, var(--accent) 30%, transparent)':'var(--border)'}`,
-                  transition:'all .15s',
-                }}>
-                <div style={{display:'flex',alignItems:'center',gap:7}}>
-                  {s.openrouterModel===m.id&&<span style={{color:'var(--accent)',fontSize:11}}>●</span>}
-                  <span style={{fontWeight:600,fontSize:12,color:s.openrouterModel===m.id?'var(--accent)':'var(--text)'}}>{m.label}</span>
-                  {m.best&&<span style={{background:'rgba(251,191,36,.15)',color:'var(--gold)',fontSize:9,padding:'1px 6px',borderRadius:4,fontFamily:'var(--font-mono)'}}>مُوصى</span>}
-                </div>
-                <div style={{color:'var(--green)',fontSize:10,fontFamily:'var(--font-mono)',gridColumn:'1',paddingRight:s.openrouterModel===m.id?18:0}}>{m.cost}</div>
-                <div style={{color:'var(--muted)',fontSize:10,gridColumn:'1',paddingRight:s.openrouterModel===m.id?18:0}}>{m.note}</div>
-              </button>
-            ))}
-          </div>
+        <div style={{background:'color-mix(in srgb, var(--green) 9%, var(--surface))',border:'1px solid color-mix(in srgb, var(--green) 30%, var(--border))',borderRadius:8,padding:'12px 14px',marginBottom:16,fontSize:12,lineHeight:1.8}}>
+          <strong style={{color:'var(--green)'}}>إعداد الخادم محمي</strong><br/>
+          المفتاح والنموذج يُداران داخل أسرار الخادم، ولا يُحفظان في المتصفح أو على جهاز الموظف.
         </div>
 
         <div style={{background:'var(--surface)',borderRadius:8,padding:'10px 14px',marginBottom:16,fontSize:12,lineHeight:1.8,color:'var(--muted)'}}>
-          <strong style={{color:'var(--text)'}}>ما يفعله AI في ShipAudit:</strong><br/>
-          • تعيين أعمدة الملف تلقائياً ✨<br/>
-          • تحليل نتائج التدقيق وإعداد تقرير احترافي 📊<br/>
-          • الإجابة على أسئلتك حول الفروق والعقود 💬<br/>
-          • استخراج التسعيرة من نص العقد مستقبلاً 📄
-        </div>
-
-        <div style={{display:'flex',gap:9}}>
-          <Btn variant="primary" onClick={save} style={{flex:1,justifyContent:'center'}}>
-            حفظ الإعدادات
-          </Btn>
-          <Btn
-            variant={testOk===true?'accent':testOk===false?'danger':'ghost'}
-            onClick={handleTest}
-            disabled={testing||!s.openrouterKey}
-            style={{minWidth:130,justifyContent:'center',gap:7}}
-          >
-            {testing
-              ? <><Spinner size={13}/> يختبر...</>
-              : testOk===true
-                ? <><Wifi size={13}/> متصل</>
-                : testOk===false
-                  ? <><WifiOff size={13}/> فشل</>
-                  : <><Wifi size={13}/> اختبار الاتصال</>
-            }
-          </Btn>
+          <strong style={{color:'var(--text)'}}>حدود الاستخدام الحالية:</strong><br/>
+          • المساعد متاح فقط لمن يملك صلاحية «استخدام المساعد الذكي».<br/>
+          • التقارير المسموحة مجمّعة ومحددة مسبقاً من الخادم.<br/>
+          • لا تُرسل صفوف Excel أو أسماء العملاء أو أرقام الفواتير إلى مزود الذكاء الاصطناعي.<br/>
+          • لا يستطيع المساعد تعديل البيانات أو تنفيذ استعلامات حرة.
         </div>
       </Card>
       </>}

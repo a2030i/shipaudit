@@ -4,6 +4,20 @@ import { can as _can, canAll as _canAll, canAny as _canAny } from './permissions
 
 const AuthContext = createContext(null);
 
+const SENSITIVE_SESSION_KEYS = [
+  'lastAudit',
+  'webhookImport',
+  'webhookCodImport',
+  'statementImport',
+];
+
+function clearSensitiveBrowserState() {
+  for (const key of SENSITIVE_SESSION_KEYS) {
+    try { sessionStorage.removeItem(key); } catch { /* unavailable storage */ }
+  }
+  try { localStorage.removeItem('shipaudit_settings_v1'); } catch { /* unavailable storage */ }
+}
+
 export function AuthProvider({ children }) {
   const [user,    setUser]    = useState(null);
   const [profile, setProfile] = useState(null);
@@ -53,6 +67,7 @@ export function AuthProvider({ children }) {
     supabase.auth.signInWithPassword({ email, password });
 
   const signOut = async () => {
+    clearSensitiveBrowserState();
     await supabase.auth.signOut();
     setUser(null);
     setProfile(null);

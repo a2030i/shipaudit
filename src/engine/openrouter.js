@@ -129,6 +129,14 @@ export async function testConnection() {
 //   - Column-to-field mapping
 //   - Which fields are missing
 export async function aiAnalyzeFile(allRows) {
+  // Security boundary: spreadsheet rows can contain customer names, phones,
+  // invoice numbers and amounts. They must never leave the browser. Column
+  // detection now uses deterministic local rules; only explicit aggregate
+  // assistant reports are processed server-side.
+  void allRows;
+  throw new Error('تحليل صفوف الملفات عبر مزود خارجي معطل لحماية بيانات العملاء');
+
+  /* istanbul ignore next -- retained below temporarily for migration history
   // Build a tab-separated preview of first 25 rows
   const preview = allRows.slice(0, 25)
     .map((row, i) =>
@@ -193,6 +201,7 @@ ${preview}
   } catch {
     return null;
   }
+  */
 }
 
 // ─── Column mapping via AI (headers-only fallback) ─────────────────────────────

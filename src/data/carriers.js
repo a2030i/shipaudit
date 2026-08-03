@@ -140,13 +140,21 @@ export function deleteAudit(id) {
 export function loadSettings() {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Object.prototype.hasOwnProperty.call(parsed || {}, 'openrouterKey')) {
+        delete parsed.openrouterKey;
+        localStorage.setItem(SETTINGS_KEY, JSON.stringify(parsed));
+      }
+      return { ...parsed, openrouterKey: '' };
+    }
   } catch {}
   return { openrouterKey: '', openrouterModel: 'google/gemini-2.0-flash-001' };
 }
 
 export function saveSettings(s) {
-  localStorage.setItem(SETTINGS_KEY, JSON.stringify(s));
+  const { openrouterKey: _discardedSecret, ...safe } = s || {};
+  localStorage.setItem(SETTINGS_KEY, JSON.stringify(safe));
 }
 
 // ─── Country list ──────────────────────────────────────────────────────────────

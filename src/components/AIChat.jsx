@@ -27,7 +27,7 @@ const SUGGESTIONS = [
 ];
 
 export default function AIChat() {
-  const { user } = useAuth();
+  const { user, can } = useAuth();
   const [open, setOpen]         = useState(false);
   const [messages, setMessages] = useState([]); // [{ role, content, attachment? }]
   const loadedRef = useRef(false);   // server chat loaded once per session
@@ -39,6 +39,8 @@ export default function AIChat() {
   const [ctxLoading, setCtxLoading] = useState(false);
   const abortRef = useRef(null);
   const scrollRef = useRef(null);
+
+  if (!can('system.ai_assistant')) return null;
 
   // (Re)build context whenever the panel opens.
   const refreshContext = useCallback(async () => {

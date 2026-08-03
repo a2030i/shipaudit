@@ -9,12 +9,9 @@
 //    buildAssistantContext()   →  { snapshot, contextText }
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { loadSettings } from '../data/carriers.js';
 import { loadCarriersOverview, aggregateOverview, loadRecentActivity } from '../lib/carrierStatementsService.js';
 import { loadCarriers, loadAuditsFromDB } from '../lib/coreService.js';
 import { supabase } from '../lib/supabase.js';
-
-const OR_BASE = 'https://openrouter.ai/api/v1';
 
 // Agentic assistant — calls the `assistant` edge function, which holds the
 // LLM key server-side and answers by writing READ-ONLY SQL over ALL the
@@ -48,12 +45,7 @@ export async function askAssistantAgent(messages) {
   const clean = (messages || [])
     .filter(m => (m.role === 'user' || m.role === 'assistant') && m.content)
     .map(m => ({ role: m.role, content: String(m.content) }));
-  // The website model picker (Settings → AI) drives the assistant too, so
-  // the user has ONE place to choose the model. The KEY stays a Supabase
-  // secret — only the model id (not secret) is passed from the client. If
-  // unset, the edge function falls back to ASSISTANT_MODEL / its default.
-  const model = loadSettings()?.openrouterModel || undefined;
-  const { data, error } = await supabase.functions.invoke('assistant', { body: { messages: clean, model } });
+  const { data, error } = await supabase.functions.invoke('assistant', { body: { messages: clean } });
   if (error) throw new Error(error.message);
   if (!data?.ok) throw new Error(data?.error || 'تعذّر تشغيل المساعد');
   return { answer: data.answer || '', queries: data.queries || [] };
@@ -148,4 +140,4 @@ export async function buildAssistantContext() {
     contextText: lines.join('\n'),
   };
 }
-
+

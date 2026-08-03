@@ -255,6 +255,7 @@ export const PERMISSION_CATALOG = [
     id: 'system', label: 'إعدادات النظام', icon: 'Settings', color: '#6B7280',
     perms: [
       { key: 'system.view_settings',      label: 'عرض الإعدادات' },
+      { key: 'system.ai_assistant',       label: 'استخدام المساعد المالي الذكي', hint: 'يسمح بطلب تقارير مجمعة فقط ولا يمنح وصولاً مباشراً للجداول.', sensitive: true },
       { key: 'system.edit_settings',      label: 'تعديل الإعدادات العامة', sensitive: true },
       { key: 'system.manage_employees',   label: 'إدارة الموظفين (إضافة/حذف/تعديل)', sensitive: true },
       { key: 'system.manage_permissions', label: 'إدارة صلاحيات الموظفين', sensitive: true },
