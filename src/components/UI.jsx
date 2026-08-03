@@ -308,7 +308,7 @@ export function PageHero({
 }) {
   const dark = variant === 'dark';
   return (
-    <div style={{
+    <div className={`page-summary page-summary--${dark ? 'dark' : 'light'}`} style={{
       position: 'relative',
       borderRadius: 'var(--r-xl)',
       padding: '22px 24px',
@@ -323,16 +323,16 @@ export function PageHero({
         : 'var(--shadow-sm)',
       overflow: 'hidden',
     }}>
-      <div className="hero-grid" style={{
+      <div className="hero-grid page-summary__grid" style={{
         position: 'relative',
         display: 'grid',
         gridTemplateColumns: stats.length ? 'minmax(0,1fr) auto' : 'minmax(0,1fr) auto',
         alignItems: 'center', gap: 28,
       }}>
         {/* Left: tag → title → subtitle */}
-        <div style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 18 }}>
+        <div className="page-summary__intro" style={{ minWidth: 0, display: 'flex', alignItems: 'center', gap: 18 }}>
           {icon && (
-            <div style={{
+            <div className="page-summary__icon" style={{
               width: 48, height: 48, borderRadius: 12, flexShrink: 0,
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               background: dark ? 'rgba(255,255,255,.06)' : `color-mix(in srgb, ${accent} 12%, transparent)`,
@@ -340,10 +340,10 @@ export function PageHero({
               border: dark ? '1px solid rgba(255,255,255,.08)' : 'none',
             }}>{icon}</div>
           )}
-          <div style={{ minWidth: 0 }}>
+          <div className="page-summary__copy" style={{ minWidth: 0 }}>
             {tag && (
               dark ? (
-                <div style={{
+                <div className="page-summary__tag" style={{
                   display: 'inline-flex', alignItems: 'center', gap: 8,
                   padding: '5px 12px', borderRadius: 10,
                   background: 'rgba(255,255,255,.06)',
@@ -360,7 +360,7 @@ export function PageHero({
                   {tag}
                 </div>
               ) : (
-                <div style={{
+                <div className="page-summary__tag" style={{
                   fontSize: 11, fontFamily: 'var(--font-mono)',
                   letterSpacing: 1.5, textTransform: 'uppercase',
                   color: 'var(--muted)', fontWeight: 600,
@@ -368,19 +368,19 @@ export function PageHero({
                 }}>{tag}</div>
               )
             )}
-            <h1 style={{
+            <h1 className="page-summary__title" style={{
               fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 800,
               color: dark ? '#fff' : 'var(--text)',
               margin: 0, lineHeight: 1.15, letterSpacing: 0,
             }}>{title}</h1>
             {subtitle && (
-              <div style={{
+              <div className="page-summary__subtitle" style={{
                 fontSize: 13.5, marginTop: 6,
                 color: dark ? 'rgba(255,255,255,.6)' : 'var(--muted)',
               }}>{subtitle}</div>
             )}
             {meta && (
-              <div style={{
+              <div className="page-summary__meta" style={{
                 fontSize: 11, marginTop: 8, fontFamily: 'var(--font-mono)',
                 color: dark ? 'rgba(255,255,255,.4)' : 'var(--muted2)',
                 letterSpacing: 0.3,
@@ -391,7 +391,7 @@ export function PageHero({
 
         {/* Right: stat tiles + actions */}
         {(stats.length > 0 || actions) && (
-          <div style={{
+          <div className="page-summary__side" style={{
             display: 'flex', alignItems: 'center', gap: 8,
             flexWrap: 'wrap', justifyContent: 'flex-end',
           }}>
@@ -399,7 +399,7 @@ export function PageHero({
               <StatTile key={i} {...s} dark={dark}/>
             ))}
             {actions && (
-              <div style={{ display: 'flex', gap: 6, marginInlineStart: stats.length ? 6 : 0 }}>
+              <div className="page-summary__actions" style={{ display: 'flex', gap: 6, marginInlineStart: stats.length ? 6 : 0 }}>
                 {actions}
               </div>
             )}
@@ -416,26 +416,26 @@ export function PageHero({
 export function StatTile({ label, value, hint, color, big, dark }) {
   const valueColor = color || (dark ? '#fff' : 'var(--text)');
   return (
-    <div style={{
+    <div className={`page-summary-stat${big ? ' is-big' : ''}`} style={{
       paddingInline: 18, paddingBlock: 8,
       borderInlineStart: dark
         ? '1px solid rgba(255,255,255,.08)'
         : '1px solid var(--border)',
       minWidth: big ? 150 : 110,
     }}>
-      <div style={{
+      <div className="page-summary-stat__label" style={{
         fontSize: 11, fontFamily: 'var(--font-sans)',
         letterSpacing: 0.2, fontWeight: 500,
         color: dark ? 'rgba(255,255,255,.55)' : 'var(--muted)',
         whiteSpace: 'nowrap', marginBottom: 6,
       }}>{label}</div>
-      <div style={{
+      <div className="page-summary-stat__value" style={{
         fontSize: big ? 24 : 20, fontWeight: 700,
         color: valueColor, fontFamily: 'var(--font-mono)',
         whiteSpace: 'nowrap', letterSpacing: 0, lineHeight: 1,
       }}>{value ?? '—'}</div>
       {hint && (
-        <div style={{
+        <div className="page-summary-stat__hint" style={{
           fontSize: 11, marginTop: 6,
           color: dark ? 'rgba(255,255,255,.45)' : 'var(--muted)',
         }}>{hint}</div>
@@ -1080,7 +1080,7 @@ export function Select({ label, children, style: outerStyle = {}, ...props }) {
 }
 
 // ─── Modal ─────────────────────────────────────────────────────────────────────
-export function Modal({ title, children, onClose, width = 520 }) {
+export function Modal({ title, children, onClose, width = 520, className = '', bodyClassName = '' }) {
   const titleId = useId();
   useEffect(() => {
     const fn = (e) => e.key === 'Escape' && onClose?.();
@@ -1101,7 +1101,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
       onClick={e => e.target === e.currentTarget && onClose?.()}
     >
       <div
-        className="scale-in modal-panel"
+        className={`scale-in modal-panel ${className}`.trim()}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -1134,7 +1134,7 @@ export function Modal({ title, children, onClose, width = 520 }) {
             <X size={14}/>
           </button>
         </div>
-        <div className="modal-body">
+        <div className={`modal-body ${bodyClassName}`.trim()}>
           {children}
         </div>
       </div>

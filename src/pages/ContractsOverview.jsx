@@ -143,7 +143,7 @@ export default function ContractsOverview({ isActive = true }) {
           <Empty icon="📄" title="ما فيه عقود مسجّلة" sub="أضف عقد من صفحة شركات الشحن"/>
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table className="m-cards contracts-overview-table">
               <thead>
                 <tr>
                   <th style={{ minWidth: 160 }}>الشركة</th>
@@ -162,30 +162,30 @@ export default function ContractsOverview({ isActive = true }) {
               <tbody>
                 {rows.map((r, idx) => (
                   <tr key={`${r.carrierId}-${r.contractId}`} style={{ background: idx % 2 === 0 ? 'transparent' : 'var(--surface2)' }}>
-                    <td>
+                    <td data-label="">
                       <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
                         <span style={{ fontSize: 18 }}>{r.carrierLogo}</span>
                         <span style={{ fontWeight: 700, color: 'var(--text)' }}>{r.carrierName}</span>
                       </div>
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--accent)' }}>
+                    <td data-label="العقد" style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--accent)' }}>
                       {r.contractLabel}
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
+                    <td data-label="الفترة" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)', whiteSpace: 'nowrap' }}>
                       {fmtDateOnly(r.startDate)}
                       <br/>
                       <span style={{ opacity: .6 }}>→ {r.endDate || 'مفتوح'}</span>
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.baseUpTo, 'كغ')}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)' }}>{fmt(r.basePrice, 'ر.س')}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gold)', fontWeight: 600 }}>
+                    <td data-label="الحد الأساسي" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.baseUpTo, 'كغ')}</td>
+                    <td data-label="السعر الأساسي" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700, color: 'var(--accent)' }}>{fmt(r.basePrice, 'ر.س')}</td>
+                    <td data-label="كل كيلو زائد" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--gold)', fontWeight: 600 }}>
                       {r.excessPerKg != null ? `${r.excessPerKg} ر.س / ${r.excessUnit}كغ` : '—'}
                     </td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{pct(r.fuelPct)}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--purple)' }}>{pct(r.rssPct)}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.codFee, 'ر.س')}</td>
-                    <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{r.destinations.length}</td>
-                    <td>
+                    <td data-label="الوقود" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)' }}>{pct(r.fuelPct)}</td>
+                    <td data-label="رسوم أمنية" style={{ fontFamily: 'var(--font-mono)', color: 'var(--purple)' }}>{pct(r.rssPct)}</td>
+                    <td data-label="رسوم COD" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.codFee, 'ر.س')}</td>
+                    <td data-label="الوجهات" style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{r.destinations.length}</td>
+                    <td data-label="الحالة">
                       {r.isActive ? (
                         <span style={{
                           display: 'inline-flex', alignItems: 'center', gap: 4,
@@ -288,7 +288,7 @@ export default function ContractsOverview({ isActive = true }) {
                       background: 'var(--surface)',
                       borderTop: '1px solid var(--border)',
                     }}>
-                      <table style={{ marginTop: 12 }}>
+                      <table className="m-cards" style={{ marginTop: 12 }}>
                         <thead>
                           <tr>
                             <th style={{ minWidth: 130 }}>الحقل</th>
@@ -299,11 +299,11 @@ export default function ContractsOverview({ isActive = true }) {
                         <tbody>
                           {Object.entries(h.changes.fields).map(([field, { before, after }]) => (
                             <tr key={field}>
-                              <td style={{ fontWeight: 600, color: 'var(--text)' }}>
+                              <td data-label="" style={{ fontWeight: 600, color: 'var(--text)' }}>
                                 {FIELD_AR[field] || field}
                               </td>
-                              <td style={{ background: 'rgba(248,113,113,.03)' }}>{renderValue(before)}</td>
-                              <td style={{ background: 'color-mix(in srgb, var(--accent) 3%, transparent)' }}>{renderValue(after)}</td>
+                              <td data-label="قبل" style={{ background: 'rgba(248,113,113,.03)' }}>{renderValue(before)}</td>
+                              <td data-label="بعد" style={{ background: 'color-mix(in srgb, var(--accent) 3%, transparent)' }}>{renderValue(after)}</td>
                             </tr>
                           ))}
                         </tbody>

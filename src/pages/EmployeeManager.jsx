@@ -287,9 +287,9 @@ function PermissionsModal({ employee, onClose, onSave }) {
   }, [searchLower]);
 
   return (
-    <Modal title={`صلاحيات ${employee.name}`} onClose={onClose} width={760}>
+    <Modal title={`صلاحيات ${employee.name}`} onClose={onClose} width={760} className="permissions-dialog">
       {/* Sticky top bar */}
-      <div style={{
+      <div className="permission-modal-toolbar" style={{
         position: 'sticky', top: 0, zIndex: 2,
         background: 'var(--card)', borderBottom: '1px solid var(--border)',
         padding: '6px 0 14px', marginBottom: 12,
@@ -351,7 +351,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
       </div>
 
       {/* Sections */}
-      <div style={{ maxHeight: '60vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
+      <div className="permission-modal-list" style={{ maxHeight: '60vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
         {filteredCatalog.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 30, fontSize: 12 }}>
             لا توجد صلاحيات تطابق البحث
@@ -441,7 +441,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
         })}
       </div>
 
-      <div style={{
+      <div className="permission-modal-footer" style={{
         display: 'flex', gap: 8, justifyContent: 'space-between', alignItems: 'center',
         marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)',
       }}>

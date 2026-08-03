@@ -73,6 +73,7 @@ export default function CodSettlements({ isActive = true }) {
   const [consolidated, setConsolidated] = useState(null);
   const [uploads, setUploads] = useState([]);
   const [uploadsOpen, setUploadsOpen] = useState(false);
+  const [moreActionsOpen, setMoreActionsOpen] = useState(false);
   const [confirmDeleteUpload, setConfirmDeleteUpload] = useState(null);
   // outstandingByCarrier: Map<carrier_id, sar> — drives the dropdown
   // labels so the user can see at a glance which carrier owes the most.
@@ -565,6 +566,7 @@ export default function CodSettlements({ isActive = true }) {
         actions={
           <>
             <select value={carrier} onChange={e => setCarrier(e.target.value)}
+              className="page-action-select"
               style={{
                 padding: '10px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
                 background: 'var(--surface)', border: '1px solid var(--border2)',
@@ -589,32 +591,6 @@ export default function CodSettlements({ isActive = true }) {
               رفع مراجعة
             </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-            {summary.outstandingCount > 0 && (
-              <Btn size="md" variant="ghost" icon={<Download size={14}/>}
-                onClick={handleExportOutstanding}
-                title="تصدير المتبقي عند الناقل المختار فقط">
-                تصدير المتبقي
-              </Btn>
-            )}
-            <Btn size="md" variant="ghost"
-              icon={exportingAll ? <Spinner size={14}/> : <Download size={14}/>}
-              onClick={handleExportAllOutstanding}
-              disabled={exportingAll}
-              title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
-              {exportingAll ? 'جارٍ التجميع…' : 'تصدير المتبقي (جميع الناقلين)'}
-            </Btn>
-            <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-              onClick={() => setUploadModal({ direction: 'out' })}
-              title="تحصيل لمحة — ما يتوقّع نظام لمحة الداخلي تحصيله (لناقل واحد)">
-              تحصيل لمحة
-            </Btn>
-            {(!can || can('cod.upload_out')) && (
-              <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-                onClick={() => setConsolidated({ pick: true })}
-                title="تحصيل لمحة المجمّع — ملف واحد يغطّي كل الشركات (تم التوصيل + مبلغ>0)">
-                📦 تحصيل لمحة (مجمّع)
-              </Btn>
-            )}
             {/* audit_with_cod carriers (iMile/DeliverNow): the received COD
                 is auto-created on audit approval, so a manual «ارفع تحويل»
                 would double-count it. Hide the button; show a hint. */}
@@ -632,6 +608,40 @@ export default function CodSettlements({ isActive = true }) {
                 تحصيل شركة الشحن
               </Btn>
             )}
+            <div className={`page-action-menu${moreActionsOpen ? ' is-open' : ''}`}>
+              <button type="button" className="page-action-menu__trigger"
+                aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen(open => !open)}>
+                إجراءات إضافية
+              </button>
+              {moreActionsOpen && <div className="page-action-menu__panel">
+                {summary.outstandingCount > 0 && (
+                  <Btn size="md" variant="ghost" icon={<Download size={14}/>}
+                    onClick={handleExportOutstanding}
+                    title="تصدير المتبقي عند الناقل المختار فقط">
+                    تصدير المتبقي للناقل المحدد
+                  </Btn>
+                )}
+                <Btn size="md" variant="ghost"
+                  icon={exportingAll ? <Spinner size={14}/> : <Download size={14}/>}
+                  onClick={handleExportAllOutstanding}
+                  disabled={exportingAll}
+                  title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
+                  {exportingAll ? 'جارٍ التجميع…' : 'تصدير المتبقي لكل الناقلين'}
+                </Btn>
+                <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
+                  onClick={() => setUploadModal({ direction: 'out' })}
+                  title="تحصيل لمحة — ما يتوقّع نظام لمحة الداخلي تحصيله (لناقل واحد)">
+                  تسجيل تحصيل لمحة لناقل واحد
+                </Btn>
+                {(!can || can('cod.upload_out')) && (
+                  <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
+                    onClick={() => setConsolidated({ pick: true })}
+                    title="تحصيل لمحة المجمّع — ملف واحد يغطّي كل الشركات (تم التوصيل + مبلغ>0)">
+                    تسجيل تحصيل لمحة المجمّع
+                  </Btn>
+                )}
+              </div>}
+            </div>
           </>
         }
       />

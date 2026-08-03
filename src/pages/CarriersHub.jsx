@@ -9,7 +9,7 @@ import {
   TrendingUp, TrendingDown, Building2, Webhook as WebhookIcon,
   Settings as SettingsIcon, Wallet, ArrowLeft, BookOpen,
 } from 'lucide-react';
-import { Card, Btn, Spinner, Empty, toast, PageHero, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHero } from '../components/UI.jsx';
 import { loadCarriersHub } from '../lib/carriersHubService.js';
 
 const fmt = (n) =>
@@ -37,26 +37,38 @@ const relTime = (iso) => {
   return `قبل ${Math.floor(days / 365)} سنوات`;
 };
 
-function HeaderTotals({ totals, loading }) {
+function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefresh }) {
   const owed   = totals?.totalDr - totals?.totalCr; // positive = we owe carriers
   const sign   = owed >= 0 ? '—' : '+';
   return (
-    <PageHero
-      variant="dark"
-      icon={<Building2 size={22}/>}
-      tag="LAMHA · CARRIERS OVERVIEW"
-      title="شركات الشحن — كشف موحّد"
-      stats={[
-        { label: 'المطلوب منّا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
-        { label: 'المدفوع/لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
-        {
-          label: owed >= 0 ? 'نحن مدينون' : 'الشركات مدينة',
-          value: loading ? '…' : `${sign} ${fmtCompact(Math.abs(owed))} ر.س`,
-          big: true,
-          color: owed >= 0 ? '#FCA5A5' : '#86EFAC',
-        },
-      ]}
-    />
+    <div className="carriers-hub-summary">
+      <PageHero
+        variant="dark"
+        icon={<Building2 size={22}/>}
+        tag="LAMHA · CARRIERS OVERVIEW"
+        title="شركات الشحن — كشف موحّد"
+        subtitle={loading
+          ? 'جارٍ تحميل حالة الشركات…'
+          : `${carrierCount} ${carrierCount === 1 ? 'شركة' : 'شركات'} · ${totals?.pendingActions ?? 0} ${(totals?.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
+        stats={[
+          { label: 'المطلوب منّا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
+          { label: 'المدفوع/لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
+          {
+            label: owed >= 0 ? 'نحن مدينون' : 'الشركات مدينة',
+            value: loading ? '…' : `${sign} ${fmtCompact(Math.abs(owed))} ر.س`,
+            big: true,
+            color: owed >= 0 ? '#FCA5A5' : '#86EFAC',
+          },
+        ]}
+        actions={
+          <>
+            <Btn size="sm" variant="ghost" icon={<Inbox size={14}/>} onClick={onInbox}>فتح الوارد</Btn>
+            <Btn size="sm" variant="ghost" icon={<SettingsIcon size={14}/>} onClick={onManage}>إدارة الشركات</Btn>
+            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={onRefresh} disabled={loading}>تحديث الحالة</Btn>
+          </>
+        }
+      />
+    </div>
   );
 }
 
@@ -339,27 +351,14 @@ export default function CarriersHub({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <PageHeader
-        icon={<Building2 size={22}/>}
-        title="شركات الشحن"
-        subtitle={loading
-          ? 'جارٍ التحميل…'
-          : `${data.rows.length} ${data.rows.length === 1 ? 'شركة' : 'شركات'} · ${data.totals.pendingActions ?? 0} ${(data.totals.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
-        actions={
-          <>
-            <Btn size="md" variant="ghost" icon={<Inbox size={14}/>} onClick={() => navigate('/webhook')}>
-              الوارد
-            </Btn>
-            <Btn size="md" variant="ghost" icon={<SettingsIcon size={14}/>} onClick={() => navigate('/carriers')}>
-              إدارة
-            </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
-              تحديث
-            </Btn>
-          </>
-        }
+      <HeaderTotals
+        totals={data.totals}
+        loading={loading}
+        carrierCount={data.rows.length}
+        onInbox={() => navigate('/webhook')}
+        onManage={() => navigate('/carriers')}
+        onRefresh={refresh}
       />
-      <HeaderTotals totals={data.totals} loading={loading}/>
 
       {/* Carrier grid */}
       {loading ? (

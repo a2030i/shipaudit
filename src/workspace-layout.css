@@ -1,0 +1,773 @@
+/*
+ * Workspace layout contract
+ * -------------------------
+ * Final structural layer for dense operational pages. It deliberately loads
+ * after the historical theme sheets and before the Safari scroll contract.
+ * Keep page-specific colours in their feature files; spacing, tabs, tables
+ * and responsive density belong here.
+ */
+
+:root {
+  --workspace-gutter: clamp(16px, 2vw, 28px);
+  --workspace-section-gap: 14px;
+  --data-row-block: 12px;
+  --data-row-inline: 14px;
+}
+
+.center-workspace,
+.center-workspace__panel,
+.ws-tab-body,
+.ws-tab-panel {
+  min-width: 0;
+}
+
+/* Keep the active workspace visible without turning it into a second page
+   header. The top bar already owns the route title. */
+.workspace-switcher {
+  grid-template-columns: minmax(180px, .65fr) minmax(0, 2fr);
+  gap: 14px;
+  padding: 11px var(--workspace-gutter);
+  box-shadow: 0 6px 18px rgba(31, 48, 87, .065);
+}
+
+.workspace-tabs {
+  overscroll-behavior-inline: contain;
+  scroll-padding-inline: 8px;
+}
+
+.workspace-tab {
+  min-height: 40px;
+  padding: 7px 12px;
+  font-size: 11.5px;
+}
+
+.workspace-context {
+  gap: 12px;
+  margin: 10px var(--workspace-gutter) 0;
+  padding: 11px 14px;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(31, 48, 87, .045);
+}
+
+.workspace-context-copy p {
+  max-width: 68ch;
+}
+
+/* A page hero identifies the task; it must not push the actual work below the
+   fold. Actions remain obvious but use a tighter, predictable rhythm. */
+.page-hero-band {
+  gap: 14px;
+  margin-bottom: 16px;
+  padding: 16px 18px;
+  box-shadow: 0 12px 30px rgba(32, 36, 82, .18), inset 0 1px 0 rgba(255,255,255,.12);
+}
+
+.page-hero-band h1 {
+  font-size: clamp(19px, 1.7vw, 24px);
+}
+
+.page-hero-actions,
+.page-hero-actions > div {
+  min-width: 0;
+}
+
+.page-hero-actions .ui-btn {
+  min-height: 38px;
+}
+
+/* One visual contract for all table surfaces, including the many historical
+   pages that still use inline max-height wrappers. */
+.page-content :where(.m-flow, .table-scroll, .table-wrap, [class$="-table-wrap"]) {
+  max-width: 100%;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  border-radius: 12px;
+}
+
+.page-content :where(.m-flow, .table-scroll, .table-wrap, [class$="-table-wrap"]) > table {
+  margin: 0;
+}
+
+.page-content table {
+  font-variant-numeric: tabular-nums;
+}
+
+.page-content table th {
+  height: 42px;
+  padding: 10px var(--data-row-inline);
+  line-height: 1.35;
+}
+
+.page-content table td {
+  padding: var(--data-row-block) var(--data-row-inline);
+  line-height: 1.55;
+}
+
+.page-content table td > * {
+  min-width: 0;
+}
+
+.page-content table tbody tr {
+  transition: background-color .14s ease;
+}
+
+/* Large permissions catalogues use one intentional scroll region. The modal
+   header, presets and save bar remain reachable while only the catalogue
+   moves; this removes the nested-scroll trap seen on iOS. */
+.permissions-dialog .modal-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.permission-modal-toolbar,
+.permission-modal-footer {
+  flex: 0 0 auto;
+}
+
+.permission-modal-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none !important;
+  overflow-y: auto !important;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Secondary operations stay discoverable without competing with the main
+   decision. This native details menu is keyboard accessible and works with
+   touch without adding component state. */
+.page-action-menu {
+  min-width: 0;
+}
+
+.page-action-menu__trigger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 8px 13px;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 11.5px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.page-action-menu__trigger::after {
+  content: '⌄';
+  margin-inline-start: 7px;
+  color: var(--muted);
+  transition: transform .16s ease;
+}
+
+.page-action-menu.is-open .page-action-menu__trigger::after {
+  transform: rotate(180deg);
+}
+
+.page-action-menu__panel {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 1fr));
+  gap: 6px;
+  width: min(520px, 100%);
+  margin-top: 7px;
+  padding: 8px;
+  border: 1px solid var(--border2);
+  border-radius: 11px;
+  background: var(--card);
+}
+
+.page-hero-band .page-action-menu__panel {
+  border-color: rgba(255, 255, 255, .18);
+  background: rgba(19, 30, 86, .98);
+  box-shadow: 0 14px 30px rgba(12, 20, 56, .24);
+}
+
+.page-action-menu__panel .ui-btn {
+  justify-content: flex-start;
+  min-width: 0;
+}
+
+@media (min-width: 769px) {
+  .carriers-hub-summary .page-summary__grid {
+    grid-template-columns: minmax(250px, .85fr) minmax(0, 1.55fr) !important;
+    gap: 20px !important;
+  }
+
+  .carriers-hub-summary .page-summary__side {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: stretch !important;
+    gap: 8px !important;
+    width: 100%;
+  }
+
+  .carriers-hub-summary .page-summary-stat {
+    min-width: 0 !important;
+    padding: 10px 12px !important;
+    border: 1px solid rgba(255, 255, 255, .08) !important;
+    border-radius: 10px;
+  }
+
+  .carriers-hub-summary .page-summary__actions {
+    display: grid !important;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px !important;
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .carriers-hub-summary .page-summary__actions .ui-btn {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 768px) {
+  :root {
+    --workspace-gutter: 12px;
+    --workspace-section-gap: 10px;
+    --data-row-block: 7px;
+    --data-row-inline: 10px;
+  }
+
+  /* The route title is already in the mobile top bar. Showing it again above
+     the tabs delayed the first useful result by roughly one screen section. */
+  .workspace-switcher {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    display: block;
+    padding: 5px 8px;
+    background: color-mix(in srgb, var(--surface) 96%, transparent);
+    border-bottom-color: var(--border);
+    box-shadow: 0 5px 14px rgba(31, 48, 87, .055);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+
+  .workspace-switcher__copy {
+    display: none;
+  }
+
+  .workspace-tabs {
+    width: 100%;
+    margin: 0;
+    padding: 3px;
+    border-radius: 10px;
+    scroll-snap-type: inline proximity;
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+    mask-image: linear-gradient(to left, transparent 0, #000 12px, #000 calc(100% - 12px), transparent 100%);
+  }
+
+  .workspace-tab {
+    min-height: 38px;
+    padding: 7px 11px;
+    font-size: 11px;
+    scroll-snap-align: start;
+  }
+
+  .workspace-tab__icon {
+    width: 23px;
+    height: 23px;
+    border-radius: 7px;
+  }
+
+  /* Mobile keeps the purpose and expected outcome, but removes the repeated
+     explanatory paragraph. This makes the context a compact orientation row. */
+  .workspace-context {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 9px;
+    margin: 8px var(--workspace-gutter) 0;
+    padding: 9px 10px;
+    border-radius: 11px;
+    box-shadow: none;
+  }
+
+  .workspace-context-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+  }
+
+  .workspace-context-copy > span,
+  .workspace-context-copy p,
+  .workspace-context-outcome small {
+    display: none;
+  }
+
+  .workspace-context-copy > strong {
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .workspace-context-outcome {
+    grid-column: 2;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+  }
+
+  .workspace-context-outcome strong {
+    overflow: hidden;
+    color: var(--muted);
+    font-size: 10.5px;
+    font-weight: 600;
+    line-height: 1.4;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .page-hero-band {
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 12px 13px;
+    border-radius: 14px;
+    box-shadow: 0 9px 22px rgba(32, 36, 82, .16), inset 0 1px 0 rgba(255,255,255,.11);
+  }
+
+  .page-hero-main {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .hero-icon-tile {
+    width: 36px;
+    height: 36px;
+    flex-basis: 36px;
+    border-radius: 10px;
+  }
+
+  .page-hero-band h1 {
+    font-size: 18px;
+    line-height: 1.3;
+  }
+
+  .page-hero-band .hero-sub {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 3px;
+    font-size: 11px;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .page-hero-band .hero-meta {
+    max-width: 100%;
+    margin-top: 5px;
+    padding: 2px 7px;
+    font-size: 9.5px;
+    line-height: 1.35;
+    white-space: normal;
+  }
+
+  .page-hero-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px;
+    width: 100%;
+  }
+
+  .page-hero-actions > div:not(.ui-field):not(.page-action-menu) {
+    display: grid !important;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px !important;
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .page-hero-actions > .ui-field {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .page-hero-actions .ui-btn {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    padding-inline: 8px;
+    white-space: normal;
+  }
+
+  .page-hero-actions > .ui-btn:only-child {
+    grid-column: 1 / -1;
+  }
+
+  .page-hero-actions > .page-action-select,
+  .page-hero-actions > .page-action-menu {
+    width: 100%;
+    min-width: 0 !important;
+  }
+
+  .page-hero-actions > div.page-action-menu {
+    display: block !important;
+    grid-column: auto;
+  }
+
+  .page-hero-actions > .page-action-select {
+    grid-column: 1 / -1;
+    min-height: 40px;
+  }
+
+  .page-action-menu__trigger {
+    width: 100%;
+    min-height: 38px;
+    box-sizing: border-box;
+  }
+
+  .page-hero-actions > .page-action-menu.is-open {
+    grid-column: 1 / -1;
+  }
+
+  .page-action-menu__panel {
+    grid-template-columns: 1fr;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .page-action-menu__panel .ui-btn {
+    justify-content: center;
+    width: 100%;
+  }
+
+  /* KPI summaries are decision cards, not a second hero banner. On mobile
+     their title remains identifiable while the metrics form a compact grid
+     that keeps the first operational records close to the fold. */
+  .page-summary {
+    margin-bottom: 12px !important;
+    padding: 13px !important;
+    border-radius: 14px !important;
+  }
+
+  .page-summary__grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 11px !important;
+  }
+
+  .page-summary__intro {
+    align-items: flex-start !important;
+    gap: 10px !important;
+  }
+
+  .page-summary__icon {
+    width: 36px !important;
+    height: 36px !important;
+    border-radius: 10px !important;
+  }
+
+  .page-summary__tag {
+    margin-bottom: 5px !important;
+    padding: 0 !important;
+    border: 0 !important;
+    background: transparent !important;
+    font-size: 9px !important;
+    letter-spacing: .8px !important;
+  }
+
+  .page-summary__tag > span {
+    display: none;
+  }
+
+  .page-summary__title {
+    font-size: 18px !important;
+    line-height: 1.3 !important;
+  }
+
+  .page-summary__subtitle {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 3px !important;
+    font-size: 11px !important;
+    line-height: 1.45;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+
+  .page-summary__meta {
+    margin-top: 4px !important;
+    font-size: 9.5px !important;
+    line-height: 1.4;
+  }
+
+  .page-summary__side {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch !important;
+    justify-content: stretch !important;
+    gap: 6px !important;
+    width: 100%;
+  }
+
+  .page-summary-stat {
+    min-width: 0 !important;
+    padding: 8px 9px !important;
+    border: 1px solid color-mix(in srgb, currentColor 13%, transparent) !important;
+    border-radius: 10px;
+    background: color-mix(in srgb, currentColor 4%, transparent);
+  }
+
+  .page-summary-stat__label {
+    overflow: hidden;
+    margin-bottom: 4px !important;
+    font-size: 9.5px !important;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap !important;
+  }
+
+  .page-summary-stat__value {
+    font-size: 15px !important;
+    line-height: 1.25 !important;
+    overflow-wrap: anywhere;
+    white-space: normal !important;
+  }
+
+  .page-summary-stat.is-big .page-summary-stat__value {
+    font-size: 17px !important;
+  }
+
+  .page-summary-stat__hint {
+    margin-top: 4px !important;
+    font-size: 9.5px !important;
+    line-height: 1.4;
+  }
+
+  .page-summary__actions {
+    display: grid !important;
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px !important;
+    width: 100%;
+    margin: 0 !important;
+  }
+
+  .carriers-hub-summary .page-summary-stat:nth-of-type(3) {
+    grid-column: 1 / -1;
+  }
+
+  .data-confidence {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 8px !important;
+    margin: 0 0 12px !important;
+    padding: 9px 10px !important;
+    border-radius: 11px !important;
+  }
+
+  .data-confidence__main {
+    flex-basis: auto !important;
+    gap: 8px !important;
+  }
+
+  .data-confidence__icon {
+    width: 30px !important;
+    height: 30px !important;
+    border-radius: 8px !important;
+  }
+
+  .data-confidence__headline {
+    display: grid !important;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 2px 7px !important;
+  }
+
+  .data-confidence__status {
+    font-size: 11.5px !important;
+    white-space: nowrap;
+  }
+
+  .data-confidence__source {
+    overflow: hidden;
+    font-size: 10px !important;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .data-confidence__snapshot {
+    display: none;
+  }
+
+  .data-confidence__detail {
+    display: -webkit-box;
+    overflow: hidden;
+    margin-top: 2px !important;
+    font-size: 9.5px !important;
+    line-height: 1.4;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+  }
+
+  .data-confidence__actions {
+    display: grid !important;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 5px !important;
+    width: 100%;
+  }
+
+  .data-confidence__actions .ui-btn {
+    justify-content: center;
+    min-width: 0;
+    min-height: 34px;
+    padding-inline: 5px;
+    font-size: 9.5px;
+    white-space: normal;
+  }
+
+  .permissions-dialog .modal-body {
+    overflow: hidden !important;
+  }
+
+  .permission-modal-toolbar {
+    position: static !important;
+    padding-top: 0 !important;
+  }
+
+  .permission-modal-list {
+    padding-bottom: 8px;
+  }
+
+  /* Overrides the historical generic rule that expands every inline
+     overflow container inside a modal. Permissions intentionally own one
+     inner catalogue scroller so the save bar never leaves the viewport. */
+  .modal-overlay .permissions-dialog .permission-modal-list[style*="overflow-y: auto"] {
+    max-height: none !important;
+    overflow-y: auto !important;
+  }
+
+  .permission-modal-footer {
+    gap: 7px !important;
+    margin-top: 8px !important;
+    padding-top: 9px !important;
+    background: var(--card);
+  }
+
+  .permission-modal-footer > div:first-child {
+    display: none;
+  }
+
+  .permission-modal-footer > div:last-child {
+    display: grid !important;
+    grid-template-columns: minmax(0, .7fr) minmax(0, 1.3fr);
+    width: 100%;
+  }
+
+  .permission-modal-footer .ui-btn {
+    justify-content: center;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .zoho-section-tabs,
+  .zoho-subtabs {
+    scroll-snap-type: inline proximity;
+    overscroll-behavior-inline: contain;
+    -webkit-mask-image: linear-gradient(to left, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+    mask-image: linear-gradient(to left, transparent 0, #000 10px, #000 calc(100% - 10px), transparent 100%);
+  }
+
+  .zoho-section-tabs button,
+  .zoho-subtabs .ui-btn {
+    scroll-snap-align: start;
+  }
+
+  /* Tables without a card/compact mobile strategy remain horizontally
+     reachable inside their own surface and can no longer widen the page. */
+  .page-content table:not(.m-cards):not(.m-compact) {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Financial tables become readable records: label at the right, value at
+     the left, full-width identity line, no nested horizontal scrolling. */
+  .page-content table.m-cards tr {
+    contain: layout paint style;
+    content-visibility: auto;
+    contain-intrinsic-size: 190px;
+    margin-bottom: 8px;
+    padding: 11px 13px;
+    border-color: var(--border2);
+    border-radius: 13px;
+    box-shadow: 0 2px 8px rgba(31, 48, 87, .045);
+  }
+
+  .page-content table.m-cards td {
+    align-items: flex-start;
+    min-height: 30px;
+    gap: 12px;
+    padding: 6px 0;
+    line-height: 1.5;
+    text-align: left;
+    overflow-wrap: anywhere;
+  }
+
+  .page-content table.m-cards td::before {
+    flex: 0 0 min(38%, 128px);
+    color: var(--muted);
+    font-size: 10.5px;
+    line-height: 1.45;
+    text-align: right;
+    white-space: normal;
+  }
+
+  .page-content table.m-cards td[data-label=""] {
+    min-height: 0;
+    padding-bottom: 9px;
+    text-align: right;
+    overflow-wrap: anywhere;
+  }
+
+  .page-content table.m-cards td :where(.ui-btn, button) {
+    max-width: 100%;
+  }
+
+  .page-content table.m-compact th,
+  .page-content table.m-compact td {
+    padding: 10px 9px;
+  }
+}
+
+@media (min-width: 351px) and (max-width: 768px) {
+  .carriers-hub-summary .page-summary__actions {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+
+  .carriers-hub-summary .page-summary__actions .ui-btn {
+    min-height: 36px;
+    padding-inline: 5px;
+    font-size: 10.5px;
+  }
+}
+
+@media (max-width: 350px) {
+  .page-hero-actions,
+  .page-hero-actions > div,
+  .page-summary__side,
+  .page-summary__actions,
+  .data-confidence__actions {
+    grid-template-columns: 1fr;
+  }
+
+  .page-hero-actions > .ui-field {
+    grid-column: 1 / -1;
+  }
+
+  .page-hero-actions > .ui-btn,
+  .page-hero-actions > div > .ui-btn {
+    grid-column: 1;
+  }
+}

@@ -63,7 +63,7 @@ export default function DataConfidenceBar({
   const ToneIcon = tone.icon;
 
   return (
-    <div style={{
+    <div className="data-confidence" style={{
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       gap: 12, flexWrap: 'wrap',
       margin: '-12px 0 18px',
@@ -73,8 +73,8 @@ export default function DataConfidenceBar({
       background: 'var(--surface)',
       boxShadow: 'var(--shadow-sm)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 420px' }}>
-        <div style={{
+      <div className="data-confidence__main" style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0, flex: '1 1 420px' }}>
+        <div className="data-confidence__icon" style={{
           width: 34, height: 34, borderRadius: 9,
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           color: tone.color,
@@ -84,17 +84,17 @@ export default function DataConfidenceBar({
         }}>
           {loadingHealth ? <Spinner size={15}/> : <ToneIcon size={17}/>}
         </div>
-        <div style={{ minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-            <span style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>{tone.label}</span>
-            <span style={{ fontSize: 11, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+        <div className="data-confidence__copy" style={{ minWidth: 0 }}>
+          <div className="data-confidence__headline" style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
+            <span className="data-confidence__status" style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--text)' }}>{tone.label}</span>
+            <span className="data-confidence__source" style={{ fontSize: 11, color: 'var(--muted)', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
               <Database size={12}/> {sourceLabel}
             </span>
             {snapshotMeta && (
-              <span style={{ fontSize: 10.5, color: 'var(--muted2)', fontFamily: 'var(--font-mono)' }}>{snapshotMeta}</span>
+              <span className="data-confidence__snapshot" style={{ fontSize: 10.5, color: 'var(--muted2)', fontFamily: 'var(--font-mono)' }}>{snapshotMeta}</span>
             )}
           </div>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
+          <div className="data-confidence__detail" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
             آخر تحديث: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
             <span style={{ marginInline: 6 }}>·</span>
             آخر مزامنة: <b style={{ color: 'var(--text)' }}>{agoAr(health?.lastSyncAt)}</b>
@@ -104,7 +104,7 @@ export default function DataConfidenceBar({
         </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+      <div className="data-confidence__actions" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
         {sourcePath && (
           <Btn size="sm" variant="ghost" icon={<ExternalLink size={13}/>} onClick={() => navigate(sourcePath)}>
             فتح المصدر
