@@ -76,13 +76,15 @@ test('browser persistence strips third-party secrets and logout clears caches', 
 });
 
 test('bulk backup export is gated and browser headers are present', async () => {
-  const [settings, vercel] = await Promise.all([
+  const [settings, vercel, vite] = await Promise.all([
     read('src/pages/Settings.jsx'),
     read('vercel.json'),
+    read('vite.config.js'),
   ]);
   assert.match(settings, /can\('reports\.export'\)/);
   assert.match(vercel, /Content-Security-Policy/);
   assert.match(vercel, /X-Content-Type-Options/);
+  assert.match(vite, /base:\s*'\/'/);
 });
 
 test('spreadsheet parser is pinned to patched SheetJS release', async () => {

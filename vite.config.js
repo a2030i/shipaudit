@@ -6,7 +6,10 @@ import react from '@vitejs/plugin-react'
 // في chunks مستقلة، **وكل الصفحات تُحمَّل كسولاً** (React.lazy في App.jsx).
 export default defineConfig({
   plugins: [react()],
-  base: './',
+  // The app uses history routes (for example /employees and /settings/ai).
+  // Root-relative assets keep direct loads and browser refreshes from trying
+  // to fetch /employees/assets/* or /settings/assets/*.
+  base: '/',
   build: {
     // ⚠️ بلا هذا الفلتر يضع Vite وسوم `modulepreload` لكل chunk معرَّف في
     // manualChunks — فكانت مكتبة الإكسل (~420KB) تُنزَّل مع **شاشة الدخول**
