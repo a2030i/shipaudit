@@ -96,6 +96,18 @@ test('حالة دورة المحاسب مشتقة من السجلات وتمنع
   assert.equal(closed.completed, 7);
 });
 
+test('ملفات لمحة المتأخرة تُنسب للشهر المختار من سجل الدورة', () => {
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-06',
+    events: [
+      { stage: 'lamha_sources', source_kind: 'internal_settlement', status: 'success', created_at: '2026-08-05T10:00:00Z' },
+      { stage: 'lamha_sources', source_kind: 'merchants', status: 'success', created_at: '2026-08-05T10:05:00Z' },
+    ],
+  });
+  assert.equal(cycle.stages[3].status, 'complete');
+  assert.equal(cycle.stages[3].count, 2);
+});
+
 test('المراجعة القديمة بلا إثبات مصدر لا تظهر كمكتملة بصمت', () => {
   const cycle = deriveAccountingCycleStages({
     period: '2026-08',

@@ -454,18 +454,27 @@ export function deriveAccountingCycleStages({
     detail: shipmentImport || {},
   });
 
-  const sourceCount = Number(!!balanceSnapshot) + Number(!!merchantSnapshot);
+  const balanceEvent = latest(events.filter(event =>
+    event.stage === 'lamha_sources' && event.source_kind === 'internal_settlement' && event.status === 'success'));
+  const merchantEvent = latest(events.filter(event =>
+    event.stage === 'lamha_sources' && event.source_kind === 'merchants' && event.status === 'success'));
+  const balanceSource = balanceEvent || balanceSnapshot;
+  const merchantSource = merchantEvent || merchantSnapshot;
+  const sourceCount = Number(!!balanceSource) + Number(!!merchantSource);
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[3],
     ...(sourceCount === 2
       ? statusMeta('complete', 'كشف الحساب ودليل المتاجر محدثان')
       : sourceCount === 1
-        ? statusMeta('attention', balanceSnapshot ? 'بقي رفع دليل المتاجر' : 'بقي رفع كشف حساب لمحة')
+        ? statusMeta('attention', balanceSource ? 'بقي رفع دليل المتاجر' : 'بقي رفع كشف حساب لمحة')
         : statusMeta('pending', 'لم تُرفع ملفات لمحة المساندة')),
     count: sourceCount,
     completedCount: sourceCount,
-    last: latest([balanceSnapshot, merchantSnapshot].filter(Boolean), 'uploaded_at'),
-    detail: { balanceSnapshot, merchantSnapshot },
+    last: latest([balanceSource, merchantSource].filter(Boolean), balanceEvent || merchantEvent ? 'created_at' : 'uploaded_at'),
+    detail: {
+      balanceSnapshot: balanceSnapshot || balanceEvent,
+      merchantSnapshot: merchantSnapshot || merchantEvent,
+    },
   });
 
   stages.push({
