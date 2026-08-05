@@ -3,6 +3,45 @@ import { buildSummary } from '../engine/audit.js';
 import { SEED_CARRIERS } from '../data/carriers.js';
 import { deriveAuditType } from '../engine/audit.js';
 
+const AUDIT_SOURCE_BUCKET = 'audit-source-files';
+
+function safeAuditSourceName(name) {
+  const source = String(name || 'source-file').trim();
+  const dot = source.lastIndexOf('.');
+  const extension = dot > 0 ? source.slice(dot).toLowerCase().replace(/[^a-z0-9.]/g, '') : '';
+  const stem = (dot > 0 ? source.slice(0, dot) : source)
+    .replace(/[^A-Za-z0-9_-]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 120) || 'source-file';
+  return `${stem}${extension}`;
+}
+
+async function persistAuditSource(audit, summary) {
+  const current = audit.control ?? summary.control ?? null;
+  if (Number(current?.version) < 3 || current?.sourcePath) return current;
+  const source = audit.sourceFile;
+  if (!source || typeof source.arrayBuffer !== 'function') {
+    const error = new Error('ملف المصدر غير متاح للحفظ؛ أعد رفع الملف قبل اعتماد المراجعة');
+    error.code = 'AUDIT_SOURCE_MISSING';
+    throw error;
+  }
+  const path = `${audit.id}/${safeAuditSourceName(audit.fileName || source.name)}`;
+  const { error } = await supabase.storage.from(AUDIT_SOURCE_BUCKET).upload(path, source, {
+    upsert: true,
+    contentType: source.type || 'application/octet-stream',
+  });
+  if (error) {
+    const wrapped = new Error(`تعذّر حفظ نسخة ملف المراجعة الأصلية: ${error.message}`);
+    wrapped.code = 'AUDIT_SOURCE_UPLOAD_FAILED';
+    throw wrapped;
+  }
+  return {
+    ...current,
+    sourcePath: path,
+    sourceStoredAt: new Date().toISOString(),
+  };
+}
+
 // ── Carriers ──────────────────────────────────────────────────────────────────
 
 export async function loadCarriers() {
@@ -209,13 +248,25 @@ function toShipmentRow(auditId, carrierId, r) {
     status:          r.status || 'ok',
     issue_count:     Array.isArray(r.issues) ? r.issues.length : 0,
     issues:          Array.isArray(r.issues) ? r.issues : [],
-    // Keep the full breakdowns (invoiced / expected / diffs + flags)
-    // for the drill-down panel — but only as JSONB on the row that
-    // actually has issues; clean rows store an empty object.
-    detail: r.status === 'ok' ? {} : {
+    // Keep a compact pricing proof for clean rows and the full breakdown for
+    // problem rows. This preserves auditability without inflating 500K-row
+    // reviews with unnecessary context.
+    detail: r.status === 'ok' ? {
+      invoiced: { total: Number(r.invoiced?.total) || 0, tax: Number(r.invoiced?.tax) || 0 },
+      expected: { total: Number(r.expected?.total) || 0 },
+      diffs: { total: Number(r.diffs?.total) || 0 },
+      contractId:  r.contractId || null,
+      contractLabel: r.contractLabel || '',
+      statedTotal: r.statedTotal,
+      grossTotal:  r.grossTotal,
+    } : {
       invoiced:    r.invoiced,
       expected:    r.expected,
       diffs:       r.diffs,
+      contractId:  r.contractId || null,
+      contractLabel: r.contractLabel || '',
+      statedTotal: r.statedTotal,
+      grossTotal:  r.grossTotal,
       destCity:    r.destCity,
       origin:      r.origin,
       billingType: r.billingType,
@@ -298,11 +349,26 @@ export async function saveAuditToDB(audit, userId) {
     }
   }
 
+  const persistedControl = await persistAuditSource(audit, summary);
+  if (persistedControl) {
+    audit.control = persistedControl;
+    summary.control = persistedControl;
+  }
+
   // Honor review status from the audit object so the
   // "approve-while-saving-the-draft" flow actually flips
   // review_status='approved' in the same upsert. Old callers that
   // don't set audit.reviewStatus get the table default ('pending').
   const rs = audit.reviewStatus;
+  if (rs === 'approved') {
+    const gate = evaluateApprovalGate(audit);
+    if (!gate.canApprove) {
+      const error = new Error(gate.errors.map(item => item.message).join(' / ') || 'المراجعة لا تجتاز بوابة الاعتماد');
+      error.code = 'APPROVAL_BLOCKED';
+      error.errors = gate.errors;
+      throw error;
+    }
+  }
   const reviewFields = rs ? {
     review_status:   rs,
     approved_at:     rs === 'approved' ? (audit.approvedAt || new Date().toISOString()) : null,
@@ -353,7 +419,7 @@ export async function saveAuditToDB(audit, userId) {
     audit_type:     auditType,
     content_hash:   contentHash,
     results:        legacyResultsSlim,
-    col_map:        audit.colMap   ?? {},
+    col_map:        { ...(audit.colMap ?? {}), __control: persistedControl ?? audit.control ?? summary.control ?? null },
     created_by:     userId,
     created_at:     audit.createdAt ?? new Date().toISOString(),
   }, { onConflict: 'id' });
@@ -502,30 +568,39 @@ export async function findCrossAuditDuplicates({ carrierId, awbsByClass, exclude
 export async function loadAuditsFromDB(limit = 50) {
   const { data, error } = await supabase
     .from('audits')
-    .select('id, carrier_id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at, review_status, approved_at, rejected_reason')
+    .select('id, carrier_id, carrier_name, contract_label, file_name, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, audit_type, created_at, review_status, approved_at, rejected_reason, col_map')
     .order('created_at', { ascending: false })
     .limit(limit);
   if (error) throw error;
 
-  return (data ?? []).map(row => ({
-    id:            row.id,
-    carrierId:     row.carrier_id,
-    carrierName:   row.carrier_name,
-    contractLabel: row.contract_label,
-    fileName:      row.file_name,
-    period:        row.period,
-    rowCount:      row.row_count,
-    issueCount:    row.issue_count,
-    totalExpected: row.total_expected,
-    totalBilled:   row.total_billed,
-    totalTax:      row.total_tax,
-    diff:          row.diff,
-    auditType:     row.audit_type,
-    date:          row.created_at,
-    reviewStatus:  row.review_status ?? 'pending',
-    approvedAt:    row.approved_at,
-    rejectedReason: row.rejected_reason,
-  }));
+  return (data ?? []).map(row => {
+    const control = row.col_map?.__control ?? null;
+    const verified = Number(control?.version) >= 3 && control?.valid === true
+      && !!control?.sourceHash && !!control?.sourcePath
+      && !!row.file_name && !!row.contract_label;
+    return ({
+      id:            row.id,
+      carrierId:     row.carrier_id,
+      carrierName:   row.carrier_name,
+      contractLabel: row.contract_label,
+      fileName:      row.file_name,
+      period:        row.period,
+      rowCount:      row.row_count,
+      issueCount:    row.issue_count,
+      totalExpected: row.total_expected,
+      totalBilled:   row.total_billed,
+      totalTax:      row.total_tax,
+      diff:          row.diff,
+      auditType:     row.audit_type,
+      date:          row.created_at,
+      reviewStatus:  row.review_status ?? 'pending',
+      approvedAt:    row.approved_at,
+      rejectedReason: row.rejected_reason,
+      colMap:        row.col_map ?? {},
+      control,
+      verificationStatus: verified ? 'verified' : 'legacy_unverified',
+    });
+  });
 }
 
 // Reverse of toShipmentRow — rebuild the engine result row from a
@@ -569,6 +644,10 @@ function fromShipmentRow(r) {
     },
     issues:        Array.isArray(r.issues) ? r.issues : [],
     crossAuditDup: d.crossAuditDup || 0,
+    contractId:    d.contractId || null,
+    contractLabel: d.contractLabel || '',
+    statedTotal:   d.statedTotal ?? null,
+    grossTotal:    d.grossTotal ?? null,
   };
 }
 
@@ -638,6 +717,12 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
   const issueCount = data.issue_count ?? rebuilt.total - rebuilt.ok;
   const okCount    = Math.max(0, (data.row_count || rebuilt.total) - issueCount);
 
+  const control = data.col_map?.__control ?? null;
+  const verificationStatus = Number(control?.version) >= 3 && control?.valid === true
+    && !!data.file_name && !!data.contract_label
+    ? 'verified'
+    : 'legacy_unverified';
+
   return {
     id:            data.id,
     carrierId:     data.carrier_id,
@@ -657,6 +742,8 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
     auditType:     data.audit_type,
     results,
     colMap:        data.col_map ?? {},
+    control,
+    verificationStatus,
     date:          data.created_at,
     reviewStatus:  data.review_status ?? 'pending',
     approvedAt:    data.approved_at,
@@ -676,6 +763,7 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
       driftTax:      Number(data.drift_tax)      || 0,
       contractLabel: data.contract_label,
       fileName:      data.file_name,
+      control:       data.col_map?.__control ?? null,
     },
   };
 }
@@ -689,6 +777,32 @@ export function evaluateApprovalGate(audit) {
   const warnings = [];
   const s = audit?.summary || {};
 
+  const totalRows = Number(s.total ?? audit?.rowCount ?? audit?.results?.length ?? 0);
+  if (totalRows <= 0) {
+    errors.push({ code: 'empty_audit', message: 'لا توجد شحنات صالحة يمكن اعتمادها' });
+  }
+
+  const unresolvedCount = Number(s.unknown ?? 0);
+  if (unresolvedCount > 0) {
+    errors.push({
+      code: 'unresolved_rows',
+      message: `${unresolvedCount} شحنة بلا عقد ساري أو مسار تسعير واضح`,
+    });
+  }
+
+  const control = audit?.control ?? s.control ?? audit?.colMap?.__control;
+  if (!control || Number(control.version) < 3) {
+    errors.push({
+      code: 'missing_audit_proof',
+      message: 'لا يوجد إثبات تدقيق عقدي حديث لهذا الملف؛ أعد رفعه من مسار المراجعة الآمن',
+    });
+  } else if (control?.valid !== true) {
+    const details = Array.isArray(control.errors) && control.errors.length
+      ? control.errors.join('، ')
+      : 'إجمالي ورقة التفاصيل لا يطابق ملخص شركة الشحن';
+    errors.push({ code: 'statement_control_failed', message: details });
+  }
+
   const mismatchCount = Number(s.mismatch ?? audit?.mismatchCount ?? 0);
   if (mismatchCount > 0) {
     errors.push({
@@ -697,7 +811,9 @@ export function evaluateApprovalGate(audit) {
     });
   }
 
-  const driftPre = Number(s.driftPreTax ?? audit?.driftPreTax ?? Math.abs((s.totalBilled || 0) - (s.totalExpected || 0)));
+  // Always recompute from the authoritative totals. Some legacy rows stored a
+  // stale drift_pre_tax=0 even when billed and expected totals differed.
+  const driftPre = +Math.abs(Number(s.totalBilled || 0) - Number(s.totalExpected || 0)).toFixed(2);
   if (driftPre > APPROVAL_DRIFT_TOLERANCE_PRE_TAX) {
     errors.push({
       code: 'drift_pre_tax',
@@ -1101,4 +1217,26 @@ export async function deleteAuditFromDB(id) {
   }
   const { error } = await supabase.from('audits').delete().eq('id', id);
   if (error) throw error;
+  const { data: files } = await supabase.storage.from(AUDIT_SOURCE_BUCKET).list(id);
+  if (files?.length) {
+    await supabase.storage.from(AUDIT_SOURCE_BUCKET)
+      .remove(files.map(file => `${id}/${file.name}`));
+  }
+}
+
+export async function downloadAuditSource(audit) {
+  const path = audit?.control?.sourcePath;
+  if (!path) throw new Error('لا توجد نسخة محفوظة من ملف المصدر لهذه المراجعة القديمة');
+  const { data, error } = await supabase.storage.from(AUDIT_SOURCE_BUCKET).download(path);
+  if (error) throw error;
+  if (typeof document === 'undefined') return data;
+  const url = URL.createObjectURL(data);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = audit.fileName || path.split('/').pop() || 'audit-source';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+  return data;
 }

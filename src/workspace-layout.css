@@ -741,6 +741,439 @@
   }
 }
 
+/* ── دورة تشغيل المحاسب ───────────────────────────────────────────────
+   مركز واحد للمسار الشهري. تبقى حاوية PageSlot هي المالكة للتمرير؛
+   لا overflow عمودي ولا حشو Safari خاص بهذه الصفحة. */
+.accounting-cycle-page {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+}
+
+.accounting-cycle-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.accounting-cycle-header-actions label {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px;
+  border: 1px solid rgba(255,255,255,.22);
+  border-radius: 10px;
+  background: rgba(255,255,255,.1);
+  color: #fff;
+}
+
+.accounting-cycle-header-actions input {
+  width: 132px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  color-scheme: dark;
+}
+
+.accounting-cycle-summary {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.3fr) auto;
+  align-items: center;
+  gap: 18px;
+  padding: 18px 20px !important;
+}
+
+.accounting-cycle-summary__copy {
+  display: grid;
+  gap: 4px;
+}
+
+.accounting-cycle-summary__copy > span,
+.accounting-cycle-summary__copy small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.accounting-cycle-summary__copy strong {
+  color: var(--text);
+  font-size: 17px;
+}
+
+.accounting-cycle-summary__progress {
+  height: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+}
+
+.accounting-cycle-summary__progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--accent));
+  transition: width .24s ease;
+}
+
+.accounting-cycle-summary__percent {
+  color: var(--green);
+  font-family: var(--font-mono);
+  font-size: 21px;
+}
+
+.accounting-cycle-layout {
+  display: grid;
+  grid-template-columns: minmax(390px, .9fr) minmax(420px, 1.25fr);
+  gap: 16px;
+  align-items: start;
+  min-width: 0;
+}
+
+.accounting-cycle-list {
+  display: grid;
+  gap: 9px;
+  min-width: 0;
+}
+
+.accounting-cycle-stage-wrap {
+  min-width: 0;
+}
+
+.accounting-cycle-stage {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 15px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r-lg);
+  background: var(--card);
+  box-shadow: var(--shadow-sm);
+  color: var(--text);
+  text-align: right;
+  cursor: pointer;
+  font: inherit;
+  transition: border-color .16s, box-shadow .16s, transform .16s;
+}
+
+.accounting-cycle-stage:hover,
+.accounting-cycle-stage.is-selected {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border2));
+  box-shadow: var(--shadow-md);
+}
+
+.accounting-cycle-stage:hover { transform: translateY(-1px); }
+
+.accounting-cycle-stage__index {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--stage-tone) 12%, transparent);
+  color: var(--stage-tone);
+  border: 1px solid color-mix(in srgb, var(--stage-tone) 28%, transparent);
+  font-family: var(--font-mono);
+  font-weight: 800;
+}
+
+.accounting-cycle-stage__body {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.accounting-cycle-stage__title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13.5px;
+  font-weight: 800;
+}
+
+.accounting-cycle-stage__reason,
+.accounting-cycle-stage__last {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.accounting-cycle-stage__last {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.accounting-cycle-stage__last b {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text2);
+}
+
+.accounting-cycle-stage__status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  color: var(--stage-tone);
+  background: color-mix(in srgb, var(--stage-tone) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--stage-tone) 24%, transparent);
+  font-size: 10.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.accounting-cycle-detail {
+  min-width: 0;
+}
+
+.accounting-cycle-detail--desktop {
+  position: sticky;
+  top: 10px;
+  padding: 22px !important;
+}
+
+.accounting-cycle-detail--mobile { display: none; }
+
+.accounting-cycle-detail__head {
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border2);
+}
+
+.accounting-cycle-detail__head > span {
+  color: var(--accent);
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
+.accounting-cycle-detail__head h2 {
+  margin: 5px 0;
+  color: var(--text);
+  font-size: 20px;
+}
+
+.accounting-cycle-detail__head p,
+.accounting-cycle-help,
+.accounting-cycle-action-card p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.75;
+}
+
+.accounting-cycle-help { margin-bottom: 14px; }
+
+.accounting-cycle-action-card {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border-radius: var(--r-lg);
+  background: var(--surface2);
+  border: 1px solid var(--border2);
+}
+
+.accounting-cycle-action-card h3,
+.accounting-cycle-preview h3 {
+  margin: 0;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.accounting-cycle-action-card .ui-btn { justify-self: start; }
+
+.accounting-cycle-sources {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.accounting-cycle-source {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border2);
+  border-radius: var(--r-lg);
+  background: var(--surface2);
+}
+
+.accounting-cycle-source.is-done {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border2));
+}
+
+.accounting-cycle-source__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.accounting-cycle-source__head > div {
+  display: grid;
+  gap: 3px;
+}
+
+.accounting-cycle-source__head strong { font-size: 13px; }
+.accounting-cycle-source__head span { color: var(--muted); font-size: 10.5px; }
+.accounting-cycle-source .ui-card { padding: 20px !important; }
+
+.accounting-cycle-preview {
+  display: grid;
+  gap: 13px;
+}
+
+.accounting-cycle-preview__stats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.accounting-cycle-preview__stats span {
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.accounting-cycle-preview__stats b {
+  display: block;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 16px;
+}
+
+.accounting-cycle-preview__range {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.accounting-cycle-warning {
+  padding: 11px 13px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, transparent);
+  color: var(--gold-ink, var(--text));
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.accounting-cycle-actions,
+.accounting-cycle-embedded__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.accounting-cycle-embedded {
+  min-width: 0;
+}
+
+.accounting-cycle-embedded__bar {
+  margin-bottom: 12px;
+}
+
+.accounting-cycle-loading {
+  min-height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: var(--muted);
+}
+
+@media (max-width: 1040px) {
+  .accounting-cycle-layout {
+    grid-template-columns: minmax(330px, .8fr) minmax(360px, 1fr);
+  }
+
+  .accounting-cycle-sources { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .accounting-cycle-page { gap: 12px; }
+
+  .accounting-cycle-header-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  .accounting-cycle-header-actions label,
+  .accounting-cycle-header-actions .ui-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .accounting-cycle-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    padding: 15px !important;
+  }
+
+  .accounting-cycle-summary__progress {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .accounting-cycle-summary__copy strong { font-size: 15px; }
+  .accounting-cycle-summary__copy small { line-height: 1.55; }
+
+  .accounting-cycle-layout { display: block; }
+  .accounting-cycle-detail--desktop { display: none; }
+  .accounting-cycle-detail--mobile {
+    display: block;
+    margin-top: 7px;
+    padding: 14px;
+    border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--border2));
+    border-radius: var(--r-lg);
+    background: var(--card);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .accounting-cycle-stage {
+    grid-template-columns: 34px minmax(0, 1fr);
+    padding: 13px 12px;
+    gap: 10px;
+  }
+
+  .accounting-cycle-stage__index {
+    width: 32px;
+    height: 32px;
+    border-radius: 9px;
+  }
+
+  .accounting-cycle-stage__status {
+    grid-column: 2;
+    justify-self: start;
+  }
+
+  .accounting-cycle-stage__last { display: grid; }
+  .accounting-cycle-stage__last b { max-width: 240px; }
+  .accounting-cycle-sources,
+  .accounting-cycle-preview__stats { grid-template-columns: 1fr; }
+
+  .accounting-cycle-action-card .ui-btn,
+  .accounting-cycle-actions .ui-btn { width: 100%; justify-content: center; }
+
+  .accounting-cycle-detail--mobile .page-hero-band,
+  .accounting-cycle-detail--mobile .page-summary { margin-inline: 0; }
+}
+
 @media (min-width: 351px) and (max-width: 768px) {
   .carriers-hub-summary .page-summary__actions {
     grid-template-columns: repeat(3, minmax(0, 1fr)) !important;

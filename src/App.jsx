@@ -60,6 +60,7 @@ const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
 const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
 const Marketers = lazy(() => import('./pages/Marketers.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
+const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
 //
@@ -92,6 +93,8 @@ const ROUTE_ITEMS = [
   { id: 'overview',  path: '/overview',  label: 'الرئيسية',      icon: LayoutDashboard, pinned: true, permKey: 'overview.view' },
   // "شاشة الصباح" — every decision signal across the app in one screen.
   { id: 'decisions', path: '/decisions', label: 'لوحة القرارات', icon: Gauge,          pinned: true, permKey: 'overview.view' },
+  { id: 'accounting-cycle', path: '/accounting-cycle', label: 'دورة تشغيل المحاسب', icon: ClipboardList, section: 'money', navOrder: 5,
+    permAny: ['audits.view', 'audits.create', 'internal_exports.view', 'uploads.view', 'cod.view'] },
   // ── نظام شركات الشحن — مرتّب بتدفّق العمل اليومي: استقبال → تدقيق → حسابات ──
   // مراجعة المسميات (2026-07-15، طلب المستخدم): لغة إنسان عادي — لا «مطابقات/دفتر/تدفّق».
   { id: 'hub',          path: '/hub',               label: 'نظرة الناقلين',   icon: Building2,  section: 'carriers', navOrder: 10, permKey: 'carriers.view',
@@ -317,7 +320,7 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/accounting-cycle'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -779,6 +782,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/work-agents'} scroll>
               <WorkAgents isActive={pathname==='/work-agents'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/accounting-cycle'} scroll>
+              <AccountingCycle carriers={carriers}/>
             </PageSlot>
 
             {/* المسار القديم كان يكرر التحصيل والمبيعات في قائمة واحدة غامضة.

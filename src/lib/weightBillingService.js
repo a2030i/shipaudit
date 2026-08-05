@@ -128,8 +128,13 @@ export async function loadAuditsForExport(exportId) {
 }
 
 // ─── core action ────────────────────────────────────────────────────────────
-export async function exportPendingExcessWeights({ carriers, userId, trigger = 'manual' } = {}) {
-  const pending = await loadPendingAuditsForBilling();
+export async function exportPendingExcessWeights({ carriers, userId, trigger = 'manual', period = null } = {}) {
+  const allPending = await loadPendingAuditsForBilling();
+  // مركز دورة المحاسب يصدّر شهره فقط. بقية نقاط الاستدعاء القديمة لا
+  // تمرّر period وتحافظ على سلوك «كل المعلّق» كما كان.
+  const pending = period
+    ? allPending.filter(a => String(a.period || '') === String(period))
+    : allPending;
   if (!pending.length) {
     return { ok: false, reason: 'empty', count: 0, auditCount: 0 };
   }

@@ -17,7 +17,10 @@ const TRACKED_FIELDS = [
   'label', 'startDate', 'endDate',
   'rss', 'rssFixed', 'rssStartDate', 'rssEndDate',
   'fuelPct', 'fuelBase', 'fuelStartDate', 'fuelEndDate', 'fuelHistory',
-  'codFee', 'pricing', 'notes',
+  'codFee', 'pricing', 'pricingKey',
+  'priceFromContract', 'inboundPassthrough', 'codFeePassthrough',
+  'fuelPassthrough', 'deliveryInclusiveVat', 'posFeeOnCod', 'posFeePct',
+  'excessPerKg', 'excessUnit', 'notes',
 ];
 
 function diffContract(before, after) {

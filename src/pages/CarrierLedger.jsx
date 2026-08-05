@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Search, RefreshCw, Link2, FileText, Upload, Download, BookOpen } from 'lucide-react';
+import { Search, RefreshCw, Link2, FileText, Download, BookOpen } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
@@ -23,14 +23,7 @@ import {
   loadCreditCandidates,
   logActivity,
 } from '../lib/carrierStatementsService.js';
-import { loadCarriers, loadAuditsFromDB, saveAuditToDB, applyCrossAuditDuplicates } from '../lib/coreService.js';
-import {
-  detectHeaderRow, buildHeaders, detectColumns, mapRows, auditAll, buildSummary,
-  deriveAuditType,
-} from '../engine/audit.js';
-import { aiAnalyzeFile } from '../engine/openrouter.js';
-import { loadSettings } from '../data/carriers.js';
-import { useAuth } from '../lib/auth.jsx';
+import { loadAuditsFromDB } from '../lib/coreService.js';
 
 // ─── Status meta ───────────────────────────────────────────────────────────
 const STATUS_META = {
@@ -1331,17 +1324,32 @@ function validateAuditLink(op, audit, opts = {}) {
         `كل مراجعة تُربط بعملية واحدة فقط.`,
     };
   }
-  // Rule 2 — clean audit (overridable: user can force-link with a warning)
+  // Rule 2 — only audits produced by the contract-first wizard may be linked.
+  // Historical rows without a v3 control proof remain visible for reference,
+  // but cannot become accounting evidence retroactively.
+  const control = audit.control ?? audit.colMap?.__control ?? null;
+  const verified = audit.verificationStatus === 'verified'
+    || (Number(control?.version) >= 3 && control?.valid === true);
+  if (!verified) {
+    return {
+      ok: false,
+      code: 'missing_verification_proof',
+      overridable: false,
+      reason: 'مراجعة قديمة بلا إثبات احتساب من العقد. أعد رفع الملف من صفحة «رفع ومراجعة الفواتير».',
+    };
+  }
+  // Rule 3 — every row must be clean. A financial mismatch is not an
+  // exception that can be approved from this secondary screen.
   if (issueCount > 0) {
     return {
       ok: false,
       code: 'has_issues',
-      overridable: true,
+      overridable: false,
       reason: `المراجعة فيها ${issueCount} فرق — لا يمكن ربطها قبل تصفير الفروق.`,
       issueCount,
     };
   }
-  // Rule 3 — amount matches the statement (overridable)
+  // Rule 4 — the independently audited gross must equal the statement.
   if (Math.abs(auditBilledGross - opAmount) > LINK_AMOUNT_TOLERANCE) {
     const taxShown = auditTax != null
       ? Number(auditTax).toFixed(2)
@@ -1350,7 +1358,7 @@ function validateAuditLink(op, audit, opts = {}) {
     return {
       ok: false,
       code: 'amount_mismatch',
-      overridable: true,
+      overridable: false,
       reason:
         `المبلغ لا يطابق الكشف.\n` +
         `الكشف: ${opAmount.toFixed(2)} ر.س · ` +
@@ -1364,20 +1372,13 @@ function validateAuditLink(op, audit, opts = {}) {
 
 // ── LinkAuditModal — pick or upload an audit to attach to this operation ──
 function LinkAuditModal({ op, carrierName, onClose, onLink }) {
-  const { user } = useAuth();
   const navigate = useNavigate();
   const [audits, setAudits]   = useState(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch]   = useState('');
-  const [uploading, setUploading] = useState(false);
-  const [uploadStatus, setUploadStatus] = useState('');
   // Map(audit_id → { opId, docNo, carrierId }) — every audit currently linked
   // to ANY operation. Used to enforce one-audit-one-operation in Rule 1.
   const [linkedIndex, setLinkedIndex] = useState(new Map());
-  // When the user clicks an audit that fails an overridable rule, we
-  // park it here and render a confirmation panel instead of routing
-  // straight to onLink. Cleared when they confirm or cancel.
-  const [overrideAudit, setOverrideAudit] = useState(null); // { audit, verdict }
 
   useEffect(() => {
     Promise.all([loadAuditsFromDB(200), loadLinkedAuditIndex().catch(() => new Map())])
@@ -1423,152 +1424,6 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
     );
   }, [audits, search, linkedIndex]);
 
-  // ── Inline upload: read Excel → audit → save → link to this operation ──
-  const handleInlineUpload = async (file) => {
-    if (!file) return;
-    setUploading(true);
-    setUploadStatus('قراءة الملف...');
-    try {
-      // 1. Find the carrier from the database (need the contract for pricing)
-      const carriers = await loadCarriers();
-      const carrier = carriers.find(c =>
-        c.id === op.carrier_id
-        || (c.name && c.name === carrierName)
-        || (c.name && carrierName && c.name.toLowerCase().includes(carrierName.toLowerCase()))
-      ) || carriers[0];
-      if (!carrier) throw new Error('شركة الشحن غير معرّفة في النظام');
-
-      // 2. Read Excel
-      const buf = await file.arrayBuffer();
-      const wb = XLSX.read(buf, { type: 'array' });
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const allRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
-      if (!allRows.length) throw new Error('الملف فارغ');
-
-      // 3. Detect columns — prefer AI when configured, else regex.
-      let headerRow = detectHeaderRow(allRows);
-      let headers   = buildHeaders(allRows[headerRow]);
-      let colMap    = detectColumns(headers);
-      const settings = loadSettings();
-      if (settings.openrouterKey) {
-        setUploadStatus('✨ AI يعيّن الأعمدة...');
-        try {
-          const aiResult = await aiAnalyzeFile(allRows);
-          if (aiResult) {
-            headerRow = Math.min(aiResult.headerRow ?? headerRow, allRows.length - 2);
-            headers   = buildHeaders(allRows[headerRow]);
-            const merged = { ...detectColumns(headers) };
-            for (const [field, col] of Object.entries(aiResult.colMap || {})) {
-              if (col && headers.includes(col)) merged[field] = col;
-              else if (col === null)             merged[field] = null;
-            }
-            colMap = merged;
-          }
-        } catch { /* AI optional — fall through to regex */ }
-      }
-
-      // 4. Build rows + audit
-      setUploadStatus('جارٍ التدقيق...');
-      const data = allRows.slice(headerRow + 1)
-        .filter(row => row && row.some(v => v !== null && v !== '' && v !== undefined))
-        .map(row => Object.fromEntries(headers.map((h, i) => [h, row[i] ?? ''])));
-      const keepUnbilled = !!carrier?.contracts?.some(c => c.priceFromContract);
-      const mapped  = mapRows(data, colMap, { keepUnbilled });
-      const forDate = op.doc_date || new Date().toISOString().slice(0, 10);
-      const results = auditAll(mapped, carrier, forDate);
-      // Cross-audit duplicate check — flags AWBs that have already appeared
-      // in any past audit for this carrier (e.g. same shipment billed last
-      // month and again this month). Within-file duplicates are caught by
-      // auditAll; this catches the cross-month case.
-      setUploadStatus('فحص التكرار بين الأشهر...');
-      try { await applyCrossAuditDuplicates(results, carrier.id); }
-      catch { /* ledger lookup is best-effort — don't block the audit */ }
-      const summary = buildSummary(results);
-
-      if (!results.length) throw new Error('لم تُستخرج أي شحنة من الملف — تحقق من الأعمدة');
-
-      // 5. Persist the audit FIRST — even if it can't be linked we want it
-      // saved so the user can open it from "📋 السجل", verify the column
-      // mapping the system picked, and inspect the rows that caused the
-      // mismatch. The link gate runs AFTER save.
-      const totalBilled = results.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0);
-      const totalTax    = results.reduce((s, r) => s + (Number(r.invoiced?.tax)   || 0), 0);
-      const auditType   = deriveAuditType(results);
-      const auditId = `a_${Date.now()}`;
-      const period  = (op.doc_date || forDate).slice(0, 7);
-      const audit = {
-        id:           auditId,
-        carrierId:    carrier.id,
-        carrierName:  carrier.name,
-        period,
-        auditType,
-        fileName:     file.name,
-        rowCount:     results.length,
-        issueCount:   summary.mismatch,
-        diff:         summary.totalDiff,
-        colMap,
-        summary: { ...summary, totalBilled, totalTax },
-        results,
-        createdAt:    new Date().toISOString(),
-      };
-      await saveAuditToDB(audit, user?.id);
-
-      // 6. Validate — only NOW decide whether to actually link.
-      const verdict = validateAuditLink(op, {}, {
-        issueCount: summary.mismatch,
-        totalBilled,
-        totalTax,
-        auditType,
-      });
-      if (!verdict.ok) {
-        // Don't link — but do open the audit so the user can verify columns
-        // and see the rows that caused the difference. The audit is already
-        // in the DB and shows up in 📋 السجل.
-        toast(
-          `${verdict.reason}\n` +
-          `حُفظت المراجعة — افتح النتائج لتراجع الأعمدة والصفوف.`,
-          'error',
-        );
-        sessionStorage.setItem('lastAudit', JSON.stringify({
-          id: auditId,
-          carrierId:   carrier.id,
-          carrierName: carrier.name,
-          period,
-          fileName:    file.name,
-          rowCount:    results.length,
-          issueCount:  summary.mismatch,
-          diff:        summary.totalDiff,
-          colMap,
-          summary:     { ...summary, totalBilled },
-          results,
-          date:        audit.createdAt,
-        }));
-        onClose();
-        navigate('/results');
-        return;
-      }
-
-      // 7. Validation passed → link the just-created audit (parent
-      // re-validates with linkedIndex too). We pass tax + type so the
-      // re-validation uses the exact same gross figure we just computed.
-      await onLink(op, {
-        id:          auditId,
-        fileName:    file.name,
-        issueCount:  summary.mismatch,
-        totalBilled,
-        totalTax,
-        auditType,
-      });
-
-      toast(`تم التدقيق وربطه (${summary.mismatch} فرق · ${summary.totalDiff.toFixed(2)} ر.س)`, 'success');
-    } catch (e) {
-      console.error(e);
-      toast(`فشل: ${e.message}`, 'error');
-    }
-    setUploading(false);
-    setUploadStatus('');
-  };
-
   return (
     <Modal title="🔗 ربط مراجعة بالعملية" onClose={onClose} width={620}>
       <div style={{ marginBottom: 14, fontSize: 13, color: 'var(--muted)' }}>
@@ -1578,28 +1433,26 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
         </span>
       </div>
 
-      {/* Inline upload — bypass the wizard for one-off attachments */}
+      {/* One audited upload path only. The wizard validates the carrier,
+          effective contract, required columns, hidden monetary columns,
+          statement controls, duplicates, and source hash. */}
       <button
-        onClick={() => document.getElementById('link-audit-file').click()}
-        disabled={uploading}
+        onClick={() => {
+          onClose();
+          navigate(`/upload?carrier=${encodeURIComponent(op.carrier_id)}`);
+        }}
         style={{
           width: '100%', padding: '14px 16px', marginBottom: 12,
           background: 'color-mix(in srgb, var(--accent) 6%, transparent)',
           border: '1.5px dashed var(--accent)',
-          borderRadius: 10, cursor: uploading ? 'wait' : 'pointer',
+          borderRadius: 10, cursor: 'pointer',
           color: 'var(--accent)', fontWeight: 600, fontSize: 13,
           display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10,
           fontFamily: 'inherit',
         }}
       >
-        {uploading
-          ? <><Spinner size={14}/> {uploadStatus || 'جارٍ المعالجة...'}</>
-          : <><Upload size={16}/> ارفع فاتورة Excel وربطها مباشرة</>
-        }
+        رفع الملف عبر التدقيق العقدي الآمن
       </button>
-      <input id="link-audit-file" type="file" accept=".xlsx,.xls"
-        style={{ display: 'none' }}
-        onChange={e => { const f = e.target.files?.[0]; e.target.value = ''; if (f) handleInlineUpload(f); }}/>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '12px 0', color: 'var(--muted)', fontSize: 11 }}>
         <div style={{ flex: 1, height: 1, background: 'var(--border)' }}/>
@@ -1626,14 +1479,8 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
                 const matchHint = (a.fileName || '').includes(op.doc_no);
                 const verdict = validateAuditLink(op, a, { linkedIndex });
                 const eligible = verdict.ok;
-                // Overridable failure: clicking opens a confirmation panel
-                // instead of immediately linking. Non-overridable failures
-                // (Rule 1) stay fully disabled.
-                const overridable = !eligible && verdict.overridable;
-                const handleClick = () => {
-                  if (eligible) onLink(op, a);
-                  else if (overridable) setOverrideAudit({ audit: a, verdict });
-                };
+                const overridable = false;
+                const handleClick = () => { if (eligible) onLink(op, a); };
                 return (
                   <button
                     key={a.id}
@@ -1715,45 +1562,6 @@ function LinkAuditModal({ op, carrierName, onClose, onLink }) {
             </div>
           )
       }
-
-      {overrideAudit && (
-        <div style={{
-          marginTop: 14, padding: '14px 16px',
-          background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
-          border: '1.5px solid var(--gold)',
-          borderRadius: 11, fontSize: 13, lineHeight: 1.7,
-        }}>
-          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--gold)', marginBottom: 8 }}>
-            ⚠️ تأكيد الربط بتجاوز
-          </div>
-          <div style={{ color: 'var(--text)', fontSize: 12, marginBottom: 10 }}>
-            ستربط هذه المراجعة بالعملية رغم وجود تحقّق فاشل:
-          </div>
-          <div style={{
-            background: 'var(--card)', padding: '10px 12px', borderRadius: 8,
-            border: '1px solid var(--border)',
-            fontSize: 12, lineHeight: 1.7, color: 'var(--muted)',
-            whiteSpace: 'pre-line', marginBottom: 12,
-          }}>
-            {overrideAudit.verdict.reason}
-          </div>
-          <div style={{ color: 'var(--muted)', fontSize: 11, marginBottom: 10 }}>
-            ستُسجَّل العملية كمعتمدة، مع علامة "تم التجاوز" للمراجعة الداخلية.
-            تقدر تلغي الربط لاحقاً من نفس الصف.
-          </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-            <Btn variant="ghost" size="sm" onClick={() => setOverrideAudit(null)}>إلغاء</Btn>
-            <Btn variant="primary" size="sm"
-              onClick={async () => {
-                const a = overrideAudit.audit;
-                setOverrideAudit(null);
-                await onLink(op, a, { override: true });
-              }}>
-              تأكيد التجاوز والربط
-            </Btn>
-          </div>
-        </div>
-      )}
 
       <div style={{ display: 'flex', gap: 9, justifyContent: 'flex-end', marginTop: 14 }}>
         <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>

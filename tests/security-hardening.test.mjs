@@ -33,6 +33,16 @@ test('private storage policies require action permissions', async () => {
   assert.doesNotMatch(sql, /bucket_id = ANY .* USING \(true\)/);
 });
 
+test('audit source evidence is private and action-gated', async () => {
+  const sql = await read('supabase/migrations/20260805090000_audit_source_evidence.sql');
+  assert.match(sql, /'audit-source-files'.*false/s);
+  assert.match(sql, /crm_has_permission\('audits\.view'\)/);
+  assert.match(sql, /crm_has_permission\('audits\.create'\)/);
+  assert.match(sql, /crm_has_permission\('audits\.delete'\)/);
+  assert.doesNotMatch(sql, /using\s*\(\s*true\s*\)/i);
+  assert.doesNotMatch(sql, /with check\s*\(\s*true\s*\)/i);
+});
+
 test('legacy operational policies are replaced with action permissions', async () => {
   const sql = await read('supabase/migrations/20260803172000_complete_employee_action_rls.sql');
   assert.match(sql, /crm\.manage_deals/);

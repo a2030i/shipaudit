@@ -1428,7 +1428,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 }
 
 // ── UploadModal ────────────────────────────────────────────────────────
-function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFile, sourceEventId }) {
+export function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFile, sourceEventId }) {
   // Multi-file: each file produces its own preview (rows, dedup tags,
   // own filename). They're saved one-by-one, so each gets its own
   // upload_id and shows up as a separate row in the uploads strip.
@@ -1621,7 +1621,16 @@ function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFil
           console.warn('webhook event mark-processed (COD) failed:', err.message);
         }
       }
-      onDone();
+      onDone({
+        savedCount,
+        skippedCount,
+        fileCount: previews.length,
+        total: grandTotal,
+        direction,
+        carrier,
+        uploadDate,
+        fileNames: previews.map(p => p.file?.name).filter(Boolean),
+      });
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
     }

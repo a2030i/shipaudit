@@ -46,6 +46,7 @@ export const NAV_GROUPS = {
 export const NAV_ITEM_IA = {
   overview:          { label: 'الرئيسية', visible: true },
   decisions:         { label: 'مهام وقرارات اليوم', visible: true },
+  'accounting-cycle': { label: 'دورة تشغيل المحاسب', section: 'finance', group: 'cash_ops', order: 5, visible: true },
   hub:               { label: 'مركز شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 10, visible: true },
   drop:              { label: 'الرفع والوارد', section: 'shipping', group: 'invoice_ops', order: 20, visible: true },
   audits:            { label: 'تدقيق الفواتير', section: 'shipping', group: 'invoice_ops', order: 30, visible: true },

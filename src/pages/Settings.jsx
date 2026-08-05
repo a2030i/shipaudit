@@ -246,6 +246,7 @@ export function AuditsHistory({ onOpen, isActive = true }) {
   const scopedCarrierName = scopedCarrierId
     ? (scopedAudits[0]?.carrierName || scopedCarrierId)
     : null;
+  const legacyCount = scopedAudits.filter(a => a.verificationStatus !== 'verified').length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -258,6 +259,18 @@ export function AuditsHistory({ onOpen, isActive = true }) {
         subtitle="كل فاتورة تم تدقيقها — بحث، فلترة، فتح، ودمج للأوزان الإضافية"
         meta={`${scopedAudits.length} مراجعة في السجل`}
       />
+
+      {legacyCount > 0 && (
+        <div style={{
+          marginBottom: 14, padding: '12px 14px', borderRadius: 10,
+          background: 'color-mix(in srgb, var(--gold) 10%, transparent)',
+          border: '1px solid color-mix(in srgb, var(--gold) 40%, transparent)',
+          color: 'var(--text)', fontSize: 12.5, lineHeight: 1.7,
+        }}>
+          <strong style={{ color: 'var(--gold)' }}>{legacyCount} مراجعة قديمة بلا إثبات تدقيق عقدي.</strong>{' '}
+          تبقى للرجوع التاريخي، لكنها لا تُربط بقيد مالي ولا تدخل تصدير الأوزان حتى يُعاد رفع ملفها عبر مسار التدقيق الآمن.
+        </div>
+      )}
 
       {/* Floating bulk-action bar */}
       {selectedIds.size > 0 && (
@@ -297,7 +310,9 @@ export function AuditsHistory({ onOpen, isActive = true }) {
         {filtered => filtered.length === 0
           ? <Empty icon="🔍" title="لا توجد مراجعات مطابقة" sub="عدّل الفلاتر أو ارفع ملف جديد"/>
           : (() => {
-            const visibleIds = filtered.map(a => a.id);
+            const visibleIds = filtered
+              .filter(a => a.verificationStatus === 'verified')
+              .map(a => a.id);
             const allVisibleSelected = visibleIds.length > 0
               && visibleIds.every(id => selectedIds.has(id));
             const toggleSelectAllVisible = () => setSelectedIds(prev => {
@@ -338,11 +353,13 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                 const link       = linkedIndex.get(a.id);
                 const typeMeta   = AUDIT_TYPE_META[a.auditType] ?? AUDIT_TYPE_META.unknown;
                 const isSelected = selectedIds.has(a.id);
+                const isVerified = a.verificationStatus === 'verified';
                 const hasIssues  = (a.issueCount ?? 0) > 0;
                 const diff       = Number(a.diff ?? 0);
                 // Color the left edge by audit health: teal for clean,
                 // red for mismatches, gold when selected.
-                const stripeColor = isSelected ? 'var(--gold)'
+                const stripeColor = !isVerified ? 'var(--gold)'
+                                  : isSelected ? 'var(--gold)'
                                   : hasIssues  ? 'var(--red)'
                                   :              'var(--accent)';
                 const review = a.reviewStatus || 'pending';
@@ -375,9 +392,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                         <input
                           type="checkbox"
                           checked={isSelected}
-                          onChange={() => toggleSelect(a.id)}
-                          title="حدد لتصدير الأوزان الإضافية مدمجة"
-                          style={{ width: 16, height: 16, cursor: 'pointer', accentColor: 'var(--accent)' }}
+                          disabled={!isVerified}
+                          onChange={() => isVerified && toggleSelect(a.id)}
+                          title={isVerified ? 'حدد لتصدير الأوزان الإضافية مدمجة' : 'أعد رفع الملف أولاً لإثبات التسعير من العقد'}
+                          style={{ width: 16, height: 16, cursor: isVerified ? 'pointer' : 'not-allowed', accentColor: 'var(--accent)' }}
                         />
                         <div style={{
                           width: 44, height: 44, borderRadius: 11,
@@ -396,6 +414,18 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                       <div style={{ minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 5, flexWrap: 'wrap' }}>
                           <span style={{ fontWeight: 700, fontSize: 14.5, color: 'var(--text)' }}>{a.carrierName}</span>
+                          <span style={{
+                            display: 'inline-flex', alignItems: 'center', gap: 4,
+                            padding: '2px 9px', borderRadius: 999,
+                            background: isVerified
+                              ? 'color-mix(in srgb, var(--green) 10%, transparent)'
+                              : 'color-mix(in srgb, var(--gold) 10%, transparent)',
+                            border: `1px solid ${isVerified ? 'var(--green)' : 'var(--gold)'}`,
+                            color: isVerified ? 'var(--green)' : 'var(--gold)',
+                            fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
+                          }}>
+                            {isVerified ? '✓ موثقة من العقد' : '⚠ قديمة غير موثقة'}
+                          </span>
                           <span style={{
                             display: 'inline-flex', alignItems: 'center', gap: 4,
                             padding: '2px 9px', borderRadius: 999,
@@ -449,7 +479,11 @@ export function AuditsHistory({ onOpen, isActive = true }) {
                         border: `1px solid ${hasIssues ? 'rgba(248,113,113,.22)' : 'color-mix(in srgb, var(--accent) 22%, transparent)'}`,
                         borderRadius: 10,
                       }}>
-                        {hasIssues ? (
+                        {!isVerified ? (
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--gold)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 12 }}>
+                            <AlertTriangle size={12}/> تحتاج إعادة رفع
+                          </div>
+                        ) : hasIssues ? (
                           <>
                             <div style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: 'var(--red)', fontFamily: 'var(--font-mono)', fontWeight: 700, fontSize: 13 }}>
                               <AlertTriangle size={12}/> {a.issueCount} فرق

@@ -729,6 +729,8 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
 
   const carrier = carriers.find(c=>c.id===audit.carrierId);
   const contract = carrier ? getActiveContract(carrier, `${audit.year}-${String(audit.month).padStart(2,'0')}-01`) : null;
+  const auditControl = audit.control ?? summary.control ?? audit.colMap?.__control ?? null;
+  const displayedContractLabel = audit.contractLabel || auditControl?.contractLabels?.join(' / ') || contract?.label || '—';
 
   const handleExport = () => {
     const ok = exportAuditExcel(results, summary, audit.carrierName, audit.period, contract?.label||'—');
@@ -938,7 +940,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         <PageHeader
           icon={<ClipboardCheck size={22}/>}
           title={<>نتائج تدقيق <span style={{color:'var(--accent3)'}}>{audit.carrierName}</span></>}
-          subtitle={`${audit.period} · ${contract?.label||'—'} · ${results.length} شحنة`}
+          subtitle={`${audit.period} · ${displayedContractLabel} · ${summary.total || results.length} شحنة${audit.fileName ? ` · ${audit.fileName}` : ''}`}
           actions={<>
             <Btn size="sm" variant="ghost" onClick={onNewAudit}>+ مراجعة جديدة</Btn>
             <Btn size="sm" variant={showDetail?'outline':'ghost'} onClick={()=>setShowDetail(s=>!s)}>
@@ -970,6 +972,53 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
             </Btn>
           </>}
         />
+
+        {auditControl && (
+          <div style={{
+            marginBottom: 16, padding: '12px 16px', borderRadius: 11,
+            border: `1px solid ${auditControl.valid === false ? 'rgba(239,68,68,.35)' : 'rgba(16,185,129,.30)'}`,
+            background: auditControl.valid === false ? 'rgba(239,68,68,.05)' : 'rgba(16,185,129,.05)',
+            display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 10,
+          }}>
+            <div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>مصدر التفاصيل</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{auditControl.fileName || audit.fileName || '—'}{auditControl.detailSheet ? ` · ${auditControl.detailSheet}` : ''}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>العقد المستخدم</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>{displayedContractLabel}</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>الرقابة على إجمالي الشركة</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: auditControl.valid === false ? 'var(--red)' : 'var(--green)' }}>
+                {auditControl.declared
+                  ? (auditControl.valid === false ? 'غير مطابق — الاعتماد متوقف' : `مطابق مع ${auditControl.declared.sheetName || 'الملخص'}`)
+                  : 'لا توجد ورقة ملخص مستقلة'}
+              </div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>صفوف المصدر والمدققة</div>
+              <div style={{ fontSize: 12.5, fontWeight: 700 }}>
+                {Number(auditControl.sourceRowCount || 0).toLocaleString('en-US')} مصدر ·{' '}
+                {Number(auditControl.auditedRowCount || 0).toLocaleString('en-US')} مدققة
+                {Number(auditControl.excludedRowCount || 0) > 0
+                  ? ` · ${Number(auditControl.excludedRowCount).toLocaleString('en-US')} مستبعدة` : ''}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {!auditControl && (
+          <div style={{
+            marginBottom: 16, padding: '12px 16px', borderRadius: 11,
+            border: '1px solid color-mix(in srgb, var(--gold) 45%, transparent)',
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+            color: 'var(--text)', fontSize: 12.5, lineHeight: 1.7,
+          }}>
+            <strong style={{ color: 'var(--gold)' }}>مراجعة تاريخية غير موثقة عقديًا.</strong>{' '}
+            لا يوجد معها اسم ملف وعقد وملخص رقابي وبصمة مصدر حديثة؛ أعد رفع الملف قبل الاعتماد أو الربط المالي.
+          </div>
+        )}
 
         {/* Stats */}
         <div style={{display:'flex',gap:12,flexWrap:'wrap',marginBottom:16}}>

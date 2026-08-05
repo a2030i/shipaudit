@@ -5,6 +5,7 @@ export const PAGE_TITLES = {
   '/overview':          'الرئيسية',
   '/decisions':         'مهام وقرارات اليوم',
   '/work-agents':       'وكلاء العمل',
+  '/accounting-cycle':  'دورة تشغيل المحاسب',
   '/crm':               'إدارة المبيعات',
   '/next-actions':      'خطة المبيعات اليوم',
   '/fulfillment':       'فوترة الخدمات',

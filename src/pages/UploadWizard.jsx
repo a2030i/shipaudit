@@ -15,8 +15,9 @@ import {
 } from 'lucide-react';
 import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
-import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema } from '../engine/audit.js';
+import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema, findUnmappedMonetaryColumns } from '../engine/audit.js';
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
+import { extractWorkbookControl } from '../engine/workbookControl.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates, findSamePeriodAudits } from '../lib/coreService.js';
@@ -27,6 +28,29 @@ const MONTHS = [
   'يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر',
 ];
 const buildPeriod = (m, y) => `${MONTHS[m - 1]} ${y}`;
+
+async function sha256Hex(buffer) {
+  try {
+    const digest = await globalThis.crypto.subtle.digest('SHA-256', buffer);
+    return [...new Uint8Array(digest)].map(v => v.toString(16).padStart(2, '0')).join('');
+  } catch {
+    return '';
+  }
+}
+
+function inferPeriodFromRows(rows, fallbackMonth, fallbackYear) {
+  const counts = new Map();
+  for (const row of rows || []) {
+    const match = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(row.shipDate || ''));
+    if (!match) continue;
+    const key = `${match[1]}-${match[2]}`;
+    counts.set(key, (counts.get(key) || 0) + 1);
+  }
+  const best = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+  if (!best) return { month: fallbackMonth, year: fallbackYear, period: buildPeriod(fallbackMonth, fallbackYear), source: 'manual' };
+  const [yyyy, mm] = best[0].split('-').map(Number);
+  return { month: mm, year: yyyy, period: buildPeriod(mm, yyyy), source: 'shipment_dates', rowCount: best[1] };
+}
 
 const FIELD_META = {
   awb:             { label: 'رقم الشحنة AWB' },
@@ -46,6 +70,8 @@ const FIELD_META = {
   posAmount:       { label: 'مبلغ POS' },
   posFee:          { label: 'رسوم POS (بطاقة)' },
   excessFee:       { label: 'رسوم الوزن الزائد' },
+  statedTotal:     { label: 'إجمالي الرسوم قبل الضريبة' },
+  grossTotal:      { label: 'الإجمالي مع الضريبة' },
   tax:             { label: 'الضريبة (مبلغ)' },
   taxRate:         { label: 'نسبة الضريبة % (VAT%)' },
   serviceType:     { label: 'نوع الخدمة (Road/Air)' },
@@ -517,6 +543,8 @@ export default function UploadWizard({ carriers, onComplete }) {
   const [detectedRow,  setDetectedRow] = useState(null);
   const [aiNotes,      setAiNotes]     = useState('');
   const [missingFields,setMissingFields] = useState([]);
+  const [fileMeta,      setFileMeta]      = useState({ fileName: '', detailSheet: '', declared: null, sourceHash: '', sourceSize: 0 });
+  const [sourceFile,    setSourceFile]    = useState(null);
   // When the file came from the Webhook page (via "حفظ كمراجعة"), we
   // carry the originating webhook_events row id so AuditResults can
   // mark it processed + linked after the user approves.
@@ -564,11 +592,14 @@ export default function UploadWizard({ carriers, onComplete }) {
   };
 
   const handleFile = useCallback((file) => {
+    setSourceFile(file || null);
+    setFileMeta({ fileName: file?.name || '', detailSheet: '', declared: null, sourceHash: '', sourceSize: Number(file?.size || 0) });
     setUploading(true);
     setAiStatus('جارٍ قراءة الملف...');
     const reader = new FileReader();
     reader.onload = async (e) => {
       try {
+        const sourceHash = await sha256Hex(e.target.result);
         // ── PDF branch: Aramex detailed shipment invoice ──────────
         // The operator only receives PDF (Excel is on-request). We parse
         // the per-shipment lines and feed them through the SAME rawRows +
@@ -583,6 +614,13 @@ export default function UploadWizard({ carriers, onComplete }) {
             setUploading(false); return;
           }
           const H = { awb: 'رقم الشحنة', date: 'تاريخ الالتقاط', dest: 'الوجهة', weight: 'الوزن (كغ)', base: 'رسوم الشحن', fuel: 'الوقود+RSS', tax: 'الضريبة', svc: 'نوع الخدمة' };
+          setFileMeta({
+            fileName: file?.name || '',
+            detailSheet: 'PDF',
+            declared: header?.total != null ? { sheetName: 'PDF', totalGross: Number(header.total) || 0, totalBilled: null, totalTax: null } : null,
+            sourceHash,
+            sourceSize: Number(file?.size || 0),
+          });
           const aramexId = (carriers.find(c => /aramex|أرامكس|ارامكس/i.test(c.name))?.id) || 'c_1777506662790';
           setAllRawRows([Object.values(H), ...ships.map(s => [s.awb, s.shipDate, s.dest, s.weight, s.deliveryCharges, s.fuelSurcharge, s.tax, s.serviceType])]);
           setHeaders(Object.values(H));
@@ -635,6 +673,13 @@ export default function UploadWizard({ carriers, onComplete }) {
         });
         const chosen  = candidates[0] || { rows: [], name: wb.SheetNames[0] };
         const allRows = chosen.rows;
+        setFileMeta({
+          fileName: file?.name || '',
+          detailSheet: chosen.name || '',
+          declared: extractWorkbookControl(candidates, chosen.name),
+          sourceHash,
+          sourceSize: Number(file?.size || 0),
+        });
 
         if (!allRows.length) { toast('الملف فارغ', 'error'); setUploading(false); return; }
         if (wb.SheetNames.length > 1) {
@@ -826,11 +871,36 @@ export default function UploadWizard({ carriers, onComplete }) {
 
   const handleConfirm = async () => {
     if (!carrier) return;
+    if (!(carrier.contracts || []).length) {
+      toast('لا يمكن تدقيق هذا الناقل: لا يوجد عقد مسعّر ومسجل له', 'error');
+      return;
+    }
+    const schema = getFieldSchema(carrier, carriers);
+    const requiredMissing = schema.required.filter(field => !colMap[field]);
+    if (requiredMissing.length) {
+      toast(`لا يمكن بدء التدقيق: ${requiredMissing.length} حقل إلزامي غير معيّن`, 'error');
+      return;
+    }
+
+    const keepUnbilled = !!carrier?.contracts?.some(c => c.priceFromContract);
+    const mapped = mapRows(rawRows, colMap, { keepUnbilled });
+    if (!mapped.length) {
+      toast('لم تبقَ أي شحنة صالحة بعد قراءة الملف؛ راجع الأعمدة والصفوف', 'error');
+      return;
+    }
+    const inferred = inferPeriodFromRows(mapped, month, year);
+    const auditPeriod = inferred.period;
+    if (inferred.month !== month || inferred.year !== year) {
+      setMonth(inferred.month);
+      setYear(inferred.year);
+      toast(`تم اعتماد فترة الملف من تواريخ الشحنات: ${auditPeriod}`, 'info');
+    }
+
     // Soft same-carrier+period guard: warn before processing if a review
     // already exists for this carrier and month (the common "رفعت نفس
     // الشهر مرتين" mistake). Legitimate multi-invoice months can confirm.
     try {
-      const priors = await findSamePeriodAudits(carrier.id, period);
+      const priors = await findSamePeriodAudits(carrier.id, auditPeriod);
       if (priors.length) {
         // في الوضع الآلي: مراجعة سابقة لنفس الفترة = خطر تكرار → أوقف
         // الآلية فوراً واترك القرار للإنسان (لا window.confirm بلا مستخدم).
@@ -842,35 +912,91 @@ export default function UploadWizard({ carriers, onComplete }) {
         const p = priors[0];
         const when = p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—';
         const ok = window.confirm(
-          `⚠️ يوجد ${priors.length} مراجعة سابقة لـ«${carrier.name}» لنفس الفترة (${period}).\n` +
+          `⚠️ يوجد ${priors.length} مراجعة سابقة لـ«${carrier.name}» لنفس الفترة (${auditPeriod}).\n` +
           `الأحدث: ${p.file_name || p.id} · ${when} · ${p.row_count ?? '—'} شحنة.\n\n` +
           `إن كانت نفس الفاتورة فلا تكمل (تجنّب التكرار). متأكد تكمل؟`,
         );
         if (!ok) return;
       }
-    } catch {
-      // م12 (فحص عدائي): يدوياً الفشل غير قاتل؛ آلياً حارس معطّل = لا أتمتة
-      if (autoApproveFlag) {
-        setAutoApproveFlag(false);
-        toast('تعذّر فحص المراجعات السابقة — أُوقف الاعتماد الآلي، أكمل يدوياً', 'warn');
-        return;
-      }
+    } catch (error) {
+      setAutoApproveFlag(false);
+      toast(`تعذّر فحص المراجعات السابقة؛ أُوقف التدقيق الآمن: ${error.message || 'خطأ غير معروف'}`, 'error');
+      return;
     }
-    const forDate = `${year}-${String(month).padStart(2,'0')}-01`;
-    // Unpriced operational exports (Delex): keep zero-billed delivered rows —
-    // the contract prices them (priceFromContract), not the file.
-    const keepUnbilled = !!carrier?.contracts?.some(c => c.priceFromContract);
-    const mapped  = mapRows(rawRows, colMap, { keepUnbilled });
+    const forDate = `${inferred.year}-${String(inferred.month).padStart(2,'0')}-01`;
     const results = auditAll(mapped, carrier, forDate);
     // Cross-month duplicate check — adds issues to AWBs that were already
     // billed in a prior audit for this same carrier + billing class.
-    try { await applyCrossAuditDuplicates(results, carrier.id); }
-    catch { /* best-effort — never block the audit on a ledger query */ }
+    try {
+      await applyCrossAuditDuplicates(results, carrier.id);
+    } catch (error) {
+      toast(`تعذّر فحص تكرار الشحنات السابقة: ${error.message}`, 'error');
+      return;
+    }
     const summary = buildSummary(results);
+    const declared = fileMeta.declared;
+    const controlErrors = [];
+    const declaredDiffs = {};
+    const unmappedMonetaryColumns = findUnmappedMonetaryColumns(headers, rawRows, colMap);
+    if (unmappedMonetaryColumns.length) {
+      controlErrors.push(`أعمدة مالية غير مقروءة: ${unmappedMonetaryColumns.map(x => x.header).join('، ')}`);
+    }
+    const compare = (key, actual, tolerance, label) => {
+      const rawExpected = declared?.[key];
+      if (rawExpected == null || rawExpected === '') return;
+      const expected = Number(rawExpected);
+      if (!Number.isFinite(expected)) return;
+      const diff = +(Number(actual || 0) - expected).toFixed(2);
+      declaredDiffs[key] = diff;
+      if (Math.abs(diff) > tolerance) controlErrors.push(`${label}: فرق ${diff.toFixed(2)} ر.س بين التفاصيل والملخص`);
+    };
+    compare('totalBilled', summary.totalBilled, 0.50, 'الإجمالي قبل الضريبة');
+    compare('totalTax', summary.totalTax, 1.00, 'الضريبة');
+    compare('totalGross', summary.totalGross, 1.00, 'الإجمالي مع الضريبة');
+    // Carrier summaries count every source shipment, including zero-value
+    // returns that the audit engine intentionally excludes from pricing.
+    // Compare against source rows, then disclose the excluded count below;
+    // comparing against billable rows would falsely reject a complete file.
+    if (declared?.shipmentCount != null && Number(declared.shipmentCount) !== rawRows.length) {
+      controlErrors.push(`عدد الشحنات في الملخص (${Number(declared.shipmentCount)}) لا يطابق صفوف المصدر (${rawRows.length})`);
+    }
+    const requiresCarrierSummary = results.some(r => r.verificationMode === 'contract_summary');
+    const hasCarrierSummary = declared?.totalBilled != null || declared?.totalGross != null;
+    if (requiresCarrierSummary && !hasCarrierSummary) {
+      controlErrors.push('الملف تشغيلي بلا أسعار؛ يلزم إجمالي فاتورة الناقل لمقارنته بإجمالي العقد المحسوب');
+    }
+    const contractLabels = [...new Set(results.map(r => r.contractLabel).filter(Boolean))];
+    const control = {
+      version: 3,
+      fileName: fileMeta.fileName || '',
+      sourceHash: fileMeta.sourceHash || '',
+      sourceSize: Number(fileMeta.sourceSize || 0),
+      detailSheet: fileMeta.detailSheet || '',
+      periodSource: inferred.source,
+      period: auditPeriod,
+      declared: declared || null,
+      declaredDiffs,
+      sourceRowCount: rawRows.length,
+      auditedRowCount: mapped.length,
+      excludedRowCount: Math.max(0, rawRows.length - mapped.length),
+      statedTotalRows: mapped.filter(r => r.statedTotal != null).length,
+      mappedFields: Object.keys(colMap).filter(key => colMap[key] != null && colMap[key] !== ''),
+      unmappedMonetaryColumns,
+      requiresCarrierSummary,
+      hasCarrierSummary,
+      contractLabels,
+      valid: controlErrors.length === 0,
+      errors: controlErrors,
+    };
+    summary.control = control;
     const audit   = {
       id: `a_${Date.now()}`,
       carrierId: carrier.id, carrierName: carrier.name,
-      period, month, year, colMap, summary, results,
+      contractLabel: contractLabels.join(' / '),
+      fileName: fileMeta.fileName || '',
+      period: auditPeriod, month: inferred.month, year: inferred.year,
+      colMap, control, summary, results,
+      sourceFile,
       createdAt: new Date().toISOString(),
       // Marker: this audit lives in-memory only. AuditResults shows
       // an "اعتماد المراجعة" CTA that persists it (with review_status

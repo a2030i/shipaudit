@@ -1,0 +1,99 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  accountingPeriodBounds,
+  deriveAccountingCycleStages,
+  mapLamhaShipmentRows,
+} from '../src/lib/accountingCycleService.js';
+
+test('حساب حدود الفترة الشهرية لا يتأثر بطول الشهر', () => {
+  assert.deepEqual(accountingPeriodBounds('2026-08'), {
+    period: '2026-08',
+    periodDate: '2026-08-01',
+    start: '2026-08-01',
+    end: '2026-09-01',
+  });
+  assert.equal(accountingPeriodBounds('2026-12').end, '2027-01-01');
+});
+
+test('قارئ شحنات لمحة يعتمد أسماء الأعمدة لا ترتيبها ويحفظ الأعمدة الإضافية', () => {
+  const rows = [
+    ['عمود جديد', 'شركة الشحن', 'رقم البوليصه', 'تكلفة الشحن', 'المتجر', 'تاريخ الطلب', 'رقم الطلب', 'مبلغ الطلب'],
+    ['قيمة مهمة', 'J&T Express', 'JTE000977436241', 19, 'كنوز حضرموت', '2026-06-25 20:57:29', 'knooz-268422990', 294],
+  ];
+  const parsed = mapLamhaShipmentRows(rows, '2026-06');
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.invalidRows.length, 0);
+  assert.equal(parsed.rows[0].awb, 'JTE000977436241');
+  assert.equal(parsed.rows[0].carrier_name, 'J&T Express');
+  assert.equal(parsed.rows[0].shipping_cost, 19);
+  assert.equal(parsed.rows[0].period, '2026-06-01');
+  assert.equal(parsed.rows[0].raw['عمود جديد'], 'قيمة مهمة');
+});
+
+test('قارئ شحنات لمحة يعلن الصف غير الصالح ولا يسقطه بصمت', () => {
+  const rows = [
+    ['المتجر', 'شركة الشحن', 'رقم البوليصه', 'تاريخ الطلب', 'تكلفة الشحن'],
+    ['متجر سليم', 'سمسا', '12345', '2026-08-01', 10],
+    ['متجر ناقص', '', '', '2026-08-02', 12],
+  ];
+  const parsed = mapLamhaShipmentRows(rows, '2026-08');
+  assert.equal(parsed.rows.length, 1);
+  assert.equal(parsed.invalidRows.length, 1);
+  assert.equal(parsed.invalidRows[0].rowNumber, 3);
+  assert.ok(parsed.invalidRows[0].reasons.includes('لا يوجد رقم طلب أو شحنة'));
+  assert.ok(parsed.invalidRows[0].reasons.includes('شركة الشحن مفقودة'));
+});
+
+test('تاريخ لمحة قرب منتصف الليل يبقى في شهر المصدر ولا ينقلب بسبب UTC', () => {
+  const rows = [
+    ['المتجر', 'شركة الشحن', 'رقم البوليصه', 'تاريخ الطلب', 'تكلفة الشحن'],
+    ['متجر الليل', 'سمسا', 'MIDNIGHT-1', '2026-08-01 00:30:00', 10],
+  ];
+  const parsed = mapLamhaShipmentRows(rows, '2026-08');
+  assert.equal(parsed.rows[0].period, '2026-08-01');
+  assert.equal(parsed.rows[0]._orderDateKey, '2026-08-01');
+});
+
+test('حالة دورة المحاسب مشتقة من السجلات وتمنع الإقفال قبل اكتمال المراحل', () => {
+  const control = { version: 3, valid: true };
+  const base = {
+    period: '2026-08',
+    audits: [{
+      id: 'audit-1', review_status: 'approved', weight_billing_status: 'exported',
+      col_map: { __control: control }, created_at: '2026-08-02T10:00:00Z',
+    }],
+    weightExports: [{ audit_ids: ['audit-1'], file_name: 'weights.xlsx', created_at: '2026-08-02T11:00:00Z' }],
+    shipmentImport: { row_count: 100, uploaded_at: '2026-08-03T10:00:00Z' },
+    balanceSnapshot: { uploaded_at: '2026-08-04T10:00:00Z' },
+    merchantSnapshot: { uploaded_at: '2026-08-04T11:00:00Z' },
+    codIn: { count: 20, last: { created_at: '2026-08-05T10:00:00Z' } },
+    codOut: { count: 0, last: null },
+  };
+  const before = deriveAccountingCycleStages(base);
+  assert.equal(before.stages[0].status, 'complete');
+  assert.equal(before.stages[5].status, 'pending');
+  assert.equal(before.stages[6].status, 'blocked');
+  assert.equal(before.prerequisiteComplete, false);
+
+  const ready = deriveAccountingCycleStages({ ...base, codOut: { count: 18, last: {} } });
+  assert.equal(ready.stages[6].status, 'ready');
+  assert.equal(ready.prerequisiteComplete, true);
+
+  const closed = deriveAccountingCycleStages({
+    ...base,
+    codOut: { count: 18, last: {} },
+    cycle: { status: 'closed', closed_at: '2026-08-05T20:00:00Z' },
+  });
+  assert.equal(closed.stages[6].status, 'complete');
+  assert.equal(closed.completed, 7);
+});
+
+test('المراجعة القديمة بلا إثبات مصدر لا تظهر كمكتملة بصمت', () => {
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-08',
+    audits: [{ id: 'legacy', review_status: 'approved', weight_billing_status: 'skipped', col_map: {}, created_at: '2026-08-01' }],
+  });
+  assert.equal(cycle.stages[0].status, 'attention');
+  assert.match(cycle.stages[0].reason, /بلا إثبات مصدر/);
+});

@@ -1,5 +1,4 @@
 import { calcTotal } from './pricing.js';
-import { getActiveContract } from '../data/carriers.js';
 
 // ─── Smart header-row detection ────────────────────────────────────────────────
 // Scans the first 15 rows of a raw 2D array (from sheet_to_json header:1)
@@ -152,6 +151,11 @@ const COL_PATTERNS = {
   // pre-tax total × rate/100 — correct for both 15% domestic and 0% export.
   taxRate:         [/vat\s*%/i, /vat\s*rate/i, /tax\s*%/i, /tax\s*rate/i, /نسبة.?(?:ال)?ضريبة/i, /نسبة.?الـ?vat/i],
   serviceType:     [/service.?type/i, /نوع.?الخدمة/i, /نوع.?الشحن/i, /^type$/i, /^service$/i],
+  // Carrier-declared row totals are an independent control, not another
+  // pricing input. They expose newly-added or renamed charges that the
+  // component mapper does not know about yet.
+  statedTotal:     [/^total\s*charge$/i, /^total\s*charges$/i, /^pre.?tax\s*total$/i, /^net\s*charge$/i, /^total$/i],
+  grossTotal:      [/^receivable\s*amount$/i, /^gross\s*amount$/i, /^amount\s*including\s*(vat|tax)$/i, /^grand\s*total$/i],
   billingType:     [/billing.?type/i],
   // J&T uses "Signing status" to flag returns ("Return Sign" vs
   // "Normal Sign"). Surfaced to mapRows so we can skip returns from
@@ -159,6 +163,37 @@ const COL_PATTERNS = {
   // false-positive "favorable" diffs.
   signingStatus:   [/signing.?status/i, /حالة.?التوقيع/i, /حالة.?الشحن/i, /حالة.?التسليم/i, /^status$/i],
 };
+
+// Any non-zero monetary column that was not assigned to a known audit field
+// is a potential hidden charge.  We never silently ignore it: the upload
+// control records the column and blocks approval until it is mapped or the
+// parser is taught what the charge means.  Zero-only template columns are
+// harmless and intentionally omitted (J&T ships several of those).
+export function findUnmappedMonetaryColumns(headers, rows, colMap) {
+  const mapped = new Set(Object.values(colMap || {}).filter(v => v != null && v !== ''));
+  const moneyHeader = /(?:charge|fee|cost|surcharge|amount|total|receivable|discount|رسوم|تكلفة|مبلغ|إجمالي|خصم|ضريبة|vat|tax)/i;
+  const nonMoneyQualifier = /(?:rate|percentage|percent|%|number|no\.?|count|currency|remark|reference|status|weight|dimension|length|width|height)/i;
+  const result = [];
+
+  for (const header of headers || []) {
+    if (!header || mapped.has(header) || !moneyHeader.test(String(header))) continue;
+    if (nonMoneyQualifier.test(String(header))) continue;
+    let nonZeroCount = 0;
+    let totalAbs = 0;
+    for (const row of rows || []) {
+      const raw = row?.[header];
+      if (raw == null || raw === '') continue;
+      const value = Number(String(raw).replace(/,/g, '').trim());
+      if (!Number.isFinite(value) || Math.abs(value) <= 0.00001) continue;
+      nonZeroCount += 1;
+      totalAbs += Math.abs(value);
+    }
+    if (nonZeroCount) {
+      result.push({ header: String(header), nonZeroCount, totalAbs: +totalAbs.toFixed(4) });
+    }
+  }
+  return result;
+}
 
 // Aramex billing-type codes:
 //   ZDOI                  → domestic Saudi shipment (regular shipping)
@@ -230,36 +265,36 @@ export const CARRIER_FIELDS = {
     // its Shipper Reference holds the ORIGINAL outbound AWB — the key the
     // user's internal system needs to re-bill the merchant.
     core:     ['awb', 'shipDate', 'origin', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'serviceType', 'billingType', 'shipperRef'],
-    required: ['weight', 'deliveryCharges'],
+    required: ['awb', 'shipDate', 'weight', 'deliveryCharges'],
   },
   smsa: {
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'tax', 'taxRate', 'signingStatus'],
-    required: ['weight', 'deliveryCharges'],
+    required: ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges'],
   },
   jt: {
-    core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codPaymentMethod', 'codFee', 'tax', 'signingStatus'],
-    required: ['weight', 'deliveryCharges'],
+    core:     ['awb', 'shipDate', 'origin', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codPaymentMethod', 'codFee', 'statedTotal', 'tax', 'grossTotal', 'signingStatus'],
+    required: ['awb', 'shipDate', 'weight', 'deliveryCharges', 'statedTotal'],
   },
   imile: {
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax'],
-    required: ['weight', 'deliveryCharges'],
+    required: ['awb', 'shipDate', 'weight', 'deliveryCharges'],
   },
   delivernow: {
-    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'tax'],
-    required: ['weight', 'deliveryCharges'],
+    core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'codAmount', 'codFee', 'statedTotal', 'tax', 'grossTotal'],
+    required: ['awb', 'shipDate', 'weight', 'deliveryCharges'],
   },
   aymakan: {
     // أي مكان: Tier Price (توصيل ثابت 13) + Fuel Cost (7.5%) + Shipment Weight
     // + Cash Collected/COD Cost/POS Cost (0 للمدفوع مسبقاً) + Tax 15%.
     core:     ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges', 'fuelSurcharge', 'codAmount', 'codFee', 'posFee', 'tax', 'signingStatus'],
-    required: ['deliveryCharges'],
+    required: ['awb', 'shipDate', 'deliveryCharges'],
   },
   // Webek — تحصيل + فاتورة في ملف واحد. التوصيل ثابت حسب «النطاق» (يُمرَّر
   // كـ dest) وشامل الضريبة؛ POS = 0.8% من مبلغ التحصيل. لا وزن مفوتر (flat
   // per shipment) فالمطلوب dest + deliveryCharges فقط.
   webek: {
     core:     ['awb', 'shipDate', 'dest', 'deliveryCharges', 'excessFee', 'codAmount', 'posFee'],
-    required: ['deliveryCharges'],
+    required: ['awb', 'shipDate', 'dest', 'deliveryCharges'],
   },
   // Delex — «كشف الطلبات»: سجل تشغيلي بلا أي أسعار (Cost=0 في كل الصفوف).
   // الأسعار من العقد (priceFromContract): Barcode→awb · Region→dest ·
@@ -267,7 +302,7 @@ export const CARRIER_FIELDS = {
   // لا deliveryCharges في الملف إطلاقاً، فالمطلوب awb فقط.
   delex: {
     core:     ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'codAmount', 'signingStatus'],
-    required: ['awb'],
+    required: ['awb', 'shipDate'],
   },
   // بوليصة Boleeseh — broker that issues policies via 4 sub-carriers
   // (smsa / aramex / aymakan / jt_express). The pricing key in the
@@ -276,14 +311,14 @@ export const CARRIER_FIELDS = {
   // '_cod' suffix when the payment method is COD).
   boleeseh: {
     core:     ['awb', 'shipDate', 'subCarrier', 'weight', 'deliveryCharges', 'codAmount', 'codPaymentMethod', 'signingStatus'],
-    required: ['weight', 'deliveryCharges', 'subCarrier'],
+    required: ['awb', 'shipDate', 'weight', 'deliveryCharges', 'subCarrier'],
   },
 };
 
 // Default schema when the carrier is unknown — show everything.
 export const DEFAULT_FIELD_SCHEMA = {
   core: ['awb', 'shipDate', 'dest', 'destCity', 'weight', 'deliveryCharges', 'rss', 'fuelSurcharge', 'codAmount', 'codFee', 'posAmount', 'posFee', 'tax', 'taxRate', 'serviceType', 'billingType', 'signingStatus'],
-  required: ['weight', 'deliveryCharges'],
+  required: ['awb', 'shipDate', 'dest', 'weight', 'deliveryCharges'],
 };
 
 // Look up a field schema. Accepts either a raw carrier id (legacy
@@ -694,6 +729,14 @@ export function mapRows(raw, colMap, opts = {}) {
       shipperRef:      String(row[colMap.shipperRef] ?? '').trim(),
       // Excess-weight fee (Webek) — audited against contract.excessPerKg.
       excessFee:       parseFloat(row[colMap.excessFee] ?? 0) || 0,
+      // null means the carrier did not publish the control column. Zero is a
+      // legitimate declared value and must remain distinguishable from null.
+      statedTotal:     colMap.statedTotal && row[colMap.statedTotal] !== '' && row[colMap.statedTotal] != null
+        ? (Number.parseFloat(row[colMap.statedTotal]) || 0)
+        : null,
+      grossTotal:      colMap.grossTotal && row[colMap.grossTotal] !== '' && row[colMap.grossTotal] != null
+        ? (Number.parseFloat(row[colMap.grossTotal]) || 0)
+        : null,
     };
   });
 
@@ -721,8 +764,10 @@ export function mapRows(raw, colMap, opts = {}) {
     if (!opts.keepUnbilled && !(r.weight > 0) && !((r.deliveryCharges || 0) > 0)) return false;
     if (!isRealShipmentAwb(r.awb)) return false;
 
-    const totalBilled = (r.deliveryCharges || 0) + (r.rss || 0)
-      + (r.fuelSurcharge || 0) + (r.codFee || 0);
+    const totalBilled = r.statedTotal != null
+      ? Number(r.statedTotal)
+      : (r.deliveryCharges || 0) + (r.rss || 0)
+        + (r.fuelSurcharge || 0) + (r.codFee || 0) + (r.posFee || 0);
 
     // Returns / failed deliveries: drop unbilled rows entirely. Two
     // independent signals — either works on its own because each
@@ -787,13 +832,19 @@ export function auditRow(row, contract) {
   if (row.isCod) {
     const expectedFee = Number(contract?.codFee ?? 5);
     const invoicedFee = Number(row.codFee || 0);
-    const invoiced = { delivery: invoicedFee, rss: 0, fuel: 0, total: invoicedFee, tax: Number(row.tax) || 0 };
+    const statedTotal = row.statedTotal == null ? null : Number(row.statedTotal);
+    const invoicedTotal = Number.isFinite(statedTotal) ? statedTotal : invoicedFee;
+    const otherCharges = +(invoicedTotal - invoicedFee).toFixed(4);
+    const invoiced = { delivery: invoicedFee, rss: 0, fuel: 0, otherCharges, total: invoicedTotal, tax: Number(row.tax) || 0 };
     const expected = { delivery: expectedFee, rss: 0, fuel: 0, total: expectedFee };
-    const diffTotal = +(invoicedFee - expectedFee).toFixed(2);
+    const diffTotal = +(invoicedTotal - expectedFee).toFixed(2);
     const diffs    = { delivery: diffTotal, rss: 0, fuel: 0, total: diffTotal };
     const issues   = Math.abs(diffTotal) > TOLERANCE
       ? [{ field: 'cod', label: 'رسوم تحصيل (COD)', invoiced: invoicedFee, expected: expectedFee, diff: diffTotal }]
       : [];
+    if (Math.abs(otherCharges) > TOLERANCE) {
+      issues.push({ field: 'otherCharges', label: 'رسوم أخرى غير مفسرة', invoiced: otherCharges, expected: 0, diff: otherCharges });
+    }
     let status;
     if (Math.abs(diffTotal) <= TOLERANCE) status = 'ok';
     else if (diffTotal < 0)               status = 'favorable';
@@ -813,31 +864,43 @@ export function auditRow(row, contract) {
   if (contract?.inboundPassthrough
       && row.dest === 'Saudi Arabia'
       && KNOWN_FOREIGN_COUNTRIES.has(row.origin)) {
-    const total = +(row.deliveryCharges + row.rss + row.fuelSurcharge
+    const knownTotal = +(row.deliveryCharges + row.rss + row.fuelSurcharge
       + Number(row.codFee || 0) + Number(row.posFee || 0)).toFixed(2);
+    const total = row.statedTotal == null ? knownTotal : +Number(row.statedTotal).toFixed(2);
     const breakdown = {
       delivery: row.deliveryCharges, rss: row.rss, fuel: row.fuelSurcharge,
       codFee: Number(row.codFee || 0), posFee: Number(row.posFee || 0),
-      total,
+      otherCharges: +(total - knownTotal).toFixed(2), total,
     };
     return {
       ...row,
-      status:   'inbound',
+      status:   'unverifiable',
       isInbound: true,
       invoiced: { ...breakdown, tax: Number(row.tax) || 0 },
-      expected: { ...breakdown },
-      diffs:    { delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0, total: 0 },
-      issues:   [],
+      expected: null,
+      diffs:    null,
+      issues:   [{
+        field: 'contract',
+        label: 'تعذّر التحقق من تكلفة المرتجع الوارد',
+        invoiced: total,
+        expected: null,
+        diff: null,
+        note: 'العقد لا يحتوي تسعيرة للمسار الوارد؛ أضف تسعيرة صريحة قبل الاعتماد.',
+      }],
     };
   }
 
   const calc = calcTotal(contract, row.dest, row.weight, row.shipDate, row.serviceType, row.origin);
 
   if (!calc) {
+    const knownTotal = +(Number(row.deliveryCharges || 0) + Number(row.rss || 0)
+      + Number(row.fuelSurcharge || 0) + Number(row.codFee || 0) + Number(row.posFee || 0)).toFixed(4);
+    const invoicedTotal = row.statedTotal == null ? knownTotal : Number(row.statedTotal);
     const route = row.origin && row.origin !== 'Saudi Arabia' ? `${row.origin} → ${row.dest}` : row.dest;
     return {
       ...row,
       status: 'unknown',
+      invoiced: { delivery: Number(row.deliveryCharges || 0), rss: Number(row.rss || 0), fuel: Number(row.fuelSurcharge || 0), codFee: Number(row.codFee || 0), posFee: Number(row.posFee || 0), otherCharges: +(invoicedTotal - knownTotal).toFixed(4), total: invoicedTotal, tax: Number(row.tax) || 0 },
       expected: null,
       diff: null,
       issues: [`المسار غير موجود في العقد: ${route}${row.serviceType ? ` (${row.serviceType})` : ''}`],
@@ -865,6 +928,7 @@ export function auditRow(row, contract) {
     return {
       ...row,
       status:   'ok',
+      verificationMode: 'contract_summary',
       invoiced: { ...breakdown, tax: 0 },
       expected: { ...breakdown },
       diffs:    { delivery: 0, rss: 0, fuel: 0, codFee: 0, posFee: 0, total: 0 },
@@ -897,9 +961,7 @@ export function auditRow(row, contract) {
   // can't audit it. Instead we accept it verbatim (expected = invoiced) so it
   // flows into the gross total — the statement reconciles — without a false
   // overcharge flag.
-  const expectedCodFee = contract?.codFeePassthrough
-    ? invoicedCodFee
-    : (isCodShipment ? Number(contract?.codFee ?? 0) : 0);
+  const expectedCodFee = isCodShipment ? Number(contract?.codFee ?? 0) : 0;
 
   // POS fee (card-acquiring): iMile charges a percentage of POS Amount
   // (typically 1%). Expected = posAmount * contract.posFeePct, rounded
@@ -926,9 +988,7 @@ export function auditRow(row, contract) {
   const pm = String(row.codPaymentMethod || '');
   const isSplitPay = /(?:cash|نقد|كاش)/i.test(pm)
     && /(?:card|بطاق|nlcard|mada|مدى|apple|visa|master|شبكة)/i.test(pm);
-  const expectedPosFee = isSplitPay
-    ? invoicedPosFee
-    : (posAmount > 0 && posPct > 0 ? +(posAmount * posPct).toFixed(4) : 0);
+  const expectedPosFee = posAmount > 0 && posPct > 0 ? +(posAmount * posPct).toFixed(4) : 0;
 
   // contract.deliveryInclusiveVat (Webek): the delivery column already
   // includes 15% VAT. Strip it so the pre-tax comparison matches the
@@ -948,6 +1008,16 @@ export function auditRow(row, contract) {
   // delivery diff. Folded into the delivery component so totals match the
   // carrier's invoice without a new UI column.
   let billedExcess = Number(row.excessFee) || 0;
+  const unverifiableReasons = [];
+  if (contract?.codFeePassthrough && invoicedCodFee > TOLERANCE) {
+    unverifiableReasons.push('رسوم COD لا تملك معادلة في العقد؛ لا يجوز اعتماد قيمة ملف الناقل كما هي.');
+  }
+  if (isSplitPay) {
+    unverifiableReasons.push('الدفع مقسّم بين بطاقة ونقد ولا يحتوي الملف مبلغ البطاقة المستقل لحساب نسبة POS.');
+  }
+  if (billedExcess > 0 && !(Number(row.weight) > 0)) {
+    unverifiableReasons.push('يوجد رسم وزن زائد لكن الملف لا يحتوي وزنًا يمكن تطبيق العقد عليه.');
+  }
   let excessAdj    = 0; // expected excess — added to expectedCalc.delivery below
   if (billedExcess > 0) {
     if (contract?.deliveryInclusiveVat) {
@@ -966,7 +1036,10 @@ export function auditRow(row, contract) {
     billedDelivery = +(billedDelivery + billedExcess).toFixed(2);
   }
 
-  const preTaxTotal = billedDelivery + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
+  const knownPreTaxTotal = billedDelivery + invoicedRss + invoicedFuel + invoicedCodFee + invoicedPosFee;
+  const statedPreTaxTotal = row.statedTotal == null ? null : Number(row.statedTotal);
+  const preTaxTotal = Number.isFinite(statedPreTaxTotal) ? statedPreTaxTotal : knownPreTaxTotal;
+  const otherCharges = +(preTaxTotal - knownPreTaxTotal).toFixed(4);
   // Tax amount: prefer the verbatim "Tax Amount" from the file. When the file
   // gives only a VAT *rate* (e.g. SMSA "VAT%" = 15), derive the amount =
   // pre-tax total × rate/100. Rate 0 (zero-rated export) → tax 0, correctly.
@@ -977,6 +1050,11 @@ export function auditRow(row, contract) {
   const invoicedTax = (Number(row.tax) || 0) > 0
     ? Number(row.tax)
     : (taxRate > 0 ? preTaxTotal * taxRate / 100 : deliveryVat);
+  const declaredGross = row.grossTotal == null ? null : Number(row.grossTotal);
+  const computedGross = preTaxTotal + invoicedTax;
+  const grossDiff = Number.isFinite(declaredGross)
+    ? +(declaredGross - computedGross).toFixed(2)
+    : 0;
 
   const invoiced = {
     delivery: billedDelivery,
@@ -984,7 +1062,9 @@ export function auditRow(row, contract) {
     fuel:     invoicedFuel,
     codFee:   invoicedCodFee,
     posFee:   invoicedPosFee,
+    otherCharges,
     total:    preTaxTotal,
+    grossTotal: Number.isFinite(declaredGross) ? declaredGross : computedGross,
     // We don't audit tax (the carrier's number is authoritative); we just
     // preserve it so totalTax sums correctly.
     tax:      invoicedTax,
@@ -996,7 +1076,7 @@ export function auditRow(row, contract) {
   // as-is (expected = invoiced) so a rate change never flags fake
   // mismatches; the BASE charge + RSS are still audited strictly against
   // the contract — that's where real overbilling shows.
-  const expectedFuel = contract?.fuelPassthrough ? invoicedFuel : calc.fuel;
+  const expectedFuel = calc.fuel;
 
   const expectedCalc = {
     delivery: +(calc.delivery + excessAdj).toFixed(2),
@@ -1013,6 +1093,7 @@ export function auditRow(row, contract) {
     fuel:     +(invoiced.fuel     - expectedCalc.fuel).toFixed(2),
     codFee:   +(invoiced.codFee   - expectedCalc.codFee).toFixed(2),
     posFee:   +(invoiced.posFee   - expectedCalc.posFee).toFixed(2),
+    gross:    grossDiff,
     total:    +(invoiced.total    - expectedCalc.total).toFixed(2),
   };
 
@@ -1028,15 +1109,36 @@ export function auditRow(row, contract) {
   if (Math.abs(diffs.posFee) > TOLERANCE)
     issues.push({ field: 'posFee',   label: 'رسوم POS',     invoiced: invoiced.posFee,   expected: expectedCalc.posFee,   diff: diffs.posFee });
 
-  // Status is driven by the NET total, not per-component. Carriers like Aramex
-  // bundle RSS + fuel into a single "Other Charge" column on the invoice, so a
-  // per-component split produces fake offsetting diffs (rss −7.5, fuel +7.5)
-  // even when the total is exactly right. Only the total tells us whether
-  // money actually changed hands.
+  if (Math.abs(otherCharges) > TOLERANCE)
+    issues.push({ field: 'otherCharges', label: 'رسوم أخرى غير مفسرة', invoiced: otherCharges, expected: 0, diff: otherCharges });
+  if (Math.abs(grossDiff) > TOLERANCE)
+    issues.push({ field: 'gross', label: 'إجمالي السطر مع الضريبة', invoiced: declaredGross, expected: computedGross, diff: grossDiff });
+
+  // Contract compliance requires both the row total and its priced components
+  // to reconcile. Known carrier bundling (Aramex RSS inside fuel) is split
+  // explicitly above; after that, an overcharge in one field cannot be hidden
+  // by an offsetting undercharge in another.
+  const hasComponentMismatch = issues.some(issue => [
+    'delivery', 'rss', 'fuel', 'codFee', 'posFee', 'otherCharges',
+  ].includes(issue?.field));
   let status;
-  if (Math.abs(diffs.total) <= TOLERANCE) status = 'ok';
+  if (unverifiableReasons.length)          status = 'unverifiable';
+  else if (Math.abs(grossDiff) > TOLERANCE) status = 'mismatch';
+  else if (Math.abs(diffs.total) <= TOLERANCE && hasComponentMismatch) status = 'mismatch';
+  else if (Math.abs(diffs.total) <= TOLERANCE) status = 'ok';
   else if (diffs.total < 0)               status = 'favorable';
   else                                    status = 'mismatch';
+
+  if (unverifiableReasons.length) {
+    issues.push(...unverifiableReasons.map(note => ({
+      field: 'contract',
+      label: 'رسم غير قابل للتحقق من العقد',
+      invoiced: invoiced.total,
+      expected: null,
+      diff: null,
+      note,
+    })));
+  }
 
   return {
     ...row,
@@ -1049,28 +1151,40 @@ export function auditRow(row, contract) {
 }
 
 export function auditAll(rows, carrier, forDate) {
-  // Some carriers (e.g. SMSA) keep separate contracts for domestic vs
-  // international shipping. We need to consult every active contract,
-  // not just the "newest" one, and pick the one whose pricing covers
-  // the row's destination. Fallback to the active contract for COD /
-  // unmatched rows so flat fees still apply.
-  const dateKey = forDate || new Date().toISOString().slice(0, 10);
-  const activeContracts = (carrier?.contracts ?? [])
-    .filter(c => (c.startDate || '0000') <= dateKey && (!c.endDate || c.endDate >= dateKey));
-  const primary = getActiveContract(carrier, forDate);
-  if (!primary && !activeContracts.length) {
-    const out = rows.map(r => ({ ...r, status: 'no_contract', issues: ['لا يوجد عقد ساري لهذه الفترة'] }));
-    if (rows.taxRoundingAdjustment) out.taxRoundingAdjustment = rows.taxRoundingAdjustment;
-    return out;
-  }
+  const fallbackDate = forDate || new Date().toISOString().slice(0, 10);
+  const contracts = carrier?.contracts ?? [];
+  const activeOn = (contract, dateKey) =>
+    (contract.startDate || '0000-00-00') <= dateKey
+    && (!contract.endDate || contract.endDate >= dateKey);
+  const activeForRow = (row) => {
+    const rowDate = /^\d{4}-\d{2}-\d{2}$/.test(String(row.shipDate || ''))
+      ? row.shipDate
+      : fallbackDate;
+    return contracts.filter(c => activeOn(c, rowDate));
+  };
 
-  // Per-row contract resolver: prefer the contract that has explicit
-  // pricing for the destination; otherwise fall back to the primary.
-  const pickContract = (row) => {
-    if (row.isCod) return primary;                       // COD uses carrier-wide codFee
-    if (!row.dest) return primary;
-    const match = activeContracts.find(c => c.pricing && c.pricing[row.dest]);
-    return match || primary;
+  const unresolved = (row, status, message, matches = []) => {
+    const knownTotal = +(Number(row.deliveryCharges || 0) + Number(row.rss || 0)
+      + Number(row.fuelSurcharge || 0) + Number(row.codFee || 0) + Number(row.posFee || 0)).toFixed(4);
+    const total = row.statedTotal == null ? knownTotal : Number(row.statedTotal);
+    return {
+      ...row,
+      status,
+      contractCandidates: matches.map(c => c.label || c.id).filter(Boolean),
+      invoiced: {
+        delivery: Number(row.deliveryCharges || 0),
+        rss: Number(row.rss || 0),
+        fuel: Number(row.fuelSurcharge || 0),
+        codFee: Number(row.codFee || 0),
+        posFee: Number(row.posFee || 0),
+        otherCharges: +(total - knownTotal).toFixed(4),
+        total,
+        tax: Number(row.tax) || 0,
+      },
+      expected: null,
+      diffs: null,
+      issues: [message],
+    };
   };
 
   // Domestic-only contracts (J&T / iMile / DeliverNow) cover every
@@ -1090,11 +1204,14 @@ export function auditAll(rows, carrier, forDate) {
   // on the right bracket. COD rows get an additional '_cod' suffix
   // when the contract exposes that variant (e.g. jt_express_cod for
   // the 18.40 SAR rate that J&T charges via Boleeseh on COD).
-  const useSubCarrierKey = (primary?.pricingKey === 'subCarrier')
-    || activeContracts.some(c => c.pricingKey === 'subCarrier');
-
   const results = rows.map(r => {
+    const activeContracts = activeForRow(r);
+    if (!activeContracts.length) {
+      return unresolved(r, 'no_contract', `لا يوجد عقد ساري بتاريخ الشحنة ${r.shipDate || fallbackDate}`);
+    }
+
     let row = r;
+    const useSubCarrierKey = activeContracts.some(c => c.pricingKey === 'subCarrier');
     if (useSubCarrierKey && r.subCarrier) {
       let key = r.subCarrier;
       // Check the contract for a COD-variant rate at the same sub-carrier.
@@ -1106,11 +1223,27 @@ export function auditAll(rows, carrier, forDate) {
       }
       row = { ...r, dest: key, domestic: true };
     } else {
-      const c = pickContract(r);
-      if (isDomesticOnly(c)) row = { ...r, domestic: true, dest: 'Saudi Arabia' };
+      const domesticMatches = activeContracts.filter(isDomesticOnly);
+      if (domesticMatches.length === 1) row = { ...r, domestic: true, dest: 'Saudi Arabia' };
     }
-    const c = pickContract(row);
-    return auditRow(row, c);
+
+    let matches;
+    if (row.isCod) {
+      matches = activeContracts.filter(c => c.codFee != null);
+    } else if (row.dest) {
+      matches = activeContracts.filter(c => c.pricing && c.pricing[row.dest]);
+    } else {
+      matches = activeContracts;
+    }
+    if (!matches.length && activeContracts.length === 1) matches = activeContracts;
+    if (!matches.length) {
+      return unresolved(row, 'unknown', `المسار غير موجود في أي عقد ساري: ${row.dest || 'غير محدد'}`);
+    }
+    if (matches.length > 1) {
+      return unresolved(row, 'contract_ambiguous', 'أكثر من عقد ساري يطابق الشحنة؛ يجب تصحيح تداخل تواريخ العقود', matches);
+    }
+    const c = matches[0];
+    return { ...auditRow(row, c), contractId: c.id || null, contractLabel: c.label || '' };
   });
   flagDuplicateAwbs(results);
   if (rows.taxRoundingAdjustment) {
@@ -1212,11 +1345,11 @@ export function buildSummary(results) {
   const ok        = results.filter(r => r.status === 'ok').length;
   const mismatch  = results.filter(r => r.status === 'mismatch').length;
   const favorable = results.filter(r => r.status === 'favorable').length;
-  const unknown   = results.filter(r => r.status === 'unknown' || r.status === 'no_contract').length;
+  const unknown   = results.filter(r => ['unknown', 'no_contract', 'contract_ambiguous', 'unverifiable'].includes(r.status)).length;
   // Inbound returns (pass-through rows flagged by auditRow). Tracked so the
   // UI can surface the merchant re-billing report; the pre-VAT inboundTotal
   // is what Aramex billed us for hauling the returns back.
-  const inboundRows  = results.filter(r => r.status === 'inbound');
+  const inboundRows  = results.filter(r => r.isInbound);
   const inbound      = inboundRows.length;
   const inboundTotal = +inboundRows.reduce((s, r) => s + (Number(r.invoiced?.total) || 0), 0).toFixed(2);
 
