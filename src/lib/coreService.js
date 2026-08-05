@@ -547,19 +547,27 @@ export async function findCrossAuditDuplicates({ carrierId, awbsByClass, exclude
   // awbsByClass: { ship: ['awb1', ...], cod: ['awb2', ...] }
   for (const [cls, awbs] of Object.entries(awbsByClass ?? {})) {
     if (!awbs?.length) continue;
-    let q = supabase
-      .from('audit_awb_ledger')
-      .select('audit_id, awb, billing_class, period, ship_date, invoiced')
-      .eq('carrier_id', carrierId)
-      .eq('billing_class', cls)
-      .in('awb', awbs);
-    if (excludeAuditId) q = q.neq('audit_id', excludeAuditId);
-    const { data, error } = await q;
-    if (error) throw error;
-    for (const row of data ?? []) {
-      const k = `${row.awb}|${row.billing_class}`;
-      if (!out.has(k)) out.set(k, []);
-      out.get(k).push(row);
+    // PostgREST serializes `.in()` into the query string. A full carrier
+    // invoice can contain 2,000+ AWBs, which exceeds the gateway URL limit
+    // and used to abort the audit with `400 Bad Request`. Keep each lookup
+    // bounded and deduplicate first so large monthly invoices remain valid.
+    const uniqueAwbs = [...new Set(awbs.map(value => String(value || '').trim()).filter(Boolean))];
+    const batchSize = 180;
+    for (let start = 0; start < uniqueAwbs.length; start += batchSize) {
+      let q = supabase
+        .from('audit_awb_ledger')
+        .select('audit_id, awb, billing_class, period, ship_date, invoiced')
+        .eq('carrier_id', carrierId)
+        .eq('billing_class', cls)
+        .in('awb', uniqueAwbs.slice(start, start + batchSize));
+      if (excludeAuditId) q = q.neq('audit_id', excludeAuditId);
+      const { data, error } = await q;
+      if (error) throw error;
+      for (const row of data ?? []) {
+        const k = `${row.awb}|${row.billing_class}`;
+        if (!out.has(k)) out.set(k, []);
+        out.get(k).push(row);
+      }
     }
   }
   return out;

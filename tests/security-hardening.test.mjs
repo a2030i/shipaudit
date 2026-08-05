@@ -43,6 +43,13 @@ test('audit source evidence is private and action-gated', async () => {
   assert.doesNotMatch(sql, /with check\s*\(\s*true\s*\)/i);
 });
 
+test('cross-audit duplicate lookup batches large carrier invoices', async () => {
+  const source = await read('src/lib/coreService.js');
+  assert.match(source, /const batchSize = 180/);
+  assert.match(source, /uniqueAwbs\.slice\(start, start \+ batchSize\)/);
+  assert.doesNotMatch(source, /\.in\('awb', awbs\)/);
+});
+
 test('legacy operational policies are replaced with action permissions', async () => {
   const sql = await read('supabase/migrations/20260803172000_complete_employee_action_rls.sql');
   assert.match(sql, /crm\.manage_deals/);
