@@ -34,7 +34,7 @@ test('private storage policies require action permissions', async () => {
 });
 
 test('audit source evidence is private and action-gated', async () => {
-  const sql = await read('supabase/migrations/20260805090000_audit_source_evidence.sql');
+  const sql = await read('supabase/migrations/20260805111318_audit_source_evidence.sql');
   assert.match(sql, /'audit-source-files'.*false/s);
   assert.match(sql, /crm_has_permission\('audits\.view'\)/);
   assert.match(sql, /crm_has_permission\('audits\.create'\)/);
