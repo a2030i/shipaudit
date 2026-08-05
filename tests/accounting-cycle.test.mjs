@@ -110,7 +110,7 @@ test('ملفات لمحة المتأخرة تُنسب للشهر المختار 
   });
   assert.equal(cycle.stages[3].status, 'complete');
   assert.equal(cycle.stages[3].count, 2);
-  assert.deepEqual(cycle.stages[3].history.map(record => record.source_kind), ['internal_settlement', 'merchants']);
+  assert.deepEqual(cycle.stages[3].history.map(record => record.source_kind), ['merchants', 'internal_settlement']);
 });
 
 test('تحصيلات الشهر المتأخرة تعتمد سجل الدورة ولا تضيع بسبب تاريخ الرفع', () => {
@@ -126,8 +126,44 @@ test('تحصيلات الشهر المتأخرة تعتمد سجل الدورة 
   });
   assert.equal(cycle.stages[4].status, 'complete');
   assert.equal(cycle.stages[4].count, 25);
-  assert.equal(cycle.stages[5].status, 'complete');
+  assert.equal(cycle.stages[5].status, 'attention');
   assert.equal(cycle.stages[5].count, 40);
+  assert.equal(cycle.stages[5].history.length, 2);
+  assert.equal(cycle.stages[5].history[0].status, 'failed');
+});
+
+test('سجل شحنات لمحة يعرض كل ملفات الشهر لا آخر ملف فقط', () => {
+  const shipmentImports = Array.from({ length: 18 }, (_, index) => ({
+    id: `shipment-${index}`,
+    file_name: `lamha-${index}.xlsx`,
+    row_count: index + 1,
+    uploaded_at: `2026-08-${String(index + 1).padStart(2, '0')}T10:00:00Z`,
+  }));
+  const cycle = deriveAccountingCycleStages({ period: '2026-08', shipmentImports });
+  const stage = cycle.stages[2];
+  assert.equal(stage.status, 'complete');
+  assert.equal(stage.history.length, 18);
+  assert.equal(stage.last.file_name, 'lamha-17.xlsx');
+  assert.equal(stage.count, 171);
+});
+
+test('فشل قراءة أي مصدر يظهر للمحاسب ويمنع إقفال الشهر', () => {
+  const control = { version: 3, valid: true };
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-08',
+    audits: [{ id: 'a1', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } }],
+    shipmentImports: [{ row_count: 10, uploaded_at: '2026-08-01T10:00:00Z' }],
+    balanceSnapshot: { uploaded_at: '2026-08-01T10:00:00Z' },
+    merchantSnapshot: { uploaded_at: '2026-08-01T10:00:00Z' },
+    codIn: { count: 2, last: {} },
+    codOut: { count: 2, last: {} },
+    sourceErrors: [{ stage: 'lamha_sources', source: 'merchants', label: 'دليل المتاجر', message: 'timeout' }],
+  });
+  assert.equal(cycle.stages[3].status, 'attention');
+  assert.match(cycle.stages[3].reason, /تعذر التحقق/);
+  assert.equal(cycle.prerequisiteComplete, false);
+  assert.equal(cycle.stages[6].status, 'blocked');
+  assert.equal(cycle.sourceErrors.length, 1);
 });
 
 test('المراجعة القديمة بلا إثبات مصدر لا تظهر كمكتملة بصمت', () => {
@@ -140,19 +176,28 @@ test('المراجعة القديمة بلا إثبات مصدر لا تظهر �
 });
 
 test('الشهر المختار للدورة ينتقل إلى نموذج مراجعة شركة الشحن', async () => {
-  const [cyclePage, uploadWizard] = await Promise.all([
+  const [cyclePage, uploadWizard, cycleService] = await Promise.all([
     readFile(new URL('../src/pages/AccountingCycle.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/accountingCycleService.js', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
   assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
   assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
   assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}\/>/);
-  assert.match(cyclePage, /history\.length > records\.length/);
+  assert.doesNotMatch(cyclePage, /history\.slice\(0,\s*12\)/);
+  assert.match(cyclePage, /snapshot\.sourceErrors/);
+  assert.match(cyclePage, /إعادة فحص المصادر/);
+  assert.match(cyclePage, /data\.next\?\.id/);
+  assert.match(cyclePage, /refresh\(\{ advance: true \}\)/);
   assert.match(cyclePage, /parseConsolidatedExpected/);
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
+  assert.match(cyclePage, /stage_attempt_failed/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
+  assert.match(cycleService, /const HISTORY_PAGE_SIZE = 1000/);
+  assert.match(cycleService, /\.range\(from, to\)/);
+  assert.doesNotMatch(cycleService, /accounting_cycle_events'[\s\S]{0,250}\.limit\(200\)/);
 });

@@ -393,8 +393,57 @@ async function safe(query, fallback = []) {
   return { data: data ?? fallback, count: count ?? (Array.isArray(data) ? data.length : 0), error: null };
 }
 
-function latest(list, dateKey = 'created_at') {
-  return [...(list || [])].sort((a, b) => String(b?.[dateKey] || '').localeCompare(String(a?.[dateKey] || '')))[0] || null;
+const HISTORY_PAGE_SIZE = 1000;
+
+async function loadAll(buildQuery) {
+  const rows = [];
+  for (let from = 0; ; from += HISTORY_PAGE_SIZE) {
+    const { data, error } = await buildQuery(from, from + HISTORY_PAGE_SIZE - 1);
+    if (error) return { data: [], count: 0, error };
+    const page = data || [];
+    rows.push(...page);
+    if (page.length < HISTORY_PAGE_SIZE) break;
+  }
+  return { data: rows, count: rows.length, error: null };
+}
+
+function sourceError(stage, source, label, error) {
+  if (!error) return null;
+  return {
+    stage,
+    source,
+    label,
+    message: error.message || String(error),
+  };
+}
+
+function mergeHistory(primary = [], fallback = [], isDuplicate = () => false) {
+  const merged = [...primary];
+  for (const record of fallback) {
+    if (!merged.some(existing => isDuplicate(existing, record))) merged.push(record);
+  }
+  return latestFirst(merged);
+}
+
+function recordDate(record, preferredKey = null) {
+  if (!record) return '';
+  return String(
+    (preferredKey && record[preferredKey])
+    || record.created_at
+    || record.uploaded_at
+    || record.approved_at
+    || record.exported_at
+    || record.upload_date
+    || '',
+  );
+}
+
+function latestFirst(list, preferredKey = null) {
+  return [...(list || [])].sort((a, b) => recordDate(b, preferredKey).localeCompare(recordDate(a, preferredKey)));
+}
+
+function latest(list, dateKey = null) {
+  return latestFirst(list, dateKey)[0] || null;
 }
 
 function statusMeta(status, reason = null) {
@@ -402,9 +451,9 @@ function statusMeta(status, reason = null) {
 }
 
 export function deriveAccountingCycleStages({
-  period, audits = [], weightExports = [], shipmentImport = null,
+  period, audits = [], weightExports = [], shipmentImport = null, shipmentImports = [],
   balanceSnapshot = null, merchantSnapshot = null, codIn = null, codOut = null,
-  events = [], cycle = null,
+  events = [], cycle = null, sourceErrors = [],
 }) {
   const approved = audits.filter(row => row.review_status === 'approved');
   const pending = audits.filter(row => row.review_status === 'pending');
@@ -418,8 +467,8 @@ export function deriveAccountingCycleStages({
   const weightComplete = approved.filter(row =>
     ['exported', 'billed', 'skipped'].includes(row.weight_billing_status) || exportedAuditIds.has(row.id),
   );
-  const eventFor = id => latest(events.filter(event => event.stage === id));
-  const eventHistoryFor = id => events.filter(event => event.stage === id);
+  const eventHistoryFor = id => latestFirst(events.filter(event => event.stage === id));
+  const eventFor = id => eventHistoryFor(id)[0] || null;
 
   const stages = [];
   let auditState = statusMeta('pending', 'لم تُرفع مراجعات لهذه الفترة');
@@ -439,66 +488,97 @@ export function deriveAccountingCycleStages({
   let weightState = statusMeta('blocked', 'اعتمد مراجعات شركات الشحن أولًا');
   if (approved.length && weightPending.length) weightState = statusMeta('ready', `${weightPending.length} مراجعة جاهزة للتصدير`);
   else if (approved.length && weightComplete.length === approved.length) weightState = statusMeta('complete', 'لا توجد أوزان معلقة لهذه الفترة');
+  const latestWeightAttempt = eventFor('weight_export');
+  if (latestWeightAttempt && latestWeightAttempt.status !== 'success') {
+    weightState = statusMeta('attention', 'آخر محاولة لتصدير الأوزان لم تكتمل بنجاح');
+  }
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[1], ...weightState,
     count: weightPending.length,
     completedCount: weightComplete.length,
     last: eventFor('weight_export') || latest(weightExports, 'exported_at') || latest(weightExports),
     detail: { pending: weightPending.length, complete: weightComplete.length },
-    history: eventHistoryFor('weight_export').length ? eventHistoryFor('weight_export') : weightExports,
+    history: mergeHistory(eventHistoryFor('weight_export'), weightExports, (event, record) =>
+      event?.result?.exportId === record?.id
+      || (event?.file_name && event.file_name === record?.file_name && Number(event.row_count || 0) === Number(record.row_count || 0))),
   });
 
+  const storedShipmentImports = shipmentImports.length ? shipmentImports : (shipmentImport ? [shipmentImport] : []);
+  const shipmentEvents = eventHistoryFor('lamha_shipments');
+  const shipmentHistory = mergeHistory(shipmentEvents, storedShipmentImports, (event, record) =>
+    event?.result?.importId === record?.id
+    || (event?.file_name && event.file_name === record?.file_name && Number(event.row_count || 0) === Number(record.row_count || 0)));
+  const latestShipmentImport = latest(storedShipmentImports);
+  const latestShipmentAttempt = shipmentEvents[0] || null;
+  let shipmentState = latestShipmentImport
+    ? statusMeta('complete', `${latestShipmentImport.row_count || 0} شحنة في أحدث ملف`)
+    : statusMeta('pending', 'لم يُرفع ملف شحنات لمحة');
+  if (latestShipmentAttempt && latestShipmentAttempt.status !== 'success') {
+    shipmentState = statusMeta('attention', 'آخر محاولة لرفع شحنات لمحة لم تكتمل بنجاح');
+  }
   stages.push({
-    ...ACCOUNTING_CYCLE_STAGES[2],
-    ...(shipmentImport ? statusMeta('complete', `${shipmentImport.row_count || 0} شحنة محفوظة`) : statusMeta('pending', 'لم يُرفع ملف شحنات لمحة')),
-    count: shipmentImport?.row_count || 0,
-    completedCount: shipmentImport ? 1 : 0,
-    last: shipmentImport,
-    detail: shipmentImport || {},
-    history: shipmentImport ? [shipmentImport] : [],
+    ...ACCOUNTING_CYCLE_STAGES[2], ...shipmentState,
+    count: storedShipmentImports.reduce((sum, record) => sum + Number(record.row_count || 0), 0),
+    completedCount: storedShipmentImports.length,
+    last: latestShipmentAttempt || latestShipmentImport,
+    detail: latestShipmentImport || {},
+    history: shipmentHistory,
   });
 
   // The cycle event owns the accounting month; upload time may be weeks later.
-  const balanceEvent = latest(events.filter(event =>
-    event.stage === 'lamha_sources' && event.source_kind === 'internal_settlement' && event.status === 'success'));
-  const merchantEvent = latest(events.filter(event =>
-    event.stage === 'lamha_sources' && event.source_kind === 'merchants' && event.status === 'success'));
+  const sourceEvents = eventHistoryFor('lamha_sources');
+  const balanceEvents = sourceEvents.filter(event => event.source_kind === 'internal_settlement');
+  const merchantEvents = sourceEvents.filter(event => event.source_kind === 'merchants');
+  const balanceEvent = balanceEvents.find(event => event.status === 'success') || null;
+  const merchantEvent = merchantEvents.find(event => event.status === 'success') || null;
   const balanceSource = balanceEvent || balanceSnapshot;
   const merchantSource = merchantEvent || merchantSnapshot;
   const sourceCount = Number(!!balanceSource) + Number(!!merchantSource);
+  const latestSourceFailure = [balanceEvents[0], merchantEvents[0]]
+    .filter(event => event && event.status !== 'success')[0] || null;
+  let sourceState = sourceCount === 2
+    ? statusMeta('complete', 'كشف الحساب ودليل المتاجر محدثان')
+    : sourceCount === 1
+      ? statusMeta('attention', balanceSource ? 'بقي رفع دليل المتاجر' : 'بقي رفع كشف حساب لمحة')
+      : statusMeta('pending', 'لم تُرفع ملفات لمحة المساندة');
+  if (latestSourceFailure) sourceState = statusMeta('attention', 'آخر محاولة لرفع أحد ملفات لمحة لم تكتمل بنجاح');
   stages.push({
-    ...ACCOUNTING_CYCLE_STAGES[3],
-    ...(sourceCount === 2
-      ? statusMeta('complete', 'كشف الحساب ودليل المتاجر محدثان')
-      : sourceCount === 1
-        ? statusMeta('attention', balanceSource ? 'بقي رفع دليل المتاجر' : 'بقي رفع كشف حساب لمحة')
-        : statusMeta('pending', 'لم تُرفع ملفات لمحة المساندة')),
+    ...ACCOUNTING_CYCLE_STAGES[3], ...sourceState,
     count: sourceCount,
     completedCount: sourceCount,
-    last: latest([balanceSource, merchantSource].filter(Boolean), balanceEvent || merchantEvent ? 'created_at' : 'uploaded_at'),
+    last: sourceEvents[0]
+      || latest([balanceSource, merchantSource].filter(Boolean), balanceEvent || merchantEvent ? 'created_at' : 'uploaded_at'),
     detail: {
-      balanceSnapshot: balanceSnapshot || balanceEvent,
-      merchantSnapshot: merchantSnapshot || merchantEvent,
+      balanceSnapshot: balanceSource,
+      merchantSnapshot: merchantSource,
     },
-    history: [
-      balanceSource && { ...balanceSource, source_kind: balanceSource.source_kind || 'internal_settlement' },
-      merchantSource && { ...merchantSource, source_kind: merchantSource.source_kind || 'merchants' },
-    ].filter(Boolean),
+    history: mergeHistory(sourceEvents, [
+      balanceSnapshot && { ...balanceSnapshot, source_kind: 'internal_settlement' },
+      merchantSnapshot && { ...merchantSnapshot, source_kind: 'merchants' },
+    ].filter(Boolean), (event, record) => event.source_kind === record.source_kind
+      && event.status === 'success'
+      && (!record.uploaded_at || recordDate(event).slice(0, 10) === recordDate(record).slice(0, 10))),
   });
 
   const carrierCollectionEvents = eventHistoryFor('carrier_collections').filter(event => event.status === 'success');
   const carrierCollectionCount = carrierCollectionEvents.length
     ? carrierCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
     : Number(codIn?.count || 0);
+  let carrierCollectionState = carrierCollectionCount
+    ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`)
+    : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن');
+  if (eventFor('carrier_collections') && eventFor('carrier_collections').status !== 'success') {
+    carrierCollectionState = statusMeta('attention', 'آخر محاولة لرفع تحصيل شركة شحن لم تكتمل بنجاح');
+  }
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[4],
-    ...(carrierCollectionCount ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`) : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن')),
+    ...carrierCollectionState,
     count: carrierCollectionCount,
     completedCount: carrierCollectionCount ? 1 : 0,
     last: eventFor('carrier_collections') || codIn?.last,
     detail: codIn || {},
-    history: carrierCollectionEvents.length
-      ? carrierCollectionEvents
+    history: eventHistoryFor('carrier_collections').length
+      ? eventHistoryFor('carrier_collections')
       : (codIn?.last ? [codIn.last] : []),
   });
 
@@ -506,26 +586,49 @@ export function deriveAccountingCycleStages({
   const lamhaCollectionCount = lamhaCollectionEvents.length
     ? lamhaCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
     : Number(codOut?.count || 0);
+  let lamhaCollectionState = lamhaCollectionCount
+    ? statusMeta('complete', `${lamhaCollectionCount} عملية من لمحة`)
+    : statusMeta('pending', 'لم يُرفع تحصيل لمحة');
+  if (eventFor('lamha_collections') && eventFor('lamha_collections').status !== 'success') {
+    lamhaCollectionState = statusMeta('attention', 'آخر محاولة لرفع تحصيل لمحة لم تكتمل بنجاح');
+  }
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[5],
-    ...(lamhaCollectionCount ? statusMeta('complete', `${lamhaCollectionCount} عملية من لمحة`) : statusMeta('pending', 'لم يُرفع تحصيل لمحة')),
+    ...lamhaCollectionState,
     count: lamhaCollectionCount,
     completedCount: lamhaCollectionCount ? 1 : 0,
     last: eventFor('lamha_collections') || codOut?.last,
     detail: codOut || {},
-    history: lamhaCollectionEvents.length
-      ? lamhaCollectionEvents
+    history: eventHistoryFor('lamha_collections').length
+      ? eventHistoryFor('lamha_collections')
       : (codOut?.last ? [codOut.last] : []),
   });
 
-  const prerequisiteComplete = stages.slice(0, 6).every(stage => stage.status === 'complete');
+  const stageErrors = new Map();
+  for (const error of sourceErrors.filter(Boolean)) {
+    const current = stageErrors.get(error.stage) || [];
+    current.push(error);
+    stageErrors.set(error.stage, current);
+  }
+  for (const stage of stages.slice(0, 6)) {
+    const errors = stageErrors.get(stage.id) || [];
+    if (!errors.length) continue;
+    stage.status = 'attention';
+    stage.reason = `تعذر التحقق من ${errors.map(error => error.label).join(' و')}`;
+    stage.detail = { ...(stage.detail || {}), sourceErrors: errors };
+  }
+
+  const prerequisiteComplete = sourceErrors.length === 0
+    && stages.slice(0, 6).every(stage => stage.status === 'complete');
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[6],
-    ...(cycle?.status === 'closed'
+    ...(cycle?.status === 'closed' && sourceErrors.length === 0
       ? statusMeta('complete', 'الفترة مقفلة')
       : prerequisiteComplete
         ? statusMeta('ready', 'كل مراحل التشغيل مكتملة وجاهزة للإقفال')
-        : statusMeta('blocked', 'أكمل المراحل السابقة قبل الإقفال')),
+        : statusMeta('blocked', sourceErrors.length
+          ? 'تعذر التحقق من كل المصادر؛ أعد المحاولة قبل الإقفال'
+          : 'أكمل المراحل السابقة قبل الإقفال')),
     count: prerequisiteComplete ? 1 : 0,
     completedCount: cycle?.status === 'closed' ? 1 : 0,
     last: cycle?.closed_at ? { created_at: cycle.closed_at } : eventFor('period_close'),
@@ -537,7 +640,7 @@ export function deriveAccountingCycleStages({
 
   const completed = stages.filter(stage => stage.status === 'complete').length;
   const next = stages.find(stage => !['complete', 'blocked'].includes(stage.status)) || stages.find(stage => stage.status !== 'complete') || null;
-  return { period, stages, completed, total: stages.length, next, prerequisiteComplete, cycle };
+  return { period, stages, completed, total: stages.length, next, prerequisiteComplete, cycle, sourceErrors };
 }
 
 async function loadCodDirection(direction, start, end) {
@@ -553,26 +656,45 @@ async function loadCodDirection(direction, start, end) {
     .lt('upload_date', end)
     .order('created_at', { ascending: false })
     .limit(1));
-  return { count: countRes.count, last: latestRes.data[0] || null };
+  return {
+    count: countRes.count,
+    last: latestRes.data[0] || null,
+    error: countRes.error || latestRes.error || null,
+  };
+}
+
+async function loadWeightExportsForAudits(auditIds) {
+  if (!auditIds.length) return { data: [], count: 0, error: null };
+  const records = new Map();
+  for (let index = 0; index < auditIds.length; index += 100) {
+    const chunk = auditIds.slice(index, index + 100);
+    const result = await loadAll((from, to) => supabase.from('weight_billing_exports')
+      .select('id, audit_ids, row_count, file_name, status, exported_at, created_at')
+      .overlaps('audit_ids', chunk)
+      .order('created_at', { ascending: false })
+      .range(from, to));
+    if (result.error) return result;
+    for (const record of result.data) records.set(record.id, record);
+  }
+  const data = latestFirst([...records.values()]);
+  return { data, count: data.length, error: null };
 }
 
 export async function loadAccountingCycle(period) {
   const bounds = accountingPeriodBounds(period);
   const auditPeriods = accountingPeriodAliases(bounds.period);
-  const [auditsRes, exportsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, codIn, codOut] = await Promise.all([
-    safe(supabase.from('audits')
+  const auditsPromise = loadAll((from, to) => supabase.from('audits')
       .select('id, carrier_id, carrier_name, file_name, period, review_status, row_count, weight_billing_status, col_map, created_at, approved_at')
       .in('period', auditPeriods)
-      .order('created_at', { ascending: false })),
-    safe(supabase.from('weight_billing_exports')
-      .select('id, audit_ids, row_count, file_name, status, exported_at, created_at')
       .order('created_at', { ascending: false })
-      .limit(200)),
-    safe(supabase.from('lamha_shipment_imports')
+      .range(from, to));
+  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, codIn, codOut] = await Promise.all([
+    auditsPromise,
+    loadAll((from, to) => supabase.from('lamha_shipment_imports')
       .select('*')
       .eq('period', bounds.periodDate)
       .order('uploaded_at', { ascending: false })
-      .limit(1)),
+      .range(from, to)),
     safe(supabase.from('store_balance_snapshots')
       .select('id, file_name, row_count, matched_count, total_balance, uploaded_at')
       .eq('source', 'internal')
@@ -586,11 +708,11 @@ export async function loadAccountingCycle(period) {
       .lt('uploaded_at', `${bounds.end}T00:00:00Z`)
       .order('uploaded_at', { ascending: false })
       .limit(1)),
-    safe(supabase.from('accounting_cycle_events')
+    loadAll((from, to) => supabase.from('accounting_cycle_events')
       .select('*')
       .eq('period', bounds.periodDate)
       .order('created_at', { ascending: false })
-      .limit(200)),
+      .range(from, to)),
     safe(supabase.from('accounting_cycles')
       .select('*')
       .eq('period', bounds.periodDate)
@@ -599,19 +721,36 @@ export async function loadAccountingCycle(period) {
     loadCodDirection('out', bounds.start, bounds.end),
   ]);
 
-  const relevantAuditIds = new Set(auditsRes.data.map(row => row.id));
-  const relevantExports = exportsRes.data.filter(row => (row.audit_ids || []).some(id => relevantAuditIds.has(id)));
+  const auditIds = auditsRes.data.map(row => row.id);
+  const exportsRes = await loadWeightExportsForAudits(auditIds);
+  const sourceErrors = [
+    sourceError('carrier_audits', 'audits', 'مراجعات شركات الشحن', auditsRes.error),
+    sourceError('weight_export', 'weight_billing_exports', 'ملفات الأوزان', exportsRes.error),
+    sourceError('lamha_shipments', 'lamha_shipment_imports', 'شحنات لمحة', shipmentRes.error),
+    sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
+    sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
+    sourceError('carrier_collections', 'cod_settlement_in', 'تحصيلات شركات الشحن', codIn.error),
+    sourceError('lamha_collections', 'cod_settlement_out', 'تحصيل لمحة', codOut.error),
+    sourceError('period_close', 'accounting_cycles', 'حالة إقفال الشهر', cycleRes.error),
+  ];
+  if (eventsRes.error) {
+    for (const stage of ['weight_export', 'lamha_shipments', 'lamha_sources', 'carrier_collections', 'lamha_collections', 'period_close']) {
+      sourceErrors.push(sourceError(stage, 'accounting_cycle_events', 'سجل تشغيل الدورة', eventsRes.error));
+    }
+  }
   return deriveAccountingCycleStages({
     period: bounds.period,
     audits: auditsRes.data,
-    weightExports: relevantExports,
+    weightExports: exportsRes.data,
     shipmentImport: shipmentRes.data[0] || null,
+    shipmentImports: shipmentRes.data,
     balanceSnapshot: balanceRes.data[0] || null,
     merchantSnapshot: merchantRes.data[0] || null,
     codIn,
     codOut,
     events: eventsRes.data,
     cycle: cycleRes.data || null,
+    sourceErrors: sourceErrors.filter(Boolean),
   });
 }
 

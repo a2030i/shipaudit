@@ -128,13 +128,17 @@ const HISTORY_STATUS_LABELS = {
   pending: 'بانتظار الاعتماد',
   rejected: 'مرفوض',
   success: 'تم بنجاح',
+  warning: 'تم مع تنبيه',
+  error: 'فشل',
   failed: 'فشل',
+  exported: 'تم التصدير',
+  billed: 'تمت الفوترة',
+  skipped: 'لا يحتاج تصديرًا',
   closed: 'مقفل',
 };
 
 function StageHistory({ stage }) {
   const history = Array.isArray(stage?.history) ? stage.history : [];
-  const records = history.slice(0, 12);
   return (
     <section className="accounting-cycle-history" aria-label={`سجل ${stage?.label || 'المرحلة'}`}>
       <div className="accounting-cycle-history__head">
@@ -144,11 +148,13 @@ function StageHistory({ stage }) {
         </div>
         <b>{history.length}</b>
       </div>
-      {records.length ? (
+      {history.length ? (
         <div className="accounting-cycle-history__list">
-          {records.map((record, index) => {
+          {history.map((record, index) => {
+            const sourceLabel = HISTORY_SOURCE_LABELS[record.source_kind]
+              || (record.carrier_name ? 'مراجعة شركة شحن' : null);
             const name = fileOf(record)
-              || HISTORY_SOURCE_LABELS[record.source_kind]
+              || sourceLabel
               || record.carrier_name
               || record.settlement_ref
               || `سجل تشغيل ${index + 1}`;
@@ -159,7 +165,12 @@ function StageHistory({ stage }) {
               <article className="accounting-cycle-history__item" key={record.id || record.upload_id || record.snapshot_id || `${name}-${index}`}>
                 <div className="accounting-cycle-history__name">
                   <FileSpreadsheet size={16}/>
-                  <div><strong>{name}</strong>{record.carrier_name && name !== record.carrier_name && <span>{record.carrier_name}</span>}</div>
+                  <div>
+                    <strong>{name}</strong>
+                    {(sourceLabel || (record.carrier_name && name !== record.carrier_name)) && (
+                      <span>{[sourceLabel, record.carrier_name && name !== record.carrier_name ? record.carrier_name : null].filter(Boolean).join(' · ')}</span>
+                    )}
+                  </div>
                 </div>
                 <div className="accounting-cycle-history__meta">
                   {rowCount != null && <span>{Number(rowCount).toLocaleString('en-US')} صف</span>}
@@ -170,11 +181,6 @@ function StageHistory({ stage }) {
               </article>
             );
           })}
-          {history.length > records.length && (
-            <div className="accounting-cycle-history__more">
-              يعرض أحدث {records.length.toLocaleString('en-US')} من أصل {history.length.toLocaleString('en-US')} سجلًا.
-            </div>
-          )}
         </div>
       ) : (
         <div className="accounting-cycle-history__empty">لا يوجد ملف مسجل لهذه المرحلة في الشهر المختار.</div>
@@ -208,7 +214,8 @@ export default function AccountingCycle({ carriers = [] }) {
   const compactLayout = useCompactCycleLayout();
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [snapshot, setSnapshot] = useState(null);
-  const [selectedId, setSelectedId] = useState('carrier_audits');
+  const [loadError, setLoadError] = useState('');
+  const [selectedId, setSelectedId] = useState('');
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
   const [auditDraft, setAuditDraft] = useState(null);
@@ -217,18 +224,23 @@ export default function AccountingCycle({ carriers = [] }) {
   const [settlement, setSettlement] = useState(null);
   const [carrierId, setCarrierId] = useState(() => carriers[0]?.id || '');
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async ({ advance = false } = {}) => {
     setLoading(true);
+    setLoadError('');
     try {
       const data = await loadAccountingCycle(period);
       setSnapshot(data);
-      if (!selectedId && data.next) setSelectedId(data.next.id);
+      setSelectedId(current => {
+        if (!current || advance) return data.next?.id || data.stages?.[0]?.id || '';
+        return data.stages?.some(stage => stage.id === current) ? current : (data.next?.id || data.stages?.[0]?.id || '');
+      });
     } catch (error) {
+      setLoadError(error.message || 'تعذر تحميل بيانات الدورة');
       toast(`تعذر تحميل دورة المحاسب: ${error.message}`, 'error');
     } finally {
       setLoading(false);
     }
-  }, [period, selectedId]);
+  }, [period]);
 
   useEffect(() => { refresh(); }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -245,6 +257,23 @@ export default function AccountingCycle({ carriers = [] }) {
   const selectStage = stage => {
     setSelectedId(stage.id);
     setAuditDraft(null);
+  };
+
+  const recordFailure = async ({ stage, sourceKind = null, fileName = null, error }) => {
+    try {
+      await recordAccountingCycleEvent({
+        period,
+        stage,
+        eventType: 'stage_attempt_failed',
+        status: 'error',
+        sourceKind,
+        fileName,
+        result: { error: error?.message || String(error) },
+        userId: user?.id,
+      });
+    } catch (eventError) {
+      console.warn('accounting cycle failure event failed:', eventError.message);
+    }
   };
 
   const exportWeights = async () => {
@@ -270,8 +299,10 @@ export default function AccountingCycle({ carriers = [] }) {
         }
         toast(`تم تنزيل ${result.count} شحنة في ملف الأوزان`, 'success');
       }
-      await refresh();
+      await refresh({ advance: true });
     } catch (error) {
+      await recordFailure({ stage: 'weight_export', sourceKind: 'weight_billing', error });
+      await refresh();
       toast(`فشل تصدير الأوزان: ${error.message}`, 'error');
     } finally {
       setBusy(null);
@@ -284,6 +315,8 @@ export default function AccountingCycle({ carriers = [] }) {
       const parsed = await parseLamhaShipmentWorkbook(file, period);
       setShipmentPreview(parsed);
     } catch (error) {
+      await recordFailure({ stage: 'lamha_shipments', sourceKind: 'lamha_shipments', fileName: file?.name, error });
+      await refresh();
       toast(error.message, 'error');
     } finally {
       setBusy(null);
@@ -297,8 +330,10 @@ export default function AccountingCycle({ carriers = [] }) {
       await uploadLamhaShipmentSnapshot({ parsed: shipmentPreview, period, userId: user?.id });
       toast(`تم حفظ ${shipmentPreview.rowCount} شحنة من لمحة`, 'success');
       setShipmentPreview(null);
-      await refresh();
+      await refresh({ advance: true });
     } catch (error) {
+      await recordFailure({ stage: 'lamha_shipments', sourceKind: 'lamha_shipments', fileName: shipmentPreview?.fileName, error });
+      await refresh();
       toast(`فشل حفظ شحنات لمحة: ${error.message}`, 'error');
     } finally {
       setBusy(null);
@@ -329,6 +364,8 @@ export default function AccountingCycle({ carriers = [] }) {
       const total = saveableRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
       setLamhaCollectionPreview({ file, allRows, ...parsed, carrierCount, saveableCount: saveableRows.length, total: +total.toFixed(2) });
     } catch (error) {
+      await recordFailure({ stage: 'lamha_collections', sourceKind: 'out', fileName: file?.name, error });
+      await refresh();
       toast(`تعذر فحص تحصيل لمحة: ${error.message}`, 'error');
     } finally {
       setBusy(null);
@@ -372,8 +409,10 @@ export default function AccountingCycle({ carriers = [] }) {
       }
       toast(`تم توزيع وحفظ ${added} عملية تحصيل لمحة على ${saved.results.length} ناقل`, 'success');
       setLamhaCollectionPreview(null);
-      await refresh();
+      await refresh({ advance: true });
     } catch (error) {
+      await recordFailure({ stage: 'lamha_collections', sourceKind: 'out', fileName: lamhaCollectionPreview?.file?.name, error });
+      await refresh();
       toast(`فشل حفظ تحصيل لمحة: ${error.message}`, 'error');
     } finally {
       setBusy(null);
@@ -400,8 +439,10 @@ export default function AccountingCycle({ carriers = [] }) {
         console.warn('accounting cycle event failed:', eventError.message);
       }
       toast(`${sourceId === 'merchants' ? 'دليل المتاجر' : 'كشف الحساب'}: ${result.message}`, 'success');
-      await refresh();
+      await refresh({ advance: true });
     } catch (error) {
+      await recordFailure({ stage: 'lamha_sources', sourceKind: sourceId, fileName: file?.name, error });
+      await refresh();
       toast(`تعذر رفع الملف: ${error.message}`, 'error');
     } finally {
       setBusy(null);
@@ -413,8 +454,10 @@ export default function AccountingCycle({ carriers = [] }) {
     try {
       await closeAccountingCycle({ period, userId: user?.id });
       toast('تم إقفال دورة التشغيل الشهرية', 'success');
-      await refresh();
+      await refresh({ advance: true });
     } catch (error) {
+      await recordFailure({ stage: 'period_close', error });
+      await refresh();
       toast(error.message, 'error');
     } finally {
       setBusy(null);
@@ -448,7 +491,7 @@ export default function AccountingCycle({ carriers = [] }) {
       console.warn('accounting cycle event failed:', error.message);
     }
     setSettlement(null);
-    await refresh();
+    await refresh({ advance: true });
   };
 
   const renderStage = stage => {
@@ -460,9 +503,9 @@ export default function AccountingCycle({ carriers = [] }) {
           <div className="accounting-cycle-embedded">
             <div className="accounting-cycle-embedded__bar">
               <strong>نتيجة المراجعة الحالية</strong>
-              <Btn variant="ghost" size="sm" onClick={() => { setAuditDraft(null); refresh(); }}>العودة للدورة</Btn>
+              <Btn variant="ghost" size="sm" onClick={() => { setAuditDraft(null); refresh({ advance: true }); }}>العودة للدورة</Btn>
             </div>
-            <AuditResults audit={auditDraft} carriers={carriers} onNewAudit={() => setAuditDraft(null)}/>
+            <AuditResults audit={auditDraft} carriers={carriers} onNewAudit={() => { setAuditDraft(null); refresh({ advance: true }); }}/>
           </div>
         );
       }
@@ -617,13 +660,24 @@ export default function AccountingCycle({ carriers = [] }) {
         icon={<ClipboardCheck size={24}/>}
         title="دورة تشغيل المحاسب"
         subtitle="مسار شهري واحد: مراجعة الناقلين ← الأوزان ← لمحة ← التحصيل ← الإقفال"
-        meta={snapshot?.next ? `الإجراء التالي: ${snapshot.next.label}` : 'الدورة مكتملة'}
+        meta={loading
+          ? 'جارٍ التحقق من سجلات الشهر…'
+          : loadError
+            ? 'تعذر تحديث حالة الدورة'
+            : snapshot?.next
+              ? `الإجراء التالي: ${snapshot.next.label}`
+              : snapshot
+                ? 'الدورة مكتملة'
+                : 'اختر شهر العمل'}
         actions={
           <div className="accounting-cycle-header-actions">
             <label>
               <CalendarDays size={15}/>
               <input type="month" value={period} onChange={event => {
                 setPeriod(event.target.value);
+                setSnapshot(null);
+                setLoadError('');
+                setSelectedId('');
                 setShipmentPreview(null);
                 setLamhaCollectionPreview(null);
                 setAuditDraft(null);
@@ -636,8 +690,28 @@ export default function AccountingCycle({ carriers = [] }) {
 
       {loading && !snapshot ? (
         <Card className="accounting-cycle-loading"><Spinner size={24}/><span>جارٍ جمع حالة كل المراحل…</span></Card>
+      ) : loadError && !snapshot ? (
+        <Card className="accounting-cycle-warning accounting-cycle-action-card" role="alert">
+          <strong>تعذر تحميل دورة {period}</strong>
+          <span>{loadError}</span>
+          <Btn variant="ghost" size="sm" icon={<RefreshCw size={14}/>} onClick={refresh}>إعادة المحاولة</Btn>
+        </Card>
       ) : snapshot ? (
         <>
+          {loadError && (
+            <Card className="accounting-cycle-warning accounting-cycle-action-card" role="alert">
+              <strong>تعذر تحديث البيانات؛ المعروض هو آخر تحميل ناجح.</strong>
+              <span>{loadError}</span>
+              <Btn variant="ghost" size="sm" icon={<RefreshCw size={14}/>} onClick={refresh}>إعادة المحاولة</Btn>
+            </Card>
+          )}
+          {snapshot.sourceErrors?.length > 0 && (
+            <Card className="accounting-cycle-warning accounting-cycle-action-card" role="alert">
+              <strong>لم يتمكن النظام من التحقق من كل مصادر الشهر، لذلك الإقفال متوقف.</strong>
+              <span>{snapshot.sourceErrors.map(error => `${error.label}: ${error.message}`).join(' · ')}</span>
+              <Btn variant="ghost" size="sm" icon={<RefreshCw size={14}/>} onClick={refresh}>إعادة فحص المصادر</Btn>
+            </Card>
+          )}
           <Card className="accounting-cycle-summary">
             <div className="accounting-cycle-summary__copy">
               <span>تقدم دورة {period}</span>
