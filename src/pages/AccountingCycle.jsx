@@ -218,7 +218,7 @@ function SourceUpload({ sourceId, title, done, busy, onFile }) {
   );
 }
 
-export default function AccountingCycle({ carriers = [] }) {
+export default function AccountingCycle({ carriers = [], isActive = false }) {
   const { user, can } = useAuth();
   const compactLayout = useCompactCycleLayout();
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
@@ -251,7 +251,7 @@ export default function AccountingCycle({ carriers = [] }) {
     }
   }, [period]);
 
-  useEffect(() => { refresh(); }, [period]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { if (isActive) refresh(); }, [isActive, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!carrierId && carriers[0]?.id) setCarrierId(carriers[0].id);

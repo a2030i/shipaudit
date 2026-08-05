@@ -248,6 +248,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
     readFile(new URL('../src/lib/accountingCycleService.js', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
+  assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
+  const appPage = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
+  assert.match(appPage, /<AccountingCycle carriers=\{carriers\} isActive=\{pathname==='\/accounting-cycle'\}\/>/);
   assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
   assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
   assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);

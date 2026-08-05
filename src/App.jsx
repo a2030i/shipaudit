@@ -784,7 +784,7 @@ function AppInner({ theme, toggleTheme }) {
               <WorkAgents isActive={pathname==='/work-agents'}/>
             </PageSlot>
             <PageSlot active={pathname==='/accounting-cycle'} scroll>
-              <AccountingCycle carriers={carriers}/>
+              <AccountingCycle carriers={carriers} isActive={pathname==='/accounting-cycle'}/>
             </PageSlot>
 
             {/* المسار القديم كان يكرر التحصيل والمبيعات في قائمة واحدة غامضة.
