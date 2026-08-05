@@ -454,6 +454,7 @@ export function deriveAccountingCycleStages({
     detail: shipmentImport || {},
   });
 
+  // The cycle event owns the accounting month; upload time may be weeks later.
   const balanceEvent = latest(events.filter(event =>
     event.stage === 'lamha_sources' && event.source_kind === 'internal_settlement' && event.status === 'success'));
   const merchantEvent = latest(events.filter(event =>
