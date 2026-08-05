@@ -45,6 +45,21 @@ function fmtDate(value) {
   return new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
+function useCompactCycleLayout() {
+  const query = '(max-width: 760px)';
+  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
+
+  useEffect(() => {
+    const media = window.matchMedia(query);
+    const sync = () => setCompact(media.matches);
+    sync();
+    media.addEventListener?.('change', sync);
+    return () => media.removeEventListener?.('change', sync);
+  }, []);
+
+  return compact;
+}
+
 function fileOf(record) {
   return record?.file_name || record?.source_file || record?.fileName || null;
 }
@@ -120,6 +135,7 @@ function SourceUpload({ sourceId, title, done, busy, onFile }) {
 
 export default function AccountingCycle({ carriers = [] }) {
   const { user, can } = useAuth();
+  const compactLayout = useCompactCycleLayout();
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [snapshot, setSnapshot] = useState(null);
   const [selectedId, setSelectedId] = useState('carrier_audits');
@@ -452,11 +468,11 @@ export default function AccountingCycle({ carriers = [] }) {
               {snapshot.stages.map((stage, index) => (
                 <div key={stage.id} className="accounting-cycle-stage-wrap">
                   <StageCard stage={stage} index={index} selected={selected?.id === stage.id} onSelect={() => selectStage(stage)}/>
-                  {selected?.id === stage.id && <div className="accounting-cycle-detail accounting-cycle-detail--mobile">{renderStage(stage)}</div>}
+                  {compactLayout && selected?.id === stage.id && <div className="accounting-cycle-detail accounting-cycle-detail--mobile">{renderStage(stage)}</div>}
                 </div>
               ))}
             </div>
-            <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">
+            {!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">
               {selected && (
                 <>
                   <div className="accounting-cycle-detail__head">
@@ -467,7 +483,7 @@ export default function AccountingCycle({ carriers = [] }) {
                   {renderStage(selected)}
                 </>
               )}
-            </Card>
+            </Card>}
           </div>
         </>
       ) : null}

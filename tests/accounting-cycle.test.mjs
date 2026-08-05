@@ -105,6 +105,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
     readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
+  assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
+  assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
 });
