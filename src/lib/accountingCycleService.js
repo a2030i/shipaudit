@@ -630,6 +630,15 @@ export function deriveAccountingCycleStages({
   const completedCarriers = carrierChecklist.filter(item => COMPLETED_COLLECTION_STATUSES.has(item.status));
   const pendingCarriers = carrierChecklist.filter(item => item.status === 'pending');
   const setupCarriers = carrierChecklist.filter(item => ['unsupported', 'unclassified'].includes(item.status));
+  const carrierNameById = new Map(carrierChecklist.map(item => [String(item.carrierId), item.carrierName]));
+  const carrierCollectionHistory = allCarrierCollectionEvents.map(event => ({
+    ...event,
+    carrier_name: carrierNameById.get(String(event?.result?.carrier || '')) || event.carrier_name || null,
+  }));
+  const legacyCarrierCollectionLast = codIn?.last ? {
+    ...codIn.last,
+    carrier_name: carrierNameById.get(String(codIn.last.carrier_id || '')) || codIn.last.carrier_name || null,
+  } : null;
   let carrierCollectionState;
   if (checklistAvailable && completedCarriers.length === carrierChecklist.length) {
     carrierCollectionState = statusMeta('complete', `اكتملت معالجة تحصيلات ${carrierChecklist.length} ناقل`);
@@ -654,7 +663,7 @@ export function deriveAccountingCycleStages({
     ...carrierCollectionState,
     count: carrierCollectionCount,
     completedCount: checklistAvailable ? completedCarriers.length : (carrierCollectionCount ? 1 : 0),
-    last: eventFor('carrier_collections') || codIn?.last,
+    last: carrierCollectionHistory[0] || legacyCarrierCollectionLast,
     detail: {
       ...(codIn || {}),
       carriers: carrierChecklist,
@@ -663,9 +672,9 @@ export function deriveAccountingCycleStages({
       pendingCarrierCount: pendingCarriers.length,
       setupCarrierCount: setupCarriers.length,
     },
-    history: allCarrierCollectionEvents.length
-      ? allCarrierCollectionEvents
-      : (codIn?.last ? [codIn.last] : []),
+    history: carrierCollectionHistory.length
+      ? carrierCollectionHistory
+      : (legacyCarrierCollectionLast ? [legacyCarrierCollectionLast] : []),
   });
 
   const lamhaCollectionEvents = eventHistoryFor('lamha_collections').filter(event => event.status === 'success');

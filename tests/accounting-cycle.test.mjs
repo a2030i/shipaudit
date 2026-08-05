@@ -61,6 +61,7 @@ test('ملف تحصيل ناقل واحد لا يكمل مرحلة تحصيلا�
   assert.equal(partial.stages[4].status, 'attention');
   assert.equal(partial.stages[4].detail.completedCarrierCount, 1);
   assert.equal(partial.stages[4].detail.pendingCarrierCount, 1);
+  assert.equal(partial.stages[4].history[0].carrier_name, 'J&T');
   assert.equal(partial.prerequisiteComplete, false);
 
   const complete = deriveAccountingCycleStages({
