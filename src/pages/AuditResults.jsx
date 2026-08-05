@@ -510,7 +510,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
-export default function AuditResults({ audit, carriers, onNewAudit }) {
+export default function AuditResults({ audit, carriers, onNewAudit, onApproved }) {
   const { profile, can } = useAuth();
   const navigate = useNavigate();
   const [filter,     setFilter]     = useState('all');
@@ -587,7 +587,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
   // in sync if numbers shift (e.g., after a re-analyze).
   const approvalGate = useMemo(() => evaluateApprovalGate(audit), [audit]);
 
-  const handleApprove = async () => {
+  const handleApprove = async (notifyParent = true) => {
     // Client-side gate check first — gives a fast, specific error before
     // we round-trip to the server. The server-side approveAudit() will
     // re-verify (defense in depth).
@@ -598,6 +598,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
     }
     let ok = false;          // يُرجَع للمسار الآلي (فواتير-1) ليقرر العودة للوارد
     let ledgerErr = null;    // م4: فشل قيد الدفتر يمنع الترحيل الآلي
+    let codExtractErr = null;
     setApproving(true);
     try {
       if (reviewStatus === 'draft' || audit.isDraft) {
@@ -620,7 +621,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         setReviewStatus('approved');
         toast('تم حفظ واعتماد المراجعة + قيد في الكشف ✓', 'success');
         if (_ap1?.ledgerPostError) { ledgerErr = _ap1.ledgerPostError; } if (_ap1?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap1.ledgerPostError} — راجع /integrity`, 'error');
-        if (_ap1?.codExtractError) toast(`⚠️ اعتُمدت لكن استخراج التحصيل فشل: ${_ap1.codExtractError} — راجع /integrity`, 'error');
+        if (_ap1?.codExtractError) { codExtractErr = _ap1.codExtractError; toast(`⚠️ اعتُمدت لكن استخراج التحصيل فشل: ${_ap1.codExtractError} — راجع /integrity`, 'error'); }
       } else {
         const _ap2 = await approveAudit(audit.id, profile?.id);
         audit.reviewStatus = 'approved';
@@ -629,6 +630,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
         setReviewStatus('approved');
         toast('تم اعتماد المراجعة + قيد في الكشف ✓', 'success');
         if (_ap2?.ledgerPostError) { ledgerErr = _ap2.ledgerPostError; } if (_ap2?.ledgerPostError) toast(`⚠️ اعتُمدت لكن قيد الفاتورة في الدفتر فشل: ${_ap2.ledgerPostError} — راجع /integrity`, 'error');
+        if (_ap2?.codExtractError) { codExtractErr = _ap2.codExtractError; toast(`⚠️ اعتُمدت لكن استخراج التحصيل فشل: ${_ap2.codExtractError} — راجع /integrity`, 'error'); }
       }
       // If the audit started life as a Webhook event, close the loop:
       // mark that event as 'processed' + linked. The UI then shows
@@ -653,7 +655,15 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       }
     }
     setApproving(false);
-    return { ok, ledgerErr };
+    const result = { ok, ledgerErr, codExtractErr };
+    if (ok && notifyParent && onApproved) {
+      try { await onApproved(result); }
+      catch (callbackError) {
+        console.warn('audit approved callback failed:', callbackError.message);
+        toast('تم اعتماد المراجعة، لكن تعذر تحديث دورة المحاسب تلقائياً. اضغط تحديث حالة الدورة.', 'warn');
+      }
+    }
+    return result;
   };
 
   // ── اعتماد بنقرة (فواتير-1): مسودة موسومة autoApprove ────────────────
@@ -674,7 +684,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
       return;
     }
     (async () => {
-      const res = await handleApprove();
+      const res = await handleApprove(false);
       if (res?.ok && !res.ledgerErr) {
         // م9: التحذيرات (ضريبة ≤1 ر.س...) كانت تُبتلع آلياً — أظهرها
         const warns = approvalGate.warnings?.length
@@ -836,7 +846,7 @@ export default function AuditResults({ audit, carriers, onNewAudit }) {
                 <Btn
                   size="md"
                   variant={approvalGate.canApprove ? 'accent' : 'ghost'}
-                  onClick={handleApprove}
+                  onClick={() => handleApprove()}
                   disabled={approving || !approvalGate.canApprove}
                   icon={<CheckCircle2 size={14}/>}
                   title={!approvalGate.canApprove ? approvalGate.errors.map(e => e.message).join(' / ') : ''}

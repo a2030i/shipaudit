@@ -511,6 +511,15 @@ export default function AccountingCycle({ carriers = [] }) {
     await refresh();
   };
 
+  const auditApproved = async result => {
+    if (result.ledgerErr || result.codExtractErr) {
+      await refresh();
+      return;
+    }
+    setAuditDraft(null);
+    await refresh({ advance: true });
+  };
+
   const renderStage = stage => {
     if (!stage) return null;
     const allowed = can(stage.permission);
@@ -522,7 +531,12 @@ export default function AccountingCycle({ carriers = [] }) {
               <strong>نتيجة المراجعة الحالية</strong>
               <Btn variant="ghost" size="sm" onClick={() => { setAuditDraft(null); refresh({ advance: true }); }}>العودة للدورة</Btn>
             </div>
-            <AuditResults audit={auditDraft} carriers={carriers} onNewAudit={() => { setAuditDraft(null); refresh({ advance: true }); }}/>
+            <AuditResults
+              audit={auditDraft}
+              carriers={carriers}
+              onApproved={auditApproved}
+              onNewAudit={() => { setAuditDraft(null); refresh({ advance: true }); }}
+            />
           </div>
         );
       }

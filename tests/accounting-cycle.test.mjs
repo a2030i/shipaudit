@@ -196,6 +196,10 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
   assert.match(cyclePage, /onError=\{settlementFailed\}/);
+  assert.match(cyclePage, /onApproved=\{auditApproved\}/);
+  const auditResultsPage = await readFile(new URL('../src/pages/AuditResults.jsx', import.meta.url), 'utf8');
+  assert.match(auditResultsPage, /onApproved\(result\)/);
+  assert.match(auditResultsPage, /codExtractErr/);
   const settlementPage = await readFile(new URL('../src/pages/CodSettlements.jsx', import.meta.url), 'utf8');
   assert.match(settlementPage, /phase: 'parse'/);
   assert.match(settlementPage, /phase: 'save'/);
