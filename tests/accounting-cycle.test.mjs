@@ -113,6 +113,23 @@ test('ملفات لمحة المتأخرة تُنسب للشهر المختار 
   assert.deepEqual(cycle.stages[3].history.map(record => record.source_kind), ['internal_settlement', 'merchants']);
 });
 
+test('تحصيلات الشهر المتأخرة تعتمد سجل الدورة ولا تضيع بسبب تاريخ الرفع', () => {
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-06',
+    codIn: { count: 0, last: null },
+    codOut: { count: 0, last: null },
+    events: [
+      { stage: 'carrier_collections', status: 'success', row_count: 25, created_at: '2026-08-05T10:00:00Z' },
+      { stage: 'lamha_collections', status: 'success', row_count: 40, created_at: '2026-08-05T10:05:00Z' },
+      { stage: 'lamha_collections', status: 'failed', row_count: 99, created_at: '2026-08-05T10:06:00Z' },
+    ],
+  });
+  assert.equal(cycle.stages[4].status, 'complete');
+  assert.equal(cycle.stages[4].count, 25);
+  assert.equal(cycle.stages[5].status, 'complete');
+  assert.equal(cycle.stages[5].count, 40);
+});
+
 test('المراجعة القديمة بلا إثبات مصدر لا تظهر كمكتملة بصمت', () => {
   const cycle = deriveAccountingCycleStages({
     period: '2026-08',
@@ -133,6 +150,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}\/>/);
   assert.match(cyclePage, /history\.length > records\.length/);
+  assert.match(cyclePage, /parseConsolidatedExpected/);
+  assert.match(cyclePage, /saveConsolidatedExpected/);
+  assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
 });

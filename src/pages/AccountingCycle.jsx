@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
 import {
   AlertTriangle, ArrowLeft, CalendarDays, Check, CheckCircle2, Circle,
   ClipboardCheck, Download, FileSpreadsheet, LockKeyhole, PackageCheck,
@@ -15,6 +16,7 @@ import {
 } from '../lib/accountingCycleService.js';
 import { uploadFile } from '../lib/uploadsHubService.js';
 import { exportPendingExcessWeights } from '../lib/weightBillingService.js';
+import { parseConsolidatedExpected, saveConsolidatedExpected } from '../lib/codSettlementService.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 import UploadWizard from './UploadWizard.jsx';
 import AuditResults from './AuditResults.jsx';
@@ -211,6 +213,7 @@ export default function AccountingCycle({ carriers = [] }) {
   const [busy, setBusy] = useState(null);
   const [auditDraft, setAuditDraft] = useState(null);
   const [shipmentPreview, setShipmentPreview] = useState(null);
+  const [lamhaCollectionPreview, setLamhaCollectionPreview] = useState(null);
   const [settlement, setSettlement] = useState(null);
   const [carrierId, setCarrierId] = useState(() => carriers[0]?.id || '');
 
@@ -302,6 +305,81 @@ export default function AccountingCycle({ carriers = [] }) {
     }
   };
 
+  const parseLamhaCollections = async file => {
+    setBusy('lamha_collections');
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+      if (!worksheet) throw new Error('ملف تحصيل لمحة لا يحتوي ورقة قابلة للقراءة');
+      let maxRow = 0;
+      let maxCol = 0;
+      for (const cell of Object.keys(worksheet)) {
+        if (cell.startsWith('!')) continue;
+        const address = XLSX.utils.decode_cell(cell);
+        maxRow = Math.max(maxRow, address.r);
+        maxCol = Math.max(maxCol, address.c);
+      }
+      if (maxRow > 0 || maxCol > 0) {
+        worksheet['!ref'] = XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: maxRow, c: maxCol } });
+      }
+      const allRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, raw: true, defval: '' });
+      const parsed = parseConsolidatedExpected(allRows);
+      const carrierCount = Object.keys(parsed.byCarrier).length;
+      const saveableRows = Object.values(parsed.byCarrier).flat();
+      const total = saveableRows.reduce((sum, row) => sum + Number(row.amount || 0), 0);
+      setLamhaCollectionPreview({ file, allRows, ...parsed, carrierCount, saveableCount: saveableRows.length, total: +total.toFixed(2) });
+    } catch (error) {
+      toast(`تعذر فحص تحصيل لمحة: ${error.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const saveLamhaCollections = async () => {
+    if (!lamhaCollectionPreview) return;
+    setBusy('lamha_collections');
+    try {
+      const saved = await saveConsolidatedExpected({
+        allRows: lamhaCollectionPreview.allRows,
+        fileName: lamhaCollectionPreview.file.name,
+        userId: user?.id,
+      });
+      const added = saved.results.reduce((sum, row) => sum + Number(row.added || 0), 0);
+      const duplicates = saved.results.reduce((sum, row) => sum + Number(row.dups || 0), 0);
+      const failures = saved.results.filter(row => row.error);
+      if (failures.length === saved.results.length) throw new Error(failures.map(row => row.error).join(' · '));
+      try {
+        await recordAccountingCycleEvent({
+          period,
+          stage: 'lamha_collections',
+          eventType: 'consolidated_lamha_collection_uploaded',
+          sourceKind: 'out',
+          fileName: lamhaCollectionPreview.file.name,
+          rowCount: lamhaCollectionPreview.saveableCount,
+          total: lamhaCollectionPreview.total,
+          result: {
+            submitted: saved.stats.delivered,
+            added,
+            duplicates,
+            carrierCount: saved.results.length,
+            unmapped: saved.unmapped,
+            failures: failures.map(row => ({ carrierId: row.carrierId, error: row.error })),
+          },
+          userId: user?.id,
+        });
+      } catch (eventError) {
+        console.warn('accounting cycle event failed:', eventError.message);
+      }
+      toast(`تم توزيع وحفظ ${added} عملية تحصيل لمحة على ${saved.results.length} ناقل`, 'success');
+      setLamhaCollectionPreview(null);
+      await refresh();
+    } catch (error) {
+      toast(`فشل حفظ تحصيل لمحة: ${error.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const uploadSource = async (sourceId, file) => {
     setBusy(sourceId);
     try {
@@ -353,6 +431,7 @@ export default function AccountingCycle({ carriers = [] }) {
 
   const settlementDone = async result => {
     const stage = result.direction === 'in' ? 'carrier_collections' : 'lamha_collections';
+    const processedCount = Number(result.savedCount || 0) + Number(result.skippedCount || 0);
     try {
       await recordAccountingCycleEvent({
         period,
@@ -360,7 +439,7 @@ export default function AccountingCycle({ carriers = [] }) {
         eventType: 'settlement_uploaded',
         sourceKind: result.direction,
         fileName: result.fileNames?.join(' · ') || null,
-        rowCount: result.savedCount,
+        rowCount: processedCount,
         total: result.total,
         result: { carrier: result.carrier, skippedCount: result.skippedCount, fileCount: result.fileCount },
         userId: user?.id,
@@ -452,11 +531,50 @@ export default function AccountingCycle({ carriers = [] }) {
         </div>
       );
     }
-    if (stage.id === 'carrier_collections' || stage.id === 'lamha_collections') {
-      const isIn = stage.id === 'carrier_collections';
-      const available = isIn
-        ? carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id])
-        : carriers;
+    if (stage.id === 'lamha_collections') {
+      if (!allowed) return <NoPermission/>;
+      if (lamhaCollectionPreview) {
+        return (
+          <Card className="accounting-cycle-preview">
+            <h3>معاينة تحصيل لمحة المجمّع</h3>
+            <div className="accounting-cycle-preview__stats">
+              <span><b>{lamhaCollectionPreview.stats.delivered.toLocaleString('en-US')}</b> صف تم توصيله</span>
+              <span><b>{lamhaCollectionPreview.saveableCount.toLocaleString('en-US')}</b> مؤهل للحفظ</span>
+              <span><b>{lamhaCollectionPreview.carrierCount.toLocaleString('en-US')}</b> شركة شحن</span>
+              <span><b>{lamhaCollectionPreview.total.toLocaleString('en-US', { maximumFractionDigits: 2 })}</b> ر.س جاهزة</span>
+              <span><b>{lamhaCollectionPreview.stats.unmapped.toLocaleString('en-US')}</b> بلا ناقل مطابق</span>
+            </div>
+            <div className="accounting-cycle-preview__range">
+              سيُوزّع النظام كل صف تلقائيًا على شركة الشحن الموجودة في الملف، ويستبعد المرتجع والمبلغ الصفري والمكرر سابقًا.
+            </div>
+            {lamhaCollectionPreview.unmapped.length > 0 && (
+              <div className="accounting-cycle-warning">
+                شركات غير معرّفة لن تُحفظ: {lamhaCollectionPreview.unmapped.map(row => `${row.name} (${row.n})`).join(' · ')}
+              </div>
+            )}
+            <div className="accounting-cycle-actions">
+              <Btn variant="accent" onClick={saveLamhaCollections} disabled={busy === stage.id}>
+                {busy === stage.id ? <Spinner size={14}/> : 'تأكيد توزيع وحفظ التحصيل'}
+              </Btn>
+              <Btn variant="ghost" onClick={() => setLamhaCollectionPreview(null)}>اختيار ملف آخر</Btn>
+            </div>
+          </Card>
+        );
+      }
+      return (
+        <div>
+          <p className="accounting-cycle-help">ارفع ملف تحصيل لمحة المجمّع مرة واحدة. يقرأ النظام شركة الشحن من كل صف ويوزّع العمليات تلقائيًا على جميع الناقلين، مع معاينة قبل الحفظ ومنع التكرار.</p>
+          <DropZone
+            onFile={parseLamhaCollections}
+            accept=".xlsx,.xls"
+            title={busy === stage.id ? 'جارٍ فحص وتوزيع كل الصفوف…' : 'اختر ملف تحصيل لمحة المجمّع'}
+            hint="شركة الشحن · حالة الطلب · المبلغ · رقم الشحنة"
+          />
+        </div>
+      );
+    }
+    if (stage.id === 'carrier_collections') {
+      const available = carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id]);
       return (
         <div>
           <p className="accounting-cycle-help">اختر الناقل أولًا، ثم ارفع ملفه. يمنع النظام تكرار رقم الشحنة بين الملفات ويعرض عدد المحفوظ والمتجاوز.</p>
@@ -467,11 +585,11 @@ export default function AccountingCycle({ carriers = [] }) {
           <Btn
             variant="primary"
             icon={<Upload size={16}/>}
-            onClick={() => openSettlement(isIn ? 'in' : 'out')}
+            onClick={() => openSettlement('in')}
             disabled={!allowed || !carrierId}
             style={{ marginTop: 14 }}
           >
-            {isIn ? 'رفع ملف التحصيل المستلم من الناقل' : 'رفع ملف التحصيل من لمحة'}
+            رفع ملف التحصيل المستلم من الناقل
           </Btn>
         </div>
       );
@@ -507,6 +625,7 @@ export default function AccountingCycle({ carriers = [] }) {
               <input type="month" value={period} onChange={event => {
                 setPeriod(event.target.value);
                 setShipmentPreview(null);
+                setLamhaCollectionPreview(null);
                 setAuditDraft(null);
               }}/>
             </label>

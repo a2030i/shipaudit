@@ -486,27 +486,35 @@ export function deriveAccountingCycleStages({
     ].filter(Boolean),
   });
 
+  const carrierCollectionEvents = eventHistoryFor('carrier_collections').filter(event => event.status === 'success');
+  const carrierCollectionCount = carrierCollectionEvents.length
+    ? carrierCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
+    : Number(codIn?.count || 0);
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[4],
-    ...(codIn?.count ? statusMeta('complete', `${codIn.count} عملية مستلمة`) : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن')),
-    count: codIn?.count || 0,
-    completedCount: codIn?.count ? 1 : 0,
-    last: codIn?.last || eventFor('carrier_collections'),
+    ...(carrierCollectionCount ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`) : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن')),
+    count: carrierCollectionCount,
+    completedCount: carrierCollectionCount ? 1 : 0,
+    last: eventFor('carrier_collections') || codIn?.last,
     detail: codIn || {},
-    history: eventHistoryFor('carrier_collections').length
-      ? eventHistoryFor('carrier_collections')
+    history: carrierCollectionEvents.length
+      ? carrierCollectionEvents
       : (codIn?.last ? [codIn.last] : []),
   });
 
+  const lamhaCollectionEvents = eventHistoryFor('lamha_collections').filter(event => event.status === 'success');
+  const lamhaCollectionCount = lamhaCollectionEvents.length
+    ? lamhaCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
+    : Number(codOut?.count || 0);
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[5],
-    ...(codOut?.count ? statusMeta('complete', `${codOut.count} عملية من لمحة`) : statusMeta('pending', 'لم يُرفع تحصيل لمحة')),
-    count: codOut?.count || 0,
-    completedCount: codOut?.count ? 1 : 0,
-    last: codOut?.last || eventFor('lamha_collections'),
+    ...(lamhaCollectionCount ? statusMeta('complete', `${lamhaCollectionCount} عملية من لمحة`) : statusMeta('pending', 'لم يُرفع تحصيل لمحة')),
+    count: lamhaCollectionCount,
+    completedCount: lamhaCollectionCount ? 1 : 0,
+    last: eventFor('lamha_collections') || codOut?.last,
     detail: codOut || {},
-    history: eventHistoryFor('lamha_collections').length
-      ? eventHistoryFor('lamha_collections')
+    history: lamhaCollectionEvents.length
+      ? lamhaCollectionEvents
       : (codOut?.last ? [codOut.last] : []),
   });
 
