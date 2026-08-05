@@ -132,6 +132,7 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
   assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}\/>/);
+  assert.match(cyclePage, /history\.length > records\.length/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
 });

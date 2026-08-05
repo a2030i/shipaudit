@@ -1191,6 +1191,13 @@
   font-size: 11px;
 }
 
+.accounting-cycle-history__more {
+  padding: 6px 2px 0;
+  color: var(--muted);
+  text-align: center;
+  font-size: 10px;
+}
+
 .accounting-cycle-loading {
   min-height: 180px;
   display: flex;

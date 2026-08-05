@@ -131,7 +131,8 @@ const HISTORY_STATUS_LABELS = {
 };
 
 function StageHistory({ stage }) {
-  const records = Array.isArray(stage?.history) ? stage.history.slice(0, 12) : [];
+  const history = Array.isArray(stage?.history) ? stage.history : [];
+  const records = history.slice(0, 12);
   return (
     <section className="accounting-cycle-history" aria-label={`سجل ${stage?.label || 'المرحلة'}`}>
       <div className="accounting-cycle-history__head">
@@ -139,7 +140,7 @@ function StageHistory({ stage }) {
           <strong>سجل ملفات هذه المرحلة</strong>
           <span>خاص بالشهر المختار، ويثبت ما رُفع أو نُزّل فعلًا</span>
         </div>
-        <b>{records.length}</b>
+        <b>{history.length}</b>
       </div>
       {records.length ? (
         <div className="accounting-cycle-history__list">
@@ -167,6 +168,11 @@ function StageHistory({ stage }) {
               </article>
             );
           })}
+          {history.length > records.length && (
+            <div className="accounting-cycle-history__more">
+              يعرض أحدث {records.length.toLocaleString('en-US')} من أصل {history.length.toLocaleString('en-US')} سجلًا.
+            </div>
+          )}
         </div>
       ) : (
         <div className="accounting-cycle-history__empty">لا يوجد ملف مسجل لهذه المرحلة في الشهر المختار.</div>
