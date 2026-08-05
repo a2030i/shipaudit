@@ -40,6 +40,15 @@ const STATUS = {
   blocked: { label: 'ينتظر مرحلة سابقة', color: 'var(--muted2)', Icon: LockKeyhole },
 };
 
+const COLLECTION_STATUS = {
+  uploaded: { label: 'تم رفع التحصيل', color: 'var(--green)', Icon: CheckCircle2 },
+  automatic: { label: 'يُسجّل تلقائيًا', color: 'var(--green)', Icon: CheckCircle2 },
+  not_required: { label: 'لا يحتاج ملف تحصيل', color: 'var(--muted)', Icon: Check },
+  pending: { label: 'بانتظار ملف التحصيل', color: 'var(--accent)', Icon: Upload },
+  unsupported: { label: 'قارئ الملف غير مهيأ', color: 'var(--gold)', Icon: AlertTriangle },
+  unclassified: { label: 'طريقة التحصيل غير محددة', color: 'var(--gold)', Icon: AlertTriangle },
+};
+
 function fmtDate(value) {
   if (!value) return '—';
   const date = new Date(value);
@@ -259,7 +268,7 @@ export default function AccountingCycle({ carriers = [] }) {
     setAuditDraft(null);
   };
 
-  const recordFailure = async ({ stage, sourceKind = null, fileName = null, error }) => {
+  const recordFailure = async ({ stage, sourceKind = null, fileName = null, error, result = {} }) => {
     try {
       await recordAccountingCycleEvent({
         period,
@@ -268,7 +277,7 @@ export default function AccountingCycle({ carriers = [] }) {
         status: 'error',
         sourceKind,
         fileName,
-        result: { error: error?.message || String(error) },
+        result: { ...result, error: error?.message || String(error) },
         userId: user?.id,
       });
     } catch (eventError) {
@@ -464,12 +473,12 @@ export default function AccountingCycle({ carriers = [] }) {
     }
   };
 
-  const openSettlement = direction => {
-    if (!carrierId) {
+  const openSettlement = (direction, selectedCarrierId = carrierId) => {
+    if (!selectedCarrierId) {
       toast('اختر شركة الشحن أولًا', 'error');
       return;
     }
-    setSettlement({ direction, carrier: carrierId });
+    setSettlement({ direction, carrier: selectedCarrierId });
   };
 
   const settlementDone = async result => {
@@ -507,6 +516,7 @@ export default function AccountingCycle({ carriers = [] }) {
       sourceKind: result.direction,
       fileName: result.fileNames?.join(' · ') || null,
       error: result.error,
+      result: { carrier: result.carrier || carrierId || null },
     });
     await refresh();
   };
@@ -648,23 +658,66 @@ export default function AccountingCycle({ carriers = [] }) {
       );
     }
     if (stage.id === 'carrier_collections') {
-      const available = carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id]);
+      const checklist = stage.detail?.carriers || [];
+      const manualIds = new Set(checklist
+        .filter(item => ['pending', 'uploaded'].includes(item.status))
+        .map(item => String(item.carrierId)));
+      const available = carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id]
+        && (!checklist.length || manualIds.has(String(carrier.id))));
+      const selectedCarrierId = available.some(carrier => String(carrier.id) === String(carrierId))
+        ? carrierId
+        : (available[0]?.id || '');
       return (
         <div>
-          <p className="accounting-cycle-help">اختر الناقل أولًا، ثم ارفع ملفه. يمنع النظام تكرار رقم الشحنة بين الملفات ويعرض عدد المحفوظ والمتجاوز.</p>
-          <Select label="شركة الشحن" value={carrierId} onChange={event => setCarrierId(event.target.value)}>
-            <option value="">اختر شركة الشحن…</option>
-            {available.map(carrier => <option key={carrier.id} value={carrier.id}>{carrier.label || carrier.name || carrier.id}</option>)}
-          </Select>
-          <Btn
-            variant="primary"
-            icon={<Upload size={16}/>}
-            onClick={() => openSettlement('in')}
-            disabled={!allowed || !carrierId}
-            style={{ marginTop: 14 }}
-          >
-            رفع ملف التحصيل المستلم من الناقل
-          </Btn>
+          <p className="accounting-cycle-help">القائمة أدناه مشتقة من مراجعات هذا الشهر المعتمدة. لا تعتبر المرحلة مكتملة حتى تتم معالجة كل ناقل مطلوب، مع بقاء التسجيل التلقائي والناقل الذي لا يحتاج ملفًا واضحين.</p>
+          {checklist.length > 0 && (
+            <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
+              {checklist.map(item => {
+                const meta = COLLECTION_STATUS[item.status] || COLLECTION_STATUS.unclassified;
+                const StatusIcon = meta.Icon;
+                return (
+                  <div key={item.carrierId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10,
+                    alignItems: 'center', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10,
+                    background: 'var(--surface2)' }}>
+                    <div style={{ minWidth: 0 }}>
+                      <strong style={{ display: 'block', fontSize: 13 }}>{item.carrierName}</strong>
+                      <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>{item.note}</span>
+                    </div>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                      <StatusIcon size={14}/>{meta.label}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          {available.length > 0 ? (
+            <>
+              <Select label="شركة الشحن" value={selectedCarrierId} onChange={event => setCarrierId(event.target.value)}>
+                <option value="">اختر شركة الشحن…</option>
+                {available.map(carrier => <option key={carrier.id} value={carrier.id}>{carrier.label || carrier.name || carrier.id}</option>)}
+              </Select>
+              <Btn
+                variant="primary"
+                icon={<Upload size={16}/>}
+                onClick={() => openSettlement('in', selectedCarrierId)}
+                disabled={!allowed || !selectedCarrierId}
+                style={{ marginTop: 14 }}
+              >
+                رفع ملف التحصيل المستلم من الناقل
+              </Btn>
+            </>
+          ) : checklist.length > 0 ? (
+            <div style={{ border: '1px solid color-mix(in srgb, var(--green) 35%, var(--border))', borderRadius: 10,
+              padding: '10px 12px', color: checklist.every(item => ['uploaded', 'automatic', 'not_required'].includes(item.status)) ? 'var(--green)' : 'var(--gold)',
+              background: 'var(--surface2)', fontSize: 12.5, fontWeight: 700 }}>
+              {checklist.every(item => ['uploaded', 'automatic', 'not_required'].includes(item.status))
+                ? 'لا توجد ملفات تحصيل ناقصة لهذا الشهر.'
+                : 'لا يمكن الرفع الآن: أكمل إعداد طريقة التحصيل أو قارئ الملف للناقل الموضح أعلاه.'}
+            </div>
+          ) : (
+            <div className="accounting-cycle-warning">لا توجد مراجعات معتمدة مرتبطة بناقل في هذا الشهر؛ أكمل مرحلة المراجعات أولًا.</div>
+          )}
         </div>
       );
     }

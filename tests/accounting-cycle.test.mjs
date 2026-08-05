@@ -5,9 +5,74 @@ import {
   accountingPeriodBounds,
   accountingPeriodAliases,
   auditPeriodMatches,
+  deriveCarrierCollectionChecklist,
   deriveAccountingCycleStages,
   mapLamhaShipmentRows,
 } from '../src/lib/accountingCycleService.js';
+
+test('قائمة تحصيل الناقلين تفصل التلقائي واليدوي وغير المهيأ لكل ناقل في الشهر', () => {
+  const approvedAudits = [
+    { id: 'a-auto', carrier_id: 'imile', carrier_name: 'أي مايل' },
+    { id: 'a-uploaded', carrier_id: 'jnt', carrier_name: 'J&T' },
+    { id: 'a-pending', carrier_id: 'smsa', carrier_name: 'سمسا' },
+    { id: 'a-none', carrier_id: 'audit-only', carrier_name: 'ناقل بلا تحصيل' },
+    { id: 'a-unsupported', carrier_id: 'manual-x', carrier_name: 'ناقل يدوي جديد' },
+    { id: 'a-unknown', carrier_id: 'unknown-x', carrier_name: 'ناقل غير مصنف' },
+  ];
+  const carriers = [
+    { id: 'imile', name: 'أي مايل', file_signature: { file_kind: 'audit_with_cod' } },
+    { id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } },
+    { id: 'smsa', name: 'سمسا', file_signature: { file_kind: 'cod_only' } },
+    { id: 'audit-only', name: 'ناقل بلا تحصيل', file_signature: { file_kind: 'audit_only' } },
+    { id: 'manual-x', name: 'ناقل يدوي جديد', file_signature: { file_kind: 'cod_only' } },
+    { id: 'unknown-x', name: 'ناقل غير مصنف', file_signature: {} },
+  ];
+  const checklist = deriveCarrierCollectionChecklist({
+    approvedAudits,
+    carriers,
+    events: [{ stage: 'carrier_collections', status: 'success', result: { carrier: 'jnt' }, created_at: '2026-08-05' }],
+  });
+  const byCarrier = Object.fromEntries(checklist.map(item => [item.carrierId, item.status]));
+
+  assert.deepEqual(byCarrier, {
+    imile: 'automatic',
+    jnt: 'uploaded',
+    smsa: 'pending',
+    'audit-only': 'not_required',
+    'manual-x': 'unsupported',
+    'unknown-x': 'unclassified',
+  });
+});
+
+test('ملف تحصيل ناقل واحد لا يكمل مرحلة تحصيلات كل الناقلين', () => {
+  const control = { version: 3, valid: true };
+  const audits = [
+    { id: 'j1', carrier_id: 'jnt', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } },
+    { id: 's1', carrier_id: 'smsa', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } },
+  ];
+  const carriers = [
+    { id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } },
+    { id: 'smsa', name: 'سمسا', file_signature: { file_kind: 'audit_and_cod_separate' } },
+  ];
+  const partial = deriveAccountingCycleStages({
+    period: '2026-08', audits, carriers,
+    events: [{ stage: 'carrier_collections', status: 'success', row_count: 20, result: { carrier: 'jnt' } }],
+  });
+  assert.equal(partial.stages[4].status, 'attention');
+  assert.equal(partial.stages[4].detail.completedCarrierCount, 1);
+  assert.equal(partial.stages[4].detail.pendingCarrierCount, 1);
+  assert.equal(partial.prerequisiteComplete, false);
+
+  const complete = deriveAccountingCycleStages({
+    period: '2026-08', audits, carriers,
+    events: [
+      { stage: 'carrier_collections', status: 'success', row_count: 20, result: { carrier: 'jnt' } },
+      { stage: 'carrier_collections', status: 'success', row_count: 18, result: { carrier: 'smsa' } },
+    ],
+  });
+  assert.equal(complete.stages[4].status, 'complete');
+  assert.equal(complete.stages[4].detail.completedCarrierCount, 2);
+});
 
 test('حساب حدود الفترة الشهرية لا يتأثر بطول الشهر', () => {
   assert.deepEqual(accountingPeriodBounds('2026-08'), {

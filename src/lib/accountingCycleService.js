@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
+import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 
 const PAGE = 1000;
 const ARABIC_MONTHS = [
@@ -450,10 +451,69 @@ function statusMeta(status, reason = null) {
   return { status, reason };
 }
 
+const MANUAL_COLLECTION_KINDS = new Set(['audit_and_cod_separate', 'cod_only']);
+const COMPLETED_COLLECTION_STATUSES = new Set(['uploaded', 'automatic', 'not_required']);
+
+// The monthly carrier checklist is scoped to carriers that actually have an
+// approved audit in the selected period. A single incoming file must never
+// make the whole stage complete when another audited carrier still needs its
+// own remittance file.
+export function deriveCarrierCollectionChecklist({ approvedAudits = [], carriers = [], events = [] } = {}) {
+  const carrierById = new Map((carriers || []).map(carrier => [String(carrier.id), carrier]));
+  const auditsByCarrier = new Map();
+  for (const audit of approvedAudits || []) {
+    const carrierId = String(audit?.carrier_id || '').trim();
+    if (!carrierId) continue;
+    const current = auditsByCarrier.get(carrierId) || [];
+    current.push(audit);
+    auditsByCarrier.set(carrierId, current);
+  }
+
+  const uploadedByCarrier = new Map();
+  for (const event of events || []) {
+    if (event?.stage !== 'carrier_collections' || !['success', 'warning'].includes(event?.status)) continue;
+    const carrierId = String(event?.result?.carrier || '').trim();
+    if (!carrierId) continue;
+    const current = uploadedByCarrier.get(carrierId) || [];
+    current.push(event);
+    uploadedByCarrier.set(carrierId, current);
+  }
+
+  return [...auditsByCarrier.entries()].map(([carrierId, carrierAudits]) => {
+    const carrier = carrierById.get(carrierId) || null;
+    const fileKind = String(carrier?.file_signature?.file_kind || '').trim() || null;
+    const uploadEvents = uploadedByCarrier.get(carrierId) || [];
+    const base = {
+      carrierId,
+      carrierName: carrier?.label || carrier?.name || carrierAudits[0]?.carrier_name || carrierId,
+      fileKind,
+      auditCount: carrierAudits.length,
+      uploadCount: uploadEvents.length,
+      lastUpload: latest(uploadEvents),
+    };
+
+    if (fileKind === 'audit_with_cod') {
+      return { ...base, status: 'automatic', note: 'يُسجّل التحصيل تلقائيًا عند اعتماد المراجعة' };
+    }
+    if (fileKind === 'audit_only') {
+      return { ...base, status: 'not_required', note: 'هذا الناقل لا يرسل تحصيلًا ضمن ملف المراجعة' };
+    }
+    if (uploadEvents.length) {
+      return { ...base, status: 'uploaded', note: `تم رفع ${uploadEvents.length} ملف تحصيل` };
+    }
+    if (MANUAL_COLLECTION_KINDS.has(fileKind)) {
+      return REMITTANCE_PARSERS[carrierId]
+        ? { ...base, status: 'pending', note: 'بانتظار رفع ملف التحصيل المستلم من الناقل' }
+        : { ...base, status: 'unsupported', note: 'طريقة التحصيل يدوية لكن قارئ ملف هذا الناقل غير مهيأ' };
+    }
+    return { ...base, status: 'unclassified', note: 'طريقة التحصيل غير محددة في إعدادات الناقل' };
+  }).sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
+}
+
 export function deriveAccountingCycleStages({
   period, audits = [], weightExports = [], shipmentImport = null, shipmentImports = [],
   balanceSnapshot = null, merchantSnapshot = null, codIn = null, codOut = null,
-  events = [], cycle = null, sourceErrors = [],
+  events = [], cycle = null, sourceErrors = [], carriers = [],
 }) {
   const approved = audits.filter(row => row.review_status === 'approved');
   const pending = audits.filter(row => row.review_status === 'pending');
@@ -560,13 +620,32 @@ export function deriveAccountingCycleStages({
       && (!record.uploaded_at || recordDate(event).slice(0, 10) === recordDate(record).slice(0, 10))),
   });
 
-  const carrierCollectionEvents = eventHistoryFor('carrier_collections').filter(event => event.status === 'success');
+  const allCarrierCollectionEvents = eventHistoryFor('carrier_collections');
+  const carrierCollectionEvents = allCarrierCollectionEvents.filter(event => ['success', 'warning'].includes(event.status));
   const carrierCollectionCount = carrierCollectionEvents.length
     ? carrierCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
     : Number(codIn?.count || 0);
-  let carrierCollectionState = carrierCollectionCount
-    ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`)
-    : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن');
+  const carrierChecklist = deriveCarrierCollectionChecklist({ approvedAudits: approved, carriers, events });
+  const checklistAvailable = carrierChecklist.length > 0;
+  const completedCarriers = carrierChecklist.filter(item => COMPLETED_COLLECTION_STATUSES.has(item.status));
+  const pendingCarriers = carrierChecklist.filter(item => item.status === 'pending');
+  const setupCarriers = carrierChecklist.filter(item => ['unsupported', 'unclassified'].includes(item.status));
+  let carrierCollectionState;
+  if (checklistAvailable && completedCarriers.length === carrierChecklist.length) {
+    carrierCollectionState = statusMeta('complete', `اكتملت معالجة تحصيلات ${carrierChecklist.length} ناقل`);
+  } else if (checklistAvailable && setupCarriers.length) {
+    carrierCollectionState = statusMeta('attention', `${setupCarriers.length} ناقل يحتاج ضبط طريقة التحصيل قبل الإقفال`);
+  } else if (checklistAvailable && pendingCarriers.length) {
+    carrierCollectionState = statusMeta(
+      completedCarriers.length ? 'attention' : 'ready',
+      `بقي رفع تحصيل ${pendingCarriers.length} ناقل`,
+    );
+  } else {
+    // Historical fallback for old audits/events that predate carrier metadata.
+    carrierCollectionState = carrierCollectionCount
+      ? statusMeta('complete', `${carrierCollectionCount} عملية مستلمة`)
+      : statusMeta('pending', 'لم تُرفع تحصيلات شركات الشحن');
+  }
   if (eventFor('carrier_collections') && eventFor('carrier_collections').status !== 'success') {
     carrierCollectionState = statusMeta('attention', 'آخر محاولة لرفع تحصيل شركة شحن لم تكتمل بنجاح');
   }
@@ -574,11 +653,18 @@ export function deriveAccountingCycleStages({
     ...ACCOUNTING_CYCLE_STAGES[4],
     ...carrierCollectionState,
     count: carrierCollectionCount,
-    completedCount: carrierCollectionCount ? 1 : 0,
+    completedCount: checklistAvailable ? completedCarriers.length : (carrierCollectionCount ? 1 : 0),
     last: eventFor('carrier_collections') || codIn?.last,
-    detail: codIn || {},
-    history: eventHistoryFor('carrier_collections').length
-      ? eventHistoryFor('carrier_collections')
+    detail: {
+      ...(codIn || {}),
+      carriers: carrierChecklist,
+      requiredCarrierCount: carrierChecklist.length,
+      completedCarrierCount: completedCarriers.length,
+      pendingCarrierCount: pendingCarriers.length,
+      setupCarrierCount: setupCarriers.length,
+    },
+    history: allCarrierCollectionEvents.length
+      ? allCarrierCollectionEvents
       : (codIn?.last ? [codIn.last] : []),
   });
 
@@ -688,7 +774,7 @@ export async function loadAccountingCycle(period) {
       .in('period', auditPeriods)
       .order('created_at', { ascending: false })
       .range(from, to));
-  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, codIn, codOut] = await Promise.all([
+  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, carriersRes, codIn, codOut] = await Promise.all([
     auditsPromise,
     loadAll((from, to) => supabase.from('lamha_shipment_imports')
       .select('*')
@@ -717,6 +803,9 @@ export async function loadAccountingCycle(period) {
       .select('*')
       .eq('period', bounds.periodDate)
       .maybeSingle(), null),
+    safe(supabase.from('carriers')
+      .select('id, name, file_signature')
+      .order('name')),
     loadCodDirection('in', bounds.start, bounds.end),
     loadCodDirection('out', bounds.start, bounds.end),
   ]);
@@ -729,6 +818,7 @@ export async function loadAccountingCycle(period) {
     sourceError('lamha_shipments', 'lamha_shipment_imports', 'شحنات لمحة', shipmentRes.error),
     sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
     sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
+    sourceError('carrier_collections', 'carriers', 'إعدادات تحصيل شركات الشحن', carriersRes.error),
     sourceError('carrier_collections', 'cod_settlement_in', 'تحصيلات شركات الشحن', codIn.error),
     sourceError('lamha_collections', 'cod_settlement_out', 'تحصيل لمحة', codOut.error),
     sourceError('period_close', 'accounting_cycles', 'حالة إقفال الشهر', cycleRes.error),
@@ -750,6 +840,7 @@ export async function loadAccountingCycle(period) {
     codOut,
     events: eventsRes.data,
     cycle: cycleRes.data || null,
+    carriers: carriersRes.data,
     sourceErrors: sourceErrors.filter(Boolean),
   });
 }
