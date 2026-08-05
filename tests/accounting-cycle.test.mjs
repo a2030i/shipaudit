@@ -79,6 +79,10 @@ test('حالة دورة المحاسب مشتقة من السجلات وتمنع
   };
   const before = deriveAccountingCycleStages(base);
   assert.equal(before.stages[0].status, 'complete');
+  assert.equal(before.stages[0].history.length, 1);
+  assert.equal(before.stages[1].history[0].file_name, 'weights.xlsx');
+  assert.equal(before.stages[2].history[0].row_count, 100);
+  assert.equal(before.stages[3].history.length, 2);
   assert.equal(before.stages[5].status, 'pending');
   assert.equal(before.stages[6].status, 'blocked');
   assert.equal(before.prerequisiteComplete, false);
@@ -106,6 +110,7 @@ test('ملفات لمحة المتأخرة تُنسب للشهر المختار 
   });
   assert.equal(cycle.stages[3].status, 'complete');
   assert.equal(cycle.stages[3].count, 2);
+  assert.deepEqual(cycle.stages[3].history.map(record => record.source_kind), ['internal_settlement', 'merchants']);
 });
 
 test('المراجعة القديمة بلا إثبات مصدر لا تظهر كمكتملة بصمت', () => {
@@ -125,6 +130,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
   assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
   assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
+  assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);
+  assert.match(cyclePage, /<StageHistory stage=\{selected\}\/>/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
 });

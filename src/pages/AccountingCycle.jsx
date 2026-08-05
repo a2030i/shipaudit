@@ -113,6 +113,68 @@ function StageCard({ stage, index, selected, onSelect }) {
   );
 }
 
+const HISTORY_SOURCE_LABELS = {
+  internal_settlement: 'كشف حساب لمحة',
+  merchants: 'دليل متاجر لمحة',
+  weight_billing: 'تصدير الأوزان',
+  in: 'تحصيل مستلم من شركة شحن',
+  out: 'تحصيل لمحة',
+};
+
+const HISTORY_STATUS_LABELS = {
+  approved: 'معتمد',
+  pending: 'بانتظار الاعتماد',
+  rejected: 'مرفوض',
+  success: 'تم بنجاح',
+  failed: 'فشل',
+  closed: 'مقفل',
+};
+
+function StageHistory({ stage }) {
+  const records = Array.isArray(stage?.history) ? stage.history.slice(0, 12) : [];
+  return (
+    <section className="accounting-cycle-history" aria-label={`سجل ${stage?.label || 'المرحلة'}`}>
+      <div className="accounting-cycle-history__head">
+        <div>
+          <strong>سجل ملفات هذه المرحلة</strong>
+          <span>خاص بالشهر المختار، ويثبت ما رُفع أو نُزّل فعلًا</span>
+        </div>
+        <b>{records.length}</b>
+      </div>
+      {records.length ? (
+        <div className="accounting-cycle-history__list">
+          {records.map((record, index) => {
+            const name = fileOf(record)
+              || HISTORY_SOURCE_LABELS[record.source_kind]
+              || record.carrier_name
+              || record.settlement_ref
+              || `سجل تشغيل ${index + 1}`;
+            const rowCount = record.row_count ?? record.saved_count ?? record.count;
+            const total = record.total ?? record.total_balance;
+            const state = HISTORY_STATUS_LABELS[record.review_status || record.status];
+            return (
+              <article className="accounting-cycle-history__item" key={record.id || record.upload_id || record.snapshot_id || `${name}-${index}`}>
+                <div className="accounting-cycle-history__name">
+                  <FileSpreadsheet size={16}/>
+                  <div><strong>{name}</strong>{record.carrier_name && name !== record.carrier_name && <span>{record.carrier_name}</span>}</div>
+                </div>
+                <div className="accounting-cycle-history__meta">
+                  {rowCount != null && <span>{Number(rowCount).toLocaleString('en-US')} صف</span>}
+                  {total != null && <span>{Number(total).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س</span>}
+                  {state && <span>{state}</span>}
+                  {dateOf(record) && <time>{fmtDate(dateOf(record))}</time>}
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="accounting-cycle-history__empty">لا يوجد ملف مسجل لهذه المرحلة في الشهر المختار.</div>
+      )}
+    </section>
+  );
+}
+
 function SourceUpload({ sourceId, title, done, busy, onFile }) {
   return (
     <div className={`accounting-cycle-source${done ? ' is-done' : ''}`}>
@@ -468,7 +530,12 @@ export default function AccountingCycle({ carriers = [] }) {
               {snapshot.stages.map((stage, index) => (
                 <div key={stage.id} className="accounting-cycle-stage-wrap">
                   <StageCard stage={stage} index={index} selected={selected?.id === stage.id} onSelect={() => selectStage(stage)}/>
-                  {compactLayout && selected?.id === stage.id && <div className="accounting-cycle-detail accounting-cycle-detail--mobile">{renderStage(stage)}</div>}
+                  {compactLayout && selected?.id === stage.id && (
+                    <div className="accounting-cycle-detail accounting-cycle-detail--mobile">
+                      {renderStage(stage)}
+                      <StageHistory stage={stage}/>
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -481,6 +548,7 @@ export default function AccountingCycle({ carriers = [] }) {
                     <p>{selected.reason}</p>
                   </div>
                   {renderStage(selected)}
+                  <StageHistory stage={selected}/>
                 </>
               )}
             </Card>}

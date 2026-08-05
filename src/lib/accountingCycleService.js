@@ -419,6 +419,7 @@ export function deriveAccountingCycleStages({
     ['exported', 'billed', 'skipped'].includes(row.weight_billing_status) || exportedAuditIds.has(row.id),
   );
   const eventFor = id => latest(events.filter(event => event.stage === id));
+  const eventHistoryFor = id => events.filter(event => event.stage === id);
 
   const stages = [];
   let auditState = statusMeta('pending', 'لم تُرفع مراجعات لهذه الفترة');
@@ -432,6 +433,7 @@ export function deriveAccountingCycleStages({
     completedCount: approved.length,
     last: latest(audits),
     detail: { approved: approved.length, pending: pending.length, rejected: rejected.length, legacy: legacy.length },
+    history: audits,
   });
 
   let weightState = statusMeta('blocked', 'اعتمد مراجعات شركات الشحن أولًا');
@@ -443,6 +445,7 @@ export function deriveAccountingCycleStages({
     completedCount: weightComplete.length,
     last: eventFor('weight_export') || latest(weightExports, 'exported_at') || latest(weightExports),
     detail: { pending: weightPending.length, complete: weightComplete.length },
+    history: eventHistoryFor('weight_export').length ? eventHistoryFor('weight_export') : weightExports,
   });
 
   stages.push({
@@ -452,6 +455,7 @@ export function deriveAccountingCycleStages({
     completedCount: shipmentImport ? 1 : 0,
     last: shipmentImport,
     detail: shipmentImport || {},
+    history: shipmentImport ? [shipmentImport] : [],
   });
 
   // The cycle event owns the accounting month; upload time may be weeks later.
@@ -476,6 +480,10 @@ export function deriveAccountingCycleStages({
       balanceSnapshot: balanceSnapshot || balanceEvent,
       merchantSnapshot: merchantSnapshot || merchantEvent,
     },
+    history: [
+      balanceSource && { ...balanceSource, source_kind: balanceSource.source_kind || 'internal_settlement' },
+      merchantSource && { ...merchantSource, source_kind: merchantSource.source_kind || 'merchants' },
+    ].filter(Boolean),
   });
 
   stages.push({
@@ -485,6 +493,9 @@ export function deriveAccountingCycleStages({
     completedCount: codIn?.count ? 1 : 0,
     last: codIn?.last || eventFor('carrier_collections'),
     detail: codIn || {},
+    history: eventHistoryFor('carrier_collections').length
+      ? eventHistoryFor('carrier_collections')
+      : (codIn?.last ? [codIn.last] : []),
   });
 
   stages.push({
@@ -494,6 +505,9 @@ export function deriveAccountingCycleStages({
     completedCount: codOut?.count ? 1 : 0,
     last: codOut?.last || eventFor('lamha_collections'),
     detail: codOut || {},
+    history: eventHistoryFor('lamha_collections').length
+      ? eventHistoryFor('lamha_collections')
+      : (codOut?.last ? [codOut.last] : []),
   });
 
   const prerequisiteComplete = stages.slice(0, 6).every(stage => stage.status === 'complete');
@@ -508,6 +522,9 @@ export function deriveAccountingCycleStages({
     completedCount: cycle?.status === 'closed' ? 1 : 0,
     last: cycle?.closed_at ? { created_at: cycle.closed_at } : eventFor('period_close'),
     detail: cycle || {},
+    history: eventHistoryFor('period_close').length
+      ? eventHistoryFor('period_close')
+      : (cycle ? [cycle] : []),
   });
 
   const completed = stages.filter(stage => stage.status === 'complete').length;
