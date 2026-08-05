@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappRecipientKey } from '../src/lib/whatsappAudience.js';
+import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappAudienceExclusionBreakdown, whatsappRecipientKey } from '../src/lib/whatsappAudience.js';
 
 test('campaign audience reconciles every filtered row to ready or one exclusion reason', () => {
   const rows = prepareWhatsAppAudienceRows([
@@ -68,4 +68,9 @@ test('reported 44-result audience can reconcile explicitly to 26 ready and 18 ex
   assert.equal(summary.ready.length, 26);
   assert.equal(summary.excluded, 18);
   assert.equal(summary.source, summary.ready.length + summary.excluded);
+  assert.deepEqual(whatsappAudienceExclusionBreakdown(summary.counts), [
+    { key: 'noWhatsapp', label: 'بلا واتساب/محظور', count: 3 },
+    { key: 'hatifTouched', label: 'يتابعهم فريق هاتف', count: 5 },
+    { key: 'weakNumber', label: 'رقم ضعيف', count: 10 },
+  ]);
 });

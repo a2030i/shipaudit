@@ -8,7 +8,7 @@ import { Modal, Btn, Spinner, toast } from './UI.jsx';
 import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet, loadWhatsAppQuality, qualityTone } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
-import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappRecipientKey } from '../lib/whatsappAudience.js';
+import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappAudienceExclusionBreakdown, whatsappRecipientKey } from '../lib/whatsappAudience.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
@@ -260,6 +260,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const hatifTouchedCount = audience.counts.hatifTouched;
   const weakCount = audience.counts.weakNumber;
   const debtorCount = audience.counts.debtor;
+  const exclusionBreakdown = whatsappAudienceExclusionBreakdown(audience.counts);
   const selectedValid = valid.filter(r => selected.has(r._rk));
   // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
   const allKeysFor = (mode) => {
@@ -682,12 +683,34 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             </div>
           )}
 
+          {/* تبقى معادلة الجمهور ظاهرة قرب قرار الإرسال حتى بعد تمرير النافذة للأسفل. */}
+          {protectionsReady && (
+            <div role="status" style={{ marginBottom: 10, border: '1px solid color-mix(in srgb, var(--accent) 30%, var(--border))',
+              borderRadius: 9, padding: '9px 12px', background: 'color-mix(in srgb, var(--accent) 6%, var(--surface2))',
+              fontSize: 12, lineHeight: 1.7 }}>
+              <div style={{ fontWeight: 800 }}>
+                {fmt(audience.source)} نتيجة الفلتر = <span style={{ color: 'var(--green)' }}>{fmt(valid.length)} جاهز للإرسال</span>
+                {' + '}<span style={{ color: audience.excluded ? 'var(--gold)' : 'var(--muted)' }}>{fmt(audience.excluded)} مستبعد تلقائياً</span>
+              </div>
+              {exclusionBreakdown.length > 0 && (
+                <div style={{ color: 'var(--muted)' }}>
+                  المستبعدون: {exclusionBreakdown.map(reason => `${reason.label} ${fmt(reason.count)}`).join(' · ')}
+                </div>
+              )}
+              {selectedValid.length !== valid.length && (
+                <div style={{ color: 'var(--accent)', fontWeight: 700 }}>
+                  المختار فعلياً الآن: {fmt(selectedValid.length)} من {fmt(valid.length)} جاهز
+                </div>
+              )}
+            </div>
+          )}
+
           {/* حماية الإفراط في المراسلة — عبر كل التبويبات والحملات */}
           {recentSelected.length > 0 && (
             <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', fontSize: 12,
               background: 'color-mix(in srgb, var(--gold) 8%, transparent)', border: '1px solid color-mix(in srgb, var(--gold) 30%, transparent)',
               borderRadius: 8, padding: '8px 12px', marginBottom: 10, color: 'var(--gold)' }}>
-              <AlertTriangle size={14}/> {recentSelected.length} من المختارين أُرسل لهم خلال آخر {recentDays} أيام
+              <AlertTriangle size={14}/> تنبيه فقط: {recentSelected.length} من الجاهزين أُرسل لهم خلال آخر {recentDays} أيام، ولم يُستبعدوا بعد
               <Btn size="sm" variant="ghost" onClick={excludeRecent}>استبعادهم</Btn>
             </div>
           )}

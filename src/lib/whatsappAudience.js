@@ -12,6 +12,22 @@ export function prepareWhatsAppAudienceRows(recipients = []) {
   }));
 }
 
+const EXCLUSION_LABELS = [
+  ['missingPhone', 'بلا هاتف'],
+  ['duplicatePhone', 'هاتف مكرر'],
+  ['noWhatsapp', 'بلا واتساب/محظور'],
+  ['hatifTouched', 'يتابعهم فريق هاتف'],
+  ['weakNumber', 'رقم ضعيف'],
+  ['debtor', 'موقوف مالياً'],
+  ['previousCampaign', 'من حملات مستثناة'],
+];
+
+export function whatsappAudienceExclusionBreakdown(counts = {}) {
+  return EXCLUSION_LABELS
+    .map(([key, label]) => ({ key, label, count: Number(counts[key]) || 0 }))
+    .filter(reason => reason.count > 0);
+}
+
 // One deterministic audience gate for every campaign surface. Each row belongs to
 // exactly one exclusion reason so the displayed equation always reconciles:
 // source rows = ready rows + excluded rows.
