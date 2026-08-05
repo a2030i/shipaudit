@@ -172,13 +172,15 @@ export default function CustomerMoney({ isActive = true }) {
     return counts;
   }, [d]);
 
+  // مرّر كل نتائج الفلتر إلى نافذة الحملة، بما فيها الصف بلا هاتف. نافذة
+  // الإرسال هي بوابة الأهلية الوحيدة وتشرح سبب كل استبعاد بدل إسقاطه صامتاً.
   const waRecipients = useMemo(() => filtered
-    .filter(c => c.phone && bandAmt(c) > 0.5)
+    .filter(c => bandAmt(c) > 0.5)
     .map(c => {
       const name = (c.storeName || c.name || '').trim();
       const amt = bandAmt(c);
       return {
-        to: normalizeSaudiPhone(c.phone), name, amount: amt, count: c.invCnt,
+        to: normalizeSaudiPhone(c.phone), name, storeId: c.storeId || null, amount: amt, count: c.invCnt,
         vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
         fields: collectionFields(c, amt),
       };
@@ -536,8 +538,8 @@ export default function CustomerMoney({ isActive = true }) {
           );
         })()}
         {can('campaigns.send') && (
-          <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => waRecipients.length ? setWaOpen(true) : toast('لا مستلمين بأرقام في القائمة الحالية', 'info')}>
-            حملة واتساب ({waRecipients.length})
+          <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => waRecipients.length ? setWaOpen(true) : toast('لا عملاء في القائمة الحالية', 'info')}>
+            مراجعة حملة ({waRecipients.length})
           </Btn>
         )}
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>

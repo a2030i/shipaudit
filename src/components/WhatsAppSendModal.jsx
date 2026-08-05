@@ -8,6 +8,7 @@ import { Modal, Btn, Spinner, toast } from './UI.jsx';
 import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsAppCampaignStatus, saveTemplateVarMap, loadCampaignNames, loadCampaignPhones, loadCampaignRecipientContext, loadNoWhatsappSet, loadHatifTouchedPhones, loadWeakWhatsappSet, loadWhatsAppQuality, qualityTone } from '../lib/whatsappService.js';
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
+import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappRecipientKey } from '../lib/whatsappAudience.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
@@ -99,6 +100,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // يملك رقم عدة متاجر ويُفعَّل → كل متجر رسالة مستقلة ببياناته. المفتاح يتحوّل
   // من الهاتف إلى معرّف المتجر (r._rk) ليُميَّز متجران على نفس الرقم.
   const [perStore, setPerStore] = useState(false);
+  const [protectionsReady, setProtectionsReady] = useState(false);
+  const [protectionsError, setProtectionsError] = useState('');
 
   // الربط الافتراضي لقالبٍ ما: المحفوظ في الإعدادات (يُحترَم حتى لو **فارغ** —
   // قالب بلا متغيرات)، وإلا «افتراضي الصفحة» بعدد vars.
@@ -114,10 +117,10 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
     nameEdited.current = false;
     setCampName(uniqueCampaignName(bucketLabel, [])); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
-    setPerStore(false);
+    setPerStore(false); setProtectionsReady(false); setProtectionsError('');
     // الكل افتراضياً — بمفاتيح _rk (نفس صيغة rows: معرّف المتجر أو الهاتف+الترتيب)
     setSelected(new Set(recipients
-      .map((r, i) => (r.to && r.to.length >= 11) ? (r.storeId != null ? `s${r.storeId}` : `${r.to}#${i}`) : null)
+      .map((r, i) => (r.to && r.to.length >= 11) ? whatsappRecipientKey(r, i) : null)
       .filter(Boolean)));
     loadCampaignNames().then(list => {
       setCampaigns(list);
@@ -127,9 +130,14 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
     }).catch(() => setCampaigns([]));
     setCtx(new Map());
     loadCampaignRecipientContext(recipients.map(r => r.to)).then(setCtx).catch(() => {});
-    loadNoWhatsappSet().then(setNoWa).catch(() => {});
-    loadHatifTouchedPhones(30).then(setHatifTouched).catch(() => {});
-    loadWeakWhatsappSet().then(setWeak).catch(() => {});
+    Promise.all([loadNoWhatsappSet(), loadHatifTouchedPhones(30), loadWeakWhatsappSet()])
+      .then(([blocked, touched, weakPhones]) => {
+        setNoWa(blocked); setHatifTouched(touched); setWeak(weakPhones);
+        setProtectionsReady(true);
+      })
+      .catch((error) => {
+        setProtectionsError(error?.message || 'تعذّر فحص قوائم الحماية');
+      });
     loadWhatsAppConfig()
       .then(c => {
         setCfg(c);
@@ -167,9 +175,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // كل مستلِم يحمل مفتاحاً فريداً ثابتاً (_rk): معرّف المتجر إن وُجد، وإلا
   // الهاتف+الترتيب. أساس اختيار «رسالة لكل متجر» (متجران على رقم واحد لهما
   // مفتاحان مختلفان). ثابت طوال فتح المودال (recipients ثابتة).
-  const rows = useMemo(() => recipients.map((r, i) => ({
-    ...r, _rk: r.storeId != null ? `s${r.storeId}` : `${r.to || 'x'}#${i}`,
-  })), [recipients]);
+  const rows = useMemo(() => prepareWhatsAppAudienceRows(recipients), [recipients]);
   // كم رقماً يملك أكثر من متجر (لإظهار زر «رسالة لكل متجر» عند اللزوم فقط).
   const sharedPhones = useMemo(() => {
     const m = new Map();
@@ -241,28 +247,19 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // 2026-07-21: رقم استلم 3 رسائل/37ث). عند «رسالة لكل متجر» → الدمج حسب معرّف
   // المتجر فيصبح كل متجر مستلِماً مستقلاً برسالته وبياناته. أول صف يفوز عند الدمج
   // بالهاتف (الأعلى شحناً — الصفحات ترتّب تنازلياً).
-  const validAll = (() => {
-    const seen = new Set(); const out = [];
-    for (const r of rows) {
-      if (!r.to || r.to.length < 11) continue;
-      const dk = perStore ? r._rk : r.to;
-      if (seen.has(dk)) continue;
-      seen.add(dk); out.push(r);
-    }
-    return out;
-  })();
-  const dupSkipped = perStore ? 0 : (rows.filter(r => r.to && r.to.length >= 11).length - validAll.length);
-  // استبعاد آلي لمن ليس له واتساب/محظور (بالهاتف — يشمل كل متاجر الرقم) — لا استثناء يدوي
-  const noWaCount = validAll.filter(r => noWa.has(r.to)).length;
-  const excludedCount = validAll.filter(r => exPhones.has(r.to) && !noWa.has(r.to)).length;
-  // استبعاد آلي لمن يتواصل معهم الفريق مباشرة في هاتف (محادثة مُسنَدة لموظف) — حتى لا
-  // نطلق قالباً على عميل يكلّمه موظف الآن (خوف المستخدم 2026-07-26).
-  const hatifTouchedCount = validAll.filter(r => hatifTouched.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to)).length;
-  // استبعاد آلي للأرقام الضعيفة (أُرسل لها ولا تسليم قط) — تحمي جودة رقم واتساب من التدهور.
-  const weakCount = validAll.filter(r => weak.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to)).length;
-  const debtorCount = validAll.filter(r => debtorSet.has(r.to) && !noWa.has(r.to) && !exPhones.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to)).length;
-  const valid = validAll.filter(r => !exPhones.has(r.to) && !noWa.has(r.to) && !hatifTouched.has(r.to) && !weak.has(r.to) && !debtorSet.has(r.to));
-  const skipped = rows.filter(r => !(r.to && r.to.length >= 11)).length;
+  const audience = summarizeWhatsAppAudience({
+    rows, perStore, noWhatsapp: noWa, excludedPhones: exPhones,
+    hatifTouched, weakPhones: weak, debtorPhones: debtorSet,
+  });
+  const validAll = audience.uniqueValidPhoneRows;
+  const valid = audience.ready;
+  const skipped = audience.counts.missingPhone;
+  const dupSkipped = audience.counts.duplicatePhone;
+  const noWaCount = audience.counts.noWhatsapp;
+  const excludedCount = audience.counts.previousCampaign;
+  const hatifTouchedCount = audience.counts.hatifTouched;
+  const weakCount = audience.counts.weakNumber;
+  const debtorCount = audience.counts.debtor;
   const selectedValid = valid.filter(r => selected.has(r._rk));
   // مفاتيح كل المستلِمين الصالحين في وضعٍ ما (لإعادة الاختيار عند تبديل الزر)
   const allKeysFor = (mode) => {
@@ -331,6 +328,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // جدولة بدل الإرسال الآن — تُكتب في campaign_queue وينفّذها campaign-runner
   // (scheduleCampaign تقسّم المستلمين صفوف طابور 150/دفعة — لا حدّ للعدد هنا)
   const doSchedule = async () => {
+    if (!protectionsReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً أولاً', 'warn'); return; }
     if (!selectedValid.length) { toast('اختر مستلِماً واحداً على الأقل', 'warn'); return; }
@@ -358,6 +356,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   // إرسال فوري بلا حدّ للعدد: دفعات SEND_CHUNK متتالية (كل استدعاء تحت مهلة
   // الدالة) — النتائج تُجمَّع، والتقدّم يظهر حياً. لا تُغلق النافذة أثناءها.
   const doSend = async () => {
+    if (!protectionsReady) { toast('انتظر اكتمال فحص أهلية المستلمين', 'warn'); return; }
     if (schedOn) return doSchedule();
     if (!campName.trim()) { toast('اكتب اسماً للحملة أولاً', 'warn'); return; }
     if (!tpl) { toast('اختر قالباً — أو أضفه من «إعدادات واتساب»', 'warn'); return; }
@@ -599,24 +598,42 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             </label>
           )}
 
+          {/* معادلة الجمهور: لا يتغير الرقم بين الفلتر والإرسال بلا تفسير. */}
+          <div role="status" style={{ marginBottom: 10, border: '1px solid var(--border)', borderRadius: 10,
+            padding: 10, background: 'var(--surface2)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 8 }}>
+              <AudienceStat label="نتيجة الفلتر" value={audience.source}/>
+              <AudienceStat label="جاهز للإرسال" value={protectionsReady ? valid.length : '…'} color="var(--green)"/>
+              <AudienceStat label="مستبعد تلقائياً" value={protectionsReady ? audience.excluded : '…'} color={audience.excluded ? 'var(--gold)' : 'var(--muted)'}/>
+            </div>
+            {!protectionsReady && !protectionsError && (
+              <div style={{ marginTop: 8, fontSize: 11.5, color: 'var(--muted)' }}>يفحص النظام الحظر وتكرار الهاتف وجودة الأرقام قبل السماح بالإرسال…</div>
+            )}
+            {protectionsError && (
+              <div role="alert" style={{ marginTop: 8, fontSize: 11.5, color: 'var(--red)' }}>
+                تعذّر فحص قوائم الحماية: {protectionsError}. الإرسال متوقف حتى إعادة فتح النافذة والمحاولة مجدداً.
+              </div>
+            )}
+            {protectionsReady && audience.excluded > 0 && (
+              <div style={{ marginTop: 8, fontSize: 11, color: 'var(--muted)', lineHeight: 1.7 }}>
+                أسباب الاستبعاد:
+                {skipped > 0 && ` بلا هاتف ${skipped} ·`}
+                {dupSkipped > 0 && ` هاتف مكرر ${dupSkipped} ·`}
+                {noWaCount > 0 && ` بلا واتساب/محظور ${noWaCount} ·`}
+                {hatifTouchedCount > 0 && ` يتابعهم فريق هاتف ${hatifTouchedCount} ·`}
+                {weakCount > 0 && ` رقم ضعيف ${weakCount} ·`}
+                {debtorCount > 0 && ` موقوف مالياً ${debtorCount} ·`}
+                {excludedCount > 0 && ` من حملات مستثناة ${excludedCount} ·`}
+                <span> المجموع {audience.excluded}</span>
+              </div>
+            )}
+          </div>
+
           {/* اختيار المستلِمين */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, fontSize: 12.5, flexWrap: 'wrap' }}>
             <b>المستلِمون: {selectedValid.length} / {valid.length}</b>
-            <Btn size="sm" variant="ghost" onClick={allOn}>تحديد الكل</Btn>
+            <Btn size="sm" variant="ghost" onClick={allOn} disabled={!protectionsReady}>تحديد الكل</Btn>
             <Btn size="sm" variant="ghost" onClick={allOff}>إلغاء الكل</Btn>
-            {(skipped > 0 || dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0 || weakCount > 0 || debtorCount > 0) && (
-              <span style={{ color: 'var(--muted)', marginInlineStart: 'auto' }}>
-                {skipped > 0 && `تُخطّي ${skipped} بلا رقم`}{skipped > 0 && (dupSkipped > 0 || noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
-                {dupSkipped > 0 && `دُمج ${dupSkipped} مكرّر`}{dupSkipped > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
-                {noWaCount > 0 && <span style={{ color: 'var(--red)' }}>🚫 استُبعد {noWaCount} بلا واتساب/محظور</span>}
-                {noWaCount > 0 && hatifTouchedCount > 0 && ' · '}
-                {hatifTouchedCount > 0 && <span style={{ color: 'var(--gold)' }}>💬 استُبعد {hatifTouchedCount} يكلّمهم الفريق في هاتف</span>}
-                {weakCount > 0 && (noWaCount > 0 || hatifTouchedCount > 0) && ' · '}
-                {weakCount > 0 && <span style={{ color: 'var(--red)' }}>📉 استُبعد {weakCount} رقم ضعيف (لا تسليم قط)</span>}
-                {debtorCount > 0 && ' · '}
-                {debtorCount > 0 && <span style={{ color: 'var(--red)' }}>💰 استُبعد {debtorCount} عليهم مديونية محفظة — وجّههم للتحصيل لا للعروض</span>}
-              </span>
-            )}
           </div>
           <div className="m-flow" style={{ maxHeight: 260, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10, marginBottom: 12 }}>
             {valid.slice(0, 400).map((r, i) => {
@@ -693,7 +710,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           </div>
 
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-start' }}>
-            <Btn variant="accent" onClick={doSend} disabled={sending || !selectedValid.length || !tpl || !campName.trim()}>
+            <Btn variant="accent" onClick={doSend} disabled={sending || !protectionsReady || !selectedValid.length || !tpl || !campName.trim()}>
               {sending ? <><Spinner size={14}/> {progress ? `يُرسِل ${fmt(progress.done)}/${fmt(progress.total)}…` : 'جارٍ…'}</>
                 : schedOn ? <><Clock size={14}/> جدولة ({fmt(selectedValid.length)})</>
                 : <><Send size={14}/> إرسال ({fmt(selectedValid.length)})</>}
@@ -710,6 +727,15 @@ function ResultStat({ label, value, color }) {
     <div style={{ flex: 1, background: 'var(--bg2)', border: '1px solid var(--border)', borderRadius: 9, padding: '11px 14px', textAlign: 'center' }}>
       <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>{label}</div>
       <div style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-mono)', color }}>{value}</div>
+    </div>
+  );
+}
+
+function AudienceStat({ label, value, color = 'var(--text)' }) {
+  return (
+    <div style={{ minWidth: 0, border: '1px solid var(--border)', borderRadius: 8, padding: '8px 6px', textAlign: 'center', background: 'var(--bg)' }}>
+      <div style={{ fontSize: 10.5, color: 'var(--muted)', marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--font-mono)', color }}>{value}</div>
     </div>
   );
 }
