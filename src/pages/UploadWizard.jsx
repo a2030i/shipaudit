@@ -522,17 +522,18 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function UploadWizard({ carriers, onComplete }) {
+export default function UploadWizard({ carriers, onComplete, initialPeriod = '' }) {
   const { user } = useAuth();
   const location = useLocation();
   const now = new Date();
+  const initialPeriodMatch = /^(\d{4})-(\d{2})$/.exec(initialPeriod);
   const [step,         setStep]        = useState(1);
   // carrierId is now set automatically after the file is read.
   // Stays empty during step 1 (period picker).
   const [carrierId,    setCarrierId]   = useState('');
   const [carrierDetect, setCarrierDetect] = useState(null); // { confidence, method, reasons }
-  const [month,        setMonth]       = useState(now.getMonth() + 1);
-  const [year,         setYear]        = useState(now.getFullYear());
+  const [month,        setMonth]       = useState(() => initialPeriodMatch ? Number(initialPeriodMatch[2]) : now.getMonth() + 1);
+  const [year,         setYear]        = useState(() => initialPeriodMatch ? Number(initialPeriodMatch[1]) : now.getFullYear());
   const [headers,      setHeaders]     = useState([]);
   const [rawRows,      setRawRows]     = useState([]);
   const [allRawRows,   setAllRawRows]  = useState([]); // 2D array for re-analysis
@@ -1035,7 +1036,7 @@ export default function UploadWizard({ carriers, onComplete }) {
   }, [autoApproveFlag, step, carrier, rawRows.length, colMap, uploading]);
 
   const stepLabels = [
-    { n: 1, title: 'اختر الشركة', sub: 'الناقل والفترة'   },
+    { n: 1, title: 'حدد الفترة',   sub: 'الشهر والسنة'     },
     { n: 2, title: 'ارفع الملف',  sub: 'فاتورة Excel'      },
     { n: 3, title: 'راجع',         sub: 'الأعمدة والنتائج' },
   ];

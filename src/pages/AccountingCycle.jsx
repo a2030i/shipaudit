@@ -306,7 +306,7 @@ export default function AccountingCycle({ carriers = [] }) {
       return (
         <div className="accounting-cycle-embedded">
           <p className="accounting-cycle-help">ارفع فاتورة شركة الشحن، راجع نتيجة المطابقة، ثم اعتمدها من نفس المسار. تظهر حالة المرحلة تلقائيًا بعد الاعتماد.</p>
-          {allowed ? <UploadWizard carriers={carriers} onComplete={setAuditDraft}/> : <NoPermission/>}
+          {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period}/> : <NoPermission/>}
         </div>
       );
     }

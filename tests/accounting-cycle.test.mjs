@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import {
   accountingPeriodBounds,
   deriveAccountingCycleStages,
@@ -96,4 +97,14 @@ test('المراجعة القديمة بلا إثبات مصدر لا تظهر �
   });
   assert.equal(cycle.stages[0].status, 'attention');
   assert.match(cycle.stages[0].reason, /بلا إثبات مصدر/);
+});
+
+test('الشهر المختار للدورة ينتقل إلى نموذج مراجعة شركة الشحن', async () => {
+  const [cyclePage, uploadWizard] = await Promise.all([
+    readFile(new URL('../src/pages/AccountingCycle.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8'),
+  ]);
+  assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
+  assert.match(uploadWizard, /initialPeriodMatch/);
+  assert.match(uploadWizard, /title: 'حدد الفترة'/);
 });
