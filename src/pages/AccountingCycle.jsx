@@ -480,11 +480,17 @@ export default function AccountingCycle({ carriers = [] }) {
         period,
         stage,
         eventType: 'settlement_uploaded',
+        status: result.ledgerError ? 'warning' : 'success',
         sourceKind: result.direction,
         fileName: result.fileNames?.join(' · ') || null,
         rowCount: processedCount,
         total: result.total,
-        result: { carrier: result.carrier, skippedCount: result.skippedCount, fileCount: result.fileCount },
+        result: {
+          carrier: result.carrier,
+          skippedCount: result.skippedCount,
+          fileCount: result.fileCount,
+          ledgerError: result.ledgerError || null,
+        },
         userId: user?.id,
       });
     } catch (error) {
@@ -492,6 +498,17 @@ export default function AccountingCycle({ carriers = [] }) {
     }
     setSettlement(null);
     await refresh({ advance: true });
+  };
+
+  const settlementFailed = async result => {
+    const stage = result.direction === 'in' ? 'carrier_collections' : 'lamha_collections';
+    await recordFailure({
+      stage,
+      sourceKind: result.direction,
+      fileName: result.fileNames?.join(' · ') || null,
+      error: result.error,
+    });
+    await refresh();
   };
 
   const renderStage = stage => {
@@ -762,6 +779,7 @@ export default function AccountingCycle({ carriers = [] }) {
           userId={user?.id}
           onClose={() => setSettlement(null)}
           onDone={settlementDone}
+          onError={settlementFailed}
         />
       )}
     </div>

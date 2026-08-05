@@ -1428,7 +1428,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 }
 
 // ── UploadModal ────────────────────────────────────────────────────────
-export function UploadModal({ direction, carrier, onClose, onDone, userId, preloadedFile, sourceEventId }) {
+export function UploadModal({ direction, carrier, onClose, onDone, onError, userId, preloadedFile, sourceEventId }) {
   // Multi-file: each file produces its own preview (rows, dedup tags,
   // own filename). They're saved one-by-one, so each gets its own
   // upload_id and shows up as a separate row in the uploads strip.
@@ -1556,6 +1556,20 @@ export function UploadModal({ direction, carrier, onClose, onDone, userId, prelo
       }
     }
     setPreviews(out);
+    const failures = out.filter(item => item.error);
+    if (failures.length && onError) {
+      try {
+        await onError({
+          error: new Error(failures.map(item => `${item.file?.name || 'ملف'}: ${item.error}`).join(' · ')),
+          direction,
+          carrier,
+          fileNames: failures.map(item => item.file?.name).filter(Boolean),
+          phase: 'parse',
+        });
+      } catch (reportError) {
+        console.warn('settlement upload parse failure reporting failed:', reportError.message);
+      }
+    }
     setBusy(false);
   };
 
@@ -1585,7 +1599,6 @@ export function UploadModal({ direction, carrier, onClose, onDone, userId, prelo
     let savedCount = 0;
     let skippedCount = 0;
     let ledgerErr = null;  // M2: التقط فشل قيد COD CR ليُعرَض للمستخدم
-    const fileErrors = [];
     try {
       for (const p of previews) {
         if (p.error || !p.rows?.length) continue;
@@ -1630,11 +1643,24 @@ export function UploadModal({ direction, carrier, onClose, onDone, userId, prelo
         carrier,
         uploadDate,
         fileNames: previews.map(p => p.file?.name).filter(Boolean),
+        ledgerError: ledgerErr,
       });
     } catch (e) {
       toast(`فشل: ${e.message}`, 'error');
+      if (onError) {
+        try {
+          await onError({
+            error: e,
+            direction,
+            carrier,
+            fileNames: previews.map(p => p.file?.name).filter(Boolean),
+            phase: 'save',
+          });
+        } catch (reportError) {
+          console.warn('settlement upload save failure reporting failed:', reportError.message);
+        }
+      }
     }
-    if (fileErrors.length) toast(fileErrors.join(' / '), 'warn');
     setBusy(false);
   };
 

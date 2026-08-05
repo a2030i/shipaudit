@@ -195,6 +195,11 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
+  assert.match(cyclePage, /onError=\{settlementFailed\}/);
+  const settlementPage = await readFile(new URL('../src/pages/CodSettlements.jsx', import.meta.url), 'utf8');
+  assert.match(settlementPage, /phase: 'parse'/);
+  assert.match(settlementPage, /phase: 'save'/);
+  assert.match(settlementPage, /ledgerError: ledgerErr/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
   assert.match(cycleService, /const HISTORY_PAGE_SIZE = 1000/);
