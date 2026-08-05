@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
   accountingPeriodBounds,
+  accountingPeriodAliases,
+  auditPeriodMatches,
   deriveAccountingCycleStages,
   mapLamhaShipmentRows,
 } from '../src/lib/accountingCycleService.js';
@@ -15,6 +17,10 @@ test('حساب حدود الفترة الشهرية لا يتأثر بطول ا�
     end: '2026-09-01',
   });
   assert.equal(accountingPeriodBounds('2026-12').end, '2027-01-01');
+  assert.deepEqual(accountingPeriodAliases('2026-06'), ['2026-06', 'يونيو 2026']);
+  assert.equal(auditPeriodMatches('يونيو 2026', '2026-06'), true);
+  assert.equal(auditPeriodMatches('2026-06', '2026-06'), true);
+  assert.equal(auditPeriodMatches('يوليو 2026', '2026-06'), false);
 });
 
 test('قارئ شحنات لمحة يعتمد أسماء الأعمدة لا ترتيبها ويحفظ الأعمدة الإضافية', () => {

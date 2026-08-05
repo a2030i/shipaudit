@@ -2,6 +2,10 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 
 const PAGE = 1000;
+const ARABIC_MONTHS = [
+  'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
+  'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
+];
 
 export const ACCOUNTING_CYCLE_STAGES = [
   { id: 'carrier_audits', label: 'مراجعة فواتير شركات الشحن', permission: 'audits.create' },
@@ -28,6 +32,18 @@ export function accountingPeriodBounds(value) {
   const endDate = new Date(Date.UTC(year, month, 1));
   const end = endDate.toISOString().slice(0, 10);
   return { period, periodDate: start, start, end };
+}
+
+export function accountingPeriodAliases(value) {
+  const period = normalizeAccountingPeriod(value);
+  const [year, month] = period.split('-').map(Number);
+  return [period, `${ARABIC_MONTHS[month - 1]} ${year}`];
+}
+
+export function auditPeriodMatches(auditPeriod, selectedPeriod) {
+  const raw = String(auditPeriod || '').trim();
+  if (!raw) return false;
+  return accountingPeriodAliases(selectedPeriod).includes(raw);
 }
 
 function normalizeHeader(value) {
@@ -507,10 +523,11 @@ async function loadCodDirection(direction, start, end) {
 
 export async function loadAccountingCycle(period) {
   const bounds = accountingPeriodBounds(period);
+  const auditPeriods = accountingPeriodAliases(bounds.period);
   const [auditsRes, exportsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, codIn, codOut] = await Promise.all([
     safe(supabase.from('audits')
       .select('id, carrier_id, carrier_name, file_name, period, review_status, row_count, weight_billing_status, col_map, created_at, approved_at')
-      .eq('period', bounds.period)
+      .in('period', auditPeriods)
       .order('created_at', { ascending: false })),
     safe(supabase.from('weight_billing_exports')
       .select('id, audit_ids, row_count, file_name, status, exported_at, created_at')

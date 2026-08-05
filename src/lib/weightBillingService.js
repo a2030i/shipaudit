@@ -23,6 +23,7 @@
 import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
+import { auditPeriodMatches } from './accountingCycleService.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 // Returns every billable shipment for an audit in (AWB, billed weight) form.
@@ -133,7 +134,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   // مركز دورة المحاسب يصدّر شهره فقط. بقية نقاط الاستدعاء القديمة لا
   // تمرّر period وتحافظ على سلوك «كل المعلّق» كما كان.
   const pending = period
-    ? allPending.filter(a => String(a.period || '') === String(period))
+    ? allPending.filter(a => auditPeriodMatches(a.period, period))
     : allPending;
   if (!pending.length) {
     return { ok: false, reason: 'empty', count: 0, auditCount: 0 };
