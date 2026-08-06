@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, Bot, CheckCircle2, Clock3, Database,
   ExternalLink, FileInput, MessageCircle, RefreshCw, RotateCcw,
-  ShieldCheck, Webhook, Workflow, XCircle,
+  ShieldCheck, SlidersHorizontal, Webhook, Workflow, XCircle,
 } from 'lucide-react';
 import { Btn, Card, PageHeader, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -40,6 +40,21 @@ const statusMeta = {
   attention: { label: 'يحتاج متابعة', icon: AlertTriangle },
   unavailable: { label: 'غير متاح', icon: XCircle },
 };
+
+const eventSourceMeta = {
+  zoho: { label: 'زوهو', icon: Database },
+  lamha: { label: 'لمحة', icon: FileInput },
+  hatif: { label: 'هاتف وواتساب', icon: MessageCircle },
+  webhooks: { label: 'وارد الشحن', icon: Webhook },
+  agents: { label: 'وكلاء العمل', icon: Bot },
+  schedules: { label: 'المهام المجدولة', icon: Clock3 },
+};
+
+const eventStatusOptions = [
+  { id: 'all', label: 'الكل' },
+  { id: 'attention', label: 'تحتاج إجراء' },
+  { id: 'success', label: 'مكتملة' },
+];
 
 function IntegrationCard({ item, onOpen }) {
   const meta = statusMeta[item.status] || statusMeta.unavailable;
@@ -96,11 +111,33 @@ function RunRow({ run, agentsById }) {
   );
 }
 
+function ActivityRow({ event, onOpen }) {
+  const source = eventSourceMeta[event.source] || eventSourceMeta.schedules;
+  const SourceIcon = source.icon;
+  return (
+    <button className={`operations-activity-row is-${event.status}`} onClick={() => onOpen(event.path)}>
+      <span className="operations-activity-row__icon"><SourceIcon size={16}/></span>
+      <span className="operations-activity-row__body">
+        <span className="operations-activity-row__source">{source.label}</span>
+        <strong>{event.title}</strong>
+        <small>{event.detail}</small>
+      </span>
+      <span className="operations-activity-row__meta">
+        <span className={`operations-event-status is-${event.status}`}>{event.statusLabel}</span>
+        <time>{relativeTime(event.at)}</time>
+      </span>
+      <ExternalLink size={14}/>
+    </button>
+  );
+}
+
 export default function OperationsCenter({ isActive = true }) {
   const navigate = useNavigate();
   const { can, canAny, isAdmin } = useAuth();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [eventStatus, setEventStatus] = useState('all');
+  const [eventSource, setEventSource] = useState('all');
 
   const allowed = useCallback((permission) => isAdmin || can(permission), [can, isAdmin]);
 
@@ -217,19 +254,100 @@ export default function OperationsCenter({ isActive = true }) {
     const crons = state.crons || [];
     const agents = state.agents || [];
     const runs = state.runs || [];
+    const agentsById = new Map(agents.map((agent) => [agent.id, agent]));
     const lateCrons = crons.filter((cron) => !cron.healthy);
     const failedRuns = runs.filter((run) => Number(run.failed_count) > 0 || run.status === 'failed');
     if (lateCrons.length) actions.push({ title: `راجع ${lateCrons.length} مهمة مجدولة متأخرة`, path: '/integrity', tone: 'red' });
     if (failedRuns.length) actions.push({ title: `راجع ${failedRuns.length} تشغيلات وكلاء فاشلة`, path: '/work-agents', tone: 'red' });
 
+    const events = [];
+    if (allowed('zoho.view') && state.zoho) {
+      if (state.zoho.lastSyncAt) events.push({
+        id: 'zoho-sync', source: 'zoho', status: 'success', statusLabel: 'مزامنة مكتملة',
+        title: 'اكتملت آخر مزامنة دورية لزوهو', detail: 'تحديث بيانات الفواتير والحسابات والحالات المحاسبية.',
+        at: state.zoho.lastSyncAt, path: '/zoho-data',
+      });
+      if (state.zoho.webhookLastAt) events.push({
+        id: 'zoho-webhook', source: 'zoho', status: state.zoho.webhookReady ? 'success' : 'attention',
+        statusLabel: state.zoho.webhookReady ? 'استقبال سليم' : 'تحتاج مراجعة',
+        title: 'آخر حدث فوري من Zoho Books', detail: state.zoho.webhookReady ? 'وصل الحدث وسُجل ضمن قناة الاستقبال الفوري.' : 'راجع إعدادات Webhook وصلاحيات الاتصال.',
+        at: state.zoho.webhookLastAt, path: '/zoho-data',
+      });
+    }
+    if (allowed('uploads.view')) {
+      for (const source of state.lamha || []) {
+        events.push({
+          id: `lamha-${source.id}`, source: 'lamha', status: source.stale || !source.last ? 'attention' : 'success',
+          statusLabel: source.stale || !source.last ? 'تحتاج تحديث' : 'ملف مستورد',
+          title: source.last ? `تحديث ${source.label}` : `لم يُرفع ${source.label}`,
+          detail: source.last ? `${source.last.fileName || 'آخر ملف محفوظ'} · ${Number(source.last.rowCount) || 0} صف` : 'لا يوجد ملف مسجل لهذا المصدر حتى الآن.',
+          at: source.last?.lastAt, path: '/uploads',
+        });
+      }
+    }
+    if (allowed('whatsapp.view_log') && state.hatifSync?.synced_at) {
+      const syncDate = safeDate(state.hatifSync.synced_at);
+      const syncAge = syncDate ? Date.now() - syncDate.getTime() : Infinity;
+      events.push({
+        id: 'hatif-sync', source: 'hatif', status: syncAge <= 12 * HOUR ? 'success' : 'attention',
+        statusLabel: syncAge <= 12 * HOUR ? 'مزامنة مكتملة' : 'متأخرة',
+        title: 'آخر سحب لسجل المكالمات', detail: 'تحديث أثر التواصل وربطه بملفات العملاء المتاحة.',
+        at: state.hatifSync.synced_at, path: '/whatsapp-settings',
+      });
+    }
+    if (allowed('webhook.view')) {
+      for (const event of (state.webhooks || []).slice(0, 16)) {
+        const status = event.status === 'processed' ? 'success' : event.status === 'failed' ? 'attention' : 'attention';
+        const labels = {
+          processed: 'تمت المعالجة', failed: 'فشل', processing: 'قيد المعالجة',
+          awaiting_assignment: 'يحتاج تحديد شركة', pending: 'ينتظر الإجراء',
+        };
+        events.push({
+          id: `webhook-${event.id}`, source: 'webhooks', status, statusLabel: labels[event.status] || 'وصل حديثًا',
+          title: event.file_name || event.subject || 'ملف وارد من شركة شحن',
+          detail: event.error_message || event.sender || 'وصل عبر قناة الاستقبال الآلي.',
+          at: event.processed_at || event.received_at || event.created_at, path: '/webhook',
+        });
+      }
+    }
+    if (allowed('agents.view')) {
+      for (const run of runs) {
+        const failed = Number(run.failed_count) > 0 || run.status === 'failed';
+        const running = run.status === 'running';
+        events.push({
+          id: `agent-${run.id}`, source: 'agents', status: failed || running ? 'attention' : 'success',
+          statusLabel: failed ? 'فشل جزئي أو كامل' : running ? 'يعمل الآن' : 'اكتمل',
+          title: agentsById.get(run.agent_id)?.name || 'تشغيل وكيل عمل',
+          detail: run.summary || `فحص ${Number(run.checked_count) || 0} · نفّذ ${Number(run.action_count) || 0}`,
+          at: run.started_at, path: '/work-agents',
+        });
+      }
+    }
+    if (allowed('system.view_audit_log')) {
+      for (const cron of crons) {
+        events.push({
+          id: `cron-${cron.job}`, source: 'schedules', status: cron.healthy ? 'success' : 'attention',
+          statusLabel: cron.status || (cron.healthy ? 'سليمة' : 'تحتاج مراجعة'),
+          title: cron.label, detail: cron.detail || `الجدولة: ${cron.schedule || 'غير محددة'}`,
+          at: cron.lastEffect, path: '/integrity',
+        });
+      }
+    }
+    events.sort((a, b) => (safeDate(b.at)?.getTime() || 0) - (safeDate(a.at)?.getTime() || 0));
+
     const healthyCards = cards.filter((card) => card.status === 'healthy').length;
-    return { cards, actions, crons, agents, runs, lateCrons, failedRuns, healthyCards };
+    return { cards, actions, crons, agents, runs, events, lateCrons, failedRuns, healthyCards };
   }, [allowed, state]);
 
   if (!model) return <div className="operations-loading"><Spinner size={28}/></div>;
 
   const agentsById = new Map((model?.agents || []).map((agent) => [agent.id, agent]));
   const visibleRuns = model?.runs?.slice(0, 8) || [];
+  const availableEventSources = Object.entries(eventSourceMeta).filter(([id]) => model.events.some((event) => event.source === id));
+  const visibleEvents = model.events.filter((event) => (
+    (eventStatus === 'all' || event.status === eventStatus)
+    && (eventSource === 'all' || event.source === eventSource)
+  )).slice(0, 24);
 
   return (
     <div className="operations-center">
@@ -289,6 +407,41 @@ export default function OperationsCenter({ isActive = true }) {
         <div className="operations-integrations-grid">
           {model.cards.map((item) => <IntegrationCard key={item.key} item={item} onOpen={navigate}/>) }
         </div>
+      </section>
+
+      <section className="operations-activity" aria-labelledby="operations-activity-title">
+        <div className="operations-section-title">
+          <div><span>سجل موحد</span><h2 id="operations-activity-title">آخر ما حدث في النظام</h2></div>
+          <p>الأحداث مرتبة زمنيًا من كل مصدر متاح لك، والنقر على أي صف يفتح مكان معالجته.</p>
+        </div>
+        <Card className="operations-activity-panel">
+          <div className="operations-activity-filters">
+            <div className="operations-filter-group" aria-label="تصفية حسب الحالة">
+              <SlidersHorizontal size={15}/>
+              {eventStatusOptions.map((option) => (
+                <button key={option.id} className={eventStatus === option.id ? 'is-active' : ''} onClick={() => setEventStatus(option.id)}>
+                  {option.label}
+                  <span>{option.id === 'all' ? model.events.length : model.events.filter((event) => event.status === option.id).length}</span>
+                </button>
+              ))}
+            </div>
+            <label className="operations-source-filter">
+              <span>المصدر</span>
+              <select value={eventSource} onChange={(event) => setEventSource(event.target.value)}>
+                <option value="all">كل المصادر</option>
+                {availableEventSources.map(([id, meta]) => <option key={id} value={id}>{meta.label}</option>)}
+              </select>
+            </label>
+          </div>
+          <div className="operations-activity-list">
+            {visibleEvents.length ? visibleEvents.map((event) => <ActivityRow key={event.id} event={event} onOpen={navigate}/>) : (
+              <div className="operations-empty-state">
+                <CheckCircle2 size={24}/><strong>لا توجد أحداث مطابقة</strong><span>غيّر الحالة أو المصدر لعرض بقية السجل.</span>
+              </div>
+            )}
+          </div>
+          {visibleEvents.length > 0 && <div className="operations-activity-summary">يعرض {visibleEvents.length} من {model.events.length} حدثًا متاحًا حسب صلاحياتك.</div>}
+        </Card>
       </section>
 
       <section className="operations-runtime" aria-labelledby="operations-runtime-title">
