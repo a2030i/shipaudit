@@ -665,7 +665,17 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       return (
         <div style={{ display: 'grid', gap: 14 }}>
           <StageAction
-            title="ملف الأوزان الجاهز للرفع إلى لمحة"
+            title="1 — تنزيل أرقام الشحنات من النظام"
+            text={missingShipmentCount
+              ? `سأعطيك ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة في ملف بعمود واحد. استخدمه في البحث الجماعي داخل لمحة، ثم صدّر Admin Order Export وارفعه في المرحلة 3.`
+              : 'كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة، لذلك لا يوجد ملف ناقص لتنزيله.'}
+            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers' || !missingShipmentCount}
+            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة للبحث في لمحة` : 'لا توجد أرقام شحنات ناقصة'}
+            onClick={downloadShipmentNumbers}
+            busy={busy === 'lamha_shipment_numbers'}
+          />
+          <StageAction
+            title="2 — تنزيل ملف الأوزان الجديد لرفعه إلى لمحة"
             text={Number(stage.count || 0) > 0
               ? 'الملف يأخذ مراجعات هذا الشهر المعتمدة فقط، ويحتوي رقم الشحنة والوزن. بعد التنزيل لن تتكرر الشحنات في السحبة التالية.'
               : 'لا توجد مراجعات معتمدة تحمل أوزانًا جديدة معلقة. إذا سبق تنزيل ملف لهذه الفترة، استخدم زر إعادة التنزيل أدناه لاسترجاع الملف نفسه.'}
@@ -676,7 +686,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
           />
           {latestWeightExport && (
             <StageAction
-              title="إعادة تنزيل ملف الأوزان السابق"
+              title="إعادة تنزيل ملف الأوزان السابق نفسه"
               text={`آخر ملف محفوظ: ${fileOf(latestWeightExport) || 'ملف أوزان هذه الفترة'}. إعادة التنزيل تسترجع الملف نفسه ولا تنشئ تصديرًا جديدًا ولا تكرر الشحنات.`}
               disabled={String(busy || '').startsWith('weight_redownload:')}
               button="إعادة تنزيل آخر ملف أوزان"
@@ -684,16 +694,6 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
               busy={String(busy || '').startsWith('weight_redownload:')}
             />
           )}
-          <StageAction
-            title="ملف أرقام الشحنات للبحث الجماعي في لمحة"
-            text={missingShipmentCount
-              ? `سأعطيك ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة في ملف بعمود واحد. استخدمه في البحث الجماعي داخل لمحة، ثم صدّر Admin Order Export وارفعه في المرحلة 3.`
-              : 'كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة، لذلك لا يوجد ملف ناقص لتنزيله.'}
-            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers' || !missingShipmentCount}
-            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة للبحث في لمحة` : 'لا توجد أرقام شحنات ناقصة'}
-            onClick={downloadShipmentNumbers}
-            busy={busy === 'lamha_shipment_numbers'}
-          />
         </div>
       );
     }

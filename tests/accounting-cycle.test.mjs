@@ -649,7 +649,14 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
-  assert.match(cyclePage, /ملف أرقام الشحنات للبحث الجماعي في لمحة/);
+  assert.match(cyclePage, /أرقام الشحنات المطلوب البحث عنها في لمحة/);
+  assert.match(cyclePage, /1 — تنزيل أرقام الشحنات من النظام/);
+  assert.match(cyclePage, /2 — تنزيل ملف الأوزان الجديد لرفعه إلى لمحة/);
+  assert.ok(
+    cyclePage.indexOf('1 — تنزيل أرقام الشحنات من النظام')
+      < cyclePage.indexOf('2 — تنزيل ملف الأوزان الجديد لرفعه إلى لمحة'),
+    'تنزيل أرقام الشحنات يجب أن يظهر قبل ملف الأوزان في مسار المحاسب',
+  );
   assert.match(cyclePage, /missingShipmentCount/);
   assert.match(cyclePage, /كل أرقام الشحنات المعتمدة موجودة بالفعل/);
   assert.match(cyclePage, /item\.requiresManualUpload/);
