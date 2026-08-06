@@ -191,6 +191,13 @@ function isDownloadableWeightExport(record) {
   );
 }
 
+function fmtScheduleDate(value) {
+  if (!value) return '—';
+  const date = new Date(`${String(value).slice(0, 10)}T12:00:00+03:00`);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+}
+
 function StageHistory({ stage, busy, onRedownload }) {
   const history = Array.isArray(stage?.history) ? stage.history : [];
   return (
@@ -289,6 +296,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   const [lamhaCollectionPreview, setLamhaCollectionPreview] = useState(null);
   const [settlement, setSettlement] = useState(null);
   const [carrierId, setCarrierId] = useState(() => carriers[0]?.id || '');
+  const [collectionScheduleSlot, setCollectionScheduleSlot] = useState('');
 
   const refresh = useCallback(async ({ advance = false } = {}) => {
     setLoading(true);
@@ -313,6 +321,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   useEffect(() => {
     if (!carrierId && carriers[0]?.id) setCarrierId(carriers[0].id);
   }, [carrierId, carriers]);
+
+  useEffect(() => { setCollectionScheduleSlot(''); }, [carrierId, period]);
 
   const selected = useMemo(
     () => snapshot?.stages?.find(stage => stage.id === selectedId) || snapshot?.stages?.[0] || null,
@@ -556,12 +566,12 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     }
   };
 
-  const openSettlement = (direction, selectedCarrierId = carrierId) => {
+  const openSettlement = (direction, selectedCarrierId = carrierId, scheduleSlot = null) => {
     if (!selectedCarrierId) {
       toast('اختر شركة الشحن أولًا', 'error');
       return;
     }
-    setSettlement({ direction, carrier: selectedCarrierId });
+    setSettlement({ direction, carrier: selectedCarrierId, scheduleSlot });
   };
 
   const settlementDone = async result => {
@@ -582,6 +592,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
           savedCount: result.savedCount,
           skippedCount: result.skippedCount,
           fileCount: result.fileCount,
+          scheduleSlot: settlement?.scheduleSlot || null,
           ledgerError: result.ledgerError || null,
         },
         userId: user?.id,
@@ -600,7 +611,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       sourceKind: result.direction,
       fileName: result.fileNames?.join(' · ') || null,
       error: result.error,
-      result: { carrier: result.carrier || carrierId || null },
+      result: { carrier: result.carrier || carrierId || null, scheduleSlot: settlement?.scheduleSlot || null },
     });
     await refresh();
   };
@@ -789,13 +800,18 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     if (stage.id === 'carrier_collections') {
       const checklist = stage.detail?.carriers || [];
       const manualIds = new Set(checklist
-        .filter(item => item.requiresManualUpload && ['pending', 'uploaded'].includes(item.status))
+        .filter(item => item.requiresManualUpload && item.status === 'pending')
         .map(item => String(item.carrierId)));
       const available = carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id]
         && (!checklist.length || manualIds.has(String(carrier.id))));
       const selectedCarrierId = available.some(carrier => String(carrier.id) === String(carrierId))
         ? carrierId
         : (available[0]?.id || '');
+      const selectedRequirement = checklist.find(item => String(item.carrierId) === String(selectedCarrierId)) || null;
+      const missingCollectionSlots = (selectedRequirement?.missingSlots || []).filter(Boolean);
+      const effectiveCollectionSlot = missingCollectionSlots.length === 1
+        ? missingCollectionSlots[0]
+        : collectionScheduleSlot;
       return (
         <div>
           <p className="accounting-cycle-help">كل دفعة أسبوعية تُحسب ملفًا مستقلًا. الفاتورة الشهرية لا تكمل التحصيل الأسبوعي، والملف الموحّد فقط هو الذي يثبت الفاتورة والتحصيل معًا.</p>
@@ -807,15 +823,31 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
           )}
           {available.length > 0 ? (
             <>
-              <Select label="شركة الشحن" value={selectedCarrierId} onChange={event => setCarrierId(event.target.value)}>
+              <Select label="شركة الشحن" value={selectedCarrierId} onChange={event => {
+                setCarrierId(event.target.value);
+                setCollectionScheduleSlot('');
+              }}>
                 <option value="">اختر شركة الشحن…</option>
                 {available.map(carrier => <option key={carrier.id} value={carrier.id}>{carrier.label || carrier.name || carrier.id}</option>)}
               </Select>
+              {missingCollectionSlots.length > 0 && (
+                <Select
+                  label="موعد التحصيل الذي يغطيه الملف"
+                  value={effectiveCollectionSlot}
+                  onChange={event => setCollectionScheduleSlot(event.target.value)}
+                  disabled={missingCollectionSlots.length === 1}
+                >
+                  {missingCollectionSlots.length > 1 && <option value="">اختر موعد التحصيل…</option>}
+                  {missingCollectionSlots.map(dueDate => (
+                    <option key={dueDate} value={dueDate}>{fmtScheduleDate(dueDate)}</option>
+                  ))}
+                </Select>
+              )}
               <Btn
                 variant="primary"
                 icon={<Upload size={16}/>}
-                onClick={() => openSettlement('in', selectedCarrierId)}
-                disabled={!allowed || !selectedCarrierId}
+                onClick={() => openSettlement('in', selectedCarrierId, effectiveCollectionSlot || null)}
+                disabled={!allowed || !selectedCarrierId || (missingCollectionSlots.length > 1 && !effectiveCollectionSlot)}
                 style={{ marginTop: 14 }}
               >
                 رفع ملف التحصيل المستلم من الناقل

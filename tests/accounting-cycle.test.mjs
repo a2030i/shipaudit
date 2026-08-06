@@ -188,7 +188,7 @@ test('الفاتورة الشهرية لا تغطي تحصيلات الناقل 
   const collectionChecklist = deriveCarrierCollectionChecklist({
     period: '2026-08', approvedAudits: audits, carriers, schedules,
     asOf: '2026-08-16',
-    events: [{ stage: 'carrier_collections', status: 'success', result: { carrier: 'jnt', fileCount: 1 } }],
+    events: [{ stage: 'carrier_collections', status: 'success', result: { carrier: 'jnt', fileCount: 1, scheduleSlot: '2026-08-08' } }],
   });
   assert.equal(collectionChecklist[0].status, 'pending');
   assert.equal(collectionChecklist[0].expectedCount, 4);
@@ -205,19 +205,57 @@ test('إعادة رفع ملف تحصيل مكرر لا تُحسب دفعة أس
   const checklist = deriveCarrierCollectionChecklist({
     period: '2026-08', approvedAudits: audits, carriers, schedules,
     events: [
-      { id: 'ok', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 20 } },
-      { id: 'duplicate', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 0, skippedCount: 20 } },
+      { id: 'ok', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 20, scheduleSlot: '2026-08-08' } },
+      { id: 'duplicate', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 0, skippedCount: 20, scheduleSlot: '2026-08-08' } },
     ],
   });
   assert.equal(checklist[0].receivedCount, 1);
   assert.equal(checklist[0].missingCount, 3);
 });
 
+test('ملفان مختلفان لنفس موعد التحصيل الأسبوعي لا يُكملان موعدين', () => {
+  const schedules = [{
+    id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true,
+    cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29],
+  }];
+  const carriers = [{ id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } }];
+  const events = ['first.xlsx', 'corrected.xlsx'].map((fileName, index) => ({
+    id: `event-${index}`,
+    stage: 'carrier_collections', status: 'success', file_name: fileName,
+    result: { carrier: 'jnt', fileCount: 1, savedCount: 20, scheduleSlot: '2026-08-08' },
+  }));
+  const checklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules, events });
+  assert.equal(checklist[0].receivedCount, 1);
+  assert.equal(checklist[0].missingCount, 3);
+  assert.equal(checklist[0].duplicateSlotCount, 1);
+});
+
+test('ملفان مختلفان لنفس موعد الفاتورة الأسبوعية لا يُكملان موعدين', () => {
+  const schedules = [{
+    id: 'combined', carrier_id: 'imile', task_kind: 'invoice', active: true,
+    cadence: 'weekly', schedule_basis: 'month_days', due_days: [5, 12, 19, 26],
+  }];
+  const carriers = [{ id: 'imile', name: 'أي مايل', file_signature: { file_kind: 'audit_with_cod' } }];
+  const audits = ['first.xlsx', 'corrected.xlsx'].map((fileName, index) => ({
+    id: `audit-${index}`, carrier_id: 'imile', review_status: 'approved', file_name: fileName,
+    col_map: { __control: { scheduleSlot: '2026-08-05' } },
+  }));
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules, audits });
+  const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules, approvedAudits: audits });
+  assert.equal(invoiceChecklist[0].receivedCount, 1);
+  assert.equal(invoiceChecklist[0].missingCount, 3);
+  assert.equal(invoiceChecklist[0].duplicateSlotCount, 1);
+  assert.equal(collectionChecklist[0].receivedCount, 1);
+  assert.equal(collectionChecklist[0].missingCount, 3);
+});
+
 test('الملف الأسبوعي الموحّد يثبت الفاتورة والتحصيل معًا ولا يكتمل بملف واحد', () => {
   const schedules = [{ id: 'combined', carrier_id: 'imile', task_kind: 'invoice', active: true, cadence: 'weekly', day_of_period: 3 }];
   const carriers = [{ id: 'imile', name: 'أي مايل', file_signature: { file_kind: 'audit_with_cod' } }];
+  const weeklySlots = ['2026-08-05', '2026-08-12', '2026-08-19'];
   const audits = Array.from({ length: 3 }, (_, index) => ({
     id: `a-${index}`, carrier_id: 'imile', carrier_name: 'أي مايل', review_status: 'approved',
+    col_map: { __control: { scheduleSlot: weeklySlots[index] } },
   }));
   const expected = expectedScheduleSlots(schedules[0], '2026-08').length;
   assert.equal(expected, 4);
@@ -231,19 +269,20 @@ test('الملف الأسبوعي الموحّد يثبت الفاتورة وا�
 });
 
 test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتفصل الفاتورة الشهرية عن التحصيل الأسبوعي', () => {
-  const controlFor = fileName => ({ version: 3, valid: true, fileName, contractLabels: ['عقد 2026'] });
-  const approvedAudit = (id, carrierId) => ({
+  const controlFor = (fileName, scheduleSlot) => ({ version: 3, valid: true, fileName, contractLabels: ['عقد 2026'], scheduleSlot });
+  const approvedAudit = (id, carrierId, scheduleSlot) => ({
     id,
     carrier_id: carrierId,
     carrier_name: carrierId,
     file_name: `${id}.xlsx`,
     review_status: 'approved',
     weight_billing_status: 'skipped',
-    col_map: { __control: controlFor(`${id}.xlsx`) },
+    col_map: { __control: controlFor(`${id}.xlsx`, scheduleSlot) },
   });
   const audits = [
-    ...Array.from({ length: 4 }, (_, index) => approvedAudit(`combined-${index + 1}`, 'combined')),
-    approvedAudit('separate-month', 'separate'),
+    ...['2026-08-05', '2026-08-12', '2026-08-19', '2026-08-26']
+      .map((slot, index) => approvedAudit(`combined-${index + 1}`, 'combined', slot)),
+    approvedAudit('separate-month', 'separate', '2026-08-01'),
   ];
   const carriers = [
     {
@@ -269,13 +308,13 @@ test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتف
     { id: 'cod-only-weekly', carrier_id: 'cod-only', task_kind: 'cod_remittance', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] },
   ];
   const events = ['separate', 'cod-only'].flatMap(carrierId =>
-    [1, 2, 3, 4].map(week => ({
-      id: `${carrierId}-${week}`,
+    [8, 15, 22, 29].map((day, index) => ({
+      id: `${carrierId}-${index + 1}`,
       stage: 'carrier_collections',
       status: 'success',
-      file_name: `${carrierId}-week-${week}.xlsx`,
+      file_name: `${carrierId}-week-${index + 1}.xlsx`,
       row_count: 10,
-      result: { carrier: carrierId, savedCount: 10, fileCount: 1 },
+      result: { carrier: carrierId, savedCount: 10, fileCount: 1, scheduleSlot: `2026-08-${String(day).padStart(2, '0')}` },
     })),
   );
   const cycle = deriveAccountingCycleStages({

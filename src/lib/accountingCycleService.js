@@ -495,6 +495,71 @@ function receivedEventBatchCount(events, carrierId) {
   return batches.size;
 }
 
+function auditScheduleSlot(record) {
+  return String(
+    record?.col_map?.__control?.scheduleSlot
+    || record?.control?.scheduleSlot
+    || record?.summary?.control?.scheduleSlot
+    || '',
+  ).slice(0, 10);
+}
+
+function eventScheduleSlot(record) {
+  return String(record?.result?.scheduleSlot || record?.schedule_slot || '').slice(0, 10);
+}
+
+function uniqueExpectedSlots(slots = []) {
+  const byDate = new Map();
+  for (const slot of slots || []) {
+    const dueDate = String(slot?.dueDate || '').slice(0, 10);
+    if (dueDate && !byDate.has(dueDate)) byDate.set(dueDate, { ...slot, dueDate });
+  }
+  return [...byDate.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+function scheduledRecordCoverage(slots, records, getSlot, asOf = new Date().toISOString().slice(0, 10)) {
+  const expectedSlots = uniqueExpectedSlots(slots);
+  const expectedDates = new Set(expectedSlots.map(slot => slot.dueDate));
+  const sourceRecords = records || [];
+  const receivedDates = new Set();
+  let unassignedCount = 0;
+  let duplicateSlotCount = 0;
+
+  // A monthly schedule has one unambiguous slot. Historical approved files
+  // can therefore be attributed safely without rewriting their stored proof.
+  if (expectedSlots.length === 1 && sourceRecords.length) {
+    receivedDates.add(expectedSlots[0].dueDate);
+    duplicateSlotCount = Math.max(0, sourceRecords.length - 1);
+  } else {
+    for (const record of sourceRecords) {
+      const scheduleSlot = String(getSlot(record) || '').slice(0, 10);
+      if (!expectedDates.has(scheduleSlot)) {
+        unassignedCount += 1;
+        continue;
+      }
+      if (receivedDates.has(scheduleSlot)) duplicateSlotCount += 1;
+      else receivedDates.add(scheduleSlot);
+    }
+  }
+
+  const missingSlots = expectedSlots.filter(slot => !receivedDates.has(slot.dueDate));
+  const dueMissingSlots = missingSlots.filter(slot => slot.dueDate <= asOf);
+  const upcomingMissingSlots = missingSlots.filter(slot => slot.dueDate > asOf);
+  return {
+    expectedCount: expectedSlots.length,
+    receivedCount: receivedDates.size,
+    missingCount: missingSlots.length,
+    dueExpectedCount: expectedSlots.filter(slot => slot.dueDate <= asOf).length,
+    dueMissingCount: dueMissingSlots.length,
+    upcomingMissingCount: upcomingMissingSlots.length,
+    receivedSlots: [...receivedDates].sort(),
+    missingSlots: missingSlots.map(slot => slot.dueDate),
+    unassignedCount,
+    duplicateSlotCount,
+    extraCount: unassignedCount + duplicateSlotCount,
+  };
+}
+
 function receivedUploadBatchCount(uploads, carrierId) {
   return new Set((uploads || [])
     .filter(upload => String(upload?.carrier_id || '') === String(carrierId))
@@ -502,19 +567,35 @@ function receivedUploadBatchCount(uploads, carrierId) {
     .filter(Boolean)).size;
 }
 
-function splitScheduleGap(slots, receivedCount, asOf = new Date().toISOString().slice(0, 10)) {
-  const expectedCount = slots.length;
-  const received = Math.max(0, Number(receivedCount || 0));
-  const dueExpectedCount = slots.filter(slot => slot.dueDate <= asOf).length;
-  const missingCount = Math.max(0, expectedCount - received);
-  const dueMissingCount = Math.max(0, dueExpectedCount - received);
-  return {
-    expectedCount,
-    missingCount,
-    dueExpectedCount,
-    dueMissingCount,
-    upcomingMissingCount: Math.max(0, missingCount - dueMissingCount),
-  };
+function receivedEventBatchRecords(events, carrierId) {
+  const batches = new Map();
+  for (const event of events || []) {
+    if (event?.stage !== 'carrier_collections' || !['success', 'warning'].includes(event?.status)) continue;
+    if (String(event?.result?.carrier || '') !== String(carrierId)) continue;
+    if (Object.hasOwn(event.result || {}, 'savedCount') && Number(event.result.savedCount || 0) <= 0) continue;
+    const files = String(event.file_name || '').split(/\s*[·]\s*/).map(value => value.trim()).filter(Boolean);
+    if (files.length) {
+      for (const file of files) {
+        const key = `file:${file}`;
+        if (!batches.has(key)) batches.set(key, event);
+      }
+      continue;
+    }
+    const count = Math.max(1, Number(event?.result?.fileCount || 1));
+    const eventKey = event.id || event.created_at || `${carrierId}:${batches.size}`;
+    for (let index = 0; index < count; index += 1) batches.set(`event:${eventKey}:${index}`, event);
+  }
+  return [...batches.values()];
+}
+
+function receivedUploadBatchRecords(uploads, carrierId) {
+  const batches = new Map();
+  for (const upload of uploads || []) {
+    if (String(upload?.carrier_id || '') !== String(carrierId)) continue;
+    const key = upload.upload_id || `${upload.source_file || ''}:${upload.upload_date || ''}`;
+    if (key && !batches.has(key)) batches.set(key, upload);
+  }
+  return [...batches.values()];
 }
 
 export function deriveCarrierAuditChecklist({ period, audits = [], carriers = [], schedules = null, asOf } = {}) {
@@ -537,7 +618,8 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
   return [...carrierIds].map(carrierId => {
     const carrier = carrierById.get(carrierId) || null;
     const carrierAudits = auditsByCarrier.get(carrierId) || [];
-    const approvedCount = carrierAudits.filter(audit => audit.review_status === 'approved').length;
+    const approvedAudits = carrierAudits.filter(audit => audit.review_status === 'approved');
+    const approvedCount = approvedAudits.length;
     const invoiceSchedules = activeSchedulesFor(schedules, carrierId, 'invoice');
     const fileKind = String(carrier?.file_signature?.file_kind || '').trim() || null;
     const base = {
@@ -575,7 +657,7 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
     const slots = invoiceSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
     const invalidSchedule = invoiceSchedules.some(schedule => schedule.cadence !== 'on_demand'
       && expectedScheduleSlots(schedule, period).length === 0);
-    const gap = splitScheduleGap(slots, approvedCount, asOf);
+    const gap = scheduledRecordCoverage(slots, approvedAudits, auditScheduleSlot, asOf);
     const { expectedCount, missingCount } = gap;
     const scheduleText = invoiceSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
     if (invalidSchedule) {
@@ -592,13 +674,18 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
       dueExpectedCount: gap.dueExpectedCount,
       dueMissingCount: gap.dueMissingCount,
       upcomingMissingCount: gap.upcomingMissingCount,
-      extraCount: Math.max(0, approvedCount - expectedCount),
+      receivedCount: gap.receivedCount,
+      receivedSlots: gap.receivedSlots,
+      missingSlots: gap.missingSlots,
+      unassignedCount: gap.unassignedCount,
+      duplicateSlotCount: gap.duplicateSlotCount,
+      extraCount: gap.extraCount,
       status: missingCount ? 'pending' : 'complete',
       scheduleText,
       dueDates: slots.map(slot => slot.dueDate),
       note: missingCount
-        ? `المطلوب ${expectedCount} · المعتمد ${approvedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}`
-        : `اكتملت ${approvedCount} من ${expectedCount} فاتورة مجدولة`,
+        ? `المطلوب ${expectedCount} · المغطى فعليًا ${gap.receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} مراجعة غير منسوبة لموعد` : ''}${gap.duplicateSlotCount ? ` · ${gap.duplicateSlotCount} تكرار لنفس الموعد` : ''}`
+        : `اكتملت ${gap.receivedCount} من ${expectedCount} فاتورة مجدولة${gap.duplicateSlotCount ? ` · يوجد ${gap.duplicateSlotCount} ملف زائد لنفس الموعد` : ''}`,
     };
   }).sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
 }
@@ -667,11 +754,16 @@ export function deriveCarrierCollectionChecklist({
       const slots = matchingSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
       const invalidSchedule = matchingSchedules.some(schedule => schedule.cadence !== 'on_demand'
         && expectedScheduleSlots(schedule, period).length === 0);
-      const expectedCount = slots.length;
-      const receivedCount = fileKind === 'audit_with_cod'
-        ? carrierAudits.length
-        : Math.max(receivedEventBatchCount(events, carrierId), receivedUploadBatchCount(codUploads, carrierId));
-      const gap = splitScheduleGap(slots, receivedCount, asOf);
+      const eventBatches = receivedEventBatchRecords(events, carrierId);
+      const uploadBatches = receivedUploadBatchRecords(codUploads, carrierId);
+      const eventBatchCount = receivedEventBatchCount(events, carrierId);
+      const uploadBatchCount = receivedUploadBatchCount(codUploads, carrierId);
+      const manualBatches = eventBatchCount >= uploadBatchCount ? eventBatches : uploadBatches;
+      const gap = fileKind === 'audit_with_cod'
+        ? scheduledRecordCoverage(slots, carrierAudits, auditScheduleSlot, asOf)
+        : scheduledRecordCoverage(slots, manualBatches, eventScheduleSlot, asOf);
+      const expectedCount = gap.expectedCount;
+      const receivedCount = gap.receivedCount;
       const missingCount = gap.missingCount;
       const scheduleText = matchingSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
       const scheduled = {
@@ -683,7 +775,11 @@ export function deriveCarrierCollectionChecklist({
         dueExpectedCount: gap.dueExpectedCount,
         dueMissingCount: gap.dueMissingCount,
         upcomingMissingCount: gap.upcomingMissingCount,
-        extraCount: Math.max(0, receivedCount - expectedCount),
+        receivedSlots: gap.receivedSlots,
+        missingSlots: gap.missingSlots,
+        unassignedCount: gap.unassignedCount,
+        duplicateSlotCount: gap.duplicateSlotCount,
+        extraCount: gap.extraCount,
         scheduleText,
         dueDates: slots.map(slot => slot.dueDate),
       };
@@ -693,18 +789,18 @@ export function deriveCarrierCollectionChecklist({
       if (missingCount) {
         if (fileKind === 'audit_with_cod') {
           return { ...scheduled, status: 'pending', requiresManualUpload: false,
-            note: `ملف موحد (فاتورة + تحصيل) · المطلوب ${expectedCount} · المعتمد ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount} · يُرفع في مرحلة الفواتير` };
+            note: `ملف موحد (فاتورة + تحصيل) · المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} مراجعة غير منسوبة لموعد` : ''}${gap.duplicateSlotCount ? ` · ${gap.duplicateSlotCount} تكرار لنفس الموعد` : ''} · يُرفع في مرحلة الفواتير` };
         }
         if (MANUAL_COLLECTION_KINDS.has(fileKind) && !REMITTANCE_PARSERS[carrierId]) {
           return { ...scheduled, status: 'unsupported', requiresManualUpload: false,
-            note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}، وقارئ الملف غير مهيأ` };
+            note: `المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} ملف غير منسوب لموعد` : ''}، وقارئ الملف غير مهيأ` };
         }
         return { ...scheduled, status: 'pending', requiresManualUpload: true,
-          note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}` };
+          note: `المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} ملف غير منسوب لموعد` : ''}${gap.duplicateSlotCount ? ` · ${gap.duplicateSlotCount} تكرار لنفس الموعد` : ''}` };
       }
       return fileKind === 'audit_with_cod'
-        ? { ...scheduled, status: 'automatic', requiresManualUpload: false, note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)` }
-        : { ...scheduled, status: 'uploaded', requiresManualUpload: true, note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل` };
+        ? { ...scheduled, status: 'automatic', requiresManualUpload: false, note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)${gap.duplicateSlotCount ? ` · يوجد ${gap.duplicateSlotCount} ملف زائد لنفس الموعد` : ''}` }
+        : { ...scheduled, status: 'uploaded', requiresManualUpload: true, note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل${gap.duplicateSlotCount ? ` · يوجد ${gap.duplicateSlotCount} ملف زائد لنفس الموعد` : ''}` };
     }
 
     if (fileKind === 'audit_with_cod') {

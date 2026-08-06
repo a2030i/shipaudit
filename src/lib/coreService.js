@@ -291,7 +291,7 @@ export async function findSamePeriodAudits(carrierId, period) {
   if (!carrierId || !period) return [];
   const { data, error } = await supabase
     .from('audits')
-    .select('id, file_name, period, review_status, created_at, row_count')
+    .select('id, file_name, period, review_status, created_at, row_count, col_map')
     .eq('carrier_id', carrierId)
     .eq('period', period)
     .order('created_at', { ascending: false });

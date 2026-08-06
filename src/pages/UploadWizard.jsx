@@ -22,12 +22,32 @@ import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates, findSamePeriodAudits } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
+import { expectedScheduleSlots, listSchedules, requiredScheduleKindsForCarrier } from '../lib/tasksService.js';
 
 const MONTHS = [
   'يناير','فبراير','مارس','أبريل','مايو','يونيو',
   'يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر',
 ];
 const buildPeriod = (m, y) => `${MONTHS[m - 1]} ${y}`;
+const buildPeriodKey = (m, y) => `${y}-${String(m).padStart(2, '0')}`;
+
+function invoiceScheduleSlots(schedules, carrierId, periodKey) {
+  const byDate = new Map();
+  for (const schedule of schedules || []) {
+    if (!schedule.active || schedule.task_kind !== 'invoice') continue;
+    if (String(schedule.carrier_id) !== String(carrierId || '')) continue;
+    for (const slot of expectedScheduleSlots(schedule, periodKey)) {
+      if (!byDate.has(slot.dueDate)) byDate.set(slot.dueDate, slot);
+    }
+  }
+  return [...byDate.values()].sort((a, b) => a.dueDate.localeCompare(b.dueDate));
+}
+
+function scheduleSlotLabel(value) {
+  const date = new Date(`${value}T12:00:00+03:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('ar-SA', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(date);
+}
 
 async function sha256Hex(buffer) {
   try {
@@ -315,7 +335,8 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
 // ── Step 3 — Review & Confirm ──────────────────────────────────────────────────
 function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiMap,
                  detectedRow, aiNotes, missingFields, rowCount,
-                 carriers, carrierId, setCarrierId, carrierDetect }) {
+                 carriers, carrierId, setCarrierId, carrierDetect,
+                 scheduleSlots, scheduleSlot, setScheduleSlot, scheduleLoading, scheduleError }) {
 
   const carrier = carriers?.find(c => c.id === carrierId);
   const detectConfidence = carrierDetect?.confidence ?? 0;
@@ -401,6 +422,41 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
           </select>
         )}
       </div>
+
+      {carrier && requiredScheduleKindsForCarrier(carrier).includes('invoice') && (
+        <div style={{
+          marginBottom: 16,
+          padding: '12px 14px',
+          border: `1px solid ${scheduleError || (!scheduleLoading && !scheduleSlots.length) ? 'var(--gold)' : 'var(--border)'}`,
+          borderRadius: 10,
+          background: 'var(--surface2)',
+        }}>
+          <div style={{ fontSize: 12.5, fontWeight: 800, marginBottom: 5 }}>موعد استلام الناقل الذي يغطيه هذا الملف</div>
+          <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 9 }}>
+            هذا الربط يمنع احتساب ملفين لنفس الأسبوع كأنهما أسبوعان مختلفان. الفاتورة الشهرية تُربط تلقائيًا بموعدها الوحيد.
+          </div>
+          {scheduleLoading ? (
+            <div style={{ color: 'var(--muted)', fontSize: 12 }}>جارٍ تحميل جدول الاستلام…</div>
+          ) : scheduleError ? (
+            <div style={{ color: 'var(--gold)', fontSize: 12 }}>{scheduleError}</div>
+          ) : scheduleSlots.length ? (
+            <select
+              aria-label="موعد استلام الناقل الذي يغطيه الملف"
+              value={scheduleSlot}
+              onChange={event => setScheduleSlot(event.target.value)}
+              disabled={scheduleSlots.length === 1}
+              style={{ width: '100%', padding: '9px 11px', borderRadius: 8, fontSize: 13 }}
+            >
+              {scheduleSlots.length > 1 && <option value="">— اختر موعد الاستلام —</option>}
+              {scheduleSlots.map(slot => (
+                <option key={slot.dueDate} value={slot.dueDate}>{scheduleSlotLabel(slot.dueDate)}</option>
+              ))}
+            </select>
+          ) : (
+            <div style={{ color: 'var(--gold)', fontSize: 12 }}>لم يُحدد جدول استلام فاتورة لهذا الناقل. اضبطه من «مهام وقرارات اليوم» قبل الاعتماد.</div>
+          )}
+        </div>
+      )}
 
       {/* Status pills */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
@@ -546,6 +602,9 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
   const [missingFields,setMissingFields] = useState([]);
   const [fileMeta,      setFileMeta]      = useState({ fileName: '', detailSheet: '', declared: null, sourceHash: '', sourceSize: 0 });
   const [sourceFile,    setSourceFile]    = useState(null);
+  const [schedules,     setSchedules]     = useState(null);
+  const [scheduleError, setScheduleError] = useState('');
+  const [scheduleSlot,  setScheduleSlot]  = useState('');
   // When the file came from the Webhook page (via "حفظ كمراجعة"), we
   // carry the originating webhook_events row id so AuditResults can
   // mark it processed + linked after the user approves.
@@ -558,6 +617,28 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
 
   const carrier = carriers.find(c => c.id === carrierId);
   const period  = buildPeriod(month, year);
+  const periodKey = buildPeriodKey(month, year);
+  const scheduleSlots = invoiceScheduleSlots(schedules, carrierId, periodKey);
+
+  useEffect(() => {
+    let alive = true;
+    setScheduleError('');
+    listSchedules({ activeOnly: true })
+      .then(rows => { if (alive) setSchedules(rows); })
+      .catch(error => {
+        if (!alive) return;
+        setSchedules([]);
+        setScheduleError(`تعذر تحميل جدول استلام الناقل: ${error.message || 'خطأ غير معروف'}`);
+      });
+    return () => { alive = false; };
+  }, []);
+
+  useEffect(() => {
+    setScheduleSlot(current => {
+      if (scheduleSlots.length === 1) return scheduleSlots[0].dueDate;
+      return scheduleSlots.some(slot => slot.dueDate === current) ? current : '';
+    });
+  }, [carrierId, periodKey, scheduleSlots.map(slot => slot.dueDate).join('|')]);
 
   // Apply AI result to state
   const applyAiResult = (result, allRows) => {
@@ -891,17 +972,57 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
     }
     const inferred = inferPeriodFromRows(mapped, month, year);
     const auditPeriod = inferred.period;
+    const inferredPeriodKey = buildPeriodKey(inferred.month, inferred.year);
     if (inferred.month !== month || inferred.year !== year) {
       setMonth(inferred.month);
       setYear(inferred.year);
       toast(`تم اعتماد فترة الملف من تواريخ الشحنات: ${auditPeriod}`, 'info');
     }
 
+    const requiresInvoiceSchedule = requiredScheduleKindsForCarrier(carrier).includes('invoice');
+    if (requiresInvoiceSchedule && schedules == null) {
+      toast('انتظر اكتمال تحميل جدول استلام الناقل ثم أعد المحاولة', 'error');
+      return;
+    }
+    if (requiresInvoiceSchedule && scheduleError) {
+      toast(scheduleError, 'error');
+      return;
+    }
+    const carrierInvoiceSchedules = (schedules || []).filter(schedule => schedule.active
+      && schedule.task_kind === 'invoice'
+      && String(schedule.carrier_id) === String(carrier.id));
+    if (requiresInvoiceSchedule && !carrierInvoiceSchedules.length) {
+      toast('لا يمكن اعتماد الملف قبل تحديد جدول استلام فاتورة الناقل من صفحة «مهام وقرارات اليوم»', 'error');
+      return;
+    }
+    const inferredScheduleSlots = invoiceScheduleSlots(schedules, carrier.id, inferredPeriodKey);
+    if (inferredScheduleSlots.length > 1 && inferredPeriodKey !== periodKey) {
+      setScheduleSlot('');
+      toast('تغيرت الفترة حسب تواريخ الشحنات. اختر موعد الاستلام الصحيح من الفترة الجديدة ثم أعد التأكيد', 'warn');
+      return;
+    }
+    const resolvedScheduleSlot = inferredScheduleSlots.length === 1
+      ? inferredScheduleSlots[0].dueDate
+      : (inferredScheduleSlots.length > 1 ? scheduleSlot : null);
+    if (inferredScheduleSlots.length > 1
+      && !inferredScheduleSlots.some(slot => slot.dueDate === resolvedScheduleSlot)) {
+      toast('اختر موعد استلام الناقل الذي يغطيه هذا الملف قبل بدء التدقيق', 'error');
+      return;
+    }
+
     // Soft same-carrier+period guard: warn before processing if a review
     // already exists for this carrier and month (the common "رفعت نفس
     // الشهر مرتين" mistake). Legitimate multi-invoice months can confirm.
+    let priors = [];
     try {
-      const priors = await findSamePeriodAudits(carrier.id, auditPeriod);
+      priors = await findSamePeriodAudits(carrier.id, auditPeriod);
+      if (resolvedScheduleSlot && priors.some(prior => (
+        prior?.col_map?.__control?.scheduleSlot
+        || prior?.control?.scheduleSlot
+      ) === resolvedScheduleSlot)) {
+        toast(`يوجد ملف معتمد بالفعل لموعد ${scheduleSlotLabel(resolvedScheduleSlot)}. لن يُحتسب ملف ثانٍ لنفس الموعد`, 'error');
+        return;
+      }
       if (priors.length) {
         // في الوضع الآلي: مراجعة سابقة لنفس الفترة = خطر تكرار → أوقف
         // الآلية فوراً واترك القرار للإنسان (لا window.confirm بلا مستخدم).
@@ -986,6 +1107,9 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
       requiresCarrierSummary,
       hasCarrierSummary,
       contractLabels,
+      scheduleSlot: resolvedScheduleSlot,
+      scheduleTaskKind: resolvedScheduleSlot ? 'invoice' : null,
+      schedulePeriod: inferredPeriodKey,
       valid: controlErrors.length === 0,
       errors: controlErrors,
     };
@@ -1124,7 +1248,9 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
           detectedRow={detectedRow} aiNotes={aiNotes}
           missingFields={missingFields} rowCount={rawRows.length}
           carriers={carriers} carrierId={carrierId} setCarrierId={setCarrierId}
-          carrierDetect={carrierDetect}/>
+          carrierDetect={carrierDetect}
+          scheduleSlots={scheduleSlots} scheduleSlot={scheduleSlot} setScheduleSlot={setScheduleSlot}
+          scheduleLoading={schedules == null} scheduleError={scheduleError}/>
       )}
     </div>
   );
