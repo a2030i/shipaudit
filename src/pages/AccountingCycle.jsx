@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle, ArrowLeft, CalendarDays, Check, CheckCircle2, Circle,
@@ -271,6 +272,7 @@ function SourceUpload({ sourceId, title, done, busy, onFile }) {
 
 export default function AccountingCycle({ carriers = [], isActive = false }) {
   const { user, can } = useAuth();
+  const navigate = useNavigate();
   const compactLayout = useCompactCycleLayout();
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [snapshot, setSnapshot] = useState(null);
@@ -631,6 +633,11 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         <div className="accounting-cycle-embedded">
           <p className="accounting-cycle-help">ارفع فاتورة شركة الشحن، راجع نتيجة المطابقة، ثم اعتمدها من نفس المسار. الناقل ذو الملف الأسبوعي الموحّد يحتاج كل ملفات الشهر، بينما الناقل ذو الفاتورة الشهرية يحتاج فاتورة واحدة مستقلة عن دفعات التحصيل.</p>
           <CarrierRequirementChecklist items={stage.detail?.carriers || []} title="اكتمال فواتير الناقلين حسب الجدول" />
+          {(stage.detail?.carriers || []).some(item => item.status === 'unclassified') && (
+            <Btn variant="ghost" size="sm" onClick={() => navigate('/tasks')} style={{ marginBottom: 14 }}>
+              ضبط جداول استلام الناقلين
+            </Btn>
+          )}
           {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period}/> : <NoPermission/>}
         </div>
       );
@@ -756,7 +763,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     if (stage.id === 'carrier_collections') {
       const checklist = stage.detail?.carriers || [];
       const manualIds = new Set(checklist
-        .filter(item => ['pending', 'uploaded'].includes(item.status))
+        .filter(item => item.requiresManualUpload && ['pending', 'uploaded'].includes(item.status))
         .map(item => String(item.carrierId)));
       const available = carriers.filter(carrier => REMITTANCE_PARSERS[carrier.id]
         && (!checklist.length || manualIds.has(String(carrier.id))));
@@ -767,6 +774,11 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         <div>
           <p className="accounting-cycle-help">كل دفعة أسبوعية تُحسب ملفًا مستقلًا. الفاتورة الشهرية لا تكمل التحصيل الأسبوعي، والملف الموحّد فقط هو الذي يثبت الفاتورة والتحصيل معًا.</p>
           <CarrierRequirementChecklist items={checklist} title="اكتمال تحصيلات الناقلين حسب الجدول" />
+          {checklist.some(item => item.status === 'unclassified') && (
+            <Btn variant="ghost" size="sm" onClick={() => navigate('/tasks')} style={{ marginBottom: 14 }}>
+              ضبط جداول الفواتير والتحصيل
+            </Btn>
+          )}
           {available.length > 0 ? (
             <>
               <Select label="شركة الشحن" value={selectedCarrierId} onChange={event => setCarrierId(event.target.value)}>

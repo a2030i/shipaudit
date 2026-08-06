@@ -57,7 +57,9 @@ export function expectedScheduleSlots(schedule, period) {
   const configured = Array.isArray(schedule.due_days)
     ? schedule.due_days.map(Number).filter(Number.isInteger)
     : [];
-  const day = Number(schedule.day_of_period);
+  const day = schedule.day_of_period == null || schedule.day_of_period === ''
+    ? Number.NaN
+    : Number(schedule.day_of_period);
   let days = [];
 
   if (configured.length) {
@@ -92,7 +94,7 @@ export function expectedScheduleSlots(schedule, period) {
 
 export function scheduleRequirementLabel(schedule, period) {
   const slots = expectedScheduleSlots(schedule, period);
-  if (!slots.length) return 'حسب الطلب';
+  if (!slots.length) return schedule?.cadence === 'on_demand' ? 'حسب الطلب' : 'موعد غير مكتمل';
   return `${CADENCE_META[schedule.cadence]?.label || schedule.cadence} · ${slots.map(slot => slot.day).join('، ')}`;
 }
 
@@ -114,6 +116,15 @@ export async function upsertSchedule({
 }) {
   if (!carrierId || !taskKind || !cadence) {
     throw new Error('carrier_id و task_kind و cadence مطلوبة');
+  }
+  if (cadence !== 'on_demand') {
+    const day = Number(dayOfPeriod);
+    const min = cadence === 'weekly' ? 0 : 1;
+    if (!Number.isInteger(day) || day < min || day > 28) {
+      throw new Error(cadence === 'weekly'
+        ? 'حدد يوم الأسبوع 0–6 أو يوم بداية الدفعات 7–28'
+        : 'حدد يوم الاستلام من 1 إلى 28');
+    }
   }
   const row = {
     carrier_id:    carrierId,

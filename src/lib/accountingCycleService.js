@@ -462,6 +462,17 @@ function activeSchedulesFor(schedules, carrierId, taskKind) {
     && schedule.task_kind === taskKind);
 }
 
+function carrierHasContractForPeriod(carrier, period) {
+  const contracts = Array.isArray(carrier?.contracts) ? carrier.contracts : [];
+  if (!contracts.length) return false;
+  const { start, end } = accountingPeriodBounds(period);
+  return contracts.some(contract => {
+    const contractStart = String(contract?.startDate || '').slice(0, 10);
+    const contractEnd = String(contract?.endDate || '').slice(0, 10);
+    return (!contractStart || contractStart < end) && (!contractEnd || contractEnd >= start);
+  });
+}
+
 function receivedEventBatchCount(events, carrierId) {
   const batches = new Set();
   for (const event of events || []) {
@@ -516,6 +527,7 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
   const carrierIds = new Set([
     ...auditsByCarrier.keys(),
     ...schedules.filter(schedule => schedule.active && schedule.task_kind === 'invoice').map(schedule => String(schedule.carrier_id)),
+    ...carriers.filter(carrier => carrierHasContractForPeriod(carrier, period)).map(carrier => String(carrier.id)),
   ]);
 
   return [...carrierIds].map(carrierId => {
@@ -533,9 +545,15 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
       return { ...base, expectedCount: null, missingCount: null, status: 'unclassified', note: 'جدول استلام فاتورة الناقل غير محدد' };
     }
     const slots = invoiceSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
+    const invalidSchedule = invoiceSchedules.some(schedule => schedule.cadence !== 'on_demand'
+      && expectedScheduleSlots(schedule, period).length === 0);
     const gap = splitScheduleGap(slots, approvedCount, asOf);
     const { expectedCount, missingCount } = gap;
     const scheduleText = invoiceSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
+    if (invalidSchedule) {
+      return { ...base, expectedCount: null, missingCount: null, status: 'unclassified', scheduleText,
+        dueDates: [], note: 'جدول استلام الفاتورة موجود لكن موعده غير مكتمل' };
+    }
     if (!expectedCount) {
       return { ...base, expectedCount, missingCount: 0, status: 'not_required', scheduleText, dueDates: [], note: 'لا توجد فاتورة مجدولة لهذه الفترة' };
     }
@@ -592,6 +610,9 @@ export function deriveCarrierCollectionChecklist({
         carrierIds.add(String(schedule.carrier_id));
       }
     }
+    for (const carrier of carriers) {
+      if (carrierHasContractForPeriod(carrier, period)) carrierIds.add(String(carrier.id));
+    }
   }
 
   return [...carrierIds].map(carrierId => {
@@ -616,6 +637,8 @@ export function deriveCarrierCollectionChecklist({
           note: fileKind === 'audit_with_cod' ? 'جدول الملف الموحّد (فاتورة + تحصيل) غير محدد' : 'جدول دفعات التحصيل غير محدد' };
       }
       const slots = matchingSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
+      const invalidSchedule = matchingSchedules.some(schedule => schedule.cadence !== 'on_demand'
+        && expectedScheduleSlots(schedule, period).length === 0);
       const expectedCount = slots.length;
       const receivedCount = fileKind === 'audit_with_cod'
         ? carrierAudits.length
@@ -636,16 +659,24 @@ export function deriveCarrierCollectionChecklist({
         scheduleText,
         dueDates: slots.map(slot => slot.dueDate),
       };
+      if (invalidSchedule) return { ...scheduled, status: 'unclassified', expectedCount: null, receivedCount,
+        missingCount: null, note: 'جدول التحصيل موجود لكن موعده غير مكتمل' };
       if (!expectedCount) return { ...scheduled, status: 'not_required', note: 'لا توجد دفعة تحصيل مجدولة لهذه الفترة' };
       if (missingCount) {
-        if (MANUAL_COLLECTION_KINDS.has(fileKind) && !REMITTANCE_PARSERS[carrierId]) {
-          return { ...scheduled, status: 'unsupported', note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}، وقارئ الملف غير مهيأ` };
+        if (fileKind === 'audit_with_cod') {
+          return { ...scheduled, status: 'pending', requiresManualUpload: false,
+            note: `ملف موحد (فاتورة + تحصيل) · المطلوب ${expectedCount} · المعتمد ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount} · يُرفع في مرحلة الفواتير` };
         }
-        return { ...scheduled, status: 'pending', note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}` };
+        if (MANUAL_COLLECTION_KINDS.has(fileKind) && !REMITTANCE_PARSERS[carrierId]) {
+          return { ...scheduled, status: 'unsupported', requiresManualUpload: false,
+            note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}، وقارئ الملف غير مهيأ` };
+        }
+        return { ...scheduled, status: 'pending', requiresManualUpload: true,
+          note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}` };
       }
       return fileKind === 'audit_with_cod'
-        ? { ...scheduled, status: 'automatic', note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)` }
-        : { ...scheduled, status: 'uploaded', note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل` };
+        ? { ...scheduled, status: 'automatic', requiresManualUpload: false, note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)` }
+        : { ...scheduled, status: 'uploaded', requiresManualUpload: true, note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل` };
     }
 
     if (fileKind === 'audit_with_cod') {
@@ -1007,7 +1038,7 @@ export async function loadAccountingCycle(period) {
       .eq('period', bounds.periodDate)
       .maybeSingle(), null),
     safe(supabase.from('carriers')
-      .select('id, name, file_signature')
+      .select('id, name, file_signature, contracts')
       .order('name')),
     safe(supabase.from('carrier_task_schedules')
       .select('*')

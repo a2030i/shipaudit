@@ -25,6 +25,38 @@ test('جداول الناقلين تحول الأسبوعي والشهري إل�
     expectedScheduleSlots({ id: 'monthly', active: true, cadence: 'monthly', day_of_period: 1 }, '2026-08').map(slot => slot.day),
     [1],
   );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'weekly-missing', active: true, cadence: 'weekly', day_of_period: null }, '2026-08'),
+    [],
+  );
+});
+
+test('الناقل ذو العقد الساري لا يختفي من الدورة عند غياب جدوله', () => {
+  const carriers = [{
+    id: 'missing-schedule', name: 'ناقل متعاقد',
+    file_signature: { file_kind: 'audit_and_cod_separate' },
+    contracts: [{ startDate: '2026-01-01', endDate: null }],
+  }];
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules: [] });
+  const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules: [] });
+  assert.equal(invoiceChecklist.length, 1);
+  assert.equal(invoiceChecklist[0].status, 'unclassified');
+  assert.equal(collectionChecklist.length, 1);
+  assert.equal(collectionChecklist[0].status, 'unclassified');
+
+  const stages = deriveAccountingCycleStages({ period: '2026-08', carriers, schedules: [] });
+  assert.equal(stages.stages[0].status, 'attention');
+  assert.equal(stages.stages[4].status, 'attention');
+  assert.equal(stages.prerequisiteComplete, false);
+});
+
+test('الجدول الأسبوعي بلا يوم يمنع الإقفال ولا يتحول إلى الأحد', () => {
+  const carriers = [{ id: 'carrier-1', name: 'ناقل', file_signature: { file_kind: 'audit_with_cod' } }];
+  const schedules = [{ id: 'bad', carrier_id: 'carrier-1', task_kind: 'invoice', active: true, cadence: 'weekly', day_of_period: null }];
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
+  const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules });
+  assert.equal(invoiceChecklist[0].status, 'unclassified');
+  assert.equal(collectionChecklist[0].status, 'unclassified');
 });
 
 test('الفاتورة الشهرية لا تغطي تحصيلات الناقل الأسبوعية المنفصلة', () => {
@@ -80,6 +112,8 @@ test('الملف الأسبوعي الموحّد يثبت الفاتورة وا�
   assert.equal(invoiceChecklist[0].missingCount, 1);
   assert.equal(collectionChecklist[0].missingCount, 1);
   assert.equal(collectionChecklist[0].status, 'pending');
+  assert.equal(collectionChecklist[0].requiresManualUpload, false);
+  assert.match(collectionChecklist[0].note, /يُرفع في مرحلة الفواتير/);
 });
 
 test('قائمة تحصيل الناقلين تفصل التلقائي واليدوي وغير المهيأ لكل ناقل في الشهر', () => {
@@ -342,6 +376,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /تنزيل أرقام الشحنات للبحث في لمحة/);
   assert.match(cyclePage, /أرقام الشحنات لجلب ملف لمحة/);
   assert.match(cyclePage, /تنزيل أرقام الشحنات الآن/);
+  assert.match(cyclePage, /item\.requiresManualUpload/);
+  assert.match(cyclePage, /ضبط جداول الفواتير والتحصيل/);
   assert.match(cyclePage, /إعادة تنزيل الملف/);
   assert.match(cyclePage, /redownloadWeightExport/);
   assert.match(cycleService, /file_name, file_path, storage_bucket, status/);
