@@ -336,6 +336,58 @@ test('iMile verifies delivery, COD and POS fees from contract formulas', () => {
   assert.equal(result.expected.total, 12);
 });
 
+test('mixed card and cash remains unverifiable without an explicit contract confirmation', () => {
+  const result = auditRow(pricedRow({
+    deliveryCharges: 16,
+    codAmount: 287,
+    posAmount: 287,
+    posFee: 0.44,
+    codPaymentMethod: 'nlcard cash',
+    statedTotal: 16.44,
+    tax: 2.466,
+    grossTotal: 18.906,
+  }), contract);
+  assert.equal(result.status, 'unverifiable');
+  assert.equal(result.splitPaymentVerification, null);
+});
+
+test('J&T confirmed split formula reconstructs the card portion and preserves the cash portion', () => {
+  const result = auditRow(pricedRow({
+    deliveryCharges: 16,
+    codAmount: 287,
+    posAmount: 287,
+    posFee: 0.44,
+    codPaymentMethod: 'nlcard cash',
+    statedTotal: 16.44,
+    tax: 2.466,
+    grossTotal: 18.906,
+  }), { ...contract, splitPosFeeConfirmed: true });
+  assert.equal(result.status, 'ok');
+  assert.equal(result.expected.posFee, 0.44);
+  assert.equal(result.posAmount, 22);
+  assert.equal(result.posAmountSource, 'derived_from_confirmed_split_fee');
+  assert.deepEqual(result.splitPaymentVerification, {
+    method: 'nlcard cash',
+    rate: 0.02,
+    cardAmount: 22,
+    cashAmount: 265,
+    source: 'manager_confirmed_carrier_formula',
+  });
+});
+
+test('confirmed split formula still blocks a fee that implies more card than total COD', () => {
+  const result = auditRow(pricedRow({
+    deliveryCharges: 16,
+    codAmount: 100,
+    posAmount: 100,
+    posFee: 2.5,
+    codPaymentMethod: 'nlcard cash',
+    statedTotal: 18.5,
+  }), { ...contract, splitPosFeeConfirmed: true });
+  assert.equal(result.status, 'unverifiable');
+  assert.equal(result.splitPaymentVerification, null);
+});
+
 test('Aymakan and SMSA fuel percentages are computed from contract prices', () => {
   const aymakan = auditRow(pricedRow({
     deliveryCharges: 13,

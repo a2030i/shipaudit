@@ -20,6 +20,7 @@ const TRACKED_FIELDS = [
   'codFee', 'pricing', 'pricingKey',
   'priceFromContract', 'inboundPassthrough', 'codFeePassthrough',
   'fuelPassthrough', 'deliveryInclusiveVat', 'posFeeOnCod', 'posFeePct',
+  'splitPosFeeConfirmed',
   'excessPerKg', 'excessUnit', 'notes',
 ];
 

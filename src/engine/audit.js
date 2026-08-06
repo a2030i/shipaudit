@@ -972,7 +972,7 @@ export function auditRow(row, contract) {
   // contract.posFeeOnCod (Webek): the card-processing fee is a % of the COD
   // amount itself (no dedicated "POS Amount" column). Otherwise use the
   // explicit POS Amount column (iMile).
-  const posAmount      = contract?.posFeeOnCod
+  const sourcePosAmount = contract?.posFeeOnCod
     ? Number(row.codAmount || 0)
     : Number(row.posAmount || 0);
   const posPct         = Number(contract?.posFeePct ?? 0);
@@ -988,6 +988,24 @@ export function auditRow(row, contract) {
   const pm = String(row.codPaymentMethod || '');
   const isSplitPay = /(?:cash|نقد|كاش)/i.test(pm)
     && /(?:card|بطاق|nlcard|mada|مدى|apple|visa|master|شبكة)/i.test(pm);
+  // J&T confirmed that, for `NLCard Cash`, COD service charge is exactly
+  // posFeePct × the card portion. Their invoice does not expose that portion
+  // as a separate column, so an explicitly flagged contract may reconstruct
+  // it from the fee. This is deliberately opt-in: every other mixed-payment
+  // file remains unverifiable rather than silently accepting carrier values.
+  const confirmedSplitFormula = isSplitPay && contract?.splitPosFeeConfirmed === true;
+  const codAmountForSplit = Number(row.codAmount || 0);
+  const derivedSplitCardAmount = confirmedSplitFormula && posPct > 0
+    ? +(invoicedPosFee / posPct).toFixed(4)
+    : null;
+  const validConfirmedSplit = confirmedSplitFormula
+    && posPct > 0
+    && invoicedPosFee > 0
+    && codAmountForSplit > 0
+    && Number.isFinite(derivedSplitCardAmount)
+    && derivedSplitCardAmount > 0
+    && derivedSplitCardAmount <= codAmountForSplit + TOLERANCE;
+  const posAmount = validConfirmedSplit ? derivedSplitCardAmount : sourcePosAmount;
   const expectedPosFee = posAmount > 0 && posPct > 0 ? +(posAmount * posPct).toFixed(4) : 0;
 
   // contract.deliveryInclusiveVat (Webek): the delivery column already
@@ -1012,8 +1030,10 @@ export function auditRow(row, contract) {
   if (contract?.codFeePassthrough && invoicedCodFee > TOLERANCE) {
     unverifiableReasons.push('رسوم COD لا تملك معادلة في العقد؛ لا يجوز اعتماد قيمة ملف الناقل كما هي.');
   }
-  if (isSplitPay) {
+  if (isSplitPay && !confirmedSplitFormula) {
     unverifiableReasons.push('الدفع مقسّم بين بطاقة ونقد ولا يحتوي الملف مبلغ البطاقة المستقل لحساب نسبة POS.');
+  } else if (confirmedSplitFormula && !validConfirmedSplit) {
+    unverifiableReasons.push('الدفع المختلط مفعّل بعقد مؤكد لكن الرسم لا ينتج مبلغ بطاقة صالحًا داخل إجمالي COD.');
   }
   if (billedExcess > 0 && !(Number(row.weight) > 0)) {
     unverifiableReasons.push('يوجد رسم وزن زائد لكن الملف لا يحتوي وزنًا يمكن تطبيق العقد عليه.');
@@ -1142,6 +1162,15 @@ export function auditRow(row, contract) {
 
   return {
     ...row,
+    posAmount,
+    posAmountSource: validConfirmedSplit ? 'derived_from_confirmed_split_fee' : (row.posAmountSource || 'source'),
+    splitPaymentVerification: validConfirmedSplit ? {
+      method: pm,
+      rate: posPct,
+      cardAmount: posAmount,
+      cashAmount: +(codAmountForSplit - posAmount).toFixed(4),
+      source: 'manager_confirmed_carrier_formula',
+    } : null,
     status,
     invoiced,
     expected: expectedCalc,

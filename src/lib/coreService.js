@@ -260,6 +260,8 @@ function toShipmentRow(auditId, carrierId, r) {
       contractLabel: r.contractLabel || '',
       statedTotal: r.statedTotal,
       grossTotal:  r.grossTotal,
+      posAmountSource: r.posAmountSource || null,
+      splitPaymentVerification: r.splitPaymentVerification || null,
     } : {
       invoiced:    r.invoiced,
       expected:    r.expected,
@@ -274,6 +276,8 @@ function toShipmentRow(auditId, carrierId, r) {
       serviceType: r.serviceType,
       signingStatus: r.signingStatus,
       crossAuditDup: r.crossAuditDup,
+      posAmountSource: r.posAmountSource || null,
+      splitPaymentVerification: r.splitPaymentVerification || null,
     },
   };
 }
@@ -634,6 +638,8 @@ function fromShipmentRow(r) {
     fuelSurcharge:   Number(r.fuel_surcharge) || 0,
     codFee:          Number(r.cod_fee) || 0,
     posAmount:       Number(r.pos_amount) || 0,
+    posAmountSource: d.posAmountSource || null,
+    splitPaymentVerification: d.splitPaymentVerification || null,
     posFee:          Number(r.pos_fee) || 0,
     tax:             Number(r.tax_amount) || 0,
     codAmount:       Number(r.cod_amount) || 0,
