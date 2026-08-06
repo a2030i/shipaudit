@@ -484,12 +484,13 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
-  assert.match(cyclePage, /أرقام الشحنات المتبقية لجلبها من لمحة/);
+  assert.match(cyclePage, /ملف أرقام الشحنات للبحث الجماعي في لمحة/);
   assert.match(cyclePage, /missingShipmentCount/);
   assert.match(cyclePage, /كل أرقام الشحنات المعتمدة موجودة بالفعل/);
   assert.match(cyclePage, /item\.requiresManualUpload/);
   assert.match(cyclePage, /ضبط جداول الفواتير والتحصيل/);
-  assert.match(cyclePage, /إعادة تنزيل الملف/);
+  assert.match(cyclePage, /إعادة تنزيل آخر ملف أوزان/);
+  assert.match(cyclePage, /تنزيل هذا الملف مرة أخرى/);
   assert.match(cyclePage, /redownloadWeightExport/);
   assert.match(cycleService, /file_name, file_path, storage_bucket, status/);
   assert.match(cyclePage, /onError=\{settlementFailed\}/);

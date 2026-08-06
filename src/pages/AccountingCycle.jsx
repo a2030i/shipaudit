@@ -181,6 +181,16 @@ const HISTORY_STATUS_LABELS = {
   closed: 'مقفل',
 };
 
+function isDownloadableWeightExport(record) {
+  return Boolean(
+    record?.file_path
+    || record?.result?.exportId
+    || record?.export_id
+    || Array.isArray(record?.audit_ids)
+    || ['exported', 'billed'].includes(record?.status),
+  );
+}
+
 function StageHistory({ stage, busy, onRedownload }) {
   const history = Array.isArray(stage?.history) ? stage.history : [];
   return (
@@ -221,13 +231,7 @@ function StageHistory({ stage, busy, onRedownload }) {
                   {total != null && <span>{Number(total).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س</span>}
                   {state && <span>{state}</span>}
                   {dateOf(record) && <time>{fmtDate(dateOf(record))}</time>}
-                  {stage?.id === 'weight_export' && (
-                    record.file_path
-                    || record.result?.exportId
-                    || record.export_id
-                    || Array.isArray(record.audit_ids)
-                    || ['exported', 'billed'].includes(record.status)
-                  ) && (
+                  {stage?.id === 'weight_export' && isDownloadableWeightExport(record) && (
                     <Btn
                       variant="ghost"
                       size="sm"
@@ -235,7 +239,7 @@ function StageHistory({ stage, busy, onRedownload }) {
                       onClick={() => onRedownload(record)}
                       disabled={busy}
                     >
-                      {busy ? 'جارٍ التنزيل…' : 'إعادة تنزيل الملف'}
+                      {busy ? 'جارٍ التنزيل…' : 'تنزيل هذا الملف مرة أخرى'}
                     </Btn>
                   )}
                 </div>
@@ -646,6 +650,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     if (stage.id === 'weight_export') {
       const shipmentCoverage = snapshot?.stages?.find(item => item.id === 'lamha_shipments')?.detail?.coverage || {};
       const missingShipmentCount = Number(shipmentCoverage.missingCount || 0);
+      const latestWeightExport = (stage.history || []).find(isDownloadableWeightExport) || null;
       return (
         <div style={{ display: 'grid', gap: 14 }}>
           <StageAction
@@ -656,13 +661,23 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
             onClick={exportWeights}
             busy={busy === stage.id}
           />
+          {latestWeightExport && (
+            <StageAction
+              title="إعادة تنزيل ملف الأوزان السابق"
+              text={`آخر ملف محفوظ: ${fileOf(latestWeightExport) || 'ملف أوزان هذه الفترة'}. إعادة التنزيل تسترجع الملف نفسه ولا تنشئ تصديرًا جديدًا ولا تكرر الشحنات.`}
+              disabled={String(busy || '').startsWith('weight_redownload:')}
+              button="إعادة تنزيل آخر ملف أوزان"
+              onClick={() => redownloadWeights(latestWeightExport)}
+              busy={String(busy || '').startsWith('weight_redownload:')}
+            />
+          )}
           <StageAction
-            title="أرقام الشحنات المتبقية لجلبها من لمحة"
+            title="ملف أرقام الشحنات للبحث الجماعي في لمحة"
             text={missingShipmentCount
-              ? `بقي ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة معتمد غير موجود في ملفات لمحة. نزّلها فقط، وابحث بها جماعيًا، ثم ارفع Admin Order Export في المرحلة التالية.`
-              : 'كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة.'}
+              ? `سأعطيك ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة في ملف بعمود واحد. استخدمه في البحث الجماعي داخل لمحة، ثم صدّر Admin Order Export وارفعه في المرحلة 3.`
+              : 'كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة، لذلك لا يوجد ملف ناقص لتنزيله.'}
             disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers' || !missingShipmentCount}
-            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة متبقي` : 'لا توجد أرقام متبقية'}
+            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة للبحث في لمحة` : 'لا توجد أرقام شحنات ناقصة'}
             onClick={downloadShipmentNumbers}
             busy={busy === 'lamha_shipment_numbers'}
           />
