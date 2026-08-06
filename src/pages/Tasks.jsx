@@ -21,7 +21,7 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
   partitionByDueness, scheduleRequirementLabel, legacyScheduleDays,
-  parseScheduleDays, deriveCarrierScheduleCoverage,
+  parseScheduleDays, deriveCarrierScheduleCoverage, requiredScheduleKindsForCarrier,
   TASK_KIND_META, CADENCE_META, WEEKDAY_META,
 } from '../lib/tasksService.js';
 
@@ -410,6 +410,8 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   const selectedCarrier = (carriers || []).find(carrier => String(carrier.id) === String(carrierId));
   const fileKind = selectedCarrier?.file_signature?.file_kind || null;
   const isCombined = fileKind === 'audit_with_cod';
+  const requiredCycleKinds = requiredScheduleKindsForCarrier(selectedCarrier);
+  const allowedTaskKinds = new Set([...requiredCycleKinds, 'statement', 'weight_report']);
 
   const changeCadence = (value) => {
     setCadence(value);
@@ -421,8 +423,9 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   const changeCarrier = (value) => {
     setCarrierId(value);
     const carrier = (carriers || []).find(item => String(item.id) === String(value));
-    if (carrier?.file_signature?.file_kind === 'audit_with_cod' && taskKind === 'cod_remittance') {
-      setTaskKind('invoice');
+    const requiredKinds = requiredScheduleKindsForCarrier(carrier);
+    if (['invoice', 'cod_remittance'].includes(taskKind) && !requiredKinds.includes(taskKind)) {
+      setTaskKind(requiredKinds[0] || 'statement');
     }
   };
 
@@ -468,14 +471,18 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
               ? 'طريقة الشركة: ملف موحّد — كل ملف معتمد يثبت الفاتورة والتحصيل معًا.'
               : fileKind === 'audit_and_cod_separate'
                 ? 'طريقة الشركة: ملفان منفصلان — اضبط جدول الفاتورة وجدول تحصيل COD كلًا على حدة.'
-                : 'طريقة ملفات الشركة غير مكتملة؛ سيمنع النظام الإقفال حتى تُصنّف.'}
+                : fileKind === 'audit_only'
+                  ? 'طريقة الشركة: فاتورة ناقل فقط — لا يوجد تحصيل COD مطلوب من هذه الشركة.'
+                  : fileKind === 'cod_only'
+                    ? 'طريقة الشركة: تحصيل COD فقط — لا توجد فاتورة ناقل مطلوبة.'
+                    : 'طريقة ملفات الشركة غير مكتملة؛ لا يمكن إنشاء جدول فاتورة أو تحصيل قبل تصنيفها.'}
           </div>
         )}
 
         <div>
           <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600 }}>نوع المهمة</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-            {Object.entries(TASK_KIND_META).filter(([key]) => !(isCombined && key === 'cod_remittance')).map(([k, m]) => (
+            {Object.entries(TASK_KIND_META).filter(([key]) => allowedTaskKinds.has(key)).map(([k, m]) => (
               <button key={k} onClick={() => setTaskKind(k)} style={{
                 padding: '10px 12px', borderRadius: 10,
                 background: taskKind === k ? `color-mix(in srgb, ${m.color} 12%, transparent)` : 'transparent',

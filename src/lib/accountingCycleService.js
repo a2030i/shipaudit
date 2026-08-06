@@ -2,7 +2,11 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 import { hasVerifiedAuditProof } from './auditProof.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
-import { expectedScheduleSlots, scheduleRequirementLabel } from './tasksService.js';
+import {
+  expectedScheduleSlots,
+  requiredScheduleKindsForCarrier,
+  scheduleRequirementLabel,
+} from './tasksService.js';
 
 const PAGE = 1000;
 const ARABIC_MONTHS = [
@@ -535,12 +539,36 @@ export function deriveCarrierAuditChecklist({ period, audits = [], carriers = []
     const carrierAudits = auditsByCarrier.get(carrierId) || [];
     const approvedCount = carrierAudits.filter(audit => audit.review_status === 'approved').length;
     const invoiceSchedules = activeSchedulesFor(schedules, carrierId, 'invoice');
+    const fileKind = String(carrier?.file_signature?.file_kind || '').trim() || null;
     const base = {
       carrierId,
       carrierName: carrier?.label || carrier?.name || carrierAudits[0]?.carrier_name || carrierId,
+      fileKind,
       receivedCount: approvedCount,
       auditCount: carrierAudits.length,
     };
+    if (carrier && !requiredScheduleKindsForCarrier(carrier).includes('invoice')) {
+      if (fileKind === 'cod_only') {
+        return {
+          ...base,
+          expectedCount: 0,
+          missingCount: 0,
+          status: 'not_required',
+          scheduleText: '',
+          dueDates: [],
+          note: 'هذا الناقل يرسل تحصيل COD فقط ولا توجد فاتورة ناقل مطلوبة',
+        };
+      }
+      return {
+        ...base,
+        expectedCount: null,
+        missingCount: null,
+        status: 'unclassified',
+        scheduleText: '',
+        dueDates: [],
+        note: 'طريقة ملفات الناقل غير مصنفة؛ حدد هل يرسل فاتورة أو تحصيلًا أو ملفًا موحدًا',
+      };
+    }
     if (!invoiceSchedules.length) {
       return { ...base, expectedCount: null, missingCount: null, status: 'unclassified', note: 'جدول استلام فاتورة الناقل غير محدد' };
     }
@@ -756,6 +784,7 @@ export function deriveAccountingCycleStages({
   const auditCompletedCarriers = auditChecklist.filter(item => ['complete', 'not_required'].includes(item.status));
   const auditDueMissing = auditMissingCarriers.reduce((sum, item) => sum + Number(item.dueMissingCount || 0), 0);
   const auditUpcomingMissing = auditMissingCarriers.reduce((sum, item) => sum + Number(item.upcomingMissingCount || 0), 0);
+  const invoiceWorkRequired = auditChecklist.some(item => item.status !== 'not_required');
 
   const stages = [];
   let auditState = statusMeta('pending', 'لم تُرفع مراجعات لهذه الفترة');
@@ -765,6 +794,11 @@ export function deriveAccountingCycleStages({
   else if (auditSetupCarriers.length) auditState = statusMeta('attention', `${auditSetupCarriers.length} ناقل يحتاج تحديد جدول استلام الفاتورة`);
   else if (auditMissingCarriers.length && auditDueMissing) auditState = statusMeta('attention', `متأخر ${auditDueMissing} فاتورة · ومجدول لاحقًا ${auditUpcomingMissing}`);
   else if (auditMissingCarriers.length) auditState = statusMeta('pending', `بقي ${auditUpcomingMissing} فاتورة مجدولة لاحقًا`);
+  else if (auditChecklist.length && auditCompletedCarriers.length === auditChecklist.length) {
+    auditState = approved.length
+      ? statusMeta('complete', `اعتمدت ${approved.length} مراجعة موثقة`)
+      : statusMeta('complete', 'لا توجد فواتير ناقلين مطلوبة لهذه الفترة');
+  }
   else if (approved.length) auditState = statusMeta('complete', `اعتمدت ${approved.length} مراجعة موثقة`);
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[0], ...auditState,
@@ -783,7 +817,8 @@ export function deriveAccountingCycleStages({
   });
 
   let weightState = statusMeta('blocked', 'اعتمد مراجعات شركات الشحن أولًا');
-  if (approved.length && weightPending.length) weightState = statusMeta('ready', `${weightPending.length} مراجعة جاهزة للتصدير`);
+  if (auditChecklist.length && !invoiceWorkRequired) weightState = statusMeta('complete', 'لا توجد فواتير ناقلين أو أوزان مطلوبة لهذه الفترة');
+  else if (approved.length && weightPending.length) weightState = statusMeta('ready', `${weightPending.length} مراجعة جاهزة للتصدير`);
   else if (approved.length && weightComplete.length === approved.length) weightState = statusMeta('complete', 'لا توجد أوزان معلقة لهذه الفترة');
   if (legacy.length) {
     weightState = statusMeta('blocked', `أعد رفع ${legacy.length} مراجعة قديمة بإثبات الملف والعقد قبل تصدير الأوزان`);
@@ -813,7 +848,9 @@ export function deriveAccountingCycleStages({
   const latestShipmentAttempt = shipmentEvents[0] || null;
   let shipmentState;
   if (!shipmentCoverage.expectedCount) {
-    shipmentState = verifiedApproved.length
+    shipmentState = auditChecklist.length && !invoiceWorkRequired
+      ? statusMeta('complete', 'لا توجد شحنات فواتير ناقلين مطلوبة للجلب من لمحة في هذه الفترة')
+      : verifiedApproved.length
       ? statusMeta('complete', 'لا توجد شحنات تشغيلية قابلة للجلب من المراجعات المعتمدة')
       : statusMeta('blocked', 'اعتمد مراجعة شركة شحن موثقة أولًا لاستخراج أرقام الشحنات');
   } else if (!shipmentCoverage.missingCount) {
@@ -1137,6 +1174,7 @@ export async function loadAccountingCycle(period) {
     sourceError('lamha_shipments', 'lamha_shipments', 'أرقام الشحنات المستوردة من لمحة', lamhaShipmentRowsRes.error),
     sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
     sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
+    sourceError('carrier_audits', 'carriers', 'تصنيفات وعقود شركات الشحن', carriersRes.error),
     sourceError('carrier_collections', 'carriers', 'إعدادات تحصيل شركات الشحن', carriersRes.error),
     sourceError('carrier_audits', 'carrier_task_schedules', 'جداول استلام فواتير الناقلين', schedulesRes.error),
     sourceError('carrier_collections', 'carrier_task_schedules', 'جداول تحصيلات الناقلين', schedulesRes.error),

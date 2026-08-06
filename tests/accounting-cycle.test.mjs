@@ -126,6 +126,44 @@ test('الناقل ذو العقد الساري لا يختفي من الدور�
   assert.equal(stages.prerequisiteComplete, false);
 });
 
+test('ناقل التحصيل فقط لا يُطلب منه جدول فاتورة ولا يمنع مرحلة مراجعات الناقلين', () => {
+  const carriers = [{
+    id: 'cod-only', name: 'ناقل تحصيل فقط',
+    file_signature: { file_kind: 'cod_only' },
+    contracts: [{ startDate: '2026-01-01', endDate: null }],
+  }];
+  const schedules = [{
+    id: 'cod-weekly', carrier_id: 'cod-only', task_kind: 'cod_remittance', active: true,
+    cadence: 'weekly', schedule_basis: 'weekday', due_days: [3],
+  }];
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
+  assert.equal(invoiceChecklist.length, 1);
+  assert.equal(invoiceChecklist[0].status, 'not_required');
+  assert.equal(invoiceChecklist[0].expectedCount, 0);
+  assert.equal(invoiceChecklist[0].fileKind, 'cod_only');
+
+  const stages = deriveAccountingCycleStages({ period: '2026-08', carriers, schedules });
+  assert.equal(stages.stages[0].status, 'complete');
+  assert.equal(stages.stages[0].detail.completedCarrierCount, 1);
+  assert.equal(stages.stages[1].status, 'complete');
+  assert.equal(stages.stages[2].status, 'complete');
+  assert.notEqual(stages.stages[4].status, 'complete');
+});
+
+test('الناقل غير المصنف يبقى مانعًا للإقفال حتى لو أضيف له جدول فاتورة يدويًا', () => {
+  const carriers = [{
+    id: 'unknown', name: 'ناقل غير مصنف', file_signature: {},
+    contracts: [{ startDate: '2026-01-01', endDate: null }],
+  }];
+  const schedules = [{
+    id: 'invoice', carrier_id: 'unknown', task_kind: 'invoice', active: true,
+    cadence: 'monthly', schedule_basis: 'month_days', due_days: [1],
+  }];
+  const checklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
+  assert.equal(checklist[0].status, 'unclassified');
+  assert.match(checklist[0].note, /غير مصنفة/);
+});
+
 test('الجدول الأسبوعي بلا يوم يمنع الإقفال ولا يتحول إلى الأحد', () => {
   const carriers = [{ id: 'carrier-1', name: 'ناقل', file_signature: { file_kind: 'audit_with_cod' } }];
   const schedules = [{ id: 'bad', carrier_id: 'carrier-1', task_kind: 'invoice', active: true, cadence: 'weekly', day_of_period: null }];
@@ -190,6 +228,74 @@ test('الملف الأسبوعي الموحّد يثبت الفاتورة وا�
   assert.equal(collectionChecklist[0].status, 'pending');
   assert.equal(collectionChecklist[0].requiresManualUpload, false);
   assert.match(collectionChecklist[0].note, /يُرفع في مرحلة الفواتير/);
+});
+
+test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتفصل الفاتورة الشهرية عن التحصيل الأسبوعي', () => {
+  const controlFor = fileName => ({ version: 3, valid: true, fileName, contractLabels: ['عقد 2026'] });
+  const approvedAudit = (id, carrierId) => ({
+    id,
+    carrier_id: carrierId,
+    carrier_name: carrierId,
+    file_name: `${id}.xlsx`,
+    review_status: 'approved',
+    weight_billing_status: 'skipped',
+    col_map: { __control: controlFor(`${id}.xlsx`) },
+  });
+  const audits = [
+    ...Array.from({ length: 4 }, (_, index) => approvedAudit(`combined-${index + 1}`, 'combined')),
+    approvedAudit('separate-month', 'separate'),
+  ];
+  const carriers = [
+    {
+      id: 'combined', name: 'ملف موحد أسبوعي',
+      file_signature: { file_kind: 'audit_with_cod' },
+      contracts: [{ startDate: '2026-01-01', endDate: null }],
+    },
+    {
+      id: 'separate', name: 'فاتورة شهرية وتحصيل أسبوعي',
+      file_signature: { file_kind: 'audit_and_cod_separate' },
+      contracts: [{ startDate: '2026-01-01', endDate: null }],
+    },
+    {
+      id: 'cod-only', name: 'تحصيل فقط',
+      file_signature: { file_kind: 'cod_only' },
+      contracts: [{ startDate: '2026-01-01', endDate: null }],
+    },
+  ];
+  const schedules = [
+    { id: 'combined-weekly', carrier_id: 'combined', task_kind: 'invoice', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [5, 12, 19, 26] },
+    { id: 'separate-invoice', carrier_id: 'separate', task_kind: 'invoice', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [1] },
+    { id: 'separate-cod', carrier_id: 'separate', task_kind: 'cod_remittance', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] },
+    { id: 'cod-only-weekly', carrier_id: 'cod-only', task_kind: 'cod_remittance', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] },
+  ];
+  const events = ['separate', 'cod-only'].flatMap(carrierId =>
+    [1, 2, 3, 4].map(week => ({
+      id: `${carrierId}-${week}`,
+      stage: 'carrier_collections',
+      status: 'success',
+      file_name: `${carrierId}-week-${week}.xlsx`,
+      row_count: 10,
+      result: { carrier: carrierId, savedCount: 10, fileCount: 1 },
+    })),
+  );
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-08',
+    audits,
+    carriers,
+    schedules,
+    events,
+    balanceSnapshot: { id: 'balance' },
+    merchantSnapshot: { id: 'merchants' },
+    codOut: { count: 1, last: { id: 'lamha-cod' } },
+  });
+  assert.equal(cycle.stages[0].status, 'complete');
+  assert.equal(cycle.stages[0].detail.requiredCarrierCount, 3);
+  assert.equal(cycle.stages[0].detail.completedCarrierCount, 3);
+  assert.equal(cycle.stages[4].status, 'complete');
+  assert.equal(cycle.stages[4].detail.requiredCarrierCount, 3);
+  assert.equal(cycle.stages[4].detail.completedCarrierCount, 3);
+  assert.equal(cycle.prerequisiteComplete, true);
+  assert.equal(cycle.stages[6].status, 'ready');
 });
 
 test('قائمة تحصيل الناقلين تفصل التلقائي واليدوي وغير المهيأ لكل ناقل في الشهر', () => {
@@ -511,6 +617,7 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /ضبط جداول الفواتير والتحصيل/);
   assert.match(cyclePage, /إعادة تنزيل آخر ملف أوزان/);
   assert.match(cyclePage, /تنزيل هذا الملف مرة أخرى/);
+  assert.match(cyclePage, /لا توجد أوزان جديدة معلقة/);
   assert.match(cyclePage, /redownloadWeightExport/);
   assert.match(cycleService, /file_name, file_path, storage_bucket, status/);
   assert.match(cyclePage, /onError=\{settlementFailed\}/);
@@ -534,6 +641,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(tasksPage, /الجدول الناقص يمنع إقفال الشهر/);
   assert.match(tasksPage, /تسجيل استلام/);
   assert.match(tasksPage, /إقفال الدورة يعتمد الملف الفعلي/);
+  assert.match(tasksPage, /طريقة الشركة: تحصيل COD فقط/);
+  assert.match(tasksPage, /requiredScheduleKindsForCarrier/);
+  assert.match(tasksPage, /allowedTaskKinds\.has\(key\)/);
   assert.match(scheduleMigration, /add column if not exists schedule_basis/);
   assert.match(scheduleMigration, /add column if not exists due_days/);
   assert.doesNotMatch(cycleService, /accounting_cycle_events'[\s\S]{0,250}\.limit\(200\)/);

@@ -655,9 +655,11 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         <div style={{ display: 'grid', gap: 14 }}>
           <StageAction
             title="ملف الأوزان الجاهز للرفع إلى لمحة"
-            text="الملف يأخذ مراجعات هذا الشهر المعتمدة فقط، ويحتوي رقم الشحنة والوزن. بعد التنزيل لن تتكرر الشحنات في السحبة التالية."
-            disabled={!allowed || busy === stage.id || stage.status === 'blocked'}
-            button="تنزيل ملف الأوزان لهذه الفترة"
+            text={Number(stage.count || 0) > 0
+              ? 'الملف يأخذ مراجعات هذا الشهر المعتمدة فقط، ويحتوي رقم الشحنة والوزن. بعد التنزيل لن تتكرر الشحنات في السحبة التالية.'
+              : 'لا توجد مراجعات معتمدة تحمل أوزانًا جديدة معلقة. إذا سبق تنزيل ملف لهذه الفترة، استخدم زر إعادة التنزيل أدناه لاسترجاع الملف نفسه.'}
+            disabled={!allowed || busy === stage.id || stage.status === 'blocked' || Number(stage.count || 0) === 0}
+            button={Number(stage.count || 0) > 0 ? 'تنزيل ملف الأوزان لهذه الفترة' : 'لا توجد أوزان جديدة معلقة'}
             onClick={exportWeights}
             busy={busy === stage.id}
           />
