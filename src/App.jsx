@@ -60,6 +60,7 @@ const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
 const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
 const Marketers = lazy(() => import('./pages/Marketers.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
+const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
 const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
@@ -198,6 +199,8 @@ const ROUTE_ITEMS = [
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات',     icon: FileCheck,     section: 'outreach', navOrder: 50, permKey: 'system.view_audit_log' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
   { id: 'work-agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
+  { id: 'operations', path: '/operations', label: 'مركز التكاملات والتشغيل', icon: Activity, section: 'outreach', navOrder: 15,
+    permAny: ['agents.view', 'system.view_audit_log', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'webhook.view'] },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -320,7 +323,7 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/accounting-cycle'];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle'];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -782,6 +785,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/work-agents'} scroll>
               <WorkAgents isActive={pathname==='/work-agents'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/operations'} scroll>
+              <OperationsCenter isActive={pathname==='/operations'}/>
             </PageSlot>
             <PageSlot active={pathname==='/accounting-cycle'} scroll>
               <AccountingCycle carriers={carriers} isActive={pathname==='/accounting-cycle'}/>
