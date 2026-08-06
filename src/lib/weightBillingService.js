@@ -23,7 +23,7 @@
 import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
-import { auditPeriodMatches } from './accountingCycleService.js';
+import { accountingPeriodAliases, auditPeriodMatches } from './accountingCycleService.js';
 import { hasVerifiedAuditProof } from './auditProof.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -83,6 +83,22 @@ export function toLamhaWeightRows(rows) {
   }));
 }
 
+// The accountant first needs the shipment numbers to run Lamha's bulk search,
+// then exports the matching Admin Order Export and uploads it in stage 3. This
+// list is intentionally AWB-only: it is a read-only search aid and does not
+// change the weight-export lifecycle.
+export function toLamhaShipmentSearchRows(rows) {
+  const seen = new Set();
+  const result = [];
+  for (const row of rows || []) {
+    const awb = String(row?.awb || '').trim();
+    if (!awb || seen.has(awb)) continue;
+    seen.add(awb);
+    result.push({ 'رقم الشحنة': awb });
+  }
+  return result;
+}
+
 // ─── reads ─────────────────────────────────────────────────────────────────
 export async function loadPendingAuditsForBilling() {
   // Only APPROVED audits feed the merchant-billing pipeline. Pending /
@@ -138,6 +154,30 @@ export async function loadBillingExports({ limit = 50, status } = {}) {
   const { data, error } = await q;
   if (error) throw error;
   return data || [];
+}
+
+export async function downloadApprovedShipmentNumbers({ period } = {}) {
+  if (!period) throw new Error('اختر شهر دورة المحاسب أولًا');
+  const { data, error } = await supabase
+    .from('audits')
+    .select('id, carrier_name, period, col_map, review_status')
+    .eq('review_status', 'approved')
+    .in('period', accountingPeriodAliases(period))
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+
+  const audits = (data || []).filter(isVerifiedAuditForWeightBilling);
+  const shipments = [];
+  for (const audit of audits) shipments.push(...await billableRowsFor(audit));
+  const rows = toLamhaShipmentSearchRows(shipments);
+  if (!rows.length) return { ok: false, reason: 'empty', count: 0, auditCount: audits.length };
+
+  const worksheet = XLSX.utils.json_to_sheet(rows);
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'أرقام الشحنات');
+  const fileName = `أرقام_شحنات_لمحة_${period}_${rows.length}شحنة.xlsx`;
+  if (typeof window !== 'undefined') XLSX.writeFile(rtl(workbook), fileName);
+  return { ok: true, count: rows.length, auditCount: audits.length, fileName };
 }
 
 // Audits referenced by a given export, hydrated with their current
@@ -357,4 +397,25 @@ export async function downloadExport(exportRow) {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Accounting-cycle history prefers its event record, while the durable file
+// metadata lives in weight_billing_exports. Resolve that event back to the
+// exact stored batch before downloading; no new export row or status change is
+// created by this path.
+export async function redownloadWeightExport(record) {
+  let exportRow = record;
+  if (!exportRow?.file_path) {
+    const exportId = record?.result?.exportId || record?.export_id || null;
+    let query = supabase.from('weight_billing_exports').select('*');
+    if (exportId) query = query.eq('id', exportId);
+    else if (record?.file_name) query = query.eq('file_name', record.file_name);
+    else throw new Error('تعذر تحديد ملف الأوزان السابق');
+    const { data, error } = await query.order('exported_at', { ascending: false }).limit(1).maybeSingle();
+    if (error) throw error;
+    if (!data) throw new Error('لم أجد سجل ملف الأوزان السابق');
+    exportRow = data;
+  }
+  await downloadExport(exportRow);
+  return exportRow;
 }

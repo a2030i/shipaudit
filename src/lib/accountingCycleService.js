@@ -767,7 +767,7 @@ async function loadWeightExportsForAudits(auditIds) {
   for (let index = 0; index < auditIds.length; index += 100) {
     const chunk = auditIds.slice(index, index + 100);
     const result = await loadAll((from, to) => supabase.from('weight_billing_exports')
-      .select('id, audit_ids, row_count, file_name, status, exported_at, created_at')
+      .select('id, audit_ids, row_count, file_name, file_path, storage_bucket, status, exported_at, created_at')
       .overlaps('audit_ids', chunk)
       .order('created_at', { ascending: false })
       .range(from, to));
