@@ -37,6 +37,65 @@ export const CADENCE_META = {
   on_demand: { label: 'حسب الطلب',   days: null },
 };
 
+function daysInAccountingMonth(period) {
+  const [year, month] = String(period || '').split('-').map(Number);
+  if (!year || month < 1 || month > 12) throw new Error('الفترة يجب أن تكون بصيغة YYYY-MM');
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+function isoDate(period, day) {
+  return `${period}-${String(day).padStart(2, '0')}`;
+}
+
+// Turns the saved cadence into explicit expected delivery dates for a month.
+// Historical rows use two weekly styles: 0..6 means a weekday, while 8+
+// means fixed weekly month dates (8/15/22/29). Biweekly rows use the saved
+// start day and a second date 15 days later (for example 5/20).
+export function expectedScheduleSlots(schedule, period) {
+  if (!schedule?.active || schedule.cadence === 'on_demand') return [];
+  const daysInMonth = daysInAccountingMonth(period);
+  const configured = Array.isArray(schedule.due_days)
+    ? schedule.due_days.map(Number).filter(Number.isInteger)
+    : [];
+  const day = Number(schedule.day_of_period);
+  let days = [];
+
+  if (configured.length) {
+    if (schedule.schedule_basis === 'weekday') {
+      const weekdays = new Set(configured.filter(value => value >= 0 && value <= 6));
+      const [year, month] = period.split('-').map(Number);
+      for (let value = 1; value <= daysInMonth; value += 1) {
+        if (weekdays.has(new Date(Date.UTC(year, month - 1, value)).getUTCDay())) days.push(value);
+      }
+    } else {
+      days = configured.filter(value => value >= 1 && value <= daysInMonth);
+    }
+  } else if (schedule.cadence === 'weekly' && day >= 0 && day <= 6) {
+    const [year, month] = period.split('-').map(Number);
+    for (let value = 1; value <= daysInMonth; value += 1) {
+      if (new Date(Date.UTC(year, month - 1, value)).getUTCDay() === day) days.push(value);
+    }
+  } else if (schedule.cadence === 'weekly' && day >= 1) {
+    for (let value = day; value <= daysInMonth; value += 7) days.push(value);
+  } else if (schedule.cadence === 'biweekly' && day >= 1) {
+    days = [day, day + 15].filter(value => value <= daysInMonth);
+  } else if (schedule.cadence === 'monthly') {
+    days = [Math.min(Math.max(day || 1, 1), daysInMonth)];
+  }
+
+  return [...new Set(days)].sort((a, b) => a - b).map(value => ({
+    key: `${schedule.id || `${schedule.carrier_id}:${schedule.task_kind}`}:${isoDate(period, value)}`,
+    dueDate: isoDate(period, value),
+    day: value,
+  }));
+}
+
+export function scheduleRequirementLabel(schedule, period) {
+  const slots = expectedScheduleSlots(schedule, period);
+  if (!slots.length) return 'حسب الطلب';
+  return `${CADENCE_META[schedule.cadence]?.label || schedule.cadence} · ${slots.map(slot => slot.day).join('، ')}`;
+}
+
 export async function listSchedules({ activeOnly = true } = {}) {
   let q = supabase
     .from('carrier_task_schedules')

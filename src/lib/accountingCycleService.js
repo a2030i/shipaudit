@@ -2,6 +2,7 @@ import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
 import { hasVerifiedAuditProof } from './auditProof.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
+import { expectedScheduleSlots, scheduleRequirementLabel } from './tasksService.js';
 
 const PAGE = 1000;
 const ARABIC_MONTHS = [
@@ -12,7 +13,7 @@ const ARABIC_MONTHS = [
 export const ACCOUNTING_CYCLE_STAGES = [
   { id: 'carrier_audits', label: 'مراجعة فواتير شركات الشحن', permission: 'audits.create' },
   { id: 'weight_export', label: 'تصدير أوزان الفوترة إلى لمحة', permission: 'internal_exports.pull' },
-  { id: 'lamha_shipments', label: 'استيراد شحنات لمحة', permission: 'uploads.upload_file' },
+  { id: 'lamha_shipments', label: 'أرقام الشحنات واستيراد ملف لمحة', permission: 'uploads.upload_file' },
   { id: 'lamha_sources', label: 'تحديث كشف الحساب ودليل المتاجر', permission: 'uploads.upload_file' },
   { id: 'carrier_collections', label: 'رفع تحصيلات شركات الشحن', permission: 'cod.upload_in' },
   { id: 'lamha_collections', label: 'رفع تحصيل لمحة', permission: 'cod.upload_out' },
@@ -455,11 +456,114 @@ function statusMeta(status, reason = null) {
 const MANUAL_COLLECTION_KINDS = new Set(['audit_and_cod_separate', 'cod_only']);
 const COMPLETED_COLLECTION_STATUSES = new Set(['uploaded', 'automatic', 'not_required']);
 
-// The monthly carrier checklist is scoped to carriers that actually have an
-// approved audit in the selected period. A single incoming file must never
-// make the whole stage complete when another audited carrier still needs its
-// own remittance file.
-export function deriveCarrierCollectionChecklist({ approvedAudits = [], carriers = [], events = [] } = {}) {
+function activeSchedulesFor(schedules, carrierId, taskKind) {
+  return (schedules || []).filter(schedule => schedule.active
+    && String(schedule.carrier_id) === String(carrierId)
+    && schedule.task_kind === taskKind);
+}
+
+function receivedEventBatchCount(events, carrierId) {
+  const batches = new Set();
+  for (const event of events || []) {
+    if (event?.stage !== 'carrier_collections' || !['success', 'warning'].includes(event?.status)) continue;
+    if (String(event?.result?.carrier || '') !== String(carrierId)) continue;
+    if (Object.hasOwn(event.result || {}, 'savedCount') && Number(event.result.savedCount || 0) <= 0) continue;
+    const files = String(event.file_name || '').split(' · ').map(value => value.trim()).filter(Boolean);
+    if (files.length) {
+      for (const file of files) batches.add(`file:${file}`);
+      continue;
+    }
+    const count = Math.max(1, Number(event?.result?.fileCount || 1));
+    const eventKey = event.id || event.created_at || `${carrierId}:${batches.size}`;
+    for (let index = 0; index < count; index += 1) batches.add(`event:${eventKey}:${index}`);
+  }
+  return batches.size;
+}
+
+function receivedUploadBatchCount(uploads, carrierId) {
+  return new Set((uploads || [])
+    .filter(upload => String(upload?.carrier_id || '') === String(carrierId))
+    .map(upload => upload.upload_id || `${upload.source_file || ''}:${upload.upload_date || ''}`)
+    .filter(Boolean)).size;
+}
+
+function splitScheduleGap(slots, receivedCount, asOf = new Date().toISOString().slice(0, 10)) {
+  const expectedCount = slots.length;
+  const received = Math.max(0, Number(receivedCount || 0));
+  const dueExpectedCount = slots.filter(slot => slot.dueDate <= asOf).length;
+  const missingCount = Math.max(0, expectedCount - received);
+  const dueMissingCount = Math.max(0, dueExpectedCount - received);
+  return {
+    expectedCount,
+    missingCount,
+    dueExpectedCount,
+    dueMissingCount,
+    upcomingMissingCount: Math.max(0, missingCount - dueMissingCount),
+  };
+}
+
+export function deriveCarrierAuditChecklist({ period, audits = [], carriers = [], schedules = null, asOf } = {}) {
+  if (!Array.isArray(schedules)) return [];
+  const carrierById = new Map((carriers || []).map(carrier => [String(carrier.id), carrier]));
+  const auditsByCarrier = new Map();
+  for (const audit of audits || []) {
+    const carrierId = String(audit?.carrier_id || '').trim();
+    if (!carrierId) continue;
+    const current = auditsByCarrier.get(carrierId) || [];
+    current.push(audit);
+    auditsByCarrier.set(carrierId, current);
+  }
+  const carrierIds = new Set([
+    ...auditsByCarrier.keys(),
+    ...schedules.filter(schedule => schedule.active && schedule.task_kind === 'invoice').map(schedule => String(schedule.carrier_id)),
+  ]);
+
+  return [...carrierIds].map(carrierId => {
+    const carrier = carrierById.get(carrierId) || null;
+    const carrierAudits = auditsByCarrier.get(carrierId) || [];
+    const approvedCount = carrierAudits.filter(audit => audit.review_status === 'approved').length;
+    const invoiceSchedules = activeSchedulesFor(schedules, carrierId, 'invoice');
+    const base = {
+      carrierId,
+      carrierName: carrier?.label || carrier?.name || carrierAudits[0]?.carrier_name || carrierId,
+      receivedCount: approvedCount,
+      auditCount: carrierAudits.length,
+    };
+    if (!invoiceSchedules.length) {
+      return { ...base, expectedCount: null, missingCount: null, status: 'unclassified', note: 'جدول استلام فاتورة الناقل غير محدد' };
+    }
+    const slots = invoiceSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
+    const gap = splitScheduleGap(slots, approvedCount, asOf);
+    const { expectedCount, missingCount } = gap;
+    const scheduleText = invoiceSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
+    if (!expectedCount) {
+      return { ...base, expectedCount, missingCount: 0, status: 'not_required', scheduleText, dueDates: [], note: 'لا توجد فاتورة مجدولة لهذه الفترة' };
+    }
+    return {
+      ...base,
+      expectedCount,
+      missingCount,
+      dueExpectedCount: gap.dueExpectedCount,
+      dueMissingCount: gap.dueMissingCount,
+      upcomingMissingCount: gap.upcomingMissingCount,
+      extraCount: Math.max(0, approvedCount - expectedCount),
+      status: missingCount ? 'pending' : 'complete',
+      scheduleText,
+      dueDates: slots.map(slot => slot.dueDate),
+      note: missingCount
+        ? `المطلوب ${expectedCount} · المعتمد ${approvedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}`
+        : `اكتملت ${approvedCount} من ${expectedCount} فاتورة مجدولة`,
+    };
+  }).sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
+}
+
+// The monthly carrier checklist is the union of configured active schedules
+// and carriers already present in the selected period. A single incoming file
+// must never complete a weekly schedule or hide a carrier that has not uploaded
+// its own required remittance batch yet.
+export function deriveCarrierCollectionChecklist({
+  period, approvedAudits = [], carriers = [], events = [], schedules = null, codUploads = [], asOf,
+} = {}) {
   const carrierById = new Map((carriers || []).map(carrier => [String(carrier.id), carrier]));
   const auditsByCarrier = new Map();
   for (const audit of approvedAudits || []) {
@@ -480,7 +584,18 @@ export function deriveCarrierCollectionChecklist({ approvedAudits = [], carriers
     uploadedByCarrier.set(carrierId, current);
   }
 
-  return [...auditsByCarrier.entries()].map(([carrierId, carrierAudits]) => {
+  const scheduleAware = Array.isArray(schedules);
+  const carrierIds = new Set(auditsByCarrier.keys());
+  if (scheduleAware) {
+    for (const schedule of schedules) {
+      if (schedule.active && ['cod_remittance', 'invoice'].includes(schedule.task_kind)) {
+        carrierIds.add(String(schedule.carrier_id));
+      }
+    }
+  }
+
+  return [...carrierIds].map(carrierId => {
+    const carrierAudits = auditsByCarrier.get(carrierId) || [];
     const carrier = carrierById.get(carrierId) || null;
     const fileKind = String(carrier?.file_signature?.file_kind || '').trim() || null;
     const uploadEvents = uploadedByCarrier.get(carrierId) || [];
@@ -492,6 +607,46 @@ export function deriveCarrierCollectionChecklist({ approvedAudits = [], carriers
       uploadCount: uploadEvents.length,
       lastUpload: latest(uploadEvents),
     };
+
+    if (scheduleAware && fileKind !== 'audit_only') {
+      const taskKind = fileKind === 'audit_with_cod' ? 'invoice' : 'cod_remittance';
+      const matchingSchedules = activeSchedulesFor(schedules, carrierId, taskKind);
+      if (!matchingSchedules.length) {
+        return { ...base, status: 'unclassified', expectedCount: null, receivedCount: null, missingCount: null,
+          note: fileKind === 'audit_with_cod' ? 'جدول الملف الموحّد (فاتورة + تحصيل) غير محدد' : 'جدول دفعات التحصيل غير محدد' };
+      }
+      const slots = matchingSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
+      const expectedCount = slots.length;
+      const receivedCount = fileKind === 'audit_with_cod'
+        ? carrierAudits.length
+        : Math.max(receivedEventBatchCount(events, carrierId), receivedUploadBatchCount(codUploads, carrierId));
+      const gap = splitScheduleGap(slots, receivedCount, asOf);
+      const missingCount = gap.missingCount;
+      const scheduleText = matchingSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
+      const scheduled = {
+        ...base,
+        uploadCount: receivedCount,
+        expectedCount,
+        receivedCount,
+        missingCount,
+        dueExpectedCount: gap.dueExpectedCount,
+        dueMissingCount: gap.dueMissingCount,
+        upcomingMissingCount: gap.upcomingMissingCount,
+        extraCount: Math.max(0, receivedCount - expectedCount),
+        scheduleText,
+        dueDates: slots.map(slot => slot.dueDate),
+      };
+      if (!expectedCount) return { ...scheduled, status: 'not_required', note: 'لا توجد دفعة تحصيل مجدولة لهذه الفترة' };
+      if (missingCount) {
+        if (MANUAL_COLLECTION_KINDS.has(fileKind) && !REMITTANCE_PARSERS[carrierId]) {
+          return { ...scheduled, status: 'unsupported', note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}، وقارئ الملف غير مهيأ` };
+        }
+        return { ...scheduled, status: 'pending', note: `المطلوب ${expectedCount} · المستلم ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}` };
+      }
+      return fileKind === 'audit_with_cod'
+        ? { ...scheduled, status: 'automatic', note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)` }
+        : { ...scheduled, status: 'uploaded', note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل` };
+    }
 
     if (fileKind === 'audit_with_cod') {
       return { ...base, status: 'automatic', note: 'يُسجّل التحصيل تلقائيًا عند اعتماد المراجعة' };
@@ -514,7 +669,7 @@ export function deriveCarrierCollectionChecklist({ approvedAudits = [], carriers
 export function deriveAccountingCycleStages({
   period, audits = [], weightExports = [], shipmentImport = null, shipmentImports = [],
   balanceSnapshot = null, merchantSnapshot = null, codIn = null, codOut = null,
-  events = [], cycle = null, sourceErrors = [], carriers = [],
+  events = [], cycle = null, sourceErrors = [], carriers = [], schedules = null,
 }) {
   const approved = audits.filter(row => row.review_status === 'approved');
   const pending = audits.filter(row => row.review_status === 'pending');
@@ -529,19 +684,35 @@ export function deriveAccountingCycleStages({
   );
   const eventHistoryFor = id => latestFirst(events.filter(event => event.stage === id));
   const eventFor = id => eventHistoryFor(id)[0] || null;
+  const auditChecklist = deriveCarrierAuditChecklist({ period, audits, carriers, schedules });
+  const auditSetupCarriers = auditChecklist.filter(item => item.status === 'unclassified');
+  const auditMissingCarriers = auditChecklist.filter(item => item.status === 'pending');
+  const auditCompletedCarriers = auditChecklist.filter(item => ['complete', 'not_required'].includes(item.status));
+  const auditDueMissing = auditMissingCarriers.reduce((sum, item) => sum + Number(item.dueMissingCount || 0), 0);
+  const auditUpcomingMissing = auditMissingCarriers.reduce((sum, item) => sum + Number(item.upcomingMissingCount || 0), 0);
 
   const stages = [];
   let auditState = statusMeta('pending', 'لم تُرفع مراجعات لهذه الفترة');
   if (audits.length && pending.length) auditState = statusMeta('attention', `${pending.length} مراجعة تنتظر الاعتماد`);
   else if (audits.length && !approved.length && rejected.length) auditState = statusMeta('attention', 'كل المراجعات مرفوضة');
   else if (approved.length && legacy.length) auditState = statusMeta('attention', `${legacy.length} مراجعة قديمة بلا إثبات مصدر كامل`);
+  else if (auditSetupCarriers.length) auditState = statusMeta('attention', `${auditSetupCarriers.length} ناقل يحتاج تحديد جدول استلام الفاتورة`);
+  else if (auditMissingCarriers.length && auditDueMissing) auditState = statusMeta('attention', `متأخر ${auditDueMissing} فاتورة · ومجدول لاحقًا ${auditUpcomingMissing}`);
+  else if (auditMissingCarriers.length) auditState = statusMeta('pending', `بقي ${auditUpcomingMissing} فاتورة مجدولة لاحقًا`);
   else if (approved.length) auditState = statusMeta('complete', `اعتمدت ${approved.length} مراجعة موثقة`);
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[0], ...auditState,
     count: audits.length,
     completedCount: approved.length,
     last: latest(audits),
-    detail: { approved: approved.length, pending: pending.length, rejected: rejected.length, legacy: legacy.length },
+    detail: {
+      approved: approved.length, pending: pending.length, rejected: rejected.length, legacy: legacy.length,
+      carriers: auditChecklist,
+      requiredCarrierCount: auditChecklist.length,
+      completedCarrierCount: auditCompletedCarriers.length,
+      pendingCarrierCount: auditMissingCarriers.length,
+      setupCarrierCount: auditSetupCarriers.length,
+    },
     history: audits,
   });
 
@@ -628,11 +799,20 @@ export function deriveAccountingCycleStages({
   const carrierCollectionCount = carrierCollectionEvents.length
     ? carrierCollectionEvents.reduce((sum, event) => sum + Number(event.row_count || 0), 0)
     : Number(codIn?.count || 0);
-  const carrierChecklist = deriveCarrierCollectionChecklist({ approvedAudits: approved, carriers, events });
+  const carrierChecklist = deriveCarrierCollectionChecklist({
+    period,
+    approvedAudits: approved,
+    carriers,
+    events,
+    schedules,
+    codUploads: codIn?.uploads || [],
+  });
   const checklistAvailable = carrierChecklist.length > 0;
   const completedCarriers = carrierChecklist.filter(item => COMPLETED_COLLECTION_STATUSES.has(item.status));
   const pendingCarriers = carrierChecklist.filter(item => item.status === 'pending');
   const setupCarriers = carrierChecklist.filter(item => ['unsupported', 'unclassified'].includes(item.status));
+  const dueCollectionMissing = pendingCarriers.reduce((sum, item) => sum + Number(item.dueMissingCount ?? 1), 0);
+  const upcomingCollectionMissing = pendingCarriers.reduce((sum, item) => sum + Number(item.upcomingMissingCount ?? 0), 0);
   const carrierNameById = new Map(carrierChecklist.map(item => [String(item.carrierId), item.carrierName]));
   const carrierCollectionHistory = allCarrierCollectionEvents.map(event => ({
     ...event,
@@ -649,8 +829,10 @@ export function deriveAccountingCycleStages({
     carrierCollectionState = statusMeta('attention', `${setupCarriers.length} ناقل يحتاج ضبط طريقة التحصيل قبل الإقفال`);
   } else if (checklistAvailable && pendingCarriers.length) {
     carrierCollectionState = statusMeta(
-      completedCarriers.length ? 'attention' : 'ready',
-      `بقي رفع تحصيل ${pendingCarriers.length} ناقل`,
+      dueCollectionMissing ? (completedCarriers.length ? 'attention' : 'ready') : 'pending',
+      dueCollectionMissing
+        ? `متأخر ${dueCollectionMissing} دفعة · ومجدول لاحقًا ${upcomingCollectionMissing}`
+        : `بقي ${upcomingCollectionMissing} دفعة تحصيل مجدولة لاحقًا`,
     );
   } else {
     // Historical fallback for old audits/events that predate carrier metadata.
@@ -742,22 +924,31 @@ export function deriveAccountingCycleStages({
 }
 
 async function loadCodDirection(direction, start, end) {
-  const countRes = await safe(supabase.from('cod_settlement')
-    .select('id', { count: 'exact', head: true })
-    .eq('direction', direction)
-    .gte('upload_date', start)
-    .lt('upload_date', end));
-  const latestRes = await safe(supabase.from('cod_settlement')
-    .select('upload_id, upload_date, source_file, settlement_ref, created_at, carrier_id')
-    .eq('direction', direction)
-    .gte('upload_date', start)
-    .lt('upload_date', end)
-    .order('created_at', { ascending: false })
-    .limit(1));
+  const [countRes, uploadsRes] = await Promise.all([
+    safe(supabase.from('cod_settlement')
+      .select('id', { count: 'exact', head: true })
+      .eq('direction', direction)
+      .gte('upload_date', start)
+      .lt('upload_date', end)),
+    loadAll((from, to) => supabase.from('cod_settlement')
+      .select('upload_id, upload_date, source_file, settlement_ref, created_at, carrier_id')
+      .eq('direction', direction)
+      .gte('upload_date', start)
+      .lt('upload_date', end)
+      .order('created_at', { ascending: false })
+      .range(from, to)),
+  ]);
+  const uniqueUploads = new Map();
+  for (const row of uploadsRes.data || []) {
+    const key = row.upload_id || `${row.carrier_id || ''}:${row.source_file || ''}:${row.upload_date || ''}`;
+    if (key && !uniqueUploads.has(key)) uniqueUploads.set(key, row);
+  }
+  const uploads = [...uniqueUploads.values()];
   return {
     count: countRes.count,
-    last: latestRes.data[0] || null,
-    error: countRes.error || latestRes.error || null,
+    uploads,
+    last: uploads[0] || null,
+    error: countRes.error || uploadsRes.error || null,
   };
 }
 
@@ -786,7 +977,7 @@ export async function loadAccountingCycle(period) {
       .in('period', auditPeriods)
       .order('created_at', { ascending: false })
       .range(from, to));
-  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, carriersRes, codIn, codOut] = await Promise.all([
+  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, carriersRes, schedulesRes, codIn, codOut] = await Promise.all([
     auditsPromise,
     loadAll((from, to) => supabase.from('lamha_shipment_imports')
       .select('*')
@@ -818,6 +1009,11 @@ export async function loadAccountingCycle(period) {
     safe(supabase.from('carriers')
       .select('id, name, file_signature')
       .order('name')),
+    safe(supabase.from('carrier_task_schedules')
+      .select('*')
+      .eq('active', true)
+      .order('carrier_id')
+      .order('task_kind')),
     loadCodDirection('in', bounds.start, bounds.end),
     loadCodDirection('out', bounds.start, bounds.end),
   ]);
@@ -831,6 +1027,8 @@ export async function loadAccountingCycle(period) {
     sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
     sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
     sourceError('carrier_collections', 'carriers', 'إعدادات تحصيل شركات الشحن', carriersRes.error),
+    sourceError('carrier_audits', 'carrier_task_schedules', 'جداول استلام فواتير الناقلين', schedulesRes.error),
+    sourceError('carrier_collections', 'carrier_task_schedules', 'جداول تحصيلات الناقلين', schedulesRes.error),
     sourceError('carrier_collections', 'cod_settlement_in', 'تحصيلات شركات الشحن', codIn.error),
     sourceError('lamha_collections', 'cod_settlement_out', 'تحصيل لمحة', codOut.error),
     sourceError('period_close', 'accounting_cycles', 'حالة إقفال الشهر', cycleRes.error),
@@ -853,6 +1051,7 @@ export async function loadAccountingCycle(period) {
     events: eventsRes.data,
     cycle: cycleRes.data || null,
     carriers: carriersRes.data,
+    schedules: schedulesRes.data,
     sourceErrors: sourceErrors.filter(Boolean),
   });
 }

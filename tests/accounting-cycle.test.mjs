@@ -5,10 +5,82 @@ import {
   accountingPeriodBounds,
   accountingPeriodAliases,
   auditPeriodMatches,
+  deriveCarrierAuditChecklist,
   deriveCarrierCollectionChecklist,
   deriveAccountingCycleStages,
   mapLamhaShipmentRows,
 } from '../src/lib/accountingCycleService.js';
+import { expectedScheduleSlots } from '../src/lib/tasksService.js';
+
+test('جداول الناقلين تحول الأسبوعي والشهري إلى دفعات صريحة داخل الشهر', () => {
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'weekly-fixed', active: true, cadence: 'weekly', day_of_period: 8 }, '2026-08').map(slot => slot.day),
+    [8, 15, 22, 29],
+  );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'biweekly', active: true, cadence: 'biweekly', day_of_period: 5 }, '2026-08').map(slot => slot.day),
+    [5, 20],
+  );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'monthly', active: true, cadence: 'monthly', day_of_period: 1 }, '2026-08').map(slot => slot.day),
+    [1],
+  );
+});
+
+test('الفاتورة الشهرية لا تغطي تحصيلات الناقل الأسبوعية المنفصلة', () => {
+  const schedules = [
+    { id: 'invoice', carrier_id: 'jnt', task_kind: 'invoice', active: true, cadence: 'monthly', day_of_period: 1 },
+    { id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true, cadence: 'weekly', day_of_period: 8 },
+  ];
+  const audits = [{ id: 'invoice-1', carrier_id: 'jnt', carrier_name: 'J&T', review_status: 'approved' }];
+  const carriers = [{ id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } }];
+
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', audits, carriers, schedules });
+  assert.equal(invoiceChecklist[0].status, 'complete');
+  assert.equal(invoiceChecklist[0].expectedCount, 1);
+
+  const collectionChecklist = deriveCarrierCollectionChecklist({
+    period: '2026-08', approvedAudits: audits, carriers, schedules,
+    asOf: '2026-08-16',
+    events: [{ stage: 'carrier_collections', status: 'success', result: { carrier: 'jnt', fileCount: 1 } }],
+  });
+  assert.equal(collectionChecklist[0].status, 'pending');
+  assert.equal(collectionChecklist[0].expectedCount, 4);
+  assert.equal(collectionChecklist[0].receivedCount, 1);
+  assert.equal(collectionChecklist[0].missingCount, 3);
+  assert.equal(collectionChecklist[0].dueMissingCount, 1);
+  assert.equal(collectionChecklist[0].upcomingMissingCount, 2);
+});
+
+test('إعادة رفع ملف تحصيل مكرر لا تُحسب دفعة أسبوعية جديدة', () => {
+  const schedules = [{ id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true, cadence: 'weekly', day_of_period: 8 }];
+  const audits = [{ id: 'invoice-1', carrier_id: 'jnt', review_status: 'approved' }];
+  const carriers = [{ id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } }];
+  const checklist = deriveCarrierCollectionChecklist({
+    period: '2026-08', approvedAudits: audits, carriers, schedules,
+    events: [
+      { id: 'ok', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 20 } },
+      { id: 'duplicate', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 0, skippedCount: 20 } },
+    ],
+  });
+  assert.equal(checklist[0].receivedCount, 1);
+  assert.equal(checklist[0].missingCount, 3);
+});
+
+test('الملف الأسبوعي الموحّد يثبت الفاتورة والتحصيل معًا ولا يكتمل بملف واحد', () => {
+  const schedules = [{ id: 'combined', carrier_id: 'imile', task_kind: 'invoice', active: true, cadence: 'weekly', day_of_period: 3 }];
+  const carriers = [{ id: 'imile', name: 'أي مايل', file_signature: { file_kind: 'audit_with_cod' } }];
+  const audits = Array.from({ length: 3 }, (_, index) => ({
+    id: `a-${index}`, carrier_id: 'imile', carrier_name: 'أي مايل', review_status: 'approved',
+  }));
+  const expected = expectedScheduleSlots(schedules[0], '2026-08').length;
+  assert.equal(expected, 4);
+  const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', audits, carriers, schedules });
+  const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', approvedAudits: audits, carriers, schedules });
+  assert.equal(invoiceChecklist[0].missingCount, 1);
+  assert.equal(collectionChecklist[0].missingCount, 1);
+  assert.equal(collectionChecklist[0].status, 'pending');
+});
 
 test('قائمة تحصيل الناقلين تفصل التلقائي واليدوي وغير المهيأ لكل ناقل في الشهر', () => {
   const approvedAudits = [
@@ -268,6 +340,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
   assert.match(cyclePage, /تنزيل أرقام الشحنات للبحث في لمحة/);
+  assert.match(cyclePage, /أرقام الشحنات لجلب ملف لمحة/);
+  assert.match(cyclePage, /تنزيل أرقام الشحنات الآن/);
   assert.match(cyclePage, /إعادة تنزيل الملف/);
   assert.match(cyclePage, /redownloadWeightExport/);
   assert.match(cycleService, /file_name, file_path, storage_bucket, status/);

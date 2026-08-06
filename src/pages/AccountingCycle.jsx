@@ -44,14 +44,44 @@ const STATUS = {
   blocked: { label: 'ينتظر مرحلة سابقة', color: 'var(--muted2)', Icon: LockKeyhole },
 };
 
-const COLLECTION_STATUS = {
-  uploaded: { label: 'تم رفع التحصيل', color: 'var(--green)', Icon: CheckCircle2 },
-  automatic: { label: 'يُسجّل تلقائيًا', color: 'var(--green)', Icon: CheckCircle2 },
-  not_required: { label: 'لا يحتاج ملف تحصيل', color: 'var(--muted)', Icon: Check },
-  pending: { label: 'بانتظار ملف التحصيل', color: 'var(--accent)', Icon: Upload },
-  unsupported: { label: 'قارئ الملف غير مهيأ', color: 'var(--gold)', Icon: AlertTriangle },
-  unclassified: { label: 'طريقة التحصيل غير محددة', color: 'var(--gold)', Icon: AlertTriangle },
+const REQUIREMENT_STATUS = {
+  complete: { label: 'مكتمل', color: 'var(--green)', Icon: CheckCircle2 },
+  uploaded: { label: 'مكتمل', color: 'var(--green)', Icon: CheckCircle2 },
+  automatic: { label: 'مكتمل تلقائيًا', color: 'var(--green)', Icon: CheckCircle2 },
+  not_required: { label: 'غير مطلوب', color: 'var(--muted)', Icon: Check },
+  pending: { label: 'ناقص', color: 'var(--accent)', Icon: Upload },
+  unsupported: { label: 'القارئ غير مهيأ', color: 'var(--gold)', Icon: AlertTriangle },
+  unclassified: { label: 'الجدول غير محدد', color: 'var(--gold)', Icon: AlertTriangle },
 };
+
+function CarrierRequirementChecklist({ items = [], title }) {
+  if (!items.length) return null;
+  return (
+    <section style={{ marginBottom: 16 }} aria-label={title}>
+      <strong style={{ display: 'block', marginBottom: 8, fontSize: 13 }}>{title}</strong>
+      <div style={{ display: 'grid', gap: 8 }}>
+        {items.map(item => {
+          const meta = REQUIREMENT_STATUS[item.status] || REQUIREMENT_STATUS.unclassified;
+          const StatusIcon = meta.Icon;
+          return (
+            <div key={item.carrierId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10,
+              alignItems: 'center', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10,
+              background: 'var(--surface2)' }}>
+              <div style={{ minWidth: 0 }}>
+                <strong style={{ display: 'block', fontSize: 13 }}>{item.carrierName}</strong>
+                {item.scheduleText && <span style={{ display: 'block', marginTop: 2, color: 'var(--text2)', fontSize: 11.5 }}>{item.scheduleText}</span>}
+                <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>{item.note}</span>
+              </div>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                <StatusIcon size={14}/>{meta.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
 
 function fmtDate(value) {
   if (!value) return '—';
@@ -190,7 +220,13 @@ function StageHistory({ stage, busy, onRedownload }) {
                   {total != null && <span>{Number(total).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س</span>}
                   {state && <span>{state}</span>}
                   {dateOf(record) && <time>{fmtDate(dateOf(record))}</time>}
-                  {stage?.id === 'weight_export' && (record.file_path || record.result?.exportId || record.export_id) && (
+                  {stage?.id === 'weight_export' && (
+                    record.file_path
+                    || record.result?.exportId
+                    || record.export_id
+                    || Array.isArray(record.audit_ids)
+                    || ['exported', 'billed'].includes(record.status)
+                  ) && (
                     <Btn
                       variant="ghost"
                       size="sm"
@@ -536,6 +572,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         total: result.total,
         result: {
           carrier: result.carrier,
+          savedCount: result.savedCount,
           skippedCount: result.skippedCount,
           fileCount: result.fileCount,
           ledgerError: result.ledgerError || null,
@@ -592,21 +629,32 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       }
       return (
         <div className="accounting-cycle-embedded">
-          <p className="accounting-cycle-help">ارفع فاتورة شركة الشحن، راجع نتيجة المطابقة، ثم اعتمدها من نفس المسار. تظهر حالة المرحلة تلقائيًا بعد الاعتماد.</p>
+          <p className="accounting-cycle-help">ارفع فاتورة شركة الشحن، راجع نتيجة المطابقة، ثم اعتمدها من نفس المسار. الناقل ذو الملف الأسبوعي الموحّد يحتاج كل ملفات الشهر، بينما الناقل ذو الفاتورة الشهرية يحتاج فاتورة واحدة مستقلة عن دفعات التحصيل.</p>
+          <CarrierRequirementChecklist items={stage.detail?.carriers || []} title="اكتمال فواتير الناقلين حسب الجدول" />
           {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period}/> : <NoPermission/>}
         </div>
       );
     }
     if (stage.id === 'weight_export') {
       return (
-        <StageAction
-          title="ملف الأوزان الجاهز للرفع إلى لمحة"
-          text="الملف يأخذ مراجعات هذا الشهر المعتمدة فقط، ويحتوي رقم الشحنة والوزن. بعد التنزيل لن تتكرر الشحنات في السحبة التالية."
-          disabled={!allowed || busy === stage.id || stage.status === 'blocked'}
-          button="تنزيل ملف الأوزان لهذه الفترة"
-          onClick={exportWeights}
-          busy={busy === stage.id}
-        />
+        <div style={{ display: 'grid', gap: 14 }}>
+          <StageAction
+            title="ملف الأوزان الجاهز للرفع إلى لمحة"
+            text="الملف يأخذ مراجعات هذا الشهر المعتمدة فقط، ويحتوي رقم الشحنة والوزن. بعد التنزيل لن تتكرر الشحنات في السحبة التالية."
+            disabled={!allowed || busy === stage.id || stage.status === 'blocked'}
+            button="تنزيل ملف الأوزان لهذه الفترة"
+            onClick={exportWeights}
+            busy={busy === stage.id}
+          />
+          <StageAction
+            title="أرقام الشحنات لجلب ملف لمحة"
+            text="نزّل أرقام الشحنات فقط، استخدمها في البحث الجماعي داخل لمحة، ثم صدّر Admin Order Export وارفعه في المرحلة التالية."
+            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers'}
+            button="تنزيل أرقام الشحنات الآن"
+            onClick={downloadShipmentNumbers}
+            busy={busy === 'lamha_shipment_numbers'}
+          />
+        </div>
       );
     }
     if (stage.id === 'lamha_shipments') {
@@ -717,28 +765,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         : (available[0]?.id || '');
       return (
         <div>
-          <p className="accounting-cycle-help">القائمة أدناه مشتقة من مراجعات هذا الشهر المعتمدة. لا تعتبر المرحلة مكتملة حتى تتم معالجة كل ناقل مطلوب، مع بقاء التسجيل التلقائي والناقل الذي لا يحتاج ملفًا واضحين.</p>
-          {checklist.length > 0 && (
-            <div style={{ display: 'grid', gap: 8, marginBottom: 16 }}>
-              {checklist.map(item => {
-                const meta = COLLECTION_STATUS[item.status] || COLLECTION_STATUS.unclassified;
-                const StatusIcon = meta.Icon;
-                return (
-                  <div key={item.carrierId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', gap: 10,
-                    alignItems: 'center', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10,
-                    background: 'var(--surface2)' }}>
-                    <div style={{ minWidth: 0 }}>
-                      <strong style={{ display: 'block', fontSize: 13 }}>{item.carrierName}</strong>
-                      <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>{item.note}</span>
-                    </div>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5, color: meta.color, fontSize: 11.5, fontWeight: 800, whiteSpace: 'nowrap' }}>
-                      <StatusIcon size={14}/>{meta.label}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          <p className="accounting-cycle-help">كل دفعة أسبوعية تُحسب ملفًا مستقلًا. الفاتورة الشهرية لا تكمل التحصيل الأسبوعي، والملف الموحّد فقط هو الذي يثبت الفاتورة والتحصيل معًا.</p>
+          <CarrierRequirementChecklist items={checklist} title="اكتمال تحصيلات الناقلين حسب الجدول" />
           {available.length > 0 ? (
             <>
               <Select label="شركة الشحن" value={selectedCarrierId} onChange={event => setCarrierId(event.target.value)}>

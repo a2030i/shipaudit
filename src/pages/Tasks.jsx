@@ -21,7 +21,7 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
-  partitionByDueness, TASK_KIND_META, CADENCE_META,
+  partitionByDueness, scheduleRequirementLabel, TASK_KIND_META, CADENCE_META,
 } from '../lib/tasksService.js';
 
 const fmtDate = (iso) => {
@@ -57,6 +57,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
     () => new Map((carriers || []).map(c => [c.id, c.name])),
     [carriers],
   );
+  const currentPeriod = new Date().toISOString().slice(0, 7);
 
   const handleMarkDone = async (s) => {
     try {
@@ -206,7 +207,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
                           {kindMeta.icon} {kindMeta.label}
                         </span>
                       </td>
-                      <td>{cadMeta.label}{s.day_of_period != null ? ` · يوم ${s.day_of_period}` : ''}</td>
+                      <td>{s.active ? scheduleRequirementLabel(s, currentPeriod) : cadMeta.label}</td>
                       <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11.5, color: 'var(--muted)' }}>
                         {s.last_completed_at ? fmtDate(s.last_completed_at) : '— لم يُسجَّل'}
                       </td>
@@ -375,7 +376,11 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
         {cadence !== 'on_demand' && (
           <div>
             <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600 }}>
-              يوم محدد {cadence === 'weekly' ? '(0=الأحد، 6=السبت)' : cadence === 'monthly' ? '(1-28)' : '(اختياري)'}
+              {cadence === 'weekly'
+                ? 'موعد الأسبوع: 0–6 ليوم الأسبوع، أو 7–28 كبداية دفعات كل 7 أيام'
+                : cadence === 'biweekly'
+                  ? 'بداية الدفعتين (مثال: 5 يعني يوم 5 و20)'
+                  : 'يوم استلام الفاتورة الشهرية (1–28)'}
             </label>
             <input
               type="number" min="0" max="28"

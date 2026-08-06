@@ -406,7 +406,9 @@ export async function downloadExport(exportRow) {
 export async function redownloadWeightExport(record) {
   let exportRow = record;
   if (!exportRow?.file_path) {
-    const exportId = record?.result?.exportId || record?.export_id || null;
+    const exportId = record?.result?.exportId
+      || record?.export_id
+      || (Array.isArray(record?.audit_ids) ? record?.id : null);
     let query = supabase.from('weight_billing_exports').select('*');
     if (exportId) query = query.eq('id', exportId);
     else if (record?.file_name) query = query.eq('file_name', record.file_name);
@@ -416,6 +418,35 @@ export async function redownloadWeightExport(record) {
     if (!data) throw new Error('لم أجد سجل ملف الأوزان السابق');
     exportRow = data;
   }
-  await downloadExport(exportRow);
+  if (exportRow.file_path) {
+    await downloadExport(exportRow);
+    return exportRow;
+  }
+
+  // Historical exports created before the private storage bucket was enabled
+  // have durable audit IDs but no stored blob. Rebuild the exact deterministic
+  // two-column workbook only when its row count still matches the recorded
+  // export; otherwise refuse instead of presenting a changed file as original.
+  const auditIds = Array.isArray(exportRow.audit_ids) ? exportRow.audit_ids : [];
+  if (!auditIds.length) throw new Error('هذا التصدير القديم لا يملك ملفًا محفوظًا أو مراجعات يمكن استعادته منها');
+  const { data: audits, error: auditsError } = await supabase
+    .from('audits')
+    .select('id, carrier_name, period')
+    .in('id', auditIds);
+  if (auditsError) throw auditsError;
+
+  const byAwb = new Map();
+  for (const audit of audits || []) {
+    const rows = await billableRowsFor(audit);
+    for (const row of rows) if (!byAwb.has(row.awb)) byAwb.set(row.awb, row);
+  }
+  const rows = [...byAwb.values()];
+  if (rows.length !== Number(exportRow.row_count || 0)) {
+    throw new Error(`تعذر ضمان مطابقة الملف القديم: السجل يحتوي ${exportRow.row_count || 0} صفًا والمصدر الحالي يحتوي ${rows.length}`);
+  }
+  const worksheet = XLSX.utils.json_to_sheet(toLamhaWeightRows(rows));
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'أوزان للفوترة');
+  if (typeof window !== 'undefined') XLSX.writeFile(rtl(workbook), exportRow.file_name || 'أوزان_لمحة.xlsx');
   return exportRow;
 }
