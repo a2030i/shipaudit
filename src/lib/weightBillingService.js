@@ -23,7 +23,7 @@
 import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
-import { accountingPeriodAliases, auditPeriodMatches } from './accountingCycleService.js';
+import { accountingPeriodAliases, accountingPeriodBounds, auditPeriodMatches } from './accountingCycleService.js';
 import { hasVerifiedAuditProof } from './auditProof.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -99,6 +99,14 @@ export function toLamhaShipmentSearchRows(rows) {
   return result;
 }
 
+export function filterMissingShipmentSearchRows(rows, existingAwbs = []) {
+  const existing = new Set((existingAwbs || []).map(value => String(value || '').trim()).filter(Boolean));
+  return (rows || []).filter(row => {
+    const awb = String(row?.['رقم الشحنة'] || '').trim();
+    return awb && !existing.has(awb);
+  });
+}
+
 // ─── reads ─────────────────────────────────────────────────────────────────
 export async function loadPendingAuditsForBilling() {
   // Only APPROVED audits feed the merchant-billing pipeline. Pending /
@@ -156,7 +164,26 @@ export async function loadBillingExports({ limit = 50, status } = {}) {
   return data || [];
 }
 
-export async function downloadApprovedShipmentNumbers({ period } = {}) {
+async function loadImportedLamhaAwbs(period) {
+  const { periodDate } = accountingPeriodBounds(period);
+  const PAGE = 1000;
+  const awbs = [];
+  for (let from = 0; ; from += PAGE) {
+    const { data, error } = await supabase
+      .from('lamha_shipments')
+      .select('id, awb')
+      .eq('period', periodDate)
+      .not('awb', 'is', null)
+      .order('id', { ascending: true })
+      .range(from, from + PAGE - 1);
+    if (error) throw error;
+    for (const row of data || []) awbs.push(row.awb);
+    if (!data || data.length < PAGE) break;
+  }
+  return awbs;
+}
+
+export async function downloadApprovedShipmentNumbers({ period, missingOnly = true } = {}) {
   if (!period) throw new Error('اختر شهر دورة المحاسب أولًا');
   const { data, error } = await supabase
     .from('audits')
@@ -169,15 +196,27 @@ export async function downloadApprovedShipmentNumbers({ period } = {}) {
   const audits = (data || []).filter(isVerifiedAuditForWeightBilling);
   const shipments = [];
   for (const audit of audits) shipments.push(...await billableRowsFor(audit));
-  const rows = toLamhaShipmentSearchRows(shipments);
-  if (!rows.length) return { ok: false, reason: 'empty', count: 0, auditCount: audits.length };
+  const allRows = toLamhaShipmentSearchRows(shipments);
+  if (!allRows.length) return { ok: false, reason: 'empty', count: 0, expectedCount: 0, auditCount: audits.length };
+  const importedAwbs = missingOnly ? await loadImportedLamhaAwbs(period) : [];
+  const rows = missingOnly ? filterMissingShipmentSearchRows(allRows, importedAwbs) : allRows;
+  if (!rows.length) {
+    return { ok: false, reason: 'complete', count: 0, expectedCount: allRows.length, alreadyImportedCount: allRows.length, auditCount: audits.length };
+  }
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(workbook, worksheet, 'أرقام الشحنات');
-  const fileName = `أرقام_شحنات_لمحة_${period}_${rows.length}شحنة.xlsx`;
+  const fileName = `أرقام_شحنات_لمحة_${missingOnly ? 'المتبقية_' : ''}${period}_${rows.length}شحنة.xlsx`;
   if (typeof window !== 'undefined') XLSX.writeFile(rtl(workbook), fileName);
-  return { ok: true, count: rows.length, auditCount: audits.length, fileName };
+  return {
+    ok: true,
+    count: rows.length,
+    expectedCount: allRows.length,
+    alreadyImportedCount: allRows.length - rows.length,
+    auditCount: audits.length,
+    fileName,
+  };
 }
 
 // Audits referenced by a given export, hydrated with their current

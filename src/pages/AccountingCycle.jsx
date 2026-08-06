@@ -375,7 +375,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     setBusy('lamha_shipment_numbers');
     try {
       const result = await downloadApprovedShipmentNumbers({ period });
-      if (!result.ok) toast('لا توجد أرقام شحنات من مراجعات معتمدة في هذه الفترة', 'info');
+      if (!result.ok && result.reason === 'complete') toast('كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة', 'success');
+      else if (!result.ok) toast('لا توجد أرقام شحنات من مراجعات معتمدة في هذه الفترة', 'info');
       else toast(`تم تنزيل ${result.count.toLocaleString('en-US')} رقم شحنة للبحث الجماعي في لمحة`, 'success');
     } catch (error) {
       toast(`تعذر تنزيل أرقام الشحنات: ${error.message}`, 'error');
@@ -643,6 +644,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       );
     }
     if (stage.id === 'weight_export') {
+      const shipmentCoverage = snapshot?.stages?.find(item => item.id === 'lamha_shipments')?.detail?.coverage || {};
+      const missingShipmentCount = Number(shipmentCoverage.missingCount || 0);
       return (
         <div style={{ display: 'grid', gap: 14 }}>
           <StageAction
@@ -654,10 +657,12 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
             busy={busy === stage.id}
           />
           <StageAction
-            title="أرقام الشحنات لجلب ملف لمحة"
-            text="نزّل أرقام الشحنات فقط، استخدمها في البحث الجماعي داخل لمحة، ثم صدّر Admin Order Export وارفعه في المرحلة التالية."
-            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers'}
-            button="تنزيل أرقام الشحنات الآن"
+            title="أرقام الشحنات المتبقية لجلبها من لمحة"
+            text={missingShipmentCount
+              ? `بقي ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة معتمد غير موجود في ملفات لمحة. نزّلها فقط، وابحث بها جماعيًا، ثم ارفع Admin Order Export في المرحلة التالية.`
+              : 'كل أرقام الشحنات المعتمدة موجودة بالفعل في ملفات لمحة المرفوعة.'}
+            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers' || !missingShipmentCount}
+            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم شحنة متبقي` : 'لا توجد أرقام متبقية'}
             onClick={downloadShipmentNumbers}
             busy={busy === 'lamha_shipment_numbers'}
           />
@@ -665,13 +670,17 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       );
     }
     if (stage.id === 'lamha_shipments') {
+      const coverage = stage.detail?.coverage || {};
+      const missingShipmentCount = Number(coverage.missingCount || 0);
       return (
         <div>
           <StageAction
             title="أرقام الشحنات المطلوب البحث عنها في لمحة"
-            text="نزّل قائمة أرقام الشحنات من مراجعات الناقلين المعتمدة لهذا الشهر، وابحث بها جماعيًا في لمحة، ثم صدّر Admin Order Export وارفعه أدناه. تنزيل القائمة لا يغيّر حالة المراجعات أو الأوزان."
-            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers'}
-            button="تنزيل أرقام الشحنات للبحث في لمحة"
+            text={missingShipmentCount
+              ? `المراجعات المعتمدة تحتوي ${Number(coverage.expectedCount || 0).toLocaleString('en-US')} شحنة؛ الموجود من لمحة ${Number(coverage.importedExpectedCount || 0).toLocaleString('en-US')}، والمتبقي ${missingShipmentCount.toLocaleString('en-US')}. نزّل المتبقي فقط ثم ارفع Admin Order Export أدناه.`
+              : 'كل أرقام الشحنات المعتمدة موجودة في ملفات لمحة المرفوعة؛ لا يلزم تنزيل قائمة جديدة.'}
+            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers' || !missingShipmentCount}
+            button={missingShipmentCount ? `تنزيل ${missingShipmentCount.toLocaleString('en-US')} رقم متبقي` : 'اكتملت أرقام لمحة'}
             onClick={downloadShipmentNumbers}
             busy={busy === 'lamha_shipment_numbers'}
           />

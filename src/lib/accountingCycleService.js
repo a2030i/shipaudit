@@ -697,8 +697,43 @@ export function deriveCarrierCollectionChecklist({
   }).sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
 }
 
+export function deriveLamhaShipmentCoverage({ auditShipments = [], lamhaShipments = [] } = {}) {
+  const expected = new Set();
+  for (const row of auditShipments || []) {
+    const awb = String(row?.awb || '').trim();
+    if (!awb || row?.is_cod || Number(row?.weight_kg || 0) <= 0) continue;
+    expected.add(awb);
+  }
+
+  const imported = new Set();
+  for (const row of lamhaShipments || []) {
+    const awb = String(row?.awb || '').trim();
+    if (awb) imported.add(awb);
+  }
+
+  let importedExpectedCount = 0;
+  const missingAwbs = [];
+  for (const awb of expected) {
+    if (imported.has(awb)) importedExpectedCount += 1;
+    else missingAwbs.push(awb);
+  }
+  let extraCount = 0;
+  for (const awb of imported) {
+    if (!expected.has(awb)) extraCount += 1;
+  }
+
+  return {
+    expectedCount: expected.size,
+    importedExpectedCount,
+    missingCount: missingAwbs.length,
+    extraCount,
+    missingAwbs,
+  };
+}
+
 export function deriveAccountingCycleStages({
   period, audits = [], weightExports = [], shipmentImport = null, shipmentImports = [],
+  auditShipments = [], lamhaShipments = [],
   balanceSnapshot = null, merchantSnapshot = null, codIn = null, codOut = null,
   events = [], cycle = null, sourceErrors = [], carriers = [], schedules = null,
 }) {
@@ -769,24 +804,38 @@ export function deriveAccountingCycleStages({
   });
 
   const storedShipmentImports = shipmentImports.length ? shipmentImports : (shipmentImport ? [shipmentImport] : []);
+  const shipmentCoverage = deriveLamhaShipmentCoverage({ auditShipments, lamhaShipments });
   const shipmentEvents = eventHistoryFor('lamha_shipments');
   const shipmentHistory = mergeHistory(shipmentEvents, storedShipmentImports, (event, record) =>
     event?.result?.importId === record?.id
     || (event?.file_name && event.file_name === record?.file_name && Number(event.row_count || 0) === Number(record.row_count || 0)));
   const latestShipmentImport = latest(storedShipmentImports);
   const latestShipmentAttempt = shipmentEvents[0] || null;
-  let shipmentState = latestShipmentImport
-    ? statusMeta('complete', `${latestShipmentImport.row_count || 0} شحنة في أحدث ملف`)
-    : statusMeta('pending', 'لم يُرفع ملف شحنات لمحة');
+  let shipmentState;
+  if (!shipmentCoverage.expectedCount) {
+    shipmentState = verifiedApproved.length
+      ? statusMeta('complete', 'لا توجد شحنات تشغيلية قابلة للجلب من المراجعات المعتمدة')
+      : statusMeta('blocked', 'اعتمد مراجعة شركة شحن موثقة أولًا لاستخراج أرقام الشحنات');
+  } else if (!shipmentCoverage.missingCount) {
+    shipmentState = statusMeta('complete', `اكتملت بيانات ${shipmentCoverage.expectedCount.toLocaleString('en-US')} شحنة معتمدة في لمحة`);
+  } else if (shipmentCoverage.importedExpectedCount) {
+    shipmentState = statusMeta('attention', `بقي ${shipmentCoverage.missingCount.toLocaleString('en-US')} من ${shipmentCoverage.expectedCount.toLocaleString('en-US')} شحنة معتمدة لم تُجلب من لمحة`);
+  } else {
+    shipmentState = statusMeta('ready', `نزّل ${shipmentCoverage.missingCount.toLocaleString('en-US')} رقم شحنة وابحث عنها جماعيًا في لمحة`);
+  }
   if (latestShipmentAttempt && latestShipmentAttempt.status !== 'success') {
     shipmentState = statusMeta('attention', 'آخر محاولة لرفع شحنات لمحة لم تكتمل بنجاح');
   }
   stages.push({
     ...ACCOUNTING_CYCLE_STAGES[2], ...shipmentState,
-    count: storedShipmentImports.reduce((sum, record) => sum + Number(record.row_count || 0), 0),
-    completedCount: storedShipmentImports.length,
+    count: shipmentCoverage.expectedCount,
+    completedCount: shipmentCoverage.importedExpectedCount,
     last: latestShipmentAttempt || latestShipmentImport,
-    detail: latestShipmentImport || {},
+    detail: {
+      ...(latestShipmentImport || {}),
+      coverage: shipmentCoverage,
+      importCount: storedShipmentImports.length,
+    },
     history: shipmentHistory,
   });
 
@@ -1000,6 +1049,23 @@ async function loadWeightExportsForAudits(auditIds) {
   return { data, count: data.length, error: null };
 }
 
+async function loadAuditShipmentsForAudits(auditIds) {
+  if (!auditIds.length) return { data: [], count: 0, error: null };
+  const records = new Map();
+  for (let index = 0; index < auditIds.length; index += 100) {
+    const chunk = auditIds.slice(index, index + 100);
+    const result = await loadAll((from, to) => supabase.from('audit_shipments')
+      .select('id, audit_id, awb, weight_kg, is_cod')
+      .in('audit_id', chunk)
+      .order('id', { ascending: true })
+      .range(from, to));
+    if (result.error) return result;
+    for (const record of result.data) records.set(record.id, record);
+  }
+  const data = [...records.values()];
+  return { data, count: data.length, error: null };
+}
+
 export async function loadAccountingCycle(period) {
   const bounds = accountingPeriodBounds(period);
   const auditPeriods = accountingPeriodAliases(bounds.period);
@@ -1008,12 +1074,18 @@ export async function loadAccountingCycle(period) {
       .in('period', auditPeriods)
       .order('created_at', { ascending: false })
       .range(from, to));
-  const [auditsRes, shipmentRes, balanceRes, merchantRes, eventsRes, cycleRes, carriersRes, schedulesRes, codIn, codOut] = await Promise.all([
+  const [auditsRes, shipmentRes, lamhaShipmentRowsRes, balanceRes, merchantRes, eventsRes, cycleRes, carriersRes, schedulesRes, codIn, codOut] = await Promise.all([
     auditsPromise,
     loadAll((from, to) => supabase.from('lamha_shipment_imports')
       .select('*')
       .eq('period', bounds.periodDate)
       .order('uploaded_at', { ascending: false })
+      .range(from, to)),
+    loadAll((from, to) => supabase.from('lamha_shipments')
+      .select('id, awb')
+      .eq('period', bounds.periodDate)
+      .not('awb', 'is', null)
+      .order('id', { ascending: true })
       .range(from, to)),
     safe(supabase.from('store_balance_snapshots')
       .select('id, file_name, row_count, matched_count, total_balance, uploaded_at')
@@ -1050,11 +1122,19 @@ export async function loadAccountingCycle(period) {
   ]);
 
   const auditIds = auditsRes.data.map(row => row.id);
-  const exportsRes = await loadWeightExportsForAudits(auditIds);
+  const verifiedApprovedAuditIds = auditsRes.data
+    .filter(row => row.review_status === 'approved' && hasVerifiedAuditProof(row))
+    .map(row => row.id);
+  const [exportsRes, auditShipmentRowsRes] = await Promise.all([
+    loadWeightExportsForAudits(auditIds),
+    loadAuditShipmentsForAudits(verifiedApprovedAuditIds),
+  ]);
   const sourceErrors = [
     sourceError('carrier_audits', 'audits', 'مراجعات شركات الشحن', auditsRes.error),
     sourceError('weight_export', 'weight_billing_exports', 'ملفات الأوزان', exportsRes.error),
     sourceError('lamha_shipments', 'lamha_shipment_imports', 'شحنات لمحة', shipmentRes.error),
+    sourceError('lamha_shipments', 'audit_shipments', 'أرقام شحنات المراجعات المعتمدة', auditShipmentRowsRes.error),
+    sourceError('lamha_shipments', 'lamha_shipments', 'أرقام الشحنات المستوردة من لمحة', lamhaShipmentRowsRes.error),
     sourceError('lamha_sources', 'store_balance_snapshots', 'كشف حساب لمحة', balanceRes.error),
     sourceError('lamha_sources', 'merchants', 'دليل المتاجر', merchantRes.error),
     sourceError('carrier_collections', 'carriers', 'إعدادات تحصيل شركات الشحن', carriersRes.error),
@@ -1075,6 +1155,8 @@ export async function loadAccountingCycle(period) {
     weightExports: exportsRes.data,
     shipmentImport: shipmentRes.data[0] || null,
     shipmentImports: shipmentRes.data,
+    auditShipments: auditShipmentRowsRes.data,
+    lamhaShipments: lamhaShipmentRowsRes.data,
     balanceSnapshot: balanceRes.data[0] || null,
     merchantSnapshot: merchantRes.data[0] || null,
     codIn,

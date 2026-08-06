@@ -8,9 +8,11 @@ import {
   deriveCarrierAuditChecklist,
   deriveCarrierCollectionChecklist,
   deriveAccountingCycleStages,
+  deriveLamhaShipmentCoverage,
   mapLamhaShipmentRows,
 } from '../src/lib/accountingCycleService.js';
 import { expectedScheduleSlots } from '../src/lib/tasksService.js';
+import { filterMissingShipmentSearchRows } from '../src/lib/weightBillingService.js';
 
 test('جداول الناقلين تحول الأسبوعي والشهري إلى دفعات صريحة داخل الشهر', () => {
   assert.deepEqual(
@@ -311,12 +313,65 @@ test('سجل شحنات لمحة يعرض كل ملفات الشهر لا آخر
     row_count: index + 1,
     uploaded_at: `2026-08-${String(index + 1).padStart(2, '0')}T10:00:00Z`,
   }));
-  const cycle = deriveAccountingCycleStages({ period: '2026-08', shipmentImports });
+  const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
+  const cycle = deriveAccountingCycleStages({
+    period: '2026-08',
+    audits: [{ id: 'a1', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } }],
+    shipmentImports,
+    auditShipments: [{ audit_id: 'a1', awb: 'AWB-1', weight_kg: 2, is_cod: false }],
+    lamhaShipments: [{ awb: 'AWB-1' }],
+  });
   const stage = cycle.stages[2];
   assert.equal(stage.status, 'complete');
   assert.equal(stage.history.length, 18);
   assert.equal(stage.last.file_name, 'lamha-17.xlsx');
-  assert.equal(stage.count, 171);
+  assert.equal(stage.count, 1);
+  assert.equal(stage.completedCount, 1);
+});
+
+test('ملف لمحة الجزئي لا يكمل المرحلة وتعود ناقصة عند اعتماد شحنة جديدة', () => {
+  const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
+  const base = {
+    period: '2026-08',
+    audits: [{ id: 'a1', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } }],
+    shipmentImports: [{ id: 'i1', file_name: 'lamha.xlsx', row_count: 2, uploaded_at: '2026-08-03T10:00:00Z' }],
+    auditShipments: [
+      { audit_id: 'a1', awb: 'AWB-1', weight_kg: 2, is_cod: false },
+      { audit_id: 'a1', awb: 'AWB-2', weight_kg: 3, is_cod: false },
+      { audit_id: 'a1', awb: 'AWB-3', weight_kg: 4, is_cod: false },
+    ],
+  };
+  const partial = deriveAccountingCycleStages({ ...base, lamhaShipments: [{ awb: 'AWB-1' }, { awb: 'AWB-2' }] });
+  assert.equal(partial.stages[2].status, 'attention');
+  assert.equal(partial.stages[2].detail.coverage.missingCount, 1);
+
+  const complete = deriveAccountingCycleStages({ ...base, lamhaShipments: [{ awb: 'AWB-1' }, { awb: 'AWB-2' }, { awb: 'AWB-3' }] });
+  assert.equal(complete.stages[2].status, 'complete');
+  assert.equal(complete.stages[2].detail.coverage.missingCount, 0);
+});
+
+test('مطابقة أرقام لمحة تستبعد صف الرسم والوزن الصفري والتكرار وتصدر المتبقي فقط', () => {
+  const coverage = deriveLamhaShipmentCoverage({
+    auditShipments: [
+      { awb: 'A-1', weight_kg: 2, is_cod: false },
+      { awb: 'A-1', weight_kg: 2, is_cod: false },
+      { awb: 'A-2', weight_kg: 0, is_cod: false },
+      { awb: 'A-3', weight_kg: 4, is_cod: true },
+      { awb: 'A-4', weight_kg: 5, is_cod: false },
+    ],
+    lamhaShipments: [{ awb: 'A-1' }, { awb: 'EXTRA' }],
+  });
+  assert.deepEqual(coverage, {
+    expectedCount: 2,
+    importedExpectedCount: 1,
+    missingCount: 1,
+    extraCount: 1,
+    missingAwbs: ['A-4'],
+  });
+  assert.deepEqual(
+    filterMissingShipmentSearchRows([{ 'رقم الشحنة': 'A-1' }, { 'رقم الشحنة': 'A-4' }], ['A-1']),
+    [{ 'رقم الشحنة': 'A-4' }],
+  );
 });
 
 test('فشل قراءة أي مصدر يظهر للمحاسب ويمنع إقفال الشهر', () => {
@@ -373,9 +428,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
-  assert.match(cyclePage, /تنزيل أرقام الشحنات للبحث في لمحة/);
-  assert.match(cyclePage, /أرقام الشحنات لجلب ملف لمحة/);
-  assert.match(cyclePage, /تنزيل أرقام الشحنات الآن/);
+  assert.match(cyclePage, /أرقام الشحنات المتبقية لجلبها من لمحة/);
+  assert.match(cyclePage, /missingShipmentCount/);
+  assert.match(cyclePage, /كل أرقام الشحنات المعتمدة موجودة بالفعل/);
   assert.match(cyclePage, /item\.requiresManualUpload/);
   assert.match(cyclePage, /ضبط جداول الفواتير والتحصيل/);
   assert.match(cyclePage, /إعادة تنزيل الملف/);
@@ -394,5 +449,7 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
   assert.match(cycleService, /const HISTORY_PAGE_SIZE = 1000/);
   assert.match(cycleService, /\.range\(from, to\)/);
+  assert.match(cycleService, /deriveLamhaShipmentCoverage/);
+  assert.match(cycleService, /loadAuditShipmentsForAudits/);
   assert.doesNotMatch(cycleService, /accounting_cycle_events'[\s\S]{0,250}\.limit\(200\)/);
 });
