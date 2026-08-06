@@ -256,8 +256,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(appPage, /<AccountingCycle carriers=\{carriers\} isActive=\{pathname==='\/accounting-cycle'\}\/>/);
   assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
   assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
-  assert.match(cyclePage, /<StageHistory stage=\{stage\}\/>/);
-  assert.match(cyclePage, /<StageHistory stage=\{selected\}\/>/);
+  assert.match(cyclePage, /<StageHistory stage=\{stage\}[^>]*onRedownload=\{redownloadWeights\}/);
+  assert.match(cyclePage, /<StageHistory stage=\{selected\}[^>]*onRedownload=\{redownloadWeights\}/);
   assert.doesNotMatch(cyclePage, /history\.slice\(0,\s*12\)/);
   assert.match(cyclePage, /snapshot\.sourceErrors/);
   assert.match(cyclePage, /إعادة فحص المصادر/);
@@ -267,6 +267,10 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /saveConsolidatedExpected/);
   assert.match(cyclePage, /اختر ملف تحصيل لمحة المجمّع/);
   assert.match(cyclePage, /stage_attempt_failed/);
+  assert.match(cyclePage, /تنزيل أرقام الشحنات للبحث في لمحة/);
+  assert.match(cyclePage, /إعادة تنزيل الملف/);
+  assert.match(cyclePage, /redownloadWeightExport/);
+  assert.match(cycleService, /file_name, file_path, storage_bucket, status/);
   assert.match(cyclePage, /onError=\{settlementFailed\}/);
   assert.match(cyclePage, /onApproved=\{auditApproved\}/);
   const auditResultsPage = await readFile(new URL('../src/pages/AuditResults.jsx', import.meta.url), 'utf8');

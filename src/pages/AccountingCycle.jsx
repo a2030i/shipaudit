@@ -15,7 +15,11 @@ import {
   uploadLamhaShipmentSnapshot,
 } from '../lib/accountingCycleService.js';
 import { uploadFile } from '../lib/uploadsHubService.js';
-import { exportPendingExcessWeights } from '../lib/weightBillingService.js';
+import {
+  downloadApprovedShipmentNumbers,
+  exportPendingExcessWeights,
+  redownloadWeightExport,
+} from '../lib/weightBillingService.js';
 import { parseConsolidatedExpected, saveConsolidatedExpected } from '../lib/codSettlementService.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 import UploadWizard from './UploadWizard.jsx';
@@ -146,7 +150,7 @@ const HISTORY_STATUS_LABELS = {
   closed: 'مقفل',
 };
 
-function StageHistory({ stage }) {
+function StageHistory({ stage, busy, onRedownload }) {
   const history = Array.isArray(stage?.history) ? stage.history : [];
   return (
     <section className="accounting-cycle-history" aria-label={`سجل ${stage?.label || 'المرحلة'}`}>
@@ -186,6 +190,17 @@ function StageHistory({ stage }) {
                   {total != null && <span>{Number(total).toLocaleString('en-US', { maximumFractionDigits: 2 })} ر.س</span>}
                   {state && <span>{state}</span>}
                   {dateOf(record) && <time>{fmtDate(dateOf(record))}</time>}
+                  {stage?.id === 'weight_export' && (record.file_path || record.result?.exportId || record.export_id) && (
+                    <Btn
+                      variant="ghost"
+                      size="sm"
+                      icon={<Download size={13}/>}
+                      onClick={() => onRedownload(record)}
+                      disabled={busy}
+                    >
+                      {busy ? 'جارٍ التنزيل…' : 'إعادة تنزيل الملف'}
+                    </Btn>
+                  )}
                 </div>
               </article>
             );
@@ -313,6 +328,31 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
       await recordFailure({ stage: 'weight_export', sourceKind: 'weight_billing', error });
       await refresh();
       toast(`فشل تصدير الأوزان: ${error.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const downloadShipmentNumbers = async () => {
+    setBusy('lamha_shipment_numbers');
+    try {
+      const result = await downloadApprovedShipmentNumbers({ period });
+      if (!result.ok) toast('لا توجد أرقام شحنات من مراجعات معتمدة في هذه الفترة', 'info');
+      else toast(`تم تنزيل ${result.count.toLocaleString('en-US')} رقم شحنة للبحث الجماعي في لمحة`, 'success');
+    } catch (error) {
+      toast(`تعذر تنزيل أرقام الشحنات: ${error.message}`, 'error');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const redownloadWeights = async record => {
+    setBusy(`weight_redownload:${record?.result?.exportId || record?.id || record?.file_name || ''}`);
+    try {
+      await redownloadWeightExport(record);
+      toast('تمت إعادة تنزيل ملف الأوزان نفسه دون إنشاء تصدير جديد', 'success');
+    } catch (error) {
+      toast(`تعذر إعادة تنزيل ملف الأوزان: ${error.message}`, 'error');
     } finally {
       setBusy(null);
     }
@@ -572,7 +612,15 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     if (stage.id === 'lamha_shipments') {
       return (
         <div>
-          <p className="accounting-cycle-help">ارفع تصدير الطلبات من لمحة. ترتيب الأعمدة لا يهم؛ النظام يقرأ أسماء الأعمدة ويحفظ بيانات الطلب والمتجر والناقل والـAWB والتكلفة والتواريخ.</p>
+          <StageAction
+            title="أرقام الشحنات المطلوب البحث عنها في لمحة"
+            text="نزّل قائمة أرقام الشحنات من مراجعات الناقلين المعتمدة لهذا الشهر، وابحث بها جماعيًا في لمحة، ثم صدّر Admin Order Export وارفعه أدناه. تنزيل القائمة لا يغيّر حالة المراجعات أو الأوزان."
+            disabled={!can('internal_exports.pull') || busy === 'lamha_shipment_numbers'}
+            button="تنزيل أرقام الشحنات للبحث في لمحة"
+            onClick={downloadShipmentNumbers}
+            busy={busy === 'lamha_shipment_numbers'}
+          />
+          <p className="accounting-cycle-help" style={{ marginTop: 14 }}>بعد البحث الجماعي ارفع تصدير الطلبات من لمحة. ترتيب الأعمدة لا يهم؛ النظام يقرأ أسماء الأعمدة ويحفظ بيانات الطلب والمتجر والناقل والـAWB والتكلفة والتواريخ.</p>
           {!allowed ? <NoPermission/> : shipmentPreview ? (
             <Card className="accounting-cycle-preview">
               <h3>معاينة قبل الحفظ</h3>
@@ -816,7 +864,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                   {compactLayout && selected?.id === stage.id && (
                     <div className="accounting-cycle-detail accounting-cycle-detail--mobile">
                       {renderStage(stage)}
-                      <StageHistory stage={stage}/>
+                      <StageHistory stage={stage} busy={String(busy || '').startsWith('weight_redownload:')} onRedownload={redownloadWeights}/>
                     </div>
                   )}
                 </div>
@@ -831,7 +879,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                     <p>{selected.reason}</p>
                   </div>
                   {renderStage(selected)}
-                  <StageHistory stage={selected}/>
+                  <StageHistory stage={selected} busy={String(busy || '').startsWith('weight_redownload:')} onRedownload={redownloadWeights}/>
                 </>
               )}
             </Card>}

@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 
 import {
   isVerifiedAuditForWeightBilling,
+  toLamhaShipmentSearchRows,
   toLamhaWeightRows,
 } from '../src/lib/weightBillingService.js';
 
@@ -24,6 +25,20 @@ test('ملف أوزان لمحة لا يقبل مراجعة تاريخية بل�
     review_status: 'approved',
     col_map: { __control: verifiedControl },
   }), true);
+});
+
+test('قائمة البحث الجماعي في لمحة تحتوي أرقام الشحنات فقط وتمنع التكرار', () => {
+  const rows = toLamhaShipmentSearchRows([
+    { awb: ' JTE001 ' },
+    { awb: 'JTE002', weight: 15 },
+    { awb: 'JTE001', carrier: 'J&T' },
+    { awb: '' },
+  ]);
+  assert.deepEqual(rows, [
+    { 'رقم الشحنة': 'JTE001' },
+    { 'رقم الشحنة': 'JTE002' },
+  ]);
+  assert.deepEqual(Object.keys(rows[0]), ['رقم الشحنة']);
 });
 
 test('تصدير الوزن يستخدم أعمدة لمحة فقط وبالمسميات الدقيقة', () => {
