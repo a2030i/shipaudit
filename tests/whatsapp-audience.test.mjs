@@ -26,6 +26,7 @@ test('campaign audience reconciles every filtered row to ready or one exclusion 
     previousCampaign: 0,
     hatifTouched: 0,
     weakNumber: 1,
+    financialHold: 0,
     debtor: 0,
   });
   assert.equal(summary.excluded, 4);
@@ -73,4 +74,18 @@ test('reported 44-result audience can reconcile explicitly to 26 ready and 18 ex
     { key: 'hatifTouched', label: 'يتابعهم فريق هاتف', count: 5 },
     { key: 'weakNumber', label: 'رقم ضعيف', count: 10 },
   ]);
+});
+
+test('customers with an unresolved Zoho balance are visible but excluded from sending', () => {
+  const rows = prepareWhatsAppAudienceRows([
+    { to: '966500000001', storeId: 1, financialHold: true },
+    { to: '966500000002', storeId: 2 },
+  ]);
+  const summary = summarizeWhatsAppAudience({ rows });
+
+  assert.equal(summary.source, 2);
+  assert.equal(summary.ready.length, 1);
+  assert.equal(summary.excluded, 1);
+  assert.equal(summary.counts.financialHold, 1);
+  assert.equal(summary.source, summary.ready.length + summary.excluded);
 });

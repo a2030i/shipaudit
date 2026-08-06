@@ -259,6 +259,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const excludedCount = audience.counts.previousCampaign;
   const hatifTouchedCount = audience.counts.hatifTouched;
   const weakCount = audience.counts.weakNumber;
+  const financialHoldCount = audience.counts.financialHold;
   const debtorCount = audience.counts.debtor;
   const exclusionBreakdown = whatsappAudienceExclusionBreakdown(audience.counts);
   const selectedValid = valid.filter(r => selected.has(r._rk));
@@ -623,6 +624,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                 {noWaCount > 0 && ` بلا واتساب/محظور ${noWaCount} ·`}
                 {hatifTouchedCount > 0 && ` يتابعهم فريق هاتف ${hatifTouchedCount} ·`}
                 {weakCount > 0 && ` رقم ضعيف ${weakCount} ·`}
+                {financialHoldCount > 0 && ` موقوف لمصالحة الرصيد ${financialHoldCount} ·`}
                 {debtorCount > 0 && ` موقوف مالياً ${debtorCount} ·`}
                 {excludedCount > 0 && ` من حملات مستثناة ${excludedCount} ·`}
                 <span> المجموع {audience.excluded}</span>

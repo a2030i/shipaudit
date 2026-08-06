@@ -18,6 +18,7 @@ const EXCLUSION_LABELS = [
   ['noWhatsapp', 'بلا واتساب/محظور'],
   ['hatifTouched', 'يتابعهم فريق هاتف'],
   ['weakNumber', 'رقم ضعيف'],
+  ['financialHold', 'موقوف لمصالحة الرصيد'],
   ['debtor', 'موقوف مالياً'],
   ['previousCampaign', 'من حملات مستثناة'],
 ];
@@ -66,12 +67,14 @@ export function summarizeWhatsAppAudience({
     previousCampaign: 0,
     hatifTouched: 0,
     weakNumber: 0,
+    financialHold: 0,
     debtor: 0,
   };
   const ready = [];
 
   for (const row of uniqueValidPhoneRows) {
-    if (noWhatsapp.has(row.to)) counts.noWhatsapp += 1;
+    if (row.financialHold) counts.financialHold += 1;
+    else if (noWhatsapp.has(row.to)) counts.noWhatsapp += 1;
     else if (excludedPhones.has(row.to)) counts.previousCampaign += 1;
     else if (hatifTouched.has(row.to)) counts.hatifTouched += 1;
     else if (weakPhones.has(row.to)) counts.weakNumber += 1;

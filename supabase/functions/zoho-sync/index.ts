@@ -1,4 +1,7 @@
-// zoho-sync v25 — مصالحة أرصدة العملاء التفصيلية للحالات التي يظهر فيها فرق بلا فاتورة.
+// zoho-sync v26 — الرصيد الافتتاحي الصريح + إصلاح فواتير العملاء الناقصة تلقائياً.
+// لا يُسمّى فرق الرصيد «افتتاحياً» إلا إذا أثبته حقل opening_balances في Zoho.
+// أي فرق غير مفسر يطلق جلباً موجهاً لكل فواتير العميل قبل أن يصل للشاشات والحملات.
+// v25 — مصالحة أرصدة العملاء التفصيلية للحالات التي يظهر فيها فرق بلا فاتورة.
 // قائمة جهات الاتصال قد تبقي رصيداً افتتاحياً مسدداً؛ بطاقة العميل التفصيلية هي المرجع النهائي.
 // v24 — + تنزيل PDF الرسمي لفاتورة العميل ومرفق فاتورة المورد (قراءة فقط).
 // v23 — رقابة مالية للقراءة + retry/429 + قياس الحصة + مزامنة البنوك والخزائن.
@@ -33,6 +36,36 @@ const PNL_TTL_MS = 10 * 60_000;
 const OAUTH_PENDING_TTL_MS = 10 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+const openingBalanceConfigured = (contact: Record<string, unknown>) => {
+  const rows = Array.isArray(contact.opening_balances)
+    ? contact.opening_balances as Record<string, unknown>[] : [];
+  return Math.round(rows.reduce((sum, row) => {
+    const amount = Number(row.opening_balance_amount);
+    const rate = Number(row.exchange_rate);
+    return sum + (Number.isFinite(amount) ? amount * (Number.isFinite(rate) && rate > 0 ? rate : 1) : 0);
+  }, 0) * 100) / 100;
+};
+
+const mapInvoice = (it: Record<string, unknown>, now: string) => {
+  const modified = it.last_modified_time
+    ? new Date(it.last_modified_time as string).toISOString() : null;
+  return {
+    zoho_id: it.invoice_id,
+    invoice_number: it.invoice_number,
+    customer_id: it.customer_id || null,
+    customer_name: it.customer_name,
+    date: it.date || null,
+    due_date: it.due_date || null,
+    invoice_type: (it.type as string) || null,
+    total: Number(it.total) || 0,
+    balance: Number(it.balance) || 0,
+    status: it.status || null,
+    last_modified: modified,
+    synced_at: now,
+    einvoice_status: (it.einvoice_status as string) || null,
+  };
+};
 
 const svc = () => createClient(
   Deno.env.get('SUPABASE_URL')!,
@@ -472,13 +505,8 @@ Deno.serve(async (req) => {
         params?: Record<string, string>;
         requiredScope?: string; optionalScope?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
-        { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', map: (it, lm, now) => ({
-          zoho_id: it.invoice_id, invoice_number: it.invoice_number, customer_id: it.customer_id || null,
-          customer_name: it.customer_name, date: it.date || null, due_date: it.due_date || null,
-          invoice_type: (it.type as string) || null,
-          total: Number(it.total) || 0, balance: Number(it.balance) || 0,
-          status: it.status || null, last_modified: lm, synced_at: now,
-          einvoice_status: (it.einvoice_status as string) || null }) },
+        { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices',
+          map: (it, _lm, now) => mapInvoice(it, now) },
         { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
           zoho_id: it.payment_id, customer_id: it.customer_id || null,
           customer_name: it.customer_name, date: it.date || null,
@@ -688,23 +716,17 @@ Deno.serve(async (req) => {
       // الاتصال ومجموع الفواتير المفتوحة. الرصيد الافتتاحي الحقيقي سيبقى كما هو،
       // والمسدد سيهبط إلى الرصيد التفصيلي الفعلي.
       if (!financialOnly) try {
-        const { data: detailState, error: detailStateError } = await db.from('zoho_sync_state')
-          .select('last_sync').eq('entity', 'contact_balance_details').maybeSingle();
-        if (detailStateError) throw detailStateError;
-        const detailLastSyncMs = detailState?.last_sync
-          ? new Date(detailState.last_sync).getTime() : 0;
-        const shouldRefreshDetails = body.force === true
-          || detailLastSyncMs <= Date.now() - 120 * 60_000;
-        if (!shouldRefreshDetails) {
-          results.contact_balance_details = 'fresh — skipped';
-        } else {
+        // فرق الرصيد قد يكون افتتاحياً حقيقياً أو فاتورة سقطت من المزامنة.
+        // لا نحسم النوع بالحساب. نجلب بطاقة العميل الصريحة ثم كل فواتيره
+        // جلباً موجهاً؛ بعدها تحسم قاعدة البيانات الفرق من مصدر Zoho نفسه.
         const { data: balanceCandidates, error: candidatesError } = await db
           .from('customer_ar')
-          .select('zoho_id')
-          .gt('opening_due', 0.5)
-          .limit(100);
+          .select('zoho_id, contact_name, balance_residual, balance_sync_gap, balance_integrity_status')
+          .in('balance_integrity_status', ['unchecked', 'mismatch'])
+          .limit(200);
         if (candidatesError) throw candidatesError;
         let refreshed = 0;
+        let repairedInvoices = 0;
         let failed = 0;
         for (const candidate of balanceCandidates || []) {
           const { response, payload } = await fetchZohoJson({
@@ -717,28 +739,90 @@ Deno.serve(async (req) => {
             failed++;
             continue;
           }
+          const checkedAt = new Date().toISOString();
+          const configuredOpening = openingBalanceConfigured(detail as Record<string, unknown>);
           const { error: updateError } = await db.from('zoho_contacts').update({
             outstanding_receivable: Number(detail.outstanding_receivable_amount) || 0,
             outstanding_payable: Number(detail.outstanding_payable_amount) || 0,
             unused_credits_receivable: Number(detail.unused_credits_receivable_amount) || 0,
             unused_credits_payable: Number(detail.unused_credits_payable_amount) || 0,
+            opening_balance_configured: configuredOpening,
+            opening_balance_checked_at: checkedAt,
             last_modified: detail.last_modified_time
               ? new Date(detail.last_modified_time as string).toISOString() : null,
-            synced_at: new Date().toISOString(),
+            synced_at: checkedAt,
           }).eq('zoho_id', candidate.zoho_id);
-          if (updateError) failed++;
-          else refreshed++;
+          if (updateError) { failed++; continue; }
+
+          // المزامنة الكاملة مرّت قبل هذه الخطوة، فلا نكرر كل فواتير العميل.
+          // في الدورات التفاضلية نجلبها لحسم أي فجوة قديمة لم يعد cursor يراها.
+          {
+            let invoicePage = 1;
+            let invoiceMore = true;
+            let invoiceFetchFailed = false;
+            const liveInvoiceIds: string[] = [];
+            while (invoiceMore && invoicePage <= 100) {
+              const invoiceQs = new URLSearchParams({
+                organization_id: orgId,
+                customer_id: String(candidate.zoho_id),
+                per_page: '200',
+                page: String(invoicePage),
+                sort_column: 'date',
+                sort_order: 'D',
+              });
+              const { response: invoiceResponse, payload: invoicePayload } = await fetchZohoJson({
+                url: `${apiDomain}/books/v3/invoices?${invoiceQs}`,
+                token,
+                stats,
+              });
+              if (!invoiceResponse.ok || (invoicePayload as Record<string, unknown>).code !== 0) {
+                invoiceFetchFailed = true;
+                break;
+              }
+              const invoices = ((invoicePayload as Record<string, any>).invoices || []) as Record<string, unknown>[];
+              const now = new Date().toISOString();
+              const mapped = invoices.filter(invoice => invoice.invoice_id).map(invoice => mapInvoice(invoice, now));
+              if (mapped.length) {
+                const { error: invoiceUpsertError } = await db.from('zoho_invoices').upsert(mapped);
+                if (invoiceUpsertError) { invoiceFetchFailed = true; break; }
+                repairedInvoices += mapped.length;
+                liveInvoiceIds.push(...mapped.map(invoice => String(invoice.zoho_id)));
+              }
+              invoiceMore = !!((invoicePayload as Record<string, any>).page_context?.has_more_page);
+              invoicePage++;
+            }
+            if (invoiceFetchFailed || invoiceMore) { failed++; continue; }
+
+            // بعد جلب مكتمل: احذف من المرآة فقط ما لم يعد موجوداً لهذا العميل.
+            // الصفوف القديمة بلا customer_id تُزال بعد أن أعاد upsert تثبيت الحي منها.
+            const { data: localInvoiceRows, error: localInvoiceError } = await db.from('zoho_invoices')
+              .select('zoho_id').eq('customer_id', candidate.zoho_id);
+            if (localInvoiceError) { failed++; continue; }
+            const liveSet = new Set(liveInvoiceIds);
+            const staleIds = (localInvoiceRows || [])
+              .map(row => String(row.zoho_id))
+              .filter(id => !liveSet.has(id));
+            let staleError: { message?: string } | null = null;
+            for (let offset = 0; offset < staleIds.length; offset += 150) {
+              const chunk = staleIds.slice(offset, offset + 150);
+              const { error } = await db.from('zoho_invoices').delete().in('zoho_id', chunk);
+              if (error) { staleError = error; break; }
+            }
+            const { error: nullIdError } = await db.from('zoho_invoices').delete()
+              .eq('customer_name', candidate.contact_name).is('customer_id', null);
+            if (staleError || nullIdError) { failed++; continue; }
+          }
+          refreshed++;
         }
         results.contact_balance_details = failed
-          ? `${refreshed} updated · ${failed} failed`
-          : refreshed;
+          ? `${refreshed} contacts · ${repairedInvoices} invoices · ${failed} failed`
+          : `${refreshed} contacts · ${repairedInvoices} invoices`;
         await db.from('zoho_sync_state').upsert({
           entity: 'contact_balance_details', last_sync: new Date().toISOString(),
           last_count: refreshed, last_status: failed ? 'failed' : 'succeeded',
           last_error: failed ? `${failed} contact detail requests failed` : null,
           last_run_id: run.id, updated_at: new Date().toISOString(),
         });
-        }
       } catch (e) {
         results.contact_balance_details = `error: ${String((e as Error).message || e)}`;
         await db.from('zoho_sync_state').upsert({

@@ -40,9 +40,9 @@ export async function refreshPnlMonth(period) {
 }
 
 // مزامنة الفواتير والدفعات (دلتا) — تتطلب money.pnl (الحارس في الدالة).
-export async function syncZohoDocs() {
+export async function syncZohoDocs({ force = false, full = false } = {}) {
   const { data, error } = await supabase.functions.invoke('zoho-sync', {
-    body: { action: 'sync' },
+    body: { action: 'sync', force, full },
   });
   if (error) throw new Error(error.message);
   if (!data?.ok) throw new Error(data?.error || 'فشل المزامنة');
@@ -314,9 +314,16 @@ export async function loadZohoOverdueCampaign() {
 // «تحصيل العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
 // مستحق/متأخر/أعمار/تحصيل شهري + عملاء بهواتفهم وآخر دفعة.
 export async function loadCustomerMoneyDashboard() {
-  const { data, error } = await supabase.rpc('customer_money_dashboard');
+  const [{ data, error }, { data: integrityRows, error: integrityError }] = await Promise.all([
+    supabase.rpc('customer_money_dashboard'),
+    supabase.from('customer_balance_integrity_issues')
+      .select('contact_name, balance_sync_gap, balance_sync_overage, balance_integrity_status'),
+  ]);
   if (error) throw error;
+  if (integrityError) throw integrityError;
   const d = data || {};
+  const issues = Array.isArray(integrityRows) ? integrityRows : [];
+  const issueByName = new Map(issues.map(row => [row.contact_name, row]));
   return {
     grossOutstanding: Number(d.gross_outstanding) || 0,
     creditOffset:     Number(d.credit_offset) || 0,
@@ -326,6 +333,15 @@ export async function loadCustomerMoneyDashboard() {
     outstandingCnt: Number(d.outstanding_cnt) || 0,
     settlementCount: Number(d.settlement_count) || 0,
     settlementTotal: Number(d.settlement_total) || 0,
+    balanceSyncIssueCount: issues.length,
+    balanceSyncGapTotal: issues.reduce((sum, row) => sum
+      + Math.max(Number(row.balance_sync_gap) || 0, Number(row.balance_sync_overage) || 0), 0),
+    balanceSyncIssues: issues.map(row => ({
+      name: row.contact_name,
+      gap: Number(row.balance_sync_gap) || 0,
+      overage: Number(row.balance_sync_overage) || 0,
+      status: row.balance_integrity_status || 'unchecked',
+    })),
     overdueAmt:     Number(d.overdue_amt) || 0,
     aging: {
       b0: Number(d.aging?.b0_30) || 0,  b1: Number(d.aging?.b31_60) || 0,
@@ -354,6 +370,9 @@ export async function loadCustomerMoneyDashboard() {
       // سياق المتجر (من كشف المتاجر) — لملف الحملة
       billingType: c.billing_type || '', platformStatus: c.platform_status || '',
       walletBalance: Number(c.wallet_balance) || 0, lastShipmentAt: c.last_shipment_at || null,
+      balanceSyncIssue: issueByName.has(c.name),
+      balanceSyncGap: Number(issueByName.get(c.name)?.balance_sync_gap) || 0,
+      balanceSyncOverage: Number(issueByName.get(c.name)?.balance_sync_overage) || 0,
     })),
     settlements: (Array.isArray(d.settlements) ? d.settlements : []).map(c => ({
       name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,

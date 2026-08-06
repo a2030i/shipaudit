@@ -92,7 +92,7 @@ export default function CustomerMoney({ isActive = true }) {
   const handleSyncZoho = async () => {
     setSyncingZoho(true);
     try {
-      const res = await syncZohoDocs();
+      const res = await syncZohoDocs({ force: true });
       const count = res?.results?.invoices;
       toast(count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
       setCredits(null);
@@ -126,6 +126,10 @@ export default function CustomerMoney({ isActive = true }) {
     last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
   });
   const openSingleWa = (c) => {
+    if (c.balanceSyncIssue) {
+      toast('هذا العميل محجوب مؤقتاً: رصيد Zoho لا يطابق الفواتير المستوردة. أعد مزامنة Zoho أولاً.', 'error');
+      return;
+    }
     const name = (c.storeName || c.name || '').trim();
     const amt = bandAmt(c);
     setWaSingle({
@@ -181,6 +185,7 @@ export default function CustomerMoney({ isActive = true }) {
       const amt = bandAmt(c);
       return {
         to: normalizeSaudiPhone(c.phone), name, storeId: c.storeId || null, amount: amt, count: c.invCnt,
+        financialHold: !!c.balanceSyncIssue,
         vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
         fields: collectionFields(c, amt),
       };
@@ -284,6 +289,22 @@ export default function CustomerMoney({ isActive = true }) {
         onRefresh={() => { setCredits(null); refresh(); }}
         sourcePath="/zoho-data?type=invoices"
       />
+
+      {d.balanceSyncIssueCount > 0 && (
+        <div className="data-load-error is-inline" role="alert">
+          <HandCoins size={17}/>
+          <div>
+            <strong>توقفت المطالبة عن {d.balanceSyncIssueCount} عميل لحماية الأرقام</strong>
+            <span>
+              يوجد فرق قدره {fmt(d.balanceSyncGapTotal)} ر.س بين رصيد Zoho والفواتير المستوردة.
+              لن يدخل هؤلاء العملاء الحملات أو الوكلاء حتى تكتمل المصالحة.
+            </span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={handleSyncZoho} disabled={syncingZoho}>
+            {syncingZoho ? 'جارٍ إصلاح الفواتير…' : 'إصلاح ومصالحة الآن'}
+          </Btn>
+        </div>
+      )}
 
       {/* ── البطل: كم لك بالخارج ── */}
       <div className="customer-money-hero">
@@ -932,15 +953,20 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
             <Chip color="var(--gold)">يُحصّل {fmt(c.owed)}</Chip>
           </>
         )}
+        {c.balanceSyncIssue && (
+          <Chip color="var(--red)">
+            فرق مزامنة {fmt(Math.max(c.balanceSyncGap || 0, c.balanceSyncOverage || 0))} — محجوب من الحملات
+          </Chip>
+        )}
         {c.invCnt > 0 ? (
           <>
             <Chip color={ageColor}>أقدم استحقاق {c.oldestDays} يوم</Chip>
             <Chip color="var(--muted)">{c.invCnt} فاتورة</Chip>
             {c.opening > 0.5 && <Chip color="var(--gold)">رصيد افتتاحي {fmt(c.opening)} — من 10 يناير 2026</Chip>}
           </>
-        ) : (
+        ) : c.opening > 0.5 ? (
           <Chip color="var(--gold)">رصيد افتتاحي {fmt(c.opening)} — من 10 يناير 2026</Chip>
-        )}
+        ) : null}
         {c.lastPaymentDate
           ? <Chip color="var(--green)">آخر دفعة {c.lastPaymentDate} ({fmtK(c.lastPaymentAmount)})</Chip>
           : <Chip color="var(--red)">لم يدفع شيئاً بعد</Chip>}
