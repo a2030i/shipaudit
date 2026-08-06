@@ -11,7 +11,13 @@
 
 @media (max-width: 768px) {
   .page-slot {
+    /* Safari may freeze a flex scroller's scrollHeight at the height measured
+       before a long async page finishes rendering. Normal block flow makes
+       the page root and the real end spacer participate in one stable height. */
+    display: block !important;
     padding-bottom: 0 !important;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
     scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
   }
 
