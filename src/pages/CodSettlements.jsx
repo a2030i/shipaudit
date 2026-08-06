@@ -1428,7 +1428,7 @@ function ActionModal({ row, kind, onClose, onSubmit }) {
 }
 
 // ── UploadModal ────────────────────────────────────────────────────────
-export function UploadModal({ direction, carrier, onClose, onDone, onError, userId, preloadedFile, sourceEventId }) {
+export function UploadModal({ direction, carrier, scheduleSlot = null, onClose, onDone, onError, userId, preloadedFile, sourceEventId }) {
   // Multi-file: each file produces its own preview (rows, dedup tags,
   // own filename). They're saved one-by-one, so each gets its own
   // upload_id and shows up as a separate row in the uploads strip.
@@ -1606,6 +1606,7 @@ export function UploadModal({ direction, carrier, onClose, onDone, onError, user
           direction, carrierId: carrier, rows: p.rows,
           uploadDate, sourceFile: p.file?.name,
           settlementRef: settlementRef.trim() || null,
+          scheduleSlot,
           userId,
         });
         savedCount += result.count || 0;
@@ -1642,6 +1643,7 @@ export function UploadModal({ direction, carrier, onClose, onDone, onError, user
         direction,
         carrier,
         uploadDate,
+        scheduleSlot,
         fileNames: previews.map(p => p.file?.name).filter(Boolean),
         ledgerError: ledgerErr,
       });
@@ -1690,6 +1692,16 @@ export function UploadModal({ direction, carrier, onClose, onDone, onError, user
           {isIn ? 'تحصيل شركة الشحن من' : 'تحصيل لمحة لـ'}:
         </span>
         <strong style={{ color: 'var(--text)', fontSize: 13 }}>{carrierLabel}</strong>
+        {scheduleSlot && (
+          <span style={{
+            padding: '2px 8px', borderRadius: 9,
+            background: 'color-mix(in srgb, var(--green) 12%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--green) 30%, transparent)',
+            color: 'var(--green)', fontSize: 10.5, fontWeight: 700,
+          }}>
+            دفعة موعد {scheduleSlot}
+          </span>
+        )}
         <span style={{
           marginInlineStart: 'auto',
           padding: '2px 8px', borderRadius: 9,

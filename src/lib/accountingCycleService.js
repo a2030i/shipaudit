@@ -477,24 +477,6 @@ function carrierHasContractForPeriod(carrier, period) {
   });
 }
 
-function receivedEventBatchCount(events, carrierId) {
-  const batches = new Set();
-  for (const event of events || []) {
-    if (event?.stage !== 'carrier_collections' || !['success', 'warning'].includes(event?.status)) continue;
-    if (String(event?.result?.carrier || '') !== String(carrierId)) continue;
-    if (Object.hasOwn(event.result || {}, 'savedCount') && Number(event.result.savedCount || 0) <= 0) continue;
-    const files = String(event.file_name || '').split(' · ').map(value => value.trim()).filter(Boolean);
-    if (files.length) {
-      for (const file of files) batches.add(`file:${file}`);
-      continue;
-    }
-    const count = Math.max(1, Number(event?.result?.fileCount || 1));
-    const eventKey = event.id || event.created_at || `${carrierId}:${batches.size}`;
-    for (let index = 0; index < count; index += 1) batches.add(`event:${eventKey}:${index}`);
-  }
-  return batches.size;
-}
-
 function auditScheduleSlot(record) {
   return String(
     record?.col_map?.__control?.scheduleSlot
@@ -560,11 +542,18 @@ function scheduledRecordCoverage(slots, records, getSlot, asOf = new Date().toIS
   };
 }
 
-function receivedUploadBatchCount(uploads, carrierId) {
-  return new Set((uploads || [])
-    .filter(upload => String(upload?.carrier_id || '') === String(carrierId))
-    .map(upload => upload.upload_id || `${upload.source_file || ''}:${upload.upload_date || ''}`)
-    .filter(Boolean)).size;
+function strongestScheduledCoverage(first, second) {
+  const preferred = Number(second?.receivedCount || 0) > Number(first?.receivedCount || 0)
+    ? second
+    : first;
+  const unassignedCount = Math.max(Number(first?.unassignedCount || 0), Number(second?.unassignedCount || 0));
+  const duplicateSlotCount = Math.max(Number(first?.duplicateSlotCount || 0), Number(second?.duplicateSlotCount || 0));
+  return {
+    ...preferred,
+    unassignedCount,
+    duplicateSlotCount,
+    extraCount: unassignedCount + duplicateSlotCount,
+  };
 }
 
 function receivedEventBatchRecords(events, carrierId) {
@@ -756,12 +745,12 @@ export function deriveCarrierCollectionChecklist({
         && expectedScheduleSlots(schedule, period).length === 0);
       const eventBatches = receivedEventBatchRecords(events, carrierId);
       const uploadBatches = receivedUploadBatchRecords(codUploads, carrierId);
-      const eventBatchCount = receivedEventBatchCount(events, carrierId);
-      const uploadBatchCount = receivedUploadBatchCount(codUploads, carrierId);
-      const manualBatches = eventBatchCount >= uploadBatchCount ? eventBatches : uploadBatches;
       const gap = fileKind === 'audit_with_cod'
         ? scheduledRecordCoverage(slots, carrierAudits, auditScheduleSlot, asOf)
-        : scheduledRecordCoverage(slots, manualBatches, eventScheduleSlot, asOf);
+        : strongestScheduledCoverage(
+          scheduledRecordCoverage(slots, eventBatches, eventScheduleSlot, asOf),
+          scheduledRecordCoverage(slots, uploadBatches, eventScheduleSlot, asOf),
+        );
       const expectedCount = gap.expectedCount;
       const receivedCount = gap.receivedCount;
       const missingCount = gap.missingCount;
@@ -1137,17 +1126,16 @@ export function deriveAccountingCycleStages({
 }
 
 async function loadCodDirection(direction, start, end) {
+  const periodFilter = `and(upload_date.gte.${start},upload_date.lt.${end}),and(schedule_slot.gte.${start},schedule_slot.lt.${end})`;
   const [countRes, uploadsRes] = await Promise.all([
     safe(supabase.from('cod_settlement')
       .select('id', { count: 'exact', head: true })
       .eq('direction', direction)
-      .gte('upload_date', start)
-      .lt('upload_date', end)),
+      .or(periodFilter)),
     loadAll((from, to) => supabase.from('cod_settlement')
-      .select('upload_id, upload_date, source_file, settlement_ref, created_at, carrier_id')
+      .select('upload_id, upload_date, source_file, settlement_ref, schedule_slot, created_at, carrier_id')
       .eq('direction', direction)
-      .gte('upload_date', start)
-      .lt('upload_date', end)
+      .or(periodFilter)
       .order('created_at', { ascending: false })
       .range(from, to)),
   ]);

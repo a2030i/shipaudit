@@ -592,7 +592,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
           savedCount: result.savedCount,
           skippedCount: result.skippedCount,
           fileCount: result.fileCount,
-          scheduleSlot: settlement?.scheduleSlot || null,
+          scheduleSlot: result.scheduleSlot || settlement?.scheduleSlot || null,
           ledgerError: result.ledgerError || null,
         },
         userId: user?.id,
@@ -989,6 +989,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
         <SettlementUploadModal
           direction={settlement.direction}
           carrier={settlement.carrier}
+          scheduleSlot={settlement.scheduleSlot}
           userId={user?.id}
           onClose={() => setSettlement(null)}
           onDone={settlementDone}

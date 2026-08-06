@@ -213,6 +213,28 @@ test('إعادة رفع ملف تحصيل مكرر لا تُحسب دفعة أس
   assert.equal(checklist[0].missingCount, 3);
 });
 
+test('موعد التحصيل المخزن في صفوف COD يبقى إثباتاً للدورة إذا غاب من سجل الحدث', () => {
+  const schedules = [{
+    id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true,
+    cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29],
+  }];
+  const carriers = [{ id: 'jnt', name: 'J&T', file_signature: { file_kind: 'audit_and_cod_separate' } }];
+  const checklist = deriveCarrierCollectionChecklist({
+    period: '2026-08', carriers, schedules,
+    events: [{
+      id: 'event-without-slot', stage: 'carrier_collections', status: 'success',
+      file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 20 },
+    }],
+    codUploads: [{
+      carrier_id: 'jnt', upload_id: 'cod_in_1', source_file: 'week-1.xlsx',
+      upload_date: '2026-09-02', schedule_slot: '2026-08-08',
+    }],
+  });
+  assert.equal(checklist[0].receivedCount, 1);
+  assert.deepEqual(checklist[0].receivedSlots, ['2026-08-08']);
+  assert.equal(checklist[0].missingCount, 3);
+});
+
 test('ملفان مختلفان لنفس موعد التحصيل الأسبوعي لا يُكملان موعدين', () => {
   const schedules = [{
     id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true,
@@ -625,12 +647,15 @@ test('المراجعة القديمة بلا إثبات مصدر لا تظهر �
 });
 
 test('الشهر المختار للدورة ينتقل إلى نموذج مراجعة شركة الشحن', async () => {
-  const [cyclePage, uploadWizard, cycleService, tasksPage, scheduleMigration] = await Promise.all([
+  const [cyclePage, uploadWizard, cycleService, settlementPage, settlementService, tasksPage, scheduleMigration, settlementSlotMigration] = await Promise.all([
     readFile(new URL('../src/pages/AccountingCycle.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/lib/accountingCycleService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/pages/CodSettlements.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../src/lib/codSettlementService.js', import.meta.url), 'utf8'),
     readFile(new URL('../src/pages/Tasks.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../supabase/migrations/20260806193000_explicit_carrier_schedule_days.sql', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20260806150248_add_cod_settlement_schedule_slot.sql', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
   assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
@@ -671,10 +696,20 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   const auditResultsPage = await readFile(new URL('../src/pages/AuditResults.jsx', import.meta.url), 'utf8');
   assert.match(auditResultsPage, /onApproved\(result\)/);
   assert.match(auditResultsPage, /codExtractErr/);
-  const settlementPage = await readFile(new URL('../src/pages/CodSettlements.jsx', import.meta.url), 'utf8');
   assert.match(settlementPage, /phase: 'parse'/);
   assert.match(settlementPage, /phase: 'save'/);
   assert.match(settlementPage, /ledgerError: ledgerErr/);
+  assert.match(settlementPage, /scheduleSlot,/);
+  assert.match(settlementService, /schedule_slot:\s+slot/);
+  assert.match(settlementService, /scheduleSlot: slot/);
+  assert.match(cycleService, /schedule_slot, created_at, carrier_id/);
+  assert.match(cycleService, /\.or\(periodFilter\)/);
+  assert.match(cyclePage, /scheduleSlot=\{settlement\.scheduleSlot\}/);
+  assert.match(cyclePage, /result\.scheduleSlot \|\| settlement\?\.scheduleSlot/);
+  assert.match(uploadWizard, /const blockingPriors = priors\.filter\(prior => prior\?\.review_status !== 'rejected'\)/);
+  assert.match(uploadWizard, /blockingPriors\.some\(prior => prior\?\.review_status === 'approved'/);
+  assert.match(settlementSlotMigration, /add column if not exists schedule_slot date/);
+  assert.match(settlementSlotMigration, /check \(schedule_slot is null or direction = 'in'\)/);
   assert.match(uploadWizard, /initialPeriodMatch/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
   assert.match(cycleService, /const HISTORY_PAGE_SIZE = 1000/);

@@ -18,6 +18,19 @@ import { supabase } from './supabase.js';
 // than the internal weekly export).
 const OVER_REMIT_AGE_DAYS = 30;
 
+function normalizeScheduleSlot(value) {
+  if (value == null || value === '') return null;
+  const slot = String(value).trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(slot)) {
+    throw new Error('موعد دفعة التحصيل غير صالح');
+  }
+  const parsed = new Date(`${slot}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== slot) {
+    throw new Error('موعد دفعة التحصيل غير صالح');
+  }
+  return slot;
+}
+
 // ── Settlement uploads ─────────────────────────────────────────────────
 // Returns Set of AWBs already present in cod_settlement for this
 // (carrier, direction) pair — used by the upload preview + save to
@@ -45,7 +58,7 @@ export async function findDuplicateSettlementAwbs({
 }
 
 export async function saveSettlementUpload({
-  direction, carrierId, rows, uploadDate, sourceFile, settlementRef, userId,
+  direction, carrierId, rows, uploadDate, sourceFile, settlementRef, scheduleSlot, userId,
 }) {
   if (!['out', 'in'].includes(direction)) {
     throw new Error(`direction غير صالح: ${direction}`);
@@ -57,6 +70,10 @@ export async function saveSettlementUpload({
   const uploadId = `cod_${direction}_${Date.now()}`;
   const date = uploadDate || new Date().toISOString().slice(0, 10);
   const ref  = (settlementRef ?? '').trim() || null;
+  const slot = normalizeScheduleSlot(scheduleSlot);
+  if (slot && direction !== 'in') {
+    throw new Error('موعد دفعة التحصيل يخص الملفات المستلمة من شركة الشحن فقط');
+  }
 
   // ── Dedup 1: within the upload batch itself ──
   // Same AWB twice in the same file → keep first, drop rest.
@@ -92,6 +109,7 @@ export async function saveSettlementUpload({
       inBatchDuplicates: inBatchDupAwbs.length,
       crossFileDuplicates: crossFileDupAwbs.length,
       totalSubmitted: rows.length,
+      scheduleSlot: slot,
     };
   }
 
@@ -103,6 +121,7 @@ export async function saveSettlementUpload({
     upload_date:    date,
     source_file:    sourceFile ?? null,
     settlement_ref: ref,
+    schedule_slot:  slot,
     upload_id:      uploadId,
     created_by:     userId ?? null,
   }));
@@ -184,6 +203,7 @@ export async function saveSettlementUpload({
     inBatchDuplicates: inBatchDupAwbs.length,
     crossFileDuplicates: crossFileDupAwbs.length,
     totalSubmitted: rows.length,
+    scheduleSlot: slot,
     ledgerError,
   };
 }
@@ -360,7 +380,7 @@ export async function loadSettlementUploads({ carrierId } = {}) {
   while (true) {
     const { data, error } = await supabase
       .from('cod_settlement')
-      .select('upload_id, direction, upload_date, source_file, settlement_ref, amount, created_at')
+      .select('upload_id, direction, upload_date, source_file, settlement_ref, schedule_slot, amount, created_at')
       .eq('carrier_id', carrierId)
       // upload_date is NOT unique → add id as a stable tiebreaker, else
       // tied rows reorder between .range() pages and get double-counted.
@@ -413,6 +433,7 @@ export async function loadSettlementUploads({ carrierId } = {}) {
         uploadDate:   row.upload_date,
         sourceFile:   row.source_file,
         settlementRef: row.settlement_ref,
+        scheduleSlot:  row.schedule_slot,
         createdAt:    row.created_at,
         count:        0,
         amount:       0,

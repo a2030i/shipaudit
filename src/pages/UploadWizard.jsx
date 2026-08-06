@@ -1016,25 +1016,26 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
     let priors = [];
     try {
       priors = await findSamePeriodAudits(carrier.id, auditPeriod);
-      if (resolvedScheduleSlot && priors.some(prior => (
+      const blockingPriors = priors.filter(prior => prior?.review_status !== 'rejected');
+      if (resolvedScheduleSlot && blockingPriors.some(prior => prior?.review_status === 'approved' && (
         prior?.col_map?.__control?.scheduleSlot
         || prior?.control?.scheduleSlot
       ) === resolvedScheduleSlot)) {
         toast(`يوجد ملف معتمد بالفعل لموعد ${scheduleSlotLabel(resolvedScheduleSlot)}. لن يُحتسب ملف ثانٍ لنفس الموعد`, 'error');
         return;
       }
-      if (priors.length) {
+      if (blockingPriors.length) {
         // في الوضع الآلي: مراجعة سابقة لنفس الفترة = خطر تكرار → أوقف
         // الآلية فوراً واترك القرار للإنسان (لا window.confirm بلا مستخدم).
         if (autoApproveFlag) {
           setAutoApproveFlag(false);
-          toast(`⚠️ توجد ${priors.length} مراجعة سابقة لنفس الفترة — أُوقف الاعتماد الآلي، راجع يدوياً`, 'warn');
+          toast(`⚠️ توجد ${blockingPriors.length} مراجعة سابقة غير مرفوضة لنفس الفترة — أُوقف الاعتماد الآلي، راجع يدوياً`, 'warn');
           return;
         }
-        const p = priors[0];
+        const p = blockingPriors[0];
         const when = p.created_at ? new Date(p.created_at).toLocaleDateString('en-GB') : '—';
         const ok = window.confirm(
-          `⚠️ يوجد ${priors.length} مراجعة سابقة لـ«${carrier.name}» لنفس الفترة (${auditPeriod}).\n` +
+          `⚠️ يوجد ${blockingPriors.length} مراجعة سابقة غير مرفوضة لـ«${carrier.name}» لنفس الفترة (${auditPeriod}).\n` +
           `الأحدث: ${p.file_name || p.id} · ${when} · ${p.row_count ?? '—'} شحنة.\n\n` +
           `إن كانت نفس الفاتورة فلا تكمل (تجنّب التكرار). متأكد تكمل؟`,
         );
