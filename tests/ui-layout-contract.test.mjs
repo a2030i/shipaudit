@@ -12,6 +12,16 @@ test('final workspace layout layer is loaded before the Safari scroll contract',
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
 });
 
+test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
+  const app = await read('src/App.jsx');
+  const css = await read('src/mobile-scroll.css');
+
+  assert.match(app, /scroll && <div className="page-slot-scroll-end"/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.page-slot\s*\{[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
+  assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*calc\(112px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+});
+
 test('mobile workspace removes repeated headings and keeps compact context', async () => {
   const css = await read('src/workspace-layout.css');
   assert.match(css, /\.workspace-switcher__copy\s*\{\s*display:\s*none;/s);
