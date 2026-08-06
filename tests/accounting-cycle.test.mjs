@@ -14,6 +14,7 @@ import {
 import {
   expectedScheduleSlots,
   deriveDueState,
+  deriveCarrierScheduleCoverage,
   normalizeScheduleTiming,
   parseScheduleDays,
 } from '../src/lib/tasksService.js';
@@ -64,6 +65,25 @@ test('إعداد موعد الناقل صريح ولا يسمح بيوم غام�
     () => normalizeScheduleTiming({ cadence: 'monthly', scheduleBasis: 'month_days', dueDays: [1, 15] }),
     /يوم استلام واحد/,
   );
+});
+
+test('لوحة اكتمال الجداول تطلب جدولًا موحدًا أو جدولين منفصلين حسب طريقة الناقل', () => {
+  const contract = [{ startDate: '2026-01-01', endDate: null }];
+  const carriers = [
+    { id: 'combined', name: 'موحد', contracts: contract, file_signature: { file_kind: 'audit_with_cod' } },
+    { id: 'separate', name: 'منفصل', contracts: contract, file_signature: { file_kind: 'audit_and_cod_separate' } },
+    { id: 'unknown', name: 'غير مصنف', contracts: contract, file_signature: {} },
+    { id: 'expired', name: 'منتهي', contracts: [{ startDate: '2025-01-01', endDate: '2025-12-31' }], file_signature: { file_kind: 'audit_with_cod' } },
+  ];
+  const schedules = [
+    { id: 'combined-invoice', carrier_id: 'combined', task_kind: 'invoice', active: true, cadence: 'weekly', schedule_basis: 'weekday', due_days: [3] },
+    { id: 'separate-invoice', carrier_id: 'separate', task_kind: 'invoice', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [1] },
+  ];
+  const coverage = deriveCarrierScheduleCoverage({ carriers, schedules, period: '2026-08' });
+  assert.equal(coverage.length, 3);
+  assert.equal(coverage.find(row => row.carrierId === 'combined').status, 'complete');
+  assert.deepEqual(coverage.find(row => row.carrierId === 'separate').missingKinds, ['cod_remittance']);
+  assert.equal(coverage.find(row => row.carrierId === 'unknown').status, 'unclassified');
 });
 
 test('تنبيه الموعد يتبع تاريخ الشركة ولا يتحرك بسبب رفع الملف متأخرًا', () => {
@@ -510,6 +530,10 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cycleService, /loadAuditShipmentsForAudits/);
   assert.match(tasksPage, /طريقة مواعيد الأسبوع/);
   assert.match(tasksPage, /ملف موحّد — كل ملف معتمد يثبت الفاتورة والتحصيل معًا/);
+  assert.match(tasksPage, /اكتمال جداول الناقلين/);
+  assert.match(tasksPage, /الجدول الناقص يمنع إقفال الشهر/);
+  assert.match(tasksPage, /تسجيل استلام/);
+  assert.match(tasksPage, /إقفال الدورة يعتمد الملف الفعلي/);
   assert.match(scheduleMigration, /add column if not exists schedule_basis/);
   assert.match(scheduleMigration, /add column if not exists due_days/);
   assert.doesNotMatch(cycleService, /accounting_cycle_events'[\s\S]{0,250}\.limit\(200\)/);

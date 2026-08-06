@@ -157,6 +157,65 @@ export function scheduleRequirementLabel(schedule, period) {
   return `${CADENCE_META[schedule.cadence]?.label || schedule.cadence} · ${slots.map(slot => slot.day).join('، ')}`;
 }
 
+export function carrierHasActiveContract(carrier, period) {
+  const contracts = Array.isArray(carrier?.contracts) ? carrier.contracts : [];
+  if (!contracts.length) return false;
+  const [year, month] = String(period || '').split('-').map(Number);
+  if (!year || month < 1 || month > 12) return false;
+  const start = `${period}-01`;
+  const endDate = new Date(Date.UTC(year, month, 1));
+  const end = endDate.toISOString().slice(0, 10);
+  return contracts.some(contract => {
+    const contractStart = String(contract?.startDate || '').slice(0, 10);
+    const contractEnd = String(contract?.endDate || '').slice(0, 10);
+    return (!contractStart || contractStart < end) && (!contractEnd || contractEnd >= start);
+  });
+}
+
+export function requiredScheduleKindsForCarrier(carrier) {
+  const fileKind = String(carrier?.file_signature?.file_kind || '').trim();
+  if (fileKind === 'audit_with_cod' || fileKind === 'audit_only') return ['invoice'];
+  if (fileKind === 'audit_and_cod_separate') return ['invoice', 'cod_remittance'];
+  if (fileKind === 'cod_only') return ['cod_remittance'];
+  return [];
+}
+
+export function deriveCarrierScheduleCoverage({ carriers = [], schedules = [], period } = {}) {
+  return (carriers || [])
+    .filter(carrier => carrierHasActiveContract(carrier, period))
+    .map(carrier => {
+      const fileKind = String(carrier?.file_signature?.file_kind || '').trim() || null;
+      const requiredKinds = requiredScheduleKindsForCarrier(carrier);
+      if (!requiredKinds.length) {
+        return {
+          carrierId: String(carrier.id),
+          carrierName: carrier.name || carrier.label || String(carrier.id),
+          fileKind,
+          status: 'unclassified',
+          requiredKinds: [],
+          missingKinds: [],
+          invalidKinds: [],
+        };
+      }
+      const carrierSchedules = (schedules || []).filter(schedule => schedule.active
+        && String(schedule.carrier_id) === String(carrier.id));
+      const missingKinds = requiredKinds.filter(kind => !carrierSchedules.some(schedule => schedule.task_kind === kind));
+      const invalidKinds = requiredKinds.filter(kind => carrierSchedules.some(schedule => schedule.task_kind === kind
+        && schedule.cadence !== 'on_demand'
+        && expectedScheduleSlots(schedule, period).length === 0));
+      return {
+        carrierId: String(carrier.id),
+        carrierName: carrier.name || carrier.label || String(carrier.id),
+        fileKind,
+        status: missingKinds.length || invalidKinds.length ? 'incomplete' : 'complete',
+        requiredKinds,
+        missingKinds,
+        invalidKinds,
+      };
+    })
+    .sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
+}
+
 export async function listSchedules({ activeOnly = true } = {}) {
   let q = supabase
     .from('carrier_task_schedules')

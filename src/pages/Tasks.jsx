@@ -9,7 +9,7 @@
 // last_completed_at. A late completion never moves the next agreed date.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   RefreshCw, CheckCircle2, Plus, Calendar, AlertTriangle,
   Clock, X, Trash2, ListTodo,
@@ -21,7 +21,8 @@ import { useAuth } from '../lib/auth.jsx';
 import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
   partitionByDueness, scheduleRequirementLabel, legacyScheduleDays,
-  parseScheduleDays, TASK_KIND_META, CADENCE_META, WEEKDAY_META,
+  parseScheduleDays, deriveCarrierScheduleCoverage,
+  TASK_KIND_META, CADENCE_META, WEEKDAY_META,
 } from '../lib/tasksService.js';
 
 const fmtDate = (iso) => {
@@ -34,6 +35,7 @@ const fmtDate = (iso) => {
 
 export default function Tasks({ carriers = [], isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { profile } = useAuth();
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -58,11 +60,15 @@ export default function Tasks({ carriers = [], isActive = true }) {
     [carriers],
   );
   const currentPeriod = new Date().toISOString().slice(0, 7);
+  const scheduleCoverage = useMemo(
+    () => deriveCarrierScheduleCoverage({ carriers, schedules, period: currentPeriod }),
+    [carriers, schedules, currentPeriod],
+  );
 
   const handleMarkDone = async (s) => {
     try {
       await markTaskDone(s.id, profile?.id || null);
-      toast(`✓ تم تعليم "${TASK_KIND_META[s.task_kind]?.label}" كمنجَز`, 'success');
+      toast(`تم تسجيل استلام "${TASK_KIND_META[s.task_kind]?.label}" في لوحة التذكير فقط؛ إقفال الدورة يعتمد الملف الفعلي`, 'success');
       refresh();
     } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
   };
@@ -81,12 +87,30 @@ export default function Tasks({ carriers = [], isActive = true }) {
     setEditorOpen(true);
   };
 
+  const configureCoverage = row => {
+    if (row.status === 'unclassified') {
+      navigate(`/carriers?id=${encodeURIComponent(row.carrierId)}`);
+      return;
+    }
+    const kind = row.invalidKinds[0] || row.missingKinds[0];
+    const existing = schedules.find(schedule => schedule.active
+      && String(schedule.carrier_id) === row.carrierId
+      && schedule.task_kind === kind);
+    openEditor(existing || {
+      carrier_id: row.carrierId,
+      task_kind: kind,
+      cadence: kind === 'invoice' ? 'monthly' : 'weekly',
+      schedule_basis: 'month_days',
+      due_days: [],
+    });
+  };
+
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<ListTodo size={22}/>}
-        title="مهام الأسبوع"
-        subtitle="تتبّع مواعيد استلام الفواتير والتحصيلات لكل شركة — أسبوعي · شهري · حسب الطلب"
+        title="جداول استلام الناقلين"
+        subtitle="اضبط لكل شركة موعد الفاتورة وموعد التحصيل حسب طريقة ملفاتها — موحّد أو منفصل"
         meta={`${groups.overdue.length} متأخّر · ${groups.dueThisWeek.length} مستحق هذا الأسبوع`}
         actions={
           <>
@@ -103,15 +127,19 @@ export default function Tasks({ carriers = [], isActive = true }) {
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
       ) : schedules.length === 0 ? (
-        <Card>
-          <Empty
-            icon="📅"
-            title="لم تُضف أي مهمة متكررة بعد"
-            sub='اضغط "مهمة جديدة" لإضافة موعد استلام فاتورة أو تحصيل من شركة'
-          />
-        </Card>
+        <>
+          <ScheduleCoveragePanel rows={scheduleCoverage} onConfigure={configureCoverage}/>
+          <Card>
+            <Empty
+              icon="📅"
+              title="لم تُضف أي مهمة متكررة بعد"
+              sub='اضغط "مهمة جديدة" لإضافة موعد استلام فاتورة أو تحصيل من شركة'
+            />
+          </Card>
+        </>
       ) : (
         <>
+          <ScheduleCoveragePanel rows={scheduleCoverage} onConfigure={configureCoverage}/>
           {/* Due-status board */}
           <div style={{
             display: 'grid',
@@ -239,6 +267,54 @@ export default function Tasks({ carriers = [], isActive = true }) {
   );
 }
 
+function ScheduleCoveragePanel({ rows, onConfigure }) {
+  const incomplete = (rows || []).filter(row => row.status !== 'complete');
+  const completeCount = (rows || []).length - incomplete.length;
+  return (
+    <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 18 }}>
+      <div style={{ padding: '15px 18px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div>
+          <h3 style={{ margin: 0, fontSize: 15, color: 'var(--text)' }}>اكتمال جداول الناقلين</h3>
+          <p style={{ margin: '4px 0 0', color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.6 }}>
+            الناقل ذو الملف الموحّد يحتاج جدولًا واحدًا، والناقل ذو الفاتورة والتحصيل المنفصلين يحتاج جدولين. الجدول الناقص يمنع إقفال الشهر.
+          </p>
+        </div>
+        <span style={{ padding: '5px 10px', borderRadius: 999, background: incomplete.length ? 'color-mix(in srgb, var(--gold) 14%, transparent)' : 'color-mix(in srgb, var(--green) 14%, transparent)', color: incomplete.length ? 'var(--gold)' : 'var(--green)', fontSize: 12, fontWeight: 800, whiteSpace: 'nowrap' }}>
+          {completeCount} / {(rows || []).length} مكتمل
+        </span>
+      </div>
+      {incomplete.length === 0 ? (
+        <div style={{ padding: 16, color: 'var(--green)', fontSize: 12.5, fontWeight: 700 }}>
+          ✓ كل ناقل ذي عقد ساري يملك جداول الفاتورة والتحصيل المطلوبة.
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gap: 8, padding: 12 }}>
+          {incomplete.map(row => {
+            const missing = [...row.missingKinds, ...row.invalidKinds]
+              .filter((kind, index, all) => all.indexOf(kind) === index);
+            const firstKind = missing[0];
+            return (
+              <div key={row.carrierId} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) auto', alignItems: 'center', gap: 10, padding: '11px 12px', border: '1px solid color-mix(in srgb, var(--gold) 30%, var(--border))', borderRadius: 11, background: 'color-mix(in srgb, var(--gold) 7%, var(--surface2))' }}>
+                <div style={{ minWidth: 0 }}>
+                  <strong style={{ display: 'block', color: 'var(--text)', fontSize: 13 }}>{row.carrierName}</strong>
+                  <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 11.5 }}>
+                    {row.status === 'unclassified'
+                      ? 'طريقة ملفات الشركة غير محددة؛ صنّفها قبل إنشاء الجداول.'
+                      : `ناقص: ${missing.map(kind => TASK_KIND_META[kind]?.label || kind).join(' + ')}`}
+                  </span>
+                </div>
+                <Btn size="sm" variant="ghost" onClick={() => onConfigure(row)}>
+                  {row.status === 'unclassified' ? 'تصنيف الشركة' : `ضبط ${TASK_KIND_META[firstKind]?.label || 'الجدول'}`}
+                </Btn>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 // ── Due column ─────────────────────────────────────────────────
 function DueColumn({ accent, icon, title, hint, rows, empty, carrierNameById, onDone, onEdit }) {
   return (
@@ -292,7 +368,7 @@ function DueColumn({ accent, icon, title, hint, rows, empty, carrierNameById, on
               </div>
               <button
                 onClick={(e) => { e.stopPropagation(); onDone(s); }}
-                title="اضغط لتعليم المهمة كمنجَزة — تُعاد جدولتها تلقائياً للموعد الجاي"
+                title="يسجل الاستلام في لوحة التذكير فقط؛ إقفال الشهر يعتمد رفع الملف واعتماده"
                 style={{
                   background: 'transparent', color: accent, border: `1.5px solid ${accent}`,
                   padding: '6px 12px', borderRadius: 999,
@@ -301,7 +377,7 @@ function DueColumn({ accent, icon, title, hint, rows, empty, carrierNameById, on
                   display: 'inline-flex', alignItems: 'center', gap: 4,
                 }}
               >
-                <CheckCircle2 size={12}/> أنجزتها
+                <CheckCircle2 size={12}/> تسجيل استلام
               </button>
             </div>
           );
