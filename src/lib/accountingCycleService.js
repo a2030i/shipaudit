@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
+import { hasVerifiedAuditProof } from './auditProof.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 
 const PAGE = 1000;
@@ -518,13 +519,12 @@ export function deriveAccountingCycleStages({
   const approved = audits.filter(row => row.review_status === 'approved');
   const pending = audits.filter(row => row.review_status === 'pending');
   const rejected = audits.filter(row => row.review_status === 'rejected');
-  const legacy = approved.filter(row => {
-    const control = row.col_map?.__control;
-    return !(Number(control?.version) >= 3 && control?.valid === true);
-  });
+  const verifiedApproved = approved.filter(hasVerifiedAuditProof);
+  const verifiedIds = new Set(verifiedApproved.map(row => row.id));
+  const legacy = approved.filter(row => !verifiedIds.has(row.id));
   const exportedAuditIds = new Set(weightExports.flatMap(row => row.audit_ids || []));
-  const weightPending = approved.filter(row => row.weight_billing_status === 'pending');
-  const weightComplete = approved.filter(row =>
+  const weightPending = verifiedApproved.filter(row => row.weight_billing_status === 'pending');
+  const weightComplete = verifiedApproved.filter(row =>
     ['exported', 'billed', 'skipped'].includes(row.weight_billing_status) || exportedAuditIds.has(row.id),
   );
   const eventHistoryFor = id => latestFirst(events.filter(event => event.stage === id));
@@ -548,6 +548,9 @@ export function deriveAccountingCycleStages({
   let weightState = statusMeta('blocked', 'اعتمد مراجعات شركات الشحن أولًا');
   if (approved.length && weightPending.length) weightState = statusMeta('ready', `${weightPending.length} مراجعة جاهزة للتصدير`);
   else if (approved.length && weightComplete.length === approved.length) weightState = statusMeta('complete', 'لا توجد أوزان معلقة لهذه الفترة');
+  if (legacy.length) {
+    weightState = statusMeta('blocked', `أعد رفع ${legacy.length} مراجعة قديمة بإثبات الملف والعقد قبل تصدير الأوزان`);
+  }
   const latestWeightAttempt = eventFor('weight_export');
   if (latestWeightAttempt && latestWeightAttempt.status !== 'success') {
     weightState = statusMeta('attention', 'آخر محاولة لتصدير الأوزان لم تكتمل بنجاح');
@@ -557,7 +560,7 @@ export function deriveAccountingCycleStages({
     count: weightPending.length,
     completedCount: weightComplete.length,
     last: eventFor('weight_export') || latest(weightExports, 'exported_at') || latest(weightExports),
-    detail: { pending: weightPending.length, complete: weightComplete.length },
+    detail: { pending: weightPending.length, complete: weightComplete.length, blockedLegacy: legacy.length },
     history: mergeHistory(eventHistoryFor('weight_export'), weightExports, (event, record) =>
       event?.result?.exportId === record?.id
       || (event?.file_name && event.file_name === record?.file_name && Number(event.row_count || 0) === Number(record.row_count || 0))),

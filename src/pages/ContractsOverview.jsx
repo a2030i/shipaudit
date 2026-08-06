@@ -6,10 +6,15 @@ import { useState, useEffect, useCallback } from 'react';
 import {
   FileSpreadsheet, RefreshCw, Printer, Clock, History, ArrowUpRight,
   ArrowDownRight, CheckCircle2, Calendar, Plus, Trash2, Edit3, FileText,
+  AlertTriangle, ShieldCheck,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { ClipboardList } from 'lucide-react';
-import { loadAllContractsOverview, loadContractHistory } from '../lib/contractHistoryService.js';
+import {
+  loadAllContractsOverview,
+  loadContractHistory,
+  loadContractReadiness,
+} from '../lib/contractHistoryService.js';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 
@@ -63,18 +68,21 @@ function renderValue(v) {
 export default function ContractsOverview({ isActive = true }) {
   const [rows,     setRows]    = useState([]);
   const [history,  setHistory] = useState([]);
+  const [readiness, setReadiness] = useState([]);
   const [loading,  setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [r, h] = await Promise.all([
+      const [r, h, ready] = await Promise.all([
         loadAllContractsOverview(),
         loadContractHistory({ limit: 80 }),
+        loadContractReadiness(),
       ]);
       setRows(r);
       setHistory(h);
+      setReadiness(ready);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -107,6 +115,10 @@ export default function ContractsOverview({ isActive = true }) {
   };
 
   const handlePrint = () => window.print();
+  const missingContracts = readiness.filter(row => !row.hasContract);
+  const missingFileKinds = readiness.filter(row => !row.hasFileKind);
+  const missingDocuments = readiness.filter(row => !row.hasOfficialDocument);
+  const configuredCount = readiness.filter(row => row.operationallyConfigured).length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -122,6 +134,66 @@ export default function ContractsOverview({ isActive = true }) {
           </>
         }
       />
+
+      <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 22 }}>
+        <div style={{
+          padding: '16px 20px', borderBottom: '1px solid var(--border)',
+          display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+        }}>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontWeight: 800, color: 'var(--text)' }}>
+              <ShieldCheck size={18} color="var(--accent)"/> جاهزية عقود النصف الثاني 2026
+            </div>
+            <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 4 }}>
+              الجاهزية هنا تعني وجود عقد ساري ونوع ملف معروف؛ اعتماد الفاتورة يبقى مشروطاً بفحص ملف يوليو نفسه.
+            </div>
+          </div>
+          <span style={{ fontSize: 12, color: configuredCount === readiness.length ? 'var(--green)' : 'var(--gold)', fontWeight: 800 }}>
+            {loading ? 'جارٍ فحص الجاهزية…' : `${configuredCount} من ${readiness.length} مهيأة تشغيلياً`}
+          </span>
+        </div>
+
+        {loading ? (
+          <div style={{ display: 'flex', justifyContent: 'center', padding: 34 }}><Spinner size={24}/></div>
+        ) : <div style={{ padding: 18 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(145px, 1fr))', gap: 10 }}>
+            {[
+              ['إجمالي الشركات', readiness.length, 'var(--text)'],
+              ['عقد وتشغيل مسجل', configuredCount, 'var(--green)'],
+              ['بلا عقد ساري', missingContracts.length, missingContracts.length ? 'var(--red)' : 'var(--green)'],
+              ['مستند عقد رسمي', readiness.length - missingDocuments.length, missingDocuments.length ? 'var(--gold)' : 'var(--green)'],
+            ].map(([label, value, color]) => (
+              <div key={label} style={{ padding: '13px 14px', border: '1px solid var(--border2)', borderRadius: 12, background: 'var(--surface2)' }}>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>{label}</div>
+                <div style={{ marginTop: 4, fontSize: 23, fontWeight: 850, color, fontFamily: 'var(--font-mono)' }}>{value}</div>
+              </div>
+            ))}
+          </div>
+
+          {(missingContracts.length > 0 || missingFileKinds.length > 0 || missingDocuments.length > 0) && (
+            <div style={{ marginTop: 14, padding: '13px 15px', borderRadius: 12, border: '1px solid rgba(245,158,11,.28)', background: 'rgba(245,158,11,.07)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 800, color: 'var(--gold)', fontSize: 13 }}>
+                <AlertTriangle size={16}/> نواقص يجب إغلاقها
+              </div>
+              {missingContracts.length > 0 && (
+                <div style={{ marginTop: 7, fontSize: 12.5, color: 'var(--text2)' }}>
+                  <strong>بلا عقد:</strong> {missingContracts.map(row => row.carrierName).join('، ')}
+                </div>
+              )}
+              {missingFileKinds.length > 0 && (
+                <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--text2)' }}>
+                  <strong>نوع الملف غير محدد:</strong> {missingFileKinds.map(row => row.carrierName).join('، ')}
+                </div>
+              )}
+              {missingDocuments.length > 0 && (
+                <div style={{ marginTop: 5, fontSize: 12.5, color: 'var(--text2)' }}>
+                  لا توجد نسخة عقد رسمية مرفوعة لـ{missingDocuments.length} شركة؛ التسعير المسجل يعمل، لكن الإثبات التعاقدي غير مكتمل.
+                </div>
+              )}
+            </div>
+          )}
+        </div>}
+      </Card>
 
       {/* ── CONTRACTS TABLE ───────────────────────────────────────────── */}
       <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 22 }}>

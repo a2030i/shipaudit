@@ -13,7 +13,8 @@ import {
 import { Card, Btn, Spinner, Empty, Badge, toast, Modal, PageHeader } from '../components/UI.jsx';
 import { Scale } from 'lucide-react';
 import {
-  loadPendingAuditsForBilling, loadBillingExports, loadAwaitingApproval,
+  loadPendingAuditsForBilling, loadBlockedUnverifiedAuditsForBilling,
+  loadBillingExports, loadAwaitingApproval,
   exportPendingExcessWeights, markExportBilled, voidExport, downloadExport,
 } from '../lib/weightBillingService.js';
 import { useNavigate } from 'react-router-dom';
@@ -41,6 +42,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
   const [pending,  setPending]  = useState([]);
   const [exports,  setExports]  = useState([]);
   const [awaiting, setAwaiting] = useState([]); // pending review (need approval)
+  const [blocked, setBlocked] = useState([]); // historical approvals without v3 proof
   const [loading,  setLoading]  = useState(true);
   const [pulling,  setPulling]  = useState(false);
   const [voiding,  setVoiding]  = useState(null); // export row being voided
@@ -50,12 +52,14 @@ export default function WeightBilling({ carriers, isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [p, e, a] = await Promise.all([
+      const [p, b, e, a] = await Promise.all([
         loadPendingAuditsForBilling(),
+        loadBlockedUnverifiedAuditsForBilling(),
         loadBillingExports({ limit: 50 }),
         loadAwaitingApproval(),
       ]);
       setPending(p);
+      setBlocked(b);
       setExports(e);
       setAwaiting(a);
     } catch (err) {
@@ -147,6 +151,29 @@ export default function WeightBilling({ carriers, isActive = true }) {
           </Btn>
         }
       />
+
+      {blocked.length > 0 && (
+        <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 14, border: '1px solid rgba(239,68,68,.28)' }}>
+          <div style={{
+            padding: '14px 18px',
+            background: 'linear-gradient(135deg, rgba(239,68,68,.10), rgba(239,68,68,.03))',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <AlertCircle size={20} color="var(--red)" style={{ flexShrink: 0 }}/>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontWeight: 700, fontSize: 13.5, color: 'var(--text)' }}>
+                {blocked.length} مراجعة قديمة مستبعدة من ملف الأوزان
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                ينقصها اسم ملف المصدر والعقد المستخدم في التدقيق. أعد رفع الملف من مسار المراجعة الآمن؛ لن تُفوَّتر أوزانها تلقائيًا.
+              </div>
+            </div>
+            <Btn size="sm" variant="outline" onClick={() => navigate('/audits')}>
+              عرض المراجعات المستبعدة
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       {/* ── AWAITING APPROVAL CARD ───────────────────────────────────── */}
       {awaiting.length > 0 && (

@@ -14,9 +14,9 @@ import {
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader } from '../components/UI.jsx';
 import { Inbox } from 'lucide-react';
 import {
-  loadWebhookEvents, countByStatus, assignEventToCarrier,
+  loadWebhookEvents, countWebhookStatuses, assignEventToCarrier,
   downloadEventFile, loadEventFileBlob, getWebhookEndpoint,
-  deleteWebhookEvent, deleteWebhookEvents,
+  deleteWebhookEvent, deleteWebhookEvents, inferCarrierDocumentKind,
 } from '../lib/webhookService.js';
 import { loadAuditByIdFromDB } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -125,9 +125,9 @@ export default function WebhookEvents({ carriers, isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const [evs, c] = await Promise.all([loadWebhookEvents({ limit: 200 }), countByStatus()]);
+      const evs = await loadWebhookEvents({ limit: 500 });
       setEvents(evs);
-      setCounts(c);
+      setCounts(countWebhookStatuses(evs));
     } catch (err) {
       toast(`فشل التحميل: ${err.message}`, 'error');
     }
@@ -369,6 +369,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       <div style={{ display: 'flex', gap: 8, marginBottom: 18, flexWrap: 'wrap' }}>
         {[
           { k: 'all',                  l: 'الكل',          n: events.length,                color: 'var(--text)' },
+          { k: 'pending',              l: 'بانتظار إجراء', n: counts.pending ?? 0,             color: 'var(--gold)' },
           { k: 'awaiting_assignment',  l: 'يحتاج ربط',     n: counts.awaiting_assignment ?? 0, color: 'var(--gold)' },
           { k: 'processed',            l: 'تم',            n: counts.processed ?? 0,        color: 'var(--accent)' },
           { k: 'failed',               l: 'فشل',           n: counts.failed ?? 0,           color: 'var(--red)' },
@@ -447,11 +448,14 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                   // takes their place.
                   const carrierObj = (carriers || []).find(c => c.id === e.detected_carrier_id);
                   const carrierKind = carrierObj?.file_signature?.file_kind || null;
+                  const inferredDocumentKind = inferCarrierDocumentKind(e);
                   const isActioned  = !!e.audit_id || !!e.processed_at;
                   const isCodDone   = !!e.processed_at && !e.audit_id;
-                  const showAuditBtn = canImport && !isActioned && (carrierKind !== 'cod_only');
+                  const showAuditBtn = canImport && !isActioned && (carrierKind !== 'cod_only')
+                                       && inferredDocumentKind !== 'cod';
                   const showCodBtn   = canImport && !isActioned && !!e.detected_carrier_id
-                                       && ['audit_and_cod_separate', 'cod_only'].includes(carrierKind);
+                                       && ['audit_and_cod_separate', 'cod_only'].includes(carrierKind)
+                                       && inferredDocumentKind !== 'audit';
                   return (
                     <tr key={e.id} style={isSel ? { background: 'color-mix(in srgb, var(--accent) 6%, transparent)' } : undefined}>
                       <td data-label="" style={{ paddingInline: 8 }}>

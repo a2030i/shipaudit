@@ -15,6 +15,66 @@
 
 import { supabase } from './supabase.js';
 
+export function effectiveWebhookStatus(event) {
+  if (event?.status === 'failed') return 'failed';
+  if (event?.audit_id || event?.processed_at || event?.actioned_by_source) return 'processed';
+  if (event?.status === 'processing') return 'processing';
+  if (!event?.detected_carrier_id) return 'awaiting_assignment';
+  return 'pending';
+}
+
+// Deterministic routing for the recurring carrier formats we have verified.
+// This prevents a J&T COD statement from being offered as a freight invoice
+// (or the monthly freight invoice from being offered as a COD remittance).
+export function inferCarrierDocumentKind(event) {
+  const fileName = String(event?.file_name || '').trim();
+  const subject = String(event?.subject || '');
+  const body = String(event?.metadata?.body || '');
+  const text = `${fileName}\n${subject}\n${body}`.toLowerCase();
+
+  if (/^westbr\d+/i.test(fileName) || /cod client receipt statement/i.test(text)) return 'cod';
+  if (/freight bill|e-invoice of the bill/i.test(text)) return 'audit';
+  if (/for[ _-]?tech.*\d{4}-\d{2}-\d{2}.*~.*\d{4}-\d{2}-\d{2}/i.test(fileName)) return 'audit';
+  return null;
+}
+
+const SOURCE_LOOKUP_CHUNK = 100;
+
+async function loadActionedSourceKeys(events) {
+  const names = [...new Set((events || []).map(event => String(event?.file_name || '').trim()).filter(Boolean))];
+  if (!names.length) return { codNames: new Set(), auditNames: new Set(), auditHashes: new Set() };
+
+  const codNames = new Set();
+  const auditNames = new Set();
+  const auditHashes = new Set();
+  for (let offset = 0; offset < names.length; offset += SOURCE_LOOKUP_CHUNK) {
+    const slice = names.slice(offset, offset + SOURCE_LOOKUP_CHUNK);
+    const [codResult, auditResult] = await Promise.all([
+      supabase
+        .from('cod_settlement')
+        .select('source_file')
+        .eq('direction', 'in')
+        .in('source_file', slice),
+      supabase
+        .from('audits')
+        .select('file_name, col_map')
+        .in('file_name', slice),
+    ]);
+    if (codResult.error) throw codResult.error;
+    if (auditResult.error) throw auditResult.error;
+    for (const row of codResult.data || []) {
+      if (row.source_file) codNames.add(String(row.source_file));
+    }
+    for (const row of auditResult.data || []) {
+      const fileName = String(row.file_name || '').trim();
+      const sourceHash = String(row.col_map?.__control?.sourceHash || '').trim();
+      if (fileName) auditNames.add(fileName);
+      if (sourceHash) auditHashes.add(sourceHash);
+    }
+  }
+  return { codNames, auditNames, auditHashes };
+}
+
 export async function loadWebhookEvents({ limit = 100, status } = {}) {
   let q = supabase
     .from('webhook_events')
@@ -26,19 +86,36 @@ export async function loadWebhookEvents({ limit = 100, status } = {}) {
     `)
     .order('received_at', { ascending: false })
     .limit(limit);
-  if (status) q = q.eq('status', status);
   const { data, error } = await q;
   if (error) throw error;
-  return data || [];
+  const events = data || [];
+  const { codNames, auditNames, auditHashes } = await loadActionedSourceKeys(events);
+  const normalized = events.map(event => {
+    const fileName = String(event?.file_name || '').trim();
+    const fileHash = String(event?.file_hash || '').trim();
+    const kind = inferCarrierDocumentKind(event);
+    const actionedBySource = kind === 'cod'
+      ? codNames.has(fileName)
+      : (fileHash && auditHashes.has(fileHash)) || auditNames.has(fileName);
+    const enriched = { ...event, actioned_by_source: actionedBySource };
+    return { ...enriched, status: effectiveWebhookStatus(enriched) };
+  });
+  // Intake historically wrote status='processed' after storing the file.
+  // Filter on the real action state so unattached files remain visible.
+  return status ? normalized.filter(event => event.status === status) : normalized;
 }
 
 export async function countByStatus() {
-  const { data, error } = await supabase
-    .from('webhook_events')
-    .select('status');
-  if (error) throw error;
+  const data = await loadWebhookEvents({ limit: 1000 });
+  return countWebhookStatuses(data);
+}
+
+export function countWebhookStatuses(events) {
   const counts = { pending: 0, processing: 0, processed: 0, failed: 0, awaiting_assignment: 0 };
-  for (const r of data || []) counts[r.status] = (counts[r.status] || 0) + 1;
+  for (const r of events || []) {
+    const status = effectiveWebhookStatus(r);
+    counts[status] = (counts[status] || 0) + 1;
+  }
   return counts;
 }
 

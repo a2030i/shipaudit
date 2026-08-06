@@ -1,4 +1,5 @@
 import { supabase } from './supabase.js';
+import { hasAuditProofMetadata } from './auditProof.js';
 import { buildSummary } from '../engine/audit.js';
 import { SEED_CARRIERS } from '../data/carriers.js';
 import { deriveAuditType } from '../engine/audit.js';
@@ -799,7 +800,7 @@ export function evaluateApprovalGate(audit) {
   }
 
   const control = audit?.control ?? s.control ?? audit?.colMap?.__control;
-  if (!control || Number(control.version) < 3) {
+  if (!hasAuditProofMetadata({ ...audit, control })) {
     errors.push({
       code: 'missing_audit_proof',
       message: 'لا يوجد إثبات تدقيق عقدي حديث لهذا الملف؛ أعد رفعه من مسار المراجعة الآمن',

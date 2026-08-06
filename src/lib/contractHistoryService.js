@@ -184,3 +184,39 @@ export async function loadAllContractsOverview() {
   }
   return rows;
 }
+
+export function deriveContractReadiness(carriers, today = new Date().toISOString().slice(0, 10)) {
+  const knownFileKinds = new Set(['audit_with_cod', 'audit_and_cod_separate', 'audit_only', 'cod_only']);
+  return (carriers || []).map(carrier => {
+    const contracts = Array.isArray(carrier.contracts) ? carrier.contracts : [];
+    const activeContracts = contracts.filter(contract => {
+      const startsOk = !contract.startDate || contract.startDate <= today;
+      const endsOk = !contract.endDate || contract.endDate >= today;
+      return startsOk && endsOk;
+    });
+    const fileKind = String(carrier.file_signature?.file_kind || '').trim();
+    const hasContract = activeContracts.length > 0;
+    const hasFileKind = knownFileKinds.has(fileKind);
+    const hasOfficialDocument = Boolean(String(carrier.contract_pdf_path || '').trim());
+    return {
+      carrierId: carrier.id,
+      carrierName: carrier.name,
+      contractCount: contracts.length,
+      activeContractCount: activeContracts.length,
+      fileKind: fileKind || null,
+      hasContract,
+      hasFileKind,
+      hasOfficialDocument,
+      operationallyConfigured: hasContract && hasFileKind,
+    };
+  });
+}
+
+export async function loadContractReadiness() {
+  const { data, error } = await supabase
+    .from('carriers')
+    .select('id, name, contracts, contract_pdf_path, file_signature')
+    .order('name', { ascending: true });
+  if (error) throw error;
+  return deriveContractReadiness(data || []);
+}

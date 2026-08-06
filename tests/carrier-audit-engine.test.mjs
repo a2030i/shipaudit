@@ -49,7 +49,13 @@ const contract = {
 
 const carrier = { id: 'jnt', name: 'J&T Express', contracts: [contract] };
 const colMap = detectColumns(headers, carrier, [carrier]);
-const verifiedControl = { version: 3, valid: true, errors: [] };
+const verifiedControl = {
+  version: 3,
+  valid: true,
+  errors: [],
+  fileName: 'carrier-invoice.xlsx',
+  contractLabels: ['عقد 2026'],
+};
 
 function approval(summary, results = []) {
   return evaluateApprovalGate({
@@ -117,7 +123,11 @@ test('detail-vs-summary control failure blocks approval', () => {
   const gate = evaluateApprovalGate({
     summary: {
       total: 1, mismatch: 0, unknown: 0, totalBilled: 16, totalExpected: 16, totalTax: 2.4,
-      control: { version: 3, valid: false, errors: ['الإجمالي قبل الضريبة لا يطابق الملخص'] },
+      control: {
+        ...verifiedControl,
+        valid: false,
+        errors: ['الإجمالي قبل الضريبة لا يطابق الملخص'],
+      },
     },
   });
   assert.equal(gate.canApprove, false);
@@ -126,6 +136,15 @@ test('detail-vs-summary control failure blocks approval', () => {
 
 test('a clean-looking legacy audit without v3 contract proof cannot be approved', () => {
   const gate = evaluateApprovalGate({
+    summary: { total: 1, mismatch: 0, unknown: 0, totalBilled: 16, totalExpected: 16, totalTax: 2.4 },
+  });
+  assert.equal(gate.canApprove, false);
+  assert.ok(gate.errors.some(error => error.code === 'missing_audit_proof'));
+});
+
+test('v3 metadata without source file or selected contract is still incomplete proof', () => {
+  const gate = evaluateApprovalGate({
+    control: { version: 3, valid: true, fileName: '', contractLabels: [] },
     summary: { total: 1, mismatch: 0, unknown: 0, totalBilled: 16, totalExpected: 16, totalTax: 2.4 },
   });
   assert.equal(gate.canApprove, false);

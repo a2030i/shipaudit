@@ -45,7 +45,7 @@ test('قائمة تحصيل الناقلين تفصل التلقائي والي�
 });
 
 test('ملف تحصيل ناقل واحد لا يكمل مرحلة تحصيلات كل الناقلين', () => {
-  const control = { version: 3, valid: true };
+  const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
   const audits = [
     { id: 'j1', carrier_id: 'jnt', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } },
     { id: 's1', carrier_id: 'smsa', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } },
@@ -129,7 +129,7 @@ test('تاريخ لمحة قرب منتصف الليل يبقى في شهر ال
 });
 
 test('حالة دورة المحاسب مشتقة من السجلات وتمنع الإقفال قبل اكتمال المراحل', () => {
-  const control = { version: 3, valid: true };
+  const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
   const base = {
     period: '2026-08',
     audits: [{
@@ -214,7 +214,7 @@ test('سجل شحنات لمحة يعرض كل ملفات الشهر لا آخر
 });
 
 test('فشل قراءة أي مصدر يظهر للمحاسب ويمنع إقفال الشهر', () => {
-  const control = { version: 3, valid: true };
+  const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
   const cycle = deriveAccountingCycleStages({
     period: '2026-08',
     audits: [{ id: 'a1', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } }],
@@ -239,6 +239,9 @@ test('المراجعة القديمة بلا إثبات مصدر لا تظهر �
   });
   assert.equal(cycle.stages[0].status, 'attention');
   assert.match(cycle.stages[0].reason, /بلا إثبات مصدر/);
+  assert.equal(cycle.stages[1].status, 'blocked');
+  assert.match(cycle.stages[1].reason, /قبل تصدير الأوزان/);
+  assert.equal(cycle.stages[1].detail.blockedLegacy, 1);
 });
 
 test('الشهر المختار للدورة ينتقل إلى نموذج مراجعة شركة الشحن', async () => {

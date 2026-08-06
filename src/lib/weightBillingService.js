@@ -24,6 +24,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from './xlsxRtl.js';
 import { supabase } from './supabase.js';
 import { auditPeriodMatches } from './accountingCycleService.js';
+import { hasVerifiedAuditProof } from './auditProof.js';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 // Returns every billable shipment for an audit in (AWB, billed weight) form.
@@ -66,6 +67,22 @@ async function billableRowsFor(audit) {
   return out;
 }
 
+// Only reviews produced by the current contractual-control pipeline may feed
+// merchant billing. Historical approvals pre-date the source-file / contract
+// proof gate and must remain readable without silently creating Lamha charges.
+export function isVerifiedAuditForWeightBilling(audit) {
+  return hasVerifiedAuditProof(audit);
+}
+
+// Lamha owns the merchant-specific allowance and calculates the excess. Export
+// only the carrier's total weight per AWB using Lamha's exact import headers.
+export function toLamhaWeightRows(rows) {
+  return (rows || []).map(row => ({
+    'رقم الشحنة': String(row?.awb || '').trim(),
+    'الوزن الجديد': +Number(row?.weight || 0).toFixed(2),
+  }));
+}
+
 // ─── reads ─────────────────────────────────────────────────────────────────
 export async function loadPendingAuditsForBilling() {
   // Only APPROVED audits feed the merchant-billing pipeline. Pending /
@@ -75,12 +92,26 @@ export async function loadPendingAuditsForBilling() {
     .from('audits')
     // NOTE: no `results` here — shipments come from audit_shipments now,
     // and pulling the issues JSONB for every pending audit was dead weight.
-    .select('id, carrier_id, carrier_name, period, file_name, contract_label, created_at, weight_billing_status, review_status, row_count')
+    .select('id, carrier_id, carrier_name, period, file_name, contract_label, col_map, created_at, weight_billing_status, review_status, row_count')
     .eq('weight_billing_status', 'pending')
     .eq('review_status',         'approved')
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data || [];
+  return (data || []).filter(isVerifiedAuditForWeightBilling);
+}
+
+// Approved in the historical sense, but not safe to export because the audit
+// lacks the current source-file + selected-contract proof. Kept separate so
+// the UI can explain why a visible old review is not included in the Excel.
+export async function loadBlockedUnverifiedAuditsForBilling() {
+  const { data, error } = await supabase
+    .from('audits')
+    .select('id, carrier_id, carrier_name, period, file_name, contract_label, col_map, created_at, weight_billing_status, review_status, row_count')
+    .eq('weight_billing_status', 'pending')
+    .eq('review_status', 'approved')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).filter(audit => !isVerifiedAuditForWeightBilling(audit));
 }
 
 // How many audits are stuck in `pending` review — they have rows but
@@ -181,10 +212,7 @@ export async function exportPendingExcessWeights({ carriers, userId, trigger = '
   // shipDate stay on the audit rows for internal traceability but
   // they don't belong in the export.
   const rows = Array.from(byAwb.values());
-  const ws = XLSX.utils.json_to_sheet(rows.map(r => ({
-    'رقم الشحنة (AWB)': r.awb,
-    'الوزن (كغ)':       r.weight,
-  })));
+  const ws = XLSX.utils.json_to_sheet(toLamhaWeightRows(rows));
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'أوزان للفوترة');
 
