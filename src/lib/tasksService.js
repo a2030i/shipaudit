@@ -13,11 +13,11 @@
 //   deleteSchedule(id)
 //   deriveDueState(schedule, now)              → { dueAt, isDue, isOverdue, daysUntilDue }
 //
-// The cadence semantics:
-//   weekly    — once per 7 days (or on dayOfPeriod = 0..6, Sun..Sat)
-//   biweekly  — once per 14 days
-//   monthly   — once per ~30 days (or on dayOfPeriod = 1..28)
-//   on_demand — no fixed cadence; never marked "due" by the system
+// The cadence semantics use explicit contractual calendar slots:
+//   weekly    — weekday(s) or explicit month dates in due_days
+//   biweekly  — two explicit month dates
+//   monthly   — one explicit month date
+//   on_demand — no fixed slot; never marked "due" by the system
 
 import { supabase } from './supabase.js';
 
@@ -37,6 +37,63 @@ export const CADENCE_META = {
   on_demand: { label: 'حسب الطلب',   days: null },
 };
 
+export const WEEKDAY_META = [
+  { value: 0, label: 'الأحد' },
+  { value: 1, label: 'الاثنين' },
+  { value: 2, label: 'الثلاثاء' },
+  { value: 3, label: 'الأربعاء' },
+  { value: 4, label: 'الخميس' },
+  { value: 5, label: 'الجمعة' },
+  { value: 6, label: 'السبت' },
+];
+
+export function parseScheduleDays(value) {
+  const raw = Array.isArray(value) ? value : String(value ?? '').split(/[\s,،]+/);
+  return [...new Set(raw
+    .map(Number)
+    .filter(Number.isInteger))]
+    .sort((a, b) => a - b);
+}
+
+export function legacyScheduleDays(schedule = {}) {
+  const saved = parseScheduleDays(schedule.due_days || []);
+  if (saved.length) return saved;
+  const day = schedule.day_of_period == null || schedule.day_of_period === ''
+    ? Number.NaN
+    : Number(schedule.day_of_period);
+  if (!Number.isInteger(day)) return [];
+  if (schedule.cadence === 'weekly' && day >= 7) {
+    const days = [];
+    for (let value = day; value <= 31; value += 7) days.push(value);
+    return days;
+  }
+  if (schedule.cadence === 'biweekly' && day >= 1) return [day, day + 15].filter(value => value <= 31);
+  return [day];
+}
+
+export function normalizeScheduleTiming({ cadence, scheduleBasis, dueDays, dayOfPeriod } = {}) {
+  if (cadence === 'on_demand') {
+    return { scheduleBasis: 'month_days', dueDays: [], dayOfPeriod: null };
+  }
+  const basis = cadence === 'weekly' && scheduleBasis === 'weekday' ? 'weekday' : 'month_days';
+  const days = parseScheduleDays(dueDays?.length ? dueDays : (dayOfPeriod == null ? [] : [dayOfPeriod]));
+  if (!days.length) throw new Error('حدد موعد الاستلام بوضوح');
+  const min = basis === 'weekday' ? 0 : 1;
+  const max = basis === 'weekday' ? 6 : 31;
+  if (days.some(day => day < min || day > max)) {
+    throw new Error(basis === 'weekday'
+      ? 'يوم الأسبوع يجب أن يكون بين الأحد والسبت'
+      : 'تواريخ الشهر يجب أن تكون بين 1 و31');
+  }
+  if (basis === 'weekday' && cadence !== 'weekly') {
+    throw new Error('جدولة يوم الأسبوع متاحة للتكرار الأسبوعي فقط');
+  }
+  if (cadence === 'monthly' && days.length !== 1) {
+    throw new Error('الفاتورة الشهرية تحتاج يوم استلام واحدًا');
+  }
+  return { scheduleBasis: basis, dueDays: days, dayOfPeriod: days[0] };
+}
+
 function daysInAccountingMonth(period) {
   const [year, month] = String(period || '').split('-').map(Number);
   if (!year || month < 1 || month > 12) throw new Error('الفترة يجب أن تكون بصيغة YYYY-MM');
@@ -54,21 +111,23 @@ function isoDate(period, day) {
 export function expectedScheduleSlots(schedule, period) {
   if (!schedule?.active || schedule.cadence === 'on_demand') return [];
   const daysInMonth = daysInAccountingMonth(period);
-  const configured = Array.isArray(schedule.due_days)
-    ? schedule.due_days.map(Number).filter(Number.isInteger)
-    : [];
+  const configured = legacyScheduleDays(schedule);
   const day = schedule.day_of_period == null || schedule.day_of_period === ''
     ? Number.NaN
     : Number(schedule.day_of_period);
+  const basis = schedule.schedule_basis
+    || (schedule.cadence === 'weekly' && day >= 0 && day <= 6 ? 'weekday' : 'month_days');
   let days = [];
 
   if (configured.length) {
-    if (schedule.schedule_basis === 'weekday') {
+    if (basis === 'weekday') {
       const weekdays = new Set(configured.filter(value => value >= 0 && value <= 6));
       const [year, month] = period.split('-').map(Number);
       for (let value = 1; value <= daysInMonth; value += 1) {
         if (weekdays.has(new Date(Date.UTC(year, month - 1, value)).getUTCDay())) days.push(value);
       }
+    } else if (schedule.cadence === 'monthly') {
+      days = [Math.min(configured[0], daysInMonth)];
     } else {
       days = configured.filter(value => value >= 1 && value <= daysInMonth);
     }
@@ -112,25 +171,19 @@ export async function listSchedules({ activeOnly = true } = {}) {
 
 export async function upsertSchedule({
   id = null, carrierId, taskKind, cadence,
-  dayOfPeriod = null, notes = null, active = true,
+  dayOfPeriod = null, scheduleBasis = null, dueDays = [], notes = null, active = true,
 }) {
   if (!carrierId || !taskKind || !cadence) {
     throw new Error('carrier_id و task_kind و cadence مطلوبة');
   }
-  if (cadence !== 'on_demand') {
-    const day = Number(dayOfPeriod);
-    const min = cadence === 'weekly' ? 0 : 1;
-    if (!Number.isInteger(day) || day < min || day > 28) {
-      throw new Error(cadence === 'weekly'
-        ? 'حدد يوم الأسبوع 0–6 أو يوم بداية الدفعات 7–28'
-        : 'حدد يوم الاستلام من 1 إلى 28');
-    }
-  }
+  const timing = normalizeScheduleTiming({ cadence, scheduleBasis, dueDays, dayOfPeriod });
   const row = {
     carrier_id:    carrierId,
     task_kind:     taskKind,
     cadence,
-    day_of_period: dayOfPeriod,
+    day_of_period: timing.dayOfPeriod,
+    schedule_basis: timing.scheduleBasis,
+    due_days: timing.dueDays,
     notes:         notes?.trim() || null,
     active,
     updated_at:    new Date().toISOString(),
@@ -173,22 +226,55 @@ export async function deleteSchedule(id) {
   return { ok: true };
 }
 
-// Compute due-state for one schedule. The week here is the calendar
-// week starting from "now" — used by the UI to bucket tasks into
-// "overdue", "due-this-week", and "later".
+function saDateParts(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(date);
+  const read = type => parts.find(part => part.type === type)?.value;
+  const year = Number(read('year'));
+  const month = Number(read('month'));
+  const day = Number(read('day'));
+  if (!year || !month || !day) return null;
+  return { year, month, day, iso: `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}` };
+}
+
+function shiftPeriod(period, offset) {
+  const [year, month] = period.split('-').map(Number);
+  const shifted = new Date(Date.UTC(year, month - 1 + offset, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+function dateDiffDays(fromIso, toIso) {
+  return Math.round((Date.parse(`${toIso}T00:00:00Z`) - Date.parse(`${fromIso}T00:00:00Z`)) / DAY_MS);
+}
+
+// Compute due-state from the carrier's explicit calendar slots. A late upload
+// never moves the next contractual date: completing a day-1 monthly invoice on
+// day 10 still leaves the following invoice due on day 1 of the next month.
 export function deriveDueState(schedule, now = new Date()) {
   const cadence = CADENCE_META[schedule.cadence];
   if (!cadence || cadence.days == null) {
     return { dueAt: null, isDue: false, isOverdue: false, daysUntilDue: null, label: 'حسب الطلب' };
   }
-  const lastDone = schedule.last_completed_at ? new Date(schedule.last_completed_at) : null;
-  // If never completed, baseline = created_at (or "now" minus cadence
-  // so it shows up as immediately due).
-  const baseline = lastDone || new Date(schedule.created_at) || new Date(now.getTime() - cadence.days * DAY_MS);
-  const dueAt = new Date(baseline.getTime() + cadence.days * DAY_MS);
-  const diffMs = dueAt.getTime() - now.getTime();
-  const daysUntilDue = Math.ceil(diffMs / DAY_MS);
-  const isOverdue = diffMs < 0;
+  const today = saDateParts(now);
+  if (!today) return { dueAt: null, isDue: false, isOverdue: false, daysUntilDue: null, label: 'موعد غير صالح' };
+  const currentPeriod = `${today.year}-${String(today.month).padStart(2, '0')}`;
+  const createdIso = saDateParts(schedule.created_at)?.iso || `${currentPeriod}-01`;
+  const completedIso = saDateParts(schedule.last_completed_at)?.iso || null;
+  const slots = [-1, 0, 1, 2]
+    .flatMap(offset => expectedScheduleSlots(schedule, shiftPeriod(currentPeriod, offset)))
+    .map(slot => slot.dueDate)
+    .filter(dueDate => dueDate >= createdIso && (!completedIso || dueDate > completedIso))
+    .sort();
+  const dueIso = slots[0] || null;
+  if (!dueIso) {
+    return { dueAt: null, isDue: false, isOverdue: false, daysUntilDue: null, label: 'لا يوجد موعد قادم' };
+  }
+  const daysUntilDue = dateDiffDays(today.iso, dueIso);
+  const dueAt = new Date(`${dueIso}T00:00:00+03:00`);
+  const isOverdue = daysUntilDue < 0;
   const isDueThisWeek = daysUntilDue >= 0 && daysUntilDue <= 7;
   return {
     dueAt,

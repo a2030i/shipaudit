@@ -11,7 +11,12 @@ import {
   deriveLamhaShipmentCoverage,
   mapLamhaShipmentRows,
 } from '../src/lib/accountingCycleService.js';
-import { expectedScheduleSlots } from '../src/lib/tasksService.js';
+import {
+  expectedScheduleSlots,
+  deriveDueState,
+  normalizeScheduleTiming,
+  parseScheduleDays,
+} from '../src/lib/tasksService.js';
 import { filterMissingShipmentSearchRows } from '../src/lib/weightBillingService.js';
 
 test('جداول الناقلين تحول الأسبوعي والشهري إلى دفعات صريحة داخل الشهر', () => {
@@ -31,6 +36,55 @@ test('جداول الناقلين تحول الأسبوعي والشهري إل�
     expectedScheduleSlots({ id: 'weekly-missing', active: true, cadence: 'weekly', day_of_period: null }, '2026-08'),
     [],
   );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'weekday', active: true, cadence: 'weekly', schedule_basis: 'weekday', due_days: [3] }, '2026-08').map(slot => slot.day),
+    [5, 12, 19, 26],
+  );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'fixed', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] }, '2026-08').map(slot => slot.day),
+    [8, 15, 22, 29],
+  );
+  assert.deepEqual(
+    expectedScheduleSlots({ id: 'month-end', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [31] }, '2026-02').map(slot => slot.day),
+    [28],
+  );
+});
+
+test('إعداد موعد الناقل صريح ولا يسمح بيوم غامض أو فاتورة شهرية بعدة مواعيد', () => {
+  assert.deepEqual(parseScheduleDays('29، 8, 15 22 8'), [8, 15, 22, 29]);
+  assert.deepEqual(
+    normalizeScheduleTiming({ cadence: 'weekly', scheduleBasis: 'weekday', dueDays: [3] }),
+    { scheduleBasis: 'weekday', dueDays: [3], dayOfPeriod: 3 },
+  );
+  assert.throws(
+    () => normalizeScheduleTiming({ cadence: 'weekly', scheduleBasis: 'weekday', dueDays: [] }),
+    /حدد موعد/,
+  );
+  assert.throws(
+    () => normalizeScheduleTiming({ cadence: 'monthly', scheduleBasis: 'month_days', dueDays: [1, 15] }),
+    /يوم استلام واحد/,
+  );
+});
+
+test('تنبيه الموعد يتبع تاريخ الشركة ولا يتحرك بسبب رفع الملف متأخرًا', () => {
+  const monthly = {
+    id: 'monthly', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [1],
+    created_at: '2026-01-01T00:00:00+03:00', last_completed_at: '2026-07-10T12:00:00+03:00',
+  };
+  const monthlyState = deriveDueState(monthly, new Date('2026-08-02T12:00:00+03:00'));
+  assert.equal(monthlyState.daysUntilDue, -1);
+  assert.equal(monthlyState.isOverdue, true);
+
+  const weekly = {
+    id: 'weekly', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29],
+    created_at: '2026-08-01T00:00:00+03:00', last_completed_at: '2026-08-08T18:00:00+03:00',
+  };
+  assert.equal(deriveDueState(weekly, new Date('2026-08-16T12:00:00+03:00')).daysUntilDue, -1);
+  weekly.last_completed_at = '2026-08-15T18:00:00+03:00';
+  assert.equal(deriveDueState(weekly, new Date('2026-08-16T12:00:00+03:00')).daysUntilDue, 6);
+
+  const newlyCreated = { ...weekly, created_at: '2026-08-10T12:00:00+03:00', last_completed_at: null };
+  assert.equal(deriveDueState(newlyCreated, new Date('2026-08-12T12:00:00+03:00')).daysUntilDue, 3);
 });
 
 test('الناقل ذو العقد الساري لا يختفي من الدورة عند غياب جدوله', () => {
@@ -406,10 +460,12 @@ test('المراجعة القديمة بلا إثبات مصدر لا تظهر �
 });
 
 test('الشهر المختار للدورة ينتقل إلى نموذج مراجعة شركة الشحن', async () => {
-  const [cyclePage, uploadWizard, cycleService] = await Promise.all([
+  const [cyclePage, uploadWizard, cycleService, tasksPage, scheduleMigration] = await Promise.all([
     readFile(new URL('../src/pages/AccountingCycle.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8'),
     readFile(new URL('../src/lib/accountingCycleService.js', import.meta.url), 'utf8'),
+    readFile(new URL('../src/pages/Tasks.jsx', import.meta.url), 'utf8'),
+    readFile(new URL('../supabase/migrations/20260806193000_explicit_carrier_schedule_days.sql', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
   assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
@@ -451,5 +507,9 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cycleService, /\.range\(from, to\)/);
   assert.match(cycleService, /deriveLamhaShipmentCoverage/);
   assert.match(cycleService, /loadAuditShipmentsForAudits/);
+  assert.match(tasksPage, /طريقة مواعيد الأسبوع/);
+  assert.match(tasksPage, /ملف موحّد — كل ملف معتمد يثبت الفاتورة والتحصيل معًا/);
+  assert.match(scheduleMigration, /add column if not exists schedule_basis/);
+  assert.match(scheduleMigration, /add column if not exists due_days/);
   assert.doesNotMatch(cycleService, /accounting_cycle_events'[\s\S]{0,250}\.limit\(200\)/);
 });

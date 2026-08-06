@@ -5,9 +5,8 @@
 // Below: a CRUD table of every schedule (carrier × task-kind) where
 // the operator sets cadence + day-of-period.
 //
-// The "due" state isn't tracked in the DB beyond last_completed_at —
-// derived in JS via deriveDueState() from the cadence + last done
-// date. Marking a task done resets the clock.
+// The "due" state is derived from the contractual calendar slots and
+// last_completed_at. A late completion never moves the next agreed date.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
@@ -21,7 +20,8 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
-  partitionByDueness, scheduleRequirementLabel, TASK_KIND_META, CADENCE_META,
+  partitionByDueness, scheduleRequirementLabel, legacyScheduleDays,
+  parseScheduleDays, TASK_KIND_META, CADENCE_META, WEEKDAY_META,
 } from '../lib/tasksService.js';
 
 const fmtDate = (iso) => {
@@ -316,21 +316,59 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   const [carrierId, setCarrierId] = useState(row?.carrier_id || '');
   const [taskKind, setTaskKind] = useState(row?.task_kind || 'cod_remittance');
   const [cadence, setCadence] = useState(row?.cadence || 'monthly');
-  const [dayOfPeriod, setDayOfPeriod] = useState(row?.day_of_period ?? '');
+  const [scheduleBasis, setScheduleBasis] = useState(
+    row?.schedule_basis || (row?.cadence === 'weekly' && Number(row?.day_of_period) <= 6 ? 'weekday' : 'month_days'),
+  );
+  const initialDays = legacyScheduleDays(row || {});
+  const [weekday, setWeekday] = useState(
+    String(row?.schedule_basis === 'weekday' || (row?.cadence === 'weekly' && Number(row?.day_of_period) <= 6)
+      ? (initialDays[0] ?? '') : ''),
+  );
+  const [dueDaysText, setDueDaysText] = useState(
+    row?.schedule_basis === 'weekday' || (row?.cadence === 'weekly' && Number(row?.day_of_period) <= 6)
+      ? '' : initialDays.join('، '),
+  );
   const [notes, setNotes] = useState(row?.notes || '');
   const [active, setActive] = useState(row?.active ?? true);
   const [saving, setSaving] = useState(false);
+  const selectedCarrier = (carriers || []).find(carrier => String(carrier.id) === String(carrierId));
+  const fileKind = selectedCarrier?.file_signature?.file_kind || null;
+  const isCombined = fileKind === 'audit_with_cod';
+
+  const changeCadence = (value) => {
+    setCadence(value);
+    setScheduleBasis(value === 'weekly' ? 'weekday' : 'month_days');
+    setWeekday('');
+    setDueDaysText('');
+  };
+
+  const changeCarrier = (value) => {
+    setCarrierId(value);
+    const carrier = (carriers || []).find(item => String(item.id) === String(value));
+    if (carrier?.file_signature?.file_kind === 'audit_with_cod' && taskKind === 'cod_remittance') {
+      setTaskKind('invoice');
+    }
+  };
 
   const handleSave = async () => {
     if (!carrierId) return toast('اختر الشركة', 'warn');
+    if (isCombined && taskKind === 'cod_remittance') {
+      return toast('هذا الناقل يرسل الفاتورة والتحصيل في ملف موحّد؛ أنشئ جدول «فاتورة + تحصيل» فقط', 'warn');
+    }
     setSaving(true);
     try {
+      const dueDays = cadence === 'on_demand'
+        ? []
+        : scheduleBasis === 'weekday'
+          ? parseScheduleDays([weekday])
+          : parseScheduleDays(dueDaysText);
       await upsertSchedule({
         id: row?.id || null,
         carrierId,
         taskKind,
         cadence,
-        dayOfPeriod: dayOfPeriod === '' ? null : Number(dayOfPeriod),
+        scheduleBasis,
+        dueDays,
         notes,
         active,
       });
@@ -343,15 +381,25 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
   return (
     <Modal title={row?.id ? 'تعديل مهمة متكررة' : 'مهمة متكررة جديدة'} onClose={onClose} width={520}>
       <div style={{ display: 'grid', gap: 12 }}>
-        <Select label="الشركة" value={carrierId} onChange={e => setCarrierId(e.target.value)}>
+        <Select label="الشركة" value={carrierId} onChange={e => changeCarrier(e.target.value)}>
           <option value="">اختر…</option>
           {(carriers || []).map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
         </Select>
 
+        {carrierId && (
+          <div style={{ padding: '10px 12px', borderRadius: 10, background: 'var(--surface2)', color: 'var(--text2)', fontSize: 12.5 }}>
+            {isCombined
+              ? 'طريقة الشركة: ملف موحّد — كل ملف معتمد يثبت الفاتورة والتحصيل معًا.'
+              : fileKind === 'audit_and_cod_separate'
+                ? 'طريقة الشركة: ملفان منفصلان — اضبط جدول الفاتورة وجدول تحصيل COD كلًا على حدة.'
+                : 'طريقة ملفات الشركة غير مكتملة؛ سيمنع النظام الإقفال حتى تُصنّف.'}
+          </div>
+        )}
+
         <div>
           <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600 }}>نوع المهمة</label>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 6 }}>
-            {Object.entries(TASK_KIND_META).map(([k, m]) => (
+            {Object.entries(TASK_KIND_META).filter(([key]) => !(isCombined && key === 'cod_remittance')).map(([k, m]) => (
               <button key={k} onClick={() => setTaskKind(k)} style={{
                 padding: '10px 12px', borderRadius: 10,
                 background: taskKind === k ? `color-mix(in srgb, ${m.color} 12%, transparent)` : 'transparent',
@@ -361,35 +409,45 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
                 fontFamily: 'inherit',
                 display: 'inline-flex', alignItems: 'center', gap: 6, justifyContent: 'center',
               }}>
-                <span>{m.icon}</span> {m.label}
+                <span>{m.icon}</span> {isCombined && k === 'invoice' ? 'فاتورة + تحصيل' : m.label}
               </button>
             ))}
           </div>
         </div>
 
-        <Select label="التكرار" value={cadence} onChange={e => setCadence(e.target.value)}>
+        <Select label="التكرار" value={cadence} onChange={e => changeCadence(e.target.value)}>
           {Object.entries(CADENCE_META).map(([k, m]) => (
             <option key={k} value={k}>{m.label}</option>
           ))}
         </Select>
 
-        {cadence !== 'on_demand' && (
+        {cadence === 'weekly' && (
           <div>
-            <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600 }}>
-              {cadence === 'weekly'
-                ? 'موعد الأسبوع: 0–6 ليوم الأسبوع، أو 7–28 كبداية دفعات كل 7 أيام'
-                : cadence === 'biweekly'
-                  ? 'بداية الدفعتين (مثال: 5 يعني يوم 5 و20)'
-                  : 'يوم استلام الفاتورة الشهرية (1–28)'}
-            </label>
-            <input
-              type="number" min="0" max="28"
-              value={dayOfPeriod}
-              onChange={e => setDayOfPeriod(e.target.value)}
-              placeholder="اختياري"
-              style={{ width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13 }}
-            />
+            <Select label="طريقة مواعيد الأسبوع" value={scheduleBasis} onChange={e => {
+              setScheduleBasis(e.target.value);
+              setWeekday('');
+              setDueDaysText('');
+            }}>
+              <option value="weekday">يوم ثابت من كل أسبوع</option>
+              <option value="month_days">تواريخ محددة داخل الشهر</option>
+            </Select>
+            {scheduleBasis === 'weekday' ? (
+              <Select label="يوم الاستلام الأسبوعي" value={weekday} onChange={e => setWeekday(e.target.value)}>
+                <option value="">اختر اليوم…</option>
+                {WEEKDAY_META.map(day => <option key={day.value} value={day.value}>{day.label}</option>)}
+              </Select>
+            ) : (
+              <ScheduleDaysInput value={dueDaysText} onChange={setDueDaysText} label="تواريخ الاستلام داخل الشهر" placeholder="مثال: 8، 15، 22، 29" />
+            )}
           </div>
+        )}
+
+        {cadence === 'biweekly' && (
+          <ScheduleDaysInput value={dueDaysText} onChange={setDueDaysText} label="موعدا الاستلام داخل الشهر" placeholder="مثال: 5، 20" />
+        )}
+
+        {cadence === 'monthly' && (
+          <ScheduleDaysInput value={dueDaysText} onChange={setDueDaysText} label="يوم استلام الفاتورة الشهرية" placeholder="مثال: 1" />
         )}
 
         <div>
@@ -417,5 +475,22 @@ function ScheduleEditor({ row, carriers, onClose, onSaved }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+function ScheduleDaysInput({ value, onChange, label, placeholder }) {
+  return (
+    <div>
+      <label style={{ display: 'block', fontSize: 11, color: 'var(--muted)', marginBottom: 5, fontWeight: 600 }}>{label}</label>
+      <input
+        type="text"
+        inputMode="numeric"
+        value={value}
+        onChange={event => onChange(event.target.value)}
+        placeholder={placeholder}
+        style={{ width: '100%', padding: '8px 12px', borderRadius: 10, fontSize: 13 }}
+      />
+      <div style={{ marginTop: 5, color: 'var(--muted)', fontSize: 11 }}>افصل بين التواريخ بفاصلة. سيعرض النظام المواعيد الفعلية قبل الإقفال.</div>
+    </div>
   );
 }
