@@ -124,7 +124,10 @@ test('active work areas use a contextual rail instead of duplicated hub tabs', a
   assert.match(app, /className="context-mobile-nav"/);
   assert.match(app, /currentContextTabs/);
   assert.doesNotMatch(app, /sidebarRowsFor/);
-  assert.match(app, /collapsed \|\| sectionHasActive \|\| !collapsedSecs\.has\(sec\.id\)/);
+  assert.match(app, /className="primary-center-nav"/);
+  assert.match(app, /className={`primary-center-item/);
+  assert.match(app, /setMobileNavLevel\('context'\)/);
+  assert.match(app, /aria-label={`داخل \$\{contextSection\.label\}`}/);
   assert.match(app, /tabId: 'performance'/);
   assert.match(app, /tabId: 'pipeline'/);
   assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);

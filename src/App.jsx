@@ -553,6 +553,12 @@ function AppInner({ theme, toggleTheme }) {
     : null;
   const accountingStages = ACCOUNTING_CYCLE_STAGES.filter(stage => isAdmin || can(stage.permission));
   const hasContextSidebar = Boolean(contextSection && contextItems.length);
+  const currentContextValue = accountingStageId
+    ? `/accounting-cycle?stage=${encodeURIComponent(accountingStageId)}`
+    : (currentSubTab
+      && (location.pathname !== currentNavItem?.path || new URLSearchParams(location.search).has('tab'))
+      ? subTabPath(currentNavItem, currentSubTab)
+      : (currentNavItem?.path || ''));
   const currentTitle = currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
@@ -798,6 +804,41 @@ function AppInner({ theme, toggleTheme }) {
               {theme === 'dark' ? <Sun size={15}/> : <Moon size={15}/>}
             </button>
           </div>
+
+          {hasContextSidebar && (
+            <div className="context-mobile-nav">
+              <span>داخل {contextSection.label}</span>
+              <select
+                aria-label={`داخل ${contextSection.label}`}
+                value={currentContextValue}
+                onChange={(event) => goto(event.target.value)}
+              >
+                {contextGroups.map(group => (
+                  <optgroup key={group.id} label={group.label || contextSection.label}>
+                    {group.items.flatMap(item => {
+                      const tabs = visibleSubTabsFor(item);
+                      const options = [
+                        <option key={item.path} value={item.path}>{item.label}</option>,
+                      ];
+                      for (const tab of tabs) {
+                        const path = subTabPath(item, tab);
+                        if (path !== item.path) {
+                          options.push(<option key={`${item.id}-${tab.tabId}`} value={path}>↳ {tab.label}</option>);
+                        }
+                      }
+                      if (item.id === 'accounting-cycle') {
+                        accountingStages.forEach((stage, index) => {
+                          const path = `/accounting-cycle?stage=${encodeURIComponent(stage.id)}`;
+                          options.push(<option key={`${item.id}-${stage.id}`} value={path}>↳ {index + 1}. {stage.label}</option>);
+                        });
+                      }
+                      return options;
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
