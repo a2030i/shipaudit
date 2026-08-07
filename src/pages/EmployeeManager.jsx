@@ -241,9 +241,9 @@ function PermissionsModal({ employee, onClose, onSave }) {
 
   const toggle = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
 
-  const applyPreset = (keys) => {
-    const next = {};
-    for (const k of keys) next[k] = true;
+  const applyPreset = (preset) => {
+    const next = preset.mode === 'merge' ? { ...perms } : {};
+    for (const k of preset.keys) next[k] = true;
     setPerms(next);
   };
 
@@ -327,10 +327,10 @@ function PermissionsModal({ employee, onClose, onSave }) {
         </div>
         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
           <span style={{ fontSize: 10.5, color: 'var(--muted)', alignSelf: 'center', marginInlineEnd: 4 }}>
-            تطبيق سريع:
+            تطبيق سريع: القالب الذي يبدأ بـ + يضيف على الحالي، والبقية تستبدله.
           </span>
           {PRESETS.map(p => (
-            <Btn key={p.id} variant="ghost" size="sm" onClick={() => applyPreset(p.keys)}>
+            <Btn key={p.id} variant="ghost" size="sm" onClick={() => applyPreset(p)}>
               {p.label}
             </Btn>
           ))}

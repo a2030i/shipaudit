@@ -13,6 +13,8 @@ const staffingMigration = await readFile(
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx', import.meta.url), 'utf8');
 const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
+const permissions = await readFile(new URL('../src/lib/permissions.js', import.meta.url), 'utf8');
+const employeeManager = await readFile(new URL('../src/pages/EmployeeManager.jsx', import.meta.url), 'utf8');
 
 test('readiness RPC is authenticated, read-only and validates explicit carrier schedules', () => {
   assert.match(migration, /auth\.uid\(\)/);
@@ -39,6 +41,18 @@ test('staffing readiness excludes admin and checks end-to-end job capabilities',
   assert.match(staffingMigration, /"collections\.assign": true/);
   assert.match(staffingMigration, /crm_has_permission\('overview\.view'\)/);
   assert.doesNotMatch(staffingMigration, /update\s+public|insert\s+into|delete\s+from/i);
+});
+
+test('team cutover presets add complete functional bundles without replacing existing grants', () => {
+  assert.match(permissions, /ACCOUNTING_SUPERVISOR_KEYS/);
+  assert.match(permissions, /FINANCE_OPERATOR_KEYS/);
+  assert.match(permissions, /COLLECTION_SUPERVISOR_KEYS/);
+  assert.match(permissions, /id: 'finance-operator'.*mode: 'merge'/s);
+  assert.match(permissions, /'system\.period_close'/);
+  assert.match(permissions, /'bank\.reconcile'/);
+  assert.match(permissions, /'collections\.assign'/);
+  assert.match(employeeManager, /preset\.mode === 'merge' \? \{ \.\.\.perms \} : \{\}/);
+  assert.match(employeeManager, /القالب الذي يبدأ بـ \+ يضيف على الحالي/);
 });
 
 test('admin dashboard exposes three clear readiness decisions and never assumes missing data is ready', () => {

@@ -322,6 +322,34 @@ export const SUPPORT_ROLE_KEYS = [
   'merchants.view',
 ];
 
+// حزم انتقال الفرق تضاف إلى صلاحيات الموظف الحالية ولا تستبدلها. تشمل
+// المسار التشغيلي الكامل فقط، بينما تبقى الحذف وإدارة الاتصال خارجها.
+export const ACCOUNTING_SUPERVISOR_KEYS = [
+  'overview.view',
+  'carriers.view',
+  'audits.view', 'audits.create', 'audits.edit', 'audits.export', 'audits.approve', 'audits.reject',
+  'internal_exports.view', 'internal_exports.pull',
+  'uploads.view', 'uploads.upload_file',
+  'cod.view', 'cod.upload_in', 'cod.upload_out', 'cod.export',
+  'merchants.view', 'merchants.upload',
+  'reports.view_operational',
+  'system.period_close',
+];
+
+export const FINANCE_OPERATOR_KEYS = [
+  'overview.view', 'overview.cash_position', 'overview.working_capital',
+  'zoho.view', 'money.pnl', 'forecast.view',
+  'bank.view', 'bank.upload_statement', 'bank.edit_note', 'bank.reconcile', 'bank.export',
+  'reconciliation.view', 'reconciliation.link', 'reconciliation.export',
+  'receivables.view', 'receivables.export',
+  'reports.view_financial', 'reports.view_bank_reconciliation', 'reports.export',
+];
+
+export const COLLECTION_SUPERVISOR_KEYS = [
+  ...COLLECTOR_ROLE_KEYS,
+  'collections.view_all', 'collections.assign',
+];
+
 // Preset list shown in the UI as quick toggles.
 export const PRESETS = [
   { id: 'none',      label: 'بدون صلاحيات',  keys: []                       },
@@ -331,6 +359,9 @@ export const PRESETS = [
   { id: 'support',   label: 'موظف خدمة عملاء — تذاكر',  keys: SUPPORT_ROLE_KEYS },
   { id: 'standard',  label: 'محاسب — قراءة وكتابة', keys: READ_WRITE_KEYS    },
   { id: 'full',      label: 'محاسب — صلاحيات كاملة (عدا الموظفين)', keys: FULL_ACCOUNTANT_KEYS },
+  { id: 'accounting-supervisor', label: '+ مشرف دورة المحاسب والإقفال', keys: ACCOUNTING_SUPERVISOR_KEYS, mode: 'merge' },
+  { id: 'finance-operator', label: '+ موظف مالية ومطابقة', keys: FINANCE_OPERATOR_KEYS, mode: 'merge' },
+  { id: 'collection-supervisor', label: '+ مشرف توزيع التحصيل', keys: COLLECTION_SUPERVISOR_KEYS, mode: 'merge' },
 ];
 
 // ────────────────────────────────────────────────────────────────────
