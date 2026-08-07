@@ -1321,3 +1321,403 @@
     grid-column: 1;
   }
 }
+
+/*
+ * Calm financial workspace theme
+ * ------------------------------
+ * One shared visual contract for the executive overview, collections and
+ * Zoho workspaces.  It intentionally changes presentation only: data flow,
+ * permissions and actions stay owned by their existing components.
+ */
+[data-theme="light"] {
+  --bg: #F4F7FB;
+  --bg2: #EEF3F8;
+  --surface: #FFFFFF;
+  --surface2: #F8FAFD;
+  --card: #FFFFFF;
+  --card2: #F8FAFD;
+  --border: #E5EAF2;
+  --border2: #D8E0EB;
+  --border3: #C5D0DF;
+  --text: #14213D;
+  --text2: #33415F;
+  --muted: #6F7D96;
+  --muted2: #98A3B6;
+  --brand: #2563EB;
+  --brand-strong: #1D4ED8;
+  --accent: #2563EB;
+  --accent2: #1D4ED8;
+  --accent3: #0F9F7C;
+  --green: #078565;
+  --green2: #056B53;
+  --gold: #B96811;
+  --red: #D83D43;
+  --sidebar: #FFFFFF;
+  --sidebar2: #F8FAFD;
+  --nav-text: #53617A;
+  --nav-text-hover: #14213D;
+  --nav-active-bg: #EEF4FF;
+  --nav-active-text: #1D4ED8;
+  --nav-hover-bg: #F5F8FC;
+  --nav-label-color: #14213D;
+  --nav-hint-color: #8793A8;
+  --nav-divider: #E5EAF2;
+  --sidebar-brand-text: #14213D;
+  --sidebar-brand-muted: #6F7D96;
+  --sidebar-user-bg: #F8FAFD;
+  --sidebar-user-border: #E1E7F0;
+  --sidebar-logout-bg: #FFFFFF;
+  --sidebar-logout-border: #D8E0EB;
+  --sidebar-logout-color: #53617A;
+  --shadow-sm: 0 1px 2px rgba(24, 39, 75, .045);
+  --shadow-md: 0 8px 22px rgba(24, 39, 75, .065);
+  --shadow-lg: 0 16px 38px rgba(24, 39, 75, .085);
+}
+
+[data-theme="light"] .app-layout {
+  background: var(--bg);
+}
+
+[data-theme="light"] .sidebar {
+  background: var(--surface);
+  border-color: var(--border2);
+  box-shadow: 0 10px 28px rgba(24, 39, 75, .07);
+}
+
+[data-theme="light"] .page-content {
+  background: var(--bg);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+[data-theme="light"] .page-hero-band {
+  overflow: visible;
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border2);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .page-hero-band::before {
+  display: none;
+}
+
+[data-theme="light"] .page-hero-band h1 {
+  color: var(--text) !important;
+}
+
+[data-theme="light"] .page-hero-band .hero-sub {
+  color: var(--muted) !important;
+}
+
+[data-theme="light"] .page-hero-band .hero-meta {
+  color: var(--text2) !important;
+  background: var(--surface2);
+  border-color: var(--border);
+  border-radius: 8px;
+}
+
+[data-theme="light"] .hero-icon-tile {
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-color: var(--brand-border);
+  box-shadow: none;
+}
+
+[data-theme="light"] .page-hero-band .ui-btn-ghost,
+[data-theme="light"] .ops-command-head .ui-btn-ghost {
+  color: var(--text2) !important;
+  background: var(--surface) !important;
+  border-color: var(--border2) !important;
+}
+
+[data-theme="light"] .page-hero-band .ui-btn-ghost:hover,
+[data-theme="light"] .ops-command-head .ui-btn-ghost:hover {
+  color: var(--brand) !important;
+  background: var(--brand-soft) !important;
+  border-color: var(--brand-border) !important;
+}
+
+[data-theme="light"] :where(.ui-card, .stat-card) {
+  background: var(--surface) !important;
+  border-color: var(--border2) !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+[data-theme="light"] .stat-card {
+  background: var(--surface) !important;
+}
+
+[data-theme="light"] .stat-card::before {
+  height: 2px;
+}
+
+[data-theme="light"] .workspace-switcher {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .workspace-tabs,
+[data-theme="light"] .zoho-section-tabs {
+  background: var(--surface2);
+  border-color: var(--border);
+  box-shadow: none;
+}
+
+[data-theme="light"] .workspace-tab.is-active,
+[data-theme="light"] .zoho-section-tabs button.active {
+  color: var(--brand);
+  background: var(--surface);
+  border-color: var(--brand-border);
+  box-shadow: inset 0 -2px 0 var(--brand), var(--shadow-sm);
+}
+
+[data-theme="light"] .zoho-section-tabs button.active {
+  color: var(--brand) !important;
+}
+
+[data-theme="light"] .workspace-context {
+  background: var(--surface);
+  border-color: var(--border2);
+  box-shadow: none;
+}
+
+[data-theme="light"] .overview-jump-nav {
+  background: var(--surface);
+  border-color: var(--border2);
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .overview-jump-nav button.is-primary {
+  background: var(--brand);
+  box-shadow: none;
+}
+
+[data-theme="light"] .ops-command {
+  border-color: var(--border2);
+  border-radius: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+[data-theme="light"] .ops-command-head {
+  background: var(--surface);
+  border-bottom-color: var(--border);
+}
+
+[data-theme="light"] .ops-command-kicker {
+  color: var(--brand);
+}
+
+[data-theme="light"] .ops-command-head h2 {
+  color: var(--text);
+}
+
+[data-theme="light"] .ops-command-head p {
+  color: var(--muted);
+}
+
+[data-theme="light"] .ops-command-head .ui-btn-primary {
+  color: #FFFFFF !important;
+  background: var(--brand) !important;
+  border-color: var(--brand) !important;
+  box-shadow: none !important;
+}
+
+[data-theme="light"] .ops-attention {
+  background: var(--surface2);
+  border-bottom-color: var(--border);
+}
+
+[data-theme="light"] .ops-attention-head span {
+  color: var(--muted);
+}
+
+[data-theme="light"] .ops-attention-head strong {
+  color: var(--text);
+}
+
+[data-theme="light"] .ops-attention-all {
+  color: var(--brand);
+  background: var(--surface);
+  border-color: var(--brand-border);
+}
+
+[data-theme="light"] .ops-mission {
+  background: var(--surface);
+  border-color: var(--border2);
+}
+
+[data-theme="light"] .ops-mission:last-child {
+  border-bottom-color: var(--border2);
+}
+
+[data-theme="light"] .ops-command-grid,
+[data-theme="light"] .ops-net-card,
+[data-theme="light"] .ops-priority-inspector {
+  background: var(--surface);
+}
+
+[data-theme="light"] .ops-priority-inspector {
+  border-inline-start: 1px solid var(--border);
+}
+
+[data-theme="light"] .ops-cash-part,
+[data-theme="light"] .ops-details,
+[data-theme="light"] .ops-bank-breakdown {
+  background: var(--surface2);
+  border-color: var(--border);
+}
+
+[data-theme="light"] .customer-money-hero::before {
+  inset-block: 14px;
+  width: 2px;
+}
+
+[data-theme="light"] .customer-money-hero > .ui-card {
+  border-color: color-mix(in srgb, var(--green) 25%, var(--border2)) !important;
+}
+
+[data-theme="light"] .customer-money-toolbar,
+[data-theme="light"] .zoho-subtabs,
+[data-theme="light"] .zoho-invoice-selection {
+  background: var(--surface);
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  box-shadow: none;
+}
+
+[data-theme="light"] .zoho-subtabs {
+  padding: 8px;
+}
+
+[data-theme="light"] .zoho-data-page > :where(.data-load-error, .zoho-section-tabs),
+[data-theme="light"] .customer-money-page > :where(.data-load-error, .data-confidence) {
+  margin-bottom: 12px;
+}
+
+[data-theme="light"] input,
+[data-theme="light"] select,
+[data-theme="light"] textarea {
+  background: var(--surface);
+  border-color: var(--border2);
+  box-shadow: none;
+}
+
+[data-theme="light"] table {
+  border-color: var(--border2);
+  box-shadow: none;
+}
+
+[data-theme="light"] th {
+  color: var(--muted);
+  background: var(--surface2) !important;
+}
+
+[data-theme="light"] tbody tr:hover td {
+  background: #F7F9FC;
+}
+
+@media (max-width: 768px) {
+  [data-theme="light"] .app-layout {
+    background: var(--bg);
+  }
+
+  [data-theme="light"] .page-content {
+    background: var(--bg);
+  }
+
+  [data-theme="light"] .workspace-page {
+    padding-inline: 12px;
+    padding-top: 12px;
+  }
+
+  [data-theme="light"] .page-hero-band {
+    border-radius: 12px;
+    box-shadow: none;
+  }
+
+  [data-theme="light"] .overview-jump-nav {
+    position: relative;
+    top: auto;
+    width: 100%;
+    margin-bottom: 10px;
+    padding: 4px;
+  }
+
+  [data-theme="light"] .overview-jump-nav button {
+    min-height: 38px;
+  }
+
+  [data-theme="light"] .ops-command {
+    margin-bottom: 16px;
+    border-radius: 14px;
+  }
+
+  [data-theme="light"] .ops-attention,
+  [data-theme="light"] .ops-net-card,
+  [data-theme="light"] .ops-priority-inspector {
+    padding: 14px;
+  }
+
+  [data-theme="light"] .ops-mission {
+    min-height: 72px;
+    padding: 10px;
+  }
+
+  [data-theme="light"] .customer-money-hero .hero-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 0 !important;
+  }
+
+  [data-theme="light"] .customer-money-hero .hero-grid > div {
+    min-width: 0;
+    padding: 12px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  [data-theme="light"] .customer-money-hero .hero-grid > div:nth-child(odd) {
+    border-inline-end: 1px solid var(--border);
+  }
+
+  [data-theme="light"] .customer-money-hero .hero-grid > div:last-child {
+    grid-column: 1 / -1;
+    border-inline-end: 0;
+  }
+
+  [data-theme="light"] .customer-money-toolbar {
+    gap: 7px !important;
+  }
+
+  [data-theme="light"] .customer-money-toolbar > div:first-child {
+    flex-basis: 100% !important;
+  }
+
+  [data-theme="light"] .zoho-data-page > .page-hero-band .page-hero-actions,
+  [data-theme="light"] .zoho-data-page > .page-hero-band .page-hero-actions > div {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  [data-theme="light"] .zoho-data-page > .page-hero-band .ui-btn {
+    width: 100%;
+    min-width: 0;
+    justify-content: center;
+  }
+
+  [data-theme="light"] .zoho-section-tabs,
+  [data-theme="light"] .workspace-tabs {
+    background: var(--surface);
+  }
+
+  [data-theme="light"] .zoho-invoice-selection {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  [data-theme="light"] .zoho-invoice-selection .ui-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -549,7 +549,7 @@ export default function ZohoData({ isActive = true }) {
   if (!can('zoho.view') && !can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="zoho-data-page workspace-page">
       <PageHeader icon={<Database size={22}/>} iconColor="#0EA5E9"
         title="زوهو والحسابات"
         subtitle="بيانات Zoho Books، حالة الربط، وتفعيل قراءة البنوك والخزائن"
