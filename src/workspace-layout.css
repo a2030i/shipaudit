@@ -193,7 +193,12 @@
   line-height: 1.7;
 }
 
-.team-readiness-card button {
+.team-readiness-card__actions {
+  display: grid;
+  gap: 7px;
+}
+
+.team-readiness-card__actions button {
   display: inline-flex;
   align-items: center;
   justify-content: space-between;
@@ -209,6 +214,13 @@
   font-size: 12px;
   font-weight: 800;
   cursor: pointer;
+}
+
+.team-readiness-card__actions button.is-secondary {
+  min-height: 36px;
+  color: var(--muted);
+  background: transparent;
+  font-size: 11px;
 }
 
 @media (max-width: 768px) {

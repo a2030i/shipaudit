@@ -62,6 +62,10 @@ test('admin dashboard exposes three clear readiness decisions and never assumes 
   assert.match(panel, /مشغّل دورة/);
   assert.match(panel, /مشغّل مالي/);
   assert.match(panel, /مشرف توزيع/);
+  assert.match(panel, /ضبط جداول الناقلين/);
+  assert.match(panel, /تعيين مشرف الإقفال/);
+  assert.match(panel, /تهيئة موظف المالية/);
+  assert.match(panel, /تهيئة مشرف ومستلم الحملات/);
   assert.match(panel, /المصدر غير متاح/);
   assert.match(panel, /تعذّر قراءة بيانات الجاهزية/);
   assert.match(overview, /profile\?\.role === 'admin'/);

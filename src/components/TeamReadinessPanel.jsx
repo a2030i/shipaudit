@@ -17,8 +17,9 @@ function statusOf(section) {
   return STATUS[section?.status] || STATUS.unavailable;
 }
 
-function ReadinessCard({ icon, title, section, evidence, staffing, note, action, onNavigate }) {
+function ReadinessCard({ icon, title, section, evidence, staffing, note, actions = [], onNavigate }) {
   const state = statusOf(section);
+  const visibleActions = actions.filter(Boolean);
   return (
     <article className={`team-readiness-card is-${state.tone}`}>
       <div className="team-readiness-card__head">
@@ -31,9 +32,18 @@ function ReadinessCard({ icon, title, section, evidence, staffing, note, action,
       <strong className="team-readiness-card__evidence">{section ? evidence : 'تعذّر قراءة بيانات الجاهزية'}</strong>
       {section && <span className="team-readiness-card__staffing">{staffing || 'تعذّر قراءة تغطية صلاحيات الفريق'}</span>}
       <p>{section ? note : 'أعد التحديث قبل اتخاذ قرار نقل الفريق إلى النظام.'}</p>
-      <button type="button" onClick={() => onNavigate(action.path)}>
-        {action.label}<ArrowLeft size={15}/>
-      </button>
+      <div className="team-readiness-card__actions">
+        {visibleActions.map((action, index) => (
+          <button
+            key={`${action.path}:${action.label}`}
+            type="button"
+            className={index > 0 ? 'is-secondary' : ''}
+            onClick={() => onNavigate(action.path)}
+          >
+            {action.label}<ArrowLeft size={15}/>
+          </button>
+        ))}
+      </div>
     </article>
   );
 }
@@ -69,7 +79,14 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           note={accounting?.missing_schedules > 0
             ? 'حدّد مواعيد الفاتورة والتحصيل الناقصة، ثم أغلق دورة شهر تجريبية.'
             : `${number(accounting?.closed_cycles)} دورات شهرية مغلقة بنجاح.`}
-          action={{ label: 'فتح دورة المحاسب', path: '/accounting-cycle' }}
+          actions={[
+            accounting?.missing_schedules > 0
+              ? { label: 'ضبط جداول الناقلين', path: '/tasks' }
+              : { label: 'فتح دورة المحاسب', path: '/accounting-cycle' },
+            accounting?.staffing?.cycle_closers === 0
+              ? { label: 'تعيين مشرف الإقفال', path: '/employees' }
+              : null,
+          ]}
           onNavigate={onNavigate}
         />
         <ReadinessCard
@@ -83,9 +100,14 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           note={finance
             ? `فرق كشف البنك عن دفتر زوهو: ${money(finance.statement_vs_book_difference)} ر.س · سلامة أرصدة العملاء: ${number(finance.customer_integrity_issues)} مشكلة.`
             : ''}
-          action={finance?.staffing?.finance_operators === 0
-            ? { label: 'تهيئة صلاحيات المالية', path: '/employees' }
-            : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' }}
+          actions={[
+            finance?.staffing?.finance_operators === 0
+              ? { label: 'تهيئة موظف المالية', path: '/employees' }
+              : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' },
+            finance?.staffing?.finance_operators === 0
+              ? { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' }
+              : null,
+          ]}
           onNavigate={onNavigate}
         />
         <ReadinessCard
@@ -99,7 +121,12 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           note={sales
             ? `${number(sales.campaign_recipients)} مستلمي عملاء حملات مهيئين · ${number(sales.unassigned_crm_tasks)} مهام CRM بلا مسؤول. مستلم الحملة يُضبط من الفريق والصلاحيات.`
             : ''}
-          action={{ label: 'توزيع مهام التحصيل', path: '/collections' }}
+          actions={[
+            { label: 'توزيع مهام التحصيل', path: '/collections' },
+            sales?.staffing?.collection_supervisors === 0 || sales?.campaign_recipients === 0
+              ? { label: 'تهيئة مشرف ومستلم الحملات', path: '/employees' }
+              : null,
+          ]}
           onNavigate={onNavigate}
         />
       </div>
