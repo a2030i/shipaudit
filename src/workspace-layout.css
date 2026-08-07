@@ -358,6 +358,158 @@
   -webkit-overflow-scrolling: touch;
 }
 
+.team-cutover-recommendations {
+  margin-bottom: 24px;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border));
+  border-radius: 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 6%, var(--card)), var(--card));
+}
+
+.team-cutover-recommendations__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.team-cutover-recommendations__header h2 {
+  margin: 0 0 4px;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.team-cutover-recommendations__header p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.team-cutover-recommendations__header > span {
+  flex: 0 0 auto;
+  padding: 4px 9px;
+  border: 1px solid color-mix(in srgb, var(--green) 28%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--green);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.team-cutover-recommendations__grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.team-cutover-role {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--role-tone) 22%, var(--border));
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.team-cutover-role__title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text);
+  font-size: 12.5px;
+  font-weight: 800;
+}
+
+.team-cutover-role__title b {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--gold) 10%, transparent);
+  color: var(--gold);
+  font: 700 10px var(--font-mono);
+}
+
+.team-cutover-role__title b.is-ready {
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+  color: var(--green);
+}
+
+.team-cutover-role > p {
+  min-height: 36px;
+  margin: 7px 0 12px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.65;
+}
+
+.team-cutover-role__candidate {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.team-cutover-role__candidate > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.team-cutover-role__candidate small,
+.team-cutover-role__candidate span,
+.team-cutover-role__empty {
+  color: var(--muted2);
+  font-size: 9.5px;
+}
+
+.team-cutover-role__candidate strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.permission-role-recommendation {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  padding: 11px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.permission-role-recommendation > div {
+  display: grid;
+  gap: 3px;
+}
+
+.permission-role-recommendation strong {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.permission-role-recommendation span,
+.permission-role-recommendation small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.permission-role-recommendation > small {
+  grid-column: 1 / -1;
+  color: var(--gold);
+  font-weight: 700;
+}
+
+.permission-role-recommendation .permission-role-ready {
+  color: var(--green);
+  font-weight: 700;
+}
+
 /* Secondary operations stay discoverable without competing with the main
    decision. This native details menu is keyboard accessible and works with
    touch without adding component state. */
@@ -2745,5 +2897,38 @@
 
   .team-readiness-card p {
     min-height: 0;
+  }
+
+  .team-cutover-recommendations {
+    padding: 14px;
+  }
+
+  .team-cutover-recommendations__header {
+    display: grid;
+    gap: 8px;
+  }
+
+  .team-cutover-recommendations__header > span {
+    width: max-content;
+  }
+
+  .team-cutover-recommendations__grid {
+    grid-template-columns: 1fr;
+  }
+
+  .team-cutover-role > p {
+    min-height: 0;
+  }
+
+  .team-cutover-role__candidate {
+    align-items: center;
+  }
+
+  .permission-role-recommendation {
+    grid-template-columns: 1fr;
+  }
+
+  .permission-role-recommendation .ui-btn {
+    width: 100%;
   }
 }

@@ -55,6 +55,16 @@ test('team cutover presets add complete functional bundles without replacing exi
   assert.match(employeeManager, /القالب الذي يبدأ بـ \+ يضيف على الحالي/);
 });
 
+test('employee manager recommends the closest operator but requires an explicit permission save', () => {
+  assert.match(employeeManager, /closestEmployeeForRole/);
+  assert.match(employeeManager, /تجهيز أدوار التشغيل/);
+  assert.match(employeeManager, /ترشيح تقني حسب الصلاحيات الحالية فقط/);
+  assert.match(employeeManager, /إضافة الناقص للمراجعة/);
+  assert.match(employeeManager, /لن تتفعّل قبل ضغط «حفظ الصلاحيات»/);
+  assert.match(employeeManager, /onClick=\{handleSave\}/);
+  assert.doesNotMatch(employeeManager, /useEffect\([^)]*applyPreset/s);
+});
+
 test('admin dashboard exposes three clear readiness decisions and never assumes missing data is ready', () => {
   assert.match(panel, /المحاسبة/);
   assert.match(panel, /المالية/);

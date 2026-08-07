@@ -14,6 +14,7 @@ import { useAuth } from '../lib/auth.jsx';
 import { pageTitle } from '../lib/pageTitles.js';
 import {
   PERMISSION_CATALOG, PRESETS, ALL_PERMISSION_KEYS, FULL_ACCOUNTANT_KEYS,
+  ACCOUNTING_SUPERVISOR_KEYS, FINANCE_OPERATOR_KEYS, COLLECTION_SUPERVISOR_KEYS,
 } from '../lib/permissions.js';
 
 const ROLES = [
@@ -27,6 +28,47 @@ const AVATAR_COLORS = [
   'var(--accent)','#34d399','#fbbf24','#f87171',
   '#a78bfa','#fb923c','#e879f9','#4ade80',
 ];
+
+const TEAM_CUTOVER_ROLES = [
+  {
+    id: 'accounting',
+    title: 'مشرف دورة المحاسب والإقفال',
+    description: 'مراجعة ملفات الناقلين، الأوزان، التحصيل وإقفال الشهر.',
+    presetId: 'accounting-supervisor',
+    keys: ACCOUNTING_SUPERVISOR_KEYS,
+    color: 'var(--accent)',
+  },
+  {
+    id: 'finance',
+    title: 'موظف المالية والمطابقة',
+    description: 'زوهو، البنوك، المطابقة والتقارير المالية.',
+    presetId: 'finance-operator',
+    keys: FINANCE_OPERATOR_KEYS,
+    color: 'var(--green)',
+  },
+  {
+    id: 'collections',
+    title: 'مشرف المبيعات والتحصيل',
+    description: 'توزيع العملاء ومهام التحصيل ومتابعة الحملات.',
+    presetId: 'collection-supervisor',
+    keys: COLLECTION_SUPERVISOR_KEYS,
+    color: 'var(--gold)',
+  },
+];
+
+function closestEmployeeForRole(employees, role) {
+  return employees
+    .filter(employee => employee.role === 'accountant')
+    .map(employee => {
+      const granted = role.keys.filter(key => employee.permissions?.[key] === true).length;
+      return {
+        employee,
+        granted,
+        missing: role.keys.length - granted,
+      };
+    })
+    .sort((a, b) => b.granted - a.granted || a.employee.name.localeCompare(b.employee.name, 'ar'))[0] || null;
+}
 
 // Icon lookup for permission catalog sections
 const SECTION_ICONS = {
@@ -218,7 +260,7 @@ function EmployeeModal({ employee, onClose, onSave }) {
 // Granular per-employee permission editor. Lists every key from
 // PERMISSION_CATALOG grouped by section, with checkboxes. Top bar has
 // search + preset shortcuts.
-function PermissionsModal({ employee, onClose, onSave }) {
+function PermissionsModal({ employee, onClose, onSave, recommendedPresetId = '' }) {
   const [perms,  setPerms]  = useState(employee.permissions || {});
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
@@ -238,6 +280,15 @@ function PermissionsModal({ employee, onClose, onSave }) {
     const known = new Set(ALL_PERMISSION_KEYS);
     return Object.entries(perms).filter(([key, value]) => value && !known.has(key)).map(([key]) => key);
   }, [perms]);
+  const recommendedPreset = useMemo(
+    () => PRESETS.find(preset => preset.id === recommendedPresetId) || null,
+    [recommendedPresetId],
+  );
+  const recommendedMissing = useMemo(
+    () => recommendedPreset?.keys.filter(key => perms[key] !== true) || [],
+    [perms, recommendedPreset],
+  );
+  const [preparedPresetId, setPreparedPresetId] = useState('');
 
   const toggle = (key) => setPerms(p => ({ ...p, [key]: !p[key] }));
 
@@ -245,6 +296,7 @@ function PermissionsModal({ employee, onClose, onSave }) {
     const next = preset.mode === 'merge' ? { ...perms } : {};
     for (const k of preset.keys) next[k] = true;
     setPerms(next);
+    setPreparedPresetId(preset.id);
   };
 
   const toggleSection = (sectionPerms) => {
@@ -294,6 +346,27 @@ function PermissionsModal({ employee, onClose, onSave }) {
         background: 'var(--card)', borderBottom: '1px solid var(--border)',
         padding: '6px 0 14px', marginBottom: 12,
       }}>
+        {recommendedPreset ? (
+          <div className="permission-role-recommendation">
+            <div>
+              <strong>{recommendedPreset.label.replace(/^\+\s*/, '')}</strong>
+              <span>
+                الحالي {recommendedPreset.keys.length - recommendedMissing.length} من {recommendedPreset.keys.length}
+                {recommendedMissing.length > 0 ? ` · ينقص ${recommendedMissing.length}` : ' · مكتمل'}
+              </span>
+            </div>
+            {recommendedMissing.length > 0 ? (
+              <Btn size="sm" onClick={() => applyPreset(recommendedPreset)}>
+                إضافة الناقص للمراجعة
+              </Btn>
+            ) : (
+              <span className="permission-role-ready">جاهز لهذا الدور</span>
+            )}
+            {preparedPresetId === recommendedPreset.id ? (
+              <small>أضيفت إلى المسودة فقط؛ لن تتفعّل قبل ضغط «حفظ الصلاحيات».</small>
+            ) : null}
+          </div>
+        ) : null}
         <div style={{
           display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10, flexWrap: 'wrap',
         }}>
@@ -660,6 +733,10 @@ export default function EmployeeManager() {
     acc[r.value] = employees.filter(e => e.role === r.value).length;
     return acc;
   }, {});
+  const roleRecommendations = useMemo(
+    () => TEAM_CUTOVER_ROLES.map(role => ({ ...role, match: closestEmployeeForRole(employees, role) })),
+    [employees],
+  );
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 920, margin: '0 auto' }}>
@@ -700,6 +777,65 @@ export default function EmployeeManager() {
           </div>
         ))}
       </div>
+
+      {!loading && employees.length > 0 ? (
+        <section className="team-cutover-recommendations" aria-labelledby="team-cutover-title">
+          <div className="team-cutover-recommendations__header">
+            <div>
+              <h2 id="team-cutover-title">تجهيز أدوار التشغيل</h2>
+              <p>ترشيح تقني حسب الصلاحيات الحالية فقط. تكرار الاسم لا يعني تكليفه بدورين، والحفظ يبقى بقرار المدير.</p>
+            </div>
+            <span>لا تغييرات تلقائية</span>
+          </div>
+          <div className="team-cutover-recommendations__grid">
+            {roleRecommendations.map(role => {
+              const match = role.match;
+              return (
+                <article key={role.id} className="team-cutover-role" style={{ '--role-tone': role.color }}>
+                  <div className="team-cutover-role__title">
+                    <span>{role.title}</span>
+                    {match ? (
+                      <b className={match.missing === 0 ? 'is-ready' : ''}>
+                        {match.granted}/{role.keys.length}
+                      </b>
+                    ) : null}
+                  </div>
+                  <p>{role.description}</p>
+                  {match ? (
+                    <div className="team-cutover-role__candidate">
+                      <div>
+                        <small>الأقرب حاليًا</small>
+                        <strong>{match.employee.name}</strong>
+                        <span>
+                          {match.missing === 0
+                            ? 'كل صلاحيات الدور موجودة'
+                            : `ينقص ${match.missing} صلاحيات من الدور`}
+                        </span>
+                      </div>
+                      {canManagePermissions ? (
+                        <Btn
+                          variant="ghost"
+                          size="sm"
+                          icon={<Shield size={12}/>}
+                          onClick={() => setModal({
+                            type: 'perms',
+                            employee: match.employee,
+                            recommendedPresetId: role.presetId,
+                          })}
+                        >
+                          مراجعة التجهيز
+                        </Btn>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="team-cutover-role__empty">لا يوجد موظف يمكن ترشيحه لهذا الدور.</div>
+                  )}
+                </article>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       {loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}>
@@ -840,6 +976,7 @@ export default function EmployeeManager() {
           employee={modal.employee}
           onClose={() => setModal(null)}
           onSave={handleSavePerms}
+          recommendedPresetId={modal.recommendedPresetId}
         />
       )}
     </div>
