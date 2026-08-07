@@ -117,6 +117,17 @@ test('combined ZATCA action requires both permissions and live verification', as
   assert.match(source, /openingBalance\(inv\.invoice_number\)/);
   assert.match(source, /mark_sent:\$\{inv\.zoho_id\}/);
   assert.match(source, /zatca_push:\$\{inv\.zoho_id\}/);
+  assert.ok(
+    source.indexOf('const pushKey = `zatca_push:') < source.indexOf('const markKey = `mark_sent:'),
+    'Saudi e-invoice flow must push to Fatoora before marking the document sent',
+  );
+  assert.match(source, /after_zatca_push:\s*true/);
+});
+
+test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {
+  const source = await read('supabase/functions/zoho-sync/index.ts');
+  assert.match(source, /reused_recent_sync:\s*true/);
+  assert.match(source, /2 \* 60_000/);
 });
 
 test('collection performance is supervisor-gated and aging snapshots are server scheduled', async () => {

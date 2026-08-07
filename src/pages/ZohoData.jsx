@@ -981,6 +981,7 @@ function OperationResultModal({ result, onClose }) {
       {r.stage ? <div style={{ color: 'var(--muted)', marginTop: 3 }}>المرحلة: {stageAr[r.stage] || r.stage}</div> : null}
       {r.marked_sent ? <div style={{ color: 'var(--green)', marginTop: 3 }}>حُوّلت من مسودة إلى مرسلة ✓</div> : null}
       {r.pushed ? <div style={{ color: 'var(--green)', marginTop: 3 }}>أُرسلت إلى زاتكا عبر زوهو ✓</div> : null}
+      {r.warning ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>تم الإرسال إلى زاتكا، وتنبيه حالة المستند: {r.warning}</div> : null}
       {r.reason === 'already_pushed' ? <div style={{ color: 'var(--muted)', marginTop: 3 }}>مرسلة إلى زاتكا مسبقًا — لم تُكرر</div> : null}
       {r.reason === 'opening_balance' ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>رصيد افتتاحي — مستبعد من زاتكا</div> : null}
       {r.error ? <div style={{ color: 'var(--red)', marginTop: 3 }}>{r.error}</div> : null}

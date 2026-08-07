@@ -9,6 +9,16 @@
 
 import { supabase } from './supabase.js';
 
+async function functionErrorMessage(error, fallback) {
+  let payload = null;
+  try { payload = await error?.context?.clone?.().json(); } catch { /* non-JSON response */ }
+  const raw = String(payload?.error || payload?.message || error?.message || fallback || 'تعذر تنفيذ الطلب');
+  if (/too many requests continuously|rate.?limit/i.test(raw)) {
+    return 'زوهو استقبل طلبات متقاربة جدًا. تم إيقاف التكرار؛ انتظر دقيقة ثم حدّث العرض.';
+  }
+  return raw;
+}
+
 export const currentPnlPeriod = () => {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -44,7 +54,7 @@ export async function syncZohoDocs({ force = false, full = false } = {}) {
   const { data, error } = await supabase.functions.invoke('zoho-sync', {
     body: { action: 'sync', force, full },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await functionErrorMessage(error, 'فشل المزامنة'));
   if (!data?.ok) throw new Error(data?.error || 'فشل المزامنة');
   return data;   // { invoices: N, customerpayments: M }
 }
@@ -475,7 +485,7 @@ export const getZohoAuthUrl = getZohoWriteAuthUrl;
 
 async function invokeZohoOperation(body) {
   const { data, error } = await supabase.functions.invoke('zoho-operations', { body });
-  if (error && !data) throw new Error(error.message);
+  if (error && !data) throw new Error(await functionErrorMessage(error, 'تعذر تنفيذ إجراء زوهو'));
   if (data?.error) throw new Error(data.error);
   return data;
 }

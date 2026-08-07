@@ -487,6 +487,17 @@ Deno.serve(async (req) => {
 
     if (action === 'sync' || action === 'sync_financial') {
       const financialOnly = action === 'sync_financial';
+      if (action === 'sync' && body.force !== true && body.full !== true) {
+        const { data: recent } = await db.from('zoho_sync_runs')
+          .select('finished_at,results,api_calls').eq('status', 'succeeded')
+          .order('finished_at', { ascending: false }).limit(1).maybeSingle();
+        const recentAt = recent?.finished_at ? new Date(recent.finished_at).getTime() : 0;
+        if (recentAt && Date.now() - recentAt < 2 * 60_000) {
+          return json({ ok: true, cached: true, reused_recent_sync: true,
+            finished_at: recent.finished_at, api_calls: recent.api_calls || 0,
+            results: recent.results || {} });
+        }
+      }
       // zoho_sync_runs يقبل manual/cron/full_rebuild فقط. نوع الكيانات المالية
       // ظاهر أصلاً في results؛ لا نخترع trigger_source يكسره القيد.
       const triggerSource = cronKey ? 'cron'

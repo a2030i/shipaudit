@@ -285,47 +285,8 @@ Deno.serve(async req => {
 
         let liveDocumentStatus = String(live.status || inv.status || '').toLowerCase();
         let liveZatcaStatus = liveEinvoiceStatus(live);
-        let markedSent = false;
+        let markedSent = liveDocumentStatus !== 'draft';
         let pushed = false;
-
-        if (liveDocumentStatus === 'draft') {
-          const markKey = `mark_sent:${inv.zoho_id}`;
-          const audit = await begin(db, markKey, 'invoice_mark_sent', user.id,
-            { invoice_id: inv.zoho_id, invoice_number: inv.invoice_number, parent_action: action });
-          if (!audit.done) {
-            const markUrl = `${access.apiDomain}/books/v3/invoices/${inv.zoho_id}/status/sent?organization_id=${encodeURIComponent(access.orgId)}`;
-            const marked = await zjson(markUrl, { method: 'POST', headers });
-            if (!marked.r.ok || marked.body?.code !== 0) {
-              const message = String(marked.body?.message || marked.r.status);
-              await finish(db, markKey, 'failed', marked.body, message);
-              results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'mark_sent', error: message });
-              continue;
-            }
-            await finish(db, markKey, 'succeeded', marked.body);
-          }
-          markedSent = true;
-          await db.from('zoho_invoices').update({ status: 'sent' }).eq('zoho_id', inv.zoho_id);
-
-          // Zoho may need a short moment to expose the e-invoice state after the
-          // draft is marked sent. Re-read the authoritative document before push.
-          let postSentReadError = '';
-          for (let attempt = 0; attempt < 3; attempt += 1) {
-            if (attempt) await new Promise(resolve => setTimeout(resolve, 450));
-            try {
-              live = await getLiveInvoice(access, String(inv.zoho_id));
-              liveDocumentStatus = String(live.status || 'sent').toLowerCase();
-              liveZatcaStatus = liveEinvoiceStatus(live);
-              if (liveZatcaStatus) break;
-            } catch (error) {
-              postSentReadError = error instanceof Error ? error.message : String(error);
-            }
-          }
-          if (!liveZatcaStatus && postSentReadError) {
-            results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'post_sent_check',
-              marked_sent: true, error: postSentReadError });
-            continue;
-          }
-        }
 
         if (['pushed', 'reported', 'cleared'].includes(liveZatcaStatus)) {
           await db.from('zoho_invoices').update({ status: liveDocumentStatus || 'sent', einvoice_status: liveZatcaStatus }).eq('zoho_id', inv.zoho_id);
@@ -355,9 +316,51 @@ Deno.serve(async req => {
           await finish(db, pushKey, 'succeeded', pushedResponse.body);
         }
         pushed = true;
-        await db.from('zoho_invoices').update({ status: liveDocumentStatus || 'sent', einvoice_status: 'pushed' }).eq('zoho_id', inv.zoho_id);
+
+        // Saudi e-invoices cannot be marked sent before they are submitted to
+        // Fatoora (Zoho code 41016). Push first, then re-read the live document.
+        let postPushWarning = '';
+        for (let attempt = 0; attempt < 4; attempt += 1) {
+          if (attempt) await new Promise(resolve => setTimeout(resolve, 700));
+          try {
+            live = await getLiveInvoice(access, String(inv.zoho_id));
+            liveDocumentStatus = String(live.status || liveDocumentStatus).toLowerCase();
+            liveZatcaStatus = liveEinvoiceStatus(live) || 'pushed';
+            if (['pushed', 'reported', 'cleared'].includes(liveZatcaStatus)) break;
+          } catch (error) {
+            postPushWarning = error instanceof Error ? error.message : String(error);
+          }
+        }
+
+        if (liveDocumentStatus === 'draft') {
+          const markKey = `mark_sent:${inv.zoho_id}`;
+          const markAudit = await begin(db, markKey, 'invoice_mark_sent', user.id,
+            { invoice_id: inv.zoho_id, invoice_number: inv.invoice_number, parent_action: action, after_zatca_push: true });
+          if (!markAudit.done) {
+            const markUrl = `${access.apiDomain}/books/v3/invoices/${inv.zoho_id}/status/sent?organization_id=${encodeURIComponent(access.orgId)}`;
+            const marked = await zjson(markUrl, { method: 'POST', headers });
+            if (!marked.r.ok || marked.body?.code !== 0) {
+              postPushWarning = String(marked.body?.message || marked.r.status);
+              await finish(db, markKey, 'failed', marked.body, postPushWarning);
+            } else {
+              await finish(db, markKey, 'succeeded', marked.body);
+              liveDocumentStatus = 'sent';
+              markedSent = true;
+            }
+          } else {
+            liveDocumentStatus = 'sent';
+            markedSent = true;
+          }
+        } else {
+          markedSent = true;
+        }
+
+        await db.from('zoho_invoices').update({ status: liveDocumentStatus || inv.status,
+          einvoice_status: ['pushed', 'reported', 'cleared'].includes(liveZatcaStatus) ? liveZatcaStatus : 'pushed' })
+          .eq('zoho_id', inv.zoho_id);
         results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
-          marked_sent: markedSent, pushed, message: markedSent ? 'marked_sent_and_pushed' : 'pushed' });
+          marked_sent: markedSent, pushed, warning: postPushWarning || undefined,
+          message: markedSent ? 'pushed_and_marked_sent' : 'pushed' });
       }
 
       const failed = results.filter(result => result.outcome === 'failed').length;
