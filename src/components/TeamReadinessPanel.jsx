@@ -114,15 +114,19 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           icon={<Users size={20}/>}
           title="المبيعات والتحصيل"
           section={sales}
-          evidence={`${number(sales?.unassigned_collections)} تحصيل · ${number(sales?.unassigned_followups)} متابعة بلا مسؤول`}
+          evidence={sales
+            ? `${number(sales.collection_candidates)} عميل يحتاج متابعة · ${number(sales.missing_collection_tasks)} بلا مهمة · ${number(sales.unassigned_collection_customers)} بلا مسؤول`
+            : ''}
           staffing={sales?.staffing
             ? `${number(sales.staffing.sales_operators)} مبيعات · ${number(sales.staffing.collection_operators)} تحصيل · ${number(sales.staffing.collection_supervisors)} مشرف توزيع`
             : ''}
           note={sales
-            ? `${number(sales.campaign_recipients)} مستلمي عملاء حملات مهيئين · ${number(sales.unassigned_crm_tasks)} مهام CRM بلا مسؤول. مستلم الحملة يُضبط من الفريق والصلاحيات.`
+            ? `${money(sales.candidate_debt)} ر.س ضمن سياسة المتابعة؛ منها ${money(sales.missing_collection_debt)} ر.س لم تُنشأ لها مهمة. ${number(sales.campaign_recipients)} مستلمي حملات مهيئين.`
             : ''}
           actions={[
-            { label: 'توزيع مهام التحصيل', path: '/collections' },
+            sales?.missing_collection_tasks > 0
+              ? { label: 'إنشاء المهام الناقصة', path: '/collections' }
+              : { label: 'توزيع مهام التحصيل', path: '/collections' },
             sales?.staffing?.collection_supervisors === 0 || sales?.campaign_recipients === 0
               ? { label: 'تهيئة مشرف ومستلم الحملات', path: '/employees' }
               : null,

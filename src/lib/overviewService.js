@@ -41,7 +41,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
   // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
   const bankEffQ = loadEffectiveBankBalance().catch(() => null);
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial, teamReadinessRaw, teamStaffing] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial, teamReadinessRaw, teamStaffing, collectionWork] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -67,6 +67,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // تغطية الصلاحيات الفعلية تستبعد المدير: الهدف إثبات أن الفريق نفسه
     // يستطيع تشغيل المسار، لا أن حساب المالك يستطيع فتح كل شيء.
     supabase.rpc('team_staffing_readiness_snapshot').then(r => r.data || null).catch(() => null),
+    // تغطية مهام التحصيل تُقاس من العملاء الذين يجب متابعتهم، لا من عدد
+    // المهام الموجودة فقط؛ وبذلك لا تختفي المديونيات التي لم تُنشأ لها مهمة.
+    supabase.rpc('collection_work_readiness_snapshot').then(r => r.data || null).catch(() => null),
   ]);
 
   const readinessRank = { unavailable: 3, blocked: 2, pilot: 1, ready: 0 };
@@ -78,11 +81,20 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       : operational.status;
     return { ...operational, staffing, status };
   };
+  const collectionOperational = collectionWork && teamReadinessRaw?.sales
+    ? {
+        ...teamReadinessRaw.sales,
+        ...collectionWork,
+        status: collectionWork.missing_collection_tasks > 0
+          ? 'pilot'
+          : teamReadinessRaw.sales.status,
+      }
+    : null;
   const teamReadiness = teamReadinessRaw ? {
     ...teamReadinessRaw,
     accounting: mergeReadiness(teamReadinessRaw.accounting, teamStaffing?.accounting),
     finance: mergeReadiness(teamReadinessRaw.finance, teamStaffing?.finance),
-    sales: mergeReadiness(teamReadinessRaw.sales, teamStaffing?.sales),
+    sales: mergeReadiness(collectionOperational, teamStaffing?.sales),
   } : null;
 
   const thisSnap = (thisSnapArr[0] || {});

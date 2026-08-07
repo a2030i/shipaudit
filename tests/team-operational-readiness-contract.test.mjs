@@ -22,6 +22,10 @@ const permissionAudit = await readFile(
   new URL('../supabase/migrations/20260807193000_employee_permission_audit.sql', import.meta.url),
   'utf8',
 );
+const collectionCoverageMigration = await readFile(
+  new URL('../supabase/migrations/20260807153727_report_missing_collection_work_in_readiness.sql', import.meta.url),
+  'utf8',
+);
 
 test('readiness RPC is authenticated, read-only and validates explicit carrier schedules', () => {
   assert.match(migration, /auth\.uid\(\)/);
@@ -36,9 +40,22 @@ test('readiness RPC is authenticated, read-only and validates explicit carrier s
 test('overview loads team readiness in the existing parallel request fan-out', () => {
   assert.match(service, /team_operational_readiness_snapshot/);
   assert.match(service, /team_staffing_readiness_snapshot/);
+  assert.match(service, /collection_work_readiness_snapshot/);
   assert.match(service, /mergeReadiness/);
   assert.match(service, /teamReadiness/);
   assert.match(service, /Promise\.all/);
+});
+
+test('collection readiness starts from debtors that need work, not only existing tasks', () => {
+  assert.match(collectionCoverageMigration, /from public\.customer_ar ar/);
+  assert.match(collectionCoverageMigration, /from public\.customer_collectible_lines line/);
+  assert.match(collectionCoverageMigration, /missing_collection_tasks/);
+  assert.match(collectionCoverageMigration, /assigned_collection_customers/);
+  assert.match(collectionCoverageMigration, /where task\.stage in \('todo', 'contacted', 'promised', 'snoozed'\)/);
+  assert.doesNotMatch(collectionCoverageMigration, /insert\s+into|update\s+public|delete\s+from/i);
+  assert.match(service, /collectionWork\.missing_collection_tasks > 0/);
+  assert.match(panel, /عميل يحتاج متابعة/);
+  assert.match(panel, /إنشاء المهام الناقصة/);
 });
 
 test('staffing readiness excludes admin and checks end-to-end job capabilities', () => {
