@@ -122,7 +122,7 @@ test('combined ZATCA action requires both permissions and live verification', as
     'Saudi e-invoice flow must push to Fatoora before marking the document sent',
   );
   assert.match(source, /after_zatca_push:\s*true/);
-  assert.match(source, /Number\(body\?\.code\) === 41051/);
+  assert.match(source, /\[41051, -1, 503\]\.includes\(Number\(body\?\.code\)\)/);
   assert.match(source, /retryPortal:\s*true, timeoutMs:\s*15_000/);
   assert.match(source, /offset \+= 2/);
 });

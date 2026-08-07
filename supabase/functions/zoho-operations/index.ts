@@ -55,7 +55,9 @@ async function zjson(url: string, init: RequestInit, options: { retryPortal?: bo
     try {
       const r = await fetch(url, { ...init, signal: init.signal || AbortSignal.timeout(options.timeoutMs || 20_000) });
       const body = await r.json().catch(() => ({}));
-      const retryable = r.status === 429 || (options.retryPortal && Number(body?.code) === 41051);
+      const portalMessage = String(body?.message || body?.error || '');
+      const retryable = r.status === 429 || (options.retryPortal
+        && ([41051, -1, 503].includes(Number(body?.code)) || /503|temporar|proxy|مؤقت/i.test(portalMessage)));
       if (retryable && attempt + 1 < attempts) {
         await new Promise(resolve => setTimeout(resolve, options.retryPortal ? 2_500 : 1_200));
         continue;
@@ -325,7 +327,8 @@ Deno.serve(async req => {
             const message = String(pushedResponse.body?.message || pushedResponse.r.status);
             await finish(db, pushKey, 'failed', pushedResponse.body, message);
             return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'zatca_push',
-              marked_sent: markedSent, retryable: Number(pushedResponse.body?.code) === 41051 || Number(pushedResponse.body?.code) === 504,
+              marked_sent: markedSent, retryable: [41051, -1, 503, 504].includes(Number(pushedResponse.body?.code))
+                || /503|temporar|proxy|مؤقت/i.test(message),
               error: message };
           }
           await finish(db, pushKey, 'succeeded', pushedResponse.body);
