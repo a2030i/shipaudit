@@ -59,6 +59,15 @@ const openingBalanceConfigured = (payload: unknown) => {
   return Math.round(total * 100) / 100;
 };
 
+const hasOpeningBalanceField = (payload: unknown): boolean => {
+  if (Array.isArray(payload)) return payload.some(hasOpeningBalanceField);
+  if (!payload || typeof payload !== 'object') return false;
+  const row = payload as Record<string, unknown>;
+  if (Object.prototype.hasOwnProperty.call(row, 'opening_balance_amount')) return true;
+  if (Object.prototype.hasOwnProperty.call(row, 'opening_balances') && Array.isArray(row.opening_balances)) return true;
+  return Object.values(row).some(hasOpeningBalanceField);
+};
+
 const mapInvoice = (it: Record<string, unknown>, now: string) => {
   const modified = it.last_modified_time
     ? new Date(it.last_modified_time as string).toISOString() : null;
@@ -772,6 +781,7 @@ Deno.serve(async (req) => {
         let refreshed = 0;
         let repairedInvoices = 0;
         let failed = 0;
+        const failureReasons: string[] = [];
         for (const candidate of balanceCandidates || []) {
           const { response, payload } = await fetchZohoJson({
             url: `${apiDomain}/books/v3/contacts/${candidate.zoho_id}?organization_id=${orgId}`,
@@ -781,6 +791,10 @@ Deno.serve(async (req) => {
           const detail = (payload as Record<string, any>)?.contact;
           if (!response.ok || (payload as Record<string, unknown>).code !== 0 || !detail) {
             failed++;
+            failureReasons.push(
+              `${candidate.zoho_id}: contact ${response.status}/${String((payload as Record<string, unknown>)?.code ?? '-')}`
+              + ` ${(payload as Record<string, unknown>)?.message || ''}`.trim(),
+            );
             continue;
           }
           // Zoho documents contact opening balances under a dedicated endpoint.
@@ -791,12 +805,23 @@ Deno.serve(async (req) => {
             token,
             stats,
           });
-          if (!openingResponse.ok || (openingPayload as Record<string, unknown>).code !== 0) {
+          const openingCode = (openingPayload as Record<string, unknown>)?.code;
+          const openingEndpointOk = openingResponse.ok
+            && (openingCode == null || Number(openingCode) === 0)
+            && hasOpeningBalanceField(openingPayload);
+          const detailHasOpeningBalance = hasOpeningBalanceField(detail);
+          if (!openingEndpointOk && !detailHasOpeningBalance) {
             failed++;
+            failureReasons.push(
+              `${candidate.zoho_id}: opening ${openingResponse.status}/${String(openingCode ?? '-')}`
+              + ` ${(openingPayload as Record<string, unknown>)?.message || 'no explicit opening balance field'}`.trim(),
+            );
             continue;
           }
           const checkedAt = new Date().toISOString();
-          const configuredOpening = openingBalanceConfigured(openingPayload);
+          const configuredOpening = openingEndpointOk
+            ? openingBalanceConfigured(openingPayload)
+            : openingBalanceConfigured(detail);
           const { error: updateError } = await db.from('zoho_contacts').update({
             outstanding_receivable: Number(detail.outstanding_receivable_amount) || 0,
             outstanding_payable: Number(detail.outstanding_payable_amount) || 0,
@@ -876,7 +901,9 @@ Deno.serve(async (req) => {
         await db.from('zoho_sync_state').upsert({
           entity: 'contact_balance_details', last_sync: new Date().toISOString(),
           last_count: refreshed, last_status: failed ? 'failed' : 'succeeded',
-          last_error: failed ? `${failed} contact detail requests failed` : null,
+          last_error: failed
+            ? (failureReasons.slice(0, 5).join(' | ') || `${failed} contact balance requests failed`).slice(0, 2000)
+            : null,
           last_run_id: run.id, updated_at: new Date().toISOString(),
         });
       } catch (e) {

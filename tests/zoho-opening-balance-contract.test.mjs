@@ -7,6 +7,9 @@ test('customer balance integrity uses Zoho dedicated opening-balances endpoint',
 
   assert.match(source, /contacts\/\$\{candidate\.zoho_id\}\/openingbalances\?organization_id=/);
   assert.match(source, /openingBalanceConfigured\(openingPayload\)/);
+  assert.match(source, /detailHasOpeningBalance = hasOpeningBalanceField\(detail\)/);
+  assert.match(source, /: openingBalanceConfigured\(detail\)/);
   assert.match(source, /hasOwnProperty\.call\(row, 'opening_balance_amount'\)/);
+  assert.match(source, /failureReasons\.slice\(0, 5\)\.join/);
   assert.doesNotMatch(source, /openingBalanceConfigured\(detail as Record<string, unknown>\)/);
 });
