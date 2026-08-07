@@ -697,6 +697,7 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(appPage, /ACCOUNTING_CYCLE_STAGES/);
   assert.match(appPage, /accounting-stage-nav/);
   assert.match(cyclePage, /const requestedStage = params\.get\('stage'\)/);
+  assert.match(cyclePage, /requestedPeriod !== period\) return/);
   assert.match(cyclePage, /accounting-cycle-layout accounting-cycle-layout--contextual/);
   assert.doesNotMatch(cyclePage, /accounting-cycle-list/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}[^>]*onRedownload=\{redownloadWeights\}/);

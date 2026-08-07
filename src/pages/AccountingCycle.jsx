@@ -279,6 +279,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   useEffect(() => {
     if (!isActive || !snapshot?.stages?.length) return;
     const params = new URLSearchParams(location.search);
+    const requestedPeriod = params.get('period');
+    if (/^\d{4}-\d{2}$/.test(requestedPeriod || '') && requestedPeriod !== period) return;
     const requestedStage = params.get('stage');
     if (requestedStage && snapshot.stages.some(stage => stage.id === requestedStage)) {
       setSelectedId(requestedStage);
