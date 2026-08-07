@@ -657,13 +657,15 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
     readFile(new URL('../supabase/migrations/20260806193000_explicit_carrier_schedule_days.sql', import.meta.url), 'utf8'),
     readFile(new URL('../supabase/migrations/20260806150248_add_cod_settlement_schedule_slot.sql', import.meta.url), 'utf8'),
   ]);
-  assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\}/);
+  assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\} lockPeriod/);
   assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
   const appPage = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(appPage, /<AccountingCycle carriers=\{carriers\} isActive=\{pathname==='\/accounting-cycle'\}\/>/);
-  assert.match(cyclePage, /compactLayout && selected\?\.id === stage\.id/);
-  assert.match(cyclePage, /!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">/);
-  assert.match(cyclePage, /<StageHistory stage=\{stage\}[^>]*onRedownload=\{redownloadWeights\}/);
+  assert.match(appPage, /ACCOUNTING_CYCLE_STAGES/);
+  assert.match(appPage, /accounting-stage-nav/);
+  assert.match(cyclePage, /new URLSearchParams\(location\.search\)\.get\('stage'\)/);
+  assert.match(cyclePage, /accounting-cycle-layout accounting-cycle-layout--contextual/);
+  assert.doesNotMatch(cyclePage, /accounting-cycle-list/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}[^>]*onRedownload=\{redownloadWeights\}/);
   assert.doesNotMatch(cyclePage, /history\.slice\(0,\s*12\)/);
   assert.match(cyclePage, /snapshot\.sourceErrors/);
@@ -711,6 +713,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(settlementSlotMigration, /add column if not exists schedule_slot date/);
   assert.match(settlementSlotMigration, /check \(schedule_slot is null or direction = 'in'\)/);
   assert.match(uploadWizard, /initialPeriodMatch/);
+  assert.match(uploadWizard, /lockPeriod && inferred\.source === 'shipment_dates' && inferredPeriodKey !== periodKey/);
+  assert.match(uploadWizard, /غيّر الشهر من أعلى الصفحة/);
   assert.match(uploadWizard, /title: 'حدد الفترة'/);
   assert.match(cycleService, /const HISTORY_PAGE_SIZE = 1000/);
   assert.match(cycleService, /\.range\(from, to\)/);

@@ -147,7 +147,7 @@ function DetailRow({ label, value, mono }) {
 }
 
 // ── Step 1 — Period only (carrier is auto-detected from the uploaded file) ───
-function Step1({ month, setMonth, year, setYear, onNext }) {
+function Step1({ month, setMonth, year, setYear, onNext, periodLocked = false, period }) {
   return (
     <Card style={{ maxWidth: 620, margin: '0 auto', padding: 30, border: '1px solid var(--border)', boxShadow: 'var(--shadow-md)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -170,14 +170,21 @@ function Step1({ month, setMonth, year, setYear, onNext }) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
-        <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
-          {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
-        </Select>
-        <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
-          {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
-        </Select>
-      </div>
+      {periodLocked ? (
+        <div style={{ padding: '14px 16px', marginBottom: 18, borderRadius: 12, background: 'var(--surface)', border: '1px solid var(--border)' }}>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>فترة الدورة المختارة من أعلى الصفحة</div>
+          <strong style={{ color: 'var(--text)', fontSize: 15 }}>{period}</strong>
+        </div>
+      ) : (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 18 }}>
+          <Select label="الشهر" value={month} onChange={e => setMonth(+e.target.value)}>
+            {MONTHS.map((m, i) => <option key={i} value={i+1}>{m}</option>)}
+          </Select>
+          <Select label="السنة" value={year} onChange={e => setYear(+e.target.value)}>
+            {[2024,2025,2026,2027].map(y => <option key={y} value={y}>{y}</option>)}
+          </Select>
+        </div>
+      )}
 
       <div style={{
         padding: '12px 14px', marginBottom: 18,
@@ -324,9 +331,11 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
           ))}
         </div>
 
-        <Btn variant="ghost" size="full" onClick={onBack}>
-          <ArrowRight size={14}/> رجوع
-        </Btn>
+        {onBack ? (
+          <Btn variant="ghost" size="full" onClick={onBack}>
+            <ArrowRight size={14}/> رجوع
+          </Btn>
+        ) : null}
       </div>
     </Card>
   );
@@ -578,12 +587,12 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function UploadWizard({ carriers, onComplete, initialPeriod = '' }) {
+export default function UploadWizard({ carriers, onComplete, initialPeriod = '', lockPeriod = false }) {
   const { user } = useAuth();
   const location = useLocation();
   const now = new Date();
   const initialPeriodMatch = /^(\d{4})-(\d{2})$/.exec(initialPeriod);
-  const [step,         setStep]        = useState(1);
+  const [step,         setStep]        = useState(() => lockPeriod && initialPeriodMatch ? 2 : 1);
   // carrierId is now set automatically after the file is read.
   // Stays empty during step 1 (period picker).
   const [carrierId,    setCarrierId]   = useState('');
@@ -914,9 +923,11 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
       autoConfirmFiredRef.current = false;
       // م3 (فحص عدائي): الفترة كانت تعلق على آخر اختيار يدوي (PageSlot لا
       // يفصل §2.1) — فاتورة واردة اليوم تُعاد فترتها لتاريخ اليوم دائماً.
-      const nowD = new Date();
-      setMonth(nowD.getMonth() + 1);
-      setYear(nowD.getFullYear());
+      if (!lockPeriod) {
+        const nowD = new Date();
+        setMonth(nowD.getMonth() + 1);
+        setYear(nowD.getFullYear());
+      }
       setStep(2);
       toast(`جارٍ معالجة الملف من Webhook: ${payload.filename}`, 'info');
       // Synchronous call so handleFile starts immediately. Internally
@@ -973,7 +984,15 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
     const inferred = inferPeriodFromRows(mapped, month, year);
     const auditPeriod = inferred.period;
     const inferredPeriodKey = buildPeriodKey(inferred.month, inferred.year);
-    if (inferred.month !== month || inferred.year !== year) {
+    if (lockPeriod && inferred.source === 'shipment_dates' && inferredPeriodKey !== periodKey) {
+      setAutoApproveFlag(false);
+      toast(
+        `الملف يخص ${auditPeriod} بينما الدورة المفتوحة هي ${period}. غيّر الشهر من أعلى الصفحة إلى ${inferredPeriodKey} ثم أعد رفع الملف`,
+        'error',
+      );
+      return;
+    }
+    if (!lockPeriod && (inferred.month !== month || inferred.year !== year)) {
       setMonth(inferred.month);
       setYear(inferred.year);
       toast(`تم اعتماد فترة الملف من تواريخ الشحنات: ${auditPeriod}`, 'info');
@@ -1230,7 +1249,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
       {/* ── ACTIVE STEP ───────────────────────────────────────────────── */}
       {step === 1 && (
         <Step1 month={month} setMonth={setMonth} year={year} setYear={setYear}
-          onNext={() => setStep(2)}/>
+          onNext={() => setStep(2)} periodLocked={lockPeriod} period={period}/>
       )}
       {step === 2 && (
         <Step2 carrierName={carrier?.name || 'سنحدّدها من الملف'} carrierLogo={carrier?.logo} period={period}
@@ -1239,7 +1258,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '' 
             // فاشلة — وإلا اعتُمد ملف يدوي لم يطلب أحد أتمتته.
             setAutoApproveFlag(false);
             handleFile(f);
-          }} onBack={() => setStep(1)}
+          }} onBack={lockPeriod ? null : () => setStep(1)}
           uploading={uploading} aiStatus={aiStatus}/>
       )}
       {step === 3 && (

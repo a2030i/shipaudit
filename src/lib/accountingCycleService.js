@@ -7,21 +7,13 @@ import {
   requiredScheduleKindsForCarrier,
   scheduleRequirementLabel,
 } from './tasksService.js';
+import { ACCOUNTING_CYCLE_STAGES } from './accountingCycleStages.js';
+export { ACCOUNTING_CYCLE_STAGES } from './accountingCycleStages.js';
 
 const PAGE = 1000;
 const ARABIC_MONTHS = [
   'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو',
   'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر',
-];
-
-export const ACCOUNTING_CYCLE_STAGES = [
-  { id: 'carrier_audits', label: 'مراجعة فواتير شركات الشحن', permission: 'audits.create' },
-  { id: 'weight_export', label: 'تصدير أوزان الفوترة إلى لمحة', permission: 'internal_exports.pull' },
-  { id: 'lamha_shipments', label: 'أرقام الشحنات واستيراد ملف لمحة', permission: 'uploads.upload_file' },
-  { id: 'lamha_sources', label: 'تحديث كشف الحساب ودليل المتاجر', permission: 'uploads.upload_file' },
-  { id: 'carrier_collections', label: 'رفع تحصيلات شركات الشحن', permission: 'cod.upload_in' },
-  { id: 'lamha_collections', label: 'رفع تحصيل لمحة', permission: 'cod.upload_out' },
-  { id: 'period_close', label: 'مراجعة وإقفال الشهر', permission: 'system.period_close' },
 ];
 
 export function normalizeAccountingPeriod(value = new Date().toISOString().slice(0, 7)) {

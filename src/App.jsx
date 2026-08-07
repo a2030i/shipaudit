@@ -13,6 +13,7 @@ import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
 import { NAV_SECTIONS as NAV_SECTION_MODEL, NAV_GROUPS as NAV_GROUP_MODEL, applyNavigationIA } from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
+import { ACCOUNTING_CYCLE_STAGES } from './lib/accountingCycleStages.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
 const CarrierManager = lazy(() => import('./pages/CarrierManager.jsx'));
@@ -356,16 +357,11 @@ function AppInner({ theme, toggleTheme }) {
     typeof window !== 'undefined' && window.matchMedia('(min-width: 769px) and (max-width: 1100px)').matches
   ));
   const [mobileOpen,      setMobileOpen]      = useState(false);
+  const [mobileNavLevel,  setMobileNavLevel]  = useState('centers');
+  const [selectedSectionId, setSelectedSectionId] = useState('');
   const [pendingAudit,    setPendingAudit]    = useState(null);
-  // Accordion rule: only the current work area opens automatically. This keeps
-  // the sidebar compact without hiding the user's current location after a
-  // reload or a direct link. The user can still open one other section at a time.
-  const ALL_SECTION_IDS = NAV_SECTIONS.map(s => s.id);
-  const [collapsedSecs, setCollapsedSecs] = useState(() => new Set(ALL_SECTION_IDS));
-  // مراكز العمل القديمة أخفت صفحات مستقلة داخل شريط تبويبات أفقي. في بنية
-  // التنقل الجديدة تظهر تلك الصفحات كطبقة رابعة قابلة للطي داخل الجانبية:
-  // قسم ← مجموعة عمل ← مركز ← صفحة. المسار النشط يبقى مفتوحاً دائماً، بينما
-  // يستطيع المستخدم فتح مركز آخر مؤقتاً من دون تغيير الصفحة الحالية.
+  // الجانبية الأساسية للمراكز فقط. اختيار مركز يفتح جانبية سياقية للصفحات
+  // التابعة له، وعلى الجوال ينتقل الدرج إلى المستوى الثاني مع زر رجوع واضح.
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -375,6 +371,12 @@ function AppInner({ theme, toggleTheme }) {
     mq.addEventListener?.('change', onViewport);
     return () => mq.removeEventListener?.('change', onViewport);
   }, []);
+  useEffect(() => {
+    const routeItem = NAV_ITEMS.find(item => (
+      item.path === rawPath || item.subTabs?.some(tab => tab.legacy === rawPath)
+    ));
+    setSelectedSectionId(routeItem?.section || '');
+  }, [rawPath]);
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -409,15 +411,6 @@ function AppInner({ theme, toggleTheme }) {
     check();
     return () => { stop = true; clearInterval(t); };
   }, []);
-  const toggleSection = (id) => setCollapsedSecs(prev => {
-    // أكورديون: القسم المفتوح واحد فقط — فتح قسم يقفل كل البقية،
-    // وإغلاق المفتوح يقفل الجميع.
-    const wasCollapsed = prev.has(id);
-    const next = new Set(ALL_SECTION_IDS);
-    if (wasCollapsed) next.delete(id);
-    return next;
-  });
-
   // ── Default redirect after login: always go to /overview ──
   // /overview was promoted to be the home page; /dashboard is kept
   // as a still-reachable legacy alias but no longer the landing.
@@ -457,6 +450,7 @@ function AppInner({ theme, toggleTheme }) {
   const goto = (path) => {
     navigate(path);
     setMobileOpen(false);
+    setMobileNavLevel('centers');
   };
 
   const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => {
@@ -548,10 +542,17 @@ function AppInner({ theme, toggleTheme }) {
   const currentGroup = (NAV_GROUP_MODEL[currentSection?.id] || [])
     .find(group => group.id === currentNavItem?.navGroup);
   const currentContextTabs = currentNavItem ? visibleSubTabsFor(currentNavItem) : [];
-  const hasContextSidebar = currentContextTabs.length > 1;
-  const currentContextPath = currentNavItem && currentSubTab
-    ? subTabPath(currentNavItem, currentSubTab)
-    : currentNavItem?.path || '';
+  const contextSection = NAV_SECTIONS.find(section => section.id === (selectedSectionId || currentSection?.id));
+  const contextItems = contextSection
+    ? visibleNav.filter(item => item.section === contextSection.id)
+      .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
+    : [];
+  const contextGroups = contextSection ? groupNavItems(contextSection.id, contextItems, false) : [];
+  const accountingStageId = location.pathname === '/accounting-cycle'
+    ? new URLSearchParams(location.search).get('stage')
+    : null;
+  const accountingStages = ACCOUNTING_CYCLE_STAGES.filter(stage => isAdmin || can(stage.permission));
+  const hasContextSidebar = Boolean(contextSection && contextItems.length);
   const currentTitle = currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
@@ -606,7 +607,7 @@ function AppInner({ theme, toggleTheme }) {
                 </div>
               </div>
             )}
-            {mobileOpen && <strong className="sidebar-mobile-title">القائمة</strong>}
+            {mobileOpen && <strong className="sidebar-mobile-title">{mobileNavLevel === 'context' ? contextSection?.label : 'المراكز'}</strong>}
             {mobileOpen && (
               <button className="sidebar-close" aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)}>
                 <X size={20}/>
@@ -614,8 +615,9 @@ function AppInner({ theme, toggleTheme }) {
             )}
           </div>
 
-          {/* Nav — grouped by section */}
-          <nav className="sidebar-nav">
+          {/* المستوى الأول: مراكز فقط. الصفحات تنتقل إلى الجانبية السياقية. */}
+          <nav className={`sidebar-nav${mobileNavLevel === 'context' ? ' is-mobile-context' : ''}`}>
+            <div className="primary-center-nav">
             {visibleNav.length === 0 && (
               <div style={{
                 padding: '20px 14px', fontSize: 12, color: 'var(--nav-text)',
@@ -632,77 +634,49 @@ function AppInner({ theme, toggleTheme }) {
               <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
             ))}
 
-            {/* Accordion sections */}
+            {/* مراكز العمل — لا أقسام فرعية داخل الجانبية الأساسية. */}
             {NAV_SECTIONS.map((sec) => {
               const items = visibleNav
                 .filter(n => n.section === sec.id)
                 .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
               if (!items.length) return null;
-              const sectionHasActive = items.some(item => activeFor(item));
-              const rowCount = items.length;
-              // في الوضع المصغّر تبقى الأيقونات متاحة. في الوضع الكامل يعمل
-              // أكورديون قسم واحد حتى تظل مساحة العمل قصيرة وواضحة.
-              const isOpen = collapsed || sectionHasActive || !collapsedSecs.has(sec.id);
+              const sectionHasActive = contextSection?.id === sec.id;
               const SecIcon = sec.icon;
-              const itemGroups = groupNavItems(sec.id, items, collapsed);
-              const groupHeaderCount = collapsed ? 0 : itemGroups.length;
               return (
-                <div key={sec.id} className={`nav-section ${isOpen ? 'open' : ''} ${sectionHasActive ? 'has-active' : ''}`}>
-                  {collapsed ? (
-                    <div className="nav-section-divider"/>
-                  ) : (
-                    <button
-                      type="button"
-                      className="nav-section-trigger"
-                      aria-expanded={isOpen}
-                      onClick={() => toggleSection(sec.id)}
-                    >
-                      <span className="nav-section-icon"><SecIcon size={15} strokeWidth={2}/></span>
-                      <span className="nav-section-copy">
-                        <strong>{sec.label}</strong>
-                        <small>{sec.hint}</small>
-                      </span>
-                      <ChevronDown className="nav-section-chevron" size={15}/>
-                    </button>
-                  )}
-                  <div
-                    className="nav-section-items"
-                    style={{ maxHeight: isOpen ? `${rowCount * 64 + groupHeaderCount * 30 + 20}px` : 0 }}
-                  >
-                    {itemGroups.map((group, groupIndex) => {
-                      const groupHasActive = group.items.some(item => activeFor(item));
-                      return (
-                        <div
-                          key={group.id}
-                          className={`nav-work-group${groupHasActive ? ' has-active' : ''}`}
-                          role="group"
-                          aria-label={group.label || sec.label}
-                          data-index={groupIndex}
-                        >
-                          {!collapsed && (
-                            <div className="nav-group-title" style={{ '--group-accent': sec.accent }}>
-                              <span className="nav-group-dot" aria-hidden="true"/>
-                              <span>{group.label}</span>
-                            </div>
-                          )}
-                          {group.items.map(item => (
-                            <NavBtn
-                              key={item.id}
-                              n={item}
-                              active={activeFor(item)}
-                              accent={sec.accent}
-                              collapsed={collapsed}
-                              onClick={() => goto(item.path)}
-                              nested
-                            />
-                          ))}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
+                <button
+                  key={sec.id}
+                  type="button"
+                  className={`primary-center-item${sectionHasActive ? ' active' : ''}`}
+                  aria-current={sectionHasActive ? 'true' : undefined}
+                  title={collapsed ? sec.label : undefined}
+                  onClick={() => {
+                    setSelectedSectionId(sec.id);
+                    setMobileNavLevel('context');
+                  }}
+                >
+                  <span className="primary-center-item__icon" style={{ '--center-accent': sec.accent }}><SecIcon size={18}/></span>
+                  {!collapsed && <span><strong>{sec.label}</strong><small>{sec.hint}</small></span>}
+                  {!collapsed && <ChevronLeft size={15}/>}
+                </button>
               );
             })}
+            </div>
+
+            <div className="mobile-context-navigation">
+              <button type="button" className="mobile-context-back" onClick={() => setMobileNavLevel('centers')}>
+                <ChevronRight size={16}/> العودة إلى المراكز
+              </button>
+              <ContextSectionNavigation
+                groups={contextGroups}
+                currentNavItem={currentNavItem}
+                currentContextTabs={currentContextTabs}
+                currentSubTab={currentSubTab}
+                accountingStages={accountingStages}
+                accountingStageId={accountingStageId}
+                onNavigate={goto}
+                subTabPath={subTabPath}
+              />
+            </div>
           </nav>
 
           {/* Footer */}
@@ -754,31 +728,22 @@ function AppInner({ theme, toggleTheme }) {
 
         {/* ═══════════════ MAIN ═══════════════ */}
         {hasContextSidebar && (
-          <aside className="context-sidebar" aria-label={`صفحات ${currentNavItem.label}`}>
+          <aside className="context-sidebar" aria-label={`صفحات ${contextSection.label}`}>
             <header className="context-sidebar__header">
-              <span className="context-sidebar__eyebrow">مساحة عمل</span>
-              <h2>{currentNavItem.label}</h2>
-              {currentGroup?.label && <p>{currentGroup.label}</p>}
+              <span className="context-sidebar__eyebrow">مركز عمل</span>
+              <h2>{contextSection.label}</h2>
+              <p>{contextSection.hint}</p>
             </header>
-            <nav className="context-sidebar__nav">
-              {currentContextTabs.map(tab => {
-                const Icon = tab.icon || currentNavItem.icon || FileText;
-                const active = currentSubTab?.tabId === tab.tabId;
-                return (
-                  <button
-                    key={tab.tabId}
-                    type="button"
-                    className={`context-nav-item${active ? ' active' : ''}`}
-                    aria-current={active ? 'page' : undefined}
-                    onClick={() => goto(subTabPath(currentNavItem, tab))}
-                  >
-                    <span className="context-nav-item__icon"><Icon size={17}/></span>
-                    <span>{tab.label}</span>
-                    <ChevronLeft className="context-nav-item__arrow" size={15}/>
-                  </button>
-                );
-              })}
-            </nav>
+            <ContextSectionNavigation
+              groups={contextGroups}
+              currentNavItem={currentNavItem}
+              currentContextTabs={currentContextTabs}
+              currentSubTab={currentSubTab}
+              accountingStages={accountingStages}
+              accountingStageId={accountingStageId}
+              onNavigate={goto}
+              subTabPath={subTabPath}
+            />
           </aside>
         )}
 
@@ -786,7 +751,7 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Topbar */}
           <div className="topbar">
-            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => setMobileOpen(true)}>
+            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => { setMobileNavLevel('centers'); setMobileOpen(true); }}>
               <Menu size={20}/>
             </button>
 
@@ -837,21 +802,6 @@ function AppInner({ theme, toggleTheme }) {
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
               prevents CSS animations from replaying on every navigation */}
-          {hasContextSidebar && (
-            <label className="context-mobile-nav">
-              <span>داخل {currentNavItem.label}</span>
-              <select
-                aria-label={`صفحات ${currentNavItem.label}`}
-                value={currentContextPath}
-                onChange={(event) => goto(event.target.value)}
-              >
-                {currentContextTabs.map(tab => (
-                  <option key={tab.tabId} value={subTabPath(currentNavItem, tab)}>{tab.label}</option>
-                ))}
-              </select>
-            </label>
-          )}
-
           <div className="page-content">
 
             <PageSlot active={pathname==='/decisions'} scroll>
@@ -1201,6 +1151,82 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function ContextSectionNavigation({
+  groups,
+  currentNavItem,
+  currentContextTabs,
+  currentSubTab,
+  accountingStages,
+  accountingStageId,
+  onNavigate,
+  subTabPath,
+}) {
+  return (
+    <nav className="context-sidebar__nav">
+      {groups.map(group => (
+        <section className="context-nav-group" key={group.id} aria-label={group.label}>
+          {group.label && <h3>{group.label}</h3>}
+          {group.items.map(item => {
+            const active = currentNavItem?.id === item.id;
+            const Icon = item.icon || FileText;
+            const tabs = active ? currentContextTabs : [];
+            const showStages = active && item.id === 'accounting-cycle';
+            return (
+              <div className={`context-page-entry${active ? ' active' : ''}`} key={item.id}>
+                <button
+                  type="button"
+                  className={`context-nav-item${active ? ' active' : ''}`}
+                  aria-current={active ? 'page' : undefined}
+                  onClick={() => onNavigate(item.path)}
+                >
+                  <span className="context-nav-item__icon"><Icon size={17}/></span>
+                  <span>{item.label}</span>
+                  <ChevronLeft className="context-nav-item__arrow" size={15}/>
+                </button>
+                {active && tabs.length > 1 && (
+                  <div className="context-subnav" aria-label={`داخل ${item.label}`}>
+                    {tabs.map(tab => {
+                      const TabIcon = tab.icon || Icon;
+                      const tabActive = currentSubTab?.tabId === tab.tabId;
+                      return (
+                        <button
+                          key={tab.tabId}
+                          type="button"
+                          className={tabActive ? 'active' : ''}
+                          onClick={() => onNavigate(subTabPath(item, tab))}
+                        >
+                          <TabIcon size={14}/><span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {showStages && (
+                  <div className="context-subnav accounting-stage-nav" aria-label="مراحل الدورة المحاسبية">
+                    {accountingStages.map((stage, index) => {
+                      const stageActive = accountingStageId === stage.id || (!accountingStageId && index === 0);
+                      return (
+                        <button
+                          key={stage.id}
+                          type="button"
+                          className={stageActive ? 'active' : ''}
+                          onClick={() => onNavigate(`/accounting-cycle?stage=${encodeURIComponent(stage.id)}`)}
+                        >
+                          <b>{index + 1}</b><span>{stage.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </section>
+      ))}
+    </nav>
+  );
+}
+
 function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
   const Icon = n.icon;
   // Section-tinted active state — when an `accent` prop is passed

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import {
   AlertTriangle, ArrowLeft, CalendarDays, Check, CheckCircle2, Circle,
-  ClipboardCheck, Download, FileSpreadsheet, LockKeyhole, PackageCheck,
-  RefreshCw, Store, Upload, WalletCards,
+  ClipboardCheck, Download, FileSpreadsheet, LockKeyhole,
+  RefreshCw, Upload,
 } from 'lucide-react';
 import { Btn, Card, DropZone, PageHeader, Select, Spinner, toast } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -26,16 +26,6 @@ import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 import UploadWizard from './UploadWizard.jsx';
 import AuditResults from './AuditResults.jsx';
 import { UploadModal as SettlementUploadModal } from './CodSettlements.jsx';
-
-const STAGE_ICONS = {
-  carrier_audits: ClipboardCheck,
-  weight_export: Download,
-  lamha_shipments: PackageCheck,
-  lamha_sources: Store,
-  carrier_collections: WalletCards,
-  lamha_collections: FileSpreadsheet,
-  period_close: LockKeyhole,
-};
 
 const STATUS = {
   complete: { label: 'مكتمل', color: 'var(--green)', Icon: CheckCircle2 },
@@ -91,21 +81,6 @@ function fmtDate(value) {
   return new Intl.DateTimeFormat('ar-SA', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
 }
 
-function useCompactCycleLayout() {
-  const query = '(max-width: 760px)';
-  const [compact, setCompact] = useState(() => typeof window !== 'undefined' && window.matchMedia(query).matches);
-
-  useEffect(() => {
-    const media = window.matchMedia(query);
-    const sync = () => setCompact(media.matches);
-    sync();
-    media.addEventListener?.('change', sync);
-    return () => media.removeEventListener?.('change', sync);
-  }, []);
-
-  return compact;
-}
-
 function fileOf(record) {
   return record?.file_name || record?.source_file || record?.fileName || null;
 }
@@ -125,38 +100,6 @@ function stageActionLabel(stage) {
     period_close: 'مراجعة وإقفال الشهر',
   };
   return labels[stage.id];
-}
-
-function StageCard({ stage, index, selected, onSelect }) {
-  const cfg = STATUS[stage.status] || STATUS.pending;
-  const Icon = STAGE_ICONS[stage.id] || Circle;
-  const StatusIcon = cfg.Icon;
-  const lastFile = fileOf(stage.last);
-  return (
-    <button
-      type="button"
-      className={`accounting-cycle-stage${selected ? ' is-selected' : ''}`}
-      onClick={onSelect}
-      aria-current={selected ? 'step' : undefined}
-    >
-      <span className="accounting-cycle-stage__index" style={{ '--stage-tone': cfg.color }}>
-        {stage.status === 'complete' ? <Check size={16}/> : index + 1}
-      </span>
-      <span className="accounting-cycle-stage__body">
-        <span className="accounting-cycle-stage__title"><Icon size={17}/>{stage.label}</span>
-        <span className="accounting-cycle-stage__reason">{stage.reason}</span>
-        {(lastFile || dateOf(stage.last)) && (
-          <span className="accounting-cycle-stage__last">
-            {lastFile && <b>{lastFile}</b>}
-            {dateOf(stage.last) && <span>{fmtDate(dateOf(stage.last))}</span>}
-          </span>
-        )}
-      </span>
-      <span className="accounting-cycle-stage__status" style={{ '--stage-tone': cfg.color }}>
-        <StatusIcon size={14}/>{cfg.label}
-      </span>
-    </button>
-  );
 }
 
 const HISTORY_SOURCE_LABELS = {
@@ -284,7 +227,7 @@ function SourceUpload({ sourceId, title, done, busy, onFile }) {
 export default function AccountingCycle({ carriers = [], isActive = false }) {
   const { user, can } = useAuth();
   const navigate = useNavigate();
-  const compactLayout = useCompactCycleLayout();
+  const location = useLocation();
   const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
   const [snapshot, setSnapshot] = useState(null);
   const [loadError, setLoadError] = useState('');
@@ -319,6 +262,16 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   useEffect(() => { if (isActive) refresh(); }, [isActive, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    if (!isActive || !snapshot?.stages?.length) return;
+    const requested = new URLSearchParams(location.search).get('stage');
+    if (requested && snapshot.stages.some(stage => stage.id === requested)) {
+      setSelectedId(requested);
+    } else if (selectedId && snapshot.stages.some(stage => stage.id === selectedId)) {
+      navigate(`/accounting-cycle?stage=${encodeURIComponent(selectedId)}`, { replace: true });
+    }
+  }, [isActive, location.search, navigate, selectedId, snapshot]);
+
+  useEffect(() => {
     if (!carrierId && carriers[0]?.id) setCarrierId(carriers[0].id);
   }, [carrierId, carriers]);
 
@@ -329,11 +282,6 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     [snapshot, selectedId],
   );
   const percent = snapshot ? Math.round((snapshot.completed / snapshot.total) * 100) : 0;
-
-  const selectStage = stage => {
-    setSelectedId(stage.id);
-    setAuditDraft(null);
-  };
 
   const recordFailure = async ({ stage, sourceKind = null, fileName = null, error, result = {} }) => {
     try {
@@ -654,7 +602,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
               ضبط جداول استلام الناقلين
             </Btn>
           )}
-          {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period}/> : <NoPermission/>}
+          {allowed ? <UploadWizard key={period} carriers={carriers} onComplete={setAuditDraft} initialPeriod={period} lockPeriod/> : <NoPermission/>}
         </div>
       );
     }
@@ -954,21 +902,8 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
             <b className="accounting-cycle-summary__percent">{percent}%</b>
           </Card>
 
-          <div className="accounting-cycle-layout">
-            <div className="accounting-cycle-list">
-              {snapshot.stages.map((stage, index) => (
-                <div key={stage.id} className="accounting-cycle-stage-wrap">
-                  <StageCard stage={stage} index={index} selected={selected?.id === stage.id} onSelect={() => selectStage(stage)}/>
-                  {compactLayout && selected?.id === stage.id && (
-                    <div className="accounting-cycle-detail accounting-cycle-detail--mobile">
-                      {renderStage(stage)}
-                      <StageHistory stage={stage} busy={String(busy || '').startsWith('weight_redownload:')} onRedownload={redownloadWeights}/>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-            {!compactLayout && <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">
+          <div className="accounting-cycle-layout accounting-cycle-layout--contextual">
+            <Card className="accounting-cycle-detail accounting-cycle-detail--desktop">
               {selected && (
                 <>
                   <div className="accounting-cycle-detail__head">
@@ -980,7 +915,7 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                   <StageHistory stage={selected} busy={String(busy || '').startsWith('weight_redownload:')} onRedownload={redownloadWeights}/>
                 </>
               )}
-            </Card>}
+            </Card>
           </div>
         </>
       ) : null}
