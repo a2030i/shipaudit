@@ -733,19 +733,19 @@ export default function ZohoData({ isActive = true }) {
           {can('zoho.invoice_mark_sent') && can('zoho.invoice_push_zatca') ? (
             <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
               icon={invoiceOperation === 'finalize' ? <Spinner size={12}/> : <ShieldCheck size={13}/>}
-              title="يفحص كل فاتورة حيًا في زوهو، يحوّل المسودة إلى مرسلة ثم يرسل الجاهز إلى زاتكا، مع منع التكرار واستبعاد الأرصدة الافتتاحية"
+              title="يفحص كل فاتورة حيًا في زوهو، يرسلها إلى زاتكا أولًا عبر زوهو ثم يحدّث حالة المستند، مع منع التكرار واستبعاد الأرصدة الافتتاحية"
               onClick={() => runInvoiceOperation('finalize')}>
               اعتماد وإرسال المحدد إلى زاتكا
             </Btn>
           ) : null}
-          {can('zoho.invoice_mark_sent') ? (
+          {can('zoho.invoice_mark_sent') && !can('zoho.invoice_push_zatca') ? (
             <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
               icon={invoiceOperation === 'sent' ? <Spinner size={12}/> : null}
               onClick={() => runInvoiceOperation('sent')}>
               تحويل المسودات المحددة إلى مرسلة
             </Btn>
           ) : null}
-          {can('zoho.invoice_push_zatca') ? (
+          {can('zoho.invoice_push_zatca') && !can('zoho.invoice_mark_sent') ? (
             <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
               icon={invoiceOperation === 'zatca' ? <Spinner size={12}/> : null}
               onClick={() => runInvoiceOperation('zatca')}>
