@@ -461,9 +461,15 @@ export default function ZohoData({ isActive = true }) {
       setOperationResult({ kind, ...result });
       setSelectedInvoices(new Set());
       await load(type, period, periodTo);
-      toast(kind === 'sent' ? 'اكتمل تحويل المسودات' : kind === 'finalize'
-        ? 'اكتملت دورة الاعتماد والإرسال إلى زاتكا'
-        : 'اكتمل إرسال زاتكا عبر زوهو', result.failed ? 'info' : 'success');
+      if (result.failed && !result.succeeded) {
+        toast(`لم تنجح أي فاتورة (${result.failed}) — راجع سبب كل فاتورة`, 'error');
+      } else if (result.failed) {
+        toast(`نجحت ${result.succeeded} وتعذرت ${result.failed} — راجع النتيجة`, 'info');
+      } else {
+        toast(kind === 'sent' ? 'اكتمل تحويل المسودات' : kind === 'finalize'
+          ? 'اكتملت دورة الاعتماد والإرسال إلى زاتكا'
+          : 'اكتمل إرسال زاتكا عبر زوهو', 'success');
+      }
     } catch (e) {
       toast(`تعذّر التنفيذ: ${e.message}`, 'error');
     } finally { setInvoiceOperation(null); }
@@ -982,6 +988,7 @@ function OperationResultModal({ result, onClose }) {
       {r.marked_sent ? <div style={{ color: 'var(--green)', marginTop: 3 }}>حُوّلت من مسودة إلى مرسلة ✓</div> : null}
       {r.pushed ? <div style={{ color: 'var(--green)', marginTop: 3 }}>أُرسلت إلى زاتكا عبر زوهو ✓</div> : null}
       {r.warning ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>تم الإرسال إلى زاتكا، وتنبيه حالة المستند: {r.warning}</div> : null}
+      {r.retryable ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>العطل مؤقت في بوابة زوهو؛ بقيت الفاتورة معلقة ويمكن إعادة المحاولة بأمان.</div> : null}
       {r.reason === 'already_pushed' ? <div style={{ color: 'var(--muted)', marginTop: 3 }}>مرسلة إلى زاتكا مسبقًا — لم تُكرر</div> : null}
       {r.reason === 'opening_balance' ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>رصيد افتتاحي — مستبعد من زاتكا</div> : null}
       {r.error ? <div style={{ color: 'var(--red)', marginTop: 3 }}>{r.error}</div> : null}

@@ -49,11 +49,32 @@ async function accessToken(db: ReturnType<typeof svc>) {
   return { token: String(j.access_token), apiDomain: String(data.api_domain), orgId: String(data.org_id) };
 }
 
-async function zjson(url: string, init: RequestInit) {
-  let r = await fetch(url, init);
-  if (r.status === 429) { await new Promise(x => setTimeout(x, 1200)); r = await fetch(url, init); }
-  const body = await r.json().catch(() => ({}));
-  return { r, body };
+async function zjson(url: string, init: RequestInit, options: { retryPortal?: boolean; timeoutMs?: number } = {}) {
+  const attempts = options.retryPortal ? 2 : 2;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      const r = await fetch(url, { ...init, signal: init.signal || AbortSignal.timeout(options.timeoutMs || 20_000) });
+      const body = await r.json().catch(() => ({}));
+      const retryable = r.status === 429 || (options.retryPortal && Number(body?.code) === 41051);
+      if (retryable && attempt + 1 < attempts) {
+        await new Promise(resolve => setTimeout(resolve, options.retryPortal ? 2_500 : 1_200));
+        continue;
+      }
+      return { r, body };
+    } catch (error) {
+      if (attempt + 1 < attempts) {
+        await new Promise(resolve => setTimeout(resolve, 1_200));
+        continue;
+      }
+      const timeout = error instanceof DOMException && error.name === 'TimeoutError';
+      return { r: { ok: false, status: timeout ? 504 : 502 }, body: {
+        code: timeout ? 504 : 502,
+        message: timeout ? 'انتهت مهلة استجابة زوهو. ستبقى الفاتورة معلقة لإعادة المحاولة.'
+          : (error instanceof Error ? error.message : String(error)),
+      } };
+    }
+  }
+  return { r: { ok: false, status: 504 }, body: { code: 504, message: 'انتهت مهلة استجابة زوهو.' } };
 }
 
 const normalizedRef = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
@@ -262,25 +283,21 @@ Deno.serve(async req => {
       const headers = { Authorization: `Zoho-oauthtoken ${access.token}` };
       const results: any[] = [];
 
-      // Preserve the user's explicit selection order in the audit/result output.
-      for (const invoiceId of ids) {
+      const processInvoice = async (invoiceId: string) => {
         const inv: any = byId.get(invoiceId);
         if (!inv) {
-          results.push({ invoice_id: invoiceId, outcome: 'failed', stage: 'read', error: 'invoice_not_found_in_mirror' });
-          continue;
+          return { invoice_id: invoiceId, outcome: 'failed', stage: 'read', error: 'invoice_not_found_in_mirror' };
         }
         if (openingBalance(inv.invoice_number)) {
-          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'excluded', reason: 'opening_balance' });
-          continue;
+          return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'excluded', reason: 'opening_balance' };
         }
 
         let live: Record<string, unknown>;
         try {
           live = await getLiveInvoice(access, String(inv.zoho_id));
         } catch (error) {
-          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'live_check',
-            error: error instanceof Error ? error.message : String(error) });
-          continue;
+          return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'live_check',
+            error: error instanceof Error ? error.message : String(error) };
         }
 
         let liveDocumentStatus = String(live.status || inv.status || '').toLowerCase();
@@ -290,14 +307,12 @@ Deno.serve(async req => {
 
         if (['pushed', 'reported', 'cleared'].includes(liveZatcaStatus)) {
           await db.from('zoho_invoices').update({ status: liveDocumentStatus || 'sent', einvoice_status: liveZatcaStatus }).eq('zoho_id', inv.zoho_id);
-          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
-            marked_sent: markedSent, pushed: false, reason: 'already_pushed', live_zatca_status: liveZatcaStatus });
-          continue;
+          return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
+            marked_sent: markedSent, pushed: false, reason: 'already_pushed', live_zatca_status: liveZatcaStatus };
         }
         if (liveZatcaStatus !== 'yet_to_be_pushed') {
-          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'readiness',
-            marked_sent: markedSent, error: `zatca_not_ready:${liveZatcaStatus || 'status_unavailable'}` });
-          continue;
+          return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'readiness',
+            marked_sent: markedSent, error: `zatca_not_ready:${liveZatcaStatus || 'status_unavailable'}` };
         }
 
         const pushKey = `zatca_push:${inv.zoho_id}`;
@@ -305,13 +320,13 @@ Deno.serve(async req => {
           { invoice_id: inv.zoho_id, invoice_number: inv.invoice_number, parent_action: action });
         if (!audit.done) {
           const pushUrl = `${access.apiDomain}/books/v3/invoices/${inv.zoho_id}/einvoice/push?organization_id=${encodeURIComponent(access.orgId)}`;
-          const pushedResponse = await zjson(pushUrl, { method: 'POST', headers });
+          const pushedResponse = await zjson(pushUrl, { method: 'POST', headers }, { retryPortal: true, timeoutMs: 15_000 });
           if (!pushedResponse.r.ok || pushedResponse.body?.code !== 0) {
             const message = String(pushedResponse.body?.message || pushedResponse.r.status);
             await finish(db, pushKey, 'failed', pushedResponse.body, message);
-            results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'zatca_push',
-              marked_sent: markedSent, error: message });
-            continue;
+            return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'zatca_push',
+              marked_sent: markedSent, retryable: Number(pushedResponse.body?.code) === 41051 || Number(pushedResponse.body?.code) === 504,
+              error: message };
           }
           await finish(db, pushKey, 'succeeded', pushedResponse.body);
         }
@@ -358,9 +373,16 @@ Deno.serve(async req => {
         await db.from('zoho_invoices').update({ status: liveDocumentStatus || inv.status,
           einvoice_status: ['pushed', 'reported', 'cleared'].includes(liveZatcaStatus) ? liveZatcaStatus : 'pushed' })
           .eq('zoho_id', inv.zoho_id);
-        results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
+        return { invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
           marked_sent: markedSent, pushed, warning: postPushWarning || undefined,
-          message: markedSent ? 'pushed_and_marked_sent' : 'pushed' });
+          message: markedSent ? 'pushed_and_marked_sent' : 'pushed' };
+      };
+
+      // Two invoices at a time keep the request bounded without flooding Zoho's
+      // Fatoora gateway. Results are restored to the user's selection order.
+      for (let offset = 0; offset < ids.length; offset += 2) {
+        const chunk = ids.slice(offset, offset + 2);
+        results.push(...await Promise.all(chunk.map(processInvoice)));
       }
 
       const failed = results.filter(result => result.outcome === 'failed').length;
