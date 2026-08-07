@@ -104,3 +104,11 @@ test('admin dashboard exposes three clear readiness decisions and never assumes 
   assert.match(overview, /profile\?\.role === 'admin'/);
   assert.match(overview, /<TeamReadinessPanel/);
 });
+
+test('bank summary opens its readable source details and keeps editing as a separate action', () => {
+  assert.match(overview, /const openBankDetails = useCallback/);
+  assert.match(overview, /details\.open = true/);
+  assert.match(overview, /onOpenBankDetails=\{openBankDetails\}/);
+  assert.match(overview, /onClick: onOpenBankDetails/);
+  assert.match(overview, /onClick=\{onEditBank\}>إضافة أو تحديث بنك/);
+});

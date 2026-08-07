@@ -72,6 +72,12 @@ export default function Overview({ carriers = [], isActive = true }) {
     try { sessionStorage.setItem('sa-overview-period', p); } catch { /* ignore */ }
   }, []);
   const [bankEdit, setBankEdit] = useState(false);
+  const openBankDetails = useCallback(() => {
+    const details = document.getElementById('bank-details');
+    if (!details) return;
+    details.open = true;
+    details.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, []);
 
   const carrierNameById = useMemo(
     () => new Map((carriers || []).map(c => [c.id, c.name])),
@@ -203,7 +209,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> تحصيل العملاء
         </button>
-        <button type="button" onClick={() => document.getElementById('bank-details')?.scrollIntoView({ behavior: 'smooth', block: 'center' })}>
+        <button type="button" onClick={openBankDetails}>
           <Building2 size={14}/> البنوك
         </button>
         <button type="button" className="overview-jump-extra" onClick={() => document.getElementById('month-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
@@ -228,6 +234,7 @@ export default function Overview({ carriers = [], isActive = true }) {
             showCashPosition={can('overview.cash_position')}
             onNavigate={navigate}
             onRefresh={refresh}
+            onOpenBankDetails={openBankDetails}
             onEditBank={canEditBank ? () => setBankEdit(true) : null}
           />
         </div>
@@ -625,7 +632,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   );
 }
 
-function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
+function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onOpenBankDetails, onEditBank }) {
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
   const codDue = Number(data.codOutstanding?.total) || 0;
   const ap90 = Number(data.aging?.totals?.d90) || 0;
@@ -735,7 +742,7 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
             ? `${registeredBankCount} حسابات · الرصيد الختامي ناقص في ${missingBankBalances.join('، ')}`
             : `${registeredBankCount} من ${expectedBankCount} حسابات بنكية · اضغط للتفاصيل`)
         : 'لا توجد حسابات مسجّلة',
-      onClick: onEditBank,
+      onClick: onOpenBankDetails,
     },
     {
       label: 'لك عند العملاء',
