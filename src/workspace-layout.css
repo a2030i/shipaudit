@@ -173,6 +173,18 @@
   line-height: 1.45;
 }
 
+.team-readiness-card__staffing {
+  display: block;
+  margin-top: 7px;
+  padding: 7px 9px;
+  border-radius: 9px;
+  color: var(--readiness-color);
+  background: color-mix(in srgb, var(--readiness-color) 8%, transparent);
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.5;
+}
+
 .team-readiness-card p {
   min-height: 42px;
   margin: 7px 0 14px;

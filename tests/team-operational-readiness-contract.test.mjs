@@ -6,6 +6,10 @@ const migration = await readFile(
   new URL('../supabase/migrations/20260807153000_team_operational_readiness.sql', import.meta.url),
   'utf8',
 );
+const staffingMigration = await readFile(
+  new URL('../supabase/migrations/20260807170000_team_staffing_readiness.sql', import.meta.url),
+  'utf8',
+);
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx', import.meta.url), 'utf8');
 const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
@@ -22,14 +26,28 @@ test('readiness RPC is authenticated, read-only and validates explicit carrier s
 
 test('overview loads team readiness in the existing parallel request fan-out', () => {
   assert.match(service, /team_operational_readiness_snapshot/);
+  assert.match(service, /team_staffing_readiness_snapshot/);
+  assert.match(service, /mergeReadiness/);
   assert.match(service, /teamReadiness/);
   assert.match(service, /Promise\.all/);
+});
+
+test('staffing readiness excludes admin and checks end-to-end job capabilities', () => {
+  assert.match(staffingMigration, /where role <> 'admin'/);
+  assert.match(staffingMigration, /"system\.period_close": true/);
+  assert.match(staffingMigration, /"bank\.reconcile": true/);
+  assert.match(staffingMigration, /"collections\.assign": true/);
+  assert.match(staffingMigration, /crm_has_permission\('overview\.view'\)/);
+  assert.doesNotMatch(staffingMigration, /update\s+public|insert\s+into|delete\s+from/i);
 });
 
 test('admin dashboard exposes three clear readiness decisions and never assumes missing data is ready', () => {
   assert.match(panel, /المحاسبة/);
   assert.match(panel, /المالية/);
   assert.match(panel, /المبيعات والتحصيل/);
+  assert.match(panel, /مشغّل دورة/);
+  assert.match(panel, /مشغّل مالي/);
+  assert.match(panel, /مشرف توزيع/);
   assert.match(panel, /المصدر غير متاح/);
   assert.match(panel, /تعذّر قراءة بيانات الجاهزية/);
   assert.match(overview, /profile\?\.role === 'admin'/);

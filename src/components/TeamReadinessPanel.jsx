@@ -17,7 +17,7 @@ function statusOf(section) {
   return STATUS[section?.status] || STATUS.unavailable;
 }
 
-function ReadinessCard({ icon, title, section, evidence, note, action, onNavigate }) {
+function ReadinessCard({ icon, title, section, evidence, staffing, note, action, onNavigate }) {
   const state = statusOf(section);
   return (
     <article className={`team-readiness-card is-${state.tone}`}>
@@ -29,6 +29,7 @@ function ReadinessCard({ icon, title, section, evidence, note, action, onNavigat
         </div>
       </div>
       <strong className="team-readiness-card__evidence">{section ? evidence : 'تعذّر قراءة بيانات الجاهزية'}</strong>
+      {section && <span className="team-readiness-card__staffing">{staffing || 'تعذّر قراءة تغطية صلاحيات الفريق'}</span>}
       <p>{section ? note : 'أعد التحديث قبل اتخاذ قرار نقل الفريق إلى النظام.'}</p>
       <button type="button" onClick={() => onNavigate(action.path)}>
         {action.label}<ArrowLeft size={15}/>
@@ -62,6 +63,9 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           title="المحاسبة"
           section={accounting}
           evidence={`${number(accounting?.missing_carriers)} شركات · ${number(accounting?.missing_schedules)} جداول ناقصة`}
+          staffing={accounting?.staffing
+            ? `${number(accounting.staffing.cycle_operators)} مشغّل دورة · ${number(accounting.staffing.cycle_closers)} مفوّض إقفال`
+            : ''}
           note={accounting?.missing_schedules > 0
             ? 'حدّد مواعيد الفاتورة والتحصيل الناقصة، ثم أغلق دورة شهر تجريبية.'
             : `${number(accounting?.closed_cycles)} دورات شهرية مغلقة بنجاح.`}
@@ -73,10 +77,15 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           title="المالية"
           section={finance}
           evidence={`${number(finance?.uncategorized_bank_operations)} عملية بنكية غير مصنفة`}
+          staffing={finance?.staffing
+            ? `${number(finance.staffing.finance_operators)} مشغّل مالي · ${number(finance.staffing.financial_report_viewers)} قارئ تقارير مالية`
+            : ''}
           note={finance
             ? `فرق كشف البنك عن دفتر زوهو: ${money(finance.statement_vs_book_difference)} ر.س · سلامة أرصدة العملاء: ${number(finance.customer_integrity_issues)} مشكلة.`
             : ''}
-          action={{ label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' }}
+          action={finance?.staffing?.finance_operators === 0
+            ? { label: 'تهيئة صلاحيات المالية', path: '/employees' }
+            : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' }}
           onNavigate={onNavigate}
         />
         <ReadinessCard
@@ -84,6 +93,9 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           title="المبيعات والتحصيل"
           section={sales}
           evidence={`${number(sales?.unassigned_collections)} تحصيل · ${number(sales?.unassigned_followups)} متابعة بلا مسؤول`}
+          staffing={sales?.staffing
+            ? `${number(sales.staffing.sales_operators)} مبيعات · ${number(sales.staffing.collection_operators)} تحصيل · ${number(sales.staffing.collection_supervisors)} مشرف توزيع`
+            : ''}
           note={sales
             ? `${number(sales.campaign_recipients)} مستلمي عملاء حملات مهيئين · ${number(sales.unassigned_crm_tasks)} مهام CRM بلا مسؤول. مستلم الحملة يُضبط من الفريق والصلاحيات.`
             : ''}
