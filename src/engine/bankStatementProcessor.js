@@ -140,6 +140,11 @@ function cleanNumber(cell) {
   if (typeof cell === 'number') return cell;
   const s = String(cell ?? '').replace(/\s/g, '').trim();
   if (/^-?[\d,]+(\.\d+)?$/.test(s)) return parseNumber(s);
+  // Bank Alinma prints summary amounts as a currency-wrapped value such as
+  // `SAR 227908.66`. Accept only a strict whole-cell currency amount here;
+  // do not fall back to extracting arbitrary digits from labels/dates (for
+  // example `Closing Balance as of 26 Jul, 2026`).
+  if (/^(?:SAR|SR|﷼)-?[\d,]+(?:\.\d+)?(?:SAR|SR|﷼)?$/i.test(s)) return parseNumber(s);
   return null;
 }
 
