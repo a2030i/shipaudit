@@ -39,3 +39,14 @@ test('collections service calls only the protected assignment RPC', () => {
   assert.match(service, /p_task_ids:\s*ids/);
   assert.match(service, /p_assignee:\s*assigneeId \|\| null/);
 });
+
+test('collection refresh creates missing work without assigning or moving employees', () => {
+  const sql = read('supabase/migrations/20260807153004_make_collection_refresh_assignment_safe.sql');
+  assert.match(sql, /crm_has_permission\('collections\.regenerate'\)/);
+  assert.match(sql, /from public\.v_collection_candidates c/);
+  assert.match(sql, /days_outstanding,\s*assigned_to\s*\)/);
+  assert.match(sql, /days_outstanding,\s*null\s+from missing/s);
+  assert.match(sql, /'reassigned',\s*0/);
+  assert.doesNotMatch(sql, /array_agg\(p\.id/);
+  assert.doesNotMatch(sql, /set\s+assigned_to\s*=/);
+});
