@@ -41,7 +41,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
   // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
   const bankEffQ = loadEffectiveBankBalance().catch(() => null);
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial, teamReadinessRaw, teamStaffing, collectionWork] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, customerMoney, zohoFinancial, teamReadinessRaw, teamStaffing, collectionWork] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -59,6 +59,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
     supabase.rpc('zoho_invoice_dashboard').then(r => r.data || null).catch(() => null),
+    // Collection truth subtracts unused Zoho credit that already covers a
+    // debit. The invoice dashboard intentionally exposes the gross debit, so
+    // it must not feed the "effective available" amount.
+    supabase.rpc('customer_money_dashboard').then(r => r.data || null).catch(() => null),
     // قراءة خفيفة من المرآة المحلية فقط؛ لا تضرب Zoho API عند كل فتح للرئيسية.
     supabase.rpc('zoho_financial_control_dashboard').then(r => r.data || null).catch(() => null),
     // لقطة إدارية واحدة تجمع جاهزية المحاسبة والمالية والمبيعات. فشلها
@@ -190,7 +194,15 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     })),
     // تركّز المديونيات — من زوهو الحي إن توفّر (كان من snapshot غير مفلتر
     // يعرض عملاء «مستبعدين» غير موجودين في /receivables الافتراضي أصلاً)
-    customerConcentration: (Array.isArray(zohoDash?.debtors) && zohoDash.debtors.length
+    customerConcentration: (Array.isArray(customerMoney?.customers) && customerMoney.customers.length
+      ? customerMoney.customers.slice(0, topN).map((d, i) => ({
+          customerName: d.name,
+          debt:         num(d.owed),
+          invoiceCount: num(d.inv_cnt),
+          sharePct:     num(customerMoney.outstanding) > 0 ? +((num(d.owed) / num(customerMoney.outstanding)) * 100).toFixed(1) : 0,
+          rank:         i + 1,
+        }))
+      : Array.isArray(zohoDash?.debtors) && zohoDash.debtors.length
       ? zohoDash.debtors.slice(0, topN).map((d, i) => ({
           customerName: d.cust,
           debt:         num(d.owed),
@@ -205,7 +217,8 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
           sharePct:     num(r.share_pct),
           rank:         num(r.rank_order),
         }))),
-    arSource: (Array.isArray(zohoDash?.debtors) && zohoDash.debtors.length) ? 'zoho' : 'snapshot',
+    arSource: (Array.isArray(customerMoney?.customers) && customerMoney.customers.length)
+      || (Array.isArray(zohoDash?.debtors) && zohoDash.debtors.length) ? 'zoho' : 'snapshot',
     // Cash position — the headline question the operator opens
     // /overview to answer: "how much in the bank, how much owed
     // to us, how much we owe, where's the net".
@@ -217,9 +230,11 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const bank = bankBalance?.balance ?? null;
       // AR من زوهو الحي إن توفّر (نفس رقم «تحصيل العملاء» و/zoho-data) —
       // كان من snapshot غير مفلتر (314K) يخالف /receivables (191K) وزوهو (250K)
-      const zohoAr  = Number(zohoDash?.open_ar);
-      const arFromZoho = Number.isFinite(zohoAr) && zohoAr > 0;
-      const totalAR = arFromZoho ? zohoAr : num(wc.total_ar);
+      const collectibleAr = Number(customerMoney?.outstanding);
+      const grossZohoAr = Number(customerMoney?.gross_outstanding ?? zohoDash?.open_ar);
+      const creditOffset = Number(customerMoney?.credit_offset);
+      const arFromZoho = Number.isFinite(collectibleAr) && collectibleAr >= 0;
+      const totalAR = arFromZoho ? collectibleAr : num(wc.total_ar);
       const totalAP = num(wc.total_ap);
       // COD outstanding from the carriers — money they collected and
       // haven't remitted yet. Read from the AP aging totals doesn't
@@ -251,6 +266,8 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
             asOf: b.internal_as_of || null,
           })),
         totalAR,                         // owed to us (customers)
+        grossAR: Number.isFinite(grossZohoAr) ? grossZohoAr : totalAR,
+        customerCreditOffset: Number.isFinite(creditOffset) ? creditOffset : 0,
         arSource: arFromZoho ? 'zoho' : 'snapshot',
         totalAP,                         // we owe (vendors/carriers)
         netNoBank:    +netNoBank.toFixed(2),

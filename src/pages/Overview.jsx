@@ -749,7 +749,11 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       value: cash.totalAR,
       tone: 'var(--green)',
       Icon: ArrowDownCircle,
-      helper: cash.arSource === 'zoho' ? 'فواتير Zoho المفتوحة' : 'آخر كشف داخلي',
+      helper: cash.arSource === 'zoho'
+        ? (cash.customerCreditOffset > 0.005
+            ? `المطلوب تحصيله · بعد خصم ${fmt(cash.customerCreditOffset)} ر.س رصيدًا دائنًا`
+            : 'المطلوب تحصيله من Zoho')
+        : 'آخر كشف داخلي',
       prefix: '+',
       onClick: () => onNavigate('/customer-money'),
     },
@@ -868,7 +872,7 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
             {availableAfterVat == null ? '—' : `${availablePositive ? '+' : '−'}${fmt(Math.abs(availableAfterVat))}`}
             {availableAfterVat != null && <small>ر.س</small>}
           </div>
-          <p>أرصدة البنوك + ذمم العملاء − التزامات الناقلين − حجز الضريبة. هذا ملخص إداري حي وليس قيدًا محاسبيًا جديدًا.</p>
+          <p>أرصدة البنوك + المطلوب تحصيله من العملاء بعد الأرصدة الدائنة − التزامات الناقلين − حجز الضريبة. هذا ملخص إداري حي وليس قيدًا محاسبيًا جديدًا.</p>
 
           <div className="ops-cash-parts">
             {cashParts.map((item) => {
