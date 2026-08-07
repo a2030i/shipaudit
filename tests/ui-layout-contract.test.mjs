@@ -106,9 +106,10 @@ test('mobile page filters can share the action row with their primary action', a
   assert.match(css, /\.page-hero-actions > \.ui-field\s*\{[\s\S]*min-width:\s*0\s*!important/);
 });
 
-test('active work areas own navigation and expose their child pages in the sidebar', async () => {
+test('active work areas use a contextual rail instead of duplicated hub tabs', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
+  const css = await read('src/workspace-layout.css');
   const workspaceFiles = [
     'src/pages/CarriersWorkspace.jsx',
     'src/pages/CollectionsHub.jsx',
@@ -119,15 +120,28 @@ test('active work areas own navigation and expose their child pages in the sideb
   ];
   const workspaces = await Promise.all(workspaceFiles.map(read));
 
-  assert.match(app, /className="nav-tree-children"/);
+  assert.match(app, /className="context-sidebar"/);
+  assert.match(app, /className="context-mobile-nav"/);
+  assert.match(app, /currentContextTabs/);
+  assert.doesNotMatch(app, /sidebarRowsFor/);
   assert.match(app, /collapsed \|\| sectionHasActive \|\| !collapsedSecs\.has\(sec\.id\)/);
   assert.match(app, /tabId: 'performance'/);
   assert.match(app, /tabId: 'pipeline'/);
   assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);
   assert.match(app, /tabId: 'exports'.*legacy: '\/internal-exports'/);
+  assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'employees'[\s\S]*legacy: '\/employees'/);
+  assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'carriers'[\s\S]*legacy: '\/carriers'/);
+  assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'contracts'[\s\S]*legacy: '\/contracts'/);
   for (const source of workspaces) assert.doesNotMatch(source, /<WorkspaceTabs/);
+  assert.match(css, /\.context-sidebar\s*\{[\s\S]*width:\s*var\(--context-sidebar-width\)/);
+  assert.match(css, /@media \(max-width: 940px\)[\s\S]*\.context-sidebar\s*\{[\s\S]*display:\s*none/);
+  assert.match(css, /\.context-mobile-nav\s*\{[\s\S]*display:\s*grid/);
 
   assert.match(navigation, /'accounting-cycle':\s*\{[^}]*section: 'shipping'[^}]*group: 'monthly_cycle'/);
   assert.doesNotMatch(navigation, /'accounting-cycle':\s*\{[^}]*group: 'cash_ops'/);
   assert.match(navigation, /id: 'cash_ops', label: 'البنوك والسيولة'/);
+  assert.match(navigation, /employees:\s*\{[^}]*visible: false/);
+  assert.match(navigation, /carriers:\s*\{[^}]*visible: false/);
+  assert.match(navigation, /contracts:\s*\{[^}]*visible: false/);
+  assert.match(navigation, /'app-settings':\s*\{[^}]*visible: true/);
 });

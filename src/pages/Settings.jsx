@@ -12,16 +12,9 @@ import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { exportMergedExcessWeights } from '../engine/export.js';
 import { useAuth } from '../lib/auth.jsx';
 
-const TABS = [
-  { id: 'ai',          label: '✨ الذكاء الاصطناعي' },
-  { id: 'data',        label: '🗄️ البيانات' },
-];
-
 // ── Settings ──────────────────────────────────────────────────────────────────
 export function SettingsPage({ carriers = [], tab = 'ai' }) {
   const { can } = useAuth();
-  const navigate = useNavigate();
-  const setTab = (id) => navigate(`/settings/${id}`);
   const handleExport = async () => {
     if (!can('reports.export')) {
       toast('لا تملك صلاحية إنشاء وتنزيل النسخة الاحتياطية', 'error');
@@ -42,25 +35,13 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
   };
 
   return (
-    <div style={{padding:'28px 32px',maxWidth:620}}>
-      <h2 style={{fontFamily:'var(--font-mono)',color:'var(--accent)',marginBottom:20}}>⚙️ الإعدادات</h2>
-
-      {/* Tabs */}
-      <div style={{display:'flex',gap:4,marginBottom:24,background:'var(--surface)',borderRadius:10,padding:4,border:'1px solid var(--border)'}}>
-        {TABS.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)} style={{
-            flex:1, padding:'8px 4px', borderRadius:7, border:'none', cursor:'pointer',
-            fontFamily:'var(--font-sans)', fontSize:12, fontWeight: tab===t.id ? 700 : 400,
-            background: tab===t.id ? 'var(--card)' : 'transparent',
-            color: tab===t.id ? 'var(--text)' : 'var(--muted)',
-            boxShadow: tab===t.id ? '0 1px 4px rgba(0,0,0,.3)' : 'none',
-            transition:'all .15s',
-          }}>{t.label}</button>
-        ))}
-      </div>
-
-
-      {/* Nav Permissions tab */}
+    <div className="workspace-page settings-page" style={{maxWidth:760}}>
+      <PageHeader
+        title={tab === 'data' ? 'البيانات والتكاملات' : 'الذكاء الاصطناعي'}
+        subtitle={tab === 'data'
+          ? 'إدارة النسخ الاحتياطية ومصادر البيانات المرتبطة بالنظام.'
+          : 'إدارة قدرات المساعد الآمن وحدود استخدامه داخل النظام.'}
+      />
 
       {/* Data tab */}
       <div style={{display: tab==='data' ? 'block' : 'none'}}>

@@ -69,10 +69,10 @@ export const NAV_ITEM_IA = {
   operations:         { label: 'مركز التكاملات والتشغيل', section: 'reports', group: 'automation_ops', order: 10, visible: true },
   'work-agents':      { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 20, visible: false },
   uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
-  employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
-  carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },
-  contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: true },
-  'app-settings':     { label: 'إعدادات النظام والذكاء الاصطناعي', section: 'settings', group: 'system_settings', order: 40, visible: true },
+  employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: false },
+  carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: false },
+  contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: false },
+  'app-settings':     { label: 'الإعدادات', section: 'settings', group: 'system_settings', order: 10, visible: true },
 };
 
 export function applyNavigationIA(items) {

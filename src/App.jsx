@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign, Bot,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
@@ -179,7 +179,14 @@ const ROUTE_ITEMS = [
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
   { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
   { id: 'marketers',       path: '/marketers',       label: 'المسوّقون والعمولات', icon: BadgeDollarSign, section: 'customers', navOrder: 60, permKey: 'marketers.view' },
-  { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view' },
+  { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view',
+    subTabs: [
+      { tabId: 'overview',  label: 'مراقبة اتصال زوهو',       icon: Activity },
+      { tabId: 'customers', label: 'العملاء والفواتير',       icon: Users },
+      { tabId: 'vendors',   label: 'الموردون والمصروفات',     icon: Briefcase },
+      { tabId: 'banks',     label: 'البنوك والمطابقة',        icon: Landmark },
+      { tabId: 'accounts',  label: 'القيود ودليل الحسابات',   icon: BookOpen },
+    ] },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
   // ── الحملات والاتصالات — ضمن رحلة العملاء والنمو ────────────────
@@ -199,10 +206,14 @@ const ROUTE_ITEMS = [
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', navOrder: 10, adminOnly: true },
   { id: 'carriers',     path: '/carriers',     label: 'إدارة شركات الشحن',  icon: Truck,         section: 'tools', navOrder: 20, permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',    icon: ClipboardList, section: 'tools', navOrder: 30, permKey: 'carriers.edit_contract' },
-  { id: 'app-settings', path: '/settings/ai',  label: 'التكاملات والذكاء الاصطناعي', icon: Settings, section: 'tools', navOrder: 40, permKey: 'system.view_settings',
+  { id: 'app-settings', path: '/settings/ai',  label: 'الإعدادات', icon: Settings, section: 'tools', navOrder: 40,
+    permAny: ['system.view_settings', 'carriers.view', 'carriers.edit_contract'],
     subTabs: [
-      { tabId: 'ai',   label: 'الذكاء الاصطناعي', icon: Bot },
-      { tabId: 'data', label: 'البيانات والتكاملات', icon: Layers, legacy: '/settings/data' },
+      { tabId: 'ai',        label: 'الذكاء الاصطناعي', icon: Bot, perm: 'system.view_settings' },
+      { tabId: 'data',      label: 'البيانات والتكاملات', icon: Layers, legacy: '/settings/data', perm: 'system.view_settings' },
+      { tabId: 'employees', label: 'الفريق والصلاحيات', icon: UserCog, legacy: '/employees', adminOnly: true },
+      { tabId: 'carriers',  label: 'شركات الشحن', icon: Truck, legacy: '/carriers', perm: 'carriers.view' },
+      { tabId: 'contracts', label: 'العقود والأسعار', icon: ClipboardList, legacy: '/contracts', perm: 'carriers.edit_contract' },
     ] },
   { id: 'periods',      path: '/periods',      label: 'إقفال الشهور',       icon: Lock,          section: 'money', navOrder: 100, permKey: 'system.period_close' },
   { id: 'tasks',        path: '/tasks',        label: 'مهام شركات الشحن',   icon: ListTodo,      section: 'carriers', navOrder: 80, permKey: 'audits.view' },
@@ -355,7 +366,6 @@ function AppInner({ theme, toggleTheme }) {
   // التنقل الجديدة تظهر تلك الصفحات كطبقة رابعة قابلة للطي داخل الجانبية:
   // قسم ← مجموعة عمل ← مركز ← صفحة. المسار النشط يبقى مفتوحاً دائماً، بينما
   // يستطيع المستخدم فتح مركز آخر مؤقتاً من دون تغيير الصفحة الحالية.
-  const [expandedNavItems, setExpandedNavItems] = useState(() => new Set());
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -449,17 +459,11 @@ function AppInner({ theme, toggleTheme }) {
     setMobileOpen(false);
   };
 
-  const toggleNavItem = (id) => setExpandedNavItems(previous => {
-    const next = new Set(previous);
-    if (next.has(id)) next.delete(id);
-    else next.add(id);
-    return next;
+  const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => {
+    if (tab.adminOnly && !isAdmin) return false;
+    return isAdmin
+      || (tab.anyPerm ? tab.anyPerm.some(permission => can(permission)) : (!tab.perm || can(tab.perm)));
   });
-
-  const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => (
-    isAdmin
-    || (tab.anyPerm ? tab.anyPerm.some(permission => can(permission)) : (!tab.perm || can(tab.perm)))
-  ));
 
   const subTabPath = (item, tab) => (
     tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`
@@ -538,8 +542,20 @@ function AppInner({ theme, toggleTheme }) {
       });
   const visibleNav = permissionNav.filter(n => !n.navHidden);
 
-  const currentTitle = PAGE_TITLES[location.pathname]
-    ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
+  const currentNavItem = visibleNav.find(item => activeFor(item));
+  const currentSubTab = currentNavItem ? subTabOf(currentNavItem) : null;
+  const currentSection = NAV_SECTIONS.find(section => section.id === currentNavItem?.section);
+  const currentGroup = (NAV_GROUP_MODEL[currentSection?.id] || [])
+    .find(group => group.id === currentNavItem?.navGroup);
+  const currentContextTabs = currentNavItem ? visibleSubTabsFor(currentNavItem) : [];
+  const hasContextSidebar = currentContextTabs.length > 1;
+  const currentContextPath = currentNavItem && currentSubTab
+    ? subTabPath(currentNavItem, currentSubTab)
+    : currentNavItem?.path || '';
+  const currentTitle = currentSubTab?.label
+    ?? currentNavItem?.label
+    ?? PAGE_TITLES[location.pathname]
+    ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'لمحة');
 
   return (
     <>
@@ -570,7 +586,7 @@ function AppInner({ theme, toggleTheme }) {
         carriers={carriers}
       />
 
-      <div className="app-layout">
+      <div className={`app-layout${hasContextSidebar ? ' has-context-sidebar' : ''}`}>
 
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -580,19 +596,20 @@ function AppInner({ theme, toggleTheme }) {
             {collapsed ? (
               <LamhaMark size={32}/>
             ) : (
-              <div style={{ display:'flex', flexDirection:'column', gap:7, width:'100%', alignItems:'flex-start' }}>
-                <LamhaLogo height={36} variant="white"/>
-                <div className="sidebar-product-label" style={{ display:'flex', alignItems:'center', gap:7 }}>
+              <div className="sidebar-brand-lockup">
+                <LamhaLogo height={36} variant={theme === 'light' ? 'color' : 'white'}/>
+                <div className="sidebar-product-label">
                   <span className="live-dot"/>
-                  <span style={{ fontSize:10.5, fontWeight:700 }}>
+                  <span>
                     منصة العمليات المالية
                   </span>
                 </div>
               </div>
             )}
+            {mobileOpen && <strong className="sidebar-mobile-title">القائمة</strong>}
             {mobileOpen && (
-              <button aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)} style={{ background:'none', border:'none', color:'var(--muted)', cursor:'pointer', marginRight:'auto', padding:4 }}>
-                <X size={16}/>
+              <button className="sidebar-close" aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)}>
+                <X size={20}/>
               </button>
             )}
           </div>
@@ -621,14 +638,8 @@ function AppInner({ theme, toggleTheme }) {
                 .filter(n => n.section === sec.id)
                 .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
               if (!items.length) return null;
-              const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              const rowCount = items.reduce((total, item) => {
-                const childCount = visibleSubTabsFor(item).length;
-                const expanded = childCount > 0 && (
-                  expandedNavItems.has(item.id) || Boolean(subTabOf(item))
-                );
-                return total + 1 + (expanded ? childCount : 0);
-              }, 0);
+              const sectionHasActive = items.some(item => activeFor(item));
+              const rowCount = items.length;
               // في الوضع المصغّر تبقى الأيقونات متاحة. في الوضع الكامل يعمل
               // أكورديون قسم واحد حتى تظل مساحة العمل قصيرة وواضحة.
               const isOpen = collapsed || sectionHasActive || !collapsedSecs.has(sec.id);
@@ -659,76 +670,32 @@ function AppInner({ theme, toggleTheme }) {
                     style={{ maxHeight: isOpen ? `${rowCount * 64 + groupHeaderCount * 30 + 20}px` : 0 }}
                   >
                     {itemGroups.map((group, groupIndex) => {
-                      const groupHasActive = group.items.some(n => activeFor(n));
+                      const groupHasActive = group.items.some(item => activeFor(item));
                       return (
                         <div
                           key={group.id}
+                          className={`nav-work-group${groupHasActive ? ' has-active' : ''}`}
                           role="group"
                           aria-label={group.label || sec.label}
-                          style={{ marginTop: !collapsed && groupIndex > 0 ? 4 : 0 }}
+                          data-index={groupIndex}
                         >
                           {!collapsed && (
-                            <div style={{
-                              minHeight: 26,
-                              padding: '7px 14px 5px 16px',
-                              display: 'flex', alignItems: 'center', gap: 7,
-                              color: groupHasActive ? sec.accent : 'var(--sidebar-brand-muted, rgba(199,210,254,.62))',
-                              fontSize: 10.5, fontWeight: 800, lineHeight: 1.25,
-                            }}>
-                              <span aria-hidden="true" style={{
-                                width: 4, height: 4, borderRadius: '50%', flexShrink: 0,
-                                background: groupHasActive ? sec.accent : 'currentColor',
-                              }}/>
+                            <div className="nav-group-title" style={{ '--group-accent': sec.accent }}>
+                              <span className="nav-group-dot" aria-hidden="true"/>
                               <span>{group.label}</span>
-                              <span aria-hidden="true" style={{
-                                height: 1, flex: 1,
-                                background: groupHasActive
-                                  ? `color-mix(in srgb, ${sec.accent} 30%, transparent)`
-                                  : 'rgba(199,210,254,.10)',
-                              }}/>
                             </div>
                           )}
-                          {group.items.map(n => {
-                            const childTabs = visibleSubTabsFor(n);
-                            const selectedChild = childTabs.length ? subTabOf(n) : null;
-                            const expanded = childTabs.length > 0 && (
-                              expandedNavItems.has(n.id) || Boolean(selectedChild)
-                            );
-                            return (
-                              <div key={n.id} className={`nav-tree-node${expanded ? ' is-expanded' : ''}`}>
-                                <NavBtn
-                                  n={n}
-                                  active={childTabs.length === 0 && activeFor(n)}
-                                  ancestorActive={Boolean(selectedChild)}
-                                  accent={sec.accent}
-                                  collapsed={collapsed}
-                                  onClick={() => {
-                                    if (childTabs.length > 0) {
-                                      setExpandedNavItems(previous => new Set(previous).add(n.id));
-                                    }
-                                    goto(n.path);
-                                  }}
-                                  nested
-                                  expandable={childTabs.length > 0}
-                                  expanded={expanded}
-                                  onToggleExpand={() => toggleNavItem(n.id)}
-                                />
-                                {!collapsed && childTabs.length > 0 && (
-                                  <div className="nav-tree-children" aria-hidden={!expanded}>
-                                    {expanded && childTabs.map(tab => (
-                                      <NavSubBtn
-                                        key={tab.tabId}
-                                        tab={tab}
-                                        active={selectedChild?.tabId === tab.tabId}
-                                        accent={sec.accent}
-                                        onClick={() => goto(subTabPath(n, tab))}
-                                      />
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+                          {group.items.map(item => (
+                            <NavBtn
+                              key={item.id}
+                              n={item}
+                              active={activeFor(item)}
+                              accent={sec.accent}
+                              collapsed={collapsed}
+                              onClick={() => goto(item.path)}
+                              nested
+                            />
+                          ))}
                         </div>
                       );
                     })}
@@ -786,28 +753,52 @@ function AppInner({ theme, toggleTheme }) {
         </aside>
 
         {/* ═══════════════ MAIN ═══════════════ */}
+        {hasContextSidebar && (
+          <aside className="context-sidebar" aria-label={`صفحات ${currentNavItem.label}`}>
+            <header className="context-sidebar__header">
+              <span className="context-sidebar__eyebrow">مساحة عمل</span>
+              <h2>{currentNavItem.label}</h2>
+              {currentGroup?.label && <p>{currentGroup.label}</p>}
+            </header>
+            <nav className="context-sidebar__nav">
+              {currentContextTabs.map(tab => {
+                const Icon = tab.icon || currentNavItem.icon || FileText;
+                const active = currentSubTab?.tabId === tab.tabId;
+                return (
+                  <button
+                    key={tab.tabId}
+                    type="button"
+                    className={`context-nav-item${active ? ' active' : ''}`}
+                    aria-current={active ? 'page' : undefined}
+                    onClick={() => goto(subTabPath(currentNavItem, tab))}
+                  >
+                    <span className="context-nav-item__icon"><Icon size={17}/></span>
+                    <span>{tab.label}</span>
+                    <ChevronLeft className="context-nav-item__arrow" size={15}/>
+                  </button>
+                );
+              })}
+            </nav>
+          </aside>
+        )}
+
         <main className="app-main">
 
           {/* Topbar */}
           <div className="topbar">
             <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => setMobileOpen(true)}>
-              <Menu size={16}/>
+              <Menu size={20}/>
             </button>
 
-            <div style={{ flex:1, display:'flex', alignItems:'center', gap:10, minWidth:0 }}>
-              <span className="topbar-title" style={{
-                fontFamily:'var(--font-sans)', fontSize:15, fontWeight:800,
-                color:'var(--text)', whiteSpace:'nowrap', letterSpacing:0,
-              }}>
-                {currentTitle}
-              </span>
-              <span className="topbar-brandtag" style={{
-                color:'var(--muted)', fontSize:11, fontFamily:'var(--font-mono)',
-                letterSpacing:1.5, textTransform:'uppercase', fontWeight:600,
-                marginInlineStart:6,
-              }}>
-                Lamha
-              </span>
+            <div className="topbar-route">
+              {(currentSection || currentGroup) && (
+                <div className="topbar-breadcrumb" aria-label="مسار الصفحة">
+                  {currentSection && <span>{currentSection.label}</span>}
+                  {currentSection && currentGroup && <ChevronLeft size={12} aria-hidden="true"/>}
+                  {currentGroup && <span>{currentGroup.label}</span>}
+                </div>
+              )}
+              <strong className="topbar-title">{currentTitle}</strong>
               {/* Quick search / command palette trigger — minWidth 220 يُصفَّر
                   على الجوال عبر .topbar-search (كان يوسّع التطبيق كله أفقياً) */}
               <button
@@ -846,6 +837,21 @@ function AppInner({ theme, toggleTheme }) {
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
               prevents CSS animations from replaying on every navigation */}
+          {hasContextSidebar && (
+            <label className="context-mobile-nav">
+              <span>داخل {currentNavItem.label}</span>
+              <select
+                aria-label={`صفحات ${currentNavItem.label}`}
+                value={currentContextPath}
+                onChange={(event) => goto(event.target.value)}
+              >
+                {currentContextTabs.map(tab => (
+                  <option key={tab.tabId} value={subTabPath(currentNavItem, tab)}>{tab.label}</option>
+                ))}
+              </select>
+            </label>
+          )}
+
           <div className="page-content">
 
             <PageSlot active={pathname==='/decisions'} scroll>
@@ -1212,7 +1218,7 @@ function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick,
   const iconColor = active && accent ? accent : undefined;
   return (
     <button
-      className={`nav-item ${active ? 'active' : ''} ${ancestorActive ? 'has-descendant-active' : ''} ${accent ? 'section-nav' : ''}`}
+      className={`nav-item ${active ? 'active' : ''} ${accent ? 'section-nav' : ''}`}
       onClick={onClick}
       title={collapsed ? n.label : undefined}
       style={inlineStyle}
@@ -1252,59 +1258,4 @@ function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick,
   );
 }
 
-// NavSubBtn: اختصارات فرعية خفيفة لعناصر محددة فقط.
 // نستخدمها عندما يكون الوصول للتاب نفسه جزءاً من العمل اليومي، مثل ملف العملاء.
-function NavSubBtn({ tab, active, accent, onClick }) {
-  const Icon = tab.icon || ChevronLeft;
-  return (
-    <button
-      onClick={onClick}
-      className={`nav-sub-item ${active ? 'active' : ''}`}
-      style={{
-        width: 'calc(100% - 8px)',
-        minHeight: 31,
-        margin: '1px 4px 1px 2px',
-        padding: '6px 10px',
-        border: 'none',
-        borderRadius: 9,
-        display: 'flex',
-        alignItems: 'center',
-        gap: 8,
-        cursor: 'pointer',
-        fontFamily: 'var(--font-sans)',
-        background: active ? `color-mix(in srgb, ${accent} 12%, transparent)` : 'transparent',
-        color: active ? accent : 'var(--nav-label-color)',
-        fontSize: 11.5,
-        fontWeight: active ? 800 : 650,
-        textAlign: 'right',
-      }}
-    >
-      <span style={{
-        width: 20,
-        height: 20,
-        borderRadius: 7,
-        display: 'inline-flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        color: active ? accent : 'var(--muted)',
-        background: active ? `color-mix(in srgb, ${accent} 10%, transparent)` : 'transparent',
-        flexShrink: 0,
-      }}>
-        <Icon size={12} strokeWidth={active ? 2.2 : 1.8}/>
-      </span>
-      <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-        {tab.label}
-      </span>
-      {active && (
-        <span style={{
-          width: 5,
-          height: 5,
-          borderRadius: '50%',
-          background: accent,
-          boxShadow: `0 0 8px ${accent}`,
-          flexShrink: 0,
-        }}/>
-      )}
-    </button>
-  );
-}

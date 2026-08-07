@@ -133,8 +133,13 @@ export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [type, setType] = useState('invoices');
-  const [section, setSection] = useState('overview');
+  const requestedSection = new URLSearchParams(location.search).get('tab');
+  const initialSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
+    ? requestedSection
+    : 'overview';
+  const initialType = WORKSPACE_SECTIONS.find(item => item.id === initialSection)?.types?.[0] || 'invoices';
+  const [type, setType] = useState(initialType);
+  const [section, setSection] = useState(initialSection);
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
   const [dash, setDash] = useState(null);
   const [health, setHealth] = useState(null);       // صحة مزامنة زوهو (webhook + دوري)
@@ -327,11 +332,15 @@ export default function ZohoData({ isActive = true }) {
   const referenceType = type === 'bank_accounts' || type === 'chart_accounts';
   const downloadableType = type === 'invoices' || type === 'bills';
   const openType = (nextType) => { setType(nextType); setSection(sectionForType(nextType)); };
-  const selectSection = (nextSection) => {
+
+  useEffect(() => {
+    const nextSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
+      ? requestedSection
+      : 'overview';
     setSection(nextSection);
     const firstType = WORKSPACE_SECTIONS.find(item => item.id === nextSection)?.types?.[0];
     if (firstType) setType(firstType);
-  };
+  }, [requestedSection]);
   const needsZohoAuth = Object.values(financial?.capabilities || {}).some(capability => capability?.status === 'needs_reauthorization');
 
   // الحالات المتاحة فعلياً في البيانات المحمّلة (ديناميكي لكل نوع)
@@ -565,15 +574,6 @@ export default function ZohoData({ isActive = true }) {
             </Btn>
           </div>
         }/>
-
-      <div className="zoho-section-tabs" role="tablist" aria-label="أقسام زوهو والحسابات">
-        {WORKSPACE_SECTIONS.map(item => (
-          <button key={item.id} type="button" role="tab" aria-selected={section === item.id}
-            className={section === item.id ? 'active' : ''} onClick={() => selectSection(item.id)}>
-            {item.label}
-          </button>
-        ))}
-      </div>
 
       {/* ── مؤشر صحة المزامنة: نبضة webhook اللحظية + آخر مزامنة دورية ── */}
       {health && (() => {
