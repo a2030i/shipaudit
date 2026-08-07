@@ -32,6 +32,7 @@ import {
 } from '../components/UI.jsx';
 import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
+import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -230,6 +231,10 @@ export default function Overview({ carriers = [], isActive = true }) {
             onEditBank={canEditBank ? () => setBankEdit(true) : null}
           />
         </div>
+      )}
+
+      {profile?.role === 'admin' && (
+        <TeamReadinessPanel readiness={data.teamReadiness} onNavigate={navigate}/>
       )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}

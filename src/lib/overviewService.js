@@ -41,7 +41,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
   // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
   const bankEffQ = loadEffectiveBankBalance().catch(() => null);
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial] = await Promise.all([
+  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, zohoFinancial, teamReadiness] = await Promise.all([
     rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
     rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
     rpc('ap_aging_by_carrier', {}),
@@ -61,6 +61,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     supabase.rpc('zoho_invoice_dashboard').then(r => r.data || null).catch(() => null),
     // قراءة خفيفة من المرآة المحلية فقط؛ لا تضرب Zoho API عند كل فتح للرئيسية.
     supabase.rpc('zoho_financial_control_dashboard').then(r => r.data || null).catch(() => null),
+    // لقطة إدارية واحدة تجمع جاهزية المحاسبة والمالية والمبيعات. فشلها
+    // يبقى null حتى تعرض الواجهة «المصدر غير متاح» بدل جاهزية مضللة.
+    supabase.rpc('team_operational_readiness_snapshot').then(r => r.data || null).catch(() => null),
   ]);
 
   const thisSnap = (thisSnapArr[0] || {});
@@ -98,6 +101,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   return {
     period:     thisPeriod,
     prevPeriod,
+    teamReadiness,
     thisMonth: {
       carrierSpend:  num(thisSnap.carrier_spend_gross),
       carrierPaid:   num(thisSnap.carrier_paid),

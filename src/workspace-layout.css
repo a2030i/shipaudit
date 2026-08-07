@@ -66,6 +66,139 @@
   background: color-mix(in srgb, var(--item-accent, var(--brand)) 9%, #fff) !important;
 }
 
+.team-readiness-panel {
+  margin: 0 0 24px;
+  padding: 20px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--card) 94%, var(--accent) 6%);
+  box-shadow: 0 12px 34px rgba(31, 48, 88, 0.07);
+}
+
+.team-readiness-panel__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 16px;
+}
+
+.team-readiness-panel__eyebrow {
+  display: block;
+  margin-bottom: 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.team-readiness-panel__head h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 20px;
+}
+
+.team-readiness-panel__head p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.team-readiness-panel__freshness {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.team-readiness-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.team-readiness-card {
+  --readiness-color: var(--accent);
+  position: relative;
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--readiness-color) 24%, var(--border));
+  border-top: 3px solid var(--readiness-color);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.team-readiness-card.is-ready { --readiness-color: var(--green); }
+.team-readiness-card.is-pilot { --readiness-color: var(--gold); }
+.team-readiness-card.is-blocked,
+.team-readiness-card.is-unavailable { --readiness-color: var(--red); }
+
+.team-readiness-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.team-readiness-card__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  border-radius: 11px;
+  color: var(--readiness-color);
+  background: color-mix(in srgb, var(--readiness-color) 11%, transparent);
+}
+
+.team-readiness-card h3 {
+  margin: 0 0 5px;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.team-readiness-status {
+  display: inline-flex;
+  color: var(--readiness-color);
+  font-size: 10.5px;
+  font-weight: 850;
+}
+
+.team-readiness-card__evidence {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+  line-height: 1.45;
+}
+
+.team-readiness-card p {
+  min-height: 42px;
+  margin: 7px 0 14px;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.7;
+}
+
+.team-readiness-card button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  min-height: 40px;
+  padding: 8px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text);
+  background: color-mix(in srgb, var(--readiness-color) 6%, var(--card));
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .nav-tree-children {
     margin-inline-start: 18px;
@@ -2556,5 +2689,37 @@
   [data-theme="light"] .page-hero-band,
   [data-theme="light"] .page-summary {
     border-radius: 11px;
+  }
+
+  .team-readiness-panel {
+    margin-bottom: 18px;
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .team-readiness-panel__head {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .team-readiness-panel__head h2 {
+    font-size: 18px;
+  }
+
+  .team-readiness-panel__freshness {
+    margin-top: 8px;
+  }
+
+  .team-readiness-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .team-readiness-card {
+    padding: 14px;
+  }
+
+  .team-readiness-card p {
+    min-height: 0;
   }
 }

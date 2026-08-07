@@ -1,0 +1,37 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const migration = await readFile(
+  new URL('../supabase/migrations/20260807153000_team_operational_readiness.sql', import.meta.url),
+  'utf8',
+);
+const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
+const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx', import.meta.url), 'utf8');
+const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
+
+test('readiness RPC is authenticated, read-only and validates explicit carrier schedules', () => {
+  assert.match(migration, /auth\.uid\(\)/);
+  assert.match(migration, /crm_has_permission\('overview\.view'\)/);
+  assert.match(migration, /schedule_basis in \('weekday', 'month_days'\)/);
+  assert.match(migration, /cardinality\(schedule\.due_days\) > 0/);
+  assert.match(migration, /when 'audit_with_cod' then array\['invoice'\]/);
+  assert.match(migration, /when 'audit_and_cod_separate' then array\['invoice', 'cod_remittance'\]/);
+  assert.doesNotMatch(migration, /insert\s+into|update\s+public|delete\s+from/i);
+});
+
+test('overview loads team readiness in the existing parallel request fan-out', () => {
+  assert.match(service, /team_operational_readiness_snapshot/);
+  assert.match(service, /teamReadiness/);
+  assert.match(service, /Promise\.all/);
+});
+
+test('admin dashboard exposes three clear readiness decisions and never assumes missing data is ready', () => {
+  assert.match(panel, /المحاسبة/);
+  assert.match(panel, /المالية/);
+  assert.match(panel, /المبيعات والتحصيل/);
+  assert.match(panel, /المصدر غير متاح/);
+  assert.match(panel, /تعذّر قراءة بيانات الجاهزية/);
+  assert.match(overview, /profile\?\.role === 'admin'/);
+  assert.match(overview, /<TeamReadinessPanel/);
+});
