@@ -22,7 +22,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
   RefreshCw, Phone, CheckCircle2, Clock, X, AlertTriangle, Download,
-  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2,
+  Inbox, MessageSquare, Calendar, Sparkles, Edit3, Plus, ChevronLeft, Trash2, UserPlus,
 } from 'lucide-react';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
@@ -33,6 +33,7 @@ import {
   listTasks, regenerateTasks, updateTaskStage, recordPromise,
   completePromise, breakPromise, snoozeTask, cancelTask, deleteTask,
   loadCollectionCandidates, dunningLevel, DUNNING_LEVELS, loadAgingTrend,
+  loadCollectionAssignmentCandidates, assignCollectionTasks,
 } from '../lib/collectionsService.js';
 import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
@@ -99,6 +100,7 @@ export default function Collections({ isActive = true }) {
   const canRegenerate = can('collections.regenerate');
   const canUpdateStage = can('collections.update_stage');
   const canRecordPromise = can('collections.record_promise');
+  const canAssign = can('collections.assign');
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
@@ -112,12 +114,16 @@ export default function Collections({ isActive = true }) {
   const [reviewQueueOpen, setReviewQueueOpen]   = useState(false);
   const [agingTrend, setAgingTrend] = useState(null);
   const [candidatesReady, setCandidatesReady] = useState(false);
+  const [assignmentCandidates, setAssignmentCandidates] = useState([]);
+  const [selectedTasks, setSelectedTasks] = useState(new Set());
+  const [bulkAssignee, setBulkAssignee] = useState('');
+  const [assigning, setAssigning] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       let candidatesOk = true;
-      const [recs, pending, trend] = await Promise.all([
+      const [recs, pending, trend, collectors] = await Promise.all([
         loadCollectionCandidates().catch((e) => {
           candidatesOk = false;
           console.warn('Failed to load live collection candidates', e);
@@ -125,6 +131,7 @@ export default function Collections({ isActive = true }) {
         }),   // دين زوهو الحيّ (كان snapshot)
         listWriteoffs({ status: 'pending' }).catch(() => []),
         loadAgingTrend().catch(() => null),
+        canAssign ? loadCollectionAssignmentCandidates().catch(() => []) : Promise.resolve([]),
       ]);
       const liveCustomers = Array.isArray(recs) ? recs : [];
       const t = await listTasks({ includeDone: stageFilter !== 'open' });
@@ -133,11 +140,12 @@ export default function Collections({ isActive = true }) {
       setCandidatesReady(candidatesOk);
       setPendingWriteoffs(pending);
       setAgingTrend(trend);
+      setAssignmentCandidates(collectors);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, [stageFilter]);
+  }, [stageFilter, canAssign]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -213,6 +221,54 @@ export default function Collections({ isActive = true }) {
       : prioritizedTasks.slice(DAILY_COLLECTION_LIMIT);
   }, [prioritizedTasks, stageFilter, workScope]);
 
+  const collectorById = useMemo(
+    () => new Map(assignmentCandidates.map(employee => [employee.id, employee])),
+    [assignmentCandidates],
+  );
+  const visibleTaskIds = useMemo(() => new Set(visibleTasks.map(task => task.id)), [visibleTasks]);
+  const allVisibleSelected = visibleTasks.length > 0 && visibleTasks.every(task => selectedTasks.has(task.id));
+
+  useEffect(() => {
+    setSelectedTasks(current => {
+      const next = new Set([...current].filter(id => visibleTaskIds.has(id)));
+      return next.size === current.size ? current : next;
+    });
+  }, [visibleTaskIds]);
+
+  const toggleTaskSelection = (taskId) => {
+    setSelectedTasks(current => {
+      const next = new Set(current);
+      if (next.has(taskId)) next.delete(taskId);
+      else next.add(taskId);
+      return next;
+    });
+  };
+
+  const toggleVisibleSelection = () => {
+    setSelectedTasks(allVisibleSelected ? new Set() : new Set(visibleTasks.map(task => task.id)));
+  };
+
+  const handleBulkAssignment = async (assigneeId) => {
+    if (!selectedTasks.size) return;
+    setAssigning(true);
+    try {
+      const result = await assignCollectionTasks([...selectedTasks], assigneeId || null);
+      const assignee = assignmentCandidates.find(employee => employee.id === assigneeId);
+      toast(
+        assigneeId
+          ? `أُسندت ${result.updated || 0} مهمة إلى ${assignee?.name || 'الموظف'}`
+          : `أُلغي إسناد ${result.updated || 0} مهمة`,
+        'success',
+      );
+      setSelectedTasks(new Set());
+      await refresh();
+    } catch (error) {
+      toast(`تعذّر الإسناد: ${error.message}`, 'error');
+    } finally {
+      setAssigning(false);
+    }
+  };
+
   const stats = useMemo(() => {
     const open    = tasks.filter(t => OPEN_STAGES.includes(t.stage) && isLiveTask(t));
     const promised = open.filter(t => t.stage === 'promised');
@@ -260,7 +316,7 @@ export default function Collections({ isActive = true }) {
     const headers = [
       'العميل', 'السبب', 'المرحلة', 'الدين عند الإنشاء',
       'الأيام منذ آخر فاتورة', 'وعد بالدفع', 'تاريخ الوعد',
-      'منشأة في', 'الملاحظات',
+      'المسؤول', 'منشأة في', 'الملاحظات',
     ];
     const rows = visibleTasks.map(t => [
       t.customer_name,
@@ -270,6 +326,7 @@ export default function Collections({ isActive = true }) {
       t.days_outstanding,
       t.promise_amount || '',
       t.promise_date || '',
+      collectorById.get(t.assigned_to)?.name || (t.assigned_to ? 'موظف' : 'بلا مسؤول'),
       t.created_at,
       t.notes || '',
     ]);
@@ -456,6 +513,56 @@ export default function Collections({ isActive = true }) {
         ))}
       </div>
 
+      {canAssign && visibleTasks.length > 0 && (
+        <Card className="collection-assignment-bar" style={{ marginBottom: 14, padding: 12 }}>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 7, fontSize: 12, fontWeight: 750, color: 'var(--text)' }}>
+              <input type="checkbox" checked={allVisibleSelected} onChange={toggleVisibleSelection}/>
+              تحديد المعروض ({visibleTasks.length})
+            </label>
+            <span style={{ fontSize: 11.5, color: selectedTasks.size ? 'var(--accent3)' : 'var(--muted)', fontWeight: 700 }}>
+              المحدد: {selectedTasks.size}
+            </span>
+            <select
+              value={bulkAssignee}
+              onChange={(event) => setBulkAssignee(event.target.value)}
+              disabled={!assignmentCandidates.length || assigning}
+              aria-label="موظف التحصيل المسؤول"
+              style={{ minWidth: 210, minHeight: 40, marginInlineStart: 'auto', border: '1px solid var(--border)', borderRadius: 10, padding: '7px 10px', color: 'var(--text)', background: 'var(--card)', fontFamily: 'inherit' }}
+            >
+              <option value="">اختر موظف التحصيل…</option>
+              {assignmentCandidates.map(employee => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.name} · {employee.openTasks} مهام مفتوحة
+                </option>
+              ))}
+            </select>
+            <Btn
+              size="sm"
+              variant="primary"
+              icon={<UserPlus size={14}/>}
+              disabled={!selectedTasks.size || !bulkAssignee || assigning}
+              onClick={() => handleBulkAssignment(bulkAssignee)}
+            >
+              إسناد المحدد
+            </Btn>
+            <Btn
+              size="sm"
+              variant="ghost"
+              disabled={!selectedTasks.size || assigning}
+              onClick={() => handleBulkAssignment(null)}
+            >
+              إلغاء الإسناد
+            </Btn>
+          </div>
+          {!assignmentCandidates.length && (
+            <div style={{ marginTop: 8, fontSize: 11, color: 'var(--gold)' }}>
+              لا يوجد موظف يملك صلاحيتَي عرض قائمة التحصيل وتحديث مرحلتها. جهّز صلاحيات الموظف أولاً.
+            </div>
+          )}
+        </Card>
+      )}
+
       {/* Tasks table */}
       {visibleTasks.length === 0 ? (
         <Empty
@@ -468,7 +575,10 @@ export default function Collections({ isActive = true }) {
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
               <tr style={{ background: 'var(--surface2)', borderBottom: '1px solid var(--border)' }}>
-                {['العميل', 'السبب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'إجراء'].map(h => (
+                {canAssign && (
+                  <th aria-label="تحديد" style={{ width: 42, padding: '10px 8px' }}/>
+                )}
+                {['العميل', 'السبب', 'المرحلة', 'الدين', 'عمر الدين', 'الوعد', 'المسؤول', 'إجراء'].map(h => (
                   <th key={h} style={{ padding: '10px 12px', textAlign: 'right', fontSize: 11, fontWeight: 600, color: 'var(--muted)', whiteSpace: 'nowrap' }}>{h}</th>
                 ))}
               </tr>
@@ -484,6 +594,16 @@ export default function Collections({ isActive = true }) {
                     background: isOverdueSnooze || isPromiseOverdue ? 'color-mix(in srgb, var(--red) 4%, transparent)' : 'transparent',
                     cursor: 'pointer',
                   }} onClick={() => setDrawer(t)}>
+                    {canAssign && (
+                      <td data-label="تحديد" style={{ padding: '10px 8px' }} onClick={(event) => event.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          checked={selectedTasks.has(t.id)}
+                          onChange={() => toggleTaskSelection(t.id)}
+                          aria-label={`تحديد مهمة ${t.customer_name}`}
+                        />
+                      </td>
+                    )}
                     <td data-label="" style={{ padding: '10px 12px', fontWeight: 600, color: 'var(--text)' }}>
                       {t.customer_name}
                       {c?.merchant?.phone && (
@@ -538,6 +658,9 @@ export default function Collections({ isActive = true }) {
                           {isOverdueSnooze && ' ⚠'}
                         </span>
                       ) : '—'}
+                    </td>
+                    <td data-label="المسؤول" style={{ padding: '10px 12px', fontSize: 11.5, fontWeight: 650, color: t.assigned_to ? 'var(--text)' : 'var(--gold)' }}>
+                      {collectorById.get(t.assigned_to)?.name || (t.assigned_to ? 'موظف' : 'بلا مسؤول')}
                     </td>
                     <td data-label="إجراء" style={{ padding: '10px 12px' }} onClick={(e) => e.stopPropagation()}>
                       {canUpdateStage ? (

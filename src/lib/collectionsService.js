@@ -57,6 +57,28 @@ export async function listTasks({ stage = null, customer = null, includeDone = f
   return data || [];
 }
 
+export async function loadCollectionAssignmentCandidates() {
+  const { data, error } = await supabase.rpc('collection_assignment_candidates');
+  if (error) throw error;
+  return (data || []).map(row => ({
+    id: row.user_id,
+    name: row.employee_name || row.employee_email || 'موظف',
+    email: row.employee_email || '',
+    openTasks: Number(row.open_tasks) || 0,
+  }));
+}
+
+export async function assignCollectionTasks(taskIds, assigneeId = null) {
+  const ids = [...new Set((taskIds || []).filter(Boolean))];
+  if (!ids.length) throw new Error('حدد مهمة واحدة على الأقل');
+  const { data, error } = await supabase.rpc('assign_collection_tasks', {
+    p_task_ids: ids,
+    p_assignee: assigneeId || null,
+  });
+  if (error) throw error;
+  return data || { updated: 0 };
+}
+
 // Auto-generate tasks from the customer list (already enriched with
 // total/daysOutstanding/overLimit/creditLimit by
 // loadLatestReceivables). Skips customers that already have an open

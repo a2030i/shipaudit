@@ -117,6 +117,7 @@ export const PERMISSION_CATALOG = [
     perms: [
       { key: 'collections.view',         label: 'عرض قائمة المهمات' },
       { key: 'collections.view_all',     label: 'عرض مهام فريق التحصيل كاملة', sensitive: true },
+      { key: 'collections.assign',       label: 'إسناد مهام التحصيل لموظفي الفريق', sensitive: true },
       { key: 'collections.regenerate',   label: 'إعادة توليد المهمات' },
       { key: 'collections.update_stage', label: 'تحديث مرحلة المهمة' },
       { key: 'collections.record_promise', label: 'تسجيل وعد دفع (PTP)' },

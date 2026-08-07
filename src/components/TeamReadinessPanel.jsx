@@ -85,9 +85,9 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           section={sales}
           evidence={`${number(sales?.unassigned_collections)} تحصيل · ${number(sales?.unassigned_followups)} متابعة بلا مسؤول`}
           note={sales
-            ? `${number(sales.campaign_recipients)} مستلمي عملاء حملات مهيئين · ${number(sales.unassigned_crm_tasks)} مهام CRM بلا مسؤول.`
+            ? `${number(sales.campaign_recipients)} مستلمي عملاء حملات مهيئين · ${number(sales.unassigned_crm_tasks)} مهام CRM بلا مسؤول. مستلم الحملة يُضبط من الفريق والصلاحيات.`
             : ''}
-          action={{ label: 'تهيئة الفريق والإسناد', path: '/employees' }}
+          action={{ label: 'توزيع مهام التحصيل', path: '/collections' }}
           onNavigate={onNavigate}
         />
       </div>
