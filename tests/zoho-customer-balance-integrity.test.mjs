@@ -10,6 +10,10 @@ const syncFunction = await readFile(
   new URL('../supabase/functions/zoho-sync/index.ts', import.meta.url),
   'utf8',
 );
+const creditCoverageMigration = await readFile(
+  new URL('../supabase/migrations/20260807123000_customer_balance_credit_coverage.sql', import.meta.url),
+  'utf8',
+);
 
 test('opening balance is explicit and never inferred from a mirror gap', () => {
   assert.match(migration, /opening_balance_configured numeric/);
@@ -32,4 +36,13 @@ test('sync repairs the full invoice history only for integrity candidates', () =
   assert.match(syncFunction, /customer_id: String\(candidate\.zoho_id\)/);
   assert.match(syncFunction, /openingBalanceConfigured\(detail/);
   assert.match(syncFunction, /staleIds/);
+});
+
+test('fully credit-covered Zoho contacts do not block collection integrity', () => {
+  assert.match(
+    creditCoverageMigration,
+    /unused_credits_receivable[\s\S]*>= greatest\(coalesce\(c\.outstanding_receivable/,
+  );
+  assert.match(creditCoverageMigration, /then 'valid'/);
+  assert.match(creditCoverageMigration, /needs_zoho_settlement/);
 });
