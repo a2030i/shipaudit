@@ -14,6 +14,476 @@
   --data-row-inline: 14px;
 }
 
+/* ── Morning management brief ────────────────────────────────────────────── */
+.morning-brief-dialog {
+  width: min(1080px, 96vw) !important;
+}
+
+.morning-brief-body,
+.morning-brief-layout {
+  min-width: 0;
+}
+
+.morning-brief-layout {
+  display: grid;
+  gap: 14px;
+}
+
+.brief-intro,
+.brief-enable,
+.brief-template-note,
+.brief-health,
+.brief-freshness {
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  background: var(--surface2);
+}
+
+.brief-intro {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+}
+
+.brief-intro strong {
+  display: block;
+  color: var(--text);
+  font-size: 16px;
+}
+
+.brief-intro p {
+  max-width: 720px;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.8;
+}
+
+.brief-intro > span {
+  flex: 0 0 auto;
+  padding: 7px 10px;
+  border-radius: 999px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.brief-enable {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.brief-enable input {
+  width: 19px;
+  height: 19px;
+  accent-color: var(--accent);
+}
+
+.brief-enable span {
+  display: grid;
+  gap: 2px;
+}
+
+.brief-enable b {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.brief-enable small {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.brief-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.brief-mode-grid button {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  min-height: 78px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: start;
+  cursor: pointer;
+}
+
+.brief-mode-grid button.selected {
+  border-color: var(--accent);
+  background: var(--accent-dim);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.brief-mode-grid button b {
+  font-size: 13px;
+}
+
+.brief-mode-grid button small {
+  padding-inline-end: 86px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+.brief-mode-grid button em {
+  position: absolute;
+  inset-block-start: 12px;
+  inset-inline-end: 12px;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: var(--green);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.brief-template-note {
+  padding: 11px 13px;
+  border-color: color-mix(in srgb, var(--gold) 35%, var(--border));
+  background: var(--gold-soft);
+  color: var(--gold-ink);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
+.brief-config-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.brief-variable-contract,
+.brief-message-preview {
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.brief-variable-contract summary,
+.brief-message-preview summary {
+  padding: 11px 13px;
+  color: var(--text2);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.brief-variable-contract > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 13px 13px;
+}
+
+.brief-variable-contract span {
+  display: inline-flex;
+  gap: 5px;
+  padding: 5px 7px;
+  border-radius: 8px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.brief-variable-contract b {
+  color: var(--accent);
+  font-family: var(--font-mono);
+}
+
+.brief-actions {
+  position: sticky;
+  z-index: 2;
+  bottom: -1px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border2);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+.brief-dashboard {
+  display: grid;
+  gap: 14px;
+}
+
+.brief-health {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 16px;
+}
+
+.brief-health > div:first-child {
+  display: grid;
+  gap: 4px;
+}
+
+.brief-health > div:first-child span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.brief-health > div:first-child strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.brief-health > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: center;
+  gap: 6px;
+}
+
+.brief-health > div:last-child span {
+  padding: 5px 8px;
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text2);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.brief-health--good { border-color: color-mix(in srgb, var(--green) 35%, var(--border)); background: var(--green-soft); }
+.brief-health--attention { border-color: color-mix(in srgb, var(--gold) 45%, var(--border)); background: var(--gold-soft); }
+.brief-health--critical { border-color: color-mix(in srgb, var(--red) 38%, var(--border)); background: var(--red-soft); }
+
+.brief-hero-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.brief-metric {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border2);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.brief-metric > span,
+.brief-metric > small {
+  display: block;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.brief-metric > strong {
+  display: block;
+  margin: 5px 0 3px;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.brief-metric--good { border-top: 3px solid var(--green); }
+.brief-metric--attention { border-top: 3px solid var(--gold); }
+.brief-metric--critical { border-top: 3px solid var(--red); }
+
+.brief-sections-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.brief-section {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border2);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.brief-section > header {
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid var(--border2);
+  background: var(--surface2);
+}
+
+.brief-section h4 {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.brief-section header p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.brief-section__body {
+  padding: 12px;
+}
+
+.brief-mini-grid,
+.brief-aging-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.brief-mini-grid .brief-metric > strong,
+.brief-aging-grid .brief-metric > strong {
+  font-size: 14px;
+}
+
+.brief-debtors {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.brief-debtors > div {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 4px 7px;
+  padding: 10px;
+  border: 1px solid var(--border2);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.brief-debtors > div > span {
+  grid-row: 1 / 4;
+  display: grid;
+  place-items: center;
+  align-self: start;
+  width: 22px;
+  height: 22px;
+  border-radius: 7px;
+  background: var(--accent-dim);
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.brief-debtors b,
+.brief-debtors strong,
+.brief-debtors small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.brief-debtors b { color: var(--text); font-size: 10.5px; white-space: nowrap; }
+.brief-debtors strong { color: var(--red); font-family: var(--font-mono); font-size: 12px; }
+.brief-debtors small { color: var(--muted); font-size: 9px; white-space: nowrap; }
+
+.brief-freshness {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.brief-freshness span {
+  color: var(--muted);
+  font-size: 9.5px;
+}
+
+.brief-freshness b {
+  color: var(--text2);
+}
+
+.brief-message-preview > div {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  padding: 0 12px 12px;
+}
+
+.brief-message-preview > div > div {
+  display: grid;
+  gap: 3px;
+  padding: 8px 9px;
+  border-radius: 9px;
+  background: var(--surface2);
+}
+
+.brief-message-preview span {
+  color: var(--accent);
+  font-size: 9.5px;
+  font-weight: 800;
+}
+
+.brief-message-preview b {
+  color: var(--text2);
+  font-size: 10.5px;
+  line-height: 1.6;
+}
+
+@media (max-width: 820px) {
+  .morning-brief-dialog {
+    width: 100% !important;
+  }
+
+  .brief-intro,
+  .brief-health {
+    grid-template-columns: 1fr;
+    align-items: flex-start;
+  }
+
+  .brief-intro {
+    display: grid;
+  }
+
+  .brief-intro > span {
+    width: max-content;
+  }
+
+  .brief-config-grid,
+  .brief-hero-metrics,
+  .brief-freshness {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .brief-debtors {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 600px) {
+  .brief-mode-grid,
+  .brief-config-grid,
+  .brief-hero-metrics,
+  .brief-sections-grid,
+  .brief-freshness,
+  .brief-message-preview > div {
+    grid-template-columns: 1fr;
+  }
+
+  .brief-mode-grid button small {
+    padding-inline-end: 0;
+  }
+
+  .brief-actions .ui-btn {
+    flex: 1 1 0;
+  }
+
+  .brief-metric > strong {
+    font-size: 16px;
+  }
+}
+
 /* ── Hierarchical navigation v2 ──────────────────────────────────────────
    Independent hub pages are now discoverable as a collapsible fourth level
    in the shared sidebar: section → work group → center → page. */

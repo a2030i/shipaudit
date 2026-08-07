@@ -839,14 +839,42 @@ function ApplyCreditsModal({ target, onClose, onDone, onGrant }) {
   );
 }
 
-// إعداد ملخّص الصباح — رسالة واتساب يومية 7:15 صباحاً بأرقام هذه الشاشة
+const BRIEF_VARIABLE_LABELS = {
+  compact: ['التاريخ', 'لك عند العملاء', 'منها متأخرة', 'حصّلنا هذا الشهر', 'أكبر 3 مدينين', 'فواتير تنتظر نظرتك'],
+  expanded: [
+    'التاريخ', 'صحة اليوم', 'البنوك والأرصدة', 'عمليات البنك', 'ذمم العملاء', 'المتأخر والافتتاحي',
+    'أعمار الدين', 'التحصيل الشهري', 'أكبر 5 مدينين', 'تغطية مهام التحصيل', 'وعود السداد',
+    'الموردون والفواتير', 'دورة المحاسب', 'زاتكا', 'المبيعات والمتابعة', 'التكاملات وحداثة المصادر',
+  ],
+};
+
+function BriefMetric({ label, value, detail, tone = 'default' }) {
+  return (
+    <div className={`brief-metric brief-metric--${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+      {detail && <small>{detail}</small>}
+    </div>
+  );
+}
+
+function BriefSection({ title, subtitle, children }) {
+  return (
+    <section className="brief-section">
+      <header><div><h4>{title}</h4>{subtitle && <p>{subtitle}</p>}</div></header>
+      <div className="brief-section__body">{children}</div>
+    </section>
+  );
+}
+
+// إعداد ملخّص الصباح — رسالة واتساب يومية 7:15 صباحاً + لوحة إدارة موسعة
 function MorningBriefModal({ onClose }) {
   const [cfg, setCfg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState(null);
   const [sending, setSending] = useState(false);
 
-  useEffect(() => { loadMorningBriefConfig().then(setCfg).catch(() => setCfg({ enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '' })); }, []);
+  useEffect(() => { loadMorningBriefConfig().then(setCfg).catch(() => setCfg({ enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '', reportMode: 'compact' })); }, []);
 
   const save = async (next) => {
     setCfg(next); setSaving(true);
@@ -856,7 +884,7 @@ function MorningBriefModal({ onClose }) {
   const doPreview = async () => {
     setPreview('...');
     const r = await previewMorningBrief();
-    setPreview(r?.ok ? r.vars : `خطأ: ${r?.error || 'غير معروف'}`);
+    setPreview(r?.ok ? r : `خطأ: ${r?.error || 'غير معروف'}`);
   };
   const doSendNow = async () => {
     setSending(true);
@@ -867,21 +895,53 @@ function MorningBriefModal({ onClose }) {
     else toast(`فشل الإرسال: ${r?.error || 'غير معروف'}`, 'error');
   };
 
-  const VAR_LABELS = ['التاريخ', 'لك عند العملاء', 'منها متأخرة', 'حصّلنا هذا الشهر', 'أكبر 3 مدينين', 'فواتير تنتظر نظرتك'];
+  const mode = cfg?.reportMode === 'expanded' ? 'expanded' : 'compact';
+  const variableLabels = BRIEF_VARIABLE_LABELS[mode];
+  const report = preview?.report;
+  const customer = report?.customer || {};
+  const finance = report?.finance || {};
+  const collections = report?.collections || {};
+  const operations = report?.operations || {};
+  const sales = report?.sales || {};
+  const system = report?.system || {};
+  const aging = customer?.aging || {};
+  const topCustomers = Array.isArray(customer?.customers) ? customer.customers.slice(0, 5) : [];
+  const cycleLabel = operations?.cycle_status === 'closed' ? 'مقفلة' : operations?.cycle_status === 'open' ? 'مفتوحة' : 'لم تبدأ';
+  const healthTone = report?.health?.level === 'critical' ? 'critical' : report?.health?.level === 'attention' ? 'attention' : 'good';
 
   return (
-    <Modal title="🌅 ملخّص الصباح — واتساب يومي" onClose={onClose} width={540}>
+    <Modal title="🌅 ملخّص الصباح — تقرير الإدارة اليومي" onClose={onClose} width={1080} className="morning-brief-dialog" bodyClassName="morning-brief-body">
       {!cfg ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner/></div> : (
-        <div>
-          <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7, marginBottom: 12 }}>
-            رسالة تصلك كل يوم <b>7:15 صباحاً</b> بأرقام هذه الشاشة: المستحق، المتأخر، التحصيل،
-            أكبر المدينين، والفواتير المنتظرة. تحتاج قالباً معتمداً في Hatif بستة متغيّرات.
+        <div className="morning-brief-layout">
+          <div className="brief-intro">
+            <div>
+              <strong>نظرة واحدة قبل بدء اليوم</strong>
+              <p>تجمع النقد والبنوك، العملاء والتحصيل، الموردين، دورة المحاسب، زاتكا، المبيعات، والتكاملات. القراءة فقط ولا تغيّر أي رصيد أو مهمة.</p>
+            </div>
+            <span>يوميًا · 7:15 ص · بتوقيت السعودية</span>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13, fontWeight: 700 }}>
+
+          <label className="brief-enable">
             <input type="checkbox" checked={cfg.enabled} onChange={e => save({ ...cfg, enabled: e.target.checked })}/>
-            تفعيل الإرسال اليومي
+            <span><b>تفعيل الإرسال اليومي</b><small>{cfg.enabled ? 'سيصل التقرير تلقائيًا في الموعد' : 'المعاينة تعمل، لكن لن تُرسل رسالة تلقائية'}</small></span>
           </label>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+
+          <div className="brief-mode-grid" role="radiogroup" aria-label="حجم تقرير واتساب">
+            <button type="button" className={mode === 'expanded' ? 'selected' : ''} onClick={() => save({ ...cfg, reportMode: 'expanded' })}>
+              <b>تقرير إدارة موسّع</b><small>16 متغيّرًا · بنوك، تحصيل، تشغيل، زاتكا، فريق ومبيعات</small><em>الموصى به</em>
+            </button>
+            <button type="button" className={mode === 'compact' ? 'selected' : ''} onClick={() => save({ ...cfg, reportMode: 'compact' })}>
+              <b>الملخص الحالي</b><small>6 متغيّرات · ذمم وتحصيل وأكبر المدينين فقط</small>
+            </button>
+          </div>
+
+          {mode === 'expanded' && (
+            <div className="brief-template-note">
+              القالب الموسّع يحتاج قالب Hatif معتمدًا بـ <b>16 متغيّرًا</b>. اختيار الوضع لا يغيّر القالب تلقائيًا؛ اكتب اسم القالب المعتمد أدناه.
+            </div>
+          )}
+
+          <div className="brief-config-grid">
             <Input label="رقم المستلِم (05… أو 9665…)" value={cfg.phone}
               onChange={e => setCfg({ ...cfg, phone: e.target.value })}
               onBlur={() => save(cfg)} placeholder="05XXXXXXXX"/>
@@ -895,28 +955,104 @@ function MorningBriefModal({ onClose }) {
               onChange={e => setCfg({ ...cfg, channelId: e.target.value })}
               onBlur={() => save(cfg)}/>
           </div>
-          <div style={{ fontSize: 11, color: 'var(--muted2)', margin: '8px 0 12px' }}>
-            متغيّرات القالب بالترتيب: {VAR_LABELS.map((l, i) => `{{${i + 1}}} ${l}`).join(' · ')}
-          </div>
 
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            <Btn size="sm" variant="ghost" onClick={doPreview}>معاينة الأرقام</Btn>
+          <details className="brief-variable-contract">
+            <summary>عرض ترتيب متغيّرات القالب ({variableLabels.length})</summary>
+            <div>{variableLabels.map((label, index) => <span key={label}><b>{`{{${index + 1}}}`}</b>{label}</span>)}</div>
+          </details>
+
+          <div className="brief-actions">
+            <Btn size="sm" variant="ghost" onClick={doPreview}>تحديث ومعاينة التقرير</Btn>
             <Btn size="sm" variant="accent" onClick={doSendNow} disabled={sending || !cfg.enabled || !cfg.phone || !cfg.templateName}>
               {sending ? <Spinner size={13}/> : 'أرسل الآن (تجربة)'}
             </Btn>
             {saving && <span style={{ fontSize: 11, color: 'var(--muted)', alignSelf: 'center' }}>يحفظ…</span>}
           </div>
 
-          {Array.isArray(preview) && (
-            <div style={{ background: 'var(--surface2)', border: '1px solid var(--border)', borderRadius: 10, padding: '10px 14px', fontSize: 12 }}>
-              {preview.map((v, i) => (
-                <div key={i} style={{ display: 'flex', gap: 8, padding: '3px 0' }}>
-                  <span style={{ color: 'var(--muted)', minWidth: 120 }}>{VAR_LABELS[i]}</span>
-                  <b>{v}</b>
-                </div>
-              ))}
+          {report && <div className="brief-dashboard">
+            <div className={`brief-health brief-health--${healthTone}`}>
+              <div><span>صحة اليوم</span><strong>{report.health?.alerts?.length ? `${report.health.alerts.length} إشارات تحتاج قرارًا` : 'الوضع مستقر'}</strong></div>
+              <div>{report.health?.alerts?.length ? report.health.alerts.map(alert => <span key={alert}>{alert}</span>) : <span>لا توجد إشارات حرجة في اللقطة الحالية</span>}</div>
             </div>
-          )}
+
+            <div className="brief-hero-metrics">
+              <BriefMetric label="الرصيد الختامي للبنوك" value={`${fmt(finance.statement_balance)} ر.س`} detail={`زوهو ${fmt(finance.book_balance)} · الفرق ${fmt(finance.statement_vs_book_difference)}`} tone={Math.abs(Number(finance.statement_vs_book_difference || 0)) > 0.5 ? 'attention' : 'good'}/>
+              <BriefMetric label="لك عند العملاء" value={`${fmt(customer.outstanding)} ر.س`} detail={`${customer.outstanding_cnt || 0} عميل`}/>
+              <BriefMetric label="المتأخر" value={`${fmt(customer.overdue_amt)} ر.س`} detail={`+90 يوم ${fmt(aging.b90p)} ر.س`} tone="critical"/>
+              <BriefMetric label="تحصيل هذا الشهر" value={`${fmt(customer.collected_this_month)} ر.س`} detail={`الشهر السابق ${fmt(customer.collected_prev_month)} ر.س`} tone="good"/>
+            </div>
+
+            <div className="brief-sections-grid">
+              <BriefSection title="النقد والبنوك" subtitle="كشف البنك مقابل رصيد زوهو">
+                <div className="brief-mini-grid">
+                  <BriefMetric label="حسابات مربوطة" value={finance.linked_bank_accounts || 0}/>
+                  <BriefMetric label="عمليات غير مصنفة" value={finance.uncategorized_bank_operations || 0} tone={finance.uncategorized_bank_operations ? 'attention' : 'good'}/>
+                  <BriefMetric label="آخر كشف" value={finance.statement_as_of || 'غير متوفر'}/>
+                  <BriefMetric label="فرق الكشف عن زوهو" value={`${fmt(finance.statement_vs_book_difference)} ر.س`} tone={Math.abs(Number(finance.statement_vs_book_difference || 0)) > 0.5 ? 'attention' : 'good'}/>
+                </div>
+              </BriefSection>
+
+              <BriefSection title="أعمار ديون العملاء" subtitle={`يتضمن الرصيد الافتتاحي ${fmt(aging.opening_balance)} ر.س`}>
+                <div className="brief-aging-grid">
+                  {[['0–30 يوم', aging.b0_30, 'good'], ['31–60 يوم', aging.b31_60, 'default'], ['61–90 يوم', aging.b61_90, 'attention'], ['+90 يوم', aging.b90p, 'critical']].map(([label, value, tone]) => <BriefMetric key={label} label={label} value={`${fmt(value)} ر.س`} tone={tone}/>) }
+                </div>
+              </BriefSection>
+
+              <BriefSection title="التحصيل ووعود السداد" subtitle="هل كل عميل يحتاج متابعة لديه مهمة ومسؤول؟">
+                <div className="brief-mini-grid">
+                  <BriefMetric label="مرشحون للتحصيل" value={collections.candidates || 0} detail={`${fmt(collections.candidate_debt)} ر.س`}/>
+                  <BriefMetric label="بلا مهمة" value={collections.missing_tasks || 0} detail={`${fmt(collections.missing_task_debt)} ر.س`} tone={collections.missing_tasks ? 'critical' : 'good'}/>
+                  <BriefMetric label="بلا مسؤول" value={collections.unassigned_customers || 0} tone={collections.unassigned_customers ? 'attention' : 'good'}/>
+                  <BriefMetric label="وعود اليوم / متجاوزة" value={`${collections.promises_due_today || 0} / ${collections.broken_promises || 0}`} tone={collections.broken_promises ? 'critical' : 'default'}/>
+                </div>
+              </BriefSection>
+
+              <BriefSection title="الموردون والالتزامات" subtitle="الالتزام الصافي والفواتير التي تحتاج سدادًا">
+                <div className="brief-mini-grid">
+                  <BriefMetric label="صافي الموردين" value={`${fmt(finance.vendor_net_payable)} ر.س`}/>
+                  <BriefMetric label="فواتير مفتوحة" value={finance.open_bills || 0} detail={`${fmt(finance.open_bills_balance)} ر.س`}/>
+                  <BriefMetric label="فواتير متأخرة" value={finance.overdue_bills || 0} detail={`${fmt(finance.overdue_bills_balance)} ر.س`} tone={finance.overdue_bills ? 'critical' : 'good'}/>
+                  <BriefMetric label="أرصدة دائنة للموردين" value={`${fmt(finance.vendor_credits)} ر.س`}/>
+                </div>
+              </BriefSection>
+
+              <BriefSection title="التشغيل وزاتكا" subtitle="دورة المحاسب، جداول الناقلين، والفوترة الإلكترونية">
+                <div className="brief-mini-grid">
+                  <BriefMetric label="دورة الشهر" value={cycleLabel} detail={`${operations.current_month_events || 0} أحداث ناجحة`}/>
+                  <BriefMetric label="ناقلون بجداول ناقصة" value={operations.missing_carrier_schedules || 0} detail={`من ${operations.contracted_carriers || 0} ناقل`} tone={operations.missing_carrier_schedules ? 'attention' : 'good'}/>
+                  <BriefMetric label="فواتير زاتكا معلقة" value={system.zatca_pending || 0} tone={system.zatca_pending ? 'critical' : 'good'}/>
+                  <BriefMetric label="تكاملات تحتاج مراجعة" value={system.integration_issues || 0} tone={system.integration_issues ? 'attention' : 'good'}/>
+                </div>
+              </BriefSection>
+
+              <BriefSection title="المبيعات والفريق" subtitle="العمل الجديد الذي لم يصل إلى مسؤول">
+                <div className="brief-mini-grid">
+                  <BriefMetric label="عملاء جدد اليوم" value={sales.new_leads_today || 0}/>
+                  <BriefMetric label="ليد وارد بلا مسؤول" value={sales.unassigned_inbound_leads || 0} tone={sales.unassigned_inbound_leads ? 'attention' : 'good'}/>
+                  <BriefMetric label="متابعات بلا مسؤول" value={sales.unassigned_followups || 0} tone={sales.unassigned_followups ? 'attention' : 'good'}/>
+                  <BriefMetric label="مهام CRM متأخرة" value={sales.overdue_crm_tasks || 0} tone={sales.overdue_crm_tasks ? 'critical' : 'good'}/>
+                </div>
+              </BriefSection>
+            </div>
+
+            <BriefSection title="أكبر 5 مدينين" subtitle="الأولوية حسب صافي الرصيد القابل للتحصيل">
+              <div className="brief-debtors">
+                {topCustomers.length ? topCustomers.map((row, index) => <div key={`${row.name}-${index}`}><span>{index + 1}</span><b>{row.store_name || row.name}</b><strong>{fmt(row.owed)} ر.س</strong><small>{row.inv_cnt || 0} فاتورة · أقدمها {row.oldest_days || 0} يوم</small></div>) : <p>لا يوجد عملاء مدينون.</p>}
+              </div>
+            </BriefSection>
+
+            <div className="brief-freshness">
+              <span>آخر مزامنة زوهو: <b>{system.zoho_last_sync ? new Date(system.zoho_last_sync).toLocaleString('ar-SA') : 'غير متوفر'}</b></span>
+              <span>آخر ملف منصة: <b>{system.platform_last_snapshot ? new Date(system.platform_last_snapshot).toLocaleString('ar-SA') : 'غير متوفر'}</b></span>
+              <span>Webhooks معلقة: <b>{system.pending_webhooks || 0}</b></span>
+              <span>إخفاقات الوكلاء 24س: <b>{system.agent_failures_24h || 0}</b></span>
+            </div>
+
+            <details className="brief-message-preview">
+              <summary>معاينة القيم التي ستصل إلى قالب واتساب ({preview.vars?.length || 0})</summary>
+              <div>{(preview.vars || []).map((value, index) => <div key={index}><span>{`{{${index + 1}}} ${variableLabels[index] || ''}`}</span><b>{value}</b></div>)}</div>
+            </details>
+          </div>}
           {typeof preview === 'string' && preview !== '...' && (
             <div style={{ color: 'var(--red)', fontSize: 12 }}>{preview}</div>
           )}

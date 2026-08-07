@@ -1,14 +1,15 @@
-// morning-brief v2 — ملخّص الصباح واتساب عبر Hatif/Voxa (استُبدل Respondly).
+// morning-brief v3 — ملخّص إدارة موسّع عبر Hatif/Voxa.
 // يُستدعى من pg_cron يومياً 7:15 KSA (هوية X-Cron-Key — نفس نمط zoho-sync v9)
 // أو يدوياً من التطبيق (مستخدم admin أو معه money.pnl/receivables.view).
 //
 // يقرأ الإعداد من app_settings key='morning_brief' (JSON):
-//   { enabled, phone, template_name, template_language, channel_id }
+//   { enabled, phone, template_name, template_language, channel_id, report_mode }
 // enabled=false أو غياب الإعداد → يرجع skip بلا إرسال.
 //
-// الأرقام من مصدر الحقيقة الواحد: RPC customer_money_dashboard() +
-// عدّاد «فواتير تنتظر نظرتك» (webhook_events غير المستوردة).
-// متغيّرات القالب بالترتيب:
+// الوضع المختصر يحافظ على عقد القالب القديم (6 متغيرات). الوضع الموسّع
+// يستخدم قالباً مستقلاً من 16 متغيراً، ويضيف البنوك والموردين والتحصيل
+// والتشغيل والمبيعات والتكاملات من RPC قراءة فقط واحد.
+// متغيّرات القالب المختصر بالترتيب:
 //   {{1}} التاريخ · {{2}} لك عند العملاء · {{3}} منها متأخرة
 //   {{4}} حصّلنا هذا الشهر · {{5}} أكبر 3 مدينين · {{6}} فواتير تنتظر
 
@@ -22,6 +23,15 @@ const CORS = {
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...CORS, 'Content-Type': 'application/json' } });
 const fmt = (n: number) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
+const money = (n: unknown) => Number(n || 0).toLocaleString('en-US', {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+const safeDate = (value: unknown) => value
+  ? new Date(String(value)).toLocaleString('ar-SA-u-ca-gregory', {
+      dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Riyadh',
+    })
+  : 'غير متوفر';
 
 async function requireUser(req: Request, db: any) {
   const auth = req.headers.get('Authorization') || '';
@@ -63,31 +73,96 @@ Deno.serve(async (req) => {
   if (!cfg?.enabled && !dryRun) return json({ ok: true, skipped: 'disabled' });
   if (!cfg?.phone && !dryRun) return json({ ok: false, error: 'لا رقم مستلِم في الإعداد' });
 
-  // ── الأرقام (مصدر الحقيقة الواحد) ──
-  const { data: dash, error: dashErr } = await db.rpc('customer_money_dashboard');
-  if (dashErr) return json({ ok: false, error: `dashboard: ${dashErr.message}` });
-  const { count: awaiting } = await db.from('webhook_events')
-    .select('id', { count: 'exact', head: true })
-    .is('processed_at', null).is('audit_id', null).neq('status', 'failed');
+  // ── الأرقام: لقطة إدارة واحدة، بلا أي كتابة مالية ──
+  const { data: snapshot, error: snapshotErr } = await db.rpc('morning_brief_management_snapshot');
+  if (snapshotErr) return json({ ok: false, error: `management snapshot: ${snapshotErr.message}` });
 
-  const customers: any[] = Array.isArray(dash?.customers) ? dash.customers : [];
-  const top3 = customers.slice(0, 3)
-    .map((c: any) => `${(c.store_name || c.name || '').slice(0, 22)} ${fmt(c.owed)}`)
-    .join(' · ') || 'لا مدينين';
+  const customer = snapshot?.customer || {};
+  const finance = snapshot?.finance || {};
+  const collections = snapshot?.collections || {};
+  const operations = snapshot?.operations || {};
+  const sales = snapshot?.sales || {};
+  const system = snapshot?.system || {};
+  const customers: any[] = Array.isArray(customer?.customers) ? customer.customers : [];
+  const topCustomers = customers.slice(0, 5)
+    .map((c: any) => `${(c.store_name || c.name || '').slice(0, 24)} ${fmt(c.owed)}`);
+  const top3 = topCustomers.slice(0, 3).join(' · ') || 'لا مدينين';
+  const top5 = topCustomers.join(' · ') || 'لا مدينين';
 
   const today = new Date().toLocaleDateString('ar-SA-u-ca-gregory', {
     weekday: 'long', day: 'numeric', month: 'long', timeZone: 'Asia/Riyadh',
   });
-  const vars = [
+  const compactVars = [
     today,
-    `${fmt(dash?.outstanding)} ر.س (${dash?.outstanding_cnt || 0} عميل)`,
-    `${fmt(dash?.overdue_amt)} ر.س`,
-    `${fmt(dash?.collected_this_month)} ر.س`,
+    `${fmt(customer?.outstanding)} ر.س (${customer?.outstanding_cnt || 0} عميل)`,
+    `${fmt(customer?.overdue_amt)} ر.س`,
+    `${fmt(customer?.collected_this_month)} ر.س`,
     top3,
-    String(awaiting || 0),
+    String(system?.pending_webhooks || 0),
   ];
 
-  if (dryRun) return json({ ok: true, preview: true, vars, cfg: { enabled: !!cfg?.enabled, phone: cfg?.phone || null, template_name: cfg?.template_name || null } });
+  const aging = customer?.aging || {};
+  const alertItems = [
+    Number(finance?.uncategorized_bank_operations || 0) > 0 && `${finance.uncategorized_bank_operations} عملية بنكية بلا تصنيف`,
+    Math.abs(Number(finance?.statement_vs_book_difference || 0)) > 0.5 && `فرق بنك ${money(finance.statement_vs_book_difference)}`,
+    Number(collections?.missing_tasks || 0) > 0 && `${collections.missing_tasks} عميل بلا مهمة تحصيل`,
+    Number(collections?.broken_promises || 0) > 0 && `${collections.broken_promises} وعد سداد متجاوز`,
+    Number(finance?.overdue_bills || 0) > 0 && `${finance.overdue_bills} فاتورة مورد متأخرة`,
+    Number(operations?.missing_carrier_schedules || 0) > 0 && `${operations.missing_carrier_schedules} ناقل جدوله ناقص`,
+    Number(system?.zatca_pending || 0) > 0 && `${system.zatca_pending} فاتورة زاتكا`,
+    Number(system?.integration_issues || 0) > 0 && `${system.integration_issues} تكامل يحتاج مراجعة`,
+    Number(sales?.unassigned_inbound_leads || 0) > 0 && `${sales.unassigned_inbound_leads} ليد وارد بلا مسؤول`,
+  ].filter(Boolean) as string[];
+  const health = alertItems.length === 0
+    ? 'الوضع مستقر — لا توجد إشارات حرجة'
+    : `${alertItems.length} إشارات تحتاج قرار: ${alertItems.slice(0, 4).join(' · ')}`;
+
+  const expandedVars = [
+    today,
+    health,
+    `كشف ${money(finance?.statement_balance)} · زوهو ${money(finance?.book_balance)} · الفرق ${money(finance?.statement_vs_book_difference)} ر.س`,
+    `${finance?.uncategorized_bank_operations || 0} عملية غير مصنفة · ${finance?.linked_bank_accounts || 0} حساب مربوط · آخر كشف ${finance?.statement_as_of || 'غير متوفر'}`,
+    `${money(customer?.outstanding)} ر.س لدى ${customer?.outstanding_cnt || 0} عميل`,
+    `${money(customer?.overdue_amt)} ر.س · افتتاحي ${money(aging?.opening_balance)} ر.س`,
+    `0–30: ${money(aging?.b0_30)} · 31–60: ${money(aging?.b31_60)} · 61–90: ${money(aging?.b61_90)} · +90: ${money(aging?.b90p)}`,
+    `هذا الشهر ${money(customer?.collected_this_month)} · السابق ${money(customer?.collected_prev_month)} ر.س`,
+    top5,
+    `${collections?.candidates || 0} مستحق متابعة · ${collections?.missing_tasks || 0} بلا مهمة (${money(collections?.missing_task_debt)} ر.س) · ${collections?.unassigned_customers || 0} بلا مسؤول`,
+    `${collections?.promises_due_today || 0} اليوم · ${collections?.broken_promises || 0} متجاوزة`,
+    `صافي الموردين ${money(finance?.vendor_net_payable)} · فواتير مفتوحة ${finance?.open_bills || 0} (${money(finance?.open_bills_balance)} ر.س)`,
+    `${operations?.cycle_status === 'closed' ? 'مقفلة' : operations?.cycle_status === 'open' ? 'مفتوحة' : 'لم تبدأ'} · ${operations?.current_month_events || 0} أحداث · ${operations?.missing_carrier_schedules || 0} ناقل بجدول ناقص`,
+    `${system?.zatca_pending || 0} معلقة · آخر فحص ${safeDate(system?.zatca_checked_at)}`,
+    `${sales?.new_leads_today || 0} جديد اليوم · ${sales?.unassigned_inbound_leads || 0} وارد بلا مسؤول · ${sales?.unassigned_followups || 0} متابعة بلا مسؤول`,
+    `${system?.integration_issues || 0} تحتاج مراجعة · ${system?.agent_failures_24h || 0} فشل وكيل/24س · زوهو ${safeDate(system?.zoho_last_sync)} · المنصة ${safeDate(system?.platform_last_snapshot)}`,
+  ];
+  const reportMode = cfg?.report_mode === 'expanded' ? 'expanded' : 'compact';
+  const vars = reportMode === 'expanded' ? expandedVars : compactVars;
+  const report = {
+    generated_at: snapshot?.generated_at,
+    health: { level: alertItems.length === 0 ? 'good' : alertItems.length <= 3 ? 'attention' : 'critical', alerts: alertItems },
+    customer,
+    finance,
+    collections,
+    operations,
+    sales,
+    system,
+  };
+
+  if (dryRun) return json({
+    ok: true,
+    preview: true,
+    report,
+    compactVars,
+    expandedVars,
+    vars,
+    reportMode,
+    cfg: {
+      enabled: !!cfg?.enabled,
+      phone: cfg?.phone || null,
+      template_name: cfg?.template_name || null,
+      report_mode: reportMode,
+    },
+  });
 
   // ── الإرسال عبر Hatif/Voxa (قالب معتمد) ──
   const cid  = (Deno.env.get('client_id') || Deno.env.get('HATIF_CLIENT_ID') || '').trim();
@@ -115,7 +190,7 @@ Deno.serve(async (req) => {
     const result = await r.json().catch(() => ({}));
     const ok = r.ok && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId);
     if (!ok) return json({ ok: false, status: r.status, error: result?.message || result?.title || 'فشل الإرسال' });
-    return json({ ok: true, id: result?.conversationEventId || result?.contactId, vars });
+    return json({ ok: true, id: result?.conversationEventId || result?.contactId, vars, reportMode });
   } catch (e) {
     return json({ ok: false, error: String((e as any)?.message || e) });
   }

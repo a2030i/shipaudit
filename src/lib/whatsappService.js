@@ -590,7 +590,7 @@ export async function sendZatcaAlertNow() {
 // morning-brief التي يستدعيها pg_cron يومياً 7:15 صباحاً KSA).
 const BRIEF_KEY = 'morning_brief';
 export const DEFAULT_BRIEF_CONFIG = {
-  enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '',
+  enabled: false, phone: '', templateName: '', templateLanguage: 'ar', channelId: '', reportMode: 'compact',
 };
 
 export async function loadMorningBriefConfig() {
@@ -602,6 +602,7 @@ export async function loadMorningBriefConfig() {
       enabled: !!v.enabled, phone: v.phone || '',
       templateName: v.template_name || '', templateLanguage: v.template_language || 'ar',
       channelId: v.channel_id || '',
+      reportMode: v.report_mode === 'expanded' ? 'expanded' : 'compact',
     };
   } catch { return { ...DEFAULT_BRIEF_CONFIG }; }
 }
@@ -613,6 +614,7 @@ export async function saveMorningBriefConfig(cfg) {
     template_name: cfg.templateName?.trim() || '',
     template_language: cfg.templateLanguage?.trim() || 'ar',
     channel_id: cfg.channelId?.trim() || '',
+    report_mode: cfg.reportMode === 'expanded' ? 'expanded' : 'compact',
   });
   const { error } = await supabase.from('app_settings')
     .upsert({ key: BRIEF_KEY, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
