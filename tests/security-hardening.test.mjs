@@ -108,3 +108,29 @@ test('spreadsheet parser is pinned to patched SheetJS release', async () => {
   const pkg = JSON.parse(await read('package.json'));
   assert.match(pkg.dependencies.xlsx, /xlsx-0\.20\.3/);
 });
+
+test('combined ZATCA action requires both permissions and live verification', async () => {
+  const source = await read('supabase/functions/zoho-operations/index.ts');
+  assert.match(source, /invoice_finalize_and_push_zatca/);
+  assert.match(source, /\['zoho\.invoice_mark_sent', 'zoho\.invoice_push_zatca'\]/);
+  assert.match(source, /getLiveInvoice/);
+  assert.match(source, /openingBalance\(inv\.invoice_number\)/);
+  assert.match(source, /mark_sent:\$\{inv\.zoho_id\}/);
+  assert.match(source, /zatca_push:\$\{inv\.zoho_id\}/);
+});
+
+test('collection performance is supervisor-gated and aging snapshots are server scheduled', async () => {
+  const [sql, service] = await Promise.all([
+    read('supabase/migrations/20260807012508_collection_performance_and_aging_cron.sql'),
+    read('src/lib/collectionsService.js'),
+  ]);
+  assert.match(sql, /collection_team_performance/);
+  assert.match(sql, /crm_has_permission\('collections\.view_all'\)/);
+  assert.match(sql, /security definer\s+set search_path = ''/i);
+  assert.match(sql, /join lateral/);
+  assert.match(sql, /p\.zoho_id/);
+  assert.match(sql, /capture-ar-aging-daily/);
+  assert.match(sql, /'50 20 \* \* \*'/);
+  assert.match(sql, /revoke all on function public\.capture_ar_aging_snapshot\(\) from public, anon, authenticated/);
+  assert.doesNotMatch(service, /rpc\('capture_ar_aging_snapshot'\)/);
+});

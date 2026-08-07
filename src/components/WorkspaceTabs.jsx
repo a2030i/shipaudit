@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useEffect, useRef } from 'react';
 import WorkspaceContext from './WorkspaceContext.jsx';
 
 const safeId = (value) => String(value || '').replace(/[^a-zA-Z0-9_-]/g, '-');
@@ -22,6 +22,15 @@ export default function WorkspaceTabs({
 }) {
   const refs = useRef([]);
   const activeTab = tabs.find(tab => tab.id === activeId) || tabs[0];
+
+  // في الجوال قد يكون التبويب المختار خارج الجزء الظاهر من الشريط الأفقي
+  // عند الدخول برابط مباشر. أبقه مرئياً دائمًا بدل إظهار أيقونة مقصوصة فقط.
+  useEffect(() => {
+    const activeIndex = tabs.findIndex(tab => tab.id === activeTab?.id);
+    const node = refs.current[activeIndex];
+    if (!node) return;
+    node.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
+  }, [activeTab?.id, tabs]);
 
   const moveFocus = (currentIndex, key) => {
     if (!tabs.length) return;

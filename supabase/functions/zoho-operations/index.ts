@@ -25,6 +25,17 @@ async function requirePermission(req: Request, db: ReturnType<typeof svc>, permi
   return user;
 }
 
+async function requirePermissions(req: Request, db: ReturnType<typeof svc>, permissions: string[]) {
+  const auth = req.headers.get('Authorization') || '';
+  const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: auth } } });
+  const { data: { user } } = await uc.auth.getUser();
+  if (!user) return null;
+  const { data: p } = await db.from('profiles').select('role,permissions').eq('id', user.id).maybeSingle();
+  if (p?.role !== 'admin' && permissions.some(permission => p?.permissions?.[permission] !== true)) return null;
+  return user;
+}
+
 async function accessToken(db: ReturnType<typeof svc>) {
   const { data } = await db.from('zoho_auth').select('*').eq('id', 1).maybeSingle();
   if (!data?.refresh_token) throw new Error('zoho_not_connected');
@@ -119,6 +130,22 @@ async function finish(db: ReturnType<typeof svc>, key: string, status: 'succeede
 const openingBalance = (s: unknown) => String(s || '').replace(/\s+/g, ' ').trim()
   .includes('\u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0627\u0641\u062a\u062a\u0627\u062d\u064a');
 
+const liveEinvoiceStatus = (invoice: Record<string, unknown>) => {
+  const details = invoice.einvoice_details && typeof invoice.einvoice_details === 'object'
+    ? invoice.einvoice_details as Record<string, unknown>
+    : {};
+  return String(details.status || invoice.einvoice_status || invoice.e_invoice_status || '').toLowerCase();
+};
+
+async function getLiveInvoice(access: { token: string; apiDomain: string; orgId: string }, invoiceId: string) {
+  const url = `${access.apiDomain}/books/v3/invoices/${encodeURIComponent(invoiceId)}?organization_id=${encodeURIComponent(access.orgId)}`;
+  const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+  if (!z.r.ok || z.body?.code !== 0 || !z.body?.invoice) {
+    throw new Error(`zoho_invoice_read:${String(z.body?.message || z.r.status)}`);
+  }
+  return z.body.invoice as Record<string, unknown>;
+}
+
 Deno.serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
@@ -131,13 +158,19 @@ Deno.serve(async req => {
     bank_import: 'zoho.bank_import',
     invoice_mark_sent: 'zoho.invoice_mark_sent',
     invoice_push_zatca: 'zoho.invoice_push_zatca',
+    invoice_finalize_and_push_zatca: 'zoho.invoice_mark_sent',
     webhook_failures: 'zoho.retry_webhook',
     webhook_retry: 'zoho.retry_webhook',
   };
   const requiredPermission = permissionByAction[action];
   if (!requiredPermission) return json({ error: 'unknown_action' }, 400);
-  const user = await requirePermission(req, db, requiredPermission);
-  if (!user) return json({ error: 'forbidden', permission: requiredPermission }, 403);
+  const requiredPermissions = action === 'invoice_finalize_and_push_zatca'
+    ? ['zoho.invoice_mark_sent', 'zoho.invoice_push_zatca']
+    : [requiredPermission];
+  const user = requiredPermissions.length === 1
+    ? await requirePermission(req, db, requiredPermission)
+    : await requirePermissions(req, db, requiredPermissions);
+  if (!user) return json({ error: 'forbidden', permissions: requiredPermissions }, 403);
 
   try {
     if (action === 'bank_preview' || action === 'bank_import') {
@@ -216,6 +249,121 @@ Deno.serve(async req => {
       if (!z.r.ok || z.body.code !== 0) { const msg = String(z.body.message || z.r.status); await finish(db, key, 'failed', z.body, msg); return json({ error: msg, needs_reauthorization: /authori|scope|permission/i.test(msg) }, 400); }
       await finish(db, key, 'succeeded', { zoho: z.body, count: fresh.length, transaction_ids: ids });
       return json({ ok: true, count: fresh.length, deposits: summary.deposits, withdrawals: summary.withdrawals, zoho: z.body });
+    }
+
+    if (action === 'invoice_finalize_and_push_zatca') {
+      const ids = [...new Set((input.invoice_ids || []).map(String))].slice(0, 100);
+      if (!ids.length) return json({ error: 'invoice_ids_required' }, 400);
+      const { data: invoices, error } = await db.from('zoho_invoices')
+        .select('zoho_id,invoice_number,customer_name,date,total,status,einvoice_status').in('zoho_id', ids);
+      if (error) throw new Error(`invoice_read:${error.message}`);
+      const byId = new Map((invoices || []).map((invoice: any) => [String(invoice.zoho_id), invoice]));
+      const access = await accessToken(db);
+      const headers = { Authorization: `Zoho-oauthtoken ${access.token}` };
+      const results: any[] = [];
+
+      // Preserve the user's explicit selection order in the audit/result output.
+      for (const invoiceId of ids) {
+        const inv: any = byId.get(invoiceId);
+        if (!inv) {
+          results.push({ invoice_id: invoiceId, outcome: 'failed', stage: 'read', error: 'invoice_not_found_in_mirror' });
+          continue;
+        }
+        if (openingBalance(inv.invoice_number)) {
+          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'excluded', reason: 'opening_balance' });
+          continue;
+        }
+
+        let live: Record<string, unknown>;
+        try {
+          live = await getLiveInvoice(access, String(inv.zoho_id));
+        } catch (error) {
+          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'live_check',
+            error: error instanceof Error ? error.message : String(error) });
+          continue;
+        }
+
+        let liveDocumentStatus = String(live.status || inv.status || '').toLowerCase();
+        let liveZatcaStatus = liveEinvoiceStatus(live);
+        let markedSent = false;
+        let pushed = false;
+
+        if (liveDocumentStatus === 'draft') {
+          const markKey = `mark_sent:${inv.zoho_id}`;
+          const audit = await begin(db, markKey, 'invoice_mark_sent', user.id,
+            { invoice_id: inv.zoho_id, invoice_number: inv.invoice_number, parent_action: action });
+          if (!audit.done) {
+            const markUrl = `${access.apiDomain}/books/v3/invoices/${inv.zoho_id}/status/sent?organization_id=${encodeURIComponent(access.orgId)}`;
+            const marked = await zjson(markUrl, { method: 'POST', headers });
+            if (!marked.r.ok || marked.body?.code !== 0) {
+              const message = String(marked.body?.message || marked.r.status);
+              await finish(db, markKey, 'failed', marked.body, message);
+              results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'mark_sent', error: message });
+              continue;
+            }
+            await finish(db, markKey, 'succeeded', marked.body);
+          }
+          markedSent = true;
+          await db.from('zoho_invoices').update({ status: 'sent' }).eq('zoho_id', inv.zoho_id);
+
+          // Zoho may need a short moment to expose the e-invoice state after the
+          // draft is marked sent. Re-read the authoritative document before push.
+          let postSentReadError = '';
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            if (attempt) await new Promise(resolve => setTimeout(resolve, 450));
+            try {
+              live = await getLiveInvoice(access, String(inv.zoho_id));
+              liveDocumentStatus = String(live.status || 'sent').toLowerCase();
+              liveZatcaStatus = liveEinvoiceStatus(live);
+              if (liveZatcaStatus) break;
+            } catch (error) {
+              postSentReadError = error instanceof Error ? error.message : String(error);
+            }
+          }
+          if (!liveZatcaStatus && postSentReadError) {
+            results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'post_sent_check',
+              marked_sent: true, error: postSentReadError });
+            continue;
+          }
+        }
+
+        if (['pushed', 'reported', 'cleared'].includes(liveZatcaStatus)) {
+          await db.from('zoho_invoices').update({ status: liveDocumentStatus || 'sent', einvoice_status: liveZatcaStatus }).eq('zoho_id', inv.zoho_id);
+          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
+            marked_sent: markedSent, pushed: false, reason: 'already_pushed', live_zatca_status: liveZatcaStatus });
+          continue;
+        }
+        if (liveZatcaStatus !== 'yet_to_be_pushed') {
+          results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'readiness',
+            marked_sent: markedSent, error: `zatca_not_ready:${liveZatcaStatus || 'status_unavailable'}` });
+          continue;
+        }
+
+        const pushKey = `zatca_push:${inv.zoho_id}`;
+        const audit = await begin(db, pushKey, 'invoice_push_zatca', user.id,
+          { invoice_id: inv.zoho_id, invoice_number: inv.invoice_number, parent_action: action });
+        if (!audit.done) {
+          const pushUrl = `${access.apiDomain}/books/v3/invoices/${inv.zoho_id}/einvoice/push?organization_id=${encodeURIComponent(access.orgId)}`;
+          const pushedResponse = await zjson(pushUrl, { method: 'POST', headers });
+          if (!pushedResponse.r.ok || pushedResponse.body?.code !== 0) {
+            const message = String(pushedResponse.body?.message || pushedResponse.r.status);
+            await finish(db, pushKey, 'failed', pushedResponse.body, message);
+            results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'failed', stage: 'zatca_push',
+              marked_sent: markedSent, error: message });
+            continue;
+          }
+          await finish(db, pushKey, 'succeeded', pushedResponse.body);
+        }
+        pushed = true;
+        await db.from('zoho_invoices').update({ status: liveDocumentStatus || 'sent', einvoice_status: 'pushed' }).eq('zoho_id', inv.zoho_id);
+        results.push({ invoice_id: inv.zoho_id, number: inv.invoice_number, outcome: 'succeeded',
+          marked_sent: markedSent, pushed, message: markedSent ? 'marked_sent_and_pushed' : 'pushed' });
+      }
+
+      const failed = results.filter(result => result.outcome === 'failed').length;
+      const succeeded = results.filter(result => result.outcome === 'succeeded').length;
+      const skipped = results.filter(result => ['skipped', 'excluded'].includes(result.outcome)).length;
+      return json({ ok: failed === 0, succeeded, skipped, failed, results }, failed ? 207 : 200);
     }
 
     if (action === 'invoice_mark_sent' || action === 'invoice_push_zatca') {

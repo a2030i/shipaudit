@@ -378,7 +378,9 @@ export default function Collections({ isActive = true }) {
         !agingTrend.hasHistory ? (
           <div style={{ marginBottom: 16, fontSize: 11.5, color: 'var(--muted)', padding: '8px 12px',
             borderRadius: 10, background: 'var(--surface2)', border: '1px solid var(--border)' }}>
-            📈 تغيّر أعمار الديون هذا الشهر — قيد التجميع؛ التُقطت لقطة {agingTrend.cur?.period || ''}. تظهر المقارنة الشهر القادم.
+            📈 تغيّر أعمار الديون — التقط الخادم لقطة {agingTrend.cur?.period || ''}
+            {agingTrend.cur?.capturedAt ? ` في ${new Date(agingTrend.cur.capturedAt).toLocaleString('ar-SA')}` : ''}.
+            تبدأ المقارنة تلقائيًا عند توفر شهرين مكتملين.
           </div>
         ) : (() => {
           const { cur, prev } = agingTrend;

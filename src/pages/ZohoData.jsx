@@ -14,7 +14,7 @@ import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoInvoiceDashboard, zohoStatusAr, loadZohoOverdueCampaign, loadZohoWebhookHealth,
   loadZohoFinancialDashboard, setZohoFinancialAccountLink,
   getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument,
-  markZohoInvoicesSent, pushZohoInvoicesToZatca,
+  markZohoInvoicesSent, pushZohoInvoicesToZatca, finalizeAndPushZohoInvoices,
   previewZohoBankImport, importZohoBankStatement,
   loadZohoWebhookFailures, retryZohoWebhook } from '../lib/pnlService.js';
 import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
@@ -427,8 +427,12 @@ export default function ZohoData({ isActive = true }) {
   };
 
   const runInvoiceOperation = async (kind) => {
-    const required = kind === 'sent' ? 'zoho.invoice_mark_sent' : 'zoho.invoice_push_zatca';
-    if (!can(required)) {
+    const required = kind === 'sent'
+      ? ['zoho.invoice_mark_sent']
+      : kind === 'finalize'
+        ? ['zoho.invoice_mark_sent', 'zoho.invoice_push_zatca']
+        : ['zoho.invoice_push_zatca'];
+    if (required.some(permission => !can(permission))) {
       toast('لا تملك صلاحية تنفيذ هذا الإجراء في زوهو', 'error');
       return;
     }
@@ -437,20 +441,29 @@ export default function ZohoData({ isActive = true }) {
     const selectedRows = filtered.filter(r => selectedInvoices.has(String(r.zoho_id)));
     const eligible = kind === 'sent'
       ? selectedRows.filter(r => String(r.status).toLowerCase() === 'draft')
-      : selectedRows.filter(r => String(r.einvoice_status).toLowerCase() === 'yet_to_be_pushed');
+      : kind === 'finalize'
+        ? selectedRows.filter(r => String(r.status).toLowerCase() === 'draft'
+          || String(r.einvoice_status).toLowerCase() === 'yet_to_be_pushed')
+        : selectedRows.filter(r => String(r.einvoice_status).toLowerCase() === 'yet_to_be_pushed');
     if (!eligible.length) {
-      toast(kind === 'sent' ? 'المحدد لا يحتوي مسودات' : 'المحدد لا يحتوي فواتير جاهزة لزاتكا', 'info');
+      toast(kind === 'sent' ? 'المحدد لا يحتوي مسودات' : kind === 'finalize'
+        ? 'المحدد لا يحتوي مسودات أو فواتير معلقة لزاتكا'
+        : 'المحدد لا يحتوي فواتير جاهزة لزاتكا', 'info');
       return;
     }
     setInvoiceOperation(kind);
     try {
       const result = kind === 'sent'
         ? await markZohoInvoicesSent(eligible.map(r => r.zoho_id))
-        : await pushZohoInvoicesToZatca(eligible.map(r => r.zoho_id));
+        : kind === 'finalize'
+          ? await finalizeAndPushZohoInvoices(eligible.map(r => r.zoho_id))
+          : await pushZohoInvoicesToZatca(eligible.map(r => r.zoho_id));
       setOperationResult({ kind, ...result });
       setSelectedInvoices(new Set());
       await load(type, period, periodTo);
-      toast(kind === 'sent' ? 'اكتمل تحويل المسودات' : 'اكتمل إرسال زاتكا عبر زوهو', result.failed ? 'info' : 'success');
+      toast(kind === 'sent' ? 'اكتمل تحويل المسودات' : kind === 'finalize'
+        ? 'اكتملت دورة الاعتماد والإرسال إلى زاتكا'
+        : 'اكتمل إرسال زاتكا عبر زوهو', result.failed ? 'info' : 'success');
     } catch (e) {
       toast(`تعذّر التنفيذ: ${e.message}`, 'error');
     } finally { setInvoiceOperation(null); }
@@ -717,6 +730,14 @@ export default function ZohoData({ isActive = true }) {
             title="تحميل الفواتير المحددة مرتبة في ملف PDF واحد">
             {bulkPdf.busy ? `تجهيز ${bulkPdf.done} من ${bulkPdf.total}` : `تحميل PDF موحّد (${selectedInvoices.size})`}
           </Btn>
+          {can('zoho.invoice_mark_sent') && can('zoho.invoice_push_zatca') ? (
+            <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
+              icon={invoiceOperation === 'finalize' ? <Spinner size={12}/> : <ShieldCheck size={13}/>}
+              title="يفحص كل فاتورة حيًا في زوهو، يحوّل المسودة إلى مرسلة ثم يرسل الجاهز إلى زاتكا، مع منع التكرار واستبعاد الأرصدة الافتتاحية"
+              onClick={() => runInvoiceOperation('finalize')}>
+              اعتماد وإرسال المحدد إلى زاتكا
+            </Btn>
+          ) : null}
           {can('zoho.invoice_mark_sent') ? (
             <Btn size="sm" variant="accent" disabled={!selectedInvoices.size || !!invoiceOperation}
               icon={invoiceOperation === 'sent' ? <Spinner size={12}/> : null}
@@ -945,13 +966,23 @@ function BankImportModal({ state, onClose, onImport }) {
 
 function OperationResultModal({ result, onClose }) {
   if (!result) return null;
-  const title = result.kind === 'sent' ? 'نتيجة تحويل المسودات' : result.kind === 'zatca' ? 'نتيجة إرسال زاتكا' : 'نتيجة استيراد البنك';
+  const outcomeAr = { succeeded: 'نجحت', failed: 'فشلت', skipped: 'تم تجاوزها', excluded: 'مستبعدة' };
+  const stageAr = { read: 'قراءة الفاتورة', live_check: 'الفحص الحي من زوهو', mark_sent: 'التحويل إلى مرسلة',
+    post_sent_check: 'التحقق بعد التحويل', readiness: 'فحص جاهزية زاتكا', zatca_push: 'الإرسال إلى زاتكا' };
+  const title = result.kind === 'sent' ? 'نتيجة تحويل المسودات'
+    : result.kind === 'finalize' ? 'نتيجة الاعتماد والإرسال إلى زاتكا'
+      : result.kind === 'zatca' ? 'نتيجة إرسال زاتكا' : 'نتيجة استيراد البنك';
   return <Modal open title={title} onClose={onClose}>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 12 }}>
       <MiniValue label="نجح" value={result.succeeded ?? result.count ?? 0}/><MiniValue label="تجاوز" value={result.skipped || 0}/><MiniValue label="فشل" value={result.failed || 0}/>
     </div>
     {(result.results || []).map((r, i) => <div key={`${r.invoice_id || i}`} style={{ padding: 9, borderTop: '1px solid var(--border)', fontSize: 12 }}>
-      <b>{r.number || r.invoice_id}</b> — <span style={{ color: r.outcome === 'failed' ? 'var(--red)' : r.outcome === 'succeeded' ? 'var(--green)' : 'var(--gold)' }}>{r.outcome}</span>
+      <b>{r.number || r.invoice_id}</b> — <span style={{ color: r.outcome === 'failed' ? 'var(--red)' : r.outcome === 'succeeded' ? 'var(--green)' : 'var(--gold)' }}>{outcomeAr[r.outcome] || r.outcome}</span>
+      {r.stage ? <div style={{ color: 'var(--muted)', marginTop: 3 }}>المرحلة: {stageAr[r.stage] || r.stage}</div> : null}
+      {r.marked_sent ? <div style={{ color: 'var(--green)', marginTop: 3 }}>حُوّلت من مسودة إلى مرسلة ✓</div> : null}
+      {r.pushed ? <div style={{ color: 'var(--green)', marginTop: 3 }}>أُرسلت إلى زاتكا عبر زوهو ✓</div> : null}
+      {r.reason === 'already_pushed' ? <div style={{ color: 'var(--muted)', marginTop: 3 }}>مرسلة إلى زاتكا مسبقًا — لم تُكرر</div> : null}
+      {r.reason === 'opening_balance' ? <div style={{ color: 'var(--gold)', marginTop: 3 }}>رصيد افتتاحي — مستبعد من زاتكا</div> : null}
       {r.error ? <div style={{ color: 'var(--red)', marginTop: 3 }}>{r.error}</div> : null}
     </div>)}
     <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 14 }}><Btn variant="ghost" onClick={onClose}>إغلاق النتيجة</Btn></div>

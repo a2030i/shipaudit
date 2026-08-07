@@ -482,12 +482,23 @@ async function invokeZohoOperation(body) {
 
 // دورة الفاتورة — كل عملية تُنفَّذ على المعرّفات المحددة فقط، مع نتيجة
 // مستقلة لكل فاتورة وسجل منع تكرار في الخادم.
-export const markZohoInvoicesSent = invoiceIds => invokeZohoOperation({
-  action: 'invoice_mark_sent', invoice_ids: invoiceIds,
-});
-export const pushZohoInvoicesToZatca = invoiceIds => invokeZohoOperation({
-  action: 'invoice_push_zatca', invoice_ids: invoiceIds,
-});
+async function invokeZohoInvoiceOperation(action, invoiceIds) {
+  const ids = [...new Set((invoiceIds || []).map(String))];
+  const aggregate = { ok: true, succeeded: 0, skipped: 0, failed: 0, results: [] };
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const batch = await invokeZohoOperation({ action, invoice_ids: ids.slice(offset, offset + 100) });
+    aggregate.succeeded += Number(batch?.succeeded || 0);
+    aggregate.skipped += Number(batch?.skipped || 0);
+    aggregate.failed += Number(batch?.failed || 0);
+    aggregate.results.push(...(batch?.results || []));
+    aggregate.ok = aggregate.ok && batch?.ok !== false;
+  }
+  return aggregate;
+}
+
+export const markZohoInvoicesSent = invoiceIds => invokeZohoInvoiceOperation('invoice_mark_sent', invoiceIds);
+export const pushZohoInvoicesToZatca = invoiceIds => invokeZohoInvoiceOperation('invoice_push_zatca', invoiceIds);
+export const finalizeAndPushZohoInvoices = invoiceIds => invokeZohoInvoiceOperation('invoice_finalize_and_push_zatca', invoiceIds);
 
 // كشف البنك: المعاينة لا تكتب. الاستيراد لا يقبل التنفيذ دون قائمة صريحة
 // للعمليات التي وافق عليها المدير في نفس المعاينة.

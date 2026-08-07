@@ -9,7 +9,7 @@
 // والرابط القانوني /customer-money?tab=<id>.
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { HandCoins, PhoneCall, Scale, FileText } from 'lucide-react';
+import { HandCoins, PhoneCall, Scale, FileText, BarChart3 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
@@ -17,6 +17,7 @@ import CustomerMoney       from './CustomerMoney.jsx';
 import Collections         from './Collections.jsx';
 import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
+import CollectionTeamPerformance from './CollectionTeamPerformance.jsx';
 
 const TABS = [
   {
@@ -30,6 +31,12 @@ const TABS = [
     eyebrow: 'تنفيذ يومي', purpose: 'اتصل، سجّل الوعد، وحدّد المتابعة التالية',
     description: 'قائمة عمل فريق التحصيل. استخدمها بعد معرفة الدين لتوثيق المحاولات والوعود ومنع تكرار الاتصال من أكثر من موظف.',
     outcome: 'مالك واضح وخطوة تالية', tone: 'var(--red)',
+  },
+  {
+    id: 'performance', label: 'أداء فريق التحصيل', icon: BarChart3, component: CollectionTeamPerformance, perm: 'collections.view_all',
+    eyebrow: 'إشراف الفريق', purpose: 'قِس التحصيل المتحقق والوفاء بالوعود حسب الموظف',
+    description: 'تقرير إشرافي يربط وعود السداد بدفعات Zoho الفعلية، ويكشف المهام غير المسندة والوعود المتأخرة دون تقييم الموظف بعدد المكالمات فقط.',
+    outcome: 'مسؤولية ونتيجة مالية قابلة للقياس', tone: 'var(--accent3)',
   },
   {
     id: 'legal', label: 'الحالات القانونية', icon: Scale, component: LegalEscalation, perm: 'legal.view',
@@ -90,7 +97,7 @@ export default function CollectionsHub({ isActive = true }) {
       <WorkspaceTabs
         scope="collections"
         title="مديونيات العملاء"
-        subtitle="نظرة موحدة: الأعمار، إجراء اليوم، الوعود، الأرصدة والمطابقة"
+        subtitle="نظرة موحدة: الأعمار، إجراء اليوم، الوعود، أداء الفريق، الأرصدة والمطابقة"
         tabs={visibleTabs}
         activeId={activeTab?.id}
         onChange={handleTabChange}
