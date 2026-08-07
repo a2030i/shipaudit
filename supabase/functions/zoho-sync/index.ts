@@ -1,4 +1,5 @@
-// zoho-sync v26 — الرصيد الافتتاحي الصريح + إصلاح فواتير العملاء الناقصة تلقائياً.
+// zoho-sync v27 — الرصيد الافتتاحي من مساره الرسمي المخصص في Zoho.
+// v26 — الرصيد الافتتاحي الصريح + إصلاح فواتير العملاء الناقصة تلقائياً.
 // لا يُسمّى فرق الرصيد «افتتاحياً» إلا إذا أثبته حقل opening_balances في Zoho.
 // أي فرق غير مفسر يطلق جلباً موجهاً لكل فواتير العميل قبل أن يصل للشاشات والحملات.
 // v25 — مصالحة أرصدة العملاء التفصيلية للحالات التي يظهر فيها فرق بلا فاتورة.
@@ -37,14 +38,25 @@ const OAUTH_PENDING_TTL_MS = 10 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
-const openingBalanceConfigured = (contact: Record<string, unknown>) => {
-  const rows = Array.isArray(contact.opening_balances)
-    ? contact.opening_balances as Record<string, unknown>[] : [];
-  return Math.round(rows.reduce((sum, row) => {
-    const amount = Number(row.opening_balance_amount);
-    const rate = Number(row.exchange_rate);
-    return sum + (Number.isFinite(amount) ? amount * (Number.isFinite(rate) && rate > 0 ? rate : 1) : 0);
-  }, 0) * 100) / 100;
+const openingBalanceConfigured = (payload: unknown) => {
+  let total = 0;
+  const visit = (value: unknown) => {
+    if (Array.isArray(value)) {
+      for (const item of value) visit(item);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const row = value as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(row, 'opening_balance_amount')) {
+      const amount = Number(row.opening_balance_amount);
+      const rate = Number(row.exchange_rate);
+      if (Number.isFinite(amount)) total += amount * (Number.isFinite(rate) && rate > 0 ? rate : 1);
+      return;
+    }
+    for (const child of Object.values(row)) visit(child);
+  };
+  visit(payload);
+  return Math.round(total * 100) / 100;
 };
 
 const mapInvoice = (it: Record<string, unknown>, now: string) => {
@@ -771,8 +783,20 @@ Deno.serve(async (req) => {
             failed++;
             continue;
           }
+          // Zoho documents contact opening balances under a dedicated endpoint.
+          // GET /contacts/{id} may omit the array even when the UI shows a real
+          // opening balance, so a successful detail response alone cannot prove 0.
+          const { response: openingResponse, payload: openingPayload } = await fetchZohoJson({
+            url: `${apiDomain}/books/v3/contacts/${candidate.zoho_id}/openingbalances?organization_id=${orgId}`,
+            token,
+            stats,
+          });
+          if (!openingResponse.ok || (openingPayload as Record<string, unknown>).code !== 0) {
+            failed++;
+            continue;
+          }
           const checkedAt = new Date().toISOString();
-          const configuredOpening = openingBalanceConfigured(detail as Record<string, unknown>);
+          const configuredOpening = openingBalanceConfigured(openingPayload);
           const { error: updateError } = await db.from('zoho_contacts').update({
             outstanding_receivable: Number(detail.outstanding_receivable_amount) || 0,
             outstanding_payable: Number(detail.outstanding_payable_amount) || 0,
