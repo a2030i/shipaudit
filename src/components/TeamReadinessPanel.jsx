@@ -1,4 +1,4 @@
-import { Calculator, Landmark, Users, ArrowLeft, Clock3 } from 'lucide-react';
+import { Calculator, Landmark, Users, ArrowLeft, Clock3, ShieldAlert, ShieldCheck } from 'lucide-react';
 
 const STATUS = {
   ready: { label: 'جاهز', tone: 'ready' },
@@ -15,6 +15,47 @@ const money = (value) => Number(value || 0).toLocaleString('en-US', {
 
 function statusOf(section) {
   return STATUS[section?.status] || STATUS.unavailable;
+}
+
+function overallDecision(readiness) {
+  const sections = [readiness?.accounting, readiness?.finance, readiness?.sales];
+  if (sections.some(section => !section || section.status === 'unavailable')) {
+    return {
+      tone: 'unavailable',
+      label: 'قرار النقل غير متاح',
+      detail: 'تعذّرت قراءة مصدر واحد أو أكثر. أعد التحديث قبل نقل أي فريق إلى النظام.',
+      blocked: sections.filter(section => !section || section.status === 'unavailable').length,
+      pilot: 0,
+    };
+  }
+
+  const blocked = sections.filter(section => section.status === 'blocked').length;
+  const pilot = sections.filter(section => section.status === 'pilot').length;
+  if (blocked > 0) {
+    return {
+      tone: 'blocked',
+      label: 'النقل الكامل غير جاهز الآن',
+      detail: 'استخدم النظام للقراءة والتجربة المنضبطة فقط، وأغلق بنود الإعداد الحمراء قبل الاعتماد التشغيلي الكامل.',
+      blocked,
+      pilot,
+    };
+  }
+  if (pilot > 0) {
+    return {
+      tone: 'pilot',
+      label: 'جاهز لتشغيل تجريبي مراقب',
+      detail: 'ابدأ بنطاق صغير ومسؤولين محددين، ثم راقب دورة كاملة قبل نقل التشغيل اليومي بالكامل.',
+      blocked: 0,
+      pilot,
+    };
+  }
+  return {
+    tone: 'ready',
+    label: 'جاهز لبدء التشغيل',
+    detail: 'اكتملت متطلبات البيانات وصلاحيات موظفي الفريق. ابدأ التشغيل مع متابعة أول دورة من لوحة الجاهزية.',
+    blocked: 0,
+    pilot: 0,
+  };
 }
 
 function ReadinessCard({ icon, title, section, evidence, staffing, note, actions = [], onNavigate }) {
@@ -52,6 +93,7 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
   const accounting = readiness?.accounting;
   const finance = readiness?.finance;
   const sales = readiness?.sales;
+  const decision = overallDecision(readiness);
   const checkedAt = readiness?.checked_at
     ? new Date(readiness.checked_at).toLocaleString('ar-SA', { dateStyle: 'short', timeStyle: 'short' })
     : 'لم يكتمل التحديث';
@@ -65,6 +107,23 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           <p>حالة تشغيلية حيّة؛ لا تغيّر الأرصدة أو القيود أو إسناد الموظفين.</p>
         </div>
         <span className="team-readiness-panel__freshness"><Clock3 size={14}/> {checkedAt}</span>
+      </div>
+
+      <div className={`team-readiness-decision is-${decision.tone}`} role="status" aria-live="polite">
+        <span className="team-readiness-decision__icon" aria-hidden="true">
+          {decision.tone === 'ready' ? <ShieldCheck size={24}/> : <ShieldAlert size={24}/>}
+        </span>
+        <div>
+          <strong>{decision.label}</strong>
+          <p>{decision.detail}</p>
+          <small>القرار يجمع جاهزية البيانات وصلاحيات الموظفين، ويستبعد حساب المدير.</small>
+        </div>
+        <span className="team-readiness-decision__counts">
+          {decision.blocked > 0 && `${number(decision.blocked)} فريق متوقف`}
+          {decision.blocked > 0 && decision.pilot > 0 && ' · '}
+          {decision.pilot > 0 && `${number(decision.pilot)} فريق تجريبي`}
+          {decision.blocked === 0 && decision.pilot === 0 && decision.tone === 'ready' && '3 من 3 جاهزة'}
+        </span>
       </div>
 
       <div className="team-readiness-grid">

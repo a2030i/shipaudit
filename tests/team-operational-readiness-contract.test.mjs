@@ -126,6 +126,11 @@ test('admin dashboard exposes three clear readiness decisions and never assumes 
   assert.match(panel, /تهيئة مشرف ومستلم الحملات/);
   assert.match(panel, /المصدر غير متاح/);
   assert.match(panel, /تعذّر قراءة بيانات الجاهزية/);
+  assert.match(panel, /النقل الكامل غير جاهز الآن/);
+  assert.match(panel, /جاهز لتشغيل تجريبي مراقب/);
+  assert.match(panel, /جاهز لبدء التشغيل/);
+  assert.match(panel, /يستبعد حساب المدير/);
+  assert.match(panel, /sections\.filter\(section => section\.status === 'blocked'\)/);
   assert.match(overview, /profile\?\.role === 'admin'/);
   assert.match(overview, /<TeamReadinessPanel/);
 });
