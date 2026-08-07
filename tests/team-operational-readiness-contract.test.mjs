@@ -12,6 +12,7 @@ const staffingMigration = await readFile(
 );
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx', import.meta.url), 'utf8');
+const collections = await readFile(new URL('../src/pages/Collections.jsx', import.meta.url), 'utf8');
 const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
 const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
 const zohoData = await readFile(new URL('../src/pages/ZohoData.jsx', import.meta.url), 'utf8');
@@ -56,6 +57,11 @@ test('collection readiness starts from debtors that need work, not only existing
   assert.match(service, /collectionWork\.missing_collection_tasks > 0/);
   assert.match(panel, /عميل يحتاج متابعة/);
   assert.match(panel, /إنشاء المهام الناقصة/);
+  assert.match(panel, /\/collections\?action=sync/);
+  assert.match(collections, /searchParams\.get\('action'\) === 'sync'/);
+  assert.match(collections, /لن يُسند أي عميل لموظف تلقائيًا/);
+  assert.match(collections, /إنشاء المهام الناقصة من زوهو/);
+  assert.doesNotMatch(collections, /useEffect\([^)]*handleRegenerate/s);
 });
 
 test('staffing readiness excludes admin and checks end-to-end job capabilities', () => {

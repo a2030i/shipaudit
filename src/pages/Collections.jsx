@@ -119,7 +119,9 @@ export default function Collections({ isActive = true }) {
   const [selectedTasks, setSelectedTasks] = useState(new Set());
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const [regenerating, setRegenerating] = useState(false);
   const focusedCustomer = searchParams.get('customer')?.trim() || '';
+  const showSyncPrompt = searchParams.get('action') === 'sync';
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -166,6 +168,8 @@ export default function Collections({ isActive = true }) {
   }, [customerByName]);
 
   const handleRegenerate = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
     try {
       const r = await regenerateTasks({ customers, userId: profile?.id || null });
       if (r.created > 0) {
@@ -174,7 +178,14 @@ export default function Collections({ isActive = true }) {
         toast(`القائمة متزامنة مع زوهو · أُغلقت ${r.closed || 0} · أُعيد توزيع ${r.reassigned || 0}`, 'info');
       }
       await refresh();
-    } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
+      const next = new URLSearchParams(searchParams);
+      next.delete('action');
+      setSearchParams(next, { replace: true });
+    } catch (e) {
+      toast(`فشل: ${e.message}`, 'error');
+    } finally {
+      setRegenerating(false);
+    }
   };
 
   // Filter + sort tasks for the visible table.
@@ -361,8 +372,8 @@ export default function Collections({ isActive = true }) {
         actions={
           <div style={{ display: 'flex', gap: 6 }}>
             {canRegenerate && (
-              <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate}>
-                مزامنة من زوهو
+              <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate} disabled={regenerating}>
+                {regenerating ? 'جارٍ إنشاء المهام…' : 'إنشاء أو تحديث مهام التحصيل'}
               </Btn>
             )}
             <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportTasks} disabled={!visibleTasks.length}>
@@ -374,6 +385,34 @@ export default function Collections({ isActive = true }) {
           </div>
         }
       />
+
+      {showSyncPrompt && (
+        <Card className="collection-sync-prompt" style={{ marginBottom: 14, padding: 14 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+            <AlertTriangle size={20} style={{ color: 'var(--gold)', flex: '0 0 auto' }}/>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 13, fontWeight: 800, color: 'var(--text)' }}>يوجد عملاء مستحقون بلا مهمة تحصيل</div>
+              <div style={{ marginTop: 4, fontSize: 11, lineHeight: 1.7, color: 'var(--muted)' }}>
+                أنشئ المهام الناقصة من أرصدة زوهو الحية. لن يُسند أي عميل لموظف تلقائيًا، ولن يتغير الرصيد أو مرحلة التحصيل.
+              </div>
+            </div>
+            {canRegenerate ? (
+              <Btn size="sm" variant="primary" icon={<Sparkles size={13}/>} onClick={handleRegenerate} disabled={regenerating}>
+                {regenerating ? 'جارٍ الإنشاء…' : 'إنشاء المهام الناقصة من زوهو'}
+              </Btn>
+            ) : (
+              <span style={{ fontSize: 11, color: 'var(--red)', fontWeight: 700 }}>تحتاج صلاحية إنشاء مهام التحصيل.</span>
+            )}
+            <Btn size="sm" variant="ghost" onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('action');
+              setSearchParams(next, { replace: true });
+            }}>
+              لاحقًا
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       {focusedCustomer && (
         <Card className="collection-focus-banner" style={{ marginBottom: 14, padding: 12 }}>

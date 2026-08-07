@@ -125,7 +125,7 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
             : ''}
           actions={[
             sales?.missing_collection_tasks > 0
-              ? { label: 'إنشاء المهام الناقصة', path: '/collections' }
+              ? { label: 'إنشاء المهام الناقصة', path: '/collections?action=sync' }
               : { label: 'توزيع مهام التحصيل', path: '/collections' },
             sales?.staffing?.collection_supervisors === 0 || sales?.campaign_recipients === 0
               ? { label: 'تهيئة مشرف ومستلم الحملات', path: '/employees' }
