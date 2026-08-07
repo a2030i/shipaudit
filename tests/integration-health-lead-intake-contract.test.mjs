@@ -24,3 +24,9 @@ test('integration agent and UI expose lead intake as a seventh check', () => {
   assert.match(page, /استقبال عملاء الحملات/);
   assert.match(page, /configured_recipients/);
 });
+
+test('work agent dashboard counts the latest partial run as needing attention', () => {
+  assert.match(page, /latestRunByAgent/);
+  assert.match(page, /\['partial', 'failed', 'error'\]/);
+  assert.match(page, /latestRun=\{latestRunByAgent\.get\(agent\.id\)\}/);
+});

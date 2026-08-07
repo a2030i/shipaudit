@@ -48,14 +48,16 @@ function StatusPill({ status }) {
   return <span style={{ color, background, border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`, padding: '5px 10px', borderRadius: 999, fontSize: 11.5, fontWeight: 800 }}>{label}</span>;
 }
 
-function AgentCard({ agent, onStart }) {
+function AgentCard({ agent, latestRun, onStart }) {
   const safety = SAFETY[agent.safety_level] || SAFETY.monitor;
+  const runNeedsAttention = ['partial', 'failed', 'error'].includes(latestRun?.status);
+  const displayStatus = runNeedsAttention ? 'error' : agent.status;
   return (
     <Card style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', minHeight: 310 }}>
       <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid var(--border2)' }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
           <span style={{ width: 42, height: 42, display: 'grid', placeItems: 'center', borderRadius: 12, background: 'var(--accent-dim)', color: 'var(--accent)' }}><Bot size={21}/></span>
-          <StatusPill status={agent.status}/>
+          <StatusPill status={displayStatus}/>
         </div>
         <h3 style={{ margin: '13px 0 5px', fontSize: 17, color: 'var(--text)' }}>{agent.name}</h3>
         <div style={{ color: 'var(--muted)', fontSize: 12, fontWeight: 700 }}>{agent.category}</div>
@@ -111,7 +113,7 @@ export default function WorkAgents({ isActive = true }) {
     if (!isActive) return;
     setLoading(true); setError('');
     try {
-      const [agentRows, runRows] = await Promise.all([loadWorkAgents(), loadRecentAgentRuns()]);
+      const [agentRows, runRows] = await Promise.all([loadWorkAgents(), loadRecentAgentRuns(100)]);
       setAgents(agentRows); setRuns(runRows);
     } catch (e) {
       setError(e?.message || 'تعذر تحميل وكلاء العمل');
@@ -126,11 +128,17 @@ export default function WorkAgents({ isActive = true }) {
     return () => { document.body.style.overflow = previous; };
   }, [selected]);
 
+  const latestRunByAgent = useMemo(() => {
+    const latest = new Map();
+    runs.forEach(run => { if (!latest.has(run.agent_id)) latest.set(run.agent_id, run); });
+    return latest;
+  }, [runs]);
+
   const totals = useMemo(() => ({
     active: agents.filter(a => a.status === 'active').length,
     draft: agents.filter(a => a.status === 'draft').length,
-    attention: agents.filter(a => a.status === 'error').length,
-  }), [agents]);
+    attention: agents.filter(a => a.status === 'error' || ['partial', 'failed', 'error'].includes(latestRunByAgent.get(a.id)?.status)).length,
+  }), [agents, latestRunByAgent]);
 
   if (!can('agents.view')) return null;
   return (
@@ -157,13 +165,13 @@ export default function WorkAgents({ isActive = true }) {
         <Card accent="var(--red)"><strong style={{ color: 'var(--red)' }}>تعذر فتح مركز الوكلاء</strong><p style={{ color: 'var(--muted)', marginBottom: 0 }}>{error}</p></Card>
       ) : (
         <div className="work-agents-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3,minmax(0,1fr))', gap: 16 }}>
-          {agents.map(agent => <AgentCard key={agent.id || agent.agent_key} agent={agent} onStart={openAgent}/>) }
+          {agents.map(agent => <AgentCard key={agent.id || agent.agent_key} agent={agent} latestRun={latestRunByAgent.get(agent.id)} onStart={openAgent}/>) }
         </div>
       )}
 
       <Card style={{ marginTop: 22 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: 12 }}><Database size={19} color="var(--accent)"/><strong>سجل التشغيل</strong></div>
-        {runs.length === 0 ? <p style={{ margin: 0, color: 'var(--muted)', lineHeight: 1.8 }}>لا توجد عمليات تشغيل بعد. سيظهر هنا وقت التشغيل، وعدد السجلات المفحوصة، والإجراءات المنفذة، والأخطاء.</p> : runs.map(run => <div key={run.id}>{run.summary || run.status}</div>)}
+        {runs.length === 0 ? <p style={{ margin: 0, color: 'var(--muted)', lineHeight: 1.8 }}>لا توجد عمليات تشغيل بعد. سيظهر هنا وقت التشغيل، وعدد السجلات المفحوصة، والإجراءات المنفذة، والأخطاء.</p> : runs.slice(0, 12).map(run => <div key={run.id}>{run.summary || run.status}</div>)}
       </Card>
 
       {selected && <div className="work-agent-dialog-backdrop" role="dialog" aria-modal="true" aria-label="تأسيس وكيل العمل" onClick={() => setSelected(null)}>
