@@ -53,6 +53,9 @@ test('mobile data confidence remains actionable without a long explainer', async
 
   assert.match(component, /className="data-confidence__detail"/);
   assert.match(component, /className="data-confidence__actions"/);
+  assert.match(component, /viewUpdatedAt/);
+  assert.match(component, /تحميل العرض:/);
+  assert.match(component, /مزامنة المصدر:/);
   assert.match(css, /\.data-confidence__detail\s*\{[\s\S]*-webkit-line-clamp:\s*1/);
   assert.match(css, /\.data-confidence__actions\s*\{[\s\S]*repeat\(3,/);
 });
@@ -104,6 +107,21 @@ test('mobile page filters can share the action row with their primary action', a
 
   assert.match(css, /\.page-hero-actions > div:not\(\.ui-field\):not\(\.page-action-menu\)/);
   assert.match(css, /\.page-hero-actions > \.ui-field\s*\{[\s\S]*min-width:\s*0\s*!important/);
+});
+
+test('customer debt cards bridge to an owned collection task and next action', async () => {
+  const money = await read('src/pages/CustomerMoney.jsx');
+  const queue = await read('src/pages/Collections.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(money, /listTasks\(\)/);
+  assert.match(money, /المسؤول:/);
+  assert.match(money, /الإجراء التالي:/);
+  assert.match(money, /tab: 'queue', customer: c\.name/);
+  assert.match(queue, /focusedCustomer/);
+  assert.match(queue, /مهمة العميل:/);
+  assert.match(queue, /عرض كل المهام/);
+  assert.match(css, /\.customer-collection-work\s*\{/);
 });
 
 test('active work areas use a contextual rail instead of duplicated hub tabs', async () => {

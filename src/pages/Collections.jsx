@@ -17,7 +17,7 @@
 // added.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -94,6 +94,7 @@ const RIYADH_TODAY = () => new Intl.DateTimeFormat('en-CA', {
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile, can } = useAuth();
   const canApproveWriteoff = can('receivables.approve_writeoff');
   const canRequestWriteoff = can('receivables.request_writeoff');
@@ -118,6 +119,7 @@ export default function Collections({ isActive = true }) {
   const [selectedTasks, setSelectedTasks] = useState(new Set());
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [assigning, setAssigning] = useState(false);
+  const focusedCustomer = searchParams.get('customer')?.trim() || '';
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -183,6 +185,7 @@ export default function Collections({ isActive = true }) {
     } else if (stageFilter !== 'all') {
       pool = pool.filter(t => t.stage === stageFilter);
     }
+    if (focusedCustomer) pool = pool.filter(t => t.customer_name === focusedCustomer);
     pool = pool.filter(isLiveTask);
     // حاجز احتياطي: مهمة واحدة لكل عميل (الأكثر تقدّماً) — يمنع أي تكرار
     // متبقٍ من بيانات قديمة قبل إصلاح regenerateTasks.
@@ -212,7 +215,7 @@ export default function Collections({ isActive = true }) {
       if (priorityDiff) return priorityDiff;
       return taskDebt(b) - taskDebt(a);
     });
-  }, [tasks, stageFilter, isLiveTask, taskDebt]);
+  }, [tasks, stageFilter, focusedCustomer, isLiveTask, taskDebt]);
 
   const visibleTasks = useMemo(() => {
     if (stageFilter !== 'open') return prioritizedTasks;
@@ -371,6 +374,24 @@ export default function Collections({ isActive = true }) {
           </div>
         }
       />
+
+      {focusedCustomer && (
+        <Card className="collection-focus-banner" style={{ marginBottom: 14, padding: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: 'var(--text)' }}>مهمة العميل: {focusedCustomer}</div>
+              <div style={{ marginTop: 3, fontSize: 11, color: 'var(--muted)' }}>انتقلت من بطاقة الدين إلى مهمة المتابعة لنفس العميل.</div>
+            </div>
+            <Btn size="sm" variant="ghost" onClick={() => {
+              const next = new URLSearchParams(searchParams);
+              next.delete('customer');
+              setSearchParams(next);
+            }}>
+              عرض كل المهام
+            </Btn>
+          </div>
+        </Card>
+      )}
 
       <Card style={{
         marginBottom: 16, padding: 16,

@@ -15,11 +15,14 @@ function agoAr(iso) {
   return `منذ ${Math.floor(hours / 24)} يوم`;
 }
 
-function healthTone(health) {
-  if (!health) return { color: 'var(--muted)', label: 'جار فحص الربط', icon: Clock3 };
-  const fresh = health.webhookLastAt && (Date.now() - new Date(health.webhookLastAt).getTime()) < 6 * 3600_000;
+function healthTone(health, viewUpdatedAt, loadingHealth) {
+  if (loadingHealth && !health && !viewUpdatedAt) {
+    return { color: 'var(--muted)', label: 'جار فحص الربط', icon: Clock3 };
+  }
+  const fresh = health?.webhookLastAt && (Date.now() - new Date(health.webhookLastAt).getTime()) < 6 * 3600_000;
   if (fresh) return { color: 'var(--green)', label: 'زوهو حي', icon: CheckCircle2 };
-  if (health.webhookReady) return { color: 'var(--gold)', label: 'الربط جاهز، التحديث قديم', icon: AlertTriangle };
+  if (health?.webhookReady) return { color: 'var(--gold)', label: 'الربط جاهز، التحديث قديم', icon: AlertTriangle };
+  if (viewUpdatedAt) return { color: 'var(--green)', label: 'العرض المالي محمّل', icon: CheckCircle2 };
   return { color: 'var(--muted)', label: 'بانتظار أول تحديث', icon: Clock3 };
 }
 
@@ -27,6 +30,7 @@ export default function DataConfidenceBar({
   active = true,
   sourceLabel = 'زوهو بوكس (مباشر)',
   snapshotMeta = null,
+  viewUpdatedAt = null,
   note = 'الأرقام في هذه الشاشة تقرأ من زوهو مباشرة، والتحديث من هنا يغنيك عن الرجوع لصفحة زوهو.',
   canSync = false,
   syncing = false,
@@ -59,7 +63,7 @@ export default function DataConfidenceBar({
     await reloadHealth();
   };
 
-  const tone = healthTone(health);
+  const tone = healthTone(health, viewUpdatedAt, loadingHealth);
   const ToneIcon = tone.icon;
 
   return (
@@ -95,9 +99,19 @@ export default function DataConfidenceBar({
             )}
           </div>
           <div className="data-confidence__detail" style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>
-            آخر تحديث: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
+            {viewUpdatedAt ? (
+              <>
+                تحميل العرض: <b style={{ color: 'var(--text)' }}>{agoAr(viewUpdatedAt)}</b>
+                <span style={{ marginInline: 6 }}>·</span>
+                إشعار زوهو: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
+              </>
+            ) : (
+              <>
+                آخر تحديث: <b style={{ color: 'var(--text)' }}>{agoAr(health?.webhookLastAt)}</b>
+              </>
+            )}
             <span style={{ marginInline: 6 }}>·</span>
-            آخر مزامنة: <b style={{ color: 'var(--text)' }}>{agoAr(health?.lastSyncAt)}</b>
+            مزامنة المصدر: <b style={{ color: 'var(--text)' }}>{agoAr(health?.lastSyncAt)}</b>
             <span style={{ marginInline: 6 }}>·</span>
             {note}
           </div>

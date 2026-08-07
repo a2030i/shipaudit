@@ -5,7 +5,7 @@
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -16,6 +16,7 @@ import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZoh
   planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl, syncZohoDocs } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus, loadTemplateSentSet } from '../lib/whatsappService.js';
+import { listTasks, loadCollectionAssignmentCandidates, STAGE_LABELS } from '../lib/collectionsService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
@@ -55,7 +56,11 @@ export default function CustomerMoney({ isActive = true }) {
   const [searchParams] = useSearchParams();
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
+  const [viewUpdatedAt, setViewUpdatedAt] = useState(null);
   const [loadError, setLoadError] = useState(null);
+  const [collectionTasks, setCollectionTasks] = useState([]);
+  const [collectionTaskError, setCollectionTaskError] = useState(false);
+  const [collectionAssignees, setCollectionAssignees] = useState([]);
   const [q, setQ] = useState('');
   const [buckets, setBuckets] = useState(() => new Set());   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
   const toggleBucket = (key) => setBuckets(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
@@ -81,7 +86,18 @@ export default function CustomerMoney({ isActive = true }) {
     setBusy(true);
     setLoadError(null);
     try {
-      setD(await loadCustomerMoneyDashboard());
+      const canViewTasks = can('collections.view');
+      const canReadAssignees = can('collections.assign');
+      const [dashboard, tasks, assignees] = await Promise.all([
+        loadCustomerMoneyDashboard(),
+        canViewTasks ? listTasks().catch(() => null) : Promise.resolve([]),
+        canReadAssignees ? loadCollectionAssignmentCandidates().catch(() => []) : Promise.resolve([]),
+      ]);
+      setD(dashboard);
+      setViewUpdatedAt(new Date().toISOString());
+      if (tasks !== null) setCollectionTasks(tasks);
+      setCollectionTaskError(tasks === null);
+      setCollectionAssignees(assignees);
     } catch (e) {
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
@@ -167,6 +183,21 @@ export default function CustomerMoney({ isActive = true }) {
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
   }, [d, q, buckets, platformFilter, sortBy, openingOnly, unclaimedOnly, sadadSet]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
+  const collectionTaskByCustomer = useMemo(() => {
+    const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
+    const indexed = new Map();
+    for (const task of collectionTasks) {
+      const current = indexed.get(task.customer_name);
+      if (!current || (rank[task.stage] || 0) > (rank[current.stage] || 0)) {
+        indexed.set(task.customer_name, task);
+      }
+    }
+    return indexed;
+  }, [collectionTasks]);
+  const collectionAssigneeById = useMemo(
+    () => new Map(collectionAssignees.map(employee => [employee.id, employee.name])),
+    [collectionAssignees],
+  );
   const platformCounts = useMemo(() => {
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
     for (const customer of d?.customers || []) {
@@ -282,6 +313,7 @@ export default function CustomerMoney({ isActive = true }) {
       <DataConfidenceBar
         active={isActive}
         sourceLabel="Zoho Books API"
+        viewUpdatedAt={viewUpdatedAt}
         canSync={can?.('money.pnl')}
         syncing={syncingZoho}
         refreshing={busy}
@@ -303,6 +335,17 @@ export default function CustomerMoney({ isActive = true }) {
           <Btn size="sm" variant="ghost" onClick={handleSyncZoho} disabled={syncingZoho}>
             {syncingZoho ? 'جارٍ إصلاح الفواتير…' : 'إصلاح ومصالحة الآن'}
           </Btn>
+        </div>
+      )}
+
+      {can('collections.view') && collectionTaskError && (
+        <div className="data-load-error is-inline" role="status">
+          <HandCoins size={17}/>
+          <div>
+            <strong>الأرصدة محمّلة، لكن مسؤوليات التحصيل لم تُحمّل</strong>
+            <span>الأرقام المالية سليمة في هذا العرض؛ أعد التحديث لإظهار المسؤول والإجراء التالي.</span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={refresh}>إعادة تحميل المسؤوليات</Btn>
         </div>
       )}
 
@@ -583,7 +626,11 @@ export default function CustomerMoney({ isActive = true }) {
           {filtered.map(c => (
             <CustomerCard key={c.name} c={c} highlight={buckets}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}
-              onWa={can('campaigns.send') ? openSingleWa : null}/>
+              onWa={can('campaigns.send') ? openSingleWa : null}
+              collectionTask={collectionTaskByCustomer.get(c.name) || null}
+              collectionAssignee={collectionAssigneeById.get(collectionTaskByCustomer.get(c.name)?.assigned_to) || null}
+              currentUserId={user?.id || null}
+              showCollectionWork={can('collections.view')}/>
           ))}
         </div>
       )}
@@ -882,12 +929,39 @@ function MorningBriefModal({ onClose }) {
 
 // بطاقة عميل — الاسم والمبلغ وأزرار الفعل، وفواتيره بنقرة
 // wa = حالة آخر حملة واتساب لهذا الهاتف (من whatsapp_campaign_status) · onWa = يطلق حملة لعميل واحد
-function CustomerCard({ c, highlight, wa: waStat, onWa }) {
+function CustomerCard({
+  c, highlight, wa: waStat, onWa,
+  collectionTask, collectionAssignee, currentUserId, showCollectionWork,
+}) {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [invs, setInvs] = useState(null);
   const digits = String(c.phone || '').replace(/\D/g, '');
   const waChat = digits ? `https://wa.me/${digits.startsWith('05') ? '966' + digits.slice(1) : digits}` : null;
   const storeStatus = platformStatusMeta(c);
+
+  const ownerLabel = !collectionTask?.assigned_to
+    ? 'بلا مسؤول'
+    : collectionAssignee
+      ? collectionAssignee
+      : collectionTask.assigned_to === currentUserId ? 'أنت المسؤول' : 'مسند لموظف آخر';
+  const nextAction = (() => {
+    if (!collectionTask) return 'إنشاء أو إسناد مهمة متابعة';
+    if (collectionTask.stage === 'promised') {
+      const due = collectionTask.promise_date ? fmtDate(collectionTask.promise_date) : '';
+      return `متابعة وعد السداد${due ? ` في ${due}` : ''}`;
+    }
+    if (collectionTask.stage === 'snoozed') {
+      const due = collectionTask.snooze_until ? fmtDate(collectionTask.snooze_until) : '';
+      return `متابعة بعد التأجيل${due ? ` في ${due}` : ''}`;
+    }
+    if (collectionTask.stage === 'contacted') return 'متابعة الرد وتسجيل النتيجة';
+    return 'التواصل وتسجيل النتيجة';
+  })();
+  const openCollectionTask = () => {
+    const params = new URLSearchParams({ tab: 'queue', customer: c.name });
+    navigate(`/customer-money?${params.toString()}`);
+  };
 
   const toggleInvoices = async () => {
     const next = !open;
@@ -1006,6 +1080,27 @@ function CustomerCard({ c, highlight, wa: waStat, onWa }) {
             opacity: (!highlight || highlight.size === 0 || highlight.has(b.key)) ? 1 : 0.25 }}/>;
         })}
       </div>
+
+      {showCollectionWork && (
+        <div className={`customer-collection-work${collectionTask ? '' : ' is-unassigned'}`}>
+          <div className="customer-collection-work__copy">
+            <span>
+              المسؤول: <b>{ownerLabel}</b>
+            </span>
+            <span>
+              الإجراء التالي: <b>{nextAction}</b>
+            </span>
+            {collectionTask && (
+              <span className="customer-collection-work__stage">
+                المرحلة: {STAGE_LABELS[collectionTask.stage] || collectionTask.stage}
+              </span>
+            )}
+          </div>
+          <button type="button" className="customer-collection-work__button" onClick={openCollectionTask}>
+            {collectionTask ? 'فتح المهمة' : 'فتح قائمة التحصيل'}
+          </button>
+        </div>
+      )}
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
         {digits && (
