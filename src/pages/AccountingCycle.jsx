@@ -228,7 +228,10 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   const { user, can } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [period, setPeriod] = useState(() => new Date().toISOString().slice(0, 7));
+  const [period, setPeriod] = useState(() => {
+    const requested = new URLSearchParams(location.search).get('period');
+    return /^\d{4}-\d{2}$/.test(requested || '') ? requested : new Date().toISOString().slice(0, 7);
+  });
   const [snapshot, setSnapshot] = useState(null);
   const [loadError, setLoadError] = useState('');
   const [selectedId, setSelectedId] = useState('');
@@ -262,14 +265,41 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
   useEffect(() => { if (isActive) refresh(); }, [isActive, period]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
+    const requestedPeriod = new URLSearchParams(location.search).get('period');
+    if (!/^\d{4}-\d{2}$/.test(requestedPeriod || '') || requestedPeriod === period) return;
+    setPeriod(requestedPeriod);
+    setSnapshot(null);
+    setLoadError('');
+    setSelectedId('');
+    setShipmentPreview(null);
+    setLamhaCollectionPreview(null);
+    setAuditDraft(null);
+  }, [location.search, period]);
+
+  useEffect(() => {
     if (!isActive || !snapshot?.stages?.length) return;
-    const requested = new URLSearchParams(location.search).get('stage');
-    if (requested && snapshot.stages.some(stage => stage.id === requested)) {
-      setSelectedId(requested);
-    } else if (selectedId && snapshot.stages.some(stage => stage.id === selectedId)) {
-      navigate(`/accounting-cycle?stage=${encodeURIComponent(selectedId)}`, { replace: true });
+    const params = new URLSearchParams(location.search);
+    const requestedStage = params.get('stage');
+    if (requestedStage && snapshot.stages.some(stage => stage.id === requestedStage)) {
+      setSelectedId(requestedStage);
     }
-  }, [isActive, location.search, navigate, selectedId, snapshot]);
+    const activeStage = requestedStage && snapshot.stages.some(stage => stage.id === requestedStage)
+      ? requestedStage
+      : selectedId && snapshot.stages.some(stage => stage.id === selectedId)
+        ? selectedId
+        : snapshot.stages[0]?.id;
+    const canonical = new URLSearchParams({ period });
+    if (activeStage) canonical.set('stage', activeStage);
+    if (params.toString() !== canonical.toString()) {
+      navigate(`/accounting-cycle?${canonical.toString()}`, { replace: true });
+    }
+  }, [isActive, location.search, navigate, period, selectedId, snapshot]);
+
+  const changePeriod = useCallback((nextPeriod) => {
+    if (!/^\d{4}-\d{2}$/.test(nextPeriod || '')) return;
+    const params = new URLSearchParams({ period: nextPeriod });
+    navigate(`/accounting-cycle?${params.toString()}`, { replace: true });
+  }, [navigate]);
 
   useEffect(() => {
     if (!carrierId && carriers[0]?.id) setCarrierId(carriers[0].id);
@@ -834,6 +864,25 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
 
   return (
     <div className="accounting-cycle-page">
+      <Card className="accounting-cycle-period-bar" aria-label="الفترة الموحدة لدورة المحاسبة">
+        <div className="accounting-cycle-period-bar__copy">
+          <CalendarDays size={19}/>
+          <div>
+            <strong>شهر الدورة بالكامل</strong>
+            <span>المراحل والملفات والنتائج أدناه تتبع هذا الشهر فقط</span>
+          </div>
+        </div>
+        <label className="accounting-cycle-period-picker">
+          <span>اختر الشهر</span>
+          <input
+            aria-label="شهر الدورة المحاسبية"
+            type="month"
+            value={period}
+            onChange={event => changePeriod(event.target.value)}
+          />
+        </label>
+        <Btn variant="ghost" size="sm" icon={<RefreshCw size={14}/>} onClick={refresh} disabled={loading}>تحديث الشهر المختار</Btn>
+      </Card>
       <PageHeader
         icon={<ClipboardCheck size={24}/>}
         title="دورة تشغيل المحاسب"
@@ -847,24 +896,6 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
               : snapshot
                 ? 'الدورة مكتملة'
                 : 'اختر شهر العمل'}
-        actions={
-          <div className="accounting-cycle-header-actions">
-            <label className="accounting-cycle-period-picker">
-              <CalendarDays size={15}/>
-              <span>شهر الدورة</span>
-              <input aria-label="شهر الدورة المحاسبية" type="month" value={period} onChange={event => {
-                setPeriod(event.target.value);
-                setSnapshot(null);
-                setLoadError('');
-                setSelectedId('');
-                setShipmentPreview(null);
-                setLamhaCollectionPreview(null);
-                setAuditDraft(null);
-              }}/>
-            </label>
-            <Btn variant="ghost" size="sm" icon={<RefreshCw size={14}/>} onClick={refresh} disabled={loading}>تحديث حالة الدورة</Btn>
-          </div>
-        }
       />
 
       {loading && !snapshot ? (

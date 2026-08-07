@@ -1124,14 +1124,41 @@
   min-width: 0;
 }
 
-.accounting-cycle-header-actions {
-  display: flex;
+.accounting-cycle-period-bar {
+  display: grid;
+  grid-template-columns: minmax(240px, 1fr) auto auto;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 14px !important;
+  border-color: color-mix(in srgb, var(--brand) 24%, var(--border)) !important;
+  background: color-mix(in srgb, var(--surface) 94%, var(--brand) 6%) !important;
 }
 
-.accounting-cycle-header-actions label {
+.accounting-cycle-period-bar__copy {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--brand);
+}
+
+.accounting-cycle-period-bar__copy > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.accounting-cycle-period-bar__copy strong {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.accounting-cycle-period-bar__copy span {
+  color: var(--muted);
+  font-size: 10.5px;
+}
+
+.accounting-cycle-period-bar label {
   min-height: 38px;
   display: inline-flex;
   align-items: center;
@@ -1151,7 +1178,7 @@
   white-space: nowrap;
 }
 
-.accounting-cycle-header-actions input {
+.accounting-cycle-period-bar input {
   width: 132px;
   padding: 0;
   border: 0;
@@ -1605,20 +1632,22 @@
 @media (max-width: 768px) {
   .accounting-cycle-page { gap: 12px; }
 
-  .accounting-cycle-header-actions {
+  .accounting-cycle-period-bar {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
     width: 100%;
+    gap: 9px;
+    padding: 12px !important;
   }
 
-  .accounting-cycle-header-actions label,
-  .accounting-cycle-header-actions .ui-btn {
+  .accounting-cycle-period-bar label,
+  .accounting-cycle-period-bar .ui-btn {
     width: 100%;
     justify-content: center;
   }
 
-  .accounting-cycle-period-picker {
-    grid-column: 1 / -1;
+  .accounting-cycle-period-bar__copy {
+    align-items: flex-start;
   }
 
   .accounting-cycle-period-picker input {

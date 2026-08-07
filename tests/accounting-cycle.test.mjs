@@ -683,12 +683,20 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
     readFile(new URL('../supabase/migrations/20260806150248_add_cod_settlement_schedule_slot.sql', import.meta.url), 'utf8'),
   ]);
   assert.match(cyclePage, /<UploadWizard key=\{period\}[^>]*initialPeriod=\{period\} lockPeriod/);
+  assert.match(cyclePage, /accounting-cycle-period-bar/);
+  assert.match(cyclePage, /new URLSearchParams\(\{ period \}\)/);
+  assert.match(cyclePage, /new URLSearchParams\(\{ period: nextPeriod \}\)/);
+  assert.match(cyclePage, /المراحل والملفات والنتائج أدناه تتبع هذا الشهر فقط/);
+  assert.ok(
+    cyclePage.indexOf('accounting-cycle-period-bar') < cyclePage.indexOf('<PageHeader'),
+    'محدد الشهر الموحد يجب أن يسبق هيدر الدورة وكل المراحل',
+  );
   assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
   const appPage = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(appPage, /<AccountingCycle carriers=\{carriers\} isActive=\{pathname==='\/accounting-cycle'\}\/>/);
   assert.match(appPage, /ACCOUNTING_CYCLE_STAGES/);
   assert.match(appPage, /accounting-stage-nav/);
-  assert.match(cyclePage, /new URLSearchParams\(location\.search\)\.get\('stage'\)/);
+  assert.match(cyclePage, /const requestedStage = params\.get\('stage'\)/);
   assert.match(cyclePage, /accounting-cycle-layout accounting-cycle-layout--contextual/);
   assert.doesNotMatch(cyclePage, /accounting-cycle-list/);
   assert.match(cyclePage, /<StageHistory stage=\{selected\}[^>]*onRedownload=\{redownloadWeights\}/);
