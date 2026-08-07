@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   UserPlus, Pencil, Trash2, RefreshCw, Shield, ShieldCheck, Lock, Check, Search,
   LayoutDashboard, Inbox, Mail, FileCheck2, Truck, Coins, Users, PhoneCall,
@@ -698,6 +699,7 @@ function ActivityModal({ employee, onClose }) {
 }
 
 export default function EmployeeManager() {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { profile: myProfile, can } = useAuth();
   const [employees, setEmployees] = useState([]);
   const [loading,   setLoading]   = useState(true);
@@ -707,6 +709,11 @@ export default function EmployeeManager() {
   const canManageEmployees   = can('system.manage_employees');
   const canManagePermissions = can('system.manage_permissions');
   const [actSummary, setActSummary] = useState(() => new Map()); // سجل التحركات — ملخّص/موظف
+  const requestedRoleRaw = searchParams.get('role') || '';
+  const requestedRoleId = TEAM_CUTOVER_ROLES.some(role => role.id === requestedRoleRaw)
+    ? requestedRoleRaw
+    : '';
+  const requestedRoleRef = useRef(null);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -721,6 +728,12 @@ export default function EmployeeManager() {
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
+
+  useEffect(() => {
+    if (loading || !requestedRoleId || !requestedRoleRef.current) return;
+    requestedRoleRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    requestedRoleRef.current.focus({ preventScroll: true });
+  }, [loading, requestedRoleId]);
 
   const handleSave = async (form) => {
     if (modal.type === 'add') {
@@ -810,15 +823,27 @@ export default function EmployeeManager() {
           <div className="team-cutover-recommendations__header">
             <div>
               <h2 id="team-cutover-title">تجهيز أدوار التشغيل</h2>
-              <p>ترشيح تقني حسب الصلاحيات الحالية فقط. تكرار الاسم لا يعني تكليفه بدورين، والحفظ يبقى بقرار المدير.</p>
+              <p>
+                {requestedRoleId
+                  ? 'وصلت من قرار الجاهزية. راجع المرشح الأقرب والصلاحيات الناقصة، ثم احفظ فقط بعد اعتمادك.'
+                  : 'ترشيح تقني حسب الصلاحيات الحالية فقط. تكرار الاسم لا يعني تكليفه بدورين، والحفظ يبقى بقرار المدير.'}
+              </p>
             </div>
-            <span>لا تغييرات تلقائية</span>
+            <span>{requestedRoleId ? 'دور مطلوب للتشغيل' : 'لا تغييرات تلقائية'}</span>
           </div>
           <div className="team-cutover-recommendations__grid">
             {roleRecommendations.map(role => {
               const match = role.match;
+              const isRequested = role.id === requestedRoleId;
               return (
-                <article key={role.id} className="team-cutover-role" style={{ '--role-tone': role.color }}>
+                <article
+                  key={role.id}
+                  ref={isRequested ? requestedRoleRef : undefined}
+                  tabIndex={isRequested ? -1 : undefined}
+                  aria-current={isRequested ? 'step' : undefined}
+                  className={`team-cutover-role${isRequested ? ' is-requested' : ''}`}
+                  style={{ '--role-tone': role.color }}
+                >
                   <div className="team-cutover-role__title">
                     <span>{role.title}</span>
                     {match ? (
@@ -827,6 +852,11 @@ export default function EmployeeManager() {
                       </b>
                     ) : null}
                   </div>
+                  {isRequested && (
+                    <div className="team-cutover-role__requested">
+                      هذا هو الدور الذي يمنع جاهزية الفريق حاليًا. المعاينة لا تمنح أي صلاحية.
+                    </div>
+                  )}
                   <p>{role.description}</p>
                   {match ? (
                     <div className="team-cutover-role__candidate">
@@ -850,7 +880,7 @@ export default function EmployeeManager() {
                             recommendedPresetId: role.presetId,
                           })}
                         >
-                          مراجعة التجهيز
+                          مراجعة تجهيز {match.employee.name}
                         </Btn>
                       ) : null}
                     </div>
@@ -861,6 +891,19 @@ export default function EmployeeManager() {
               );
             })}
           </div>
+          {requestedRoleId && (
+            <button
+              type="button"
+              className="team-cutover-recommendations__dismiss"
+              onClick={() => {
+                const next = new URLSearchParams(searchParams);
+                next.delete('role');
+                setSearchParams(next, { replace: true });
+              }}
+            >
+              إغلاق توجيه الجاهزية
+            </button>
+          )}
         </section>
       ) : null}
 

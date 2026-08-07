@@ -92,6 +92,10 @@ test('employee manager recommends the closest operator but requires an explicit 
   assert.match(employeeManager, /إضافة الناقص للمراجعة/);
   assert.match(employeeManager, /لن تتفعّل قبل ضغط «حفظ الصلاحيات»/);
   assert.match(employeeManager, /onClick=\{handleSave\}/);
+  assert.match(employeeManager, /searchParams\.get\('role'\)/);
+  assert.match(employeeManager, /وصلت من قرار الجاهزية/);
+  assert.match(employeeManager, /المعاينة لا تمنح أي صلاحية/);
+  assert.match(employeeManager, /recommendedPresetId: role\.presetId/);
   assert.doesNotMatch(employeeManager, /useEffect\([^)]*applyPreset/s);
 });
 
@@ -124,6 +128,9 @@ test('admin dashboard exposes three clear readiness decisions and never assumes 
   assert.match(panel, /تعيين مشرف الإقفال/);
   assert.match(panel, /تهيئة موظف المالية/);
   assert.match(panel, /تهيئة مشرف ومستلم الحملات/);
+  assert.match(panel, /\/employees\?role=accounting/);
+  assert.match(panel, /\/employees\?role=finance/);
+  assert.match(panel, /\/employees\?role=collections/);
   assert.match(panel, /المصدر غير متاح/);
   assert.match(panel, /تعذّر قراءة بيانات الجاهزية/);
   assert.match(panel, /النقل الكامل غير جاهز الآن/);

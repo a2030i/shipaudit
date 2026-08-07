@@ -143,7 +143,7 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
               ? { label: 'ضبط جداول الناقلين', path: '/tasks' }
               : { label: 'فتح دورة المحاسب', path: '/accounting-cycle' },
             accounting?.staffing?.cycle_closers === 0
-              ? { label: 'تعيين مشرف الإقفال', path: '/employees' }
+              ? { label: 'تعيين مشرف الإقفال', path: '/employees?role=accounting' }
               : null,
           ]}
           onNavigate={onNavigate}
@@ -161,7 +161,7 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
             : ''}
           actions={[
             finance?.staffing?.finance_operators === 0
-              ? { label: 'تهيئة موظف المالية', path: '/employees' }
+              ? { label: 'تهيئة موظف المالية', path: '/employees?role=finance' }
               : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=banks' },
             finance?.staffing?.finance_operators === 0
               ? { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=banks' }
@@ -187,7 +187,7 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
               ? { label: 'إنشاء المهام الناقصة', path: '/collections?action=sync' }
               : { label: 'توزيع مهام التحصيل', path: '/collections' },
             sales?.staffing?.collection_supervisors === 0 || sales?.campaign_recipients === 0
-              ? { label: 'تهيئة مشرف ومستلم الحملات', path: '/employees' }
+              ? { label: 'تهيئة مشرف ومستلم الحملات', path: '/employees?role=collections' }
               : null,
           ]}
           onNavigate={onNavigate}
