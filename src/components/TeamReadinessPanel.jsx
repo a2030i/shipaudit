@@ -103,9 +103,9 @@ export default function TeamReadinessPanel({ readiness, onNavigate }) {
           actions={[
             finance?.staffing?.finance_operators === 0
               ? { label: 'تهيئة موظف المالية', path: '/employees' }
-              : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' },
+              : { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=banks' },
             finance?.staffing?.finance_operators === 0
-              ? { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=bank_accounts' }
+              ? { label: 'فتح البنوك والمطابقة', path: '/zoho-data?tab=banks' }
               : null,
           ]}
           onNavigate={onNavigate}

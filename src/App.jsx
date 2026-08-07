@@ -185,7 +185,7 @@ const ROUTE_ITEMS = [
       { tabId: 'overview',  label: 'مراقبة اتصال زوهو',       icon: Activity },
       { tabId: 'customers', label: 'العملاء والفواتير',       icon: Users },
       { tabId: 'vendors',   label: 'الموردون والمصروفات',     icon: Briefcase },
-      { tabId: 'banks',     label: 'البنوك والمطابقة',        icon: Landmark },
+      { tabId: 'banks',     label: 'البنوك والمطابقة',        icon: Landmark, legacyTabIds: ['bank_accounts'] },
       { tabId: 'accounts',  label: 'القيود ودليل الحسابات',   icon: BookOpen },
     ] },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
@@ -502,7 +502,7 @@ function AppInner({ theme, toggleTheme }) {
     if (location.pathname === item.path) {
       const cur = new URLSearchParams(location.search).get('tab');
       const effective = cur || item.subTabs[0].tabId;
-      return item.subTabs.find(s => s.tabId === effective) || null;
+      return item.subTabs.find(s => s.tabId === effective || s.legacyTabIds?.includes(effective)) || null;
     }
     return item.subTabs.find(s => s.legacy === location.pathname) || null;
   };

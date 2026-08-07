@@ -13,6 +13,8 @@ const staffingMigration = await readFile(
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx', import.meta.url), 'utf8');
 const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
+const app = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
+const zohoData = await readFile(new URL('../src/pages/ZohoData.jsx', import.meta.url), 'utf8');
 const permissions = await readFile(new URL('../src/lib/permissions.js', import.meta.url), 'utf8');
 const employeeManager = await readFile(new URL('../src/pages/EmployeeManager.jsx', import.meta.url), 'utf8');
 const employeeService = await readFile(new URL('../src/lib/employeeService.js', import.meta.url), 'utf8');
@@ -111,4 +113,13 @@ test('bank summary opens its readable source details and keeps editing as a sepa
   assert.match(overview, /onOpenBankDetails=\{openBankDetails\}/);
   assert.match(overview, /onClick: onOpenBankDetails/);
   assert.match(overview, /onClick=\{onEditBank\}>إضافة أو تحديث بنك/);
+});
+
+test('finance readiness opens the canonical bank workspace and old links resolve to the same context', () => {
+  assert.match(panel, /\/zoho-data\?tab=banks/);
+  assert.doesNotMatch(panel, /\/zoho-data\?tab=bank_accounts/);
+  assert.match(app, /legacyTabIds: \['bank_accounts'\]/);
+  assert.match(app, /s\.legacyTabIds\?\.includes\(effective\)/);
+  assert.match(zohoData, /bank_accounts: 'banks'/);
+  assert.match(zohoData, /WORKSPACE_SECTION_ALIASES\[requestedSectionRaw\]/);
 });

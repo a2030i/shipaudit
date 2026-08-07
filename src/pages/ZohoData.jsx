@@ -91,6 +91,9 @@ const WORKSPACE_SECTIONS = [
   { id: 'banks', label: 'البنوك والمطابقة', types: ['bank_accounts'] },
   { id: 'accounts', label: 'القيود والحسابات', types: ['journals', 'chart_accounts'] },
 ];
+const WORKSPACE_SECTION_ALIASES = {
+  bank_accounts: 'banks',
+};
 const sectionForType = type => WORKSPACE_SECTIONS.find(section => section.types.includes(type))?.id || 'overview';
 
 // أعمدة العرض لكل نوع (label + مفتاح + نوع القيمة)
@@ -149,7 +152,8 @@ export default function ZohoData({ isActive = true }) {
   const { can, user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const requestedSection = new URLSearchParams(location.search).get('tab');
+  const requestedSectionRaw = new URLSearchParams(location.search).get('tab');
+  const requestedSection = WORKSPACE_SECTION_ALIASES[requestedSectionRaw] || requestedSectionRaw;
   const initialSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
     ? requestedSection
     : 'overview';
