@@ -849,9 +849,10 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
                 : 'اختر شهر العمل'}
         actions={
           <div className="accounting-cycle-header-actions">
-            <label>
+            <label className="accounting-cycle-period-picker">
               <CalendarDays size={15}/>
-              <input type="month" value={period} onChange={event => {
+              <span>شهر الدورة</span>
+              <input aria-label="شهر الدورة المحاسبية" type="month" value={period} onChange={event => {
                 setPeriod(event.target.value);
                 setSnapshot(null);
                 setLoadError('');

@@ -828,10 +828,18 @@
   align-items: center;
   gap: 7px;
   padding: 6px 10px;
-  border: 1px solid rgba(255,255,255,.22);
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: rgba(255,255,255,.1);
-  color: #fff;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: 0 1px 3px rgba(31, 48, 87, .05);
+}
+
+.accounting-cycle-period-picker > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 750;
+  white-space: nowrap;
 }
 
 .accounting-cycle-header-actions input {
@@ -841,6 +849,11 @@
   background: transparent;
   color: inherit;
   font: inherit;
+  font-weight: 750;
+  color-scheme: light;
+}
+
+[data-theme="dark"] .accounting-cycle-header-actions input {
   color-scheme: dark;
 }
 
@@ -1293,6 +1306,16 @@
   .accounting-cycle-header-actions .ui-btn {
     width: 100%;
     justify-content: center;
+  }
+
+  .accounting-cycle-period-picker {
+    grid-column: 1 / -1;
+  }
+
+  .accounting-cycle-period-picker input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
   }
 
   .accounting-cycle-summary {
