@@ -228,6 +228,85 @@ export async function listSchedules({ activeOnly = true } = {}) {
   return data || [];
 }
 
+function uniqueEvidenceRows(rows = [], keyOf) {
+  const seen = new Set();
+  return rows.filter(row => {
+    const key = keyOf(row);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function evidenceDate(value) {
+  return saDateParts(value)?.iso || null;
+}
+
+// Read-only evidence for helping a manager confirm missing carrier schedules.
+// Historical uploads are never converted into a schedule automatically: a few
+// late/manual uploads are not a contractual calendar. The UI only shows what
+// actually exists and keeps the final date choice explicit.
+export function summarizeCarrierScheduleEvidence({ carrierIds = [], audits = [], codRows = [] } = {}) {
+  const ids = [...new Set((carrierIds || []).map(String).filter(Boolean))];
+  const result = Object.fromEntries(ids.map(id => [id, {
+    invoice: { batchCount: 0, dates: [] },
+    cod: { batchCount: 0, dates: [] },
+  }]));
+
+  const invoiceBatches = uniqueEvidenceRows(
+    (audits || []).filter(row => ids.includes(String(row.carrier_id))),
+    row => `${row.carrier_id}:${row.id || row.content_hash || row.file_name || row.created_at}`,
+  );
+  invoiceBatches.forEach(row => {
+    const carrierId = String(row.carrier_id);
+    if (!result[carrierId]) return;
+    result[carrierId].invoice.batchCount += 1;
+    const date = evidenceDate(row.created_at);
+    if (date) result[carrierId].invoice.dates.push(date);
+  });
+
+  const codBatches = uniqueEvidenceRows(
+    (codRows || []).filter(row => ids.includes(String(row.carrier_id)) && row.direction === 'in'),
+    row => `${row.carrier_id}:${row.upload_id || row.source_file || row.created_at}`,
+  );
+  codBatches.forEach(row => {
+    const carrierId = String(row.carrier_id);
+    if (!result[carrierId]) return;
+    result[carrierId].cod.batchCount += 1;
+    const date = evidenceDate(row.created_at);
+    if (date) result[carrierId].cod.dates.push(date);
+  });
+
+  Object.values(result).forEach(evidence => {
+    evidence.invoice.dates = [...new Set(evidence.invoice.dates)].sort();
+    evidence.cod.dates = [...new Set(evidence.cod.dates)].sort();
+  });
+  return result;
+}
+
+export async function listCarrierScheduleEvidence(carrierIds = []) {
+  const ids = [...new Set((carrierIds || []).map(String).filter(Boolean))];
+  if (!ids.length) return {};
+  const [auditsRes, codRes] = await Promise.all([
+    supabase
+      .from('audits')
+      .select('id,carrier_id,file_name,content_hash,created_at')
+      .in('carrier_id', ids)
+      .order('created_at', { ascending: false })
+      .limit(5000),
+    supabase
+      .from('cod_settlement')
+      .select('carrier_id,upload_id,source_file,created_at,direction')
+      .in('carrier_id', ids)
+      .eq('direction', 'in')
+      .order('created_at', { ascending: false })
+      .limit(5000),
+  ]);
+  if (auditsRes.error) throw new Error(`تعذر قراءة سجل فواتير الناقلين: ${auditsRes.error.message}`);
+  if (codRes.error) throw new Error(`تعذر قراءة سجل تحصيلات الناقلين: ${codRes.error.message}`);
+  return summarizeCarrierScheduleEvidence({ carrierIds: ids, audits: auditsRes.data, codRows: codRes.data });
+}
+
 export async function upsertSchedule({
   id = null, carrierId, taskKind, cadence,
   dayOfPeriod = null, scheduleBasis = null, dueDays = [], notes = null, active = true,

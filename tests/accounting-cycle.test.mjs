@@ -17,6 +17,7 @@ import {
   deriveCarrierScheduleCoverage,
   normalizeScheduleTiming,
   parseScheduleDays,
+  summarizeCarrierScheduleEvidence,
 } from '../src/lib/tasksService.js';
 import { filterMissingShipmentSearchRows } from '../src/lib/weightBillingService.js';
 
@@ -65,6 +66,30 @@ test('إعداد موعد الناقل صريح ولا يسمح بيوم غام�
     () => normalizeScheduleTiming({ cadence: 'monthly', scheduleBasis: 'month_days', dueDays: [1, 15] }),
     /يوم استلام واحد/,
   );
+});
+
+test('دليل مواعيد الناقل يعرض الملفات الفعلية ولا يحولها إلى جدول تلقائي', () => {
+  const evidence = summarizeCarrierScheduleEvidence({
+    carrierIds: ['boleeseh', 'aymakan'],
+    audits: [
+      { id: 'audit-1', carrier_id: 'boleeseh', created_at: '2026-06-10T08:00:00+03:00' },
+      { id: 'audit-1', carrier_id: 'boleeseh', created_at: '2026-06-10T08:00:00+03:00' },
+    ],
+    codRows: [
+      { carrier_id: 'boleeseh', direction: 'in', upload_id: 'in-1', created_at: '2026-05-19T12:00:00+03:00' },
+      { carrier_id: 'boleeseh', direction: 'in', upload_id: 'in-1', created_at: '2026-05-19T12:00:00+03:00' },
+      { carrier_id: 'boleeseh', direction: 'in', upload_id: 'in-2', created_at: '2026-06-25T12:00:00+03:00' },
+      { carrier_id: 'boleeseh', direction: 'out', upload_id: 'out-1', created_at: '2026-06-25T12:00:00+03:00' },
+    ],
+  });
+  assert.deepEqual(evidence.boleeseh, {
+    invoice: { batchCount: 1, dates: ['2026-06-10'] },
+    cod: { batchCount: 2, dates: ['2026-05-19', '2026-06-25'] },
+  });
+  assert.deepEqual(evidence.aymakan, {
+    invoice: { batchCount: 0, dates: [] },
+    cod: { batchCount: 0, dates: [] },
+  });
 });
 
 test('لوحة اكتمال الجداول تطلب جدولًا موحدًا أو جدولين منفصلين حسب طريقة الناقل', () => {

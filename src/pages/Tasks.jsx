@@ -22,6 +22,7 @@ import {
   listSchedules, upsertSchedule, markTaskDone, deleteSchedule,
   partitionByDueness, scheduleRequirementLabel, legacyScheduleDays,
   parseScheduleDays, deriveCarrierScheduleCoverage, requiredScheduleKindsForCarrier,
+  listCarrierScheduleEvidence,
   TASK_KIND_META, CADENCE_META, WEEKDAY_META,
 } from '../lib/tasksService.js';
 
@@ -38,6 +39,8 @@ export default function Tasks({ carriers = [], isActive = true }) {
   const navigate = useNavigate();
   const { profile } = useAuth();
   const [schedules, setSchedules] = useState([]);
+  const [scheduleEvidence, setScheduleEvidence] = useState({});
+  const [evidenceError, setEvidenceError] = useState('');
   const [loading, setLoading] = useState(true);
   const [editorOpen, setEditorOpen] = useState(false);
   const [editorRow, setEditorRow] = useState(null);
@@ -45,12 +48,21 @@ export default function Tasks({ carriers = [], isActive = true }) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      setSchedules(await listSchedules({ activeOnly: false }));
+      const carrierIds = (carriers || []).map(carrier => carrier.id).filter(Boolean);
+      const [nextSchedules, evidenceResult] = await Promise.all([
+        listSchedules({ activeOnly: false }),
+        listCarrierScheduleEvidence(carrierIds)
+          .then(value => ({ value, error: null }))
+          .catch(error => ({ value: {}, error })),
+      ]);
+      setSchedules(nextSchedules);
+      setScheduleEvidence(evidenceResult.value);
+      setEvidenceError(evidenceResult.error?.message || '');
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, []);
+  }, [carriers]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
 
@@ -128,7 +140,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
         <div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>
       ) : schedules.length === 0 ? (
         <>
-          <ScheduleCoveragePanel rows={scheduleCoverage} onConfigure={configureCoverage}/>
+          <ScheduleCoveragePanel rows={scheduleCoverage} evidence={scheduleEvidence} evidenceError={evidenceError} onConfigure={configureCoverage}/>
           <Card>
             <Empty
               icon="📅"
@@ -139,7 +151,7 @@ export default function Tasks({ carriers = [], isActive = true }) {
         </>
       ) : (
         <>
-          <ScheduleCoveragePanel rows={scheduleCoverage} onConfigure={configureCoverage}/>
+          <ScheduleCoveragePanel rows={scheduleCoverage} evidence={scheduleEvidence} evidenceError={evidenceError} onConfigure={configureCoverage}/>
           {/* Due-status board */}
           <div style={{
             display: 'grid',
@@ -267,7 +279,25 @@ export default function Tasks({ carriers = [], isActive = true }) {
   );
 }
 
-function ScheduleCoveragePanel({ rows, onConfigure }) {
+function evidenceSummary(row, evidence) {
+  if (!evidence) return 'لا يوجد سجل تاريخي كافٍ داخل النظام لاقتراح موعد؛ يلزم تأكيد الموعد الفعلي من العقد أو الشركة.';
+  const parts = [];
+  const needsInvoice = [...row.missingKinds, ...row.invalidKinds].includes('invoice');
+  const needsCod = [...row.missingKinds, ...row.invalidKinds].includes('cod_remittance');
+  if (needsInvoice) {
+    parts.push(evidence.invoice.batchCount
+      ? `الفواتير: ${evidence.invoice.batchCount} ملفات محفوظة (${evidence.invoice.dates.join('، ') || 'بلا تاريخ'})`
+      : 'الفواتير: لا يوجد ملف تاريخي محفوظ');
+  }
+  if (needsCod) {
+    parts.push(evidence.cod.batchCount
+      ? `التحصيل: ${evidence.cod.batchCount} ملفات واردة (${evidence.cod.dates.join('، ') || 'بلا تاريخ'})`
+      : 'التحصيل: لا يوجد ملف وارد محفوظ');
+  }
+  return `${parts.join(' · ')}. هذه قرائن فقط ولا تُحفظ كموعد تلقائي.`;
+}
+
+function ScheduleCoveragePanel({ rows, evidence, evidenceError, onConfigure }) {
   const incomplete = (rows || []).filter(row => row.status !== 'complete');
   const completeCount = (rows || []).length - incomplete.length;
   return (
@@ -289,6 +319,11 @@ function ScheduleCoveragePanel({ rows, onConfigure }) {
         </div>
       ) : (
         <div style={{ display: 'grid', gap: 8, padding: 12 }}>
+          {evidenceError && (
+            <div style={{ padding: '9px 11px', borderRadius: 9, background: 'color-mix(in srgb, var(--red) 8%, var(--surface2))', color: 'var(--red)', fontSize: 11.5 }}>
+              تعذرت قراءة دليل الوصول التاريخي؛ لم يُفترض أي موعد: {evidenceError}
+            </div>
+          )}
           {incomplete.map(row => {
             const missing = [...row.missingKinds, ...row.invalidKinds]
               .filter((kind, index, all) => all.indexOf(kind) === index);
@@ -302,6 +337,11 @@ function ScheduleCoveragePanel({ rows, onConfigure }) {
                       ? 'طريقة ملفات الشركة غير محددة؛ صنّفها قبل إنشاء الجداول.'
                       : `ناقص: ${missing.map(kind => TASK_KIND_META[kind]?.label || kind).join(' + ')}`}
                   </span>
+                  {row.status !== 'unclassified' && !evidenceError && (
+                    <span style={{ display: 'block', marginTop: 5, color: 'var(--text2)', fontSize: 11, lineHeight: 1.7 }}>
+                      {evidenceSummary(row, evidence?.[row.carrierId])}
+                    </span>
+                  )}
                 </div>
                 <Btn size="sm" variant="ghost" onClick={() => onConfigure(row)}>
                   {row.status === 'unclassified' ? 'تصنيف الشركة' : `ضبط ${TASK_KIND_META[firstKind]?.label || 'الجدول'}`}
