@@ -196,6 +196,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const net       = bank == null ? null : bank + netNoBank;
       return {
         bankBalance:  bank,
+        bankBalanceComplete: bankBalance?.complete ?? false,
+        bankKnownBalance: bankBalance?.knownBalance ?? null,
+        bankExpectedCount: bankBalance?.expectedCount || bankBalance?.banks?.length || 0,
+        bankMissingAccounts: bankBalance?.missingBanks || [],
         bankUpdated:  bankBalance?.asOf || null,
         bankSource:   bankBalance?.source || null,
         bankNotes:    bankBalance?.notes || null,

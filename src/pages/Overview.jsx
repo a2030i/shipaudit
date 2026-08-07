@@ -621,7 +621,6 @@ export default function Overview({ carriers = [], isActive = true }) {
 }
 
 function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onEditBank }) {
-  const EXPECTED_BANK_ACCOUNTS = 3;
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
   const codDue = Number(data.codOutstanding?.total) || 0;
   const ap90 = Number(data.aging?.totals?.d90) || 0;
@@ -633,6 +632,8 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
   const availableAfterVat = net == null ? null : net - vatReserve;
   const availablePositive = availableAfterVat == null ? null : availableAfterVat >= 0;
   const registeredBankCount = cash.bankAccounts?.length || 0;
+  const expectedBankCount = Number(cash.bankExpectedCount) || registeredBankCount;
+  const missingBankBalances = Array.isArray(cash.bankMissingAccounts) ? cash.bankMissingAccounts : [];
   const zohoBankTotal = (cash.zohoBankAccounts || []).reduce((sum, account) => sum + Number(account.bookBalance || 0), 0);
   const customerPath = topCustomer
     ? (data.arSource === 'zoho'
@@ -641,6 +642,16 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
     : '/customer-money';
 
   const missions = [
+    missingBankBalances.length > 0 && {
+      icon: <Wallet size={18}/>,
+      tone: 'var(--red)',
+      title: 'الرصيد البنكي غير مكتمل',
+      value: `${missingBankBalances.length}`,
+      unit: missingBankBalances.length === 1 ? 'بنك' : 'بنوك',
+      body: `${missingBankBalances.join('، ')} بلا رصيد ختامي صالح؛ أوقفنا حساب المتاح الفعلي.`,
+      action: 'حدّث الرصيد',
+      path: '/money?tab=bank',
+    },
     pendingAudits > 0 && {
       icon: <Clock3 size={18}/>,
       tone: 'var(--gold)',
@@ -715,7 +726,9 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       tone: 'var(--accent)',
       Icon: Wallet,
       helper: registeredBankCount
-        ? `${registeredBankCount} من ${EXPECTED_BANK_ACCOUNTS} حسابات بنكية · اضغط للتفاصيل`
+        ? (missingBankBalances.length
+            ? `${registeredBankCount} حسابات · الرصيد الختامي ناقص في ${missingBankBalances.join('، ')}`
+            : `${registeredBankCount} من ${expectedBankCount} حسابات بنكية · اضغط للتفاصيل`)
         : 'لا توجد حسابات مسجّلة',
       onClick: onEditBank,
     },
@@ -756,12 +769,13 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
     { label: 'العملاء', value: cash.arSource === 'zoho' ? 'Zoho مباشر' : 'نسخة داخلية', tone: 'var(--green)' },
     {
       label: 'البنوك',
-      value: cash.bankSource === 'mixed'
+      value: missingBankBalances.length ? 'رصيد غير مكتمل'
+        : cash.bankSource === 'mixed'
         ? 'كشوف + يدوي'
         : cash.bankSource === 'statement' ? 'آخر كشف لكل بنك'
         : cash.bankSource === 'manual' ? 'إدخال يدوي'
         : 'غير محدد',
-      tone: 'var(--accent3)',
+      tone: missingBankBalances.length ? 'var(--red)' : 'var(--accent3)',
     },
     { label: 'الناقلون', value: 'دفتر القيود', tone: 'var(--accent)' },
     {
@@ -893,15 +907,20 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
               {cash.bankAccounts.map((account) => (
                 <div className="ops-bank-row" key={account.bank}>
                   <span className="ops-bank-name">{account.bank}</span>
-                  <small>{account.source === 'statement' ? 'آخر كشف' : 'تحديث يدوي'} · {formatBankDate(account.asOf)}</small>
-                  <strong>{fmt(account.balance ?? account.closing)} <small>ر.س</small></strong>
+                  <small>
+                    {account.source === 'statement' ? 'آخر كشف' : 'تحديث يدوي'} · {formatBankDate(account.asOf)}
+                    {account.valid === false ? ' · لا يحتوي رصيدًا ختاميًا صالحًا' : ''}
+                  </small>
+                  <strong style={account.valid === false ? { color: 'var(--red)' } : undefined}>
+                    {account.valid === false ? 'غير مكتمل' : <>{fmt(account.balance ?? account.closing)} <small>ر.س</small></>}
+                  </strong>
                 </div>
               ))}
-              {registeredBankCount < EXPECTED_BANK_ACCOUNTS && (
+              {registeredBankCount < expectedBankCount && (
                 <button type="button" className="ops-bank-row" onClick={onEditBank}
                   style={{ width: '100%', border: '1px dashed var(--gold)', background: 'color-mix(in srgb, var(--gold) 7%, transparent)', cursor: onEditBank ? 'pointer' : 'default', textAlign: 'right' }}>
                   <span className="ops-bank-name" style={{ color: 'var(--gold)' }}>حساب بنكي غير مسجّل</span>
-                  <small>الإجمالي الحالي لا يشمل {EXPECTED_BANK_ACCOUNTS - registeredBankCount} من الحسابات المتوقعة</small>
+                  <small>الإجمالي الحالي لا يشمل {expectedBankCount - registeredBankCount} من الحسابات المتوقعة</small>
                   <strong style={{ color: 'var(--gold)' }}>{onEditBank ? 'أضف الرصيد' : 'يحتاج صلاحية'}</strong>
                 </button>
               )}
@@ -1050,7 +1069,7 @@ function BankEditModal({ banks = [], onCancel, onSave }) {
             onSubmit={(e) => { e.preventDefault(); if (canSave) onSave({ bank: bank.trim(), balance, notes }); }}
             style={{ padding: '4px 4px 0' }}>
         <div className="bank-modal-intro">
-          كل بنك حساب مستقل. اختر بنكاً لتحديثه، أو اكتب اسم البنك الثالث لإضافته إلى الإجمالي.
+          كل بنك حساب مستقل. اختر بنكاً لتحديث رصيده، أو أضف حساباً فعلياً جديداً عند الحاجة.
         </div>
         {banks.length > 0 && (
           <div className="bank-modal-accounts">
@@ -1060,7 +1079,7 @@ function BankEditModal({ banks = [], onCancel, onSave }) {
                   <strong>{account.bank}</strong>
                   <small>{account.source === 'statement' ? 'آخر كشف بنكي' : 'آخر تحديث يدوي'} · {formatBankDate(account.asOf)}</small>
                 </span>
-                <b>{fmt(account.balance ?? account.closing)} <small>ر.س</small></b>
+                <b>{account.valid === false ? 'الرصيد غير متاح' : fmt(account.balance ?? account.closing)} {account.valid === false ? null : <small>ر.س</small>}</b>
               </button>
             ))}
           </div>

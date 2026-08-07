@@ -15,6 +15,7 @@ import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.j
 import { useAuth } from '../lib/auth.jsx';
 import {
   loadPnlSnapshots, refreshPnlMonth, currentPnlPeriod, prevPnlPeriod, quarterTotals,
+  isUsablePnlSnapshot,
   syncZohoDocs, loadInvoicedVsCollected, loadSyncState, loadZohoEvents,
 } from '../lib/pnlService.js';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
@@ -72,7 +73,8 @@ export default function FinancialPosition({ isActive = true }) {
       catch (e) { toast(`فشل التحميل: ${e.message}`, 'error'); setSnaps([]); return; }
       const cur = currentPnlPeriod();
       const curSnap = rows.find(s => s.period === cur);
-      const stale = !curSnap || (Date.now() - new Date(curSnap.fetched_at).getTime() > STALE_MS);
+      const stale = !isUsablePnlSnapshot(curSnap)
+        || (Date.now() - new Date(curSnap.fetched_at).getTime() > STALE_MS);
       if (stale) {
         try { await refreshPnlMonth(cur); setSnaps(await loadPnlSnapshots()); }
         catch { /* الكاش يكفي للعرض */ }
@@ -132,14 +134,14 @@ export default function FinancialPosition({ isActive = true }) {
   const prev = byPeriod.get(prevPnlPeriod(sel));
   const isCurrentMonth = sel === currentPnlPeriod();
   const quarters = useMemo(() => quarterTotals(snaps), [snaps]);
-  const trend = useMemo(() => (snaps || []).slice(0, 6).reverse(), [snaps]);   // الأقدم→الأحدث للأعمدة
+  const trend = useMemo(() => (snaps || []).filter(isUsablePnlSnapshot).slice(0, 6).reverse(), [snaps]);   // الأقدم→الأحدث للأعمدة
 
   // فجوة التسجيل: دفترنا (شامل ضريبة 15%) مقابل cogs زوهو (قبل الضريبة) —
   // من فحص الوكلاء: المقارنة المباشرة تصنع فجوة وهمية ~15% دائمة، فنقسم
   // دفترنا ÷1.15 (تقريب مُعلَن — الشحن الدولي VAT=0 يُبخَس قليلاً) ونستخدم
   // عتبة نسبية 5% لا رقماً ثابتاً.
   const gap = useMemo(() => {
-    if (!snap) return null;
+    if (!isUsablePnlSnapshot(snap)) return null;
     const grossBilled = billedByMonth.get(sel);
     if (grossBilled == null) return null;
     const billedPreTax = +(grossBilled / 1.15).toFixed(2);
@@ -199,10 +201,12 @@ export default function FinancialPosition({ isActive = true }) {
   if (!can('money.pnl')) return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «الوضع المالي»"/></div>;
   if (snaps == null) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner size={26}/></div>;
 
-  const net = Number(snap?.net) || 0;
+  const snapshotUsable = isUsablePnlSnapshot(snap);
+  const net = snapshotUsable ? (Number(snap?.net) || 0) : null;
   const prevNet = prev ? Number(prev.net) : null;
-  const delta = prevNet != null && Math.abs(prevNet) > 0.01 ? +(((net - prevNet) / Math.abs(prevNet)) * 100).toFixed(0) : null;
-  const profitable = net >= 0;
+  const delta = net != null && isUsablePnlSnapshot(prev) && prevNet != null && Math.abs(prevNet) > 0.01
+    ? +(((net - prevNet) / Math.abs(prevNet)) * 100).toFixed(0) : null;
+  const profitable = net != null && net >= 0;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -281,7 +285,8 @@ export default function FinancialPosition({ isActive = true }) {
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 18 }}>
         {(snaps || []).map(s => {
           const active = s.period === sel;
-          const n = Number(s.net) || 0;
+          const usable = isUsablePnlSnapshot(s);
+          const n = usable ? (Number(s.net) || 0) : null;
           return (
             <button key={s.period} onClick={() => setSel(s.period)}
               style={{
@@ -292,8 +297,8 @@ export default function FinancialPosition({ isActive = true }) {
               }}>
               {monthLabel(s.period)}
               <div style={{ fontSize: 10, fontFamily: 'var(--font-mono)', marginTop: 1,
-                color: n >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                {n >= 0 ? '+' : '−'}{fmtK(Math.abs(n))}
+                color: n == null ? 'var(--red)' : n >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {n == null ? 'غير متاح' : <>{n >= 0 ? '+' : '−'}{fmtK(Math.abs(n))}</>}
               </div>
             </button>
           );
@@ -302,6 +307,23 @@ export default function FinancialPosition({ isActive = true }) {
 
       {!snap ? (
         <Card><Empty icon="📭" title="لا بيانات لهذا الشهر" sub="اضغط «تحديث من زوهو» لجلبه"/></Card>
+      ) : !snapshotUsable ? (
+        <Card style={{ border: '1.5px solid var(--red)', background: 'color-mix(in srgb, var(--red) 6%, var(--card))' }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <AlertTriangle size={22} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
+            <div style={{ flex: 1 }}>
+              <div style={{ color: 'var(--red)', fontSize: 16, fontWeight: 800 }}>قائمة الدخل غير متاحة لهذا الشهر</div>
+              <div style={{ color: 'var(--muted)', fontSize: 12.5, lineHeight: 1.8, marginTop: 5 }}>
+                اللقطة المحفوظة بلا أقسام مالية، لذلك لن يعرض النظام «ربح 0» كأنه رقم صحيح.
+                توجد فواتير وحركات في الشهر، لكن تقرير زوهو يحتاج إعادة قراءة صحيحة.
+              </div>
+              <Btn size="sm" variant="accent" style={{ marginTop: 10 }} disabled={busy}
+                icon={busy ? <Spinner size={13}/> : <RefreshCw size={14}/>} onClick={() => refresh(sel)}>
+                إعادة جلب قائمة الدخل من زوهو
+              </Btn>
+            </div>
+          </div>
+        </Card>
       ) : (<>
         {/* ── بانر الحكم — سؤال الـ30 ثانية ── */}
         <Card style={{

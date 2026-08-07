@@ -29,6 +29,11 @@ export const prevPnlPeriod = (p) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 };
 
+// اللقطة الصفرية بلا أي قسم ليست قائمة دخل صالحة؛ هي فشل قراءة سابق.
+// الشهر الحقيقي الخالي من الحركة يبقى صالحاً لأن تقرير زوهو يعيد أقسامه بقيم صفرية.
+export const isUsablePnlSnapshot = (snapshot) =>
+  !!snapshot && Array.isArray(snapshot.lines) && snapshot.lines.length > 0;
+
 // كل الشهور المخزَّنة، الأحدث أولاً.
 export async function loadPnlSnapshots() {
   const { data, error } = await supabase
@@ -44,7 +49,7 @@ export async function refreshPnlMonth(period) {
   const { data, error } = await supabase.functions.invoke('zoho-sync', {
     body: { action: 'pnl_month', period },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw new Error(await functionErrorMessage(error, 'فشل جلب قائمة الدخل'));
   if (!data?.ok) throw new Error(data?.error || 'فشل جلب قائمة الدخل');
   return data.snapshot;
 }
@@ -572,6 +577,7 @@ export const quarterOf = (period) => {
 export function quarterTotals(snaps) {
   const q = new Map();   // '2026-Q2' → { net, income, months: [] }
   for (const s of snaps || []) {
+    if (!isUsablePnlSnapshot(s)) continue;
     const k = quarterOf(s.period);
     if (!q.has(k)) q.set(k, { quarter: k, net: 0, income: 0, months: [] });
     const row = q.get(k);

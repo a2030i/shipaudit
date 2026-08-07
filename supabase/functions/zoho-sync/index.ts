@@ -210,7 +210,7 @@ const SEC_ORDERED: [string, RegExp[]][] = [
   ['opex',          [/المصروفات التشغيلية/, /operating expense/i]],
 ];
 const NET_PATTERNS = [/صافي الأرباح/, /صافي الربح/, /net profit/i, /net income/i];
-type Sec = { name?: string; total?: number; total_label?: string; account_transactions?: Sec[] };
+type Sec = { name?: string; total?: number | string; total_label?: string; account_transactions?: Sec[] };
 function parsePnl(pl: Sec[]) {
   const out: Record<string, number> = { income: 0, cogs: 0, opex: 0, other_income: 0, other_expense: 0 };
   const seen = new Set<string>();
@@ -455,7 +455,8 @@ Deno.serve(async (req) => {
         if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(period || '')) return json({ error: 'bad period — YYYY-MM' }, 400);
         from = `${period}-01`; to = lastDay(period!);
         const { data: cached } = await db.from('pnl_snapshots').select('*').eq('period', period).maybeSingle();
-        if (cached && Date.now() - new Date(cached.fetched_at).getTime() < PNL_TTL_MS) {
+        const cachedHasSections = Array.isArray(cached?.lines) && cached.lines.length > 0;
+        if (cached && cachedHasSections && Date.now() - new Date(cached.fetched_at).getTime() < PNL_TTL_MS) {
           return json({ ok: true, snapshot: cached, cached: true });
         }
       } else {
@@ -465,14 +466,34 @@ Deno.serve(async (req) => {
         }
       }
       const { token, apiDomain, orgId } = await accessToken(db);
-      const qs = new URLSearchParams({ organization_id: orgId, from_date: from, to_date: to, cash_based: 'false' });
+      const qs = new URLSearchParams({
+        organization_id: orgId,
+        from_date: from,
+        to_date: to,
+        cash_based: 'false',
+        filter_by: 'TransactionDate.CustomDate',
+      });
       const r = await fetch(`${apiDomain}/books/v3/reports/profitandloss?${qs}`, {
         headers: { Authorization: `Zoho-oauthtoken ${token}` },
       });
       const j = await r.json();
       if (j.code !== 0) return json({ error: `zoho: ${j.message || JSON.stringify(j)}`, code: j.code }, 400);
       if (action === 'pnl') return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j });
-      const parsed = parsePnl(j.profit_and_loss || []);
+      const reportSections = Array.isArray(j.profit_and_loss) ? j.profit_and_loss : [];
+      const parsed = parsePnl(reportSections);
+      // لا نحفظ صفراً صامتاً إذا تغيّر شكل تقرير زوهو أو عاد بلا أقسام.
+      // إبقاء آخر لقطة سليمة أفضل من تحويل «تعذرت القراءة» إلى «ربح = صفر».
+      if (!parsed.lines.length) {
+        return json({
+          error: 'تعذّر قراءة أقسام قائمة الدخل من زوهو؛ لم يتم حفظ أرقام صفرية. أعد المحاولة أو افتح التقرير الرسمي.',
+          code: 'pnl_report_unavailable',
+          period,
+          diagnostics: {
+            report_sections: reportSections.length,
+            response_keys: Object.keys(j || {}).filter(key => !/token|secret|auth/i.test(key)),
+          },
+        }, 502);
+      }
       const row = {
         period,
         income: parsed.income, cogs: parsed.cogs, opex: parsed.opex,

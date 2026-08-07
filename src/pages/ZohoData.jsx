@@ -67,6 +67,22 @@ const accountNameAr = value => ACCOUNT_NAME_AR[String(value || '').trim().toLowe
 const isArabic = value => /[\u0600-\u06ff]/.test(String(value || ''));
 const isZohoTreasuryAccount = row => row?.display_kind === 'operating_treasury'
   || /^\s*خزينة(?:\s|$)/i.test(String(row?.account_name_ar || row?.account_name || ''));
+const isZohoPaymentGatewayAccount = row => row?.display_kind === 'payment_gateway'
+  || /moyassar|ميسر/i.test(String(row?.account_name_ar || row?.account_name || ''));
+const isZohoClearingAccount = row => row?.display_kind === 'clearing'
+  || /أموال غير مودعة|undeposited funds|حساب تسوية المتاجر|merchant settlement/i
+    .test(String(row?.account_name_ar || row?.account_name || ''));
+const financialDisplayKind = row => {
+  if (isZohoPaymentGatewayAccount(row)) return 'payment_gateway';
+  if (isZohoClearingAccount(row)) return 'clearing';
+  if (isZohoTreasuryAccount(row)) return 'operating_treasury';
+  return row?.display_kind || 'unclassified';
+};
+const financialKindAr = kind => ({
+  bank: 'بنك مربوط', operating_treasury: 'خزينة تشغيلية', cod_treasury: 'خزينة ناقل',
+  cash: 'نقد/صندوق', payment_gateway: 'بوابة دفع', clearing: 'حساب تسوية',
+  unclassified: 'غير مصنّف',
+}[kind] || 'غير مصنّف');
 
 const WORKSPACE_SECTIONS = [
   { id: 'overview', label: 'نظرة عامة', types: [] },
@@ -786,8 +802,10 @@ export default function ZohoData({ isActive = true }) {
                   {displayed.map(r => {
                     const sourceType = type === 'bank_accounts' ? 'bank_account' : 'chart_account';
                     const treasuryAccount = isZohoTreasuryAccount(r);
+                    const derivedKind = financialDisplayKind(r);
                     const accountTypeKey = String(r.account_type || r.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
-                    const linkableRow = type === 'bank_accounts' || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
+                    const linkableRow = (type === 'bank_accounts' && !['payment_gateway', 'clearing'].includes(derivedKind))
+                      || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
                     const existingLink = referenceType
                       ? (financial?.links || []).find(l => l.source_type === sourceType && String(l.zoho_account_id) === String(r.zoho_id)) || null
                       : null;
@@ -826,7 +844,7 @@ export default function ZohoData({ isActive = true }) {
                           {key === 'account_name' && r.account_name_ar && !isArabic(r.account_name) ? (
                             <div><b>{r.account_name_ar}</b><div dir="ltr" style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 3 }}>{r.account_name}</div></div>
                           ) : key === 'account_type_formatted' ? accountTypeAr(r.account_type || r[key])
-                          : kind === 'display-kind' ? ({ bank: 'بنك مربوط', operating_treasury: 'خزينة تشغيلية', cod_treasury: 'خزينة ناقل', cash: 'نقد/صندوق', unclassified: 'غير مصنّف' }[r[key]] || (treasuryAccount ? 'خزينة تشغيلية' : 'حساب بنكي'))
+                          : kind === 'display-kind' ? financialKindAr(derivedKind)
                           : kind === 'internal-balance' && treasuryAccount ? (
                             <div><b style={{ color: 'var(--muted)' }}>لا ينطبق على الخزينة</b><div style={{ color: 'var(--muted2)', fontSize: 10, marginTop: 3 }}>هذا رصيد دفتري وليس كشف بنك</div></div>
                           ) : kind === 'money-gap' && treasuryAccount ? (
@@ -871,7 +889,11 @@ export default function ZohoData({ isActive = true }) {
                                 فحص العمليات الجديدة
                               </Btn>
                             ) : null}
-                          </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>لا يحتاج ربطًا بنكيًا</span>}
+                          </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>
+                            {derivedKind === 'payment_gateway' ? 'بوابة دفع — لا تُربط كبنك'
+                              : derivedKind === 'clearing' ? 'حساب تسوية — لا يُربط كبنك'
+                              : 'لا يحتاج ربطًا بنكيًا'}
+                          </span>}
                         </td>
                       ) : null}
                     </tr>
@@ -1016,7 +1038,18 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
   const unknown = Object.values(capabilities).some(c => c?.status === 'unknown');
   const usagePct = usage?.configured_budget
     ? Math.min(100, (Number(usage.api_calls || 0) / Number(usage.configured_budget)) * 100) : null;
-  const missingBanks = Math.max(0, Number(bank.expected_bank_count || 3) - Number(bank.linked_bank_count || 0));
+  const explicitBankCount = Array.isArray(data.internal_banks) ? data.internal_banks.length : 0;
+  const expectedBankCount = Math.max(explicitBankCount, Number(bank.linked_bank_count || 0));
+  const missingBanks = Math.max(0, expectedBankCount - Number(bank.linked_bank_count || 0));
+  const linkedBankRows = (data.banks || []).filter(row => financialDisplayKind(row) === 'bank');
+  const missingClosingBalances = linkedBankRows.filter(row => row.internal_balance == null);
+  const linkedClosingComplete = linkedBankRows.length > 0 && missingClosingBalances.length === 0;
+  const safeInternalBalance = linkedClosingComplete
+    ? linkedBankRows.reduce((sum, row) => sum + Number(row.internal_balance || 0), 0)
+    : null;
+  const safeInternalVsBook = linkedClosingComplete
+    ? linkedBankRows.reduce((sum, row) => sum + Number(row.internal_vs_book || 0), 0)
+    : null;
   const vendorKpis = [
     { label: 'فواتير موردين مفتوحة', value: `${fmt(bills.open_balance)} ر.س`, sub: `${Number(bills.open_count || 0)} فاتورة · ${Number(bills.overdue_count || 0)} متأخرة بقيمة ${fmt(bills.overdue_balance)}`, tone: 'var(--red)' },
     { label: 'إجمالي ذمم الموردين', value: `${fmt(vendor.outstanding_payable)} ر.س`, sub: `${Number(vendor.payable_vendors || 0)} مورّد له رصيد إجمالي`, tone: 'var(--gold)' },
@@ -1025,14 +1058,12 @@ function FinancialControlPanel({ data, canManageConnection, onReauthorize, onOpe
   ];
   const bankKpis = [
     { label: 'حسابات مالية في زوهو', value: Number(bank.count || 0).toLocaleString('en-US'), sub: `${Number(bank.operating_treasury_count || 0)} منها خزائن تشغيلية داخلية`, tone: 'var(--accent)' },
-    { label: 'البنوك المربوطة فعلياً', value: `${Number(bank.linked_bank_count || 0)}/${Number(bank.expected_bank_count || 3)}`, sub: Number(bank.linked_bank_count || 0) < Number(bank.expected_bank_count || 3) ? 'الناقص يظهر كحساب غير مربوط — بلا تخمين' : 'اكتملت البنوك التشغيلية', tone: Number(bank.linked_bank_count || 0) < Number(bank.expected_bank_count || 3) ? 'var(--gold)' : 'var(--green)' },
+    { label: 'البنوك المربوطة فعلياً', value: `${Number(bank.linked_bank_count || 0)}/${expectedBankCount}`, sub: Number(bank.linked_bank_count || 0) < expectedBankCount ? 'الناقص يظهر كحساب غير مربوط — بلا تخمين' : 'اكتملت البنوك التشغيلية', tone: Number(bank.linked_bank_count || 0) < expectedBankCount ? 'var(--gold)' : 'var(--green)' },
     { label: 'الرصيد الدفتري لكل الحسابات', value: `${fmt(bank.book_balance)} ر.س`, sub: 'يشمل البنوك والخزائن وبوابات الدفع', tone: 'var(--green)' },
-    { label: 'أحدث أرصدة ختامية مربوطة', value: bank.internal_balance == null ? 'غير مسجلة' : `${fmt(bank.internal_balance)} ر.س`, sub: bank.internal_balance == null ? 'تظهر بعد رفع كشف البنك أو تسجيل الرصيد' : `الفرق عن دفتر زوهو ${fmt(bank.internal_vs_book)} ر.س`, tone: bank.internal_balance == null ? 'var(--muted)' : Math.abs(Number(bank.internal_vs_book)) > 0.5 ? 'var(--gold)' : 'var(--green)' },
+    { label: 'أحدث أرصدة ختامية مربوطة', value: safeInternalBalance == null ? 'غير مكتملة' : `${fmt(safeInternalBalance)} ر.س`, sub: safeInternalBalance == null ? `ناقص رصيد ختامي صالح: ${missingClosingBalances.map(row => row.internal_bank_name || row.account_name).join('، ') || 'ارفع كشف البنك أو سجّل الرصيد'}` : `الفرق عن دفتر زوهو ${fmt(safeInternalVsBook)} ر.س`, tone: safeInternalBalance == null ? 'var(--red)' : Math.abs(Number(safeInternalVsBook)) > 0.5 ? 'var(--gold)' : 'var(--green)' },
   ];
   const vendorTone = (n) => Number(n) > 0.5 ? 'var(--gold)' : Number(n) < -0.5 ? 'var(--green)' : 'var(--muted)';
-  const bankKind = (b) => ({
-    bank: 'بنك مربوط', operating_treasury: 'خزينة تشغيلية', cod_treasury: 'خزينة ناقل', cash: 'نقد/صندوق', unclassified: 'غير مصنّف',
-  }[b.display_kind] || 'غير مصنّف');
+  const bankKind = (b) => financialKindAr(financialDisplayKind(b));
   return (
     <Card style={{ padding: 16, marginBottom: 14, borderColor: 'color-mix(in srgb, var(--accent) 24%, var(--border))' }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
