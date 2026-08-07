@@ -105,3 +105,29 @@ test('mobile page filters can share the action row with their primary action', a
   assert.match(css, /\.page-hero-actions > div:not\(\.ui-field\):not\(\.page-action-menu\)/);
   assert.match(css, /\.page-hero-actions > \.ui-field\s*\{[\s\S]*min-width:\s*0\s*!important/);
 });
+
+test('active work areas own navigation and expose their child pages in the sidebar', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+  const workspaceFiles = [
+    'src/pages/CarriersWorkspace.jsx',
+    'src/pages/CollectionsHub.jsx',
+    'src/pages/MoneyHub.jsx',
+    'src/pages/SalesHub.jsx',
+    'src/pages/WhatsAppSettings.jsx',
+    'src/components/CenterWorkspace.jsx',
+  ];
+  const workspaces = await Promise.all(workspaceFiles.map(read));
+
+  assert.match(app, /className="nav-tree-children"/);
+  assert.match(app, /collapsed \|\| sectionHasActive \|\| !collapsedSecs\.has\(sec\.id\)/);
+  assert.match(app, /tabId: 'performance'/);
+  assert.match(app, /tabId: 'pipeline'/);
+  assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);
+  assert.match(app, /tabId: 'exports'.*legacy: '\/internal-exports'/);
+  for (const source of workspaces) assert.doesNotMatch(source, /<WorkspaceTabs/);
+
+  assert.match(navigation, /'accounting-cycle':\s*\{[^}]*section: 'shipping'[^}]*group: 'monthly_cycle'/);
+  assert.doesNotMatch(navigation, /'accounting-cycle':\s*\{[^}]*group: 'cash_ops'/);
+  assert.match(navigation, /id: 'cash_ops', label: 'البنوك والسيولة'/);
+});

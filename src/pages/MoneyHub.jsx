@@ -15,7 +15,6 @@ import { Banknote, CreditCard, Wallet } from 'lucide-react';
 import CodSettlements   from './CodSettlements.jsx';
 import Payments         from './Payments.jsx';
 import BankStatement    from './BankStatement.jsx';
-import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 import { Empty } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -78,32 +77,12 @@ export default function MoneyHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search, visibleTabs, isActive]);
 
-  const handleTabChange = (newTab) => {
-    if (!visibleTabs.some(item => item.id === newTab)) return;
-    setTab(newTab);
-    const params = new URLSearchParams(location.search);
-    if (location.pathname !== '/money' || params.get('tab') !== newTab) {
-      params.set('tab', newTab);
-      navigate(`/money?${params.toString()}`, { replace: true });
-    }
-  };
-
   if (visibleTabs.length === 0) {
     return <Empty icon="🔒" title="لا تملك صلاحية حركة الأموال" sub="اطلب من المدير منح صلاحية التحصيل أو الدفعات أو الحسابات البنكية."/>;
   }
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="money"
-        title="حركة الأموال"
-        subtitle="التحصيل الوارد، الدفعات الخارجة، ثم مصدر الرصيد"
-        tabs={visibleTabs}
-        activeId={tab}
-        onChange={handleTabChange}
-        tone="var(--green)"
-      />
-
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
@@ -111,8 +90,7 @@ export default function MoneyHub({ isActive = true }) {
           return (
             <div
               key={t.id}
-              id={workspacePanelId('money', t.id)}
-              aria-labelledby={workspaceTabId('money', t.id)}
+              aria-label={t.label}
               role="tabpanel"
               className="ws-tab-panel"
               style={{ display: active ? 'block' : 'none', height: '100%' }}

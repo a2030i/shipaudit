@@ -26,7 +26,6 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadZohoWebhookHealth } from '../lib/pnlService.js';
-import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 import './WhatsAppSettings.css';
 
 const HATIF_TABS = [
@@ -178,20 +177,9 @@ export default function WhatsAppSettings({ isActive = true }) {
 
   return (
     <div className="hatif-center workspace-page">
-      <WorkspaceTabs
-        scope="hatif"
-        title="مركز هاتف"
-        subtitle="الحملات والمكالمات والتحليل الإداري — بينما يبقى رد الفريق داخل هاتف"
-        tabs={visibleTabs}
-        activeId={activeMeta?.id}
-        onChange={changeTab}
-        tone="var(--green)"
-      />
-
       <div className="hatif-center__body">
         <div
-          id={workspacePanelId('hatif', activeMeta?.id)}
-          aria-labelledby={workspaceTabId('hatif', activeMeta?.id)}
+          aria-label={activeMeta?.label}
           role="tabpanel"
           className="hatif-center__panel"
         >

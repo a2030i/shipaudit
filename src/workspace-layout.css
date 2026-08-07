@@ -14,6 +14,71 @@
   --data-row-inline: 14px;
 }
 
+/* ── Hierarchical navigation v2 ──────────────────────────────────────────
+   Independent hub pages are now discoverable as a collapsible fourth level
+   in the shared sidebar: section → work group → center → page. */
+.nav-tree-node {
+  position: relative;
+}
+
+.nav-tree-node > .nav-item.has-descendant-active {
+  color: var(--text);
+  font-weight: 750;
+}
+
+.nav-tree-node > .nav-item.has-descendant-active .nav-icon {
+  color: var(--item-accent, var(--brand));
+}
+
+.nav-tree-children {
+  position: relative;
+  margin: 1px 0 5px 15px;
+  padding-inline-start: 10px;
+}
+
+.nav-tree-children::before {
+  content: '';
+  position: absolute;
+  inset-block: 3px;
+  inset-inline-start: 2px;
+  width: 1px;
+  background: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+.nav-tree-children .nav-sub-item {
+  position: relative;
+  min-height: 36px !important;
+  margin-block: 2px !important;
+  border-radius: 8px !important;
+}
+
+.nav-tree-children .nav-sub-item::before {
+  content: '';
+  position: absolute;
+  inset-inline-start: -9px;
+  top: 50%;
+  width: 8px;
+  height: 1px;
+  background: color-mix(in srgb, var(--border) 82%, transparent);
+}
+
+[data-theme="light"] .nav-tree-children .nav-sub-item.active {
+  background: color-mix(in srgb, var(--item-accent, var(--brand)) 9%, #fff) !important;
+}
+
+@media (max-width: 768px) {
+  .nav-tree-children {
+    margin-inline-start: 18px;
+    padding-inline-start: 12px;
+  }
+
+  .nav-tree-children .nav-sub-item {
+    min-height: 44px !important;
+    width: calc(100% - 4px) !important;
+    font-size: 13px !important;
+  }
+}
+
 .center-workspace,
 .center-workspace__panel,
 .ws-tab-body,
@@ -1382,6 +1447,22 @@
   background: var(--surface);
   border-color: var(--border2);
   box-shadow: 0 10px 28px rgba(24, 39, 75, .07);
+}
+
+[data-theme="light"] .sidebar .nav-item.active {
+  color: var(--nav-active-text) !important;
+  background: var(--nav-active-bg);
+  border: 1px solid #CFE0FF;
+  box-shadow: inset -3px 0 0 var(--brand);
+}
+
+[data-theme="light"] .sidebar .nav-item.active::before {
+  display: none;
+}
+
+[data-theme="light"] .sidebar .nav-item.active .nav-icon {
+  color: var(--nav-active-text) !important;
+  background: #DFEAFF;
 }
 
 [data-theme="light"] .page-content {

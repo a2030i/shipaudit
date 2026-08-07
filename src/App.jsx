@@ -113,7 +113,15 @@ const ROUTE_ITEMS = [
   { id: 'fulfillment',  path: '/fulfillment',       label: 'فواتير التجهيز',   icon: Briefcase, section: 'money', navOrder: 80, permKey: 'audits.view' },
 
   // ── التقارير والرقابة ───────────────────────────────────────────
-  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permAny: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
+  { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permAny: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'],
+    subTabs: [
+      { tabId: 'reports',   label: 'مكتبة التقارير',       icon: FileText, anyPerm: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
+      { tabId: 'monthly',   label: 'التقرير الشهري',       icon: CalendarRange, legacy: '/monthly-report', perm: 'reports.view_operational' },
+      { tabId: 'sources',   label: 'مزامنة مصادر البيانات', icon: Layers, legacy: '/uploads', perm: 'uploads.view' },
+      { tabId: 'integrity', label: 'سلامة البيانات',        icon: FileCheck, legacy: '/integrity', perm: 'system.view_audit_log' },
+      { tabId: 'activity',  label: 'سجل النظام',            icon: Activity, legacy: '/activity-log', perm: 'system.view_audit_log' },
+      { tabId: 'exports',   label: 'الملفات المصدّرة',      icon: Download, legacy: '/internal-exports', perm: 'internal_exports.view' },
+    ] },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',         icon: CalendarRange, section: 'outreach', navOrder: 20, permKey: 'reports.view_operational' },
   { id: 'weight-billing',   path: '/weight-billing',   label: 'فوترة الأوزان الزائدة', icon: Scale,         section: 'money',    navOrder: 90, permKey: 'internal_exports.view' },
   { id: 'internal-exports', path: '/internal-exports', label: 'سجل التقارير المصدّرة',  icon: FileText,      section: 'outreach', navOrder: 30, permKey: 'internal_exports.view' },
@@ -140,6 +148,7 @@ const ROUTE_ITEMS = [
     subTabs: [
       { tabId: 'money',    label: 'أرصدة العملاء',   icon: HandCoins },
       { tabId: 'queue',    label: 'قائمة التحصيل',    icon: Phone,  legacy: '/collections' },
+      { tabId: 'performance', label: 'أداء فريق التحصيل', icon: BarChart3, perm: 'collections.view_all' },
       { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
@@ -149,6 +158,7 @@ const ROUTE_ITEMS = [
   { id: 'sales-hub',       path: '/retargeting',     label: 'فرص المنصة',  icon: Target,    section: 'customers', navOrder: 20,
     permAny: ['sales.view', 'sales.hatif_leads', 'sales.external_leads', 'sales.segments', 'merchants.view'],
     subTabs: [
+      { tabId: 'pipeline',    label: 'مسار عملاء المنصة',   icon: Target, perm: 'sales.view' },
       { tabId: 'today',       label: 'خطة اليوم',           icon: Target },
       { tabId: 'activation',  label: 'تفعيل المتاجر',       icon: TrendingUp },
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
@@ -164,6 +174,7 @@ const ROUTE_ITEMS = [
       { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
       { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
       { tabId: 'board', label: 'أداء المبيعات',    icon: BarChart3 },
+      { tabId: 'settings', label: 'إعدادات مراحل البيع', icon: Settings, perm: 'crm.manage_statuses' },
     ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
   { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
@@ -335,11 +346,16 @@ function AppInner({ theme, toggleTheme }) {
   ));
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
-  // Accordion rule: every app entry starts with all sections closed. During
-  // the session, opening one section closes the rest; route changes never
-  // force a section open and the open section is not persisted across reloads.
+  // Accordion rule: only the current work area opens automatically. This keeps
+  // the sidebar compact without hiding the user's current location after a
+  // reload or a direct link. The user can still open one other section at a time.
   const ALL_SECTION_IDS = NAV_SECTIONS.map(s => s.id);
   const [collapsedSecs, setCollapsedSecs] = useState(() => new Set(ALL_SECTION_IDS));
+  // مراكز العمل القديمة أخفت صفحات مستقلة داخل شريط تبويبات أفقي. في بنية
+  // التنقل الجديدة تظهر تلك الصفحات كطبقة رابعة قابلة للطي داخل الجانبية:
+  // قسم ← مجموعة عمل ← مركز ← صفحة. المسار النشط يبقى مفتوحاً دائماً، بينما
+  // يستطيع المستخدم فتح مركز آخر مؤقتاً من دون تغيير الصفحة الحالية.
+  const [expandedNavItems, setExpandedNavItems] = useState(() => new Set());
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -432,6 +448,22 @@ function AppInner({ theme, toggleTheme }) {
     navigate(path);
     setMobileOpen(false);
   };
+
+  const toggleNavItem = (id) => setExpandedNavItems(previous => {
+    const next = new Set(previous);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+
+  const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => (
+    isAdmin
+    || (tab.anyPerm ? tab.anyPerm.some(permission => can(permission)) : (!tab.perm || can(tab.perm)))
+  ));
+
+  const subTabPath = (item, tab) => (
+    tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`
+  );
 
   // ── Audit results: keep the fresh draft in memory. sessionStorage is
   // best-effort only: large audits can exceed the browser quota, and that
@@ -590,10 +622,16 @@ function AppInner({ theme, toggleTheme }) {
                 .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
               if (!items.length) return null;
               const sectionHasActive = items.some(n => activeFor(n) || (n.subTabs && subTabOf(n)));
-              const rowCount = items.length;
+              const rowCount = items.reduce((total, item) => {
+                const childCount = visibleSubTabsFor(item).length;
+                const expanded = childCount > 0 && (
+                  expandedNavItems.has(item.id) || Boolean(subTabOf(item))
+                );
+                return total + 1 + (expanded ? childCount : 0);
+              }, 0);
               // في الوضع المصغّر تبقى الأيقونات متاحة. في الوضع الكامل يعمل
               // أكورديون قسم واحد حتى تظل مساحة العمل قصيرة وواضحة.
-              const isOpen = collapsed || !collapsedSecs.has(sec.id);
+              const isOpen = collapsed || sectionHasActive || !collapsedSecs.has(sec.id);
               const SecIcon = sec.icon;
               const itemGroups = groupNavItems(sec.id, items, collapsed);
               const groupHeaderCount = collapsed ? 0 : itemGroups.length;
@@ -650,17 +688,47 @@ function AppInner({ theme, toggleTheme }) {
                               }}/>
                             </div>
                           )}
-                          {group.items.map(n => (
-                            <NavBtn
-                              key={n.id}
-                              n={n}
-                              active={activeFor(n)}
-                              accent={sec.accent}
-                              collapsed={collapsed}
-                              onClick={() => goto(n.path)}
-                              nested
-                            />
-                          ))}
+                          {group.items.map(n => {
+                            const childTabs = visibleSubTabsFor(n);
+                            const selectedChild = childTabs.length ? subTabOf(n) : null;
+                            const expanded = childTabs.length > 0 && (
+                              expandedNavItems.has(n.id) || Boolean(selectedChild)
+                            );
+                            return (
+                              <div key={n.id} className={`nav-tree-node${expanded ? ' is-expanded' : ''}`}>
+                                <NavBtn
+                                  n={n}
+                                  active={childTabs.length === 0 && activeFor(n)}
+                                  ancestorActive={Boolean(selectedChild)}
+                                  accent={sec.accent}
+                                  collapsed={collapsed}
+                                  onClick={() => {
+                                    if (childTabs.length > 0) {
+                                      setExpandedNavItems(previous => new Set(previous).add(n.id));
+                                    }
+                                    goto(n.path);
+                                  }}
+                                  nested
+                                  expandable={childTabs.length > 0}
+                                  expanded={expanded}
+                                  onToggleExpand={() => toggleNavItem(n.id)}
+                                />
+                                {!collapsed && childTabs.length > 0 && (
+                                  <div className="nav-tree-children" aria-hidden={!expanded}>
+                                    {expanded && childTabs.map(tab => (
+                                      <NavSubBtn
+                                        key={tab.tabId}
+                                        tab={tab}
+                                        active={selectedChild?.tabId === tab.tabId}
+                                        accent={sec.accent}
+                                        onClick={() => goto(subTabPath(n, tab))}
+                                      />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}
@@ -1127,7 +1195,7 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function NavBtn({ n, active, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
+function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
   const Icon = n.icon;
   // Section-tinted active state — when an `accent` prop is passed
   // (from a sectioned item) the active background, icon and dot all
@@ -1144,7 +1212,7 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested, expandable, exp
   const iconColor = active && accent ? accent : undefined;
   return (
     <button
-      className={`nav-item ${active ? 'active' : ''} ${accent ? 'section-nav' : ''}`}
+      className={`nav-item ${active ? 'active' : ''} ${ancestorActive ? 'has-descendant-active' : ''} ${accent ? 'section-nav' : ''}`}
       onClick={onClick}
       title={collapsed ? n.label : undefined}
       style={inlineStyle}
@@ -1165,7 +1233,7 @@ function NavBtn({ n, active, accent, collapsed, onClick, nested, expandable, exp
           style={{
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
             width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-            color: active && accent ? accent : 'var(--muted)', cursor: 'pointer',
+            color: (active || ancestorActive) && accent ? accent : 'var(--muted)', cursor: 'pointer',
           }}
         >
           <ChevronDown size={14} style={{ transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'none' }}/>

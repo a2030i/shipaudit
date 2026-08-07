@@ -8,10 +8,9 @@
 // نفس نمط CollectionsHub: الأبناء mounted، كلٌّ يجلب عند تفعيله فقط،
 // والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?tab=<id>.
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Workflow } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
-import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 import PlatformSalesCrm from './PlatformSalesCrm.jsx';
 import SalesToday  from './SalesToday.jsx';
@@ -85,7 +84,6 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function SalesHub({ isActive = true }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
 
@@ -98,7 +96,6 @@ export default function SalesHub({ isActive = true }) {
     return visibleTabs[0]?.id || 'retargeting';
   };
   const [tab, setTab] = useState(getInitialTab);
-  const activeTab = visibleTabs.find(t => t.id === tab) || visibleTabs[0];
 
   useEffect(() => {
     if (!isActive) return;
@@ -107,27 +104,8 @@ export default function SalesHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
-  const handleTabChange = (newTab) => {
-    setTab(newTab);
-    if (location.pathname !== '/retargeting' || new URLSearchParams(location.search).get('tab') !== newTab) {
-      const params = new URLSearchParams(location.search);
-      params.set('tab', newTab);
-      navigate(`/retargeting?${params.toString()}`, { replace: true });
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="sales"
-        title="فرص البيع"
-        subtitle="متاجر المنصّة أولاً: تفعيل الجدد، استعادة المتوقفين، ثم الوارد الخارجي"
-        tabs={visibleTabs}
-        activeId={activeTab?.id}
-        onChange={handleTabChange}
-        tone="var(--gold)"
-      />
-
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
@@ -136,8 +114,7 @@ export default function SalesHub({ isActive = true }) {
           return (
             <div
               key={t.id}
-              id={workspacePanelId('sales', t.id)}
-              aria-labelledby={workspaceTabId('sales', t.id)}
+              aria-label={t.label}
               role="tabpanel"
               className="ws-tab-panel"
               style={{ display: active ? 'block' : 'none', height: '100%' }}

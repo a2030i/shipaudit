@@ -9,13 +9,12 @@
 // either component.
 
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Building2, BarChart3, Scale } from 'lucide-react';
 
 import CarriersHub from './CarriersHub.jsx';
 import CarrierKpi  from './CarrierKpi.jsx';
 import Claims      from './Claims.jsx';
-import WorkspaceTabs, { workspacePanelId, workspaceTabId } from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
   {
@@ -46,7 +45,6 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
   const location = useLocation();
-  const navigate = useNavigate();
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -63,25 +61,8 @@ export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
-  const handleTabChange = (newTab) => {
-    setTab(newTab);
-    if (location.pathname !== '/hub' || new URLSearchParams(location.search).get('tab') !== newTab) {
-      navigate(`/hub?tab=${newTab}`, { replace: true });
-    }
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="carriers"
-        title="شركات الشحن"
-        subtitle="الحالة، المقارنة، ثم استرداد الفروقات"
-        tabs={TABS}
-        activeId={tab}
-        onChange={handleTabChange}
-        tone="var(--brand)"
-      />
-
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {TABS.map(t => {
           const Cmp = t.component;
@@ -89,8 +70,7 @@ export default function CarriersWorkspace({ isActive = true, carriers = [] }) {
           return (
             <div
               key={t.id}
-              id={workspacePanelId('carriers', t.id)}
-              aria-labelledby={workspaceTabId('carriers', t.id)}
+              aria-label={t.label}
               role="tabpanel"
               className="ws-tab-panel"
               style={{ display: active ? 'block' : 'none', height: '100%' }}
