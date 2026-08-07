@@ -49,11 +49,12 @@ export async function updateEmployee(id, { name, role, avatar_color, permissions
 // Just the permissions JSONB. Separate helper because the permissions
 // editor saves often and shouldn't risk overwriting name/role.
 export async function updateEmployeePermissions(id, permissions) {
-  const { error } = await supabase
-    .from('profiles')
-    .update({ permissions: permissions || {} })
-    .eq('id', id);
+  const { data, error } = await supabase.rpc('update_employee_permissions', {
+    p_employee: id,
+    p_permissions: permissions || {},
+  });
   if (error) throw error;
+  return data || { changed: false, added_keys: [], removed_keys: [] };
 }
 
 export async function deleteEmployee(user_id) {

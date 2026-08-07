@@ -15,6 +15,11 @@ const panel = await readFile(new URL('../src/components/TeamReadinessPanel.jsx',
 const overview = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
 const permissions = await readFile(new URL('../src/lib/permissions.js', import.meta.url), 'utf8');
 const employeeManager = await readFile(new URL('../src/pages/EmployeeManager.jsx', import.meta.url), 'utf8');
+const employeeService = await readFile(new URL('../src/lib/employeeService.js', import.meta.url), 'utf8');
+const permissionAudit = await readFile(
+  new URL('../supabase/migrations/20260807193000_employee_permission_audit.sql', import.meta.url),
+  'utf8',
+);
 
 test('readiness RPC is authenticated, read-only and validates explicit carrier schedules', () => {
   assert.match(migration, /auth\.uid\(\)/);
@@ -63,6 +68,24 @@ test('employee manager recommends the closest operator but requires an explicit 
   assert.match(employeeManager, /لن تتفعّل قبل ضغط «حفظ الصلاحيات»/);
   assert.match(employeeManager, /onClick=\{handleSave\}/);
   assert.doesNotMatch(employeeManager, /useEffect\([^)]*applyPreset/s);
+});
+
+test('permission saves are server-authorized and record the exact employee permission delta', () => {
+  assert.match(employeeService, /rpc\('update_employee_permissions'/);
+  assert.doesNotMatch(employeeService, /from\('profiles'\)[\s\S]{0,120}update\(\{ permissions/);
+  assert.match(permissionAudit, /crm_has_permission\('system\.manage_permissions'\)/);
+  assert.match(permissionAudit, /profile_authorization_change_audit/);
+  assert.match(permissionAudit, /'permissions_changed'/);
+  assert.match(permissionAudit, /'added_keys'/);
+  assert.match(permissionAudit, /'removed_keys'/);
+  assert.match(permissionAudit, /'actor_id'/);
+  assert.match(permissionAudit, /values\s*\(\s*new\.id,/);
+  assert.match(permissionAudit, /profile\.role <> 'admin'/);
+  assert.match(permissionAudit, /revoke all on function public\.log_profile_authorization_change\(\) from public, anon, authenticated/i);
+  assert.doesNotMatch(permissionAudit, /grant\s+(insert|update|delete)\s+on\s+public\.profiles/i);
+  assert.match(employeeManager, /أضيف:/);
+  assert.match(employeeManager, /أزيل:/);
+  assert.match(employeeManager, /نفّذ التغيير:/);
 });
 
 test('admin dashboard exposes three clear readiness decisions and never assumes missing data is ready', () => {

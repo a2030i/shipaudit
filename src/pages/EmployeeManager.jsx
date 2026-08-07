@@ -15,6 +15,7 @@ import { pageTitle } from '../lib/pageTitles.js';
 import {
   PERMISSION_CATALOG, PRESETS, ALL_PERMISSION_KEYS, FULL_ACCOUNTANT_KEYS,
   ACCOUNTING_SUPERVISOR_KEYS, FINANCE_OPERATOR_KEYS, COLLECTION_SUPERVISOR_KEYS,
+  permLabel,
 } from '../lib/permissions.js';
 
 const ROLES = [
@@ -592,6 +593,14 @@ const DATA_TABLE_AR = {
 };
 const DATA_OP_AR = { insert: 'إضافة', update: 'تعديل', delete: 'حذف' };
 const actLabel = (r) => {
+  if (r.action === 'permissions_changed') {
+    const added = Array.isArray(r.detail?.added_keys) ? r.detail.added_keys.length : 0;
+    const removed = Array.isArray(r.detail?.removed_keys) ? r.detail.removed_keys.length : 0;
+    return `تعديل صلاحيات ${r.detail?.employee_name || 'موظف'} — إضافة ${added} · إزالة ${removed}`;
+  }
+  if (r.action === 'employee_role_changed') {
+    return `تغيير دور ${r.detail?.employee_name || 'موظف'} من ${r.detail?.before_role || '—'} إلى ${r.detail?.after_role || '—'}`;
+  }
   if (r.kind === 'data') {
     const [t, op] = String(r.action).split(':');
     return `${DATA_OP_AR[op] || op} في ${DATA_TABLE_AR[t] || t}`;
@@ -652,6 +661,19 @@ function ActivityModal({ employee, onClose }) {
                     {actLabel(r)}
                     {r.detail?.fileName ? <span style={{ color: 'var(--muted)' }}> — {r.detail.fileName}</span> : null}
                   </div>
+                  {r.action === 'permissions_changed' && (
+                    <div style={{ marginTop: 4, color: 'var(--muted)', fontSize: 10.5, lineHeight: 1.6 }}>
+                      {r.detail?.actor_name
+                        ? <div><b>نفّذ التغيير:</b> {r.detail.actor_name}</div>
+                        : null}
+                      {r.detail?.added_keys?.length > 0
+                        ? <div><b style={{ color: 'var(--green)' }}>أضيف:</b> {r.detail.added_keys.map(permLabel).join('، ')}</div>
+                        : null}
+                      {r.detail?.removed_keys?.length > 0
+                        ? <div><b style={{ color: 'var(--red)' }}>أزيل:</b> {r.detail.removed_keys.map(permLabel).join('، ')}</div>
+                        : null}
+                    </div>
+                  )}
                   {r.path && !['page', 'denied'].includes(r.kind) && (
                     <div style={{ fontSize: 10.5, color: 'var(--muted)' }}>{pageTitle(r.path)}</div>
                   )}
@@ -724,9 +746,14 @@ export default function EmployeeManager() {
   };
 
   const handleSavePerms = async (permissions) => {
-    await updateEmployeePermissions(modal.employee.id, permissions);
-    toast('تم تحديث الصلاحيات', 'success');
+    const result = await updateEmployeePermissions(modal.employee.id, permissions);
+    const added = Array.isArray(result?.added_keys) ? result.added_keys.length : 0;
+    const removed = Array.isArray(result?.removed_keys) ? result.removed_keys.length : 0;
+    toast(result?.changed
+      ? `تم تحديث الصلاحيات · أضيفت ${added} · أزيلت ${removed}`
+      : 'لا يوجد تغيير في الصلاحيات', result?.changed ? 'success' : 'info');
     await reload();
+    return result;
   };
 
   const roleCounts = ROLES.reduce((acc, r) => {
