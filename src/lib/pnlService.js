@@ -517,13 +517,10 @@ export const markZohoInvoicesSent = invoiceIds => invokeZohoInvoiceOperation('in
 export const pushZohoInvoicesToZatca = invoiceIds => invokeZohoInvoiceOperation('invoice_push_zatca', invoiceIds);
 export const finalizeAndPushZohoInvoices = invoiceIds => invokeZohoInvoiceOperation('invoice_finalize_and_push_zatca', invoiceIds);
 
-// كشف البنك: المعاينة لا تكتب. الاستيراد لا يقبل التنفيذ دون قائمة صريحة
-// للعمليات التي وافق عليها المدير في نفس المعاينة.
-export const previewZohoBankImport = accountId => invokeZohoOperation({
+// كشف البنك: قراءة Zoho ومقارنته بالمصدر الداخلي فقط. يرجع العمليات
+// الناقصة لتصدير Excel يدوي؛ لا يوجد مسار كتابة كشف من ShipAudit.
+export const previewZohoBankMissing = accountId => invokeZohoOperation({
   action: 'bank_preview', account_id: accountId,
-});
-export const importZohoBankStatement = (accountId, transactionIds) => invokeZohoOperation({
-  action: 'bank_import', account_id: accountId, transaction_ids: transactionIds,
 });
 
 // العمليات البنكية الموجودة داخل زوهو ولم تُراجع بعد. القراءة متاحة لمن يملك

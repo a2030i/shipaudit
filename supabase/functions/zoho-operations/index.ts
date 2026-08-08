@@ -1,6 +1,6 @@
-// Controlled Zoho Books writes: invoice lifecycle and bank statement import.
-// Every action requires its own explicit permission, is idempotent, audited,
-// and scoped to existing documents/accounts. It never creates an invoice or deletes data.
+// Controlled Zoho Books operations. Invoice lifecycle and explicit bank matching
+// may write after confirmation. Bank-statement comparison is read-only: ShipAudit
+// never uploads statement rows to Zoho; it only returns missing rows for Excel export.
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
@@ -81,6 +81,30 @@ async function zjson(url: string, init: RequestInit, options: { retryPortal?: bo
 
 const normalizedRef = (value: unknown) => String(value || '').trim().toLocaleLowerCase();
 const localTxnDate = (t: any) => String(t?.txn_at || t?.txn_date || '').slice(0, 10);
+const normalizedBankText = (value: unknown) => String(value || '')
+  .normalize('NFKC').toLocaleLowerCase().replace(/\s+/g, ' ').trim();
+const bankTransactionId = (row: any) => String(row?.transaction_id || row?.imported_transaction_id
+  || row?.bank_transaction_id || row?.statement_transaction_id || row?.id || '');
+const bankTransactionAmount = (row: any) => Math.abs(Number(row?.amount ?? row?.total ?? row?.transaction_amount
+  ?? row?.debit ?? row?.credit ?? 0));
+const bankTransactionDirection = (row: any) => {
+  const value = String(row?.debit_or_credit || row?.transaction_type || row?.type || '').toLowerCase();
+  if (/credit|deposit|inflow|إيداع/.test(value) || Number(row?.credit) > 0) return 'credit';
+  if (/debit|withdraw|outflow|سحب/.test(value) || Number(row?.debit) > 0) return 'debit';
+  return Number(row?.amount) < 0 ? 'debit' : 'credit';
+};
+const bankTransactionDate = (row: any) => String(row?.date || row?.transaction_date
+  || row?.value_date || row?.txn_at || row?.txn_date || '').slice(0, 10);
+const bankTransactionText = (row: any) => normalizedBankText(row?.description || row?.narration
+  || row?.details || row?.notes || row?.payee || row?.payee_name || row?.customer_name || row?.vendor_name);
+const bankTransactionFingerprint = (row: any) => {
+  const date = bankTransactionDate(row);
+  const direction = bankTransactionDirection(row);
+  const amount = bankTransactionAmount(row);
+  const text = bankTransactionText(row);
+  if (!date || !direction || !Number.isFinite(amount) || amount <= 0 || !text) return '';
+  return `${date}|${direction}|${amount.toFixed(2)}|${text}`;
+};
 
 async function lastImportedBankAnchor(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
   const url = `${access.apiDomain}/books/v3/bankaccounts/${encodeURIComponent(accountId)}/statement/lastimported?organization_id=${encodeURIComponent(access.orgId)}`;
@@ -102,6 +126,7 @@ async function lastImportedBankAnchor(access: { token: string; apiDomain: string
     statementId: String(last.statement_id || ''),
     knownReferences: new Set(transactions.map((t: any) => normalizedRef(t.reference_number)).filter(Boolean)),
     knownTransactionIds: new Set(transactions.map((t: any) => String(t.transaction_id || '')).filter(Boolean)),
+    knownFingerprints: new Set(transactions.map(bankTransactionFingerprint).filter(Boolean)),
   };
 }
 
@@ -145,12 +170,8 @@ async function liveZohoBankTransactionSnapshot(access: { token: string; apiDomai
     statementId: '', source: 'zoho_live_transactions', count: rows.length,
     knownReferences: new Set(rows.map((t: any) => normalizedRef(t.reference_number || t.reference)).filter(Boolean)),
     knownTransactionIds: new Set(rows.map((t: any) => String(t.transaction_id || t.bank_transaction_id || '')).filter(Boolean)),
+    knownFingerprints: new Set(rows.map(bankTransactionFingerprint).filter(Boolean)),
   };
-}
-
-async function sha256(value: string) {
-  const bytes = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(value));
-  return [...new Uint8Array(bytes)].map(x => x.toString(16).padStart(2, '0')).join('');
 }
 
 async function begin(db: ReturnType<typeof svc>, key: string, action: string, userId: string, payload: unknown) {
@@ -174,16 +195,6 @@ async function finish(db: ReturnType<typeof svc>, key: string, status: 'succeede
 }
 
 const firstArray = (...values: unknown[]) => values.find(Array.isArray) as any[] | undefined;
-const bankTransactionId = (row: any) => String(row?.transaction_id || row?.imported_transaction_id
-  || row?.bank_transaction_id || row?.statement_transaction_id || row?.id || '');
-const bankTransactionAmount = (row: any) => Math.abs(Number(row?.amount ?? row?.total ?? row?.transaction_amount
-  ?? row?.debit ?? row?.credit ?? 0));
-const bankTransactionDirection = (row: any) => {
-  const value = String(row?.debit_or_credit || row?.transaction_type || row?.type || '').toLowerCase();
-  if (/credit|deposit|inflow|إيداع/.test(value) || Number(row?.credit) > 0) return 'credit';
-  if (/debit|withdraw|outflow|سحب/.test(value) || Number(row?.debit) > 0) return 'debit';
-  return Number(row?.amount) < 0 ? 'debit' : 'credit';
-};
 const normalizeUnreviewedBankTransaction = (row: any) => ({
   transaction_id: bankTransactionId(row),
   date: String(row?.date || row?.transaction_date || row?.value_date || '').slice(0, 10),
@@ -360,14 +371,18 @@ Deno.serve(async req => {
       return json({ ok: true, ...result });
     }
 
-    if (action === 'bank_preview' || action === 'bank_import') {
+    if (action === 'bank_import') return json({
+      error: 'bank_import_disabled_manual_zoho_upload',
+      message: 'تم إيقاف ترحيل كشوف البنوك من النظام. نزّل ملف العمليات الناقصة وارفعه يدويًا في Zoho.',
+    }, 410);
+
+    if (action === 'bank_preview') {
       const accountId = String(input.account_id || '');
       const { data: link } = await db.from('zoho_financial_account_links')
         .select('zoho_account_id,internal_bank_name,link_kind').eq('zoho_account_id', accountId).maybeSingle();
       if (!link?.internal_bank_name || link.link_kind !== 'bank') return json({ error: 'bank_account_not_linked' }, 400);
       let query = db.from('bank_transactions').select('id,dedup_key,txn_date,txn_at,reference,description,debit,credit,bank')
         .eq('bank', link.internal_bank_name).order('txn_date', { ascending: false }).order('id', { ascending: false }).limit(1000);
-      if (Array.isArray(input.transaction_ids) && input.transaction_ids.length) query = query.in('id', input.transaction_ids.map(String));
       const { data: txs, error } = await query;
       if (error) throw new Error(`bank_read:${error.message}`);
       const { data: prior } = await db.from('zoho_write_operations').select('request_payload')
@@ -378,25 +393,41 @@ Deno.serve(async req => {
       const access = await accessToken(db);
       const { data: manualAnchor } = await db.from('zoho_bank_import_anchors')
         .select('reference_number,anchor_date,local_transaction_id').eq('zoho_account_id', accountId).maybeSingle();
-      const [liveAnchor, importedStatementAnchor] = await Promise.all([
+      const [liveAnchor, importedStatementAnchor, unreviewed] = await Promise.all([
         liveZohoBankTransactionSnapshot(access, accountId),
-        lastImportedBankAnchor(access, accountId).catch(() => null),
+        lastImportedBankAnchor(access, accountId),
+        loadZohoUnreviewed(access, accountId),
       ]);
+      const unreviewedOrdered = [...unreviewed].sort((a, b) => a.date.localeCompare(b.date)
+        || a.transaction_id.localeCompare(b.transaction_id));
+      const lastUnreviewed = unreviewedOrdered.at(-1);
+      const unreviewedAnchor = lastUnreviewed ? {
+        date: lastUnreviewed.date,
+        reference: lastUnreviewed.reference,
+        transactionId: lastUnreviewed.transaction_id,
+        statementId: '', source: 'zoho_uncategorized', count: unreviewedOrdered.length,
+        knownReferences: new Set(unreviewedOrdered.map(row => normalizedRef(row.reference)).filter(Boolean)),
+        knownTransactionIds: new Set(unreviewedOrdered.map(row => row.transaction_id).filter(Boolean)),
+        knownFingerprints: new Set(unreviewedOrdered.map(bankTransactionFingerprint).filter(Boolean)),
+      } : null;
       const manualFallback = manualAnchor ? {
         date: String(manualAnchor.anchor_date || '').slice(0, 10),
         reference: String(manualAnchor.reference_number || ''),
         transactionId: '', statementId: '', source: 'manual_reference',
         knownReferences: new Set([normalizedRef(manualAnchor.reference_number)].filter(Boolean)),
         knownTransactionIds: new Set<string>(),
+        knownFingerprints: new Set<string>(),
       } : null;
-      const liveCandidates: any[] = [liveAnchor, importedStatementAnchor].filter(Boolean);
+      const liveCandidates: any[] = [liveAnchor, importedStatementAnchor, unreviewedAnchor].filter(Boolean);
       const anchor = liveCandidates.sort((a, b) => a.date.localeCompare(b.date)
         || a.transactionId.localeCompare(b.transactionId)).at(-1) || manualFallback;
       const zohoKnownReferences = new Set<string>();
       const zohoKnownTransactionIds = new Set<string>();
+      const zohoKnownFingerprints = new Set<string>();
       for (const candidate of liveCandidates) {
         candidate.knownReferences.forEach(reference => zohoKnownReferences.add(reference));
         candidate.knownTransactionIds.forEach(transactionId => zohoKnownTransactionIds.add(transactionId));
+        candidate.knownFingerprints.forEach(fingerprint => zohoKnownFingerprints.add(fingerprint));
       }
       // لا نعرض كامل التاريخ عند غياب مرساة زوهو؛ البداية الأولى تُنشأ في زوهو
       // أو بعد ظهور أول عملية بنكية هناك، ثم تعمل المعاينة من المرجع التالي.
@@ -417,42 +448,42 @@ Deno.serve(async req => {
               && !anchor.knownReferences.has(normalizedRef(t.reference)));
         }
       }
-      const fresh = afterAnchor.filter((t: any) => !imported.has(String(t.id)))
-        .filter((t: any) => !zohoKnownTransactionIds.has(String(t.dedup_key || ''))
-          && !zohoKnownReferences.has(normalizedRef(t.reference)))
-        .filter((t: any) => Number(t.debit) > 0 || Number(t.credit) > 0);
+      let priorImportExcluded = 0;
+      let referenceExcluded = 0;
+      let fingerprintExcluded = 0;
+      let invalidExcluded = 0;
+      const fresh = afterAnchor.filter((t: any) => {
+        if (!(Number(t.debit) > 0 || Number(t.credit) > 0)) { invalidExcluded += 1; return false; }
+        if (imported.has(String(t.id)) || zohoKnownTransactionIds.has(String(t.dedup_key || ''))) {
+          priorImportExcluded += 1; return false;
+        }
+        const reference = normalizedRef(t.reference);
+        if (reference && zohoKnownReferences.has(reference)) { referenceExcluded += 1; return false; }
+        const fingerprint = bankTransactionFingerprint(t);
+        if (fingerprint && zohoKnownFingerprints.has(fingerprint)) { fingerprintExcluded += 1; return false; }
+        return true;
+      });
       const summary = { account_id: accountId, bank: link.internal_bank_name, count: fresh.length,
         deposits: fresh.reduce((s: number, t: any) => s + Number(t.credit || 0), 0),
         withdrawals: fresh.reduce((s: number, t: any) => s + Number(t.debit || 0), 0),
-        duplicates: ordered.length - fresh.length,
+        duplicates: priorImportExcluded + referenceExcluded + fingerprintExcluded,
+        local_scanned: ordered.length,
         history_excluded: ordered.length - afterAnchor.length,
+        prior_import_excluded: priorImportExcluded,
+        reference_excluded: referenceExcluded,
+        fingerprint_excluded: fingerprintExcluded,
+        invalid_excluded: invalidExcluded,
         zoho_anchor: anchor ? { date: anchor.date, reference: anchor.reference,
           transaction_id: anchor.transactionId, statement_id: anchor.statementId,
           matched_locally: anchorMatchedLocally, source: anchor.source || 'last_imported_statement' } : null,
-        zoho_known_count: Math.max(zohoKnownReferences.size, zohoKnownTransactionIds.size),
+        zoho_known_count: Math.max(zohoKnownReferences.size, zohoKnownTransactionIds.size, zohoKnownFingerprints.size),
+        zoho_checked_count: Math.max(Number(liveAnchor?.count || 0),
+          Number(importedStatementAnchor?.knownTransactionIds?.size || 0), unreviewedOrdered.length),
         manual_anchor_ignored: Boolean(manualAnchor && liveCandidates.length),
         anchor_required: !anchor,
         transactions: fresh.map((t: any) => ({ id: t.id, date: String(t.txn_at || t.txn_date || '').slice(0, 10),
           reference: t.reference, description: t.description, debit: Number(t.debit || 0), credit: Number(t.credit || 0) })) };
-      if (action === 'bank_preview') return json({ ok: true, ...summary });
-      if (!fresh.length) return json({ ok: true, skipped: 'nothing_new', ...summary });
-      if (!Array.isArray(input.transaction_ids) || !input.transaction_ids.length) return json({ error: 'explicit_selection_required' }, 400);
-
-      const ids = fresh.map((t: any) => String(t.id)).sort();
-      const key = `bank_statement:${accountId}:${await sha256(ids.join(','))}`;
-      const audit = await begin(db, key, 'bank_statement_import', user.id, { account_id: accountId, bank: link.internal_bank_name, transaction_ids: ids });
-      if (audit.done) return json({ ok: true, idempotent: true, result: audit.result });
-      const dates = fresh.map((t: any) => String(t.txn_at || t.txn_date || '').slice(0, 10)).sort();
-      const payload = { account_id: accountId, start_date: dates[0], end_date: dates[dates.length - 1],
-        transactions: fresh.map((t: any) => ({ transaction_id: String(t.dedup_key || t.id),
-          date: String(t.txn_at || t.txn_date || '').slice(0, 10), debit_or_credit: Number(t.credit) > 0 ? 'credit' : 'debit',
-          amount: Number(t.credit) > 0 ? Number(t.credit) : Number(t.debit), payee: '',
-          description: String(t.description || ''), reference_number: String(t.reference || '') })) };
-      const url = `${access.apiDomain}/books/v3/bankstatements?organization_id=${encodeURIComponent(access.orgId)}`;
-      const z = await zjson(url, { method: 'POST', headers: { Authorization: `Zoho-oauthtoken ${access.token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
-      if (!z.r.ok || z.body.code !== 0) { const msg = String(z.body.message || z.r.status); await finish(db, key, 'failed', z.body, msg); return json({ error: msg, needs_reauthorization: /authori|scope|permission/i.test(msg) }, 400); }
-      await finish(db, key, 'succeeded', { zoho: z.body, count: fresh.length, transaction_ids: ids });
-      return json({ ok: true, count: fresh.length, deposits: summary.deposits, withdrawals: summary.withdrawals, zoho: z.body });
+      return json({ ok: true, read_only: true, upload_mode: 'manual_zoho_excel', ...summary });
     }
 
     if (action === 'invoice_finalize_and_push_zatca') {

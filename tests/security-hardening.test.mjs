@@ -152,21 +152,32 @@ test('Zoho bank review is bank-scoped, read/write separated, and explicitly conf
   assert.match(page, /!isZohoPaymentGatewayAccount\(row\)/);
 });
 
-test('bank import preview uses complete live Zoho references before any manual fallback', async () => {
-  const [edge, page] = await Promise.all([
+test('bank statement flow is read-only and exports only rows missing from live Zoho', async () => {
+  const [edge, page, service, permissions] = await Promise.all([
     read('supabase/functions/zoho-operations/index.ts'),
     read('src/pages/ZohoData.jsx'),
+    read('src/lib/pnlService.js'),
+    read('src/lib/permissions.js'),
   ]);
   assert.match(edge, /liveZohoBankTransactionSnapshot/);
   assert.match(edge, /filter_by:\s*'Status\.All'/);
   assert.match(edge, /sort_column:\s*'date'/);
   assert.match(edge, /zoho_bank_transactions_incomplete/);
-  assert.match(edge, /const \[liveAnchor, importedStatementAnchor\] = await Promise\.all/);
+  assert.match(edge, /const \[liveAnchor, importedStatementAnchor, unreviewed\] = await Promise\.all/);
+  assert.match(edge, /loadZohoUnreviewed\(access, accountId\)/);
   assert.match(edge, /\|\| manualFallback/);
-  assert.match(edge, /!zohoKnownReferences\.has\(normalizedRef\(t\.reference\)\)/);
+  assert.match(edge, /zohoKnownFingerprints/);
+  assert.match(edge, /bankTransactionFingerprint\(t\)/);
+  assert.match(edge, /bank_import_disabled_manual_zoho_upload/);
+  assert.doesNotMatch(edge, /\/books\/v3\/bankstatements/);
+  assert.doesNotMatch(service, /importZohoBankStatement/);
+  assert.match(permissions, /فحص وتصدير العمليات البنكية الناقصة/);
   assert.match(edge, /manual_anchor_ignored:\s*Boolean\(manualAnchor && liveCandidates\.length\)/);
   assert.match(page, /آخر عملية موجودة فعليًا في Zoho/);
   assert.match(page, /تم تجاهل نقطة البداية اليدوية القديمة/);
+  assert.match(page, /تنزيل Excel للرفع إلى Zoho/);
+  assert.match(page, /Reference Number/);
+  assert.match(page, /لن يرسل أو يعدّل أي عملية في Zoho/);
 });
 
 test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {

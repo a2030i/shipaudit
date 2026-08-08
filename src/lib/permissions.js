@@ -209,7 +209,7 @@ export const PERMISSION_CATALOG = [
       { key: 'zoho.view',          label: 'زوهو API — تصفّح المرايا ولوحة الفواتير' },
       { key: 'zoho.configure',     label: 'تصنيف وربط حسابات زوهو داخلياً', hint: 'يربط حساب زوهو ببنك أو خزينة داخل النظام فقط.', sensitive: true },
       { key: 'zoho.manage_connection', label: 'إعادة تفويض اتصال زوهو', hint: 'يفتح شاشة OAuth ويغيّر الصلاحيات الممنوحة للنظام.', sensitive: true },
-      { key: 'zoho.bank_import',   label: 'استيراد كشف البنك إلى زوهو', hint: 'ينشئ عمليات كشف بنكي فعلية في Zoho Books.', sensitive: true },
+      { key: 'zoho.bank_import',   label: 'فحص وتصدير العمليات البنكية الناقصة', hint: 'يقرأ Zoho ويُنزّل Excel بالعمليات غير الموجودة لرفعها يدويًا؛ لا يكتب في Zoho.' },
       { key: 'zoho.bank_match',    label: 'اعتماد مطابقة عمليات البنك في زوهو', hint: 'يربط عملية كشف غير مراجعة بمعاملة محاسبية موجودة بعد اختيار وتأكيد صريح.', sensitive: true },
       { key: 'zoho.invoice_mark_sent', label: 'تحويل مسودات زوهو إلى مرسلة', hint: 'يغيّر الحالة المحاسبية للفواتير المحددة.', sensitive: true },
       { key: 'zoho.invoice_push_zatca', label: 'إرسال الفواتير إلى زاتكا عبر زوهو', hint: 'إجراء خارجي نهائي يخضع لفحص الجاهزية ومنع التكرار.', sensitive: true },
