@@ -88,7 +88,7 @@ const bankTransactionId = (row: any) => String(row?.transaction_id || row?.impor
 const bankTransactionAmount = (row: any) => Math.abs(Number(row?.amount ?? row?.total ?? row?.transaction_amount
   ?? row?.debit ?? row?.credit ?? 0));
 const bankTransactionDirection = (row: any) => {
-  const value = String(row?.debit_or_credit || row?.transaction_type || row?.type || '').toLowerCase();
+  const value = String(row?.direction || row?.debit_or_credit || row?.transaction_type || row?.type || '').toLowerCase();
   if (/credit|deposit|inflow|إيداع/.test(value) || Number(row?.credit) > 0) return 'credit';
   if (/debit|withdraw|outflow|سحب/.test(value) || Number(row?.debit) > 0) return 'debit';
   return Number(row?.amount) < 0 ? 'debit' : 'credit';
@@ -127,6 +127,7 @@ async function lastImportedBankAnchor(access: { token: string; apiDomain: string
     knownReferences: new Set(transactions.map((t: any) => normalizedRef(t.reference_number)).filter(Boolean)),
     knownTransactionIds: new Set(transactions.map((t: any) => String(t.transaction_id || '')).filter(Boolean)),
     knownFingerprints: new Set(transactions.map(bankTransactionFingerprint).filter(Boolean)),
+    transactions,
   };
 }
 
@@ -171,8 +172,66 @@ async function liveZohoBankTransactionSnapshot(access: { token: string; apiDomai
     knownReferences: new Set(rows.map((t: any) => normalizedRef(t.reference_number || t.reference)).filter(Boolean)),
     knownTransactionIds: new Set(rows.map((t: any) => String(t.transaction_id || t.bank_transaction_id || '')).filter(Boolean)),
     knownFingerprints: new Set(rows.map(bankTransactionFingerprint).filter(Boolean)),
+    transactions: rows,
   };
 }
+
+async function sha256(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest('SHA-256', bytes);
+  return [...new Uint8Array(digest)].map(byte => byte.toString(16).padStart(2, '0')).join('');
+}
+
+const exportBatchView = (batch: any, items: any[] = []) => ({
+  id: String(batch?.id || ''),
+  account_id: String(batch?.zoho_account_id || ''),
+  bank: String(batch?.internal_bank_name || ''),
+  file_name: String(batch?.file_name || ''),
+  row_count: Number(batch?.row_count || 0),
+  status: String(batch?.status || 'exported'),
+  exported_at: batch?.exported_at || null,
+  last_verified_at: batch?.last_verified_at || null,
+  seen_count: Number(batch?.seen_count || 0),
+  missing_count: Number(batch?.missing_count || 0),
+  duplicate_count: Number(batch?.duplicate_count || 0),
+  verification_summary: batch?.verification_summary || {},
+  items: items.map(item => ({
+    id: item.id,
+    bank_transaction_id: item.bank_transaction_id,
+    reference: item.reference_number,
+    date: item.transaction_date,
+    direction: item.direction,
+    amount: Number(item.amount || 0),
+    status: item.status,
+    zoho_transaction_id: item.zoho_transaction_id,
+    match_method: item.match_method,
+  })),
+});
+
+async function latestBankExportBatch(db: ReturnType<typeof svc>, accountId: string) {
+  const { data: batch, error } = await db.from('zoho_bank_export_batches').select('*')
+    .eq('zoho_account_id', accountId).order('exported_at', { ascending: false }).limit(1).maybeSingle();
+  if (error) throw new Error(`bank_export_batch_read:${error.message}`);
+  if (!batch) return null;
+  const { data: items, error: itemsError } = await db.from('zoho_bank_export_items').select('*')
+    .eq('batch_id', batch.id).order('transaction_date', { ascending: true }).order('id', { ascending: true });
+  if (itemsError) throw new Error(`bank_export_items_read:${itemsError.message}`);
+  return exportBatchView(batch, items || []);
+}
+
+const verificationInventory = (liveAnchor: any, importedStatementAnchor: any, unreviewed: any[]) => {
+  const rows = [
+    ...((liveAnchor?.transactions || []).map((row: any) => ({ ...row, __source: 'zoho_transactions' }))),
+    ...((importedStatementAnchor?.transactions || []).map((row: any) => ({ ...row, __source: 'last_imported_statement' }))),
+    ...((unreviewed || []).map((row: any) => ({ ...row, __source: 'zoho_uncategorized' }))),
+  ];
+  const unique = new Map<string, any>();
+  rows.forEach((row: any, index: number) => {
+    const key = bankTransactionId(row) || `${row.__source}:${index}:${bankTransactionFingerprint(row)}`;
+    if (!unique.has(key)) unique.set(key, row);
+  });
+  return [...unique.values()];
+};
 
 async function begin(db: ReturnType<typeof svc>, key: string, action: string, userId: string, payload: unknown) {
   const { data: old } = await db.from('zoho_write_operations').select('id,status,result_payload')
@@ -289,6 +348,8 @@ Deno.serve(async req => {
   const action = String(input.action || '');
   const permissionByAction: Record<string, string> = {
     bank_preview: 'zoho.bank_import',
+    bank_export_record: 'zoho.bank_import',
+    bank_export_verify: 'zoho.bank_import',
     bank_import: 'zoho.bank_import',
     bank_unreviewed_list: 'bank.view',
     bank_match_candidates: 'bank.view',
@@ -376,6 +437,153 @@ Deno.serve(async req => {
       message: 'تم إيقاف ترحيل كشوف البنوك من النظام. نزّل ملف العمليات الناقصة وارفعه يدويًا في Zoho.',
     }, 410);
 
+    if (action === 'bank_export_record') {
+      const accountId = String(input.account_id || '');
+      const fileName = String(input.file_name || '').trim().slice(0, 180);
+      const transactionIds = [...new Set((input.transaction_ids || []).map(String))].slice(0, 1000).sort();
+      if (!fileName || !transactionIds.length) return json({ error: 'file_name_and_transaction_ids_required' }, 400);
+      await requireLiveZohoBank(db, accountId);
+      const { data: link, error: linkError } = await db.from('zoho_financial_account_links')
+        .select('zoho_account_id,internal_bank_name,link_kind').eq('zoho_account_id', accountId).maybeSingle();
+      if (linkError) throw new Error(`bank_link_read:${linkError.message}`);
+      if (!link?.internal_bank_name || link.link_kind !== 'bank') return json({ error: 'bank_account_not_linked' }, 400);
+
+      const rows: any[] = [];
+      for (let offset = 0; offset < transactionIds.length; offset += 180) {
+        const { data, error } = await db.from('bank_transactions')
+          .select('id,txn_date,txn_at,reference,description,debit,credit,bank')
+          .eq('bank', link.internal_bank_name).in('id', transactionIds.slice(offset, offset + 180));
+        if (error) throw new Error(`bank_export_rows_read:${error.message}`);
+        rows.push(...(data || []));
+      }
+      if (rows.length !== transactionIds.length) return json({
+        error: 'bank_export_scope_mismatch', expected: transactionIds.length, found: rows.length,
+      }, 400);
+      const invalid = rows.filter(row => !(Number(row.debit) > 0 || Number(row.credit) > 0)
+        || !/^\d{4}-\d{2}-\d{2}$/.test(localTxnDate(row)));
+      if (invalid.length) return json({ error: 'bank_export_contains_invalid_rows', count: invalid.length }, 400);
+
+      const idempotencyKey = await sha256(`${accountId}|${transactionIds.join(',')}`);
+      const { data: existing } = await db.from('zoho_bank_export_batches').select('*')
+        .eq('idempotency_key', idempotencyKey).maybeSingle();
+      if (existing) {
+        const { data: existingItems, error: existingItemsError } = await db.from('zoho_bank_export_items').select('*')
+          .eq('batch_id', existing.id).order('transaction_date', { ascending: true });
+        if (existingItemsError) throw new Error(`bank_export_items_read:${existingItemsError.message}`);
+        return json({ ok: true, idempotent: true, batch: exportBatchView(existing, existingItems || []) });
+      }
+
+      const { data: batch, error: batchError } = await db.from('zoho_bank_export_batches').insert({
+        zoho_account_id: accountId,
+        internal_bank_name: link.internal_bank_name,
+        idempotency_key: idempotencyKey,
+        file_name: fileName,
+        row_count: rows.length,
+        exported_by: user.id,
+      }).select('*').single();
+      if (batchError) throw new Error(`bank_export_batch_write:${batchError.message}`);
+      const items = rows.map(row => ({
+        batch_id: batch.id,
+        bank_transaction_id: row.id,
+        reference_number: String(row.reference || ''),
+        transaction_date: localTxnDate(row),
+        direction: Number(row.credit) > 0 ? 'credit' : 'debit',
+        amount: Number(row.credit) > 0 ? Number(row.credit) : Number(row.debit),
+        fingerprint: bankTransactionFingerprint(row),
+      }));
+      const { error: itemsError } = await db.from('zoho_bank_export_items').insert(items);
+      if (itemsError) throw new Error(`bank_export_items_write:${itemsError.message}`);
+      for (let offset = 0; offset < transactionIds.length; offset += 180) {
+        const { error } = await db.from('bank_transactions').update({
+          zoho_import_status: 'exported_for_manual_upload', zoho_bank_account_id: accountId,
+        }).in('id', transactionIds.slice(offset, offset + 180));
+        if (error) throw new Error(`bank_export_status_write:${error.message}`);
+      }
+      return json({ ok: true, batch: exportBatchView(batch, items) });
+    }
+
+    if (action === 'bank_export_verify') {
+      const accountId = String(input.account_id || '');
+      const requestedBatchId = String(input.batch_id || '');
+      await requireLiveZohoBank(db, accountId);
+      let batchQuery = db.from('zoho_bank_export_batches').select('*').eq('zoho_account_id', accountId);
+      batchQuery = requestedBatchId ? batchQuery.eq('id', requestedBatchId)
+        : batchQuery.order('exported_at', { ascending: false }).limit(1);
+      const { data: batch, error: batchError } = await batchQuery.maybeSingle();
+      if (batchError) throw new Error(`bank_export_batch_read:${batchError.message}`);
+      if (!batch) return json({ error: 'bank_export_batch_not_found' }, 404);
+      const { data: items, error: itemsError } = await db.from('zoho_bank_export_items').select('*')
+        .eq('batch_id', batch.id).order('transaction_date', { ascending: true });
+      if (itemsError) throw new Error(`bank_export_items_read:${itemsError.message}`);
+
+      const access = await accessToken(db);
+      const [liveAnchor, importedStatementAnchor, unreviewed] = await Promise.all([
+        liveZohoBankTransactionSnapshot(access, accountId),
+        lastImportedBankAnchor(access, accountId),
+        loadZohoUnreviewed(access, accountId),
+      ]);
+      const inventory = verificationInventory(liveAnchor, importedStatementAnchor, unreviewed);
+      const byReference = new Map<string, any[]>();
+      const byFingerprint = new Map<string, any[]>();
+      inventory.forEach(row => {
+        const reference = normalizedRef(row.reference_number || row.reference);
+        const fingerprint = bankTransactionFingerprint(row);
+        if (reference) byReference.set(reference, [...(byReference.get(reference) || []), row]);
+        if (fingerprint) byFingerprint.set(fingerprint, [...(byFingerprint.get(fingerprint) || []), row]);
+      });
+
+      const verifiedAt = new Date().toISOString();
+      const updates = (items || []).map(item => {
+        const reference = normalizedRef(item.reference_number);
+        let candidates = reference ? (byReference.get(reference) || []) : [];
+        let matchMethod: 'reference'|'fingerprint'|null = candidates.length ? 'reference' : null;
+        if (!candidates.length && item.fingerprint) {
+          candidates = byFingerprint.get(String(item.fingerprint)) || [];
+          if (candidates.length) matchMethod = 'fingerprint';
+        }
+        const status = candidates.length === 1 ? 'seen_in_zoho' : candidates.length > 1 ? 'duplicate' : 'missing';
+        const candidate = candidates[0] || null;
+        return {
+          id: item.id,
+          batch_id: batch.id,
+          bank_transaction_id: item.bank_transaction_id,
+          reference_number: item.reference_number,
+          transaction_date: item.transaction_date,
+          direction: item.direction,
+          amount: item.amount,
+          fingerprint: item.fingerprint,
+          status,
+          zoho_transaction_id: candidate ? bankTransactionId(candidate) || null : null,
+          match_method: matchMethod,
+          verified_at: verifiedAt,
+          verification_details: { candidate_count: candidates.length, source: candidate?.__source || null },
+        };
+      });
+      const { error: updateError } = await db.from('zoho_bank_export_items').upsert(updates, { onConflict: 'id' });
+      if (updateError) throw new Error(`bank_export_items_verify:${updateError.message}`);
+      for (const status of ['seen_in_zoho', 'missing', 'duplicate']) {
+        const ids = updates.filter(item => item.status === status).map(item => item.bank_transaction_id);
+        for (let offset = 0; offset < ids.length; offset += 180) {
+          const { error } = await db.from('bank_transactions').update({
+            zoho_import_status: status, zoho_bank_account_id: accountId,
+          }).in('id', ids.slice(offset, offset + 180));
+          if (error) throw new Error(`bank_export_status_verify:${error.message}`);
+        }
+      }
+      const seenCount = updates.filter(item => item.status === 'seen_in_zoho').length;
+      const missingCount = updates.filter(item => item.status === 'missing').length;
+      const duplicateCount = updates.filter(item => item.status === 'duplicate').length;
+      const status = missingCount === 0 && duplicateCount === 0 ? 'verified'
+        : seenCount > 0 ? 'partial' : 'needs_review';
+      const summary = { checked_in_zoho: inventory.length, verified_at: verifiedAt };
+      const { data: savedBatch, error: saveError } = await db.from('zoho_bank_export_batches').update({
+        status, seen_count: seenCount, missing_count: missingCount, duplicate_count: duplicateCount,
+        last_verified_at: verifiedAt, verification_summary: summary, updated_at: verifiedAt,
+      }).eq('id', batch.id).select('*').single();
+      if (saveError) throw new Error(`bank_export_batch_verify:${saveError.message}`);
+      return json({ ok: status === 'verified', batch: exportBatchView(savedBatch, updates) });
+    }
+
     if (action === 'bank_preview') {
       const accountId = String(input.account_id || '');
       const { data: link } = await db.from('zoho_financial_account_links')
@@ -425,9 +633,9 @@ Deno.serve(async req => {
       const zohoKnownTransactionIds = new Set<string>();
       const zohoKnownFingerprints = new Set<string>();
       for (const candidate of liveCandidates) {
-        candidate.knownReferences.forEach(reference => zohoKnownReferences.add(reference));
-        candidate.knownTransactionIds.forEach(transactionId => zohoKnownTransactionIds.add(transactionId));
-        candidate.knownFingerprints.forEach(fingerprint => zohoKnownFingerprints.add(fingerprint));
+        candidate.knownReferences.forEach((reference: string) => zohoKnownReferences.add(reference));
+        candidate.knownTransactionIds.forEach((transactionId: string) => zohoKnownTransactionIds.add(transactionId));
+        candidate.knownFingerprints.forEach((fingerprint: string) => zohoKnownFingerprints.add(fingerprint));
       }
       // لا نعرض كامل التاريخ عند غياب مرساة زوهو؛ البداية الأولى تُنشأ في زوهو
       // أو بعد ظهور أول عملية بنكية هناك، ثم تعمل المعاينة من المرجع التالي.
@@ -463,6 +671,7 @@ Deno.serve(async req => {
         if (fingerprint && zohoKnownFingerprints.has(fingerprint)) { fingerprintExcluded += 1; return false; }
         return true;
       });
+      const latestExport = await latestBankExportBatch(db, accountId);
       const summary = { account_id: accountId, bank: link.internal_bank_name, count: fresh.length,
         deposits: fresh.reduce((s: number, t: any) => s + Number(t.credit || 0), 0),
         withdrawals: fresh.reduce((s: number, t: any) => s + Number(t.debit || 0), 0),
@@ -481,13 +690,14 @@ Deno.serve(async req => {
           Number(importedStatementAnchor?.knownTransactionIds?.size || 0), unreviewedOrdered.length),
         manual_anchor_ignored: Boolean(manualAnchor && liveCandidates.length),
         anchor_required: !anchor,
+        latest_export: latestExport,
         transactions: fresh.map((t: any) => ({ id: t.id, date: String(t.txn_at || t.txn_date || '').slice(0, 10),
           reference: t.reference, description: t.description, debit: Number(t.debit || 0), credit: Number(t.credit || 0) })) };
       return json({ ok: true, read_only: true, upload_mode: 'manual_zoho_excel', ...summary });
     }
 
     if (action === 'invoice_finalize_and_push_zatca') {
-      const ids = [...new Set((input.invoice_ids || []).map(String))].slice(0, 100);
+      const ids: string[] = [...new Set<string>((input.invoice_ids || []).map(String))].slice(0, 100);
       if (!ids.length) return json({ error: 'invoice_ids_required' }, 400);
       const { data: invoices, error } = await db.from('zoho_invoices')
         .select('zoho_id,invoice_number,customer_name,date,total,status,einvoice_status').in('zoho_id', ids);

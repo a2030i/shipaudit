@@ -364,23 +364,28 @@ export function parseAlinmaFormat(rows, colMap) {
 // ─── Rejected / returned transfers ────────────────────────────────────────────
 // When an outgoing transfer fails, the bank re-credits it under the SAME
 // reference (e.g. "تم رفض التحويل الدولي بسبب ..."). Both legs net to zero but
-// inflate the debit/credit totals. We flag BOTH the original debit and the
-// return credit so the UI can mark them (المرفوض) and the user can see the
-// net-zero noise for what it is. Works on freshly-parsed rows AND on saved rows
-// (identical field names: reference/description/credit/debit).
-const REJECT_PATTERNS = /تم\s*رفض|رفض\s*التحويل|مرتجع|عكس\s*قيد|إعادة\s*(?:مبلغ|القيمة)|اعادة\s*(?:مبلغ|القيمة)|رد\s*التحويل|reject|revers|refund|declin/i;
+// inflate the debit/credit totals. A real card refund is different: it is an
+// accounting movement in its own right and commonly has a different reference.
+// Never mark a row merely because its description contains "Refund". We require
+// an explicit reversal marker AND a same-reference, same-amount debit leg.
+const REJECT_PATTERNS = /تم\s*رفض|رفض\s*التحويل|مرتجع|عكس\s*قيد|إعادة\s*(?:مبلغ|القيمة)|اعادة\s*(?:مبلغ|القيمة)|رد\s*التحويل|\breject(?:ed|ion)?\b|\brevers(?:al|ed)?\b|\bdeclin(?:e|ed)\b/i;
 export function annotateRejected(list) {
   if (!Array.isArray(list)) return list;
+  // This helper is called again after loading saved rows. Clear a prior derived
+  // flag so a corrected rule cannot leave a stale UI label behind.
+  for (const t of list) delete t.rejected;
   for (const t of list) {
     const credit = Number(t.credit) || 0;
     if (credit > 0 && REJECT_PATTERNS.test(t.description || '')) {
-      t.rejected = true;
       const ref = String(t.reference ?? '').trim();
       if (ref) {
         const orig = list.find(d =>
           d !== t && String(d.reference ?? '').trim() === ref
-          && ((Number(d.debit) || 0) + (Number(d.fees) || 0)) > 0);
-        if (orig) orig.rejected = true;
+          && Math.abs((Number(d.debit) || 0) - credit) <= 0.01);
+        if (orig) {
+          t.rejected = true;
+          orig.rejected = true;
+        }
       }
     }
   }

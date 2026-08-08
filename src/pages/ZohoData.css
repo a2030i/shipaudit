@@ -181,7 +181,103 @@
   justify-content: flex-end;
 }
 
+.zoho-bank-export-steps {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 12px;
+}
+
+.zoho-bank-export-steps > div {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  color: var(--muted);
+  background: var(--surface2);
+  font-size: 11.5px;
+}
+
+.zoho-bank-export-steps b {
+  display: grid;
+  place-items: center;
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.zoho-bank-export-steps .is-done {
+  border-color: color-mix(in srgb, var(--green) 34%, var(--border));
+  color: var(--text);
+}
+
+.zoho-bank-export-steps .is-done b {
+  background: color-mix(in srgb, var(--green) 14%, var(--surface));
+  color: var(--green);
+}
+
+.zoho-bank-export-batch {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+  margin: 0 0 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 35%, var(--border));
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--gold) 7%, var(--surface));
+  font-size: 11.5px;
+}
+
+.zoho-bank-export-batch.status-verified {
+  border-color: color-mix(in srgb, var(--green) 35%, var(--border));
+  background: color-mix(in srgb, var(--green) 7%, var(--surface));
+}
+
+.zoho-bank-export-batch > div:first-child span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+.zoho-bank-export-counts {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.zoho-bank-export-counts span {
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--surface);
+  white-space: nowrap;
+}
+
 @media (max-width: 700px) {
+  .zoho-bank-export-steps {
+    grid-template-columns: 1fr;
+  }
+
+  .zoho-bank-export-steps > div {
+    min-height: 38px;
+  }
+
+  .zoho-bank-export-batch {
+    flex-direction: column;
+  }
+
+  .zoho-bank-export-counts {
+    justify-content: flex-start;
+  }
+
   .zoho-bank-review-modal {
     border-radius: 20px !important;
   }
