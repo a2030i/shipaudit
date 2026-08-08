@@ -15,7 +15,7 @@ import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   loadZohoFinancialDashboard, setZohoFinancialAccountLink,
   getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument,
   markZohoInvoicesSent, pushZohoInvoicesToZatca, finalizeAndPushZohoInvoices,
-  previewZohoBankMissing,
+  previewZohoBankMissing, recordZohoBankExport, verifyZohoBankExport,
   listZohoUnreviewedBankTransactions, getZohoBankMatchCandidates, approveZohoBankMatch,
   loadZohoWebhookFailures, retryZohoWebhook } from '../lib/pnlService.js';
 import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
@@ -951,7 +951,7 @@ export default function ZohoData({ isActive = true }) {
                             })}>{treasuryAccount ? (existingLink ? 'تعديل تصنيف الخزينة' : 'تصنيف الخزينة') : existingLink ? 'تعديل التصنيف' : type === 'bank_accounts' ? 'ربط الحساب ببنك داخلي' : 'تصنيف الحساب المالي'}</Btn>
                             {type === 'bank_accounts' && !treasuryAccount && existingLink?.link_kind === 'bank' && can('zoho.bank_import') ? (
                               <Btn size="sm" variant="accent" icon={<Download size={13}/>} onClick={() => openBankMissingExport(r)}>
-                                فحص العمليات الناقصة
+                                فحص الفرق مع زوهو
                               </Btn>
                             ) : null}
                           </> : !liveBankAccount ? <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>
@@ -1009,15 +1009,50 @@ export default function ZohoData({ isActive = true }) {
         try {
           const bankName = bankMissing.row.account_name || bankMissing.preview.bank || 'Bank';
           const fileName = `Zoho_Missing_${safeBankFilePart(bankName)}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+          let recorded = null;
+          try {
+            recorded = await recordZohoBankExport({
+              accountId: bankMissing.row.zoho_id,
+              transactionIds: rows.map(row => row.id),
+              fileName,
+            });
+          } catch (recordError) {
+            const message = String(recordError?.message || recordError);
+            if (!/unknown_action|zoho_bank_export_(?:batches|items)|schema cache/i.test(message)) throw recordError;
+          }
           await persistAndDownloadExport({
             wb: createMissingBankWorkbook(rows), fileName, kind: 'zoho_bank_missing',
             rowCount: rows.length, userId: user?.id || null,
           });
-          setBankMissing(current => ({ ...current, busy: false }));
+          const preview = await previewZohoBankMissing(bankMissing.row.zoho_id);
+          setBankMissing(current => ({ ...current, busy: false, preview,
+            exportedBatch: recorded?.batch || preview?.latest_export || null }));
           toast(`نُزّل ملف نظيف يضم ${rows.length} عملية ناقصة — لم يُرسل شيء إلى زوهو`, 'success');
         } catch (e) {
           setBankMissing(current => ({ ...current, busy: false }));
           toast(`تعذّر تنزيل الملف: ${e.message}`, 'error');
+        }
+      }} onVerify={async () => {
+        const batch = bankMissing?.preview?.latest_export || bankMissing?.exportedBatch;
+        if (!batch?.id) return;
+        setBankMissing(current => ({ ...current, busy: true }));
+        try {
+          const result = await verifyZohoBankExport({
+            accountId: bankMissing.row.zoho_id,
+            batchId: batch.id,
+          });
+          const preview = await previewZohoBankMissing(bankMissing.row.zoho_id);
+          setBankMissing(current => ({ ...current, busy: false, preview,
+            exportedBatch: result?.batch || preview?.latest_export || null }));
+          const verified = Number(result?.batch?.seen_count || 0);
+          const missing = Number(result?.batch?.missing_count || 0);
+          const duplicates = Number(result?.batch?.duplicate_count || 0);
+          toast(missing || duplicates
+            ? `تحقق زوهو: ظهر ${verified}، مفقود ${missing}، يحتاج مراجعة ${duplicates}`
+            : `تم التحقق: ظهرت كل العمليات (${verified}) في زوهو ✓`, missing || duplicates ? 'warning' : 'success');
+        } catch (e) {
+          setBankMissing(current => ({ ...current, busy: false }));
+          toast(`تعذّر التحقق من زوهو: ${e.message}`, 'error');
         }
       }}/>
       <BankUnreviewedModal
@@ -1175,13 +1210,26 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
   </Modal>;
 }
 
-function BankMissingExportModal({ state, onClose, onDownload }) {
+function BankMissingExportModal({ state, onClose, onDownload, onVerify }) {
   if (!state) return null;
   const p = state.preview;
   const liveAnchor = p?.zoho_anchor;
+  const latestExport = p?.latest_export || state.exportedBatch || null;
+  const batchStatus = {
+    exported: 'تم تنزيل الملف — بانتظار رفعه في زوهو',
+    verified: 'تم التحقق — كل العمليات ظهرت في زوهو',
+    partial: 'تحقق جزئي — بقيت عمليات تحتاج مراجعة',
+    needs_review: 'لم تظهر عمليات الدفعة بعد في زوهو',
+    failed: 'فشل التحقق من الدفعة',
+  }[latestExport?.status] || '';
   return (
-    <Modal open title={`العمليات الناقصة في Zoho — ${state.row.account_name || ''}`} onClose={onClose}>
+    <Modal open title={`مزامنة كشف البنك مع Zoho — ${state.row.account_name || ''}`} onClose={onClose}>
       {state.busy && !p ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={22}/></div> : <>
+        <div className="zoho-bank-export-steps" aria-label="خطوات مزامنة كشف البنك">
+          <div className="is-done"><b>1</b><span>فحص الفرق</span></div>
+          <div className={latestExport ? 'is-done' : ''}><b>2</b><span>تنزيل الناقص ورفعه</span></div>
+          <div className={latestExport?.status === 'verified' ? 'is-done' : ''}><b>3</b><span>التحقق بعد الرفع</span></div>
+        </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
           فحص قراءة فقط: يقارن النظام العمليات المحلية بما هو موجود فعليًا في Zoho، ثم يجهز Excel بالناقص فقط. لن يرسل أو يعدّل أي عملية في Zoho.
         </div>
@@ -1209,6 +1257,15 @@ function BankMissingExportModal({ state, onClose, onDownload }) {
         {p?.count ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
           <MiniValue label="عمليات ناقصة" value={p?.count || 0}/><MiniValue label="إيداعات" value={`${fmt(p?.deposits || 0)} ر.س`}/><MiniValue label="سحوبات" value={`${fmt(p?.withdrawals || 0)} ر.س`}/>
         </div> : null}
+        {latestExport ? <div className={`zoho-bank-export-batch status-${latestExport.status || 'exported'}`}>
+          <div><b>{batchStatus}</b><span>{latestExport.file_name}</span></div>
+          <div className="zoho-bank-export-counts">
+            <span>الدفعة {latestExport.row_count || 0}</span>
+            <span>ظهر {latestExport.seen_count || 0}</span>
+            <span>مفقود {latestExport.missing_count || 0}</span>
+            <span>مكرر {latestExport.duplicate_count || 0}</span>
+          </div>
+        </div> : null}
         {p?.count ? <div className="m-flow" style={{ maxHeight: 330, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
           <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
             <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th></tr></thead>
@@ -1229,6 +1286,8 @@ function BankMissingExportModal({ state, onClose, onDownload }) {
         {!p?.count && !p?.anchor_required ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 800, fontSize: 14, padding: '26px 14px' }}>كل العمليات المقروءة موجودة في Zoho — لا يوجد ملف للتنزيل ✓</div> : null}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <Btn variant="ghost" onClick={onClose}>إغلاق</Btn>
+          {latestExport && latestExport.status !== 'verified' ? <Btn variant="ghost" disabled={state.busy}
+            icon={state.busy ? <Spinner size={13}/> : <Landmark size={13}/>} onClick={onVerify}>تحقق بعد الرفع في زوهو</Btn> : null}
           {p?.count ? <Btn variant="accent" disabled={state.busy} icon={state.busy ? <Spinner size={13}/> : <Download size={13}/>} onClick={onDownload}>تنزيل Excel للرفع إلى Zoho ({p.count})</Btn> : null}
         </div>
       </>}

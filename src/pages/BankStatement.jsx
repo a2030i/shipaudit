@@ -5,6 +5,7 @@ import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRej
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
 import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote, classifyBankTransaction, clearBankClassification } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
+import { bankNameOf, bankPeriodOptions, findBankPeriodClosing, rowsForBank, selectedBankName } from '../lib/bankStatementScope.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ── State machine: idle → processing → done | error ──
@@ -112,7 +113,7 @@ export default function BankStatement() {
     if (savedTo)   list = list.filter(t => t.txn_date && String(t.txn_date).slice(0, 10) <= savedTo);
     if (savedType === 'debit')  list = list.filter(t => Number(t.debit) > 0);
     if (savedType === 'credit') list = list.filter(t => Number(t.credit) > 0);
-    if (savedBank !== 'all')    list = list.filter(t => (t.bank || 'بنك الإنماء') === savedBank);
+    if (savedBank !== 'all')    list = rowsForBank(list, savedBank);
     if (savedClass !== 'all')   list = list.filter(t => (t.classification_status || 'unclassified') === savedClass);
     // ترتيب تسلسلي (الوقت ثم المرجع) — الأحدث أولاً، فالتسلسل داخل اليوم صحيح.
     return [...list].sort((a, b) => seqKey(b).localeCompare(seqKey(a)));
@@ -124,19 +125,28 @@ export default function BankStatement() {
   const bankSummary = useMemo(() => {
     const byBank = new Map();
     for (const t of (saved || [])) {
-      const b = t.bank || 'بنك الإنماء';
+      const b = bankNameOf(t);
       const cur = byBank.get(b) || { bank: b, count: 0, debit: 0, credit: 0 };
       cur.count++; cur.debit += Number(t.debit) || 0; cur.credit += Number(t.credit) || 0;
       byBank.set(b, cur);
     }
     // ختامي آخر كشف لكل بنك من ملخّصات الكشوف
     for (const s of stmtSummaries || []) {
-      const b = s.bank || 'بنك الإنماء';
+      const b = bankNameOf(s);
       const cur = byBank.get(b);
       if (cur && cur.closing == null) { cur.closing = Number(s.closing_balance) || 0; cur.asOf = s.period_to; }
     }
     return [...byBank.values()].sort((a, b) => b.count - a.count);
   }, [saved, stmtSummaries]);
+
+  // A closing balance belongs to exactly one bank. When several banks are in
+  // the ledger, selecting "all" must not silently borrow Alinma's closing
+  // balance while the rows/totals belong to SiFi (or vice versa).
+  const activeBalanceBank = selectedBankName(savedBank, bankSummary);
+  const savedBankTotal = useMemo(
+    () => rowsForBank(saved || [], savedBank).length,
+    [saved, savedBank],
+  );
 
   const savedRejectedInfo = useMemo(() => {
     const returns = (savedFiltered || []).filter(t => t.rejected && (Number(t.credit) || 0) > 0);
@@ -144,16 +154,10 @@ export default function BankStatement() {
   }, [savedFiltered]);
 
   // شرائح الفترات الجاهزة — مشتقّة من فترات الكشوف المرفوعة فعلاً.
-  const savedPeriods = useMemo(() => {
-    const seen = new Map();
-    for (const t of saved || []) {
-      if (t.period_from && t.period_to) {
-        const k = `${t.period_from}→${t.period_to}`;
-        if (!seen.has(k)) seen.set(k, { from: String(t.period_from).slice(0, 10), to: String(t.period_to).slice(0, 10) });
-      }
-    }
-    return [...seen.values()].sort((a, b) => b.to.localeCompare(a.to));
-  }, [saved]);
+  const savedPeriods = useMemo(
+    () => bankPeriodOptions(saved || [], savedBank),
+    [saved, savedBank],
+  );
 
   // التصدير يتبع المعروض (بعد الفلاتر) — يعيد استخدام صيغة الكشف الصافي.
   const handleExportSaved = () => {
@@ -199,15 +203,13 @@ export default function BankStatement() {
   // الرصيد الختامي للفترة المختارة — من ملخّصات الكشوف المرفوعة (تطابق دقيق
   // لشريحة جاهزة، أو أحدث كشف ينتهي ضمن المدى المخصّص).
   const periodClosing = useMemo(() => {
-    if (!savedTo || !stmtSummaries.length) return null;
-    const d = (x) => String(x || '').slice(0, 10);
-    const exact = stmtSummaries.find(s => d(s.period_from) === savedFrom && d(s.period_to) === savedTo);
-    if (exact) return exact;
-    const inRange = stmtSummaries
-      .filter(s => d(s.period_to) <= savedTo && (!savedFrom || d(s.period_to) >= savedFrom))
-      .sort((a, b) => d(b.period_to).localeCompare(d(a.period_to)));
-    return inRange[0] || null;
-  }, [stmtSummaries, savedFrom, savedTo]);
+    return findBankPeriodClosing({
+      summaries: stmtSummaries,
+      bank: activeBalanceBank,
+      from: savedFrom,
+      to: savedTo,
+    });
+  }, [stmtSummaries, activeBalanceBank, savedFrom, savedTo]);
 
   // التحقّق من ختامي البنك: نحسبه بأنفسنا (افتتاحي + مودَع − مسحوب شامل الرسوم)
   // على كامل فترة الكشف — تطابقه مع رقم البنك = دليل التقاط كل عملية بلا نقص/تكرار.
@@ -215,13 +217,14 @@ export default function BankStatement() {
   const periodRecon = useMemo(() => {
     if (!periodClosing || periodClosing.opening_balance == null || periodClosing.closing_balance == null) return null;
     const from = String(periodClosing.period_from).slice(0, 10), to = String(periodClosing.period_to).slice(0, 10);
-    const inP = (saved || []).filter(t => { const d = String(t.txn_date || '').slice(0, 10); return d >= from && d <= to; });
+    const inP = rowsForBank(saved || [], activeBalanceBank)
+      .filter(t => { const d = String(t.txn_date || '').slice(0, 10); return d >= from && d <= to; });
     const credit = inP.reduce((s, t) => s + (Number(t.credit) || 0), 0);
     const debitGross = inP.reduce((s, t) => s + (Number(t.debit) || 0) + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0);
     const computed = +(Number(periodClosing.opening_balance) + credit - debitGross).toFixed(2);
     const gap = +(computed - Number(periodClosing.closing_balance)).toFixed(2);
     return { computed, gap, ok: Math.abs(gap) <= 0.5 };
-  }, [periodClosing, saved]);
+  }, [periodClosing, saved, activeBalanceBank]);
 
   const handleDeleteSaved = async (id) => {
     if (!can('bank.delete_transaction')) {
@@ -595,7 +598,7 @@ export default function BankStatement() {
                 color: 'var(--red)', fontSize: 11, padding: '4px 10px', borderRadius: 14,
                 fontFamily: 'var(--font-mono)',
               }}>
-                ↩︎ {rejectedInfo.count} عملية مرفوضة · {fmtMoney(rejectedInfo.amount)} ر.س ذهاباً وإياباً (صافي صفر)
+                ↩︎ {rejectedInfo.count} تحويل ملغى ومردود · {fmtMoney(rejectedInfo.amount)} ر.س ذهاباً وإياباً (صافي صفر)
               </span>
             )}
             {result.hiddenFees > 0 && (
@@ -739,7 +742,7 @@ export default function BankStatement() {
                     borderRadius: 10, padding: '8px 12px', fontSize: 12, color: 'var(--red)',
                   }}>
                     <span>↩︎</span>
-                    <span><b>{savedRejectedInfo.count}</b> عملية مرفوضة/مُرجَعة ضمن المعروض · {fmtMoney(savedRejectedInfo.amount)} ر.س ذهاباً وإياباً (صافيها صفر — مُعلَّمة بالجدول)</span>
+                    <span><b>{savedRejectedInfo.count}</b> تحويل ملغى ومردود ضمن المعروض · {fmtMoney(savedRejectedInfo.amount)} ر.س ذهاباً وإياباً (صافيها صفر — مُعلَّم بالجدول)</span>
                   </div>
                 )}
 
@@ -818,7 +821,8 @@ export default function BankStatement() {
                 {/* عدّاد النتائج تحت الفلترة */}
                 {filtersActive && (
                   <div style={{ fontSize: 11, color: 'var(--muted)', marginBottom: 8 }}>
-                    عرض <b style={{ color: 'var(--text)' }}>{savedFiltered.length}</b> من {saved.length} عملية
+                    عرض <b style={{ color: 'var(--text)' }}>{savedFiltered.length}</b> من {savedBankTotal} عملية
+                    {savedBank !== 'all' ? <> في <b style={{ color: 'var(--accent)' }}>{savedBank}</b></> : null}
                   </div>
                 )}
 
@@ -1158,11 +1162,11 @@ function ReconcileModal({ transfers, carriers, reconciledTxIds, onClose, onRecon
 // ── Helpers ────────────────────────────────────────────────────────────────
 function RejBadge() {
   return (
-    <span title="تحويل مرفوض/مُرجَع — رُدّ بنفس المرجع (صافي صفر)" style={{
+    <span title="تحويل خرج ثم أُلغي ورُدّ بنفس المرجع والمبلغ (صافي صفر)" style={{
       display: 'inline-block', background: 'var(--red)', color: '#fff',
       fontSize: 9, fontWeight: 700, padding: '1px 6px', borderRadius: 8,
       marginLeft: 6, verticalAlign: 'middle', whiteSpace: 'nowrap',
-    }}>↩︎ مرفوض</span>
+    }}>↩︎ ملغى ومردود</span>
   );
 }
 

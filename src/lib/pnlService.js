@@ -522,6 +522,17 @@ export const finalizeAndPushZohoInvoices = invoiceIds => invokeZohoInvoiceOperat
 export const previewZohoBankMissing = accountId => invokeZohoOperation({
   action: 'bank_preview', account_id: accountId,
 });
+export const recordZohoBankExport = ({ accountId, transactionIds, fileName }) => invokeZohoOperation({
+  action: 'bank_export_record',
+  account_id: accountId,
+  transaction_ids: transactionIds,
+  file_name: fileName,
+});
+export const verifyZohoBankExport = ({ accountId, batchId }) => invokeZohoOperation({
+  action: 'bank_export_verify',
+  account_id: accountId,
+  batch_id: batchId,
+});
 
 // العمليات البنكية الموجودة داخل زوهو ولم تُراجع بعد. القراءة متاحة لمن يملك
 // عرض البنوك، أما اعتماد المطابقة فهو إجراء مالي مستقل بصلاحية حساسة.
