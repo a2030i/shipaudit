@@ -77,6 +77,8 @@ export default function CustomerMoney({ isActive = true }) {
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
+  const dashboardRefreshInFlightRef = useRef(false);
+  const lastDashboardRefreshAtRef = useRef(0);
 
   useEffect(() => {
     const customer = searchParams.get('customer');
@@ -84,6 +86,8 @@ export default function CustomerMoney({ isActive = true }) {
   }, [searchParams]);
 
   const refresh = async () => {
+    if (dashboardRefreshInFlightRef.current) return;
+    dashboardRefreshInFlightRef.current = true;
     setBusy(true);
     setLoadError(null);
     try {
@@ -103,6 +107,8 @@ export default function CustomerMoney({ isActive = true }) {
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
     } finally {
+      lastDashboardRefreshAtRef.current = Date.now();
+      dashboardRefreshInFlightRef.current = false;
       setBusy(false);
     }
   };
@@ -120,7 +126,26 @@ export default function CustomerMoney({ isActive = true }) {
       setSyncingZoho(false);
     }
   };
-  useEffect(() => { if (isActive && d == null) refresh(); }, [isActive]); // eslint-disable-line
+  // بطاقة العميل تجمع زوهو مع أحدث snapshot للمتاجر. أبقِها حديثة عند
+  // الرجوع للتبويب/المتصفح، ومع إعادة تحقق خفيفة أثناء بقاء الصفحة مفتوحة؛
+  // وإلا قد تظل حالة «نشط» من snapshot سابق بعد رفع ملف متاجر أحدث.
+  useEffect(() => {
+    if (!isActive) return undefined;
+    refresh();
+    const refreshIfStale = () => {
+      if (document.visibilityState === 'hidden') return;
+      if (Date.now() - lastDashboardRefreshAtRef.current < 60_000) return;
+      refresh();
+    };
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', refreshIfStale);
+    const intervalId = window.setInterval(refreshIfStale, 120_000);
+    return () => {
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', refreshIfStale);
+      window.clearInterval(intervalId);
+    };
+  }, [isActive]); // eslint-disable-line react-hooks/exhaustive-deps
   // حالة آخر حملة واتساب لكل عميل (تحميل كسول + بعد كل إرسال)
   const loadWaStatus = () => loadWhatsAppCampaignStatus().then(setWaStatus).catch(() => {});
   useEffect(() => { if (isActive) loadWaStatus(); }, [isActive]); // eslint-disable-line

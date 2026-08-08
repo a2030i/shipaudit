@@ -20,6 +20,14 @@ test('dashboard adapter maps both recent aging buckets', () => {
   assert.match(service, /b16_30: Number\(c\.b16_30\)/);
 });
 
+test('customer collection refreshes platform status after a newer merchant snapshot', () => {
+  assert.match(page, /dashboardRefreshInFlightRef/);
+  assert.match(page, /window\.addEventListener\('focus', refreshIfStale\)/);
+  assert.match(page, /document\.addEventListener\('visibilitychange', refreshIfStale\)/);
+  assert.match(page, /window\.setInterval\(refreshIfStale, 120_000\)/);
+  assert.doesNotMatch(page, /if \(isActive && d == null\) refresh\(\)/);
+});
+
 test('database calculates the split from invoice age and keeps the old aggregate compatible', () => {
   assert.match(migration, /l\.age_days between 0 and 15/);
   assert.match(migration, /l\.age_days between 16 and 30/);
