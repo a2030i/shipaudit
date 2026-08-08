@@ -1231,26 +1231,26 @@ function BankMissingExportModal({ state, onClose, onDownload, onVerify }) {
           <div className={latestExport?.status === 'verified' ? 'is-done' : ''}><b>3</b><span>التحقق بعد الرفع</span></div>
         </div>
         <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, marginBottom: 12, lineHeight: 1.7 }}>
-          فحص قراءة فقط: يقارن النظام العمليات المحلية بما هو موجود فعليًا في Zoho، ثم يجهز Excel بالناقص فقط. لن يرسل أو يعدّل أي عملية في Zoho.
+          فحص قراءة فقط: يقارن النظام <b>كل العمليات المحلية ضمن الفترة المحفوظة</b> بما هو موجود فعليًا في Zoho، بما فيها الفجوات التاريخية، ثم يجهز Excel بالناقص فقط. لن يرسل أو يعدّل أي عملية في Zoho.
         </div>
         {!p?.zoho_anchor ? (
           <div style={{ padding: '9px 11px', borderRadius: 9, marginBottom: 12, color: 'var(--gold)',
             background: 'color-mix(in srgb, var(--gold) 8%, transparent)', fontSize: 11.5 }}>
-            لم نجد عملية بنكية سابقة في Zoho لتحديد نقطة آمنة. حفاظًا على سلامة الأرقام لن ينشئ النظام ملفًا من كامل التاريخ؛ ارفع أول كشف يدويًا في Zoho ثم أعد الفحص.
+            لم نجد عملية بنكية في Zoho ضمن فترة السجل المحلي. ستظهر كل العمليات المحلية كناقصة إلى أن ترفعها يدويًا وتعيد التحقق.
           </div>
         ) : null}
         {liveAnchor ? (
           <div style={{ padding: '11px 12px', borderRadius: 10, marginBottom: 12,
             border: '1px solid color-mix(in srgb, var(--green) 32%, var(--border))',
             background: 'color-mix(in srgb, var(--green) 7%, var(--surface))', fontSize: 12, lineHeight: 1.75 }}>
-            <b style={{ display: 'block', color: 'var(--green)', marginBottom: 3 }}>آخر عملية موجودة فعليًا في Zoho</b>
+            <b style={{ display: 'block', color: 'var(--green)', marginBottom: 3 }}>أحدث عملية مقروءة من Zoho — للمعلومية فقط</b>
             <span dir="ltr" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>{liveAnchor.reference || liveAnchor.transaction_id || 'بلا مرجع'}</span>
             <span style={{ color: 'var(--muted)' }}> · {liveAnchor.date || 'بلا تاريخ'}</span>
             <span style={{ display: 'block', color: 'var(--muted)', marginTop: 3 }}>
-              تظهر العمليات الأحدث غير الموجودة في Zoho فقط. قرأ النظام {p?.zoho_checked_count || 0} سجلًا من Zoho، وتحقق من {p?.zoho_known_count || 0} مرجع/معرّف/بصمة.
+              هذه ليست نقطة بداية ولا تستبعد ما قبلها. فُحصت كل العمليات المحلية من {p?.local_period_from || 'بداية السجل'} إلى {p?.local_period_to || 'نهايته'}: محليًا {p?.local_scanned || 0}، وفي Zoho {p?.zoho_checked_count || 0}.
             </span>
             {p?.manual_anchor_ignored ? <span style={{ display: 'block', color: 'var(--gold)', marginTop: 3 }}>
-              تم تجاهل نقطة البداية اليدوية القديمة لأن بيانات Zoho الحية أحدث منها.
+              تم تجاهل نقطة البداية اليدوية القديمة؛ المطابقة تعتمد بيانات Zoho الحية وكامل الفترة المحلية.
             </span> : null}
           </div>
         ) : null}

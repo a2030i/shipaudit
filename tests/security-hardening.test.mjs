@@ -164,7 +164,7 @@ test('bank statement flow is read-only and exports only rows missing from live Z
   assert.match(edge, /sort_column:\s*'date'/);
   assert.match(edge, /zoho_bank_transactions_incomplete/);
   assert.match(edge, /const \[liveAnchor, importedStatementAnchor, unreviewed\] = await Promise\.all/);
-  assert.match(edge, /loadZohoUnreviewed\(access, accountId\)/);
+  assert.match(edge, /loadZohoUnreviewed\(access, accountId, localPeriod\)/);
   assert.match(edge, /\|\| manualFallback/);
   assert.match(edge, /zohoKnownFingerprints/);
   assert.match(edge, /bankTransactionFingerprint\(t\)/);
@@ -172,9 +172,9 @@ test('bank statement flow is read-only and exports only rows missing from live Z
   assert.doesNotMatch(edge, /\/books\/v3\/bankstatements/);
   assert.doesNotMatch(service, /importZohoBankStatement/);
   assert.match(permissions, /فحص وتصدير العمليات البنكية الناقصة/);
-  assert.match(edge, /manual_anchor_ignored:\s*Boolean\(manualAnchor && liveCandidates\.length\)/);
-  assert.match(page, /آخر عملية موجودة فعليًا في Zoho/);
-  assert.match(page, /تم تجاهل نقطة البداية اليدوية القديمة/);
+  assert.match(edge, /manual_anchor_ignored:\s*Boolean\(manualAnchor && informationalCandidates\.length\)/);
+  assert.match(page, /أحدث عملية مقروءة من Zoho — للمعلومية فقط/);
+  assert.match(page, /تم تجاهل نقطة البداية اليدوية القديمة؛ المطابقة تعتمد بيانات Zoho الحية وكامل الفترة المحلية/);
   assert.match(page, /تنزيل Excel للرفع إلى Zoho/);
   assert.match(page, /Reference Number/);
   assert.match(page, /لن يرسل أو يعدّل أي عملية في Zoho/);
