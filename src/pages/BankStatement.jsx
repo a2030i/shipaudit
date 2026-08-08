@@ -3,7 +3,7 @@ import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2,
 import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
-import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote } from '../lib/bankTransactionsService.js';
+import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote, classifyBankTransaction, clearBankClassification } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -46,11 +46,15 @@ export default function BankStatement() {
   const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
   const [savedType, setSavedType]       = useState('all');    // all | debit | credit
   const [savedBank, setSavedBank]       = useState('all');    // all | اسم البنك
+  const [savedClass, setSavedClass]     = useState('all');    // all | unclassified | classified | matched
   const [stmtSummaries, setStmtSummaries] = useState([]);      // ملخّصات الكشوف (ختامي/افتتاحي لكل فترة)
   const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
   const [noteFor, setNoteFor]           = useState(null);     // العملية المطلوب إضافة ملاحظة لها
   const [noteText, setNoteText]         = useState('');
   const [noteSaving, setNoteSaving]     = useState(false);
+  const [classifyFor, setClassifyFor]   = useState(null);
+  const [classifyForm, setClassifyForm] = useState({ classificationType: 'customer_payment', entityType: '', entityId: '', note: '' });
+  const [classifySaving, setClassifySaving] = useState(false);
   const [deleting, setDeleting]         = useState(false);
 
   const loadSaved = useCallback(async () => {
@@ -109,11 +113,12 @@ export default function BankStatement() {
     if (savedType === 'debit')  list = list.filter(t => Number(t.debit) > 0);
     if (savedType === 'credit') list = list.filter(t => Number(t.credit) > 0);
     if (savedBank !== 'all')    list = list.filter(t => (t.bank || 'بنك الإنماء') === savedBank);
+    if (savedClass !== 'all')   list = list.filter(t => (t.classification_status || 'unclassified') === savedClass);
     // ترتيب تسلسلي (الوقت ثم المرجع) — الأحدث أولاً، فالتسلسل داخل اليوم صحيح.
     return [...list].sort((a, b) => seqKey(b).localeCompare(seqKey(a)));
-  }, [saved, savedSearch, savedFrom, savedTo, savedType, savedBank]);
+  }, [saved, savedSearch, savedFrom, savedTo, savedType, savedBank, savedClass]);
 
-  const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all' || savedBank !== 'all');
+  const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all' || savedBank !== 'all' || savedClass !== 'all');
 
   // البنوك + رصيد كل بنك (ختامي آخر كشف) — لعرض التمييز بين البنوك.
   const bankSummary = useMemo(() => {
@@ -782,6 +787,13 @@ export default function BankStatement() {
                     <option value="debit">مسحوب فقط</option>
                     <option value="credit">مودَع فقط</option>
                   </select>
+                  <select value={savedClass} onChange={e => setSavedClass(e.target.value)}
+                    title="حالة التصنيف" style={{ padding: '7px 10px', borderRadius: 8, fontSize: 12 }}>
+                    <option value="all">كل حالات التصنيف</option>
+                    <option value="unclassified">تحتاج تصنيفاً</option>
+                    <option value="classified">مصنفة</option>
+                    <option value="matched">مطابقة مع سجل</option>
+                  </select>
                   <div style={{ position: 'relative', flex: 1, minWidth: 180 }}>
                     <Search size={14} style={{ position: 'absolute', right: 12, top: 9, color: 'var(--muted)' }}/>
                     <input
@@ -792,7 +804,7 @@ export default function BankStatement() {
                     />
                   </div>
                   {filtersActive && (
-                    <Btn variant="ghost" size="sm" onClick={() => { setSavedSearch(''); setSavedFrom(''); setSavedTo(''); setSavedType('all'); setSavedBank('all'); }}>
+                    <Btn variant="ghost" size="sm" onClick={() => { setSavedSearch(''); setSavedFrom(''); setSavedTo(''); setSavedType('all'); setSavedBank('all'); setSavedClass('all'); }}>
                       مسح الفلاتر
                     </Btn>
                   )}
@@ -848,6 +860,10 @@ export default function BankStatement() {
                                       📝 {t.note}
                                     </div>
                                   )}
+                                  <div style={{ marginTop: 4, fontSize: 10.5, color: t.classification_status === 'matched' ? 'var(--green)' : t.classification_status === 'classified' ? 'var(--accent)' : 'var(--muted)' }}>
+                                    {t.classification_status === 'matched' ? `✓ مطابقة: ${t.classification_type || 'مصنفة'}${t.matched_entity_id ? ` · ${t.matched_entity_id}` : ''}`
+                                      : t.classification_status === 'classified' ? `مصنفة: ${t.classification_type || 'أخرى'}` : 'تحتاج تصنيفاً'}
+                                  </div>
                                 </td>
                                 <td data-label="مودَع" style={{ fontFamily: 'var(--font-mono)', color: 'var(--green)', fontWeight: 600 }}>
                                   {Number(t.credit) ? fmtMoney(t.credit) : ''}
@@ -860,6 +876,10 @@ export default function BankStatement() {
                                 </td>
                                 <td data-label="إجراء">
                                   <div style={{ display: 'flex', gap: 5 }}>
+                                    {can('bank.reconcile') ? <button title="تصنيف ومطابقة العملية" onClick={() => {
+                                      setClassifyFor(t);
+                                      setClassifyForm({ classificationType: t.classification_type || 'customer_payment', entityType: t.matched_entity_type || '', entityId: t.matched_entity_id || '', note: t.classification_note || '' });
+                                    }} style={{ border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--accent)', borderRadius: 8, padding: '5px 7px', cursor: 'pointer', fontSize: 12 }}>تصنيف</button> : null}
                                     {can('bank.edit_note') ? <button title="ملاحظة" onClick={() => { setNoteFor(t); setNoteText(t.note || ''); }}
                                       style={{ border: `1px solid ${t.note ? 'var(--gold)' : 'var(--border2)'}`, background: t.note ? 'color-mix(in srgb, var(--gold) 14%, transparent)' : 'var(--surface)', color: t.note ? 'var(--gold)' : 'var(--muted)', borderRadius: 8, padding: '5px 7px', cursor: 'pointer', fontSize: 12 }}>📝</button>
                                     : null}
@@ -933,6 +953,43 @@ export default function BankStatement() {
                 حفظ
               </Btn>
             </div>
+          </div>
+        </Modal>
+      )}
+
+      {classifyFor && can('bank.reconcile') && (
+        <Modal title="تصنيف ومطابقة العملية البنكية" onClose={() => !classifySaving && setClassifyFor(null)} width={520}>
+          <div style={{ fontSize: 12, color: 'var(--muted)', marginBottom: 12, lineHeight: 1.7 }}>
+            {classifyFor.txn_date} · <b style={{ color: 'var(--accent)' }}>{classifyFor.reference || 'بلا مرجع'}</b> · {fmtMoney(Number(classifyFor.debit) || Number(classifyFor.credit))} ر.س
+          </div>
+          <label style={{ display: 'grid', gap: 6, marginBottom: 12, fontSize: 12, fontWeight: 800 }}>نوع العملية
+            <select value={classifyForm.classificationType} onChange={e => setClassifyForm(v => ({ ...v, classificationType: e.target.value }))} style={{ padding: 10, borderRadius: 9 }}>
+              <option value="customer_payment">تحصيل عميل</option><option value="vendor_payment">سداد مورد</option>
+              <option value="expense">مصروف</option><option value="transfer">تحويل بين حسابات</option>
+              <option value="bank_fee">رسوم بنكية</option><option value="tax">ضريبة</option><option value="other">أخرى</option>
+            </select>
+          </label>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 800 }}>نوع السجل المطابق (اختياري)
+              <select value={classifyForm.entityType} onChange={e => setClassifyForm(v => ({ ...v, entityType: e.target.value }))} style={{ padding: 10, borderRadius: 9 }}>
+                <option value="">لا يوجد تطابق بعد</option><option value="customer_payment">دفعة عميل</option>
+                <option value="vendor_payment">دفعة مورد</option><option value="expense">مصروف</option><option value="transfer">تحويل</option>
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 800 }}>رقم السجل/المرجع
+              <input value={classifyForm.entityId} onChange={e => setClassifyForm(v => ({ ...v, entityId: e.target.value }))} disabled={!classifyForm.entityType} placeholder="مثال: رقم دفعة زوهو" style={{ padding: 10, borderRadius: 9 }}/>
+            </label>
+          </div>
+          <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 800 }}>ملاحظة القرار
+            <textarea rows={2} value={classifyForm.note} onChange={e => setClassifyForm(v => ({ ...v, note: e.target.value }))} placeholder="سبب التصنيف أو المطابقة" style={{ padding: 10, borderRadius: 9, resize: 'vertical' }}/>
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, marginTop: 16 }}>
+            {classifyFor.classification_status && classifyFor.classification_status !== 'unclassified' ? <Btn variant="danger" size="sm" disabled={classifySaving} onClick={async () => {
+              setClassifySaving(true); try { await clearBankClassification(classifyFor.id); setSaved(prev => (prev || []).map(x => x.id === classifyFor.id ? { ...x, classification_status: 'unclassified', classification_type: null, matched_entity_type: null, matched_entity_id: null, matched_at: null, classification_note: null } : x)); setClassifyFor(null); toast('أزيل التصنيف', 'success'); } catch (e) { toast(e.message, 'error'); } setClassifySaving(false);
+            }}>إزالة التصنيف</Btn> : <span/>}
+            <div style={{ display: 'flex', gap: 8 }}><Btn variant="ghost" disabled={classifySaving} onClick={() => setClassifyFor(null)}>إلغاء</Btn><Btn variant="accent" disabled={classifySaving || (classifyForm.entityType && !classifyForm.entityId.trim())} onClick={async () => {
+              setClassifySaving(true); try { const row = await classifyBankTransaction(classifyFor.id, classifyForm); setSaved(prev => (prev || []).map(x => x.id === classifyFor.id ? { ...x, ...(row || {}) } : x)); setClassifyFor(null); toast(classifyForm.entityType ? 'حُفظ التصنيف والتطابق' : 'حُفظ التصنيف', 'success'); } catch (e) { toast(e.message, 'error'); } setClassifySaving(false);
+            }}>{classifySaving ? 'جارٍ الحفظ…' : 'حفظ القرار'}</Btn></div>
           </div>
         </Modal>
       )}

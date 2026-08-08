@@ -32,7 +32,7 @@ const SCOPE = [
   'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE', 'ZohoBooks.creditnotes.CREATE',
   'ZohoBooks.customerpayments.READ', 'ZohoBooks.customerpayments.UPDATE',
   'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
-  'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ',
+  'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ', 'ZohoBooks.purchaseorders.READ',
   'ZohoBooks.vendorpayments.READ', 'ZohoBooks.accountants.READ',
   // banking.CREATE is limited in application code to importing an approved
   // statement into an explicitly linked Zoho bank account. No categorization

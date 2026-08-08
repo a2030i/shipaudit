@@ -239,6 +239,8 @@ export const ZOHO_MIRRORS = {
   expenses:        { table: 'zoho_expenses',        label: '📋 المصاريف',        amount: 'total' },
   bills:           { table: 'zoho_bills',           label: '📄 فواتير الموردين', amount: 'total' },
   vendor_payments: { table: 'zoho_vendor_payments', label: '💸 دفعات الموردين',  amount: 'amount' },
+  purchase_orders: { table: 'zoho_purchase_orders', label: '🛒 أوامر الشراء', amount: 'total' },
+  items:           { table: 'zoho_items', label: '📦 الأصناف والخدمات', amount: 'rate', dateField: false, order: 'name' },
   journals:        { table: 'zoho_journals',        label: '📒 القيود اليومية',  amount: 'total' },
   bank_accounts:   { table: 'zoho_bank_accounts',   label: '🏦 البنوك والخزائن', amount: 'book_balance', dateField: false, order: 'account_name' },
   chart_accounts:  { table: 'zoho_chart_accounts',  label: '🗂️ دليل الحسابات',  amount: 'current_balance', dateField: false, order: 'account_name' },

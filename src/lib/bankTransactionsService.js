@@ -89,7 +89,7 @@ export async function loadBankTransactions({ limit = 5000, bank = null } = {}) {
   while (true) {
     let q = supabase
       .from(TABLE)
-      .select('id, bank, txn_date, txn_at, reference, description, debit, credit, fees, tax, note, source_file, period_from, period_to')
+      .select('id, bank, txn_date, txn_at, reference, description, debit, credit, fees, tax, note, source_file, period_from, period_to, classification_status, classification_type, matched_entity_type, matched_entity_id, matched_at, classification_note, zoho_import_status, zoho_bank_account_id')
       .order('txn_date', { ascending: false })
       .order('id', { ascending: true })
       .range(from, from + PAGE - 1);
@@ -110,6 +110,33 @@ export async function setBankNote(id, note) {
     .from(TABLE).update({ note: (note ?? '').trim() || null }).eq('id', id).select('id');
   if (error) throw error;
   if (!data?.length) throw new Error('لم تُحفظ الملاحظة (تحقّق من الصلاحيات)');
+}
+
+// تصنيف ومطابقة حركة البنك في عملية ذرية داخل قاعدة البيانات. لا تنشئ هذه
+// الخطوة قيداً في زوهو؛ هي دفتر قرار واضح يسبق الاعتماد والترحيل.
+export async function classifyBankTransaction(id, {
+  classificationType,
+  entityType = null,
+  entityId = null,
+  note = null,
+} = {}) {
+  const { data, error } = await supabase.rpc('classify_bank_transaction', {
+    p_transaction_id: id,
+    p_classification_type: classificationType,
+    p_entity_type: entityType || null,
+    p_entity_id: entityId || null,
+    p_note: (note || '').trim() || null,
+  });
+  if (error) throw error;
+  return data;
+}
+
+export async function clearBankClassification(id) {
+  const { data, error } = await supabase.rpc('clear_bank_transaction_classification', {
+    p_transaction_id: id,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function deleteBankTransaction(id) {

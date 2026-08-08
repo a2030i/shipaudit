@@ -87,7 +87,7 @@ const financialKindAr = kind => ({
 const WORKSPACE_SECTIONS = [
   { id: 'overview', label: 'نظرة عامة', types: [] },
   { id: 'customers', label: 'العملاء والفواتير', types: ['invoices', 'payments'] },
-  { id: 'vendors', label: 'الموردون والمصروفات', types: ['bills', 'vendor_payments', 'expenses', 'vendor_credits'] },
+  { id: 'vendors', label: 'الموردون والمشتريات', types: ['bills', 'vendor_payments', 'purchase_orders', 'expenses', 'vendor_credits', 'items'] },
   { id: 'banks', label: 'البنوك والمطابقة', types: ['bank_accounts'] },
   { id: 'accounts', label: 'القيود والحسابات', types: ['journals', 'chart_accounts'] },
 ];
@@ -117,6 +117,14 @@ const COLS = {
   vendor_payments: [
     ['التاريخ', 'date'], ['المورد', 'vendor_name', 'main'], ['الطريقة', 'mode'],
     ['المرجع', 'reference_number', 'mono'], ['المبلغ', 'amount', 'money'],
+  ],
+  purchase_orders: [
+    ['التاريخ', 'date'], ['الرقم', 'purchaseorder_number', 'mono'], ['المورد', 'vendor_name', 'main'],
+    ['التسليم', 'delivery_date'], ['الحالة', 'status'], ['الإجمالي', 'total', 'money'],
+  ],
+  items: [
+    ['الصنف/الخدمة', 'name', 'main'], ['الرمز', 'sku', 'mono'], ['النوع', 'item_type'],
+    ['الحالة', 'status'], ['سعر البيع', 'rate', 'money'], ['تكلفة الشراء', 'purchase_rate', 'money'], ['الضريبة %', 'tax_percentage'],
   ],
   journals: [
     ['التاريخ', 'date'], ['القيد', 'entry_number', 'mono'], ['المرجع', 'reference_number', 'mono'],
@@ -311,7 +319,7 @@ export default function ZohoData({ isActive = true }) {
       const r = await syncZohoDocs();
       const parts = Object.entries(r.results || r).filter(([k]) => k !== 'ok')
         .map(([k, v]) => {
-          const mirrorKey = ({ customerpayments: 'payments', vendorpayments: 'vendor_payments', bankaccounts: 'bank_accounts', chartofaccounts: 'chart_accounts', vendorcredits: 'vendor_credits' })[k] || k;
+          const mirrorKey = ({ customerpayments: 'payments', vendorpayments: 'vendor_payments', purchaseorders: 'purchase_orders', bankaccounts: 'bank_accounts', chartofaccounts: 'chart_accounts', vendorcredits: 'vendor_credits' })[k] || k;
           return `${ZOHO_MIRRORS[mirrorKey]?.label?.replace(/^[^\s]+\s/, '') || k}: ${v}`;
         });
       toast(`مزامنة: ${parts.join(' · ')}`, 'success');

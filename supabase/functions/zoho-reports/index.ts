@@ -93,6 +93,13 @@ Deno.serve(async (req) => {
 
     const { token, apiDomain, orgId } = await accessToken(db);
     const auth_h = { Authorization: `Zoho-oauthtoken ${token}` };
+    const booksFetch = async (url: string, init: RequestInit = {}) => {
+      const response = await fetch(url, { ...init, headers: { ...auth_h, ...((init.headers || {}) as Record<string,string>) } });
+      await db.rpc('zoho_record_api_usage', {
+        p_org_id: orgId, p_api_calls: 1, p_rate_limited: response.status === 429 ? 1 : 0, p_budget: null,
+      });
+      return response;
+    };
 
     // ── استكشاف مرن (مدير فقط) — يغني عن نشرة جديدة لكل تجربة،
     //    ومحصور في نطاق زوهو (المسار يُلحق بـapiDomain).
@@ -105,7 +112,7 @@ Deno.serve(async (req) => {
         const p = String(raw).replace(/^\/+/, '');
         try {
           const sep = p.includes('?') ? '&' : '?';
-          const r = await fetch(`${apiDomain}/books/v3/${p}${sep}organization_id=${orgId}`, { headers: auth_h });
+          const r = await booksFetch(`${apiDomain}/books/v3/${p}${sep}organization_id=${orgId}`);
           const j = await r.json().catch(() => ({}));
           out[p] = { http: r.status, code: j.code ?? null, message: j.message ?? null,
                      keys: Object.keys(j), body: j.code === 0 ? j : undefined };
@@ -119,8 +126,12 @@ Deno.serve(async (req) => {
     // بلا وسائط = الربع الجاري؛ ويقبل quarter='YYYY-Qn' لإعادة بناء ربع بعينه.
     if (action === 'refresh_vat') {
       const now = new Date();
-      let qy = now.getUTCFullYear();
-      let qn = Math.floor(now.getUTCMonth() / 3) + 1;
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+      }).formatToParts(now);
+      const getPart = (type: string) => Number(parts.find(part => part.type === type)?.value || 0);
+      let qy = getPart('year');
+      let qn = Math.floor((getPart('month') - 1) / 3) + 1;
       const asked = String(body.quarter || '');
       const m = asked.match(/^(\d{4})-Q([1-4])$/);
       if (m) { qy = Number(m[1]); qn = Number(m[2]); }
@@ -134,7 +145,7 @@ Deno.serve(async (req) => {
         organization_id: orgId, from_date: qFrom, to_date: qTo,
         cash_based: 'false', filter_by: 'TransactionDate.CustomDate',
       });
-      const r = await fetch(`${apiDomain}/books/v3/reports/vatsummary?${qs}`, { headers: auth_h });
+      const r = await booksFetch(`${apiDomain}/books/v3/reports/vatsummary?${qs}`);
       const j = await r.json().catch(() => ({}));
       if (j.code !== 0) return json({ error: `zoho: ${j.message || 'vatsummary failed'}` }, 400);
       const s = j.vat_summary || {};
@@ -156,6 +167,9 @@ Deno.serve(async (req) => {
       };
       const { error } = await db.from('vat_snapshots').upsert(row);
       if (error) return json({ error: `save failed: ${error.message}` }, 500);
+      await db.from('zoho_financial_report_snapshots').insert({
+        report_key: 'vat_summary', period_from: qFrom, period_to: qTo, payload: j,
+      });
       return json({ ok: true, snapshot: row });
     }
 
@@ -181,7 +195,7 @@ Deno.serve(async (req) => {
       for (const p of paths) {
         const key = p.split('?')[0];
         try {
-          const r = await fetch(`${apiDomain}/books/v3/${p}`, { headers: auth_h });
+          const r = await booksFetch(`${apiDomain}/books/v3/${p}`);
           const j = await r.json().catch(() => ({}));
           out[key] = (j.code === 0)
             ? { ok: true, http: r.status, data: j }
@@ -199,9 +213,12 @@ Deno.serve(async (req) => {
         organization_id: orgId, from_date: from, to_date: to,
         cash_based: 'false', filter_by: 'TransactionDate.CustomDate',
       });
-      const r = await fetch(`${apiDomain}/books/v3/reports/profitandloss?${qs}`, { headers: auth_h });
+      const r = await booksFetch(`${apiDomain}/books/v3/reports/profitandloss?${qs}`);
       const j = await r.json();
       if (j.code !== 0) return json({ error: `zoho: ${j.message || JSON.stringify(j)}`, code: j.code }, 400);
+      await db.from('zoho_financial_report_snapshots').insert({
+        report_key: 'profit_and_loss', period_from: from, period_to: to, payload: j,
+      });
       return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j });
     }
 
@@ -217,9 +234,12 @@ Deno.serve(async (req) => {
       if (!endpoint) return json({ error: 'unsupported_report' }, 400);
       const qs = new URLSearchParams({ organization_id: orgId, from_date: from, to_date: to,
         cash_based: 'false', filter_by: 'TransactionDate.CustomDate' });
-      const r = await fetch(`${apiDomain}/books/v3/reports/${endpoint}?${qs}`, { headers: auth_h });
+      const r = await booksFetch(`${apiDomain}/books/v3/reports/${endpoint}?${qs}`);
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.code !== 0) return json({ error: `zoho: ${j.message || r.status}`, code: j.code }, 400);
+      await db.from('zoho_financial_report_snapshots').insert({
+        report_key: report, period_from: from, period_to: to, payload: j,
+      });
       return json({ ok: true, report, from, to, data: j });
     }
 

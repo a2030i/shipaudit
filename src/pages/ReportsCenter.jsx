@@ -6,13 +6,13 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import * as XLSX from 'xlsx';
-import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt } from 'lucide-react';
+import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt, Activity } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Select, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { persistAndDownloadExport, loadExportHistory, downloadExportFile } from '../lib/internalExportsService.js';
-import { quarters } from '../lib/zohoReportsService.js';
+import { quarters, loadZohoFinancialHealth } from '../lib/zohoReportsService.js';
 
 // أرباع جاهزة للإقرار الضريبي (ربعي في السعودية للأغلب)
 const QUARTERS = quarters(8);
@@ -33,6 +33,15 @@ const KIND_LABEL = {
   balance_sheet: 'الميزانية العمومية', cash_flow: 'التدفق النقدي',
   trial_balance: 'ميزان المراجعة', general_ledger: 'دفتر الأستاذ العام',
 };
+
+function HealthMetric({ label, value, sub, tone = 'normal' }) {
+  const color = tone === 'warn' ? 'var(--gold-ink)' : tone === 'ok' ? 'var(--green)' : 'var(--text)';
+  return <div style={{ padding: 14, border: '1px solid var(--border2)', borderRadius: 13, background: 'var(--surface)', minWidth: 0 }}>
+    <div style={{ color: 'var(--muted)', fontSize: 11.5, fontWeight: 800 }}>{label}</div>
+    <div style={{ color, fontSize: 20, fontWeight: 900, marginTop: 6, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+    <div style={{ color: 'var(--text2)', fontSize: 10.5, marginTop: 4, lineHeight: 1.6 }}>{sub}</div>
+  </div>;
+}
 
 export default function ReportsCenter({ isActive = true }) {
   const { user, can } = useAuth();
@@ -57,6 +66,7 @@ export default function ReportsCenter({ isActive = true }) {
   const [pPnlFrom, setPPnlFrom] = useState('');
   const [pPnlTo, setPPnlTo]     = useState('');
   const [pFinReport, setPFinReport] = useState('balance_sheet');
+  const [financialHealth, setFinancialHealth] = useState(undefined);
 
   const loadHistory = useCallback(() => {
     loadExportHistory({ limit: 100 }).then(rows => { setHistory(rows); setHistoryPage(0); }).catch(() => setHistory([]));
@@ -83,7 +93,10 @@ export default function ReportsCenter({ isActive = true }) {
       }).catch(() => {});
     }
     if (canExport && history == null) loadHistory();
-  }, [isActive, monthlyData, carriers.length, history, loadHistory, canOperational, canBankReconciliation, canExport]);
+    if (canFinancial && financialHealth === undefined) {
+      loadZohoFinancialHealth().then(setFinancialHealth).catch(() => setFinancialHealth(false));
+    }
+  }, [isActive, monthlyData, carriers.length, history, loadHistory, canOperational, canBankReconciliation, canExport, canFinancial, financialHealth]);
 
   const run = async (id, fn) => {
     if (!canExport) {
@@ -175,6 +188,16 @@ export default function ReportsCenter({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<FileBarChart size={24}/>} title="مركز التقارير"
         subtitle="تقارير رسمية بمعاملات — كل تقرير يُخزَّن تلقائياً ويُعاد تحميله من السجل أدناه"/>
+
+      {canFinancial && financialHealth ? <section aria-label="ملخص الصحة المالية من زوهو" style={{ marginBottom: 22, padding: 18, border: '1px solid var(--border)', borderRadius: 18, background: 'var(--card)', boxShadow: 'var(--shadow-sm)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}><Activity size={18} color="var(--accent)"/><div style={{ display: 'grid', gap: 2 }}><b>الصورة المالية الحالية</b><small style={{ color: 'var(--muted)' }}>أرصدة وأعمار دين ومراقبة المصدر — من مرآة Zoho Books</small></div></div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(190px,1fr))', gap: 10 }}>
+          <HealthMetric label="ذمم العملاء" value={`${fmt(financialHealth.ar?.total)} ر.س`} sub={`${financialHealth.ar?.customers || 0} عميل · +90 يوم ${fmt(financialHealth.ar?.over_90)}`}/>
+          <HealthMetric label="ذمم الموردين" value={`${fmt(financialHealth.ap?.total)} ر.س`} sub={`${financialHealth.ap?.vendors || 0} مورد · +90 يوم ${fmt(financialHealth.ap?.over_90)}`}/>
+          <HealthMetric label="ضريبة القيمة المضافة" value={`${fmt(financialHealth.vat?.net_due)} ر.س`} sub={financialHealth.vat?.healthy ? `محدثة منذ ${financialHealth.vat?.age_minutes || 0} دقيقة` : 'التحديث متأخر — حدّث المصدر'} tone={financialHealth.vat?.healthy ? 'ok' : 'warn'}/>
+          <HealthMetric label="استهلاك Zoho API اليوم" value={Number(financialHealth.api?.calls || 0).toLocaleString('en-US')} sub={`تنبيه عند ${Number(financialHealth.api?.warning_calls || 0).toLocaleString('en-US')} · تقييد ${financialHealth.api?.rate_limited || 0}`} tone={financialHealth.api?.status === 'healthy' ? 'ok' : 'warn'}/>
+        </div>
+      </section> : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 26 }}>
         {canOperational ? <>

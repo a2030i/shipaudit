@@ -28,7 +28,10 @@ type Candidate = {
   customer_name: string | null;
   date: string | null;
   total: number | null;
+  status: string | null;
   einvoice_status: string | null;
+  candidate_source?: 'reported_pending' | 'recent_blank_safety_net';
+  preflight_action?: 'push' | 'mark_sent_then_push';
 };
 
 async function authorize(req: Request, service: ReturnType<typeof db>, action: string) {
@@ -104,17 +107,37 @@ Deno.serve(async (req) => {
   const saudiDate = new Intl.DateTimeFormat('en-CA', {
     timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
   }).format(new Date());
+  const yesterday = new Date(`${saudiDate}T12:00:00+03:00`);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const saudiYesterday = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit', day: '2-digit',
+  }).format(yesterday);
 
   // The mirror is synchronized throughout the day. A live GET immediately
   // before every write is the final authority and prevents duplicate pushes.
-  const { data, error } = await service.from('zoho_invoices')
-    .select('zoho_id, invoice_number, customer_name, date, total, einvoice_status')
+  const columns = 'zoho_id, invoice_number, customer_name, date, total, status, einvoice_status';
+  const { data: reportedData, error: reportedError } = await service.from('zoho_invoices')
+    .select(columns)
     .eq('einvoice_status', 'yet_to_be_pushed')
     .lte('date', saudiDate)
     .order('date', { ascending: true })
     .limit(maxInvoices);
-  if (error) return json({ error: `candidate_query_failed:${error.message}` }, 500);
-  const pending = (data || []) as Candidate[];
+  if (reportedError) return json({ error: `candidate_query_failed:${reportedError.message}` }, 500);
+  const remaining = Math.max(0, maxInvoices - (reportedData?.length || 0));
+  let blankData: Candidate[] = [];
+  if (remaining) {
+    const { data, error } = await service.from('zoho_invoices')
+      .select(columns)
+      .is('einvoice_status', null)
+      .gte('date', saudiYesterday).lte('date', saudiDate)
+      .order('date', { ascending: true }).limit(remaining);
+    if (error) return json({ error: `safety_net_query_failed:${error.message}` }, 500);
+    blankData = (data || []) as Candidate[];
+  }
+  const byId = new Map<string, Candidate>();
+  for (const row of (reportedData || []) as Candidate[]) byId.set(row.zoho_id, { ...row, candidate_source: 'reported_pending' });
+  for (const row of blankData) if (!byId.has(row.zoho_id)) byId.set(row.zoho_id, { ...row, candidate_source: 'recent_blank_safety_net' });
+  const pending = [...byId.values()];
   // Opening-balance documents are migration/accounting setup records, not new
   // sales invoices. Sending them to Fatoora would create a false tax event.
   // Unicode escapes keep this safeguard intact even when deployment tooling
@@ -150,9 +173,14 @@ Deno.serve(async (req) => {
         verificationFailed.push({ ...invoice, exclusion_reason: 'live_verification_failed' });
         continue;
       }
-      const status = liveStatus(checked.payload.invoice || {});
+      const liveInvoice = checked.payload.invoice || {};
+      const status = liveStatus(liveInvoice);
       if (status === 'yet_to_be_pushed') {
-        verified.push(invoice);
+        verified.push({ ...invoice, preflight_action: 'push' });
+        continue;
+      }
+      if (!status && String(liveInvoice.status || '').toLowerCase() === 'draft') {
+        verified.push({ ...invoice, preflight_action: 'mark_sent_then_push' });
         continue;
       }
       if (status) {
@@ -164,7 +192,7 @@ Deno.serve(async (req) => {
     }
     candidates = verified;
     return json({
-      ok: true, preview: true, saudiDate, count: candidates.length,
+      ok: true, preview: true, saudiDate, saudiYesterday, count: candidates.length,
       // Opening balances are an internal accounting safeguard. They are not
       // actionable ZATCA invoices, so do not surface them in the operator UI.
       excludedCount: verificationFailed.length,
@@ -176,7 +204,11 @@ Deno.serve(async (req) => {
   const { data: run } = await service.from('work_agent_runs').insert({
     agent_id: agent?.id, status: 'running', trigger_type: auth.cron ? 'schedule' : 'manual',
     checked_count: pending.length, approved_by: auth.userId,
-    details: { saudi_date: saudiDate, excluded_count: excluded.length },
+    details: {
+      saudi_date: saudiDate, excluded_count: excluded.length,
+      reported_pending_count: pending.filter(row => row.candidate_source === 'reported_pending').length,
+      recent_blank_count: pending.filter(row => row.candidate_source === 'recent_blank_safety_net').length,
+    },
   }).select('id').maybeSingle();
   if (!candidates.length) {
     if (run?.id) await service.from('work_agent_runs').update({ status:'succeeded', finished_at:new Date().toISOString(), summary:'لا توجد فواتير معلقة لزاتكا' }).eq('id',run.id);
@@ -239,7 +271,8 @@ Deno.serve(async (req) => {
         throw new Error(`invoice_check:${checked.payload.message || checked.response.status}`);
       }
 
-      const status = liveStatus(checked.payload.invoice || {});
+      let liveInvoice = checked.payload.invoice || {};
+      let status = liveStatus(liveInvoice);
       if (status && status !== 'yet_to_be_pushed') {
         await service.from('zoho_write_operations').update({
           status: 'succeeded', result_payload: { skipped: true, live_status: status },
@@ -248,6 +281,26 @@ Deno.serve(async (req) => {
         await service.from('zoho_invoices').update({ einvoice_status: status }).eq('zoho_id', invoice.zoho_id);
         results.push({ ...base, outcome: 'skipped', reason: 'live_status_changed', live_status: status });
         continue;
+      }
+
+      // Drafts created during the day must not wait for a human at 23:45.
+      // Convert through Zoho's official status endpoint, then verify the
+      // resulting e-invoice state before the ZATCA push.
+      if (!status && String(liveInvoice.status || '').toLowerCase() === 'draft') {
+        const sentUrl = `${access.apiDomain}/books/v3/invoices/${invoice.zoho_id}/status/sent?${query}`;
+        const sent = await zohoJson(sentUrl, { method: 'POST', headers });
+        if (!sent.response.ok || sent.payload.code !== 0) {
+          throw new Error(`mark_sent_failed:${sent.payload.message || sent.response.status}`);
+        }
+        const rechecked = await zohoJson(checkUrl, { headers });
+        if (!rechecked.response.ok || rechecked.payload.code !== 0) {
+          throw new Error(`invoice_recheck:${rechecked.payload.message || rechecked.response.status}`);
+        }
+        liveInvoice = rechecked.payload.invoice || {};
+        status = liveStatus(liveInvoice);
+      }
+      if (status !== 'yet_to_be_pushed') {
+        throw new Error(`not_ready_for_zatca:${status || 'live_status_unavailable'}`);
       }
 
       const pushUrl = `${access.apiDomain}/books/v3/invoices/${invoice.zoho_id}/einvoice/push?${query}`;
@@ -283,7 +336,12 @@ Deno.serve(async (req) => {
     status: failed ? (pushed ? 'partial' : 'failed') : 'succeeded', finished_at:new Date().toISOString(),
     action_count:pushed, failed_count:failed,
     summary:`أرسل ${pushed} فاتورة إلى زاتكا${failed ? ` · فشل ${failed}` : ''}`,
-    details:{ saudi_date:saudiDate, candidates:candidates.length, pushed, skipped, failed, excluded_count:excluded.length },
+    details:{
+      saudi_date:saudiDate, candidates:candidates.length, pushed, skipped, failed,
+      excluded_count:excluded.length,
+      reported_pending_count:pending.filter(row=>row.candidate_source==='reported_pending').length,
+      recent_blank_count:pending.filter(row=>row.candidate_source==='recent_blank_safety_net').length,
+    },
   }).eq('id',run.id);
   if (agent?.id) await service.from('work_agents').update({ last_run_at:new Date().toISOString() }).eq('id',agent.id);
   console.log('zatca-auto-push completed', { saudiDate, candidates: candidates.length, pushed, skipped, failed });

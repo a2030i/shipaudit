@@ -68,6 +68,13 @@ const hasOpeningBalanceField = (payload: unknown): boolean => {
   return Object.values(row).some(hasOpeningBalanceField);
 };
 
+const invoiceEStatus = (it: Record<string, unknown>) => {
+  const details = it.einvoice_details && typeof it.einvoice_details === 'object'
+    ? it.einvoice_details as Record<string, unknown> : {};
+  const value = details.status || it.einvoice_status || it.e_invoice_status;
+  return value == null || String(value).trim() === '' ? null : String(value).trim().toLowerCase();
+};
+
 const mapInvoice = (it: Record<string, unknown>, now: string) => {
   const modified = it.last_modified_time
     ? new Date(it.last_modified_time as string).toISOString() : null;
@@ -84,7 +91,10 @@ const mapInvoice = (it: Record<string, unknown>, now: string) => {
     status: it.status || null,
     last_modified: modified,
     synced_at: now,
-    einvoice_status: (it.einvoice_status as string) || null,
+    // The list endpoint often omits this field while the detail endpoint and
+    // webhook contain it.  A missing value is merged with the stored status
+    // before upsert; it must never erase a known ZATCA state.
+    einvoice_status: invoiceEStatus(it),
   };
 };
 
@@ -92,6 +102,29 @@ const svc = () => createClient(
   Deno.env.get('SUPABASE_URL')!,
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
+
+async function preserveInvoiceStatuses(
+  db: ReturnType<typeof svc>,
+  mapped: Record<string, unknown>[],
+) {
+  const missing = mapped.filter(row => row.zoho_id && !row.einvoice_status);
+  if (!missing.length) return mapped;
+  const ids = missing.map(row => String(row.zoho_id));
+  const existing = new Map<string, string>();
+  for (let start = 0; start < ids.length; start += 180) {
+    const { data, error } = await db.from('zoho_invoices')
+      .select('zoho_id,einvoice_status').in('zoho_id', ids.slice(start, start + 180));
+    if (error) throw new Error(`invoice status read: ${error.message}`);
+    for (const row of data || []) {
+      if (row.einvoice_status) existing.set(String(row.zoho_id), String(row.einvoice_status));
+    }
+  }
+  for (const row of missing) {
+    const status = existing.get(String(row.zoho_id));
+    if (status) row.einvoice_status = status;
+  }
+  return mapped;
+}
 
 async function requireUser(req: Request, db: ReturnType<typeof svc>) {
   const authHeader = req.headers.get('Authorization') || '';
@@ -558,9 +591,9 @@ Deno.serve(async (req) => {
         params?: Record<string, string>;
         requiredScope?: string; optionalScope?: boolean;
         map: (it: Record<string, unknown>, lmIso: string | null, now: string) => Record<string, unknown> }[] = [
-        { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices',
+        { ent: 'invoices', listKey: 'invoices', table: 'zoho_invoices', reconcileDeletes: true,
           map: (it, _lm, now) => mapInvoice(it, now) },
-        { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', map: (it, lm, now) => ({
+        { ent: 'customerpayments', listKey: 'customerpayments', table: 'zoho_payments', reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.payment_id, customer_id: it.customer_id || null,
           customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
@@ -572,32 +605,32 @@ Deno.serve(async (req) => {
           date: it.date || null, total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
         { ent: 'expenses', listKey: 'expenses', table: 'zoho_expenses', sortColumn: 'date', noDelta: true,
-          minIntervalMinutes: 360,
+          minIntervalMinutes: 360, reconcileDeletes: true,
           map: (it, lm, now) => ({
           zoho_id: it.expense_id, date: it.date || null,
           account_name: it.account_name || null, vendor_name: it.vendor_name || null,
           total: Number(it.total) || 0, status: it.status || null,
           description: (it.description as string) || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
-        { ent: 'bills', listKey: 'bills', table: 'zoho_bills', map: (it, lm, now) => ({
+        { ent: 'bills', listKey: 'bills', table: 'zoho_bills', reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.bill_id, bill_number: it.bill_number || null,
           vendor_id: it.vendor_id || null, vendor_name: it.vendor_name || null,
           date: it.date || null, due_date: it.due_date || null,
           total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
-        { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', map: (it, lm, now) => ({
+        { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.payment_id, vendor_id: it.vendor_id || null,
           vendor_name: it.vendor_name || null, date: it.date || null,
           amount: Number(it.amount) || 0, mode: it.payment_mode || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
-        { ent: 'journals', listKey: 'journals', table: 'zoho_journals', map: (it, lm, now) => ({
+        { ent: 'journals', listKey: 'journals', table: 'zoho_journals', reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.journal_id, entry_number: (it.entry_number as string) || null,
           reference_number: (it.reference_number as string) || null,
           date: it.journal_date || it.date || null,
           notes: (it.notes as string) || null, total: Number(it.total) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
         { ent: 'contacts', listKey: 'contacts', table: 'zoho_contacts', sortColumn: 'contact_name', noDelta: true,
-          minIntervalMinutes: 120,
+          minIntervalMinutes: 120, reconcileDeletes: true,
           map: (it, lm, now) => ({
           zoho_id: it.contact_id, contact_name: (it.contact_name as string) || null,
           contact_type: (it.contact_type as string) || null,
@@ -650,6 +683,36 @@ Deno.serve(async (req) => {
             balance: Number(it.balance) || 0, status: it.status || null,
             reference_number: it.reference_number || null, last_modified: lm, synced_at: now,
           }) },
+        { ent: 'purchaseorders', listKey: 'purchaseorders', table: 'zoho_purchase_orders',
+          sortColumn: 'date', noDelta: true, minIntervalMinutes: 360,
+          reconcileDeletes: true, financial: true, capability: 'purchase_orders_read',
+          requiredScope: 'ZohoBooks.purchaseorders.READ', optionalScope: true,
+          map: (it, lm, now) => ({
+            zoho_id: it.purchaseorder_id,
+            purchaseorder_number: it.purchaseorder_number || null,
+            vendor_id: it.vendor_id || null, vendor_name: it.vendor_name || null,
+            date: it.date || null, delivery_date: it.delivery_date || null,
+            total: Number(it.total) || 0, status: it.status || null,
+            currency_code: it.currency_code || null,
+            exchange_rate: it.exchange_rate == null ? null : Number(it.exchange_rate) || 0,
+            reference_number: it.reference_number || null,
+            last_modified: lm, synced_at: now,
+          }) },
+        { ent: 'items', listKey: 'items', table: 'zoho_items', omitSort: true,
+          noDelta: true, minIntervalMinutes: 720, reconcileDeletes: true,
+          financial: true, capability: 'items_read',
+          requiredScope: 'ZohoBooks.settings.READ', optionalScope: true,
+          map: (it, lm, now) => ({
+            zoho_id: it.item_id, name: it.name || it.item_name || it.item_id,
+            sku: it.sku || null, item_type: it.item_type || it.product_type || null,
+            status: it.status || (it.is_active === false ? 'inactive' : 'active'),
+            rate: it.rate == null ? null : Number(it.rate) || 0,
+            purchase_rate: it.purchase_rate == null ? null : Number(it.purchase_rate) || 0,
+            tax_id: it.tax_id || null, tax_name: it.tax_name || null,
+            tax_percentage: it.tax_percentage == null ? null : Number(it.tax_percentage) || 0,
+            account_id: it.account_id || null, purchase_account_id: it.purchase_account_id || null,
+            raw: it, last_modified: lm, synced_at: now,
+          }) },
       ];
       for (const cfg of ENTITIES.filter(cfg => !financialOnly || cfg.financial)) {
         try {
@@ -697,6 +760,7 @@ Deno.serve(async (req) => {
               if (row.zoho_id) mapped.push(row);
             }
             if (mapped.length) {
+              if (cfg.table === 'zoho_invoices') await preserveInvoiceStatuses(db, mapped);
               const { error } = await db.from(cfg.table).upsert(mapped);
               if (error) { entErr = `save: ${error.message}`; break; }
               saved += mapped.length;
@@ -727,9 +791,23 @@ Deno.serve(async (req) => {
             }
             continue;
           }
-          if (cfg.reconcileDeletes && !more) {
+          // Reconcile only after a complete full scan.  A delta page contains
+          // only changed records, so treating older mirror rows as deleted
+          // would be destructive.  Preserve a snapshot before hard deletion.
+          if (cfg.reconcileDeletes && !more && since === null) {
+            const { data: stale, error: staleError } = await db.from(cfg.table)
+              .select('*').lt('synced_at', runStart).limit(5000);
+            if (staleError) throw new Error(`reconcile read: ${staleError.message}`);
+            if (stale?.length) {
+              const tombstones = stale.map(row => ({
+                entity: cfg.ent, zoho_id: String(row.zoho_id), snapshot: row, sync_run_id: run.id,
+              }));
+              const { error: tombstoneError } = await db.from('zoho_mirror_tombstones').insert(tombstones);
+              if (tombstoneError) throw new Error(`reconcile audit: ${tombstoneError.message}`);
+            }
             const { error: deleteError } = await db.from(cfg.table).delete().lt('synced_at', runStart);
             if (deleteError) throw new Error(`reconcile deletes: ${deleteError.message}`);
+            if (stale?.length) results[`${cfg.ent}_deleted`] = stale.length;
           }
           const { error: stateWriteError } = await db.from('zoho_sync_state').upsert({
             entity: cfg.ent, last_sync: new Date().toISOString(), last_count: saved,
@@ -768,6 +846,73 @@ Deno.serve(async (req) => {
       // لا نجلب تفاصيل كل العملاء: نراجع فقط من لديهم فرق موجب بين رصيد جهة
       // الاتصال ومجموع الفواتير المفتوحة. الرصيد الافتتاحي الحقيقي سيبقى كما هو،
       // والمسدد سيهبط إلى الرصيد التفصيلي الفعلي.
+      // Incremental detail enrichment. List endpoints are kept light; a bounded
+      // queue adds line items, taxes, linked bills/POs and account identifiers
+      // without exhausting the daily Zoho quota.
+      const DETAIL_QUEUES = [
+        { table: 'zoho_bills', ent: 'bills', key: 'bill', limit: 25 },
+        { table: 'zoho_vendor_payments', ent: 'vendorpayments', key: 'vendorpayment', limit: 20 },
+        { table: 'zoho_expenses', ent: 'expenses', key: 'expense', limit: 5 },
+        { table: 'zoho_journals', ent: 'journals', key: 'journal', limit: 5 },
+        { table: 'zoho_purchase_orders', ent: 'purchaseorders', key: 'purchaseorder', limit: 5 },
+      ];
+      for (const queue of DETAIL_QUEUES) {
+        try {
+          const { data: pendingDetails, error: pendingDetailsError } = await db.from(queue.table)
+            .select('zoho_id').is('detail_synced_at', null).limit(queue.limit);
+          if (pendingDetailsError) throw pendingDetailsError;
+          let enriched = 0;
+          for (const pending of pendingDetails || []) {
+            const qs = new URLSearchParams({ organization_id: orgId });
+            const { response, payload } = await fetchZohoJson({
+              url: `${apiDomain}/books/v3/${queue.ent}/${pending.zoho_id}?${qs}`,
+              token, stats,
+            });
+            if (!response.ok || (payload as Record<string, unknown>).code !== 0) continue;
+            const detail = (payload as Record<string, any>)[queue.key] || {};
+            const checkedAt = new Date().toISOString();
+            let detailPatch: Record<string, unknown> = { raw_detail: detail, detail_synced_at: checkedAt };
+            if (queue.table === 'zoho_bills') detailPatch = {
+              ...detailPatch, vendor_id: detail.vendor_id || null,
+              sub_total: Number(detail.sub_total) || 0, tax_total: Number(detail.tax_total) || 0,
+              currency_code: detail.currency_code || null,
+              exchange_rate: detail.exchange_rate == null ? null : Number(detail.exchange_rate) || 0,
+              purchaseorder_ids: detail.purchaseorders || detail.purchaseorder_ids || [],
+              line_items: detail.line_items || [], taxes: detail.taxes || [],
+            };
+            if (queue.table === 'zoho_vendor_payments') detailPatch = {
+              ...detailPatch, vendor_id: detail.vendor_id || null, bills: detail.bills || [],
+              paid_through_account_id: detail.paid_through_account_id || null,
+              paid_through_account_name: detail.paid_through_account_name || null,
+              currency_code: detail.currency_code || null,
+              exchange_rate: detail.exchange_rate == null ? null : Number(detail.exchange_rate) || 0,
+              unused_amount: Number(detail.unused_amount) || 0,
+            };
+            if (queue.table === 'zoho_expenses') detailPatch = {
+              ...detailPatch, vendor_id: detail.vendor_id || null,
+              currency_code: detail.currency_code || null,
+              exchange_rate: detail.exchange_rate == null ? null : Number(detail.exchange_rate) || 0,
+              tax_total: Number(detail.tax_total) || 0,
+              paid_through_account_id: detail.paid_through_account_id || null,
+              paid_through_account_name: detail.paid_through_account_name || null,
+              line_items: detail.line_items || [],
+            };
+            if (queue.table === 'zoho_journals') detailPatch = {
+              ...detailPatch, line_items: detail.line_items || [],
+            };
+            if (queue.table === 'zoho_purchase_orders') detailPatch = {
+              ...detailPatch, vendor_id: detail.vendor_id || null, line_items: detail.line_items || [],
+            };
+            const { error: detailSaveError } = await db.from(queue.table)
+              .update(detailPatch).eq('zoho_id', pending.zoho_id);
+            if (!detailSaveError) enriched++;
+          }
+          results[`${queue.ent}_details`] = enriched;
+        } catch (detailError) {
+          results[`${queue.ent}_details`] = `detail error: ${String((detailError as Error).message || detailError)}`;
+        }
+      }
+
       if (!financialOnly) try {
         // فرق الرصيد قد يكون افتتاحياً حقيقياً أو فاتورة سقطت من المزامنة.
         // لا نحسم النوع بالحساب. نجلب بطاقة العميل الصريحة ثم كل فواتيره
@@ -864,6 +1009,7 @@ Deno.serve(async (req) => {
               const now = new Date().toISOString();
               const mapped = invoices.filter(invoice => invoice.invoice_id).map(invoice => mapInvoice(invoice, now));
               if (mapped.length) {
+                await preserveInvoiceStatuses(db, mapped);
                 const { error: invoiceUpsertError } = await db.from('zoho_invoices').upsert(mapped);
                 if (invoiceUpsertError) { invoiceFetchFailed = true; break; }
                 repairedInvoices += mapped.length;

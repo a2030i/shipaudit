@@ -254,13 +254,22 @@ export async function loadCurrentVat() {
   const r = Array.isArray(data) ? data[0] : data;
   if (!r) return null;
   const n = (v) => Number(v) || 0;
+  const ageMinutes = r.fetched_at ? Math.max(0, Math.floor((Date.now() - new Date(r.fetched_at).getTime()) / 60000)) : null;
   return {
     quarter: r.quarter, from: r.period_from, to: r.period_to,
     outputTax: n(r.output_tax), inputTax: n(r.input_tax), netDue: n(r.net_due),
     sales: n(r.output_amount), isClosed: !!r.is_closed,
     fetchedAt: r.fetched_at, daysLeft: Number(r.days_left) || 0,
     prevNetDue: r.prev_net_due == null ? null : n(r.prev_net_due),
+    ageMinutes,
+    isStale: ageMinutes == null || ageMinutes > 90,
   };
+}
+
+export async function loadZohoFinancialHealth() {
+  const { data, error } = await supabase.rpc('zoho_financial_health_summary');
+  if (error) throw error;
+  return data || null;
 }
 
 // تحديث فوري بضغطة (لا ينتظر الكرون) — للمدير/صاحب صلاحية الوضع المالي.

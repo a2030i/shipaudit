@@ -18,9 +18,9 @@ test('integration health requires a configured campaign lead recipient', () => {
   assert.match(migration, /lead_recipients\s*>\s*0\s+and\s+lead_failed\s*=\s*0/);
 });
 
-test('integration agent and UI expose lead intake as a seventh check', () => {
+test('integration agent and UI expose lead intake within the expanded nine checks', () => {
   assert.match(worker, /'lead_intake'/);
-  assert.match(worker, /الفحوص السبعة سليمة/);
+  assert.match(worker, /الفحوص التسعة سليمة/);
   assert.match(page, /استقبال عملاء الحملات/);
   assert.match(page, /configured_recipients/);
 });
