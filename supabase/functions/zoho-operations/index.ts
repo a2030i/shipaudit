@@ -105,21 +105,44 @@ async function lastImportedBankAnchor(access: { token: string; apiDomain: string
   };
 }
 
-async function latestZohoBankTransactionAnchor(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
-  const url = `${access.apiDomain}/books/v3/banktransactions?organization_id=${encodeURIComponent(access.orgId)}&account_id=${encodeURIComponent(accountId)}&page=1&per_page=200`;
-  const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
-  if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_bank_transactions:${String(z.body?.message || z.r.status)}`);
-  const rows = (Array.isArray(z.body?.banktransactions) ? z.body.banktransactions : [])
-    .filter((row: any) => !row.account_id || String(row.account_id) === accountId)
-    .sort((a: any, b: any) => String(a.date || a.transaction_date || '').localeCompare(String(b.date || b.transaction_date || ''))
-      || String(a.transaction_id || a.bank_transaction_id || '').localeCompare(String(b.transaction_id || b.bank_transaction_id || '')));
+async function liveZohoBankTransactionSnapshot(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
+  const collected: any[] = [];
+  let truncated = false;
+  for (let page = 1; page <= 10; page += 1) {
+    const params = new URLSearchParams({
+      organization_id: access.orgId,
+      account_id: accountId,
+      filter_by: 'Status.All',
+      sort_column: 'date',
+      page: String(page),
+      per_page: '200',
+    });
+    const url = `${access.apiDomain}/books/v3/banktransactions?${params.toString()}`;
+    const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+    if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_bank_transactions:${String(z.body?.message || z.r.status)}`);
+    const rows = Array.isArray(z.body?.banktransactions) ? z.body.banktransactions : [];
+    collected.push(...rows);
+    const hasMore = Boolean(z.body?.page_context?.has_more_page);
+    if (!hasMore || !rows.length) break;
+    if (page === 10) truncated = true;
+  }
+  if (truncated) throw new Error('zoho_bank_transactions_incomplete');
+  const byId = new Map<string, any>();
+  collected.filter((row: any) => !row.account_id || String(row.account_id) === accountId)
+    .forEach((row: any) => {
+      const id = String(row.transaction_id || row.bank_transaction_id || '');
+      if (id) byId.set(id, row);
+    });
+  const rows = [...byId.values()].sort((a: any, b: any) =>
+    String(a.date || a.transaction_date || '').localeCompare(String(b.date || b.transaction_date || ''))
+    || String(a.transaction_id || a.bank_transaction_id || '').localeCompare(String(b.transaction_id || b.bank_transaction_id || '')));
   const last = rows.at(-1);
   if (!last) return null;
-  const reference = String(last.reference_number || last.reference || '');
-  const transactionId = String(last.transaction_id || last.bank_transaction_id || '');
   return {
-    date: String(last.date || last.transaction_date || '').slice(0, 10), reference, transactionId,
-    statementId: '', source: 'latest_bank_transaction',
+    date: String(last.date || last.transaction_date || '').slice(0, 10),
+    reference: String(last.reference_number || last.reference || ''),
+    transactionId: String(last.transaction_id || last.bank_transaction_id || ''),
+    statementId: '', source: 'zoho_live_transactions', count: rows.length,
     knownReferences: new Set(rows.map((t: any) => normalizedRef(t.reference_number || t.reference)).filter(Boolean)),
     knownTransactionIds: new Set(rows.map((t: any) => String(t.transaction_id || t.bank_transaction_id || '')).filter(Boolean)),
   };
@@ -355,14 +378,26 @@ Deno.serve(async req => {
       const access = await accessToken(db);
       const { data: manualAnchor } = await db.from('zoho_bank_import_anchors')
         .select('reference_number,anchor_date,local_transaction_id').eq('zoho_account_id', accountId).maybeSingle();
-      const importedStatementAnchor = manualAnchor ? null : await lastImportedBankAnchor(access, accountId);
-      const anchor = manualAnchor ? {
+      const [liveAnchor, importedStatementAnchor] = await Promise.all([
+        liveZohoBankTransactionSnapshot(access, accountId),
+        lastImportedBankAnchor(access, accountId).catch(() => null),
+      ]);
+      const manualFallback = manualAnchor ? {
         date: String(manualAnchor.anchor_date || '').slice(0, 10),
         reference: String(manualAnchor.reference_number || ''),
         transactionId: '', statementId: '', source: 'manual_reference',
         knownReferences: new Set([normalizedRef(manualAnchor.reference_number)].filter(Boolean)),
         knownTransactionIds: new Set<string>(),
-      } : importedStatementAnchor || await latestZohoBankTransactionAnchor(access, accountId);
+      } : null;
+      const liveCandidates: any[] = [liveAnchor, importedStatementAnchor].filter(Boolean);
+      const anchor = liveCandidates.sort((a, b) => a.date.localeCompare(b.date)
+        || a.transactionId.localeCompare(b.transactionId)).at(-1) || manualFallback;
+      const zohoKnownReferences = new Set<string>();
+      const zohoKnownTransactionIds = new Set<string>();
+      for (const candidate of liveCandidates) {
+        candidate.knownReferences.forEach(reference => zohoKnownReferences.add(reference));
+        candidate.knownTransactionIds.forEach(transactionId => zohoKnownTransactionIds.add(transactionId));
+      }
       // لا نعرض كامل التاريخ عند غياب مرساة زوهو؛ البداية الأولى تُنشأ في زوهو
       // أو بعد ظهور أول عملية بنكية هناك، ثم تعمل المعاينة من المرجع التالي.
       let afterAnchor = anchor ? ordered : [];
@@ -382,7 +417,10 @@ Deno.serve(async req => {
               && !anchor.knownReferences.has(normalizedRef(t.reference)));
         }
       }
-      const fresh = afterAnchor.filter((t: any) => !imported.has(String(t.id)) && (Number(t.debit) > 0 || Number(t.credit) > 0));
+      const fresh = afterAnchor.filter((t: any) => !imported.has(String(t.id)))
+        .filter((t: any) => !zohoKnownTransactionIds.has(String(t.dedup_key || ''))
+          && !zohoKnownReferences.has(normalizedRef(t.reference)))
+        .filter((t: any) => Number(t.debit) > 0 || Number(t.credit) > 0);
       const summary = { account_id: accountId, bank: link.internal_bank_name, count: fresh.length,
         deposits: fresh.reduce((s: number, t: any) => s + Number(t.credit || 0), 0),
         withdrawals: fresh.reduce((s: number, t: any) => s + Number(t.debit || 0), 0),
@@ -391,6 +429,8 @@ Deno.serve(async req => {
         zoho_anchor: anchor ? { date: anchor.date, reference: anchor.reference,
           transaction_id: anchor.transactionId, statement_id: anchor.statementId,
           matched_locally: anchorMatchedLocally, source: anchor.source || 'last_imported_statement' } : null,
+        zoho_known_count: Math.max(zohoKnownReferences.size, zohoKnownTransactionIds.size),
+        manual_anchor_ignored: Boolean(manualAnchor && liveCandidates.length),
         anchor_required: !anchor,
         transactions: fresh.map((t: any) => ({ id: t.id, date: String(t.txn_at || t.txn_date || '').slice(0, 10),
           reference: t.reference, description: t.description, debit: Number(t.debit || 0), credit: Number(t.credit || 0) })) };

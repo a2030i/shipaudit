@@ -152,6 +152,23 @@ test('Zoho bank review is bank-scoped, read/write separated, and explicitly conf
   assert.match(page, /!isZohoPaymentGatewayAccount\(row\)/);
 });
 
+test('bank import preview uses complete live Zoho references before any manual fallback', async () => {
+  const [edge, page] = await Promise.all([
+    read('supabase/functions/zoho-operations/index.ts'),
+    read('src/pages/ZohoData.jsx'),
+  ]);
+  assert.match(edge, /liveZohoBankTransactionSnapshot/);
+  assert.match(edge, /filter_by:\s*'Status\.All'/);
+  assert.match(edge, /sort_column:\s*'date'/);
+  assert.match(edge, /zoho_bank_transactions_incomplete/);
+  assert.match(edge, /const \[liveAnchor, importedStatementAnchor\] = await Promise\.all/);
+  assert.match(edge, /\|\| manualFallback/);
+  assert.match(edge, /!zohoKnownReferences\.has\(normalizedRef\(t\.reference\)\)/);
+  assert.match(edge, /manual_anchor_ignored:\s*Boolean\(manualAnchor && liveCandidates\.length\)/);
+  assert.match(page, /آخر عملية موجودة فعليًا في Zoho/);
+  assert.match(page, /تم تجاهل نقطة البداية اليدوية القديمة/);
+});
+
 test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {
   const source = await read('supabase/functions/zoho-sync/index.ts');
   assert.match(source, /reused_recent_sync:\s*true/);

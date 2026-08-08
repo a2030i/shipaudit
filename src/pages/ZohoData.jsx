@@ -1127,6 +1127,7 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
 function BankImportModal({ state, onClose, onImport }) {
   if (!state) return null;
   const p = state.preview;
+  const liveAnchor = p?.zoho_anchor;
   return (
     <Modal open title={`استيراد كشف البنك — ${state.row.account_name || ''}`} onClose={onClose}>
       {state.busy && !p ? <div style={{ padding: 30, textAlign: 'center' }}><Spinner size={22}/></div> : <>
@@ -1137,6 +1138,21 @@ function BankImportModal({ state, onClose, onImport }) {
           <div style={{ padding: '9px 11px', borderRadius: 9, marginBottom: 12, color: 'var(--gold)',
             background: 'color-mix(in srgb, var(--gold) 8%, transparent)', fontSize: 11.5 }}>
             لم نجد عملية بنكية سابقة في زوهو لتحديد نقطة البداية. حفاظًا على سلامة البيانات لن يعرض النظام كامل السجل؛ أنشئ أو استورد أول كشف في زوهو ثم أعد المعاينة.
+          </div>
+        ) : null}
+        {liveAnchor ? (
+          <div style={{ padding: '11px 12px', borderRadius: 10, marginBottom: 12,
+            border: '1px solid color-mix(in srgb, var(--green) 32%, var(--border))',
+            background: 'color-mix(in srgb, var(--green) 7%, var(--surface))', fontSize: 12, lineHeight: 1.75 }}>
+            <b style={{ display: 'block', color: 'var(--green)', marginBottom: 3 }}>آخر عملية موجودة فعليًا في Zoho</b>
+            <span dir="ltr" style={{ fontFamily: 'var(--font-mono)', fontWeight: 800 }}>{liveAnchor.reference || liveAnchor.transaction_id || 'بلا مرجع'}</span>
+            <span style={{ color: 'var(--muted)' }}> · {liveAnchor.date || 'بلا تاريخ'}</span>
+            <span style={{ display: 'block', color: 'var(--muted)', marginTop: 3 }}>
+              ستظهر العمليات الأحدث غير الموجودة في Zoho فقط. فُحص واستُبعد حتى {p?.zoho_known_count || 0} مرجع/معرّف موجود.
+            </span>
+            {p?.manual_anchor_ignored ? <span style={{ display: 'block', color: 'var(--gold)', marginTop: 3 }}>
+              تم تجاهل نقطة البداية اليدوية القديمة لأن بيانات Zoho الحية أحدث منها.
+            </span> : null}
           </div>
         ) : null}
         {p?.count ? <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(120px,1fr))', gap: 8, marginBottom: 12 }}>
@@ -1159,7 +1175,7 @@ function BankImportModal({ state, onClose, onImport }) {
             })}</tbody>
           </table>
         </div> : null}
-        {!p?.count ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 800, fontSize: 14, padding: '26px 14px' }}>كل العمليات مرحّلة إلى زوهو ✓</div> : null}
+        {!p?.count && !p?.anchor_required ? <div style={{ textAlign: 'center', color: 'var(--green)', fontWeight: 800, fontSize: 14, padding: '26px 14px' }}>لا توجد عمليات محلية أحدث وغير موجودة في Zoho ✓</div> : null}
         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, flexWrap: 'wrap', marginTop: 14 }}>
           <Btn variant="ghost" onClick={onClose}>إلغاء</Btn>
           {p?.count ? <Btn variant="accent" disabled={state.busy} icon={state.busy ? <Spinner size={13}/> : null} onClick={onImport}>استيراد {p.count} عملية جديدة إلى زوهو</Btn> : null}
