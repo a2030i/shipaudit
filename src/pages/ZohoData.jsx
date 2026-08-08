@@ -16,6 +16,7 @@ import { ZOHO_MIRRORS, loadZohoMirror, syncZohoDocs, currentPnlPeriod,
   getZohoAuthUrl, downloadZohoDocument, fetchZohoDocument,
   markZohoInvoicesSent, pushZohoInvoicesToZatca, finalizeAndPushZohoInvoices,
   previewZohoBankImport, importZohoBankStatement,
+  listZohoUnreviewedBankTransactions, getZohoBankMatchCandidates, approveZohoBankMatch,
   loadZohoWebhookFailures, retryZohoWebhook } from '../lib/pnlService.js';
 import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
@@ -178,6 +179,7 @@ export default function ZohoData({ isActive = true }) {
   const [invoiceOperation, setInvoiceOperation] = useState(null);
   const [operationResult, setOperationResult] = useState(null);
   const [bankImport, setBankImport] = useState(null);
+  const [bankReview, setBankReview] = useState(null);
   const [webhookFailures, setWebhookFailures] = useState([]);
   const [retryingWebhook, setRetryingWebhook] = useState(null);
   const [mapTarget, setMapTarget] = useState(null);
@@ -388,6 +390,10 @@ export default function ZohoData({ isActive = true }) {
     const financialBanks = new Map((financial?.banks || []).map(bank => [String(bank.zoho_id), bank]));
     return localized.map(row => ({ ...row, ...(financialBanks.get(String(row.zoho_id)) || {}) }));
   }, [rows, type, financial]);
+  const zohoBankAccounts = useMemo(() => displayRows.filter(row => {
+    const accountType = String(row.account_type || row.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
+    return type === 'bank_accounts' && accountType === 'bank' && !isZohoTreasuryAccount(row);
+  }), [displayRows, type]);
 
   const filtered = useMemo(() => {
     if (!rows) return [];
@@ -523,6 +529,21 @@ export default function ZohoData({ isActive = true }) {
       setBankImport({ row, busy: false, preview });
     } catch (e) {
       setBankImport(null); toast(`تعذّرت معاينة كشف البنك: ${e.message}`, 'error');
+    }
+  };
+
+  const openBankReview = async (row) => {
+    if (!can('bank.view')) {
+      toast('لا تملك صلاحية عرض عمليات البنوك', 'error');
+      return;
+    }
+    setBankReview({ row, busy: true, data: null });
+    try {
+      const data = await listZohoUnreviewedBankTransactions(row.zoho_id);
+      setBankReview({ row, busy: false, data });
+    } catch (e) {
+      setBankReview(null);
+      toast(`تعذّر جلب عمليات البنك من زوهو: ${e.message}`, 'error');
     }
   };
 
@@ -734,6 +755,14 @@ export default function ZohoData({ isActive = true }) {
             📲 حملة لكل فاتورة ({unpaidInvCount})
           </Btn>
         )}
+        {type === 'bank_accounts' && can('bank.view') && zohoBankAccounts.length ? (
+          <Btn size="sm" variant="accent" icon={<Landmark size={13}/>} onClick={() => {
+            const firstPending = zohoBankAccounts.find(row => Number(row.uncategorized_count) > 0) || zohoBankAccounts[0];
+            openBankReview(firstPending);
+          }} title="عرض العمليات غير المراجعة حيًا من زوهو لكل بنك">
+            مراجعة عمليات جميع البنوك ({zohoBankAccounts.reduce((sum, row) => sum + Number(row.uncategorized_count || 0), 0)})
+          </Btn>
+        ) : null}
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>
           تصدير
         </Btn>
@@ -808,7 +837,8 @@ export default function ZohoData({ isActive = true }) {
                       </th>
                     );
                   })}{downloadableType ? <th style={{ padding: '10px 12px' }}>المستند</th> : null}
-                  {referenceType && can('zoho.configure') ? <th style={{ padding: '10px 12px' }}>الربط</th> : null}</tr>
+                  {referenceType && (can('zoho.configure') || (type === 'bank_accounts' && can('bank.view')))
+                    ? <th style={{ padding: '10px 12px' }}>الإجراءات</th> : null}</tr>
                 </thead>
                 <tbody>
                   {displayed.map(r => {
@@ -816,6 +846,7 @@ export default function ZohoData({ isActive = true }) {
                     const treasuryAccount = isZohoTreasuryAccount(r);
                     const derivedKind = financialDisplayKind(r);
                     const accountTypeKey = String(r.account_type || r.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
+                    const liveBankAccount = type === 'bank_accounts' && accountTypeKey === 'bank' && !treasuryAccount;
                     const linkableRow = (type === 'bank_accounts' && !['payment_gateway', 'clearing'].includes(derivedKind))
                       || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
                     const existingLink = referenceType
@@ -887,9 +918,9 @@ export default function ZohoData({ isActive = true }) {
                           </Btn>
                         </td>
                       ) : null}
-                      {referenceType && can('zoho.configure') ? (
-                        <td data-label="الربط" style={{ padding: '9px 12px' }}>
-                          {linkableRow ? <>
+                      {referenceType && (can('zoho.configure') || (liveBankAccount && can('bank.view'))) ? (
+                        <td data-label="الإجراءات" style={{ padding: '9px 12px' }}>
+                          {linkableRow && can('zoho.configure') ? <>
                             {linkDescription ? <div className="zoho-link-status"><Link2 size={12}/>{linkDescription}</div> : null}
                             <Btn size="sm" variant="ghost" icon={<Link2 size={13}/>} onClick={() => setMapTarget({
                               row: r,
@@ -901,11 +932,17 @@ export default function ZohoData({ isActive = true }) {
                                 فحص العمليات الجديدة
                               </Btn>
                             ) : null}
-                          </> : <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>
+                          </> : !liveBankAccount ? <span style={{ color: 'var(--muted2)', fontSize: 10.5 }}>
                             {derivedKind === 'payment_gateway' ? 'بوابة دفع — لا تُربط كبنك'
                               : derivedKind === 'clearing' ? 'حساب تسوية — لا يُربط كبنك'
                               : 'لا يحتاج ربطًا بنكيًا'}
-                          </span>}
+                          </span> : null}
+                          {liveBankAccount && can('bank.view') ? (
+                            <Btn size="sm" variant={Number(r.uncategorized_count) ? 'accent' : 'ghost'}
+                              icon={<Landmark size={13}/>} onClick={() => openBankReview(r)}>
+                              غير المراجعة ({Number(r.uncategorized_count || 0).toLocaleString('en-US')})
+                            </Btn>
+                          ) : null}
                         </td>
                       ) : null}
                     </tr>
@@ -954,9 +991,135 @@ export default function ZohoData({ isActive = true }) {
           toast(`استورد Zoho ${result.count || ids.length} عملية بنكية`, 'success');
         } catch (e) { setBankImport(s => ({ ...s, busy: false })); toast(`فشل الاستيراد: ${e.message}`, 'error'); }
       }}/>
+      <BankUnreviewedModal
+        state={bankReview}
+        accounts={zohoBankAccounts}
+        canMatch={can('zoho.bank_match')}
+        onClose={() => setBankReview(null)}
+        onSelect={openBankReview}
+        onMatched={async (row) => {
+          await loadFinancial();
+          await openBankReview(row);
+        }}
+      />
       <OperationResultModal result={operationResult} onClose={() => setOperationResult(null)}/>
     </div>
   );
+}
+
+function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onMatched }) {
+  const [q, setQ] = useState('');
+  const [direction, setDirection] = useState('');
+  const [match, setMatch] = useState(null);
+  useEffect(() => { setQ(''); setDirection(''); setMatch(null); }, [state?.row?.zoho_id]);
+  if (!state) return null;
+  const data = state.data;
+  const rows = (data?.transactions || []).filter(row => {
+    if (direction && row.direction !== direction) return false;
+    const needle = q.trim().toLowerCase();
+    return !needle || [row.reference, row.description, row.payee, row.date, row.amount]
+      .some(value => String(value ?? '').toLowerCase().includes(needle));
+  });
+  const findMatches = async (transaction) => {
+    setMatch({ source: transaction, busy: true, candidates: [], confirm: null });
+    try {
+      const result = await getZohoBankMatchCandidates(state.row.zoho_id, transaction.transaction_id);
+      setMatch({ source: transaction, busy: false, candidates: result.candidates || [], confirm: null });
+    } catch (e) {
+      setMatch(null); toast(`تعذّر البحث عن مطابقة: ${e.message}`, 'error');
+    }
+  };
+  const approve = async () => {
+    if (!match?.confirm) return;
+    setMatch(current => ({ ...current, busy: true }));
+    try {
+      await approveZohoBankMatch({
+        accountId: state.row.zoho_id,
+        transactionId: match.source.transaction_id,
+        matchTransactionId: match.confirm.transaction_id,
+        matchTransactionType: match.confirm.transaction_type,
+      });
+      toast('اعتمدت المطابقة في زوهو ✓', 'success');
+      setMatch(null);
+      await onMatched(state.row);
+    } catch (e) {
+      setMatch(current => ({ ...current, busy: false }));
+      toast(`تعذّر اعتماد المطابقة: ${e.message}`, 'error');
+    }
+  };
+  return <Modal open title="مراجعة عمليات البنوك في زوهو" onClose={onClose} width={900}>
+    <div style={{ display: 'grid', gap: 12 }}>
+      <div style={{ padding: 11, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
+        تعرض العمليات غير المراجعة داخل زوهو لكل بنك حقيقي. الاقتراح لا يغيّر شيئًا؛ الكتابة لا تتم إلا بعد اختيار المعاملة المقابلة ثم تأكيد المطابقة.
+      </div>
+      <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700 }}>
+        البنك
+        <select value={state.row.zoho_id} onChange={event => {
+          const row = accounts.find(account => String(account.zoho_id) === event.target.value);
+          if (row) onSelect(row);
+        }} style={{ padding: '9px 11px', borderRadius: 9 }}>
+          {accounts.map(account => <option key={account.zoho_id} value={account.zoho_id}>
+            {account.account_name} — {Number(account.uncategorized_count || 0).toLocaleString('en-US')} غير مراجعة
+          </option>)}
+        </select>
+      </label>
+      {state.busy && !data ? <div style={{ padding: 34, textAlign: 'center' }}><Spinner size={24}/></div> : <>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8 }}>
+          <MiniValue label="غير مراجعة حيًا" value={data?.count || 0}/>
+          <MiniValue label="إيداعات" value={`${fmt(data?.deposits || 0)} ر.س`}/>
+          <MiniValue label="سحوبات" value={`${fmt(data?.withdrawals || 0)} ر.س`}/>
+          <MiniValue label="آخر جلب" value={data?.fetched_at ? agoAr(data.fetched_at) : '—'}/>
+        </div>
+        {data && Number(data.account?.mirror_count || 0) !== Number(data.count || 0) ? (
+          <div style={{ color: 'var(--gold)', fontSize: 11.5 }}>
+            عدّاد آخر مزامنة: {Number(data.account?.mirror_count || 0)} · القراءة الحية الآن: {Number(data.count || 0)}. يعتمد القرار على القراءة الحية.
+          </div>
+        ) : null}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <input value={q} onChange={event => setQ(event.target.value)} placeholder="ابحث بالمرجع أو الوصف أو المستفيد…"
+            style={{ flex: 1, minWidth: 220, padding: '9px 11px', borderRadius: 9 }}/>
+          <select value={direction} onChange={event => setDirection(event.target.value)} style={{ padding: '9px 11px', borderRadius: 9 }}>
+            <option value="">إيداعات وسحوبات</option><option value="credit">إيداعات</option><option value="debit">سحوبات</option>
+          </select>
+        </div>
+        {rows.length ? <div className="m-flow" style={{ maxHeight: 390, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
+          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
+            <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th><th style={{ padding: 8 }}>الإجراء</th></tr></thead>
+            <tbody>{rows.map(transaction => <tr key={transaction.transaction_id} style={{ borderTop: '1px solid var(--border)' }}>
+              <td data-label="التاريخ" style={{ padding: 8, whiteSpace: 'nowrap' }}>{transaction.date || '—'}</td>
+              <td data-label="" style={{ padding: 8, minWidth: 0 }}>
+                <b dir="ltr" style={{ display: 'block', fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere' }}>{transaction.reference || 'بلا مرجع'}</b>
+                <span style={{ display: 'block', color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>{transaction.description || transaction.payee || 'عملية بنكية'}</span>
+              </td>
+              <td data-label="الاتجاه" style={{ padding: 8, color: transaction.direction === 'credit' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>{transaction.direction === 'credit' ? 'إيداع' : 'سحب'}</td>
+              <td data-label="المبلغ" style={{ padding: 8, fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(transaction.amount)} ر.س</td>
+              <td data-label="الإجراء" style={{ padding: 8 }}><Btn size="sm" variant="ghost" onClick={() => findMatches(transaction)}>البحث عن مطابقة</Btn></td>
+            </tr>)}</tbody>
+          </table>
+        </div> : <Empty icon="✓" title="لا توجد عمليات غير مراجعة" sub={q || direction ? 'لا توجد نتائج تطابق الفلتر' : 'كل عمليات هذا البنك مراجعة في زوهو'}/>}
+      </>}
+      {match ? <div style={{ border: '1px solid var(--border)', borderRadius: 11, padding: 12, background: 'var(--surface2)' }}>
+        <div style={{ fontWeight: 800, marginBottom: 8 }}>اقتراحات مطابقة العملية {match.source.reference || match.source.transaction_id}</div>
+        {match.busy && !match.confirm ? <div style={{ padding: 18, textAlign: 'center' }}><Spinner size={20}/></div>
+          : !match.candidates.length ? <div style={{ color: 'var(--gold)', fontSize: 12 }}>لم يجد زوهو معاملة محاسبية مقابلة. لا يوجد تصنيف تلقائي؛ راجع العملية يدويًا.</div>
+          : <div style={{ display: 'grid', gap: 7 }}>{match.candidates.map(candidate => <button type="button" key={`${candidate.transaction_type}:${candidate.transaction_id}`}
+              onClick={() => setMatch(current => ({ ...current, confirm: candidate }))}
+              style={{ textAlign: 'right', padding: 10, borderRadius: 9, border: `1px solid ${match.confirm?.transaction_id === candidate.transaction_id ? 'var(--accent)' : 'var(--border)'}`, background: 'var(--surface)', cursor: 'pointer' }}>
+              <b>{candidate.party || candidate.description || candidate.transaction_type}</b>
+              <span style={{ display: 'block', color: 'var(--muted)', fontSize: 11, marginTop: 3 }}>{candidate.date || 'بلا تاريخ'} · {candidate.reference || candidate.transaction_type} · {fmt(candidate.amount)} ر.س</span>
+            </button>)}</div>}
+        {match.confirm ? <div style={{ marginTop: 10, padding: 10, borderRadius: 9, border: '1px solid var(--gold)', color: 'var(--text)', fontSize: 12, lineHeight: 1.7 }}>
+          ستُربط عملية البنك بمبلغ <b>{fmt(match.source.amount)} ر.س</b> مع <b>{match.confirm.party || match.confirm.reference || match.confirm.transaction_type}</b> داخل زوهو. هذا يغيّر حالة المطابقة ولا ينشئ فاتورة.
+          <div style={{ display: 'flex', gap: 8, marginTop: 9, flexWrap: 'wrap' }}>
+            <Btn variant="ghost" onClick={() => setMatch(current => ({ ...current, confirm: null }))} disabled={match.busy}>تغيير الاختيار</Btn>
+            {canMatch ? <Btn variant="accent" onClick={approve} disabled={match.busy} icon={match.busy ? <Spinner size={13}/> : <ShieldCheck size={13}/>}>تأكيد المطابقة في زوهو</Btn>
+              : <span style={{ color: 'var(--gold)' }}>تحتاج صلاحية «اعتماد مطابقة عمليات البنك في زوهو».</span>}
+          </div>
+        </div> : null}
+      </div> : null}
+      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><Btn variant="ghost" onClick={onClose}>إغلاق</Btn></div>
+    </div>
+  </Modal>;
 }
 
 function BankImportModal({ state, onClose, onImport }) {

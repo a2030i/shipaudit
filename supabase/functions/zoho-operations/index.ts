@@ -150,6 +150,70 @@ async function finish(db: ReturnType<typeof svc>, key: string, status: 'succeede
     last_error: error || null, finished_at: new Date().toISOString() }).eq('idempotency_key', key);
 }
 
+const firstArray = (...values: unknown[]) => values.find(Array.isArray) as any[] | undefined;
+const bankTransactionId = (row: any) => String(row?.transaction_id || row?.imported_transaction_id
+  || row?.bank_transaction_id || row?.statement_transaction_id || row?.id || '');
+const bankTransactionAmount = (row: any) => Math.abs(Number(row?.amount ?? row?.total ?? row?.transaction_amount
+  ?? row?.debit ?? row?.credit ?? 0));
+const bankTransactionDirection = (row: any) => {
+  const value = String(row?.debit_or_credit || row?.transaction_type || row?.type || '').toLowerCase();
+  if (/credit|deposit|inflow|إيداع/.test(value) || Number(row?.credit) > 0) return 'credit';
+  if (/debit|withdraw|outflow|سحب/.test(value) || Number(row?.debit) > 0) return 'debit';
+  return Number(row?.amount) < 0 ? 'debit' : 'credit';
+};
+const normalizeUnreviewedBankTransaction = (row: any) => ({
+  transaction_id: bankTransactionId(row),
+  date: String(row?.date || row?.transaction_date || row?.value_date || '').slice(0, 10),
+  reference: String(row?.reference_number || row?.reference || row?.reference_no || ''),
+  description: String(row?.description || row?.narration || row?.details || row?.notes || ''),
+  payee: String(row?.payee || row?.payee_name || row?.customer_name || row?.vendor_name || ''),
+  amount: bankTransactionAmount(row),
+  direction: bankTransactionDirection(row),
+  status: String(row?.status || row?.transaction_status || 'unreviewed'),
+});
+const normalizeMatchCandidate = (row: any) => ({
+  transaction_id: bankTransactionId(row),
+  transaction_type: String(row?.transaction_type || row?.type || row?.entity_type || ''),
+  date: String(row?.date || row?.transaction_date || '').slice(0, 10),
+  reference: String(row?.reference_number || row?.reference || row?.number || ''),
+  party: String(row?.customer_name || row?.vendor_name || row?.payee || row?.contact_name || ''),
+  description: String(row?.description || row?.notes || row?.transaction_type_formatted || ''),
+  amount: bankTransactionAmount(row),
+});
+
+async function requireLiveZohoBank(db: ReturnType<typeof svc>, accountId: string) {
+  if (!accountId) throw new Error('account_id_required');
+  const { data, error } = await db.from('zoho_bank_accounts')
+    .select('zoho_id,account_name,account_type,currency,status,uncategorized_count')
+    .eq('zoho_id', accountId).maybeSingle();
+  if (error) throw new Error(`bank_account_read:${error.message}`);
+  if (!data || String(data.account_type || '').toLowerCase() !== 'bank') throw new Error('zoho_bank_account_not_found');
+  if (/^\s*خزينة(?:\s|$)/i.test(String(data.account_name || ''))) throw new Error('treasury_is_not_a_bank');
+  return data;
+}
+
+async function loadZohoUnreviewed(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
+  const collected: any[] = [];
+  for (let page = 1; page <= 10; page += 1) {
+    const url = `${access.apiDomain}/books/v3/bankaccounts/${encodeURIComponent(accountId)}/statements/unreviewed?organization_id=${encodeURIComponent(access.orgId)}&page=${page}&per_page=200`;
+    const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+    if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_bank_unreviewed:${String(z.body?.message || z.r.status)}`);
+    const statements = firstArray(z.body?.statements, z.body?.statement) || [];
+    const nested = statements.flatMap((statement: any) => firstArray(statement?.transactions,
+      statement?.banktransactions, statement?.uncategorized_transactions) || []);
+    const rows = firstArray(z.body?.transactions, z.body?.banktransactions,
+      z.body?.uncategorized_transactions, z.body?.unreviewed_transactions) || nested;
+    collected.push(...rows);
+    const context = z.body?.page_context || {};
+    if (!context.has_more_page || !rows.length) break;
+  }
+  const byId = new Map<string, ReturnType<typeof normalizeUnreviewedBankTransaction>>();
+  collected.map(normalizeUnreviewedBankTransaction).filter(row => row.transaction_id)
+    .forEach(row => byId.set(row.transaction_id, row));
+  return [...byId.values()].sort((a, b) => b.date.localeCompare(a.date)
+    || b.transaction_id.localeCompare(a.transaction_id));
+}
+
 const openingBalance = (s: unknown) => String(s || '').replace(/\s+/g, ' ').trim()
   .includes('\u0627\u0644\u0631\u0635\u064a\u062f \u0627\u0644\u0627\u0641\u062a\u062a\u0627\u062d\u064a');
 
@@ -179,6 +243,9 @@ Deno.serve(async req => {
   const permissionByAction: Record<string, string> = {
     bank_preview: 'zoho.bank_import',
     bank_import: 'zoho.bank_import',
+    bank_unreviewed_list: 'bank.view',
+    bank_match_candidates: 'bank.view',
+    bank_match_approve: 'zoho.bank_match',
     invoice_mark_sent: 'zoho.invoice_mark_sent',
     invoice_push_zatca: 'zoho.invoice_push_zatca',
     invoice_finalize_and_push_zatca: 'zoho.invoice_mark_sent',
@@ -196,6 +263,67 @@ Deno.serve(async req => {
   if (!user) return json({ error: 'forbidden', permissions: requiredPermissions }, 403);
 
   try {
+    if (action === 'bank_unreviewed_list' || action === 'bank_match_candidates' || action === 'bank_match_approve') {
+      const accountId = String(input.account_id || '');
+      const account = await requireLiveZohoBank(db, accountId);
+      const access = await accessToken(db);
+      const unreviewed = await loadZohoUnreviewed(access, accountId);
+
+      if (action === 'bank_unreviewed_list') return json({
+        ok: true,
+        account: {
+          zoho_id: account.zoho_id,
+          account_name: account.account_name,
+          currency: account.currency,
+          status: account.status,
+          mirror_count: Number(account.uncategorized_count || 0),
+        },
+        count: unreviewed.length,
+        deposits: unreviewed.filter(row => row.direction === 'credit').reduce((sum, row) => sum + row.amount, 0),
+        withdrawals: unreviewed.filter(row => row.direction === 'debit').reduce((sum, row) => sum + row.amount, 0),
+        transactions: unreviewed,
+        fetched_at: new Date().toISOString(),
+      });
+
+      const transactionId = String(input.transaction_id || '');
+      const source = unreviewed.find(row => row.transaction_id === transactionId);
+      if (!source) return json({ error: 'unreviewed_transaction_not_found_for_account' }, 404);
+
+      if (action === 'bank_match_candidates') {
+        const url = `${access.apiDomain}/books/v3/banktransactions/uncategorized/${encodeURIComponent(transactionId)}/match?organization_id=${encodeURIComponent(access.orgId)}`;
+        const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
+        if (!z.r.ok || z.body?.code !== 0) return json({ error: String(z.body?.message || z.r.status) }, 400);
+        const rows = firstArray(z.body?.matching_transactions, z.body?.transactions,
+          z.body?.banktransactions, z.body?.matches) || [];
+        const candidates = rows.map(normalizeMatchCandidate)
+          .filter(row => row.transaction_id && row.transaction_type);
+        return json({ ok: true, account_id: accountId, source, candidates });
+      }
+
+      const matchId = String(input.match_transaction_id || '');
+      const matchType = String(input.match_transaction_type || '');
+      if (!matchId || !matchType) return json({ error: 'explicit_match_required' }, 400);
+      const key = `bank_match:${accountId}:${transactionId}:${matchType}:${matchId}`;
+      const requestPayload = { account_id: accountId, transaction_id: transactionId,
+        match_transaction_id: matchId, match_transaction_type: matchType };
+      const audit = await begin(db, key, 'bank_transaction_match', user.id, requestPayload);
+      if (audit.done) return json({ ok: true, idempotent: true, result: audit.result });
+      const url = `${access.apiDomain}/books/v3/banktransactions/uncategorized/${encodeURIComponent(transactionId)}/match?organization_id=${encodeURIComponent(access.orgId)}`;
+      const payload = { transactions_to_be_matched: [{ transaction_id: matchId, transaction_type: matchType }] };
+      const z = await zjson(url, { method: 'POST', headers: {
+        Authorization: `Zoho-oauthtoken ${access.token}`, 'Content-Type': 'application/json',
+      }, body: JSON.stringify(payload) });
+      if (!z.r.ok || z.body?.code !== 0) {
+        const message = String(z.body?.message || z.r.status);
+        await finish(db, key, 'failed', z.body, message);
+        return json({ error: message, needs_reauthorization: /authori|scope|permission/i.test(message) }, 400);
+      }
+      const result = { account_id: accountId, transaction_id: transactionId,
+        matched_transaction_id: matchId, matched_transaction_type: matchType, zoho: z.body };
+      await finish(db, key, 'succeeded', result);
+      return json({ ok: true, ...result });
+    }
+
     if (action === 'bank_preview' || action === 'bank_import') {
       const accountId = String(input.account_id || '');
       const { data: link } = await db.from('zoho_financial_account_links')

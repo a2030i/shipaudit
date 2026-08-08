@@ -127,6 +127,28 @@ test('combined ZATCA action requires both permissions and live verification', as
   assert.match(source, /offset \+= 2/);
 });
 
+test('Zoho bank review is bank-scoped, read/write separated, and explicitly confirmed', async () => {
+  const [edge, permissions, service, page] = await Promise.all([
+    read('supabase/functions/zoho-operations/index.ts'),
+    read('src/lib/permissions.js'),
+    read('src/lib/pnlService.js'),
+    read('src/pages/ZohoData.jsx'),
+  ]);
+  assert.match(edge, /bank_unreviewed_list:\s*'bank\.view'/);
+  assert.match(edge, /bank_match_candidates:\s*'bank\.view'/);
+  assert.match(edge, /bank_match_approve:\s*'zoho\.bank_match'/);
+  assert.match(edge, /requireLiveZohoBank/);
+  assert.match(edge, /treasury_is_not_a_bank/);
+  assert.match(edge, /unreviewed_transaction_not_found_for_account/);
+  assert.match(edge, /transactions_to_be_matched/);
+  assert.match(edge, /bank_match:\$\{accountId\}:\$\{transactionId\}/);
+  assert.match(permissions, /key:\s*'zoho\.bank_match'/);
+  assert.match(service, /action:\s*'bank_match_approve'/);
+  assert.match(page, /مراجعة عمليات جميع البنوك/);
+  assert.match(page, /تأكيد المطابقة في زوهو/);
+  assert.match(page, /can\('zoho\.bank_match'\)/);
+});
+
 test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {
   const source = await read('supabase/functions/zoho-sync/index.ts');
   assert.match(source, /reused_recent_sync:\s*true/);

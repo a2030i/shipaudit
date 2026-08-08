@@ -526,6 +526,22 @@ export const importZohoBankStatement = (accountId, transactionIds) => invokeZoho
   action: 'bank_import', account_id: accountId, transaction_ids: transactionIds,
 });
 
+// العمليات البنكية الموجودة داخل زوهو ولم تُراجع بعد. القراءة متاحة لمن يملك
+// عرض البنوك، أما اعتماد المطابقة فهو إجراء مالي مستقل بصلاحية حساسة.
+export const listZohoUnreviewedBankTransactions = accountId => invokeZohoOperation({
+  action: 'bank_unreviewed_list', account_id: accountId,
+});
+export const getZohoBankMatchCandidates = (accountId, transactionId) => invokeZohoOperation({
+  action: 'bank_match_candidates', account_id: accountId, transaction_id: transactionId,
+});
+export const approveZohoBankMatch = ({ accountId, transactionId, matchTransactionId, matchTransactionType }) => invokeZohoOperation({
+  action: 'bank_match_approve',
+  account_id: accountId,
+  transaction_id: transactionId,
+  match_transaction_id: matchTransactionId,
+  match_transaction_type: matchTransactionType,
+});
+
 export const loadZohoWebhookFailures = () => invokeZohoOperation({ action: 'webhook_failures' });
 export const retryZohoWebhook = eventKey => invokeZohoOperation({ action: 'webhook_retry', event_key: eventKey });
 
