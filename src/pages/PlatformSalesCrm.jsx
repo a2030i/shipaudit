@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import * as XLSX from 'xlsx';
 import {
   Activity, AlertTriangle, CalendarClock, CheckCircle2, Clock3,
-  History, Link2Off, MessageSquareText, PhoneCall, RefreshCw, RotateCcw,
+  Download, History, Link2Off, MessageSquareText, PhoneCall, RefreshCw, RotateCcw,
   Search, ShieldAlert, Store, Target, TrendingUp, UserRoundCheck, UserRoundX,
-  UsersRound, WalletCards, Zap,
+  UserRoundPlus, UsersRound, WalletCards, Zap,
 } from 'lucide-react';
 import {
   Btn, Card, Empty, Input, Modal, PageHeader, Select, Spinner, toast,
@@ -13,10 +14,14 @@ import WaActions from '../components/WaActions.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadEmployees } from '../lib/employeeService.js';
 import {
+  assignPlatformSalesAccounts,
+  loadAllPlatformSalesPipelineRows,
   loadPlatformSalesAccount,
   loadPlatformSalesPipeline,
   recordPlatformSalesActivity,
 } from '../lib/retargetingService.js';
+import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import { rtl } from '../lib/xlsxRtl.js';
 import {
   hatifInboxUrl,
   loadCustomerCommTimeline,
@@ -650,7 +655,7 @@ function AccountDrawer({ phone, employees, onClose, onSaved }) {
 }
 
 export default function PlatformSalesCrm({ isActive = true }) {
-  const { can, isAdmin } = useAuth();
+  const { can, isAdmin, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const routeBucket = searchParams.get('bucket');
@@ -668,6 +673,10 @@ export default function PlatformSalesCrm({ isActive = true }) {
   const [page, setPage] = useState(0);
   const [busy, setBusy] = useState(false);
   const [selectedPhone, setSelectedPhone] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false);
+  const [bulkOwner, setBulkOwner] = useState('');
+  const [bulkRows, setBulkRows] = useState([]);
+  const [bulkBusy, setBulkBusy] = useState(false);
 
   const refresh = async ({ resetPage = false } = {}) => {
     const targetPage = resetPage ? 0 : page;
@@ -745,6 +754,114 @@ export default function PlatformSalesCrm({ isActive = true }) {
 
   const hasNext = (page + 1) * (data?.limit || 40) < Number(data?.count || 0);
 
+  const activeFilters = {
+    bucket,
+    ownerId: owner && owner !== 'unassigned' ? owner : null,
+    unassigned: owner === 'unassigned',
+    workFilter,
+    sort,
+    search: appliedSearch,
+  };
+
+  const eligibleEmployees = useMemo(() => employees.filter(employee => (
+    employee.role !== 'admin'
+    && employee.permissions?.['sales.view'] === true
+    && employee.permissions?.['sales.manage'] === true
+  )), [employees]);
+
+  const readAllFilteredRows = async () => {
+    const result = await loadAllPlatformSalesPipelineRows(activeFilters);
+    if (result.rows.length !== result.count) {
+      throw new Error('تغيّرت النتائج أثناء القراءة. حدّث الصفحة ثم أعد المحاولة.');
+    }
+    return result.rows;
+  };
+
+  const exportFilteredRows = async () => {
+    setBulkBusy(true);
+    try {
+      const rows = await readAllFilteredRows();
+      if (!rows.length) throw new Error('لا توجد نتائج لتصديرها');
+      const exportRows = rows.map(row => ({
+        'العميل / المتجر': row.primary_store || '—',
+        'رقم الجوال': row.phone || '—',
+        'عدد المتاجر': Number(row.store_count) || 1,
+        'إجمالي الشحنات': Number(row.total_shipments) || 0,
+        'آخر شحنة': row.last_shipment || '—',
+        'أيام منذ آخر شحنة': row.days_since_last ?? '—',
+        'حالة المنصة': platformState(row).label,
+        'سبب الفرصة': signalMeta(row).label,
+        'تفصيل الفرصة': row.signal_reason || row.next_step || '—',
+        'أولوية البيع': Number(row.signal_score) || 0,
+        'الإجراء المطلوب الآن': workMeta(row).label,
+        'مرحلة البيع': stageMeta(row.sales_stage).label,
+        'نتيجة آخر تواصل': OUTCOMES[row.last_outcome] || row.last_outcome || 'بلا نتيجة',
+        'المسؤول': row.owner_name || 'بلا مسؤول',
+        'نوع الإجراء القادم': NEXT_TYPES[row.next_action_type] || '—',
+        'موعد المتابعة': row.next_action_at || '—',
+        'عدد محاولات التواصل': Number(row.contact_attempts) || 0,
+        'آخر تواصل': row.last_touch_at || '—',
+        'رصيد المحفظة': Number(row.wallet) || 0,
+        'ملاحظة': row.notes || '—',
+      }));
+      const workbook = XLSX.utils.book_new();
+      const worksheet = XLSX.utils.json_to_sheet(exportRows);
+      worksheet['!cols'] = [
+        { wch: 32 }, { wch: 16 }, { wch: 12 }, { wch: 14 }, { wch: 14 },
+        { wch: 18 }, { wch: 18 }, { wch: 20 }, { wch: 44 }, { wch: 14 },
+        { wch: 24 }, { wch: 18 }, { wch: 22 }, { wch: 20 }, { wch: 20 },
+        { wch: 22 }, { wch: 18 }, { wch: 22 }, { wch: 16 }, { wch: 44 },
+      ];
+      XLSX.utils.book_append_sheet(workbook, worksheet, 'عملاء المنصة');
+      await persistAndDownloadExport({
+        wb: rtl(workbook),
+        fileName: `مسار-عملاء-المنصة-${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'platform_sales_pipeline',
+        rowCount: exportRows.length,
+        userId: user?.id || null,
+      });
+      toast(`تم تصدير ${exportRows.length} عميل إلى Excel`, 'success');
+    } catch (error) {
+      toast(`تعذّر التصدير: ${error.message}`, 'error');
+    }
+    setBulkBusy(false);
+  };
+
+  const openBulkAssignment = async () => {
+    setBulkBusy(true);
+    try {
+      const rows = await readAllFilteredRows();
+      if (!rows.length) throw new Error('لا توجد نتائج لإسنادها');
+      setBulkRows(rows);
+      setBulkOwner('');
+      setBulkOpen(true);
+    } catch (error) {
+      toast(`تعذّر تجهيز الإسناد: ${error.message}`, 'error');
+    }
+    setBulkBusy(false);
+  };
+
+  const confirmBulkAssignment = async () => {
+    if (!bulkOwner) return toast('اختر الموظف المسؤول', 'warning');
+    setBulkBusy(true);
+    try {
+      const result = await assignPlatformSalesAccounts(bulkRows.map(row => row.phone), bulkOwner);
+      toast(`تم إسناد ${Number(result.assigned_count) || bulkRows.length} عميل للموظف`, 'success');
+      setBulkOpen(false);
+      setBulkRows([]);
+      setBulkOwner('');
+      await refresh({ resetPage: true });
+    } catch (error) {
+      const messages = {
+        assignee_not_sales_operator: 'الموظف لا يملك صلاحيات تشغيل المبيعات المطلوبة',
+        selection_changed_refresh_required: 'تغيّرت قائمة العملاء. حدّث النتائج ثم أعد الإسناد',
+        not_allowed: 'لا تملك صلاحية إسناد العملاء',
+      };
+      toast(`تعذّر الإسناد: ${messages[error.message] || error.message}`, 'error');
+    }
+    setBulkBusy(false);
+  };
+
   return (
     <div className="psc-page">
       <PageHeader
@@ -754,15 +871,27 @@ export default function PlatformSalesCrm({ isActive = true }) {
         subtitle="من التسجيل إلى أول شحنة، ثم الاستمرار أو التوقف أو العودة — مع مسؤول وموعد وسجل لكل عميل"
         meta="حالة المنصّة موضوعية · مرحلة البيع يحدّثها الفريق"
         actions={(
-          <Btn
-            size="sm"
-            variant="ghost"
-            icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>}
-            onClick={() => refresh()}
-            disabled={busy}
-          >
-            تحديث
-          </Btn>
+          <>
+            {(isAdmin || can('sales.export')) && (
+              <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={exportFilteredRows} disabled={busy || bulkBusy || !data?.count}>
+                تصدير Excel ({fmtNumber(data?.count)})
+              </Btn>
+            )}
+            {(isAdmin || can('crm.assign')) && (
+              <Btn size="sm" variant="primary" icon={<UserRoundPlus size={14}/>} onClick={openBulkAssignment} disabled={busy || bulkBusy || !data?.count}>
+                إسناد كل النتائج ({fmtNumber(data?.count)})
+              </Btn>
+            )}
+            <Btn
+              size="sm"
+              variant="ghost"
+              icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>}
+              onClick={() => refresh()}
+              disabled={busy}
+            >
+              تحديث
+            </Btn>
+          </>
         )}
       />
 
@@ -1029,6 +1158,44 @@ export default function PlatformSalesCrm({ isActive = true }) {
           onClose={() => setSelectedPhone('')}
           onSaved={() => refresh()}
         />
+      )}
+
+      {bulkOpen && (
+        <Modal title="إسناد كل نتائج الفلتر" onClose={() => !bulkBusy && setBulkOpen(false)} width={560}>
+          <div className="psc-bulk-assignment">
+            <div className="psc-bulk-summary">
+              <UserRoundPlus size={22}/>
+              <div>
+                <strong>{fmtNumber(bulkRows.length)} عميل سيُسندون دفعة واحدة</strong>
+                <small>
+                  {fmtNumber(bulkRows.filter(row => !row.owner_id).length)} بلا مسؤول · {' '}
+                  {fmtNumber(bulkRows.filter(row => row.owner_id).length)} مسندون حاليًا
+                </small>
+              </div>
+            </div>
+
+            <label className="psc-bulk-field">
+              <span>الموظف المسؤول</span>
+              <Select value={bulkOwner} onChange={event => setBulkOwner(event.target.value)}>
+                <option value="">اختر موظف المبيعات…</option>
+                {eligibleEmployees.map(employee => (
+                  <option key={employee.id} value={employee.id}>{employee.name || employee.email}</option>
+                ))}
+              </Select>
+            </label>
+
+            <div className="psc-bulk-safety">
+              سيُغيّر الإسناد اسم المسؤول فقط. لن يغيّر مرحلة العميل أو نتيجة التواصل أو الموعد أو الملاحظات أو أي مبلغ مالي.
+            </div>
+
+            <div className="psc-bulk-actions">
+              <Btn variant="ghost" onClick={() => setBulkOpen(false)} disabled={bulkBusy}>إلغاء</Btn>
+              <Btn variant="primary" icon={<UserRoundPlus size={15}/>} onClick={confirmBulkAssignment} disabled={bulkBusy || !bulkOwner}>
+                {bulkBusy ? 'جارٍ الإسناد…' : `تأكيد إسناد ${fmtNumber(bulkRows.length)} عميل`}
+              </Btn>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

@@ -374,6 +374,42 @@ export async function loadPlatformSalesPipeline({
   };
 }
 
+// Reads the complete filtered result set, not only the visible page. The RPC
+// deliberately caps a page at 100 rows, so exports and bulk assignment page
+// through it while preserving the exact filters selected by the operator.
+export async function loadAllPlatformSalesPipelineRows(filters = {}, { maxRows = 5000 } = {}) {
+  const pageSize = 100;
+  const rows = [];
+  let page = 0;
+  let count = 0;
+
+  do {
+    const result = await loadPlatformSalesPipeline({
+      ...filters,
+      page,
+      limit: pageSize,
+    });
+    count = Number(result.count) || 0;
+    rows.push(...result.rows);
+    page += 1;
+    if (count > maxRows) throw new Error(`عدد النتائج يتجاوز الحد الآمن (${maxRows}). ضيّق الفلتر ثم أعد المحاولة.`);
+  } while (rows.length < count && rows.length < maxRows);
+
+  return { rows, count };
+}
+
+export async function assignPlatformSalesAccounts(phones, ownerId) {
+  const uniquePhones = [...new Set((phones || []).map(phone => String(phone || '').trim()).filter(Boolean))];
+  if (!uniquePhones.length) throw new Error('لا توجد نتائج لإسنادها');
+  if (!ownerId) throw new Error('اختر الموظف المسؤول');
+  const { data, error } = await supabase.rpc('assign_platform_sales_accounts', {
+    p_phones: uniquePhones,
+    p_owner: ownerId,
+  });
+  if (error) throw error;
+  return data || {};
+}
+
 export async function loadPlatformSalesAccount(phone) {
   if (!phone) throw new Error('رقم العميل مطلوب');
   const { data, error } = await supabase.rpc('platform_commercial_account', {

@@ -351,8 +351,77 @@
   font-size: 10.5px;
 }
 
+.psc-bulk-assignment {
+  display: grid;
+  gap: 16px;
+}
+
+.psc-bulk-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  color: var(--brand);
+  background: color-mix(in srgb, var(--brand) 8%, var(--card));
+  border: 1px solid color-mix(in srgb, var(--brand) 24%, var(--border));
+  border-radius: 12px;
+}
+
+.psc-bulk-summary > div {
+  display: grid;
+  gap: 4px;
+}
+
+.psc-bulk-summary strong {
+  color: var(--text);
+  font-size: 14px;
+}
+
+.psc-bulk-summary small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.psc-bulk-field {
+  display: grid;
+  gap: 7px;
+}
+
+.psc-bulk-field > span {
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.psc-bulk-safety {
+  padding: 12px 14px;
+  color: var(--muted);
+  background: var(--surface);
+  border-inline-start: 3px solid var(--green);
+  border-radius: 9px;
+  font-size: 11.5px;
+  line-height: 1.8;
+}
+
+.psc-bulk-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 9px;
+}
+
 .psc-table-wrap {
   overflow-x: auto;
+}
+
+@media (max-width: 640px) {
+  .psc-bulk-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .psc-bulk-actions button {
+    width: 100%;
+  }
 }
 
 .psc-table {
