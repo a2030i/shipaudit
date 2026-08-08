@@ -184,7 +184,7 @@ const normalizeMatchCandidate = (row: any) => ({
 async function requireLiveZohoBank(db: ReturnType<typeof svc>, accountId: string) {
   if (!accountId) throw new Error('account_id_required');
   const { data, error } = await db.from('zoho_bank_accounts')
-    .select('zoho_id,account_name,account_type,currency,status,uncategorized_count')
+    .select('zoho_id,account_name,account_type,currency_code,status,uncategorized_count')
     .eq('zoho_id', accountId).maybeSingle();
   if (error) throw new Error(`bank_account_read:${error.message}`);
   if (!data || String(data.account_type || '').toLowerCase() !== 'bank') throw new Error('zoho_bank_account_not_found');
@@ -274,7 +274,7 @@ Deno.serve(async req => {
         account: {
           zoho_id: account.zoho_id,
           account_name: account.account_name,
-          currency: account.currency,
+          currency: account.currency_code,
           status: account.status,
           mirror_count: Number(account.uncategorized_count || 0),
         },
