@@ -1,0 +1,281 @@
+.zoho-bank-review {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+
+.zoho-bank-review-note {
+  padding: 11px 13px;
+  border: 1px solid color-mix(in srgb, var(--border) 76%, transparent);
+  border-radius: 12px;
+  background: var(--surface2);
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.zoho-bank-review-field {
+  display: grid;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.zoho-bank-review-field select,
+.zoho-bank-review-filters input,
+.zoho-bank-review-filters select {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.zoho-bank-review-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.zoho-bank-review-filters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, .35fr);
+  gap: 8px;
+}
+
+.zoho-bank-review-list {
+  display: grid;
+  max-height: 390px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--surface);
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.zoho-bank-transaction {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(340px, .6fr);
+  gap: 16px;
+  align-items: center;
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+  transition: background .16s ease, box-shadow .16s ease;
+}
+
+.zoho-bank-transaction:last-child {
+  border-bottom: 0;
+}
+
+.zoho-bank-transaction.is-current {
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  box-shadow: inset -3px 0 0 var(--accent);
+}
+
+.zoho-bank-transaction-main,
+.zoho-bank-transaction-meta {
+  min-width: 0;
+}
+
+.zoho-bank-transaction-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.zoho-bank-transaction-heading b {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.zoho-bank-transaction-heading time {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.zoho-bank-transaction p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11.5px;
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+}
+
+.zoho-bank-transaction-meta {
+  display: grid;
+  grid-template-columns: auto minmax(100px, 1fr) minmax(150px, auto);
+  gap: 10px;
+  align-items: center;
+}
+
+.zoho-bank-direction {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 56px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.zoho-bank-direction.is-credit {
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  color: var(--green);
+}
+
+.zoho-bank-direction.is-debit {
+  background: color-mix(in srgb, var(--red) 11%, transparent);
+  color: var(--red);
+}
+
+.zoho-bank-transaction-meta strong {
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  text-align: center;
+}
+
+.zoho-bank-transaction-meta small {
+  color: var(--muted);
+  font-family: var(--font-sans);
+  font-size: 10px;
+}
+
+.zoho-bank-match-panel {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.zoho-bank-match-panel.is-error {
+  border-color: color-mix(in srgb, var(--red) 40%, var(--border));
+  background: color-mix(in srgb, var(--red) 5%, var(--surface));
+}
+
+.zoho-bank-match-error {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 9px;
+  align-items: center;
+  color: var(--red);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.zoho-bank-review-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+@media (max-width: 700px) {
+  .zoho-bank-review-modal {
+    border-radius: 20px !important;
+  }
+
+  .zoho-bank-review-body {
+    overflow: hidden !important;
+  }
+
+  .zoho-bank-review {
+    height: 100%;
+  }
+
+  .zoho-bank-review-note {
+    display: none;
+  }
+
+  .zoho-bank-review-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .zoho-bank-review-filters {
+    grid-template-columns: 1fr;
+  }
+
+  .zoho-bank-review-list {
+    max-height: min(46vh, 430px);
+    min-height: 210px;
+    padding: 9px;
+    gap: 9px;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .zoho-bank-transaction {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 11px;
+    padding: 13px;
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    background: var(--surface);
+    box-shadow: 0 4px 14px rgba(15, 23, 42, .045);
+  }
+
+  .zoho-bank-transaction.is-current {
+    box-shadow: inset -3px 0 0 var(--accent), 0 4px 14px rgba(15, 23, 42, .045);
+  }
+
+  .zoho-bank-transaction-heading {
+    align-items: flex-start;
+  }
+
+  .zoho-bank-transaction-heading b {
+    font-size: 13px;
+  }
+
+  .zoho-bank-transaction p {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+    font-size: 12px;
+    line-height: 1.7;
+  }
+
+  .zoho-bank-transaction-meta {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .zoho-bank-transaction-meta strong {
+    text-align: end;
+    font-size: 14px;
+  }
+
+  .zoho-bank-transaction-meta .ui-btn {
+    grid-column: 1 / -1;
+  }
+
+  .zoho-bank-match-panel {
+    max-height: 34vh;
+    overflow-y: auto;
+  }
+
+  .zoho-bank-match-error {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .zoho-bank-match-error .ui-btn {
+    grid-column: 1 / -1;
+    width: 100% !important;
+    justify-content: center !important;
+  }
+
+  .zoho-bank-review-footer {
+    display: none;
+  }
+}

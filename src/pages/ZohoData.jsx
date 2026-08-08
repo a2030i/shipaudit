@@ -22,6 +22,7 @@ import { mergePdfBlobs, downloadBlob } from '../lib/pdfMerge.js';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
+import './ZohoData.css';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -1023,12 +1024,22 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
       .some(value => String(value ?? '').toLowerCase().includes(needle));
   });
   const findMatches = async (transaction) => {
+    if (match?.busy) return;
     setMatch({ source: transaction, busy: true, candidates: [], confirm: null });
     try {
       const result = await getZohoBankMatchCandidates(state.row.zoho_id, transaction.transaction_id);
       setMatch({ source: transaction, busy: false, candidates: result.candidates || [], confirm: null });
     } catch (e) {
-      setMatch(null); toast(`تعذّر البحث عن مطابقة: ${e.message}`, 'error');
+      const denied = /access denied|zoho_refresh_failed/i.test(String(e?.message || ''));
+      setMatch({
+        source: transaction,
+        busy: false,
+        candidates: [],
+        confirm: null,
+        error: denied
+          ? 'تعذّر الوصول إلى Zoho. أعد تفويض صلاحيات زوهو ثم حاول مجددًا.'
+          : `تعذّر البحث عن مطابقة: ${e?.message || 'خطأ غير معروف'}`,
+      });
     }
   };
   const approve = async () => {
@@ -1049,24 +1060,24 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
       toast(`تعذّر اعتماد المطابقة: ${e.message}`, 'error');
     }
   };
-  return <Modal open title="مراجعة عمليات البنوك في زوهو" onClose={onClose} width={900}>
-    <div style={{ display: 'grid', gap: 12 }}>
-      <div style={{ padding: 11, borderRadius: 10, background: 'var(--surface2)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
+  return <Modal open title="مراجعة عمليات البنوك في زوهو" onClose={onClose} width={900} className="zoho-bank-review-modal" bodyClassName="zoho-bank-review-body">
+    <div className="zoho-bank-review">
+      <div className="zoho-bank-review-note">
         تعرض العمليات غير المراجعة داخل زوهو لكل بنك حقيقي. الاقتراح لا يغيّر شيئًا؛ الكتابة لا تتم إلا بعد اختيار المعاملة المقابلة ثم تأكيد المطابقة.
       </div>
-      <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700 }}>
+      <label className="zoho-bank-review-field">
         البنك
         <select value={state.row.zoho_id} onChange={event => {
           const row = accounts.find(account => String(account.zoho_id) === event.target.value);
           if (row) onSelect(row);
-        }} style={{ padding: '9px 11px', borderRadius: 9 }}>
+        }}>
           {accounts.map(account => <option key={account.zoho_id} value={account.zoho_id}>
             {account.account_name} — {Number(account.uncategorized_count || 0).toLocaleString('en-US')} غير مراجعة
           </option>)}
         </select>
       </label>
       {state.busy && !data ? <div style={{ padding: 34, textAlign: 'center' }}><Spinner size={24}/></div> : <>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8 }}>
+        <div className="zoho-bank-review-stats">
           <MiniValue label="غير مراجعة حيًا" value={data?.count || 0}/>
           <MiniValue label="إيداعات" value={`${fmt(data?.deposits || 0)} ر.س`}/>
           <MiniValue label="سحوبات" value={`${fmt(data?.withdrawals || 0)} ر.س`}/>
@@ -1077,32 +1088,46 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
             عدّاد آخر مزامنة: {Number(data.account?.mirror_count || 0)} · القراءة الحية الآن: {Number(data.count || 0)}. يعتمد القرار على القراءة الحية.
           </div>
         ) : null}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        <div className="zoho-bank-review-filters">
           <input value={q} onChange={event => setQ(event.target.value)} placeholder="ابحث بالمرجع أو الوصف أو المستفيد…"
-            style={{ flex: 1, minWidth: 220, padding: '9px 11px', borderRadius: 9 }}/>
-          <select value={direction} onChange={event => setDirection(event.target.value)} style={{ padding: '9px 11px', borderRadius: 9 }}>
+            aria-label="البحث في عمليات البنك"/>
+          <select value={direction} onChange={event => setDirection(event.target.value)} aria-label="تصفية حسب اتجاه العملية">
             <option value="">إيداعات وسحوبات</option><option value="credit">إيداعات</option><option value="debit">سحوبات</option>
           </select>
         </div>
-        {rows.length ? <div className="m-flow" style={{ maxHeight: 390, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 10 }}>
-          <table className="m-cards" style={{ width: '100%', fontSize: 11.5 }}>
-            <thead><tr><th style={{ padding: 8 }}>التاريخ</th><th style={{ padding: 8 }}>المرجع والوصف</th><th style={{ padding: 8 }}>الاتجاه</th><th style={{ padding: 8 }}>المبلغ</th><th style={{ padding: 8 }}>الإجراء</th></tr></thead>
-            <tbody>{rows.map(transaction => <tr key={transaction.transaction_id} style={{ borderTop: '1px solid var(--border)' }}>
-              <td data-label="التاريخ" style={{ padding: 8, whiteSpace: 'nowrap' }}>{transaction.date || '—'}</td>
-              <td data-label="" style={{ padding: 8, minWidth: 0 }}>
-                <b dir="ltr" style={{ display: 'block', fontFamily: 'var(--font-mono)', overflowWrap: 'anywhere' }}>{transaction.reference || 'بلا مرجع'}</b>
-                <span style={{ display: 'block', color: 'var(--muted)', marginTop: 3, lineHeight: 1.5 }}>{transaction.description || transaction.payee || 'عملية بنكية'}</span>
-              </td>
-              <td data-label="الاتجاه" style={{ padding: 8, color: transaction.direction === 'credit' ? 'var(--green)' : 'var(--red)', fontWeight: 700 }}>{transaction.direction === 'credit' ? 'إيداع' : 'سحب'}</td>
-              <td data-label="المبلغ" style={{ padding: 8, fontFamily: 'var(--font-mono)', fontWeight: 800, whiteSpace: 'nowrap' }}>{fmt(transaction.amount)} ر.س</td>
-              <td data-label="الإجراء" style={{ padding: 8 }}><Btn size="sm" variant="ghost" onClick={() => findMatches(transaction)}>البحث عن مطابقة</Btn></td>
-            </tr>)}</tbody>
-          </table>
+        {rows.length ? <div className="zoho-bank-review-list" role="list" aria-label="عمليات البنك غير المراجعة">
+          {rows.map(transaction => {
+            const isCurrent = match?.source?.transaction_id === transaction.transaction_id;
+            const isSearching = isCurrent && match?.busy;
+            return <article className={`zoho-bank-transaction ${isCurrent ? 'is-current' : ''}`} key={transaction.transaction_id} role="listitem">
+              <div className="zoho-bank-transaction-main">
+                <div className="zoho-bank-transaction-heading">
+                  <b dir="ltr">{transaction.reference || 'بلا مرجع'}</b>
+                  <time dateTime={transaction.date || undefined}>{transaction.date || 'بلا تاريخ'}</time>
+                </div>
+                <p>{transaction.description || transaction.payee || 'عملية بنكية'}</p>
+              </div>
+              <div className="zoho-bank-transaction-meta">
+                <span className={`zoho-bank-direction ${transaction.direction === 'credit' ? 'is-credit' : 'is-debit'}`}>
+                  {transaction.direction === 'credit' ? 'إيداع' : 'سحب'}
+                </span>
+                <strong dir="ltr">{fmt(transaction.amount)} <small>ر.س</small></strong>
+                <Btn size="sm" variant="ghost" disabled={!!match?.busy} onClick={() => findMatches(transaction)}
+                  style={{ width: '100%', justifyContent: 'center' }}>
+                  {isSearching ? 'جارٍ البحث…' : 'البحث عن مطابقة'}
+                </Btn>
+              </div>
+            </article>;
+          })}
         </div> : <Empty icon="✓" title="لا توجد عمليات غير مراجعة" sub={q || direction ? 'لا توجد نتائج تطابق الفلتر' : 'كل عمليات هذا البنك مراجعة في زوهو'}/>}
       </>}
-      {match ? <div style={{ border: '1px solid var(--border)', borderRadius: 11, padding: 12, background: 'var(--surface2)' }}>
+      {match ? <div className={`zoho-bank-match-panel ${match.error ? 'is-error' : ''}`} aria-live="polite">
         <div style={{ fontWeight: 800, marginBottom: 8 }}>اقتراحات مطابقة العملية {match.source.reference || match.source.transaction_id}</div>
-        {match.busy && !match.confirm ? <div style={{ padding: 18, textAlign: 'center' }}><Spinner size={20}/></div>
+        {match.error ? <div className="zoho-bank-match-error">
+            <AlertTriangle size={18}/><span>{match.error}</span>
+            <Btn size="sm" variant="ghost" onClick={() => findMatches(match.source)}>إعادة المحاولة</Btn>
+          </div>
+          : match.busy && !match.confirm ? <div style={{ padding: 18, textAlign: 'center' }}><Spinner size={20}/></div>
           : !match.candidates.length ? <div style={{ color: 'var(--gold)', fontSize: 12 }}>لم يجد زوهو معاملة محاسبية مقابلة. لا يوجد تصنيف تلقائي؛ راجع العملية يدويًا.</div>
           : <div style={{ display: 'grid', gap: 7 }}>{match.candidates.map(candidate => <button type="button" key={`${candidate.transaction_type}:${candidate.transaction_id}`}
               onClick={() => setMatch(current => ({ ...current, confirm: candidate }))}
@@ -1119,7 +1144,7 @@ function BankUnreviewedModal({ state, accounts, canMatch, onClose, onSelect, onM
           </div>
         </div> : null}
       </div> : null}
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}><Btn variant="ghost" onClick={onClose}>إغلاق</Btn></div>
+      <div className="zoho-bank-review-footer"><Btn variant="ghost" onClick={onClose}>إغلاق</Btn></div>
     </div>
   </Modal>;
 }
