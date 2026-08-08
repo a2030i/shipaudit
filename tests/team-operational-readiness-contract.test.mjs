@@ -23,6 +23,10 @@ const permissionAudit = await readFile(
   new URL('../supabase/migrations/20260807193000_employee_permission_audit.sql', import.meta.url),
   'utf8',
 );
+const permissionCountFix = await readFile(
+  new URL('../supabase/migrations/20260808124500_permission_json_key_count_fix.sql', import.meta.url),
+  'utf8',
+);
 const collectionCoverageMigration = await readFile(
   new URL('../supabase/migrations/20260807153727_report_missing_collection_work_in_readiness.sql', import.meta.url),
   'utf8',
@@ -157,4 +161,12 @@ test('finance readiness opens the canonical bank workspace and old links resolve
   assert.match(app, /s\.legacyTabIds\?\.includes\(effective\)/);
   assert.match(zohoData, /bank_accounts: 'banks'/);
   assert.match(zohoData, /WORKSPACE_SECTION_ALIASES\[requestedSectionRaw\]/);
+});
+
+test('permission counts use supported PostgreSQL JSONB primitives', () => {
+  assert.match(permissionCountFix, /from jsonb_object_keys\(coalesce\(old\.permissions/);
+  assert.match(permissionCountFix, /from jsonb_object_keys\(coalesce\(new\.permissions/);
+  assert.match(permissionCountFix, /from jsonb_object_keys\(v_before\)/);
+  assert.match(permissionCountFix, /from jsonb_object_keys\(v_after\)/);
+  assert.doesNotMatch(permissionCountFix, /jsonb_object_length/);
 });
