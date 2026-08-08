@@ -31,7 +31,8 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // شرائح الأعمار — الترتيب من الأطزج للأخطر
 const BUCKETS = [
-  { key: 'b0', label: '0–30 يوم',  color: 'var(--green)' },
+  { key: 'b0_15', label: '0–15 يوم', color: 'var(--green)' },
+  { key: 'b16_30', label: '16–30 يوم', color: 'color-mix(in srgb, var(--green) 55%, var(--gold))' },
   { key: 'b1', label: '31–60',     color: 'var(--gold)' },
   { key: 'b2', label: '61–90',     color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
   { key: 'b3', label: '+90',       color: 'var(--red)' },
@@ -231,7 +232,7 @@ export default function CustomerMoney({ isActive = true }) {
     // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
     const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة',
       'الرصيد المدين في زوهو', 'الرصيد الدائن المقابل', 'المطلوب تحصيله', 'متأخر',
-      'فواتير', 'أقدم استحقاق (يوم)', '0-30', '31-60', '61-90', '+90', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
+      'فواتير', 'أقدم استحقاق (يوم)', '0-15', '16-30', '31-60', '61-90', '+90', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
     const grossTotal = +filtered.reduce((s, c) => s + (c.grossDue || 0), 0).toFixed(2);
     const creditTotal = +filtered.reduce((s, c) => s + (c.creditOffset || 0), 0).toFixed(2);
     const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
@@ -240,11 +241,11 @@ export default function CustomerMoney({ isActive = true }) {
       buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
       ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
-        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0, c.b1, c.b2, c.b3, c.opening,
+        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0_15, c.b16_30, c.b1, c.b2, c.b3, c.opening,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(12).fill(''), filteredTotal],
+      ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(headers.length - 10).fill(''), filteredTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     // 0 = العميل · 1 = رقم المتجر (ضيّق) · 2 = اسم المتجر

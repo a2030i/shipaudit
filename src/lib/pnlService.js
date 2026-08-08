@@ -361,6 +361,9 @@ export async function loadCustomerMoneyDashboard() {
     })),
     overdueAmt:     Number(d.overdue_amt) || 0,
     aging: {
+      b0_15: Number(d.aging?.b0_15) || 0,
+      b16_30: Number(d.aging?.b16_30) || 0,
+      // يبقى b0 للتوافق مع المستهلكات القديمة حتى تنتقل كلها إلى الشرائح المفصلة.
       b0: Number(d.aging?.b0_30) || 0,  b1: Number(d.aging?.b31_60) || 0,
       b2: Number(d.aging?.b61_90) || 0, b3: Number(d.aging?.b90p) || 0,
       opening: Number(d.aging?.opening_balance) || 0,
@@ -380,6 +383,8 @@ export async function loadCustomerMoneyDashboard() {
       needsZohoSettlement: !!c.needs_zoho_settlement,
       owed: Number(c.owed) || 0, overdue: Number(c.overdue) || 0,
       invCnt: Number(c.inv_cnt) || 0, oldestDays: Number(c.oldest_days) || 0,
+      b0_15: Number(c.b0_15) || 0,
+      b16_30: Number(c.b16_30) || 0,
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
       opening: Number(c.opening_balance) || 0,
       openingGross: Number(c.opening_gross) || 0,
