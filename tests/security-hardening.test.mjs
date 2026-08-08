@@ -137,6 +137,8 @@ test('Zoho bank review is bank-scoped, read/write separated, and explicitly conf
   assert.match(edge, /bank_unreviewed_list:\s*'bank\.view'/);
   assert.match(edge, /bank_match_candidates:\s*'bank\.view'/);
   assert.match(edge, /bank_match_approve:\s*'zoho\.bank_match'/);
+  assert.match(edge, /filter_by:\s*'Status\.Uncategorized'/);
+  assert.match(edge, /account_id:\s*accountId/);
   assert.match(edge, /requireLiveZohoBank/);
   assert.match(edge, /treasury_is_not_a_bank/);
   assert.match(edge, /unreviewed_transaction_not_found_for_account/);
@@ -147,6 +149,7 @@ test('Zoho bank review is bank-scoped, read/write separated, and explicitly conf
   assert.match(page, /مراجعة عمليات جميع البنوك/);
   assert.match(page, /تأكيد المطابقة في زوهو/);
   assert.match(page, /can\('zoho\.bank_match'\)/);
+  assert.match(page, /!isZohoPaymentGatewayAccount\(row\)/);
 });
 
 test('manual Zoho sync reuses a recent successful run to avoid refresh-token rate limits', async () => {

@@ -392,7 +392,8 @@ export default function ZohoData({ isActive = true }) {
   }, [rows, type, financial]);
   const zohoBankAccounts = useMemo(() => displayRows.filter(row => {
     const accountType = String(row.account_type || row.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
-    return type === 'bank_accounts' && accountType === 'bank' && !isZohoTreasuryAccount(row);
+    return type === 'bank_accounts' && accountType === 'bank'
+      && !isZohoTreasuryAccount(row) && !isZohoPaymentGatewayAccount(row);
   }), [displayRows, type]);
 
   const filtered = useMemo(() => {
@@ -846,7 +847,8 @@ export default function ZohoData({ isActive = true }) {
                     const treasuryAccount = isZohoTreasuryAccount(r);
                     const derivedKind = financialDisplayKind(r);
                     const accountTypeKey = String(r.account_type || r.account_type_formatted || '').toLowerCase().replace(/[\s-]+/g, '_');
-                    const liveBankAccount = type === 'bank_accounts' && accountTypeKey === 'bank' && !treasuryAccount;
+                    const liveBankAccount = type === 'bank_accounts' && accountTypeKey === 'bank'
+                      && !treasuryAccount && !isZohoPaymentGatewayAccount(r);
                     const linkableRow = (type === 'bank_accounts' && !['payment_gateway', 'clearing'].includes(derivedKind))
                       || (type === 'chart_accounts' && ['bank', 'cash'].includes(accountTypeKey));
                     const existingLink = referenceType

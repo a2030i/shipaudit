@@ -180,6 +180,15 @@ const normalizeMatchCandidate = (row: any) => ({
   description: String(row?.description || row?.notes || row?.transaction_type_formatted || ''),
   amount: bankTransactionAmount(row),
 });
+const collectTransactionRows = (node: any, depth = 0): any[] => {
+  if (node == null || depth > 8) return [];
+  if (Array.isArray(node)) return node.flatMap(value => collectTransactionRows(value, depth + 1));
+  if (typeof node !== 'object') return [];
+  if (bankTransactionId(node) && (node.amount != null || node.total != null || node.transaction_amount != null
+    || node.debit != null || node.credit != null || node.date || node.transaction_date || node.reference_number)) return [node];
+  return Object.entries(node).filter(([key]) => !['page_context', 'consent_info'].includes(key))
+    .flatMap(([, value]) => collectTransactionRows(value, depth + 1));
+};
 
 async function requireLiveZohoBank(db: ReturnType<typeof svc>, accountId: string) {
   if (!accountId) throw new Error('account_id_required');
@@ -189,20 +198,24 @@ async function requireLiveZohoBank(db: ReturnType<typeof svc>, accountId: string
   if (error) throw new Error(`bank_account_read:${error.message}`);
   if (!data || String(data.account_type || '').toLowerCase() !== 'bank') throw new Error('zoho_bank_account_not_found');
   if (/^\s*خزينة(?:\s|$)/i.test(String(data.account_name || ''))) throw new Error('treasury_is_not_a_bank');
+  if (/moyassar|ميسر/i.test(String(data.account_name || ''))) throw new Error('payment_gateway_is_not_a_bank');
   return data;
 }
 
 async function loadZohoUnreviewed(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
   const collected: any[] = [];
   for (let page = 1; page <= 10; page += 1) {
-    const url = `${access.apiDomain}/books/v3/bankaccounts/${encodeURIComponent(accountId)}/statements/unreviewed?organization_id=${encodeURIComponent(access.orgId)}&page=${page}&per_page=200`;
+    const params = new URLSearchParams({
+      organization_id: access.orgId,
+      account_id: accountId,
+      filter_by: 'Status.Uncategorized',
+      page: String(page),
+      per_page: '200',
+    });
+    const url = `${access.apiDomain}/books/v3/banktransactions?${params.toString()}`;
     const z = await zjson(url, { method: 'GET', headers: { Authorization: `Zoho-oauthtoken ${access.token}` } });
     if (!z.r.ok || z.body?.code !== 0) throw new Error(`zoho_bank_unreviewed:${String(z.body?.message || z.r.status)}`);
-    const statements = firstArray(z.body?.statements, z.body?.statement) || [];
-    const nested = statements.flatMap((statement: any) => firstArray(statement?.transactions,
-      statement?.banktransactions, statement?.uncategorized_transactions) || []);
-    const rows = firstArray(z.body?.transactions, z.body?.banktransactions,
-      z.body?.uncategorized_transactions, z.body?.unreviewed_transactions) || nested;
+    const rows = firstArray(z.body?.banktransactions, z.body?.transactions) || collectTransactionRows(z.body);
     collected.push(...rows);
     const context = z.body?.page_context || {};
     if (!context.has_more_page || !rows.length) break;
@@ -590,6 +603,8 @@ Deno.serve(async req => {
     }
     return json({ error: 'unknown_action' }, 400);
   } catch (error) {
-    return json({ error: error instanceof Error ? error.message : String(error) }, 500);
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(JSON.stringify({ scope: 'zoho-operations', action, message }));
+    return json({ error: message }, 500);
   }
 });
