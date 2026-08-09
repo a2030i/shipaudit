@@ -3,8 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 const edge = readFileSync('supabase/functions/daftra-opening-balances/index.ts', 'utf8');
+const zohoSync = readFileSync('supabase/functions/zoho-sync/index.ts', 'utf8');
 const service = readFileSync('src/lib/daftraService.js', 'utf8');
 const page = readFileSync('src/pages/Reconciliation.jsx', 'utf8');
+const pnlService = readFileSync('src/lib/pnlService.js', 'utf8');
 const migration = readFileSync('supabase/migrations/20260809124500_daftra_client_balance_snapshots.sql', 'utf8');
 
 test('historical Daftra reconciliation reads an immutable period snapshot', () => {
@@ -26,6 +28,11 @@ test('frontend requests the fixed January closing period and exports full audit 
   assert.match(page, /أرصدة لصالح العملاء/);
   assert.match(page, /لا تُخصم من إجمالي التحصيل/);
   assert.match(page, /مستحق للتحصيل' : 'رصيد لصالح العميل/);
+  assert.match(page, /syncZohoOpeningBalances/);
+  assert.match(page, /row\.zoho_contact_id && row\.zoho_opening_balance == null/);
+  assert.match(pnlService, /action: 'sync_opening_balances'/);
+  assert.match(zohoSync, /action === 'sync_opening_balances'/);
+  assert.match(zohoSync, /contacts\/\$\{contactId\}\/openingbalances/);
   assert.match(page, /مطابقة_إقفال_دفترة_مع_افتتاحي_زوهو_حتى_2026-01-31\.xlsx/);
 });
 

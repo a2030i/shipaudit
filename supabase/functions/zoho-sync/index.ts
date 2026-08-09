@@ -1,3 +1,4 @@
+// zoho-sync v28 — قراءة الرصيد الافتتاحي الموجهة حتى لو كان الرصيد الحالي صفراً.
 // zoho-sync v27 — الرصيد الافتتاحي من مساره الرسمي المخصص في Zoho.
 // v26 — الرصيد الافتتاحي الصريح + إصلاح فواتير العملاء الناقصة تلقائياً.
 // لا يُسمّى فرق الرصيد «افتتاحياً» إلا إذا أثبته حقل opening_balances في Zoho.
@@ -558,6 +559,78 @@ Deno.serve(async (req) => {
       const { error } = await db.from('pnl_snapshots').upsert(row);
       if (error) return json({ error: `save failed: ${error.message}` }, 500);
       return json({ ok: true, snapshot: row, computed_net: parsed.computed_net });
+    }
+
+    if (action === 'sync_opening_balances') {
+      if (!canZohoRead(auth)) return json({ error: 'forbidden — تحتاج صلاحية قراءة زوهو' }, 403);
+      const contactIds = [...new Set(
+        (Array.isArray(body.contact_ids) ? body.contact_ids : [])
+          .map(value => String(value || '').trim())
+          .filter(value => /^\d+$/.test(value)),
+      )].slice(0, 100);
+      if (!contactIds.length) return json({ error: 'missing_contact_ids' }, 400);
+
+      const { token, apiDomain, orgId } = await accessToken(db);
+      const stats: ZohoApiStats = { apiCalls: 0, rateLimited: 0 };
+      let updated = 0;
+      let failed = 0;
+      const failures: string[] = [];
+
+      for (const contactId of contactIds) {
+        const { response: detailResponse, payload: detailPayload } = await fetchZohoJson({
+          url: `${apiDomain}/books/v3/contacts/${contactId}?organization_id=${orgId}`,
+          token,
+          stats,
+        });
+        const detail = (detailPayload as Record<string, any>)?.contact;
+        if (!detailResponse.ok || (detailPayload as Record<string, unknown>)?.code !== 0 || !detail) {
+          failed++;
+          failures.push(`${contactId}: contact ${detailResponse.status}`);
+          continue;
+        }
+
+        const { response: openingResponse, payload: openingPayload } = await fetchZohoJson({
+          url: `${apiDomain}/books/v3/contacts/${contactId}/openingbalances?organization_id=${orgId}`,
+          token,
+          stats,
+        });
+        const openingCode = (openingPayload as Record<string, unknown>)?.code;
+        const openingEndpointOk = openingResponse.ok
+          && (openingCode == null || Number(openingCode) === 0)
+          && hasOpeningBalanceField(openingPayload);
+        const detailHasOpeningBalance = hasOpeningBalanceField(detail);
+        if (!openingEndpointOk && !detailHasOpeningBalance) {
+          failed++;
+          failures.push(`${contactId}: opening ${openingResponse.status}/${String(openingCode ?? '-')}`);
+          continue;
+        }
+
+        const checkedAt = new Date().toISOString();
+        const configuredOpening = openingEndpointOk
+          ? openingBalanceConfigured(openingPayload)
+          : openingBalanceConfigured(detail);
+        const { error: updateError } = await db.from('zoho_contacts').update({
+          opening_balance_configured: configuredOpening,
+          opening_balance_checked_at: checkedAt,
+          synced_at: checkedAt,
+        }).eq('zoho_id', contactId).eq('contact_type', 'customer');
+        if (updateError) {
+          failed++;
+          failures.push(`${contactId}: save ${updateError.message}`);
+          continue;
+        }
+        updated++;
+      }
+
+      await recordZohoUsage(db, orgId, stats);
+      return json({
+        ok: true,
+        requested: contactIds.length,
+        updated,
+        failed,
+        failures: failures.slice(0, 20),
+        api_calls: stats.apiCalls,
+      });
     }
 
     if (action === 'sync' || action === 'sync_financial') {

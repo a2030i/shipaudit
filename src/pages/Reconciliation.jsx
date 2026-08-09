@@ -31,7 +31,7 @@ import {
   loadVendorReconciliation, loadVendorOthers,
   loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
-import { syncZohoDocs } from '../lib/pnlService.js';
+import { syncZohoDocs, syncZohoOpeningBalances } from '../lib/pnlService.js';
 import { loadDaftraClosingBalances } from '../lib/daftraService.js';
 import './Reconciliation.css';
 
@@ -229,7 +229,17 @@ export default function Reconciliation({ isActive = true }) {
     if ((!force && daftraData) || daftraLoading) return;
     setDaftraLoading(true);
     try {
-      const data = await loadDaftraClosingBalances();
+      let data = await loadDaftraClosingBalances();
+      const uncheckedContactIds = [...new Set((data.clients || [])
+        .filter(row => row.zoho_contact_id && row.zoho_opening_balance == null)
+        .map(row => String(row.zoho_contact_id)))];
+      if (uncheckedContactIds.length) {
+        const openingSync = await syncZohoOpeningBalances({ contactIds: uncheckedContactIds });
+        if (Number(openingSync.updated || 0) > 0) data = await loadDaftraClosingBalances();
+        if (Number(openingSync.failed || 0) > 0) {
+          toast(`تعذرت قراءة افتتاحي ${openingSync.failed} عميل من زوهو؛ بقيت ظاهرة للمراجعة`, 'warning');
+        }
+      }
       setDaftraData(data);
       toast(`تمت قراءة ${Number(data.count || 0).toLocaleString('en-US')} رصيد إقفالي غير صفري من دفتره`, 'success');
     } catch (e) {

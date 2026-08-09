@@ -64,6 +64,19 @@ export async function syncZohoDocs({ force = false, full = false } = {}) {
   return data;   // { invoices: N, customerpayments: M }
 }
 
+// قراءة موجهة للرصيد الافتتاحي من بطاقة العميل الرسمية في زوهو.
+// لا تعتمد على الرصيد الحالي؛ فقد يكون الافتتاحي مسددًا بالكامل ويصبح الحالي صفراً.
+export async function syncZohoOpeningBalances({ contactIds = [] } = {}) {
+  const ids = [...new Set((contactIds || []).map(value => String(value || '').trim()).filter(Boolean))];
+  if (!ids.length) return { ok: true, requested: 0, updated: 0, failed: 0 };
+  const { data, error } = await supabase.functions.invoke('zoho-sync', {
+    body: { action: 'sync_opening_balances', contact_ids: ids },
+  });
+  if (error) throw new Error(await functionErrorMessage(error, 'فشل قراءة الأرصدة الافتتاحية من زوهو'));
+  if (!data?.ok) throw new Error(data?.error || 'فشل قراءة الأرصدة الافتتاحية من زوهو');
+  return data;
+}
+
 // مزامنة الطبقة المالية المرجعية فقط: البنوك + دليل الحسابات + أرصدة الموردين الدائنة.
 // قراءة من Zoho حصراً؛ force يتجاوز مهلة الكاش ولا يضيف أي صلاحية كتابة.
 export async function syncZohoFinancial({ force = false } = {}) {
