@@ -809,6 +809,7 @@ export default function Reconciliation({ isActive = true }) {
 }
 
 const DAFTRA_MATCH_META = {
+  partial_candidate: { label: 'اسم جزئي — يحتاج تأكيد', tone: 'warn' },
   matched: { label: 'مطابق', tone: 'ok' },
   different: { label: 'يوجد فرق', tone: 'danger' },
   zoho_unchecked: { label: 'افتتاحي زوهو غير مفحوص', tone: 'warn' },
@@ -848,7 +849,11 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
           </div>
           <div className="daftra-balances-note">
             ختامي دفتره = <code>إجمالي المدين − إجمالي الدائن</code> من حساب العميل في دليل الحسابات؛ ويُقارن مع
-            {' '}<code>opening_balance_configured</code> المقروء صراحةً من زوهو. المطابقة بالاسم المتطابق فقط، بلا تخمين أو إنشاء عملاء أو تعديل أرصدة.
+            {' '}<code>opening_balance_configured</code> المقروء صراحةً من زوهو. المقارنة للقراءة فقط ولا تنشئ عملاء أو تعدّل أي رصيد.
+          </div>
+          <div className="daftra-partial-match-note">
+            <strong>{Number(totals.partial_candidate || 0).toLocaleString('en-US')} مطابقة اسم جزئية:</strong>
+            {' '}الاسم الكامل يُطابق أولًا. الاسم الجزئي الفريد يظهر كاقتراح للمراجعة فقط، وأي اسم له أكثر من مرشح يبقى بلا اعتماد.
           </div>
           <div className="daftra-balances-actions">
             <Btn variant="accent" icon={<Download size={15}/>} onClick={onExport} disabled={!rows.length}>تصدير Excel</Btn>
@@ -857,6 +862,7 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
           <div className="daftra-balances-filters">
             <input value={q} onChange={event => setQ(event.target.value)} placeholder="ابحث باسم أو رقم العميل…" />
             <select value={status} onChange={event => setStatus(event.target.value)}>
+              <option value="partial_candidate">اسم جزئي يحتاج تأكيد</option>
               <option value="relevant">الأرصدة والحالات المهمة</option>
               <option value="">كل العملاء</option>
               <option value="different">يوجد فرق</option>
@@ -875,14 +881,19 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
                   const meta = DAFTRA_MATCH_META[row.match_status] || { label: row.match_status, tone: 'muted' };
                   return (
                   <tr key={`${row.daftra_client_id}:${row.client_number}`}>
-                    <td dir="ltr">{row.client_number || row.daftra_client_id || '—'}</td>
-                    <td>{row.client_name}</td>
-                    <td dir="ltr">{fmt(row.total_debit)}</td>
-                    <td dir="ltr">{fmt(row.total_credit)}</td>
-                    <td dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
-                    <td dir="ltr" title={row.zoho_contact_name || ''}>{row.zoho_opening_balance == null ? '—' : fmt(row.zoho_opening_balance)}</td>
-                    <td dir="ltr" className={Math.abs(Number(row.difference || 0)) > 0.005 ? 'is-difference' : ''}>{row.difference == null ? '—' : fmt(row.difference)}</td>
-                    <td><span className={`daftra-match-status is-${meta.tone}`}>{meta.label}</span></td>
+                    <td data-label="رقم دفتره" dir="ltr">{row.client_number || row.daftra_client_id || '—'}</td>
+                    <td data-label="العميل" className="daftra-name-cell">
+                      <strong>{row.client_name}</strong>
+                      {row.zoho_contact_name && (
+                        <small><span>في زوهو:</span> {row.zoho_contact_name}</small>
+                      )}
+                    </td>
+                    <td data-label="مدين" dir="ltr">{fmt(row.total_debit)}</td>
+                    <td data-label="دائن" dir="ltr">{fmt(row.total_credit)}</td>
+                    <td data-label="ختامي دفتره" dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
+                    <td data-label="افتتاحي زوهو" dir="ltr" title={row.zoho_contact_name || ''}>{row.zoho_opening_balance == null ? '—' : fmt(row.zoho_opening_balance)}</td>
+                    <td data-label="الفرق" dir="ltr" className={Math.abs(Number(row.difference || 0)) > 0.005 ? 'is-difference' : ''}>{row.difference == null ? '—' : fmt(row.difference)}</td>
+                    <td data-label="الحالة"><span className={`daftra-match-status is-${meta.tone}`}>{meta.label}</span></td>
                   </tr>
                   );
                 })}

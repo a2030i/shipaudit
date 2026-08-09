@@ -109,6 +109,7 @@
 
 .daftra-balances-summary strong.is-ok { color: var(--green); }
 .daftra-balances-summary strong.is-danger { color: var(--red); }
+.daftra-balances-summary strong.is-warn { color: var(--gold); }
 
 .daftra-balances-summary span {
   color: var(--muted);
@@ -129,6 +130,19 @@
   font-size: 12px;
   line-height: 1.6;
 }
+
+.daftra-partial-match-note {
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 28%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--gold) 8%, var(--surface));
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.daftra-partial-match-note strong { color: var(--gold); }
 
 .daftra-balances-actions {
   display: flex;
@@ -194,6 +208,20 @@
   font-weight: 700;
 }
 
+.daftra-name-cell > strong,
+.daftra-name-cell > small {
+  display: block;
+}
+
+.daftra-name-cell > small {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.daftra-name-cell > small span { color: var(--brand); }
+
 .daftra-match-status {
   display: inline-flex;
   align-items: center;
@@ -212,13 +240,37 @@
 .daftra-match-status.is-warn { background: color-mix(in srgb, var(--gold) 12%, var(--surface)); color: var(--gold); }
 
 @media (max-width: 700px) {
+  .daftra-balances-dialog {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+  }
+
+  .daftra-balances-dialog .modal-body {
+    padding-inline: 1px;
+  }
+
   .daftra-balances-summary {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .daftra-balances-summary > div {
+    padding: 10px;
+    min-width: 0;
+  }
+
+  .daftra-balances-summary span {
+    min-height: 30px;
+    line-height: 1.35;
+  }
+
+  .daftra-balances-summary strong {
+    font-size: 15px;
   }
 
   .daftra-balances-actions {
     display: grid;
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .daftra-balances-actions .ui-btn {
@@ -232,7 +284,75 @@
 
   .daftra-balances-filters span { white-space: normal; }
 
+  .daftra-balances-table-wrap {
+    max-height: none;
+    overflow: visible;
+    border: 0;
+    border-radius: 0;
+  }
+
   .daftra-balances-table {
-    min-width: 980px;
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .daftra-balances-table thead { display: none; }
+
+  .daftra-balances-table tbody {
+    display: grid;
+    gap: 10px;
+  }
+
+  .daftra-balances-table tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 13px;
+    background: var(--surface);
+    content-visibility: auto;
+    contain-intrinsic-size: 230px;
+  }
+
+  .daftra-balances-table td {
+    display: flex;
+    min-width: 0;
+    padding: 8px;
+    flex-direction: column;
+    gap: 4px;
+    border: 0;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  .daftra-balances-table td::before {
+    content: attr(data-label);
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 600;
+    direction: rtl;
+    unicode-bidi: isolate;
+  }
+
+  .daftra-balances-table td.daftra-name-cell,
+  .daftra-balances-table td:last-child {
+    grid-column: 1 / -1;
+  }
+
+  .daftra-name-cell {
+    padding-bottom: 10px !important;
+    border-bottom: 1px dashed var(--border) !important;
+  }
+
+  .daftra-name-cell > strong {
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .daftra-match-status {
+    width: fit-content;
+    white-space: normal;
   }
 }

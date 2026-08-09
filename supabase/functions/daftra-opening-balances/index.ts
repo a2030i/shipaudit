@@ -1,4 +1,4 @@
-// daftra-opening-balances v4 — read-only Daftra closing balance reconciliation.
+// daftra-opening-balances v5 — read-only Daftra closing balance reconciliation.
 //
 // The Daftra client payload exposes `starting_balance`, which is not the
 // accounting closing balance.  The closing balance is read from the client's
@@ -208,13 +208,34 @@ function normalizeName(value: unknown) {
     .normalize('NFKC')
     .toLocaleLowerCase('ar')
     .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
-    .replace(/ـ/g, '')
-    .replace(/[أإآٱ]/g, 'ا')
-    .replace(/ى/g, 'ي')
-    .replace(/ة/g, 'ه')
+    .replace(/\u0640/g, '')
+    .replace(/[\u0623\u0625\u0622\u0671]/g, '\u0627')
+    .replace(/\u0649/g, '\u064A')
+    .replace(/\u0629/g, '\u0647')
     .replace(/[^\p{L}\p{N}]+/gu, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+}
+
+const GENERIC_BUSINESS_TOKENS = new Set([
+  'مؤسسه', 'شركه', 'متجر', 'التجاره', 'تجاره', 'للتجاره', 'التجاريه',
+  'الخدمات', 'خدمات', 'للخدمات', 'لخدمات', 'السعوديه',
+  'company', 'establishment', 'trading', 'trade', 'store', 'shop',
+  'service', 'services', 'co', 'llc', 'ltd', 'sa',
+]);
+
+function significantNameKey(value: unknown) {
+  const tokens = normalizeName(value)
+    .split(' ')
+    .filter(token => token.length >= 2 && !GENERIC_BUSINESS_TOKENS.has(token));
+  return { tokens, compact: tokens.join('') };
+}
+
+function isSafePartialNameMatch(left: ReturnType<typeof significantNameKey>, right: ReturnType<typeof significantNameKey>) {
+  if (!left.compact || !right.compact) return false;
+  const shortest = Math.min(left.compact.length, right.compact.length);
+  if (shortest < 5) return false;
+  return left.compact.includes(right.compact) || right.compact.includes(left.compact);
 }
 
 function toMoney(value: unknown) {
@@ -260,10 +281,15 @@ Deno.serve(async (req) => {
     }
 
     const zohoByName = new Map<string, ZohoCustomer[]>();
+    const zohoNameEntries: Array<{
+      customer: ZohoCustomer;
+      partialKey: ReturnType<typeof significantNameKey>;
+    }> = [];
     for (const customer of zohoCustomers) {
       const key = normalizeName(customer.contact_name);
       if (!key) continue;
       zohoByName.set(key, [...(zohoByName.get(key) || []), customer]);
+      zohoNameEntries.push({ customer, partialKey: significantNameKey(customer.contact_name) });
     }
 
     const clients = clientsResult.rows.map(client => {
@@ -271,14 +297,30 @@ Deno.serve(async (req) => {
       const clientName = safeClientName(client);
       const totals = accountTotals.get(daftraClientId) || { debit: 0, credit: 0, accounts: 0 };
       const closingBalance = toMoney(totals.debit - totals.credit);
-      const candidates = zohoByName.get(normalizeName(clientName)) || [];
+      const normalizedClientName = normalizeName(clientName);
+      const exactCandidates = zohoByName.get(normalizedClientName) || [];
+      let candidates = exactCandidates;
+      let matchMethod = exactCandidates.length ? 'exact' : 'none';
+      if (!exactCandidates.length) {
+        const partialKey = significantNameKey(clientName);
+        const uniquePartial = new Map<string, ZohoCustomer>();
+        for (const entry of zohoNameEntries) {
+          if (isSafePartialNameMatch(partialKey, entry.partialKey)) {
+            uniquePartial.set(entry.customer.zoho_id, entry.customer);
+          }
+        }
+        candidates = [...uniquePartial.values()];
+        if (candidates.length) matchMethod = 'partial';
+      }
 
       let matchStatus = 'unmatched';
       let zoho: ZohoCustomer | null = null;
       if (candidates.length > 1) matchStatus = 'ambiguous';
       if (candidates.length === 1) {
         zoho = candidates[0];
-        if (zoho.opening_balance_checked_at == null || zoho.opening_balance_configured == null) {
+        if (matchMethod === 'partial') {
+          matchStatus = 'partial_candidate';
+        } else if (zoho.opening_balance_checked_at == null || zoho.opening_balance_configured == null) {
           matchStatus = 'zoho_unchecked';
         } else {
           const difference = closingBalance - Number(zoho.opening_balance_configured || 0);
@@ -304,6 +346,8 @@ Deno.serve(async (req) => {
         zoho_opening_checked_at: zoho?.opening_balance_checked_at || null,
         difference: zohoOpening == null ? null : toMoney(closingBalance - zohoOpening),
         match_status: matchStatus,
+        match_method: matchMethod,
+        match_candidate_count: candidates.length,
       };
     }).filter(client => client.client_name);
 
@@ -317,6 +361,7 @@ Deno.serve(async (req) => {
       matched: clients.filter(row => row.match_status === 'matched').length,
       different: clients.filter(row => row.match_status === 'different').length,
       zoho_unchecked: clients.filter(row => row.match_status === 'zoho_unchecked').length,
+      partial_candidate: clients.filter(row => row.match_status === 'partial_candidate').length,
       ambiguous: clients.filter(row => row.match_status === 'ambiguous').length,
       unmatched: clients.filter(row => row.match_status === 'unmatched').length,
     };
