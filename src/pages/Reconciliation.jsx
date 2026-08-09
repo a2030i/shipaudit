@@ -32,6 +32,7 @@ import {
   loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
+import { loadDaftraOpeningBalances } from '../lib/daftraService.js';
 import './Reconciliation.css';
 
 const fmt = (n) =>
@@ -79,6 +80,9 @@ export default function Reconciliation({ isActive = true }) {
   const [custRows, setCustRows]     = useState(null);   // صفوف مِرساة العميل (مشتركة بين العرضين)
   const [autolinkBusy, setAutolinkBusy] = useState(false);
   const [syncing, setSyncing]       = useState(false);  // مزامنة زوهو الفورية
+  const [daftraLoading, setDaftraLoading] = useState(false);
+  const [daftraData, setDaftraData] = useState(null);
+  const [daftraOpen, setDaftraOpen] = useState(false);
 
   // المسارات القديمة تهبط على عرضها: ?tab=zoho_live → عرض العميل ·
   // ?tab=customers → عرض المتجر · ?tab=vendors → تبويب الناقلين.
@@ -218,6 +222,39 @@ export default function Reconciliation({ isActive = true }) {
     } finally {
       setSyncing(false);
     }
+  };
+
+  const openDaftraBalances = async (force = false) => {
+    setDaftraOpen(true);
+    if ((!force && daftraData) || daftraLoading) return;
+    setDaftraLoading(true);
+    try {
+      const data = await loadDaftraOpeningBalances();
+      setDaftraData(data);
+      toast(`تم الاتصال بدفتره وقراءة ${Number(data.count || 0).toLocaleString('en-US')} عميل`, 'success');
+    } catch (e) {
+      setDaftraOpen(false);
+      toast(`فشل اتصال دفتره: ${e.message}`, 'error');
+    } finally {
+      setDaftraLoading(false);
+    }
+  };
+
+  const exportDaftraOpeningBalances = () => {
+    const rows = daftraData?.clients || [];
+    if (!rows.length) return;
+    const ws = XLSX.utils.aoa_to_sheet([
+      ['رقم العميل', 'اسم العميل', 'الرصيد الافتتاحي', 'العملة'],
+      ...rows.map(row => [
+        row.client_number || row.daftra_client_id,
+        row.client_name,
+        Number(row.opening_balance || 0),
+        row.currency_code || 'SAR',
+      ]),
+    ]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'أرصدة دفتره الافتتاحية');
+    XLSX.writeFile(rtl(wb), `أرصدة_دفتره_الافتتاحية_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // Reframe every row around the INTERNAL anchor. Internal system
@@ -428,6 +465,16 @@ export default function Reconciliation({ isActive = true }) {
           </Btn>
           <Btn size="md" variant="ghost" icon={<RefreshCw size={15}/>} onClick={refresh} disabled={syncing}>
             تحديث العرض فقط
+          </Btn>
+          <Btn
+            size="md"
+            variant="ghost"
+            icon={daftraLoading ? <RefreshCw size={15}/> : <FileSpreadsheet size={15}/>}
+            onClick={() => openDaftraBalances(false)}
+            disabled={daftraLoading}
+            title="قراءة أسماء العملاء وأرصدتهم الافتتاحية من دفتره فقط"
+          >
+            {daftraLoading ? 'جارٍ قراءة دفتره…' : 'أرصدة دفتره الافتتاحية'}
           </Btn>
         </div>
       </section>
@@ -723,6 +770,16 @@ export default function Reconciliation({ isActive = true }) {
         />
       )}
 
+      {daftraOpen && (
+        <DaftraBalancesModal
+          data={daftraData}
+          loading={daftraLoading}
+          onClose={() => setDaftraOpen(false)}
+          onRefresh={() => openDaftraBalances(true)}
+          onExport={exportDaftraOpeningBalances}
+        />
+      )}
+
       {/* Educational footer */}
       {view === 'store' && <div style={{
         marginTop: 16, padding: 14, borderRadius: 10,
@@ -742,6 +799,51 @@ export default function Reconciliation({ isActive = true }) {
 
       </>}
     </div>
+  );
+}
+
+function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
+  const rows = data?.clients || [];
+  const nonZero = rows.filter(row => Math.abs(Number(row.opening_balance || 0)) > 0.005);
+  const total = nonZero.reduce((sum, row) => sum + Number(row.opening_balance || 0), 0);
+
+  return (
+    <Modal title="أرصدة العملاء الافتتاحية من دفتره" onClose={onClose} width={920} className="daftra-balances-dialog">
+      {loading ? (
+        <div className="daftra-balances-loading"><Spinner size={26}/> جارٍ قراءة جميع صفحات العملاء من دفتره…</div>
+      ) : (
+        <>
+          <div className="daftra-balances-summary">
+            <div><span>كل العملاء</span><strong>{rows.length.toLocaleString('en-US')}</strong></div>
+            <div><span>لديهم رصيد افتتاحي</span><strong>{nonZero.length.toLocaleString('en-US')}</strong></div>
+            <div><span>صافي الأرصدة الافتتاحية</span><strong>{fmt(total)} ر.س</strong></div>
+          </div>
+          <div className="daftra-balances-note">
+            قراءة فقط من حقل <code>starting_balance</code> في دفتره. لا ينشئ النظام عملاء ولا يعدّل أي رصيد.
+          </div>
+          <div className="daftra-balances-actions">
+            <Btn variant="accent" icon={<Download size={15}/>} onClick={onExport} disabled={!rows.length}>تصدير Excel</Btn>
+            <Btn variant="ghost" icon={<RefreshCw size={15}/>} onClick={onRefresh}>إعادة القراءة</Btn>
+          </div>
+          <div className="daftra-balances-table-wrap">
+            <table className="daftra-balances-table">
+              <thead><tr><th>رقم العميل</th><th>اسم العميل</th><th>الرصيد الافتتاحي</th><th>العملة</th></tr></thead>
+              <tbody>
+                {nonZero.map(row => (
+                  <tr key={`${row.daftra_client_id}:${row.client_number}`}>
+                    <td dir="ltr">{row.client_number || row.daftra_client_id || '—'}</td>
+                    <td>{row.client_name}</td>
+                    <td dir="ltr">{fmt(row.opening_balance)}</td>
+                    <td>{row.currency_code || 'SAR'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!nonZero.length && <Empty title="لا توجد أرصدة افتتاحية غير صفرية في دفتره"/>}
+          </div>
+        </>
+      )}
+    </Modal>
   );
 }
 
