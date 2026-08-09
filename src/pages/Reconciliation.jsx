@@ -825,7 +825,7 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
     if (status === 'relevant') {
       const hasMoney = Math.abs(Number(row.closing_balance || 0)) > 0.005
         || Math.abs(Number(row.zoho_opening_balance || 0)) > 0.005;
-      if (!hasMoney && row.match_status === 'matched') return false;
+      if (!hasMoney) return false;
     } else if (status && row.match_status !== status) return false;
     const needle = q.trim().toLocaleLowerCase('ar');
     if (!needle) return true;
