@@ -22,6 +22,10 @@ test('frontend requests the fixed January closing period and exports full audit 
   assert.match(page, /إقفال دفتره 31 يناير/);
   assert.match(page, /مبيعات يناير/);
   assert.match(page, /دفعات يناير/);
+  assert.match(page, /المستحق للتحصيل/);
+  assert.match(page, /أرصدة لصالح العملاء/);
+  assert.match(page, /لا تُخصم من إجمالي التحصيل/);
+  assert.match(page, /مستحق للتحصيل' : 'رصيد لصالح العميل/);
   assert.match(page, /مطابقة_إقفال_دفترة_مع_افتتاحي_زوهو_حتى_2026-01-31\.xlsx/);
 });
 

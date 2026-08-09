@@ -244,7 +244,7 @@ export default function Reconciliation({ isActive = true }) {
     const rows = (daftraData?.clients || []).filter(row => Math.abs(Number(row.closing_balance || 0)) > 0.005);
     if (!rows.length) return;
     const ws = XLSX.utils.aoa_to_sheet([
-      ['رقم عميل دفتره', 'رقم الحساب', 'اسم عميل دفتره', 'الحالة في دفتره', 'الرصيد قبل الفترة', 'مبيعات يناير', 'مرتجعات يناير', 'صافي مبيعات يناير', 'دفعات يناير', 'تسويات يناير', 'إقفال دفتره 31 يناير', 'اسم العميل في زوهو', 'افتتاحي زوهو', 'الفرق', 'حالة المطابقة', 'الإجراء المقترح', 'العملة'],
+      ['رقم عميل دفتره', 'رقم الحساب', 'اسم عميل دفتره', 'الحالة في دفتره', 'الرصيد قبل الفترة', 'مبيعات يناير', 'مرتجعات يناير', 'صافي مبيعات يناير', 'دفعات يناير', 'تسويات يناير', 'إقفال دفتره 31 يناير', 'تصنيف الرصيد', 'المطلوب تحصيله', 'رصيد لصالح العميل', 'اسم العميل في زوهو', 'افتتاحي زوهو', 'الفرق', 'حالة المطابقة', 'الإجراء المقترح', 'العملة'],
       ...rows.map(row => [
         row.client_number || row.daftra_client_id,
         row.account_number || '',
@@ -257,6 +257,9 @@ export default function Reconciliation({ isActive = true }) {
         Number(row.total_payments || 0),
         Number(row.settlements || 0),
         Number(row.closing_balance || 0),
+        Number(row.closing_balance || 0) > 0.005 ? 'مستحق للتحصيل' : 'رصيد لصالح العميل',
+        Math.max(Number(row.closing_balance || 0), 0),
+        Math.abs(Math.min(Number(row.closing_balance || 0), 0)),
         row.zoho_contact_name || '',
         row.zoho_opening_balance == null ? '' : Number(row.zoho_opening_balance),
         row.difference == null ? '' : Number(row.difference),
@@ -848,17 +851,17 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
       ) : (
         <>
           <div className="daftra-balances-summary">
-            <div><span>أرصدة غير صفرية</span><strong>{Number(totals.non_zero || rows.length).toLocaleString('en-US')}</strong></div>
-            <div><span>أرصدة مدينة</span><strong>{Number(totals.positive || 0).toLocaleString('en-US')} · {fmt(totals.daftra_positive)} ر.س</strong></div>
-            <div><span>أرصدة دائنة</span><strong>{Number(totals.credit || 0).toLocaleString('en-US')} · {fmt(totals.daftra_credit)} ر.س</strong></div>
-            <div><span>صافي إقفال دفتره</span><strong>{fmt(totals.daftra_closing)} ر.س</strong></div>
+            <div><span>المستحق للتحصيل</span><strong className="is-danger">{fmt(totals.daftra_positive)} ر.س</strong><small>{Number(totals.positive || 0).toLocaleString('en-US')} عميل</small></div>
+            <div><span>أرصدة لصالح العملاء</span><strong className="is-ok">{fmt(Math.abs(Number(totals.daftra_credit || 0)))} ر.س</strong><small>{Number(totals.credit || 0).toLocaleString('en-US')} عميل · لا تُخصم من إجمالي التحصيل</small></div>
+            <div><span>عملاء ملف Excel</span><strong>{Number(totals.non_zero || rows.length).toLocaleString('en-US')}</strong></div>
             <div><span>مطابقون</span><strong className="is-ok">{Number(totals.matched || 0).toLocaleString('en-US')}</strong></div>
             <div><span>لديهم فرق</span><strong className="is-danger">{Number(totals.different || 0).toLocaleString('en-US')}</strong></div>
           </div>
           <div className="daftra-balances-note">
             المصدر هو تقرير <strong>أرصدة العملاء الرسمي في دفتره</strong> من 1 إلى 31 يناير 2026، ويعرض الرصيد قبل الفترة
             والمبيعات والمرتجعات والدفعات والتسويات ثم رصيد الإقفال. نقارنه مع <code>opening_balance_configured</code> المقروء من زوهو.
-            افتتاحي زوهو مؤرخ 10 يناير؛ لذلك أي فرق يحتاج مراجعة الحركات بين التاريخين ولا يعني تعديلًا تلقائيًا. التقرير للقراءة فقط ولا ينشئ عملاء أو يغيّر أرصدة.
+            <strong> الرصيد الموجب هو المطلوب تحصيله، والرصيد السالب مبلغ لصالح العميل ويُعرض منفصلًا ولا يُخصم من إجمالي التحصيل.</strong>
+            {' '}افتتاحي زوهو مؤرخ 10 يناير؛ لذلك أي فرق يحتاج مراجعة الحركات بين التاريخين ولا يعني تعديلًا تلقائيًا. التقرير للقراءة فقط ولا ينشئ عملاء أو يغيّر أرصدة.
           </div>
           <div className="daftra-partial-match-note">
             <strong>{Number(totals.partial_candidate || 0).toLocaleString('en-US')} مطابقة اسم جزئية:</strong>
@@ -884,7 +887,7 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
           </div>
           <div className="daftra-balances-table-wrap">
             <table className="daftra-balances-table">
-              <thead><tr><th>رقم دفتره</th><th>عميل دفتره</th><th>قبل الفترة</th><th>صافي يناير</th><th>دفعات وتسويات</th><th>إقفال 31 يناير</th><th>افتتاحي زوهو</th><th>الفرق</th><th>الحالة</th></tr></thead>
+              <thead><tr><th>رقم دفتره</th><th>عميل دفتره</th><th>قبل الفترة</th><th>صافي يناير</th><th>دفعات وتسويات</th><th>إقفال 31 يناير</th><th>تصنيف الرصيد</th><th>افتتاحي زوهو</th><th>الفرق</th><th>الحالة</th></tr></thead>
               <tbody>
                 {visibleRows.map(row => {
                   const meta = DAFTRA_MATCH_META[row.match_status] || { label: row.match_status, tone: 'muted' };
@@ -901,6 +904,7 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
                     <td data-label="صافي يناير" dir="ltr">{fmt(row.net_sales)}</td>
                     <td data-label="دفعات وتسويات" dir="ltr">{fmt(Number(row.total_payments || 0) + Number(row.settlements || 0))}</td>
                     <td data-label="إقفال 31 يناير" dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
+                    <td data-label="تصنيف الرصيد"><span className={`daftra-match-status ${Number(row.closing_balance || 0) > 0.005 ? 'is-danger' : 'is-ok'}`}>{Number(row.closing_balance || 0) > 0.005 ? 'مستحق للتحصيل' : 'لصالح العميل'}</span></td>
                     <td data-label="افتتاحي زوهو" dir="ltr" title={row.zoho_contact_name || ''}>{row.zoho_opening_balance == null ? '—' : fmt(row.zoho_opening_balance)}</td>
                     <td data-label="الفرق" dir="ltr" className={Math.abs(Number(row.difference || 0)) > 0.005 ? 'is-difference' : ''}>{row.difference == null ? '—' : fmt(row.difference)}</td>
                     <td data-label="الحالة"><span className={`daftra-match-status is-${meta.tone}`}>{meta.label}</span></td>
