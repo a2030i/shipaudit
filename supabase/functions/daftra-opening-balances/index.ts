@@ -1,4 +1,4 @@
-// daftra-opening-balances v6 — read-only Daftra receivable reconciliation.
+// daftra-opening-balances v7 — read-only Daftra receivable reconciliation.
 //
 // The Daftra client payload exposes `starting_balance`, while journal account
 // aggregates can lag behind the live client statement.  For migration and
@@ -36,6 +36,26 @@ type DaftraJournalAccount = {
   total_debit?: number | string;
   total_credit?: number | string;
   disabled?: boolean | number | string;
+  is_recalculated?: boolean | number | string;
+};
+
+type DaftraBalanceSnapshot = {
+  daftra_client_id: string;
+  client_number: string | null;
+  account_number: string | null;
+  client_name: string;
+  manual_status: string | null;
+  employee_name: string | null;
+  opening_balance: number | string;
+  total_sales: number | string;
+  total_returns: number | string;
+  net_sales: number | string;
+  total_payments: number | string;
+  settlements: number | string;
+  closing_balance: number | string;
+  currency_code: string | null;
+  source: string;
+  captured_at: string;
 };
 
 type DaftraInvoice = {
@@ -264,6 +284,121 @@ function toMoney(value: unknown) {
   return Number.isFinite(number) ? Number(number.toFixed(2)) : 0;
 }
 
+async function fetchDaftraBalanceSnapshot(
+  db: ReturnType<typeof serviceClient>,
+  periodStart: string,
+  periodEnd: string,
+) {
+  const { data, error } = await db
+    .from('daftra_client_balance_snapshots')
+    .select('daftra_client_id, client_number, account_number, client_name, manual_status, employee_name, opening_balance, total_sales, total_returns, net_sales, total_payments, settlements, closing_balance, currency_code, source, captured_at')
+    .eq('period_start', periodStart)
+    .eq('period_end', periodEnd)
+    .order('daftra_client_id', { ascending: true });
+  if (error) throw new Error(`daftra_snapshot_read_failed:${error.message}`);
+  const rows = (data || []) as DaftraBalanceSnapshot[];
+  if (!rows.length) throw new Error('daftra_period_snapshot_not_found');
+  return rows;
+}
+
+function matchSnapshotWithZoho(snapshotRows: DaftraBalanceSnapshot[], zohoCustomers: ZohoCustomer[]) {
+  const zohoByName = new Map<string, ZohoCustomer[]>();
+  const zohoNameEntries: Array<{
+    customer: ZohoCustomer;
+    partialKey: ReturnType<typeof significantNameKey>;
+  }> = [];
+  for (const customer of zohoCustomers) {
+    const key = normalizeName(customer.contact_name);
+    if (!key) continue;
+    zohoByName.set(key, [...(zohoByName.get(key) || []), customer]);
+    zohoNameEntries.push({ customer, partialKey: significantNameKey(customer.contact_name) });
+  }
+
+  const clients = snapshotRows.map(row => {
+    const closingBalance = toMoney(row.closing_balance);
+    const exactCandidates = zohoByName.get(normalizeName(row.client_name)) || [];
+    let candidates = exactCandidates;
+    let matchMethod = exactCandidates.length ? 'exact' : 'none';
+    if (!exactCandidates.length) {
+      const partialKey = significantNameKey(row.client_name);
+      const uniquePartial = new Map<string, ZohoCustomer>();
+      for (const entry of zohoNameEntries) {
+        if (isSafePartialNameMatch(partialKey, entry.partialKey)) {
+          uniquePartial.set(entry.customer.zoho_id, entry.customer);
+        }
+      }
+      candidates = [...uniquePartial.values()];
+      if (candidates.length) matchMethod = 'partial';
+    }
+
+    let matchStatus = 'unmatched';
+    let zoho: ZohoCustomer | null = null;
+    if (candidates.length > 1) matchStatus = 'ambiguous';
+    if (candidates.length === 1) {
+      zoho = candidates[0];
+      if (matchMethod === 'partial') matchStatus = 'partial_candidate';
+      else if (zoho.opening_balance_checked_at == null || zoho.opening_balance_configured == null) matchStatus = 'zoho_unchecked';
+      else matchStatus = Math.abs(closingBalance - Number(zoho.opening_balance_configured || 0)) <= 0.005
+        ? 'matched'
+        : 'different';
+    }
+
+    const zohoOpening = zoho?.opening_balance_configured == null
+      ? null
+      : toMoney(zoho.opening_balance_configured);
+    return {
+      daftra_client_id: String(row.daftra_client_id),
+      client_number: row.client_number || String(row.daftra_client_id),
+      account_number: row.account_number || '',
+      client_name: row.client_name,
+      manual_status: row.manual_status || '',
+      employee_name: row.employee_name || '',
+      opening_balance: toMoney(row.opening_balance),
+      total_sales: toMoney(row.total_sales),
+      total_returns: toMoney(row.total_returns),
+      net_sales: toMoney(row.net_sales),
+      total_payments: toMoney(row.total_payments),
+      settlements: toMoney(row.settlements),
+      closing_balance: closingBalance,
+      currency_code: row.currency_code || 'SAR',
+      source: row.source,
+      captured_at: row.captured_at,
+      zoho_contact_id: zoho?.zoho_id || null,
+      zoho_contact_name: zoho?.contact_name || null,
+      zoho_opening_balance: zohoOpening,
+      zoho_opening_checked_at: zoho?.opening_balance_checked_at || null,
+      difference: zohoOpening == null ? null : toMoney(closingBalance - zohoOpening),
+      match_status: matchStatus,
+      match_method: matchMethod,
+      match_candidate_count: candidates.length,
+    };
+  }).filter(row => Math.abs(row.closing_balance) > 0.005);
+
+  const matchedRows = clients.filter(row => row.zoho_opening_balance != null);
+  const positiveRows = clients.filter(row => row.closing_balance > 0.005);
+  const creditRows = clients.filter(row => row.closing_balance < -0.005);
+  return {
+    clients,
+    totals: {
+      clients: clients.length,
+      non_zero: clients.length,
+      positive: positiveRows.length,
+      credit: creditRows.length,
+      daftra_positive: toMoney(positiveRows.reduce((sum, row) => sum + row.closing_balance, 0)),
+      daftra_credit: toMoney(creditRows.reduce((sum, row) => sum + row.closing_balance, 0)),
+      daftra_closing: toMoney(clients.reduce((sum, row) => sum + row.closing_balance, 0)),
+      zoho_opening_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.zoho_opening_balance || 0), 0)),
+      difference_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.difference || 0), 0)),
+      matched: clients.filter(row => row.match_status === 'matched').length,
+      different: clients.filter(row => row.match_status === 'different').length,
+      zoho_unchecked: clients.filter(row => row.match_status === 'zoho_unchecked').length,
+      partial_candidate: clients.filter(row => row.match_status === 'partial_candidate').length,
+      ambiguous: clients.filter(row => row.match_status === 'ambiguous').length,
+      unmatched: clients.filter(row => row.match_status === 'unmatched').length,
+    },
+  };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   if (req.method !== 'POST') return json({ ok: false, error: 'method_not_allowed' }, 405);
@@ -273,16 +408,47 @@ Deno.serve(async (req) => {
   if (!caller) return json({ ok: false, error: 'forbidden' }, 403);
 
   try {
+    const requestBody = await req.json().catch(() => ({})) as {
+      action?: string;
+      period_start?: string;
+      period_end?: string;
+    };
+    const action = requestBody.action || 'list_closing_balances';
+
+    if (action === 'list_period_closing_balances') {
+      const periodStart = String(requestBody.period_start || '2026-01-01');
+      const periodEnd = String(requestBody.period_end || '2026-01-31');
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
+        return json({ ok: false, error: 'invalid_period' }, 400);
+      }
+      const [snapshotRows, zohoCustomers] = await Promise.all([
+        fetchDaftraBalanceSnapshot(db, periodStart, periodEnd),
+        fetchZohoCustomers(db),
+      ]);
+      const reconciliation = matchSnapshotWithZoho(snapshotRows, zohoCustomers);
+      return json({
+        ok: true,
+        source: 'daftra_client_balance_snapshot',
+        comparison_source: 'zoho_contacts.opening_balance_configured',
+        calculation: 'official_daftra_clients_balance_report_closing_balance',
+        period_start: periodStart,
+        period_end: periodEnd,
+        read_only: true,
+        count: reconciliation.clients.length,
+        fetched_at: new Date().toISOString(),
+        totals: reconciliation.totals,
+        clients: reconciliation.clients,
+      });
+    }
+    if (action !== 'list_closing_balances') {
+      return json({ ok: false, error: 'unsupported_action' }, 400);
+    }
+
     const rawBaseUrl = Deno.env.get('DAFTRA_BASE_URL') || '';
     const apiKey = Deno.env.get('DAFTRA_API_KEY') || '';
     if (!rawBaseUrl || !apiKey) return json({ ok: false, error: 'daftra_not_configured' }, 503);
 
     const baseUrl = normalizeDaftraBaseUrl(rawBaseUrl);
-    const requestBody = await req.json().catch(() => ({})) as { action?: string };
-    if (requestBody.action && requestBody.action !== 'list_closing_balances') {
-      return json({ ok: false, error: 'unsupported_action' }, 400);
-    }
-
     const [clientsResult, accountsResult, invoicesResult, zohoCustomers] = await Promise.all([
       fetchDaftraCollection<DaftraClient>(baseUrl, apiKey, 'clients', 'Client'),
       fetchDaftraCollection<DaftraJournalAccount>(baseUrl, apiKey, 'journal_accounts', 'JournalAccount'),
