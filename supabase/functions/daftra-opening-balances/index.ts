@@ -1,9 +1,10 @@
-// daftra-opening-balances v5 — read-only Daftra closing balance reconciliation.
+// daftra-opening-balances v6 — read-only Daftra receivable reconciliation.
 //
-// The Daftra client payload exposes `starting_balance`, which is not the
-// accounting closing balance.  The closing balance is read from the client's
-// journal account: total_debit - total_credit.  That value includes invoices,
-// returns, payments, opening entries and manual accounting adjustments.
+// The Daftra client payload exposes `starting_balance`, while journal account
+// aggregates can lag behind the live client statement.  For migration and
+// reconciliation we therefore use the current amount due on non-draft
+// invoices: sum(Invoice.summary_unpaid).  Journal totals remain diagnostic
+// metadata only and never drive the Zoho opening-balance comparison.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -35,6 +36,13 @@ type DaftraJournalAccount = {
   total_debit?: number | string;
   total_credit?: number | string;
   disabled?: boolean | number | string;
+};
+
+type DaftraInvoice = {
+  id?: number | string;
+  client_id?: number | string;
+  draft?: boolean | number | string;
+  summary_unpaid?: number | string;
 };
 
 type DaftraResponse = {
@@ -109,7 +117,7 @@ const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 async function fetchDaftraPage(
   baseUrl: string,
   apiKey: string,
-  resource: 'clients' | 'journal_accounts',
+  resource: 'clients' | 'journal_accounts' | 'invoices',
   page: number,
 ): Promise<DaftraResponse> {
   const url = new URL(`${baseUrl}/${resource}.json`);
@@ -155,24 +163,35 @@ async function fetchDaftraPage(
 async function fetchDaftraCollection<T>(
   baseUrl: string,
   apiKey: string,
-  resource: 'clients' | 'journal_accounts',
-  rowKey: 'Client' | 'JournalAccount',
+  resource: 'clients' | 'journal_accounts' | 'invoices',
+  rowKey: 'Client' | 'JournalAccount' | 'Invoice',
 ) {
   const rows: T[] = [];
-  let page = 1;
-  let pageCount = 1;
-  let declaredTotal = 0;
-  do {
-    if (page > 500) throw new Error('daftra_pagination_limit');
-    const response = await fetchDaftraPage(baseUrl, apiKey, resource, page);
-    pageCount = Math.max(1, Number(response.pagination?.page_count) || 1);
-    declaredTotal = Number(response.pagination?.total_results) || declaredTotal;
+  const appendRows = (response: DaftraResponse) => {
     for (const row of response.data || []) {
       const value = row[rowKey];
       if (value && typeof value === 'object') rows.push(value as T);
     }
-    page += 1;
-  } while (page <= pageCount);
+  };
+
+  const first = await fetchDaftraPage(baseUrl, apiKey, resource, 1);
+  appendRows(first);
+  const pageCount = Math.max(1, Number(first.pagination?.page_count) || 1);
+  const declaredTotal = Number(first.pagination?.total_results) || rows.length;
+  if (pageCount > 500) throw new Error('daftra_pagination_limit');
+
+  // A bounded batch keeps the 8k+ invoice read fast without flooding Daftra.
+  for (let page = 2; page <= pageCount; page += 6) {
+    const pages = Array.from(
+      { length: Math.min(6, pageCount - page + 1) },
+      (_, offset) => page + offset,
+    );
+    const responses = await Promise.all(
+      pages.map(currentPage => fetchDaftraPage(baseUrl, apiKey, resource, currentPage)),
+    );
+    responses.forEach(appendRows);
+  }
+
   return { rows, declaredTotal };
 }
 
@@ -218,8 +237,10 @@ function normalizeName(value: unknown) {
 }
 
 const GENERIC_BUSINESS_TOKENS = new Set([
-  'مؤسسه', 'شركه', 'متجر', 'التجاره', 'تجاره', 'للتجاره', 'التجاريه',
-  'الخدمات', 'خدمات', 'للخدمات', 'لخدمات', 'السعوديه',
+  '\u0645\u0624\u0633\u0633\u0647', '\u0634\u0631\u0643\u0647', '\u0645\u062a\u062c\u0631',
+  '\u0627\u0644\u062a\u062c\u0627\u0631\u0647', '\u062a\u062c\u0627\u0631\u0647', '\u0644\u0644\u062a\u062c\u0627\u0631\u0647',
+  '\u0627\u0644\u062a\u062c\u0627\u0631\u064a\u0647', '\u0627\u0644\u062e\u062f\u0645\u0627\u062a', '\u062e\u062f\u0645\u0627\u062a',
+  '\u0644\u0644\u062e\u062f\u0645\u0627\u062a', '\u0644\u062e\u062f\u0645\u0627\u062a', '\u0627\u0644\u0633\u0639\u0648\u062f\u064a\u0647',
   'company', 'establishment', 'trading', 'trade', 'store', 'shop',
   'service', 'services', 'co', 'llc', 'ltd', 'sa',
 ]);
@@ -262,9 +283,10 @@ Deno.serve(async (req) => {
       return json({ ok: false, error: 'unsupported_action' }, 400);
     }
 
-    const [clientsResult, accountsResult, zohoCustomers] = await Promise.all([
+    const [clientsResult, accountsResult, invoicesResult, zohoCustomers] = await Promise.all([
       fetchDaftraCollection<DaftraClient>(baseUrl, apiKey, 'clients', 'Client'),
       fetchDaftraCollection<DaftraJournalAccount>(baseUrl, apiKey, 'journal_accounts', 'JournalAccount'),
+      fetchDaftraCollection<DaftraInvoice>(baseUrl, apiKey, 'invoices', 'Invoice'),
       fetchZohoCustomers(db),
     ]);
 
@@ -278,6 +300,18 @@ Deno.serve(async (req) => {
       current.credit += Number(account.total_credit) || 0;
       current.accounts += 1;
       accountTotals.set(entityId, current);
+    }
+
+    const invoiceDueTotals = new Map<string, { due: number; invoices: number }>();
+    for (const invoice of invoicesResult.rows) {
+      const clientId = String(invoice.client_id ?? '').trim();
+      if (!clientId) continue;
+      const draft = invoice.draft === true || invoice.draft === 1 || invoice.draft === '1' || invoice.draft === 'true';
+      if (draft) continue;
+      const current = invoiceDueTotals.get(clientId) || { due: 0, invoices: 0 };
+      current.due += Number(invoice.summary_unpaid) || 0;
+      current.invoices += 1;
+      invoiceDueTotals.set(clientId, current);
     }
 
     const zohoByName = new Map<string, ZohoCustomer[]>();
@@ -296,7 +330,8 @@ Deno.serve(async (req) => {
       const daftraClientId = String(client.id ?? '').trim();
       const clientName = safeClientName(client);
       const totals = accountTotals.get(daftraClientId) || { debit: 0, credit: 0, accounts: 0 };
-      const closingBalance = toMoney(totals.debit - totals.credit);
+      const invoiceDue = invoiceDueTotals.get(daftraClientId) || { due: 0, invoices: 0 };
+      const closingBalance = toMoney(invoiceDue.due);
       const normalizedClientName = normalizeName(clientName);
       const exactCandidates = zohoByName.get(normalizedClientName) || [];
       let candidates = exactCandidates;
@@ -339,6 +374,7 @@ Deno.serve(async (req) => {
         total_debit: toMoney(totals.debit),
         total_credit: toMoney(totals.credit),
         closing_balance: closingBalance,
+        open_invoice_count: invoiceDue.invoices,
         journal_account_count: totals.accounts,
         zoho_contact_id: zoho?.zoho_id || null,
         zoho_contact_name: zoho?.contact_name || null,
@@ -355,6 +391,7 @@ Deno.serve(async (req) => {
     const totals = {
       clients: clients.length,
       non_zero: clients.filter(row => Math.abs(row.closing_balance) > 0.005).length,
+      daftra_due: toMoney(clients.reduce((sum, row) => sum + row.closing_balance, 0)),
       daftra_closing: toMoney(clients.reduce((sum, row) => sum + row.closing_balance, 0)),
       zoho_opening_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.zoho_opening_balance || 0), 0)),
       difference_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.difference || 0), 0)),
@@ -368,13 +405,14 @@ Deno.serve(async (req) => {
 
     return json({
       ok: true,
-      source: 'daftra_journal_accounts',
+      source: 'daftra_invoices_summary_unpaid',
       comparison_source: 'zoho_contacts.opening_balance_configured',
-      calculation: 'total_debit - total_credit',
+      calculation: 'sum(non_draft_invoice.summary_unpaid)',
       read_only: true,
       count: clients.length,
       declared_clients: clientsResult.declaredTotal,
       declared_journal_accounts: accountsResult.declaredTotal,
+      declared_invoices: invoicesResult.declaredTotal,
       fetched_at: new Date().toISOString(),
       totals,
       clients,

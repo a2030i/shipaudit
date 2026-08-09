@@ -244,12 +244,11 @@ export default function Reconciliation({ isActive = true }) {
     const rows = daftraData?.clients || [];
     if (!rows.length) return;
     const ws = XLSX.utils.aoa_to_sheet([
-      ['رقم عميل دفتره', 'اسم عميل دفتره', 'مدين دفتره', 'دائن دفتره', 'ختامي دفتره', 'اسم العميل في زوهو', 'افتتاحي زوهو', 'الفرق', 'حالة المطابقة', 'العملة'],
+      ['رقم عميل دفتره', 'اسم عميل دفتره', 'عدد الفواتير المقروءة', 'المستحق الحالي في دفتره', 'اسم العميل في زوهو', 'افتتاحي زوهو', 'الفرق', 'حالة المطابقة', 'العملة'],
       ...rows.map(row => [
         row.client_number || row.daftra_client_id,
         row.client_name,
-        Number(row.total_debit || 0),
-        Number(row.total_credit || 0),
+        Number(row.open_invoice_count || 0),
         Number(row.closing_balance || 0),
         row.zoho_contact_name || '',
         row.zoho_opening_balance == null ? '' : Number(row.zoho_opening_balance),
@@ -260,7 +259,7 @@ export default function Reconciliation({ isActive = true }) {
     ]);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'مطابقة دفتره مع زوهو');
-    XLSX.writeFile(rtl(wb), `مطابقة_ختامي_دفتره_مع_افتتاحي_زوهو_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.writeFile(rtl(wb), `مطابقة_مستحق_دفتره_مع_افتتاحي_زوهو_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // Reframe every row around the INTERNAL anchor. Internal system
@@ -480,7 +479,7 @@ export default function Reconciliation({ isActive = true }) {
             disabled={daftraLoading}
             title="مقارنة الرصيد الختامي المحاسبي من دفتره مع الرصيد الافتتاحي الصريح في زوهو"
           >
-            {daftraLoading ? 'جارٍ مطابقة دفتره…' : 'ختامي دفتره × افتتاحي زوهو'}
+            {daftraLoading ? 'جارٍ مطابقة دفتره…' : 'مستحق دفتره × افتتاحي زوهو'}
           </Btn>
         </div>
       </section>
@@ -835,21 +834,22 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
   }), [rows, q, status]);
 
   return (
-    <Modal title="مطابقة ختامي دفتره مع افتتاحي زوهو" onClose={onClose} width={1180} className="daftra-balances-dialog">
+    <Modal title="مطابقة مستحق دفتره مع افتتاحي زوهو" onClose={onClose} width={1180} className="daftra-balances-dialog">
       {loading ? (
-        <div className="daftra-balances-loading"><Spinner size={26}/> جارٍ قراءة دليل الحسابات من دفتره ومطابقته مع زوهو…</div>
+        <div className="daftra-balances-loading"><Spinner size={26}/> جارٍ قراءة الفواتير الحالية من دفتره ومطابقتها مع زوهو…</div>
       ) : (
         <>
           <div className="daftra-balances-summary">
             <div><span>عملاء دفتره</span><strong>{Number(totals.clients || rows.length).toLocaleString('en-US')}</strong></div>
-            <div><span>لديهم رصيد ختامي</span><strong>{Number(totals.non_zero || 0).toLocaleString('en-US')}</strong></div>
-            <div><span>صافي ختامي دفتره</span><strong>{fmt(totals.daftra_closing)} ر.س</strong></div>
+            <div><span>لديهم مبلغ مستحق</span><strong>{Number(totals.non_zero || 0).toLocaleString('en-US')}</strong></div>
+            <div><span>إجمالي المستحق في دفتره</span><strong>{fmt(totals.daftra_due ?? totals.daftra_closing)} ر.س</strong></div>
             <div><span>مطابقون</span><strong className="is-ok">{Number(totals.matched || 0).toLocaleString('en-US')}</strong></div>
             <div><span>لديهم فرق</span><strong className="is-danger">{Number(totals.different || 0).toLocaleString('en-US')}</strong></div>
           </div>
           <div className="daftra-balances-note">
-            ختامي دفتره = <code>إجمالي المدين − إجمالي الدائن</code> من حساب العميل في دليل الحسابات؛ ويُقارن مع
-            {' '}<code>opening_balance_configured</code> المقروء صراحةً من زوهو. المقارنة للقراءة فقط ولا تنشئ عملاء أو تعدّل أي رصيد.
+            المستحق الحالي في دفتره = مجموع <code>summary_unpaid</code> للفواتير غير المسودة. لا نستخدم إجمالي المدين والدائن
+            لأن تجميع دليل الحسابات قد يتأخر عن كشف العميل. ويُقارن المبلغ مع <code>opening_balance_configured</code> المقروء من زوهو.
+            المقارنة للقراءة فقط ولا تنشئ عملاء أو تعدّل أي رصيد.
           </div>
           <div className="daftra-partial-match-note">
             <strong>{Number(totals.partial_candidate || 0).toLocaleString('en-US')} مطابقة اسم جزئية:</strong>
@@ -875,7 +875,7 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
           </div>
           <div className="daftra-balances-table-wrap">
             <table className="daftra-balances-table">
-              <thead><tr><th>رقم دفتره</th><th>عميل دفتره</th><th>مدين</th><th>دائن</th><th>ختامي دفتره</th><th>افتتاحي زوهو</th><th>الفرق</th><th>الحالة</th></tr></thead>
+              <thead><tr><th>رقم دفتره</th><th>عميل دفتره</th><th>فواتير مقروءة</th><th>المستحق في دفتره</th><th>افتتاحي زوهو</th><th>الفرق</th><th>الحالة</th></tr></thead>
               <tbody>
                 {visibleRows.map(row => {
                   const meta = DAFTRA_MATCH_META[row.match_status] || { label: row.match_status, tone: 'muted' };
@@ -888,9 +888,8 @@ function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
                         <small><span>في زوهو:</span> {row.zoho_contact_name}</small>
                       )}
                     </td>
-                    <td data-label="مدين" dir="ltr">{fmt(row.total_debit)}</td>
-                    <td data-label="دائن" dir="ltr">{fmt(row.total_credit)}</td>
-                    <td data-label="ختامي دفتره" dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
+                    <td data-label="فواتير مقروءة" dir="ltr">{Number(row.open_invoice_count || 0).toLocaleString('en-US')}</td>
+                    <td data-label="المستحق في دفتره" dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
                     <td data-label="افتتاحي زوهو" dir="ltr" title={row.zoho_contact_name || ''}>{row.zoho_opening_balance == null ? '—' : fmt(row.zoho_opening_balance)}</td>
                     <td data-label="الفرق" dir="ltr" className={Math.abs(Number(row.difference || 0)) > 0.005 ? 'is-difference' : ''}>{row.difference == null ? '—' : fmt(row.difference)}</td>
                     <td data-label="الحالة"><span className={`daftra-match-status is-${meta.tone}`}>{meta.label}</span></td>
