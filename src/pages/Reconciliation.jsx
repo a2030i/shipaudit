@@ -32,7 +32,7 @@ import {
   loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
-import { loadDaftraOpeningBalances } from '../lib/daftraService.js';
+import { loadDaftraClosingBalances } from '../lib/daftraService.js';
 import './Reconciliation.css';
 
 const fmt = (n) =>
@@ -229,7 +229,7 @@ export default function Reconciliation({ isActive = true }) {
     if ((!force && daftraData) || daftraLoading) return;
     setDaftraLoading(true);
     try {
-      const data = await loadDaftraOpeningBalances();
+      const data = await loadDaftraClosingBalances();
       setDaftraData(data);
       toast(`تم الاتصال بدفتره وقراءة ${Number(data.count || 0).toLocaleString('en-US')} عميل`, 'success');
     } catch (e) {
@@ -240,21 +240,27 @@ export default function Reconciliation({ isActive = true }) {
     }
   };
 
-  const exportDaftraOpeningBalances = () => {
+  const exportDaftraClosingBalances = () => {
     const rows = daftraData?.clients || [];
     if (!rows.length) return;
     const ws = XLSX.utils.aoa_to_sheet([
-      ['رقم العميل', 'اسم العميل', 'الرصيد الافتتاحي', 'العملة'],
+      ['رقم عميل دفتره', 'اسم عميل دفتره', 'مدين دفتره', 'دائن دفتره', 'ختامي دفتره', 'اسم العميل في زوهو', 'افتتاحي زوهو', 'الفرق', 'حالة المطابقة', 'العملة'],
       ...rows.map(row => [
         row.client_number || row.daftra_client_id,
         row.client_name,
-        Number(row.opening_balance || 0),
+        Number(row.total_debit || 0),
+        Number(row.total_credit || 0),
+        Number(row.closing_balance || 0),
+        row.zoho_contact_name || '',
+        row.zoho_opening_balance == null ? '' : Number(row.zoho_opening_balance),
+        row.difference == null ? '' : Number(row.difference),
+        DAFTRA_MATCH_META[row.match_status]?.label || row.match_status,
         row.currency_code || 'SAR',
       ]),
     ]);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'أرصدة دفتره الافتتاحية');
-    XLSX.writeFile(rtl(wb), `أرصدة_دفتره_الافتتاحية_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, 'مطابقة دفتره مع زوهو');
+    XLSX.writeFile(rtl(wb), `مطابقة_ختامي_دفتره_مع_افتتاحي_زوهو_${new Date().toISOString().slice(0, 10)}.xlsx`);
   };
 
   // Reframe every row around the INTERNAL anchor. Internal system
@@ -472,9 +478,9 @@ export default function Reconciliation({ isActive = true }) {
             icon={daftraLoading ? <RefreshCw size={15}/> : <FileSpreadsheet size={15}/>}
             onClick={() => openDaftraBalances(false)}
             disabled={daftraLoading}
-            title="قراءة أسماء العملاء وأرصدتهم الافتتاحية من دفتره فقط"
+            title="مقارنة الرصيد الختامي المحاسبي من دفتره مع الرصيد الافتتاحي الصريح في زوهو"
           >
-            {daftraLoading ? 'جارٍ قراءة دفتره…' : 'أرصدة دفتره الافتتاحية'}
+            {daftraLoading ? 'جارٍ مطابقة دفتره…' : 'ختامي دفتره × افتتاحي زوهو'}
           </Btn>
         </div>
       </section>
@@ -776,7 +782,7 @@ export default function Reconciliation({ isActive = true }) {
           loading={daftraLoading}
           onClose={() => setDaftraOpen(false)}
           onRefresh={() => openDaftraBalances(true)}
-          onExport={exportDaftraOpeningBalances}
+          onExport={exportDaftraClosingBalances}
         />
       )}
 
@@ -802,44 +808,87 @@ export default function Reconciliation({ isActive = true }) {
   );
 }
 
+const DAFTRA_MATCH_META = {
+  matched: { label: 'مطابق', tone: 'ok' },
+  different: { label: 'يوجد فرق', tone: 'danger' },
+  zoho_unchecked: { label: 'افتتاحي زوهو غير مفحوص', tone: 'warn' },
+  ambiguous: { label: 'اسم مكرر في زوهو', tone: 'warn' },
+  unmatched: { label: 'غير موجود بالاسم في زوهو', tone: 'muted' },
+};
+
 function DaftraBalancesModal({ data, loading, onClose, onRefresh, onExport }) {
   const rows = data?.clients || [];
-  const nonZero = rows.filter(row => Math.abs(Number(row.opening_balance || 0)) > 0.005);
-  const total = nonZero.reduce((sum, row) => sum + Number(row.opening_balance || 0), 0);
+  const totals = data?.totals || {};
+  const [q, setQ] = useState('');
+  const [status, setStatus] = useState('relevant');
+  const visibleRows = useMemo(() => rows.filter(row => {
+    if (status === 'relevant') {
+      const hasMoney = Math.abs(Number(row.closing_balance || 0)) > 0.005
+        || Math.abs(Number(row.zoho_opening_balance || 0)) > 0.005;
+      if (!hasMoney && row.match_status === 'matched') return false;
+    } else if (status && row.match_status !== status) return false;
+    const needle = q.trim().toLocaleLowerCase('ar');
+    if (!needle) return true;
+    return [row.client_name, row.client_number, row.zoho_contact_name]
+      .some(value => String(value || '').toLocaleLowerCase('ar').includes(needle));
+  }), [rows, q, status]);
 
   return (
-    <Modal title="أرصدة العملاء الافتتاحية من دفتره" onClose={onClose} width={920} className="daftra-balances-dialog">
+    <Modal title="مطابقة ختامي دفتره مع افتتاحي زوهو" onClose={onClose} width={1180} className="daftra-balances-dialog">
       {loading ? (
-        <div className="daftra-balances-loading"><Spinner size={26}/> جارٍ قراءة جميع صفحات العملاء من دفتره…</div>
+        <div className="daftra-balances-loading"><Spinner size={26}/> جارٍ قراءة دليل الحسابات من دفتره ومطابقته مع زوهو…</div>
       ) : (
         <>
           <div className="daftra-balances-summary">
-            <div><span>كل العملاء</span><strong>{rows.length.toLocaleString('en-US')}</strong></div>
-            <div><span>لديهم رصيد افتتاحي</span><strong>{nonZero.length.toLocaleString('en-US')}</strong></div>
-            <div><span>صافي الأرصدة الافتتاحية</span><strong>{fmt(total)} ر.س</strong></div>
+            <div><span>عملاء دفتره</span><strong>{Number(totals.clients || rows.length).toLocaleString('en-US')}</strong></div>
+            <div><span>لديهم رصيد ختامي</span><strong>{Number(totals.non_zero || 0).toLocaleString('en-US')}</strong></div>
+            <div><span>صافي ختامي دفتره</span><strong>{fmt(totals.daftra_closing)} ر.س</strong></div>
+            <div><span>مطابقون</span><strong className="is-ok">{Number(totals.matched || 0).toLocaleString('en-US')}</strong></div>
+            <div><span>لديهم فرق</span><strong className="is-danger">{Number(totals.different || 0).toLocaleString('en-US')}</strong></div>
           </div>
           <div className="daftra-balances-note">
-            قراءة فقط من حقل <code>starting_balance</code> في دفتره. لا ينشئ النظام عملاء ولا يعدّل أي رصيد.
+            ختامي دفتره = <code>إجمالي المدين − إجمالي الدائن</code> من حساب العميل في دليل الحسابات؛ ويُقارن مع
+            {' '}<code>opening_balance_configured</code> المقروء صراحةً من زوهو. المطابقة بالاسم المتطابق فقط، بلا تخمين أو إنشاء عملاء أو تعديل أرصدة.
           </div>
           <div className="daftra-balances-actions">
             <Btn variant="accent" icon={<Download size={15}/>} onClick={onExport} disabled={!rows.length}>تصدير Excel</Btn>
             <Btn variant="ghost" icon={<RefreshCw size={15}/>} onClick={onRefresh}>إعادة القراءة</Btn>
           </div>
+          <div className="daftra-balances-filters">
+            <input value={q} onChange={event => setQ(event.target.value)} placeholder="ابحث باسم أو رقم العميل…" />
+            <select value={status} onChange={event => setStatus(event.target.value)}>
+              <option value="relevant">الأرصدة والحالات المهمة</option>
+              <option value="">كل العملاء</option>
+              <option value="different">يوجد فرق</option>
+              <option value="matched">مطابق</option>
+              <option value="zoho_unchecked">افتتاحي زوهو غير مفحوص</option>
+              <option value="ambiguous">اسم مكرر في زوهو</option>
+              <option value="unmatched">غير موجود في زوهو</option>
+            </select>
+            <span>عرض {visibleRows.length.toLocaleString('en-US')} من {rows.length.toLocaleString('en-US')}</span>
+          </div>
           <div className="daftra-balances-table-wrap">
             <table className="daftra-balances-table">
-              <thead><tr><th>رقم العميل</th><th>اسم العميل</th><th>الرصيد الافتتاحي</th><th>العملة</th></tr></thead>
+              <thead><tr><th>رقم دفتره</th><th>عميل دفتره</th><th>مدين</th><th>دائن</th><th>ختامي دفتره</th><th>افتتاحي زوهو</th><th>الفرق</th><th>الحالة</th></tr></thead>
               <tbody>
-                {nonZero.map(row => (
+                {visibleRows.map(row => {
+                  const meta = DAFTRA_MATCH_META[row.match_status] || { label: row.match_status, tone: 'muted' };
+                  return (
                   <tr key={`${row.daftra_client_id}:${row.client_number}`}>
                     <td dir="ltr">{row.client_number || row.daftra_client_id || '—'}</td>
                     <td>{row.client_name}</td>
-                    <td dir="ltr">{fmt(row.opening_balance)}</td>
-                    <td>{row.currency_code || 'SAR'}</td>
+                    <td dir="ltr">{fmt(row.total_debit)}</td>
+                    <td dir="ltr">{fmt(row.total_credit)}</td>
+                    <td dir="ltr"><strong>{fmt(row.closing_balance)}</strong></td>
+                    <td dir="ltr" title={row.zoho_contact_name || ''}>{row.zoho_opening_balance == null ? '—' : fmt(row.zoho_opening_balance)}</td>
+                    <td dir="ltr" className={Math.abs(Number(row.difference || 0)) > 0.005 ? 'is-difference' : ''}>{row.difference == null ? '—' : fmt(row.difference)}</td>
+                    <td><span className={`daftra-match-status is-${meta.tone}`}>{meta.label}</span></td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
-            {!nonZero.length && <Empty title="لا توجد أرصدة افتتاحية غير صفرية في دفتره"/>}
+            {!visibleRows.length && <Empty title="لا توجد نتائج ضمن هذا الفلتر"/>}
           </div>
         </>
       )}

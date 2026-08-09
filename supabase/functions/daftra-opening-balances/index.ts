@@ -1,8 +1,9 @@
-// daftra-opening-balances v1 — read-only Daftra client opening balances.
+// daftra-opening-balances v4 — read-only Daftra closing balance reconciliation.
 //
-// This function intentionally exposes only the fields needed to reconcile
-// Daftra opening balances with Zoho. It never writes to Daftra or Zoho and it
-// never returns the upstream payload, API key, or client contact details.
+// The Daftra client payload exposes `starting_balance`, which is not the
+// accounting closing balance.  The closing balance is read from the client's
+// journal account: total_debit - total_credit.  That value includes invoices,
+// returns, payments, opening entries and manual accounting adjustments.
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
 
@@ -24,20 +25,35 @@ type DaftraClient = {
   business_name?: string;
   first_name?: string;
   last_name?: string;
-  starting_balance?: number | string;
   default_currency_code?: string;
+};
+
+type DaftraJournalAccount = {
+  id?: number | string;
+  entity_type?: string;
+  entity_id?: number | string;
+  total_debit?: number | string;
+  total_credit?: number | string;
+  disabled?: boolean | number | string;
 };
 
 type DaftraResponse = {
   code?: number;
   result?: string;
-  data?: Array<{ Client?: DaftraClient }>;
+  data?: Array<Record<string, unknown>>;
   pagination?: {
     page?: number;
     page_count?: number;
     total_results?: number;
     next?: string | null;
   };
+};
+
+type ZohoCustomer = {
+  zoho_id: string;
+  contact_name: string | null;
+  opening_balance_configured: number | string | null;
+  opening_balance_checked_at: string | null;
 };
 
 const serviceClient = () => createClient(
@@ -90,40 +106,42 @@ function normalizeDaftraBaseUrl(raw: string) {
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-async function fetchDaftraPage(baseUrl: string, apiKey: string, page: number): Promise<DaftraResponse> {
-  const url = new URL(`${baseUrl}/clients.json`);
+async function fetchDaftraPage(
+  baseUrl: string,
+  apiKey: string,
+  resource: 'clients' | 'journal_accounts',
+  page: number,
+): Promise<DaftraResponse> {
+  const url = new URL(`${baseUrl}/${resource}.json`);
   url.searchParams.set('page', String(page));
   url.searchParams.set('limit', '100');
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20_000);
+    const timeout = setTimeout(() => controller.abort(), 25_000);
     try {
       const response = await fetch(url, {
         method: 'GET',
-        headers: {
-          Accept: 'application/json',
-          apikey: apiKey,
-        },
+        headers: { Accept: 'application/json', apikey: apiKey },
         signal: controller.signal,
       });
 
       if ((response.status === 429 || response.status >= 500) && attempt < 2) {
         await response.body?.cancel();
-        await sleep(400 * (attempt + 1));
+        await sleep(500 * (attempt + 1));
         continue;
       }
       if (response.status === 401 || response.status === 403) throw new Error('daftra_access_denied');
-      if (!response.ok) throw new Error(`daftra_http_${response.status}`);
+      if (!response.ok) throw new Error(`daftra_${resource}_http_${response.status}`);
 
       const payload = await response.json().catch(() => null) as DaftraResponse | null;
       if (!payload || payload.code !== 200 || !Array.isArray(payload.data)) {
-        throw new Error('daftra_invalid_response');
+        throw new Error(`daftra_${resource}_invalid_response`);
       }
       return payload;
     } catch (error) {
       if (attempt < 2 && error instanceof DOMException && error.name === 'AbortError') {
-        await sleep(400 * (attempt + 1));
+        await sleep(500 * (attempt + 1));
         continue;
       }
       throw error;
@@ -134,6 +152,48 @@ async function fetchDaftraPage(baseUrl: string, apiKey: string, page: number): P
   throw new Error('daftra_unavailable');
 }
 
+async function fetchDaftraCollection<T>(
+  baseUrl: string,
+  apiKey: string,
+  resource: 'clients' | 'journal_accounts',
+  rowKey: 'Client' | 'JournalAccount',
+) {
+  const rows: T[] = [];
+  let page = 1;
+  let pageCount = 1;
+  let declaredTotal = 0;
+  do {
+    if (page > 500) throw new Error('daftra_pagination_limit');
+    const response = await fetchDaftraPage(baseUrl, apiKey, resource, page);
+    pageCount = Math.max(1, Number(response.pagination?.page_count) || 1);
+    declaredTotal = Number(response.pagination?.total_results) || declaredTotal;
+    for (const row of response.data || []) {
+      const value = row[rowKey];
+      if (value && typeof value === 'object') rows.push(value as T);
+    }
+    page += 1;
+  } while (page <= pageCount);
+  return { rows, declaredTotal };
+}
+
+async function fetchZohoCustomers(db: ReturnType<typeof serviceClient>) {
+  const rows: ZohoCustomer[] = [];
+  const pageSize = 1000;
+  for (let from = 0; from < 100_000; from += pageSize) {
+    const { data, error } = await db
+      .from('zoho_contacts')
+      .select('zoho_id, contact_name, opening_balance_configured, opening_balance_checked_at')
+      .eq('contact_type', 'customer')
+      .order('zoho_id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw new Error(`zoho_contacts_read_failed:${error.message}`);
+    const page = (data || []) as ZohoCustomer[];
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+  throw new Error('zoho_contacts_pagination_limit');
+}
+
 function safeClientName(client: DaftraClient) {
   const business = String(client.business_name || '').trim();
   if (business) return business;
@@ -141,6 +201,25 @@ function safeClientName(client: DaftraClient) {
     .map(value => String(value || '').trim())
     .filter(Boolean)
     .join(' ');
+}
+
+function normalizeName(value: unknown) {
+  return String(value || '')
+    .normalize('NFKC')
+    .toLocaleLowerCase('ar')
+    .replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+    .replace(/ـ/g, '')
+    .replace(/[أإآٱ]/g, 'ا')
+    .replace(/ى/g, 'ي')
+    .replace(/ة/g, 'ه')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function toMoney(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) ? Number(number.toFixed(2)) : 0;
 }
 
 Deno.serve(async (req) => {
@@ -157,52 +236,108 @@ Deno.serve(async (req) => {
     if (!rawBaseUrl || !apiKey) return json({ ok: false, error: 'daftra_not_configured' }, 503);
 
     const baseUrl = normalizeDaftraBaseUrl(rawBaseUrl);
-    const clients: Array<{
-      daftra_client_id: string;
-      client_number: string;
-      client_name: string;
-      opening_balance: number;
-      currency_code: string;
-    }> = [];
+    const requestBody = await req.json().catch(() => ({})) as { action?: string };
+    if (requestBody.action && requestBody.action !== 'list_closing_balances') {
+      return json({ ok: false, error: 'unsupported_action' }, 400);
+    }
 
-    let page = 1;
-    let pageCount = 1;
-    let declaredTotal = 0;
-    do {
-      if (page > 500) throw new Error('daftra_pagination_limit');
-      const response = await fetchDaftraPage(baseUrl, apiKey, page);
-      pageCount = Math.max(1, Number(response.pagination?.page_count) || 1);
-      declaredTotal = Number(response.pagination?.total_results) || declaredTotal;
+    const [clientsResult, accountsResult, zohoCustomers] = await Promise.all([
+      fetchDaftraCollection<DaftraClient>(baseUrl, apiKey, 'clients', 'Client'),
+      fetchDaftraCollection<DaftraJournalAccount>(baseUrl, apiKey, 'journal_accounts', 'JournalAccount'),
+      fetchZohoCustomers(db),
+    ]);
 
-      for (const row of response.data || []) {
-        const client = row.Client || {};
-        const clientName = safeClientName(client);
-        const openingBalance = Number(client.starting_balance ?? 0);
-        if (!clientName || !Number.isFinite(openingBalance)) continue;
-        clients.push({
-          daftra_client_id: String(client.id ?? ''),
-          client_number: String(client.client_number ?? ''),
-          client_name: clientName,
-          opening_balance: Number(openingBalance.toFixed(2)),
-          currency_code: String(client.default_currency_code || 'SAR'),
-        });
+    const accountTotals = new Map<string, { debit: number; credit: number; accounts: number }>();
+    for (const account of accountsResult.rows) {
+      if (String(account.entity_type || '').toLowerCase() !== 'client') continue;
+      const entityId = String(account.entity_id ?? '').trim();
+      if (!entityId) continue;
+      const current = accountTotals.get(entityId) || { debit: 0, credit: 0, accounts: 0 };
+      current.debit += Number(account.total_debit) || 0;
+      current.credit += Number(account.total_credit) || 0;
+      current.accounts += 1;
+      accountTotals.set(entityId, current);
+    }
+
+    const zohoByName = new Map<string, ZohoCustomer[]>();
+    for (const customer of zohoCustomers) {
+      const key = normalizeName(customer.contact_name);
+      if (!key) continue;
+      zohoByName.set(key, [...(zohoByName.get(key) || []), customer]);
+    }
+
+    const clients = clientsResult.rows.map(client => {
+      const daftraClientId = String(client.id ?? '').trim();
+      const clientName = safeClientName(client);
+      const totals = accountTotals.get(daftraClientId) || { debit: 0, credit: 0, accounts: 0 };
+      const closingBalance = toMoney(totals.debit - totals.credit);
+      const candidates = zohoByName.get(normalizeName(clientName)) || [];
+
+      let matchStatus = 'unmatched';
+      let zoho: ZohoCustomer | null = null;
+      if (candidates.length > 1) matchStatus = 'ambiguous';
+      if (candidates.length === 1) {
+        zoho = candidates[0];
+        if (zoho.opening_balance_checked_at == null || zoho.opening_balance_configured == null) {
+          matchStatus = 'zoho_unchecked';
+        } else {
+          const difference = closingBalance - Number(zoho.opening_balance_configured || 0);
+          matchStatus = Math.abs(difference) <= 0.005 ? 'matched' : 'different';
+        }
       }
-      page += 1;
-    } while (page <= pageCount);
+
+      const zohoOpening = zoho?.opening_balance_configured == null
+        ? null
+        : toMoney(zoho.opening_balance_configured);
+      return {
+        daftra_client_id: daftraClientId,
+        client_number: String(client.client_number ?? ''),
+        client_name: clientName,
+        currency_code: String(client.default_currency_code || 'SAR'),
+        total_debit: toMoney(totals.debit),
+        total_credit: toMoney(totals.credit),
+        closing_balance: closingBalance,
+        journal_account_count: totals.accounts,
+        zoho_contact_id: zoho?.zoho_id || null,
+        zoho_contact_name: zoho?.contact_name || null,
+        zoho_opening_balance: zohoOpening,
+        zoho_opening_checked_at: zoho?.opening_balance_checked_at || null,
+        difference: zohoOpening == null ? null : toMoney(closingBalance - zohoOpening),
+        match_status: matchStatus,
+      };
+    }).filter(client => client.client_name);
+
+    const matchedRows = clients.filter(row => row.zoho_opening_balance != null);
+    const totals = {
+      clients: clients.length,
+      non_zero: clients.filter(row => Math.abs(row.closing_balance) > 0.005).length,
+      daftra_closing: toMoney(clients.reduce((sum, row) => sum + row.closing_balance, 0)),
+      zoho_opening_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.zoho_opening_balance || 0), 0)),
+      difference_matched: toMoney(matchedRows.reduce((sum, row) => sum + Number(row.difference || 0), 0)),
+      matched: clients.filter(row => row.match_status === 'matched').length,
+      different: clients.filter(row => row.match_status === 'different').length,
+      zoho_unchecked: clients.filter(row => row.match_status === 'zoho_unchecked').length,
+      ambiguous: clients.filter(row => row.match_status === 'ambiguous').length,
+      unmatched: clients.filter(row => row.match_status === 'unmatched').length,
+    };
 
     return json({
       ok: true,
-      source: 'daftra_api',
+      source: 'daftra_journal_accounts',
+      comparison_source: 'zoho_contacts.opening_balance_configured',
+      calculation: 'total_debit - total_credit',
       read_only: true,
       count: clients.length,
-      declared_total: declaredTotal,
+      declared_clients: clientsResult.declaredTotal,
+      declared_journal_accounts: accountsResult.declaredTotal,
       fetched_at: new Date().toISOString(),
+      totals,
       clients,
     });
   } catch (error) {
     const code = String((error as Error).message || error);
     const status = code === 'daftra_access_denied' ? 502 : 500;
-    console.error('daftra-opening-balances failed', { code, caller: caller.userId });
+    console.error('daftra-closing-balances failed', { code, caller: caller.userId });
     return json({ ok: false, error: code }, status);
   }
 });

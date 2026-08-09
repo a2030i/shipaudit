@@ -10,14 +10,16 @@ async function edgeErrorMessage(error, fallback) {
     invalid_daftra_base_url: 'رابط دفتره غير صحيح. استخدم نطاق حسابك على daftra.com.',
     invalid_daftra_api_path: 'رابط دفتره يجب أن ينتهي بـ /api2.',
     daftra_invalid_response: 'أعاد دفتره استجابة غير متوقعة عند قراءة العملاء.',
+    daftra_journal_accounts_invalid_response: 'أعاد دفتره استجابة غير متوقعة عند قراءة حسابات العملاء.',
+    daftra_journal_accounts_http_403: 'مفتاح دفتره لا يملك صلاحية قراءة دليل الحسابات.',
     forbidden: 'تحتاج صلاحية عرض المطابقة للوصول إلى أرصدة دفتره.',
   };
   return messages[code] || code;
 }
 
-export async function loadDaftraOpeningBalances() {
+export async function loadDaftraClosingBalances() {
   const { data, error } = await supabase.functions.invoke('daftra-opening-balances', {
-    body: { action: 'list_opening_balances' },
+    body: { action: 'list_closing_balances' },
   });
   if (error) throw new Error(await edgeErrorMessage(error, 'تعذر الاتصال بدفتره'));
   if (!data?.ok) throw new Error(await edgeErrorMessage({ message: data?.error }, 'تعذر الاتصال بدفتره'));
