@@ -32,6 +32,7 @@ import {
   loadTreasuryBalances,
 } from '../lib/reconciliationService.js';
 import { syncZohoDocs } from '../lib/pnlService.js';
+import './Reconciliation.css';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -214,8 +215,9 @@ export default function Reconciliation({ isActive = true }) {
       await refresh();
     } catch (e) {
       toast(`فشلت المزامنة: ${e.message}`, 'error');
+    } finally {
+      setSyncing(false);
     }
-    setSyncing(false);
   };
 
   // Reframe every row around the INTERNAL anchor. Internal system
@@ -374,21 +376,6 @@ export default function Reconciliation({ isActive = true }) {
         subtitle={tab === 'vendors'
           ? 'شركات الشحن — قارن أرصدتها في نظامنا مقابل زوهو'
           : 'العملاء — فواتير زوهو الحيّة (المرجع) مقابل آخر استحقاق لمحة'}
-        actions={
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-            {/* «تحديث» يعيد قراءة المرآة · «مزامنة زوهو» تسحب من زوهو أولاً.
-                الفرق مهم: عملية تمّت في زوهو للتوّ لا تظهر بالتحديث وحده —
-                الكرون كل 30 دقيقة، وهذا الزر يختصر الانتظار. */}
-            <Btn size="sm" variant="accent" icon={<Zap size={13}/>}
-                 onClick={syncZohoNow} disabled={syncing}
-                 title="يسحب أحدث الفواتير والدفعات والإشعارات من زوهو ثم يعيد المطابقة">
-              {syncing ? 'يزامن…' : '⚡ مزامنة زوهو'}
-            </Btn>
-            <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={syncing}>
-              تحديث
-            </Btn>
-          </div>
-        }
       />
 
       {/* Tab switcher: customers vs vendors */}
@@ -416,6 +403,34 @@ export default function Reconciliation({ isActive = true }) {
           );
         })}
       </div>
+
+      {/* إجراء تشغيلي ظاهر داخل مساحة العمل؛ لا يعتمد على بقاء رأس الصفحة في الشاشة. */}
+      <section className="reconciliation-sync-bar" aria-label="تحديث بيانات المطابقة من زوهو">
+        <div className="reconciliation-sync-copy">
+          <span className={`reconciliation-sync-icon${syncing ? ' is-syncing' : ''}`} aria-hidden="true">
+            <Zap size={18}/>
+          </span>
+          <div>
+            <strong>{syncing ? 'جارٍ مزامنة بيانات زوهو…' : 'حدّث المطابقة من زوهو'}</strong>
+            <p>يسحب أحدث الفواتير والدفعات ثم يعيد حساب الفروقات في هذه الصفحة.</p>
+          </div>
+        </div>
+        <div className="reconciliation-sync-actions" aria-live="polite">
+          <Btn
+            size="md"
+            variant="accent"
+            icon={syncing ? <RefreshCw size={15}/> : <Zap size={15}/>}
+            onClick={syncZohoNow}
+            disabled={syncing}
+            title="يسحب أحدث الفواتير والدفعات والإشعارات من زوهو ثم يعيد المطابقة"
+          >
+            {syncing ? 'جارٍ مزامنة زوهو…' : 'مزامنة زوهو الآن'}
+          </Btn>
+          <Btn size="md" variant="ghost" icon={<RefreshCw size={15}/>} onClick={refresh} disabled={syncing}>
+            تحديث العرض فقط
+          </Btn>
+        </div>
+      </section>
 
       {tab === 'vendors' && <VendorsTab/>}
       {tab === 'customers' && <>

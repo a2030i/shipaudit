@@ -1,0 +1,80 @@
+.reconciliation-sync-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border));
+  border-radius: 14px;
+  background:
+    linear-gradient(135deg, color-mix(in srgb, var(--accent) 8%, var(--surface)), var(--surface));
+  box-shadow: var(--shadow-sm);
+}
+
+.reconciliation-sync-copy,
+.reconciliation-sync-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.reconciliation-sync-copy {
+  min-width: 0;
+}
+
+.reconciliation-sync-icon {
+  display: inline-flex;
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 11px;
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.reconciliation-sync-icon.is-syncing svg {
+  animation: reconciliation-sync-spin 1s linear infinite;
+}
+
+.reconciliation-sync-copy strong {
+  display: block;
+  color: var(--text);
+  font-size: 14px;
+}
+
+.reconciliation-sync-copy p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+@keyframes reconciliation-sync-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 700px) {
+  .reconciliation-sync-bar {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 12px;
+    padding: 13px;
+  }
+
+  .reconciliation-sync-actions {
+    display: grid;
+    grid-template-columns: 1fr;
+  }
+
+  .reconciliation-sync-actions .ui-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reconciliation-sync-icon.is-syncing svg { animation: none; }
+}
