@@ -1,4 +1,4 @@
-// daftra-opening-balances v7 — read-only Daftra receivable reconciliation.
+// daftra-opening-balances v8 — read-only Daftra receivable reconciliation.
 //
 // The Daftra client payload exposes `starting_balance`, while journal account
 // aggregates can lag behind the live client statement.  For migration and
@@ -82,6 +82,11 @@ type ZohoCustomer = {
   contact_name: string | null;
   opening_balance_configured: number | string | null;
   opening_balance_checked_at: string | null;
+};
+
+type ConfirmedContactMatch = {
+  daftra_client_id: string;
+  zoho_contact_id: string;
 };
 
 const serviceClient = () => createClient(
@@ -233,6 +238,17 @@ async function fetchZohoCustomers(db: ReturnType<typeof serviceClient>) {
   throw new Error('zoho_contacts_pagination_limit');
 }
 
+async function fetchConfirmedContactMatches(db: ReturnType<typeof serviceClient>) {
+  const { data, error } = await db
+    .from('daftra_zoho_contact_matches')
+    .select('daftra_client_id, zoho_contact_id');
+  if (error) throw new Error(`daftra_zoho_matches_read_failed:${error.message}`);
+  return new Map(
+    ((data || []) as ConfirmedContactMatch[])
+      .map(row => [String(row.daftra_client_id), String(row.zoho_contact_id)] as const),
+  );
+}
+
 function safeClientName(client: DaftraClient) {
   const business = String(client.business_name || '').trim();
   if (business) return business;
@@ -301,8 +317,13 @@ async function fetchDaftraBalanceSnapshot(
   return rows;
 }
 
-function matchSnapshotWithZoho(snapshotRows: DaftraBalanceSnapshot[], zohoCustomers: ZohoCustomer[]) {
+function matchSnapshotWithZoho(
+  snapshotRows: DaftraBalanceSnapshot[],
+  zohoCustomers: ZohoCustomer[],
+  confirmedMatches: Map<string, string>,
+) {
   const zohoByName = new Map<string, ZohoCustomer[]>();
+  const zohoById = new Map(zohoCustomers.map(customer => [customer.zoho_id, customer]));
   const zohoNameEntries: Array<{
     customer: ZohoCustomer;
     partialKey: ReturnType<typeof significantNameKey>;
@@ -316,10 +337,11 @@ function matchSnapshotWithZoho(snapshotRows: DaftraBalanceSnapshot[], zohoCustom
 
   const clients = snapshotRows.map(row => {
     const closingBalance = toMoney(row.closing_balance);
-    const exactCandidates = zohoByName.get(normalizeName(row.client_name)) || [];
-    let candidates = exactCandidates;
-    let matchMethod = exactCandidates.length ? 'exact' : 'none';
-    if (!exactCandidates.length) {
+    const confirmed = zohoById.get(confirmedMatches.get(String(row.daftra_client_id)) || '');
+    const exactCandidates = confirmed ? [] : (zohoByName.get(normalizeName(row.client_name)) || []);
+    let candidates = confirmed ? [confirmed] : exactCandidates;
+    let matchMethod = confirmed ? 'confirmed' : (exactCandidates.length ? 'exact' : 'none');
+    if (!confirmed && !exactCandidates.length) {
       const partialKey = significantNameKey(row.client_name);
       const uniquePartial = new Map<string, ZohoCustomer>();
       for (const entry of zohoNameEntries) {
@@ -421,11 +443,12 @@ Deno.serve(async (req) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(periodStart) || !/^\d{4}-\d{2}-\d{2}$/.test(periodEnd)) {
         return json({ ok: false, error: 'invalid_period' }, 400);
       }
-      const [snapshotRows, zohoCustomers] = await Promise.all([
+      const [snapshotRows, zohoCustomers, confirmedMatches] = await Promise.all([
         fetchDaftraBalanceSnapshot(db, periodStart, periodEnd),
         fetchZohoCustomers(db),
+        fetchConfirmedContactMatches(db),
       ]);
-      const reconciliation = matchSnapshotWithZoho(snapshotRows, zohoCustomers);
+      const reconciliation = matchSnapshotWithZoho(snapshotRows, zohoCustomers, confirmedMatches);
       return json({
         ok: true,
         source: 'daftra_client_balance_snapshot',
@@ -449,11 +472,12 @@ Deno.serve(async (req) => {
     if (!rawBaseUrl || !apiKey) return json({ ok: false, error: 'daftra_not_configured' }, 503);
 
     const baseUrl = normalizeDaftraBaseUrl(rawBaseUrl);
-    const [clientsResult, accountsResult, invoicesResult, zohoCustomers] = await Promise.all([
+    const [clientsResult, accountsResult, invoicesResult, zohoCustomers, confirmedMatches] = await Promise.all([
       fetchDaftraCollection<DaftraClient>(baseUrl, apiKey, 'clients', 'Client'),
       fetchDaftraCollection<DaftraJournalAccount>(baseUrl, apiKey, 'journal_accounts', 'JournalAccount'),
       fetchDaftraCollection<DaftraInvoice>(baseUrl, apiKey, 'invoices', 'Invoice'),
       fetchZohoCustomers(db),
+      fetchConfirmedContactMatches(db),
     ]);
 
     const accountTotals = new Map<string, { debit: number; credit: number; accounts: number }>();
@@ -481,6 +505,7 @@ Deno.serve(async (req) => {
     }
 
     const zohoByName = new Map<string, ZohoCustomer[]>();
+    const zohoById = new Map(zohoCustomers.map(customer => [customer.zoho_id, customer]));
     const zohoNameEntries: Array<{
       customer: ZohoCustomer;
       partialKey: ReturnType<typeof significantNameKey>;
@@ -499,10 +524,11 @@ Deno.serve(async (req) => {
       const invoiceDue = invoiceDueTotals.get(daftraClientId) || { due: 0, invoices: 0 };
       const closingBalance = toMoney(invoiceDue.due);
       const normalizedClientName = normalizeName(clientName);
-      const exactCandidates = zohoByName.get(normalizedClientName) || [];
-      let candidates = exactCandidates;
-      let matchMethod = exactCandidates.length ? 'exact' : 'none';
-      if (!exactCandidates.length) {
+      const confirmed = zohoById.get(confirmedMatches.get(daftraClientId) || '');
+      const exactCandidates = confirmed ? [] : (zohoByName.get(normalizedClientName) || []);
+      let candidates = confirmed ? [confirmed] : exactCandidates;
+      let matchMethod = confirmed ? 'confirmed' : (exactCandidates.length ? 'exact' : 'none');
+      if (!confirmed && !exactCandidates.length) {
         const partialKey = significantNameKey(clientName);
         const uniquePartial = new Map<string, ZohoCustomer>();
         for (const entry of zohoNameEntries) {

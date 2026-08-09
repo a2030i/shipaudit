@@ -8,6 +8,7 @@ const service = readFileSync('src/lib/daftraService.js', 'utf8');
 const page = readFileSync('src/pages/Reconciliation.jsx', 'utf8');
 const pnlService = readFileSync('src/lib/pnlService.js', 'utf8');
 const migration = readFileSync('supabase/migrations/20260809124500_daftra_client_balance_snapshots.sql', 'utf8');
+const matchMigration = readFileSync('supabase/migrations/20260809213000_daftra_zoho_contact_matches.sql', 'utf8');
 
 test('historical Daftra reconciliation reads an immutable period snapshot', () => {
   assert.match(edge, /action === 'list_period_closing_balances'/);
@@ -44,4 +45,12 @@ test('snapshot is read-only for authenticated users and keeps the full accountin
     'opening_balance', 'total_sales', 'total_returns', 'net_sales',
     'total_payments', 'settlements', 'closing_balance',
   ]) assert.match(migration, new RegExp(column));
+});
+
+test('approved partial names are resolved by a read-only one-to-one identity mapping', () => {
+  assert.match(edge, /daftra_zoho_contact_matches/);
+  assert.match(edge, /matchMethod = confirmed \? 'confirmed'/);
+  assert.match(matchMigration, /zoho_contact_id text not null unique/);
+  assert.match(matchMigration, /revoke insert, update, delete, truncate/);
+  assert.match(matchMigration, /never changes balances/i);
 });
