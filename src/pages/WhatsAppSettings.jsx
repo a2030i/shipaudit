@@ -236,7 +236,7 @@ export default function WhatsAppSettings({ isActive = true }) {
             <div>
               <div style={{ fontSize: 13.5, fontWeight: 800 }}>قالب بوابة العملاء الموحدة</div>
               <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.75, marginTop: 3 }}>
-                رسالة تحصيل تعرض كامل مديونية العميل وعدد الفواتير، ثم توجهه إلى{' '}
+                رسالة تحصيل تعرض كامل مديونية العميل، والمبلغ المتأخر ومدة التأخير حسب فلتر الحملة، ثم توجهه إلى{' '}
                 <a href={TAHSEEL_PORTAL_URL} target="_blank" rel="noreferrer">{TAHSEEL_PORTAL_URL}</a>.
                 لا ينشئ هذا الإعداد عميلاً أو فاتورة أو رسالة داخل تحصيل؛ البوابة للعرض والسداد فقط.
               </div>
@@ -252,7 +252,7 @@ export default function WhatsAppSettings({ isActive = true }) {
               </Btn>
             </div>
             <div style={{ fontSize: 11, color: 'var(--gold)', lineHeight: 1.7 }}>
-              الاسم المقترح في هاتف: <code>{TAHSEEL_PORTAL_TEMPLATE_NAME}</code> · المتغيرات: الاسم، إجمالي المديونية الكاملة، عدد الفواتير.
+              الاسم المقترح في هاتف: <code>{TAHSEEL_PORTAL_TEMPLATE_NAME}</code> · المتغيرات: الاسم، إجمالي المديونية، عدد الفواتير، مبلغ الفلتر، مدة التأخير.
               يجب اعتماد القالب في هاتف/Meta أولًا؛ تسجيله هنا لا ينشئ القالب لدى المزود.
             </div>
           </div>

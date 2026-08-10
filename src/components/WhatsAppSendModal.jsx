@@ -37,6 +37,8 @@ const FIELD_LABELS = {
   name:         'اسم المتجر/العميل',
   amount:       'المبلغ / المديونية',
   full_amount:  'إجمالي المديونية الكاملة',
+  filtered_overdue_amount: 'المبلغ المتأخر حسب الفلتر',
+  aging_filter: 'مدة التأخير حسب الفلتر',
   count:        'عدد الفواتير',
   shipments:    'عدد الشحنات',
   last_shipment:'تاريخ آخر شحنة',
@@ -547,6 +549,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
                     {renderTahseelPortalTemplate({
                       name: selectedValid[0].name,
                       fullAmount: mergedFields(selectedValid[0]).full_amount,
+                      filteredOverdueAmount: mergedFields(selectedValid[0]).filtered_overdue_amount,
+                      agingFilter: mergedFields(selectedValid[0]).aging_filter,
                       invoiceCount: selectedValid[0].count,
                     })}
                   </div>

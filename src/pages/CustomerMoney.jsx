@@ -18,6 +18,7 @@ import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus, loadTemplateSentSet } from '../lib/whatsappService.js';
 import { listTasks, loadCollectionAssignmentCandidates, STAGE_LABELS } from '../lib/collectionsService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import { describeCollectionAgingFilter } from '../lib/tahseelPortalTemplate.js';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
@@ -161,9 +162,11 @@ export default function CustomerMoney({ isActive = true }) {
   // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.
   const bandAmt = (c) => buckets.size === 0 ? (c.owed || 0)
     : BUCKETS.reduce((s, b) => s + (buckets.has(b.key) ? (c[b.key] || 0) : 0), 0);
+  const agingFilterLabel = describeCollectionAgingFilter([...buckets]);
   // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
   const collectionFields = (c, amt = c.owed) => ({
-    name: (c.storeName || c.name || '').trim(), amount: amt, full_amount: c.owed, count: c.invCnt,
+    name: (c.storeName || c.name || '').trim(), amount: amt, full_amount: c.owed,
+    filtered_overdue_amount: amt, aging_filter: agingFilterLabel, count: c.invCnt,
     overdue: c.overdue, oldest_days: c.oldestDays, wallet: c.walletBalance,
     last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
   });
