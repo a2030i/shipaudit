@@ -11,10 +11,28 @@ import { loadAuditsFromDB, deleteAuditFromDB, loadAuditByIdFromDB, loadCarriers,
 import { loadLinkedAuditIndex } from '../lib/carrierStatementsService.js';
 import { exportMergedExcessWeights } from '../engine/export.js';
 import { useAuth } from '../lib/auth.jsx';
+import { probeTahseelConnection } from '../lib/tahseelService.js';
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 export function SettingsPage({ carriers = [], tab = 'ai' }) {
   const { can } = useAuth();
+  const [tahseelStatus, setTahseelStatus] = useState(null);
+  const [testingTahseel, setTestingTahseel] = useState(false);
+
+  const testTahseel = async () => {
+    setTestingTahseel(true);
+    setTahseelStatus(null);
+    try {
+      const result = await probeTahseelConnection();
+      setTahseelStatus({ ok: true, ...result });
+      toast('تم الاتصال بتحصيل للقراءة فقط', 'success');
+    } catch (error) {
+      setTahseelStatus({ ok: false, error: error.message });
+      toast(`فشل اتصال تحصيل: ${error.message}`, 'error');
+    } finally {
+      setTestingTahseel(false);
+    }
+  };
   const handleExport = async () => {
     if (!can('reports.export')) {
       toast('لا تملك صلاحية إنشاء وتنزيل النسخة الاحتياطية', 'error');
@@ -45,6 +63,43 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
 
       {/* Data tab */}
       <div style={{display: tab==='data' ? 'block' : 'none'}}>
+        <Card style={{marginBottom:16}}>
+          <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
+            <div style={{minWidth:0,flex:1}}>
+              <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>تحصيل — اتصال للقراءة فقط</h3>
+              <p style={{fontSize:12.5,color:'var(--muted)',lineHeight:1.8,margin:0}}>
+                يسحب العملاء والفواتير والعمليات للمطابقة. لا ينشئ عميلاً أو فاتورة أو رابط دفع، ولا يعدّل أي سجل في تحصيل.
+              </p>
+            </div>
+            <span style={{
+              padding:'5px 10px',borderRadius:999,fontSize:11,fontWeight:800,whiteSpace:'nowrap',
+              color:tahseelStatus?.ok ? 'var(--green)' : tahseelStatus?.ok===false ? 'var(--red)' : 'var(--muted)',
+              background:tahseelStatus?.ok ? 'color-mix(in srgb, var(--green) 10%, transparent)' : tahseelStatus?.ok===false ? 'color-mix(in srgb, var(--red) 10%, transparent)' : 'var(--surface)',
+              border:`1px solid ${tahseelStatus?.ok ? 'color-mix(in srgb, var(--green) 35%, var(--border))' : tahseelStatus?.ok===false ? 'color-mix(in srgb, var(--red) 35%, var(--border))' : 'var(--border)'}`,
+            }}>
+              {tahseelStatus?.ok ? 'متصل' : tahseelStatus?.ok===false ? 'تعذر الاتصال' : 'لم يُختبر'}
+            </span>
+          </div>
+
+          {tahseelStatus?.ok && (
+            <div style={{marginTop:14,padding:'11px 13px',borderRadius:10,background:'color-mix(in srgb, var(--green) 7%, var(--surface))',border:'1px solid color-mix(in srgb, var(--green) 25%, var(--border))',fontSize:12.5,lineHeight:1.8}}>
+              <strong>الاتصال سليم.</strong> تحصيل أعاد {Number(tahseelStatus.count || 0).toLocaleString('en-US')} عميل إجمالاً، والتحقق تم دون جلب بياناتهم إلى الشاشة.
+            </div>
+          )}
+          {tahseelStatus?.ok === false && (
+            <div style={{marginTop:14,padding:'11px 13px',borderRadius:10,background:'color-mix(in srgb, var(--red) 7%, var(--surface))',border:'1px solid color-mix(in srgb, var(--red) 25%, var(--border))',fontSize:12.5,lineHeight:1.8,color:'var(--red)'}}>
+              {tahseelStatus.error}
+            </div>
+          )}
+
+          <div style={{display:'flex',gap:10,marginTop:14,flexWrap:'wrap'}}>
+            <Btn size="sm" variant="accent" disabled={testingTahseel} onClick={testTahseel}>
+              {testingTahseel ? <><Spinner size={12}/> جارٍ اختبار الاتصال…</> : 'اختبار اتصال تحصيل'}
+            </Btn>
+            <span style={{fontSize:11.5,color:'var(--muted)',alignSelf:'center'}}>GET فقط · المفاتيح داخل أسرار الخادم</span>
+          </div>
+        </Card>
+
         <Card>
           <h3 style={{fontSize:14,fontWeight:700,marginBottom:14}}>🗄️ البيانات</h3>
           <div style={{display:'flex',gap:10}}>
