@@ -14,6 +14,7 @@ import {
   loadCustomerActivationCommandCenter,
   saveActivationConfig,
 } from '../lib/retargetingService.js';
+import './StoreActivation.css';
 
 const fmt = value => Number(value || 0).toLocaleString('en-US');
 const pct = value => `${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 1 })}%`;
@@ -127,7 +128,7 @@ export default function StoreActivation({ isActive = true }) {
   const openPipeline = (bucket = 'all', work = 'all') => navigate(`/retargeting?tab=pipeline&bucket=${bucket}&work=${work}`);
 
   return (
-    <div style={{ padding: '24px 28px 96px', maxWidth: 1380, margin: '0 auto' }}>
+    <div className="store-activation" style={{ padding: '24px 28px 96px', maxWidth: 1380, margin: '0 auto' }}>
       <PageHeader
         icon={<TrendingUp size={22}/>} iconColor="var(--green)"
         title={`مركز قيادة ${fmt(current.target)} عميل نشط`}
@@ -135,21 +136,21 @@ export default function StoreActivation({ isActive = true }) {
         actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading} title="تحديث"><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
       />
 
-      <Card style={{
+      <Card className="activation-hero-card" style={{
         overflow: 'hidden', marginBottom: 14,
         border: '1px solid color-mix(in srgb, var(--brand) 24%, var(--border))',
         background: 'linear-gradient(135deg, color-mix(in srgb, var(--brand-navy) 97%, black) 0%, color-mix(in srgb, var(--brand) 78%, var(--brand-navy)) 100%)',
         color: '#fff',
       }}>
-        <div style={{ padding: '22px 24px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 24 }}>
-          <div>
-            <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 12.5, marginBottom: 7 }}>العملاء النشطون الآن</div>
+        <div className="activation-hero-grid" style={{ padding: '22px 24px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 24 }}>
+          <div className="activation-hero-summary">
+            <div className="activation-hero-kicker" style={{ color: 'rgba(255,255,255,.7)', fontSize: 12.5, marginBottom: 7 }}>العملاء النشطون الآن</div>
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 10, flexWrap: 'wrap' }}>
               <strong style={{ fontSize: 50, lineHeight: 1, fontFamily: 'var(--font-mono)' }}>{fmt(current.active)}</strong>
               <span style={{ color: 'rgba(255,255,255,.72)', fontSize: 15 }}>من {fmt(current.target)}</span>
             </div>
-            <div style={{ height: 12, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,.16)', overflow: 'hidden' }}>
-              <div style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#2DD4BF,#A7F3D0)', borderRadius: 999 }}/>
+            <div className="activation-progress-track" style={{ height: 12, marginTop: 18, borderRadius: 999, background: 'rgba(255,255,255,.16)', overflow: 'hidden' }}>
+              <div className="activation-progress-fill" style={{ width: `${progress}%`, height: '100%', background: 'linear-gradient(90deg,#2DD4BF,#A7F3D0)', borderRadius: 999 }}/>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, marginTop: 8, fontSize: 12.5, color: 'rgba(255,255,255,.76)', flexWrap: 'wrap' }}>
               <span>{pct(progress)} من الهدف</span>
@@ -157,22 +158,22 @@ export default function StoreActivation({ isActive = true }) {
             </div>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
-            <div style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
-              <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>دخلوا النشاط أسبوعيًا</div>
-              <strong style={{ display: 'block', fontSize: 25, color: '#A7F3D0', marginTop: 5, fontFamily: 'var(--font-mono)' }}>+{fmt(entered)}</strong>
+          <div className="activation-hero-stats" style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: 10 }}>
+            <div className="activation-hero-stat" style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
+              <div className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>دخلوا النشاط أسبوعيًا</div>
+              <strong className="activation-hero-stat-value activation-hero-stat-value--positive" style={{ display: 'block', fontSize: 25, color: '#A7F3D0', marginTop: 5, fontFamily: 'var(--font-mono)' }}>+{fmt(entered)}</strong>
             </div>
-            <div style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
-              <div style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>خرجوا من النشاط</div>
-              <strong style={{ display: 'block', fontSize: 25, color: '#FECACA', marginTop: 5, fontFamily: 'var(--font-mono)' }}>−{fmt(exited)}</strong>
+            <div className="activation-hero-stat" style={{ padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)' }}>
+              <div className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.7)', fontSize: 11.5 }}>خرجوا من النشاط</div>
+              <strong className="activation-hero-stat-value activation-hero-stat-value--negative" style={{ display: 'block', fontSize: 25, color: '#FECACA', marginTop: 5, fontFamily: 'var(--font-mono)' }}>−{fmt(exited)}</strong>
             </div>
-            <div style={{ gridColumn: '1 / -1', padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
-              <span style={{ color: 'rgba(255,255,255,.78)', fontSize: 12 }}>صافي الأسبوع</span>
-              <strong style={{ color: net >= 0 ? '#A7F3D0' : '#FECACA', fontFamily: 'var(--font-mono)', fontSize: 20 }}>{net >= 0 ? '+' : ''}{fmt(net)}</strong>
+            <div className="activation-hero-stat activation-hero-stat--wide" style={{ gridColumn: '1 / -1', padding: 13, borderRadius: 14, background: 'rgba(255,255,255,.10)', border: '1px solid rgba(255,255,255,.14)', display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center' }}>
+              <span className="activation-hero-stat-label" style={{ color: 'rgba(255,255,255,.78)', fontSize: 12 }}>صافي الأسبوع</span>
+              <strong className={`activation-hero-stat-value ${net >= 0 ? 'activation-hero-stat-value--positive' : 'activation-hero-stat-value--negative'}`} style={{ color: net >= 0 ? '#A7F3D0' : '#FECACA', fontFamily: 'var(--font-mono)', fontSize: 20 }}>{net >= 0 ? '+' : ''}{fmt(net)}</strong>
             </div>
           </div>
         </div>
-        <div style={{ padding: '11px 24px', background: 'rgba(0,0,0,.13)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'rgba(255,255,255,.72)' }}>
+        <div className="activation-hero-footer" style={{ padding: '11px 24px', background: 'rgba(0,0,0,.13)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', fontSize: 11.5, color: 'rgba(255,255,255,.72)' }}>
           <span>آخر بيانات: {fmtAge(sync.age_minutes)} · {sync.source === 'webhook' ? 'تحديث آلي عبر API' : 'رفع Excel يدوي'}</span>
           <span>{fmt(current.total_customers)} عميل فريد · {fmt(current.total_stores)} متجر</span>
         </div>

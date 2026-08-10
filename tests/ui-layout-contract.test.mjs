@@ -109,6 +109,18 @@ test('mobile page filters can share the action row with their primary action', a
   assert.match(css, /\.page-hero-actions > \.ui-field\s*\{[\s\S]*min-width:\s*0\s*!important/);
 });
 
+test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {
+  const page = await read('src/pages/StoreActivation.jsx');
+  const css = await read('src/pages/StoreActivation.css');
+
+  assert.match(page, /className="activation-hero-card"/);
+  assert.match(page, /className="activation-hero-stats"/);
+  assert.match(page, /activation-hero-stat-label/);
+  assert.match(css, /\.activation-hero-card\.ui-card\s*\{[\s\S]*background:[\s\S]*!important/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.activation-hero-stats\s*\{[\s\S]*repeat\(2,/);
+  assert.match(css, /\.activation-hero-stat--wide\s*\{[\s\S]*grid-column:\s*1 \/ -1\s*!important/);
+});
+
 test('customer debt cards bridge to an owned collection task and next action', async () => {
   const money = await read('src/pages/CustomerMoney.jsx');
   const queue = await read('src/pages/Collections.jsx');

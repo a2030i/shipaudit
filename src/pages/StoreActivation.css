@@ -1,0 +1,97 @@
+.activation-hero-card.ui-card {
+  padding: 0 !important;
+  color: #fff !important;
+  background: linear-gradient(135deg, #162a53 0%, #244da0 100%) !important;
+  border-color: rgba(73, 118, 214, 0.42) !important;
+  box-shadow: 0 16px 34px rgba(16, 35, 73, 0.18) !important;
+}
+
+.activation-hero-card .activation-hero-kicker,
+.activation-hero-card .activation-hero-stat-label,
+.activation-hero-card .activation-hero-footer {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.activation-hero-card .activation-hero-stat {
+  background: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(255, 255, 255, 0.16) !important;
+}
+
+.activation-hero-card .activation-progress-track {
+  background: rgba(255, 255, 255, 0.2) !important;
+}
+
+.activation-hero-card .activation-progress-fill {
+  min-width: 4px;
+}
+
+.activation-hero-card .activation-hero-stat-value--positive {
+  color: #a7f3d0 !important;
+}
+
+.activation-hero-card .activation-hero-stat-value--negative {
+  color: #fecaca !important;
+}
+
+.activation-hero-card .activation-hero-footer {
+  background: rgba(0, 0, 0, 0.16) !important;
+}
+
+@media (max-width: 768px) {
+  .store-activation {
+    padding: 16px 14px 112px !important;
+  }
+
+  .activation-hero-card.ui-card {
+    border-radius: 18px !important;
+  }
+
+  .page-content .activation-hero-card .activation-hero-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+    gap: 16px !important;
+    padding: 18px 16px 15px !important;
+  }
+
+  .activation-hero-summary > div:nth-child(2) strong {
+    font-size: 42px !important;
+  }
+
+  .page-content .activation-hero-card .activation-hero-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px !important;
+  }
+
+  .activation-hero-card .activation-hero-stat {
+    min-height: 86px;
+    padding: 12px !important;
+    display: flex !important;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .activation-hero-card .activation-hero-stat--wide {
+    min-height: 58px;
+    grid-column: 1 / -1 !important;
+    flex-direction: row;
+    align-items: center;
+  }
+
+  .activation-hero-card .activation-hero-stat-label {
+    font-size: 12px !important;
+    line-height: 1.55;
+  }
+
+  .activation-hero-card .activation-hero-stat-value {
+    margin-top: 7px !important;
+    font-size: 24px !important;
+    line-height: 1.1;
+  }
+
+  .activation-hero-card .activation-hero-footer {
+    padding: 11px 16px !important;
+    display: grid !important;
+    gap: 4px !important;
+    font-size: 11px !important;
+    line-height: 1.65;
+  }
+}
