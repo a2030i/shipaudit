@@ -163,7 +163,7 @@ export default function CustomerMoney({ isActive = true }) {
     : BUCKETS.reduce((s, b) => s + (buckets.has(b.key) ? (c[b.key] || 0) : 0), 0);
   // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
   const collectionFields = (c, amt = c.owed) => ({
-    name: (c.storeName || c.name || '').trim(), amount: amt, count: c.invCnt,
+    name: (c.storeName || c.name || '').trim(), amount: amt, full_amount: c.owed, count: c.invCnt,
     overdue: c.overdue, oldest_days: c.oldestDays, wallet: c.walletBalance,
     last_shipment: c.lastShipmentAt, last_payment: c.lastPaymentDate,
   });

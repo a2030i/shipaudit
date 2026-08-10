@@ -26,6 +26,12 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadZohoWebhookHealth } from '../lib/pnlService.js';
+import {
+  TAHSEEL_PORTAL_TEMPLATE_BODY,
+  TAHSEEL_PORTAL_TEMPLATE_MAP,
+  TAHSEEL_PORTAL_TEMPLATE_NAME,
+  TAHSEEL_PORTAL_URL,
+} from '../lib/tahseelPortalTemplate.js';
 import './WhatsAppSettings.css';
 
 const HATIF_TABS = [
@@ -139,6 +145,31 @@ export default function WhatsAppSettings({ isActive = true }) {
     setCfg({ ...cfg, templates: next, templateName: cfg.templateName === t ? (next[0] || '') : cfg.templateName });
   };
 
+  const copyTahseelPortalTemplate = async () => {
+    try {
+      await navigator.clipboard.writeText(TAHSEEL_PORTAL_TEMPLATE_BODY);
+      toast('تم نسخ نص القالب — اعتمده في هاتف/Meta بنفس الاسم المقترح', 'success');
+    } catch {
+      toast('تعذر النسخ التلقائي؛ انسخ النص الظاهر يدويًا', 'warn');
+    }
+  };
+
+  const registerTahseelPortalTemplate = () => {
+    const nextTemplates = templates.includes(TAHSEEL_PORTAL_TEMPLATE_NAME)
+      ? templates
+      : [...templates, TAHSEEL_PORTAL_TEMPLATE_NAME];
+    setCfg({
+      ...cfg,
+      templates: nextTemplates,
+      templateName: cfg.templateName || TAHSEEL_PORTAL_TEMPLATE_NAME,
+      templateVars: {
+        ...(cfg.templateVars || {}),
+        [TAHSEEL_PORTAL_TEMPLATE_NAME]: TAHSEEL_PORTAL_TEMPLATE_MAP.map(m => ({ ...m })),
+      },
+    });
+    toast('تم تجهيز القالب داخل النظام — اضغط «حفظ القوالب والمتابعة» بعد اعتماده في هاتف', 'success');
+  };
+
   const save = async () => {
     setSaving(true);
     try { await saveWhatsAppConfig({ ...cfg, templateLanguage: 'ar' }); toast('تم حفظ الإعدادات', 'success'); }
@@ -195,6 +226,35 @@ export default function WhatsAppSettings({ isActive = true }) {
             📡 المزوّد: <b style={{ color: 'var(--text)' }}>Hatif · هاتف (Voxa)</b> · اللغة: <b>ar</b> (ثابتة) · الأسرار
             (<code>client_id</code>/<code>secret</code>) في أسرار Supabase — لا تلمس المتصفّح.
             <br/>🔌 <b>القناة تُجلَب آلياً</b> من Hatif (لا حاجة لإدخال معرّفها). لتثبيت قناة بعينها ضَع <code>HATIF_CHANNEL_ID</code> في الأسرار.
+          </div>
+
+          <div style={{
+            border: '1px solid color-mix(in srgb, var(--green2) 35%, var(--border))',
+            background: 'color-mix(in srgb, var(--green2) 6%, var(--surface2))',
+            borderRadius: 10, padding: 14, display: 'grid', gap: 10,
+          }}>
+            <div>
+              <div style={{ fontSize: 13.5, fontWeight: 800 }}>قالب بوابة العملاء الموحدة</div>
+              <div style={{ fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.75, marginTop: 3 }}>
+                رسالة تحصيل تعرض كامل مديونية العميل وعدد الفواتير، ثم توجهه إلى{' '}
+                <a href={TAHSEEL_PORTAL_URL} target="_blank" rel="noreferrer">{TAHSEEL_PORTAL_URL}</a>.
+                لا ينشئ هذا الإعداد عميلاً أو فاتورة أو رسالة داخل تحصيل؛ البوابة للعرض والسداد فقط.
+              </div>
+            </div>
+            <div style={{ background: 'var(--bg)', border: '1px solid var(--border)', borderRadius: 8, padding: 11, whiteSpace: 'pre-wrap', fontSize: 11.5, lineHeight: 1.7 }}>
+              {TAHSEEL_PORTAL_TEMPLATE_BODY}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <Btn variant="ghost" icon={<MessagesSquare size={14}/>} onClick={copyTahseelPortalTemplate}>نسخ نص القالب</Btn>
+              <Btn variant="accent" icon={<Plus size={14}/>} onClick={registerTahseelPortalTemplate}
+                disabled={templates.includes(TAHSEEL_PORTAL_TEMPLATE_NAME)}>
+                {templates.includes(TAHSEEL_PORTAL_TEMPLATE_NAME) ? 'القالب مسجل' : 'تجهيز القالب داخل النظام'}
+              </Btn>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--gold)', lineHeight: 1.7 }}>
+              الاسم المقترح في هاتف: <code>{TAHSEEL_PORTAL_TEMPLATE_NAME}</code> · المتغيرات: الاسم، إجمالي المديونية الكاملة، عدد الفواتير.
+              يجب اعتماد القالب في هاتف/Meta أولًا؛ تسجيله هنا لا ينشئ القالب لدى المزود.
+            </div>
           </div>
 
           {/* قائمة القوالب المعتمدة — تُختار إحداها عند إطلاق الحملة */}

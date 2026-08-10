@@ -9,6 +9,12 @@ import { loadWhatsAppConfig, verifyWhatsAppKey, sendWhatsAppCampaign, loadWhatsA
 import { scheduleCampaign } from '../lib/retargetingService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { prepareWhatsAppAudienceRows, summarizeWhatsAppAudience, whatsappAudienceExclusionBreakdown, whatsappRecipientKey } from '../lib/whatsappAudience.js';
+import {
+  TAHSEEL_PORTAL_TEMPLATE_MAP,
+  TAHSEEL_PORTAL_TEMPLATE_NAME,
+  TAHSEEL_PORTAL_URL,
+  renderTahseelPortalTemplate,
+} from '../lib/tahseelPortalTemplate.js';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
 
@@ -30,6 +36,7 @@ function uniqueCampaignName(base, existing) {
 const FIELD_LABELS = {
   name:         'اسم المتجر/العميل',
   amount:       'المبلغ / المديونية',
+  full_amount:  'إجمالي المديونية الكاملة',
   count:        'عدد الفواتير',
   shipments:    'عدد الشحنات',
   last_shipment:'تاريخ آخر شحنة',
@@ -108,6 +115,9 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   const defaultMapFor = (templateName, config) => {
     const saved = config?.templateVars?.[templateName];
     if (Array.isArray(saved)) return saved.map(m => ({ src: m.src || 'legacy', text: m.text || '' }));
+    if (templateName === TAHSEEL_PORTAL_TEMPLATE_NAME) {
+      return TAHSEEL_PORTAL_TEMPLATE_MAP.map(m => ({ ...m }));
+    }
     const n = Math.max(1, recipients[0]?.vars?.length || 1);
     return Array.from({ length: Math.min(n, 5) }, () => ({ src: 'legacy', text: '' }));
   };
@@ -514,6 +524,36 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/></span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/></span>}
           </div>
+
+          {tpl === TAHSEEL_PORTAL_TEMPLATE_NAME && (
+            <div style={{
+              marginBottom: 12, padding: '11px 12px', borderRadius: 9,
+              border: '1px solid color-mix(in srgb, var(--green2) 35%, var(--border))',
+              background: 'color-mix(in srgb, var(--green2) 7%, var(--surface2))',
+              fontSize: 11.5, lineHeight: 1.75,
+            }}>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: 'var(--green2)', marginBottom: 3 }}>
+                قالب بوابة العملاء الموحدة
+              </div>
+              <div>
+                يعرض <b>كامل مديونية العميل وقت الإرسال</b> وعدد فواتيره، ثم يوجهه إلى{' '}
+                <a href={TAHSEEL_PORTAL_URL} target="_blank" rel="noreferrer">بوابة لمحة</a>.
+                الدخول برقم الجوال، ورمز التحقق يصل إلى البريد الإلكتروني المسجل.
+              </div>
+              {selectedValid[0] && (
+                <details style={{ marginTop: 6 }}>
+                  <summary style={{ cursor: 'pointer', fontWeight: 700 }}>معاينة رسالة أول عميل</summary>
+                  <div style={{ marginTop: 6, padding: 9, borderRadius: 7, background: 'var(--bg)', whiteSpace: 'pre-wrap' }}>
+                    {renderTahseelPortalTemplate({
+                      name: selectedValid[0].name,
+                      fullAmount: mergedFields(selectedValid[0]).full_amount,
+                      invoiceCount: selectedValid[0].count,
+                    })}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
 
           {/* أداء القالب المختار — لحظة القرار لا بعده */}
           {tplQuality && tplQuality.sent >= 30 && (
