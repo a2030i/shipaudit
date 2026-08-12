@@ -46,7 +46,8 @@ test('portal preview formats a full customer balance without leaving placeholder
 });
 
 test('aging description follows contiguous campaign filter thresholds', () => {
-  assert.equal(describeCollectionAgingFilter([]), 'كامل الرصيد المستحق');
+  assert.equal(describeCollectionAgingFilter([], 124), 'حتى 124 يومًا (حسب أقدم فاتورة)');
+  assert.equal(describeCollectionAgingFilter([], 0), 'لا توجد مدة تأخير مسجلة');
   assert.equal(describeCollectionAgingFilter(['b16_30', 'b1', 'b2', 'b3']), 'أكثر من 15 يوم');
   assert.equal(describeCollectionAgingFilter(['b1', 'b2', 'b3']), 'أكثر من 30 يوم');
   assert.equal(describeCollectionAgingFilter(['b2', 'b3']), 'أكثر من 60 يوم');
@@ -58,6 +59,6 @@ test('collections expose the full balance separately from the selected aging sli
   const source = await readFile(new URL('../src/pages/CustomerMoney.jsx', import.meta.url), 'utf8');
   assert.match(source, /full_amount:\s*c\.owed/);
   assert.match(source, /filtered_overdue_amount:\s*amt/);
-  assert.match(source, /aging_filter:\s*agingFilterLabel/);
+  assert.match(source, /aging_filter:\s*describeCollectionAgingFilter\(\[\.\.\.buckets\],\s*c\.oldestDays\)/);
   assert.match(source, /amount:\s*amt/);
 });

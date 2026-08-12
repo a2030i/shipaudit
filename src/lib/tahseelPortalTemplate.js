@@ -35,7 +35,7 @@ export function renderTahseelPortalTemplate({
   fullAmount,
   invoiceCount,
   filteredOverdueAmount = fullAmount,
-  agingFilter = 'كامل الرصيد المستحق',
+  agingFilter = 'مدة التأخير غير متاحة',
 }) {
   return TAHSEEL_PORTAL_TEMPLATE_BODY
     .replace('{{1}}', String(name || 'عميل لمحة'))
@@ -60,9 +60,14 @@ const SUFFIX_DESCRIPTIONS = Object.freeze([
   { keys: ['b3'], label: 'أكثر من 90 يوم' },
 ]);
 
-export function describeCollectionAgingFilter(selectedKeys = []) {
+export function describeCollectionAgingFilter(selectedKeys = [], oldestDays = 0) {
   const selected = new Set(selectedKeys);
-  if (!selected.size) return 'كامل الرصيد المستحق';
+  if (!selected.size) {
+    const days = Math.max(0, Math.trunc(Number(oldestDays) || 0));
+    return days > 0
+      ? `حتى ${days} يومًا (حسب أقدم فاتورة)`
+      : 'لا توجد مدة تأخير مسجلة';
+  }
 
   const exactSuffix = SUFFIX_DESCRIPTIONS.find(({ keys }) => (
     keys.length === selected.size && keys.every(key => selected.has(key))
