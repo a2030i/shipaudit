@@ -612,7 +612,12 @@ function AppInner({ theme, toggleTheme }) {
               <LamhaMark size={32}/>
             ) : (
               <div className="sidebar-brand-lockup">
-                <LamhaLogo height={36} variant={theme === 'light' ? 'color' : 'white'}/>
+                <span className="sidebar-brand-logo sidebar-brand-logo--desktop">
+                  <LamhaLogo height={36} variant="white"/>
+                </span>
+                <span className="sidebar-brand-logo sidebar-brand-logo--mobile">
+                  <LamhaLogo height={36} variant="color"/>
+                </span>
                 <div className="sidebar-product-label">
                   <span className="live-dot"/>
                   <span>
