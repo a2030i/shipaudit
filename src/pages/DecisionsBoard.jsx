@@ -44,11 +44,14 @@ export default function DecisionsBoard({ isActive = true }) {
   const [pulse, setPulse] = useState(null);
   const [pulseLoading, setPulseLoading] = useState(false);
   const [pulseError, setPulseError] = useState('');
+  const [zatcaError, setZatcaError] = useState('');
 
   const refresh = useCallback(async ({ forcePulse = false } = {}) => {
     setLoading(true);
     setPulseLoading(true);
     setPulseError('');
+    setZatcaError('');
+    let zatcaLoadError = '';
     // هذا الملخص أخف من بقية لوحة القرارات؛ نعرضه فور اكتماله ولا نحبسه
     // خلف أبطأ استعلام مالي في الصفحة. فشله مستقل ولا يحجب بقية الإشارات.
     loadCompanyOperatingPulse({ force: forcePulse })
@@ -69,7 +72,11 @@ export default function DecisionsBoard({ isActive = true }) {
         loadInvoicesAwaitingReview().catch(() => []),
         loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
         loadCreditStopList().catch(() => null),
-        loadZatcaPending().catch(() => ({ todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [] })),
+        loadZatcaPending().catch((error) => {
+          zatcaLoadError = error?.message || 'تعذرت قراءة حالة زاتكا';
+          setZatcaError(zatcaLoadError);
+          return null;
+        }),
         loadIntegrityChecks().catch(() => null),
         loadClaims().then(summarizeClaims).catch(() => null),
         loadHatifCallOps().catch(() => null),
@@ -121,6 +128,7 @@ export default function DecisionsBoard({ isActive = true }) {
         awaiting,
         legal: legalSig,
         zatca,
+        zatcaError: zatcaLoadError,
         integ: { count: integ.length, top: integTop,
           total: integ.reduce((s, c) => s + (c.total > 0.5 ? c.total : 0), 0) },
         claims: claims || { open: 0, openTotal: 0, submitted: 0, submittedTotal: 0, recovered: 0, recoveredTotal: 0 },
@@ -171,12 +179,12 @@ export default function DecisionsBoard({ isActive = true }) {
             },
           },
           {
-            key: 'zatca', active: (d.zatca?.todayCount || 0) > 0 || (d.zatca?.overdueCount || 0) > 0,
+            key: 'zatca', active: !!d.zatcaError || (d.zatca?.todayCount || 0) > 0 || (d.zatca?.overdueCount || 0) > 0,
             okLabel: 'كل الفواتير مُرسَلة لزاتكا',
             props: {
-              color: 'var(--red)', icon: '🧾', title: 'فواتير لم تُرسَل لزاتكا',
-              value: (d.zatca?.todayCount || 0) + (d.zatca?.overdueCount || 0), unit: 'فاتورة معلّقة',
-              sub: `اليوم ${d.zatca?.todayCount || 0} (${fmt(d.zatca?.todayTotal || 0)} ر.س) — المهلة منتصف الليل بتوقيت السعودية`
+              color: 'var(--red)', icon: '🧾', title: d.zatcaError ? 'حالة زاتكا غير متاحة' : 'فواتير لم تُرسَل لزاتكا',
+              value: d.zatcaError ? '—' : (d.zatca?.todayCount || 0) + (d.zatca?.overdueCount || 0), unit: d.zatcaError ? 'تعذرت القراءة' : 'فاتورة معلّقة',
+              sub: d.zatcaError ? `لم نفترض أن العدد صفر: ${d.zatcaError}` : `اليوم ${d.zatca?.todayCount || 0} (${fmt(d.zatca?.todayTotal || 0)} ر.س) — المهلة منتصف الليل بتوقيت السعودية`
                  + ((d.zatca?.overdueCount || 0) > 0 ? ` · ⚠️ ${d.zatca.overdueCount} متأخرة سابقاً (${fmtK(d.zatca.overdueTotal)})` : ''),
               top: (d.zatca?.invoices || []).slice(0, 3).map(v => `${v.invoice_number} · ${(v.customer || '').slice(0, 20)} · ${fmtK(v.total)}${v.overdue ? ' · متأخرة' : ''}`),
               cta: 'الفواتير', onClick: () => navigate('/zoho-data?tab=invoices'),

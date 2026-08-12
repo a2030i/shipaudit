@@ -33,6 +33,8 @@ import {
 import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
+import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
+import { metricDefinition } from '../lib/metricCatalog.js';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -191,6 +193,13 @@ export default function Overview({ carriers = [], isActive = true }) {
         }
       />
 
+      <SourceStatusStrip
+        sources={Object.values(data.sourceStates || {})}
+        loadedAt={data.loadedAt}
+        onRefresh={refresh}
+        refreshing={loading}
+      />
+
       {loadError && (
         <div className="data-load-error is-inline" role="status">
           <AlertTriangle size={17}/>
@@ -245,6 +254,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       )}
 
       {/* ── Section 1: Monthly snapshot — 4 big numbers ── */}
+      {data.sectionAvailability?.monthly ? (
       <div id="month-performance" className="overview-anchor">
         <SectionTitle icon={<Calendar size={14}/>} color="var(--accent3)">
           أداء الشهر — {fmtMonth(period)}
@@ -254,6 +264,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
         }}>
         <BigStat
+          metricId="carrier_spend"
           color="var(--red)"
           icon={<ArrowUpCircle size={18}/>}
           label="تكلفة الشحن المعتمدة"
@@ -264,6 +275,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={Math.abs(data.thisMonth.carrierSpend) < 0.01 ? 'لا حركة شحن معتمدة في الشهر الجاري بعد' : `${data.thisMonth.auditsApproved} مراجعة معتمدة هذا الشهر`}
         />
         <BigStat
+          metricId="cod_received"
           color="var(--green)"
           icon={<ArrowDownCircle size={18}/>}
           label="تحصيل COD المستلم"
@@ -273,6 +285,7 @@ export default function Overview({ carriers = [], isActive = true }) {
           hint={Math.abs(data.thisMonth.codReceived) < 0.01 ? 'لا تحصيل COD مسجّل في الشهر الجاري بعد' : 'من ملفات تحصيل الشركات'}
         />
         <BigStat
+          metricId="carrier_cash_flow"
           color={data.thisMonth.net >= 0 ? 'var(--green2)' : 'var(--red)'}
           icon={data.thisMonth.net >= 0 ? <TrendingUp size={18}/> : <TrendingDown size={18}/>}
           label="صافي حركة الناقلين"
@@ -292,9 +305,12 @@ export default function Overview({ carriers = [], isActive = true }) {
         />
         </div>
       </div>
+      ) : (
+        <SourceUnavailable title="أداء الشهر" source="ملخص الحركة الشهرية" />
+      )}
 
       {/* Action alerts strip */}
-      {data.thisMonth.auditsPending > 0 && (
+      {data.sectionAvailability?.monthly && data.thisMonth.auditsPending > 0 && (
         <Card
           style={{
             marginBottom: 18,
@@ -316,6 +332,8 @@ export default function Overview({ carriers = [], isActive = true }) {
       )}
 
       {/* ── Section 1.5: Working capital — CFO health metrics ── */}
+      {data.sectionAvailability?.workingCapital ? (
+      <>
       <SectionTitle icon={<TrendingUp size={14}/>} color="var(--accent)">
         دورة التحصيل والسداد
       </SectionTitle>
@@ -324,6 +342,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
       }}>
         <BigStat
+          metricId="dso"
           color="var(--accent3)"
           icon={<Calendar size={18}/>}
           label="متوسط أيام تحصيلك من العملاء"
@@ -412,6 +431,10 @@ export default function Overview({ carriers = [], isActive = true }) {
           )}
         </div>
       )}
+      </>
+      ) : (
+        <SourceUnavailable title="دورة التحصيل والسداد" source="تقرير رأس المال العامل" />
+      )}
 
       {/* ── Section 2: Concentration — risk awareness ── */}
       <div style={{
@@ -424,7 +447,9 @@ export default function Overview({ carriers = [], isActive = true }) {
           <SectionTitle icon={<Building2 size={14}/>} color="var(--brand)" inline>
             الناقلون — تركّز الإنفاق ({fmtMonth(period)})
           </SectionTitle>
-          {data.carrierConcentration.length === 0 ? (
+          {!data.sectionAvailability?.carrierConcentration ? (
+            <SourceUnavailable compact title="تعذرت قراءة إنفاق الناقلين" source="تقرير إنفاق الناقلين" />
+          ) : data.carrierConcentration.length === 0 ? (
             <Empty icon="📭" title="لا إنفاق هذا الشهر" sub="ينعكس بعد اعتماد أوّل مراجعة"/>
           ) : (
             <ConcentrationBars
@@ -451,7 +476,9 @@ export default function Overview({ carriers = [], isActive = true }) {
           <SectionTitle icon={<Users size={14}/>} color="#EF4444" inline>
             أكثر العملاء عليهم ديون{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
           </SectionTitle>
-          {data.customerConcentration.length === 0 ? (
+          {!data.sectionAvailability?.customerConcentration ? (
+            <SourceUnavailable compact title="تعذرت قراءة مديونيات العملاء" source="زوهو ومديونيات العملاء" />
+          ) : data.customerConcentration.length === 0 ? (
             <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة تحصيل العملاء"/>
           ) : (
             <ConcentrationBars
@@ -482,6 +509,8 @@ export default function Overview({ carriers = [], isActive = true }) {
       </div>
 
       {/* ── Section 3: AP aging ── */}
+      {data.sectionAvailability?.aging ? (
+      <>
       <SectionTitle icon={<Wallet size={14}/>} color="var(--gold)">
         أعمار ما عليك لشركات الشحن
       </SectionTitle>
@@ -526,9 +555,15 @@ export default function Overview({ carriers = [], isActive = true }) {
           </div>
         )}
       </Card>
+      </>
+      ) : (
+        <SourceUnavailable title="أعمار ذمم شركات الشحن" source="تقرير أعمار الذمم الدائنة" />
+      )}
 
       {/* ── Section 4: Carrier health KPIs ── */}
-      {data.carrierHealth.length > 0 && (
+      {!data.sectionAvailability?.carrierHealth ? (
+        <SourceUnavailable title="صحة الناقلين" source="مؤشرات جودة الناقلين" />
+      ) : data.carrierHealth.length > 0 && (
         <>
           <SectionTitle icon={<Shield size={14}/>} color="var(--green)">
             صحة الناقلين — جودة الفواتير والبيانات
@@ -1185,7 +1220,24 @@ function SectionTitle({ icon, color, children, inline = false }) {
   );
 }
 
-function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false, hint, big = false }) {
+function SourceUnavailable({ title, source, compact = false }) {
+  return (
+    <Card
+      className="source-unavailable-card"
+      style={{ marginBottom: compact ? 0 : 18, padding: compact ? 14 : 18 }}
+      role="status"
+    >
+      <AlertTriangle size={18} color="var(--gold)" aria-hidden="true"/>
+      <div>
+        <strong>{title} غير متاح الآن</strong>
+        <span>تعذرت قراءة {source}؛ لم نعرض صفراً بديلاً. أعد التحديث بعد عودة المصدر.</span>
+      </div>
+    </Card>
+  );
+}
+
+function BigStat({ metricId, color, icon, label, value, unit, delta, deltaInverted = false, hint, big = false }) {
+  const metric = metricId ? metricDefinition(metricId) : null;
   // delta semantics: positive number = went UP this month.
   // deltaInverted=true flips the color meaning (spend going up = bad).
   const deltaUp = delta != null && delta > 0;
@@ -1233,6 +1285,12 @@ function BigStat({ color, icon, label, value, unit, delta, deltaInverted = false
       {hint && (
         <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 6 }}>
           {hint}
+        </div>
+      )}
+      {metric && (
+        <div className="metric-source-line">
+          <Info size={11} aria-hidden="true"/>
+          <span>المصدر: {metric.source}</span>
         </div>
       )}
     </div>

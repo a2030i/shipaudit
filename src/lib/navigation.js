@@ -2,12 +2,12 @@
 // تعريف المسار والصلاحية يبقى في App لأنه مرتبط بتركيب الصفحات، أما قرار
 // الظهور والقسم والترتيب والمسمى فيؤخذ حصراً من هذا الملف.
 export const NAV_SECTIONS = [
-  { id: 'shipping',  label: 'التشغيل',             icon: 'Truck',      accent: '#2B68DE', hint: 'شركات شحن · دورة شهرية · فوترة' },
-  { id: 'customers', label: 'العملاء',             icon: 'Users',      accent: '#EF4444', hint: 'ملفات · مديونيات · خدمة' },
-  { id: 'sales',     label: 'المبيعات والنمو',      icon: 'Target',     accent: '#8B5CF6', hint: 'فرص · صفقات · حملات · عمولات' },
-  { id: 'finance',   label: 'المالية وزوهو',       icon: 'DollarSign', accent: '#F59E0B', hint: 'ربحية · بنوك · زوهو · مطابقة' },
-  { id: 'reports',   label: 'التقارير والرقابة',   icon: 'FileCheck',  accent: '#22C55E', hint: 'تقارير · مزامنة · سلامة' },
-  { id: 'settings',  label: 'الإدارة والإعدادات',   icon: 'Settings',   accent: '#31D5E1', hint: 'فريق · شركات · عقود · تكاملات' },
+  { id: 'shipping',  label: 'التشغيل', icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
+  { id: 'customers', label: 'العملاء', icon: 'Users',      accent: '#EF4444', hint: 'ملفات العملاء · خدمة العملاء' },
+  { id: 'finance',   label: 'المالية', icon: 'DollarSign', accent: '#F59E0B', hint: 'التحصيل · البنوك · زوهو · الربحية' },
+  { id: 'sales',     label: 'المبيعات', icon: 'Target',    accent: '#8B5CF6', hint: 'الفرص · الصفقات · الحملات · العمولات' },
+  { id: 'reports',   label: 'التقارير', icon: 'FileCheck', accent: '#22C55E', hint: 'التقارير المالية والتشغيلية' },
+  { id: 'settings',  label: 'الإدارة', icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · الصلاحيات · العقود · التكاملات' },
 ];
 
 // المستوى الثاني داخل كل قسم رئيسي. هذه المجموعات عناوين تنظيمية ثابتة
@@ -22,13 +22,13 @@ export const NAV_GROUPS = {
   ],
   customers: [
     { id: 'customer_ops', label: 'ملفات وخدمة العملاء' },
-    { id: 'collection_ops', label: 'المديونيات والتحصيل' },
   ],
   sales: [
     { id: 'sales_ops', label: 'الفرص والصفقات' },
     { id: 'outreach_ops', label: 'التواصل والنمو' },
   ],
   finance: [
+    { id: 'receivables_ops', label: 'تحصيل العملاء' },
     { id: 'cash_ops', label: 'البنوك والسيولة' },
     { id: 'zoho_ops', label: 'المحاسبة وزوهو' },
     { id: 'profit_ops', label: 'الربحية والإقفال' },
@@ -38,9 +38,10 @@ export const NAV_GROUPS = {
     { id: 'automation_ops', label: 'الرقابة والأتمتة' },
   ],
   settings: [
-    { id: 'team_ops', label: 'الفريق والإدارة' },
-    { id: 'shipping_settings', label: 'إعدادات الشحن' },
-    { id: 'system_settings', label: 'النظام والتكاملات' },
+    { id: 'team_ops', label: 'الفريق والصلاحيات' },
+    { id: 'shipping_settings', label: 'شركات الشحن والعقود' },
+    { id: 'integration_settings', label: 'التكاملات والقنوات' },
+    { id: 'system_settings', label: 'إعدادات النظام' },
   ],
 };
 
@@ -55,24 +56,25 @@ export const NAV_ITEM_IA = {
   audits:            { label: 'مراجعات فواتير الناقلين', section: 'shipping', group: 'invoice_ops', order: 40, visible: true },
   fulfillment:       { label: 'فوترة خدمات العملاء', section: 'shipping', group: 'service_ops', order: 50, visible: true },
   'customer-watch':  { label: 'ملف العميل', section: 'customers', group: 'customer_ops', order: 10, visible: true },
-  'collections-hub': { label: 'تحصيل العملاء', section: 'customers', group: 'collection_ops', order: 20, visible: true },
-  support:           { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 30, visible: true },
+  support:           { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 20, visible: true },
+  'collections-hub': { label: 'تحصيل العملاء', section: 'finance', group: 'receivables_ops', order: 10, visible: true },
   'sales-hub':       { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
   crm:                { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: true },
   'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
   marketers:          { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: true },
-  money:              { label: 'تحويلات الناقلين والبنوك', section: 'finance', group: 'cash_ops', order: 10, visible: true },
-  pnl:                { label: 'قائمة الدخل والربحية', section: 'finance', group: 'profit_ops', order: 40, visible: true },
-  'zoho-data':        { label: 'زوهو والحسابات', section: 'finance', group: 'zoho_ops', order: 20, visible: true },
-  reconciliation:     { label: 'مطابقة الحسابات مع زوهو', section: 'finance', group: 'zoho_ops', order: 30, visible: true },
+  money:              { label: 'تحويلات الناقلين والبنوك', section: 'finance', group: 'cash_ops', order: 20, visible: true },
+  'zoho-data':        { label: 'زوهو والحسابات', section: 'finance', group: 'zoho_ops', order: 30, visible: true },
+  reconciliation:     { label: 'مطابقة الحسابات مع زوهو', section: 'finance', group: 'zoho_ops', order: 40, visible: true },
+  pnl:                { label: 'قائمة الدخل والربحية', section: 'finance', group: 'profit_ops', order: 50, visible: true },
   reports:            { label: 'التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
-  operations:         { label: 'مركز التكاملات والتشغيل', section: 'reports', group: 'automation_ops', order: 10, visible: true },
+  operations:         { label: 'التكاملات ومراقبة الربط', section: 'settings', group: 'integration_settings', order: 20, visible: true },
   'work-agents':      { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 20, visible: false },
   uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
   employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: false },
   carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: false },
   contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: false },
-  'app-settings':     { label: 'الإعدادات', section: 'settings', group: 'system_settings', order: 10, visible: true },
+  'hatif-settings':   { label: 'إعدادات هاتف', section: 'settings', group: 'integration_settings', order: 10, visible: true },
+  'app-settings':     { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 10, visible: true },
 };
 
 export function applyNavigationIA(items) {

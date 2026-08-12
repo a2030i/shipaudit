@@ -40,41 +40,79 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
   // ساي فاي 1,543.32 حجب الإنماء 231,794.88 لأن كشفه أحدث بيوم).
-  const bankEffQ = loadEffectiveBankBalance().catch(() => null);
-  const [thisSnapArr, prevSnapArr, aging, carriersAll, customersTop, healthRaw, wcArr, bankBalance, codNet, latestClosing, zohoDash, customerMoney, zohoFinancial, teamReadinessRaw, teamStaffing, collectionWork] = await Promise.all([
-    rpc('monthly_financial_snapshot', { p_period: thisPeriod }),
-    rpc('monthly_financial_snapshot', { p_period: prevPeriod }),
-    rpc('ap_aging_by_carrier', {}),
-    rpc('carrier_spend_concentration', { p_period: thisPeriod }),
-    rpc('customer_debt_concentration', { p_limit: topN }),
-    rpc('carrier_health_kpis', {}),
-    rpc('working_capital_now', {}),
-    bankEffQ,
+  const checkedAt = new Date().toISOString();
+  const supabaseRpc = async (name) => {
+    const { data, error } = await supabase.rpc(name);
+    if (error) throw error;
+    return data;
+  };
+  const tasks = [
+    { key: 'monthly', label: 'أداء الشهر', run: () => rpc('monthly_financial_snapshot', { p_period: thisPeriod }) },
+    { key: 'previousMonth', label: 'أداء الشهر السابق', run: () => rpc('monthly_financial_snapshot', { p_period: prevPeriod }) },
+    { key: 'apAging', label: 'أعمار التزامات الناقلين', run: () => rpc('ap_aging_by_carrier', {}) },
+    { key: 'carrierSpend', label: 'تركيز إنفاق الناقلين', run: () => rpc('carrier_spend_concentration', { p_period: thisPeriod }) },
+    { key: 'customerDebt', label: 'تركيز مديونيات العملاء', run: () => rpc('customer_debt_concentration', { p_limit: topN }) },
+    { key: 'carrierHealth', label: 'سلامة الناقلين', run: () => rpc('carrier_health_kpis', {}) },
+    { key: 'workingCapital', label: 'دورة التحصيل والسداد', run: () => rpc('working_capital_now', {}) },
+    { key: 'banks', label: 'أرصدة البنوك', run: () => loadEffectiveBankBalance() },
+    { key: 'carrierCod', label: 'تحصيلات الناقلين', run: () => loadCarrierNetBalances() },
     // Company-wide uncollected COD — carriers that collected cash on our
     // behalf and haven't remitted it yet (net = SUM(out) − SUM(in) > 0).
     // Previously only visible per-carrier inside /money; surfaced here.
-    loadCarrierNetBalances().catch(() => new Map()),
-    Promise.resolve(null),   // (خانة محجوزة — الرصيد صار من bankEffQ أعلاه)
+    { key: 'zohoInvoices', label: 'فواتير زوهو', run: () => supabaseRpc('zoho_invoice_dashboard') },
     // مرجع دين العملاء = زوهو الحي (فحص وكلاء 2026-07-03: كانت الرئيسية
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
-    supabase.rpc('zoho_invoice_dashboard').then(r => r.data || null).catch(() => null),
+    { key: 'customerMoney', label: 'مديونيات العملاء', run: () => supabaseRpc('customer_money_dashboard') },
     // Collection truth subtracts unused Zoho credit that already covers a
     // debit. The invoice dashboard intentionally exposes the gross debit, so
     // it must not feed the "effective available" amount.
-    supabase.rpc('customer_money_dashboard').then(r => r.data || null).catch(() => null),
+    { key: 'zohoFinancial', label: 'الرقابة المالية في زوهو', run: () => supabaseRpc('zoho_financial_control_dashboard') },
     // قراءة خفيفة من المرآة المحلية فقط؛ لا تضرب Zoho API عند كل فتح للرئيسية.
-    supabase.rpc('zoho_financial_control_dashboard').then(r => r.data || null).catch(() => null),
+    { key: 'teamReadiness', label: 'جاهزية التشغيل', run: () => supabaseRpc('team_operational_readiness_snapshot') },
     // لقطة إدارية واحدة تجمع جاهزية المحاسبة والمالية والمبيعات. فشلها
     // يبقى null حتى تعرض الواجهة «المصدر غير متاح» بدل جاهزية مضللة.
-    supabase.rpc('team_operational_readiness_snapshot').then(r => r.data || null).catch(() => null),
+    { key: 'teamStaffing', label: 'تغطية صلاحيات الفريق', run: () => supabaseRpc('team_staffing_readiness_snapshot') },
     // تغطية الصلاحيات الفعلية تستبعد المدير: الهدف إثبات أن الفريق نفسه
     // يستطيع تشغيل المسار، لا أن حساب المالك يستطيع فتح كل شيء.
-    supabase.rpc('team_staffing_readiness_snapshot').then(r => r.data || null).catch(() => null),
+    { key: 'collectionWork', label: 'جاهزية أعمال التحصيل', run: () => supabaseRpc('collection_work_readiness_snapshot') },
     // تغطية مهام التحصيل تُقاس من العملاء الذين يجب متابعتهم، لا من عدد
     // المهام الموجودة فقط؛ وبذلك لا تختفي المديونيات التي لم تُنشأ لها مهمة.
-    supabase.rpc('collection_work_readiness_snapshot').then(r => r.data || null).catch(() => null),
-  ]);
+  ];
+  // A failing source is reported independently; it does not blank the page or
+  // become a misleading zero.
+  const settled = await Promise.allSettled(tasks.map(task => task.run()));
+  const results = new Map(tasks.map((task, index) => [task.key, settled[index]]));
+  const valueOf = (key, fallback) => {
+    const result = results.get(key);
+    return result?.status === 'fulfilled' && result.value != null ? result.value : fallback;
+  };
+  const sourceStates = Object.fromEntries(tasks.map((task) => {
+    const result = results.get(task.key);
+    return [task.key, {
+      key: task.key,
+      label: task.label,
+      status: result?.status === 'rejected' ? 'unavailable' : result?.value == null ? 'empty' : 'fresh',
+      error: result?.status === 'rejected' ? (result.reason?.message || String(result.reason)) : null,
+      checkedAt,
+    }];
+  }));
+
+  const thisSnapArr = valueOf('monthly', []);
+  const prevSnapArr = valueOf('previousMonth', []);
+  const aging = valueOf('apAging', []);
+  const carriersAll = valueOf('carrierSpend', []);
+  const customersTop = valueOf('customerDebt', []);
+  const healthRaw = valueOf('carrierHealth', []);
+  const wcArr = valueOf('workingCapital', []);
+  const bankBalance = valueOf('banks', null);
+  const codNet = valueOf('carrierCod', new Map());
+  const zohoDash = valueOf('zohoInvoices', null);
+  const customerMoney = valueOf('customerMoney', null);
+  const zohoFinancial = valueOf('zohoFinancial', null);
+  const teamReadinessRaw = valueOf('teamReadiness', null);
+  const teamStaffing = valueOf('teamStaffing', null);
+  const collectionWork = valueOf('collectionWork', null);
 
   const readinessRank = { unavailable: 3, blocked: 2, pilot: 1, ready: 0 };
   const mergeReadiness = (operational, staffing) => {
@@ -136,6 +174,18 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   return {
     period:     thisPeriod,
     prevPeriod,
+    loadedAt: checkedAt,
+    sourceStates,
+    partial: Object.values(sourceStates).some(source => source.status === 'unavailable'),
+    sectionAvailability: {
+      monthly: sourceStates.monthly.status !== 'unavailable',
+      workingCapital: sourceStates.workingCapital.status !== 'unavailable',
+      carrierConcentration: sourceStates.carrierSpend.status !== 'unavailable',
+      customerConcentration: [sourceStates.customerMoney, sourceStates.zohoInvoices, sourceStates.customerDebt]
+        .some(source => source.status !== 'unavailable'),
+      aging: sourceStates.apAging.status !== 'unavailable',
+      carrierHealth: sourceStates.carrierHealth.status !== 'unavailable',
+    },
     teamReadiness,
     thisMonth: {
       carrierSpend:  num(thisSnap.carrier_spend_gross),

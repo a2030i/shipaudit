@@ -81,12 +81,13 @@ const HATIF_TABS = [
 
 const tabAllowed = (tab, can) => tab.anyPerm ? tab.anyPerm.some(can) : can(tab.perm);
 
-export default function WhatsAppSettings({ isActive = true }) {
+export default function WhatsAppSettings({ isActive = true, settingsOnly = false }) {
   const { can, isAdmin } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can));
+  const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can) && (!settingsOnly || t.id === 'settings'));
   const tabFromUrl = () => {
+    if (settingsOnly) return 'settings';
     const requested = new URLSearchParams(location.search).get('tab');
     if (requested && visibleTabs.some(t => t.id === requested)) return requested;
     return visibleTabs.find(t => t.id === 'overview')?.id || visibleTabs[0]?.id || 'overview';
@@ -123,6 +124,7 @@ export default function WhatsAppSettings({ isActive = true }) {
   }, [isActive, location.pathname, location.search]);
 
   const changeTab = (next) => {
+    if (settingsOnly) return;
     if (!visibleTabs.some(t => t.id === next)) return;
     setTab(next);
     const params = new URLSearchParams(location.search);

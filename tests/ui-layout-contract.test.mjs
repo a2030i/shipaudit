@@ -177,9 +177,36 @@ test('active work areas use a contextual rail instead of duplicated hub tabs', a
 
   assert.match(navigation, /'accounting-cycle':\s*\{[^}]*section: 'shipping'[^}]*group: 'monthly_cycle'/);
   assert.doesNotMatch(navigation, /'accounting-cycle':\s*\{[^}]*group: 'cash_ops'/);
+  assert.match(navigation, /id: 'customers', label: 'العملاء'[^\n]*hint: 'ملفات العملاء · خدمة العملاء'/);
+  assert.match(navigation, /id: 'finance',\s+label: 'المالية'/);
+  assert.match(navigation, /id: 'sales',\s+label: 'المبيعات'/);
+  assert.match(navigation, /id: 'reports',\s+label: 'التقارير'/);
+  assert.match(navigation, /id: 'settings',\s+label: 'الإدارة'/);
+  assert.match(navigation, /'collections-hub':\s*\{[^}]*section: 'finance'[^}]*group: 'receivables_ops'/);
+  assert.doesNotMatch(navigation, /'collections-hub':\s*\{[^}]*section: 'customers'/);
+  assert.match(navigation, /'hatif-settings':\s*\{[^}]*section: 'settings'[^}]*group: 'integration_settings'/);
   assert.match(navigation, /id: 'cash_ops', label: 'البنوك والسيولة'/);
   assert.match(navigation, /employees:\s*\{[^}]*visible: false/);
   assert.match(navigation, /carriers:\s*\{[^}]*visible: false/);
   assert.match(navigation, /contracts:\s*\{[^}]*visible: false/);
   assert.match(navigation, /'app-settings':\s*\{[^}]*visible: true/);
+  assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
+  assert.match(app, /pathname==='\/settings\/hatif'[\s\S]*<WhatsAppSettings[^>]*settingsOnly/);
+  const reportRouteBlock = app.slice(
+    app.indexOf("{ id: 'reports'"),
+    app.indexOf("{ id: 'monthly-report'"),
+  );
+  assert.doesNotMatch(reportRouteBlock, /legacy: '\/(uploads|integrity|activity-log)'/);
+  const operationsRouteBlock = app.slice(
+    app.indexOf("{ id: 'operations'"),
+    app.indexOf('// Each section carries'),
+  );
+  assert.match(operationsRouteBlock, /legacy: '\/uploads'/);
+  assert.match(operationsRouteBlock, /legacy: '\/integrity'/);
+  assert.match(operationsRouteBlock, /legacy: '\/activity-log'/);
+  const whatsappRouteBlock = app.slice(
+    app.indexOf("{ id: 'whatsapp-settings'"),
+    app.indexOf('// ── الإعدادات الفعلية'),
+  );
+  assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
 });

@@ -241,7 +241,7 @@ export async function loadZohoEvents(limit = 10) {
     .select('id, event_type, amount, contact_name, ref_number, occurred_at, received_at')
     .order('received_at', { ascending: false })
     .limit(limit);
-  if (error) return [];
+  if (error) throw error;
   return data || [];
 }
 
@@ -447,7 +447,8 @@ export async function loadZohoOpenInvoices(customerName) {
 // ما زالت معلّقة (تجاوزت المهلة). المصدر مرآة zoho_invoices (تُزامَن كل 30د).
 export async function loadZatcaPending() {
   const { data, error } = await supabase.rpc('zatca_pending_today');
-  if (error || !data) return { todayCount: 0, todayTotal: 0, overdueCount: 0, overdueTotal: 0, invoices: [], saudiDate: null };
+  if (error) throw error;
+  if (!data) throw new Error('لم يصل رد من مصدر حالة زاتكا');
   return {
     todayCount:  data.today_count   || 0, todayTotal:   Number(data.today_total)   || 0,
     overdueCount: data.overdue_count || 0, overdueTotal: Number(data.overdue_total) || 0,

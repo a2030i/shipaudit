@@ -59,6 +59,7 @@ export const PAGE_TITLES = {
   '/employees':         'الفريق والصلاحيات',
   '/settings/ai':       'التكاملات والذكاء الاصطناعي',
   '/settings/data':     'البيانات والتكاملات',
+  '/settings/hatif':    'إعدادات هاتف',
   '/results':           'نتائج التدقيق',
 };
 

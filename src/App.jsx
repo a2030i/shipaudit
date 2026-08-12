@@ -118,9 +118,6 @@ const ROUTE_ITEMS = [
     subTabs: [
       { tabId: 'reports',   label: 'مكتبة التقارير',       icon: FileText, anyPerm: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
       { tabId: 'monthly',   label: 'التقرير الشهري',       icon: CalendarRange, legacy: '/monthly-report', perm: 'reports.view_operational' },
-      { tabId: 'sources',   label: 'مزامنة مصادر البيانات', icon: Layers, legacy: '/uploads', perm: 'uploads.view' },
-      { tabId: 'integrity', label: 'سلامة البيانات',        icon: FileCheck, legacy: '/integrity', perm: 'system.view_audit_log' },
-      { tabId: 'activity',  label: 'سجل النظام',            icon: Activity, legacy: '/activity-log', perm: 'system.view_audit_log' },
       { tabId: 'exports',   label: 'الملفات المصدّرة',      icon: Download, legacy: '/internal-exports', perm: 'internal_exports.view' },
     ] },
   { id: 'monthly-report',   path: '/monthly-report',   label: 'التقرير الشهري',         icon: CalendarRange, section: 'outreach', navOrder: 20, permKey: 'reports.view_operational' },
@@ -200,13 +197,13 @@ const ROUTE_ITEMS = [
       { tabId: 'ivr',       label: 'المكالمات وIVR',   icon: Phone },
       { tabId: 'agents',    label: 'نشاط فريق هاتف',   icon: Users },
       { tabId: 'problems',  label: 'جودة التواصل',     icon: Headset },
-      { tabId: 'settings',  label: 'الربط والأتمتة',   icon: Settings },
     ] },
 
   // ── الإعدادات الفعلية + عناصر التشغيل المنقولة لأقسامها ─────────
   { id: 'employees',    path: '/employees',    label: 'الفريق والصلاحيات',  icon: UserCog,       section: 'tools', navOrder: 10, adminOnly: true },
   { id: 'carriers',     path: '/carriers',     label: 'إدارة شركات الشحن',  icon: Truck,         section: 'tools', navOrder: 20, permKey: 'carriers.view' },
   { id: 'contracts',    path: '/contracts',    label: 'العقود والأسعار',    icon: ClipboardList, section: 'tools', navOrder: 30, permKey: 'carriers.edit_contract' },
+  { id: 'hatif-settings', path: '/settings/hatif', label: 'إعدادات هاتف', icon: MessageCircle, section: 'tools', navOrder: 35, permKey: 'whatsapp.configure' },
   { id: 'app-settings', path: '/settings/ai',  label: 'الإعدادات', icon: Settings, section: 'tools', navOrder: 40,
     permAny: ['system.view_settings', 'carriers.view', 'carriers.edit_contract'],
     subTabs: [
@@ -223,7 +220,15 @@ const ROUTE_ITEMS = [
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
   { id: 'work-agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
   { id: 'operations', path: '/operations', label: 'مركز التكاملات والتشغيل', icon: Activity, section: 'outreach', navOrder: 15,
-    permAny: ['agents.view', 'system.view_audit_log', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'webhook.view'] },
+    permAny: ['agents.view', 'system.view_audit_log', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'webhook.view'],
+    subTabs: [
+      { tabId: 'overview', label: 'مراقبة التكاملات', icon: Activity },
+      { tabId: 'sources', label: 'مزامنة مصادر البيانات', icon: Layers, legacy: '/uploads', perm: 'uploads.view' },
+      { tabId: 'integrity', label: 'سلامة البيانات', icon: FileCheck, legacy: '/integrity', perm: 'system.view_audit_log' },
+      { tabId: 'activity', label: 'سجل النظام', icon: Activity, legacy: '/activity-log', perm: 'system.view_audit_log' },
+      { tabId: 'agents', label: 'وكلاء العمل', icon: Bot, legacy: '/work-agents', perm: 'agents.view' },
+      { tabId: 'webhook', label: 'وارد التكاملات', icon: Inbox, legacy: '/webhook', perm: 'webhook.view' },
+    ] },
 ];
 // Each section carries an accent color so the sidebar reads as
 // five visually-distinct zones instead of one flat list. The color
@@ -288,7 +293,7 @@ const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank'];
-const REPORTS_WORKSPACE_PATHS = ['/reports', '/monthly-report', '/uploads', '/integrity', '/activity-log', '/internal-exports'];
+const REPORTS_WORKSPACE_PATHS = ['/reports', '/monthly-report', '/internal-exports'];
 
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
@@ -330,7 +335,10 @@ function AppInner({ theme, toggleTheme }) {
   // الحارس المركزي: المسار الممنوع يصير '__locked__' فلا يطابق أي PageSlot
   // (لا عرض ولا جلب بيانات) ويسقط في تحويلة «مسار مجهول» → أول صفحة مسموحة.
   const rawPath   = location.pathname;
-  const pathPermKey = rawPath.startsWith('/settings') ? 'system.view_settings' : PATH_PERM.get(rawPath);
+  // المسارات الإدارية المتخصصة (مثل إعدادات هاتف) تحمل صلاحيتها الدقيقة.
+  // لا نطغى عليها بصلاحية إعدادات النظام العامة لمجرد أنها تبدأ بـ/settings.
+  const pathPermKey = PATH_PERM.get(rawPath)
+    ?? (rawPath.startsWith('/settings') ? 'system.view_settings' : undefined);
   const pathAllowed = rawPath === '/employees'
     ? isAdmin
     : (isAdmin || !pathPermKey
@@ -854,6 +862,15 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/operations'} scroll>
               <OperationsCenter isActive={pathname==='/operations'}/>
             </PageSlot>
+            <PageSlot active={pathname==='/uploads'} scroll>
+              <UploadsHub isActive={pathname==='/uploads'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/integrity'} scroll>
+              <IntegrityCheck isActive={pathname==='/integrity'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/activity-log'} scroll>
+              <ActivityLog isActive={pathname==='/activity-log'}/>
+            </PageSlot>
             <PageSlot active={pathname==='/accounting-cycle'} scroll>
               <AccountingCycle carriers={carriers} isActive={pathname==='/accounting-cycle'}/>
             </PageSlot>
@@ -898,8 +915,8 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={REPORTS_WORKSPACE_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
                 scope="reports-center"
-                title="التقارير والرقابة"
-                subtitle="التقارير، مزامنة المصادر، سلامة البيانات وسجل النظام"
+                title="التقارير"
+                subtitle="التقارير المالية والتشغيلية والملفات المصدّرة"
                 tone="#22C55E"
                 activePath={pathname}
                 onNavigate={navigate}
@@ -909,11 +926,6 @@ function AppInner({ theme, toggleTheme }) {
                   ] : []),
                   ...(isAdmin || can('reports.view_operational') ? [
                     { id: 'monthly', path: '/monthly-report', label: 'التقرير الشهري', icon: CalendarRange, render: () => <MonthlyReport isActive={pathname==='/monthly-report'}/> },
-                  ] : []),
-                  ...(isAdmin || can('uploads.view') ? [{ id: 'sources', path: '/uploads', label: 'مزامنة المصادر', icon: Layers, render: () => <UploadsHub isActive={pathname==='/uploads'}/> }] : []),
-                  ...(isAdmin || can('system.view_audit_log') ? [
-                    { id: 'integrity', path: '/integrity', label: 'سلامة البيانات', icon: FileCheck, render: () => <IntegrityCheck isActive={pathname==='/integrity'}/> },
-                    { id: 'activity', path: '/activity-log', label: 'سجل النظام', icon: Activity, render: () => <ActivityLog isActive={pathname==='/activity-log'}/> },
                   ] : []),
                   ...(isAdmin || can('internal_exports.view') ? [{ id: 'exports', path: '/internal-exports', label: 'الملفات المصدّرة', icon: Download, render: () => <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/> }] : []),
                 ]}
@@ -931,6 +943,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/settings/hatif'} scroll>
+              <WhatsAppSettings isActive={pathname==='/settings/hatif'} settingsOnly/>
             </PageSlot>
             <PageSlot active={pathname==='/support'} scroll>
               <SupportBoard isActive={pathname==='/support'}/>
@@ -997,7 +1012,7 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/tasks'} scroll>
               <Tasks carriers={carriers} isActive={pathname==='/tasks'}/>
             </PageSlot>
-            <PageSlot active={isSettingsPath} scroll>
+            <PageSlot active={isSettingsPath && pathname!=='/settings/hatif'} scroll>
               <SettingsPage
                 carriers={carriers}
                 tab={pathname.startsWith('/settings/') ? pathname.replace('/settings/','') : 'ai'}

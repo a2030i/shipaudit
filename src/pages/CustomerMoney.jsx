@@ -1024,7 +1024,7 @@ function MorningBriefModal({ onClose }) {
 
               <BriefSection title="أعمار ديون العملاء" subtitle={`يتضمن الرصيد الافتتاحي ${fmt(aging.opening_balance)} ر.س`}>
                 <div className="brief-aging-grid">
-                  {[['0–30 يوم', aging.b0_30, 'good'], ['31–60 يوم', aging.b31_60, 'default'], ['61–90 يوم', aging.b61_90, 'attention'], ['+90 يوم', aging.b90p, 'critical']].map(([label, value, tone]) => <BriefMetric key={label} label={label} value={`${fmt(value)} ر.س`} tone={tone}/>) }
+                  {[['0–15 يوم', aging.b0_15, 'good'], ['16–30 يوم', aging.b16_30, 'good'], ['31–60 يوم', aging.b31_60, 'default'], ['61–90 يوم', aging.b61_90, 'attention'], ['+90 يوم', aging.b90p, 'critical']].map(([label, value, tone]) => <BriefMetric key={label} label={label} value={`${fmt(value)} ر.س`} tone={tone}/>) }
                 </div>
               </BriefSection>
 

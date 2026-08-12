@@ -626,7 +626,8 @@ export function SpotlightCard({
 // ─── Sparkline ───────────────────────────────────────────────────────────────
 // Pure SVG trendline. No deps. Accepts a numeric array and renders a
 // smooth line + soft fill underneath. Auto-scales to its data range.
-export function Sparkline({ data, color = 'var(--accent)', width = 120, height = 34, fill = true }) {
+export function Sparkline({ data, color = 'var(--accent)', width = 120, height = 34, fill = true, ariaLabel = 'اتجاه القيم' }) {
+  const uid = useId().replace(/:/g, '');
   if (!Array.isArray(data) || data.length < 2) return null;
   const min = Math.min(...data);
   const max = Math.max(...data);
@@ -642,14 +643,15 @@ export function Sparkline({ data, color = 'var(--accent)', width = 120, height =
   const pathLine = points.map(([x, y], i) => (i === 0 ? `M${x},${y}` : `L${x},${y}`)).join(' ');
   const pathFill = `${pathLine} L${width},${height} L0,${height} Z`;
   return (
-    <svg width={width} height={height} style={{ display: 'block' }}>
+    <svg width={width} height={height} style={{ display: 'block' }} role="img" aria-label={ariaLabel}>
+      <title>{ariaLabel}: من {min} إلى {max}</title>
       <defs>
-        <linearGradient id={`spark-${color.replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
+        <linearGradient id={`spark-${uid}`} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%"  stopColor={color} stopOpacity="0.32"/>
           <stop offset="100%" stopColor={color} stopOpacity="0"/>
         </linearGradient>
       </defs>
-      {fill && <path d={pathFill} fill={`url(#spark-${color.replace(/[^a-z0-9]/gi, '')})`}/>}
+      {fill && <path d={pathFill} fill={`url(#spark-${uid})`}/>}
       <path d={pathLine} fill="none" stroke={color} strokeWidth="2"
             strokeLinecap="round" strokeLinejoin="round"/>
     </svg>
@@ -666,7 +668,8 @@ export function Sparkline({ data, color = 'var(--accent)', width = 120, height =
 //   labels  Array of x-axis labels (same length as data)
 //   height  Default 220
 //   formatY (n) => string for Y-axis ticks (default: fmt with k/m)
-export function AreaChart({ series = [], labels = [], height = 220, formatY }) {
+export function AreaChart({ series = [], labels = [], height = 220, formatY, ariaLabel = 'رسم بياني زمني' }) {
+  const uid = useId().replace(/:/g, '');
   if (!series.length || !series[0]?.data?.length) {
     return (
       <div style={{
@@ -730,10 +733,11 @@ export function AreaChart({ series = [], labels = [], height = 220, formatY }) {
   const labelStep = Math.max(1, Math.ceil(N / 6));
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ overflow: 'visible' }} preserveAspectRatio="none">
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ overflow: 'visible' }} preserveAspectRatio="none" role="img" aria-label={ariaLabel}>
+      <title>{ariaLabel}. {series.map(s => `${s.label || 'سلسلة'}: ${s.data.join('، ')}`).join('. ')}</title>
       <defs>
         {series.map((s, i) => (
-          <linearGradient key={i} id={`area-${i}-${(s.color || '').replace(/[^a-z0-9]/gi, '')}`} x1="0" y1="0" x2="0" y2="1">
+          <linearGradient key={i} id={`area-${uid}-${i}`} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"  stopColor={s.color} stopOpacity="0.35"/>
             <stop offset="100%" stopColor={s.color} stopOpacity="0"/>
           </linearGradient>
@@ -755,7 +759,7 @@ export function AreaChart({ series = [], labels = [], height = 220, formatY }) {
         const linePath = smoothPath(s.data);
         const baseY = yAt(yMin);
         const fillPath = `${linePath} L${xAt(N - 1)},${baseY} L${xAt(0)},${baseY} Z`;
-        const gradId = `area-${i}-${(s.color || '').replace(/[^a-z0-9]/gi, '')}`;
+        const gradId = `area-${uid}-${i}`;
         return (
           <g key={i}>
             <path d={fillPath} fill={`url(#${gradId})`}/>
@@ -782,14 +786,15 @@ export function AreaChart({ series = [], labels = [], height = 220, formatY }) {
 // ─── Donut ────────────────────────────────────────────────────────────────────
 // Pure SVG donut chart. Pass segments [{ value, color, label }]. Renders
 // stroked arcs in a single radius. Optional center text via children prop.
-export function Donut({ segments, size = 160, thickness = 18, children }) {
+export function Donut({ segments, size = 160, thickness = 18, children, ariaLabel = 'توزيع القيم' }) {
   const total = segments.reduce((s, x) => s + (x.value || 0), 0);
   const radius = (size - thickness) / 2;
   const circ = 2 * Math.PI * radius;
   let offset = 0;
   return (
     <div style={{ position: 'relative', width: size, height: size }}>
-      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }}>
+      <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} style={{ transform: 'rotate(-90deg)' }} role="img" aria-label={ariaLabel}>
+        <title>{ariaLabel}. {segments.map(seg => `${seg.label || 'فئة'}: ${seg.value || 0}`).join('، ')}</title>
         <circle cx={size/2} cy={size/2} r={radius} fill="none"
           stroke="var(--border)" strokeWidth={thickness}/>
         {total > 0 && segments.map((seg, i) => {
