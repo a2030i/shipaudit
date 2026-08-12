@@ -426,7 +426,7 @@ function PermissionsModal({ employee, onClose, onSave, recommendedPresetId = '' 
       </div>
 
       {/* Sections */}
-      <div className="permission-modal-list" style={{ maxHeight: '60vh', overflowY: 'auto', paddingInlineEnd: 4 }}>
+      <div className="permission-modal-list" style={{ paddingInlineEnd: 4 }}>
         {filteredCatalog.length === 0 ? (
           <div style={{ textAlign: 'center', color: 'var(--muted)', padding: 30, fontSize: 12 }}>
             لا توجد صلاحيات تطابق البحث

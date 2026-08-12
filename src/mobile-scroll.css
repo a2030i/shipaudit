@@ -10,6 +10,10 @@
 }
 
 @media (max-width: 768px) {
+  :root {
+    --mobile-page-end-space: calc(144px + env(safe-area-inset-bottom, 0px));
+  }
+
   .page-slot {
     /* Safari may freeze a flex scroller's scrollHeight at the height measured
        before a long async page finishes rendering. Normal block flow makes
@@ -18,7 +22,7 @@
     padding-bottom: 0 !important;
     overflow-x: hidden !important;
     overflow-y: auto !important;
-    scroll-padding-bottom: calc(112px + env(safe-area-inset-bottom, 0px));
+    scroll-padding-bottom: var(--mobile-page-end-space);
   }
 
   .page-slot::after {
@@ -37,9 +41,9 @@
   .page-slot-scroll-end {
     display: block;
     width: 100%;
-    height: calc(112px + env(safe-area-inset-bottom, 0px));
-    min-height: calc(112px + env(safe-area-inset-bottom, 0px));
-    flex: 0 0 calc(112px + env(safe-area-inset-bottom, 0px));
+    height: var(--mobile-page-end-space);
+    min-height: var(--mobile-page-end-space);
+    flex: 0 0 var(--mobile-page-end-space);
     pointer-events: none;
   }
 }

@@ -19,7 +19,8 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   assert.match(app, /scroll && <div className="page-slot-scroll-end"/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.page-slot\s*\{[\s\S]*display:\s*block\s*!important/);
   assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
-  assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*calc\(112px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(css, /--mobile-page-end-space:\s*calc\(144px \+ env\(safe-area-inset-bottom, 0px\)\)/);
+  assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*var\(--mobile-page-end-space\)/);
 });
 
 test('mobile workspace removes repeated headings and keeps compact context', async () => {
@@ -68,8 +69,12 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(modal, /bodyClassName = ''/);
   assert.match(employees, /className="permissions-dialog"/);
   assert.match(employees, /className="permission-modal-list"/);
+  assert.doesNotMatch(employees, /permission-modal-list" style=\{\{[^}]*overflowY/);
   assert.match(css, /\.permissions-dialog \.modal-body\s*\{[\s\S]*overflow:\s*hidden/);
   assert.match(css, /\.permission-modal-list\s*\{[\s\S]*overflow-y:\s*auto/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.permissions-dialog \.modal-body\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.permission-modal-list\s*\{[\s\S]*overflow:\s*visible\s*!important/);
+  assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
 test('dense financial actions expose a named secondary action menu', async () => {

@@ -863,9 +863,9 @@
   transition: background-color .14s ease;
 }
 
-/* Large permissions catalogues use one intentional scroll region. The modal
-   header, presets and save bar remain reachable while only the catalogue
-   moves; this removes the nested-scroll trap seen on iOS. */
+/* Large permissions catalogues use one intentional scroll region. Desktop
+   keeps the compact catalogue scroller; mobile switches the whole modal body
+   to the scroller because a tiny nested list is difficult to drag on iOS. */
 .permissions-dialog .modal-body {
   display: flex;
   flex: 1 1 auto;
@@ -1563,31 +1563,47 @@
   }
 
   .permissions-dialog .modal-body {
-    overflow: hidden !important;
+    display: block;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden !important;
+    overflow-y: auto !important;
+    overscroll-behavior-y: contain;
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    scroll-padding-bottom: calc(78px + env(safe-area-inset-bottom, 0px));
   }
 
   .permission-modal-toolbar {
-    position: static !important;
+    position: relative !important;
     padding-top: 0 !important;
   }
 
   .permission-modal-list {
+    display: block;
+    min-height: auto;
+    max-height: none !important;
+    overflow: visible !important;
+    overscroll-behavior: auto;
     padding-bottom: 8px;
   }
 
-  /* Overrides the historical generic rule that expands every inline
-     overflow container inside a modal. Permissions intentionally own one
-     inner catalogue scroller so the save bar never leaves the viewport. */
-  .modal-overlay .permissions-dialog .permission-modal-list[style*="overflow-y: auto"] {
-    max-height: none !important;
-    overflow-y: auto !important;
+  .modal-overlay .permissions-dialog {
+    height: 100% !important;
+    min-height: 0;
+    max-height: 100% !important;
   }
 
   .permission-modal-footer {
+    position: sticky;
+    z-index: 4;
+    bottom: calc(-1 * env(safe-area-inset-bottom, 0px));
     gap: 7px !important;
     margin-top: 8px !important;
-    padding-top: 9px !important;
+    padding: 9px 0 max(4px, env(safe-area-inset-bottom, 0px)) !important;
     background: var(--card);
+    border-top: 1px solid var(--border);
+    box-shadow: 0 -12px 24px color-mix(in srgb, var(--card) 92%, transparent);
   }
 
   .permission-modal-footer > div:first-child {
