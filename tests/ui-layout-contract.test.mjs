@@ -77,6 +77,21 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
+test('visual system v6 keeps the two-level shell, calm canvas and mobile drawer contract', async () => {
+  const app = await read('src/App.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(css, /System-wide visual layer/);
+  assert.match(css, /--shell-primary-width:\s*176px/);
+  assert.match(css, /--context-sidebar-width:\s*232px/);
+  assert.match(css, /\.primary-center-item\.active\s*\{[\s\S]*inset -3px 0 0/);
+  assert.match(css, /\.workspace-page\s*\{[\s\S]*max-width:\s*1540px/);
+  assert.match(css, /\.page-summary--dark\s*\{[\s\S]*linear-gradient/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.modal-panel\s*\{[\s\S]*border-radius:\s*18px 18px 0 0/);
+  assert.match(app, /sidebar-brand-logo--desktop/);
+  assert.match(app, /sidebar-brand-logo--mobile/);
+});
+
 test('dense financial actions expose a named secondary action menu', async () => {
   const settlements = await read('src/pages/CodSettlements.jsx');
   const css = await read('src/workspace-layout.css');
