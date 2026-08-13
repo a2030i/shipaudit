@@ -128,7 +128,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <PageHeader
           icon={<Activity size={22}/>}
           iconColor="var(--accent3)"
-          title="الرئيسية"
+          title="مركز العمليات"
           subtitle="تعذّر جلب الملخص المالي — لم نعرض أصفاراً بديلة حتى لا تُفهم كأرقام حقيقية"
         />
         <div className="data-load-error" role="alert">
@@ -148,8 +148,8 @@ export default function Overview({ carriers = [], isActive = true }) {
       <div className="overview-page workspace-page">
         <PageHeader
           icon={<Activity size={22}/>} iconColor="var(--accent3)"
-          title="الرئيسية"
-          subtitle="قرارات العملاء العاجلة، السيولة، ومتابعة النمو"
+          title="مركز العمليات"
+          subtitle="قرارات العملاء والسيولة والنمو في شاشة واحدة"
         />
         <WorkspaceLoadingState title="جارٍ إعداد الملخص التنفيذي" source="مصادر التشغيل والمالية" rows={4}/>
       </div>
@@ -172,8 +172,8 @@ export default function Overview({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<Activity size={22}/>}
         iconColor="var(--accent3)"
-        title="الرئيسية"
-        subtitle="قرارات العملاء العاجلة، السيولة، ومتابعة النمو"
+        title="مركز العمليات"
+        subtitle="قرارات العملاء والسيولة والنمو في شاشة واحدة"
         meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
           <div className="overview-period-actions" aria-label="التحكم في فترة الملخص">
@@ -217,8 +217,6 @@ export default function Overview({ carriers = [], isActive = true }) {
         </div>
       )}
 
-      <ExecutivePulse data={data} onNavigate={navigate}/>
-
       <CustomerDecisionBoard
         decisions={data.customerDecisions}
         available={data.sectionAvailability?.customerDecisions}
@@ -226,7 +224,9 @@ export default function Overview({ carriers = [], isActive = true }) {
         onNavigate={navigate}
       />
 
-      <nav hidden className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
+      <ExecutivePulse data={data} onNavigate={navigate}/>
+
+      <nav className="overview-jump-nav" aria-label="الوصول السريع داخل مركز العمليات">
         <button type="button" className="is-primary" onClick={() => document.getElementById('customer-decisions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> قرارات العملاء
         </button>
@@ -236,17 +236,8 @@ export default function Overview({ carriers = [], isActive = true }) {
         <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> تحصيل العملاء
         </button>
-        <button type="button" onClick={openBankDetails}>
-          <Building2 size={14}/> البنوك
-        </button>
-        <button type="button" className="overview-jump-extra" onClick={() => document.getElementById('month-performance')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Calendar size={14}/> أداء الشهر
-        </button>
-        <button type="button" className="overview-jump-extra" onClick={() => document.getElementById('carriers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Building2 size={14}/> التزامات الناقلين
-        </button>
-        <button type="button" className="is-primary overview-jump-extra" onClick={() => navigate('/pnl')}>
-          <TrendingUp size={14}/> الربح الفعلي
+        <button type="button" onClick={() => navigate('/sales')}>
+          <Target size={14}/> المبيعات والنمو
         </button>
       </nav>
 
@@ -733,7 +724,7 @@ function ExecutivePulse({ data, onNavigate }) {
       icon: <Wallet size={19}/>, action: () => onNavigate('/money?tab=banks'),
     },
     {
-      key: 'decisions', tone: decisionCount ? 'red' : 'green', label: 'قرارات العملاء اليوم',
+      key: 'decisions', tone: decisionCount ? 'red' : 'green', label: 'حالات تحتاج إجراء',
       value: decisionCount == null ? '—' : String(decisionCount),
       unit: decisionCount == null ? '' : 'حالة',
       detail: decisionCount ? 'إيقاف أو تشغيل أو خصم يحتاج مراجعة' : 'لا توجد قرارات عاجلة',
@@ -741,8 +732,8 @@ function ExecutivePulse({ data, onNavigate }) {
     },
     {
       key: 'growth', tone: 'violet', label: 'المبيعات والنمو',
-      value: 'فتح', unit: 'المركز',
-      detail: 'الفرص والحملات ومتابعة التحويل',
+      value: 'متابعة', unit: 'المسار',
+      detail: 'الفرص والحملات ومراحل إغلاق الصفقات',
       icon: <Target size={19}/>, action: () => onNavigate('/sales'),
     },
   ];
@@ -751,8 +742,8 @@ function ExecutivePulse({ data, onNavigate }) {
     <section className="overview-executive-pulse" aria-label="ملخص مركز العمليات">
       <div className="overview-executive-pulse__heading">
         <div>
-          <span>مركز العمليات</span>
-          <h2>ما يحتاج انتباهك الآن</h2>
+          <span>صورة الإدارة</span>
+          <h2>المؤشرات التي تقود قرار اليوم</h2>
         </div>
         <button type="button" onClick={() => onNavigate('/tasks')}>مهام وقرارات اليوم <ChevronLeft size={15}/></button>
       </div>
@@ -958,7 +949,7 @@ function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
                 ))}
               </div>
             )}
-            {lane.rows.length > 4 && (
+            {lane.rows.length > 2 && (
               <button type="button" className="customer-decision-show-all" onClick={() => onNavigate('/customer-money')}>
                 عرض كل الحالات ({lane.rows.length}) <ArrowLeftIcon />
               </button>
