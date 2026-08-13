@@ -942,7 +942,14 @@ function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
                     key={row.storeId || `${row.name}:${row.customerName}`}
                     onClick={() => onNavigate(`/customer-money?customer=${encodeURIComponent(row.customerName || row.name)}`)}
                   >
-                    <span className="customer-decision-row__name">{row.name}</span>
+                    <span className="customer-decision-row__identity">
+                      <span className="customer-decision-row__name">{row.name}</span>
+                      <span className="customer-decision-row__store">
+                        {row.storeId ? `متجر #${row.storeId}` : 'بلا رقم متجر'}
+                        {row.billingType ? ` · ${row.billingType}` : ''}
+                        {row.customerName && row.customerName !== row.name ? ` · زوهو: ${row.customerName}` : ''}
+                      </span>
+                    </span>
                     <span className="customer-decision-row__meta">
                       {lane.key === 'activate' && !row.hasFinancialRecord ? 'لا فواتير مفتوحة في زوهو' : `${lane.amountLabel}: ${fmt(row[lane.amountKey])} ر.س`}
                     </span>

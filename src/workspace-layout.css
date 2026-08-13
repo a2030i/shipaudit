@@ -195,7 +195,9 @@
   text-align: start;
 }
 .customer-decision-row:hover .customer-decision-row__name { color: var(--brand); }
+.customer-decision-row__identity { display: grid; min-width: 0; gap: 2px; }
 .customer-decision-row__name { overflow: hidden; color: var(--text); font-size: 11px; font-weight: 800; text-overflow: ellipsis; white-space: nowrap; }
+.customer-decision-row__store { overflow: hidden; color: var(--text3); font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .customer-decision-row__meta { color: var(--muted); font-family: var(--font-mono); font-size: 9.5px; white-space: nowrap; }
 .customer-decision-row svg { color: var(--muted); }
 .customer-decision-empty { min-height: 83px; display: grid; place-items: center; text-align: center; }
@@ -6599,6 +6601,7 @@ tbody tr,
   .overview-page .customer-decision-list { margin-top: 8px; }
   .overview-page .customer-decision-row { padding: 8px 0; }
   .overview-page .customer-decision-row__meta { font-size: 10px; }
+  .overview-page .customer-decision-row__store { font-size: 9.5px; }
 
   .overview-customer-focus {
     margin: 12px 0;

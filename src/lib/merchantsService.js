@@ -502,32 +502,39 @@ export function findMerchantForCustomer(customerName, merchants) {
   const segments = splitReceivableName(customerName).map(normalizeName).filter(Boolean);
   if (!segments.length) return null;
 
-  let best = null;
+  const candidatesByStore = new Map();
   for (const m of merchants) {
     const mNorm = normalizeName(m.store_name);
     if (!mNorm) continue;
+    let merchantBest = null;
     // Exact match on any segment → confidence 1.0
     for (const seg of segments) {
       if (seg === mNorm) {
-        return { storeId: m.store_id, storeName: m.store_name, confidence: 1.0, method: 'auto-exact' };
+        merchantBest = { storeId: m.store_id, storeName: m.store_name, confidence: 1.0, method: 'auto-exact' };
+        break;
       }
       // Substring containment also high confidence
       if (seg.length >= 3 && (seg.includes(mNorm) || mNorm.includes(seg))) {
         const sim = Math.min(seg.length, mNorm.length) / Math.max(seg.length, mNorm.length);
-        if (!best || sim > best.confidence) {
-          best = { storeId: m.store_id, storeName: m.store_name, confidence: +sim.toFixed(2), method: 'auto-fuzzy' };
+        if (!merchantBest || sim > merchantBest.confidence) {
+          merchantBest = { storeId: m.store_id, storeName: m.store_name, confidence: +sim.toFixed(2), method: 'auto-fuzzy' };
         }
         continue;
       }
       // Fuzzy Levenshtein
       const sim = similarity(seg, mNorm);
-      if (!best || sim > best.confidence) {
-        best = { storeId: m.store_id, storeName: m.store_name, confidence: +sim.toFixed(2), method: 'auto-fuzzy' };
+      if (!merchantBest || sim > merchantBest.confidence) {
+        merchantBest = { storeId: m.store_id, storeName: m.store_name, confidence: +sim.toFixed(2), method: 'auto-fuzzy' };
       }
     }
+    if (merchantBest) candidatesByStore.set(String(m.store_id), merchantBest);
   }
-  if (best && best.confidence >= 0.78) return best;
-  return null;
+  const ranked = [...candidatesByStore.values()].sort((a, b) => b.confidence - a.confidence);
+  const best = ranked[0];
+  const runnerUp = ranked[1];
+  if (!best || best.confidence < 0.78) return null;
+  if (runnerUp && best.confidence - runnerUp.confidence < 0.05) return null;
+  return best;
 }
 
 // Returns customers in the CURRENT receivables snapshot who don't

@@ -42,3 +42,23 @@ test('overview does not stop an active postpaid store for debt inside 30 days on
 
   assert.equal(result.stopPostpaid.length, 0);
 });
+
+test('overview keeps same-name prepaid and postpaid stores separate by store id', () => {
+  const result = buildCustomerDecisions({
+    customers: [
+      { name: 'مشاري سعد - مختلفٌ', storeId: '1961', storeName: 'مختلفٌ', owed: 460, inv_cnt: 1, b1: 0, b2: 0, b3: 0 },
+      { name: 'حبيب سعد - مختلفٌ', storeId: '654', storeName: 'مختلفٌ', owed: 120, inv_cnt: 1, b1: 120, b2: 0, b3: 0 },
+    ],
+  }, {
+    snapshot: { uploadedAt: '2026-08-13T00:00:00Z' },
+    merchants: [
+      { store_id: '1961', store_name: 'مختلفٌ', billing_type: 'دفع مسبق', status: 'نشط', wallet_balance: 66 },
+      { store_id: '654', store_name: 'مختلفٌ', billing_type: 'دفع لاحق', status: 'نشط', wallet_balance: 0 },
+    ],
+  });
+
+  assert.deepEqual(result.deductPrepaid.map(row => row.storeId), ['1961']);
+  assert.deepEqual(result.stopPostpaid.map(row => row.storeId), ['654']);
+  assert.equal(result.deductPrepaid[0].customerName, 'مشاري سعد - مختلفٌ');
+  assert.equal(result.stopPostpaid[0].customerName, 'حبيب سعد - مختلفٌ');
+});
