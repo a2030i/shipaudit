@@ -347,13 +347,25 @@ export async function loadCustomerMoneyDashboard() {
   const [{ data, error }, { data: integrityRows, error: integrityError }] = await Promise.all([
     supabase.rpc('customer_money_dashboard'),
     supabase.from('customer_balance_integrity_issues')
-      .select('contact_name, balance_sync_gap, balance_sync_overage, balance_integrity_status'),
+      .select('zoho_id, contact_name, balance_sync_gap, balance_sync_overage, balance_integrity_status'),
   ]);
   if (error) throw error;
   if (integrityError) throw integrityError;
   const d = data || {};
   const issues = Array.isArray(integrityRows) ? integrityRows : [];
-  const issueByName = new Map(issues.map(row => [row.contact_name, row]));
+  const issueByZohoId = new Map(issues.filter(row => row.zoho_id).map(row => [String(row.zoho_id), row]));
+  const issueByName = new Map();
+  for (const row of issues) {
+    const name = row.contact_name;
+    if (!name) continue;
+    // Name fallback is allowed only if it identifies one Zoho contact. This
+    // prevents a duplicate display-name from flagging the wrong customer.
+    issueByName.set(name, issueByName.has(name) ? null : row);
+  }
+  const issueFor = (customer) => {
+    const zohoId = customer.zoho_id || customer.zohoId;
+    return zohoId ? (issueByZohoId.get(String(zohoId)) || null) : (issueByName.get(customer.name) || null);
+  };
   return {
     grossOutstanding: Number(d.gross_outstanding) || 0,
     creditOffset:     Number(d.credit_offset) || 0,
@@ -388,7 +400,7 @@ export async function loadCustomerMoneyDashboard() {
     customers: (Array.isArray(d.customers) ? d.customers : []).map(c => ({
       // `storeId` = رقم المتجر في نظام لمحة — المفتاح الذي يُبحَث به في
       // المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53، والرقم لا يتكرّر).
-      name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
+      name: c.name, zohoId: c.zoho_id || '', storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
       grossDue: Number(c.gross_due) || 0,
       unusedCredit: Number(c.unused_credit) || 0,
       creditOffset: Number(c.credit_offset) || 0,
@@ -405,9 +417,9 @@ export async function loadCustomerMoneyDashboard() {
       // سياق المتجر (من كشف المتاجر) — لملف الحملة
       billingType: c.billing_type || '', platformStatus: c.platform_status || '',
       walletBalance: Number(c.wallet_balance) || 0, lastShipmentAt: c.last_shipment_at || null,
-      balanceSyncIssue: issueByName.has(c.name),
-      balanceSyncGap: Number(issueByName.get(c.name)?.balance_sync_gap) || 0,
-      balanceSyncOverage: Number(issueByName.get(c.name)?.balance_sync_overage) || 0,
+      balanceSyncIssue: !!issueFor(c),
+      balanceSyncGap: Number(issueFor(c)?.balance_sync_gap) || 0,
+      balanceSyncOverage: Number(issueFor(c)?.balance_sync_overage) || 0,
     })),
     settlements: (Array.isArray(d.settlements) ? d.settlements : []).map(c => ({
       name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,

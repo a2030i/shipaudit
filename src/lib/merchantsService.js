@@ -274,6 +274,34 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
 
 // Returns the merchants from the latest snapshot. Used everywhere
 // downstream (anomalies, enrichment, insights).
+export const MERCHANT_SNAPSHOT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
+
+// Do not let an absent or old platform snapshot silently look like a current
+// operational fact. Consumers use this state to disable decisions that join
+// Zoho receivables with Lamha merchant status.
+export function merchantSnapshotSourceState(result, now = Date.now()) {
+  const snapshot = result?.snapshot || null;
+  const recordCount = Array.isArray(result?.merchants) ? result.merchants.length : 0;
+  const base = {
+    checkedAt: new Date(now).toISOString(),
+    sourceUpdatedAt: snapshot?.uploadedAt || null,
+    recordCount,
+    maxAgeMinutes: MERCHANT_SNAPSHOT_MAX_AGE_MS / 60_000,
+  };
+
+  if (!snapshot) return { ...base, status: 'empty', message: 'لم يُرفع دليل متاجر المنصة بعد.' };
+  if (!recordCount) return { ...base, status: 'empty', message: 'أحدث دليل متاجر مرفوع لكنه لا يحتوي متاجر.' };
+
+  const updatedAt = Date.parse(snapshot.uploadedAt || '');
+  if (!Number.isFinite(updatedAt)) {
+    return { ...base, status: 'stale', message: 'لقطة المتاجر بلا وقت رفع صالح؛ لا يمكن اعتماد حالة المتاجر.' };
+  }
+  if (now - updatedAt > MERCHANT_SNAPSHOT_MAX_AGE_MS) {
+    return { ...base, status: 'stale', message: 'دليل المتاجر أقدم من 24 ساعة؛ حدّثه قبل اتخاذ قرار تشغيل أو إيقاف.' };
+  }
+  return { ...base, status: 'fresh', message: 'أحدث دليل متاجر متاح.' };
+}
+
 export async function loadLatestMerchants() {
   // Find the latest snapshot id
   const { data: latest, error: e1 } = await supabase

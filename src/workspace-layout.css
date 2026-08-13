@@ -3835,6 +3835,8 @@
 .source-status-item { display: inline-flex; align-items: center; gap: 5px; flex: 0 0 auto; padding: 6px 9px; border-radius: 999px; border: 1px solid var(--border2); background: var(--card); color: var(--text2); font-size: 11px; }
 .source-status-item small { color: var(--muted); font-size: 10px; }
 .source-status-item.is-ok svg { color: var(--green); }
+.source-status-item.is-warning { border-color: color-mix(in srgb, var(--gold) 38%, var(--border2)); color: var(--gold-ink); }
+.source-status-item.is-warning small { color: var(--gold-ink); }
 .source-status-item.is-danger { border-color: color-mix(in srgb, var(--red) 28%, var(--border2)); color: var(--red); }
 .source-status-item.is-danger small { color: var(--red); }
 .source-status-errors { margin-top: 10px; padding-top: 9px; border-top: 1px dashed var(--border2); color: var(--text2); font-size: 11px; }

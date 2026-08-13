@@ -455,7 +455,16 @@ export async function uploadLeadsSnapshot({
   if (!inputRows.length) return { added: 0, skipped: 0, skippedExact: 0, skippedInvalidPhone: 0, matchedPlatform: 0 };
 
   const snapshotId = `lead_${Date.now()}`;
-  const merchants = platformMerchants || (await loadLatestMerchants().catch(() => ({ merchants: [] }))).merchants || [];
+  // A missing merchant directory must never turn every lead into a misleading
+  // "new external lead". The import is deliberately blocked until the source
+  // needed for duplicate/customer matching is available.
+  const merchantSnapshot = platformMerchants
+    ? { snapshot: { id: 'provided' }, merchants: platformMerchants }
+    : await loadLatestMerchants();
+  const merchants = merchantSnapshot.merchants || [];
+  if (!merchantSnapshot.snapshot?.id || merchants.length === 0) {
+    throw new Error('دليل متاجر المنصة غير متاح أو فارغ. حدّث الدليل أولًا ثم أعد استيراد العملاء المحتملين؛ لم تُحفظ أي صفوف.');
+  }
   const matchedPlatform = matchPlatformByPhone(inputRows, merchants);
 
   // لا نسحب جدول crm_leads كاملاً إلى المتصفح. نسأل الخادم فقط عن الأرقام

@@ -34,16 +34,31 @@ import { supabase } from './supabase.js';
 const DAY = 86_400_000;
 
 export async function loadCustomerWatch() {
-  const [receivablesResult, merchantsResult, zohoDash] = await Promise.all([
-    loadLatestReceivables().catch(() => null),
-    loadLatestMerchants().catch(() => ({ snapshot: null, merchants: [] })),
+  const [receivablesOutcome, merchantsOutcome, zohoOutcome] = await Promise.allSettled([
+    loadLatestReceivables(),
+    loadLatestMerchants(),
     // «فوترنا شهرياً» من مرآة زوهو الحيّة (كل الفواتير — المدفوعة وغيرها).
     // الـ snapshot الداخلي يحوي المفتوحة فقط فيُظهر 0 للشهر الجاري بعد السداد
     // (شكوى «الصفحات غير مترابطة» 2026-07-03). فشل الجلب صامت — fallback للـ snapshot.
-    supabase.rpc('zoho_invoice_dashboard').then(r => r.data).catch(() => null),
+    supabase.rpc('zoho_invoice_dashboard').then(({ data, error }) => {
+      if (error) throw error;
+      return data;
+    }),
   ]);
+  if (receivablesOutcome.status === 'rejected') {
+    throw new Error(`تعذر قراءة أرصدة العملاء: ${receivablesOutcome.reason?.message || 'خطأ مصدر'}`);
+  }
+  if (merchantsOutcome.status === 'rejected') {
+    throw new Error(`تعذر قراءة دليل المتاجر: ${merchantsOutcome.reason?.message || 'خطأ مصدر'}`);
+  }
+  const receivablesResult = receivablesOutcome.value;
+  const merchantsResult = merchantsOutcome.value;
+  if (!merchantsResult?.snapshot || !Array.isArray(merchantsResult.merchants) || merchantsResult.merchants.length === 0) {
+    throw new Error('دليل المتاجر غير متاح أو فارغ؛ لا يمكن عرض حالة المتاجر كأنها أصفار.');
+  }
+  const zohoDash = zohoOutcome.status === 'fulfilled' ? zohoOutcome.value : null;
   const customers = receivablesResult?.activeCustomers || [];
-  const merchants = merchantsResult?.merchants || [];
+  const merchants = merchantsResult.merchants;
 
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);

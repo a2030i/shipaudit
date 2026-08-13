@@ -126,7 +126,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
 
   const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
-  const { loadLatestMerchants } = await import('./merchantsService.js');
+  const { loadLatestMerchants, merchantSnapshotSourceState } = await import('./merchantsService.js');
   // رصيد البنك = نقطة الحقيقة المشتركة `loadEffectiveBankBalance` (تجمع ختامي
   // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
@@ -156,6 +156,18 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
     { key: 'customerMoney', label: 'مديونيات العملاء', run: () => supabaseRpc('customer_money_dashboard') },
     { key: 'merchants', label: 'حالة المتاجر في المنصة', run: () => loadLatestMerchants() },
+    // Customer decisions combine merchant state with receivables. Keep the
+    // Zoho mirror freshness explicit instead of treating a cached dashboard
+    // as live truth after a failed or delayed sync.
+    { key: 'zohoInvoiceSync', label: 'حداثة فواتير Zoho', run: async () => {
+      const { data, error } = await supabase
+        .from('zoho_sync_state')
+        .select('last_sync, last_status, last_error')
+        .eq('entity', 'invoices')
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } },
     // Collection truth subtracts unused Zoho credit that already covers a
     // debit. The invoice dashboard intentionally exposes the gross debit, so
     // it must not feed the "effective available" amount.
@@ -189,6 +201,35 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       checkedAt,
     }];
   }));
+  const merchantResult = results.get('merchants');
+  if (merchantResult?.status === 'fulfilled') {
+    sourceStates.merchants = {
+      ...sourceStates.merchants,
+      ...merchantSnapshotSourceState(merchantResult.value, Date.parse(checkedAt)),
+    };
+  }
+  const zohoInvoiceSync = valueOf('zohoInvoiceSync', null);
+  if (zohoInvoiceSync) {
+    const syncedAt = Date.parse(zohoInvoiceSync.last_sync || '');
+    const maxSyncAgeMs = 45 * 60 * 1000;
+    sourceStates.zohoInvoiceSync = {
+      ...sourceStates.zohoInvoiceSync,
+      sourceUpdatedAt: zohoInvoiceSync.last_sync || null,
+      status: zohoInvoiceSync.last_status === 'error' || zohoInvoiceSync.last_error
+        ? 'unavailable'
+        : !Number.isFinite(syncedAt) || Date.parse(checkedAt) - syncedAt > maxSyncAgeMs
+          ? 'stale'
+          : 'fresh',
+      error: zohoInvoiceSync.last_error || null,
+      message: zohoInvoiceSync.last_status === 'error' || zohoInvoiceSync.last_error
+        ? 'آخر مزامنة فواتير Zoho فشلت.'
+        : !Number.isFinite(syncedAt)
+          ? 'لا يوجد وقت مزامنة صالح لفواتير Zoho.'
+          : Date.parse(checkedAt) - syncedAt > maxSyncAgeMs
+            ? 'فواتير Zoho لم تُزامن خلال آخر 45 دقيقة.'
+            : 'فواتير Zoho محدثة.',
+    };
+  }
 
   const thisSnapArr = valueOf('monthly', []);
   const prevSnapArr = valueOf('previousMonth', []);
@@ -208,6 +249,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const collectionWork = valueOf('collectionWork', null);
   const customerDecisions = sourceStates.customerMoney?.status === 'fresh'
     && sourceStates.merchants?.status === 'fresh'
+    && sourceStates.zohoInvoiceSync?.status === 'fresh'
     ? buildCustomerDecisions(customerMoney, merchantSnapshot)
     : null;
 

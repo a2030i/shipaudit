@@ -24,8 +24,19 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(service, /row\.over30 > 0\.5 && row\.invoiceCount > 0/);
   assert.match(service, /isPlatformInactive\(row\.platformStatus\) && row\.over30 <= 0\.5/);
   assert.match(service, /sourceStates\.customerMoney\?\.status === 'fresh'[\s\S]*sourceStates\.merchants\?\.status === 'fresh'/);
+  assert.match(service, /sourceStates\.zohoInvoiceSync\?\.status === 'fresh'/);
+  assert.match(service, /merchantSnapshotSourceState/);
   assert.match(page, /أوقف الشحن بعد المراجعة/);
   assert.match(page, /فعّل الحساب بعد المراجعة/);
   assert.match(page, /راجع الخصم من الرصيد/);
   assert.match(page, /لا ينفذ النظام إيقافًا أو تفعيلًا أو خصمًا تلقائيًا/);
+});
+
+test('customer money contract carries Zoho identity for reconciliation matching', async () => {
+  const migration = await readFile(new URL('../supabase/migrations/20260813125000_customer_money_dashboard_zoho_identity.sql', import.meta.url), 'utf8');
+  const pnlService = await readFile(new URL('../src/lib/pnlService.js', import.meta.url), 'utf8');
+  assert.match(migration, /ar\.zoho_id/);
+  assert.match(migration, /'zoho_id',cf\.zoho_id/);
+  assert.match(pnlService, /issueByZohoId/);
+  assert.match(pnlService, /duplicate display-name/);
 });

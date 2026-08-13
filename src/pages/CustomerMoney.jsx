@@ -75,11 +75,16 @@ export default function CustomerMoney({ isActive = true }) {
   const [syncingZoho, setSyncingZoho] = useState(false);
   const [briefOpen, setBriefOpen] = useState(false);
   const [credits, setCredits] = useState(null);   // أرصدة دائنة غير مستخدمة
+  const [creditsState, setCreditsState] = useState({ status: 'idle', error: null });
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [settlementsOpen, setSettlementsOpen] = useState(true);
   const [bulkOpen, setBulkOpen] = useState(false);   // مودال «طبّق للكل»
   const dashboardRefreshInFlightRef = useRef(false);
   const lastDashboardRefreshAtRef = useRef(0);
+  const resetCredits = () => {
+    setCredits(null);
+    setCreditsState({ status: 'idle', error: null });
+  };
 
   useEffect(() => {
     const customer = searchParams.get('customer');
@@ -119,7 +124,7 @@ export default function CustomerMoney({ isActive = true }) {
       const res = await syncZohoDocs({ force: true });
       const count = res?.results?.invoices;
       toast(count != null ? `تمت مزامنة فواتير زوهو: ${count}` : 'تمت مزامنة زوهو', 'success');
-      setCredits(null);
+      resetCredits();
       await refresh();
     } catch (e) {
       toast(`فشلت مزامنة زوهو: ${e.message}`, 'error');
@@ -187,9 +192,18 @@ export default function CustomerMoney({ isActive = true }) {
   };
   // أرصدة دائنة غير مستخدمة (تحميل كسول مرة واحدة)
   useEffect(() => {
-    if (!isActive || credits != null) return;
-    loadZohoUnusedCredits().then(setCredits).catch(() => setCredits({ rows: [], totalApplicable: 0, clearsCount: 0 }));
-  }, [isActive, credits]);
+    if (!isActive || credits != null || creditsState.status === 'loading' || creditsState.status === 'unavailable') return;
+    setCreditsState({ status: 'loading', error: null });
+    loadZohoUnusedCredits()
+      .then((result) => {
+        setCredits(result);
+        setCreditsState({ status: 'fresh', error: null });
+      })
+      .catch((error) => {
+        setCredits(null);
+        setCreditsState({ status: 'unavailable', error: error?.message || 'تعذرت القراءة' });
+      });
+  }, [isActive, credits, creditsState.status]);
   // منح صلاحية الكتابة (invoices.UPDATE) لمرة واحدة — يفتح موافقة زوهو
   const grantWriteAccess = async () => {
     const r = await getZohoWriteAuthUrl();
@@ -355,7 +369,7 @@ export default function CustomerMoney({ isActive = true }) {
         syncing={syncingZoho}
         refreshing={busy}
         onSync={handleSyncZoho}
-        onRefresh={() => { setCredits(null); refresh(); }}
+        onRefresh={() => { resetCredits(); refresh(); }}
         sourcePath="/zoho-data?type=invoices"
       />
 
@@ -511,6 +525,17 @@ export default function CustomerMoney({ isActive = true }) {
       )}
 
       {/* ── أرصدة دائنة غير مستخدمة — طبّقها في زوهو لتصفير الدين ── */}
+      {creditsState.status === 'unavailable' && (
+        <div className="data-load-error is-inline" role="status">
+          <HandCoins size={17}/>
+          <div>
+            <strong>تعذر قراءة الأرصدة الدائنة غير المستخدمة من Zoho</strong>
+            <span>لم نعرضها كرصيد صفري ولم نسمح بتطبيقها. السبب: {creditsState.error}</span>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={resetCredits}>إعادة المحاولة</Btn>
+        </div>
+      )}
+
       {credits && credits.rows.length > 0 && (
         <Card style={{ padding: 0, marginBottom: 12, overflow: 'hidden',
           border: '1.5px solid color-mix(in srgb, var(--green) 30%, var(--border))' }}>
@@ -682,12 +707,12 @@ export default function CustomerMoney({ isActive = true }) {
       {bulkOpen && credits && (
         <BulkApplyModal rows={applicableRows} onGrant={grantWriteAccess}
           onClose={() => setBulkOpen(false)}
-          onDone={() => { setBulkOpen(false); setCredits(null); refresh(); }}/>
+          onDone={() => { setBulkOpen(false); resetCredits(); refresh(); }}/>
       )}
       {applyTarget && (
         <ApplyCreditsModal target={applyTarget} onGrant={grantWriteAccess}
           onClose={() => setApplyTarget(null)}
-          onDone={() => { setApplyTarget(null); setCredits(null); refresh(); }}/>
+          onDone={() => { setApplyTarget(null); resetCredits(); refresh(); }}/>
       )}
     </div>
   );
