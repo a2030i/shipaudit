@@ -109,6 +109,5 @@ $function$;
 -- them manual protects them from future automatic re-matching.
 update public.customer_merchant_links
 set match_method = 'manual', confidence = 1.00, linked_at = now()
-where (customer_name = 'مشاري سعد نجيب عبد العال - مختلفٌ' and store_id = '1961')
-   or (customer_name = 'حبيب سعد نجيب عبد العال - مختلفٌ' and store_id = '654');
-
+where (customer_name = 'مشاري سعد نجيب عبد العال - مختلفٌ' and store_id = '654')
+   or (customer_name = 'حبيب سعد نجيب عبد العال - مختلفٌ' and store_id = '1961');

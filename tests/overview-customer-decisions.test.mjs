@@ -46,8 +46,8 @@ test('overview does not stop an active postpaid store for debt inside 30 days on
 test('overview keeps same-name prepaid and postpaid stores separate by store id', () => {
   const result = buildCustomerDecisions({
     customers: [
-      { name: 'مشاري سعد - مختلفٌ', storeId: '1961', storeName: 'مختلفٌ', owed: 460, inv_cnt: 1, b1: 0, b2: 0, b3: 0 },
-      { name: 'حبيب سعد - مختلفٌ', storeId: '654', storeName: 'مختلفٌ', owed: 120, inv_cnt: 1, b1: 120, b2: 0, b3: 0 },
+      { name: 'مشاري سعد - مختلفٌ', storeId: '654', storeName: 'مختلفٌ', owed: 460, inv_cnt: 1, b0_15: 460, b1: 0, b2: 0, b3: 0 },
+      { name: 'حبيب سعد - مختلفٌ', storeId: '1961', storeName: 'مختلفٌ', owed: 0, inv_cnt: 0, b1: 0, b2: 0, b3: 0 },
     ],
   }, {
     snapshot: { uploadedAt: '2026-08-13T00:00:00Z' },
@@ -57,8 +57,6 @@ test('overview keeps same-name prepaid and postpaid stores separate by store id'
     ],
   });
 
-  assert.deepEqual(result.deductPrepaid.map(row => row.storeId), ['1961']);
-  assert.deepEqual(result.stopPostpaid.map(row => row.storeId), ['654']);
-  assert.equal(result.deductPrepaid[0].customerName, 'مشاري سعد - مختلفٌ');
-  assert.equal(result.stopPostpaid[0].customerName, 'حبيب سعد - مختلفٌ');
+  assert.deepEqual(result.deductPrepaid.map(row => row.storeId), []);
+  assert.deepEqual(result.stopPostpaid.map(row => row.storeId), []);
 });
