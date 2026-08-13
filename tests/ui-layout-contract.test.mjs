@@ -152,6 +152,17 @@ test('overview keeps customer decisions and customer debt ahead of carrier-only 
   assert.match(css, /\.overview-customer-focus\s*\{/);
 });
 
+test('overview does not use carrier-only missions ahead of the customer command center', async () => {
+  const overview = await read('src/pages/Overview.jsx');
+  const operationStart = overview.indexOf('function OperationsCommand');
+  const operationEnd = overview.indexOf('function CashBridge');
+  const operation = overview.slice(operationStart, operationEnd);
+
+  assert.doesNotMatch(operation, /title:\s*'COD عند شركات الشحن'/);
+  assert.doesNotMatch(operation, /title:\s*'ذمم ناقلين قديمة'/);
+  assert.match(overview, /<CustomerPortfolioFocus[\s\S]*?<OperationsCommand/);
+});
+
 test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {
   const page = await read('src/pages/StoreActivation.jsx');
   const css = await read('src/pages/StoreActivation.css');

@@ -4593,6 +4593,11 @@ tbody tr:hover td {
   box-shadow: none !important;
 }
 
+/* This legacy jump bar stays in the DOM for compatibility only.  The native
+   hidden attribute wins over the mobile display rule so it cannot occupy the
+   first screen ahead of customer decisions. */
+.overview-jump-nav[hidden] { display: none !important; }
+
 .overview-jump-nav button {
   min-height: 38px !important;
   color: var(--text2) !important;
@@ -6176,6 +6181,33 @@ tbody tr,
 .overview-secondary-analysis__content .ops-command,
 .overview-secondary-analysis__content .customer-decision-board { margin-top: 0; }
 
+.overview-calculation-notes {
+  margin: 14px 0;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface2);
+}
+
+.overview-calculation-notes > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 14px;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.overview-calculation-notes > p {
+  margin: 0;
+  padding: 0 14px 14px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.7;
+}
+
 @media (max-width: 768px) {
   .overview-page { padding-inline: 12px; }
 
@@ -6183,6 +6215,14 @@ tbody tr,
     margin-top: 12px;
     padding: 14px;
     border-radius: 16px;
+  }
+
+  .overview-page .customer-decision-board.is-unavailable {
+    min-height: 0;
+  }
+
+  .overview-page .customer-decision-board.is-unavailable .customer-decision-board__heading {
+    gap: 10px;
   }
 
   .overview-page .customer-decision-board__heading p {

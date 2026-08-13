@@ -246,6 +246,8 @@ export default function Overview({ carriers = [], isActive = true }) {
         </button>
       </nav>
 
+      <CustomerPortfolioFocus data={data} onNavigate={navigate}/>
+
       {/* أرقام النقد (البنك/العملاء/الناقلين) خلف overview.cash_position —
           overview.view وحدها تعرض الصفحة بلا الوضع النقدي */}
       {can('overview.cash_position') && (
@@ -262,8 +264,6 @@ export default function Overview({ carriers = [], isActive = true }) {
           />
         </div>
       )}
-
-      <CustomerPortfolioFocus data={data} onNavigate={navigate}/>
 
       <details id="carrier-analysis" className="overview-secondary-analysis">
         <summary>
@@ -625,22 +625,13 @@ export default function Overview({ carriers = [], isActive = true }) {
       </details>
 
       {/* Footer hint */}
-      <div style={{
-        marginTop: 14, padding: 14, borderRadius: 10,
-        background: 'var(--surface2)', border: '1px solid var(--border)',
-        fontSize: 11.5, color: 'var(--muted)', lineHeight: 1.7,
-        display: 'flex', gap: 10, alignItems: 'flex-start',
-      }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 2 }}/>
-        <div>
-          <strong style={{ color: 'var(--text2)' }}>كيف تُحسب الأرقام:</strong>{' '}
-          الإنفاق = مجموع فواتير شركات الشحن المسجّلة في دفتر الناقلين بتاريخ ضمن الشهر.{' '}
-          COD المُستلَم = ما رُفع من ملفات تحصيل الشركات (المبالغ المستلمة فعلاً).{' '}
-          الفروق = مجموع الفرق قبل الضريبة للمراجعات المعتمدة هذا الشهر — سالب يعني وفّرنا، موجب يعني ندفع زيادة.
-          تركّز العملاء يأتي من فواتير زوهو المفتوحة عند توفرها، مع fallback للكشوف القديمة.{' '}
-          أعمار الذمم = الفرق بين تاريخ الفاتورة واليوم، للقيود غير المسددة.
-        </div>
-      </div>
+      <details className="overview-calculation-notes">
+        <summary><Info size={14} aria-hidden="true"/> مصادر الأرقام وطريقة الحساب</summary>
+        <p>
+          تركّز العملاء يأتي من فواتير Zoho المفتوحة عند توفرها، مع fallback للكشوف القديمة. أعمار الذمم هي الفرق بين تاريخ الفاتورة واليوم للقيود غير المسددة.
+          تظهر تفاصيل الإنفاق والتحصيل لدى الناقلين داخل قسم التشغيل أعلاه فقط.
+        </p>
+      </details>
 
       {/* Bank balance update modal */}
       {bankEdit && (
@@ -847,9 +838,6 @@ function formatSnapshotDate(value) {
 
 function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onOpenBankDetails, onEditBank }) {
   const pendingAudits = Number(data.thisMonth?.auditsPending) || 0;
-  const codDue = Number(data.codOutstanding?.total) || 0;
-  const ap90 = Number(data.aging?.totals?.d90) || 0;
-  const drift = Number(data.thisMonth?.driftTotal) || 0;
   const topCustomer = data.customerConcentration?.[0] || null;
   const cash = data.cashPosition || {};
   const net = cash.net;
@@ -887,16 +875,6 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
       action: 'افتح المراجعات',
       path: '/audits',
     },
-    codDue > 0.5 && {
-      icon: <Banknote size={18}/>,
-      tone: 'var(--accent3)',
-      title: 'COD عند شركات الشحن',
-      value: fmtCompact(codDue),
-      unit: 'ر.س',
-      body: `${data.codOutstanding.carriersDue} شركة ما زالت لم تورّد.`,
-      action: 'تابع التحصيل',
-      path: '/money?tab=cod',
-    },
     topCustomer && Number(topCustomer.debt) > 0.5 && {
       icon: <Users size={18}/>,
       tone: '#EF4444',
@@ -908,26 +886,6 @@ function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, on
         : `${topCustomer.customerName} · رصيد افتتاحي بلا فاتورة مفتوحة.`,
       action: 'افتح العميل',
       path: customerPath,
-    },
-    ap90 > 0.5 && {
-      icon: <Building2 size={18}/>,
-      tone: '#DC2626',
-      title: 'ذمم ناقلين قديمة',
-      value: fmtCompact(ap90),
-      unit: 'ر.س',
-      body: 'مبالغ تجاوزت 90 يوم وتحتاج إغلاق أو مراجعة.',
-      action: 'افتح الدفتر',
-      path: '/ledger',
-    },
-    Math.abs(drift) > 0.5 && {
-      icon: <Target size={18}/>,
-      tone: 'var(--accent)',
-      title: drift < 0 ? 'استرداد مكتشف' : 'فرق يحتاج تفسير',
-      value: fmtCompact(Math.abs(drift)),
-      unit: 'ر.س',
-      body: drift < 0 ? 'فروقات لصالحك ظهرت من التدقيق.' : 'هناك مبالغ ناقصة أو غير متوقعة.',
-      action: 'افتح المطالبات',
-      path: '/hub?tab=claims',
     },
   ].filter(Boolean).slice(0, 3);
 
