@@ -141,6 +141,17 @@ test('overview month controls stay compact instead of inheriting the generic act
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.overview-page \.overview-period-actions\s*\{[\s\S]*grid-template-columns:\s*auto\s+repeat\(2,/);
 });
 
+test('overview keeps customer decisions and customer debt ahead of carrier-only analysis', async () => {
+  const overview = await read('src/pages/Overview.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(overview, /<CustomerDecisionBoard[\s\S]*?<CustomerPortfolioFocus[\s\S]*?<details id="carrier-analysis"/);
+  assert.match(overview, /function CustomerPortfolioFocus/);
+  assert.match(css, /\.overview-secondary-analysis\s*\{/);
+  assert.match(css, /\.overview-secondary-analysis > summary/);
+  assert.match(css, /\.overview-customer-focus\s*\{/);
+});
+
 test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {
   const page = await read('src/pages/StoreActivation.jsx');
   const css = await read('src/pages/StoreActivation.css');

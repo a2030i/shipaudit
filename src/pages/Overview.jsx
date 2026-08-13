@@ -222,7 +222,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         onNavigate={navigate}
       />
 
-      <nav className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
+      <nav hidden className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
         <button type="button" className="is-primary" onClick={() => document.getElementById('customer-decisions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> قرارات العملاء
         </button>
@@ -263,6 +263,20 @@ export default function Overview({ carriers = [], isActive = true }) {
         </div>
       )}
 
+      <CustomerPortfolioFocus data={data} onNavigate={navigate}/>
+
+      <details id="carrier-analysis" className="overview-secondary-analysis">
+        <summary>
+          <span>
+            <Building2 size={18} aria-hidden="true"/>
+            <span>
+              <strong>التشغيل ومراجعة الناقلين</strong>
+              <small>تكاليف الشحن، تحصيلات COD، صحة الفواتير والتزامات الناقلين</small>
+            </span>
+          </span>
+          <ChevronLeft size={18} aria-hidden="true"/>
+        </summary>
+        <div className="overview-secondary-analysis__content">
       {profile?.role === 'admin' && (
         <TeamReadinessPanel readiness={data.teamReadiness} onNavigate={navigate}/>
       )}
@@ -484,42 +498,6 @@ export default function Overview({ carriers = [], isActive = true }) {
           </Card>
         </div>
 
-        {/* Top customers by debt */}
-        <div id="customers-risk" className="overview-anchor">
-          <Card>
-          <SectionTitle icon={<Users size={14}/>} color="#EF4444" inline>
-            أكثر العملاء عليهم ديون{data.arSource === 'zoho' ? ' · زوهو حي' : ''}
-          </SectionTitle>
-          {!data.sectionAvailability?.customerConcentration ? (
-            <SourceUnavailable compact title="تعذرت قراءة مديونيات العملاء" source="زوهو ومديونيات العملاء" />
-          ) : data.customerConcentration.length === 0 ? (
-            <Empty icon="📭" title="لا مديونيات حالياً" sub="زامن زوهو أو راجع صفحة تحصيل العملاء"/>
-          ) : (
-            <ConcentrationBars
-              rows={data.customerConcentration.map(r => ({
-                key:        r.customerName,
-                name:       r.customerName,
-                value:      r.debt,
-                share:      r.sharePct,
-                rank:       r.rank,
-                meta:       Number(r.invoiceCount) > 0
-                  ? `${r.invoiceCount} فاتورة مفتوحة`
-                  : 'رصيد افتتاحي بلا فاتورة مفتوحة',
-                // زوهو حي → «تحصيل العملاء» (العميل موجود هناك حتماً —
-                // كان النقر ينقل لـ/receivables وقد يكون العميل مستبعداً منها)
-                onClick:    () => navigate(
-                  data.arSource === 'zoho'
-                    ? `/customer-money?customer=${encodeURIComponent(r.customerName)}`
-                    : `/receivables?customer=${encodeURIComponent(r.customerName)}`
-                ),
-              }))}
-              valueUnit="ر.س"
-              warnAtPct={25}
-              tint="#EF4444"
-            />
-          )}
-          </Card>
-        </div>
       </div>
 
       {/* ── Section 3: AP aging ── */}
@@ -643,6 +621,8 @@ export default function Overview({ carriers = [], isActive = true }) {
           </Card>
         </>
       )}
+        </div>
+      </details>
 
       {/* Footer hint */}
       <div style={{
@@ -681,6 +661,61 @@ export default function Overview({ carriers = [], isActive = true }) {
   );
 }
 
+function CustomerPortfolioFocus({ data, onNavigate }) {
+  const available = data.sectionAvailability?.customerConcentration;
+  const rows = data.customerConcentration || [];
+
+  return (
+    <section id="customers-risk" className="overview-customer-focus" aria-labelledby="customer-portfolio-title">
+      <header className="overview-customer-focus__head">
+        <div className="overview-customer-focus__title">
+          <span className="overview-customer-focus__icon"><Users size={18} aria-hidden="true"/></span>
+          <div>
+            <span>العملاء والتحصيل</span>
+            <h2 id="customer-portfolio-title">أكبر أرصدة تحتاج متابعة</h2>
+            <p>رصيد العميل من Zoho، مع إبقاء الرصيد الافتتاحي ظاهرًا داخل تفاصيله وعدم اعتباره فاتورة جديدة.</p>
+          </div>
+        </div>
+        <button type="button" className="overview-customer-focus__link" onClick={() => onNavigate('/customer-money')}>
+          فتح التحصيل <ChevronLeft size={15}/>
+        </button>
+      </header>
+
+      {!available ? (
+        <SourceUnavailable compact title="تعذرت قراءة مديونيات العملاء" source="Zoho ومديونيات العملاء" />
+      ) : rows.length === 0 ? (
+        <Empty icon="✓" title="لا توجد مديونيات حالياً" sub="لا توجد أرصدة مفتوحة من المصدر المتاح."/>
+      ) : (
+        <ConcentrationBars
+          rows={rows.slice(0, 5).map((row) => ({
+            key: row.customerName,
+            name: row.customerName,
+            value: row.debt,
+            share: row.sharePct,
+            rank: row.rank,
+            meta: Number(row.invoiceCount) > 0
+              ? `${row.invoiceCount} فاتورة مفتوحة`
+              : 'رصيد افتتاحي بلا فاتورة مفتوحة',
+            onClick: () => onNavigate(
+              data.arSource === 'zoho'
+                ? `/customer-money?customer=${encodeURIComponent(row.customerName)}`
+                : `/receivables?customer=${encodeURIComponent(row.customerName)}`
+            ),
+          }))}
+          valueUnit="ر.س"
+          warnAtPct={25}
+          tint="#EF4444"
+        />
+      )}
+
+      <footer className="overview-customer-focus__actions">
+        <button type="button" onClick={() => onNavigate('/customer-money')}>عرض جميع المديونيات</button>
+        <button type="button" onClick={() => onNavigate('/sales')}>متابعة فرص البيع</button>
+      </footer>
+    </section>
+  );
+}
+
 function CustomerDecisionBoard({ decisions, available, onNavigate }) {
   if (!available || !decisions) {
     return (
@@ -700,19 +735,19 @@ function CustomerDecisionBoard({ decisions, available, onNavigate }) {
   const total = (rows, key) => rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
   const lanes = [
     {
-      key: 'stop', tone: 'danger', icon: '⏸', title: 'أوقف الشحن بعد المراجعة',
+      key: 'stop', tone: 'danger', icon: '⏸', title: 'أوقف الحسابات المتأخرة',
       note: 'دفع لاحق · متجر نشط · عليه فواتير تجاوزت 30 يومًا',
       rows: decisions.stopPostpaid, amountKey: 'over30', amountLabel: 'متأخر +30',
       empty: 'لا توجد حسابات نشطة تحتاج إيقافًا الآن.',
     },
     {
-      key: 'activate', tone: 'success', icon: '▶', title: 'فعّل الحساب بعد المراجعة',
+      key: 'activate', tone: 'success', icon: '▶', title: 'شغّل الحسابات الجاهزة',
       note: 'دفع لاحق · متجر غير نشط · لا توجد فواتير تتجاوز 30 يومًا',
       rows: decisions.activatePostpaid, amountKey: 'debt', amountLabel: 'مستحق حالي',
       empty: 'لا توجد حسابات مؤهلة للتفعيل الآن.',
     },
     {
-      key: 'deduct', tone: 'info', icon: '◌', title: 'راجع الخصم من الرصيد',
+      key: 'deduct', tone: 'info', icon: '◌', title: 'خصم الرصيد المدفوع مقدمًا',
       note: 'دفع مسبق · له رصيد في المنصة وفواتير مفتوحة في زوهو',
       rows: decisions.deductPrepaid, amountKey: 'debt', amountLabel: 'فواتير مفتوحة',
       empty: 'لا توجد أرصدة مسبقة قابلة للمراجعة الآن.',
