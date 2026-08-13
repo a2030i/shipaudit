@@ -231,7 +231,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
                     <div style={{ fontWeight: 600, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {a.carrier_name} <span style={{ color: 'var(--muted)' }}>· {a.period}</span>
                     </div>
-                    <div style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    <div className="long-identifier" title={a.file_name} style={{ color: 'var(--muted)', fontSize: 11, marginTop: 2, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {a.file_name}
                     </div>
                   </div>
@@ -259,7 +259,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
             <FileSpreadsheet size={15}/> سجل التصديرات ({exports.length})
           </span>
           <Btn size="sm" variant="ghost" icon={<RefreshCw size={13}/>} onClick={refresh} disabled={loading}>
-            تحديث
+            تحديث سجل التصدير
           </Btn>
         </div>
 
@@ -273,7 +273,7 @@ export default function WeightBilling({ carriers, isActive = true }) {
           />
         ) : (
           <div style={{ overflowX: 'auto' }}>
-            <table>
+            <table className="m-cards weight-billing-history">
               <thead>
                 <tr>
                   <th style={{ minWidth: 130 }}>التاريخ</th>
@@ -290,15 +290,15 @@ export default function WeightBilling({ carriers, isActive = true }) {
                   const meta = STATUS_META[e.status] || STATUS_META.exported;
                   return (
                     <tr key={e.id}>
-                      <td style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
+                      <td data-label="التاريخ" style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--muted)' }}>
                         {fmtDate(e.exported_at)}
                       </td>
-                      <td style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
+                      <td data-label="اسم الملف" className="long-identifier" title={e.file_name} style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 260 }}>
                         {e.file_name}
                       </td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 700 }}>{e.row_count}</td>
-                      <td style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{e.audit_ids?.length ?? 0}</td>
-                      <td>
+                      <td data-label="الشحنات" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontWeight: 700 }}>{e.row_count}</td>
+                      <td data-label="المراجعات" style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{e.audit_ids?.length ?? 0}</td>
+                      <td data-label="الحالة">
                         <span style={{
                           padding: '3px 9px', borderRadius: 12, fontSize: 11, fontWeight: 600,
                           background: meta.bg, color: meta.color, fontFamily: 'var(--font-mono)',
@@ -307,10 +307,10 @@ export default function WeightBilling({ carriers, isActive = true }) {
                           {meta.label}
                         </span>
                       </td>
-                      <td style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
+                      <td data-label="المصدر" style={{ fontSize: 10.5, color: 'var(--muted)', fontFamily: 'var(--font-mono)' }}>
                         {e.trigger === 'cron' ? '🤖 تلقائي' : '👤 يدوي'}
                       </td>
-                      <td>
+                      <td data-label="إجراءات">
                         <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                           {e.file_path && (
                             <Btn size="sm" variant="ghost" icon={<Download size={12}/>} onClick={() => handleDownload(e)}>

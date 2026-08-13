@@ -303,7 +303,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Inbox size={22}/>}
-        title="صندوق الوارد"
+        title="وارد التكاملات"
         subtitle="الملفات الواصلة تلقائياً بالبريد — تُسجَّل تلقائياً وتُربط بالشركة الصحيحة"
         actions={
           <>
@@ -313,7 +313,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
               </Btn>
             )}
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={refresh} disabled={loading}>
-              تحديث
+              تحديث صندوق الوارد
             </Btn>
           </>
         }
@@ -355,7 +355,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
               background: 'var(--accent-dim)', color: 'var(--accent)',
               fontWeight: 700, flexShrink: 0,
             }}>🔗</span>
-            <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+            <span className="long-identifier" title={endpoint} style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
               {endpoint}
             </span>
             <Btn size="sm" variant="ghost" onClick={copyEndpoint} icon={<Copy size={12}/>}>
@@ -489,7 +489,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
                       <td data-label="الملف" style={{ fontSize: 11.5, fontFamily: 'var(--font-mono)' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <FileText size={11} color="var(--muted)"/>
-                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
+                          <span className="long-identifier" title={e.file_name} style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: 240 }}>
                             {e.file_name}
                           </span>
                         </div>
@@ -648,7 +648,7 @@ export default function WebhookEvents({ carriers, isActive = true }) {
       {assigning && (
         <Modal title="ربط الملف بشركة" onClose={() => setAssigning(null)}>
           <div style={{ marginBottom: 14, fontSize: 12.5, color: 'var(--muted)', lineHeight: 1.7 }}>
-            <div style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{assigning.file_name}</div>
+            <div className="long-identifier" title={assigning.file_name} style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{assigning.file_name}</div>
             {assigning.sender && (
               <div style={{ marginTop: 4 }}>من: <span style={{ direction: 'ltr', fontFamily: 'var(--font-mono)' }}>{assigning.sender}</span></div>
             )}

@@ -10,7 +10,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { RefreshCw, Gauge, ChevronLeft } from 'lucide-react';
-import { Card, Spinner, Btn, PageHeader, toast } from '../components/UI.jsx';
+import { Card, Spinner, Btn, PageHeader, toast, WorkspaceLoadingState } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerWatch } from '../lib/customer360Service.js';
 import { loadCreditStopList, stopReasonAr } from '../lib/collectionsService.js';
@@ -162,7 +162,7 @@ export default function DecisionsBoard({ isActive = true }) {
       />
 
       {!d && loading ? (
-        <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div>
+        <WorkspaceLoadingState title="جارٍ جمع قرارات اليوم" source="التشغيل وزوهو" rows={4}/>
       ) : !d ? null : (() => {
         // البطاقات الصامتة (لا قرار فيها اليوم) تنزل لشريط «تمام» مضغوط —
         // الشاشة تعرض فقط ما يحتاج فعلاً + عدّاد بالأعلى (تحسين 2026-07-02).
