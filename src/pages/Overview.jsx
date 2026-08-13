@@ -219,6 +219,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       <CustomerDecisionBoard
         decisions={data.customerDecisions}
         available={data.sectionAvailability?.customerDecisions}
+        fresh={data.customerDecisionFresh}
         onNavigate={navigate}
       />
 
@@ -707,7 +708,7 @@ function CustomerPortfolioFocus({ data, onNavigate }) {
   );
 }
 
-function CustomerDecisionBoard({ decisions, available, onNavigate }) {
+function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
   if (!available || !decisions) {
     return (
       <section id="customer-decisions" className="customer-decision-board is-unavailable" aria-labelledby="customer-decisions-title">
@@ -747,7 +748,7 @@ function CustomerDecisionBoard({ decisions, available, onNavigate }) {
   const otherCount = decisions.keepStopped.length + decisions.negativePrepaid.length + decisions.unlinkedFinance.length;
 
   return (
-    <section id="customer-decisions" className="customer-decision-board" aria-labelledby="customer-decisions-title">
+    <section id="customer-decisions" className={`customer-decision-board${fresh ? '' : ' is-stale'}`} aria-labelledby="customer-decisions-title">
       <header className="customer-decision-board__heading">
         <div>
           <span className="customer-decision-board__eyebrow">أولوية اليوم · عملاء ثم سيولة ثم مبيعات</span>
@@ -759,6 +760,17 @@ function CustomerDecisionBoard({ decisions, available, onNavigate }) {
           <Btn size="sm" onClick={() => onNavigate('/customer-money')}>فتح مركز العملاء</Btn>
         </div>
       </header>
+
+      {!fresh && (
+        <div className="customer-decision-stale" role="status">
+          <AlertTriangle size={17} aria-hidden="true"/>
+          <div>
+            <strong>آخر قائمة عملاء ناجحة — تحتاج تحديث قبل اتخاذ القرار</strong>
+            <span>نعرض العملاء بدل إخفائهم، لكن حالة المتجر أو فواتير Zoho ليست حديثة بما يكفي لاعتماد إيقاف أو تشغيل أو خصم.</span>
+          </div>
+          <button type="button" onClick={() => onNavigate('/customer-money')}>تحديث ومراجعة العملاء</button>
+        </div>
+      )}
 
       <div className="customer-decision-summary" aria-label="ملخص قرارات العملاء">
         {lanes.map((lane) => (

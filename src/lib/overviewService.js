@@ -247,9 +247,21 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const teamReadinessRaw = valueOf('teamReadiness', null);
   const teamStaffing = valueOf('teamStaffing', null);
   const collectionWork = valueOf('collectionWork', null);
-  const customerDecisions = sourceStates.customerMoney?.status === 'fresh'
+  // Availability and freshness are different concerns. A stale Zoho sync or
+  // merchant snapshot must block an operational decision, but it must not
+  // erase the last successfully read customers from the home page. Build a
+  // read-only preview whenever both datasets are readable and expose
+  // freshness separately so the UI can label it honestly.
+  const customerDecisionDataReadable = sourceStates.customerMoney?.status !== 'unavailable'
+    && Array.isArray(customerMoney?.customers)
+    && sourceStates.merchants?.status !== 'unavailable'
+    && !!merchantSnapshot?.snapshot
+    && Array.isArray(merchantSnapshot?.merchants);
+  const customerDecisionFresh = customerDecisionDataReadable
+    && sourceStates.customerMoney?.status === 'fresh'
     && sourceStates.merchants?.status === 'fresh'
-    && sourceStates.zohoInvoiceSync?.status === 'fresh'
+    && sourceStates.zohoInvoiceSync?.status === 'fresh';
+  const customerDecisions = customerDecisionDataReadable
     ? buildCustomerDecisions(customerMoney, merchantSnapshot)
     : null;
 
@@ -328,6 +340,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     },
     teamReadiness,
     customerDecisions,
+    customerDecisionFresh,
     thisMonth: {
       carrierSpend:  num(thisSnap.carrier_spend_gross),
       carrierPaid:   num(thisSnap.carrier_paid),

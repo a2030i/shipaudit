@@ -25,10 +25,15 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(service, /isPlatformInactive\(row\.platformStatus\) && row\.over30 <= 0\.5/);
   assert.match(service, /sourceStates\.customerMoney\?\.status === 'fresh'[\s\S]*sourceStates\.merchants\?\.status === 'fresh'/);
   assert.match(service, /sourceStates\.zohoInvoiceSync\?\.status === 'fresh'/);
+  assert.match(service, /Availability and freshness are different concerns/);
+  assert.match(service, /const customerDecisionDataReadable/);
+  assert.match(service, /customerDecisionFresh,/);
   assert.match(service, /merchantSnapshotSourceState/);
-  assert.match(page, /أوقف الشحن بعد المراجعة/);
-  assert.match(page, /فعّل الحساب بعد المراجعة/);
-  assert.match(page, /راجع الخصم من الرصيد/);
+  assert.match(page, /fresh=\{data\.customerDecisionFresh\}/);
+  assert.match(page, /customer-decision-stale/);
+  assert.match(page, /أوقف الحسابات المتأخرة/);
+  assert.match(page, /شغّل الحسابات الجاهزة/);
+  assert.match(page, /خصم الرصيد المدفوع مقدمًا/);
   assert.match(page, /لا ينفذ النظام إيقافًا أو تفعيلًا أو خصمًا تلقائيًا/);
 });
 

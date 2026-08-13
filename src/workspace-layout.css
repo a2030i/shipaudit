@@ -27,6 +27,38 @@
 }
 
 .customer-decision-board.is-unavailable { border-color: color-mix(in srgb, var(--gold) 35%, var(--border)); }
+.customer-decision-board.is-stale { border-color: color-mix(in srgb, var(--gold) 48%, var(--border)); }
+
+.customer-decision-stale {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--gold) 9%, var(--surface));
+  color: var(--text);
+}
+
+.customer-decision-stale > svg { color: var(--gold); }
+.customer-decision-stale strong,
+.customer-decision-stale span { display: block; }
+.customer-decision-stale strong { font-size: 12px; }
+.customer-decision-stale span { margin-top: 2px; color: var(--muted); font-size: 10.5px; line-height: 1.55; }
+.customer-decision-stale button {
+  min-height: 36px;
+  padding: 0 12px;
+  border: 1px solid color-mix(in srgb, var(--gold) 38%, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
 
 .customer-decision-board__heading {
   display: flex;
@@ -6247,6 +6279,15 @@ tbody tr,
 
   .overview-page .customer-decision-summary {
     display: none;
+  }
+
+  .overview-page .customer-decision-stale {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .overview-page .customer-decision-stale button {
+    grid-column: 1 / -1;
+    width: 100%;
   }
 
   .overview-page .customer-decision-lanes {
