@@ -168,6 +168,78 @@ function isMissingMerchantColumnError(error) {
   return /profile_status|vat_registered|zatca_completed|verification_status|schema cache|column/i.test(msg);
 }
 
+function normalizeStoreId(value) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return '';
+  // Excel sometimes turns an integer store id into the text "102.0".
+  // Treat it as the same durable platform id as "102".
+  if (/^\d+\.0+$/.test(raw)) return raw.replace(/\.0+$/, '');
+  return raw;
+}
+
+function merchantRowScore(row, sourceIndex) {
+  const lastActivity = Math.max(
+    Date.parse(row.lastShipmentAt || '') || 0,
+    Date.parse(row.lastTopupAt || '') || 0,
+  );
+  const filled = [
+    row.storeName, row.phone, row.lastShipmentAt, row.integrationType,
+    row.billingType, row.status, row.profileStatus, row.verificationStatus,
+    row.createdAtPlatform, row.lastTopupAt,
+  ].filter(v => v != null && String(v).trim() !== '').length;
+  return [lastActivity, Number(row.shipmentCount) || 0, filled, sourceIndex];
+}
+
+function isHigherMerchantRowScore(candidate, current) {
+  for (let i = 0; i < candidate.length; i++) {
+    if (candidate[i] === current[i]) continue;
+    return candidate[i] > current[i];
+  }
+  return false;
+}
+
+// A platform export occasionally contains the same store more than once.
+// The database correctly allows one row per (snapshot, store_id), so resolve
+// duplicates before writing. Prefer the record with the newest activity,
+// then the larger cumulative shipment count, then the most complete/latest
+// source row. Missing optional values are filled from the other occurrences.
+export function consolidateMerchantSnapshotRows(rows) {
+  const byStoreId = new Map();
+  const duplicateStoreIds = new Set();
+  let duplicateRowCount = 0;
+
+  for (const [sourceIndex, original] of (rows || []).entries()) {
+    const storeId = normalizeStoreId(original?.storeId);
+    if (!storeId) continue;
+    const row = { ...original, storeId };
+    const existing = byStoreId.get(storeId);
+    if (!existing) {
+      byStoreId.set(storeId, { row, score: merchantRowScore(row, sourceIndex) });
+      continue;
+    }
+
+    duplicateRowCount++;
+    duplicateStoreIds.add(storeId);
+    const candidateScore = merchantRowScore(row, sourceIndex);
+    const winner = isHigherMerchantRowScore(candidateScore, existing.score) ? row : existing.row;
+    const fallback = winner === row ? existing.row : row;
+    const merged = { ...winner };
+    for (const key of Object.keys(fallback)) {
+      if (merged[key] == null || merged[key] === '') merged[key] = fallback[key];
+    }
+    byStoreId.set(storeId, {
+      row: merged,
+      score: merchantRowScore(merged, Math.max(sourceIndex, existing.score[3] || 0)),
+    });
+  }
+
+  return {
+    rows: [...byStoreId.values()].map(entry => entry.row),
+    duplicateRowCount,
+    duplicateStoreIds: [...duplicateStoreIds],
+  };
+}
+
 export function parseStoresFile(allRows) {
   if (!Array.isArray(allRows) || allRows.length < 2) {
     throw new Error('الملف فارغ أو غير معتاد');
@@ -180,15 +252,15 @@ export function parseStoresFile(allRows) {
     );
   }
 
-  const rows = [];
+  const rawRows = [];
   for (let i = headerIdx + 1; i < allRows.length; i++) {
     const r = allRows[i];
     if (!r) continue;
-    const storeId = String(r[cols.storeId] ?? '').trim();
+    const storeId = normalizeStoreId(r[cols.storeId]);
     const storeName = String(r[cols.storeName] ?? '').trim();
     if (!storeId || !storeName) continue;
 
-    rows.push({
+    rawRows.push({
       storeId,
       storeName,
       phone:               cols.phone >= 0           ? toPhoneString(r[cols.phone])              : null,
@@ -206,14 +278,22 @@ export function parseStoresFile(allRows) {
       walletBalance:       cols.walletBalance >= 0   ? toNum(r[cols.walletBalance])              : 0,
     });
   }
-  return { rows, headerRow: headerIdx, detectedColumns: cols };
+  const consolidated = consolidateMerchantSnapshotRows(rawRows);
+  return {
+    ...consolidated,
+    sourceRowCount: rawRows.length,
+    headerRow: headerIdx,
+    detectedColumns: cols,
+  };
 }
 
 export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
   if (!parsed?.rows?.length) throw new Error('لا توجد صفوف للحفظ');
   const snapshotId   = `m_${Date.now()}`;
   const snapshotDate = new Date().toISOString().slice(0, 10);
-  const inserts = parsed.rows.map(r => ({
+  // Be defensive when an older caller supplies parsed rows directly.
+  const consolidated = consolidateMerchantSnapshotRows(parsed.rows);
+  const inserts = consolidated.rows.map(r => ({
     snapshot_id:          snapshotId,
     snapshot_date:        snapshotDate,
     store_id:             r.storeId,
@@ -233,14 +313,18 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     wallet_balance:       r.walletBalance,
     uploaded_by:          userId || null,
   }));
-  const CHUNK = 500;
-  for (let i = 0; i < inserts.length; i += CHUNK) {
-    const chunk = inserts.slice(i, i + CHUNK);
-    let { error } = await supabase.from('merchants').insert(chunk);
-    if (error && isMissingMerchantColumnError(error)) {
-      ({ error } = await supabase.from('merchants').insert(chunk.map(stripMerchantNewColumns)));
+  // One request is intentional: Postgres applies it atomically. The previous
+  // 500-row loop could leave an incomplete snapshot as the "latest" source if
+  // a duplicate appeared in a later chunk.
+  let { error } = await supabase.from('merchants').insert(inserts);
+  if (error && isMissingMerchantColumnError(error)) {
+    ({ error } = await supabase.from('merchants').insert(inserts.map(stripMerchantNewColumns)));
+  }
+  if (error) {
+    if (String(error.message || '').includes('merchants_snapshot_store_uidx')) {
+      throw new Error('يوجد رقم متجر مكرر في الملف. لم تُحفظ أي لقطة؛ أعد تحليل الملف ثم حاول مجددًا.');
     }
-    if (error) throw error;
+    throw error;
   }
   // التقط انتقالات دورة حياة المتجر بعد اكتمال كل دفعات الـsnapshot.
   // الإثراء best-effort عمداً: غياب المهاجرة أثناء النشر المتدرّج أو فشل
@@ -261,6 +345,9 @@ export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
     snapshotId,
     snapshotDate,
     count: inserts.length,
+    sourceRowCount: parsed.sourceRowCount || parsed.rows.length,
+    duplicateRowCount: parsed.duplicateRowCount || consolidated.duplicateRowCount || 0,
+    duplicateStoreIds: parsed.duplicateStoreIds || consolidated.duplicateStoreIds || [],
     prepaid:       inserts.filter(r => r.billing_type === 'دفع مسبق').length,
     postpaid:      inserts.filter(r => r.billing_type === 'دفع لاحق').length,
     active:        inserts.filter(r => r.status === 'نشط').length,

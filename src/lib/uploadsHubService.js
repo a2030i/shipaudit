@@ -227,7 +227,8 @@ export async function uploadFile({ sourceId, file, userId }) {
       const parsed = parseStoresFile(rows);
       if (parsed.errors?.length) throw new Error(parsed.errors.join(' · '));
       const r = await uploadMerchantsSnapshot({ parsed, sourceFile: file.name, userId });
-      return { rowCount: r.count, matched: null, total: null, message: `${r.count} متجر (${r.active} نشط · ${r.prepaid} دفع مسبق · ${r.postpaid} دفع لاحق)` };
+      const duplicateNote = r.duplicateRowCount ? ` · جُمعت ${r.duplicateRowCount} صفوف مكررة` : '';
+      return { rowCount: r.count, matched: null, total: null, message: `${r.count} متجر (${r.active} نشط · ${r.prepaid} دفع مسبق · ${r.postpaid} دفع لاحق)${duplicateNote}` };
     }
     default:
       throw new Error(`نوع مصدر غير معروف: ${sourceId}`);

@@ -200,7 +200,10 @@ function UploadModal({ onClose, onDone, userId }) {
       const res = await uploadMerchantsSnapshot({
         parsed, sourceFile: file?.name || null, userId,
       });
-      toast(`تم رفع ${fmtCount(res.count)} متجر · ${res.prepaid} دفع مسبق · ${res.postpaid} دفع لاحق`, 'success');
+      const duplicateNote = res.duplicateRowCount
+        ? ` · جُمعت ${fmtCount(res.duplicateRowCount)} صفوف مكررة بأرقام متاجرها`
+        : '';
+      toast(`تم رفع ${fmtCount(res.count)} متجر · ${res.prepaid} دفع مسبق · ${res.postpaid} دفع لاحق${duplicateNote}`, 'success');
       // ربط تلقائي فوري: كشف جديد = متاجر جديدة تنتظر ربطها بعملاء زوهو.
       // كانت خطوة يدوية بزر منفصل تُنسى غالباً، فيبقى العميل الجديد بلا
       // متجر (بلا هاتف ولا سياق) في كل شاشات التحصيل والحملات.
@@ -261,6 +264,12 @@ function UploadModal({ onClose, onDone, userId }) {
             <div style={{ fontWeight:700, color:'var(--accent)', marginBottom:4 }}>✓ تم تحليل الملف</div>
             <Row label="الملف" value={file?.name}/>
             <Row label="إجمالي المتاجر" value={fmtCount(counts.total)} accent/>
+            {!!parsed.duplicateRowCount && (
+              <Row
+                label="صفوف مكررة جُمعت بأرقام المتاجر"
+                value={fmtCount(parsed.duplicateRowCount)}
+              />
+            )}
             <Row label="دفع مسبق" value={fmtCount(counts.prepaid)}/>
             <Row label="دفع لاحق" value={fmtCount(counts.postpaid)}/>
             <Row label="نشط حالياً" value={fmtCount(counts.active)}/>
