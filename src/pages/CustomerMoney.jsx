@@ -9,7 +9,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
-import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input } from '../components/UI.jsx';
+import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input, WorkspaceLoadingState } from '../components/UI.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
@@ -306,7 +306,14 @@ export default function CustomerMoney({ isActive = true }) {
       </div>
     </div>
   );
-  if (d == null) return <div className="customer-money-page workspace-page"><div className="workspace-loading-state"><Spinner size={26}/></div></div>;
+  if (d == null) return (
+    <div className="customer-money-page workspace-page">
+      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+        title="تحصيل العملاء"
+        subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"/>
+      <WorkspaceLoadingState title="جارٍ تحميل أرصدة العملاء" source="Zoho Books API" rows={4}/>
+    </div>
+  );
 
   const agingTotal = BUCKETS.reduce((s, b) => s + (d.aging[b.key] || 0), 0) || 1;
   const colDelta = d.collectedPrevMonth > 0
@@ -385,35 +392,35 @@ export default function CustomerMoney({ isActive = true }) {
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>الرصيد المدين في زوهو</div>
-            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
+            <div className="customer-money-kpi-value" title={`${fmt(d.grossOutstanding)} ر.س`} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
               {fmt(d.grossOutstanding)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>قبل احتساب الأرصدة الدائنة</div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>رصيد دائن يغطي منه</div>
-            <div style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
+            <div className="customer-money-kpi-value" title={`${fmt(d.creditOffset)} ر.س`} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
               {fmt(d.creditOffset)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.settlementCount} تسوية مطلوبة في زوهو</div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 المطلوب تحصيله</div>
-            <div style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', lineHeight: 1.2 }}>
+            <div className="customer-money-kpi-value" title={`${fmt(d.outstanding)} ر.س`} style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--gold)', lineHeight: 1.2 }}>
               {fmt(d.outstanding)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.outstandingCnt} عميلاً يدخلون حملات التحصيل</div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>⏰ منها متأخّرة</div>
-            <div style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--red)', lineHeight: 1.2 }}>
+            <div className="customer-money-kpi-value" title={`${fmt(d.overdueAmt)} ر.س`} style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--red)', lineHeight: 1.2 }}>
               {fmt(d.overdueAmt)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>تجاوزت موعد السداد</div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>✅ حصّلنا هذا الشهر</div>
-            <div style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
+            <div className="customer-money-kpi-value" title={`${fmt(d.collectedThisMonth)} ر.س`} style={{ fontSize: 30, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
               {fmt(d.collectedThisMonth)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>

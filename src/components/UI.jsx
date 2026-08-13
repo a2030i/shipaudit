@@ -1160,6 +1160,32 @@ export function Spinner({ size = 20, color = 'var(--accent)' }) {
   );
 }
 
+// حالة تحميل موحّدة تبقي المستخدم على علم بالصفحة والمصدر الجاري قراءته.
+// تستخدم هياكل محايدة بدل أرقام وهمية حتى لا تُفهم كقيم مالية حقيقية.
+export function WorkspaceLoadingState({
+  title = 'جارٍ تجهيز الصفحة',
+  source = 'مصادر النظام',
+  rows = 3,
+}) {
+  const skeletonRows = Math.max(1, Math.min(Number(rows) || 3, 5));
+  return (
+    <div className="workspace-loading-state is-informative" role="status" aria-live="polite">
+      <div className="workspace-loading-copy">
+        <Spinner size={24}/>
+        <div>
+          <strong>{title}</strong>
+          <span>نقرأ الآن من {source} ونراجع اكتمال البيانات قبل عرضها.</span>
+        </div>
+      </div>
+      <div className="workspace-loading-skeleton" aria-hidden="true">
+        {Array.from({ length: skeletonRows }, (_, index) => (
+          <span key={index} style={{ '--skeleton-width': `${94 - (index * 11)}%` }}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── Empty state ───────────────────────────────────────────────────────────────
 export function Empty({ icon = '📭', title, sub, action }) {
   return (

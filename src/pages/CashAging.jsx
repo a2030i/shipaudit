@@ -3,7 +3,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { RefreshCw, HandCoins, Hourglass } from 'lucide-react';
-import { Card, StatCard, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
+import { Card, StatCard, Btn, Empty, toast, PageHeader, WorkspaceLoadingState } from '../components/UI.jsx';
 import { loadCashAging } from '../lib/cashAgingService.js';
 
 const fmt = (v) => (v == null || Number.isNaN(v) || Math.abs(v) < 0.005) ? '—'
@@ -18,8 +18,8 @@ function SectionTable({ title, icon, columns, children, footer }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
         {icon} {title}
       </div>
-      <div style={{ overflowX: 'auto' }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: 700 }}>
+      <div className="cash-aging-table-wrap">
+        <table className="m-cards cash-aging-table" style={{ width: '100%', borderCollapse: 'collapse' }}>
           <thead><tr style={{ background: 'var(--bg2)' }}>{columns.map(c => <th key={c} style={th}>{c}</th>)}</tr></thead>
           <tbody>{children}</tbody>
           {footer}
@@ -41,15 +41,23 @@ export default function CashAging({ isActive }) {
   }, []);
   useEffect(() => { if (isActive && !data) refresh(); }, [isActive, data, refresh]);
 
-  if (loading && !data) return <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div>;
+  if (loading && !data) return (
+    <div className="workspace-page" style={{ maxWidth: 1320, margin: '0 auto' }}>
+      <PageHeader
+        icon={<HandCoins size={22}/>} title="أعمار التحصيل والسداد"
+        subtitle="مدة تحصيل COD وما يستحق لشركات الشحن حسب التأخير"
+      />
+      <WorkspaceLoadingState title="جارٍ حساب أعمار الأرصدة" source="دفتر الناقلين والتحصيلات" rows={4}/>
+    </div>
+  );
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<HandCoins size={22}/>}
-        title="أعمار الديون — لك وعليك"
+        title="أعمار التحصيل والسداد"
         subtitle="من يحبس تحصيلك وكم يوم؟ ووش عليك للناقلين حسب الاستحقاق؟"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث</Btn>}
+        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading}><RefreshCw size={14} className={loading ? 'spin' : ''}/> تحديث أعمار الأرصدة</Btn>}
       />
 
       {/* Headline KPIs */}
@@ -80,16 +88,16 @@ export default function CashAging({ isActive }) {
       >
         {(data?.cod || []).map(r => (
           <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
-            <td style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
-            <td style={{ ...td, color: r.avgDays == null ? 'var(--muted)' : r.avgDays > 14 ? 'var(--red)' : 'var(--green2)', fontWeight: 700 }}>
+            <td data-label="الناقل" style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
+            <td data-label="متوسط أيام التحصيل" style={{ ...td, color: r.avgDays == null ? 'var(--muted)' : r.avgDays > 14 ? 'var(--red)' : 'var(--green2)', fontWeight: 700 }}>
               {r.avgDays == null ? 'لا تحويلات بعد' : r.avgDays <= 0 ? '≤ يوم' : `${r.avgDays} يوم`}
             </td>
-            <td style={td}>{fmt(r.buckets[0])}</td>
-            <td style={{ ...td, color: r.buckets[1] > 0.5 ? 'var(--gold)' : 'inherit' }}>{fmt(r.buckets[1])}</td>
-            <td style={{ ...td, color: r.buckets[2] > 0.5 ? 'var(--red)' : 'inherit' }}>{fmt(r.buckets[2])}</td>
-            <td style={{ ...td, color: r.buckets[3] > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.buckets[3] > 0.5 ? 700 : 400 }}>{fmt(r.buckets[3])}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{fmt(r.outTotal)}</td>
-            <td style={{ ...td, color: r.oldestDays > 30 ? 'var(--red)' : 'var(--muted)' }}>{r.oldestDays ? `${r.oldestDays} يوم` : '—'}</td>
+            <td data-label="معلّق 0–15 يوم" style={td}>{fmt(r.buckets[0])}</td>
+            <td data-label="معلّق 16–30 يوم" style={{ ...td, color: r.buckets[1] > 0.5 ? 'var(--gold)' : 'inherit' }}>{fmt(r.buckets[1])}</td>
+            <td data-label="معلّق 31–60 يوم" style={{ ...td, color: r.buckets[2] > 0.5 ? 'var(--red)' : 'inherit' }}>{fmt(r.buckets[2])}</td>
+            <td data-label="معلّق أكثر من 60 يوم" style={{ ...td, color: r.buckets[3] > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.buckets[3] > 0.5 ? 700 : 400 }}>{fmt(r.buckets[3])}</td>
+            <td data-label="إجمالي المعلّق" style={{ ...td, fontWeight: 700 }}>{fmt(r.outTotal)}</td>
+            <td data-label="أقدم شحنة" style={{ ...td, color: r.oldestDays > 30 ? 'var(--red)' : 'var(--muted)' }}>{r.oldestDays ? `${r.oldestDays} يوم` : '—'}</td>
           </tr>
         ))}
       </SectionTable>
@@ -101,13 +109,13 @@ export default function CashAging({ isActive }) {
         columns={['الناقل','متأخر ⚠','يستحق 0-30ي','31-60ي','+60ي','مبالغ لصالحك (تُخصم)','الإجمالي']}
         footer={data?.ap?.length ? (
           <tfoot><tr style={{ borderTop: '2px solid var(--border)', background: 'var(--bg2)', fontWeight: 700 }}>
-            <td style={td}>الإجمالي</td>
-            <td style={{ ...td, color: 'var(--red)' }}>{fmt(data.ap.reduce((s, r) => s + r.overdue, 0))}</td>
-            <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.d0_30, 0))}</td>
-            <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.d31_60, 0))}</td>
-            <td style={td}>{fmt(data.ap.reduce((s, r) => s + r.over60, 0))}</td>
-            <td style={{ ...td, color: 'var(--green2)' }}>{fmt(data.ap.reduce((s, r) => s + r.credits, 0))}</td>
-            <td style={td}>{fmt(data.apTotal)}</td>
+            <td data-label="الناقل" style={td}>الإجمالي</td>
+            <td data-label="متأخر" style={{ ...td, color: 'var(--red)' }}>{fmt(data.ap.reduce((s, r) => s + r.overdue, 0))}</td>
+            <td data-label="يستحق 0–30 يوم" style={td}>{fmt(data.ap.reduce((s, r) => s + r.d0_30, 0))}</td>
+            <td data-label="يستحق 31–60 يوم" style={td}>{fmt(data.ap.reduce((s, r) => s + r.d31_60, 0))}</td>
+            <td data-label="أكثر من 60 يوم" style={td}>{fmt(data.ap.reduce((s, r) => s + r.over60, 0))}</td>
+            <td data-label="مبالغ لصالحك" style={{ ...td, color: 'var(--green2)' }}>{fmt(data.ap.reduce((s, r) => s + r.credits, 0))}</td>
+            <td data-label="الإجمالي" style={td}>{fmt(data.apTotal)}</td>
           </tr></tfoot>
         ) : null}
       >
@@ -115,13 +123,13 @@ export default function CashAging({ isActive }) {
           ? <tr><td colSpan={7}><Empty icon="✓" title="لا ذمم مفتوحة"/></td></tr>
           : data.ap.map(r => (
             <tr key={r.carrierId} style={{ borderTop: '1px solid var(--border)' }}>
-              <td style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
-              <td style={{ ...td, color: r.overdue > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.overdue > 0.5 ? 700 : 400 }}>{fmt(r.overdue)}</td>
-              <td style={td}>{fmt(r.d0_30)}</td>
-              <td style={td}>{fmt(r.d31_60)}</td>
-              <td style={td}>{fmt(r.over60)}</td>
-              <td style={{ ...td, color: r.credits < -0.5 ? 'var(--green2)' : 'inherit' }}>{fmt(r.credits)}</td>
-              <td style={{ ...td, fontWeight: 700 }}>{fmt(r.total)}</td>
+              <td data-label="الناقل" style={{ ...td, fontWeight: 600 }}>{r.carrierName}</td>
+              <td data-label="متأخر" style={{ ...td, color: r.overdue > 0.5 ? 'var(--red)' : 'inherit', fontWeight: r.overdue > 0.5 ? 700 : 400 }}>{fmt(r.overdue)}</td>
+              <td data-label="يستحق 0–30 يوم" style={td}>{fmt(r.d0_30)}</td>
+              <td data-label="يستحق 31–60 يوم" style={td}>{fmt(r.d31_60)}</td>
+              <td data-label="أكثر من 60 يوم" style={td}>{fmt(r.over60)}</td>
+              <td data-label="مبالغ لصالحك" style={{ ...td, color: r.credits < -0.5 ? 'var(--green2)' : 'inherit' }}>{fmt(r.credits)}</td>
+              <td data-label="الإجمالي" style={{ ...td, fontWeight: 700 }}>{fmt(r.total)}</td>
             </tr>
           ))}
       </SectionTable>

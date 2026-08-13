@@ -19,13 +19,16 @@ export default function SourceStatusStrip({ sources = [], loadedAt, onRefresh, r
         </div>
         {onRefresh && <button type="button" onClick={onRefresh} disabled={refreshing} aria-label="إعادة فحص مصادر البيانات"><RefreshCw size={15}/>إعادة الفحص</button>}
       </div>
-      <div className="source-status-items">
-        {sources.map((source) => {
-          const cfg = STATUS[source.status] || STATUS.unavailable;
-          const Icon = cfg.icon;
-          return <div key={source.key} className={`source-status-item is-${cfg.tone}`} title={source.error || source.label}><Icon size={14}/><span>{source.label}</span><small>{cfg.label}</small></div>;
-        })}
-      </div>
+      <details className="source-status-details">
+        <summary>عرض تفاصيل {sources.length} {sources.length === 1 ? 'مصدر' : 'مصادر'}</summary>
+        <div className="source-status-items">
+          {sources.map((source) => {
+            const cfg = STATUS[source.status] || STATUS.unavailable;
+            const Icon = cfg.icon;
+            return <div key={source.key} className={`source-status-item is-${cfg.tone}`} title={source.error || source.label}><Icon size={14}/><span>{source.label}</span><small>{cfg.label}</small></div>;
+          })}
+        </div>
+      </details>
       {unavailable.length > 0 && <details className="source-status-errors"><summary>عرض المصادر المتعذرة</summary>{unavailable.map(source => <p key={source.key}><strong>{source.label}:</strong> {source.error || 'تعذرت القراءة'}</p>)}</details>}
     </section>
   );

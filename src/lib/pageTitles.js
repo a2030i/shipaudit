@@ -26,13 +26,13 @@ export const PAGE_TITLES = {
   '/uploads':           'مزامنة مصادر البيانات',
   '/hub':               'مركز شركات الشحن',
   '/carrier':           'بروفايل الشركة',
-  '/webhook':           'وارد الفواتير',
+  '/webhook':           'وارد التكاملات',
   '/customers':         'ملفات العملاء',
   '/payment-requests':  'طلبات السداد',
   '/internal-exports':  'التصدير وسجل الملفات',
   '/upload':            'مراجعة جديدة',
   '/drop':              'الرفع والوارد',
-  '/cash-aging':        'أعمار الديون',
+  '/cash-aging':        'أعمار التحصيل والسداد',
   '/integrity':         'سلامة البيانات',
   '/claims':            'المطالبات',
   '/audits':            'تدقيق الفواتير',
@@ -60,6 +60,7 @@ export const PAGE_TITLES = {
   '/settings/ai':       'التكاملات والذكاء الاصطناعي',
   '/settings/data':     'البيانات والتكاملات',
   '/settings/hatif':    'إعدادات هاتف',
+  '/platform-carriers': 'مقارنة أسعار المنصّات',
   '/results':           'نتائج التدقيق',
 };
 

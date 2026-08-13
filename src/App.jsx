@@ -106,7 +106,7 @@ const ROUTE_ITEMS = [
       { tabId: 'claims', label: 'المطالبات والاسترداد', icon: Scale,     legacy: '/claims' },
     ] },
   { id: 'drop',         path: '/drop',              label: 'رفع ملف',          icon: Upload,    section: 'carriers', navOrder: 20, permKey: 'audits.create' },
-  { id: 'webhook',      path: '/webhook',           label: 'وارد الفواتير',    icon: Inbox,     section: 'carriers', navOrder: 30, permKey: 'webhook.view' },
+  { id: 'webhook',      path: '/webhook',           label: 'وارد التكاملات',   icon: Inbox,     section: 'carriers', navOrder: 30, permKey: 'webhook.view' },
   { id: 'audits',       path: '/audits',            label: 'تدقيق الفواتير',   icon: History,   section: 'carriers', navOrder: 40, permKey: 'audits.view' },
   { id: 'aramex-stmt',  path: '/aramex-statements', label: 'كشوف الناقلين',    icon: FileText,  section: 'carriers', navOrder: 50, permKey: 'carriers.view' },
   { id: 'ledger',       path: '/ledger',            label: 'دفتر حساب الناقلين', icon: BookOpen, section: 'carriers', navOrder: 60, permKey: 'ledger.view' },
@@ -132,7 +132,7 @@ const ROUTE_ITEMS = [
       { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments', perm: 'payments.view' },
       { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank', perm: 'bank.view' },
     ] },
-  { id: 'cash-aging', path: '/cash-aging', label: 'توقيت التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
+  { id: 'cash-aging', path: '/cash-aging', label: 'أعمار التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
   { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', navOrder: 50, permKey: 'forecast.view' },
 
   // ── العملاء والنمو ─────────────────────────────────────────────

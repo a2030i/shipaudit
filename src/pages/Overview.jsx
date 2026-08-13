@@ -28,7 +28,7 @@ import {
 import { useAuth } from '../lib/auth.jsx';
 import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
 import {
-  Card, Btn, Spinner, Empty, Modal, toast, PageHeader,
+  Card, Btn, Spinner, Empty, Modal, toast, PageHeader, WorkspaceLoadingState,
 } from '../components/UI.jsx';
 import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
@@ -145,9 +145,12 @@ export default function Overview({ carriers = [], isActive = true }) {
   if (!hasCurrentData) {
     return (
       <div className="overview-page workspace-page">
-        <div className="workspace-loading-state">
-          <Spinner size={28}/>
-        </div>
+        <PageHeader
+          icon={<Activity size={22}/>} iconColor="var(--accent3)"
+          title="الرئيسية"
+          subtitle="ملخص السيولة، أهم التنبيهات، وحركة الشحن والتحصيل"
+        />
+        <WorkspaceLoadingState title="جارٍ إعداد الملخص التنفيذي" source="مصادر التشغيل والمالية" rows={4}/>
       </div>
     );
   }

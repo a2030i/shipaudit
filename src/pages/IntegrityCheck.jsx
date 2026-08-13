@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ShieldCheck, RefreshCw, ArrowLeft, Wrench } from 'lucide-react';
-import { Card, Btn, Spinner, toast, PageHeader } from '../components/UI.jsx';
+import { Card, Btn, Spinner, toast, PageHeader, WorkspaceLoadingState } from '../components/UI.jsx';
 import { loadIntegrityChecks, loadCronHealth, FIXES } from '../lib/integrityService.js';
 
 const SEV = {
@@ -63,7 +63,7 @@ export default function IntegrityCheck({ isActive }) {
         }
       />
 
-      {!checks && loading && <div style={{ padding: 60, textAlign: 'center' }}><Spinner/></div>}
+      {!checks && loading && <WorkspaceLoadingState title="جارٍ فحص سلامة الأرقام" source="قاعدة البيانات والمهام الدورية" rows={4}/>}
 
       {checks && (
         <>
