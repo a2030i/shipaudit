@@ -148,7 +148,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <PageHeader
           icon={<Activity size={22}/>} iconColor="var(--accent3)"
           title="الرئيسية"
-          subtitle="ملخص السيولة، أهم التنبيهات، وحركة الشحن والتحصيل"
+          subtitle="قرارات العملاء العاجلة، السيولة، ومتابعة النمو"
         />
         <WorkspaceLoadingState title="جارٍ إعداد الملخص التنفيذي" source="مصادر التشغيل والمالية" rows={4}/>
       </div>
@@ -172,7 +172,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         icon={<Activity size={22}/>}
         iconColor="var(--accent3)"
         title="الرئيسية"
-        subtitle="ملخص السيولة، أهم التنبيهات، وحركة الشحن والتحصيل"
+        subtitle="قرارات العملاء العاجلة، السيولة، ومتابعة النمو"
         meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
           <div className="overview-period-actions" aria-label="التحكم في فترة الملخص">
