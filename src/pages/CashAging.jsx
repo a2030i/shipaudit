@@ -14,8 +14,8 @@ const td = { padding: '10px 12px', fontVariantNumeric: 'tabular-nums', whiteSpac
 
 function SectionTable({ title, icon, columns, children, footer }) {
   return (
-    <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 22 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
+    <Card className="data-ledger cash-aging-section" style={{ padding: 0, overflow: 'hidden', marginBottom: 22 }}>
+      <div className="data-ledger__header" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '14px 16px', borderBottom: '1px solid var(--border)', fontWeight: 700, fontSize: 14 }}>
         {icon} {title}
       </div>
       <div className="cash-aging-table-wrap">
@@ -52,7 +52,7 @@ export default function CashAging({ isActive }) {
   );
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="workspace-page cash-aging-page">
       <PageHeader
         icon={<HandCoins size={22}/>}
         title="أعمار التحصيل والسداد"
@@ -61,7 +61,7 @@ export default function CashAging({ isActive }) {
       />
 
       {/* Headline KPIs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 22 }}>
+      <div className="metric-ledger cash-aging-kpi-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))', gap: 12, marginBottom: 22 }}>
         {[
           { label: 'COD معلّق عند الناقلين', value: fmt(data?.codTotal), color: 'var(--gold)' },
           { label: 'مستحق علينا للناقلين', value: fmt(data?.apTotal), color: 'var(--text)' },

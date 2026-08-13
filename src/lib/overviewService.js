@@ -30,12 +30,103 @@ async function rpc(name, args) {
   return data || [];
 }
 
+// Home-page customer decisions combine Zoho's open-invoice truth with the
+// newest platform snapshot. A fuzzy name match is intentionally forbidden:
+// an uncertain match must be reviewed, never used to stop or activate a store.
+const decisionNumber = (value) => Number(value) || 0;
+const decisionKey = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/[أإآ]/g, 'ا')
+  .replace(/ة/g, 'ه')
+  .replace(/[\s\-_|/\\.،,]+/g, '');
+const billingKey = (value) => decisionKey(value);
+const platformKey = (value) => decisionKey(value);
+const isPostpaid = (value) => ['دفعالاحق', 'postpaid'].includes(billingKey(value));
+const isPrepaid = (value) => ['دفعمسبق', 'prepaid'].includes(billingKey(value));
+const isPlatformActive = (value) => ['نشط', 'active', 'مفعل'].includes(platformKey(value));
+const isPlatformInactive = (value) => ['غيرنشط', 'inactive', 'موقوف', 'متوقف'].includes(platformKey(value));
+
+function buildCustomerDecisions(customerMoney, merchantSnapshot) {
+  const customers = Array.isArray(customerMoney?.customers) ? customerMoney.customers : [];
+  const merchants = Array.isArray(merchantSnapshot?.merchants) ? merchantSnapshot.merchants : [];
+  const merchantById = new Map(merchants.filter(m => m.store_id).map(m => [String(m.store_id), m]));
+  const merchantByName = new Map();
+  const moneyByStoreId = new Map(customers.filter(c => c.store_id).map(c => [String(c.store_id), c]));
+  const moneyByName = new Map();
+  for (const merchant of merchants) {
+    const key = decisionKey(merchant.store_name);
+    if (key) merchantByName.set(key, merchantByName.has(key) ? null : merchant);
+  }
+  for (const customer of customers) {
+    const key = decisionKey(customer.store_name || customer.name);
+    if (key) moneyByName.set(key, moneyByName.has(key) ? null : customer);
+  }
+  const merchantFor = (customer) => (customer.store_id && merchantById.get(String(customer.store_id)))
+    || merchantByName.get(decisionKey(customer.store_name || customer.name)) || null;
+  const moneyFor = (merchant) => (merchant.store_id && moneyByStoreId.get(String(merchant.store_id)))
+    || moneyByName.get(decisionKey(merchant.store_name)) || null;
+  const asDecision = (merchant, customer = null) => ({
+    storeId: merchant?.store_id || customer?.store_id || '',
+    name: merchant?.store_name || customer?.store_name || customer?.name || 'عميل غير مسمى',
+    customerName: customer?.name || merchant?.store_name || '',
+    billingType: merchant?.billing_type || customer?.billing_type || '',
+    platformStatus: merchant?.status || customer?.platform_status || '',
+    debt: decisionNumber(customer?.owed),
+    over30: customer ? decisionNumber(customer.b1) + decisionNumber(customer.b2) + decisionNumber(customer.b3) : 0,
+    invoiceCount: decisionNumber(customer?.inv_cnt),
+    walletBalance: decisionNumber(merchant?.wallet_balance ?? customer?.wallet_balance),
+    hasFinancialRecord: !!customer,
+  });
+  const stopPostpaid = [], activatePostpaid = [], deductPrepaid = [];
+  const keepStopped = [], negativePrepaid = [], unlinkedFinance = [];
+  const processedMerchantIds = new Set();
+
+  for (const customer of customers) {
+    const merchant = merchantFor(customer);
+    if (!merchant) {
+      if (decisionNumber(customer.owed) > 0.5 || decisionNumber(customer.inv_cnt) > 0) unlinkedFinance.push(asDecision(null, customer));
+      continue;
+    }
+    processedMerchantIds.add(String(merchant.store_id || merchant.id || merchant.store_name));
+    const row = asDecision(merchant, customer);
+    if (isPostpaid(row.billingType) && isPlatformActive(row.platformStatus) && row.over30 > 0.5 && row.invoiceCount > 0) stopPostpaid.push(row);
+    if (isPostpaid(row.billingType) && isPlatformInactive(row.platformStatus) && row.over30 > 0.5) keepStopped.push(row);
+    if (isPrepaid(row.billingType) && row.walletBalance > 0.5 && row.debt > 0.5 && row.invoiceCount > 0) deductPrepaid.push(row);
+    if (isPrepaid(row.billingType) && row.walletBalance < -0.5) negativePrepaid.push(row);
+  }
+  for (const merchant of merchants) {
+    const id = String(merchant.store_id || merchant.id || merchant.store_name);
+    if (processedMerchantIds.has(id)) continue;
+    const money = moneyFor(merchant);
+    if (isPostpaid(merchant.billing_type) && isPlatformInactive(merchant.status) && (!money || decisionNumber(money.b1) + decisionNumber(money.b2) + decisionNumber(money.b3) <= 0.5)) {
+      activatePostpaid.push(asDecision(merchant, money || null));
+    }
+    if (isPrepaid(merchant.billing_type) && decisionNumber(merchant.wallet_balance) < -0.5) negativePrepaid.push(asDecision(merchant, money || null));
+  }
+  for (const customer of customers) {
+    const merchant = merchantFor(customer);
+    if (!merchant) continue;
+    const row = asDecision(merchant, customer);
+    if (isPostpaid(row.billingType) && isPlatformInactive(row.platformStatus) && row.over30 <= 0.5) activatePostpaid.push(row);
+  }
+  const uniqueRows = (rows) => Array.from(new Map(rows.map(row => [row.storeId || `${row.name}:${row.customerName}`, row])).values())
+    .sort((a, b) => Math.max(b.over30, b.debt, b.walletBalance) - Math.max(a.over30, a.debt, a.walletBalance));
+  return {
+    snapshotAt: merchantSnapshot?.snapshot?.uploadedAt || null,
+    stopPostpaid: uniqueRows(stopPostpaid), activatePostpaid: uniqueRows(activatePostpaid),
+    deductPrepaid: uniqueRows(deductPrepaid), keepStopped: uniqueRows(keepStopped),
+    negativePrepaid: uniqueRows(negativePrepaid), unlinkedFinance: uniqueRows(unlinkedFinance),
+  };
+}
+
 export async function loadOverview({ period = null, topN = 5 } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
   const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
+  const { loadLatestMerchants } = await import('./merchantsService.js');
   // رصيد البنك = نقطة الحقيقة المشتركة `loadEffectiveBankBalance` (تجمع ختامي
   // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
@@ -64,6 +155,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
     { key: 'customerMoney', label: 'مديونيات العملاء', run: () => supabaseRpc('customer_money_dashboard') },
+    { key: 'merchants', label: 'حالة المتاجر في المنصة', run: () => loadLatestMerchants() },
     // Collection truth subtracts unused Zoho credit that already covers a
     // debit. The invoice dashboard intentionally exposes the gross debit, so
     // it must not feed the "effective available" amount.
@@ -109,10 +201,15 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const codNet = valueOf('carrierCod', new Map());
   const zohoDash = valueOf('zohoInvoices', null);
   const customerMoney = valueOf('customerMoney', null);
+  const merchantSnapshot = valueOf('merchants', null);
   const zohoFinancial = valueOf('zohoFinancial', null);
   const teamReadinessRaw = valueOf('teamReadiness', null);
   const teamStaffing = valueOf('teamStaffing', null);
   const collectionWork = valueOf('collectionWork', null);
+  const customerDecisions = sourceStates.customerMoney?.status === 'fresh'
+    && sourceStates.merchants?.status === 'fresh'
+    ? buildCustomerDecisions(customerMoney, merchantSnapshot)
+    : null;
 
   const readinessRank = { unavailable: 3, blocked: 2, pilot: 1, ready: 0 };
   const mergeReadiness = (operational, staffing) => {
@@ -183,10 +280,12 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       carrierConcentration: sourceStates.carrierSpend.status !== 'unavailable',
       customerConcentration: [sourceStates.customerMoney, sourceStates.zohoInvoices, sourceStates.customerDebt]
         .some(source => source.status !== 'unavailable'),
+      customerDecisions: !!customerDecisions,
       aging: sourceStates.apAging.status !== 'unavailable',
       carrierHealth: sourceStates.carrierHealth.status !== 'unavailable',
     },
     teamReadiness,
+    customerDecisions,
     thisMonth: {
       carrierSpend:  num(thisSnap.carrier_spend_gross),
       carrierPaid:   num(thisSnap.carrier_paid),

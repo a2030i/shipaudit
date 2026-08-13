@@ -144,7 +144,12 @@ function cleanNumber(cell) {
   // `SAR 227908.66`. Accept only a strict whole-cell currency amount here;
   // do not fall back to extracting arbitrary digits from labels/dates (for
   // example `Closing Balance as of 26 Jul, 2026`).
-  if (/^(?:SAR|SR|﷼)-?[\d,]+(?:\.\d+)?(?:SAR|SR|﷼)?$/i.test(s)) return parseNumber(s);
+  // Bank Alinma also emits the currency after the number in parentheses:
+  // `4,600,136.54 ( SAR )`. Strip parentheses only after proving that the
+  // whole cell is still a currency amount; arbitrary digits in labels/dates
+  // must never become money.
+  const currencyAmount = s.replace(/[()]/g, '');
+  if (/^(?:SAR|SR|﷼)?-?[\d,]+(?:\.\d+)?(?:SAR|SR|﷼)?$/i.test(currencyAmount)) return parseNumber(currencyAmount);
   return null;
 }
 
@@ -277,6 +282,10 @@ function extractFeesFromDescription(desc) {
 export function parseAlinmaFormat(rows, colMap) {
   const transactions = [];
   let hiddenFees = 0;
+  // Bank Alinma vertically merges the date cell for all transactions on the
+  // same day. `sheet_to_json` returns null for every row after the merge's
+  // first row, so carry the last explicit date forward.
+  let carriedDate = null;
 
   for (let i = colMap.headerRow + 1; i < rows.length; i++) {
     const row = rows[i];
@@ -284,7 +293,9 @@ export function parseAlinmaFormat(rows, colMap) {
     if (row.every(c => c == null || c === '')) continue;
 
     const dateRaw = colMap.dateCol != null ? row[colMap.dateCol] : null;
-    const date    = parseDateCell(dateRaw);
+    const explicitDate = parseDateCell(dateRaw);
+    if (explicitDate) carriedDate = explicitDate;
+    const date    = explicitDate || carriedDate;
     const datetime = parseDateTimeCell(dateRaw);   // الوقت الكامل لترتيب التسلسل داخل اليوم
     const ref     = colMap.refCol  != null ? String(row[colMap.refCol]  ?? '').trim() : '';
     let   desc    = colMap.descCol != null ? String(row[colMap.descCol] ?? '').trim() : '';
@@ -294,8 +305,17 @@ export function parseAlinmaFormat(rows, colMap) {
     if (txnType && !desc.toLowerCase().includes(txnType.toLowerCase())) desc = desc ? `${txnType} · ${desc}` : txnType;
     // Banks often store debits as signed negatives (e.g. -155.25). Convert to
     // positive magnitude so totals and the "مدين" column read correctly.
-    const creditRaw = colMap.creditCol != null ? parseNumber(row[colMap.creditCol]) : null;
-    const debitRaw  = colMap.debitCol  != null ? parseNumber(row[colMap.debitCol])  : null;
+    let creditRaw = colMap.creditCol != null ? parseNumber(row[colMap.creditCol]) : null;
+    let debitRaw  = colMap.debitCol  != null ? parseNumber(row[colMap.debitCol])  : null;
+    // This Alinma layout has one signed `Credit/Debit` column. Header
+    // detection intentionally maps it to both sides; split it by sign here
+    // instead of counting the same amount once as a credit and once as a
+    // debit.
+    if (colMap.creditCol != null && colMap.creditCol === colMap.debitCol) {
+      const signed = parseNumber(row[colMap.creditCol]);
+      creditRaw = signed != null && signed > 0 ? signed : null;
+      debitRaw = signed != null && signed < 0 ? Math.abs(signed) : null;
+    }
     const credit  = creditRaw != null ? Math.abs(creditRaw) : null;
     const debit   = debitRaw  != null ? Math.abs(debitRaw)  : null;
     const colFees = colMap.feesCol   != null ? parseNumber(row[colMap.feesCol])   : null;
@@ -381,7 +401,10 @@ export function annotateRejected(list) {
       if (ref) {
         const orig = list.find(d =>
           d !== t && String(d.reference ?? '').trim() === ref
-          && Math.abs((Number(d.debit) || 0) - credit) <= 0.01);
+          // Exported debit is net of bundled fee/VAT, while the bank reverses
+          // the original gross amount. Compare the returned credit with the
+          // gross debit so rejected SWIFT transfers are still paired.
+          && Math.abs(((Number(d.debit) || 0) + (Number(d.feesRemoved) || 0)) - credit) <= 0.01);
         if (orig) {
           t.rejected = true;
           orig.rejected = true;
