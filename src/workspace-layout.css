@@ -5937,3 +5937,66 @@ tbody tr,
     box-shadow: none !important;
   }
 }
+
+/* ── Overview period controls ───────────────────────────────────────────
+   The overview has a compact, four-action month switcher. It is deliberately
+   not a generic page-action grid: applying the phone grid to it at wider
+   breakpoints turned each small control into a full-width row and created a
+   mostly empty page header. Keep the controls together on desktop, then use
+   a predictable two-column grid only on an actual phone. */
+.overview-page > .page-hero-band {
+  display: grid !important;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center !important;
+  flex-wrap: nowrap !important;
+}
+
+.overview-page > .page-hero-band .page-hero-main {
+  min-width: 0;
+}
+
+.overview-page > .page-hero-band .page-hero-actions {
+  display: block !important;
+  width: auto !important;
+  min-width: 0;
+}
+
+.overview-page .overview-period-actions {
+  display: flex !important;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px !important;
+  width: auto !important;
+  margin: 0 !important;
+}
+
+.overview-page .overview-period-actions .ui-btn {
+  width: auto !important;
+  min-width: 38px;
+  justify-content: center;
+  white-space: nowrap !important;
+}
+
+@media (max-width: 768px) {
+  .overview-page > .page-hero-band {
+    display: flex !important;
+    align-items: flex-start !important;
+    flex-wrap: wrap !important;
+  }
+
+  .overview-page > .page-hero-band .page-hero-main,
+  .overview-page > .page-hero-band .page-hero-actions {
+    width: 100% !important;
+  }
+
+  .overview-page .overview-period-actions {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    width: 100% !important;
+  }
+
+  .overview-page .overview-period-actions .ui-btn {
+    width: 100% !important;
+    min-width: 0;
+  }
+}

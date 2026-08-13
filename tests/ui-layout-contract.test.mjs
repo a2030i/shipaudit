@@ -129,6 +129,16 @@ test('mobile page filters can share the action row with their primary action', a
   assert.match(css, /\.page-hero-actions > \.ui-field\s*\{[\s\S]*min-width:\s*0\s*!important/);
 });
 
+test('overview month controls stay compact instead of inheriting the generic action grid', async () => {
+  const overview = await read('src/pages/Overview.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(overview, /className="overview-period-actions"/);
+  assert.match(css, /\.overview-page > \.page-hero-band\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
+  assert.match(css, /\.overview-page \.overview-period-actions\s*\{[\s\S]*display:\s*flex\s*!important/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.overview-page \.overview-period-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,/);
+});
+
 test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {
   const page = await read('src/pages/StoreActivation.jsx');
   const css = await read('src/pages/StoreActivation.css');

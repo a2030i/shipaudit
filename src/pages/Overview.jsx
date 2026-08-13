@@ -175,7 +175,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         subtitle="ملخص السيولة، أهم التنبيهات، وحركة الشحن والتحصيل"
         meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
-          <div style={{ display: 'flex', gap: 6 }}>
+          <div className="overview-period-actions" aria-label="التحكم في فترة الملخص">
             <Btn size="sm" variant="ghost" onClick={goPrev} title="الشهر السابق">
               ‹
             </Btn>
