@@ -214,7 +214,16 @@ export default function Overview({ carriers = [], isActive = true }) {
         </div>
       )}
 
+      <CustomerDecisionBoard
+        decisions={data.customerDecisions}
+        available={data.sectionAvailability?.customerDecisions}
+        onNavigate={navigate}
+      />
+
       <nav className="overview-jump-nav" aria-label="الوصول السريع داخل الرئيسية">
+        <button type="button" className="is-primary" onClick={() => document.getElementById('customer-decisions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
+          <Users size={14}/> قرارات العملاء
+        </button>
         <button type="button" onClick={() => document.getElementById('cash-now')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Wallet size={14}/> السيولة الآن
         </button>
@@ -668,6 +677,135 @@ export default function Overview({ carriers = [], isActive = true }) {
       )}
     </div>
   );
+}
+
+function CustomerDecisionBoard({ decisions, available, onNavigate }) {
+  if (!available || !decisions) {
+    return (
+      <section id="customer-decisions" className="customer-decision-board is-unavailable" aria-labelledby="customer-decisions-title">
+        <div className="customer-decision-board__heading">
+          <div>
+            <span className="customer-decision-board__eyebrow">العملاء والمالية</span>
+            <h2 id="customer-decisions-title">قرارات العملاء اليوم</h2>
+            <p>تعذرت قراءة زوهو أو أحدث حالة للمتاجر؛ لم نعرض أي قرار افتراضي.</p>
+          </div>
+          <Btn size="sm" variant="ghost" onClick={() => onNavigate('/customer-money')}>فتح تحصيل العملاء</Btn>
+        </div>
+      </section>
+    );
+  }
+
+  const total = (rows, key) => rows.reduce((sum, row) => sum + Number(row[key] || 0), 0);
+  const lanes = [
+    {
+      key: 'stop', tone: 'danger', icon: '⏸', title: 'أوقف الشحن بعد المراجعة',
+      note: 'دفع لاحق · متجر نشط · عليه فواتير تجاوزت 30 يومًا',
+      rows: decisions.stopPostpaid, amountKey: 'over30', amountLabel: 'متأخر +30',
+      empty: 'لا توجد حسابات نشطة تحتاج إيقافًا الآن.',
+    },
+    {
+      key: 'activate', tone: 'success', icon: '▶', title: 'فعّل الحساب بعد المراجعة',
+      note: 'دفع لاحق · متجر غير نشط · لا توجد فواتير تتجاوز 30 يومًا',
+      rows: decisions.activatePostpaid, amountKey: 'debt', amountLabel: 'مستحق حالي',
+      empty: 'لا توجد حسابات مؤهلة للتفعيل الآن.',
+    },
+    {
+      key: 'deduct', tone: 'info', icon: '◌', title: 'راجع الخصم من الرصيد',
+      note: 'دفع مسبق · له رصيد في المنصة وفواتير مفتوحة في زوهو',
+      rows: decisions.deductPrepaid, amountKey: 'debt', amountLabel: 'فواتير مفتوحة',
+      empty: 'لا توجد أرصدة مسبقة قابلة للمراجعة الآن.',
+    },
+  ];
+  const otherCount = decisions.keepStopped.length + decisions.negativePrepaid.length + decisions.unlinkedFinance.length;
+
+  return (
+    <section id="customer-decisions" className="customer-decision-board" aria-labelledby="customer-decisions-title">
+      <header className="customer-decision-board__heading">
+        <div>
+          <span className="customer-decision-board__eyebrow">أولوية اليوم · عملاء ثم سيولة ثم مبيعات</span>
+          <h2 id="customer-decisions-title">قرارات تحتاج مراجعة الآن</h2>
+          <p>حالة المتجر من أحدث لقطة للمنصة، والفواتير من Zoho. لا ينفذ النظام إيقافًا أو تفعيلًا أو خصمًا تلقائيًا.</p>
+        </div>
+        <div className="customer-decision-board__actions">
+          <span className="customer-decision-source">زوهو + المنصة{formatSnapshotDate(decisions.snapshotAt)}</span>
+          <Btn size="sm" onClick={() => onNavigate('/customer-money')}>فتح مركز العملاء</Btn>
+        </div>
+      </header>
+
+      <div className="customer-decision-summary" aria-label="ملخص قرارات العملاء">
+        {lanes.map((lane) => (
+          <div className={`customer-decision-summary__item is-${lane.tone}`} key={lane.key}>
+            <strong>{lane.rows.length}</strong>
+            <span>{lane.title.replace(' بعد المراجعة', '')}</span>
+          </div>
+        ))}
+        <div className="customer-decision-summary__item is-neutral">
+          <strong>{otherCount}</strong>
+          <span>حالات تحقق إضافية</span>
+        </div>
+      </div>
+
+      <div className="customer-decision-lanes">
+        {lanes.map((lane) => (
+          <article className={`customer-decision-lane is-${lane.tone}`} key={lane.key}>
+            <header>
+              <span className="customer-decision-lane__icon" aria-hidden="true">{lane.icon}</span>
+              <div>
+                <h3>{lane.title}</h3>
+                <p>{lane.note}</p>
+              </div>
+              <span className="customer-decision-lane__count">{lane.rows.length}</span>
+            </header>
+            {lane.rows.length === 0 ? <p className="customer-decision-empty">{lane.empty}</p> : (
+              <div className="customer-decision-list">
+                {lane.rows.slice(0, 4).map((row) => (
+                  <button
+                    type="button"
+                    className="customer-decision-row"
+                    key={row.storeId || `${row.name}:${row.customerName}`}
+                    onClick={() => onNavigate(`/customer-money?customer=${encodeURIComponent(row.customerName || row.name)}`)}
+                  >
+                    <span className="customer-decision-row__name">{row.name}</span>
+                    <span className="customer-decision-row__meta">
+                      {lane.key === 'activate' && !row.hasFinancialRecord ? 'لا فواتير مفتوحة في زوهو' : `${lane.amountLabel}: ${fmt(row[lane.amountKey])} ر.س`}
+                    </span>
+                    <ChevronLeft size={16}/>
+                  </button>
+                ))}
+              </div>
+            )}
+            {lane.rows.length > 4 && (
+              <button type="button" className="customer-decision-show-all" onClick={() => onNavigate('/customer-money')}>
+                عرض كل الحالات ({lane.rows.length}) <ArrowLeftIcon />
+              </button>
+            )}
+            {lane.rows.length > 0 && <span className="customer-decision-lane__total">{fmt(total(lane.rows, lane.amountKey))} ر.س</span>}
+          </article>
+        ))}
+      </div>
+
+      {otherCount > 0 && (
+        <details className="customer-decision-other">
+          <summary>حالات لا تُنفّذ تلقائيًا وتحتاج تحققًا ({otherCount})</summary>
+          <div>
+            {decisions.keepStopped.length > 0 && <span>⏸ {decisions.keepStopped.length} دفع لاحق موقوف وله متأخرات +30: يبقى موقوفًا حتى التحصيل.</span>}
+            {decisions.negativePrepaid.length > 0 && <span>⚠ {decisions.negativePrepaid.length} دفع مسبق برصيد منصة سالب: راجع الرصيد قبل أي شحن.</span>}
+            {decisions.unlinkedFinance.length > 0 && <span>🔗 {decisions.unlinkedFinance.length} رصيد زوهو بلا ربط متجر مؤكد: اربطه قبل أي قرار تشغيلي.</span>}
+          </div>
+        </details>
+      )}
+    </section>
+  );
+}
+
+function ArrowLeftIcon() {
+  return <span aria-hidden="true">←</span>;
+}
+
+function formatSnapshotDate(value) {
+  if (!value) return '';
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? '' : ` · لقطة المتاجر ${date.toLocaleDateString('en-CA')}`;
 }
 
 function OperationsCommand({ data, vat, period, showCashPosition, onNavigate, onRefresh, onOpenBankDetails, onEditBank }) {
