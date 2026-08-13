@@ -29,6 +29,10 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(service, /const customerDecisionDataReadable/);
   assert.match(service, /customerDecisionFresh,/);
   assert.match(service, /merchantSnapshotSourceState/);
+  assert.match(service, /row\?\.store_id \?\? row\?\.storeId/);
+  assert.match(service, /row\?\.store_name \?\? row\?\.storeName/);
+  assert.match(service, /row\?\.billing_type \?\? row\?\.billingType/);
+  assert.match(service, /row\?\.platform_status \?\? row\?\.platformStatus/);
   assert.match(page, /fresh=\{data\.customerDecisionFresh\}/);
   assert.match(page, /customer-decision-stale/);
   assert.match(page, /أوقف الحسابات المتأخرة/);

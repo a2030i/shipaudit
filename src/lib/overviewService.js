@@ -42,40 +42,50 @@ const decisionKey = (value) => String(value || '')
   .replace(/[\s\-_|/\\.،,]+/g, '');
 const billingKey = (value) => decisionKey(value);
 const platformKey = (value) => decisionKey(value);
-const isPostpaid = (value) => ['دفعالاحق', 'postpaid'].includes(billingKey(value));
+const isPostpaid = (value) => ['دفعلاحق', 'postpaid'].includes(billingKey(value));
 const isPrepaid = (value) => ['دفعمسبق', 'prepaid'].includes(billingKey(value));
 const isPlatformActive = (value) => ['نشط', 'active', 'مفعل'].includes(platformKey(value));
 const isPlatformInactive = (value) => ['غيرنشط', 'inactive', 'موقوف', 'متوقف'].includes(platformKey(value));
 
-function buildCustomerDecisions(customerMoney, merchantSnapshot) {
+// Merchant snapshots are raw database rows (snake_case), while
+// customer_money_dashboard is mapped by pnlService to the React-facing
+// camelCase contract. Keep the join bilingual so an explicit store link is
+// never lost merely because the two read models use different field casing.
+const decisionStoreId = (row) => row?.store_id ?? row?.storeId ?? '';
+const decisionStoreName = (row) => row?.store_name ?? row?.storeName ?? '';
+const decisionBillingType = (row) => row?.billing_type ?? row?.billingType ?? '';
+const decisionPlatformStatus = (row) => row?.status ?? row?.platform_status ?? row?.platformStatus ?? '';
+const decisionWalletBalance = (row) => row?.wallet_balance ?? row?.walletBalance ?? 0;
+
+export function buildCustomerDecisions(customerMoney, merchantSnapshot) {
   const customers = Array.isArray(customerMoney?.customers) ? customerMoney.customers : [];
   const merchants = Array.isArray(merchantSnapshot?.merchants) ? merchantSnapshot.merchants : [];
-  const merchantById = new Map(merchants.filter(m => m.store_id).map(m => [String(m.store_id), m]));
+  const merchantById = new Map(merchants.filter(m => decisionStoreId(m)).map(m => [String(decisionStoreId(m)), m]));
   const merchantByName = new Map();
-  const moneyByStoreId = new Map(customers.filter(c => c.store_id).map(c => [String(c.store_id), c]));
+  const moneyByStoreId = new Map(customers.filter(c => decisionStoreId(c)).map(c => [String(decisionStoreId(c)), c]));
   const moneyByName = new Map();
   for (const merchant of merchants) {
-    const key = decisionKey(merchant.store_name);
+    const key = decisionKey(decisionStoreName(merchant));
     if (key) merchantByName.set(key, merchantByName.has(key) ? null : merchant);
   }
   for (const customer of customers) {
-    const key = decisionKey(customer.store_name || customer.name);
+    const key = decisionKey(decisionStoreName(customer) || customer.name);
     if (key) moneyByName.set(key, moneyByName.has(key) ? null : customer);
   }
-  const merchantFor = (customer) => (customer.store_id && merchantById.get(String(customer.store_id)))
-    || merchantByName.get(decisionKey(customer.store_name || customer.name)) || null;
-  const moneyFor = (merchant) => (merchant.store_id && moneyByStoreId.get(String(merchant.store_id)))
-    || moneyByName.get(decisionKey(merchant.store_name)) || null;
+  const merchantFor = (customer) => (decisionStoreId(customer) && merchantById.get(String(decisionStoreId(customer))))
+    || merchantByName.get(decisionKey(decisionStoreName(customer) || customer.name)) || null;
+  const moneyFor = (merchant) => (decisionStoreId(merchant) && moneyByStoreId.get(String(decisionStoreId(merchant))))
+    || moneyByName.get(decisionKey(decisionStoreName(merchant))) || null;
   const asDecision = (merchant, customer = null) => ({
-    storeId: merchant?.store_id || customer?.store_id || '',
-    name: merchant?.store_name || customer?.store_name || customer?.name || 'عميل غير مسمى',
-    customerName: customer?.name || merchant?.store_name || '',
-    billingType: merchant?.billing_type || customer?.billing_type || '',
-    platformStatus: merchant?.status || customer?.platform_status || '',
+    storeId: decisionStoreId(merchant) || decisionStoreId(customer),
+    name: decisionStoreName(merchant) || decisionStoreName(customer) || customer?.name || 'عميل غير مسمى',
+    customerName: customer?.name || decisionStoreName(merchant),
+    billingType: decisionBillingType(merchant) || decisionBillingType(customer),
+    platformStatus: decisionPlatformStatus(merchant) || decisionPlatformStatus(customer),
     debt: decisionNumber(customer?.owed),
     over30: customer ? decisionNumber(customer.b1) + decisionNumber(customer.b2) + decisionNumber(customer.b3) : 0,
     invoiceCount: decisionNumber(customer?.inv_cnt),
-    walletBalance: decisionNumber(merchant?.wallet_balance ?? customer?.wallet_balance),
+    walletBalance: decisionNumber(decisionWalletBalance(merchant) ?? decisionWalletBalance(customer)),
     hasFinancialRecord: !!customer,
   });
   const stopPostpaid = [], activatePostpaid = [], deductPrepaid = [];
@@ -88,7 +98,7 @@ function buildCustomerDecisions(customerMoney, merchantSnapshot) {
       if (decisionNumber(customer.owed) > 0.5 || decisionNumber(customer.inv_cnt) > 0) unlinkedFinance.push(asDecision(null, customer));
       continue;
     }
-    processedMerchantIds.add(String(merchant.store_id || merchant.id || merchant.store_name));
+    processedMerchantIds.add(String(decisionStoreId(merchant) || merchant.id || decisionStoreName(merchant)));
     const row = asDecision(merchant, customer);
     if (isPostpaid(row.billingType) && isPlatformActive(row.platformStatus) && row.over30 > 0.5 && row.invoiceCount > 0) stopPostpaid.push(row);
     if (isPostpaid(row.billingType) && isPlatformInactive(row.platformStatus) && row.over30 > 0.5) keepStopped.push(row);
@@ -96,13 +106,13 @@ function buildCustomerDecisions(customerMoney, merchantSnapshot) {
     if (isPrepaid(row.billingType) && row.walletBalance < -0.5) negativePrepaid.push(row);
   }
   for (const merchant of merchants) {
-    const id = String(merchant.store_id || merchant.id || merchant.store_name);
+    const id = String(decisionStoreId(merchant) || merchant.id || decisionStoreName(merchant));
     if (processedMerchantIds.has(id)) continue;
     const money = moneyFor(merchant);
-    if (isPostpaid(merchant.billing_type) && isPlatformInactive(merchant.status) && (!money || decisionNumber(money.b1) + decisionNumber(money.b2) + decisionNumber(money.b3) <= 0.5)) {
+    if (isPostpaid(decisionBillingType(merchant)) && isPlatformInactive(decisionPlatformStatus(merchant)) && (!money || decisionNumber(money.b1) + decisionNumber(money.b2) + decisionNumber(money.b3) <= 0.5)) {
       activatePostpaid.push(asDecision(merchant, money || null));
     }
-    if (isPrepaid(merchant.billing_type) && decisionNumber(merchant.wallet_balance) < -0.5) negativePrepaid.push(asDecision(merchant, money || null));
+    if (isPrepaid(decisionBillingType(merchant)) && decisionNumber(decisionWalletBalance(merchant)) < -0.5) negativePrepaid.push(asDecision(merchant, money || null));
   }
   for (const customer of customers) {
     const merchant = merchantFor(customer);
