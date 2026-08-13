@@ -134,9 +134,11 @@ test('overview month controls stay compact instead of inheriting the generic act
   const css = await read('src/workspace-layout.css');
 
   assert.match(overview, /className="overview-period-actions"/);
+  assert.match(overview, /className="overview-period-actions__navigation"/);
   assert.match(css, /\.overview-page > \.page-hero-band\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) auto/);
   assert.match(css, /\.overview-page \.overview-period-actions\s*\{[\s\S]*display:\s*flex\s*!important/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.overview-page \.overview-period-actions\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,/);
+  assert.match(css, /\.overview-period-actions__navigation\s*\{[\s\S]*display:\s*flex\s*!important/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.overview-page \.overview-period-actions\s*\{[\s\S]*grid-template-columns:\s*auto\s+repeat\(2,/);
 });
 
 test('store activation hero keeps readable contrast and a compact mobile metric grid', async () => {

@@ -5977,6 +5977,13 @@ tbody tr,
   white-space: nowrap !important;
 }
 
+.overview-page .overview-period-actions__navigation {
+  display: flex !important;
+  align-items: center;
+  gap: 6px !important;
+  width: auto !important;
+}
+
 @media (max-width: 768px) {
   .overview-page > .page-hero-band {
     display: flex !important;
@@ -5991,8 +5998,23 @@ tbody tr,
 
   .overview-page .overview-period-actions {
     display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    grid-template-columns: auto repeat(2, minmax(0, 1fr)) !important;
     width: 100% !important;
+  }
+
+  .overview-page .overview-period-actions__navigation {
+    grid-column: auto;
+    width: auto !important;
+  }
+
+  .overview-page .overview-period-actions__navigation .ui-btn {
+    width: 38px !important;
+    min-width: 38px;
+    padding-inline: 0 !important;
+  }
+
+  .overview-page .overview-period-actions__navigation + .ui-btn:last-child {
+    grid-column: span 2;
   }
 
   .overview-page .overview-period-actions .ui-btn {

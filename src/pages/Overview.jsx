@@ -176,14 +176,16 @@ export default function Overview({ carriers = [], isActive = true }) {
         meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={
           <div className="overview-period-actions" aria-label="التحكم في فترة الملخص">
-            <Btn size="sm" variant="ghost" onClick={goPrev} title="الشهر السابق">
-              ‹
-            </Btn>
-            {!isCurrent && (
-              <Btn size="sm" variant="ghost" onClick={goNext} title="الشهر التالي">
-                ›
+            <div className="overview-period-actions__navigation" aria-label="التنقل بين الأشهر">
+              <Btn size="sm" variant="ghost" onClick={goPrev} title="الشهر السابق">
+                ‹
               </Btn>
-            )}
+              {!isCurrent && (
+                <Btn size="sm" variant="ghost" onClick={goNext} title="الشهر التالي">
+                  ›
+                </Btn>
+              )}
+            </div>
             {!isCurrent && (
               <Btn size="sm" variant="ghost" onClick={() => setPeriod(currentPeriod())}>
                 العودة للشهر الحالي
