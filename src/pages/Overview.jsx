@@ -24,6 +24,7 @@ import {
   ArrowDownCircle, ArrowUpCircle, ChevronLeft, Info,
   Heart, Shield, ArrowRight, Target, Clock3,
   CheckCircle2, Zap, Receipt,
+  Download,
 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
@@ -215,6 +216,8 @@ export default function Overview({ carriers = [], isActive = true }) {
           <Btn size="sm" variant="ghost" onClick={refresh}>حاول مجدداً</Btn>
         </div>
       )}
+
+      <ExecutivePulse data={data} onNavigate={navigate}/>
 
       <CustomerDecisionBoard
         decisions={data.customerDecisions}
@@ -708,7 +711,68 @@ function CustomerPortfolioFocus({ data, onNavigate }) {
   );
 }
 
+function ExecutivePulse({ data, onNavigate }) {
+  const cash = data?.cashPosition || {};
+  const decisions = data?.customerDecisions;
+  const decisionCount = decisions
+    ? decisions.stopPostpaid.length + decisions.activatePostpaid.length + decisions.deductPrepaid.length
+    : null;
+  const items = [
+    {
+      key: 'ar', tone: 'blue', label: 'مستحقات العملاء',
+      value: cash.totalAR == null ? '—' : fmtCompact(Number(cash.totalAR)),
+      unit: cash.totalAR == null ? '' : 'ر.س',
+      detail: cash.arSource === 'zoho' ? 'قراءة مباشرة من زوهو' : 'آخر قراءة مالية متاحة',
+      icon: <Users size={19}/>, action: () => onNavigate('/customer-money'),
+    },
+    {
+      key: 'bank', tone: 'green', label: 'السيولة البنكية',
+      value: cash.bankBalance == null ? '—' : fmtCompact(Number(cash.bankBalance)),
+      unit: cash.bankBalance == null ? '' : 'ر.س',
+      detail: cash.bankBalanceComplete === false ? 'تحتاج مراجعة اكتمال البنوك' : 'آخر أرصدة ختامية معتمدة',
+      icon: <Wallet size={19}/>, action: () => onNavigate('/money?tab=banks'),
+    },
+    {
+      key: 'decisions', tone: decisionCount ? 'red' : 'green', label: 'قرارات العملاء اليوم',
+      value: decisionCount == null ? '—' : String(decisionCount),
+      unit: decisionCount == null ? '' : 'حالة',
+      detail: decisionCount ? 'إيقاف أو تشغيل أو خصم يحتاج مراجعة' : 'لا توجد قرارات عاجلة',
+      icon: <Zap size={19}/>, action: () => document.getElementById('customer-decisions')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+    },
+    {
+      key: 'growth', tone: 'violet', label: 'المبيعات والنمو',
+      value: 'فتح', unit: 'المركز',
+      detail: 'الفرص والحملات ومتابعة التحويل',
+      icon: <Target size={19}/>, action: () => onNavigate('/sales'),
+    },
+  ];
+
+  return (
+    <section className="overview-executive-pulse" aria-label="ملخص مركز العمليات">
+      <div className="overview-executive-pulse__heading">
+        <div>
+          <span>مركز العمليات</span>
+          <h2>ما يحتاج انتباهك الآن</h2>
+        </div>
+        <button type="button" onClick={() => onNavigate('/tasks')}>مهام وقرارات اليوم <ChevronLeft size={15}/></button>
+      </div>
+      <div className="overview-executive-pulse__grid">
+        {items.map((item) => (
+          <button type="button" className={`overview-pulse-card is-${item.tone}`} key={item.key} onClick={item.action}>
+            <span className="overview-pulse-card__icon">{item.icon}</span>
+            <span className="overview-pulse-card__label">{item.label}</span>
+            <strong>{item.value} <small>{item.unit}</small></strong>
+            <span className="overview-pulse-card__detail">{item.detail}</span>
+            <ChevronLeft className="overview-pulse-card__arrow" size={17}/>
+          </button>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
+  const [exportingStopList, setExportingStopList] = useState(false);
   if (!available || !decisions) {
     return (
       <section id="customer-decisions" className="customer-decision-board is-unavailable" aria-labelledby="customer-decisions-title">
@@ -746,6 +810,79 @@ function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
     },
   ];
   const otherCount = decisions.keepStopped.length + decisions.negativePrepaid.length + decisions.unlinkedFinance.length;
+  const stopRowsWithStoreId = decisions.stopPostpaid.filter((row) => String(row.storeId || '').trim());
+  const stopRowsMissingStoreId = decisions.stopPostpaid.length - stopRowsWithStoreId.length;
+
+  const exportLamhaStopList = async () => {
+    if (!stopRowsWithStoreId.length) {
+      toast('لا توجد حسابات متأخرة مرتبطة برقم متجر قابل للتصدير', 'info');
+      return;
+    }
+    setExportingStopList(true);
+    try {
+      const [xlsxModule, { rtl }, { persistAndDownloadExport }] = await Promise.all([
+        import('xlsx'),
+        import('../lib/xlsxRtl.js'),
+        import('../lib/internalExportsService.js'),
+      ]);
+      const XLSX = xlsxModule.default || xlsxModule;
+      const exportedAt = new Date();
+      const dateLabel = exportedAt.toISOString().slice(0, 10);
+
+      // The first sheet is intentionally upload-ready: Lamha only needs the
+      // store identifier. The second sheet keeps the financial evidence for
+      // review without polluting the upload payload.
+      const uploadSheet = XLSX.utils.aoa_to_sheet([
+        ['رقم المتجر'],
+        ...stopRowsWithStoreId.map((row) => [String(row.storeId)]),
+      ]);
+      uploadSheet['!cols'] = [{ wch: 18 }];
+
+      const reviewSheet = XLSX.utils.aoa_to_sheet([
+        ['رقم المتجر', 'اسم المتجر', 'العميل في زوهو', 'نوع الفوترة', 'حالة المتجر', 'المتأخر أكثر من 30 يوم (ر.س)', 'إجمالي المديونية (ر.س)', 'عدد الفواتير', 'تاريخ لقطة المتاجر'],
+        ...stopRowsWithStoreId.map((row) => [
+          String(row.storeId),
+          row.name || '',
+          row.customerName || '',
+          row.billingType || '',
+          row.platformStatus || '',
+          Number(row.over30 || 0),
+          Number(row.debt || 0),
+          Number(row.invoiceCount || 0),
+          decisions.snapshotAt ? String(decisions.snapshotAt).slice(0, 10) : '',
+        ]),
+      ]);
+      reviewSheet['!cols'] = [
+        { wch: 18 }, { wch: 34 }, { wch: 34 }, { wch: 14 }, { wch: 14 },
+        { wch: 24 }, { wch: 22 }, { wch: 14 }, { wch: 18 },
+      ];
+      for (let rowIndex = 1; rowIndex <= stopRowsWithStoreId.length; rowIndex += 1) {
+        for (const column of ['F', 'G']) reviewSheet[`${column}${rowIndex + 1}`].z = '#,##0.00';
+        reviewSheet[`H${rowIndex + 1}`].z = '#,##0';
+      }
+
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, uploadSheet, 'رفع الإيقاف إلى لمحة');
+      XLSX.utils.book_append_sheet(workbook, reviewSheet, 'مراجعة القرار');
+      await persistAndDownloadExport({
+        wb: rtl(workbook),
+        fileName: `إيقاف_متاجر_لمحة_${dateLabel}.xlsx`,
+        kind: 'lamha_store_stop_list',
+        rowCount: stopRowsWithStoreId.length,
+        total: total(stopRowsWithStoreId, 'over30'),
+      });
+      toast(
+        stopRowsMissingStoreId
+          ? `صُدّر ${stopRowsWithStoreId.length} متجر · ${stopRowsMissingStoreId} بلا رقم متجر لم يدخل الملف`
+          : `صُدّر ${stopRowsWithStoreId.length} متجر للإيقاف في لمحة`,
+        stopRowsMissingStoreId ? 'warning' : 'success',
+      );
+    } catch (error) {
+      toast(`تعذر تصدير ملف الإيقاف: ${error.message}`, 'error');
+    } finally {
+      setExportingStopList(false);
+    }
+  };
 
   return (
     <section id="customer-decisions" className={`customer-decision-board${fresh ? '' : ' is-stale'}`} aria-labelledby="customer-decisions-title">
@@ -819,7 +956,28 @@ function CustomerDecisionBoard({ decisions, available, fresh, onNavigate }) {
                 عرض كل الحالات ({lane.rows.length}) <ArrowLeftIcon />
               </button>
             )}
-            {lane.rows.length > 0 && <span className="customer-decision-lane__total">{fmt(total(lane.rows, lane.amountKey))} ر.س</span>}
+            {lane.rows.length > 0 && (
+              <footer className="customer-decision-lane__footer">
+                <span className="customer-decision-lane__total">{fmt(total(lane.rows, lane.amountKey))} ر.س</span>
+                {lane.key === 'stop' && (
+                  <button
+                    type="button"
+                    className="customer-decision-export"
+                    onClick={exportLamhaStopList}
+                    disabled={exportingStopList || stopRowsWithStoreId.length === 0}
+                    title="Excel جاهز لرفع أرقام المتاجر في لمحة، مع ورقة مستقلة للمراجعة المالية"
+                  >
+                    <Download size={14}/>
+                    {exportingStopList ? 'جاري التصدير…' : `تصدير ملف إيقاف لمحة (${stopRowsWithStoreId.length})`}
+                  </button>
+                )}
+              </footer>
+            )}
+            {lane.key === 'stop' && stopRowsMissingStoreId > 0 && (
+              <p className="customer-decision-export-warning">
+                {stopRowsMissingStoreId} عميل بلا رقم متجر — ظاهر للمراجعة ولن يدخل ملف الرفع.
+              </p>
+            )}
           </article>
         ))}
       </div>
