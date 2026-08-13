@@ -6007,7 +6007,7 @@ tbody tr,
     width: auto !important;
   }
 
-  .overview-page .overview-period-actions__navigation .ui-btn {
+  .overview-page .overview-period-actions .overview-period-actions__navigation .ui-btn {
     width: 38px !important;
     min-width: 38px;
     padding-inline: 0 !important;
