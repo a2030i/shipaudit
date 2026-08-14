@@ -128,7 +128,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <PageHeader
           icon={<Activity size={22}/>}
           iconColor="var(--accent3)"
-          title="مركز العمليات"
+          title="لوحة العمل"
           subtitle="تعذّر جلب الملخص المالي — لم نعرض أصفاراً بديلة حتى لا تُفهم كأرقام حقيقية"
         />
         <div className="data-load-error" role="alert">
@@ -148,7 +148,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       <div className="overview-page workspace-page">
         <PageHeader
           icon={<Activity size={22}/>} iconColor="var(--accent3)"
-          title="مركز العمليات"
+          title="لوحة العمل"
           subtitle="قرارات العملاء والسيولة والنمو في شاشة واحدة"
         />
         <WorkspaceLoadingState title="جارٍ إعداد الملخص التنفيذي" source="مصادر التشغيل والمالية" rows={4}/>
@@ -172,7 +172,7 @@ export default function Overview({ carriers = [], isActive = true }) {
       <PageHeader
         icon={<Activity size={22}/>}
         iconColor="var(--accent3)"
-        title="مركز العمليات"
+        title="لوحة العمل"
         subtitle="قرارات العملاء والسيولة والنمو في شاشة واحدة"
         meta={`${fmtMonth(period)} · مقارنة بـ ${fmtMonth(data.prevPeriod)}`}
         actions={

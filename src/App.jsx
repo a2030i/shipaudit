@@ -14,7 +14,6 @@ import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
 import { NAV_SECTIONS as NAV_SECTION_MODEL, NAV_GROUPS as NAV_GROUP_MODEL, applyNavigationIA } from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
-import { ACCOUNTING_CYCLE_STAGES } from './lib/accountingCycleStages.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
 const CarrierManager = lazy(() => import('./pages/CarrierManager.jsx'));
@@ -240,7 +239,7 @@ const ROUTE_ITEMS = [
 //   2. The active indicator on items in that section
 //   3. The subtle left-edge bar on the active item
 const NAV_ITEMS = applyNavigationIA(ROUTE_ITEMS);
-const SECTION_ICONS = { Truck, Users, Target, DollarSign, FileCheck, Settings };
+const SECTION_ICONS = { Truck, Users, Target, DollarSign, FileCheck, Settings, Landmark, LifeBuoy };
 const NAV_SECTIONS = NAV_SECTION_MODEL.map(section => ({
   ...section,
   icon: SECTION_ICONS[section.icon] || Layers,
@@ -366,7 +365,7 @@ function AppInner({ theme, toggleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle', ...CENTER_ROUTES];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -465,16 +464,6 @@ function AppInner({ theme, toggleTheme }) {
     setMobileOpen(false);
   };
 
-  const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => {
-    if (tab.adminOnly && !isAdmin) return false;
-    return isAdmin
-      || (tab.anyPerm ? tab.anyPerm.some(permission => can(permission)) : (!tab.perm || can(tab.perm)));
-  });
-
-  const subTabPath = (item, tab) => (
-    tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`
-  );
-
   // ── Audit results: keep the fresh draft in memory. sessionStorage is
   // best-effort only: large audits can exceed the browser quota, and that
   // must never block navigation to /results.
@@ -551,13 +540,13 @@ function AppInner({ theme, toggleTheme }) {
   // Prefer a dedicated route over a legacy sub-tab match. For example, /bank
   // is a first-class finance destination even though the historical money
   // workspace still keeps /bank as a compatible legacy path.
-  const currentNavItem = visibleNav.find(item => location.pathname === item.path)
-    || visibleNav.find(item => activeFor(item));
+  // Hidden compatibility/detail routes still belong to a workspace. Resolve the
+  // active item from the permission-filtered set so a customer/carrier detail
+  // keeps the correct finance context without becoming another menu entry.
+  const currentNavItem = permissionNav.find(item => location.pathname === item.path)
+    || permissionNav.find(item => activeFor(item));
   const currentSubTab = currentNavItem ? subTabOf(currentNavItem) : null;
   const currentSection = NAV_SECTIONS.find(section => section.id === currentNavItem?.section);
-  const currentGroup = (NAV_GROUP_MODEL[currentSection?.id] || [])
-    .find(group => group.id === currentNavItem?.navGroup);
-  const currentContextTabs = currentNavItem ? visibleSubTabsFor(currentNavItem) : [];
   const centerRouteSection = NAV_SECTIONS.find(section => section.path === pathname);
   const contextSection = centerRouteSection || currentSection;
   const contextItems = contextSection
@@ -565,21 +554,18 @@ function AppInner({ theme, toggleTheme }) {
       .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
     : [];
   const contextGroups = contextSection ? groupNavItems(contextSection.id, contextItems, false) : [];
-  const accountingStageId = location.pathname === '/accounting-cycle'
-    ? new URLSearchParams(location.search).get('stage')
-    : null;
-  const accountingStages = ACCOUNTING_CYCLE_STAGES.filter(stage => isAdmin || can(stage.permission));
   const hasContextSidebar = Boolean(contextSection && contextItems.length);
-  const currentContextValue = accountingStageId
-    ? `/accounting-cycle?stage=${encodeURIComponent(accountingStageId)}`
-    : (currentSubTab
-      && (location.pathname !== currentNavItem?.path || new URLSearchParams(location.search).has('tab'))
-      ? subTabPath(currentNavItem, currentSubTab)
-      : (currentNavItem?.path || ''));
+  const currentContextValue = currentNavItem?.path || contextItems[0]?.path || '';
   const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
     ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'لمحة');
+  const quickActionLabel = ({
+    finance: 'إجراء مالي جديد',
+    sales: 'إضافة فرصة أو تواصل',
+    support: 'فتح تذكرة عميل',
+    admin: 'إجراء إداري',
+  })[contextSection?.id] || 'إجراء جديد';
 
   return (
     <>
@@ -663,8 +649,8 @@ function AppInner({ theme, toggleTheme }) {
                 تواصل مع المدير لإضافة الصفحات.
               </div>
             )}
-            {/* Pinned top-level items (no section header) */}
-            {visibleNav.filter(n => n.id === 'overview').map(n => (
+            {/* عناصر عامة فقط عند تعريفها صراحةً؛ الرئيسية المالية ليست صفًا مكررًا هنا. */}
+            {visibleNav.filter(n => n.pinned).map(n => (
               <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
             ))}
 
@@ -752,12 +738,7 @@ function AppInner({ theme, toggleTheme }) {
             <ContextSectionNavigation
               groups={contextGroups}
               currentNavItem={currentNavItem}
-              currentContextTabs={currentContextTabs}
-              currentSubTab={currentSubTab}
-              accountingStages={accountingStages}
-              accountingStageId={accountingStageId}
               onNavigate={goto}
-              subTabPath={subTabPath}
             />
           </aside>
         )}
@@ -772,11 +753,9 @@ function AppInner({ theme, toggleTheme }) {
             </button>
 
             <div className="topbar-route">
-              {(currentSection || currentGroup) && (
+              {currentSection && (
                 <div className="topbar-breadcrumb" aria-label="مسار الصفحة">
-                  {currentSection && <span>{currentSection.label}</span>}
-                  {currentSection && currentGroup && <ChevronLeft size={12} aria-hidden="true"/>}
-                  {currentGroup && <span>{currentGroup.label}</span>}
+                  <span>{currentSection.label}</span>
                 </div>
               )}
               <strong className="topbar-title">{currentTitle}</strong>
@@ -802,7 +781,7 @@ function AppInner({ theme, toggleTheme }) {
             </div>
 
             <button type="button" className="topbar-quick-action" onClick={() => setQuickActionOpen(true)}>
-              <Upload size={16}/><span>إجراء جديد</span>
+              <Upload size={16}/><span>{quickActionLabel}</span>
             </button>
 
             {/* Theme toggle */}
@@ -829,27 +808,9 @@ function AppInner({ theme, toggleTheme }) {
               >
                 {contextGroups.map(group => (
                   <optgroup key={group.id} label={group.label || contextSection.label}>
-                    {group.items.flatMap(item => {
-                      const tabs = visibleSubTabsFor(item);
-                      const options = [
-                        <option key={item.path} value={item.path}>{item.label}</option>,
-                      ];
-                      if (item.id === 'accounting-cycle') {
-                        accountingStages.forEach(stage => options.push(
-                          <option key={`${item.id}-${stage.id}`} value={`/accounting-cycle?stage=${encodeURIComponent(stage.id)}`}>
-                            {'↳ '}{stage.label}
-                          </option>,
-                        ));
-                      } else if (tabs.length > 1) {
-                        tabs.forEach(tab => {
-                          const path = subTabPath(item, tab);
-                          if (path !== item.path) options.push(
-                            <option key={`${item.id}-${tab.tabId}`} value={path}>{'↳ '}{tab.label}</option>,
-                          );
-                        });
-                      }
-                      return options;
-                    })}
+                    {group.items.map(item => (
+                      <option key={item.path} value={item.path}>{item.label}</option>
+                    ))}
                   </optgroup>
                 ))}
               </select>
@@ -871,6 +832,11 @@ function AppInner({ theme, toggleTheme }) {
                 </PageSlot>
               );
             })}
+
+            {/* روابط المراكز القديمة تبقى فعالة من دون إبقاء هيكلها القديم في القائمة. */}
+            {pathname === '/workspace/customers' && <Navigate to="/customer-360" replace/>}
+            {pathname === '/workspace/operations' && <Navigate to="/hub" replace/>}
+            {pathname === '/workspace/reports' && <Navigate to="/reports" replace/>}
 
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
@@ -1229,12 +1195,7 @@ function PageSlot({ active, scroll = false, children }) {
 function ContextSectionNavigation({
   groups,
   currentNavItem,
-  currentContextTabs,
-  currentSubTab,
-  accountingStages,
-  accountingStageId,
   onNavigate,
-  subTabPath,
 }) {
   return (
     <nav className="context-sidebar__nav">
@@ -1244,8 +1205,6 @@ function ContextSectionNavigation({
           {group.items.map(item => {
             const active = currentNavItem?.id === item.id;
             const Icon = item.icon || FileText;
-            const tabs = active ? currentContextTabs : [];
-            const showStages = active && item.id === 'accounting-cycle';
             return (
               <div className={`context-page-entry${active ? ' active' : ''}`} key={item.id}>
                 <button
@@ -1258,41 +1217,6 @@ function ContextSectionNavigation({
                   <span>{item.label}</span>
                   <ChevronLeft className="context-nav-item__arrow" size={15}/>
                 </button>
-                {active && tabs.length > 1 && (
-                  <div className="context-subnav" aria-label={`داخل ${item.label}`}>
-                    {tabs.map(tab => {
-                      const TabIcon = tab.icon || Icon;
-                      const tabActive = currentSubTab?.tabId === tab.tabId;
-                      return (
-                        <button
-                          key={tab.tabId}
-                          type="button"
-                          className={tabActive ? 'active' : ''}
-                          onClick={() => onNavigate(subTabPath(item, tab))}
-                        >
-                          <TabIcon size={14}/><span>{tab.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-                {showStages && (
-                  <div className="context-subnav accounting-stage-nav" aria-label="مراحل الدورة المحاسبية">
-                    {accountingStages.map((stage, index) => {
-                      const stageActive = accountingStageId === stage.id || (!accountingStageId && index === 0);
-                      return (
-                        <button
-                          key={stage.id}
-                          type="button"
-                          className={stageActive ? 'active' : ''}
-                          onClick={() => onNavigate(`/accounting-cycle?stage=${encodeURIComponent(stage.id)}`)}
-                        >
-                          <b>{index + 1}</b><span>{stage.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
               </div>
             );
           })}
