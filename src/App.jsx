@@ -129,12 +129,13 @@ const ROUTE_ITEMS = [
 
   // ── نظام الأموال — هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل ──
   { id: 'pnl',       path: '/pnl',      label: 'الربح الفعلي',  icon: TrendingUp, section: 'money', navOrder: 30, permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permAny: ['cod.view', 'payments.view', 'bank.view'],
+  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permAny: ['cod.view', 'payments.view'],
     subTabs: [
       { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements', perm: 'cod.view' },
       { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments', perm: 'payments.view' },
       { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank', perm: 'bank.view' },
     ] },
+  { id: 'bank',      path: '/bank',     label: 'الحسابات البنكية', icon: Wallet, section: 'money', navOrder: 20, permKey: 'bank.view' },
   { id: 'cash-aging', path: '/cash-aging', label: 'أعمار التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
   { id: 'forecast',   path: '/forecast',   label: 'توقّع السيولة', icon: TrendingUp, section: 'money', navOrder: 50, permKey: 'forecast.view' },
 
@@ -548,7 +549,11 @@ function AppInner({ theme, toggleTheme }) {
       });
   const visibleNav = permissionNav.filter(n => !n.navHidden);
 
-  const currentNavItem = visibleNav.find(item => activeFor(item));
+  // Prefer a dedicated route over a legacy sub-tab match. For example, /bank
+  // is a first-class finance destination even though the historical money
+  // workspace still keeps /bank as a compatible legacy path.
+  const currentNavItem = visibleNav.find(item => location.pathname === item.path)
+    || visibleNav.find(item => activeFor(item));
   const currentSubTab = currentNavItem ? subTabOf(currentNavItem) : null;
   const currentSection = NAV_SECTIONS.find(section => section.id === currentNavItem?.section);
   const currentGroup = (NAV_GROUP_MODEL[currentSection?.id] || [])

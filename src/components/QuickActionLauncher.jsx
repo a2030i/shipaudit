@@ -1,4 +1,4 @@
-import { Building2, FileSpreadsheet, HandCoins, Target, Upload, X } from 'lucide-react';
+import { Building2, FileSpreadsheet, HandCoins, Landmark, Target, Upload, X } from 'lucide-react';
 
 const ACTIONS = [
   {
@@ -22,6 +22,13 @@ const ACTIONS = [
     description: 'فتح مديونيات العملاء والحملة المناسبة.',
     icon: HandCoins,
     path: '/customer-money',
+  },
+  {
+    id: 'bank',
+    title: 'مراجعة الحسابات البنكية',
+    description: 'فتح كشوف الحساب والأرصدة والعمليات غير المصنفة.',
+    icon: Landmark,
+    path: '/bank',
   },
   {
     id: 'lead',

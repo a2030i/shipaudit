@@ -45,7 +45,7 @@ export default function CenterLanding({ section, groups, onNavigate, onQuickActi
                     <span className="center-landing__card-icon"><ItemIcon size={19}/></span>
                     <span>
                       <strong>{item.label}</strong>
-                      <small>فتح مساحة العمل</small>
+                      <small>{item.description || 'فتح مساحة العمل'}</small>
                     </span>
                     <ArrowLeft size={17}/>
                   </button>

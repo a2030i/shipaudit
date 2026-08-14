@@ -239,6 +239,11 @@ test('work areas use one primary navigation and center landing pages', async () 
   assert.doesNotMatch(navigation, /'collections-hub':\s*\{[^}]*section: 'customers'/);
   assert.match(navigation, /'hatif-settings':\s*\{[^}]*section: 'settings'[^}]*group: 'integration_settings'/);
   assert.match(navigation, /id: 'cash_ops', label: 'البنوك والسيولة'/);
+  assert.match(navigation, /bank:\s*\{[^}]*label: 'الحسابات البنكية'[^}]*group: 'cash_ops'/);
+  assert.match(navigation, /money:\s*\{[^}]*label: 'تحصيل شركات الشحن ومدفوعات الناقلين'[^}]*group: 'carrier_cash_ops'/);
+  assert.doesNotMatch(navigation, /money:\s*\{[^}]*group: 'cash_ops'/);
+  assert.match(app, /id: 'bank',\s+path: '\/bank'[^\n]*permKey: 'bank\.view'/);
+  assert.match(app, /visibleNav\.find\(item => location\.pathname === item\.path\)\s*\|\|\s*visibleNav\.find\(item => activeFor\(item\)\)/);
   assert.match(navigation, /employees:\s*\{[^}]*visible: true/);
   assert.match(navigation, /carriers:\s*\{[^}]*visible: true/);
   assert.match(navigation, /contracts:\s*\{[^}]*visible: true/);
