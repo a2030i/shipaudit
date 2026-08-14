@@ -1152,13 +1152,10 @@ function PageSlot({ active, scroll = false, children }) {
   const seen = useRef(false);
   if (active) seen.current = true;
 
-  // ── (٢) تجميد المحتوى غير النشط ──
-  // كل تنقّل يغيّر `location` فيُعاد رسم AppInner ومعه كل الصفحات المركَّبة
-  // (props جديدة لكل PageSlot). بالاحتفاظ بمرجع آخر children رُسمت وهي نشطة،
-  // يرى React نفس عنصر JSX للصفحات الخاملة فيتخطّى إعادة رسمها كلياً.
-  const frozen = useRef(children);
-  if (active) frozen.current = children;
-  const content = active ? children : frozen.current;
+  // Keep the mounted page state while always passing the current route props.
+  // Freezing the last active JSX froze `isActive=true`, so hidden pages kept
+  // polling Supabase after navigation and could exhaust the statement timeout.
+  const content = children;
   return (
     <div className="page-slot" style={{
       position: 'absolute', inset: 0,

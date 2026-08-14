@@ -17,6 +17,8 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   const css = await read('src/mobile-scroll.css');
 
   assert.match(app, /scroll && <div className="page-slot-scroll-end"/);
+  assert.doesNotMatch(app, /const frozen = useRef\(children\)/);
+  assert.match(app, /const content = children/);
   assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.page-slot\s*\{[\s\S]*display:\s*block\s*!important/);
   assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
   assert.match(css, /--mobile-page-end-space:\s*calc\(144px \+ env\(safe-area-inset-bottom, 0px\)\)/);
