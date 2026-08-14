@@ -63,7 +63,7 @@ export function SettingsPage({ carriers = [], tab = 'ai' }) {
 
       {/* Data tab */}
       <div style={{display: tab==='data' ? 'block' : 'none'}}>
-        <Card style={{marginBottom:16}}>
+        <Card id="tahseel-integration" style={{marginBottom:16,scrollMarginTop:96}}>
           <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:14,flexWrap:'wrap'}}>
             <div style={{minWidth:0,flex:1}}>
               <h3 style={{fontSize:15,fontWeight:800,marginBottom:6}}>تحصيل — اتصال للقراءة فقط</h3>

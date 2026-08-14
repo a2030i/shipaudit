@@ -126,7 +126,8 @@ export const NAV_ITEM_IA = {
     section: 'admin', group: 'admin_work', order: 10, visible: true,
   },
   operations: {
-    label: 'التكاملات والمراقبة',
+    label: 'التكاملات',
+    description: 'Zoho ولمحة وتحصيل وهاتف وIVR من مركز تشغيل واحد',
     section: 'admin', group: 'admin_work', order: 20, visible: true,
   },
   'hatif-settings': {

@@ -221,8 +221,8 @@ const ROUTE_ITEMS = [
   { id: 'integrity',    path: '/integrity',    label: 'سلامة البيانات',     icon: FileCheck,     section: 'outreach', navOrder: 50, permKey: 'system.view_audit_log' },
   { id: 'activity-log', path: '/activity-log', label: 'سجل النظام',         icon: Activity,      section: 'outreach', navOrder: 60, permKey: 'system.view_audit_log' },
   { id: 'work-agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot, section: 'outreach', navOrder: 70, permKey: 'agents.view' },
-  { id: 'operations', path: '/operations', label: 'مركز التكاملات والتشغيل', icon: Activity, section: 'outreach', navOrder: 15,
-    permAny: ['agents.view', 'system.view_audit_log', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'webhook.view'],
+  { id: 'operations', path: '/operations', label: 'التكاملات', icon: Activity, section: 'outreach', navOrder: 15,
+    permAny: ['agents.view', 'system.view_audit_log', 'system.view_settings', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr', 'webhook.view'],
     subTabs: [
       { tabId: 'overview', label: 'مراقبة التكاملات', icon: Activity },
       { tabId: 'sources', label: 'مزامنة مصادر البيانات', icon: Layers, legacy: '/uploads', perm: 'uploads.view' },

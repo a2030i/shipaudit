@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, Bot, CheckCircle2, Clock3, Database,
-  ExternalLink, FileInput, MessageCircle, RefreshCw, RotateCcw,
-  ShieldCheck, SlidersHorizontal, Webhook, Workflow, XCircle,
+  ExternalLink, FileInput, Landmark, Link2,
+  MessageCircle, PhoneCall, RefreshCw, RotateCcw,
+  ShieldCheck, SlidersHorizontal, UploadCloud, Webhook, Workflow, XCircle,
 } from 'lucide-react';
 import { Btn, Card, PageHeader, Spinner } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -13,9 +14,19 @@ import { loadHatifCallSyncHealth, loadWhatsAppDeliveryHealth } from '../lib/what
 import { loadWebhookEvents, countWebhookStatuses } from '../lib/webhookService.js';
 import { loadCronHealth } from '../lib/integrityService.js';
 import { loadRecentAgentRuns, loadWorkAgents } from '../lib/workAgentService.js';
+import { probeTahseelConnection } from '../lib/tahseelService.js';
 import './OperationsCenter.css';
 
 const HOUR = 60 * 60 * 1000;
+
+const currentRiyadhPeriod = () => {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Riyadh', year: 'numeric', month: '2-digit',
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  return `${year}-${month}`;
+};
 
 const safeDate = (value) => {
   if (!value) return null;
@@ -90,6 +101,35 @@ function IntegrationCard({ item, onOpen }) {
   );
 }
 
+function IntegrationGateway({ item, onOpen }) {
+  const Icon = item.icon;
+  return (
+    <Card className={`operations-gateway is-${item.tone || 'blue'}`}>
+      <div className="operations-gateway__head">
+        <span className="operations-gateway__icon"><Icon size={21}/></span>
+        <div>
+          <h3>{item.title}</h3>
+          <p>{item.description}</p>
+        </div>
+        <span className="operations-gateway__mode">{item.mode}</span>
+      </div>
+      <div className="operations-gateway__actions">
+        {item.actions.map((action, index) => (
+          <button
+            key={action.path}
+            className={index === 0 ? 'is-primary' : ''}
+            onClick={() => onOpen(action.path)}
+          >
+            <span>{action.label}</span>
+            <ExternalLink size={14}/>
+          </button>
+        ))}
+      </div>
+      <small>{item.note}</small>
+    </Card>
+  );
+}
+
 function RunRow({ run, agentsById }) {
   const failed = Number(run.failed_count) || 0;
   const status = failed > 0 || run.status === 'failed' ? 'failed' : run.status === 'running' ? 'running' : 'success';
@@ -138,6 +178,7 @@ export default function OperationsCenter({ isActive = true }) {
   const [loading, setLoading] = useState(false);
   const [eventStatus, setEventStatus] = useState('all');
   const [eventSource, setEventSource] = useState('all');
+  const period = useMemo(currentRiyadhPeriod, []);
 
   const allowed = useCallback((permission) => isAdmin || can(permission), [can, isAdmin]);
 
@@ -152,6 +193,7 @@ export default function OperationsCenter({ isActive = true }) {
       crons: allowed('system.view_audit_log') ? loadCronHealth() : Promise.resolve([]),
       agents: allowed('agents.view') ? loadWorkAgents() : Promise.resolve([]),
       runs: allowed('agents.view') ? loadRecentAgentRuns(16) : Promise.resolve([]),
+      tahseel: allowed('system.view_settings') ? probeTahseelConnection() : Promise.resolve(null),
     };
     const keys = Object.keys(tasks);
     const results = await Promise.allSettled(Object.values(tasks));
@@ -174,6 +216,62 @@ export default function OperationsCenter({ isActive = true }) {
     if (!state) return null;
     const cards = [];
     const actions = [];
+    const gateways = [];
+
+    if (allowed('zoho.view')) {
+      gateways.push({
+        key: 'zoho-gateway', title: 'Zoho Books', icon: Database, tone: 'blue', mode: 'مزامنة وقراءة',
+        description: 'الفواتير والعملاء وزاتكا والحسابات البنكية من مصدرها المحاسبي.',
+        actions: [
+          { label: 'مزامنة زوهو', path: '/zoho-data?tab=overview' },
+          { label: 'البنوك والمطابقة', path: '/zoho-data?tab=banks' },
+        ],
+        note: 'المزامنة تحدّث النسخة المحلية؛ لا تُنشئ فاتورة أو دفعة من تلقاء نفسها.',
+      });
+    }
+
+    if (allowed('uploads.view')) {
+      gateways.push({
+        key: 'lamha-gateway', title: 'ملفات منصة لمحة', icon: UploadCloud, tone: 'green', mode: 'رفع وتشغيل',
+        description: 'حدّث دليل المتاجر، ثم ارفع أرقام وشحنات لمحة داخل دورة الشهر نفسها.',
+        actions: [
+          { label: 'رفع ملفات لمحة', path: `/accounting-cycle?period=${period}&stage=lamha_sources` },
+          { label: 'رفع شحنات لمحة', path: `/accounting-cycle?period=${period}&stage=lamha_shipments` },
+        ],
+        note: `الفترة التشغيلية الحالية ${period}، ويمكن تغييرها من رأس دورة المحاسب.`,
+      });
+    }
+
+    if (allowed('whatsapp.view_log') || allowed('whatsapp.configure') || allowed('campaigns.ivr')) {
+      const communicationActions = [];
+      if (allowed('campaigns.ivr') || allowed('whatsapp.configure')) {
+        communicationActions.push({ label: 'حملات IVR', path: '/whatsapp-settings?tab=ivr' });
+      }
+      if (allowed('whatsapp.configure')) {
+        communicationActions.push({ label: 'إعدادات هاتف', path: '/settings/hatif' });
+      }
+      if (!communicationActions.length) {
+        communicationActions.push({ label: 'سجل هاتف وواتساب', path: '/whatsapp-settings?tab=overview' });
+      }
+      gateways.push({
+        key: 'hatif-gateway', title: 'هاتف وIVR', icon: PhoneCall, tone: 'purple', mode: 'قنوات وحملات',
+        description: 'إدارة حملات الاتصال الآلي، القوالب، القنوات، وقراءة نتائج التواصل.',
+        actions: communicationActions.slice(0, 2),
+        note: 'تظهر إجراءات الإعداد أو التشغيل حسب صلاحيات الموظف الفعلية.',
+      });
+    }
+
+    if (allowed('system.view_settings')) {
+      gateways.push({
+        key: 'tahseel-gateway', title: 'منصة تحصيل', icon: Link2, tone: 'gold', mode: 'قراءة فقط',
+        description: 'اختبر الاتصال واقرأ العملاء والفواتير للمقارنة دون إنشاء أو تعديل أي سجل.',
+        actions: [
+          { label: 'اختبار وربط تحصيل', path: '/settings/data#tahseel-integration' },
+          { label: 'مراجعة بيانات التحصيل', path: '/customer-money' },
+        ],
+        note: 'الاتصال الحالي GET فقط، والمفاتيح محفوظة في أسرار الخادم.',
+      });
+    }
 
     if (allowed('zoho.view')) {
       const syncAt = state.zoho?.lastSyncAt;
@@ -249,6 +347,21 @@ export default function OperationsCenter({ isActive = true }) {
         note: 'الملف لا يُعد مكتملًا حتى يتحول إلى مراجعة أو تحصيل فعلي.',
       });
       if (failed || waiting) actions.push({ title: `عالج ${failed + waiting} ملفًا في صندوق الوارد`, path: '/webhook', tone: failed ? 'red' : 'gold' });
+    }
+
+    if (allowed('system.view_settings')) {
+      const tahseelReady = Boolean(state.tahseel);
+      cards.push({
+        key: 'tahseel', title: 'منصة تحصيل', subtitle: 'العملاء والفواتير وروابط بوابة السداد', icon: Landmark,
+        status: tahseelReady ? 'healthy' : 'unavailable', path: '/settings/data#tahseel-integration', action: 'فتح إعدادات تحصيل',
+        facts: [
+          { label: 'حالة الاتصال', value: tahseelReady ? 'متصل' : 'تعذّر التحقق', tone: tahseelReady ? 'green' : 'red' },
+          { label: 'العملاء المتاحون', value: tahseelReady ? Number(state.tahseel?.count || 0).toLocaleString('en-US') : '—' },
+          { label: 'نطاق الاتصال', value: 'قراءة فقط', tone: 'green' },
+        ],
+        note: 'ShipAudit لا ينشئ عميلاً أو فاتورة أو رابط دفع داخل تحصيل.',
+      });
+      if (!tahseelReady) actions.push({ title: 'راجع مفاتيح واتصال منصة تحصيل', path: '/settings/data#tahseel-integration', tone: 'red' });
     }
 
     const crons = state.crons || [];
@@ -336,8 +449,8 @@ export default function OperationsCenter({ isActive = true }) {
     events.sort((a, b) => (safeDate(b.at)?.getTime() || 0) - (safeDate(a.at)?.getTime() || 0));
 
     const healthyCards = cards.filter((card) => card.status === 'healthy').length;
-    return { cards, actions, crons, agents, runs, events, lateCrons, failedRuns, healthyCards };
-  }, [allowed, state]);
+    return { cards, gateways, actions, crons, agents, runs, events, lateCrons, failedRuns, healthyCards };
+  }, [allowed, period, state]);
 
   if (!model) return <div className="operations-loading"><Spinner size={28}/></div>;
 
@@ -360,6 +473,16 @@ export default function OperationsCenter({ isActive = true }) {
           <RefreshCw size={14} className={loading ? 'spin' : ''}/> {loading ? 'جارٍ التحديث…' : 'تحديث الحالة الآن'}
         </Btn>}
       />
+
+      <section className="operations-gateways" aria-labelledby="operations-gateways-title">
+        <div className="operations-section-title">
+          <div><span>وصول مباشر</span><h2 id="operations-gateways-title">بوابات تشغيل التكاملات</h2></div>
+          <p>اختر الوظيفة نفسها بدل البحث عنها داخل صفحات الإعدادات أو دورة المحاسب.</p>
+        </div>
+        <div className="operations-gateways-grid">
+          {model.gateways.map((item) => <IntegrationGateway key={item.key} item={item} onOpen={navigate}/>) }
+        </div>
+      </section>
 
       {state?.errors?.length > 0 && (
         <div className="operations-source-error">
