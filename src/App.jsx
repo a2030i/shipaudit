@@ -63,6 +63,7 @@ const Marketers = lazy(() => import('./pages/Marketers.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
 const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
+const PublicShortAddress = lazy(() => import('./pages/PublicShortAddress.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
 //
@@ -320,9 +321,17 @@ export default function App() {
 // **فارغة الآن**: بوابة التاجر للدفع أُلغيت بالكامل (2026-07-29، قرار
 // المستخدم) — التحصيل يتم عبر حملات واتساب والتحويل البنكي المباشر.
 // أي سطح عام جديد يُضاف هنا ويُوثَّق سبب كونه عاماً.
-const PUBLIC_PATHS = [];
+const PUBLIC_PATHS = ['/short-address'];
 
 function AppShell(props) {
+  const location = useLocation();
+  if (PUBLIC_PATHS.includes(location.pathname)) {
+    return (
+      <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><Spinner size={28}/></div>}>
+        <PublicShortAddress/>
+      </Suspense>
+    );
+  }
   return <AppInner {...props}/>;
 }
 
@@ -613,7 +622,7 @@ function AppInner({ theme, toggleTheme }) {
             ) : (
               <div className="sidebar-brand-lockup">
                 <span className="sidebar-brand-logo sidebar-brand-logo--desktop">
-                  <LamhaLogo height={36} variant="white"/>
+                  <LamhaLogo height={36} variant="color"/>
                 </span>
                 <span className="sidebar-brand-logo sidebar-brand-logo--mobile">
                   <LamhaLogo height={36} variant="color"/>
