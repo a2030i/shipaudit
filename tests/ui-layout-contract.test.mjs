@@ -94,6 +94,15 @@ test('visual system v6 keeps one navigation shell, calm canvas and mobile drawer
   assert.match(app, /sidebar-brand-logo--mobile/);
 });
 
+test('mobile drawer keeps the white Lamha logo on a connected navy header', async () => {
+  const css = await read('src/product-shell.css');
+
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.app-layout > \.sidebar \.sidebar-logo[\s\S]*rgba\(4, 31, 68, \.96\) !important/);
+  assert.match(css, /\.app-layout > \.sidebar \.sidebar-brand-logo--mobile[\s\S]*display:\s*inline-flex\s*!important/);
+  assert.match(css, /\.app-layout > \.sidebar \.sidebar-mobile-title[\s\S]*color:\s*rgba\(255, 255, 255, \.9\)\s*!important/);
+  assert.match(css, /\.app-layout > \.sidebar \.sidebar-close[\s\S]*background:\s*rgba\(255, 255, 255, \.08\)/);
+});
+
 test('dense financial actions expose a named secondary action menu', async () => {
   const settlements = await read('src/pages/CodSettlements.jsx');
   const css = await read('src/workspace-layout.css');

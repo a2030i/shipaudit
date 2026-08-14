@@ -734,6 +734,76 @@ body {
     transform: translateX(0);
   }
 
+  /* Keep the mobile drawer brand area part of the navy product shell.
+     Older layout rules painted this header white while the supplied Lamha
+     asset is the white logo, which made the logo disappear entirely. */
+  .app-layout > .sidebar .sidebar-logo,
+  [data-theme] .app-layout > .sidebar .sidebar-logo {
+    min-height: 94px !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 10px !important;
+    padding: 14px 14px !important;
+    color: #fff !important;
+    background:
+      radial-gradient(circle at 86% 0%, rgba(49, 213, 225, .18), transparent 48%),
+      rgba(4, 31, 68, .96) !important;
+    border-bottom-color: rgba(255, 255, 255, .1) !important;
+  }
+
+  .app-layout > .sidebar .sidebar-brand-lockup,
+  [data-theme] .app-layout > .sidebar .sidebar-brand-lockup {
+    width: auto;
+    flex: 1 1 auto;
+    align-items: flex-start !important;
+    gap: 7px;
+  }
+
+  .app-layout > .sidebar .sidebar-brand-logo--mobile,
+  [data-theme] .app-layout > .sidebar .sidebar-brand-logo--mobile {
+    display: inline-flex !important;
+    min-width: 118px;
+  }
+
+  .app-layout > .sidebar .sidebar-brand-logo--mobile img,
+  [data-theme] .app-layout > .sidebar .sidebar-brand-logo--mobile img {
+    width: auto;
+    max-width: 126px;
+    height: 34px !important;
+    filter: none;
+  }
+
+  .app-layout > .sidebar .sidebar-product-label,
+  [data-theme] .app-layout > .sidebar .sidebar-product-label {
+    display: flex !important;
+    margin-top: 0;
+    color: rgba(225, 235, 248, .74) !important;
+    font-size: 9px !important;
+  }
+
+  .app-layout > .sidebar .sidebar-mobile-title,
+  [data-theme] .app-layout > .sidebar .sidebar-mobile-title {
+    display: block;
+    flex: 0 0 auto;
+    color: rgba(255, 255, 255, .9) !important;
+    font-size: 11px;
+    font-weight: 750;
+    white-space: nowrap;
+  }
+
+  .app-layout > .sidebar .sidebar-close,
+  [data-theme] .app-layout > .sidebar .sidebar-close {
+    display: inline-flex;
+    color: #fff;
+    background: rgba(255, 255, 255, .08);
+    border-color: rgba(255, 255, 255, .16);
+  }
+
+  .app-layout > .sidebar .sidebar-close:hover,
+  [data-theme] .app-layout > .sidebar .sidebar-close:hover {
+    background: rgba(255, 255, 255, .14);
+  }
+
   .sidebar.collapsed .primary-center-item,
   .sidebar.collapsed .nav-item,
   .sidebar .primary-center-item,
