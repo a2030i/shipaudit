@@ -23,6 +23,7 @@ import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
+import FigmaCustomerPortfolio from '../components/operations/FigmaCustomerPortfolio.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -251,6 +252,15 @@ export default function CustomerMoney({ isActive = true }) {
     return counts;
   }, [d]);
 
+  const focusCustomerFromPortfolio = (customer) => {
+    if (customer) setQ((customer.storeName || customer.name || '').trim());
+    window.requestAnimationFrame(() => {
+      const details = document.querySelector('.customer-portfolio-advanced');
+      if (details) details.open = true;
+      details?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  };
+
   // مرّر كل نتائج الفلتر إلى نافذة الحملة، بما فيها الصف بلا هاتف. نافذة
   // الإرسال هي بوابة الأهلية الوحيدة وتشرح سبب كل استبعاد بدل إسقاطه صامتاً.
   const waRecipients = useMemo(() => filtered
@@ -339,16 +349,18 @@ export default function CustomerMoney({ isActive = true }) {
 
   return (
     <div className="customer-money-page workspace-page">
-      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
-        title="تحصيل العملاء"
-        subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"
-        actions={
-          <>
-            <Btn size="sm" variant="ghost" onClick={() => setBriefOpen(true)} title="رسالة واتساب يومية بأرقام هذه الشاشة">
-              🌅 ملخّص الصباح
-            </Btn>
-          </>
-        }/>
+      <FigmaCustomerPortfolio
+        customers={d.customers || []}
+        query={q}
+        onQueryChange={setQ}
+        taskByCustomer={collectionTaskByCustomer}
+        assigneeById={collectionAssigneeById}
+        onFocusCustomer={focusCustomerFromPortfolio}
+        onExport={exportXlsx}
+        onCampaign={() => waRecipients.length ? setWaOpen(true) : toast('لا عملاء مؤهلين في القائمة الحالية', 'info')}
+        sourceUpdatedAt={viewUpdatedAt}
+        sourceHealthy={!loadError && !collectionTaskError}
+      />
 
       {loadError && (
         <div className="data-load-error is-inline" role="status">
@@ -626,6 +638,9 @@ export default function CustomerMoney({ isActive = true }) {
         </Card>
       )}
 
+      <details className="customer-portfolio-advanced">
+      <summary>التفاصيل المتقدمة</summary>
+      <div className="customer-portfolio-advanced__body">
       {/* ── أدوات القائمة ── */}
       <div className="customer-money-toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 170 }}>
@@ -696,6 +711,8 @@ export default function CustomerMoney({ isActive = true }) {
           ))}
         </div>
       )}
+      </div>
+      </details>
 
       <WhatsAppSendModal open={waOpen}
         onClose={() => { setWaOpen(false); setWaSingle(null); }}

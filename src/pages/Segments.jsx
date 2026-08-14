@@ -716,7 +716,7 @@ export default function Segments({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="operations-os-page segments-page" style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Layers size={22}/>}
         iconColor="var(--accent3)"

@@ -1,0 +1,389 @@
+/*
+ * Operations OS — production visual layer
+ *
+ * The old theme grew page by page and produced several competing layout
+ * systems. This file is intentionally imported last. It owns the app frame,
+ * navigation density and the first rebuilt workspaces while all existing
+ * business logic, routes and permission checks remain unchanged.
+ */
+
+:root {
+  --os-canvas: #f5f7fb;
+  --os-surface: #ffffff;
+  --os-surface-muted: #f8fafc;
+  --os-ink: #111827;
+  --os-muted: #667085;
+  --os-line: #e4e7ec;
+  --os-blue: #2f6bff;
+  --os-blue-soft: #eef4ff;
+  --os-navy: #0d2348;
+  --os-navy-deep: #081a38;
+  --os-green: #079a72;
+  --os-amber: #d97706;
+  --os-red: #d92d20;
+  --os-purple: #7a5af8;
+  --os-radius-sm: 10px;
+  --os-radius: 14px;
+  --os-radius-lg: 18px;
+  --os-shadow: 0 1px 2px rgba(16, 24, 40, .03), 0 8px 24px rgba(16, 24, 40, .045);
+}
+
+html,
+body,
+#root {
+  background: var(--os-canvas) !important;
+}
+
+body {
+  color: var(--os-ink);
+  font-feature-settings: "ss01" 1, "cv02" 1;
+}
+
+/* Global frame styling keeps the navigation contract intact: primary centers
+   plus the contextual rail on desktop, and one explicit selector on mobile. */
+.app-layout:not(.has-context) {
+  --product-primary-width: 228px;
+  grid-template-columns: minmax(0, 1fr) var(--product-primary-width) !important;
+  grid-template-areas: "main primary" !important;
+  background: var(--os-canvas) !important;
+}
+
+.app-layout.has-context {
+  --product-primary-width: 228px;
+  background: var(--os-canvas) !important;
+}
+
+.app-layout.primary-collapsed {
+  --product-primary-width: 76px;
+}
+
+.app-layout > .sidebar,
+[data-theme] .app-layout > .sidebar {
+  background:
+    radial-gradient(circle at 78% 0%, rgba(47, 107, 255, .24), transparent 29%),
+    linear-gradient(180deg, var(--os-navy), var(--os-navy-deep)) !important;
+  border: 0 !important;
+}
+
+.app-layout > .sidebar .sidebar-logo {
+  min-height: 92px !important;
+  padding: 18px 18px 15px !important;
+}
+
+.app-layout > .sidebar .sidebar-nav {
+  padding: 12px 10px 20px !important;
+}
+
+.app-layout > .sidebar .primary-center-item,
+.app-layout > .sidebar .nav-item {
+  min-height: 52px !important;
+  border-radius: 12px !important;
+}
+
+.app-layout > .sidebar .primary-center-item.active,
+.app-layout > .sidebar .nav-item.active {
+  background: var(--os-blue) !important;
+  box-shadow: 0 8px 22px rgba(47, 107, 255, .24) !important;
+}
+
+.app-main {
+  background: var(--os-canvas) !important;
+}
+
+.topbar {
+  min-height: 64px !important;
+  height: 64px !important;
+  padding: 0 24px !important;
+  background: rgba(255, 255, 255, .96) !important;
+  border-bottom: 1px solid var(--os-line) !important;
+}
+
+.topbar-title {
+  color: var(--os-ink) !important;
+  font-size: 14px !important;
+}
+
+.topbar-search {
+  width: min(390px, 38vw) !important;
+  background: var(--os-surface-muted) !important;
+  border-color: var(--os-line) !important;
+}
+
+.topbar-quick-action {
+  background: var(--os-blue) !important;
+  border-color: var(--os-blue) !important;
+  box-shadow: none !important;
+}
+
+/* On mobile the route bar becomes one explicit screen selector. */
+.mobile-context-picker {
+  min-height: 52px;
+  display: none !important;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 24px;
+  background: rgba(255, 255, 255, .92);
+  border-bottom: 1px solid var(--os-line);
+}
+
+.mobile-context-picker > span {
+  flex: 0 0 auto;
+  color: var(--os-muted);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.mobile-context-picker select {
+  width: min(320px, 38vw);
+  height: 36px;
+  padding: 0 11px;
+  color: var(--os-ink);
+  background: var(--os-surface-muted);
+  border: 1px solid var(--os-line);
+  border-radius: 9px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.page-content,
+.page-slot {
+  background: var(--os-canvas) !important;
+}
+
+.page-slot > :not(.page-slot-scroll-end) {
+  width: min(100%, 1480px) !important;
+}
+
+.page-content :is(.page-header, .workspace-context, .panel, .data-panel, .content-card, .dashboard-card, .ui-card) {
+  border-color: var(--os-line) !important;
+  border-radius: var(--os-radius) !important;
+  box-shadow: none !important;
+}
+
+.page-content :is(input, select, textarea) {
+  min-height: 40px;
+  color: var(--os-ink);
+  background: var(--os-surface);
+  border-color: var(--os-line) !important;
+  border-radius: var(--os-radius-sm) !important;
+}
+
+.page-content :is(button, .btn) {
+  border-radius: var(--os-radius-sm);
+}
+
+.page-content :is(.table-wrap, .table-scroll, [class$="-table-wrap"]) {
+  border-color: var(--os-line) !important;
+  border-radius: var(--os-radius) !important;
+  background: var(--os-surface);
+}
+
+/* Shared application pages */
+.operations-os-page {
+  width: min(100%, 1440px) !important;
+  max-width: 1440px !important;
+  margin: 0 auto !important;
+  padding: 22px 26px 88px !important;
+  color: var(--os-ink);
+}
+
+.operations-os-page .page-hero-band {
+  min-height: 112px !important;
+  margin-bottom: 18px !important;
+  padding: 20px 22px !important;
+  align-items: center !important;
+  color: var(--os-ink) !important;
+  background: var(--os-surface) !important;
+  border: 1px solid var(--os-line) !important;
+  border-radius: var(--os-radius-lg) !important;
+  box-shadow: var(--os-shadow) !important;
+}
+
+.operations-os-page .hero-icon-tile {
+  width: 46px !important;
+  height: 46px !important;
+  flex-basis: 46px !important;
+  color: var(--os-blue) !important;
+  background: var(--os-blue-soft) !important;
+  border: 0 !important;
+  border-radius: 12px !important;
+}
+
+.operations-os-page .page-hero-copy h1,
+.operations-os-page .page-hero-band h1 {
+  color: var(--os-ink) !important;
+  font-size: clamp(21px, 2vw, 28px) !important;
+  line-height: 1.25 !important;
+}
+
+.operations-os-page .page-hero-band .hero-sub,
+.operations-os-page .page-hero-band .hero-meta {
+  color: var(--os-muted) !important;
+}
+
+.operations-os-page .page-hero-actions {
+  align-self: center !important;
+}
+
+.operations-os-page .card {
+  box-shadow: none;
+}
+
+.operations-os-page > div[style*="display: grid"] > div,
+.operations-os-page > div[style*="display:grid"] > div,
+.operations-os-page > div[style*="grid-template-columns"] > div {
+  border-color: var(--os-line) !important;
+}
+
+.operations-os-page button {
+  min-height: 38px;
+  border-radius: 10px !important;
+}
+
+.operations-os-page input,
+.operations-os-page select,
+.operations-os-page textarea {
+  border-color: var(--os-line) !important;
+  border-radius: 10px !important;
+}
+
+.operations-os-page table {
+  background: var(--os-surface);
+}
+
+.operations-os-page thead tr {
+  background: var(--os-surface-muted) !important;
+}
+
+.operations-os-page th {
+  height: 46px;
+  color: var(--os-muted) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+}
+
+.operations-os-page td {
+  border-color: var(--os-line) !important;
+}
+
+/* Data intake: the upload areas read as sources in a controlled intake
+   workflow instead of a random collection of oversized cards. */
+.data-intake-page > div[style*="marginBottom: 18"],
+.data-intake-page > div[style*="margin-bottom: 18"] {
+  border-color: var(--os-line) !important;
+  background: var(--os-surface) !important;
+}
+
+.data-intake-page > div[style*="dashed"] {
+  border: 1px solid #cbd5e1 !important;
+  background: var(--os-surface) !important;
+  border-radius: var(--os-radius-lg) !important;
+}
+
+.data-intake-page > div[style*="dashed"] [style*="dashed"] {
+  min-height: 128px;
+  background: var(--os-surface-muted) !important;
+  border-color: #b9c5d6 !important;
+}
+
+.data-intake-page > div[style*="grid-template-columns"] {
+  gap: 12px !important;
+}
+
+/* Segment builder: filters are a workbench, results are the primary surface. */
+.segments-page > div[style*="grid-template-columns"] > div {
+  background: var(--os-surface) !important;
+  border: 1px solid var(--os-line) !important;
+  border-radius: var(--os-radius) !important;
+}
+
+.segments-page > div[style*="grid-template-columns"]:has(input),
+.segments-page > div[style*="grid-template-columns"]:has(select) {
+  padding: 2px;
+  background: transparent;
+}
+
+.segments-page tbody tr:hover {
+  background: #f7f9fd;
+}
+
+@media (max-width: 768px) {
+  .app-layout,
+  .app-layout.has-context,
+  .app-layout.primary-collapsed {
+    display: block !important;
+  }
+
+  .workspace-routebar {
+    display: none;
+  }
+
+  .mobile-context-picker {
+    display: flex !important;
+    min-height: 54px;
+    padding: 7px 14px;
+  }
+
+  .mobile-context-picker select {
+    width: auto;
+    flex: 1;
+  }
+
+  .operations-os-page {
+    padding: 14px 14px 104px !important;
+  }
+
+  .operations-os-page .page-hero-band {
+    min-height: 0 !important;
+    padding: 15px !important;
+    gap: 12px !important;
+  }
+
+  .operations-os-page .page-hero-actions {
+    width: 100%;
+  }
+
+  .operations-os-page .page-hero-actions > div,
+  .operations-os-page .page-hero-actions > button {
+    width: 100%;
+  }
+
+  .operations-os-page .page-hero-actions button {
+    flex: 1;
+  }
+
+  .operations-os-page > div[style*="grid-template-columns"] {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .segments-page table {
+    min-width: 920px;
+  }
+}
+
+@media (max-width: 560px) {
+  .topbar {
+    min-height: 58px !important;
+    height: 58px !important;
+    padding: 0 12px !important;
+  }
+
+  .mobile-context-picker > span {
+    display: none;
+  }
+
+  .operations-os-page .page-hero-band .hero-sub {
+    display: block !important;
+    line-height: 1.55 !important;
+  }
+
+  .operations-os-page .page-hero-copy h1,
+  .operations-os-page .page-hero-band h1 {
+    font-size: 19px !important;
+  }
+
+  .data-intake-page > div[style*="dashed"] {
+    padding: 16px !important;
+  }
+}

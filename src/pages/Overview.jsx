@@ -36,6 +36,7 @@ import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
 import { metricDefinition } from '../lib/metricCatalog.js';
+import FigmaCommandCenter from '../components/operations/FigmaCommandCenter.jsx';
 
 const fmtMonth = (period) => {
   if (!period) return '—';
@@ -167,6 +168,22 @@ export default function Overview({ carriers = [], isActive = true }) {
     setPeriod(`${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`);
   };
 
+  return (
+    <FigmaCommandCenter
+      data={data}
+      period={period}
+      refreshing={loading}
+      onRefresh={refresh}
+      onPrevious={goPrev}
+      onNext={goNext}
+      onCurrent={() => setPeriod(currentPeriod())}
+      isCurrent={isCurrent}
+      navigate={navigate}
+    />
+  );
+
+  /* Legacy dashboard retained temporarily below for reference while the
+     remaining Figma workspaces are migrated. This branch is unreachable. */
   return (
     <div className="overview-page workspace-page">
       <PageHeader

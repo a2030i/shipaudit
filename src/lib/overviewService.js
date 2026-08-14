@@ -399,6 +399,22 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         total:   +apTotal.toFixed(2),
       },
     },
+    customerAging: (() => {
+      const source = customerMoney?.aging || {};
+      const b0_15 = num(source.b0_15);
+      const b16_30 = num(source.b16_30);
+      const b31_60 = num(source.b31_60);
+      const b61_90 = num(source.b61_90);
+      const b90p = num(source.b90p);
+      return {
+        b0_15,
+        b16_30,
+        b31_60,
+        b61_90,
+        b90p,
+        total: +(b0_15 + b16_30 + b31_60 + b61_90 + b90p).toFixed(2),
+      };
+    })(),
     carrierConcentration: carriersAll.slice(0, topN).map(r => ({
       carrierId:    r.carrier_id,
       spend:        num(r.spend),
