@@ -8,6 +8,8 @@ import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
+import CenterLanding from './components/CenterLanding.jsx';
+import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
@@ -363,7 +365,8 @@ function AppInner({ theme, toggleTheme }) {
     else logDenied(rawPath, Array.isArray(pathPermKey) ? pathPermKey.join('|') : pathPermKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle'];
+  const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -374,8 +377,7 @@ function AppInner({ theme, toggleTheme }) {
     typeof window !== 'undefined' && window.matchMedia('(min-width: 769px) and (max-width: 1100px)').matches
   ));
   const [mobileOpen,      setMobileOpen]      = useState(false);
-  const [mobileNavLevel,  setMobileNavLevel]  = useState('centers');
-  const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // الجانبية الأساسية للمراكز فقط. اختيار مركز يفتح جانبية سياقية للصفحات
   // التابعة له، وعلى الجوال ينتقل الدرج إلى المستوى الثاني مع زر رجوع واضح.
@@ -388,12 +390,6 @@ function AppInner({ theme, toggleTheme }) {
     mq.addEventListener?.('change', onViewport);
     return () => mq.removeEventListener?.('change', onViewport);
   }, []);
-  useEffect(() => {
-    const routeItem = NAV_ITEMS.find(item => (
-      item.path === rawPath || item.subTabs?.some(tab => tab.legacy === rawPath)
-    ));
-    setSelectedSectionId(routeItem?.section || '');
-  }, [rawPath]);
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -467,7 +463,6 @@ function AppInner({ theme, toggleTheme }) {
   const goto = (path) => {
     navigate(path);
     setMobileOpen(false);
-    setMobileNavLevel('centers');
   };
 
   const visibleSubTabsFor = (item) => (item.subTabs || []).filter(tab => {
@@ -559,7 +554,8 @@ function AppInner({ theme, toggleTheme }) {
   const currentGroup = (NAV_GROUP_MODEL[currentSection?.id] || [])
     .find(group => group.id === currentNavItem?.navGroup);
   const currentContextTabs = currentNavItem ? visibleSubTabsFor(currentNavItem) : [];
-  const contextSection = NAV_SECTIONS.find(section => section.id === (selectedSectionId || currentSection?.id));
+  const centerRouteSection = NAV_SECTIONS.find(section => section.path === pathname);
+  const contextSection = centerRouteSection || currentSection;
   const contextItems = contextSection
     ? visibleNav.filter(item => item.section === contextSection.id)
       .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
@@ -569,14 +565,14 @@ function AppInner({ theme, toggleTheme }) {
     ? new URLSearchParams(location.search).get('stage')
     : null;
   const accountingStages = ACCOUNTING_CYCLE_STAGES.filter(stage => isAdmin || can(stage.permission));
-  const hasContextSidebar = Boolean(contextSection && contextItems.length);
+  const hasContextSidebar = false;
   const currentContextValue = accountingStageId
     ? `/accounting-cycle?stage=${encodeURIComponent(accountingStageId)}`
     : (currentSubTab
       && (location.pathname !== currentNavItem?.path || new URLSearchParams(location.search).has('tab'))
       ? subTabPath(currentNavItem, currentSubTab)
       : (currentNavItem?.path || ''));
-  const currentTitle = currentSubTab?.label
+  const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
     ?? (location.pathname.startsWith('/settings') ? 'الإعدادات' : 'لمحة');
@@ -610,7 +606,13 @@ function AppInner({ theme, toggleTheme }) {
         carriers={carriers}
       />
 
-      <div className={`app-layout${hasContextSidebar ? ' has-context-sidebar' : ''}`}>
+      <QuickActionLauncher
+        open={quickActionOpen}
+        onClose={() => setQuickActionOpen(false)}
+        onNavigate={goto}
+      />
+
+      <div className="app-layout">
 
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -635,7 +637,7 @@ function AppInner({ theme, toggleTheme }) {
                 </div>
               </div>
             )}
-            {mobileOpen && <strong className="sidebar-mobile-title">{mobileNavLevel === 'context' ? contextSection?.label : 'المراكز'}</strong>}
+            {mobileOpen && <strong className="sidebar-mobile-title">المراكز</strong>}
             {mobileOpen && (
               <button className="sidebar-close" aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)}>
                 <X size={20}/>
@@ -643,8 +645,8 @@ function AppInner({ theme, toggleTheme }) {
             )}
           </div>
 
-          {/* المستوى الأول: مراكز فقط. الصفحات تنتقل إلى الجانبية السياقية. */}
-          <nav className={`sidebar-nav${mobileNavLevel === 'context' ? ' is-mobile-context' : ''}`}>
+          {/* قائمة واحدة فقط: الرئيسية ثم مراكز النظام السبعة. */}
+          <nav className="sidebar-nav">
             <div className="primary-center-nav">
             {visibleNav.length === 0 && (
               <div style={{
@@ -658,7 +660,7 @@ function AppInner({ theme, toggleTheme }) {
               </div>
             )}
             {/* Pinned top-level items (no section header) */}
-            {visibleNav.filter(n => n.pinned).map(n => (
+            {visibleNav.filter(n => n.id === 'overview').map(n => (
               <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
             ))}
 
@@ -677,10 +679,7 @@ function AppInner({ theme, toggleTheme }) {
                   className={`primary-center-item${sectionHasActive ? ' active' : ''}`}
                   aria-current={sectionHasActive ? 'true' : undefined}
                   title={collapsed ? sec.label : undefined}
-                  onClick={() => {
-                    setSelectedSectionId(sec.id);
-                    setMobileNavLevel('context');
-                  }}
+                  onClick={() => goto(sec.path)}
                 >
                   <span className="primary-center-item__icon" style={{ '--center-accent': sec.accent }}><SecIcon size={18}/></span>
                   {!collapsed && <span><strong>{sec.label}</strong><small>{sec.hint}</small></span>}
@@ -690,21 +689,6 @@ function AppInner({ theme, toggleTheme }) {
             })}
             </div>
 
-            <div className="mobile-context-navigation">
-              <button type="button" className="mobile-context-back" onClick={() => setMobileNavLevel('centers')}>
-                <ChevronRight size={16}/> العودة إلى المراكز
-              </button>
-              <ContextSectionNavigation
-                groups={contextGroups}
-                currentNavItem={currentNavItem}
-                currentContextTabs={currentContextTabs}
-                currentSubTab={currentSubTab}
-                accountingStages={accountingStages}
-                accountingStageId={accountingStageId}
-                onNavigate={goto}
-                subTabPath={subTabPath}
-              />
-            </div>
           </nav>
 
           {/* Footer */}
@@ -755,31 +739,11 @@ function AppInner({ theme, toggleTheme }) {
         </aside>
 
         {/* ═══════════════ MAIN ═══════════════ */}
-        {hasContextSidebar && (
-          <aside className="context-sidebar" aria-label={`صفحات ${contextSection.label}`}>
-            <header className="context-sidebar__header">
-              <span className="context-sidebar__eyebrow">مركز عمل</span>
-              <h2>{contextSection.label}</h2>
-              <p>{contextSection.hint}</p>
-            </header>
-            <ContextSectionNavigation
-              groups={contextGroups}
-              currentNavItem={currentNavItem}
-              currentContextTabs={currentContextTabs}
-              currentSubTab={currentSubTab}
-              accountingStages={accountingStages}
-              accountingStageId={accountingStageId}
-              onNavigate={goto}
-              subTabPath={subTabPath}
-            />
-          </aside>
-        )}
-
         <main className="app-main">
 
           {/* Topbar */}
           <div className="topbar">
-            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => { setMobileNavLevel('centers'); setMobileOpen(true); }}>
+            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => setMobileOpen(true)}>
               <Menu size={20}/>
             </button>
 
@@ -813,6 +777,10 @@ function AppInner({ theme, toggleTheme }) {
               </button>
             </div>
 
+            <button type="button" className="topbar-quick-action" onClick={() => setQuickActionOpen(true)}>
+              <Upload size={16}/><span>إجراء جديد</span>
+            </button>
+
             {/* Theme toggle */}
             <button className="theme-toggle" aria-label={theme === 'dark' ? 'تفعيل الوضع النهاري' : 'تفعيل الوضع الليلي'} onClick={toggleTheme} title={theme === 'dark' ? 'الوضع النهاري' : 'الوضع الليلي'} style={{
               background:'transparent', border:'1px solid var(--border2)',
@@ -827,45 +795,26 @@ function AppInner({ theme, toggleTheme }) {
             </button>
           </div>
 
-          {hasContextSidebar && (
-            <div className="context-mobile-nav">
-              <span>داخل {contextSection.label}</span>
-              <select
-                aria-label={`داخل ${contextSection.label}`}
-                value={currentContextValue}
-                onChange={(event) => goto(event.target.value)}
-              >
-                {contextGroups.map(group => (
-                  <optgroup key={group.id} label={group.label || contextSection.label}>
-                    {group.items.flatMap(item => {
-                      const tabs = visibleSubTabsFor(item);
-                      const options = [
-                        <option key={item.path} value={item.path}>{item.label}</option>,
-                      ];
-                      for (const tab of tabs) {
-                        const path = subTabPath(item, tab);
-                        if (path !== item.path) {
-                          options.push(<option key={`${item.id}-${tab.tabId}`} value={path}>↳ {tab.label}</option>);
-                        }
-                      }
-                      if (item.id === 'accounting-cycle') {
-                        accountingStages.forEach((stage, index) => {
-                          const path = `/accounting-cycle?stage=${encodeURIComponent(stage.id)}`;
-                          options.push(<option key={`${item.id}-${stage.id}`} value={path}>↳ {index + 1}. {stage.label}</option>);
-                        });
-                      }
-                      return options;
-                    })}
-                  </optgroup>
-                ))}
-              </select>
-            </div>
-          )}
-
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
               prevents CSS animations from replaying on every navigation */}
           <div className="page-content">
+
+            {NAV_SECTIONS.map(section => {
+              const items = visibleNav
+                .filter(item => item.section === section.id)
+                .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
+              return (
+                <PageSlot key={section.id} active={pathname === section.path} scroll>
+                  <CenterLanding
+                    section={section}
+                    groups={groupNavItems(section.id, items, false)}
+                    onNavigate={goto}
+                    onQuickAction={() => setQuickActionOpen(true)}
+                  />
+                </PageSlot>
+              );
+            })}
 
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>

@@ -282,11 +282,21 @@ export default function AccountingCycle({ carriers = [], isActive = false }) {
     const requestedPeriod = params.get('period');
     if (/^\d{4}-\d{2}$/.test(requestedPeriod || '') && requestedPeriod !== period) return;
     const requestedStage = params.get('stage');
+    const requestedAction = params.get('action');
+    const lamhaStageIds = ['weight_export', 'lamha_shipments', 'lamha_sources', 'lamha_collections'];
+    const lamhaStage = requestedAction === 'lamha'
+      ? snapshot.stages.find(stage => lamhaStageIds.includes(stage.id) && stage.status !== 'complete')
+        || snapshot.stages.find(stage => stage.id === 'lamha_sources')
+      : null;
     if (requestedStage && snapshot.stages.some(stage => stage.id === requestedStage)) {
       setSelectedId(requestedStage);
+    } else if (lamhaStage) {
+      setSelectedId(lamhaStage.id);
     }
     const activeStage = requestedStage && snapshot.stages.some(stage => stage.id === requestedStage)
       ? requestedStage
+      : lamhaStage?.id
+        ? lamhaStage.id
       : selectedId && snapshot.stages.some(stage => stage.id === selectedId)
         ? selectedId
         : snapshot.stages[0]?.id;

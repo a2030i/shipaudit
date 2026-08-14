@@ -77,13 +77,15 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('visual system v6 keeps the two-level shell, calm canvas and mobile drawer contract', async () => {
+test('visual system v6 keeps one navigation shell, calm canvas and mobile drawer contract', async () => {
   const app = await read('src/App.jsx');
   const css = await read('src/workspace-layout.css');
 
   assert.match(css, /System-wide visual layer/);
   assert.match(css, /--shell-primary-width:\s*176px/);
-  assert.match(css, /--context-sidebar-width:\s*232px/);
+  assert.match(css, /single-level information architecture/);
+  assert.match(css, /\.app-layout\s*\{[\s\S]*grid-template-columns:\s*var\(--shell-primary-width\) minmax\(0, 1fr\)\s*!important/);
+  assert.match(css, /\.context-sidebar,[\s\S]*display:\s*none\s*!important/);
   assert.match(css, /\.primary-center-item\.active\s*\{[\s\S]*inset -3px 0 0/);
   assert.match(css, /\.workspace-page\s*\{[\s\S]*max-width:\s*1540px/);
   assert.match(css, /\.page-summary--dark\s*\{[\s\S]*linear-gradient/);
@@ -190,7 +192,7 @@ test('customer debt cards bridge to an owned collection task and next action', a
   assert.match(css, /\.customer-collection-work\s*\{/);
 });
 
-test('active work areas use a contextual rail instead of duplicated hub tabs', async () => {
+test('work areas use one primary navigation and center landing pages', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const css = await read('src/workspace-layout.css');
@@ -204,14 +206,15 @@ test('active work areas use a contextual rail instead of duplicated hub tabs', a
   ];
   const workspaces = await Promise.all(workspaceFiles.map(read));
 
-  assert.match(app, /className="context-sidebar"/);
-  assert.match(app, /className="context-mobile-nav"/);
-  assert.match(app, /currentContextTabs/);
+  assert.doesNotMatch(app, /<aside className="context-sidebar"/);
+  assert.doesNotMatch(app, /className="context-mobile-nav"/);
+  assert.doesNotMatch(app, /mobileNavLevel/);
   assert.doesNotMatch(app, /sidebarRowsFor/);
   assert.match(app, /className="primary-center-nav"/);
   assert.match(app, /className={`primary-center-item/);
-  assert.match(app, /setMobileNavLevel\('context'\)/);
-  assert.match(app, /aria-label={`داخل \$\{contextSection\.label\}`}/);
+  assert.match(app, /<CenterLanding/);
+  assert.match(app, /<QuickActionLauncher/);
+  assert.match(app, /className="topbar-quick-action"/);
   assert.match(app, /tabId: 'performance'/);
   assert.match(app, /tabId: 'pipeline'/);
   assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);
@@ -220,25 +223,32 @@ test('active work areas use a contextual rail instead of duplicated hub tabs', a
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'carriers'[\s\S]*legacy: '\/carriers'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'contracts'[\s\S]*legacy: '\/contracts'/);
   for (const source of workspaces) assert.doesNotMatch(source, /<WorkspaceTabs/);
-  assert.match(css, /\.context-sidebar\s*\{[\s\S]*width:\s*var\(--context-sidebar-width\)/);
-  assert.match(css, /@media \(max-width: 940px\)[\s\S]*\.context-sidebar\s*\{[\s\S]*display:\s*none/);
-  assert.match(css, /\.context-mobile-nav\s*\{[\s\S]*display:\s*grid/);
+  assert.match(css, /\.center-landing\s*\{/);
+  assert.match(css, /\.center-landing__grid\s*\{[\s\S]*repeat\(3,/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.center-landing__grid\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(css, /\.quick-action-backdrop\s*\{/);
 
   assert.match(navigation, /'accounting-cycle':\s*\{[^}]*section: 'shipping'[^}]*group: 'monthly_cycle'/);
   assert.doesNotMatch(navigation, /'accounting-cycle':\s*\{[^}]*group: 'cash_ops'/);
-  assert.match(navigation, /id: 'customers', label: 'العملاء'[^\n]*hint: 'ملفات العملاء · خدمة العملاء'/);
-  assert.match(navigation, /id: 'finance',\s+label: 'المالية'/);
-  assert.match(navigation, /id: 'sales',\s+label: 'المبيعات'/);
-  assert.match(navigation, /id: 'reports',\s+label: 'التقارير'/);
-  assert.match(navigation, /id: 'settings',\s+label: 'الإدارة'/);
+  assert.match(navigation, /id: 'customers'[^\n]*label: 'العملاء'[^\n]*hint: 'الملف الموحد · الخدمة · حالة العميل'/);
+  assert.match(navigation, /id: 'finance'[^\n]*label: 'المالية'/);
+  assert.match(navigation, /id: 'sales'[^\n]*label: 'المبيعات'/);
+  assert.match(navigation, /id: 'reports'[^\n]*label: 'التقارير'/);
+  assert.match(navigation, /id: 'settings'[^\n]*label: 'الإدارة'/);
   assert.match(navigation, /'collections-hub':\s*\{[^}]*section: 'finance'[^}]*group: 'receivables_ops'/);
   assert.doesNotMatch(navigation, /'collections-hub':\s*\{[^}]*section: 'customers'/);
   assert.match(navigation, /'hatif-settings':\s*\{[^}]*section: 'settings'[^}]*group: 'integration_settings'/);
   assert.match(navigation, /id: 'cash_ops', label: 'البنوك والسيولة'/);
-  assert.match(navigation, /employees:\s*\{[^}]*visible: false/);
-  assert.match(navigation, /carriers:\s*\{[^}]*visible: false/);
-  assert.match(navigation, /contracts:\s*\{[^}]*visible: false/);
+  assert.match(navigation, /employees:\s*\{[^}]*visible: true/);
+  assert.match(navigation, /carriers:\s*\{[^}]*visible: true/);
+  assert.match(navigation, /contracts:\s*\{[^}]*visible: true/);
   assert.match(navigation, /'app-settings':\s*\{[^}]*visible: true/);
+  assert.match(navigation, /id: 'customers', path: '\/workspace\/customers'/);
+  assert.match(navigation, /id: 'sales',\s+path: '\/workspace\/sales'/);
+  assert.match(navigation, /id: 'finance',\s+path: '\/workspace\/finance'/);
+  assert.match(navigation, /id: 'shipping',\s+path: '\/workspace\/operations'/);
+  assert.match(navigation, /id: 'reports',\s+path: '\/workspace\/reports'/);
+  assert.match(navigation, /id: 'settings',\s+path: '\/workspace\/admin'/);
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
   assert.match(app, /pathname==='\/settings\/hatif'[\s\S]*<WhatsAppSettings[^>]*settingsOnly/);
   const reportRouteBlock = app.slice(

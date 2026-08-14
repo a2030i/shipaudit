@@ -2,13 +2,15 @@
 // تعريف المسار والصلاحية يبقى في App لأنه مرتبط بتركيب الصفحات، أما قرار
 // الظهور والقسم والترتيب والمسمى فيؤخذ حصراً من هذا الملف.
 export const NAV_SECTIONS = [
-  { id: 'shipping',  label: 'التشغيل', icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
-  { id: 'customers', label: 'العملاء', icon: 'Users',      accent: '#EF4444', hint: 'ملفات العملاء · خدمة العملاء' },
-  { id: 'finance',   label: 'المالية', icon: 'DollarSign', accent: '#F59E0B', hint: 'التحصيل · البنوك · زوهو · الربحية' },
-  { id: 'sales',     label: 'المبيعات', icon: 'Target',    accent: '#8B5CF6', hint: 'الفرص · الصفقات · الحملات · العمولات' },
-  { id: 'reports',   label: 'التقارير', icon: 'FileCheck', accent: '#22C55E', hint: 'التقارير المالية والتشغيلية' },
-  { id: 'settings',  label: 'الإدارة', icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · الصلاحيات · العقود · التكاملات' },
+  { id: 'customers', path: '/workspace/customers', label: 'العملاء', icon: 'Users',      accent: '#EF4444', hint: 'الملف الموحد · الخدمة · حالة العميل' },
+  { id: 'sales',     path: '/workspace/sales',     label: 'المبيعات', icon: 'Target',    accent: '#8B5CF6', hint: 'الفرص · الصفقات · الحملات' },
+  { id: 'finance',   path: '/workspace/finance',   label: 'المالية', icon: 'DollarSign', accent: '#F59E0B', hint: 'التحصيل · البنوك · زوهو · الربحية' },
+  { id: 'shipping',  path: '/workspace/operations',label: 'التشغيل', icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
+  { id: 'reports',   path: '/workspace/reports',   label: 'التقارير', icon: 'FileCheck', accent: '#22C55E', hint: 'مؤشرات وتقارير الإدارة' },
+  { id: 'settings',  path: '/workspace/admin',     label: 'الإدارة', icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · العقود · التكاملات' },
 ];
+
+export const CENTER_PATHS = Object.fromEntries(NAV_SECTIONS.map(section => [section.id, section.path]));
 
 // المستوى الثاني داخل كل قسم رئيسي. هذه المجموعات عناوين تنظيمية ثابتة
 // وليست أكورديوناً إضافياً؛ فتح القسم الرئيسي يكشف المجموعات وصفحاتها معاً
@@ -68,11 +70,11 @@ export const NAV_ITEM_IA = {
   pnl:                { label: 'قائمة الدخل والربحية', section: 'finance', group: 'profit_ops', order: 50, visible: true },
   reports:            { label: 'التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
   operations:         { label: 'التكاملات ومراقبة الربط', section: 'settings', group: 'integration_settings', order: 20, visible: true },
-  'work-agents':      { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 20, visible: false },
-  uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', order: 20, visible: false },
-  employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: false },
-  carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: false },
-  contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: false },
+  'work-agents':      { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 20, visible: true },
+  uploads:            { label: 'مزامنة مصادر البيانات', section: 'reports', group: 'automation_ops', order: 30, visible: true },
+  employees:          { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
+  carriers:           { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },
+  contracts:          { label: 'العقود والأسعار', section: 'settings', group: 'shipping_settings', order: 30, visible: true },
   'hatif-settings':   { label: 'إعدادات هاتف', section: 'settings', group: 'integration_settings', order: 10, visible: true },
   'app-settings':     { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 10, visible: true },
 };

@@ -152,6 +152,8 @@ Deno.serve(async (req) => {
         invoice_numbers: Array.isArray(pay.invoices)
           ? pay.invoices.map((v: Record<string, unknown>) => v.invoice_number).filter(Boolean).join(', ')
           : s(pay.invoice_numbers) || '',
+        // Reconcile the fresh webhook payload once from the detail endpoint.
+        unused_checked_at: null,
         last_modified: providerModifiedAt || now, synced_at: now });
       if (error) throw new Error(`save payment: ${error.message}`);
     }

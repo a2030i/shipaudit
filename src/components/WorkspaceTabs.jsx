@@ -22,6 +22,7 @@ export default function WorkspaceTabs({
 }) {
   const refs = useRef([]);
   const activeTab = tabs.find(tab => tab.id === activeId) || tabs[0];
+  const useCompactSelector = tabs.length > 3;
 
   // في الجوال قد يكون التبويب المختار خارج الجزء الظاهر من الشريط الأفقي
   // عند الدخول برابط مباشر. أبقه مرئياً دائمًا بدل إظهار أيقونة مقصوصة فقط.
@@ -56,7 +57,14 @@ export default function WorkspaceTabs({
           </div>
         </div>
 
-        <div className="workspace-tabs" role="tablist" aria-label={`أقسام ${title}`}>
+        <label className={`workspace-view-select${useCompactSelector ? ' is-primary' : ''}`}>
+          <span>العرض الحالي</span>
+          <select value={activeTab?.id || ''} onChange={event => onChange(event.target.value)} aria-label={`العرض داخل ${title}`}>
+            {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
+          </select>
+        </label>
+
+        <div className={`workspace-tabs${useCompactSelector ? ' is-condensed' : ''}`} role="tablist" aria-label={`أقسام ${title}`}>
           {tabs.map((tab, index) => {
             const Icon = tab.icon;
             const active = tab.id === activeTab?.id;

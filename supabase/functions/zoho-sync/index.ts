@@ -1,3 +1,4 @@
+// zoho-sync v29 — مرآة محلية بجدولة متدرجة ومنع إعادة فحص الدفعات بلا تغيير.
 // zoho-sync v28 — قراءة الرصيد الافتتاحي الموجهة حتى لو كان الرصيد الحالي صفراً.
 // zoho-sync v27 — الرصيد الافتتاحي من مساره الرسمي المخصص في Zoho.
 // v26 — الرصيد الافتتاحي الصريح + إصلاح فواتير العملاء الناقصة تلقائياً.
@@ -36,6 +37,7 @@ const CORS = {
 const REDIRECT_URI = `${APP_ORIGIN}/zoho-callback`;
 const PNL_TTL_MS = 10 * 60_000;
 const OAUTH_PENDING_TTL_MS = 10 * 60_000;
+const PAYMENT_UNUSED_RECHECK_MS = 6 * 60 * 60_000;
 const json = (b: unknown, s = 200) =>
   new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
 
@@ -670,7 +672,9 @@ Deno.serve(async (req) => {
           zoho_id: it.payment_id, customer_id: it.customer_id || null,
           customer_name: it.customer_name, date: it.date || null,
           amount: Number(it.amount) || 0, unused_amount: Number(it.unused_amount) || 0, mode: it.payment_mode || null,
-          invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm, synced_at: now }) },
+          invoice_numbers: (it.invoice_numbers as string) || '', last_modified: lm,
+          // A changed payment must be verified from its detail endpoint once.
+          unused_checked_at: null, synced_at: now }) },
         { ent: 'creditnotes', listKey: 'creditnotes', table: 'zoho_creditnotes', noDelta: true,
           minIntervalMinutes: 360, reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.creditnote_id, creditnote_number: it.creditnote_number,
@@ -685,18 +689,21 @@ Deno.serve(async (req) => {
           total: Number(it.total) || 0, status: it.status || null,
           description: (it.description as string) || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
-        { ent: 'bills', listKey: 'bills', table: 'zoho_bills', reconcileDeletes: true, map: (it, lm, now) => ({
+        { ent: 'bills', listKey: 'bills', table: 'zoho_bills', minIntervalMinutes: 120,
+          reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.bill_id, bill_number: it.bill_number || null,
           vendor_id: it.vendor_id || null, vendor_name: it.vendor_name || null,
           date: it.date || null, due_date: it.due_date || null,
           total: Number(it.total) || 0, balance: Number(it.balance) || 0,
           status: it.status || null, last_modified: lm, synced_at: now }) },
-        { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', reconcileDeletes: true, map: (it, lm, now) => ({
+        { ent: 'vendorpayments', listKey: 'vendorpayments', table: 'zoho_vendor_payments', minIntervalMinutes: 120,
+          reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.payment_id, vendor_id: it.vendor_id || null,
           vendor_name: it.vendor_name || null, date: it.date || null,
           amount: Number(it.amount) || 0, mode: it.payment_mode || null,
           reference_number: (it.reference_number as string) || null, last_modified: lm, synced_at: now }) },
-        { ent: 'journals', listKey: 'journals', table: 'zoho_journals', reconcileDeletes: true, map: (it, lm, now) => ({
+        { ent: 'journals', listKey: 'journals', table: 'zoho_journals', minIntervalMinutes: 120,
+          reconcileDeletes: true, map: (it, lm, now) => ({
           zoho_id: it.journal_id, entry_number: (it.entry_number as string) || null,
           reference_number: (it.reference_number as string) || null,
           date: it.journal_date || it.date || null,
@@ -713,7 +720,7 @@ Deno.serve(async (req) => {
           unused_credits_payable: Number(it.unused_credits_payable_amount) || 0,
           status: (it.status as string) || null, last_modified: lm, synced_at: now }) },
         { ent: 'bankaccounts', listKey: 'bankaccounts', table: 'zoho_bank_accounts',
-          omitSort: true, noDelta: true, minIntervalMinutes: 30,
+          omitSort: true, noDelta: true, minIntervalMinutes: 60,
           reconcileDeletes: true, financial: true, capability: 'banking_read',
           requiredScope: 'ZohoBooks.banking.READ', optionalScope: true,
           map: (it, lm, now) => ({
@@ -1134,13 +1141,22 @@ Deno.serve(async (req) => {
         });
       }
 
-      // v14: مصالحة الدفعات ذات الرصيد المفتوح — تطبيق الدفعة على فاتورة لا
-      // يُحرّك last_modified لها (نفس فخّ الإشعارات) فتبقى «غير مستخدمة» وهمياً
-      // وتُفشل «طبّق للكل» بـ«أكثر من الرصيد». القائمة صغيرة دائماً → إعادة جلب
-      // موجّهة لكل دفعة unused>0 (سقف 40/دورة). 404 = حُذفت في زوهو → تُحذف عندنا.
+      // v29: مصالحة الدفعات ذات الرصيد المفتوح من التفاصيل، دون قراءتها في كل
+      // دورة. الدفعة المتغيرة تُصفّر unused_checked_at، والدفعة المستقرة يعاد
+      // التحقق منها كل 6 ساعات. 404 = حُذفت في زوهو → تُحذف من المرآة.
       if (!financialOnly) try {
-        const { data: openPays } = await db.from('zoho_payments')
-          .select('zoho_id').gt('unused_amount', 0.01).limit(40);
+        let openPaymentsQuery = db.from('zoho_payments')
+          .select('zoho_id, unused_checked_at')
+          .gt('unused_amount', 0.01);
+        if (body.full !== true && body.force !== true) {
+          const cutoff = new Date(Date.now() - PAYMENT_UNUSED_RECHECK_MS).toISOString();
+          openPaymentsQuery = openPaymentsQuery
+            .or(`unused_checked_at.is.null,unused_checked_at.lt.${cutoff}`);
+        }
+        const { data: openPays, error: openPaysError } = await openPaymentsQuery
+          .order('unused_checked_at', { ascending: true, nullsFirst: true })
+          .limit(40);
+        if (openPaysError) throw new Error(`payment refresh queue: ${openPaysError.message}`);
         let refreshed = 0;
         for (const p of openPays || []) {
           const { response: r, payload: j } = await fetchZohoJson({
@@ -1158,6 +1174,7 @@ Deno.serve(async (req) => {
                 ? pay.invoices.map((v: Record<string, unknown>) => v.invoice_number).filter(Boolean).join(', ')
                 : '',
               last_modified: pay.last_modified_time ? new Date(pay.last_modified_time as string).toISOString() : null,
+              unused_checked_at: new Date().toISOString(),
               synced_at: new Date().toISOString(),
             }).eq('zoho_id', p.zoho_id);
             if (refreshError) throw new Error(`payment refresh save: ${refreshError.message}`);
