@@ -3,6 +3,8 @@ import test from 'node:test';
 
 import {
   consolidateMerchantSnapshotRows,
+  filterMerchantsByShipmentMonth,
+  merchantLastShipmentMonth,
   parseStoresFile,
 } from '../src/lib/merchantsService.js';
 
@@ -32,4 +34,25 @@ test('duplicate consolidation fills optional blanks from the other occurrence', 
   assert.equal(result.rows[0].shipmentCount, 2);
   assert.equal(result.rows[0].phone, '966500000000');
   assert.equal(result.duplicateRowCount, 1);
+});
+
+test('last shipment month filter uses the platform calendar month without timezone drift', () => {
+  const merchants = [
+    { store_id: '101', last_shipment_at: '2026-07-31T00:00:00.000Z' },
+    { store_id: '102', last_shipment_at: '2026-07-01' },
+    { store_id: '103', last_shipment_at: '2026-08-01T00:00:00.000Z' },
+    { store_id: '104', last_shipment_at: null },
+  ];
+
+  assert.equal(merchantLastShipmentMonth(merchants[0].last_shipment_at), '2026-07');
+  assert.deepEqual(
+    filterMerchantsByShipmentMonth(merchants, '2026-07').map(row => row.store_id),
+    ['101', '102'],
+  );
+  assert.equal(filterMerchantsByShipmentMonth(merchants, '').length, 4);
+});
+
+test('July merchant route can be shared as a direct filter URL', () => {
+  const params = new URLSearchParams('lastShipmentMonth=2026-07');
+  assert.equal(params.get('lastShipmentMonth'), '2026-07');
 });
