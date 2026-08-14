@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { Upload, Download, Trash2, Search, Wallet, Calendar, AlertCircle, Link2, CheckCircle2, Save, Database } from 'lucide-react';
-import { Card, Btn, Modal, Spinner, Empty, toast } from '../components/UI.jsx';
+import { Card, Btn, Modal, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
 import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRejected } from '../engine/bankStatementProcessor.js';
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
 import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote, classifyBankTransaction, clearBankClassification } from '../lib/bankTransactionsService.js';
@@ -400,14 +400,13 @@ export default function BankStatement() {
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
-      <h2 style={{ fontFamily: 'var(--font-mono)', fontSize: 18, marginBottom: 4 }}>
-        💼 كشف <span style={{ color: 'var(--accent)' }}>الحساب</span>
-      </h2>
-      <p style={{ color: 'var(--muted)', fontSize: 12, marginBottom: 18 }}>
-        ارفع كشف بنكي (Excel) ليتم استخراج العمليات وفصل الرسوم والضريبة عن المبلغ الأساسي.
-        احفظ العمليات لتتراكم عبر الفترات — الرفعات المتداخلة تُدمَج بلا تكرار.
-      </p>
+    <div className="bank-statement-page" style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
+      <PageHeader
+        icon={<Wallet size={20}/>}
+        title="الحسابات البنكية"
+        subtitle="ارفع كشف البنك، راجع رصيد الفترة، ثم احفظ الدفتر دون تكرار العمليات."
+        meta="الرفع هنا للدفتر الداخلي فقط؛ رفع كشف Zoho يتم يدويًا من Zoho."
+      />
 
       {/* View toggle: this upload vs the accumulated saved ledger */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>

@@ -8,7 +8,6 @@ import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
-import CenterLanding from './components/CenterLanding.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
@@ -570,7 +569,7 @@ function AppInner({ theme, toggleTheme }) {
     ? new URLSearchParams(location.search).get('stage')
     : null;
   const accountingStages = ACCOUNTING_CYCLE_STAGES.filter(stage => isAdmin || can(stage.permission));
-  const hasContextSidebar = false;
+  const hasContextSidebar = Boolean(contextSection && contextItems.length);
   const currentContextValue = accountingStageId
     ? `/accounting-cycle?stage=${encodeURIComponent(accountingStageId)}`
     : (currentSubTab
@@ -617,7 +616,7 @@ function AppInner({ theme, toggleTheme }) {
         onNavigate={goto}
       />
 
-      <div className="app-layout">
+      <div className={`app-layout${hasContextSidebar ? ' has-context' : ''}${collapsed ? ' primary-collapsed' : ''}`}>
 
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -629,10 +628,10 @@ function AppInner({ theme, toggleTheme }) {
             ) : (
               <div className="sidebar-brand-lockup">
                 <span className="sidebar-brand-logo sidebar-brand-logo--desktop">
-                  <LamhaLogo height={36} variant="color"/>
+                  <LamhaLogo height={36} variant="white"/>
                 </span>
                 <span className="sidebar-brand-logo sidebar-brand-logo--mobile">
-                  <LamhaLogo height={36} variant="color"/>
+                  <LamhaLogo height={36} variant="white"/>
                 </span>
                 <div className="sidebar-product-label">
                   <span className="live-dot"/>
@@ -684,7 +683,7 @@ function AppInner({ theme, toggleTheme }) {
                   className={`primary-center-item${sectionHasActive ? ' active' : ''}`}
                   aria-current={sectionHasActive ? 'true' : undefined}
                   title={collapsed ? sec.label : undefined}
-                  onClick={() => goto(sec.path)}
+                  onClick={() => goto(items[0]?.path || sec.path)}
                 >
                   <span className="primary-center-item__icon" style={{ '--center-accent': sec.accent }}><SecIcon size={18}/></span>
                   {!collapsed && <span><strong>{sec.label}</strong><small>{sec.hint}</small></span>}
@@ -743,6 +742,26 @@ function AppInner({ theme, toggleTheme }) {
           </button>
         </aside>
 
+        {hasContextSidebar && (
+          <aside className="context-sidebar" aria-label={`صفحات مركز ${contextSection.label}`}>
+            <header className="context-sidebar__header" style={{ '--center-accent': contextSection.accent }}>
+              <span className="context-sidebar__eyebrow">مركز العمل</span>
+              <strong>{contextSection.label}</strong>
+              <small>{contextSection.hint}</small>
+            </header>
+            <ContextSectionNavigation
+              groups={contextGroups}
+              currentNavItem={currentNavItem}
+              currentContextTabs={currentContextTabs}
+              currentSubTab={currentSubTab}
+              accountingStages={accountingStages}
+              accountingStageId={accountingStageId}
+              onNavigate={goto}
+              subTabPath={subTabPath}
+            />
+          </aside>
+        )}
+
         {/* ═══════════════ MAIN ═══════════════ */}
         <main className="app-main">
 
@@ -800,6 +819,43 @@ function AppInner({ theme, toggleTheme }) {
             </button>
           </div>
 
+          {hasContextSidebar && (
+            <label className="mobile-context-picker">
+              <span>داخل {contextSection.label}</span>
+              <select
+                value={currentContextValue}
+                onChange={(event) => goto(event.target.value)}
+                aria-label={`التنقل داخل مركز ${contextSection.label}`}
+              >
+                {contextGroups.map(group => (
+                  <optgroup key={group.id} label={group.label || contextSection.label}>
+                    {group.items.flatMap(item => {
+                      const tabs = visibleSubTabsFor(item);
+                      const options = [
+                        <option key={item.path} value={item.path}>{item.label}</option>,
+                      ];
+                      if (item.id === 'accounting-cycle') {
+                        accountingStages.forEach(stage => options.push(
+                          <option key={`${item.id}-${stage.id}`} value={`/accounting-cycle?stage=${encodeURIComponent(stage.id)}`}>
+                            {'↳ '}{stage.label}
+                          </option>,
+                        ));
+                      } else if (tabs.length > 1) {
+                        tabs.forEach(tab => {
+                          const path = subTabPath(item, tab);
+                          if (path !== item.path) options.push(
+                            <option key={`${item.id}-${tab.tabId}`} value={path}>{'↳ '}{tab.label}</option>,
+                          );
+                        });
+                      }
+                      return options;
+                    })}
+                  </optgroup>
+                ))}
+              </select>
+            </label>
+          )}
+
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
               prevents CSS animations from replaying on every navigation */}
@@ -811,12 +867,7 @@ function AppInner({ theme, toggleTheme }) {
                 .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
               return (
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
-                  <CenterLanding
-                    section={section}
-                    groups={groupNavItems(section.id, items, false)}
-                    onNavigate={goto}
-                    onQuickAction={() => setQuickActionOpen(true)}
-                  />
+                  <Navigate to={items[0]?.path || '/overview'} replace/>
                 </PageSlot>
               );
             })}

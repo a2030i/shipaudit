@@ -192,10 +192,11 @@ test('customer debt cards bridge to an owned collection task and next action', a
   assert.match(css, /\.customer-collection-work\s*\{/);
 });
 
-test('work areas use one primary navigation and center landing pages', async () => {
+test('work areas use a primary center rail plus contextual navigation', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const css = await read('src/workspace-layout.css');
+  const shell = await read('src/product-shell.css');
   const workspaceFiles = [
     'src/pages/CarriersWorkspace.jsx',
     'src/pages/CollectionsHub.jsx',
@@ -206,13 +207,15 @@ test('work areas use one primary navigation and center landing pages', async () 
   ];
   const workspaces = await Promise.all(workspaceFiles.map(read));
 
-  assert.doesNotMatch(app, /<aside className="context-sidebar"/);
+  assert.match(app, /<aside className="context-sidebar"/);
+  assert.match(app, /className="mobile-context-picker"/);
   assert.doesNotMatch(app, /className="context-mobile-nav"/);
   assert.doesNotMatch(app, /mobileNavLevel/);
   assert.doesNotMatch(app, /sidebarRowsFor/);
   assert.match(app, /className="primary-center-nav"/);
   assert.match(app, /className={`primary-center-item/);
-  assert.match(app, /<CenterLanding/);
+  assert.doesNotMatch(app, /<CenterLanding/);
+  assert.match(app, /onClick=\{\(\) => goto\(items\[0\]\?\.path \|\| sec\.path\)\}/);
   assert.match(app, /<QuickActionLauncher/);
   assert.match(app, /className="topbar-quick-action"/);
   assert.match(app, /tabId: 'performance'/);
@@ -223,9 +226,9 @@ test('work areas use one primary navigation and center landing pages', async () 
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'carriers'[\s\S]*legacy: '\/carriers'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'contracts'[\s\S]*legacy: '\/contracts'/);
   for (const source of workspaces) assert.doesNotMatch(source, /<WorkspaceTabs/);
-  assert.match(css, /\.center-landing\s*\{/);
-  assert.match(css, /\.center-landing__grid\s*\{[\s\S]*repeat\(3,/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.center-landing__grid\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+  assert.match(shell, /\.app-layout\.has-context\s*\{[\s\S]*grid-template-areas:\s*"main context primary"/);
+  assert.match(shell, /\.context-sidebar\s*\{/);
+  assert.match(shell, /@media \(max-width:\s*768px\)[\s\S]*\.mobile-context-picker\s*\{/);
   assert.match(css, /\.quick-action-backdrop\s*\{/);
 
   assert.match(navigation, /'accounting-cycle':\s*\{[^}]*section: 'shipping'[^}]*group: 'monthly_cycle'/);

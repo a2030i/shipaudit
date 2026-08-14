@@ -5,6 +5,7 @@ import App from './App.jsx'
 import './index.css'
 import './design-v5.css'
 import './workspace-layout.css'
+import './product-shell.css'
 import './mobile-scroll.css'
 
 // توقيت السعودية عالمياً: قاعدة البيانات تخزّن UTC، ونريد العرض بتوقيت الرياض مهما كان
