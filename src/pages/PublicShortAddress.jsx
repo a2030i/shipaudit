@@ -7,18 +7,11 @@ import { LamhaLogo } from '../components/BrandLogo.jsx';
 import './PublicShortAddress.css';
 
 const RIYADH = { lat: 24.7136, lon: 46.6753 };
-const OSM_STYLE = {
-  version: 8,
-  sources: {
-    osm: {
-      type: 'raster',
-      tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-      tileSize: 256,
-      attribution: '© OpenStreetMap contributors',
-    },
-  },
-  layers: [{ id: 'osm', type: 'raster', source: 'osm' }],
-};
+const HUDHUD_PUBLISHABLE_KEY = String(import.meta.env.VITE_HUDHUD_PUBLISHABLE_KEY || '').trim();
+const HUDHUD_MAP_ID = String(import.meta.env.VITE_HUDHUD_MAP_ID || 'default').trim();
+const HUDHUD_STYLE_URL = HUDHUD_PUBLISHABLE_KEY
+  ? `https://b.hudhud.sa/v1/maps/styles/${encodeURIComponent(HUDHUD_MAP_ID)}?variant=light&lang=ar&api_key=${encodeURIComponent(HUDHUD_PUBLISHABLE_KEY)}`
+  : null;
 const shortcodeOf = data => data?.shortcode || data?.short_address || data?.address?.shortcode || null;
 
 export default function PublicShortAddress() {
@@ -62,10 +55,16 @@ export default function PublicShortAddress() {
   }, [lookup]);
 
   useEffect(() => {
-    if (!mapNode.current || mapRef.current) return undefined;
+    if (!mapNode.current || mapRef.current || !HUDHUD_STYLE_URL) return undefined;
+    if (!maplibregl.getRTLTextPluginStatus || maplibregl.getRTLTextPluginStatus() === 'unavailable') {
+      maplibregl.setRTLTextPlugin(
+        'https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',
+        true,
+      );
+    }
     const map = new maplibregl.Map({
       container: mapNode.current,
-      style: OSM_STYLE,
+      style: HUDHUD_STYLE_URL,
       center: [RIYADH.lon, RIYADH.lat],
       zoom: 11,
       attributionControl: false,
@@ -133,7 +132,15 @@ export default function PublicShortAddress() {
         </button>
       </section>
       <section className="short-address-workspace" aria-label="تحديد الموقع والعنوان">
-        <div className="short-address-map" ref={mapNode} />
+        <div className="short-address-map" ref={mapNode}>
+          {!HUDHUD_STYLE_URL && (
+            <div className="short-address-map-setup" role="status">
+              <MapPin size={30} />
+              <strong>خريطة هدهد جاهزة للربط</strong>
+              <span>ستظهر فور إضافة مفتاح Publishable ومعرّف الخريطة.</span>
+            </div>
+          )}
+        </div>
         <div className={`short-address-result ${status}`} aria-live="polite">
           <div className="selected-location">
             <span className="result-icon"><MapPin size={22} /></span>

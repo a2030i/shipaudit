@@ -7,7 +7,7 @@
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
         { "key": "X-Frame-Options", "value": "DENY" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), payment=()" },
-        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self' https://pubtkfwmznfmffavyzsy.supabase.co wss://pubtkfwmznfmffavyzsy.supabase.co https://tile.openstreetmap.org; worker-src 'self' blob:; upgrade-insecure-requests" }
+        { "key": "Content-Security-Policy", "value": "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; form-action 'self'; img-src 'self' data: blob: https:; font-src 'self' data: https://b.hudhud.sa; style-src 'self' 'unsafe-inline'; script-src 'self' https://unpkg.com; connect-src 'self' https://pubtkfwmznfmffavyzsy.supabase.co wss://pubtkfwmznfmffavyzsy.supabase.co https://b.hudhud.sa; worker-src 'self' blob:; upgrade-insecure-requests" }
       ]
     }
   ],
