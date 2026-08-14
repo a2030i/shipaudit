@@ -287,6 +287,25 @@ export function parseStoresFile(allRows) {
   };
 }
 
+// Keep shipment-month filtering deterministic and timezone-safe. Platform
+// exports store ISO dates, so slicing the calendar portion is safer than
+// converting to local time (which can move a midnight date to another month).
+export function merchantLastShipmentMonth(value) {
+  if (!value) return '';
+  const direct = String(value).trim().match(/^(\d{4})-(\d{2})/);
+  if (direct) return `${direct[1]}-${direct[2]}`;
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return '';
+  return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}`;
+}
+
+export function filterMerchantsByShipmentMonth(merchants, month) {
+  if (!month) return merchants || [];
+  return (merchants || []).filter(
+    merchant => merchantLastShipmentMonth(merchant?.last_shipment_at) === month,
+  );
+}
+
 export async function uploadMerchantsSnapshot({ parsed, sourceFile, userId }) {
   if (!parsed?.rows?.length) throw new Error('لا توجد صفوف للحفظ');
   const snapshotId   = `m_${Date.now()}`;

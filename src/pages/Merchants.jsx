@@ -26,6 +26,7 @@ import {
   parseStoresFile, uploadMerchantsSnapshot, loadLatestMerchants,
   computeMerchantInsights, autoLinkFromZoho,
   loadUnmatchedCustomers, setCustomerMerchantLink,
+  filterMerchantsByShipmentMonth, merchantLastShipmentMonth,
 } from '../lib/merchantsService.js';
 
 const fmt = (n) =>
@@ -310,6 +311,9 @@ export default function Merchants({ isActive = true }) {
   const [search, setSearch] = useState('');
   const [filterType, setFilterType] = useState('all');     // all | prepaid | postpaid
   const [filterStatus, setFilterStatus] = useState('all'); // all | active | inactive
+  const [lastShipmentMonth, setLastShipmentMonth] = useState(
+    () => new URLSearchParams(window.location.search).get('lastShipmentMonth') || '',
+  );
   const [showUpload, setShowUpload] = useState(false);
   const [autoLinking, setAutoLinking] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
@@ -353,8 +357,36 @@ export default function Merchants({ isActive = true }) {
     setAutoLinking(false);
   };
 
+  const shipmentMonthOptions = useMemo(() => {
+    const counts = new Map();
+    for (const merchant of data.merchants) {
+      const month = merchantLastShipmentMonth(merchant.last_shipment_at);
+      if (month) counts.set(month, (counts.get(month) || 0) + 1);
+    }
+    return [...counts.entries()]
+      .sort(([a], [b]) => b.localeCompare(a))
+      .map(([value, count]) => ({
+        value,
+        count,
+        label: new Intl.DateTimeFormat('ar-SA-u-ca-gregory', {
+          month: 'long', year: 'numeric', timeZone: 'UTC',
+        }).format(new Date(`${value}-01T00:00:00Z`)),
+      }));
+  }, [data.merchants]);
+
+  const changeLastShipmentMonth = useCallback((month) => {
+    setLastShipmentMonth(month);
+    const params = new URLSearchParams(location.search);
+    if (month) params.set('lastShipmentMonth', month);
+    else params.delete('lastShipmentMonth');
+    navigate({
+      pathname: location.pathname,
+      search: params.toString() ? `?${params.toString()}` : '',
+    }, { replace: true });
+  }, [location.pathname, location.search, navigate]);
+
   const visible = useMemo(() => {
-    let pool = data.merchants;
+    let pool = filterMerchantsByShipmentMonth(data.merchants, lastShipmentMonth);
     if (search.trim()) {
       const q = search.trim().toLowerCase();
       pool = pool.filter(m =>
@@ -372,7 +404,44 @@ export default function Merchants({ isActive = true }) {
       pool = pool.filter(m => m.status === target);
     }
     return [...pool].sort((a, b) => (b.shipment_count || 0) - (a.shipment_count || 0));
-  }, [data.merchants, search, filterType, filterStatus]);
+  }, [data.merchants, search, filterType, filterStatus, lastShipmentMonth]);
+
+  const exportVisibleMerchants = useCallback(() => {
+    if (!visible.length) {
+      toast('لا توجد نتائج لتصديرها', 'info');
+      return;
+    }
+    const headers = [
+      'رقم المتجر', 'اسم المتجر', 'رقم الهاتف', 'نوع الفاتورة', 'حالة المتجر',
+      'عدد الشحنات', 'تاريخ آخر شحنة', 'أيام منذ آخر شحنة', 'الرصيد الحالي',
+      'نوع الربط', 'تاريخ الإنشاء', 'تاريخ آخر شحن رصيد',
+    ];
+    const rows = visible.map(merchant => [
+      String(merchant.store_id || ''),
+      merchant.store_name || '',
+      String(merchant.phone || ''),
+      merchant.billing_type || '',
+      merchant.status || '',
+      Number(merchant.shipment_count) || 0,
+      merchant.last_shipment_at ? String(merchant.last_shipment_at).slice(0, 10) : '',
+      daysAgo(merchant.last_shipment_at) ?? '',
+      Number(merchant.wallet_balance) || 0,
+      merchant.integration_type || '',
+      merchant.created_at_platform ? String(merchant.created_at_platform).slice(0, 10) : '',
+      merchant.last_topup_at ? String(merchant.last_topup_at).slice(0, 10) : '',
+    ]);
+    const worksheet = XLSX.utils.aoa_to_sheet([headers, ...rows]);
+    worksheet['!cols'] = [
+      { wch:14 }, { wch:34 }, { wch:17 }, { wch:14 }, { wch:13 }, { wch:12 },
+      { wch:16 }, { wch:19 }, { wch:16 }, { wch:18 }, { wch:16 }, { wch:20 },
+    ];
+    const workbook = XLSX.utils.book_new();
+    workbook.Workbook = { Views: [{ RTL: true }] };
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'متاجر المنصة');
+    const scope = lastShipmentMonth || 'كل_الفترات';
+    XLSX.writeFile(workbook, `متاجر_المنصة_آخر_شحنة_${scope}_${visible.length}.xlsx`);
+    toast(`تم تصدير ${fmtCount(visible.length)} متجر`, 'success');
+  }, [lastShipmentMonth, visible]);
 
   // حارس التبويب (تفصيص 2026-07-16) — كانت الصفحة بلا حارس داخلي
   if (!can('merchants.view')) {
@@ -460,6 +529,37 @@ export default function Merchants({ isActive = true }) {
                 value={filterStatus}
                 onChange={setFilterStatus}
               />
+              <label style={{
+                display:'flex', alignItems:'center', gap:7, padding:'3px 8px',
+                background:'var(--surface)', border:'1px solid var(--border)', borderRadius:9,
+                fontSize:11.5, color:'var(--muted)', whiteSpace:'nowrap',
+              }}>
+                <span>آخر شحنة</span>
+                <select
+                  value={lastShipmentMonth}
+                  onChange={event => changeLastShipmentMonth(event.target.value)}
+                  aria-label="تصفية حسب شهر آخر شحنة"
+                  style={{ border:0, background:'transparent', color:'var(--text)', fontWeight:700, padding:'4px 2px' }}
+                >
+                  <option value="">كل الفترات</option>
+                  {shipmentMonthOptions.map(option => (
+                    <option key={option.value} value={option.value}>
+                      {option.label} ({fmtCount(option.count)})
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {can('reports.export') && (
+                <Btn
+                  size="sm"
+                  variant="ghost"
+                  icon={<Download size={14}/>}
+                  onClick={exportVisibleMerchants}
+                  disabled={!visible.length}
+                >
+                  تصدير النتائج ({fmtCount(visible.length)})
+                </Btn>
+              )}
               <span style={{
                 marginInlineStart:'auto',
                 padding:'3px 10px', borderRadius:11,
