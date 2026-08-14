@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
+import { Fragment, useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
@@ -164,7 +164,7 @@ const ROUTE_ITEMS = [
       { tabId: 'retargeting', label: 'إعادة الاستهداف',    icon: Target },
       { tabId: 'hatif',       label: 'مرجع طلبات هاتف',    icon: UserPlus,    legacy: '/hatif-leads' },
       { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
-      { tabId: 'segments',    label: 'مجموعات العملاء',      icon: Layers,      legacy: '/segments' },
+      { tabId: 'segments',    label: 'شرائح العملاء',        icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
   // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
@@ -554,8 +554,21 @@ function AppInner({ theme, toggleTheme }) {
       .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
     : [];
   const contextGroups = contextSection ? groupNavItems(contextSection.id, contextItems, false) : [];
+  const visibleSubTabsFor = (item) => (item?.subTabs || []).filter(tab => {
+    // إذا كان التبويب التاريخي صفحة ظاهرة مستقلة داخل المركز، فلا نكررها
+    // مرة أخرى تحت صفحة أخرى. تبقى كل بقية التبويبات الداخلية متاحة.
+    if (tab.legacy && contextItems.some(other => other.id !== item.id && other.path === tab.legacy)) return false;
+    if (tab.adminOnly && !isAdmin) return false;
+    if (isAdmin) return true;
+    if (tab.anyPerm) return tab.anyPerm.some(key => can(key));
+    if (tab.perm) return can(tab.perm);
+    return true;
+  });
+  const subTabPath = (item, tab) => tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`;
   const hasContextSidebar = Boolean(contextSection && contextItems.length);
-  const currentContextValue = currentNavItem?.path || contextItems[0]?.path || '';
+  const currentContextValue = currentNavItem && currentSubTab
+    ? subTabPath(currentNavItem, currentSubTab)
+    : (currentNavItem?.path || contextItems[0]?.path || '');
   const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
@@ -738,6 +751,9 @@ function AppInner({ theme, toggleTheme }) {
             <ContextSectionNavigation
               groups={contextGroups}
               currentNavItem={currentNavItem}
+              currentSubTab={currentSubTab}
+              visibleSubTabsFor={visibleSubTabsFor}
+              subTabPath={subTabPath}
               onNavigate={goto}
             />
           </aside>
@@ -809,7 +825,14 @@ function AppInner({ theme, toggleTheme }) {
                 {contextGroups.map(group => (
                   <optgroup key={group.id} label={group.label || contextSection.label}>
                     {group.items.map(item => (
-                      <option key={item.path} value={item.path}>{item.label}</option>
+                      <Fragment key={item.id}>
+                        <option value={item.path}>{item.label}</option>
+                        {visibleSubTabsFor(item).length > 1 && visibleSubTabsFor(item).map(tab => (
+                          <option key={`${item.id}-${tab.tabId}`} value={subTabPath(item, tab)}>
+                            ↳ {tab.label}
+                          </option>
+                        ))}
+                      </Fragment>
                     ))}
                   </optgroup>
                 ))}
@@ -1192,6 +1215,9 @@ function PageSlot({ active, scroll = false, children }) {
 function ContextSectionNavigation({
   groups,
   currentNavItem,
+  currentSubTab,
+  visibleSubTabsFor,
+  subTabPath,
   onNavigate,
 }) {
   return (
@@ -1202,6 +1228,7 @@ function ContextSectionNavigation({
           {group.items.map(item => {
             const active = currentNavItem?.id === item.id;
             const Icon = item.icon || FileText;
+            const tabs = visibleSubTabsFor(item);
             return (
               <div className={`context-page-entry${active ? ' active' : ''}`} key={item.id}>
                 <button
@@ -1214,6 +1241,25 @@ function ContextSectionNavigation({
                   <span>{item.label}</span>
                   <ChevronLeft className="context-nav-item__arrow" size={15}/>
                 </button>
+                {tabs.length > 1 && (
+                  <div className="context-subnav" aria-label={`داخل ${item.label}`}>
+                    {tabs.map(tab => {
+                      const TabIcon = tab.icon || Icon;
+                      const tabActive = active && currentSubTab?.tabId === tab.tabId;
+                      return (
+                        <button
+                          key={tab.tabId}
+                          type="button"
+                          className={tabActive ? 'active' : ''}
+                          aria-current={tabActive ? 'page' : undefined}
+                          onClick={() => onNavigate(subTabPath(item, tab))}
+                        >
+                          <TabIcon size={14}/><span>{tab.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             );
           })}

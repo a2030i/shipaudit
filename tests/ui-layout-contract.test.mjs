@@ -203,7 +203,7 @@ test('customer debt cards bridge to an owned collection task and next action', a
   assert.match(css, /\.customer-collection-work\s*\{/);
 });
 
-test('work areas use a primary center rail plus contextual navigation', async () => {
+test.skip('legacy four-center navigation contract', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const css = await read('src/workspace-layout.css');
@@ -287,4 +287,29 @@ test('work areas use a primary center rail plus contextual navigation', async ()
     app.indexOf('// ── الإعدادات الفعلية'),
   );
   assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
+});
+
+test('stable work areas restore complete center and contextual navigation', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+
+  for (const id of ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings']) {
+    assert.match(navigation, new RegExp(`id: '${id}'`));
+  }
+  for (const id of [
+    'hub', 'platform-carriers', 'accounting-cycle', 'customer-watch',
+    'collections-hub', 'bank', 'zoho-data', 'operations', 'uploads',
+    'hatif-settings', 'carriers', 'contracts', 'app-settings',
+  ]) {
+    assert.match(navigation, new RegExp(`(?:^|\\n)\\s*'?${id}'?:\\s*\\{[^}]*visible: true`));
+  }
+
+  assert.match(app, /className="context-subnav"/);
+  assert.match(app, /className="mobile-context-picker"/);
+  assert.match(app, /visibleSubTabsFor/);
+  assert.match(app, /tabId: 'segments'/);
+  assert.match(app, /tabId: 'ivr'/);
+  assert.match(app, /id: 'zoho-data'[\s\S]*tabId: 'banks'/);
+  assert.match(app, /id: 'bank',\s+path: '\/bank'[^\n]*permKey: 'bank\.view'/);
+  assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
 });
