@@ -66,6 +66,8 @@ export default function FigmaCustomerPortfolio({
   onFocusCustomer,
   onExport,
   onCampaign,
+  campaignPanel,
+  campaignActionLabel = 'اختيار شرائح الحملة',
   sourceUpdatedAt,
   sourceHealthy = true,
 }) {
@@ -111,9 +113,11 @@ export default function FigmaCustomerPortfolio({
         </div>
         <div className="fcp-header__actions">
           <button type="button" className="fcp-action fcp-action--secondary" onClick={onExport}><Download size={16}/> تصدير Excel</button>
-          <button type="button" className="fcp-action fcp-action--primary" onClick={onCampaign}><Megaphone size={16}/> إطلاق حملة</button>
+          <button type="button" className="fcp-action fcp-action--primary" onClick={onCampaign}><Megaphone size={16}/> {campaignActionLabel}</button>
         </div>
       </header>
+
+      {campaignPanel && <div className="fcp-campaign-panel">{campaignPanel}</div>}
 
       <div className="fcp-metrics">
         <Metric tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" value={groups.stop.length} note="دفع لاحق · نشط · +30 يوم" active={segment === 'stop'} onClick={() => setSegment(segment === 'stop' ? 'all' : 'stop')}/>

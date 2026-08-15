@@ -7,6 +7,7 @@ import {
 } from '../src/lib/customerCampaignBuckets.js';
 
 const page = await readFile(new URL('../src/pages/CustomerMoney.jsx', import.meta.url), 'utf8');
+const portfolio = await readFile(new URL('../src/components/operations/FigmaCustomerPortfolio.jsx', import.meta.url), 'utf8');
 const service = await readFile(new URL('../src/lib/pnlService.js', import.meta.url), 'utf8');
 const migration = await readFile(new URL('../supabase/migrations/20260808160000_split_customer_money_recent_aging.sql', import.meta.url), 'utf8');
 const campaignMigration = await readFile(new URL('../supabase/migrations/20260815203000_customer_collection_campaign_buckets.sql', import.meta.url), 'utf8');
@@ -15,12 +16,15 @@ test('customer collection exposes focused invoice and opening-balance campaign s
   assert.deepEqual(CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => bucket.label), [
     '1–15 يوم', '16–30 يوم', '31–60 يوم', '61–90 يوم', 'أكثر من 90 يوم', 'رصيد افتتاحي غير مدفوع',
   ]);
-  assert.match(page, /شرائح حملات التحصيل/);
+  assert.match(page, /فلتر شرائح السداد/);
   assert.match(page, /شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»/);
   assert.match(page, /openFocusedCampaign/);
+  assert.match(page, /campaignPanel=\{campaignSegmentsPanel\}/);
+  assert.match(page, /campaignActionLabel=\{buckets\.size \? 'مراجعة الحملة' : 'اختيار شرائح الحملة'\}/);
+  assert.match(portfolio, /campaignPanel && <div className="fcp-campaign-panel">\{campaignPanel\}<\/div>/);
   assert.ok(
-    page.indexOf('id="collection-campaign-segments"') < page.indexOf('className="customer-money-hero"'),
-    'campaign segments must stay in the visible portfolio before the hidden legacy hero',
+    portfolio.indexOf('className="fcp-campaign-panel"') < portfolio.indexOf('className="fcp-metrics"'),
+    'campaign segments must render above decision metrics and the customer table',
   );
 });
 
