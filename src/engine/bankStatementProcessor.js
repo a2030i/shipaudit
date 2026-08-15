@@ -394,23 +394,41 @@ export function annotateRejected(list) {
   // This helper is called again after loading saved rows. Clear a prior derived
   // flag so a corrected rule cannot leave a stale UI label behind.
   for (const t of list) delete t.rejected;
-  for (const t of list) {
-    const credit = Number(t.credit) || 0;
-    if (credit > 0 && REJECT_PATTERNS.test(t.description || '')) {
-      const ref = String(t.reference ?? '').trim();
-      if (ref) {
-        const orig = list.find(d =>
-          d !== t && String(d.reference ?? '').trim() === ref
-          // Exported debit is net of bundled fee/VAT, while the bank reverses
-          // the original gross amount. Compare the returned credit with the
-          // gross debit so rejected SWIFT transfers are still paired.
-          && Math.abs(((Number(d.debit) || 0) + (Number(d.feesRemoved) || 0)) - credit) <= 0.01);
-        if (orig) {
-          t.rejected = true;
-          orig.rejected = true;
-        }
-      }
-    }
+  const groups = new Map();
+  for (const row of list) {
+    const ref = String(row.reference ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+    if (!ref) continue;
+    groups.set(ref, [...(groups.get(ref) || []), row]);
+  }
+
+  for (const rows of groups.values()) {
+    // A same-reference credit is not enough: real refunds can legitimately
+    // reuse references. At least one returned leg must explicitly say that
+    // the transfer was rejected/reversed.
+    const hasExplicitReversal = rows.some(row =>
+      (Number(row.credit) || 0) > 0 && REJECT_PATTERNS.test(String(row.description || '')));
+    if (!hasExplicitReversal) continue;
+
+    const debitTotal = rows.reduce((sum, row) => sum + (Number(row.debit) || 0), 0);
+    const creditTotal = rows.reduce((sum, row) => sum + (Number(row.credit) || 0), 0);
+    if (debitTotal <= 0 || creditTotal <= 0) continue;
+
+    // Some bank files store the outgoing amount net of fee/VAT and return the
+    // gross amount. Saved ledger rows retain fees/tax but older rows do not
+    // retain `feesRemoved`, so compare both the net and gross possibilities.
+    // This also covers split reversals: principal, fee and VAT may come back in
+    // separate credit rows under the same reference.
+    const bundledCosts = rows.reduce((sum, row) => {
+      if ((Number(row.debit) || 0) <= 0) return sum;
+      const removed = Number(row.feesRemoved) || 0;
+      return sum + (removed > 0 ? removed : (Number(row.fees) || 0) + (Number(row.tax) || 0));
+    }, 0);
+    const matchesNet = Math.abs(debitTotal - creditTotal) <= 0.01;
+    const matchesGross = bundledCosts > 0 && Math.abs((debitTotal + bundledCosts) - creditTotal) <= 0.01;
+    if (!matchesNet && !matchesGross) continue;
+
+    // Exclude the complete reference group, including returned fee/VAT legs.
+    for (const row of rows) row.rejected = true;
   }
   return list;
 }
@@ -565,7 +583,14 @@ export function generateCleanExcel(transactions, _summary = {}) {
   const blankIfZero = v => (v == null || Number(v) === 0) ? '' : Number(v);
   // التحويلات المرفوضة/المُرجَعة (قيد مدين + رفض بنفس المرجع) تُحذف من الكشف
   // الصافي — صافيها صفر ولا قيمة لها في النظام المحاسبي الخارجي.
-  const rows = transactions.filter(t => !t.rejected).map(t => [
+  // Make the export boundary safe even when a caller forgot to annotate the
+  // rows. Preserve flags derived from the complete ledger because a date/type
+  // filter may pass only one leg of an already-confirmed reversal group.
+  const exportable = (transactions || []).map((row, index) => ({ ...row, __exportIndex: index }));
+  const preRejected = new Set(exportable.filter(row => row.rejected).map(row => row.__exportIndex));
+  annotateRejected(exportable);
+  for (const row of exportable) if (preRejected.has(row.__exportIndex)) row.rejected = true;
+  const rows = exportable.filter(t => !t.rejected).map(t => [
     t.date        ?? '',
     t.description ?? '',
     blankIfZero(t.credit),

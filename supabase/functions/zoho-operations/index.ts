@@ -138,7 +138,7 @@ async function loadAllLocalBankTransactions(db: ReturnType<typeof svc>, bank: st
   const collected: any[] = [];
   for (let from = 0; from < LOCAL_BANK_MAX_ROWS; from += LOCAL_BANK_PAGE_SIZE) {
     const { data, error } = await db.from('bank_transactions')
-      .select('id,dedup_key,txn_date,txn_at,reference,description,debit,credit,bank')
+      .select('id,dedup_key,txn_date,txn_at,reference,description,debit,credit,fees,tax,bank')
       .eq('bank', bank)
       .order('txn_date', { ascending: false })
       .order('id', { ascending: false })
@@ -149,6 +149,33 @@ async function loadAllLocalBankTransactions(db: ReturnType<typeof svc>, bank: st
     if (rows.length < LOCAL_BANK_PAGE_SIZE) return collected;
   }
   throw new Error('local_bank_transactions_incomplete');
+}
+
+const LOCAL_BANK_REVERSAL_PATTERN = /تم\s*رفض|رفض\s*التحويل|مرتجع|عكس\s*قيد|إعادة\s*(?:مبلغ|القيمة)|اعادة\s*(?:مبلغ|القيمة)|رد\s*التحويل|\breject(?:ed|ion)?\b|\brevers(?:al|ed)?\b|\bdeclin(?:e|ed)\b/i;
+
+function reversedLocalBankTransactionIds(rows: any[]) {
+  const groups = new Map<string, any[]>();
+  for (const row of rows || []) {
+    const reference = normalizedRef(row.reference);
+    if (!reference) continue;
+    groups.set(reference, [...(groups.get(reference) || []), row]);
+  }
+  const ids = new Set<string>();
+  let groupsExcluded = 0;
+  for (const group of groups.values()) {
+    const hasExplicitReversal = group.some(row => Number(row.credit || 0) > 0
+      && LOCAL_BANK_REVERSAL_PATTERN.test(String(row.description || '')));
+    if (!hasExplicitReversal) continue;
+    const debit = group.reduce((sum, row) => sum + Number(row.debit || 0), 0);
+    const credit = group.reduce((sum, row) => sum + Number(row.credit || 0), 0);
+    const costs = group.reduce((sum, row) => Number(row.debit || 0) > 0
+      ? sum + Number(row.fees || 0) + Number(row.tax || 0) : sum, 0);
+    if (debit <= 0 || credit <= 0) continue;
+    if (Math.abs(debit - credit) > 0.01 && Math.abs(debit + costs - credit) > 0.01) continue;
+    group.forEach(row => ids.add(String(row.id)));
+    groupsExcluded += 1;
+  }
+  return { ids, groupsExcluded };
 }
 
 async function lastImportedBankAnchor(access: { token: string; apiDomain: string; orgId: string }, accountId: string) {
@@ -513,6 +540,16 @@ Deno.serve(async req => {
       if (linkError) throw new Error(`bank_link_read:${linkError.message}`);
       if (!link?.internal_bank_name || link.link_kind !== 'bank') return json({ error: 'bank_account_not_linked' }, 400);
 
+      // A stale browser must never be able to record a rejected/reversed bank
+      // group for manual Zoho upload. Recheck the complete linked-bank ledger
+      // server-side and reject the batch before writing any export state.
+      const linkedBankRows = await loadAllLocalBankTransactions(db, link.internal_bank_name);
+      const reversed = reversedLocalBankTransactionIds(linkedBankRows);
+      const reversedRequested = transactionIds.filter(id => reversed.ids.has(id));
+      if (reversedRequested.length) return json({
+        error: 'bank_export_contains_reversed_rows', count: reversedRequested.length,
+      }, 409);
+
       const rows: any[] = [];
       for (let offset = 0; offset < transactionIds.length; offset += 180) {
         const { data, error } = await db.from('bank_transactions')
@@ -655,11 +692,13 @@ Deno.serve(async req => {
         .select('zoho_account_id,internal_bank_name,link_kind').eq('zoho_account_id', accountId).maybeSingle();
       if (!link?.internal_bank_name || link.link_kind !== 'bank') return json({ error: 'bank_account_not_linked' }, 400);
       const txs = await loadAllLocalBankTransactions(db, link.internal_bank_name);
-      const ordered = [...(txs || [])].sort((a: any, b: any) => localTxnDate(a).localeCompare(localTxnDate(b))
+      const allOrdered = [...(txs || [])].sort((a: any, b: any) => localTxnDate(a).localeCompare(localTxnDate(b))
         || String(a.id).localeCompare(String(b.id)));
+      const reversed = reversedLocalBankTransactionIds(allOrdered);
+      const ordered = allOrdered.filter((row: any) => !reversed.ids.has(String(row.id)));
       const localPeriod = {
-        start: ordered.length ? localTxnDate(ordered[0]) : '',
-        end: ordered.length ? localTxnDate(ordered[ordered.length - 1]) : '',
+        start: allOrdered.length ? localTxnDate(allOrdered[0]) : '',
+        end: allOrdered.length ? localTxnDate(allOrdered[allOrdered.length - 1]) : '',
       };
       const access = await accessToken(db);
       const { data: manualAnchor } = await db.from('zoho_bank_import_anchors')
@@ -735,7 +774,9 @@ Deno.serve(async req => {
         comparison_mode: 'full_history',
         local_period_from: localPeriod.start || null,
         local_period_to: localPeriod.end || null,
-        local_scanned: ordered.length,
+        local_scanned: allOrdered.length,
+        reversal_excluded: reversed.ids.size,
+        reversal_groups_excluded: reversed.groupsExcluded,
         history_excluded: 0,
         prior_import_excluded: 0,
         live_transaction_excluded: liveTransactionExcluded,

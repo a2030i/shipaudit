@@ -9,12 +9,14 @@ import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, RefreshCw, ExternalLink, FileText, Banknote, BookOpen,
   Mail, Inbox, AlertTriangle, CheckCircle2, Truck, Edit3, Save, X,
-  Building2, ClipboardList,
+  Building2, ClipboardList, Link2, WalletCards, ReceiptText, CircleDollarSign,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, Modal } from '../components/UI.jsx';
+import { useAuth } from '../lib/auth.jsx';
 import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   loadCarrierProfile, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
+  loadCarrierZohoLinkOptions, saveCarrierZohoFinancialLinks,
 } from '../lib/carrierProfileService.js';
 
 const fmt = (n) =>
@@ -159,6 +161,166 @@ function SectionCard({ title, action, children, accent }) {
       </div>
       <div style={{ padding: '14px 18px' }}>{children}</div>
     </Card>
+  );
+}
+
+const ZOHO_ACTIVITY_LABELS = {
+  bill: 'فاتورة مورد',
+  payment: 'دفعة للمورد',
+  credit: 'إشعار دائن',
+};
+
+function ZohoLinkModal({ carrierId, financial, onClose, onSaved }) {
+  const [options, setOptions] = useState(null);
+  const [vendorId, setVendorId] = useState(financial?.vendor?.zoho_id || '');
+  const [treasuryId, setTreasuryId] = useState(financial?.treasuries?.[0]?.zoho_id || '');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    loadCarrierZohoLinkOptions()
+      .then(result => { if (active) setOptions(result); })
+      .catch(error => { if (active) toast(`تعذّر تحميل حسابات Zoho: ${error.message}`, 'error'); });
+    return () => { active = false; };
+  }, []);
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await saveCarrierZohoFinancialLinks({
+        carrierId,
+        zohoVendorId: vendorId,
+        treasuryAccountId: treasuryId,
+      });
+      toast('تم حفظ ربط شركة الشحن مع Zoho', 'success');
+      await onSaved();
+      onClose();
+    } catch (error) {
+      const message = String(error.message || error);
+      toast(message.includes('treasury_already_linked')
+        ? 'هذه الخزينة مرتبطة بشركة شحن أخرى'
+        : `تعذّر حفظ الربط: ${message}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Modal title="ربط الملف المالي مع Zoho" onClose={onClose} width={620}>
+      {!options ? <div style={{ display: 'flex', justifyContent: 'center', padding: 34 }}><Spinner size={24}/></div> : (
+        <div style={{ display: 'grid', gap: 16 }}>
+          <div style={{ padding: 12, borderRadius: 10, background: 'var(--surface)', border: '1px solid var(--border)', color: 'var(--muted)', fontSize: 12, lineHeight: 1.7 }}>
+            المورد يحدد الفواتير والمدفوعات والرصيد. خزينة COD تحدد الرصيد الدفتري المحتجز في Zoho. يمكن ترك أحد الرابطين فارغًا حتى يكتمل الإعداد.
+          </div>
+          <label style={{ display: 'grid', gap: 7, fontSize: 12, color: 'var(--muted)' }}>
+            مورد Zoho
+            <select value={vendorId} onChange={event => setVendorId(event.target.value)} style={{ minHeight: 44 }}>
+              <option value="">غير مربوط</option>
+              {options.vendors.map(vendor => (
+                <option key={vendor.zoho_id} value={vendor.zoho_id}>
+                  {vendor.contact_name} · صافي {fmt((Number(vendor.outstanding_payable) || 0) - (Number(vendor.unused_credits_payable) || 0))} ر.س
+                </option>
+              ))}
+            </select>
+          </label>
+          <label style={{ display: 'grid', gap: 7, fontSize: 12, color: 'var(--muted)' }}>
+            خزينة COD في شجرة الحسابات
+            <select value={treasuryId} onChange={event => setTreasuryId(event.target.value)} style={{ minHeight: 44 }}>
+              <option value="">غير مربوطة</option>
+              {options.treasuries.map(account => (
+                <option key={account.zoho_id} value={account.zoho_id}>
+                  {account.account_name}{account.account_code ? ` · ${account.account_code}` : ''} · {fmt(account.current_balance)} {account.currency_code || 'ر.س'}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+            <Btn variant="ghost" onClick={onClose} disabled={saving}>إلغاء</Btn>
+            <Btn variant="primary" icon={<Save size={14}/>} onClick={save} disabled={saving}>
+              {saving ? 'جارٍ الحفظ…' : 'حفظ الربط'}
+            </Btn>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function ZohoFinancialSection({ financial, canConfigure, onConfigure }) {
+  if (!financial?.available) {
+    return (
+      <SectionCard title="الملف المالي في Zoho" accent="var(--gold)">
+        <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start', color: 'var(--muted)', fontSize: 12 }}>
+          <AlertTriangle size={17} color="var(--gold)"/>
+          <span>تعذّرت قراءة بيانات Zoho لهذه الشركة. يلزم امتلاك صلاحيتي عرض الناقلين وعرض Zoho، وأن تكون ترقية قاعدة البيانات مطبقة.</span>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  const vendor = financial.vendor;
+  const cod = financial.cod || {};
+  const bills = financial.bills || {};
+  const payments = financial.payments || {};
+  const hasAnyLink = Boolean(vendor || financial.treasuries?.length);
+  const netPayable = Number(vendor?.net_payable) || 0;
+  const gap = Number(cod.treasury_gap) || 0;
+  const action = canConfigure
+    ? <Btn size="sm" variant="ghost" icon={<Link2 size={13}/>} onClick={onConfigure}>{hasAnyLink ? 'تعديل الربط' : 'ربط Zoho'}</Btn>
+    : null;
+
+  if (!hasAnyLink) {
+    return (
+      <SectionCard title="الملف المالي في Zoho" action={action} accent="var(--gold)">
+        <Empty icon="🔗" title="شركة الشحن غير مربوطة ماليًا" sub="اربط مورد Zoho وخزينة COD لعرض الرصيد والفواتير والمبالغ المعلّقة في ملف واحد"/>
+      </SectionCard>
+    );
+  }
+
+  return (
+    <SectionCard title={`الملف المالي الموحّد${vendor?.name ? ` · ${vendor.name}` : ''}`} action={action} accent="var(--accent)">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(155px, 1fr))', gap: 9 }}>
+        <StatCard icon={CircleDollarSign} label={netPayable >= 0 ? 'له علينا في Zoho' : 'لنا عنده في Zoho'} value={`${fmt(Math.abs(netPayable))} ر.س`} sub={`إجمالي ${fmt(vendor?.gross_payable)} − أرصدة ${fmt(vendor?.credits)}`} color={Math.abs(netPayable) < .01 ? 'var(--muted)' : netPayable > 0 ? 'var(--red)' : 'var(--accent)'}/>
+        <StatCard icon={ReceiptText} label="فواتير مفتوحة" value={`${fmt(bills.open_balance)} ر.س`} sub={`${bills.open_count || 0} فاتورة · ${bills.overdue_count || 0} متأخرة`} color={Number(bills.open_balance) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
+        <StatCard icon={Banknote} label="COD معلّق تشغيليًا" value={`${fmt(cod.outstanding)} ر.س`} sub={`${fmt(cod.expected)} متوقع − ${fmt(cod.received)} مستلم`} color={Number(cod.outstanding) > 0 ? 'var(--gold)' : 'var(--muted)'}/>
+        <StatCard icon={WalletCards} label="رصيد خزينة Zoho" value={`${fmt(cod.treasury_balance)} ر.س`} sub={`${financial.treasuries?.length || 0} حساب مربوط`} color="var(--accent)"/>
+        <StatCard icon={AlertTriangle} label="فرق COD عن الخزينة" value={`${fmt(Math.abs(gap))} ر.س`} sub={Math.abs(gap) <= .5 ? 'متطابق ضمن نصف ريال' : gap > 0 ? 'COD التشغيلي أعلى من الخزينة' : 'الخزينة أعلى من COD التشغيلي'} color={Math.abs(gap) <= .5 ? 'var(--green)' : 'var(--red)'}/>
+        <StatCard icon={CircleDollarSign} label="مدفوعات المورد" value={`${fmt(payments.total)} ر.س`} sub={`${payments.count || 0} دفعة · آخرها ${fmtDate(payments.last_date)}`} color="var(--text)"/>
+      </div>
+
+      {financial.treasuries?.length > 0 && (
+        <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          {financial.treasuries.map(account => (
+            <span key={account.zoho_id} style={{ padding: '6px 9px', borderRadius: 9, border: '1px solid var(--border)', background: 'var(--surface)', fontSize: 11, color: 'var(--muted)' }}>
+              خزينة: <strong style={{ color: 'var(--text)' }}>{account.name}</strong> · {fmt(account.balance)} {account.currency || 'ر.س'}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {financial.recent_activity?.length > 0 && (
+        <div style={{ marginTop: 14, overflowX: 'auto' }}>
+          <table className="m-compact">
+            <thead><tr><th>الحركة</th><th>المرجع</th><th>التاريخ</th><th>القيمة</th><th>المتبقي</th><th>الحالة</th></tr></thead>
+            <tbody>
+              {financial.recent_activity.slice(0, 10).map(item => (
+                <tr key={`${item.kind}-${item.id}`}>
+                  <td data-label="الحركة">{ZOHO_ACTIVITY_LABELS[item.kind] || item.kind}</td>
+                  <td data-label="المرجع" style={{ fontFamily: 'var(--font-mono)' }}>{item.reference || '—'}</td>
+                  <td data-label="التاريخ">{fmtDate(item.activity_date)}</td>
+                  <td data-label="القيمة" style={{ fontFamily: 'var(--font-mono)', fontWeight: 700 }}>{fmt(item.amount)}</td>
+                  <td data-label="المتبقي" style={{ fontFamily: 'var(--font-mono)' }}>{fmt(item.balance)}</td>
+                  <td data-label="الحالة">{item.status || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <div style={{ marginTop: 10, fontSize: 10.5, color: 'var(--muted)' }}>
+        المصدر: مرايا Zoho Books + دفتر COD الداخلي · آخر مزامنة للمورد {vendor?.synced_at ? relTime(vendor.synced_at) : 'غير متاحة'}
+      </div>
+    </SectionCard>
   );
 }
 
@@ -588,8 +750,10 @@ export default function CarrierProfile() {
   const [searchParams] = useSearchParams();
   const carrierId = searchParams.get('id');
   const navigate = useNavigate();
+  const { can } = useAuth();
   const [data,    setData]    = useState(null);
   const [loading, setLoading] = useState(true);
+  const [showZohoLink, setShowZohoLink] = useState(false);
 
   const refresh = useCallback(async () => {
     if (!carrierId) return;
@@ -639,7 +803,7 @@ export default function CarrierProfile() {
     );
   }
 
-  const { carrier, summary, audits, webhooks, ops } = data;
+  const { carrier, summary, audits, webhooks, ops, zohoFinancial } = data;
   const balColor = Math.abs(summary.balance) < 0.01 ? 'var(--muted)' : summary.balance > 0 ? 'var(--red)' : 'var(--accent)';
   const balLabel = Math.abs(summary.balance) < 0.01 ? 'صفر' : summary.balance > 0 ? 'لها علينا' : 'لنا عليها';
   const netColor = Math.abs(summary.netPosition) < 0.01 ? 'var(--muted)' : summary.netPosition > 0 ? 'var(--red)' : 'var(--accent)';
@@ -648,6 +812,15 @@ export default function CarrierProfile() {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
       <CarrierTabs carrierId={carrierId} carrierName={carrier.name} active="overview"/>
       <Hero carrier={carrier} onBack={() => navigate('/hub')}/>
+
+      {showZohoLink && (
+        <ZohoLinkModal
+          carrierId={carrierId}
+          financial={zohoFinancial}
+          onClose={() => setShowZohoLink(false)}
+          onSaved={refresh}
+        />
+      )}
 
       {/* Setup warning */}
       {summary.setupGaps.length > 0 && (
@@ -721,6 +894,12 @@ export default function CarrierProfile() {
           value={relTime(summary.lastActivityAt)}
         />
       </div>
+
+      <ZohoFinancialSection
+        financial={zohoFinancial}
+        canConfigure={can('zoho.configure')}
+        onConfigure={() => setShowZohoLink(true)}
+      />
 
       {/* Sections */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>

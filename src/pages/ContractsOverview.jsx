@@ -2,11 +2,11 @@
 // a contract-change history feed underneath. Built for screenshotting
 // and sharing with management / accounting partners.
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   FileSpreadsheet, RefreshCw, Printer, Clock, History, ArrowUpRight,
   ArrowDownRight, CheckCircle2, Calendar, Plus, Trash2, Edit3, FileText,
-  AlertTriangle, ShieldCheck,
+  AlertTriangle, ShieldCheck, Eye, Download, Upload,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, PageHeader } from '../components/UI.jsx';
 import { ClipboardList } from 'lucide-react';
@@ -17,6 +17,12 @@ import {
 } from '../lib/contractHistoryService.js';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
+import {
+  getCarrierContractDownloadUrl,
+  getCarrierContractUrl,
+  setCarrierContractPdfPath,
+  uploadCarrierContractPdf,
+} from '../lib/coreService.js';
 
 const fmt = (v, suffix = '') => {
   if (v == null || v === '') return '—';
@@ -71,6 +77,9 @@ export default function ContractsOverview({ isActive = true }) {
   const [readiness, setReadiness] = useState([]);
   const [loading,  setLoading] = useState(true);
   const [expandedRow, setExpandedRow] = useState(null);
+  const [documentBusy, setDocumentBusy] = useState(null);
+  const documentInputRef = useRef(null);
+  const documentUploadRowRef = useRef(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -115,6 +124,70 @@ export default function ContractsOverview({ isActive = true }) {
   };
 
   const handlePrint = () => window.print();
+  const updateDocumentState = useCallback((carrierId, path) => {
+    setRows(current => current.map(row => row.carrierId === carrierId
+      ? { ...row, contractPdfPath: path }
+      : row));
+    setReadiness(current => current.map(row => row.carrierId === carrierId
+      ? { ...row, hasOfficialDocument: Boolean(path) }
+      : row));
+  }, []);
+
+  const handleDocumentUpload = async (row, file) => {
+    if (!file || !row) return;
+    const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
+    if (!isPdf) { toast('الملف يجب أن يكون PDF', 'error'); return; }
+    if (file.size > 20 * 1024 * 1024) { toast('حجم ملف العقد يجب ألا يتجاوز 20 MB', 'error'); return; }
+
+    setDocumentBusy(`${row.carrierId}:upload`);
+    try {
+      const path = await uploadCarrierContractPdf({ carrierId: row.carrierId, file });
+      if (!path) throw new Error('تعذّر رفع الملف إلى التخزين');
+      await setCarrierContractPdfPath(row.carrierId, path);
+      updateDocumentState(row.carrierId, path);
+      toast(row.contractPdfPath ? 'تم استبدال ملف العقد' : 'تم رفع ملف العقد', 'success');
+    } catch (error) {
+      toast(`فشل حفظ ملف العقد: ${error.message}`, 'error');
+    } finally {
+      setDocumentBusy(null);
+    }
+  };
+
+  const handleDocumentView = async (row) => {
+    const previewWindow = window.open('about:blank', '_blank');
+    if (previewWindow) previewWindow.opener = null;
+    setDocumentBusy(`${row.carrierId}:view`);
+    try {
+      const url = await getCarrierContractUrl(row.contractPdfPath, 600);
+      if (!url) throw new Error('تعذّر إنشاء رابط العرض');
+      if (previewWindow) previewWindow.location.href = url;
+      else window.open(url, '_blank', 'noopener');
+    } catch (error) {
+      previewWindow?.close();
+      toast(error.message, 'error');
+    } finally {
+      setDocumentBusy(null);
+    }
+  };
+
+  const handleDocumentDownload = async (row) => {
+    setDocumentBusy(`${row.carrierId}:download`);
+    try {
+      const url = await getCarrierContractDownloadUrl(row.contractPdfPath, 600);
+      if (!url) throw new Error('تعذّر إنشاء رابط التنزيل');
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `${row.carrierName}-العقد.pdf`;
+      link.rel = 'noopener';
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } catch (error) {
+      toast(error.message, 'error');
+    } finally {
+      setDocumentBusy(null);
+    }
+  };
   const missingContracts = readiness.filter(row => !row.hasContract);
   const missingFileKinds = readiness.filter(row => !row.hasFileKind);
   const missingDocuments = readiness.filter(row => !row.hasOfficialDocument);
@@ -122,6 +195,21 @@ export default function ContractsOverview({ isActive = true }) {
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      <input
+        ref={documentInputRef}
+        type="file"
+        accept="application/pdf,.pdf"
+        tabIndex={-1}
+        aria-hidden="true"
+        style={{ display: 'none' }}
+        onChange={event => {
+          const file = event.target.files?.[0];
+          const row = documentUploadRowRef.current;
+          event.target.value = '';
+          documentUploadRowRef.current = null;
+          handleDocumentUpload(row, file);
+        }}
+      />
       <PageHeader
         icon={<ClipboardList size={22}/>}
         title="جدول عقود شركات الشحن"
@@ -228,6 +316,7 @@ export default function ContractsOverview({ isActive = true }) {
                   <th style={{ minWidth: 80,  background: 'rgba(168,85,247,.06)' }}>رسوم أمنية %</th>
                   <th style={{ minWidth: 90,  background: 'color-mix(in srgb, var(--accent) 6%, transparent)' }}>رسوم COD</th>
                   <th style={{ minWidth: 80 }}>الوجهات</th>
+                  <th style={{ minWidth: 220 }}>مستند العقد</th>
                   <th style={{ minWidth: 70 }}>الحالة</th>
                 </tr>
               </thead>
@@ -257,6 +346,34 @@ export default function ContractsOverview({ isActive = true }) {
                     <td data-label="رسوم أمنية" style={{ fontFamily: 'var(--font-mono)', color: 'var(--purple)' }}>{pct(r.rssPct)}</td>
                     <td data-label="رسوم COD" style={{ fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmt(r.codFee, 'ر.س')}</td>
                     <td data-label="الوجهات" style={{ fontFamily: 'var(--font-mono)', color: 'var(--muted)' }}>{r.destinations.length}</td>
+                    <td data-label="مستند العقد">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                        {r.contractPdfPath ? (
+                          <>
+                            <Btn size="sm" variant="ghost" icon={<Eye size={13}/>} onClick={() => handleDocumentView(r)} disabled={Boolean(documentBusy)}>
+                              {documentBusy === `${r.carrierId}:view` ? 'يفتح…' : 'عرض'}
+                            </Btn>
+                            <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => handleDocumentDownload(r)} disabled={Boolean(documentBusy)}>
+                              {documentBusy === `${r.carrierId}:download` ? 'ينزّل…' : 'تنزيل'}
+                            </Btn>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 11, color: 'var(--gold)', fontWeight: 700 }}>غير مرفوع</span>
+                        )}
+                        <Btn
+                          size="sm"
+                          variant="ghost"
+                          icon={<Upload size={13}/>}
+                          disabled={Boolean(documentBusy)}
+                          onClick={() => {
+                            documentUploadRowRef.current = r;
+                            documentInputRef.current?.click();
+                          }}
+                        >
+                          {documentBusy === `${r.carrierId}:upload` ? 'يرفع…' : (r.contractPdfPath ? 'استبدال' : 'رفع PDF')}
+                        </Btn>
+                      </div>
+                    </td>
                     <td data-label="الحالة">
                       {r.isActive ? (
                         <span style={{

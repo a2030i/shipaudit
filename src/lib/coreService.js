@@ -172,6 +172,34 @@ export async function getCarrierContractUrl(path, expiresInSec = 600) {
   return data?.signedUrl ?? null;
 }
 
+export async function getCarrierContractDownloadUrl(path, expiresInSec = 600) {
+  if (!path) return null;
+  const { data, error } = await supabase.storage
+    .from('carrier-contracts')
+    .createSignedUrl(path, expiresInSec, { download: true });
+  if (error) {
+    console.warn('contract pdf download-url failed:', error.message);
+    return null;
+  }
+  return data?.signedUrl ?? null;
+}
+
+export async function setCarrierContractPdfPath(carrierId, contractPdfPath) {
+  if (!carrierId) throw new Error('معرّف شركة الشحن مطلوب');
+  const { data, error } = await supabase
+    .from('carriers')
+    .update({
+      contract_pdf_path: contractPdfPath || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', carrierId)
+    .select('id')
+    .single();
+  if (error) throw error;
+  if (!data?.id) throw new Error('لم يتم تحديث سجل شركة الشحن');
+  return contractPdfPath || null;
+}
+
 // ── Audits ────────────────────────────────────────────────────────────────────
 
 // Deterministic fingerprint of the audit's contents — sorted "awb|amount"

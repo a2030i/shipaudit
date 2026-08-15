@@ -56,12 +56,17 @@ export async function loadCarrierProfile(carrierId) {
   if (!carrier) throw new Error('الشركة غير موجودة');
 
   // Run the rest in parallel
-  const [ops, codRows, audits, webhooks] = await Promise.all([
+  const [ops, codRows, audits, webhooks, zohoResult] = await Promise.all([
     loadAll('carrier_operations', 'id, doc_type, doc_no, doc_date, amount_dr, amount_cr, amount_paid, status, audit_id, payment_id, due_date, paid_at, notes, created_at, updated_at', { carrier_id: carrierId }),
     loadAll('cod_settlement',     'id, direction, awb, amount, upload_date, source_file, upload_id, created_at',                                                                       { carrier_id: carrierId }),
     loadAll('audits',             'id, file_name, period, row_count, issue_count, total_billed, total_tax, diff, mismatch_count, drift_pre_tax, drift_tax, audit_type, review_status, approved_at, rejected_at, rejected_reason, created_at', { carrier_id: carrierId }),
     loadAll('webhook_events',     'id, sender, subject, file_name, file_size, status, audit_id, received_at, file_path',                                                              { detected_carrier_id: carrierId }),
+    supabase.rpc('carrier_zoho_financial_dossier', { p_carrier_id: carrierId }),
   ]);
+
+  const zohoFinancial = zohoResult.error
+    ? { available: false, error: zohoResult.error.message }
+    : { available: true, ...(zohoResult.data || {}) };
 
   // ── Financial sub-ledger ───────────────────────────────────────
   let totalDr = 0, totalCr = 0, openBalance = 0;
@@ -169,7 +174,41 @@ export async function loadCarrierProfile(carrierId) {
     webhooks:  webhooks.slice(0, 25),
     ops:       ops.slice(0, 50),
     codRows:   codRows.slice(0, 50),
+    zohoFinancial,
   };
+}
+
+export async function loadCarrierZohoLinkOptions() {
+  const [vendorsResult, treasuriesResult] = await Promise.all([
+    supabase
+      .from('zoho_contacts')
+      .select('zoho_id, contact_name, outstanding_payable, unused_credits_payable, status, synced_at')
+      .eq('contact_type', 'vendor')
+      .order('contact_name', { ascending: true }),
+    supabase
+      .from('zoho_chart_accounts')
+      .select('zoho_id, account_name, account_code, account_type, current_balance, currency_code, status, synced_at')
+      .order('account_name', { ascending: true }),
+  ]);
+  if (vendorsResult.error) throw vendorsResult.error;
+  if (treasuriesResult.error) throw treasuriesResult.error;
+  return {
+    vendors: vendorsResult.data || [],
+    treasuries: (treasuriesResult.data || []).filter(account =>
+      ['cash', 'bank', 'other_current_asset', 'other_asset'].includes(account.account_type)
+      || /^\s*خزينة(?:\s|$)/i.test(account.account_name || '')),
+  };
+}
+
+export async function saveCarrierZohoFinancialLinks({ carrierId, zohoVendorId, treasuryAccountId, notes = null }) {
+  const { data, error } = await supabase.rpc('set_carrier_zoho_financial_links', {
+    p_carrier_id: carrierId,
+    p_zoho_vendor_id: zohoVendorId || null,
+    p_treasury_account_id: treasuryAccountId || null,
+    p_notes: notes || null,
+  });
+  if (error) throw error;
+  return data;
 }
 
 // Persist a partial file_signature update — used by the file-kind

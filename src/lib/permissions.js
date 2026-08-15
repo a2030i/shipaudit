@@ -110,6 +110,7 @@ export const PERMISSION_CATALOG = [
       { key: 'receivables.request_writeoff', label: 'تقديم طلب شطب دين' },
       { key: 'receivables.approve_writeoff', label: 'اعتماد/رفض طلب شطب', sensitive: true },
       { key: 'legal.view',                   label: 'التصعيد القانوني (تجاوز 90 يوم/محافظ سالبة)' },
+      { key: 'legal.manage',                 label: 'إدارة الملفات والإجراءات القانونية', sensitive: true },
     ],
   },
   {

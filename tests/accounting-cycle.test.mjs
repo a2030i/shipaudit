@@ -694,8 +694,8 @@ test('الشهر المختار للدورة ينتقل إلى نموذج مرا
   assert.match(cyclePage, /if \(isActive\) refresh\(\)/);
   const appPage = await readFile(new URL('../src/App.jsx', import.meta.url), 'utf8');
   assert.match(appPage, /<AccountingCycle carriers=\{carriers\} isActive=\{pathname==='\/accounting-cycle'\}\/>/);
-  assert.match(appPage, /ACCOUNTING_CYCLE_STAGES/);
-  assert.match(appPage, /accounting-stage-nav/);
+  assert.doesNotMatch(appPage, /ACCOUNTING_CYCLE_STAGES/);
+  assert.doesNotMatch(appPage, /accounting-stage-nav/);
   assert.match(cyclePage, /const requestedStage = params\.get\('stage'\)/);
   assert.match(cyclePage, /requestedPeriod !== period\) return/);
   assert.match(cyclePage, /accounting-cycle-layout accounting-cycle-layout--contextual/);

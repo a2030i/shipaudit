@@ -37,4 +37,7 @@ test('bank export verification remains scoped to one linked bank account', async
   assert.match(edge, /\.eq\('zoho_account_id', accountId\)/);
   assert.match(edge, /bank_export_scope_mismatch/);
   assert.match(edge, /zoho_bank_account_id: accountId/);
+  assert.match(edge, /reversedLocalBankTransactionIds/);
+  assert.match(edge, /bank_export_contains_reversed_rows/);
+  assert.match(edge, /reversal_groups_excluded/);
 });

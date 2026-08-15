@@ -65,3 +65,33 @@ test('an unmatched reversal-looking credit is not hidden', () => {
   annotateRejected(rows);
   assert.equal(rows[0].rejected, undefined);
 });
+
+test('saved rows pair gross reversal from persisted fee and VAT fields', () => {
+  const rows = [
+    { date: '2026-08-01', reference: 'FT-102', debit: 692.5, credit: 0,
+      fees: 50, tax: 7.5, description: 'Outgoing transfer' },
+    { date: '2026-08-02', reference: 'FT-102', debit: 0, credit: 750,
+      description: 'Rejected transfer and amount returned' },
+  ];
+
+  annotateRejected(rows);
+  assert.deepEqual(rows.map(row => row.rejected), [true, true]);
+});
+
+test('principal, fee and VAT reversal legs are all excluded from clean Excel', () => {
+  const rows = [
+    { date: '2026-08-01', reference: 'FT-103', debit: 692.5, credit: 0,
+      fees: 50, tax: 7.5, description: 'Outgoing transfer' },
+    { date: '2026-08-02', reference: 'FT-103', debit: 0, credit: 692.5,
+      description: 'Rejected transfer and principal returned' },
+    { date: '2026-08-02', reference: 'FT-103', debit: 0, credit: 50,
+      description: 'Returned transfer fee' },
+    { date: '2026-08-02', reference: 'FT-103', debit: 0, credit: 7.5,
+      description: 'Returned VAT' },
+  ];
+
+  const workbook = XLSX.read(generateCleanExcel(rows), { type: 'array' });
+  const exported = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { defval: '' });
+  assert.equal(exported.length, 0);
+  assert.deepEqual(rows.map(row => row.rejected), [undefined, undefined, undefined, undefined]);
+});

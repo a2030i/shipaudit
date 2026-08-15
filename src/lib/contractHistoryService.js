@@ -151,7 +151,7 @@ function summarizePricing(pricing) {
 export async function loadAllContractsOverview() {
   const { data, error } = await supabase
     .from('carriers')
-    .select('id, name, logo, color, contracts')
+    .select('id, name, logo, color, contracts, contract_pdf_path')
     .order('name', { ascending: true });
   if (error) throw error;
   const today = new Date().toISOString().slice(0, 10);
@@ -166,6 +166,7 @@ export async function loadAllContractsOverview() {
         carrierName:  c.name,
         carrierLogo:  c.logo || '📦',
         carrierColor: c.color || '#2DD4BF',
+        contractPdfPath: c.contract_pdf_path || null,
         contractId:   ct.id,
         contractLabel: ct.label || '—',
         startDate:    ct.startDate || null,
