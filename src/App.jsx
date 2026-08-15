@@ -66,6 +66,7 @@ const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
 const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
 const PublicShortAddress = lazy(() => import('./pages/PublicShortAddress.jsx'));
+const PublicInternationalRates = lazy(() => import('./pages/PublicInternationalRates.jsx'));
 // ── Route map ─────────────────────────────────────────────────────────────────
 // Sidebar IA — collapsible sections grouped by domain.
 //
@@ -323,17 +324,21 @@ export default function App() {
 }
 
 // مسارات تُرسَم مستقلّةً خارج غلاف التطبيق (بلا جانبية/شريط/تحقّق دخول).
-// **فارغة الآن**: بوابة التاجر للدفع أُلغيت بالكامل (2026-07-29، قرار
-// المستخدم) — التحصيل يتم عبر حملات واتساب والتحويل البنكي المباشر.
-// أي سطح عام جديد يُضاف هنا ويُوثَّق سبب كونه عاماً.
-const PUBLIC_PATHS = ['/short-address'];
+// التطبيع يمنع الشرطة النهائية من إسقاط الرابط العام داخل حارس النظام.
+const normalizePublicPath = (pathname = '/') => pathname.replace(/\/+$/, '') || '/';
+const PUBLIC_ROUTES = new Map([
+  ['/short-address', PublicShortAddress],
+  ['/national-address', PublicShortAddress],
+  ['/international-rates', PublicInternationalRates],
+]);
 
 function AppShell(props) {
   const location = useLocation();
-  if (PUBLIC_PATHS.includes(location.pathname)) {
+  const PublicPage = PUBLIC_ROUTES.get(normalizePublicPath(location.pathname));
+  if (PublicPage) {
     return (
       <Suspense fallback={<div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center' }}><Spinner size={28}/></div>}>
-        <PublicShortAddress/>
+        <PublicPage/>
       </Suspense>
     );
   }
