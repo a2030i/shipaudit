@@ -6,6 +6,7 @@ const migration = readFileSync(new URL('../supabase/migrations/20260815204621_cu
 const hardening = readFileSync(new URL('../supabase/migrations/20260815204800_harden_customer_growth_rpc_boundary.sql', import.meta.url), 'utf8');
 const service = readFileSync(new URL('../src/lib/nextActionsService.js', import.meta.url), 'utf8');
 const page = readFileSync(new URL('../src/pages/NextActions.jsx', import.meta.url), 'utf8');
+const salesHub = readFileSync(new URL('../src/pages/SalesHub.jsx', import.meta.url), 'utf8');
 const customer360 = readFileSync(new URL('../src/pages/CustomerWatch.jsx', import.meta.url), 'utf8');
 
 test('growth loop unifies identity, lifecycle, ownership and measured outcomes', () => {
@@ -52,4 +53,10 @@ test('customer workbench requires a next action and opens the unified 360 profil
   assert.match(page, /CustomerGrowthProfile/);
   assert.doesNotMatch(page, /setRetargetingFollowup/);
   assert.match(customer360, /params\.get\('open'\) !== '1'/);
+});
+
+test('the visible sales today tab renders the unified customer action workbench', () => {
+  assert.match(salesHub, /import NextActions from '\.\/NextActions\.jsx'/);
+  assert.match(salesHub, /id: 'today'[\s\S]*component: NextActions/);
+  assert.doesNotMatch(salesHub, /import SalesToday/);
 });
