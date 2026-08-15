@@ -73,7 +73,7 @@ const SMSA_ROAD = {
 const roundMoney = value => Math.round((Number(value) + 1e-9) * 100) / 100;
 const positive = value => Math.max(0, Number(value) || 0);
 
-function aramexBase({ direction, country, shipmentType, weight }) {
+function aramexBase({ direction, country, weight }) {
   const countryInfo = INTERNATIONAL_COUNTRIES.find(item => item.code === country);
   if (!countryInfo || countryInfo.zone === 'smsa_only') return null;
   const table = TABLES[`${direction}_${countryInfo.zone}`];
@@ -81,14 +81,6 @@ function aramexBase({ direction, country, shipmentType, weight }) {
   if (!table || countryIndex < 0) return null;
 
   const actualWeight = Math.max(0.01, positive(weight));
-  if (shipmentType === 'document' && actualWeight <= 2) {
-    const billedWeight = Math.ceil(actualWeight * 2) / 2;
-    const rowIndex = [0.5, 1, 1.5, 2].indexOf(billedWeight);
-    const basePrice = table.document[0][countryIndex];
-    const shippingRate = table.document[rowIndex][countryIndex];
-    return { basePrice, additionalWeightCharge: shippingRate - basePrice, shippingRate, billedWeight, rateKind: 'document' };
-  }
-
   let billedWeight;
   if (actualWeight <= 10) billedWeight = Math.ceil(actualWeight * 2) / 2;
   else if (actualWeight <= 25) billedWeight = Math.ceil(actualWeight);
@@ -113,17 +105,6 @@ function aramexBase({ direction, country, shipmentType, weight }) {
   };
 }
 
-function aramexCodFee(codUsd) {
-  const value = positive(codUsd);
-  if (!value) return { usd: 0, warning: '' };
-  if (value < 100) return { usd: 6, warning: '' };
-  if (value >= 101 && value <= 200) return { usd: 9, warning: '' };
-  if (value >= 201 && value <= 300) return { usd: 12, warning: '' };
-  if (value >= 301 && value <= 400) return { usd: 15, warning: '' };
-  if (value >= 401 && value <= 500) return { usd: 18, warning: '' };
-  return { usd: 0, warning: 'قيمة التحصيل هذه غير مغطاة صراحةً في شرائح أرامكس المرفقة.' };
-}
-
 function smsaBase(country, weight, service) {
   const tariff = service === 'road' ? SMSA_ROAD[country] : SMSA_AIR[country];
   if (!tariff) return null;
@@ -144,20 +125,11 @@ function smsaBase(country, weight, service) {
   };
 }
 
-function smsaCodFee(country, codUsd) {
-  const value = positive(codUsd);
-  if (!value) return { sar: 0, usd: 0, warning: '' };
-  if (value < 1000) return { sar: country === 'tr' ? 8 : 6, usd: 0, warning: '' };
-  if (value > 1000) return { sar: 0, usd: value * 0.01, warning: '' };
-  return { sar: 0, usd: 0, warning: 'قيمة 1,000 دولار نفسها غير محددة في جدول سمسا المرفق.' };
-}
-
 function finishQuote(quote, vatPct) {
   const subtotal = quote.lines.reduce((sum, line) => sum + line.amount, 0);
   const vat = subtotal * (positive(vatPct) / 100);
   const lines = vat > 0 ? [...quote.lines, { key: 'vat', label: `ضريبة (${positive(vatPct)}%)`, amount: vat }] : quote.lines;
   const roundedLines = lines.map(line => ({ ...line, amount: roundMoney(line.amount) }));
-  const usdLines = (quote.usdLines || []).map(line => ({ ...line, amount: roundMoney(line.amount) }));
   const fuelCharge = roundedLines.find(line => line.key === 'fuel')?.amount || 0;
   const otherChargesSar = roundedLines
     .filter(line => !['base', 'additional-weight', 'fuel'].includes(line.key))
@@ -169,42 +141,34 @@ function finishQuote(quote, vatPct) {
     fuelCharge: roundMoney(fuelCharge),
     otherChargesSar: roundMoney(otherChargesSar),
     lines: roundedLines,
-    usdLines,
-    foreignTotalUsd: roundMoney(usdLines.reduce((sum, line) => sum + line.amount, 0)),
     total: roundMoney(subtotal + vat),
   };
 }
 
 export function calculateInternationalQuotes(input) {
   const {
-    direction = 'outbound', country = 'ae', shipmentType = 'parcel', weight = 0.5,
-    codUsd = 0, dutiable = false, dangerousGoods = false,
+    direction = 'outbound', country = 'ae', weight = 0.5,
     aramexFuelPct = 0, smsaFuelPct = 0, vatPct = 0,
   } = input || {};
   const countryInfo = INTERNATIONAL_COUNTRIES.find(item => item.code === country);
   if (!countryInfo) return [];
   const quotes = [];
 
-  const aramexRate = aramexBase({ direction, country, shipmentType, weight });
+  const aramexRate = aramexBase({ direction, country, weight });
   if (aramexRate) {
-    const cod = aramexCodFee(codUsd);
     const lines = [{ key: 'base', label: 'السعر الأساسي', amount: aramexRate.basePrice }];
     if (aramexRate.additionalWeightCharge) lines.push({ key: 'additional-weight', label: 'الوزن الإضافي', amount: aramexRate.additionalWeightCharge });
-    const usdLines = [];
     const fuel = aramexRate.shippingRate * (positive(aramexFuelPct) / 100);
     if (fuel) lines.push({ key: 'fuel', label: `وقود أرامكس (${positive(aramexFuelPct)}%)`, amount: fuel });
-    if (cod.usd) usdLines.push({ key: 'cod-usd', label: 'خدمة التحصيل الدولي', amount: cod.usd });
-    if (dutiable) lines.push({ key: 'clearance', label: 'رسوم تخليص مذكورة بالعقد', amount: 90 });
-    if (dangerousGoods) lines.push({ key: 'dgr', label: 'رسوم المواد الخطرة', amount: countryInfo.zone === 'gcc' ? 4 : 37 });
     quotes.push(finishQuote({
       id: 'aramex', carrier: 'أرامكس', service: 'Express Worldwide',
       basePrice: aramexRate.basePrice, additionalWeightCharge: aramexRate.additionalWeightCharge,
-      billedWeight: aramexRate.billedWeight, lines, usdLines,
-      warnings: [cod.warning, positive(aramexFuelPct) ? '' : 'نسبة وقود أرامكس غير منشورة؛ لم تُضف تلقائيًا.', dutiable ? 'المستند يذكر أيضًا 100 ريال في سطر غير موضح؛ أكد الرسوم مع مدير الحساب.' : ''].filter(Boolean),
+      billedWeight: aramexRate.billedWeight, lines,
+      warnings: [positive(aramexFuelPct) ? '' : 'نسبة وقود أرامكس غير منشورة؛ لم تُضف تلقائيًا.'].filter(Boolean),
     }, vatPct));
   }
 
-  if (direction === 'outbound' && countryInfo.smsa && shipmentType === 'parcel') {
+  if (direction === 'outbound' && countryInfo.smsa) {
     for (const service of ['road', 'air']) {
       const smsaRate = smsaBase(country, weight, service);
       if (!smsaRate) continue;
@@ -214,20 +178,14 @@ export function calculateInternationalQuotes(input) {
       lines.push({ key: 'rss', label: 'رسوم المخاطر والأمن RSS (16%)', amount: rss });
       const fuel = smsaRate.shippingRate * (positive(smsaFuelPct) / 100);
       if (fuel) lines.push({ key: 'fuel', label: `وقود سمسا (${positive(smsaFuelPct)}%)`, amount: fuel });
-      const cod = smsaCodFee(country, codUsd);
-      const usdLines = [];
-      if (cod.sar) lines.push({ key: 'cod', label: 'خدمة التحصيل', amount: cod.sar });
-      if (cod.usd) usdLines.push({ key: 'cod-usd', label: 'خدمة التحصيل (1%)', amount: cod.usd });
       quotes.push(finishQuote({
         id: `smsa-${service}`, carrier: 'سمسا', service: service === 'road' ? 'Ecommerce Road' : 'Ecommerce Air',
         basePrice: smsaRate.basePrice, additionalWeightCharge: smsaRate.additionalWeightCharge,
-        billedWeight: smsaRate.billedWeight, lines, usdLines,
-        warnings: [cod.warning, positive(smsaFuelPct) ? '' : 'نسبة وقود سمسا غير منشورة؛ لم تُضف تلقائيًا.', dangerousGoods ? 'عرض سمسا المرسل لا يحدد رسوم المواد الخطرة.' : '', dutiable ? 'عرض سمسا المرسل لا يحدد رسوم التخليص الجمركي.' : ''].filter(Boolean),
+        billedWeight: smsaRate.billedWeight, lines,
+        warnings: [positive(smsaFuelPct) ? '' : 'نسبة وقود سمسا غير منشورة؛ لم تُضف تلقائيًا.'].filter(Boolean),
       }, vatPct));
     }
   }
 
-  const hasMixedCurrencies = quotes.some(quote => quote.foreignTotalUsd > 0);
-  if (hasMixedCurrencies) return quotes.map(quote => ({ ...quote, cheapest: false, comparable: false }));
   return quotes.sort((a, b) => a.total - b.total).map((quote, index) => ({ ...quote, cheapest: index === 0 && quotes.length > 1, comparable: true }));
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  AlertTriangle, ArrowLeft, Box, ChevronDown, FileText, Info, PackageCheck,
+  AlertTriangle, ArrowLeft, ChevronDown, Info, PackageCheck,
   Plane, Route, ShieldCheck, Sparkles,
 } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
@@ -14,11 +14,7 @@ import './PublicInternationalRates.css';
 const INITIAL_FORM = {
   direction: 'outbound',
   country: 'ae',
-  shipmentType: 'parcel',
-  weight: 2,
-  codUsd: 0,
-  dutiable: false,
-  dangerousGoods: false,
+  weight: 0.5,
   aramexFuelPct: 0,
   smsaFuelPct: 0,
   vatPct: 0,
@@ -77,7 +73,6 @@ function QuoteRow({ quote, quoteKey }) {
           <div className="ir-quote-total">
             <span>المجموع</span>
             <strong>{money(quote.total)} ر.س</strong>
-            {quote.foreignTotalUsd ? <em>+ {money(quote.foreignTotalUsd)} USD منفصلة</em> : null}
           </div>
         </div>
         {quote.cheapest ? <span className="ir-best-label"><Sparkles size={15} /> الأوفر</span> : null}
@@ -89,12 +84,6 @@ function QuoteRow({ quote, quoteKey }) {
             <div key={line.key}>
               <span>{line.label}</span>
               <strong>{money(line.amount)} ر.س</strong>
-            </div>
-          ))}
-          {quote.usdLines.map(line => (
-            <div className="ir-usd-line" key={line.key}>
-              <span>{line.label}</span>
-              <strong>{money(line.amount)} USD</strong>
             </div>
           ))}
           <div className="ir-billed-weight">
@@ -125,9 +114,8 @@ export default function PublicInternationalRates() {
     [form.direction],
   );
   const quotes = useMemo(() => calculateInternationalQuotes(submitted), [submitted]);
-  const hasMixedCurrencies = quotes.some(quote => quote.foreignTotalUsd > 0);
   const hasFuelInput = Number(submitted.aramexFuelPct) > 0 || Number(submitted.smsaFuelPct) > 0;
-  const quoteKey = `${submitted.direction}-${submitted.country}-${submitted.shipmentType}-${submitted.weight}-${submitted.codUsd}-${submitted.aramexFuelPct}-${submitted.smsaFuelPct}-${submitted.vatPct}-${submitted.dutiable}-${submitted.dangerousGoods}`;
+  const quoteKey = `${submitted.direction}-${submitted.country}-${submitted.weight}-${submitted.aramexFuelPct}-${submitted.smsaFuelPct}-${submitted.vatPct}`;
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -148,7 +136,6 @@ export default function PublicInternationalRates() {
     setSubmitted({
       ...form,
       weight: Math.max(0.01, Number(form.weight) || 0.5),
-      codUsd: Math.max(0, Number(form.codUsd) || 0),
       aramexFuelPct: Math.max(0, Number(form.aramexFuelPct) || 0),
       smsaFuelPct: Math.max(0, Number(form.smsaFuelPct) || 0),
       vatPct: Math.max(0, Number(form.vatPct) || 0),
@@ -193,31 +180,11 @@ export default function PublicInternationalRates() {
             <ChevronDown size={18} aria-hidden="true" />
           </div>
 
-          <label className="ir-label">نوع الشحنة</label>
-          <Segment
-            value={form.shipmentType}
-            onChange={value => update('shipmentType', value)}
-            ariaLabel="نوع الشحنة"
-            options={[
-              { value: 'parcel', label: 'طرد', icon: <Box size={18} /> },
-              { value: 'document', label: 'مستند', icon: <FileText size={18} /> },
-            ]}
-          />
-
-          <div className="ir-two-fields">
+          <div className="ir-weight-field">
             <label>
               <span>الوزن الفعلي (كجم)</span>
               <input type="number" min="0.01" step="0.01" value={form.weight} onChange={event => update('weight', event.target.value)} required />
             </label>
-            <label>
-              <span>قيمة التحصيل COD (دولار)</span>
-              <input type="number" min="0" step="0.01" value={form.codUsd} onChange={event => update('codUsd', event.target.value)} />
-            </label>
-          </div>
-
-          <div className="ir-checks">
-            <label><input type="checkbox" checked={form.dutiable} onChange={event => update('dutiable', event.target.checked)} /> شحنة خاضعة للرسوم الجمركية</label>
-            <label><input type="checkbox" checked={form.dangerousGoods} onChange={event => update('dangerousGoods', event.target.checked)} /> تحتوي على مواد خطرة</label>
           </div>
 
           <details className="ir-assumptions">
@@ -236,8 +203,8 @@ export default function PublicInternationalRates() {
         <section className="ir-results" aria-live="polite">
           <div className="ir-results-head">
             <div>
-              <h2>{hasMixedCurrencies ? 'نتائج الأسعار' : 'نتائج أفضل الأسعار'}</h2>
-              <p>{country?.name} · {submitted.shipmentType === 'parcel' ? 'طرد' : 'مستند'} · {submitted.weight} كجم</p>
+              <h2>نتائج أفضل الأسعار</h2>
+              <p>{country?.name} · طرد مدفوع · {submitted.weight} كجم</p>
             </div>
             <span>{submitted.direction === 'outbound' ? 'من السعودية' : 'إلى السعودية'}</span>
           </div>
@@ -250,9 +217,7 @@ export default function PublicInternationalRates() {
 
           <div className="ir-info-rail">
             <Info size={18} />
-            <span>{hasMixedCurrencies
-              ? 'رسوم الدولار معروضة منفصلة؛ لا يوجد سعر تحويل في المرفقات.'
-              : hasFuelInput
+            <span>{hasFuelInput
                 ? 'رسوم الوقود محتسبة فقط من النسبة التي أدخلتها.'
                 : 'رسوم الوقود موضحة كغير محددة لأن نسبتها غير موجودة في المرفقات.'}</span>
             <span>{INTERNATIONAL_RATE_SOURCE_DATES}</span>
@@ -265,7 +230,7 @@ export default function PublicInternationalRates() {
           <h2>تفاصيل المقارنة</h2>
           <div className="ir-table-scroll">
             <table>
-              <thead><tr><th>الناقل</th><th>الخدمة</th><th>السعر الأساسي</th><th>الوزن الإضافي</th><th>رسوم الوقود</th><th>رسوم أخرى</th><th>المجموع</th><th>رسوم USD</th></tr></thead>
+              <thead><tr><th>الناقل</th><th>الخدمة</th><th>السعر الأساسي</th><th>الوزن الإضافي</th><th>رسوم الوقود</th><th>رسوم أخرى</th><th>المجموع</th></tr></thead>
               <tbody>
                 {quotes.map(quote => (
                   <tr key={quote.id}>
@@ -276,7 +241,6 @@ export default function PublicInternationalRates() {
                     <td>{quote.fuelCharge ? `${money(quote.fuelCharge)} ر.س` : 'غير محددة'}</td>
                     <td>{money(quote.otherChargesSar)} ر.س</td>
                     <td className={quote.cheapest ? 'lowest' : ''}>{money(quote.total)} ر.س</td>
-                    <td>{quote.foreignTotalUsd ? `${money(quote.foreignTotalUsd)} USD` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -289,7 +253,7 @@ export default function PublicInternationalRates() {
           <ol>
             <li><span>1</span><p>نأخذ السعر الأساسي والوزن الإضافي مباشرةً من جداول المرفقات.</p></li>
             <li><span>2</span><p>نعرض الوقود مستقلًا، ونجمع بقية الرسوم المنشورة تحت «رسوم أخرى».</p></li>
-            <li><span>3</span><p>نضيف فقط النسب التي أدخلتها، ونبقي أي رسوم بالدولار منفصلة دون افتراض تحويل.</p></li>
+            <li><span>3</span><p>نضيف فقط نسب الوقود والضريبة التي أدخلتها.</p></li>
           </ol>
         </aside>
       </section>
@@ -298,7 +262,7 @@ export default function PublicInternationalRates() {
         <Route size={20} />
         <div>
           <strong>ما الذي تغطيه الحاسبة؟</strong>
-          <p>كل الأرقام مأخوذة من ملف أرامكس وصورة أسعار سمسا المرفقين فقط. الحاسبة لا تقرأ العقود أو الأسعار المسجلة في النظام، ولا تستخدم أي مصدر أسعار آخر.</p>
+          <p>الحاسبة مخصصة للطرد المدفوع فقط. كل الأرقام مأخوذة من ملف أرامكس وصورة أسعار سمسا المرفقين، ولا تقرأ العقود أو الأسعار المسجلة في النظام.</p>
         </div>
       </section>
 
