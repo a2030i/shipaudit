@@ -54,6 +54,12 @@ function CarrierWordmark({ id }) {
 }
 
 function QuoteRow({ quote, quoteKey }) {
+  const metrics = [
+    { label: 'السعر الأساسي', value: `${money(quote.basePrice)} ر.س` },
+    { label: 'الوزن الإضافي', value: `${money(quote.additionalWeightCharge)} ر.س` },
+    { label: 'رسوم الوقود', value: quote.fuelCharge ? `${money(quote.fuelCharge)} ر.س` : 'غير محددة' },
+    { label: 'رسوم أخرى', value: `${money(quote.otherChargesSar)} ر.س` },
+  ];
   return (
     <details className={`ir-quote ${quote.cheapest ? 'best' : ''}`} defaultOpen={quote.cheapest} key={`${quoteKey}-${quote.id}`}>
       <summary>
@@ -61,21 +67,18 @@ function QuoteRow({ quote, quoteKey }) {
           <CarrierWordmark id={quote.id} />
           <span>{quote.service}</span>
         </div>
-        <div className="ir-quote-metric">
-          <span>السعر الأساسي</span>
-          <strong>{money(quote.base)}</strong>
-          <small>ر.س</small>
-        </div>
-        <div className="ir-quote-metric">
-          <span>الإضافات</span>
-          <strong>{money(quote.additions)}</strong>
-          <small>ر.س</small>
-        </div>
-        <div className="ir-quote-total">
-          <span>{quote.foreignTotalUsd ? 'الإجمالي بالريال' : 'الإجمالي التقديري'}</span>
-          <strong>{money(quote.total)}</strong>
-          <small>ر.س</small>
-          {quote.foreignTotalUsd ? <em>+ {money(quote.foreignTotalUsd)} USD منفصلة</em> : null}
+        <div className="ir-quote-breakdown">
+          {metrics.map(metric => (
+            <div className="ir-quote-metric" key={metric.label}>
+              <span>{metric.label}</span>
+              <strong>{metric.value}</strong>
+            </div>
+          ))}
+          <div className="ir-quote-total">
+            <span>المجموع</span>
+            <strong>{money(quote.total)} ر.س</strong>
+            {quote.foreignTotalUsd ? <em>+ {money(quote.foreignTotalUsd)} USD منفصلة</em> : null}
+          </div>
         </div>
         {quote.cheapest ? <span className="ir-best-label"><Sparkles size={15} /> الأوفر</span> : null}
         <ChevronDown className="ir-chevron" size={21} aria-hidden="true" />
@@ -123,6 +126,7 @@ export default function PublicInternationalRates() {
   );
   const quotes = useMemo(() => calculateInternationalQuotes(submitted), [submitted]);
   const hasMixedCurrencies = quotes.some(quote => quote.foreignTotalUsd > 0);
+  const hasFuelInput = Number(submitted.aramexFuelPct) > 0 || Number(submitted.smsaFuelPct) > 0;
   const quoteKey = `${submitted.direction}-${submitted.country}-${submitted.shipmentType}-${submitted.weight}-${submitted.codUsd}-${submitted.aramexFuelPct}-${submitted.smsaFuelPct}-${submitted.vatPct}-${submitted.dutiable}-${submitted.dangerousGoods}`;
 
   useEffect(() => {
@@ -246,7 +250,11 @@ export default function PublicInternationalRates() {
 
           <div className="ir-info-rail">
             <Info size={18} />
-            <span>{hasMixedCurrencies ? 'رسوم الدولار معروضة منفصلة؛ لا يوجد سعر تحويل في المرفقات.' : 'التقدير لا يشمل رسوم الوقود غير المنشورة ما لم تُدخل نسبتها.'}</span>
+            <span>{hasMixedCurrencies
+              ? 'رسوم الدولار معروضة منفصلة؛ لا يوجد سعر تحويل في المرفقات.'
+              : hasFuelInput
+                ? 'رسوم الوقود محتسبة فقط من النسبة التي أدخلتها.'
+                : 'رسوم الوقود موضحة كغير محددة لأن نسبتها غير موجودة في المرفقات.'}</span>
             <span>{INTERNATIONAL_RATE_SOURCE_DATES}</span>
           </div>
         </section>
@@ -257,16 +265,18 @@ export default function PublicInternationalRates() {
           <h2>تفاصيل المقارنة</h2>
           <div className="ir-table-scroll">
             <table>
-              <thead><tr><th>الناقل</th><th>الخدمة</th><th>الأساسي</th><th>إضافات SAR</th><th>رسوم USD</th><th>الإجمالي بالريال</th></tr></thead>
+              <thead><tr><th>الناقل</th><th>الخدمة</th><th>السعر الأساسي</th><th>الوزن الإضافي</th><th>رسوم الوقود</th><th>رسوم أخرى</th><th>المجموع</th><th>رسوم USD</th></tr></thead>
               <tbody>
                 {quotes.map(quote => (
                   <tr key={quote.id}>
                     <td><CarrierWordmark id={quote.id} /></td>
                     <td>{quote.service}</td>
-                    <td>{money(quote.base)} ر.س</td>
-                    <td>{money(quote.additions)} ر.س</td>
-                    <td>{quote.foreignTotalUsd ? `${money(quote.foreignTotalUsd)} USD` : '—'}</td>
+                    <td>{money(quote.basePrice)} ر.س</td>
+                    <td>{money(quote.additionalWeightCharge)} ر.س</td>
+                    <td>{quote.fuelCharge ? `${money(quote.fuelCharge)} ر.س` : 'غير محددة'}</td>
+                    <td>{money(quote.otherChargesSar)} ر.س</td>
                     <td className={quote.cheapest ? 'lowest' : ''}>{money(quote.total)} ر.س</td>
+                    <td>{quote.foreignTotalUsd ? `${money(quote.foreignTotalUsd)} USD` : '—'}</td>
                   </tr>
                 ))}
               </tbody>
@@ -277,9 +287,9 @@ export default function PublicInternationalRates() {
         <aside className="ir-method">
           <h2>كيف نحسب السعر؟</h2>
           <ol>
-            <li><span>1</span><p>نختار السعر الأساسي حسب الناقل والدولة والاتجاه ونوع الشحنة والوزن المحتسب.</p></li>
-            <li><span>2</span><p>نضيف الرسوم المنشورة بعملتها الأصلية، مع إبقاء رسوم الدولار منفصلة.</p></li>
-            <li><span>3</span><p>نضيف نسب الوقود والضريبة التي أدخلتها فقط، ولا نفترض سعر تحويل.</p></li>
+            <li><span>1</span><p>نأخذ السعر الأساسي والوزن الإضافي مباشرةً من جداول المرفقات.</p></li>
+            <li><span>2</span><p>نعرض الوقود مستقلًا، ونجمع بقية الرسوم المنشورة تحت «رسوم أخرى».</p></li>
+            <li><span>3</span><p>نضيف فقط النسب التي أدخلتها، ونبقي أي رسوم بالدولار منفصلة دون افتراض تحويل.</p></li>
           </ol>
         </aside>
       </section>
@@ -288,7 +298,7 @@ export default function PublicInternationalRates() {
         <Route size={20} />
         <div>
           <strong>ما الذي تغطيه الحاسبة؟</strong>
-          <p>جداول أرامكس Express المرفقة لعام 2026، وصورة أسعار سمسا للتجارة الإلكترونية التي لا تظهر فيها سنة البريد. لا تستخدم الحاسبة مصدر أسعار آخر.</p>
+          <p>كل الأرقام مأخوذة من ملف أرامكس وصورة أسعار سمسا المرفقين فقط. الحاسبة لا تقرأ العقود أو الأسعار المسجلة في النظام، ولا تستخدم أي مصدر أسعار آخر.</p>
         </div>
       </section>
 

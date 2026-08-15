@@ -6,30 +6,39 @@ const byId = (quotes, id) => quotes.find(quote => quote.id === id);
 
 test('matches the supplied Aramex GCC parcel and document rows', () => {
   const parcel = calculateInternationalQuotes({ direction: 'outbound', country: 'ae', shipmentType: 'parcel', weight: 2 });
-  assert.equal(byId(parcel, 'aramex').base, 40);
+  assert.equal(byId(parcel, 'aramex').basePrice, 25);
+  assert.equal(byId(parcel, 'aramex').additionalWeightCharge, 15);
+  assert.equal(byId(parcel, 'aramex').total, 40);
 
   const document = calculateInternationalQuotes({ direction: 'outbound', country: 'ae', shipmentType: 'document', weight: 1 });
-  assert.equal(byId(document, 'aramex').base, 29);
+  assert.equal(byId(document, 'aramex').basePrice, 24);
+  assert.equal(byId(document, 'aramex').additionalWeightCharge, 5);
   assert.equal(document.some(quote => quote.id.startsWith('smsa')), false);
 });
 
 test('uses exact Aramex world rows and the published over-25 half-kilo increment', () => {
   const at25 = calculateInternationalQuotes({ direction: 'outbound', country: 'us', shipmentType: 'parcel', weight: 25 });
   const at255 = calculateInternationalQuotes({ direction: 'outbound', country: 'us', shipmentType: 'parcel', weight: 25.5 });
-  assert.equal(byId(at25, 'aramex').base, 1119);
-  assert.equal(byId(at255, 'aramex').base, 1141);
+  assert.equal(byId(at25, 'aramex').total, 1119);
+  assert.equal(byId(at255, 'aramex').basePrice, 51);
+  assert.equal(byId(at255, 'aramex').additionalWeightCharge, 1090);
+  assert.equal(byId(at255, 'aramex').total, 1141);
 
   const inboundDocument = calculateInternationalQuotes({ direction: 'inbound', country: 'in', shipmentType: 'document', weight: 1.5 });
-  assert.equal(byId(inboundDocument, 'aramex').base, 82);
+  assert.equal(byId(inboundDocument, 'aramex').total, 82);
 });
 
 test('matches SMSA road and air formulas and applies the published 16 percent RSS', () => {
   const oman = calculateInternationalQuotes({ direction: 'outbound', country: 'om', shipmentType: 'parcel', weight: 3 });
-  assert.equal(byId(oman, 'smsa-road').base, 42);
+  assert.equal(byId(oman, 'smsa-road').basePrice, 31);
+  assert.equal(byId(oman, 'smsa-road').additionalWeightCharge, 11);
+  assert.equal(byId(oman, 'smsa-road').otherChargesSar, 6.72);
   assert.equal(byId(oman, 'smsa-road').total, 48.72);
 
   const turkey = calculateInternationalQuotes({ direction: 'outbound', country: 'tr', shipmentType: 'parcel', weight: 2 });
-  assert.equal(byId(turkey, 'smsa-air').base, 77);
+  assert.equal(byId(turkey, 'smsa-air').basePrice, 35);
+  assert.equal(byId(turkey, 'smsa-air').additionalWeightCharge, 42);
+  assert.equal(byId(turkey, 'smsa-air').otherChargesSar, 12.32);
   assert.equal(byId(turkey, 'smsa-air').total, 89.32);
 });
 
@@ -52,8 +61,12 @@ test('adds COD, optional fuel and VAT as separate auditable amounts', () => {
   assert.equal(aramex.usdLines.find(line => line.key === 'cod-usd').amount, 6);
   assert.equal(aramex.foreignTotalUsd, 6);
   assert.equal(aramex.lines.find(line => line.key === 'fuel').amount, 4);
+  assert.equal(aramex.fuelCharge, 4);
+  assert.equal(aramex.otherChargesSar, 6.6);
   assert.equal(aramex.total, 50.6);
   assert.equal(smsaRoad.lines.find(line => line.key === 'cod').amount, 6);
+  assert.equal(smsaRoad.fuelCharge, 1.4);
+  assert.equal(smsaRoad.otherChargesSar, 16.46);
   assert.equal(smsaRoad.total, 45.86);
   assert.equal(quotes.some(quote => quote.cheapest), false);
 });
