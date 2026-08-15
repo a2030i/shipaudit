@@ -24,6 +24,14 @@ import CustomerCallLog from '../components/CustomerCallLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
 import FigmaCustomerPortfolio from '../components/operations/FigmaCustomerPortfolio.jsx';
+import {
+  CUSTOMER_CAMPAIGN_BUCKETS,
+  INVOICE_CAMPAIGN_BUCKETS,
+  OPENING_CAMPAIGN_BUCKET,
+  campaignBucketAmount,
+  campaignBucketLabel,
+  selectedCampaignAmount,
+} from '../lib/customerCampaignBuckets.js';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -31,14 +39,7 @@ const fmtK = (n) => { const a = Math.abs(n); return a >= 1000 ? (n / 1000).toFix
 const fmtDate = (d) => { if (!d) return ''; try { return new Date(d).toLocaleDateString('ar-SA', { day: 'numeric', month: 'short' }); } catch { return String(d).slice(0, 10); } };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-// شرائح الأعمار — الترتيب من الأطزج للأخطر
-const BUCKETS = [
-  { key: 'b0_15', label: '0–15 يوم', color: 'var(--green)' },
-  { key: 'b16_30', label: '16–30 يوم', color: 'color-mix(in srgb, var(--green) 55%, var(--gold))' },
-  { key: 'b1', label: '31–60',     color: 'var(--gold)' },
-  { key: 'b2', label: '61–90',     color: 'color-mix(in srgb, var(--gold) 50%, var(--red))' },
-  { key: 'b3', label: '+90',       color: 'var(--red)' },
-];
+const BUCKETS = CUSTOMER_CAMPAIGN_BUCKETS;
 
 const platformStatusKey = (customer) => {
   const raw = String(customer?.platformStatus || '').trim().toLowerCase();
@@ -160,14 +161,12 @@ export default function CustomerMoney({ isActive = true }) {
   // 29 من 40 مديناً بهاتف لم يُطالَبوا قط). يُعاد تحميله بعد كل إرسال.
   const [sadadSet, setSadadSet] = useState(() => new Set());
   const [unclaimedOnly, setUnclaimedOnly] = useState(false);
-  const [openingOnly, setOpeningOnly] = useState(false);
   const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
   useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
   // مبلغ التحصيل لكل عميل = مجموع الشرائح المختارة فقط (أو كامل الدين إن لم تُختَر شريحة).
   // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.
-  const bandAmt = (c) => buckets.size === 0 ? (c.owed || 0)
-    : BUCKETS.reduce((s, b) => s + (buckets.has(b.key) ? (c[b.key] || 0) : 0), 0);
+  const bandAmt = (c) => selectedCampaignAmount(c, buckets);
   // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
   const collectionFields = (c, amt = c.owed) => ({
     name: (c.storeName || c.name || '').trim(), amount: amt, full_amount: c.owed,
@@ -219,14 +218,13 @@ export default function CustomerMoney({ isActive = true }) {
     let list = d.customers;
     if (buckets.size) list = list.filter(c => bandAmt(c) > 0.5);
     if (platformFilter !== 'all') list = list.filter(c => platformStatusKey(c) === platformFilter);
-    if (openingOnly) list = list.filter(c => (c.opening || 0) > 0.5);
     // «لم تصلهم مطالبة» = له هاتف ولم يصله قالب sadad قط
     if (unclaimedOnly) list = list.filter(c => c.phone && !sadadSet.has(normalizeSaudiPhone(c.phone)));
     const s = q.trim().toLowerCase();
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
-  }, [d, q, buckets, platformFilter, sortBy, openingOnly, unclaimedOnly, sadadSet]);  // eslint-disable-line
+  }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
   const collectionTaskByCustomer = useMemo(() => {
     const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
@@ -276,6 +274,16 @@ export default function CustomerMoney({ isActive = true }) {
       };
     }), [filtered, buckets]);  // eslint-disable-line
 
+  const openFocusedCampaign = () => {
+    if (!buckets.size) {
+      document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      toast('اختر شريحة فواتير متأخرة أو الرصيد الافتتاحي أولاً حتى تكون الحملة مركزة.', 'info');
+      return;
+    }
+    if (waRecipients.length) setWaOpen(true);
+    else toast('لا عملاء مؤهلين في الشريحة المختارة', 'info');
+  };
+
   // ملف الحملة — زوهو المرجع للدين + سياق المتجر (هاتف/نوع فوترة/حالة/محفظة/آخر
   // شحنة) للفريق. يمرّ عبر persistAndDownloadExport (تخزين + سجل السحبات، §1.13).
   const exportXlsx = async () => {
@@ -285,16 +293,16 @@ export default function CustomerMoney({ isActive = true }) {
     // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
     const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة',
       'الرصيد المدين في زوهو', 'الرصيد الدائن المقابل', 'المطلوب تحصيله', 'متأخر',
-      'فواتير', 'أقدم استحقاق (يوم)', '0-15', '16-30', '31-60', '61-90', '+90', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
+      'فواتير', 'أقدم استحقاق (يوم)', '1-15', '16-30', '31-60', '61-90', '+90 فواتير فقط', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
     const grossTotal = +filtered.reduce((s, c) => s + (c.grossDue || 0), 0).toFixed(2);
     const creditTotal = +filtered.reduce((s, c) => s + (c.creditOffset || 0), 0).toFixed(2);
     const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
-      buckets.size ? [`الشرائح المختارة: ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
+      buckets.size ? [`الشرائح المختارة: ${campaignBucketLabel(buckets)} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
       ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
-        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.b0_15, c.b16_30, c.b1, c.b2, c.b3, c.opening,
+        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.inv1_15, c.inv16_30, c.inv31_60, c.inv61_90, c.inv90p, c.opening,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
@@ -339,7 +347,7 @@ export default function CustomerMoney({ isActive = true }) {
     </div>
   );
 
-  const agingTotal = BUCKETS.reduce((s, b) => s + (d.aging[b.key] || 0), 0) || 1;
+  const invoiceCampaignTotal = INVOICE_CAMPAIGN_BUCKETS.reduce((s, b) => s + (d.campaignAging?.[b.key] || 0), 0) || 1;
   const colDelta = d.collectedPrevMonth > 0
     ? Math.round(((d.collectedThisMonth - d.collectedPrevMonth) / d.collectedPrevMonth) * 100) : null;
 
@@ -357,7 +365,7 @@ export default function CustomerMoney({ isActive = true }) {
         assigneeById={collectionAssigneeById}
         onFocusCustomer={focusCustomerFromPortfolio}
         onExport={exportXlsx}
-        onCampaign={() => waRecipients.length ? setWaOpen(true) : toast('لا عملاء مؤهلين في القائمة الحالية', 'info')}
+        onCampaign={openFocusedCampaign}
         sourceUpdatedAt={viewUpdatedAt}
         sourceHealthy={!loadError && !collectionTaskError}
       />
@@ -455,42 +463,72 @@ export default function CustomerMoney({ isActive = true }) {
           </div>
         </div>
 
-        {/* شريط الأعمار — اضغط شريحة لفلترة العملاء */}
-        <div style={{ marginTop: 16 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>أعمار الدين — اختر شريحة أو أكثر (المبلغ والحملة يصيران لمجموع المختار فقط)</div>
+        {/* شرائح حملات التحصيل: الفواتير منفصلة تمامًا عن الرصيد الافتتاحي. */}
+        <div id="collection-campaign-segments" style={{ marginTop: 16, scrollMarginTop: 90 }}>
+          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>
+            شرائح حملات التحصيل — اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
+          </div>
           <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
-            {BUCKETS.map(b => {
-              const v = d.aging[b.key] || 0;
-              const pct = Math.max((v / agingTotal) * 100, v > 0.5 ? 6 : 0);
+            {INVOICE_CAMPAIGN_BUCKETS.map(b => {
+              const v = d.campaignAging?.[b.key] || 0;
+              const pct = Math.max((v / invoiceCampaignTotal) * 100, v > 0.5 ? 6 : 0);
               if (pct === 0) return null;
               const active = buckets.has(b.key);
               return (
-                <div key={b.key} title={`${b.label}: ${fmt(v)} ر.س`}
+                <button type="button" key={b.key} title={`${b.label}: ${fmt(v)} ر.س`}
                   onClick={() => toggleBucket(b.key)}
-                  style={{ width: `${pct}%`, background: b.color, display: 'flex', alignItems: 'center',
+                  aria-pressed={active}
+                  style={{ width: `${pct}%`, border: 0, background: b.color, display: 'flex', alignItems: 'center',
                     justifyContent: 'center', color: '#fff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
                     overflow: 'hidden', outline: active ? '2.5px solid var(--text)' : 'none', outlineOffset: -2 }}>
                   {pct > 12 ? `${b.label} · ${fmtK(v)}` : ''}
-                </div>
+                </button>
               );
             })}
           </div>
           <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
-            {BUCKETS.map(b => (
-              <span key={b.key} onClick={() => toggleBucket(b.key)}
-                style={{ fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
+            {INVOICE_CAMPAIGN_BUCKETS.map(b => (
+              <button type="button" key={b.key} onClick={() => toggleBucket(b.key)}
+                aria-pressed={buckets.has(b.key)}
+                style={{ border: 0, background: 'transparent', fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
                   display: 'inline-flex', alignItems: 'center', padding: '6px 4px',
                   fontWeight: buckets.has(b.key) ? 800 : 500 }}>
                 <input type="checkbox" checked={buckets.has(b.key)} readOnly
                   style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
                 <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
-                {b.label}: {fmt(d.aging[b.key] || 0)}
-              </span>
+                {b.label}: {fmt(d.campaignAging?.[b.key] || 0)}
+              </button>
             ))}
-            {buckets.size > 0 && (
-              <span onClick={() => setBuckets(new Set())} style={{ fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</span>
-            )}
           </div>
+          <button type="button"
+            onClick={() => toggleBucket(OPENING_CAMPAIGN_BUCKET.key)}
+            aria-pressed={buckets.has(OPENING_CAMPAIGN_BUCKET.key)}
+            style={{ marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+              padding: '10px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'right',
+              border: `1.5px solid ${buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--border)'}`,
+              background: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'color-mix(in srgb, var(--accent3) 10%, transparent)' : 'var(--surface2)',
+              color: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--text2)' }}>
+            <span><b>رصيد افتتاحي غير مدفوع</b><small style={{ display: 'block', marginTop: 2, color: 'var(--muted)' }}>شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»</small></span>
+            <strong style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{fmt(d.campaignAging?.opening || 0)} ر.س</strong>
+          </button>
+          {buckets.size > 0 && (
+            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+              <div>
+                <strong style={{ display: 'block', fontSize: 11.5 }}>المحدد: {campaignBucketLabel(buckets)}</strong>
+                <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>
+                  {filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
+                </span>
+              </div>
+              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                {can('campaigns.send') && (
+                  <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={openFocusedCampaign}>
+                    مراجعة الحملة
+                  </Btn>
+                )}
+                <button type="button" onClick={() => setBuckets(new Set())} style={{ border: 0, background: 'transparent', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</button>
+              </div>
+            </div>
+          )}
         </div>
       </Card>
       </div>
@@ -660,12 +698,6 @@ export default function CustomerMoney({ isActive = true }) {
           <option value="inactive">غير نشط ({platformCounts.inactive})</option>
           <option value="unknown">بلا حالة مرتبطة ({platformCounts.unknown})</option>
         </select>
-        <Btn size="sm" variant={openingOnly ? 'primary' : 'outline'}
-          onClick={() => setOpeningOnly(v => !v)}
-          title="عرض العملاء الذين ما زال لديهم رصيد افتتاحي قائم"
-          aria-pressed={openingOnly}>
-          رصيد افتتاحي ({(d?.customers || []).filter(c => (c.opening || 0) > 0.5).length})
-        </Btn>
         {/* «لم تصلهم مطالبة» — مدينون بهاتف لم يصلهم قالب sadad قط (سدّ فجوة الـ29) */}
         {(() => {
           const unclaimedCount = (d?.customers || []).filter(c =>
@@ -679,8 +711,8 @@ export default function CustomerMoney({ isActive = true }) {
           );
         })()}
         {can('campaigns.send') && (
-          <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={() => waRecipients.length ? setWaOpen(true) : toast('لا عملاء في القائمة الحالية', 'info')}>
-            مراجعة حملة ({waRecipients.length})
+          <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={openFocusedCampaign}>
+            {buckets.size ? `مراجعة حملة (${waRecipients.length})` : 'اختر شريحة للحملة'}
           </Btn>
         )}
         <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
@@ -690,8 +722,7 @@ export default function CustomerMoney({ isActive = true }) {
         {platformFilter !== 'all' ? ` — حالة المنصّة: ${
           platformFilter === 'active' ? 'نشط' : platformFilter === 'inactive' ? 'غير نشط' : 'غير متوفرة'
         }` : ''}
-        {openingOnly ? ' — لديهم رصيد افتتاحي قائم' : ''}
-        {buckets.size ? ` — شرائح ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : ''} ·
+        {buckets.size ? ` — شرائح ${campaignBucketLabel(buckets)}` : ''} ·
         {buckets.size ? 'مجموع الشرائح المختارة ' : 'إجمالي المعروض '}
         <b style={{ color: 'var(--gold)', fontFamily: 'var(--font-mono)' }}>{fmt(filteredTotal)}</b> ر.س
         {buckets.size > 0 && <span style={{ color: 'var(--muted2)' }}> — الحملة تُرسل بهذا المبلغ لا كامل الدين</span>}
@@ -717,7 +748,7 @@ export default function CustomerMoney({ isActive = true }) {
       <WhatsAppSendModal open={waOpen}
         onClose={() => { setWaOpen(false); setWaSingle(null); }}
         recipients={waOpen ? (waSingle ? [waSingle] : waRecipients) : []}
-        bucketLabel={waSingle ? `العميل ${waSingle.name}` : (buckets.size ? `أعمار ${BUCKETS.filter(b => buckets.has(b.key)).map(b => b.label).join(' + ')}` : 'تحصيل العملاء')}
+        bucketLabel={waSingle ? `العميل ${waSingle.name}` : (buckets.size ? `شريحة ${campaignBucketLabel(buckets)}` : 'تحصيل العملاء')}
         onSent={() => { loadWaStatus(); loadSadad(); }}/>
 
       {briefOpen && <MorningBriefModal onClose={() => setBriefOpen(false)}/>}
@@ -1195,7 +1226,7 @@ function CustomerCard({
   // وكامل الدين يبقى ظاهراً تحته فلا يُخفى شيء (قاعدة: أي عرض مفلتر
   // يعلن ما يستبعده).
   const bandKeys = highlight instanceof Set ? [...highlight] : [];
-  const bandSum  = bandKeys.reduce((s, k) => s + (Number(c[k]) || 0), 0);
+  const bandSum  = bandKeys.reduce((s, k) => s + campaignBucketAmount(c, k), 0);
   const banded   = bandKeys.length > 0;
   const headline = banded ? bandSum : (c.owed || 0);
   const bandLabel = banded

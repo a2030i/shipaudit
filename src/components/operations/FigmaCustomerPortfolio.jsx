@@ -27,7 +27,11 @@ const platformState = (customer) => {
   if (value === 'inactive' || value === 'غير نشط') return 'inactive';
   return 'unknown';
 };
-const overThirty = (customer) => Number(customer?.b1 || 0) + Number(customer?.b2 || 0) + Number(customer?.b3 || 0);
+const overThirty = (customer) => (
+  Number(customer?.inv31_60 ?? customer?.b1 ?? 0)
+  + Number(customer?.inv61_90 ?? customer?.b2 ?? 0)
+  + Number(customer?.inv90p ?? Math.max(0, Number(customer?.b3 || 0) - Number(customer?.opening || 0)))
+);
 
 function Metric({ tone, icon: Icon, title, value, note, active, onClick }) {
   return (

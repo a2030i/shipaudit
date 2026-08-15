@@ -344,14 +344,32 @@ export async function loadZohoOverdueCampaign() {
 // «تحصيل العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
 // مستحق/متأخر/أعمار/تحصيل شهري + عملاء بهواتفهم وآخر دفعة.
 export async function loadCustomerMoneyDashboard() {
-  const [{ data, error }, { data: integrityRows, error: integrityError }] = await Promise.all([
+  const [
+    { data, error },
+    { data: campaignData, error: campaignError },
+    { data: integrityRows, error: integrityError },
+  ] = await Promise.all([
     supabase.rpc('customer_money_dashboard'),
+    supabase.rpc('customer_collection_campaign_buckets'),
     supabase.from('customer_balance_integrity_issues')
       .select('zoho_id, contact_name, balance_sync_gap, balance_sync_overage, balance_integrity_status'),
   ]);
   if (error) throw error;
+  if (campaignError) throw campaignError;
   if (integrityError) throw integrityError;
   const d = data || {};
+  const campaign = campaignData || {};
+  const campaignRows = Array.isArray(campaign.customers) ? campaign.customers : [];
+  const campaignByZohoId = new Map(campaignRows.filter(row => row.zoho_id).map(row => [String(row.zoho_id), row]));
+  const campaignByName = new Map();
+  for (const row of campaignRows) {
+    if (!row.name) continue;
+    campaignByName.set(row.name, campaignByName.has(row.name) ? null : row);
+  }
+  const campaignFor = (customer) => {
+    const zohoId = customer.zoho_id || customer.zohoId;
+    return zohoId ? (campaignByZohoId.get(String(zohoId)) || {}) : (campaignByName.get(customer.name) || {});
+  };
   const issues = Array.isArray(integrityRows) ? integrityRows : [];
   const issueByZohoId = new Map(issues.filter(row => row.zoho_id).map(row => [String(row.zoho_id), row]));
   const issueByName = new Map();
@@ -394,10 +412,20 @@ export async function loadCustomerMoneyDashboard() {
       opening: Number(d.aging?.opening_balance) || 0,
       openingGross: Number(d.aging?.opening_gross) || 0,
     },
+    campaignAging: {
+      inv1_15: Number(campaign.aging?.inv_1_15) || 0,
+      inv16_30: Number(campaign.aging?.inv_16_30) || 0,
+      inv31_60: Number(campaign.aging?.inv_31_60) || 0,
+      inv61_90: Number(campaign.aging?.inv_61_90) || 0,
+      inv90p: Number(campaign.aging?.inv_90p) || 0,
+      opening: Number(campaign.aging?.opening_balance) || 0,
+    },
     collectedThisMonth: Number(d.collected_this_month) || 0,
     collectedPrevMonth: Number(d.collected_prev_month) || 0,
     monthlyCollected: Array.isArray(d.monthly_collected) ? d.monthly_collected : [],
-    customers: (Array.isArray(d.customers) ? d.customers : []).map(c => ({
+    customers: (Array.isArray(d.customers) ? d.customers : []).map(c => {
+      const campaignRow = campaignFor(c);
+      return {
       // `storeId` = رقم المتجر في نظام لمحة — المفتاح الذي يُبحَث به في
       // المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53، والرقم لا يتكرّر).
       name: c.name, zohoId: c.zoho_id || '', storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
@@ -413,6 +441,11 @@ export async function loadCustomerMoneyDashboard() {
       b0: Number(c.b0) || 0, b1: Number(c.b1) || 0, b2: Number(c.b2) || 0, b3: Number(c.b3) || 0,
       opening: Number(c.opening_balance) || 0,
       openingGross: Number(c.opening_gross) || 0,
+      inv1_15: Number(campaignRow.inv_1_15) || 0,
+      inv16_30: Number(campaignRow.inv_16_30) || 0,
+      inv31_60: Number(campaignRow.inv_31_60) || 0,
+      inv61_90: Number(campaignRow.inv_61_90) || 0,
+      inv90p: Number(campaignRow.inv_90p) || 0,
       lastPaymentDate: c.last_payment_date, lastPaymentAmount: Number(c.last_payment_amount) || 0,
       // سياق المتجر (من كشف المتاجر) — لملف الحملة
       billingType: c.billing_type || '', platformStatus: c.platform_status || '',
@@ -420,7 +453,8 @@ export async function loadCustomerMoneyDashboard() {
       balanceSyncIssue: !!issueFor(c),
       balanceSyncGap: Number(issueFor(c)?.balance_sync_gap) || 0,
       balanceSyncOverage: Number(issueFor(c)?.balance_sync_overage) || 0,
-    })),
+      };
+    }),
     settlements: (Array.isArray(d.settlements) ? d.settlements : []).map(c => ({
       name: c.name, storeName: c.store_name, storeId: c.store_id || '', phone: c.phone,
       grossDue: Number(c.gross_due) || 0,

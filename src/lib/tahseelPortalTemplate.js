@@ -46,6 +46,12 @@ export function renderTahseelPortalTemplate({
 }
 
 const AGING_LABELS = Object.freeze({
+  inv1_15: 'من 1 إلى 15 يوم',
+  inv16_30: 'من 16 إلى 30 يوم',
+  inv31_60: 'من 31 إلى 60 يوم',
+  inv61_90: 'من 61 إلى 90 يوم',
+  inv90p: 'أكثر من 90 يوم',
+  opening: 'رصيد افتتاحي غير مدفوع',
   b0_15: 'من 0 إلى 15 يوم',
   b16_30: 'من 16 إلى 30 يوم',
   b1: 'من 31 إلى 60 يوم',
@@ -54,6 +60,10 @@ const AGING_LABELS = Object.freeze({
 });
 
 const SUFFIX_DESCRIPTIONS = Object.freeze([
+  { keys: ['inv16_30', 'inv31_60', 'inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 15 يوم' },
+  { keys: ['inv31_60', 'inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 30 يوم' },
+  { keys: ['inv61_90', 'inv90p'], label: 'فواتير متأخرة أكثر من 60 يوم' },
+  { keys: ['inv90p'], label: 'فواتير متأخرة أكثر من 90 يوم' },
   { keys: ['b16_30', 'b1', 'b2', 'b3'], label: 'أكثر من 15 يوم' },
   { keys: ['b1', 'b2', 'b3'], label: 'أكثر من 30 يوم' },
   { keys: ['b2', 'b3'], label: 'أكثر من 60 يوم' },
