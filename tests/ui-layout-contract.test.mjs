@@ -96,6 +96,15 @@ test('visual system v6 keeps one navigation shell, calm canvas and mobile drawer
   assert.match(app, /sidebar-brand-logo--mobile/);
 });
 
+test('primary navigation rail leaves center labels comfortably readable', async () => {
+  const shell = await readFile(new URL('../src/shipaudit-os-v2.css', import.meta.url), 'utf8');
+  assert.match(shell, /--sa-primary-rail:\s*124px/);
+  assert.match(shell, /max-width:\s*108px\s*!important/);
+  assert.match(shell, /--sa-primary-rail:\s*100px;\s*--sa-context-rail:\s*220px/);
+  assert.match(shell, /\.app-layout\.primary-collapsed\s*\{[\s\S]*--sa-primary-rail:\s*76px/);
+  assert.match(shell, /width:\s*min\(86vw,\s*340px\)\s*!important/);
+});
+
 test('mobile drawer keeps the white Lamha logo on a connected navy header', async () => {
   const css = await read('src/product-shell.css');
 

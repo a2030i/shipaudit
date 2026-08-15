@@ -193,7 +193,7 @@ export default function FigmaCommandCenter({
           <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopRows.length} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="مراجعة وإيقاف" onClick={() => navigate('/customer-money?decision=stop')} unavailable={!data?.customerDecisionFresh}/>
           <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductRows.length} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="مراجعة الخصم" onClick={() => navigate('/customer-money?decision=deduct')} unavailable={!data?.customerDecisionFresh}/>
           <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="اعتمد وأرسل فواتير زاتكا" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في زوهو`} action="فتح دورة الفاتورة" onClick={() => navigate('/zoho-data?tab=customers')} unavailable={!invoiceOps.zatcaAvailable}/>
-          <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="حدّث ملفات لمحة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="الشحنات · دليل المتاجر · كشف الحساب" action="فتح مركز الرفع" onClick={() => navigate(`/accounting-cycle?period=${period}`)} unavailable={!merchantPulse.available}/>
+          <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="حدّث ملفات لمحة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="دليل المتاجر · كشف الحساب" action="رفع الملفات الآن" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.available}/>
         </div>
       </section>
 
@@ -243,7 +243,7 @@ export default function FigmaCommandCenter({
         <section className="fco-panel fco-routine">
           <div className="fco-card-heading"><span><Workflow size={18}/> مهام التشغيل الروتينية</span><small>لا تعتمد على الذاكرة</small></div>
           <div className="fco-task-list">
-            <TaskRow icon={UploadCloud} title="رفع ملفات لمحة" note="دليل المتاجر والشحنات وكشف الحساب" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>
+            <TaskRow icon={UploadCloud} title="رفع ملفات لمحة" note="دليل المتاجر وكشف الحساب · المرحلة 4" status={merchantNeedsUpdate ? 'مطلوب' : 'محدّث'} tone={merchantNeedsUpdate ? 'amber' : 'green'} onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)}/>
             <TaskRow icon={ReceiptText} title="إرسال الفواتير إلى زاتكا" note={`${zatcaCount} معلقة · ${invoiceOps.draftCount || 0} مسودة`} status={zatcaCount ? 'يحتاج إجراء' : 'سليم'} tone={zatcaCount ? 'red' : 'green'} onClick={() => navigate('/work-agents')}/>
             <TaskRow icon={Landmark} title="مطابقة البنوك" note="اقرأ زوهو وصدّر النواقص فقط" status={sourceLabel(states.banks)} tone={sourceTone(states.banks)} onClick={() => navigate('/bank')}/>
             <TaskRow icon={CheckCircle2} title="إقفال الفترة المحاسبية" note={`${availableSources} من ${sourceEntries.length || 0} مصادر متاحة`} status={`${closePercent}%`} tone={closePercent >= 90 ? 'green' : 'amber'} onClick={() => navigate(`/accounting-cycle?period=${period}`)}/>

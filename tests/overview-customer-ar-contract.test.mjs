@@ -8,8 +8,16 @@ const page = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url
 test('overview effective cash uses collectible customer debt, not gross Zoho debit', () => {
   assert.match(service, /supabaseRpc\('customer_money_dashboard'\)/);
   assert.match(service, /const collectibleAr = Number\(customerMoney\?\.outstanding\)/);
-  assert.match(service, /const totalAR = arFromZoho \? collectibleAr/);
+  assert.match(service, /const openingBalance = Number\(customerMoney\?\.aging\?\.opening_balance\)/);
+  assert.match(service, /Math\.max\(0, collectibleAr - openingBalance\)/);
+  assert.match(service, /const totalAR = arFromZoho \? invoiceCollectibleAr/);
   assert.match(service, /customerCreditOffset:/);
+});
+
+test('overview debt counter and aging exclude explicit opening balances', () => {
+  assert.match(service, /const openingBalance = num\(source\.opening_balance\)/);
+  assert.match(service, /const b90p = Math\.max\(0, num\(source\.b90p\) - openingBalance\)/);
+  assert.match(service, /openingBalanceExcluded:/);
 });
 
 test('overview explains that customer credits are removed from collectible cash', () => {

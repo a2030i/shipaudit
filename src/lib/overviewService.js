@@ -477,13 +477,19 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       const b16_30 = num(source.b16_30);
       const b31_60 = num(source.b31_60);
       const b61_90 = num(source.b61_90);
-      const b90p = num(source.b90p);
+      // Opening balances remain available in the customer detail, but they
+      // are not current invoices and must not inflate the home-page debt
+      // counter or its aging chart. The collectible projection assigns the
+      // explicit opening line to the +90 bucket, so remove that exact amount.
+      const openingBalance = num(source.opening_balance);
+      const b90p = Math.max(0, num(source.b90p) - openingBalance);
       return {
         b0_15,
         b16_30,
         b31_60,
         b61_90,
         b90p,
+        openingBalanceExcluded: openingBalance,
         total: +(b0_15 + b16_30 + b31_60 + b61_90 + b90p).toFixed(2),
       };
     })(),
@@ -533,10 +539,14 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       // AR من زوهو الحي إن توفّر (نفس رقم «تحصيل العملاء» و/zoho-data) —
       // كان من snapshot غير مفلتر (314K) يخالف /receivables (191K) وزوهو (250K)
       const collectibleAr = Number(customerMoney?.outstanding);
+      const openingBalance = Number(customerMoney?.aging?.opening_balance);
+      const invoiceCollectibleAr = Number.isFinite(collectibleAr) && Number.isFinite(openingBalance)
+        ? Math.max(0, collectibleAr - openingBalance)
+        : collectibleAr;
       const grossZohoAr = Number(customerMoney?.gross_outstanding ?? zohoDash?.open_ar);
       const creditOffset = Number(customerMoney?.credit_offset);
-      const arFromZoho = Number.isFinite(collectibleAr) && collectibleAr >= 0;
-      const totalAR = arFromZoho ? collectibleAr : num(wc.total_ar);
+      const arFromZoho = Number.isFinite(invoiceCollectibleAr) && invoiceCollectibleAr >= 0;
+      const totalAR = arFromZoho ? invoiceCollectibleAr : num(wc.total_ar);
       const totalAP = num(wc.total_ap);
       // COD outstanding from the carriers — money they collected and
       // haven't remitted yet. Read from the AP aging totals doesn't
@@ -570,6 +580,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
         totalAR,                         // owed to us (customers)
         grossAR: Number.isFinite(grossZohoAr) ? grossZohoAr : totalAR,
         customerCreditOffset: Number.isFinite(creditOffset) ? creditOffset : 0,
+        openingBalanceExcluded: Number.isFinite(openingBalance) ? openingBalance : 0,
         arSource: arFromZoho ? 'zoho' : 'snapshot',
         totalAP,                         // we owe (vendors/carriers)
         netNoBank:    +netNoBank.toFixed(2),

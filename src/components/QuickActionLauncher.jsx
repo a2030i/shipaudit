@@ -4,9 +4,9 @@ const ACTIONS = [
   {
     id: 'lamha',
     title: 'رفع ملفات لمحة',
-    description: 'افتح المسار الشهري الموحّد وحدد الفترة ونوع الملف.',
+    description: 'افتح المرحلة الرابعة مباشرة لرفع دليل المتاجر أو كشف الحساب.',
     icon: FileSpreadsheet,
-    path: '/accounting-cycle?action=lamha',
+    path: '/accounting-cycle?stage=lamha_sources',
     featured: true,
   },
   {

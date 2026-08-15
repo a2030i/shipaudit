@@ -13,8 +13,16 @@ test('home exposes both Lamha uploads with their latest upload timestamps', asyn
   assert.match(view, /كشف حساب لمحة/);
   assert.match(view, /uploadDateLabel\(data\?\.lamhaUploads\?\.merchants\?\.uploadedAt\)/);
   assert.match(view, /uploadDateLabel\(data\?\.lamhaUploads\?\.balance\?\.uploadedAt\)/);
+  assert.match(view, /accounting-cycle\?period=\$\{period\}&stage=lamha_sources/);
+  assert.match(view, /دليل المتاجر وكشف الحساب · المرحلة 4/);
   assert.match(service, /from\('store_balance_snapshots'\)/);
   assert.match(service, /order\('uploaded_at', \{ ascending: false \}\)/);
+});
+
+test('global Lamha action opens the real stage-four upload workspace', async () => {
+  const launcher = await read('src/components/QuickActionLauncher.jsx');
+  assert.match(launcher, /path: '\/accounting-cycle\?stage=lamha_sources'/);
+  assert.doesNotMatch(launcher, /path: '\/accounting-cycle\?action=lamha'/);
 });
 
 test('home refreshes current-quarter VAT and displays the quarter bounds', async () => {
