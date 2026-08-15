@@ -1,5 +1,3 @@
-export const INTERNATIONAL_RATE_SOURCE_DATES = 'أرامكس: 2026 · سمسا: السنة غير ظاهرة في المرفق';
-
 export const INTERNATIONAL_COUNTRIES = [
   { code: 'ae', name: 'الإمارات العربية المتحدة', zone: 'gcc', flag: '🇦🇪', smsa: true, smsaRoad: true },
   { code: 'bh', name: 'البحرين', zone: 'gcc', flag: '🇧🇭', smsa: true, smsaRoad: true },

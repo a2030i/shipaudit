@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ArrowLeft, ChevronDown, Info, PackageCheck, Plane, Route, Sparkles,
+  ArrowLeft, ChevronDown, Info, PackageCheck, Plane, Sparkles,
 } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import {
   calculateInternationalQuotes,
   INTERNATIONAL_COUNTRIES,
-  INTERNATIONAL_RATE_SOURCE_DATES,
 } from '../lib/internationalRates.js';
 import './PublicInternationalRates.css';
 
@@ -192,11 +191,6 @@ export default function PublicInternationalRates() {
             )}
           </div>
 
-          <div className="ir-info-rail">
-            <Info size={18} />
-            <span>الوقود والضريبة = 0.00 لأن المرفقات لا تحدد لهما نسبة رقمية.</span>
-            <span>{INTERNATIONAL_RATE_SOURCE_DATES}</span>
-          </div>
         </section>
       </section>
 
@@ -223,22 +217,6 @@ export default function PublicInternationalRates() {
           </div>
         </div>
 
-        <aside className="ir-method">
-          <h2>كيف نحسب السعر؟</h2>
-          <ol>
-            <li><span>1</span><p>نأخذ السعر الأساسي والوزن الإضافي مباشرةً من جداول المرفقات.</p></li>
-            <li><span>2</span><p>نضيف الرسوم التي يحدد المرفق قيمتها رقميًا، مثل رسوم سمسا RSS بنسبة 16%.</p></li>
-            <li><span>3</span><p>أي رسم بلا نسبة رقمية في المرفقات تكون قيمته صفرًا، دون افتراضات.</p></li>
-          </ol>
-        </aside>
-      </section>
-
-      <section className="ir-source-note">
-        <Route size={20} />
-        <div>
-          <strong>ما الذي تغطيه الحاسبة؟</strong>
-          <p>الحاسبة مخصصة للطرد المدفوع فقط. كل الأرقام مأخوذة من ملف أرامكس وصورة أسعار سمسا المرفقين؛ وما لا يملك قيمة رقمية فيهما يُحسب صفرًا. لا تُقرأ العقود أو الأسعار المسجلة في النظام.</p>
-        </div>
       </section>
 
       <footer className="ir-footer">
