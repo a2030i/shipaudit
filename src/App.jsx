@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, Megaphone, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
@@ -49,6 +49,7 @@ const ZohoData = lazy(() => import('./pages/ZohoData.jsx'));
 const CollectionsHub = lazy(() => import('./pages/CollectionsHub.jsx'));
 const SalesHub = lazy(() => import('./pages/SalesHub.jsx'));
 const WhatsAppSettings = lazy(() => import('./pages/WhatsAppSettings.jsx'));
+const SmartCampaignCenter = lazy(() => import('./pages/SmartCampaignCenter.jsx'));
 const SmartDrop = lazy(() => import('./pages/SmartDrop.jsx'));
 const CashAging = lazy(() => import('./pages/CashAging.jsx'));
 const IntegrityCheck = lazy(() => import('./pages/IntegrityCheck.jsx'));
@@ -191,6 +192,8 @@ const ROUTE_ITEMS = [
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
   // ── الحملات والاتصالات — ضمن رحلة العملاء والنمو ────────────────
+  { id: 'campaign-center', path: '/campaigns', label: 'مركز الحملات الذكي', icon: Megaphone, section: 'customers', navOrder: 45,
+    permAny: ['campaigns.send', 'campaigns.ivr', 'whatsapp.view_log', 'receivables.view', 'sales.view'] },
   { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'الحملات والاتصالات', icon: MessageCircle, section: 'customers', navOrder: 50,
     permAny: ['whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr'],
     subTabs: [
@@ -366,7 +369,7 @@ function AppInner({ theme, toggleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
 
   const [carriers,        setCarriers]        = useState([]);
@@ -906,6 +909,9 @@ function AppInner({ theme, toggleTheme }) {
             </PageSlot>
             <PageSlot active={SALES_HUB_PATHS.includes(pathname)} scroll>
               <SalesHub isActive={SALES_HUB_PATHS.includes(pathname)}/>
+            </PageSlot>
+            <PageSlot active={pathname==='/campaigns'} scroll>
+              <SmartCampaignCenter isActive={pathname==='/campaigns'}/>
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>

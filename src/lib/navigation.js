@@ -70,6 +70,7 @@ export const NAV_ITEM_IA = {
 
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
   crm:                 { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: true },
+  'campaign-center':   { label: 'مركز الحملات الذكي', section: 'sales', group: 'outreach_ops', order: 25, visible: true },
   'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
   marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: true },
 

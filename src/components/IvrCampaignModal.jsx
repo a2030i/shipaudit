@@ -10,7 +10,7 @@ import { useAuth } from '../lib/auth.jsx';
 const BATCH = 40;   // دفعة الاستدعاء الواحد (كل مكالمة ~0.4ث تسجيل + إطلاق)
 
 // recipients: [{ phone, name, fields? }]
-export default function IvrCampaignModal({ open, onClose, recipients = [], bucketLabel, onDone }) {
+export default function IvrCampaignModal({ open, onClose, recipients = [], bucketLabel, lockedCampaignName = null, onDone }) {
   const { can, user } = useAuth();
   const allowed = can('campaigns.ivr');
   const [cfg, setCfg] = useState(null);
@@ -32,7 +32,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
       const valid = (c.scripts || []).some(s => s.key === c.defaultScript);
       setScriptKey(valid ? c.defaultScript : (c.scripts?.[0]?.key || ''));
     });
-    setCampName(bucketLabel || '');
+    setCampName(lockedCampaignName || bucketLabel || '');
     setResults(null); setProgress(null);
   }, [open, bucketLabel]);
 
@@ -65,7 +65,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
         const { queued } = await scheduleIvrQueue({ recipients: recs, scriptKey, campaignName: campName.trim(), runAt: new Date(schedAt).toISOString(), userId: user?.id || null });
         setResults({ scheduled: true, queued });
         toast(`جُدولت ${queued} مكالمة`, 'success');
-        onDone && onDone({ scheduled: true, queued });
+        onDone && onDone({ scheduled: true, queued, scheduledAt: new Date(schedAt).toISOString() });
       } catch (e) { toast(e.message || 'فشل الجدولة', 'error'); }
       finally { setLaunching(false); }
       return;
@@ -111,7 +111,7 @@ export default function IvrCampaignModal({ open, onClose, recipients = [], bucke
           <>
             <label style={{ display: 'grid', gap: 6, fontSize: 13, fontWeight: 600 }}>
               اسم الحملة
-              <input value={campName} onChange={e => setCampName(e.target.value)} placeholder="مثال: تذكير تحصيل يوليو"
+              <input value={campName} disabled={!!lockedCampaignName} onChange={e => setCampName(e.target.value)} placeholder="مثال: تذكير تحصيل يوليو"
                 style={{ padding: '9px 11px', border: '1px solid var(--border)', borderRadius: 9, fontSize: 14 }} />
             </label>
 
