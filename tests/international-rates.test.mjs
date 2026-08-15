@@ -42,7 +42,7 @@ test('does not invent SMSA inbound services', () => {
   assert.deepEqual(inbound.map(quote => quote.id), ['aramex']);
 });
 
-test('adds optional fuel and VAT as separate auditable amounts', () => {
+test('keeps fuel and VAT at zero even when callers pass unsupported percentages', () => {
   const quotes = calculateInternationalQuotes({
     direction: 'outbound', country: 'ae', weight: 2,
     aramexFuelPct: 10, smsaFuelPct: 5, vatPct: 15,
@@ -50,12 +50,13 @@ test('adds optional fuel and VAT as separate auditable amounts', () => {
   const aramex = byId(quotes, 'aramex');
   const smsaRoad = byId(quotes, 'smsa-road');
 
-  assert.equal(aramex.lines.find(line => line.key === 'fuel').amount, 4);
-  assert.equal(aramex.fuelCharge, 4);
-  assert.equal(aramex.otherChargesSar, 6.6);
-  assert.equal(aramex.total, 50.6);
-  assert.equal(smsaRoad.fuelCharge, 1.4);
-  assert.equal(smsaRoad.otherChargesSar, 9.56);
-  assert.equal(smsaRoad.total, 38.96);
+  assert.equal(aramex.lines.some(line => ['fuel', 'vat'].includes(line.key)), false);
+  assert.equal(aramex.fuelCharge, 0);
+  assert.equal(aramex.otherChargesSar, 0);
+  assert.equal(aramex.total, 40);
+  assert.equal(smsaRoad.lines.some(line => ['fuel', 'vat'].includes(line.key)), false);
+  assert.equal(smsaRoad.fuelCharge, 0);
+  assert.equal(smsaRoad.otherChargesSar, 4.48);
+  assert.equal(smsaRoad.total, 32.48);
   assert.equal(quotes.some(quote => quote.cheapest), true);
 });
