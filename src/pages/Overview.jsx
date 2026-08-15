@@ -92,8 +92,12 @@ export default function Overview({ carriers = [], isActive = true }) {
     setLoading(true);
     setLoadError(null);
     try {
-      const result = await loadOverview({ period, topN: 5 });
+      const [result, vatResult] = await Promise.all([
+        loadOverview({ period, topN: 5 }),
+        import('../lib/zohoReportsService.js').then(m => m.loadCurrentVat()).catch(() => null),
+      ]);
       setData(result);
+      setVat(vatResult);
     } catch (e) {
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
@@ -103,15 +107,6 @@ export default function Overview({ carriers = [], isActive = true }) {
   }, [period]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
-
-  // ضريبة الربع الجاري — قراءة كاش خفيفة (يحدّثه كرون زوهو كل 30د)، فشلها صامت
-  useEffect(() => {
-    if (!isActive) return;
-    import('../lib/zohoReportsService.js')
-      .then(m => m.loadCurrentVat())
-      .then(setVat)
-      .catch(() => {});
-  }, [isActive, location.pathname]);
 
   // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
   // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).
@@ -171,6 +166,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   return (
     <FigmaCommandCenter
       data={data}
+      vat={vat}
       period={period}
       refreshing={loading}
       onRefresh={refresh}

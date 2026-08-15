@@ -161,11 +161,23 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     // behalf and haven't remitted it yet (net = SUM(out) − SUM(in) > 0).
     // Previously only visible per-carrier inside /money; surfaced here.
     { key: 'zohoInvoices', label: 'فواتير زوهو', run: () => supabaseRpc('zoho_invoice_dashboard') },
+    { key: 'zatcaPending', label: 'الفواتير المعلقة في زاتكا', run: () => supabaseRpc('zatca_pending_today') },
     // مرجع دين العملاء = زوهو الحي (فحص وكلاء 2026-07-03: كانت الرئيسية
     // تعرض 314K من snapshot غير مفلتر مقابل 191K في /receivables و250K في
     // زوهو — ثلاثة أرقام لنفس السؤال). فشل الجلب صامت → fallback للـ snapshot.
     { key: 'customerMoney', label: 'مديونيات العملاء', run: () => supabaseRpc('customer_money_dashboard') },
     { key: 'merchants', label: 'حالة المتاجر في المنصة', run: () => loadLatestMerchants() },
+    { key: 'lamhaBalance', label: 'كشف حساب لمحة', run: async () => {
+      const { data, error } = await supabase
+        .from('store_balance_snapshots')
+        .select('id, file_name, row_count, total_balance, uploaded_at')
+        .eq('source', 'internal')
+        .order('uploaded_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      return data || null;
+    } },
     // Customer decisions combine merchant state with receivables. Keep the
     // Zoho mirror freshness explicit instead of treating a cached dashboard
     // as live truth after a failed or delayed sync.
@@ -251,8 +263,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const bankBalance = valueOf('banks', null);
   const codNet = valueOf('carrierCod', new Map());
   const zohoDash = valueOf('zohoInvoices', null);
+  const zatcaPending = valueOf('zatcaPending', null);
   const customerMoney = valueOf('customerMoney', null);
   const merchantSnapshot = valueOf('merchants', null);
+  const lamhaBalance = valueOf('lamhaBalance', null);
   const zohoFinancial = valueOf('zohoFinancial', null);
   const teamReadinessRaw = valueOf('teamReadiness', null);
   const teamStaffing = valueOf('teamStaffing', null);
@@ -347,6 +361,64 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       customerDecisions: !!customerDecisions,
       aging: sourceStates.apAging.status !== 'unavailable',
       carrierHealth: sourceStates.carrierHealth.status !== 'unavailable',
+    },
+    invoiceOperations: {
+      draftCount: num(zohoDash?.draft_cnt),
+      draftTotal: num(zohoDash?.draft_total),
+      zatcaTodayCount: num(zatcaPending?.today_count),
+      zatcaTodayTotal: num(zatcaPending?.today_total),
+      zatcaOverdueCount: num(zatcaPending?.overdue_count),
+      zatcaOverdueTotal: num(zatcaPending?.overdue_total),
+      zatcaNeedsLiveCheck: num(zatcaPending?.needs_live_check_count),
+      zatcaAvailable: sourceStates.zatcaPending?.status !== 'unavailable',
+    },
+    merchantPulse: (() => {
+      const rows = Array.isArray(merchantSnapshot?.merchants) ? merchantSnapshot.merchants : [];
+      const normalize = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '');
+      const isActive = (value) => ['نشط', 'active', 'مفعل'].includes(normalize(value));
+      const asTime = (value) => {
+        const stamp = Date.parse(value || '');
+        return Number.isFinite(stamp) ? stamp : null;
+      };
+      const referenceAt = asTime(merchantSnapshot?.snapshot?.uploadedAt) || Date.parse(checkedAt);
+      const fiveDaysAgo = referenceAt - (5 * 86_400_000);
+      const monthPrefix = `${thisPeriod}-`;
+      const recentFiveDays = rows.filter(row => {
+        const stamp = asTime(row.last_shipment_at);
+        return stamp != null && stamp >= fiveDaysAgo && stamp <= referenceAt;
+      });
+      const stoppedWithWallet = rows.filter(row => !isActive(row.status) && num(row.wallet_balance) > 0.5);
+      const neverShipped = rows.filter(row => num(row.shipment_count) === 0 || !row.last_shipment_at);
+      const paidThisPeriod = new Set((customerMoney?.customers || [])
+        .filter(row => String(row.last_payment_date || '').startsWith(monthPrefix))
+        .map(row => row.store_id || row.zoho_id || row.name)
+        .filter(Boolean));
+      return {
+        available: sourceStates.merchants?.status !== 'unavailable' && !!merchantSnapshot?.snapshot,
+        snapshotAt: merchantSnapshot?.snapshot?.uploadedAt || null,
+        total: rows.length,
+        active: rows.filter(row => isActive(row.status)).length,
+        inactive: rows.filter(row => !isActive(row.status)).length,
+        newThisPeriod: rows.filter(row => String(row.created_at_platform || '').startsWith(monthPrefix)).length,
+        recentFiveDays: recentFiveDays.length,
+        neverShipped: neverShipped.length,
+        stoppedWithWallet: stoppedWithWallet.length,
+        stoppedWalletAmount: +stoppedWithWallet.reduce((sum, row) => sum + num(row.wallet_balance), 0).toFixed(2),
+        paidThisPeriod: paidThisPeriod.size,
+      };
+    })(),
+    lamhaUploads: {
+      merchants: {
+        uploadedAt: merchantSnapshot?.snapshot?.uploadedAt || null,
+        rowCount: Array.isArray(merchantSnapshot?.merchants) ? merchantSnapshot.merchants.length : null,
+        available: sourceStates.merchants?.status !== 'unavailable',
+      },
+      balance: {
+        uploadedAt: lamhaBalance?.uploaded_at || null,
+        fileName: lamhaBalance?.file_name || null,
+        rowCount: lamhaBalance?.row_count ?? null,
+        available: sourceStates.lamhaBalance?.status !== 'unavailable',
+      },
     },
     teamReadiness,
     customerDecisions,
