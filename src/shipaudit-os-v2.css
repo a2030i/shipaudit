@@ -1031,6 +1031,92 @@ body {
   .page-content td { padding: 10px !important; }
 }
 
+/* Account footer: the logout action must remain visible on every shell size.
+   Older compact-rail rules hid the direct footer button on desktop. */
+.app-layout > .sidebar .sidebar-footer > .sidebar-account {
+  display: grid !important;
+  gap: 7px !important;
+  margin-top: 0 !important;
+  padding: 8px !important;
+  background: rgba(255, 255, 255, .06) !important;
+  border: 1px solid rgba(255, 255, 255, .09) !important;
+  border-radius: 12px !important;
+}
+
+.app-layout > .sidebar .sidebar-account__identity {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 8px !important;
+  min-width: 0;
+}
+
+.app-layout > .sidebar .sidebar-account__copy {
+  display: grid !important;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.app-layout > .sidebar .sidebar-account__copy strong {
+  overflow: hidden;
+  color: #fff;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.app-layout > .sidebar .sidebar-account__copy span {
+  margin-top: 2px;
+  color: rgba(224, 234, 249, .62);
+  font-size: 9px;
+}
+
+.app-layout > .sidebar .sidebar-footer > .sidebar-account > .sidebar-logout-action {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px;
+  width: 100%;
+  min-height: 34px;
+  padding: 6px 8px;
+  color: #fecaca;
+  background: rgba(239, 68, 68, .08);
+  border: 1px solid rgba(248, 113, 113, .28);
+  border-radius: 9px;
+  font-family: var(--font-sans);
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+
+.app-layout > .sidebar .sidebar-footer > .sidebar-account > .sidebar-logout-action:hover {
+  color: #fff;
+  background: rgba(220, 38, 38, .32);
+  border-color: rgba(252, 165, 165, .7);
+}
+
+.sidebar.collapsed .sidebar-account {
+  padding: 6px !important;
+}
+
+.sidebar.collapsed .sidebar-account__identity {
+  justify-content: center !important;
+}
+
+@media (max-width: 768px) {
+  .app-layout > .sidebar .sidebar-footer > .sidebar-account {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+  }
+
+  .app-layout > .sidebar .sidebar-footer > .sidebar-account > .sidebar-logout-action {
+    width: auto;
+    min-height: 38px;
+    padding-inline: 12px;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .01ms !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; }
 }

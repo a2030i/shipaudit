@@ -703,13 +703,8 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Footer */}
           <div className="sidebar-footer">
-            {!collapsed && (
-              <div style={{
-                marginTop:10, display:'flex', alignItems:'center', gap:11,
-                padding:'12px 14px', borderRadius:14,
-                background:'var(--sidebar-user-bg, rgba(255,255,255,.08))',
-                border:'1px solid var(--sidebar-user-border, rgba(255,255,255,.10))',
-              }}>
+            <div className={`sidebar-account${collapsed ? ' is-collapsed' : ''}`}>
+              <div className="sidebar-account__identity">
                 <div style={{
                   width:36, height:36, borderRadius:'50%', flexShrink:0,
                   background: profile.avatar_color || 'var(--brand-gradient)',
@@ -719,23 +714,18 @@ function AppInner({ theme, toggleTheme }) {
                 }}>
                   {profile.name?.[0] ?? '?'}
                 </div>
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ fontSize:13, fontWeight:600, color:'var(--sidebar-brand-text, #fff)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{profile.name}</div>
-                  <div style={{ fontSize:11, color:'var(--sidebar-brand-muted, rgba(199,210,254,.72))', marginTop:2 }}>{ROLE_LABEL[profile.role] ?? profile.role}</div>
-                </div>
-                <button onClick={signOut} title="تسجيل خروج" aria-label="تسجيل الخروج" style={{
-                  background:'var(--sidebar-logout-bg, rgba(255,255,255,.06))', border:'1px solid var(--sidebar-logout-border, rgba(255,255,255,.12))',
-                  color:'var(--sidebar-logout-color, rgba(199,210,254,.82))',
-                  cursor:'pointer', padding:'6px 7px', borderRadius:8,
-                  display:'flex', alignItems:'center', transition:'all .15s',
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.borderColor = 'var(--red)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.color = 'var(--sidebar-logout-color, rgba(199,210,254,.82))'; e.currentTarget.style.borderColor = 'var(--sidebar-logout-border, rgba(255,255,255,.12))'; }}
-                >
-                  <LogOut size={13}/>
-                </button>
+                {!collapsed && (
+                  <div className="sidebar-account__copy">
+                    <strong>{profile.name}</strong>
+                    <span>{ROLE_LABEL[profile.role] ?? profile.role}</span>
+                  </div>
+                )}
               </div>
-            )}
+              <button className="sidebar-logout-action" onClick={signOut} title="تسجيل الخروج" aria-label="تسجيل الخروج">
+                <LogOut size={15}/>
+                {!collapsed && <span>تسجيل الخروج</span>}
+              </button>
+            </div>
           </div>
 
           <button
