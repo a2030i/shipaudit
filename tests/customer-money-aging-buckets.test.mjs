@@ -18,6 +18,10 @@ test('customer collection exposes focused invoice and opening-balance campaign s
   assert.match(page, /شرائح حملات التحصيل/);
   assert.match(page, /شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»/);
   assert.match(page, /openFocusedCampaign/);
+  assert.ok(
+    page.indexOf('id="collection-campaign-segments"') < page.indexOf('className="customer-money-hero"'),
+    'campaign segments must stay in the visible portfolio before the hidden legacy hero',
+  );
 });
 
 test('selected campaign amount never mixes +90 invoices with the opening balance', () => {

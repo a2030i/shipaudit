@@ -355,6 +355,77 @@ export default function CustomerMoney({ isActive = true }) {
   const applicableRows = (credits?.rows || []).filter(r => r.applicable > 0.5);
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
 
+  const campaignSegmentsPanel = (
+    <Card style={{ padding: '16px 18px', marginBottom: 12 }}>
+      <div id="collection-campaign-segments" style={{ scrollMarginTop: 90 }}>
+        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>
+          شرائح حملات التحصيل — اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
+        </div>
+        <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
+          {INVOICE_CAMPAIGN_BUCKETS.map(b => {
+            const v = d.campaignAging?.[b.key] || 0;
+            const pct = Math.max((v / invoiceCampaignTotal) * 100, v > 0.5 ? 6 : 0);
+            if (pct === 0) return null;
+            const active = buckets.has(b.key);
+            return (
+              <button type="button" key={b.key} title={`${b.label}: ${fmt(v)} ر.س`}
+                onClick={() => toggleBucket(b.key)}
+                aria-pressed={active}
+                style={{ width: `${pct}%`, border: 0, background: b.color, display: 'flex', alignItems: 'center',
+                  justifyContent: 'center', color: '#fff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
+                  overflow: 'hidden', outline: active ? '2.5px solid var(--text)' : 'none', outlineOffset: -2 }}>
+                {pct > 12 ? `${b.label} · ${fmtK(v)}` : ''}
+              </button>
+            );
+          })}
+        </div>
+        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+          {INVOICE_CAMPAIGN_BUCKETS.map(b => (
+            <button type="button" key={b.key} onClick={() => toggleBucket(b.key)}
+              aria-pressed={buckets.has(b.key)}
+              style={{ border: 0, background: 'transparent', fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'center', padding: '6px 4px',
+                fontWeight: buckets.has(b.key) ? 800 : 500 }}>
+              <input type="checkbox" checked={buckets.has(b.key)} readOnly
+                style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
+              <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
+              {b.label}: {fmt(d.campaignAging?.[b.key] || 0)}
+            </button>
+          ))}
+        </div>
+        <button type="button"
+          onClick={() => toggleBucket(OPENING_CAMPAIGN_BUCKET.key)}
+          aria-pressed={buckets.has(OPENING_CAMPAIGN_BUCKET.key)}
+          style={{ marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
+            padding: '10px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'right',
+            border: `1.5px solid ${buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--border)'}`,
+            background: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'color-mix(in srgb, var(--accent3) 10%, transparent)' : 'var(--surface2)',
+            color: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--text2)' }}>
+          <span><b>رصيد افتتاحي غير مدفوع</b><small style={{ display: 'block', marginTop: 2, color: 'var(--muted)' }}>شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»</small></span>
+          <strong style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{fmt(d.campaignAging?.opening || 0)} ر.س</strong>
+        </button>
+        {buckets.size > 0 && (
+          <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
+            <div>
+              <strong style={{ display: 'block', fontSize: 11.5 }}>المحدد: {campaignBucketLabel(buckets)}</strong>
+              <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>
+                {filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
+              </span>
+            </div>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {can('campaigns.send') && (
+                <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={openFocusedCampaign}>
+                  مراجعة الحملة
+                </Btn>
+              )}
+              <button type="button" onClick={() => setBuckets(new Set())} style={{ border: 0, background: 'transparent', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</button>
+            </div>
+          </div>
+        )}
+      </div>
+    </Card>
+  );
+
   return (
     <div className="customer-money-page workspace-page">
       <FigmaCustomerPortfolio
@@ -369,6 +440,8 @@ export default function CustomerMoney({ isActive = true }) {
         sourceUpdatedAt={viewUpdatedAt}
         sourceHealthy={!loadError && !collectionTaskError}
       />
+
+      {campaignSegmentsPanel}
 
       {loadError && (
         <div className="data-load-error is-inline" role="status">
@@ -463,73 +536,6 @@ export default function CustomerMoney({ isActive = true }) {
           </div>
         </div>
 
-        {/* شرائح حملات التحصيل: الفواتير منفصلة تمامًا عن الرصيد الافتتاحي. */}
-        <div id="collection-campaign-segments" style={{ marginTop: 16, scrollMarginTop: 90 }}>
-          <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>
-            شرائح حملات التحصيل — اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
-          </div>
-          <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
-            {INVOICE_CAMPAIGN_BUCKETS.map(b => {
-              const v = d.campaignAging?.[b.key] || 0;
-              const pct = Math.max((v / invoiceCampaignTotal) * 100, v > 0.5 ? 6 : 0);
-              if (pct === 0) return null;
-              const active = buckets.has(b.key);
-              return (
-                <button type="button" key={b.key} title={`${b.label}: ${fmt(v)} ر.س`}
-                  onClick={() => toggleBucket(b.key)}
-                  aria-pressed={active}
-                  style={{ width: `${pct}%`, border: 0, background: b.color, display: 'flex', alignItems: 'center',
-                    justifyContent: 'center', color: '#fff', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap',
-                    overflow: 'hidden', outline: active ? '2.5px solid var(--text)' : 'none', outlineOffset: -2 }}>
-                  {pct > 12 ? `${b.label} · ${fmtK(v)}` : ''}
-                </button>
-              );
-            })}
-          </div>
-          <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
-            {INVOICE_CAMPAIGN_BUCKETS.map(b => (
-              <button type="button" key={b.key} onClick={() => toggleBucket(b.key)}
-                aria-pressed={buckets.has(b.key)}
-                style={{ border: 0, background: 'transparent', fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', padding: '6px 4px',
-                  fontWeight: buckets.has(b.key) ? 800 : 500 }}>
-                <input type="checkbox" checked={buckets.has(b.key)} readOnly
-                  style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
-                <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
-                {b.label}: {fmt(d.campaignAging?.[b.key] || 0)}
-              </button>
-            ))}
-          </div>
-          <button type="button"
-            onClick={() => toggleBucket(OPENING_CAMPAIGN_BUCKET.key)}
-            aria-pressed={buckets.has(OPENING_CAMPAIGN_BUCKET.key)}
-            style={{ marginTop: 8, width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12,
-              padding: '10px 12px', borderRadius: 9, cursor: 'pointer', textAlign: 'right',
-              border: `1.5px solid ${buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--border)'}`,
-              background: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'color-mix(in srgb, var(--accent3) 10%, transparent)' : 'var(--surface2)',
-              color: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--text2)' }}>
-            <span><b>رصيد افتتاحي غير مدفوع</b><small style={{ display: 'block', marginTop: 2, color: 'var(--muted)' }}>شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»</small></span>
-            <strong style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{fmt(d.campaignAging?.opening || 0)} ر.س</strong>
-          </button>
-          {buckets.size > 0 && (
-            <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-              <div>
-                <strong style={{ display: 'block', fontSize: 11.5 }}>المحدد: {campaignBucketLabel(buckets)}</strong>
-                <span style={{ display: 'block', marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>
-                  {filtered.length} عميل · {fmt(filteredTotal)} ر.س من الشرائح المختارة فقط
-                </span>
-              </div>
-              <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                {can('campaigns.send') && (
-                  <Btn size="sm" variant="accent" icon={<MessageCircle size={13}/>} onClick={openFocusedCampaign}>
-                    مراجعة الحملة
-                  </Btn>
-                )}
-                <button type="button" onClick={() => setBuckets(new Set())} style={{ border: 0, background: 'transparent', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</button>
-              </div>
-            </div>
-          )}
-        </div>
       </Card>
       </div>
 
