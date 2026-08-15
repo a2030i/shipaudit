@@ -50,7 +50,9 @@ export const NAV_GROUPS = {
 // المسارات التاريخية لا تُحذف؛ الاختلاف هنا فقط في سهولة الوصول إليها.
 export const NAV_ITEM_IA = {
   overview:            { label: 'الرئيسية', visible: true },
-  decisions:           { label: 'مهام وقرارات اليوم', visible: true },
+  // تبقى لوحة القرارات فعالة بالرابط المباشر والبحث، ولا تُنشئ مدخلًا
+  // ثامنًا بجانب المراكز السبعة الثابتة.
+  decisions:           { label: 'مهام وقرارات اليوم', visible: false },
 
   hub:                 { label: 'مركز شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 10, visible: true },
   'platform-carriers': { label: 'مقارنة أسعار المنصات', section: 'shipping', group: 'carrier_ops', order: 20, visible: true },

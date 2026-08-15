@@ -1,4 +1,4 @@
-import { Fragment, useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
@@ -7,6 +7,7 @@ import {
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
+import CenterLanding from './components/CenterLanding.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
@@ -378,8 +379,8 @@ function AppInner({ theme, toggleTheme }) {
   const [mobileOpen,      setMobileOpen]      = useState(false);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
-  // الجانبية الأساسية للمراكز فقط. اختيار مركز يفتح جانبية سياقية للصفحات
-  // التابعة له، وعلى الجوال ينتقل الدرج إلى المستوى الثاني مع زر رجوع واضح.
+  // الجانبية الأساسية للمراكز فقط. اختيار المركز يفتح صفحة مركزية تجمع
+  // وجهات العمل كبطاقات؛ لا توجد جانبية سياقية ثانية على أي مقاس شاشة.
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -565,10 +566,6 @@ function AppInner({ theme, toggleTheme }) {
     return true;
   });
   const subTabPath = (item, tab) => tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`;
-  const hasContextSidebar = Boolean(contextSection && contextItems.length);
-  const currentContextValue = currentNavItem && currentSubTab
-    ? subTabPath(currentNavItem, currentSubTab)
-    : (currentNavItem?.path || contextItems[0]?.path || '');
   const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
@@ -576,8 +573,10 @@ function AppInner({ theme, toggleTheme }) {
   const quickActionLabel = ({
     finance: 'إجراء مالي جديد',
     sales: 'إضافة فرصة أو تواصل',
-    support: 'فتح تذكرة عميل',
-    admin: 'إجراء إداري',
+    customers: 'فتح تذكرة عميل',
+    shipping: 'رفع ملف أو تشغيل دورة',
+    reports: 'إنشاء أو تصدير تقرير',
+    settings: 'إجراء إداري',
   })[contextSection?.id] || 'إجراء جديد';
 
   return (
@@ -615,7 +614,7 @@ function AppInner({ theme, toggleTheme }) {
         onNavigate={goto}
       />
 
-      <div className={`app-layout${hasContextSidebar ? ' has-context' : ''}${collapsed ? ' primary-collapsed' : ''}`}>
+      <div className={`app-layout${collapsed ? ' primary-collapsed' : ''}`}>
 
         {/* ═══════════════ SIDEBAR ═══════════════ */}
         <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
@@ -682,7 +681,7 @@ function AppInner({ theme, toggleTheme }) {
                   className={`primary-center-item${sectionHasActive ? ' active' : ''}`}
                   aria-current={sectionHasActive ? 'true' : undefined}
                   title={collapsed ? sec.label : undefined}
-                  onClick={() => goto(items[0]?.path || sec.path)}
+                  onClick={() => goto(sec.path)}
                 >
                   <span className="primary-center-item__icon" style={{ '--center-accent': sec.accent }}><SecIcon size={18}/></span>
                   {!collapsed && <span><strong>{sec.label}</strong><small>{sec.hint}</small></span>}
@@ -741,24 +740,6 @@ function AppInner({ theme, toggleTheme }) {
           </button>
         </aside>
 
-        {hasContextSidebar && (
-          <aside className="context-sidebar" aria-label={`صفحات مركز ${contextSection.label}`}>
-            <header className="context-sidebar__header" style={{ '--center-accent': contextSection.accent }}>
-              <span className="context-sidebar__eyebrow">مركز العمل</span>
-              <strong>{contextSection.label}</strong>
-              <small>{contextSection.hint}</small>
-            </header>
-            <ContextSectionNavigation
-              groups={contextGroups}
-              currentNavItem={currentNavItem}
-              currentSubTab={currentSubTab}
-              visibleSubTabsFor={visibleSubTabsFor}
-              subTabPath={subTabPath}
-              onNavigate={goto}
-            />
-          </aside>
-        )}
-
         {/* ═══════════════ MAIN ═══════════════ */}
         <main className="app-main">
 
@@ -814,32 +795,6 @@ function AppInner({ theme, toggleTheme }) {
             </button>
           </div>
 
-          {hasContextSidebar && (
-            <label className="mobile-context-picker">
-              <span>داخل {contextSection.label}</span>
-              <select
-                value={currentContextValue}
-                onChange={(event) => goto(event.target.value)}
-                aria-label={`التنقل داخل مركز ${contextSection.label}`}
-              >
-                {contextGroups.map(group => (
-                  <optgroup key={group.id} label={group.label || contextSection.label}>
-                    {group.items.map(item => (
-                      <Fragment key={item.id}>
-                        <option value={item.path}>{item.label}</option>
-                        {visibleSubTabsFor(item).length > 1 && visibleSubTabsFor(item).map(tab => (
-                          <option key={`${item.id}-${tab.tabId}`} value={subTabPath(item, tab)}>
-                            ↳ {tab.label}
-                          </option>
-                        ))}
-                      </Fragment>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
-            </label>
-          )}
-
           {/* ── Pages ── */}
           {/* All pages permanently mounted — visibility:hidden instead of display:none
               prevents CSS animations from replaying on every navigation */}
@@ -849,17 +804,20 @@ function AppInner({ theme, toggleTheme }) {
               const items = visibleNav
                 .filter(item => item.section === section.id)
                 .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
+              const groups = groupNavItems(section.id, items, false);
               return (
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
-                  <Navigate to={items[0]?.path || '/overview'} replace/>
+                  <CenterLanding
+                    section={section}
+                    groups={groups}
+                    visibleSubTabsFor={visibleSubTabsFor}
+                    subTabPath={subTabPath}
+                    onNavigate={goto}
+                    onQuickAction={() => setQuickActionOpen(true)}
+                  />
                 </PageSlot>
               );
             })}
-
-            {/* روابط المراكز القديمة تبقى فعالة من دون إبقاء هيكلها القديم في القائمة. */}
-            {pathname === '/workspace/customers' && <Navigate to="/customer-360" replace/>}
-            {pathname === '/workspace/operations' && <Navigate to="/hub" replace/>}
-            {pathname === '/workspace/reports' && <Navigate to="/reports" replace/>}
 
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
@@ -1212,63 +1170,6 @@ function PageSlot({ active, scroll = false, children }) {
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
-function ContextSectionNavigation({
-  groups,
-  currentNavItem,
-  currentSubTab,
-  visibleSubTabsFor,
-  subTabPath,
-  onNavigate,
-}) {
-  return (
-    <nav className="context-sidebar__nav">
-      {groups.map(group => (
-        <section className="context-nav-group" key={group.id} aria-label={group.label}>
-          {group.label && <h3>{group.label}</h3>}
-          {group.items.map(item => {
-            const active = currentNavItem?.id === item.id;
-            const Icon = item.icon || FileText;
-            const tabs = visibleSubTabsFor(item);
-            return (
-              <div className={`context-page-entry${active ? ' active' : ''}`} key={item.id}>
-                <button
-                  type="button"
-                  className={`context-nav-item${active ? ' active' : ''}`}
-                  aria-current={active ? 'page' : undefined}
-                  onClick={() => onNavigate(item.path)}
-                >
-                  <span className="context-nav-item__icon"><Icon size={17}/></span>
-                  <span>{item.label}</span>
-                  <ChevronLeft className="context-nav-item__arrow" size={15}/>
-                </button>
-                {tabs.length > 1 && (
-                  <div className="context-subnav" aria-label={`داخل ${item.label}`}>
-                    {tabs.map(tab => {
-                      const TabIcon = tab.icon || Icon;
-                      const tabActive = active && currentSubTab?.tabId === tab.tabId;
-                      return (
-                        <button
-                          key={tab.tabId}
-                          type="button"
-                          className={tabActive ? 'active' : ''}
-                          aria-current={tabActive ? 'page' : undefined}
-                          onClick={() => onNavigate(subTabPath(item, tab))}
-                        >
-                          <TabIcon size={14}/><span>{tab.label}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </section>
-      ))}
-    </nav>
-  );
-}
-
 function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
   const Icon = n.icon;
   // Section-tinted active state — when an `accent` prop is passed

@@ -39,7 +39,6 @@
   --sa-shadow: 0 10px 30px rgba(16, 24, 40, .055);
   --sa-shadow-lg: 0 24px 70px rgba(16, 24, 40, .15);
   --sa-primary-rail: 124px;
-  --sa-context-rail: 244px;
   --sa-topbar: 66px;
 }
 
@@ -80,7 +79,7 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-/* ── Product frame: compact center rail + direct contextual navigation ─── */
+/* ── Product frame: one primary rail + the active workspace ───────────── */
 .app-layout,
 [data-theme] .app-layout {
   direction: ltr !important;
@@ -96,9 +95,13 @@ body {
 }
 
 .app-layout.has-context {
-  grid-template-columns: minmax(0, 1fr) var(--sa-context-rail) var(--sa-primary-rail) !important;
-  grid-template-areas: "main context primary" !important;
+  grid-template-columns: minmax(0, 1fr) var(--sa-primary-rail) !important;
+  grid-template-areas: "main primary" !important;
 }
+
+/* دفاع أخير ضد طبقات CSS التاريخية: التنقل السياقي لم يعد جزءًا من الغلاف. */
+.context-sidebar,
+.mobile-context-picker { display: none !important; }
 
 .app-layout.primary-collapsed {
   --sa-primary-rail: 76px;
@@ -823,7 +826,7 @@ body {
 }
 
 @media (max-width: 1180px) and (min-width: 769px) {
-  :root { --sa-primary-rail: 100px; --sa-context-rail: 220px; }
+  :root { --sa-primary-rail: 100px; }
   .app-layout > .sidebar .primary-center-item strong { font-size: 9px !important; }
   .sidebar-brand-logo--desktop svg,
   .sidebar-brand-logo--desktop img { width: 72px !important; }

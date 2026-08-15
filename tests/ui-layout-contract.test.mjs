@@ -100,7 +100,8 @@ test('primary navigation rail leaves center labels comfortably readable', async 
   const shell = await readFile(new URL('../src/shipaudit-os-v2.css', import.meta.url), 'utf8');
   assert.match(shell, /--sa-primary-rail:\s*124px/);
   assert.match(shell, /max-width:\s*108px\s*!important/);
-  assert.match(shell, /--sa-primary-rail:\s*100px;\s*--sa-context-rail:\s*220px/);
+  assert.match(shell, /--sa-primary-rail:\s*100px;/);
+  assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.match(shell, /\.app-layout\.primary-collapsed\s*\{[\s\S]*--sa-primary-rail:\s*76px/);
   assert.match(shell, /width:\s*min\(86vw,\s*340px\)\s*!important/);
 });
@@ -298,9 +299,11 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
 });
 
-test('stable work areas restore complete center and contextual navigation', async () => {
+test('stable work areas use one seven-entry rail and permission-aware center launchpads', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
+  const center = await read('src/components/CenterLanding.jsx');
+  const shell = await read('src/shipaudit-os-v2.css');
 
   for (const id of ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings']) {
     assert.match(navigation, new RegExp(`id: '${id}'`));
@@ -313,9 +316,17 @@ test('stable work areas restore complete center and contextual navigation', asyn
     assert.match(navigation, new RegExp(`(?:^|\\n)\\s*'?${id}'?:\\s*\\{[^}]*visible: true`));
   }
 
-  assert.match(app, /className="context-subnav"/);
-  assert.match(app, /className="mobile-context-picker"/);
+  assert.doesNotMatch(app, /<aside className="context-sidebar"/);
+  assert.doesNotMatch(app, /className="mobile-context-picker"/);
+  assert.doesNotMatch(app, /className="context-subnav"/);
+  assert.match(app, /<CenterLanding/);
+  assert.match(app, /onClick=\{\(\) => goto\(sec\.path\)\}/);
   assert.match(app, /visibleSubTabsFor/);
+  assert.match(center, /destinationsFor/);
+  assert.match(center, /subTabPath\(item, tab\)/);
+  assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
+  assert.doesNotMatch(shell, /--sa-context-rail/);
+  assert.doesNotMatch(shell, /grid-template-areas:\s*"main context primary"/);
   assert.match(app, /tabId: 'segments'/);
   assert.match(app, /tabId: 'ivr'/);
   assert.match(app, /id: 'zoho-data'[\s\S]*tabId: 'banks'/);
