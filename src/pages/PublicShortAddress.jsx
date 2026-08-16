@@ -11,7 +11,15 @@ const addressDetailsOf=data=>{
   if(!data)return [];
   const nested=data.address&&typeof data.address==='object'?data.address:{};
   const segments=cleanAddress(addressOf(data)).split('،').map(item=>item.trim()).filter(Boolean);
-  const fallback=segments.length>=5?{building:segments[0],street:segments[1],district:segments[2],postalCode:segments[3],city:segments.slice(4).join('، ')}:{};
+  const postalIndex=segments.findIndex((item,index)=>index>0&&/^\d{5}$/.test(item));
+  const middle=postalIndex>0?segments.slice(1,postalIndex):[];
+  const fallback=postalIndex>0?{
+    building:segments[0],
+    street:middle[0],
+    district:middle.length>1?middle.slice(1).join('، '):undefined,
+    postalCode:segments[postalIndex],
+    city:segments.slice(postalIndex+1).join('، ')
+  }:{};
   const value=(...items)=>items.find(item=>item!==undefined&&item!==null&&String(item).trim()!=='');
   return [
     {key:'shortcode',label:'العنوان المختصر',value:shortcodeOf(data),ltr:true},
