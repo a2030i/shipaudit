@@ -4,6 +4,12 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 
 const STYLE_URL='https://tiles.openfreemap.org/styles/liberty';
 const DEFAULT_CENTER=[45.0792,23.8859];
+const ARABIC_NAME=['coalesce',['get','name:ar'],['get','name:nonlatin'],['get','name'],['get','name:latin']];
+let rtlPluginPromise;
+function ensureArabicText(){
+  rtlPluginPromise??=maplibregl.setRTLTextPlugin('https://unpkg.com/@mapbox/mapbox-gl-rtl-text@0.3.0/dist/mapbox-gl-rtl-text.js',true).catch(()=>undefined);
+  return rtlPluginPromise;
+}
 
 export default function HudhudAddressMap({point,onPick}){
   const containerRef=useRef(null);
@@ -15,13 +21,20 @@ export default function HudhudAddressMap({point,onPick}){
   useEffect(()=>{onPickRef.current=onPick;},[onPick]);
   useEffect(()=>{
     if(!containerRef.current||mapRef.current)return undefined;
+    ensureArabicText();
     const map=new maplibregl.Map({container:containerRef.current,style:STYLE_URL,center:DEFAULT_CENTER,zoom:4.2,attributionControl:true,cooperativeGestures:true});
     const marker=new maplibregl.Marker({color:'#087e58',draggable:true}).setLngLat(DEFAULT_CENTER).addTo(map);
     marker.getElement().setAttribute('aria-label','مؤشر الموقع القابل للتحريك');
     marker.on('dragend',()=>{const p=marker.getLngLat();onPickRef.current?.({lat:p.lat,lon:p.lng});});
     map.on('click',event=>{marker.setLngLat(event.lngLat);onPickRef.current?.({lat:event.lngLat.lat,lon:event.lngLat.lng});});
     const loadTimer=window.setTimeout(()=>{if(!map.isStyleLoaded())setFailed(true);},12000);
-    map.on('load',()=>{window.clearTimeout(loadTimer);setFailed(false);});
+    map.on('load',()=>{
+      window.clearTimeout(loadTimer);setFailed(false);
+      for(const layer of map.getStyle().layers||[]){
+        const field=layer.type==='symbol'?map.getLayoutProperty(layer.id,'text-field'):null;
+        if(field&&JSON.stringify(field).includes('name'))map.setLayoutProperty(layer.id,'text-field',ARABIC_NAME);
+      }
+    });
     map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-left');
     mapRef.current=map;markerRef.current=marker;
     return()=>{window.clearTimeout(loadTimer);marker.remove();map.remove();markerRef.current=null;mapRef.current=null;};
