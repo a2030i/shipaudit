@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Building2, Check, Copy, ExternalLink, LocateFixed, Map, MapPin, Navigation, Route, Search, Share2, Table2, X } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
-import { FunctionRegion } from '@supabase/supabase-js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { supabase } from '../lib/supabase.js';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
@@ -24,7 +23,7 @@ const shortcodeOf=d=>d?.shortcode||d?.short_address||d?.address?.shortcode||d?.p
 export default function PublicShortAddress(){
   const mapNode=useRef(null),mapRef=useRef(null),markers=useRef([]);
   const [tool,setTool]=useState('reverse'),[query,setQuery]=useState(''),[points,setPoints]=useState([]),[result,setResult]=useState(null),[items,setItems]=useState([]),[selected,setSelected]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState(''),[copied,setCopied]=useState(false);
-  const call=useCallback(async(action,body={})=>{setBusy(true);setError('');try{const {data,error:e}=await supabase.functions.invoke('hudhud-short-address',{body:{action,...body,website:''},region:FunctionRegion.EuCentral1});if(e)throw e;if(!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');return data.data;}catch(e){setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{setBusy(false);}},[]);
+  const call=useCallback(async(action,body={})=>{setBusy(true);setError('');try{const response=await fetch(`${supabase.supabaseUrl}/functions/v1/hudhud-short-address`,{method:'POST',headers:{apikey:supabase.supabaseKey,Authorization:`Bearer ${supabase.supabaseKey}`,'Content-Type':'application/json','x-region':'eu-central-1'},body:JSON.stringify({action,...body,website:''})});const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');return data.data;}catch(e){setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{setBusy(false);}},[]);
   const clearMap=useCallback(()=>{markers.current.forEach(m=>m.remove());markers.current=[];const map=mapRef.current;if(map?.getLayer('hudhud-route'))map.removeLayer('hudhud-route');if(map?.getSource('hudhud-route'))map.removeSource('hudhud-route');},[]);
   const showPoints=useCallback(next=>{clearMap();if(!mapRef.current)return;next.forEach((p,i)=>{const el=document.createElement('div');el.className='hudhud-marker';el.textContent=String(i+1);markers.current.push(new maplibregl.Marker({element:el}).setLngLat([p.lon,p.lat]).addTo(mapRef.current));});if(next.length)mapRef.current.flyTo({center:[next.at(-1).lon,next.at(-1).lat],zoom:next.length===1?16:12});},[clearMap]);
   const inspect=useCallback(d=>{setSelected(d);const p=coordOf(d);if(p){setPoints([p]);showPoints([p]);}},[showPoints]);
