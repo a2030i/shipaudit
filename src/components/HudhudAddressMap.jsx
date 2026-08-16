@@ -20,10 +20,11 @@ export default function HudhudAddressMap({point,onPick}){
     marker.getElement().setAttribute('aria-label','مؤشر الموقع القابل للتحريك');
     marker.on('dragend',()=>{const p=marker.getLngLat();onPickRef.current?.({lat:p.lat,lon:p.lng});});
     map.on('click',event=>{marker.setLngLat(event.lngLat);onPickRef.current?.({lat:event.lngLat.lat,lon:event.lngLat.lng});});
-    map.on('error',event=>{if(event?.error)setFailed(true);});
+    const loadTimer=window.setTimeout(()=>{if(!map.loaded())setFailed(true);},12000);
+    map.on('load',()=>{window.clearTimeout(loadTimer);setFailed(false);});
     map.addControl(new maplibregl.NavigationControl({showCompass:false}),'top-left');
     mapRef.current=map;markerRef.current=marker;
-    return()=>{marker.remove();map.remove();markerRef.current=null;mapRef.current=null;};
+    return()=>{window.clearTimeout(loadTimer);marker.remove();map.remove();markerRef.current=null;mapRef.current=null;};
   },[]);
 
   useEffect(()=>{
