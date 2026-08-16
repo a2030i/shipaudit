@@ -2,11 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const FALLBACK_STYLE={
-  version:8,
-  sources:{osm:{type:'raster',tiles:['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],tileSize:256,attribution:'© OpenStreetMap contributors'}},
-  layers:[{id:'osm',type:'raster',source:'osm'}]
-};
+const STYLE_URL='https://tiles.openfreemap.org/styles/liberty';
 const DEFAULT_CENTER=[45.0792,23.8859];
 
 export default function HudhudAddressMap({point,onPick}){
@@ -19,7 +15,7 @@ export default function HudhudAddressMap({point,onPick}){
   useEffect(()=>{onPickRef.current=onPick;},[onPick]);
   useEffect(()=>{
     if(!containerRef.current||mapRef.current)return undefined;
-    const map=new maplibregl.Map({container:containerRef.current,style:FALLBACK_STYLE,center:DEFAULT_CENTER,zoom:4.2,attributionControl:true,cooperativeGestures:true});
+    const map=new maplibregl.Map({container:containerRef.current,style:STYLE_URL,center:DEFAULT_CENTER,zoom:4.2,attributionControl:true,cooperativeGestures:true});
     const marker=new maplibregl.Marker({color:'#087e58',draggable:true}).setLngLat(DEFAULT_CENTER).addTo(map);
     marker.getElement().setAttribute('aria-label','مؤشر الموقع القابل للتحريك');
     marker.on('dragend',()=>{const p=marker.getLngLat();onPickRef.current?.({lat:p.lat,lon:p.lng});});
