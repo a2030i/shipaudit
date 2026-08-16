@@ -27,7 +27,9 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
   assert.match(css, /--mobile-page-end-space:\s*calc\(144px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*var\(--mobile-page-end-space\)/);
-  assert.match(css, /\.app-layout\.primary-collapsed[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /#root \.app-layout\.primary-collapsed[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /#root \.app-layout,[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 0\s*!important/);
+  assert.match(css, /--sa-primary-rail:\s*0px/);
   assert.match(css, /\.app-main,[\s\S]*\.page-content,[\s\S]*\.page-slot\s*\{[\s\S]*inline-size:\s*100%\s*!important/);
   assert.match(css, /\.app-layout > \.sidebar,[\s\S]*position:\s*fixed\s*!important/);
   assert.doesNotMatch(css, /100vw/);

@@ -19,18 +19,30 @@
      workspace to only part of the screen. Use the containing block width,
      never viewport-width units, so browser chrome and safe-area calculations cannot create
      a second horizontal viewport. */
-  .app-layout,
-  .app-layout.has-context,
-  .app-layout.primary-collapsed {
+  /* #root deliberately outranks the desktop `[data-theme] .app-layout`
+     selector. Both declarations are !important, so a plain `.app-layout`
+     selector still loses on specificity and leaves the 124px rail reserved. */
+  #root .app-layout,
+  #root .app-layout.has-context,
+  #root .app-layout.primary-collapsed {
     display: block !important;
+    grid-template-columns: minmax(0, 1fr) 0 !important;
+    grid-template-areas: "main primary" !important;
+    --sa-primary-rail: 0px;
+    --sa-context-rail: 0px;
+    --product-primary-width: 0px;
+    --product-context-width: 0px;
+    --shell-primary-width: 0px;
     inline-size: 100% !important;
     min-inline-size: 0 !important;
     max-inline-size: 100% !important;
   }
 
+  #root .app-layout > .app-main,
   .app-main,
   .page-content,
   .page-slot {
+    grid-area: main !important;
     inline-size: 100% !important;
     min-inline-size: 0 !important;
     max-inline-size: 100% !important;
