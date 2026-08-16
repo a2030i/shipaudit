@@ -8,6 +8,8 @@
 .hudhud-page{width:100%;max-width:100vw;min-width:0;height:100vh;height:100dvh;flex:1 1 auto;overflow-x:hidden;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior-y:contain}
 .map-setup{min-width:0;overflow:hidden}
 .map-setup span{overflow-wrap:anywhere;word-break:break-word}
+.hudhud-page input,.hudhud-page select,.hudhud-page textarea{font-size:16px!important;touch-action:manipulation}
+.hudhud-page button,.hudhud-page a{touch-action:manipulation}
 @media(max-width:850px){
   .hudhud-page{width:100vw;max-width:100vw;padding:8px}
   .hudhud-shell,.hudhud-panel{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
