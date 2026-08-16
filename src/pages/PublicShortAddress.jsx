@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useMemo, useRef, useState } from 'react';
 import { Check, Copy, LocateFixed, MapPin, Search, Share2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
@@ -61,6 +61,7 @@ const messageOf=data=>addressDetailsOf(data).map(({label,value})=>`${label}: ${v
 const distanceMeters=(a,b)=>{if(!a||!b)return null;const r=6371000,toRad=n=>n*Math.PI/180,dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),x=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;return Math.round(2*r*Math.asin(Math.sqrt(x)));};
 const resultPoint=data=>{const source=data?.location||data;const lat=Number(source?.lat),lon=Number(source?.lon);return Number.isFinite(lat)&&Number.isFinite(lon)?{lat,lon}:null;};
 const EXPECTED={location:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي'],['shortcode','العنوان المختصر']],shortcode:[['building','رقم المبنى'],['street','الشارع'],['district','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']]};
+const HudhudAddressMap=lazy(()=>import('../components/HudhudAddressMap.jsx'));
 
 export default function PublicShortAddress(){
   const [mode,setMode]=useState('location');
@@ -90,6 +91,8 @@ export default function PublicShortAddress(){
   const copyText=async(text)=>{if(!text)return;await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);};
   const detailsText=addressDetails.filter(item=>!['shortcode','fullAddress'].includes(item.key)).map(({label,value})=>`${label}: ${value}`).join('\n');
   const fullAddress=addressDetails.find(item=>item.key==='fullAddress')?.value||address;
+  const mapPoint=resultPoint(result)||deviceLocation;
+  const pickOnMap=useCallback(point=>{setDeviceLocation(point);setAccuracy(null);call('reverse',point);},[call]);
 
   return <main className="address-page" dir="rtl">
     <header className="address-header"><LamhaLogo/></header>
@@ -99,6 +102,8 @@ export default function PublicShortAddress(){
         <button role="tab" aria-selected={mode==='location'} className={mode==='location'?'active':''} onClick={()=>switchMode('location')}><LocateFixed size={19}/> استخدم موقعي</button>
         <button role="tab" aria-selected={mode==='shortcode'} className={mode==='shortcode'?'active':''} onClick={()=>switchMode('shortcode')}><Search size={19}/> أدخل عنوانًا مختصرًا</button>
       </div>
+
+      <Suspense fallback={<div className="hudhud-map-loading">جاري تحميل الخريطة…</div>}><HudhudAddressMap point={mapPoint} onPick={pickOnMap}/></Suspense>
 
       {mode==='location'?<section className="address-action"><h2>حدد موقعك الحالي</h2><p>سنستخدم موقعك مرة واحدة لجلب عنوانك من هدهد، ولن نحفظه.</p><button className="address-primary" onClick={locate} disabled={busy}><LocateFixed size={20}/>{busy?'جاري تحديد العنوان…':'استخدم موقعي الحالي'}</button></section>:
       <form className="address-action" onSubmit={lookup}><h2>أدخل العنوان المختصر</h2><p>يتكون من أربعة أحرف وأربعة أرقام.</p><label><span>العنوان المختصر</span><input dir="ltr" inputMode="text" autoCapitalize="characters" maxLength={8} value={shortcode} onChange={e=>setShortcode(e.target.value.replace(/\s/g,'').toUpperCase())} placeholder="MKGA2655"/></label><button className="address-primary" disabled={busy||shortcode.length!==8}><Search size={20}/>{busy?'جاري البحث…':'عرض تفاصيل العنوان'}</button></form>}
