@@ -20,6 +20,7 @@ const titleOf=d=>d?.name_ar||d?.name||d?.title||d?.shortcode||d?.short_address||
 const addressOf=d=>d?.address_ar||d?.display_name||d?.formatted_address||d?.national_address||d?.properties?.display_name||[d?.street,d?.district,d?.city,d?.postal_code].filter(Boolean).join('، ');
 const shortcodeOf=d=>d?.shortcode||d?.short_address||d?.address?.shortcode||d?.properties?.shortcode;
 const distanceKm=(a,b)=>{if(!a||!b)return Number.POSITIVE_INFINITY;const r=6371,toRad=n=>n*Math.PI/180,dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),x=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;return 2*r*Math.asin(Math.sqrt(x));};
+const shareMessage=(value,point)=>{const shortcode=shortcodeOf(value),title=titleOf(value),address=String(addressOf(value)||'').replace(/,\s*/g,'، '),lines=[];if(title&&title!==shortcode&&title!==address)lines.push(`المكان: ${title}`);if(shortcode)lines.push(`العنوان المختصر: ${shortcode}`);if(address&&address!==shortcode)lines.push(`العنوان: ${address}`);if(point)lines.push(`الإحداثيات: ${point.lat.toFixed(6)}، ${point.lon.toFixed(6)}`);return lines.join('\n');};
 
 export default function PublicShortAddress(){
   const mapNode=useRef(null),mapRef=useRef(null),markers=useRef([]);
@@ -38,9 +39,9 @@ export default function PublicShortAddress(){
   const submit=async e=>{e.preventDefault();let d,origin=userLocation||points[0];if(tool==='shortcode')d=await call('shortcode',{shortcode:query});if(tool==='geocode'||tool==='places'){origin=origin||await getCurrentLocation();if(!origin)return;}if(tool==='geocode')d=await call('geocode',{query});if(tool==='places')d=await call('places',{query,user_location:origin});if(tool==='directions'||tool==='matrix')d=await call(tool,{coordinates:points});if(!d)return;setResult(d);let found=listOf(d);if((tool==='geocode'||tool==='places')&&origin)found=[...found].sort((a,b)=>distanceKm(origin,coordOf(a))-distanceKm(origin,coordOf(b)));setItems(found);if(!found.length)setSelected(d);if(tool==='directions'){const geometry=d?.geometry||d?.routes?.[0]?.geometry;const coords=geometry?.coordinates||geometry;if(mapRef.current&&Array.isArray(coords)){mapRef.current.addSource('hudhud-route',{type:'geojson',data:{type:'Feature',geometry:{type:'LineString',coordinates:coords}}});mapRef.current.addLayer({id:'hudhud-route',type:'line',source:'hudhud-route',paint:{'line-color':'#087e58','line-width':5}});}}};
   const detail=async item=>{inspect(item);if(item?.id||item?.place_id){const d=await call('place_detail',{id:item.id||item.place_id});if(d)setSelected(d);}};
   const active=TOOLS.find(t=>t[0]===tool);const ActiveIcon=active?.[2];const value=selected||(!items.length&&result);const point=coordOf(value)||points[0];
-  const shareText=useMemo(()=>[titleOf(value),shortcodeOf(value),addressOf(value),point&&`${point.lat},${point.lon}`].filter(Boolean).join('\n'),[value,point]);
+  const shareText=useMemo(()=>shareMessage(value,point),[value,point]);
   const copy=async()=>{if(!shareText)return;await navigator.clipboard.writeText(shareText);setCopied(true);setTimeout(()=>setCopied(false),1600);};
-  const share=async()=>{if(!shareText)return;if(navigator.share)await navigator.share({title:'موقع من هدهد',text:shareText,url:location.href});else copy();};
+  const share=async()=>{if(!shareText)return;if(navigator.share)await navigator.share({title:'مشاركة عنوان',text:shareText});else copy();};
   return <main className="hudhud-page" dir="rtl">
     <header className="hudhud-head"><LamhaLogo/><div><h1>دليل العنوان والموقع</h1><p>جميع خدمات هدهد في مكان واحد</p></div><span className="live-pill"><i/> متصل بخدمات هدهد</span></header>
     <nav className="hudhud-tools" aria-label="أدوات هدهد">{TOOLS.map(([id,label,Icon])=><button key={id} className={tool===id?'active':''} onClick={()=>setTool(id)}><Icon size={19}/><span>{label}</span></button>)}</nav>
