@@ -7,10 +7,28 @@ import './PublicShortAddress.css';
 const shortcodeOf=d=>d?.shortcode||d?.short_address||d?.address?.shortcode||null;
 const addressOf=d=>d?.address_ar||d?.display_name||d?.formatted_address||d?.national_address||[d?.building_no,d?.street,d?.district,d?.city,d?.postal_code].filter(Boolean).join('، ');
 const cleanAddress=value=>String(value||'').replace(/,\s*/g,'، ').trim();
+const locationTypeLabel={residential:'طريق سكني',road:'طريق',house:'مبنى',building:'مبنى',commercial:'موقع تجاري',administrative:'موقع إداري'};
 const addressDetailsOf=data=>{
   if(!data)return [];
   const nested=data.address&&typeof data.address==='object'?data.address:{};
   const segments=cleanAddress(addressOf(data)).split('،').map(item=>item.trim()).filter(Boolean);
+  if(!shortcodeOf(data)&&Object.keys(nested).length){
+    const region=segments.find(item=>/^منطقة\s/.test(item));
+    const province=nested.province&&nested.province!==nested.city?nested.province:null;
+    return [
+      {key:'road',label:'الشارع أو الطريق',value:nested.road||data.name,wide:true},
+      {key:'neighbourhood',label:'الحي',value:nested.neighbourhood},
+      {key:'suburb',label:'الضاحية أو الموقع المحلي',value:nested.suburb},
+      {key:'city',label:'المدينة',value:nested.city},
+      {key:'municipality',label:'البلدية',value:nested.municipality},
+      {key:'province',label:'المحافظة',value:province},
+      {key:'region',label:'المنطقة',value:region},
+      {key:'postalCode',label:'الرمز البريدي',value:nested.postcode,ltr:true},
+      {key:'country',label:'الدولة',value:nested.country},
+      {key:'type',label:'نوع الموقع',value:locationTypeLabel[data.type]||data.type},
+      {key:'fullAddress',label:'العنوان الكامل',value:cleanAddress(data.display_name),wide:true}
+    ].filter(detail=>detail.value);
+  }
   const postalIndex=segments.findIndex((item,index)=>index>0&&/^\d{5}$/.test(item));
   const middle=postalIndex>0?segments.slice(1,postalIndex):[];
   const geo=data.geocoding||{};
@@ -75,7 +93,7 @@ export default function PublicShortAddress(){
 
       {error&&<div className="address-error" role="alert">{error}</div>}
       {result&&<section className="address-result" aria-live="polite">
-        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>تفاصيل العنوان</h2></div></div>
+        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>{mode==='location'?'تفاصيل الموقع':'تفاصيل العنوان'}</h2></div></div>
         {addressDetails.length>0&&<div className="address-fields">{addressDetails.map(detail=><div className={`address-field${detail.wide?' wide':''}`} key={detail.key}><span>{detail.label}</span><strong dir={detail.ltr?'ltr':undefined}>{detail.value}</strong></div>)}</div>}
         {!addressDetails.length&&address&&<div className="address-detail"><span>العنوان التفصيلي</span><p>{address}</p></div>}
         {mode==='location'&&!resultShortcode&&<p className="address-note">هدهد أعاد العنوان التفصيلي لهذا الموقع، لكنه لم يُرجع عنوانًا مختصرًا.</p>}
