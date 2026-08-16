@@ -13,6 +13,12 @@ const addressDetailsOf=data=>{
   const segments=cleanAddress(addressOf(data)).split('،').map(item=>item.trim()).filter(Boolean);
   const postalIndex=segments.findIndex((item,index)=>index>0&&/^\d{5}$/.test(item));
   const middle=postalIndex>0?segments.slice(1,postalIndex):[];
+  const geo=data.geocoding||{};
+  const geoAddress=geo.address&&typeof geo.address==='object'?geo.address:{};
+  const geoSegments=cleanAddress(geo.display_name).split('،').map(item=>item.trim()).filter(Boolean);
+  const province=geoAddress.province||geoAddress.municipality;
+  const region=geoSegments.find(item=>/^منطقة\s/.test(item))||geoAddress.region||geoAddress.state;
+  const locality=geoSegments.find((item,index)=>index>0&&item!==province&&item!==region&&!/^السعودية|المملكة العربية السعودية$/.test(item));
   const fallback=postalIndex>0?{
     building:segments[0],
     street:middle[0],
@@ -26,9 +32,11 @@ const addressDetailsOf=data=>{
     {key:'building',label:'رقم المبنى',value:value(data.building_no,data.building_number,nested.building_no,nested.building_number,fallback.building)},
     {key:'street',label:'الشارع',value:value(data.street,data.road,nested.street,nested.road,fallback.street),wide:true},
     {key:'district',label:'الحي',value:value(data.district,data.neighbourhood,data.suburb,nested.district,nested.neighbourhood,nested.suburb,fallback.district)},
-    {key:'city',label:'المدينة',value:value(data.city,nested.city,fallback.city)},
+    {key:'city',label:'المدينة أو البلدة',value:value(data.city,nested.city,fallback.city)},
+    {key:'locality',label:'المركز أو الموقع المحلي',value:locality},
+    {key:'province',label:'المحافظة',value:province},
     {key:'postalCode',label:'الرمز البريدي',value:value(data.postal_code,data.postcode,nested.postal_code,nested.postcode,fallback.postalCode),ltr:true},
-    {key:'region',label:'المنطقة',value:value(data.region,data.state,nested.region,nested.state)}
+    {key:'region',label:'المنطقة',value:value(data.region,data.state,nested.region,nested.state,region)}
   ].filter(detail=>detail.value);
 };
 const messageOf=data=>addressDetailsOf(data).map(({label,value})=>`${label}: ${value}`).join('\n');
