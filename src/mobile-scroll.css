@@ -14,6 +14,35 @@
     --mobile-page-end-space: calc(144px + env(safe-area-inset-bottom, 0px));
   }
 
+  /* Final mobile shell guard. Historical grid layers used to leave the
+     collapsed desktop rail as a reserved track in Safari, shrinking the
+     workspace to only part of the screen. Use the containing block width,
+     never viewport-width units, so browser chrome and safe-area calculations cannot create
+     a second horizontal viewport. */
+  .app-layout,
+  .app-layout.has-context,
+  .app-layout.primary-collapsed {
+    display: block !important;
+    inline-size: 100% !important;
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+  }
+
+  .app-main,
+  .page-content,
+  .page-slot {
+    inline-size: 100% !important;
+    min-inline-size: 0 !important;
+    max-inline-size: 100% !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  .app-layout > .sidebar,
+  [data-theme] .app-layout > .sidebar {
+    position: fixed !important;
+  }
+
   .page-slot {
     /* Safari may freeze a flex scroller's scrollHeight at the height measured
        before a long async page finishes rendering. Normal block flow makes

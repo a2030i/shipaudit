@@ -13,6 +13,24 @@
 import { supabase } from './supabase.js';
 import { carrierScore } from './carrierScore.js';
 
+// A slow optional dashboard source must not hold the whole home page in its
+// loading state forever. The underlying request may still finish later, but
+// this read is marked unavailable after the deadline so the rest of the
+// independently verified sources can render.
+export const OVERVIEW_SOURCE_TIMEOUT_MS = 8_000;
+
+export function withSourceTimeout(promise, timeoutMs = OVERVIEW_SOURCE_TIMEOUT_MS, label = 'مصدر البيانات') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`انتهت مهلة قراءة ${label}`)),
+      Math.max(0, Number(timeoutMs) || 0),
+    );
+  });
+  return Promise.race([Promise.resolve(promise), timeout])
+    .finally(() => clearTimeout(timer));
+}
+
 // 'YYYY-MM' helpers
 export const currentPeriod = () => {
   const d = new Date();
@@ -207,7 +225,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   ];
   // A failing source is reported independently; it does not blank the page or
   // become a misleading zero.
-  const settled = await Promise.allSettled(tasks.map(task => task.run()));
+  const settled = await Promise.allSettled(tasks.map(task => (
+    withSourceTimeout(Promise.resolve().then(task.run), OVERVIEW_SOURCE_TIMEOUT_MS, task.label)
+  )));
   const results = new Map(tasks.map((task, index) => [task.key, settled[index]]));
   const valueOf = (key, fallback) => {
     const result = results.get(key);

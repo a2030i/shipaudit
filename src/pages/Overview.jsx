@@ -31,7 +31,9 @@ import { setBalance as setBankBalance } from '../lib/bankBalanceService.js';
 import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, WorkspaceLoadingState,
 } from '../components/UI.jsx';
-import { loadOverview, currentPeriod, prevPeriodOf } from '../lib/overviewService.js';
+import {
+  loadOverview, currentPeriod, prevPeriodOf, withSourceTimeout,
+} from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
 import SourceStatusStrip from '../components/SourceStatusStrip.jsx';
@@ -94,7 +96,11 @@ export default function Overview({ carriers = [], isActive = true }) {
     try {
       const [result, vatResult] = await Promise.all([
         loadOverview({ period, topN: 5 }),
-        import('../lib/zohoReportsService.js').then(m => m.loadCurrentVat()).catch(() => null),
+        withSourceTimeout(
+          import('../lib/zohoReportsService.js').then(m => m.loadCurrentVat()),
+          5_000,
+          'ضريبة زوهو',
+        ).catch(() => null),
       ]);
       setData(result);
       setVat(vatResult);

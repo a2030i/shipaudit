@@ -8,8 +8,12 @@ test('final workspace layout layer is loaded before the Safari scroll contract',
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
   const scrollIndex = main.indexOf("import './mobile-scroll.css'");
+  const finalStyleIndex = Math.max(
+    ...[...main.matchAll(/import '\.\/(?:[^']+)\.css'/g)].map(match => match.index),
+  );
   assert.ok(layoutIndex > -1, 'workspace layout stylesheet must be imported');
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
+  assert.equal(scrollIndex, finalStyleIndex, 'mobile scroll contract must be the last stylesheet in the cascade');
 });
 
 test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
@@ -23,6 +27,10 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
   assert.match(css, /--mobile-page-end-space:\s*calc\(144px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*var\(--mobile-page-end-space\)/);
+  assert.match(css, /\.app-layout\.primary-collapsed[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /\.app-main,[\s\S]*\.page-content,[\s\S]*\.page-slot\s*\{[\s\S]*inline-size:\s*100%\s*!important/);
+  assert.match(css, /\.app-layout > \.sidebar,[\s\S]*position:\s*fixed\s*!important/);
+  assert.doesNotMatch(css, /100vw/);
 });
 
 test('mobile workspace removes repeated headings and keeps compact context', async () => {
