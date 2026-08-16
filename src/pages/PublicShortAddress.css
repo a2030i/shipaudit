@@ -5,7 +5,7 @@
 /* Two explicit choices: location on the right, shortcode on the left. */
 .address-tabs{direction:rtl;background:transparent;padding:0;gap:10px}
 .address-tabs button{border:1px solid #cfdcd6;background:#fff;color:#516861;box-shadow:none}
-.address-tabs button.active{border-color:var(--green);background:var(--green);color:#fff;box-shadow:0 5px 14px rgba(8,126,88,.16)}
+.address-tabs button.active{border-color:var(--green)!important;background:var(--green)!important;color:#fff!important;box-shadow:0 5px 14px rgba(8,126,88,.16)!important}
 @media(max-width:600px){
   .address-tabs{gap:8px}
   .address-tabs button{min-height:56px;line-height:1.35;white-space:normal}
