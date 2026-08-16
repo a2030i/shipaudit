@@ -7,7 +7,23 @@ import './PublicShortAddress.css';
 const shortcodeOf=d=>d?.shortcode||d?.short_address||d?.address?.shortcode||null;
 const addressOf=d=>d?.address_ar||d?.display_name||d?.formatted_address||d?.national_address||[d?.building_no,d?.street,d?.district,d?.city,d?.postal_code].filter(Boolean).join('، ');
 const cleanAddress=value=>String(value||'').replace(/,\s*/g,'، ').trim();
-const messageOf=data=>{const lines=[],shortcode=shortcodeOf(data),address=cleanAddress(addressOf(data));if(shortcode)lines.push(`العنوان المختصر: ${shortcode}`);if(address&&address!==shortcode)lines.push(`العنوان التفصيلي: ${address}`);return lines.join('\n');};
+const addressDetailsOf=data=>{
+  if(!data)return [];
+  const nested=data.address&&typeof data.address==='object'?data.address:{};
+  const segments=cleanAddress(addressOf(data)).split('،').map(item=>item.trim()).filter(Boolean);
+  const fallback=segments.length>=5?{building:segments[0],street:segments[1],district:segments[2],postalCode:segments[3],city:segments.slice(4).join('، ')}:{};
+  const value=(...items)=>items.find(item=>item!==undefined&&item!==null&&String(item).trim()!=='');
+  return [
+    {key:'shortcode',label:'العنوان المختصر',value:shortcodeOf(data),ltr:true},
+    {key:'building',label:'رقم المبنى',value:value(data.building_no,data.building_number,nested.building_no,nested.building_number,fallback.building)},
+    {key:'street',label:'الشارع',value:value(data.street,data.road,nested.street,nested.road,fallback.street),wide:true},
+    {key:'district',label:'الحي',value:value(data.district,data.neighbourhood,data.suburb,nested.district,nested.neighbourhood,nested.suburb,fallback.district)},
+    {key:'city',label:'المدينة',value:value(data.city,nested.city,fallback.city)},
+    {key:'postalCode',label:'الرمز البريدي',value:value(data.postal_code,data.postcode,nested.postal_code,nested.postcode,fallback.postalCode),ltr:true},
+    {key:'region',label:'المنطقة',value:value(data.region,data.state,nested.region,nested.state)}
+  ].filter(detail=>detail.value);
+};
+const messageOf=data=>addressDetailsOf(data).map(({label,value})=>`${label}: ${value}`).join('\n');
 
 export default function PublicShortAddress(){
   const [mode,setMode]=useState('location');
@@ -27,6 +43,7 @@ export default function PublicShortAddress(){
   const share=async()=>{if(!message)return;if(navigator.share)await navigator.share({title:'مشاركة عنوان',text:message});else copy();};
   const address=cleanAddress(addressOf(result));
   const resultShortcode=shortcodeOf(result);
+  const addressDetails=useMemo(()=>addressDetailsOf(result),[result]);
 
   return <main className="address-page" dir="rtl">
     <header className="address-header"><LamhaLogo/></header>
@@ -42,9 +59,9 @@ export default function PublicShortAddress(){
 
       {error&&<div className="address-error" role="alert">{error}</div>}
       {result&&<section className="address-result" aria-live="polite">
-        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>{resultShortcode||'تم العثور على العنوان'}</h2></div></div>
-        {resultShortcode&&<div className="address-shortcode"><span>العنوان المختصر</span><strong>{resultShortcode}</strong></div>}
-        {address&&<div className="address-detail"><span>العنوان التفصيلي</span><p>{address}</p></div>}
+        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>تفاصيل العنوان</h2></div></div>
+        {addressDetails.length>0&&<div className="address-fields">{addressDetails.map(detail=><div className={`address-field${detail.wide?' wide':''}`} key={detail.key}><span>{detail.label}</span><strong dir={detail.ltr?'ltr':undefined}>{detail.value}</strong></div>)}</div>}
+        {!addressDetails.length&&address&&<div className="address-detail"><span>العنوان التفصيلي</span><p>{address}</p></div>}
         {mode==='location'&&!resultShortcode&&<p className="address-note">هدهد أعاد العنوان التفصيلي لهذا الموقع، لكنه لم يُرجع عنوانًا مختصرًا.</p>}
         <div className="address-actions"><button onClick={copy}>{copied?<Check size={18}/>:<Copy size={18}/>} {copied?'تم النسخ':'نسخ'}</button><button onClick={share}><Share2 size={18}/> مشاركة</button></div>
       </section>}

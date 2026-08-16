@@ -6,8 +6,11 @@
 .address-tabs{direction:rtl;background:transparent;padding:0;gap:10px}
 .address-tabs button{border:1px solid #cfdcd6;background:#fff;color:#516861;box-shadow:none}
 .address-tabs button.active{border-color:var(--green)!important;background:var(--green)!important;color:#fff!important;box-shadow:0 5px 14px rgba(8,126,88,.16)!important}
+.address-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:18px}.address-field{min-width:0;padding:12px 14px;border:1px solid #e0e9e5;border-radius:10px;background:#f7faf8;display:flex;flex-direction:column;gap:5px}.address-field.wide{grid-column:1/-1}.address-field span{font-size:11px;color:#687a73;font-weight:700}.address-field strong{font-size:15px;line-height:1.6;color:#193d32;overflow-wrap:anywhere}.address-field:first-child{background:#eaf7f1;border-color:#d8eee4}.address-field:first-child strong{color:var(--green);font-size:20px;letter-spacing:.8px}
 @media(max-width:600px){
   .address-tabs{gap:8px}
   .address-tabs button{min-height:56px;line-height:1.35;white-space:normal}
+  .address-fields{gap:7px}
+  .address-field{padding:10px 11px}
   .address-actions{position:static;bottom:auto;z-index:auto}
 }
