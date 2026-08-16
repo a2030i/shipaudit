@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Check, Copy, LocateFixed, LockKeyhole, MapPin, RotateCw } from 'lucide-react';
 import maplibregl from 'maplibre-gl';
+import { FunctionRegion } from '@supabase/supabase-js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { supabase } from '../lib/supabase.js';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
@@ -31,6 +32,7 @@ export default function PublicShortAddress() {
     try {
       const { data, error } = await supabase.functions.invoke('hudhud-short-address', {
         body: { lat, lon, website: '' },
+        region: FunctionRegion.EuCentral1,
       });
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'تعذر العثور على العنوان');
