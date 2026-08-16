@@ -7,7 +7,7 @@ const routes: Record<string,{method:'GET'|'POST';path:(b:any)=>string}> = {
   places:{method:'POST',path:()=>'/places/search'}, place_detail:{method:'GET',path:b=>`/places/${encodeURIComponent(b.id)}`},
   directions:{method:'POST',path:()=>'/routing/directions'}, matrix:{method:'POST',path:()=>'/routing/matrix'},
 };
-function headers(req:Request){const o=req.headers.get('origin')||'';return {'Access-Control-Allow-Origin':ALLOWED.has(o)?o:'https://shipaudit-five.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin'};}
+function headers(req:Request){const o=req.headers.get('origin')||'';return {'Access-Control-Allow-Origin':ALLOWED.has(o)?o:'https://shipaudit-five.vercel.app','Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type, x-region','Access-Control-Allow-Methods':'POST, OPTIONS','Content-Type':'application/json; charset=utf-8','Cache-Control':'no-store','Vary':'Origin'};}
 function out(req:Request,body:unknown,status=200){return new Response(JSON.stringify(body),{status,headers:headers(req)});}
 function point(p:any){const lat=Number(p?.lat),lon=Number(p?.lon);return Number.isFinite(lat)&&Number.isFinite(lon)&&lat>=16&&lat<=33&&lon>=34&&lon<=56?{lat,lon}:null;}
 function payload(action:string,b:any){
