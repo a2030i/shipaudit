@@ -24,7 +24,13 @@ Deno.serve(async(req)=>{
   const origin=req.headers.get('origin')||'';if(origin&&!ALLOWED.has(origin))return out(req,{ok:false,error:'origin_not_allowed'},403);
   const ip=req.headers.get('x-forwarded-for')?.split(',')[0]||'unknown',now=Date.now(),hit=LIMIT.get(ip);if(hit&&hit.reset>now&&hit.count>=60)return out(req,{ok:false,error:'طلبات كثيرة، حاول بعد دقيقة.'},429);if(!hit||hit.reset<=now)LIMIT.set(ip,{count:1,reset:now+60000});else hit.count++;
   let b:any;try{b=await req.json();}catch{return out(req,{ok:false,error:'invalid_json'},400);} if(b.website)return out(req,{ok:true,data:null});
-  const action=String(b.action||'reverse'),route=routes[action];if(!route)return out(req,{ok:false,error:'عملية غير مدعومة.'},400);
+  const action=String(b.action||'reverse');
+  if(action==='map_config'){
+    const publishableKey=String(Deno.env.get('VITE_HUDHUD_PUBLISHABLE_KEY')||'').trim();
+    const mapId=String(Deno.env.get('VITE_HUDHUD_MAP_ID')||'default').trim();
+    return out(req,{ok:true,data:{publishableKey,mapId}});
+  }
+  const route=routes[action];if(!route)return out(req,{ok:false,error:'عملية غير مدعومة.'},400);
   const secret=String(Deno.env.get('HUDHUD_SECRET_KEY')||'').trim();if(!secret)return out(req,{ok:false,error:'خدمة هدهد غير مهيأة.'},503);
   let clean:any;try{clean=payload(action,b);}catch(e){return out(req,{ok:false,error:e instanceof Error?e.message:'بيانات غير صحيحة.'},400);}
   const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),15000);
