@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { Check, Copy, LocateFixed, MapPin, Search, Share2 } from 'lucide-react';
 import { supabase } from '../lib/supabase.js';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
@@ -58,6 +58,9 @@ const addressDetailsOf=data=>{
   ].filter(detail=>detail.value);
 };
 const messageOf=data=>addressDetailsOf(data).map(({label,value})=>`${label}: ${value}`).join('\n');
+const distanceMeters=(a,b)=>{if(!a||!b)return null;const r=6371000,toRad=n=>n*Math.PI/180,dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),x=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;return Math.round(2*r*Math.asin(Math.sqrt(x)));};
+const resultPoint=data=>{const source=data?.location||data;const lat=Number(source?.lat),lon=Number(source?.lon);return Number.isFinite(lat)&&Number.isFinite(lon)?{lat,lon}:null;};
+const EXPECTED={location:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي'],['shortcode','العنوان المختصر']],shortcode:[['building','رقم المبنى'],['street','الشارع'],['district','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']]};
 
 export default function PublicShortAddress(){
   const [mode,setMode]=useState('location');
@@ -66,11 +69,14 @@ export default function PublicShortAddress(){
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
   const [copied,setCopied]=useState(false);
+  const [accuracy,setAccuracy]=useState(null);
+  const [deviceLocation,setDeviceLocation]=useState(null);
+  const requestRef=useRef(null);
 
-  const call=useCallback(async(action,body={})=>{setBusy(true);setError('');setResult(null);try{const response=await fetch(`${supabase.supabaseUrl}/functions/v1/hudhud-short-address`,{method:'POST',headers:{apikey:supabase.supabaseKey,Authorization:`Bearer ${supabase.supabaseKey}`,'Content-Type':'application/json','x-region':'eu-central-1'},body:JSON.stringify({action,...body,website:''})});const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');setResult(data.data);return data.data;}catch(e){setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{setBusy(false);}},[]);
+  const call=useCallback(async(action,body={})=>{requestRef.current?.abort();const controller=new AbortController();requestRef.current=controller;setBusy(true);setError('');setResult(null);try{const response=await fetch(`${supabase.supabaseUrl}/functions/v1/hudhud-short-address`,{method:'POST',headers:{apikey:supabase.supabaseKey,Authorization:`Bearer ${supabase.supabaseKey}`,'Content-Type':'application/json','x-region':'eu-central-1'},body:JSON.stringify({action,...body,website:''}),signal:controller.signal});const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');setResult(data.data);return data.data;}catch(e){if(e?.name!=='AbortError')setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{if(requestRef.current===controller){requestRef.current=null;setBusy(false);}}},[]);
 
   const switchMode=next=>{setMode(next);setResult(null);setError('');setCopied(false);};
-  const locate=()=>{if(!navigator.geolocation){setError('متصفحك لا يدعم تحديد الموقع.');return;}setBusy(true);setError('');navigator.geolocation.getCurrentPosition(({coords})=>call('reverse',{lat:coords.latitude,lon:coords.longitude}),()=>{setBusy(false);setError('اسمح للموقع بالوصول إلى موقعك ثم حاول مرة أخرى.');},{enableHighAccuracy:true,timeout:12000,maximumAge:30000});};
+  const locate=()=>{if(!navigator.geolocation){setError('متصفحك لا يدعم تحديد الموقع.');return;}requestRef.current?.abort();setBusy(true);setError('');navigator.geolocation.getCurrentPosition(({coords})=>{const point={lat:coords.latitude,lon:coords.longitude};setAccuracy(Math.round(coords.accuracy));setDeviceLocation(point);call('reverse',point);},()=>{setBusy(false);setError('اسمح للموقع بالوصول إلى موقعك ثم حاول مرة أخرى.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});};
   const lookup=async e=>{e.preventDefault();await call('shortcode',{shortcode});};
   const message=useMemo(()=>messageOf(result),[result]);
   const copy=async()=>{if(!message)return;await navigator.clipboard.writeText(message);setCopied(true);setTimeout(()=>setCopied(false),1600);};
@@ -78,6 +84,12 @@ export default function PublicShortAddress(){
   const address=cleanAddress(addressOf(result));
   const resultShortcode=shortcodeOf(result);
   const addressDetails=useMemo(()=>addressDetailsOf(result),[result]);
+  const missing=useMemo(()=>{const keys=new Set(addressDetails.map(item=>item.key));return EXPECTED[mode].filter(([key])=>!keys.has(key)).map(([,label])=>label);},[addressDetails,mode]);
+  const distance=useMemo(()=>distanceMeters(deviceLocation,resultPoint(result)),[deviceLocation,result]);
+  const accuracyLabel=accuracy==null?'':accuracy<=25?'دقة عالية':accuracy<=100?'دقة متوسطة':'موقع تقريبي';
+  const copyText=async(text)=>{if(!text)return;await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);};
+  const detailsText=addressDetails.filter(item=>!['shortcode','fullAddress'].includes(item.key)).map(({label,value})=>`${label}: ${value}`).join('\n');
+  const fullAddress=addressDetails.find(item=>item.key==='fullAddress')?.value||address;
 
   return <main className="address-page" dir="rtl">
     <header className="address-header"><LamhaLogo/></header>
@@ -94,10 +106,13 @@ export default function PublicShortAddress(){
       {error&&<div className="address-error" role="alert">{error}</div>}
       {result&&<section className="address-result" aria-live="polite">
         <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>{mode==='location'?'تفاصيل الموقع':'تفاصيل العنوان'}</h2></div></div>
+        <div className="address-meta"><span>{resultShortcode?'عنوان وطني من هدهد':'وصف جغرافي من هدهد'}</span>{mode==='location'&&accuracy!=null&&<span>{accuracyLabel} · ±{accuracy} م</span>}</div>
         {addressDetails.length>0&&<div className="address-fields">{addressDetails.map(detail=><div className={`address-field${detail.wide?' wide':''}`} key={detail.key}><span>{detail.label}</span><strong dir={detail.ltr?'ltr':undefined}>{detail.value}</strong></div>)}</div>}
         {!addressDetails.length&&address&&<div className="address-detail"><span>العنوان التفصيلي</span><p>{address}</p></div>}
         {mode==='location'&&!resultShortcode&&<p className="address-note">هدهد أعاد العنوان التفصيلي لهذا الموقع، لكنه لم يُرجع عنوانًا مختصرًا.</p>}
-        <div className="address-actions"><button onClick={copy}>{copied?<Check size={18}/>:<Copy size={18}/>} {copied?'تم النسخ':'نسخ'}</button><button onClick={share}><Share2 size={18}/> مشاركة</button></div>
+        {missing.length>0&&<p className="address-missing">بيانات لم يُرجعها هدهد: {missing.join('، ')}.</p>}
+        {distance!=null&&((mode==='location'&&distance>150)||(mode==='shortcode'&&distance>500))&&<p className="address-warning">النتيجة تبعد نحو {distance>=1000?`${(distance/1000).toFixed(1)} كم`:`${distance} م`} عن موقع جهازك. راجع العنوان قبل مشاركته.</p>}
+        <div className="address-actions">{resultShortcode&&<button onClick={()=>copyText(resultShortcode)}><Copy size={18}/> نسخ المختصر</button>}<button onClick={()=>copyText(detailsText)}><Copy size={18}/> نسخ التفاصيل</button>{fullAddress&&<button onClick={()=>copyText(fullAddress)}><Copy size={18}/> نسخ العنوان الكامل</button>}<button onClick={share}>{copied?<Check size={18}/>:<Share2 size={18}/>} {copied?'تم النسخ':'مشاركة'}</button></div>
       </section>}
     </section>
     <footer>مدعوم بخدمات هدهد داخل المملكة العربية السعودية · لا يتطلب تسجيل دخول</footer>
