@@ -60,7 +60,7 @@ const addressDetailsOf=data=>{
 const messageOf=data=>addressDetailsOf(data).map(({label,value})=>`${label}: ${value}`).join('\n');
 const distanceMeters=(a,b)=>{if(!a||!b)return null;const r=6371000,toRad=n=>n*Math.PI/180,dLat=toRad(b.lat-a.lat),dLon=toRad(b.lon-a.lon),x=Math.sin(dLat/2)**2+Math.cos(toRad(a.lat))*Math.cos(toRad(b.lat))*Math.sin(dLon/2)**2;return Math.round(2*r*Math.asin(Math.sqrt(x)));};
 const resultPoint=data=>{const source=data?.location||data;const lat=Number(source?.lat),lon=Number(source?.lon);return Number.isFinite(lat)&&Number.isFinite(lon)?{lat,lon}:null;};
-const EXPECTED={location:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي'],['shortcode','العنوان المختصر']],shortcode:[['building','رقم المبنى'],['street','الشارع'],['district','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']]};
+const EXPECTED={location:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي'],['shortcode','العنوان المختصر']],shortcode:[['building','رقم المبنى'],['street','الشارع'],['district','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']],search:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']]};
 const HudhudAddressMap=lazy(()=>import('../components/HudhudAddressMap.jsx'));
 const rawLabels={shortcode:'العنوان المختصر',address_ar:'العنوان بالعربية',address_en:'العنوان بالإنجليزية',lat:'خط العرض',lon:'خط الطول',name:'اسم الموقع',display_name:'العنوان الكامل',place_id:'معرّف المكان',place_rank:'ترتيب المكان',importance:'درجة الأهمية',category:'التصنيف العام',type:'نوع الموقع',addresstype:'نوع العنوان',boundingbox:'حدود الموقع',road:'الشارع',neighbourhood:'الحي',suburb:'الضاحية',city:'المدينة',municipality:'البلدية',province:'المحافظة',postcode:'الرمز البريدي',country:'الدولة',country_code:'رمز الدولة',location:'الموقع',geocoding:'بيانات تحديد الموقع'};
 const rawDetailsOf=(value,path=[],result=[])=>{if(value===undefined||value===null||value==='')return result;if(Array.isArray(value)){result.push({key:path.join('.'),label:rawLabels[path.at(-1)]||path.at(-1),value:value.join('، ')});return result;}if(typeof value==='object'){for(const [key,nested] of Object.entries(value))rawDetailsOf(nested,[...path,key],result);return result;}result.push({key:path.join('.'),label:rawLabels[path.at(-1)]||path.at(-1),value:String(value)});return result;};
@@ -68,6 +68,8 @@ const rawDetailsOf=(value,path=[],result=[])=>{if(value===undefined||value===nul
 export default function PublicShortAddress(){
   const [mode,setMode]=useState('location');
   const [shortcode,setShortcode]=useState('');
+  const [query,setQuery]=useState('');
+  const [searchResults,setSearchResults]=useState([]);
   const [result,setResult]=useState(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -76,11 +78,13 @@ export default function PublicShortAddress(){
   const [deviceLocation,setDeviceLocation]=useState(null);
   const requestRef=useRef(null);
 
-  const call=useCallback(async(action,body={})=>{requestRef.current?.abort();const controller=new AbortController();requestRef.current=controller;setBusy(true);setError('');setResult(null);try{const response=await fetch(`${supabase.supabaseUrl}/functions/v1/hudhud-short-address`,{method:'POST',headers:{apikey:supabase.supabaseKey,Authorization:`Bearer ${supabase.supabaseKey}`,'Content-Type':'application/json','x-region':'eu-central-1'},body:JSON.stringify({action,...body,website:''}),signal:controller.signal});const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');setResult(data.data);return data.data;}catch(e){if(e?.name!=='AbortError')setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{if(requestRef.current===controller){requestRef.current=null;setBusy(false);}}},[]);
+  const call=useCallback(async(action,body={},commit=true)=>{requestRef.current?.abort();const controller=new AbortController();requestRef.current=controller;setBusy(true);setError('');if(commit)setResult(null);try{const response=await fetch(`${supabase.supabaseUrl}/functions/v1/hudhud-short-address`,{method:'POST',headers:{apikey:supabase.supabaseKey,Authorization:`Bearer ${supabase.supabaseKey}`,'Content-Type':'application/json','x-region':'eu-central-1'},body:JSON.stringify({action,...body,website:''}),signal:controller.signal});const data=await response.json().catch(()=>null);if(!response.ok||!data?.ok)throw Error(data?.error||'تعذر تنفيذ الطلب.');if(commit)setResult(data.data);return data.data;}catch(e){if(e?.name!=='AbortError')setError(e?.message||'تعذر الوصول إلى هدهد.');return null;}finally{if(requestRef.current===controller){requestRef.current=null;setBusy(false);}}},[]);
 
-  const switchMode=next=>{setMode(next);setResult(null);setError('');setCopied(false);};
+  const switchMode=next=>{setMode(next);setResult(null);setSearchResults([]);setError('');setCopied(false);};
   const locate=()=>{if(!navigator.geolocation){setError('متصفحك لا يدعم تحديد الموقع.');return;}requestRef.current?.abort();setBusy(true);setError('');navigator.geolocation.getCurrentPosition(({coords})=>{const point={lat:coords.latitude,lon:coords.longitude};setAccuracy(Math.round(coords.accuracy));setDeviceLocation(point);call('reverse',point);},()=>{setBusy(false);setError('اسمح للموقع بالوصول إلى موقعك ثم حاول مرة أخرى.');},{enableHighAccuracy:true,timeout:15000,maximumAge:0});};
   const lookup=async e=>{e.preventDefault();await call('shortcode',{shortcode});};
+  const searchAddress=async e=>{e.preventDefault();setResult(null);setSearchResults([]);const data=await call('geocode',{query},false);const items=Array.isArray(data)?data:Array.isArray(data?.results)?data.results:[];setSearchResults(deviceLocation?[...items].sort((a,b)=>(distanceMeters(deviceLocation,resultPoint(a))??Infinity)-(distanceMeters(deviceLocation,resultPoint(b))??Infinity)):items);};
+  const selectSearchResult=async item=>{const point=resultPoint(item);if(!point){setResult(item);return;}const details=await call('reverse',point,false);setResult(details?{...details,search_match:item}:item);};
   const message=useMemo(()=>messageOf(result),[result]);
   const copy=async()=>{if(!message)return;await navigator.clipboard.writeText(message);setCopied(true);setTimeout(()=>setCopied(false),1600);};
   const share=async()=>{if(!message)return;if(navigator.share)await navigator.share({title:'مشاركة عنوان',text:message});else copy();};
@@ -104,16 +108,20 @@ export default function PublicShortAddress(){
       <div className="address-tabs" role="tablist" aria-label="طريقة البحث">
         <button role="tab" aria-selected={mode==='location'} className={mode==='location'?'active':''} onClick={()=>switchMode('location')}><LocateFixed size={19}/> استخدم موقعي</button>
         <button role="tab" aria-selected={mode==='shortcode'} className={mode==='shortcode'?'active':''} onClick={()=>switchMode('shortcode')}><Search size={19}/> أدخل عنوانًا مختصرًا</button>
+        <button role="tab" aria-selected={mode==='search'} className={mode==='search'?'active':''} onClick={()=>switchMode('search')}><MapPin size={19}/> ابحث باسم العنوان</button>
       </div>
 
       <Suspense fallback={<div className="hudhud-map-loading">جاري تحميل الخريطة…</div>}><HudhudAddressMap point={mapPoint} onPick={pickOnMap}/></Suspense>
 
-      {mode==='location'?<section className="address-action"><h2>حدد موقعك الحالي</h2><p>سنستخدم موقعك مرة واحدة لجلب عنوانك من هدهد، ولن نحفظه.</p><button className="address-primary" onClick={locate} disabled={busy}><LocateFixed size={20}/>{busy?'جاري تحديد العنوان…':'استخدم موقعي الحالي'}</button></section>:
-      <form className="address-action" onSubmit={lookup}><h2>أدخل العنوان المختصر</h2><p>يتكون من أربعة أحرف وأربعة أرقام.</p><label><span>العنوان المختصر</span><input dir="ltr" inputMode="text" autoCapitalize="characters" maxLength={8} value={shortcode} onChange={e=>setShortcode(e.target.value.replace(/\s/g,'').toUpperCase())} placeholder="MKGA2655"/></label><button className="address-primary" disabled={busy||shortcode.length!==8}><Search size={20}/>{busy?'جاري البحث…':'عرض تفاصيل العنوان'}</button></form>}
+      {mode==='location'?<section className="address-action"><h2>حدد موقعك الحالي</h2><p>سنستخدم موقعك مرة واحدة لجلب عنوانك من هدهد، ولن نحفظه.</p><button className="address-primary" onClick={locate} disabled={busy}><LocateFixed size={20}/>{busy?'جاري تحديد العنوان…':'استخدم موقعي الحالي'}</button></section>:mode==='shortcode'?
+      <form className="address-action" onSubmit={lookup}><h2>أدخل العنوان المختصر</h2><p>يتكون من أربعة أحرف وأربعة أرقام.</p><label><span>العنوان المختصر</span><input dir="ltr" inputMode="text" autoCapitalize="characters" maxLength={8} value={shortcode} onChange={e=>setShortcode(e.target.value.replace(/\s/g,'').toUpperCase())} placeholder="MKGA2655"/></label><button className="address-primary" disabled={busy||shortcode.length!==8}><Search size={20}/>{busy?'جاري البحث…':'عرض تفاصيل العنوان'}</button></form>:
+      <form className="address-action" onSubmit={searchAddress}><h2>ابحث باسم العنوان</h2><p>اكتب اسم المكان أو الشارع أو الحي والمدينة، ثم اختر النتيجة الصحيحة.</p><label><span>اسم العنوان أو المكان</span><input className="address-query" inputMode="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="مثال: شارع التحلية، جدة"/></label><button className="address-primary" disabled={busy||query.trim().length<2}><Search size={20}/>{busy?'جاري البحث في هدهد…':'بحث في هدهد'}</button></form>}
+
+      {mode==='search'&&searchResults.length>0&&<section className="address-search-results" aria-live="polite"><div className="address-search-heading"><h2>نتائج هدهد</h2><span>{searchResults.length} نتائج</span></div>{searchResults.map((item,index)=><button type="button" key={item.place_id||`${item.lat}-${item.lon}-${index}`} onClick={()=>selectSearchResult(item)} disabled={busy}><span className="address-search-number">{index+1}</span><span><strong>{item.name||item.display_name||'موقع'}</strong><small>{cleanAddress(item.display_name)}</small>{(item.category||item.type)&&<em>{[item.category,item.type].filter(Boolean).join(' · ')}</em>}</span></button>)}</section>}
 
       {error&&<div className="address-error" role="alert">{error}</div>}
       {result&&<section className="address-result" aria-live="polite">
-        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>{mode==='location'?'تفاصيل الموقع':'تفاصيل العنوان'}</h2></div></div>
+        <div className="address-result-title"><span><MapPin size={21}/></span><div><small>نتيجة هدهد</small><h2>{mode==='location'?'تفاصيل الموقع':mode==='search'?'تفاصيل المكان':'تفاصيل العنوان'}</h2></div></div>
         <div className="address-meta"><span>{resultShortcode?'عنوان وطني من هدهد':'وصف جغرافي من هدهد'}</span>{mode==='location'&&accuracy!=null&&<span>{accuracyLabel} · ±{accuracy} م</span>}</div>
         {addressDetails.length>0&&<div className="address-fields">{addressDetails.map(detail=><div className={`address-field${detail.wide?' wide':''}`} key={detail.key}><span>{detail.label}</span><strong dir={detail.ltr?'ltr':undefined}>{detail.value}</strong></div>)}</div>}
         {!addressDetails.length&&address&&<div className="address-detail"><span>العنوان التفصيلي</span><p>{address}</p></div>}
