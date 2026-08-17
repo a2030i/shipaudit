@@ -4,6 +4,7 @@
 .hudhud-map-shell{position:relative;margin-top:18px;border:1px solid #d8e4df;border-radius:15px;overflow:hidden;background:#eef5f2}.hudhud-map{height:330px;width:100%;direction:ltr}.hudhud-map-help{position:absolute;z-index:2;top:10px;right:10px;margin:0;padding:8px 11px;border-radius:9px;background:rgba(255,255,255,.94);box-shadow:0 3px 12px rgba(20,60,48,.12);color:#49665d;font-size:11px;font-weight:800;pointer-events:none}.hudhud-map-fallback{position:absolute;inset:auto 10px 10px;margin:0;padding:9px;border-radius:8px;background:#fff1ef;color:#963f36;font-size:11px}.hudhud-map-shell .maplibregl-ctrl-attrib{font-size:9px}
 .hudhud-map-loading{height:330px;margin-top:18px;border:1px solid #d8e4df;border-radius:15px;background:#eef5f2;display:grid;place-items:center;color:#5e746c;font-size:13px;font-weight:800}
 .address-meta{display:flex;flex-wrap:wrap;gap:7px;margin-top:14px}.address-meta span{padding:6px 9px;border-radius:999px;background:#eaf7f1;color:#27614f;font-size:11px;font-weight:800}.address-missing,.address-warning{font-size:12px;line-height:1.7;border-radius:8px;padding:10px;margin:12px 0 0}.address-missing{background:#f2f5f4;color:#64736e}.address-warning{background:#fff1ef;color:#963f36}
+.address-raw{margin-top:14px;border:1px solid #dce6e1;border-radius:10px;background:#f8fbf9}.address-raw summary{padding:12px 14px;color:#315c4e;font-size:13px;font-weight:900;cursor:pointer}.address-raw>div{padding:0 12px 12px;display:grid;grid-template-columns:1fr 1fr;gap:7px}.address-raw p{margin:0;padding:9px;border-radius:8px;background:#fff;border:1px solid #e4ebe8;min-width:0}.address-raw span,.address-raw strong{display:block}.address-raw span{font-size:11px;color:#62756e}.address-raw span small{display:block;margin-top:2px;color:#9aa8a3;font-size:9px;direction:ltr;text-align:right}.address-raw strong{margin-top:5px;font-size:12px;line-height:1.6;overflow-wrap:anywhere;color:#193d32}
 
 /* Two explicit choices: location on the right, shortcode on the left. */
 .address-tabs{direction:rtl;background:transparent;padding:0;gap:10px}
@@ -17,4 +18,5 @@
   .address-field{padding:10px 11px}
   .address-actions{position:static;bottom:auto;z-index:auto}
   .hudhud-map,.hudhud-map-loading{height:280px}.hudhud-map-help{max-width:210px;line-height:1.5}
+  .address-raw>div{grid-template-columns:1fr}
 }

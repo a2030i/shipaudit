@@ -62,6 +62,8 @@ const distanceMeters=(a,b)=>{if(!a||!b)return null;const r=6371000,toRad=n=>n*Ma
 const resultPoint=data=>{const source=data?.location||data;const lat=Number(source?.lat),lon=Number(source?.lon);return Number.isFinite(lat)&&Number.isFinite(lon)?{lat,lon}:null;};
 const EXPECTED={location:[['road','الشارع أو الطريق'],['neighbourhood','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي'],['shortcode','العنوان المختصر']],shortcode:[['building','رقم المبنى'],['street','الشارع'],['district','الحي'],['city','المدينة'],['region','المنطقة'],['postalCode','الرمز البريدي']]};
 const HudhudAddressMap=lazy(()=>import('../components/HudhudAddressMap.jsx'));
+const rawLabels={shortcode:'العنوان المختصر',address_ar:'العنوان بالعربية',address_en:'العنوان بالإنجليزية',lat:'خط العرض',lon:'خط الطول',name:'اسم الموقع',display_name:'العنوان الكامل',place_id:'معرّف المكان',place_rank:'ترتيب المكان',importance:'درجة الأهمية',category:'التصنيف العام',type:'نوع الموقع',addresstype:'نوع العنوان',boundingbox:'حدود الموقع',road:'الشارع',neighbourhood:'الحي',suburb:'الضاحية',city:'المدينة',municipality:'البلدية',province:'المحافظة',postcode:'الرمز البريدي',country:'الدولة',country_code:'رمز الدولة',location:'الموقع',geocoding:'بيانات تحديد الموقع'};
+const rawDetailsOf=(value,path=[],result=[])=>{if(value===undefined||value===null||value==='')return result;if(Array.isArray(value)){result.push({key:path.join('.'),label:rawLabels[path.at(-1)]||path.at(-1),value:value.join('، ')});return result;}if(typeof value==='object'){for(const [key,nested] of Object.entries(value))rawDetailsOf(nested,[...path,key],result);return result;}result.push({key:path.join('.'),label:rawLabels[path.at(-1)]||path.at(-1),value:String(value)});return result;};
 
 export default function PublicShortAddress(){
   const [mode,setMode]=useState('location');
@@ -91,6 +93,7 @@ export default function PublicShortAddress(){
   const copyText=async(text)=>{if(!text)return;await navigator.clipboard.writeText(text);setCopied(true);setTimeout(()=>setCopied(false),1600);};
   const detailsText=addressDetails.filter(item=>!['shortcode','fullAddress'].includes(item.key)).map(({label,value})=>`${label}: ${value}`).join('\n');
   const fullAddress=addressDetails.find(item=>item.key==='fullAddress')?.value||address;
+  const rawDetails=useMemo(()=>rawDetailsOf(result),[result]);
   const mapPoint=resultPoint(result)||deviceLocation;
   const pickOnMap=useCallback(point=>{setDeviceLocation(point);setAccuracy(null);call('reverse',point);},[call]);
 
@@ -117,6 +120,7 @@ export default function PublicShortAddress(){
         {mode==='location'&&!resultShortcode&&<p className="address-note">هدهد أعاد العنوان التفصيلي لهذا الموقع، لكنه لم يُرجع عنوانًا مختصرًا.</p>}
         {missing.length>0&&<p className="address-missing">بيانات لم يُرجعها هدهد: {missing.join('، ')}.</p>}
         {distance!=null&&((mode==='location'&&distance>150)||(mode==='shortcode'&&distance>500))&&<p className="address-warning">النتيجة تبعد نحو {distance>=1000?`${(distance/1000).toFixed(1)} كم`:`${distance} م`} عن موقع جهازك. راجع العنوان قبل مشاركته.</p>}
+        {rawDetails.length>0&&<details className="address-raw"><summary>كل البيانات التي أعادها هدهد ({rawDetails.length})</summary><div>{rawDetails.map(item=><p key={item.key}><span>{item.label}<small>{item.key}</small></span><strong dir={/lat|lon|id|rank|importance|code|box/i.test(item.key)?'ltr':undefined}>{item.value}</strong></p>)}</div></details>}
         <div className="address-actions">{resultShortcode&&<button onClick={()=>copyText(resultShortcode)}><Copy size={18}/> نسخ المختصر</button>}<button onClick={()=>copyText(detailsText)}><Copy size={18}/> نسخ التفاصيل</button>{fullAddress&&<button onClick={()=>copyText(fullAddress)}><Copy size={18}/> نسخ العنوان الكامل</button>}<button onClick={share}>{copied?<Check size={18}/>:<Share2 size={18}/>} {copied?'تم النسخ':'مشاركة'}</button></div>
       </section>}
     </section>
