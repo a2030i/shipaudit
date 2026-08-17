@@ -16,7 +16,7 @@
 // switcher at top — defaults to the current month, can flip back to
 // any historical month for "كيف كان الوضع شهر يناير".
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   RefreshCw, TrendingUp, TrendingDown, Wallet, Calendar,
@@ -32,7 +32,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, WorkspaceLoadingState,
 } from '../components/UI.jsx';
 import {
-  loadOverview, currentPeriod, prevPeriodOf, withSourceTimeout,
+  loadOverview, getCachedOverview, currentPeriod, prevPeriodOf, withSourceTimeout,
 } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
@@ -61,6 +61,7 @@ export default function Overview({ carriers = [], isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, can } = useAuth();
+  const overviewCacheScope = profile?.id || 'session';
   const canEditBank = can('bank.set_balance');
   const [loading, setLoading] = useState(true);
   const [data, setData]       = useState(null);
@@ -78,6 +79,9 @@ export default function Overview({ carriers = [], isActive = true }) {
     try { sessionStorage.setItem('sa-overview-period', p); } catch { /* ignore */ }
   }, []);
   const [bankEdit, setBankEdit] = useState(false);
+  const latestRequestId = useRef(0);
+  const refreshingPeriod = useRef(null);
+  const lastRefreshAt = useRef(0);
   const openBankDetails = useCallback(() => {
     const details = document.getElementById('bank-details');
     if (!details) return;
@@ -91,28 +95,58 @@ export default function Overview({ carriers = [], isActive = true }) {
   );
 
   const refresh = useCallback(async () => {
+    if (refreshingPeriod.current === period) return;
+    const requestId = ++latestRequestId.current;
+    refreshingPeriod.current = period;
     setLoading(true);
     setLoadError(null);
     try {
       const [result, vatResult] = await Promise.all([
-        loadOverview({ period, topN: 5 }),
+        loadOverview({ period, topN: 5, cacheScope: overviewCacheScope }),
         withSourceTimeout(
           import('../lib/zohoReportsService.js').then(m => m.loadCurrentVat()),
           5_000,
           'ضريبة زوهو',
         ).catch(() => null),
       ]);
-      setData(result);
-      setVat(vatResult);
+      if (requestId === latestRequestId.current) {
+        setData(result);
+        setVat(vatResult);
+      }
     } catch (e) {
-      setLoadError(e);
-      toast(`فشل التحميل: ${e.message}`, 'error');
+      if (requestId === latestRequestId.current) {
+        setLoadError(e);
+        toast(`فشل التحميل: ${e.message}`, 'error');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequestId.current) {
+        lastRefreshAt.current = Date.now();
+        setLoading(false);
+      }
+      if (refreshingPeriod.current === period) refreshingPeriod.current = null;
     }
-  }, [period]);
+  }, [overviewCacheScope, period]);
 
-  useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => {
+    const cached = getCachedOverview(period, overviewCacheScope);
+    if (cached) setData(cached);
+    if (isActive) refresh();
+  }, [isActive, refresh, location.pathname, overviewCacheScope, period]);
+
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const refreshIfStale = () => {
+      if (document.visibilityState === 'visible' && Date.now() - lastRefreshAt.current >= 120_000) refresh();
+    };
+    window.addEventListener('focus', refreshIfStale);
+    document.addEventListener('visibilitychange', refreshIfStale);
+    const intervalId = window.setInterval(refreshIfStale, 300_000);
+    return () => {
+      window.removeEventListener('focus', refreshIfStale);
+      document.removeEventListener('visibilitychange', refreshIfStale);
+      window.clearInterval(intervalId);
+    };
+  }, [isActive, refresh]);
 
   // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
   // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).

@@ -50,6 +50,13 @@ const uploadDateLabel = (iso) => {
   }).format(new Date(iso))}`;
 };
 
+const checkedDateLabel = (iso) => {
+  if (!iso) return 'لم يُفحص بعد';
+  return new Intl.DateTimeFormat('ar-SA-u-ca-gregory', {
+    hour: 'numeric', minute: '2-digit',
+  }).format(new Date(iso));
+};
+
 const sourceTone = (state) => {
   if (!state || state.status === 'unavailable') return 'red';
   if (state.status === 'fresh') return 'green';
@@ -62,16 +69,41 @@ const sourceLabel = (state) => {
   return 'يحتاج تحديث';
 };
 
-function ActionCard({ tone, icon: Icon, title, count, value, note, action, onClick, unavailable = false }) {
+function ActionCard({
+  tone,
+  icon: Icon,
+  title,
+  count,
+  value,
+  note,
+  action,
+  onClick,
+  unavailable = false,
+  blocked = false,
+  statusMessage = '',
+  resolveAction = 'فحص المصدر',
+  onResolve,
+}) {
+  const needsResolution = unavailable || blocked;
   return (
-    <button className={`fco-action-card fco-action-card--${tone}`} type="button" onClick={onClick}>
+    <button
+      className={`fco-action-card fco-action-card--${tone}${needsResolution ? ` is-${unavailable ? 'unavailable' : 'stale'}` : ''}`}
+      type="button"
+      onClick={needsResolution && onResolve ? onResolve : onClick}
+    >
       <span className="fco-action-card__icon"><Icon size={20}/></span>
       <span className="fco-action-card__content">
         <small>{note}</small>
         <strong>{title}</strong>
-        <span>{unavailable ? 'المصدر غير متاح' : `${count || 0} حالة${value ? ` · ${value}` : ''}`}</span>
+        {!unavailable && <span className="fco-action-card__metric">{count || 0} حالة{value ? ` · ${value}` : ''}{blocked ? ' · للعرض فقط' : ''}</span>}
+        {needsResolution && (
+          <span className="fco-action-card__warning">
+            {unavailable ? <CircleAlert size={12}/> : <Clock3 size={12}/>}
+            {statusMessage || (unavailable ? 'تعذرت قراءة البيانات الآن.' : 'البيانات تحتاج تحديثًا قبل التنفيذ.')}
+          </span>
+        )}
       </span>
-      <span className="fco-action-card__action">{action}<ArrowLeft size={14}/></span>
+      <span className="fco-action-card__action">{needsResolution ? resolveAction : action}<ArrowLeft size={14}/></span>
     </button>
   );
 }
@@ -150,9 +182,20 @@ export default function FigmaCommandCenter({
   const sourceEntries = Object.values(states);
   const availableSources = sourceEntries.filter((source) => source?.status !== 'unavailable').length;
   const freshSources = sourceEntries.filter((source) => source?.status === 'fresh').length;
+  const staleSources = sourceEntries.filter((source) => source?.status === 'stale').length;
+  const unavailableSources = sourceEntries.filter((source) => source?.status === 'unavailable').length;
   const sourcePercent = sourceEntries.length ? Math.round((freshSources / sourceEntries.length) * 100) : 0;
   const closePercent = sourceEntries.length ? Math.round((availableSources / sourceEntries.length) * 100) : 0;
   const merchantNeedsUpdate = !merchantPulse.available || sourceTone(states.merchants) !== 'green';
+  const decisionGuard = data?.customerDecisionGuard || {
+    status: data?.customerDecisionFresh ? 'fresh' : 'unavailable',
+    message: 'تعذرت قراءة بيانات القرار الآن.',
+    repairPath: '/settings/data',
+    repairLabel: 'فحص التكامل',
+  };
+  const decisionUnavailable = decisionGuard.status === 'unavailable';
+  const decisionBlocked = decisionGuard.status === 'stale';
+  const repairCustomerDecision = () => navigate(decisionGuard.repairPath || '/settings/data');
 
   return (
     <div className="figma-command-center" dir="rtl">
@@ -177,7 +220,7 @@ export default function FigmaCommandCenter({
 
       <div className={`fco-freshness fco-freshness--${sourcePercent >= 80 ? 'green' : sourcePercent >= 55 ? 'amber' : 'red'}`}>
         <span><Activity size={17}/><strong>صحة مصادر القرار {sourcePercent}%</strong></span>
-        <small>{freshSources} من {sourceEntries.length || 0} مصادر حديثة · أي مصدر غير متاح لا يتحول إلى رقم صفري</small>
+        <small>{freshSources} من {sourceEntries.length || 0} مصادر حديثة{staleSources ? ` · ${staleSources} يحتاج تحديثًا` : ''}{unavailableSources ? ` · ${unavailableSources} متعذر` : ''} · آخر فحص {checkedDateLabel(data?.loadedAt)}</small>
         <button type="button" onClick={() => navigate('/settings/data')}>مراقبة التكاملات <ArrowLeft size={14}/></button>
       </div>
 
@@ -190,8 +233,8 @@ export default function FigmaCommandCenter({
       <section className="fco-section">
         <div className="fco-section__heading"><div><span>أولوية اليوم</span><h2>قرارات تحتاج إجراءً الآن</h2></div><small>مرتبة حسب الخطر المالي والتشغيلي</small></div>
         <div className="fco-actions-grid">
-          <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopRows.length} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="مراجعة وإيقاف" onClick={() => navigate('/customer-money?decision=stop')} unavailable={!data?.customerDecisionFresh}/>
-          <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductRows.length} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="مراجعة الخصم" onClick={() => navigate('/customer-money?decision=deduct')} unavailable={!data?.customerDecisionFresh}/>
+          <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopRows.length} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="مراجعة وإيقاف" onClick={() => navigate('/customer-money?decision=stop')} unavailable={decisionUnavailable} blocked={decisionBlocked} statusMessage={decisionGuard.message} resolveAction={decisionGuard.repairLabel} onResolve={repairCustomerDecision}/>
+          <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductRows.length} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="مراجعة الخصم" onClick={() => navigate('/customer-money?decision=deduct')} unavailable={decisionUnavailable} blocked={decisionBlocked} statusMessage={decisionGuard.message} resolveAction={decisionGuard.repairLabel} onResolve={repairCustomerDecision}/>
           <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="اعتمد وأرسل فواتير زاتكا" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في زوهو`} action="فتح دورة الفاتورة" onClick={() => navigate('/zoho-data?tab=customers')} unavailable={!invoiceOps.zatcaAvailable}/>
           <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="حدّث ملفات لمحة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="دليل المتاجر · كشف الحساب" action="رفع الملفات الآن" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.available}/>
         </div>

@@ -19,6 +19,19 @@ import { carrierScore } from './carrierScore.js';
 // independently verified sources can render.
 export const OVERVIEW_SOURCE_TIMEOUT_MS = 8_000;
 
+// Stale-while-revalidate cache for the current browser session. It keeps the
+// last readable value for each period/source in memory only (never localStorage,
+// so financial and customer data is not persisted on the device). A transient
+// refresh failure can therefore keep the last verified numbers visible with a
+// stale badge instead of turning the whole card into an unavailable state.
+const overviewSourceCache = new Map();
+const overviewResultCache = new Map();
+const overviewCacheKey = (scope, period, source = 'overview') => `${scope}:${period}:${source}`;
+
+export function getCachedOverview(period, cacheScope = 'session') {
+  return overviewResultCache.get(overviewCacheKey(cacheScope, period || currentPeriod())) || null;
+}
+
 export function withSourceTimeout(promise, timeoutMs = OVERVIEW_SOURCE_TIMEOUT_MS, label = 'مصدر البيانات') {
   let timer;
   const timeout = new Promise((_, reject) => {
@@ -148,7 +161,7 @@ export function buildCustomerDecisions(customerMoney, merchantSnapshot) {
   };
 }
 
-export async function loadOverview({ period = null, topN = 5 } = {}) {
+export async function loadOverview({ period = null, topN = 5, cacheScope = 'session' } = {}) {
   const thisPeriod = period || currentPeriod();
   const prevPeriod = prevPeriodOf(thisPeriod);
 
@@ -228,7 +241,25 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const settled = await Promise.allSettled(tasks.map(task => (
     withSourceTimeout(Promise.resolve().then(task.run), OVERVIEW_SOURCE_TIMEOUT_MS, task.label)
   )));
-  const results = new Map(tasks.map((task, index) => [task.key, settled[index]]));
+  const results = new Map(tasks.map((task, index) => {
+    const current = settled[index];
+    const cacheKey = overviewCacheKey(cacheScope, thisPeriod, task.key);
+    if (current?.status === 'fulfilled' && current.value != null) {
+      overviewSourceCache.set(cacheKey, { value: current.value, checkedAt });
+      return [task.key, current];
+    }
+    const cached = current?.status === 'rejected' ? overviewSourceCache.get(cacheKey) : null;
+    if (cached) {
+      return [task.key, {
+        status: 'fulfilled',
+        value: cached.value,
+        fromCache: true,
+        cachedAt: cached.checkedAt,
+        currentError: current.reason,
+      }];
+    }
+    return [task.key, current];
+  }));
   const valueOf = (key, fallback) => {
     const result = results.get(key);
     return result?.status === 'fulfilled' && result.value != null ? result.value : fallback;
@@ -238,8 +269,14 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     return [task.key, {
       key: task.key,
       label: task.label,
-      status: result?.status === 'rejected' ? 'unavailable' : result?.value == null ? 'empty' : 'fresh',
-      error: result?.status === 'rejected' ? (result.reason?.message || String(result.reason)) : null,
+      status: result?.fromCache ? 'stale' : result?.status === 'rejected' ? 'unavailable' : result?.value == null ? 'empty' : 'fresh',
+      error: result?.status === 'rejected'
+        ? (result.reason?.message || String(result.reason))
+        : result?.fromCache
+          ? (result.currentError?.message || String(result.currentError))
+          : null,
+      message: result?.fromCache ? 'تعذرت القراءة الحالية؛ تُعرض آخر قراءة ناجحة.' : null,
+      sourceUpdatedAt: result?.fromCache ? result.cachedAt : null,
       checkedAt,
     }];
   }));
@@ -308,6 +345,29 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const customerDecisions = customerDecisionDataReadable
     ? buildCustomerDecisions(customerMoney, merchantSnapshot)
     : null;
+  const customerDecisionSources = ['customerMoney', 'merchants', 'zohoInvoiceSync']
+    .map(key => sourceStates[key])
+    .filter(Boolean);
+  const customerDecisionBlocker = customerDecisionSources.find(source => ['unavailable', 'empty'].includes(source.status))
+    || customerDecisionSources.find(source => source.status !== 'fresh')
+    || null;
+  const customerDecisionStatus = !customerDecisionDataReadable
+    ? 'unavailable'
+    : customerDecisionFresh
+      ? 'fresh'
+      : 'stale';
+  const customerDecisionGuard = {
+    status: customerDecisionStatus,
+    source: customerDecisionBlocker?.key || null,
+    sourceLabel: customerDecisionBlocker?.label || null,
+    message: customerDecisionBlocker?.message
+      || (customerDecisionBlocker ? `تعذرت قراءة ${customerDecisionBlocker.label}.` : 'بيانات القرار محدثة.'),
+    sourceUpdatedAt: customerDecisionBlocker?.sourceUpdatedAt || null,
+    repairPath: customerDecisionBlocker?.key === 'merchants'
+      ? `/accounting-cycle?period=${thisPeriod}&stage=lamha_sources&source=merchants`
+      : '/settings/data',
+    repairLabel: customerDecisionBlocker?.key === 'merchants' ? 'تحديث ملف لمحة' : 'فحص التكامل',
+  };
 
   const readinessRank = { unavailable: 3, blocked: 2, pilot: 1, ready: 0 };
   const mergeReadiness = (operational, staffing) => {
@@ -366,7 +426,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     if (n > 0.5) { codOutstandingTotal += n; codCarriersDue++; }
   }
 
-  return {
+  const overview = {
     period:     thisPeriod,
     prevPeriod,
     loadedAt: checkedAt,
@@ -443,6 +503,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     teamReadiness,
     customerDecisions,
     customerDecisionFresh,
+    customerDecisionGuard,
     thisMonth: {
       carrierSpend:  num(thisSnap.carrier_spend_gross),
       carrierPaid:   num(thisSnap.carrier_paid),
@@ -644,4 +705,6 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       };
     }),
   };
+  overviewResultCache.set(overviewCacheKey(cacheScope, thisPeriod), overview);
+  return overview;
 }

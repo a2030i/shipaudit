@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const service = await readFile(new URL('../src/lib/overviewService.js', import.meta.url), 'utf8');
 const page = await readFile(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
+const commandCenter = await readFile(new URL('../src/components/operations/FigmaCommandCenter.jsx', import.meta.url), 'utf8');
 
 test('overview effective cash uses collectible customer debt, not gross Zoho debit', () => {
   assert.match(service, /supabaseRpc\('customer_money_dashboard'\)/);
@@ -36,6 +37,10 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(service, /Availability and freshness are different concerns/);
   assert.match(service, /const customerDecisionDataReadable/);
   assert.match(service, /customerDecisionFresh,/);
+  assert.match(service, /const customerDecisionGuard = \{/);
+  assert.match(service, /status: customerDecisionStatus/);
+  assert.match(service, /repairPath: customerDecisionBlocker\?\.key === 'merchants'/);
+  assert.match(service, /تحديث ملف لمحة/);
   assert.match(service, /merchantSnapshotSourceState/);
   assert.match(service, /row\?\.store_id \?\? row\?\.storeId/);
   assert.match(service, /row\?\.store_name \?\? row\?\.storeName/);
@@ -47,6 +52,10 @@ test('overview customer decisions use safe identifiers and invoice-only post-30 
   assert.match(page, /شغّل الحسابات الجاهزة/);
   assert.match(page, /خصم الرصيد المدفوع مقدمًا/);
   assert.match(page, /لا ينفذ النظام إيقافًا أو تفعيلًا أو خصمًا تلقائيًا/);
+  assert.match(commandCenter, /decisionGuard\.status === 'stale'/);
+  assert.match(commandCenter, /للـ?عرض فقط|للعرض فقط/);
+  assert.match(commandCenter, /statusMessage=\{decisionGuard\.message\}/);
+  assert.doesNotMatch(commandCenter, /unavailable=\{!data\?\.customerDecisionFresh\}/);
 });
 
 test('customer money contract carries Zoho identity for reconciliation matching', async () => {
