@@ -70,6 +70,11 @@ export default function PublicShortAddress(){
   const [shortcode,setShortcode]=useState('');
   const [query,setQuery]=useState('');
   const [searchResults,setSearchResults]=useState([]);
+  const [nearbyOpen,setNearbyOpen]=useState(false);
+  const [categories,setCategories]=useState([]);
+  const [nearbyResults,setNearbyResults]=useState([]);
+  const [nearbyDetail,setNearbyDetail]=useState(null);
+  const [nearbyPoint,setNearbyPoint]=useState(null);
   const [result,setResult]=useState(null);
   const [busy,setBusy]=useState(false);
   const [error,setError]=useState('');
@@ -85,6 +90,9 @@ export default function PublicShortAddress(){
   const lookup=async e=>{e.preventDefault();await call('shortcode',{shortcode});};
   const searchAddress=async e=>{e.preventDefault();setResult(null);setSearchResults([]);const data=await call('geocode',{query},false);const items=Array.isArray(data)?data:Array.isArray(data?.results)?data.results:[];setSearchResults(deviceLocation?[...items].sort((a,b)=>(distanceMeters(deviceLocation,resultPoint(a))??Infinity)-(distanceMeters(deviceLocation,resultPoint(b))??Infinity)):items);};
   const selectSearchResult=async item=>{const point=resultPoint(item);if(!point){setResult(item);return;}const details=await call('reverse',point,false);setResult(details?{...details,search_match:item}:item);};
+  const openNearby=async()=>{setNearbyOpen(value=>!value);if(categories.length)return;const data=await call('categories',{},false);setCategories(Array.isArray(data)?data:Array.isArray(data?.categories)?data.categories:[]);};
+  const findNearby=async category=>{const center=resultPoint(result)||deviceLocation;if(!center)return;setNearbyResults([]);setNearbyDetail(null);const data=await call('places',{query:category.key,user_location:center},false);setNearbyResults(Array.isArray(data)?data:Array.isArray(data?.results)?data.results:[]);};
+  const showPlace=async place=>{const lat=Number(place.latitude),lon=Number(place.longitude);if(Number.isFinite(lat)&&Number.isFinite(lon))setNearbyPoint({lat,lon});const data=await call('place_detail',{id:place.id},false);setNearbyDetail(data||place);};
   const message=useMemo(()=>messageOf(result),[result]);
   const copy=async()=>{if(!message)return;await navigator.clipboard.writeText(message);setCopied(true);setTimeout(()=>setCopied(false),1600);};
   const share=async()=>{if(!message)return;if(navigator.share)await navigator.share({title:'مشاركة عنوان',text:message});else copy();};
@@ -98,7 +106,7 @@ export default function PublicShortAddress(){
   const detailsText=addressDetails.filter(item=>!['shortcode','fullAddress'].includes(item.key)).map(({label,value})=>`${label}: ${value}`).join('\n');
   const fullAddress=addressDetails.find(item=>item.key==='fullAddress')?.value||address;
   const rawDetails=useMemo(()=>rawDetailsOf(result),[result]);
-  const mapPoint=resultPoint(result)||deviceLocation;
+  const mapPoint=nearbyPoint||resultPoint(result)||deviceLocation;
   const pickOnMap=useCallback(point=>{setDeviceLocation(point);setAccuracy(null);call('reverse',point);},[call]);
 
   return <main className="address-page" dir="rtl">
@@ -131,6 +139,8 @@ export default function PublicShortAddress(){
         {rawDetails.length>0&&<details className="address-raw"><summary>كل البيانات التي أعادها هدهد ({rawDetails.length})</summary><div>{rawDetails.map(item=><p key={item.key}><span>{item.label}<small>{item.key}</small></span><strong dir={/lat|lon|id|rank|importance|code|box/i.test(item.key)?'ltr':undefined}>{item.value}</strong></p>)}</div></details>}
         <div className="address-actions">{resultShortcode&&<button onClick={()=>copyText(resultShortcode)}><Copy size={18}/> نسخ المختصر</button>}<button onClick={()=>copyText(detailsText)}><Copy size={18}/> نسخ التفاصيل</button>{fullAddress&&<button onClick={()=>copyText(fullAddress)}><Copy size={18}/> نسخ العنوان الكامل</button>}<button onClick={share}>{copied?<Check size={18}/>:<Share2 size={18}/>} {copied?'تم النسخ':'مشاركة'}</button></div>
       </section>}
+
+      {mapPoint&&<section className="nearby-section"><button type="button" className="nearby-toggle" onClick={openNearby} disabled={busy}><MapPin size={19}/><span><strong>الأماكن القريبة</strong><small>مطاعم، مستشفيات، مساجد وخدمات حول الموقع</small></span><b>{nearbyOpen?'إخفاء':'عرض'}</b></button>{nearbyOpen&&<div className="nearby-content"><p>اختر تصنيفًا للبحث حول النقطة المحددة على الخريطة.</p><div className="nearby-categories">{categories.map(category=><button type="button" key={category.key} onClick={()=>findNearby(category)} disabled={busy}>{category.name_ar||category.name_en||category.key}</button>)}</div>{nearbyResults.length>0&&<div className="nearby-list">{nearbyResults.map(place=><button type="button" key={place.id} onClick={()=>showPlace(place)} disabled={busy}><span><strong>{place.name_ar||place.name_en}</strong><small>{[place.category_ar,place.district_ar,place.city_ar].filter(Boolean).join(' · ')}</small></span><span>{place.rating?`★ ${place.rating}`:''}</span></button>)}</div>}{nearbyDetail&&<details className="address-raw nearby-detail" open><summary>تفاصيل المكان من هدهد</summary><div>{rawDetailsOf(nearbyDetail).map(item=><p key={item.key}><span>{rawLabels[item.key.split('.').at(-1)]||item.label}<small>{item.key}</small></span><strong>{item.value}</strong></p>)}</div></details>}</div>}</section>}
     </section>
     <footer>مدعوم بخدمات هدهد داخل المملكة العربية السعودية · لا يتطلب تسجيل دخول</footer>
   </main>;
