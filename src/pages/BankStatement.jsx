@@ -5,7 +5,7 @@ import { parseExcelFile, generateCleanExcel, extractCarrierPayments, annotateRej
 import { suggestPaymentMatches, markOperationsPaid } from '../lib/carrierStatementsService.js';
 import { saveBankTransactions, loadBankTransactions, deleteBankTransaction, loadPreviousClosing, saveStatementSummary, loadStatementSummaries, setBankNote, classifyBankTransaction, clearBankClassification } from '../lib/bankTransactionsService.js';
 import { loadCarriers } from '../lib/coreService.js';
-import { bankNameOf, bankPeriodOptions, findBankPeriodClosing, rowsForBank, selectedBankName } from '../lib/bankStatementScope.js';
+import { bankNameOf, bankPeriodOptions, bankTransactionTotals, findBankPeriodClosing, rowsForBank, selectedBankName } from '../lib/bankStatementScope.js';
 import { useAuth } from '../lib/auth.jsx';
 
 // ── State machine: idle → processing → done | error ──
@@ -90,7 +90,7 @@ export default function BankStatement() {
         await saveStatementSummary({
           periodFrom: result.summary?.periodFrom, periodTo: result.summary?.periodTo,
           opening: openingBalance, closing: result.summary?.closingBalance,
-          totalDebit: totals.debit, totalCredit: totals.credit,
+          totalDebit: statementTotals.debit, totalCredit: statementTotals.credit,
           fileName: result.fileName, userId: user?.id, bank,
         });
       } catch { /* غير قاتل */ }
@@ -121,7 +121,8 @@ export default function BankStatement() {
 
   const filtersActive = !!(savedSearch.trim() || savedFrom || savedTo || savedType !== 'all' || savedBank !== 'all' || savedClass !== 'all');
 
-  // البنوك + رصيد كل بنك (ختامي آخر كشف) — لعرض التمييز بين البنوك.
+  // البنوك + رصيد كل بنك. عند اختيار فترة نعرض الإقفال عند نهايتها، لا أحدث
+  // رصيد نهائي في الدفتر.
   const bankSummary = useMemo(() => {
     const byBank = new Map();
     for (const t of (saved || [])) {
@@ -130,14 +131,18 @@ export default function BankStatement() {
       cur.count++; cur.debit += Number(t.debit) || 0; cur.credit += Number(t.credit) || 0;
       byBank.set(b, cur);
     }
-    // ختامي آخر كشف لكل بنك من ملخّصات الكشوف
-    for (const s of stmtSummaries || []) {
-      const b = bankNameOf(s);
-      const cur = byBank.get(b);
-      if (cur && cur.closing == null) { cur.closing = Number(s.closing_balance) || 0; cur.asOf = s.period_to; }
+    for (const [bank, cur] of byBank) {
+      const closing = savedTo
+        ? findBankPeriodClosing({ summaries: stmtSummaries, transactions: saved || [], bank, from: savedFrom, to: savedTo })
+        : (stmtSummaries || []).find(summary => bankNameOf(summary) === bank);
+      if (closing?.closing_balance != null) {
+        cur.closing = Number(closing.closing_balance);
+        cur.asOf = closing.period_to;
+        cur.periodSelected = !!savedTo;
+      }
     }
     return [...byBank.values()].sort((a, b) => b.count - a.count);
-  }, [saved, stmtSummaries]);
+  }, [saved, stmtSummaries, savedFrom, savedTo]);
 
   // A closing balance belongs to exactly one bank. When several banks are in
   // the ledger, selecting "all" must not silently borrow Alinma's closing
@@ -189,15 +194,9 @@ export default function BankStatement() {
   };
 
   const savedTotals = useMemo(() => {
-    const list = savedFiltered;
-    return {
-      count:  list.length,
-      // المدين الإجمالي = الصافي المخزَّن + الرسوم+الضريبة (= المدين الفعلي من
-      // البنك) — يطابق حساب المعروض قبل الحفظ (كان يعرض الصافي فقط).
-      debit:  list.reduce((s, t) => s + (Number(t.debit) || 0) + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
-      credit: list.reduce((s, t) => s + (Number(t.credit) || 0), 0),
-      fees:   list.reduce((s, t) => s + (Number(t.fees) || 0) + (Number(t.tax) || 0), 0),
-    };
+    // الملغي والمردود يبقى ظاهراً للتدقيق، لكنه لا يدخل المؤشرات التشغيلية
+    // ولا «رسوم + ضريبة»؛ وهذا يطابق ملف Excel الصافي.
+    return bankTransactionTotals(savedFiltered);
   }, [savedFiltered]);
 
   // الرصيد الختامي للفترة المختارة — من ملخّصات الكشوف المرفوعة (تطابق دقيق
@@ -205,17 +204,18 @@ export default function BankStatement() {
   const periodClosing = useMemo(() => {
     return findBankPeriodClosing({
       summaries: stmtSummaries,
+      transactions: saved || [],
       bank: activeBalanceBank,
       from: savedFrom,
       to: savedTo,
     });
-  }, [stmtSummaries, activeBalanceBank, savedFrom, savedTo]);
+  }, [stmtSummaries, saved, activeBalanceBank, savedFrom, savedTo]);
 
   // التحقّق من ختامي البنك: نحسبه بأنفسنا (افتتاحي + مودَع − مسحوب شامل الرسوم)
   // على كامل فترة الكشف — تطابقه مع رقم البنك = دليل التقاط كل عملية بلا نقص/تكرار.
   // نستخدم فترة الكشف نفسها (لا فلتر النوع/البحث) كي لا يكسر التطابق فلترٌ جزئي.
   const periodRecon = useMemo(() => {
-    if (!periodClosing || periodClosing.opening_balance == null || periodClosing.closing_balance == null) return null;
+    if (!periodClosing || periodClosing.calculated_for_selected_period || periodClosing.opening_balance == null || periodClosing.closing_balance == null) return null;
     const from = String(periodClosing.period_from).slice(0, 10), to = String(periodClosing.period_to).slice(0, 10);
     const inP = rowsForBank(saved || [], activeBalanceBank)
       .filter(t => { const d = String(t.txn_date || '').slice(0, 10); return d >= from && d <= to; });
@@ -308,26 +308,21 @@ export default function BankStatement() {
   // ── Derived totals ─────────────────────────────────────────────────────────
   const totals = useMemo(() => {
     if (!result) return { count: 0, debit: 0, credit: 0, fees: 0 };
-    const t = result.transactions;
-    const sumFeesRemoved = t.reduce((s, r) => s + (r.feesRemoved ?? 0), 0);
-    const sumDebit       = t.reduce((s, r) => s + (r.debit  ?? 0), 0);
-    const sumCredit      = t.reduce((s, r) => s + (r.credit ?? 0), 0);
-    return {
-      count:  t.length,
-      // الرسوم (والخفية) صارت صفوفاً بـfeesRemoved، فلا نضيف hiddenFees ثانية.
-      // المدين الإجمالي = الصافي + الرسوم المخصومة (= المدين الفعلي من البنك).
-      debit:  sumDebit + sumFeesRemoved,
-      credit: sumCredit,
-      fees:   sumFeesRemoved,
-    };
+    return bankTransactionTotals(result.transactions);
+  }, [result]);
+  // المطابقة مع الأرقام المطبوعة في كشف البنك تعتمد الحركة الخام، لأن البنك قد
+  // يطبع التحويل الملغى وردّه ضمن إجماليات الكشف حتى لو استبعدناه تشغيلياً.
+  const statementTotals = useMemo(() => {
+    if (!result) return { count: 0, debit: 0, credit: 0, fees: 0 };
+    return bankTransactionTotals(result.transactions, { excludeRejected: false });
   }, [result]);
 
   // الرصيد الافتتاحي = الختامي − الدائن + المدين (الفعلي). + فحص الاستمرارية:
   // يجب أن يطابق ختامي الكشف السابق بالهللة.
   const openingBalance = useMemo(() => {
     if (!result?.summary || result.summary.closingBalance == null) return null;
-    return +(result.summary.closingBalance - totals.credit + totals.debit).toFixed(2);
-  }, [result, totals]);
+    return +(result.summary.closingBalance - statementTotals.credit + statementTotals.debit).toFixed(2);
+  }, [result, statementTotals]);
   const [prevClosing, setPrevClosing] = useState(null);
   useEffect(() => {
     const pf = result?.summary?.periodFrom;
@@ -354,13 +349,13 @@ export default function BankStatement() {
     const ourWithdraws = t.length - ourDeposits;
     const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 0.01;
     const checks = [];
-    if (s.bankTotalCredit  != null) checks.push({ label: 'إجمالي المودَع', ours: totals.credit, bank: s.bankTotalCredit, ok: near(totals.credit, s.bankTotalCredit), money: true });
-    if (s.bankTotalDebit   != null) checks.push({ label: 'إجمالي المسحوب', ours: totals.debit,  bank: s.bankTotalDebit,  ok: near(totals.debit,  s.bankTotalDebit),  money: true });
+    if (s.bankTotalCredit  != null) checks.push({ label: 'إجمالي المودَع', ours: statementTotals.credit, bank: s.bankTotalCredit, ok: near(statementTotals.credit, s.bankTotalCredit), money: true });
+    if (s.bankTotalDebit   != null) checks.push({ label: 'إجمالي المسحوب', ours: statementTotals.debit,  bank: s.bankTotalDebit,  ok: near(statementTotals.debit,  s.bankTotalDebit),  money: true });
     if (s.bankDepositCount != null) checks.push({ label: 'عدد الإيداعات', ours: ourDeposits,  bank: s.bankDepositCount, ok: ourDeposits  === s.bankDepositCount });
     if (s.bankWithdrawCount!= null) checks.push({ label: 'عدد السحوبات', ours: ourWithdraws, bank: s.bankWithdrawCount, ok: ourWithdraws === s.bankWithdrawCount });
     if (!checks.length) return null;
     return { checks, allOk: checks.every(c => c.ok) };
-  }, [result, totals]);
+  }, [result, statementTotals]);
 
   const filtered = useMemo(() => {
     if (!result) return [];
@@ -707,7 +702,7 @@ export default function BankStatement() {
                           {b.closing != null ? fmtMoney(b.closing) : '—'} <span style={{ fontSize: 11, color: 'var(--muted)' }}>ر.س</span>
                         </div>
                         <div style={{ fontSize: 10.5, color: 'var(--muted)', marginTop: 2 }}>
-                          {b.count} عملية{b.asOf ? ` · ختامي ${String(b.asOf).slice(0, 10)}` : ''}
+                          {b.count} عملية{b.asOf ? ` · ${b.periodSelected ? 'إقفال الفترة' : 'ختامي'} ${String(b.asOf).slice(0, 10)}` : ''}
                         </div>
                       </div>
                     ))}
@@ -716,9 +711,10 @@ export default function BankStatement() {
                 {periodClosing && periodClosing.closing_balance != null && (
                   <div style={{ marginBottom: 10, marginTop: -6, display: 'flex', flexDirection: 'column', gap: 6 }}>
                     <div style={{ fontSize: 11, color: 'var(--muted)' }}>
-                      كشف {String(periodClosing.period_from).slice(0, 10)} ← {String(periodClosing.period_to).slice(0, 10)}
+                      {periodClosing.calculated_for_selected_period ? 'إقفال الفترة المحددة' : 'كشف'} {String(periodClosing.period_from).slice(0, 10)} ← {String(periodClosing.period_to).slice(0, 10)}
                       {periodClosing.opening_balance != null && <> · الافتتاحي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--text)' }}>{fmtMoney(Number(periodClosing.opening_balance))}</b> ر.س</>}
                       {' · '}الختامي <b style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)' }}>{fmtMoney(Number(periodClosing.closing_balance))}</b> ر.س
+                      {periodClosing.calculated_for_selected_period && <> · محسوب من حركة البنك حتى نهاية الاختيار</>}
                     </div>
                     {periodRecon && (
                       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, lineHeight: 1.6, padding: '8px 12px', borderRadius: 9,
