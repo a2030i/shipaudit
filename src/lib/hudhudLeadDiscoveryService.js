@@ -15,12 +15,12 @@ export const HUDHUD_LEAD_CATEGORIES=[
 ];
 
 export async function loadHudhudCoverage(){
-  const {data,error}=await supabase.functions.invoke('hudhud-lead-discovery',{body:{action:'coverage'}});
+  const {data,error}=await supabase.functions.invoke('hudhud-lead-discovery',{region:'eu-central-1',body:{action:'coverage'}});
   if(error)throw error;if(!data?.ok)throw Error(data?.error||'تعذر تحميل نطاق هدهد.');return data.data||[];
 }
 
 export async function runHudhudLeadScan(cityKey,categoryKey){
-  const {data,error}=await supabase.functions.invoke('hudhud-lead-discovery',{body:{action:'scan_city',city_key:cityKey,category_key:categoryKey}});
+  const {data,error}=await supabase.functions.invoke('hudhud-lead-discovery',{region:'eu-central-1',body:{action:'scan_city',city_key:cityKey,category_key:categoryKey}});
   if(error)throw error;if(!data?.ok)throw Error(data?.error||'تعذر تشغيل اكتشاف هدهد.');return data.data;
 }
 
