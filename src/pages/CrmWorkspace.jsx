@@ -31,6 +31,7 @@ import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { loadHatifCallCommitments, hatifCommitmentMeta, summarizeHatifCommitments } from '../lib/hatifCommitmentsService.js';
 import { saDateTime, saTime } from '../lib/saTime.js';
+import { HUDHUD_LEAD_CATEGORIES, loadHudhudCoverage, runHudhudLeadScan, loadHudhudCandidates, approveHudhudCandidate, rejectHudhudCandidate } from '../lib/hudhudLeadDiscoveryService.js';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -534,7 +535,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   const [options, setOptions] = useState({ categories: [], platforms: [], statuses: [] });
   const [employees, setEmployees] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [modal, setModal] = useState(null); // 'upload' | 'new'
+  const [modal, setModal] = useState(null); // 'upload' | 'new' | 'hudhud'
   const [sel, setSel] = useState(null);
   const [filters, setFilters] = useState({
     q: '',
@@ -699,6 +700,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             إطلاق حملة للمعروضين ({leads.filter(l => l.phone_normalized || l.phone).length})
           </Btn>
           {can('crm.upload_leads') && <Btn size="sm" variant="primary" icon={<Upload size={14}/>} onClick={() => setModal('upload')}>رفع وتنظيف Excel</Btn>}
+          {(can('sales.external_leads')||can('crm.upload_leads')) && <Btn size="sm" variant="primary" icon={<Store size={14}/>} onClick={() => setModal('hudhud')}>اكتشاف من هدهد</Btn>}
           {can('crm.upload_leads') && <Btn size="sm" icon={<Plus size={14}/>} onClick={() => setModal('new')}>جهة جديدة</Btn>}
         </>}/>
 
@@ -903,6 +905,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       )}
       {modal === 'upload' && <LeadUploadModal employees={employees} userId={user?.id} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }}/>}
       {modal === 'new' && <NewLeadModal onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }} userId={user?.id}/>}
+      {modal === 'hudhud' && <HudhudDiscoveryModal onClose={() => setModal(null)} onPromoted={refresh}/>}
       {waRecipients && (
         <WhatsAppSendModal open recipients={waRecipients}
           bucketLabel="جهات محتملة — عملاء خارج المنصّة"
@@ -911,6 +914,36 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       {sel && <LeadDrawer lead={sel} employees={employees} onClose={() => setSel(null)} onChanged={refresh}/>}
     </Pad>
   );
+}
+
+function HudhudDiscoveryModal({onClose,onPromoted}){
+  const [cities,setCities]=useState([]),[city,setCity]=useState('riyadh'),[category,setCategory]=useState('shopping');
+  const [rows,setRows]=useState([]),[busy,setBusy]=useState(false),[message,setMessage]=useState('');
+  const refresh=useCallback(async()=>{try{setRows(await loadHudhudCandidates({limit:100}));}catch(e){toast(`تعذر تحميل فرص هدهد: ${e.message}`,'error');}},[]);
+  useEffect(()=>{Promise.all([loadHudhudCoverage(),loadHudhudCandidates({limit:100})]).then(([coverage,candidates])=>{setCities(coverage);setRows(candidates);}).catch(e=>toast(`تعذر فتح اكتشاف هدهد: ${e.message}`,'error'));},[]);
+  const scan=async()=>{setBusy(true);setMessage('');try{const r=await runHudhudLeadScan(city,category);setMessage(`اكتمل فحص ${r.city}: عُثر على ${r.places_found}، أُثري ${r.places_enriched}، وحُفظ ${r.candidates_saved} مرشحًا.`);await refresh();}catch(e){toast(`فشل فحص هدهد: ${e.message}`,'error');}finally{setBusy(false);}};
+  const approve=async row=>{setBusy(true);try{await approveHudhudCandidate(row.id,'اعتماد بشري من شاشة اكتشاف هدهد');toast(`أضيف ${row.name_ar} إلى CRM`,'success');await refresh();onPromoted?.();}catch(e){toast(`تعذر الاعتماد: ${e.message}`,'error');}finally{setBusy(false);}};
+  const reject=async row=>{setBusy(true);try{await rejectHudhudCandidate(row.id,'غير مناسب بعد المراجعة');await refresh();}catch(e){toast(`تعذر الاستبعاد: ${e.message}`,'error');}finally{setBusy(false);}};
+  return <Modal title="اكتشاف متاجر المملكة عبر هدهد" onClose={onClose} width={1050}>
+    <div style={{padding:'11px 13px',borderRadius:10,background:'color-mix(in srgb, var(--accent3) 8%, var(--surface))',fontSize:12.5,lineHeight:1.8,marginBottom:14}}>مرحلة اكتشاف وتأهيل فقط. لا تُرسل أي رسالة تلقائيًا. اختر مدينة وتصنيفًا، راجع النتائج، ثم أضف المناسب يدويًا إلى CRM.</div>
+    <div style={{display:'grid',gridTemplateColumns:'minmax(170px,1fr) minmax(170px,1fr) auto',gap:8,alignItems:'end',marginBottom:12}}>
+      <label><span style={{display:'block',fontSize:11,fontWeight:800,marginBottom:5}}>المدينة</span><Select value={city} onChange={e=>setCity(e.target.value)}>{cities.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}</Select></label>
+      <label><span style={{display:'block',fontSize:11,fontWeight:800,marginBottom:5}}>النشاط</span><Select value={category} onChange={e=>setCategory(e.target.value)}>{HUDHUD_LEAD_CATEGORIES.map(c=><option key={c.key} value={c.key}>{c.label}</option>)}</Select></label>
+      <Btn variant="primary" disabled={busy||!city} onClick={scan}>{busy?'جاري الفحص…':'فحص النطاق'}</Btn>
+    </div>
+    {message&&<div style={{padding:10,borderRadius:9,background:'color-mix(in srgb, var(--green) 9%, var(--surface))',color:'var(--green)',fontSize:12.5,marginBottom:12}}>{message}</div>}
+    <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}><strong>بانتظار المراجعة</strong><span style={{fontSize:11,color:'var(--muted)'}}>{rows.length} نتيجة مرتبة حسب قوة التأهيل</span></div>
+    <div style={{maxHeight:'52vh',overflow:'auto',border:'1px solid var(--border)',borderRadius:10}}>
+      <table className="m-cards" style={{width:'100%',borderCollapse:'collapse',fontSize:12.5}}><thead><tr style={{background:'var(--surface2)',textAlign:'right'}}>{['النشاط','الموقع','الإثبات','التقييم','الإجراء'].map(h=><th key={h} style={{padding:'9px 10px'}}>{h}</th>)}</tr></thead><tbody>{rows.map(row=><tr key={row.id} style={{borderTop:'1px solid var(--border)'}}>
+        <td data-label="النشاط" style={{padding:10}}><strong>{row.name_ar}</strong><div style={{color:'var(--muted)',fontSize:10.5,marginTop:3}}>{row.category_ar||'—'}</div></td>
+        <td data-label="الموقع" style={{padding:10}}>{[row.district_ar,row.city_ar].filter(Boolean).join('، ')||'—'}</td>
+        <td data-label="الإثبات" style={{padding:10}}><div>{row.website_url?'موقع ✓':'بلا موقع'}</div><div>{row.phone_normalized?'هاتف ✓':'بلا هاتف'}{row.instagram_url?' · إنستغرام ✓':''}</div></td>
+        <td data-label="التقييم" style={{padding:10}}><strong style={{color:'var(--green)'}}>{row.ecommerce_score}/100</strong><div style={{fontSize:10.5,color:'var(--muted)'}}>هدهد {row.rating?Number(row.rating).toFixed(1):'—'}</div></td>
+        <td data-label="الإجراء" style={{padding:10}}><div style={{display:'flex',gap:6,flexWrap:'wrap'}}>{row.website_url&&<Btn size="sm" variant="ghost" onClick={()=>window.open(row.website_url,'_blank')}>فحص الموقع</Btn>}<Btn size="sm" variant="accent" disabled={busy} onClick={()=>approve(row)}>إضافة إلى CRM</Btn><Btn size="sm" variant="ghost" disabled={busy} onClick={()=>reject(row)}>استبعاد</Btn></div></td>
+      </tr>)}</tbody></table>
+      {!rows.length&&<div style={{padding:30,textAlign:'center',color:'var(--muted)'}}>لا توجد نتائج معلقة. شغّل أول نطاق للبدء.</div>}
+    </div>
+  </Modal>;
 }
 
 const LEAD_STATUS_OPTIONS = [
