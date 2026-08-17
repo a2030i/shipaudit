@@ -2,11 +2,15 @@ import { supabase } from './supabase.js';
 
 export const HUDHUD_LEAD_CATEGORIES=[
   {key:'shopping',label:'التسوق'},
+  {key:'fashion',label:'الأزياء والعبايات'},
   {key:'beauty_care',label:'الجمال والعناية'},
   {key:'home_needs',label:'احتياجات المنزل'},
   {key:'grocery',label:'التموينات'},
   {key:'food_beverages',label:'المأكولات والمشروبات'},
   {key:'restaurants',label:'المطاعم'},
+  {key:'electronics',label:'الإلكترونيات والجوالات'},
+  {key:'gifts',label:'الهدايا والورد'},
+  {key:'sports',label:'الرياضة والمكملات'},
   {key:'companies',label:'الشركات'},
 ];
 
