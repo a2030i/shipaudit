@@ -169,8 +169,25 @@ const COL_PATTERNS = {
 // control records the column and blocks approval until it is mapped or the
 // parser is taught what the charge means.  Zero-only template columns are
 // harmless and intentionally omitted (J&T ships several of those).
-export function findUnmappedMonetaryColumns(headers, rows, colMap) {
+export function isExactMonetaryMirror(rows, sourceHeader, targetHeader) {
+  if (!sourceHeader || !targetHeader || sourceHeader === targetHeader) return false;
+  let compared = 0;
+  for (const row of rows || []) {
+    const sourceRaw = row?.[sourceHeader];
+    const targetRaw = row?.[targetHeader];
+    if ((sourceRaw == null || sourceRaw === '') && (targetRaw == null || targetRaw === '')) continue;
+    const source = Number(String(sourceRaw ?? '').replace(/,/g, '').trim());
+    const target = Number(String(targetRaw ?? '').replace(/,/g, '').trim());
+    if (!Number.isFinite(source) || !Number.isFinite(target)) return false;
+    if (Math.abs(source - target) > 0.00001) return false;
+    compared += 1;
+  }
+  return compared > 0;
+}
+
+export function findUnmappedMonetaryColumns(headers, rows, colMap, options = {}) {
   const mapped = new Set(Object.values(colMap || {}).filter(v => v != null && v !== ''));
+  const exactMirrorTargets = (options.exactMirrorTargets || []).filter(Boolean);
   const moneyHeader = /(?:charge|fee|cost|surcharge|amount|total|receivable|discount|رسوم|تكلفة|مبلغ|إجمالي|خصم|ضريبة|vat|tax)/i;
   const nonMoneyQualifier = /(?:rate|percentage|percent|%|number|no\.?|count|currency|remark|reference|status|weight|dimension|length|width|height)/i;
   const result = [];
@@ -178,6 +195,7 @@ export function findUnmappedMonetaryColumns(headers, rows, colMap) {
   for (const header of headers || []) {
     if (!header || mapped.has(header) || !moneyHeader.test(String(header))) continue;
     if (nonMoneyQualifier.test(String(header))) continue;
+    if (exactMirrorTargets.some(target => isExactMonetaryMirror(rows, header, target))) continue;
     let nonZeroCount = 0;
     let totalAbs = 0;
     for (const row of rows || []) {

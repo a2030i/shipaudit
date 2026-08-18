@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Card, Btn, Select, Spinner, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { Upload as UploadIcon } from 'lucide-react';
-import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema, findUnmappedMonetaryColumns } from '../engine/audit.js';
+import { detectColumns, mapRows, auditAll, buildSummary, detectHeaderRow, buildHeaders, detectCarrierFromFile, getFieldSchema, findUnmappedMonetaryColumns, isExactMonetaryMirror } from '../engine/audit.js';
 import { parseAramexInvoice } from '../engine/aramexInvoiceParser.js';
 import { extractWorkbookControl } from '../engine/workbookControl.js';
 import { aiAnalyzeFile, aiMapColumns } from '../engine/openrouter.js';
@@ -23,6 +23,7 @@ import { loadSettings, getActiveContract } from '../data/carriers.js';
 import { saveAuditToDB, applyCrossAuditDuplicates, findSamePeriodAudits } from '../lib/coreService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { expectedScheduleSlots, listSchedules, requiredScheduleKindsForCarrier } from '../lib/tasksService.js';
+import { isAramexCarrier, manualPeriodFallback, missingAuditFields } from '../lib/auditUploadPolicy.js';
 
 const MONTHS = [
   'يناير','فبراير','مارس','أبريل','مايو','يونيو',
@@ -345,7 +346,8 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
 function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiMap,
                  detectedRow, aiNotes, missingFields, rowCount,
                  carriers, carrierId, setCarrierId, carrierDetect,
-                 scheduleSlots, scheduleSlot, setScheduleSlot, scheduleLoading, scheduleError }) {
+                 scheduleSlots, scheduleSlot, setScheduleSlot, scheduleLoading, scheduleError,
+                 period, manualPeriodConfirmed, setManualPeriodConfirmed }) {
 
   const carrier = carriers?.find(c => c.id === carrierId);
   const detectConfidence = carrierDetect?.confidence ?? 0;
@@ -358,7 +360,8 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
   const visibleFields = schema.core;
   const requiredSet   = new Set(schema.required);
   const mappedCount   = visibleFields.filter(f => !!colMap[f]).length;
-  const requiredMissing = visibleFields.filter(f => requiredSet.has(f) && !colMap[f]).length;
+  const periodFallback = manualPeriodFallback({ carrier, colMap, confirmed: manualPeriodConfirmed });
+  const requiredMissing = missingAuditFields(schema, colMap, { carrier, manualPeriodConfirmed }).length;
 
   return (
     <Card style={{ maxWidth: 640, margin: '0 auto' }}>
@@ -467,6 +470,30 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
         </div>
       )}
 
+      {periodFallback.eligible && (
+        <div role="alert" style={{
+          marginBottom: 16,
+          padding: '12px 14px',
+          border: '1px solid color-mix(in srgb, var(--gold) 45%, var(--border))',
+          borderRadius: 10,
+          background: 'color-mix(in srgb, var(--gold) 7%, var(--card))',
+        }}>
+          <div style={{ display: 'flex', gap: 9, alignItems: 'flex-start' }}>
+            <AlertCircle size={17} color="var(--gold)" style={{ marginTop: 2, flexShrink: 0 }}/>
+            <div>
+              <strong style={{ display: 'block', fontSize: 12.5, marginBottom: 4 }}>ملف أرامكس لا يحتوي تاريخ الشحنة</strong>
+              <div style={{ color: 'var(--muted)', fontSize: 11.5, lineHeight: 1.7 }}>
+                لن ينشئ النظام تاريخًا افتراضيًا. ستُسجل المراجعة ضمن <b>{period}</b> بدقة شهرية، ويبقى تاريخ كل AWB «غير متاح في المصدر».
+              </div>
+              <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 10, fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>
+                <input type="checkbox" checked={manualPeriodConfirmed} onChange={event => setManualPeriodConfirmed(event.target.checked)}/>
+                أؤكد أن الفواتير الموجودة في هذا الملف تخص {period}
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Status pills */}
       <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:16 }}>
         {detectedRow != null && (
@@ -510,22 +537,25 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
           const { label } = meta;
           const required = requiredSet.has(field);
           const isMapped = !!colMap[field];
+          const coveredByPeriod = field === 'shipDate' && periodFallback.active;
+          const isSatisfied = isMapped || coveredByPeriod;
           const isNull   = missingFields?.includes(field);
           return (
             <div key={field} style={{
               display:'grid', gridTemplateColumns:'180px 1fr', gap:10,
               marginBottom:7, alignItems:'center',
               padding:'6px 10px', borderRadius:8,
-              background: isMapped ? 'color-mix(in srgb, var(--accent) 5%, transparent)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
-              border: `1px solid ${isMapped?'color-mix(in srgb, var(--accent) 20%, transparent)':required&&!isMapped?'rgba(248,113,113,.20)':'transparent'}`,
+              background: isSatisfied ? 'color-mix(in srgb, var(--accent) 5%, transparent)' : required ? 'rgba(248,113,113,.04)' : 'transparent',
+              border: `1px solid ${isSatisfied?'color-mix(in srgb, var(--accent) 20%, transparent)':required&&!isMapped?'rgba(248,113,113,.20)':'transparent'}`,
             }}>
               <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-                <span style={{ fontSize:12, color: isMapped?'var(--accent)':required?'var(--red)':'var(--muted3)' }}>
-                  {isMapped ? '✓' : required ? '!' : '○'}
+                <span style={{ fontSize:12, color: isSatisfied?'var(--accent)':required?'var(--red)':'var(--muted3)' }}>
+                  {isSatisfied ? '✓' : required ? '!' : '○'}
                 </span>
-                <span style={{ fontSize:12, color: isMapped?'var(--text)':'var(--muted)' }}>
+                <span style={{ fontSize:12, color: isSatisfied?'var(--text)':'var(--muted)' }}>
                   {label}
-                  {required && !isMapped && (
+                  {coveredByPeriod && <span style={{ color:'var(--gold)', fontSize:9, marginRight:4 }}>الفترة اليدوية: {period}</span>}
+                  {required && !isSatisfied && (
                     <span style={{ color:'var(--red)', fontSize:9, marginRight:4 }}>إلزامي</span>
                   )}
                   {isNull && !isMapped && (
@@ -614,6 +644,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
   const [schedules,     setSchedules]     = useState(null);
   const [scheduleError, setScheduleError] = useState('');
   const [scheduleSlot,  setScheduleSlot]  = useState('');
+  const [manualPeriodConfirmed, setManualPeriodConfirmed] = useState(false);
   // When the file came from the Webhook page (via "حفظ كمراجعة"), we
   // carry the originating webhook_events row id so AuditResults can
   // mark it processed + linked after the user approves.
@@ -649,6 +680,10 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
     });
   }, [carrierId, periodKey, scheduleSlots.map(slot => slot.dueDate).join('|')]);
 
+  useEffect(() => {
+    setManualPeriodConfirmed(false);
+  }, [carrierId, periodKey, fileMeta.sourceHash]);
+
   // Apply AI result to state
   const applyAiResult = (result, allRows) => {
     if (!result) return;
@@ -683,6 +718,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
   };
 
   const handleFile = useCallback((file) => {
+    setManualPeriodConfirmed(false);
     setSourceFile(file || null);
     setFileMeta({ fileName: file?.name || '', detailSheet: '', declared: null, sourceHash: '', sourceSize: Number(file?.size || 0) });
     setUploading(true);
@@ -969,7 +1005,8 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
       return;
     }
     const schema = getFieldSchema(carrier, carriers);
-    const requiredMissing = schema.required.filter(field => !colMap[field]);
+    const periodFallback = manualPeriodFallback({ carrier, colMap, confirmed: manualPeriodConfirmed });
+    const requiredMissing = missingAuditFields(schema, colMap, { carrier, manualPeriodConfirmed });
     if (requiredMissing.length) {
       toast(`لا يمكن بدء التدقيق: ${requiredMissing.length} حقل إلزامي غير معيّن`, 'error');
       return;
@@ -1079,7 +1116,12 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
     const declared = fileMeta.declared;
     const controlErrors = [];
     const declaredDiffs = {};
-    const unmappedMonetaryColumns = findUnmappedMonetaryColumns(headers, rawRows, colMap);
+    const exactMirrorTargets = isAramexCarrier(carrier) ? [colMap.deliveryCharges] : [];
+    const redundantMonetaryColumns = headers.filter(header =>
+      !Object.values(colMap).includes(header)
+      && exactMirrorTargets.some(target => isExactMonetaryMirror(rawRows, header, target))
+    );
+    const unmappedMonetaryColumns = findUnmappedMonetaryColumns(headers, rawRows, colMap, { exactMirrorTargets });
     if (unmappedMonetaryColumns.length) {
       controlErrors.push(`أعمدة مالية غير مقروءة: ${unmappedMonetaryColumns.map(x => x.header).join('، ')}`);
     }
@@ -1116,6 +1158,10 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
       detailSheet: fileMeta.detailSheet || '',
       periodSource: inferred.source,
       period: auditPeriod,
+      periodPrecision: periodFallback.active ? 'month' : 'date',
+      shipmentDateAvailability: periodFallback.active ? 'unavailable_in_source' : 'provided_by_source',
+      manualPeriodConfirmed: periodFallback.active,
+      contractEvaluationDate: forDate,
       declared: declared || null,
       declaredDiffs,
       sourceRowCount: rawRows.length,
@@ -1124,6 +1170,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
       statedTotalRows: mapped.filter(r => r.statedTotal != null).length,
       mappedFields: Object.keys(colMap).filter(key => colMap[key] != null && colMap[key] !== ''),
       unmappedMonetaryColumns,
+      redundantMonetaryColumns,
       requiresCarrierSummary,
       hasCarrierSummary,
       contractLabels,
@@ -1270,7 +1317,9 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
           carriers={carriers} carrierId={carrierId} setCarrierId={setCarrierId}
           carrierDetect={carrierDetect}
           scheduleSlots={scheduleSlots} scheduleSlot={scheduleSlot} setScheduleSlot={setScheduleSlot}
-          scheduleLoading={schedules == null} scheduleError={scheduleError}/>
+          scheduleLoading={schedules == null} scheduleError={scheduleError}
+          period={period} manualPeriodConfirmed={manualPeriodConfirmed}
+          setManualPeriodConfirmed={setManualPeriodConfirmed}/>
       )}
     </div>
   );
