@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import { findUnmappedMonetaryColumns, isExactMonetaryMirror } from '../src/engine/audit.js';
-import { SEED_CARRIERS } from '../src/data/carriers.js';
+import { applyApprovedAramexTerms, SEED_CARRIERS } from '../src/data/carriers.js';
 import { manualPeriodFallback, missingAuditFields } from '../src/lib/auditUploadPolicy.js';
 
 const aramex = SEED_CARRIERS.find(carrier => carrier.id === 'aramex');
@@ -43,6 +43,19 @@ test('approved Aramex defaults are fuel 10 percent and COD 3 SAR', () => {
   const contract = aramex.contracts[0];
   assert.equal(contract.fuelPct, 0.10);
   assert.equal(contract.codFee, 3);
+});
+
+test('stored Aramex contracts active in July receive the approved terms', () => {
+  const stored = [
+    { id: 'c_1', name: 'ارامكس', contracts: [{ id: 'active', startDate: '2026-03-01', fuelPct: 0.16, codFee: 5 }] },
+    { id: 'c_2', name: 'ناقل آخر', contracts: [{ id: 'other', startDate: '2026-01-01', fuelPct: 0.16, codFee: 5 }] },
+    { id: 'c_3', name: 'Aramex legacy', contracts: [{ id: 'expired', startDate: '2025-01-01', endDate: '2026-06-30', fuelPct: 0.16, codFee: 5 }] },
+  ];
+  const normalized = applyApprovedAramexTerms(stored);
+  assert.equal(normalized[0].contracts[0].fuelPct, 0.10);
+  assert.equal(normalized[0].contracts[0].codFee, 3);
+  assert.equal(normalized[1].contracts[0].codFee, 5);
+  assert.equal(normalized[2].contracts[0].codFee, 5);
 });
 
 test('UploadWizard records month precision without manufacturing shipment dates', async () => {
