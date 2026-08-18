@@ -14,6 +14,7 @@
 //   {{4}} حصّلنا هذا الشهر · {{5}} أكبر 3 مدينين · {{6}} فواتير تنتظر
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { riyadhDateKey, runExternalEffect } from '../_shared/idempotency.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -178,19 +179,33 @@ Deno.serve(async (req) => {
     });
     const tj = await tr.json();
     if (!tj.access_token) return json({ ok: false, error: 'فشل توكن Hatif' });
-    const r = await fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${tj.access_token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        ChannelId: cfg.channel_id, TemplateName: cfg.template_name, Language: cfg.template_language || 'ar',
-        ToNumber: cfg.phone,
-        Parameters: [{ Type: 'Body', Values: vars.map((v: unknown) => ({ Type: 'text', Text: String(v ?? '') })) }],
+    const sendPayload = {
+      ChannelId: cfg.channel_id, TemplateName: cfg.template_name, Language: cfg.template_language || 'ar',
+      ToNumber: cfg.phone,
+      Parameters: [{ Type: 'Body', Values: vars.map((v: unknown) => ({ Type: 'text', Text: String(v ?? '') })) }],
+    };
+    const recipientKey = String(cfg.phone).replace(/\D/g, '');
+    const effect = await runExternalEffect({
+      db,
+      flow: 'morning-brief',
+      idempotencyKey: `morning-brief:${riyadhDateKey()}:${recipientKey}:${cfg.template_name}:${reportMode}`,
+      payload: sendPayload,
+      dispatch: () => fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${tj.access_token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(sendPayload),
       }),
+      isSuccess: (response, result) => response.ok
+        && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId),
     });
-    const result = await r.json().catch(() => ({}));
-    const ok = r.ok && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId);
-    if (!ok) return json({ ok: false, status: r.status, error: result?.message || result?.title || 'فشل الإرسال' });
-    return json({ ok: true, id: result?.conversationEventId || result?.contactId, vars, reportMode });
+    if (effect.duplicate) return json({
+      ok: effect.ok,
+      skipped: 'duplicate',
+      idempotency_status: effect.state,
+      id: effect.body?.conversationEventId || effect.body?.contactId || null,
+    }, effect.ok ? 200 : 409);
+    if (!effect.ok) return json({ ok: false, status: effect.status, error: effect.body?.message || effect.body?.title || 'فشل الإرسال' });
+    return json({ ok: true, id: effect.body?.conversationEventId || effect.body?.contactId, vars, reportMode });
   } catch (e) {
     return json({ ok: false, error: String((e as any)?.message || e) });
   }

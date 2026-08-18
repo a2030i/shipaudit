@@ -6,6 +6,7 @@
 // الكرون الكامل (hatif-tag-sync، 20د) يبقى شبكة أمان للتاقات الزمنية.
 // ⚠️ النشر عبر MCP يعيد verify_jwt=true — الكرون يحتاج X-Cron-Key.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { runExternalEffect, sha256Hex } from '../_shared/idempotency.ts';
 
 const CORS = { 'Access-Control-Allow-Origin': 'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-cron-key', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -108,8 +109,13 @@ Deno.serve(async (req) => {
     if (desired.length > 0 && wantIds.length < desired.length) { failed++; continue; }   // تعيين ناقص → أبقِه للمرّة القادمة
     try {
       const merged = await mergeWithHumanTags(token, convId, wantIds);
-      const rr = await fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: merged.ids }) });
+      const tagPayload = { tagIds: [...merged.ids].sort() };
+      const rr = await runExternalEffect({
+        db, flow: 'hatif-conversation-tags', idempotencyKey: `hatif:conversation-tags:${convId}:${await sha256Hex(tagPayload)}`,
+        payload: tagPayload,
+        dispatch: () => fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(tagPayload) }),
+      });
       if (rr.ok) {
         await db.from('hatif_conversation_tags').upsert({ phone, conversation_id: convId, tag_names: desired, applied_at: new Date().toISOString() }, { onConflict: 'phone' });
         applied++; preserved += merged.preserved; done.push(phone);

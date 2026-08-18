@@ -66,6 +66,16 @@ async function sendTemplate(token: string, o: { channelId: string; templateName:
   return { ok, id: j.conversationEventId || j.contactId || null, contactId: j.contactId || null, conversationId: j.conversationId || null,
            status: j.status || null, error: ok ? null : (j.message || j.title || `http ${r.status}`) };
 }
+async function assignConversation(token: string, conversationId: string | null, assignedUserId: string | null) {
+  if (!conversationId || !assignedUserId) return false;
+  const r = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${conversationId}/assign`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ assignedUserId }),
+  });
+  if (!r.ok) console.error('scheduled campaign conversation assignment http', r.status);
+  return r.ok;
+}
 // قائمة الحظر كاملة (مصفّحة — تجاوز سقف 1000). فشل الجلب يوقف الإرسال (fail-safe).
 async function loadBlocklist(db: ReturnType<typeof svc>): Promise<Set<string>> {
   const set = new Set<string>();
@@ -153,7 +163,9 @@ Deno.serve(async (req) => {
         if (blockSet.has(to)) { skipped++; continue; }   // محظور — لا نراسله
         const base: Record<string, unknown> = { phone: to, name: it.name || null, template_name: job.template_name,
           channel_id: channelId, campaign_name: campaignName, campaign_bucket: job.bucket_label || null,
-          amount: it.amount ?? null, sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler' };
+          amount: it.amount ?? null, sent_at: new Date().toISOString(), sent_by: job.created_by || 'scheduler',
+          assigned_hatif_user_id: job.assigned_hatif_user_id || null,
+          assigned_hatif_user_name: job.assigned_hatif_user_name || null };
         const claim = await claimHatifSend(db, {
           source: 'scheduled', phone: to, templateName: job.template_name,
           campaignName, sourceReference: it.idempotency_ref || `${job.id}:${recipientIndex}`,
@@ -169,8 +181,14 @@ Deno.serve(async (req) => {
           } catch (e) { console.error('campaign-runner claim finalization failed:', String((e as Error).message || e)); }
           if (res.ok) {
             sent++;
+            let assignedAt: string | null = null;
+            if (job.assigned_hatif_user_id && res.conversationId) {
+              try {
+                if (await assignConversation(token, res.conversationId, job.assigned_hatif_user_id)) assignedAt = new Date().toISOString();
+              } catch (e) { console.error('scheduled campaign conversation assignment failed:', String((e as Error).message || e)); }
+            }
             // تسجيل فوري (نفس إصلاح hatif-send v11) — الانقطاع لا يضيع السجل
-            await logSend(db, { ...base, contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id, status: res.status || 'accepted' });
+            await logSend(db, { ...base, contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id, status: res.status || 'accepted', hatif_assigned_at: assignedAt });
           } else {
             // البند 4: نسجّل الفشل بسببه — كان يُبتلع فلا يظهر في «فشل الحملات»
             failed++;

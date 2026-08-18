@@ -6,6 +6,7 @@
 // enabled=false أو بلا رقم/قالب → skip (آمن افتراضياً). لا يرسل إن لم توجد فواتير اليوم.
 // متغيّرات القالب: {{1}} عدد فواتير اليوم · {{2}} إجماليها ر.س · {{3}} عدد المتأخرة سابقاً.
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { riyadhDateKey, runExternalEffect } from '../_shared/idempotency.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -78,16 +79,25 @@ Deno.serve(async (req) => {
     }
     if (!channelId) return json({ ok: false, error: 'لا قناة Hatif متاحة' });
 
-    const r = await fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
-      method: 'POST', headers: { Authorization: `Bearer ${tj.access_token}`, 'content-type': 'application/json' },
-      body: JSON.stringify({
-        ChannelId: channelId, TemplateName: cfg.template_name, Language: 'ar', ToNumber: cfg.phone,
-        Parameters: [{ Type: 'Body', Values: vars.map((v) => ({ Type: 'text', Text: String(v) })) }],
+    const sendPayload = {
+      ChannelId: channelId, TemplateName: cfg.template_name, Language: 'ar', ToNumber: cfg.phone,
+      Parameters: [{ Type: 'Body', Values: vars.map((v) => ({ Type: 'text', Text: String(v) })) }],
+    };
+    const recipientKey = String(cfg.phone).replace(/\D/g, '');
+    const effect = await runExternalEffect({
+      db,
+      flow: 'zatca-alert',
+      idempotencyKey: `zatca-alert:${riyadhDateKey()}:${recipientKey}:${cfg.template_name}`,
+      payload: sendPayload,
+      dispatch: () => fetch('https://api.voxa.sa/v1/whatsapp/service-account/sendTemplate', {
+        method: 'POST', headers: { Authorization: `Bearer ${tj.access_token}`, 'content-type': 'application/json' },
+        body: JSON.stringify(sendPayload),
       }),
+      isSuccess: (response, result) => response.ok
+        && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId),
     });
-    const result = await r.json().catch(() => ({}));
-    const okSend = r.ok && (result?.status === 'accepted' || !!result?.conversationEventId || !!result?.contactId);
-    if (!okSend) return json({ ok: false, error: result?.message || result?.title || 'فشل الإرسال' });
+    if (effect.duplicate) return json({ ok: effect.ok, skipped: 'duplicate', idempotency_status: effect.state }, effect.ok ? 200 : 409);
+    if (!effect.ok) return json({ ok: false, error: effect.body?.message || effect.body?.title || 'فشل الإرسال' });
     return json({ ok: true, sent: true, todayCount, vars });
   } catch (e) {
     return json({ ok: false, error: String((e as any)?.message || e) });

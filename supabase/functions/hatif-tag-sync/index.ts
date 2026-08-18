@@ -9,6 +9,7 @@
 // بلا ترتيب ثابت كان تصفّح .range() يُسقط ~1506 صفاً فلا تُطبَّق أبداً).
 // v2: أسماء مطابقة لهاتف + تصفّح كامل + حذف STRAY. لا يحذف تعريف تاق قانوني أبداً.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { runExternalEffect, sha256Hex } from '../_shared/idempotency.ts';
 
 const CORS = { 'Access-Control-Allow-Origin': 'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type', 'Access-Control-Allow-Methods': 'POST, OPTIONS' };
 const json = (b: unknown, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
@@ -42,15 +43,25 @@ async function listTags(token: string): Promise<Map<string, string>> {
   for (const t of items) { const id = t.id || t.tagId; const nm = t.name || t.title; if (id && nm) m.set(norm(nm), String(id)); }
   return m;
 }
-async function createTag(token: string, name: string, icon: string): Promise<string | null> {
-  const r = await fetch(`${V}/v1/tags/service-account`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name, icon, isPinned: true }) });
-  const j = await r.json().catch(() => ({}));
-  return (j.id || j.tagId) ? String(j.id || j.tagId) : null;
+async function createTag(db: ReturnType<typeof svc>, token: string, name: string, icon: string): Promise<string | null> {
+  const payload = { name, icon, isPinned: true };
+  const effect = await runExternalEffect({
+    db, flow: 'hatif-tag-definition', idempotencyKey: `hatif:tag:create:${await sha256Hex(norm(name))}`,
+    payload,
+    dispatch: () => fetch(`${V}/v1/tags/service-account`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
+  });
+  const result = effect.body || {};
+  return effect.ok && (result.id || result.tagId) ? String(result.id || result.tagId) : null;
 }
 // تفعيل التاق (المفتاح في واجهة هاتف = isPinned) — الموجود سابقاً بقي مُطفأً
-async function enableTag(token: string, id: string, name: string, icon: string): Promise<boolean> {
-  const r = await fetch(`${V}/v1/tags/service-account/${id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ name, icon, isPinned: true }) });
-  return r.ok;
+async function enableTag(db: ReturnType<typeof svc>, token: string, id: string, name: string, icon: string): Promise<boolean> {
+  const payload = { name, icon, isPinned: true };
+  const effect = await runExternalEffect({
+    db, flow: 'hatif-tag-definition', idempotencyKey: `hatif:tag:update:${id}:${await sha256Hex(payload)}`,
+    payload,
+    dispatch: () => fetch(`${V}/v1/tags/service-account/${id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) }),
+  });
+  return effect.ok;
 }
 
 async function mergeWithHumanTags(token: string, conversationId: string, systemIds: string[]) {
@@ -100,13 +111,13 @@ Deno.serve(async (req) => {
   // 1) خريطة الاسم→id + إنشاء الناقص، ثم إعادة السرد لضمان الـIDs
   let tagMap = await listTags(token);
   let created = 0;
-  for (const t of CANON) { if (!tagMap.has(norm(t.name))) { try { const id = await createTag(token, t.name, t.icon); if (id) created++; await sleep(200); } catch { /* */ } } }
+  for (const t of CANON) { if (!tagMap.has(norm(t.name))) { try { const id = await createTag(db, token, t.name, t.icon); if (id) created++; await sleep(200); } catch { /* */ } } }
   if (created) tagMap = await listTags(token);
   // تفعيل كل تاق قانوني (isPinned) — التاقات المُنشأة سابقاً بقيت مُطفأة في واجهة هاتف
   let enabled = 0;
   for (const t of CANON) {
     const id = tagMap.get(norm(t.name));
-    if (id) { try { if (await enableTag(token, id, t.name, t.icon)) enabled++; await sleep(150); } catch { /* */ } }
+    if (id) { try { if (await enableTag(db, token, id, t.name, t.icon)) enabled++; await sleep(150); } catch { /* */ } }
   }
 
   // 2) الحالة المرغوبة — تصفّح كامل (تجاوز حدّ 1000)
@@ -147,8 +158,13 @@ Deno.serve(async (req) => {
     try {
       // API هاتف تستبدل القائمة كاملة؛ اقرأ الحالية واحفظ كل ما لا تملكه لمحة.
       const merged = await mergeWithHumanTags(token, convId, wantIds);
-      const rr = await fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ tagIds: merged.ids }) });
+      const tagPayload = { tagIds: [...merged.ids].sort() };
+      const rr = await runExternalEffect({
+        db, flow: 'hatif-conversation-tags', idempotencyKey: `hatif:conversation-tags:${convId}:${await sha256Hex(tagPayload)}`,
+        payload: tagPayload,
+        dispatch: () => fetch(`${V}/v2/conversations/service-account/${convId}/tags`, {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(tagPayload) }),
+      });
       if (rr.ok) {
         await db.from('hatif_conversation_tags').upsert({ phone: r.phone, conversation_id: convId, tag_names: names, applied_at: new Date().toISOString() }, { onConflict: 'phone' });
         applied_n++; preserved += merged.preserved;

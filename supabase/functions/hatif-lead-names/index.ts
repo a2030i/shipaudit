@@ -4,6 +4,7 @@
 // التاق «عميل محتمل» يتكفّل به hatif-tag-sync. دالة مستقلّة صغيرة لا تلمس سنك المتاجر.
 // ⚠️ النشر عبر MCP يعيد verify_jwt=true — استدعاء الكرون يحتاج Bearer anon + X-Cron-Key.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { runExternalEffect } from '../_shared/idempotency.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -90,15 +91,23 @@ Deno.serve(async (req) => {
       const hasName = !!cur && /\p{L}/u.test(cur);   // اسم حقيقي = يحوي حرفاً
       await sleep(90);
       if (!cid) {
-        const cr = await fetch(CONTACTS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: r.name, phoneNumber: r.phone }) });
-        if (!cr.ok) { failed++; if (errors.length < 5) errors.push({ phone: r.phone, step: 'create', status: cr.status }); await sleep(90); continue; }
-        cid = unwrap(await cr.json().catch(() => ({})))?.id || null;
+        const createPayload = { name: r.name, phoneNumber: r.phone };
+        const cr = await runExternalEffect({
+          db, flow: 'hatif-lead-contact-create', idempotencyKey: `hatif:contact:create:${r.phone}`,
+          payload: createPayload,
+          dispatch: () => fetch(CONTACTS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(createPayload) }),
+        });
+        if (!cr.ok) { failed++; if (errors.length < 5) errors.push({ phone: r.phone, step: 'create', status: cr.status, state: cr.state }); await sleep(90); continue; }
+        cid = unwrap(cr.body || {})?.id || null;
         created++; await sleep(90);
       } else if (!hasName) {
-        const pr = await fetch(`${CONTACTS_URL}/${cid}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: r.name }) });
-        if (pr.ok) named++; else { failed++; if (errors.length < 5) errors.push({ phone: r.phone, step: 'rename', status: pr.status }); }
+        const renamePayload = { name: r.name };
+        const pr = await runExternalEffect({
+          db, flow: 'hatif-lead-contact-name', idempotencyKey: `hatif:contact:rename:${cid}:${h}`,
+          payload: renamePayload,
+          dispatch: () => fetch(`${CONTACTS_URL}/${cid}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(renamePayload) }),
+        });
+        if (pr.ok) named++; else { failed++; if (errors.length < 5) errors.push({ phone: r.phone, step: 'rename', status: pr.status, state: pr.state }); }
         await sleep(90);
       } else {
         kept++;   // اسم حقيقي (فريق) — لا نلمسه

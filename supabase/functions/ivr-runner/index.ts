@@ -1,7 +1,9 @@
+// @ts-nocheck — legacy untyped function; behavioral coverage is in idempotency-hardening.test.ts.
 // ivr-runner v4 (2026-07-23) — cron: يعالج طابور المكالمات المجدولة/المُعاد محاولتها.
 // v4: إعدادات لكل سكربت (صوت/تكرار/مهلة) مع رجوع للعام. v3: صوت رد لكل خيار.
 // يحترم ساعات الاتصال (KSA). الأمان: X-Cron-Key ضد zoho_auth.cron_key.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { runExternalEffect } from '../_shared/idempotency.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL'), Deno.env.get('SUPABASE_SERVICE_ROLE_KEY'));
 const json = (b, s = 200) => new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
@@ -64,45 +66,53 @@ Deno.serve(async (req) => {
   const within = start <= end ? (h >= start && h < end) : (h >= start || h < end);
   if (!within) return json({ ok: true, skipped: 'outside_hours', hour_ksa: h });
 
-  const { data: due } = await db.from('ivr_queue').select('*').eq('status', 'queued').lte('run_at', new Date().toISOString())
-    .order('run_at', { ascending: true }).limit(60);
-  if (!due?.length) return json({ ok: true, placed: 0, note: 'no due' });
-
   const scripts = Array.isArray(cfg.scripts) ? cfg.scripts : [];
   let token = ''; try { token = await accessToken(); } catch (e) { return json({ ok: false, error: String(e.message || e) }); }
   const channelId = await getChannelId(token, String(cfg.channelId || ''));
   if (!channelId) return json({ ok: false, error: 'no channel' });
+  const claimToken = crypto.randomUUID();
+  const { data: due, error: claimError } = await db.rpc('claim_ivr_queue_batch', {
+    p_claim_token: claimToken,
+    p_limit: 60,
+    p_now: new Date().toISOString(),
+  });
+  if (claimError) return json({ ok: false, error: `queue claim: ${claimError.message}` }, 500);
+  if (!due?.length) return json({ ok: true, placed: 0, note: 'no due' });
   const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/ivr-webhook?key=${encodeURIComponent(za.webhook_key || '')}`;
   const cfgVoice = (cfg.ttsVoice === 'Male' || cfg.ttsVoice === 'Female') ? cfg.ttsVoice : 'Female';
   const blocked = new Set();
   try { const { data: bl } = await db.from('campaign_phone_blocklist').select('phone'); for (const r of (bl || [])) if (r.phone) blocked.add(norm(r.phone)); } catch { /* */ }
 
   const t0 = Date.now(); let placed = 0, failed = 0, skipped = 0;
+  const finishQueue = async (id, values) => db.from('ivr_queue').update({
+    ...values, claim_token: null, claimed_at: null,
+  }).eq('id', id).eq('claim_token', claimToken);
   for (const q of due) {
     if (Date.now() - t0 > 120000) break;
     const to = norm(q.phone);
-    if (!to || to.length < 11) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'bad_phone' }).eq('id', q.id); failed++; continue; }
-    if (blocked.has(to)) { await db.from('ivr_queue').update({ status: 'cancelled', last_result: 'blocked' }).eq('id', q.id); skipped++; continue; }
+    if (!to || to.length < 11) { await finishQueue(q.id, { status: 'failed', last_result: 'bad_phone' }); failed++; continue; }
+    if (blocked.has(to)) { await finishQueue(q.id, { status: 'cancelled', last_result: 'blocked' }); skipped++; continue; }
     const script = scripts.find((s) => s.key === q.script_key) || scripts.find((s) => s.key === cfg.defaultScript) || scripts[0];
-    if (!script) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'no_script' }).eq('id', q.id); failed++; continue; }
+    if (!script) { await finishQueue(q.id, { status: 'failed', last_result: 'no_script' }); failed++; continue; }
     const options = Array.isArray(script.options) ? script.options : [];
-    if (!options.length) { await db.from('ivr_queue').update({ status: 'failed', last_result: 'no_options' }).eq('id', q.id); failed++; continue; }
+    if (!options.length) { await finishQueue(q.id, { status: 'failed', last_result: 'no_options' }); failed++; continue; }
 
-    await db.from('ivr_queue').update({ status: 'sending' }).eq('id', q.id);
     const audioUrl = String(script.audioUrl || '').trim();
     const ttsText = fillTts(String(script.ttsText || ''), q.name, q.fields, cfg.speakNumbersWords === true);
-    const attempt = (Number(q.attempts) || 0) + 1;
+    const attempt = Number(q.attempts) || 1;
     const maxAtt = Number(q.max_attempts) || 1;
     const sVoice = (script.ttsVoice === 'Male' || script.ttsVoice === 'Female') ? script.ttsVoice : cfgVoice;
     const sMaxRetries = Number(script.maxAudioRetries ?? cfg.maxAudioRetries ?? 2);
     const sInputTimeout = Number(script.inputTimeoutMs ?? cfg.inputTimeoutMs ?? 6000);
     const sDigitTimeout = Number(script.digitTimeoutMs ?? cfg.digitTimeoutMs ?? 3000);
 
-    const { data: ins } = await db.from('ivr_calls').insert({
+    const effectKey = `ivr-call:${q.id}:attempt:${attempt}`;
+    const { data: ins } = await db.from('ivr_calls').upsert({
+      queue_id: q.id, idempotency_key: effectKey,
       phone: to, name: q.name || null, campaign_name: q.campaign_name, script_key: script.key,
       tts_text: ttsText, channel_id: channelId, status: 'pending', initiated_by: q.created_by,
       attempt, max_attempts: maxAtt, retry_fields: q.fields || null,
-    }).select('id').single();
+    }, { onConflict: 'queue_id', ignoreDuplicates: true }).select('id').maybeSingle();
     const callRowId = ins?.id;
     if (callRowId) await db.from('ivr_calls').update({ external_id: callRowId }).eq('id', callRowId);
 
@@ -112,20 +122,30 @@ Deno.serve(async (req) => {
         maxAudioRetries: sMaxRetries, inputTimeoutMs: sInputTimeout, digitTimeoutMs: sDigitTimeout };
       if (audioUrl) payload.audioFileUrl = audioUrl; else payload.ttsText = ttsText;
       const successUrl = String(script.successAudioUrl || '').trim(); if (successUrl) payload.successMessageFileUrl = successUrl;
-      const vr = await fetch('https://api.voxa.sa/v1/outbound-ivr', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload) });
-      if (vr.ok) {
-        const vj = await vr.json().catch(() => ({}));
+      const effect = await runExternalEffect({
+        db,
+        flow: 'ivr-runner',
+        idempotencyKey: effectKey,
+        payload,
+        dispatch: () => fetch('https://api.voxa.sa/v1/outbound-ivr', {
+          method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(payload),
+        }),
+      });
+      if (effect.ok) {
+        const vj = effect.body || {};
         if (callRowId) await db.from('ivr_calls').update({ voxa_call_id: vj.callId || vj.id || null, status: vj.status || 'InProgress' }).eq('id', callRowId);
-        await db.from('ivr_queue').update({ status: 'done', attempts: attempt, ivr_call_id: callRowId, last_result: 'placed' }).eq('id', q.id);
+        await finishQueue(q.id, { status: 'done', attempts: attempt, ivr_call_id: callRowId, last_result: effect.duplicate ? 'placed_duplicate_suppressed' : 'placed' });
         placed++;
       } else {
-        const vj = await vr.json().catch(() => ({}));
-        if (callRowId) await db.from('ivr_calls').update({ status: 'Failed', error_message: String(vj.message || vr.status).slice(0, 200) }).eq('id', callRowId);
-        await db.from('ivr_queue').update({ status: 'failed', attempts: attempt, last_result: `http ${vr.status}` }).eq('id', q.id);
+        const vj = effect.body || {};
+        const queueStatus = effect.state === 'indeterminate' || effect.state === 'dispatching' ? 'indeterminate' : 'failed';
+        if (callRowId) await db.from('ivr_calls').update({ status: queueStatus === 'indeterminate' ? 'Indeterminate' : 'Failed', error_message: String(vj.message || effect.status || effect.state).slice(0, 200) }).eq('id', callRowId);
+        await finishQueue(q.id, { status: queueStatus, attempts: attempt, last_result: `${effect.state}${effect.status ? ` http ${effect.status}` : ''}` });
         failed++;
       }
     } catch (e) {
-      await db.from('ivr_queue').update({ status: 'failed', attempts: attempt, last_result: String(e.message || e).slice(0, 100) }).eq('id', q.id);
+      if (callRowId) await db.from('ivr_calls').update({ status: 'Indeterminate', error_message: String(e.message || e).slice(0, 200) }).eq('id', callRowId);
+      await finishQueue(q.id, { status: 'indeterminate', attempts: attempt, last_result: String(e.message || e).slice(0, 100) });
       failed++;
     }
     await sleep(400);

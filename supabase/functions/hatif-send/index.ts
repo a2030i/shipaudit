@@ -98,6 +98,17 @@ async function sendTemplate(token: string, o: { channelId: string; templateName:
            status: j.status || null, error: ok ? null : (j.message || j.title || j.error || `http ${r.status}`) };
 }
 
+async function assignConversation(token: string, conversationId: string | null, assignedUserId: string | null) {
+  if (!conversationId || !assignedUserId) return false;
+  const r = await fetch(`https://api.voxa.sa/v2/conversations/service-account/${conversationId}/assign`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({ assignedUserId }),
+  });
+  if (!r.ok) console.error('campaign conversation assignment http', r.status);
+  return r.ok;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
   const db = svc();
@@ -137,7 +148,9 @@ Deno.serve(async (req) => {
 
   // موظفو هاتف (Workspace) + الربط الآلي بموظفينا بالإيميل — للإسناد التلقائي
   if (action === 'hatif_users' || action === 'sync_hatif_users') {
-    if (auth.role !== 'admin') return json({ error: 'forbidden — للمدير فقط' }, 403);
+    // قراءة قائمة الموظفين مطلوبة لمشغّل الحملة كي يختار مالك الردود.
+    // المزامنة التي تعدّل profiles تبقى للمدير فقط.
+    if (action === 'sync_hatif_users' && auth.role !== 'admin') return json({ error: 'forbidden — للمدير فقط' }, 403);
     try {
       const t = await accessToken();
       const r = await fetch('https://api.voxa.sa/v1/workspaces/users', { headers: { Authorization: `Bearer ${t}` } });
@@ -163,6 +176,8 @@ Deno.serve(async (req) => {
     const templateName = String(body.template_name || '');
     const language = String(body.template_language || 'ar');
     const campaign = (body.campaign && typeof body.campaign === 'object') ? body.campaign as Record<string, unknown> : {};
+    const assignedHatifUserId = String(campaign.assignedHatifUserId || '').trim() || null;
+    const assignedHatifUserName = String(campaign.assignedHatifUserName || '').trim() || null;
     if (!templateName) return json({ ok: false, error: 'template_name مطلوب' });
     if (!items.length) return json({ ok: false, error: 'لا مستلمين' });
     let token: string;
@@ -221,11 +236,20 @@ Deno.serve(async (req) => {
         // The provider result is already guarded by the claim. A log failure is
         // surfaced for repair, but must never cause an automatic duplicate send.
         if (res.ok) {
+          let assignedAt: string | null = null;
+          if (assignedHatifUserId && res.conversationId) {
+            try {
+              if (await assignConversation(token, res.conversationId, assignedHatifUserId)) assignedAt = new Date().toISOString();
+            } catch (e) { console.error('campaign conversation assignment failed:', String((e as Error).message || e)); }
+          }
           const { error: logError } = await db.from('whatsapp_campaign_sends').insert({
             phone: to, name: it.name || null,
             template_name: templateName, channel_id: channelId,
             contact_id: res.contactId, conversation_id: res.conversationId, message_id: res.id,
             campaign_name: campaign.name || null, campaign_bucket: campaign.bucket || null,
+            assigned_hatif_user_id: assignedHatifUserId,
+            assigned_hatif_user_name: assignedHatifUserName,
+            hatif_assigned_at: assignedAt,
             amount: it.amount ?? null,
             status: res.status || 'accepted', sent_at: new Date().toISOString(), sent_by: auth.id,
           });

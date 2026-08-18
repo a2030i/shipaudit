@@ -1,0 +1,278 @@
+name: Supabase sandbox rebuild gate
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirmation:
+        description: Type RESET-SANDBOX to allow destructive reset of the isolated project
+        required: true
+        type: string
+  push:
+    branches:
+      - codex/supabase-go-gate
+    paths:
+      - .github/workflows/supabase-sandbox-rebuild.yml
+      - supabase/config.toml
+      - supabase/migrations/**
+      - supabase/functions/**
+      - scripts/schema-baseline/**
+
+permissions:
+  contents: read
+
+concurrency:
+  group: supabase-sandbox-rebuild
+  cancel-in-progress: false
+
+jobs:
+  rebuild:
+    if: ${{ github.event_name == 'push' || inputs.confirmation == 'RESET-SANDBOX' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    environment: supabase-sandbox
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      PARENT_PROJECT_REF: pubtkfwmznfmffavyzsy
+      APP_SITE_URL: ${{ vars.APP_SITE_URL }}
+      APP_ADDITIONAL_REDIRECT_URLS: ${{ vars.APP_ADDITIONAL_REDIRECT_URLS }}
+
+    steps:
+      - name: Check out the exact Git revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install pinned Supabase CLI
+        uses: supabase/setup-cli@46f7f98c7f948ad727d22c1e67fab04c223a0520
+        with:
+          version: 2.114.0
+
+      - name: Enforce isolated-project safety gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -n "${SUPABASE_ACCESS_TOKEN}"
+          test -n "${APP_SITE_URL}"
+          test -n "${APP_ADDITIONAL_REDIRECT_URLS}"
+          test "$(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | wc -l)" -eq 1
+          test -f supabase/migrations/20260818090000_production_schema_baseline_cutover.sql
+          test ! -d supabase/migrations/ddl1
+          ! grep -R -n -E 'canonical_core|customer_store_ownership|shipping\.shipments' supabase/migrations
+
+      - name: Create a Git-associated isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          branch_name="shipaudit-go-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "BRANCH_NAME=${branch_name}" >> "${GITHUB_ENV}"
+          supabase branches create "${branch_name}" \
+            --project-ref "${PARENT_PROJECT_REF}" \
+            --git-branch "${GITHUB_REF_NAME}" \
+            --output json > "${RUNNER_TEMP}/branch-create.json"
+          branch_ref="$(jq -er '.project_ref' "${RUNNER_TEMP}/branch-create.json")"
+          test -n "${branch_ref}"
+          test "${branch_ref}" != "${PARENT_PROJECT_REF}"
+          echo "SANDBOX_PROJECT_REF=${branch_ref}" >> "${GITHUB_ENV}"
+
+          ready=false
+          for _ in $(seq 1 90); do
+            supabase branches get "${branch_name}" \
+              --project-ref "${PARENT_PROJECT_REF}" \
+              --output json > "${RUNNER_TEMP}/branch-status.json"
+            status="$(jq -r '.status // empty' "${RUNNER_TEMP}/branch-status.json")"
+            if [[ "${status}" == "MIGRATIONS_FAILED" ]]; then
+              echo "Supabase branch migration replay failed" >&2
+              exit 1
+            fi
+            if [[ "${status}" == "FUNCTIONS_DEPLOYED" ]]; then
+              ready=true
+              break
+            fi
+            sleep 10
+          done
+          test "${ready}" = true
+
+          supabase branches get "${branch_name}" \
+            --project-ref "${PARENT_PROJECT_REF}" \
+            --output env > "${RUNNER_TEMP}/branch.env"
+          set -a
+          source "${RUNNER_TEMP}/branch.env"
+          set +a
+          test -n "${POSTGRES_URL_NON_POOLING}"
+          sandbox_anon_key="${ANON_KEY:-${SUPABASE_ANON_KEY:-}}"
+          test -n "${sandbox_anon_key}"
+          echo "::add-mask::${POSTGRES_URL_NON_POOLING}"
+          echo "::add-mask::${sandbox_anon_key}"
+          echo "POSTGRES_URL_NON_POOLING=${POSTGRES_URL_NON_POOLING}" >> "${GITHUB_ENV}"
+          echo "SANDBOX_ANON_KEY=${sandbox_anon_key}" >> "${GITHUB_ENV}"
+
+      - name: Rebuild from the Git baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db reset \
+            --db-url "${POSTGRES_URL_NON_POOLING}" \
+            --no-seed \
+            --yes
+
+      - name: Apply version-controlled platform configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase config push \
+            --project-ref "${SANDBOX_PROJECT_REF}" \
+            --yes
+
+      - name: Read back Auth configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --silent --show-error \
+            --header "Authorization: Bearer ${SUPABASE_ACCESS_TOKEN}" \
+            "https://api.supabase.com/v1/projects/${SANDBOX_PROJECT_REF}/config/auth" \
+            > "${RUNNER_TEMP}/auth-private-raw.json"
+          curl --fail --silent --show-error \
+            --header "apikey: ${SANDBOX_ANON_KEY}" \
+            "https://${SANDBOX_PROJECT_REF}.supabase.co/auth/v1/settings" \
+            > auth-public-readback.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+
+          private = json.loads((Path(os.environ["RUNNER_TEMP"]) / "auth-private-raw.json").read_text())
+          expected_redirect = os.environ["APP_ADDITIONAL_REDIRECT_URLS"]
+          allowlist = private.get("uri_allow_list") or ""
+          if isinstance(allowlist, str):
+              allowlist = [item.strip() for item in allowlist.split(",") if item.strip()]
+          assertions = {
+              "site_url": private.get("site_url") == os.environ["APP_SITE_URL"],
+              "redirect_allowlist": expected_redirect in allowlist,
+              "signup_enabled": private.get("disable_signup") is False,
+              "email_enabled": private.get("external_email_enabled") is True,
+              "anonymous_disabled": private.get("external_anonymous_users_enabled") is False,
+              "email_confirmation_required": private.get("mailer_autoconfirm") is False,
+              "jwt_expiry": private.get("jwt_exp") == 3600,
+              "refresh_rotation": private.get("refresh_token_rotation_enabled") is True,
+              "refresh_reuse_interval": private.get("security_refresh_token_reuse_interval") == 10,
+          }
+          if not all(assertions.values()):
+              raise SystemExit(f"Auth private read-back mismatch: {assertions}")
+          public = json.loads(Path("auth-public-readback.json").read_text())
+          public_assertions = {
+              "email_enabled": public.get("external", {}).get("email") is True,
+              "phone_disabled": public.get("external", {}).get("phone") is False,
+              "signup_enabled": public.get("disable_signup") is False,
+              "email_confirmation_required": public.get("mailer_autoconfirm") is False,
+          }
+          if not all(public_assertions.values()):
+              raise SystemExit(f"Auth public read-back mismatch: {public_assertions}")
+          redacted = {
+              "status": "PASS",
+              "private_assertions": assertions,
+              "public_assertions": public_assertions,
+              "secret_values_persisted": False,
+          }
+          Path("auth-readback-redacted.json").write_text(json.dumps(redacted, indent=2) + "\n")
+          PY
+          rm -f "${RUNNER_TEMP}/auth-private-raw.json"
+
+      - name: Deploy canonical Edge Functions
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions deploy \
+            --project-ref "${SANDBOX_PROJECT_REF}" \
+            --use-api \
+            --jobs 4
+
+      - name: Verify database baseline and cutover history
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db query \
+            --linked \
+            --project-ref "${SANDBOX_PROJECT_REF}" \
+            --file scripts/schema-baseline/verify-sandbox-baseline.sql \
+            --output-format json > sandbox-verification.json
+
+      - name: Verify all Edge Functions and verify_jwt contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase functions list \
+            --project-ref "${SANDBOX_PROJECT_REF}" \
+            --output json > edge-functions.json
+          python - <<'PY'
+          import json, tomllib
+          from pathlib import Path
+
+          config = tomllib.loads(Path("supabase/config.toml").read_text())
+          expected = {
+              name: bool(settings.get("verify_jwt", True))
+              for name, settings in config.get("functions", {}).items()
+          }
+          deployed_raw = json.loads(Path("edge-functions.json").read_text())
+          deployed = {
+              item.get("slug") or item.get("name"): item
+              for item in deployed_raw
+          }
+          missing = sorted(set(expected) - set(deployed))
+          unexpected = sorted(set(deployed) - set(expected))
+          inactive = sorted(name for name, item in deployed.items() if item.get("status") != "ACTIVE")
+          jwt_mismatch = sorted(
+              name for name, wanted in expected.items()
+              if name in deployed and bool(deployed[name].get("verify_jwt")) != wanted
+          )
+          result = {
+              "status": "PASS" if not (missing or unexpected or inactive or jwt_mismatch) else "FAIL",
+              "expected_count": len(expected),
+              "deployed_count": len(deployed),
+              "missing": missing,
+              "unexpected": unexpected,
+              "inactive": inactive,
+              "verify_jwt_mismatch": jwt_mismatch,
+          }
+          Path("edge-verification.json").write_text(json.dumps(result, indent=2) + "\n")
+          if result["status"] != "PASS":
+              raise SystemExit(f"Edge deployment mismatch: {result}")
+          PY
+
+      - name: Upload redacted verification evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: supabase-sandbox-rebuild-evidence
+          path: |
+            sandbox-verification.json
+            edge-functions.json
+            edge-verification.json
+            auth-readback-redacted.json
+            auth-public-readback.json
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Delete the temporary Supabase branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${BRANCH_NAME:-}" ]]; then
+            supabase branches delete "${BRANCH_NAME}" \
+              --project-ref "${PARENT_PROJECT_REF}" \
+              --yes
+            supabase branches list \
+              --project-ref "${PARENT_PROJECT_REF}" \
+              --output json > "${RUNNER_TEMP}/branches-after-cleanup.json"
+            if jq -e --arg name "${BRANCH_NAME}" 'any(.[]; .name == $name)' "${RUNNER_TEMP}/branches-after-cleanup.json" >/dev/null; then
+              printf '{"status":"FAIL","branch_name":"%s"}\n' "${BRANCH_NAME}" > cleanup-result.json
+              exit 1
+            fi
+          fi
+          printf '{"status":"PASS","deleted":true}\n' > cleanup-result.json
+
+      - name: Upload cleanup evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: supabase-sandbox-cleanup-evidence
+          path: cleanup-result.json
+          if-no-files-found: warn
+          retention-days: 7

@@ -91,7 +91,7 @@ Deno.serve(async (req) => {
       return ok();
     }
 
-    const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, message_id, sent_at, template_name, hatif_assigned_at';
+    const SEL = 'id, phone, replied_at, sent_by, name, conversation_id, message_id, sent_at, template_name, hatif_assigned_at, assigned_hatif_user_id';
     let row: Record<string, any> | null = null;
     // messageId is authoritative. conversation/contact remain compatibility
     // fallbacks for historical sends without a provider message identifier.
@@ -144,9 +144,11 @@ Deno.serve(async (req) => {
       // must not discard a safely recorded delivery/reply event.
       if (!row.hatif_assigned_at && within3d) {
         try {
-          let hatifUserId: string | null = null;
+          // A campaign-level owner is authoritative. Template and sender
+          // mappings are only fallbacks for historical/general sends.
+          let hatifUserId: string | null = row.assigned_hatif_user_id || null;
           const { data: cfgRow } = await db.from('app_settings').select('value').eq('key', 'whatsapp_config').maybeSingle();
-          if (cfgRow?.value && row.template_name) {
+          if (!hatifUserId && cfgRow?.value && row.template_name) {
             const cfg = typeof cfgRow.value === 'string' ? JSON.parse(cfgRow.value) : cfgRow.value;
             hatifUserId = (cfg?.templateAgents || {})[row.template_name] || null;
           }

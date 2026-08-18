@@ -14,6 +14,7 @@
 // شحناً، details = سرد لكل متجر. حصة Voxa: hatif_contact_sync يخزّن contact_id
 // وبصمة الحمولة فلا نستدعي هاتف إلا للمتغيّر.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { runExternalEffect } from '../_shared/idempotency.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -104,7 +105,29 @@ async function accessToken() {
 }
 
 // يضمن وجود التعريفات ويُرجِع الاسم → id
-async function ensureProps(token: string) {
+function hatifWrite(
+  db: ReturnType<typeof svc>,
+  token: string,
+  flow: string,
+  idempotencyKey: string,
+  url: string,
+  method: 'POST' | 'PUT' | 'DELETE',
+  payload: unknown = null,
+) {
+  return runExternalEffect({
+    db,
+    flow,
+    idempotencyKey,
+    payload: { url, method, payload },
+    dispatch: () => fetch(url, {
+      method,
+      headers: { Authorization: `Bearer ${token}`, ...(payload === null ? {} : { 'content-type': 'application/json' }) },
+      ...(payload === null ? {} : { body: JSON.stringify(payload) }),
+    }),
+  });
+}
+
+async function ensureProps(db: ReturnType<typeof svc>, token: string) {
   const r = await fetch(PROPDEF_URL, { headers: { Authorization: `Bearer ${token}` } });
   const b = unwrap(await r.json().catch(() => ({})));
   const existing: any[] = Array.isArray(b) ? b : (b?.items || []);
@@ -114,8 +137,8 @@ async function ensureProps(token: string) {
     if (map.has(def.name)) continue;
     const body: Record<string, unknown> = { name: def.name, type: def.type, isRequired: false };
     if (def.options) body.selectOptions = def.options;
-    const cr = await fetch(PROPDEF_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify(body) });
-    const cb = unwrap(await cr.json().catch(() => ({})));
+    const cr = await hatifWrite(db, token, 'hatif-property-definition', `hatif:property-definition:create:${hash(def.name)}`, PROPDEF_URL, 'POST', body);
+    const cb = unwrap(cr.body || {});
     if (cb?.id) map.set(def.name, cb.id);
     await sleep(120);
   }
@@ -212,8 +235,8 @@ Deno.serve(async (req) => {
   if (action === 'props') {
     const token = await accessToken();
     if (body.delete) {
-      const dr = await fetch(`${PROPDEF_URL}/${body.delete}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
-      return json({ ok: dr.ok, status: dr.status, deleted: body.delete });
+      const dr = await hatifWrite(db, token, 'hatif-property-definition', `hatif:property-definition:delete:${body.delete}`, `${PROPDEF_URL}/${body.delete}`, 'DELETE');
+      return json({ ok: dr.ok, status: dr.status, deleted: body.delete, duplicate: dr.duplicate });
     }
     const r = await fetch(PROPDEF_URL, { headers: { Authorization: `Bearer ${token}` } });
     const b = unwrap(await r.json().catch(() => ({})));
@@ -254,7 +277,7 @@ Deno.serve(async (req) => {
         if (g.length < 2) continue;
         g.sort((a, b) => String(a.creationTime).localeCompare(String(b.creationTime)));
         for (const dup of g.slice(1)) {
-          const r = await fetch(`${TAGS_URL}/${dup.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
+          const r = await hatifWrite(db, token, 'hatif-tag-definition', `hatif:tag:delete:${dup.id}`, `${TAGS_URL}/${dup.id}`, 'DELETE');
           if (r.ok) deleted.push(`${k} (${dup.id.slice(0, 8)})`);
           await sleep(100);
         }
@@ -271,14 +294,14 @@ Deno.serve(async (req) => {
     for (const def of TAG_CATALOG) {
       const cur: any = byName.get(def.name);
       if (!cur) {
-        const r = await fetch(TAGS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: def.name, icon: def.icon, isPinned: def.isPinned }) });
-        if (r.ok) created.push(def.name); else failed.push({ name: def.name, step: 'create', status: r.status, body: (await r.text()).slice(0, 120) });
+        const tagPayload = { name: def.name, icon: def.icon, isPinned: def.isPinned };
+        const r = await hatifWrite(db, token, 'hatif-tag-definition', `hatif:tag:create:${hash(def.name)}`, TAGS_URL, 'POST', tagPayload);
+        if (r.ok) created.push(def.name); else failed.push({ name: def.name, step: 'create', status: r.status, state: r.state });
       } else if (cur.icon !== def.icon || cur.isPinned !== def.isPinned || cur.name !== def.name) {
         // name يُصحَّح أيضاً (يشذّب المسافة الزائدة) — نفس الوسم فلا تُفقَد إلصاقاته
-        const r = await fetch(`${TAGS_URL}/${cur.id}`, { method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: def.name, icon: def.icon, isPinned: def.isPinned }) });
-        if (r.ok) updated.push(def.name); else failed.push({ name: def.name, step: 'update', status: r.status, body: (await r.text()).slice(0, 120) });
+        const tagPayload = { name: def.name, icon: def.icon, isPinned: def.isPinned };
+        const r = await hatifWrite(db, token, 'hatif-tag-definition', `hatif:tag:update:${cur.id}:${hash(JSON.stringify(tagPayload))}`, `${TAGS_URL}/${cur.id}`, 'PUT', tagPayload);
+        if (r.ok) updated.push(def.name); else failed.push({ name: def.name, step: 'update', status: r.status, state: r.state });
       }
       await sleep(110);
     }
@@ -391,10 +414,9 @@ Deno.serve(async (req) => {
       for (const m of targets) {
         if (fixed >= maxWrites) break;
         if (!m.correct_name) continue;
-        const pr = await fetch(`${CONTACTS_URL}/${m.contact_id}`, { method: 'PUT',
-          headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: m.correct_name }) });
-        if (pr.ok) fixed++; else if (fixErrors.length < 4) fixErrors.push({ phone: m.phone, status: pr.status });
+        const renamePayload = { name: m.correct_name };
+        const pr = await hatifWrite(db, token, 'hatif-contact-name', `hatif:contact:rename:${m.contact_id}:${hash(JSON.stringify(renamePayload))}`, `${CONTACTS_URL}/${m.contact_id}`, 'PUT', renamePayload);
+        if (pr.ok) fixed++; else if (fixErrors.length < 4) fixErrors.push({ phone: m.phone, status: pr.status, state: pr.state });
         await sleep(90);
       }
     }
@@ -433,9 +455,8 @@ Deno.serve(async (req) => {
       if (!c?.name || !SUFFIX.test(c.name)) { untouched++; continue; }   // ليس من صنعنا → لا نلمسه
       const want = byPhone.get(normPhone(c.phoneNumber));
       if (!want || want === c.name) { untouched++; continue; }
-      const pr = await fetch(`${CONTACTS_URL}/${c.id}`, { method: 'PUT',
-        headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-        body: JSON.stringify({ name: want }) });
+      const renamePayload = { name: want };
+      const pr = await hatifWrite(db, token, 'hatif-contact-name', `hatif:contact:rename:${c.id}:${hash(JSON.stringify(renamePayload))}`, `${CONTACTS_URL}/${c.id}`, 'PUT', renamePayload);
       if (pr.ok) { fixed++; if (samples.length < 4) samples.push({ from: c.name, to: want }); }
       await sleep(90);
     }
@@ -445,7 +466,7 @@ Deno.serve(async (req) => {
   if (action !== 'sync') return json({ error: 'unknown action (preview|props|inspect|name_audit|fixnames|tags|audit|sync)' }, 400);
 
   let token: string, props: Map<string, string>;
-  try { token = await accessToken(); props = await ensureProps(token); }
+  try { token = await accessToken(); props = await ensureProps(db, token); }
   catch (e) { return json({ ok: false, error: String((e as Error).message || e) }); }
 
   const { data: prev } = all || onePhone
@@ -470,10 +491,12 @@ Deno.serve(async (req) => {
       if (!cid) { cid = await findContactId(token, row.phone); await sleep(100); }
       if (!cid) {
         // جهة جديدة: الاسم = أعلى متجر شحناً (يُكتب عند الإنشاء فقط)
-        const cr = await fetch(CONTACTS_URL, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ name: row.name || row.phone, phoneNumber: row.phone }) });
-        if (!cr.ok) { failed++; errors.push({ phone: row.phone, step: 'create', status: cr.status, body: (await cr.text()).slice(0, 150) }); continue; }
-        cid = unwrap(await cr.json().catch(() => ({})))?.id || null;
+        const createPayload = { name: row.name || row.phone, phoneNumber: row.phone };
+        const cr = await hatifWrite(db, token, 'hatif-contact-create', `hatif:contact:create:${row.phone}`, CONTACTS_URL, 'POST', createPayload);
+        if (!cr.ok) {
+          cid = await findContactId(token, row.phone);
+          if (!cid) { failed++; errors.push({ phone: row.phone, step: 'create', status: cr.status, state: cr.state }); continue; }
+        } else cid = unwrap(cr.body || {})?.id || null;
         isNew = true; created++;
         await sleep(100);
       }
@@ -484,10 +507,9 @@ Deno.serve(async (req) => {
       for (const [pname, pval] of Object.entries(vals)) {
         const pid = props.get(pname);
         if (!pid) continue;
-        const pr = await fetch(`${CONTACTS_URL}/${cid}/properties/${pid}`, {
-          method: 'PUT', headers: { Authorization: `Bearer ${token}`, 'content-type': 'application/json' },
-          body: JSON.stringify({ value: pval }) });
-        if (!pr.ok) { bad++; if (errors.length < 5) errors.push({ phone: row.phone, prop: pname, status: pr.status, body: (await pr.text()).slice(0, 120) }); }
+        const propertyPayload = { value: pval };
+        const pr = await hatifWrite(db, token, 'hatif-contact-property', `hatif:contact:property:${cid}:${pid}:${hash(JSON.stringify(propertyPayload))}`, `${CONTACTS_URL}/${cid}/properties/${pid}`, 'PUT', propertyPayload);
+        if (!pr.ok) { bad++; if (errors.length < 5) errors.push({ phone: row.phone, prop: pname, status: pr.status, state: pr.state }); }
         await sleep(90);
       }
       const ok = bad === 0;

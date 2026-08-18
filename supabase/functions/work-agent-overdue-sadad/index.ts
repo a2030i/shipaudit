@@ -1,4 +1,5 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { riyadhDateKey, sha256Hex } from '../_shared/idempotency.ts';
 
 const cors = { 'Access-Control-Allow-Origin':'https://shipaudit-five.vercel.app', 'Access-Control-Allow-Headers':'authorization, x-client-info, apikey, content-type' };
 const json = (body: unknown, status=200) => new Response(JSON.stringify(body),{status,headers:{...cors,'Content-Type':'application/json'}});
@@ -46,27 +47,29 @@ Deno.serve(async (req) => {
   });
 
   const now=new Date();
-  const riyadh=new Date(now.getTime()+3*3600000);
-  const cycle=`${riyadh.getUTCFullYear()}-${String(riyadh.getUTCMonth()+1).padStart(2,'0')}-${String(riyadh.getUTCDate()).padStart(2,'0')}`;
+  const cycle=riyadhDateKey(now);
   const campaignName=`وكيل سداد المتأخرات ${cycle}`;
   const recipients=candidates.map(r=>({to:r.phone,name:r.store_name||r.customer_name,amount:r.owed,
     vars:[r.store_name||r.customer_name,r.owed.toLocaleString('en-US',{maximumFractionDigits:2}),String(r.invoice_count)],
     idempotency_ref:`work-agent:overdue-sadad:${cycle}:${r.phone}`}));
-  const { data:run,error:runError }=await db.from('work_agent_runs').insert({agent_id:agent.id,status:'running',trigger_type:scheduled?'schedule':'manual',checked_count:(raw||[]).length,approved_by:userId,details:{cycle,missing_phone:missingPhone}}).select('id').single();
-  if (runError) return json({ok:false,error:runError.message},500);
-  let queueRows=0;
+  const batches=[];
+  for(let i=0;i<recipients.length;i+=100) batches.push(recipients.slice(i,i+100));
+  const inputHash=await sha256Hex(recipients);
+  const runKey=`work-agent:overdue-sadad:${cycle}:${inputHash}`;
   try {
-    for(let i=0;i<recipients.length;i+=100){
-      const { error:qError }=await db.from('campaign_queue').insert({scheduled_at:new Date().toISOString(),template_name:'sadad',recipients:recipients.slice(i,i+100),bucket_label:campaignName,created_by:userId});
-      if(qError) throw qError; queueRows++;
-    }
-    await db.from('work_agent_runs').update({status:'succeeded',finished_at:new Date().toISOString(),action_count:recipients.length,summary:`جُدولت ${recipients.length} رسالة سداد`,details:{cycle,missing_phone:missingPhone,queue_rows:queueRows,total_owed:candidates.reduce((s,r)=>s+r.owed,0)}}).eq('id',run.id);
-    await db.from('work_agents').update({last_run_at:new Date().toISOString()}).eq('id',agent.id);
-    if (recipients.length) fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/campaign-runner`,{method:'POST',headers:{'Content-Type':'application/json','X-Cron-Key':secret?.cron_key||''},body:'{}'}).catch(()=>{});
-    return json({ok:true,queued:recipients.length,missing_phone:missingPhone,total_owed:candidates.reduce((s,r)=>s+r.owed,0),run_id:run.id});
+    const totalOwed=candidates.reduce((s,r)=>s+r.owed,0);
+    const {data:claimed,error:claimError}=await db.rpc('enqueue_idempotent_work_agent_campaign',{
+      p_agent_id:agent.id,p_idempotency_key:runKey,p_trigger_type:scheduled?'schedule':'manual',
+      p_checked_count:(raw||[]).length,p_action_count:recipients.length,
+      p_summary:`جُدولت ${recipients.length} رسالة سداد`,
+      p_details:{cycle,missing_phone:missingPhone,total_owed:totalOwed},p_approved_by:userId,
+      p_template_name:'sadad',p_bucket_label:campaignName,p_batches:batches,
+    });
+    if(claimError) throw claimError;
+    if(claimed?.inserted===true&&recipients.length) fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/campaign-runner`,{method:'POST',headers:{'Content-Type':'application/json','X-Cron-Key':secret?.cron_key||''},body:'{}'}).catch(()=>{});
+    return json({ok:true,queued:claimed?.inserted===true?recipients.length:0,duplicate:claimed?.inserted!==true,missing_phone:missingPhone,total_owed:totalOwed,run_id:claimed?.run_id,queue_rows:claimed?.queue_rows||0});
   } catch(e) {
     const message=String((e as Error).message||e);
-    await db.from('work_agent_runs').update({status:'failed',finished_at:new Date().toISOString(),failed_count:recipients.length,summary:'فشل تجهيز حملة السداد',details:{error:message}}).eq('id',run.id);
     return json({ok:false,error:message},500);
   }
 });

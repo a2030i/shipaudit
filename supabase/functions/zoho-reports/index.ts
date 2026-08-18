@@ -16,6 +16,7 @@
 // **قراءة فقط** — لا كتابة في زوهو إطلاقاً (قاعدة المستخدم الثابتة §1.26).
 
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { sha256Hex } from '../_shared/idempotency.ts';
 
 const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
 const CORS = {
@@ -68,6 +69,27 @@ async function accessToken(db: ReturnType<typeof svc>) {
 }
 
 const isDate = (s: string) => /^\d{4}-\d{2}-\d{2}$/.test(s || '');
+
+async function saveReportSnapshot(
+  db: ReturnType<typeof svc>,
+  reportKey: string,
+  periodFrom: string,
+  periodTo: string,
+  payload: unknown,
+) {
+  const payloadHash = await sha256Hex(payload);
+  const idempotencyKey = `zoho-report:${reportKey}:${periodFrom}:${periodTo}:${payloadHash}`;
+  const { data, error } = await db.rpc('store_idempotent_financial_report_snapshot', {
+    p_idempotency_key: idempotencyKey,
+    p_report_key: reportKey,
+    p_period_from: periodFrom,
+    p_period_to: periodTo,
+    p_payload: payload,
+    p_source: 'zoho_books_api',
+  });
+  if (error) throw new Error(`snapshot save failed: ${error.message}`);
+  return data;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
@@ -167,10 +189,8 @@ Deno.serve(async (req) => {
       };
       const { error } = await db.from('vat_snapshots').upsert(row);
       if (error) return json({ error: `save failed: ${error.message}` }, 500);
-      await db.from('zoho_financial_report_snapshots').insert({
-        report_key: 'vat_summary', period_from: qFrom, period_to: qTo, payload: j,
-      });
-      return json({ ok: true, snapshot: row });
+      const stored = await saveReportSnapshot(db, 'vat_summary', qFrom, qTo, j);
+      return json({ ok: true, snapshot: row, snapshot_inserted: stored?.inserted === true });
     }
 
     const from = String(body.from || '');
@@ -216,10 +236,8 @@ Deno.serve(async (req) => {
       const r = await booksFetch(`${apiDomain}/books/v3/reports/profitandloss?${qs}`);
       const j = await r.json();
       if (j.code !== 0) return json({ error: `zoho: ${j.message || JSON.stringify(j)}`, code: j.code }, 400);
-      await db.from('zoho_financial_report_snapshots').insert({
-        report_key: 'profit_and_loss', period_from: from, period_to: to, payload: j,
-      });
-      return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j });
+      const stored = await saveReportSnapshot(db, 'profit_and_loss', from, to, j);
+      return json({ ok: true, from, to, profit_and_loss: j.profit_and_loss ?? j, snapshot_inserted: stored?.inserted === true });
     }
 
     // تقارير مالية إضافية — قائمة بيضاء فقط. بعض مؤسسات Zoho قد لا تتيح
@@ -237,10 +255,8 @@ Deno.serve(async (req) => {
       const r = await booksFetch(`${apiDomain}/books/v3/reports/${endpoint}?${qs}`);
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.code !== 0) return json({ error: `zoho: ${j.message || r.status}`, code: j.code }, 400);
-      await db.from('zoho_financial_report_snapshots').insert({
-        report_key: report, period_from: from, period_to: to, payload: j,
-      });
-      return json({ ok: true, report, from, to, data: j });
+      const stored = await saveReportSnapshot(db, report, from, to, j);
+      return json({ ok: true, report, from, to, data: j, snapshot_inserted: stored?.inserted === true });
     }
 
     return json({ error: 'unknown action' }, 400);

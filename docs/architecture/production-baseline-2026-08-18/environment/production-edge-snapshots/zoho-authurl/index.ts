@@ -1,0 +1,71 @@
+
+// zoho-authurl — يبني رابط موافقة Zoho بالصلاحيات الموسّعة (قراءة كاملة +
+// كتابة محدودة) ليمنح المدير صلاحية «تطبيق الرصيد الدائن» بنقرة داخل
+// النظام. الاستبدال يحتاج تأكيداً صريحاً في /zoho-callback، وOAuth state
+// الموقّع يربط الرد بالمدير الذي بدأ العملية.
+// لا يمسّ التطبيق الداخلي القديم. admin أو صلاحية zoho.manage_connection.
+
+import { createClient } from 'npm:@supabase/supabase-js@2';
+import { createZohoOAuthState } from '../_shared/zohoOAuthState.ts';
+
+const APP_ORIGIN = 'https://shipaudit-five.vercel.app';
+const CORS = {
+  'Access-Control-Allow-Origin': APP_ORIGIN,
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+};
+const json = (b: unknown, s = 200) =>
+  new Response(JSON.stringify(b), { status: s, headers: { ...CORS, 'Content-Type': 'application/json' } });
+
+// الصلاحيات الموسّعة: قراءة كاملة + كتابة محدودة على الوحدات غير الحسّاسة.
+// **صفر DELETE · banking.READ فقط · صفر banking.CREATE/UPDATE · صفر settings.UPDATE.**
+// تطبيق الرصيد: الدفعة الزائدة = PUT customerpayments (UPDATE)؛ والإشعار الدائن
+// = POST /creditnotes/{id}/invoices الذي يعتبره زوهو CREATE فيحتاج
+// **creditnotes.CREATE** (بدونها «not authorized» — مُثبَت على Tine 2026-07-06).
+// creditnotes.CREATE تسمح تقنياً بإنشاء إشعارات، لكن الكود يطبّق فقط ولا يُنشئ
+// مستنداً أبداً (لا استدعاء POST /creditnotes). قرار المستخدم صراحةً: المصدر
+// (إشعار/دفعة) يجب ألّا يفرّق في التسديد.
+const SCOPE = [
+  // invoices.CREATE is required by Zoho's e-invoice push endpoint. The
+  // application still never creates an invoice; this grant is used only by
+  // zatca-auto-push to submit an existing Zoho invoice to Fatoora.
+  'ZohoBooks.invoices.READ', 'ZohoBooks.invoices.UPDATE', 'ZohoBooks.invoices.CREATE',
+  'ZohoBooks.creditnotes.READ', 'ZohoBooks.creditnotes.UPDATE', 'ZohoBooks.creditnotes.CREATE',
+  'ZohoBooks.customerpayments.READ', 'ZohoBooks.customerpayments.UPDATE',
+  'ZohoBooks.contacts.READ', 'ZohoBooks.contacts.UPDATE',
+  'ZohoBooks.expenses.READ', 'ZohoBooks.bills.READ', 'ZohoBooks.purchaseorders.READ',
+  'ZohoBooks.vendorpayments.READ', 'ZohoBooks.accountants.READ',
+  // banking.CREATE is limited in application code to importing an approved
+  // statement into an explicitly linked Zoho bank account. No categorization
+  // or deletion is performed automatically.
+  'ZohoBooks.banking.READ', 'ZohoBooks.banking.CREATE', 'ZohoBooks.debitnotes.READ',
+  'ZohoBooks.settings.READ', 'ZohoBooks.reports.READ',
+].join(',');
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS });
+  const db = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
+
+  // مصادقة داخلية: المدير أو موظف مُنح صلاحية الاتصال الحساسة صراحةً.
+  const authHeader = req.headers.get('Authorization') || '';
+  const uc = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!,
+    { global: { headers: { Authorization: authHeader } } });
+  const { data: { user } } = await uc.auth.getUser();
+  if (!user) return json({ error: 'unauthorized' }, 401);
+  const { data: prof } = await db.from('profiles').select('role,permissions').eq('id', user.id).maybeSingle();
+  if (prof?.role !== 'admin' && prof?.permissions?.['zoho.manage_connection'] !== true) {
+    return json({ error: 'forbidden — تحتاج صلاحية إعادة تفويض زوهو' }, 403);
+  }
+
+  const id = Deno.env.get('ZOHO_CLIENT_ID');
+  const secret = Deno.env.get('ZOHO_CLIENT_SECRET');
+  if (!id || !secret) return json({ error: 'missing_oauth_secrets' }, 400);
+  const { data: za } = await db.from('zoho_auth').select('accounts_domain').eq('id', 1).maybeSingle();
+  const acc = za?.accounts_domain || 'accounts.zoho.com';
+  const state = await createZohoOAuthState(user.id, secret);
+  const url = `https://${acc}/oauth/v2/auth?response_type=code&client_id=${encodeURIComponent(id)}`
+    + `&scope=${encodeURIComponent(SCOPE)}&redirect_uri=${encodeURIComponent(`${APP_ORIGIN}/zoho-callback`)}`
+    + `&access_type=offline&prompt=consent&state=${encodeURIComponent(state)}`;
+  return json({ ok: true, url });
+});
+
