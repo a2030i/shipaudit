@@ -6,9 +6,9 @@
 //   /receivables    → الكشف الداخلي (snapshot — كان داخل ملف العملاء)
 // نفس نمط CustomerHub المجرَّب: الأبناء يبقون mounted (display:none)، كلٌّ
 // يجلب فقط عند تفعيله (isActive). المسارات القديمة تهبط على تبويبها،
-// والرابط القانوني /customer-money?tab=<id>.
+// والرابط القانوني /customer-money?view=<id> مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { HandCoins, PhoneCall, Scale, FileText, BarChart3 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -17,11 +17,12 @@ import Collections         from './Collections.jsx';
 import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
 import CollectionTeamPerformance from './CollectionTeamPerformance.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
   {
-    id: 'money', label: 'نظرة عامة وأعمار الدين', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
-    eyebrow: 'مرجع الدين', purpose: 'اعرف المبلغ الحقيقي المستحق من كل عميل',
+    id: 'money', label: 'نظرة عامة وأعمار المستحقات', icon: HandCoins, component: CustomerMoney, perm: 'receivables.view',
+    eyebrow: 'مرجع المديونية', purpose: 'اعرف المبلغ الحقيقي المستحق من كل عميل',
     description: 'يعرض فواتير زوهو المفتوحة ويقودك مباشرة إلى العميل والفواتير المتأخرة. هذه الشاشة للقرار المالي، وليست سجل اتصالات.',
     outcome: 'عميل ومبلغ وفواتير واضحة', tone: 'var(--green)',
   },
@@ -60,12 +61,13 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function CollectionsHub({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
-    const fromQuery = params.get('tab');
+    const fromQuery = params.get('view') || params.get('tab');
     if (fromQuery && visibleTabs.some(t => t.id === fromQuery)) return fromQuery;
     const fromPath = LEGACY_PATH_TO_TAB[location.pathname];
     if (fromPath && visibleTabs.some(t => t.id === fromPath)) return fromPath;
@@ -80,8 +82,26 @@ export default function CollectionsHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
+  const changeView = (next) => {
+    if (!visibleTabs.some(item => item.id === next)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('view', next);
+    params.delete('tab');
+    setTab(next);
+    navigate(`/customer-money?${params.toString()}`);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <WorkspaceTabs
+        scope="customer-collections"
+        title="المستحقات والتحصيل"
+        subtitle="من المديونية إلى الفاتورة ثم إجراء التحصيل والنتيجة"
+        tone="#16A34A"
+        tabs={visibleTabs}
+        activeId={tab}
+        onChange={changeView}
+      />
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;

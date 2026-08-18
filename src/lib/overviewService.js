@@ -13,6 +13,24 @@
 import { supabase } from './supabase.js';
 import { carrierScore } from './carrierScore.js';
 
+// A slow optional dashboard source must not hold the whole home page in its
+// loading state forever. The underlying request may still finish later, but
+// this read is marked unavailable after the deadline so the rest of the
+// independently verified sources can render.
+export const OVERVIEW_SOURCE_TIMEOUT_MS = 8_000;
+
+export function withSourceTimeout(promise, timeoutMs = OVERVIEW_SOURCE_TIMEOUT_MS, label = 'مصدر البيانات') {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`انتهت مهلة قراءة ${label}`)),
+      Math.max(0, Number(timeoutMs) || 0),
+    );
+  });
+  return Promise.race([Promise.resolve(promise), timeout])
+    .finally(() => clearTimeout(timer));
+}
+
 // 'YYYY-MM' helpers
 export const currentPeriod = () => {
   const d = new Date();
@@ -137,6 +155,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const { loadEffectiveBankBalance } = await import('./bankBalanceService.js');
   const { loadCarrierNetBalances } = await import('./codSettlementService.js');
   const { loadLatestMerchants, merchantSnapshotSourceState } = await import('./merchantsService.js');
+  const { loadAccountingCycle } = await import('./accountingCycleService.js');
   // رصيد البنك = نقطة الحقيقة المشتركة `loadEffectiveBankBalance` (تجمع ختامي
   // آخر كشف **لكل بنك**). كان هنا استعلام مكرَّر بـ`.limit(1)` = آخر كشف واحد
   // عبر كل البنوك، فأظهر رصيد بنك واحد وأخفى الباقي (بلاغ المستخدم 2026-07-28:
@@ -178,6 +197,10 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
       if (error) throw error;
       return data || null;
     } },
+    // جاهزية الإقفال لا تُستنتج من عدد المصادر العام. هذا هو نفس العرض
+    // التشغيلي الذي يحمي زر الإقفال داخل دورة المحاسب، وبذلك تظل المراحل
+    // الحرجة وأخطاء مصادرها هي المرجع دون إنشاء حساب موازٍ في الرئيسية.
+    { key: 'accountingCycle', label: 'جاهزية إقفال دورة المحاسب', run: () => loadAccountingCycle(thisPeriod) },
     // Customer decisions combine merchant state with receivables. Keep the
     // Zoho mirror freshness explicit instead of treating a cached dashboard
     // as live truth after a failed or delayed sync.
@@ -207,7 +230,9 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   ];
   // A failing source is reported independently; it does not blank the page or
   // become a misleading zero.
-  const settled = await Promise.allSettled(tasks.map(task => task.run()));
+  const settled = await Promise.allSettled(tasks.map(task => (
+    withSourceTimeout(Promise.resolve().then(task.run), OVERVIEW_SOURCE_TIMEOUT_MS, task.label)
+  )));
   const results = new Map(tasks.map((task, index) => [task.key, settled[index]]));
   const valueOf = (key, fallback) => {
     const result = results.get(key);
@@ -267,6 +292,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
   const customerMoney = valueOf('customerMoney', null);
   const merchantSnapshot = valueOf('merchants', null);
   const lamhaBalance = valueOf('lamhaBalance', null);
+  const accountingCycle = valueOf('accountingCycle', null);
   const zohoFinancial = valueOf('zohoFinancial', null);
   const teamReadinessRaw = valueOf('teamReadiness', null);
   const teamStaffing = valueOf('teamStaffing', null);
@@ -314,6 +340,26 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     sales: mergeReadiness(collectionOperational, teamStaffing?.sales),
   } : null;
 
+  const closeBlockers = [];
+  if (sourceStates.accountingCycle?.status === 'unavailable' || !accountingCycle) {
+    closeBlockers.push({ source: 'دورة المحاسب', reason: sourceStates.accountingCycle?.error || 'تعذر التحقق من مصادر الإقفال الحرجة.' });
+  } else {
+    for (const error of accountingCycle.sourceErrors || []) {
+      closeBlockers.push({ source: error.label || error.source || 'مصدر إقفال', reason: error.message || 'المصدر غير متاح.' });
+    }
+    for (const stage of (accountingCycle.stages || []).slice(0, 6)) {
+      if (stage.status === 'complete') continue;
+      closeBlockers.push({ source: stage.label, reason: stage.reason || 'المرحلة غير مكتملة للفترة المحددة.' });
+    }
+  }
+  const closeReadiness = {
+    ready: !!accountingCycle?.prerequisiteComplete && closeBlockers.length === 0,
+    checkedAt,
+    completed: accountingCycle?.stages?.slice(0, 6).filter(stage => stage.status === 'complete').length || 0,
+    required: 6,
+    blockers: closeBlockers,
+  };
+
   const thisSnap = (thisSnapArr[0] || {});
   const prevSnap = (prevSnapArr[0] || {});
 
@@ -351,6 +397,7 @@ export async function loadOverview({ period = null, topN = 5 } = {}) {
     prevPeriod,
     loadedAt: checkedAt,
     sourceStates,
+    closeReadiness,
     partial: Object.values(sourceStates).some(source => source.status === 'unavailable'),
     sectionAvailability: {
       monthly: sourceStates.monthly.status !== 'unavailable',

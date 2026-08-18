@@ -22,6 +22,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -210,6 +211,17 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
 
   return (
     <div className="hatif-center workspace-page">
+      {!settingsOnly ? (
+        <WorkspaceTabs
+          scope="sales-communications"
+          title="الحملات والتواصل"
+          subtitle="الحملات والرسائل والمكالمات وقياس الأثر في Views منفصلة"
+          tone="#8B5CF6"
+          tabs={visibleTabs}
+          activeId={tab}
+          onChange={changeTab}
+        />
+      ) : null}
       <div className="hatif-center__body">
         <div
           aria-label={activeMeta?.label}

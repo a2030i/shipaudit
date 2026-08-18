@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import {
   ArrowLeft,
   Download,
@@ -68,10 +68,11 @@ export default function FigmaCustomerPortfolio({
   onCampaign,
   campaignPanel,
   campaignActionLabel = 'اختيار شرائح الحملة',
+  segment = 'all',
+  onSegmentChange,
   sourceUpdatedAt,
   sourceHealthy = true,
 }) {
-  const [segment, setSegment] = useState('all');
   const model = useMemo(() => customers.map((customer) => {
     const task = taskByCustomer?.get(customer.name) || null;
     const decision = customerDecision(customer, task);
@@ -120,14 +121,14 @@ export default function FigmaCustomerPortfolio({
       {campaignPanel && <div className="fcp-campaign-panel">{campaignPanel}</div>}
 
       <div className="fcp-metrics">
-        <Metric tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" value={groups.stop.length} note="دفع لاحق · نشط · +30 يوم" active={segment === 'stop'} onClick={() => setSegment(segment === 'stop' ? 'all' : 'stop')}/>
-        <Metric tone="green" icon={UserRoundCheck} title="شغّل الحسابات الجاهزة" value={groups.activate.length} note="غير نشط · بلا دين متأخر" active={segment === 'activate'} onClick={() => setSegment(segment === 'activate' ? 'all' : 'activate')}/>
-        <Metric tone="blue" icon={WalletCards} title="اخصم الرصيد المقدم" value={groups.deduct.length} note="دفع مسبق · رصيد + فواتير" active={segment === 'deduct'} onClick={() => setSegment(segment === 'deduct' ? 'all' : 'deduct')}/>
-        <Metric tone="amber" icon={UserRoundCog} title="عيّن مسؤول متابعة" value={groups.assign.length} note="حسابات بلا مسؤول حالي" active={segment === 'assign'} onClick={() => setSegment(segment === 'assign' ? 'all' : 'assign')}/>
+        <Metric tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" value={groups.stop.length} note="دفع لاحق · نشط · +30 يوم" active={segment === 'stop'} onClick={() => onSegmentChange?.(segment === 'stop' ? 'all' : 'stop')}/>
+        <Metric tone="green" icon={UserRoundCheck} title="شغّل الحسابات الجاهزة" value={groups.activate.length} note="غير نشط · بلا مستحق متأخر" active={segment === 'activate'} onClick={() => onSegmentChange?.(segment === 'activate' ? 'all' : 'activate')}/>
+        <Metric tone="blue" icon={WalletCards} title="اخصم الرصيد المقدم" value={groups.deduct.length} note="دفع مسبق · رصيد + فواتير" active={segment === 'deduct'} onClick={() => onSegmentChange?.(segment === 'deduct' ? 'all' : 'deduct')}/>
+        <Metric tone="amber" icon={UserRoundCog} title="عيّن مسؤول متابعة" value={groups.assign.length} note="حسابات بلا مسؤول حالي" active={segment === 'assign'} onClick={() => onSegmentChange?.(segment === 'assign' ? 'all' : 'assign')}/>
       </div>
 
       <div className="fcp-tools">
-        <label className="fcp-search"><Search size={17}/><input value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="ابحث باسم العميل أو رقم المتجر أو الجوال…"/></label>
+        <label className="fcp-search"><Search size={17}/><input aria-label="البحث في محفظة العملاء" value={query} onChange={(event) => onQueryChange(event.target.value)} placeholder="ابحث باسم العميل أو رقم المتجر أو الجوال…"/></label>
         <div className="fcp-segments" aria-label="فلاتر قرارات العملاء">
           {[
             ['all', `كل القرارات ${model.length}`],
@@ -135,13 +136,13 @@ export default function FigmaCustomerPortfolio({
             ['activate', `تشغيل ${groups.activate.length}`],
             ['deduct', `خصم رصيد ${groups.deduct.length}`],
             ['assign', `بلا مسؤول ${groups.assign.length}`],
-          ].map(([key, label]) => <button type="button" key={key} className={segment === key ? 'is-active' : ''} onClick={() => setSegment(key)}>{label}</button>)}
+          ].map(([key, label]) => <button type="button" key={key} className={segment === key ? 'is-active' : ''} aria-pressed={segment === key} onClick={() => onSegmentChange?.(key)}>{label}</button>)}
         </div>
       </div>
 
       <div className="fcp-table-wrap">
         <table className="fcp-table">
-          <thead><tr><th>العميل</th><th>نموذج الدفع</th><th>الحالة</th><th>الدين / الرصيد</th><th>أقدم تأخير</th><th>المسؤول</th><th>الإجراء الآن</th></tr></thead>
+          <thead><tr><th>العميل</th><th>نموذج الدفع</th><th>الحالة</th><th>المديونية / الرصيد</th><th>أقدم استحقاق</th><th>المسؤول</th><th>الإجراء الآن</th></tr></thead>
           <tbody>
             {visible.slice(0, 40).map(({ customer, task, decision, assignee, late }) => (
               <tr key={`${customer.name}-${customer.storeId || ''}`}>

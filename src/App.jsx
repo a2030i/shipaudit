@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, Megaphone, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, Megaphone, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark, ListFilter,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
@@ -13,7 +13,12 @@ import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
-import { NAV_SECTIONS as NAV_SECTION_MODEL, NAV_GROUPS as NAV_GROUP_MODEL, applyNavigationIA } from './lib/navigation.js';
+import {
+  NAV_SECTIONS as NAV_SECTION_MODEL,
+  NAV_GROUPS as NAV_GROUP_MODEL,
+  CENTER_WORKSPACES,
+  applyNavigationIA,
+} from './lib/navigation.js';
 import { loadCarriers, loadAuditByIdFromDB } from './lib/coreService.js';
 const CarrierProfile = lazy(() => import('./pages/CarrierProfile.jsx'));
 const InternalExports = lazy(() => import('./pages/InternalExports.jsx'));
@@ -130,11 +135,12 @@ const ROUTE_ITEMS = [
 
   // ── نظام الأموال — هل نربح؟ → البنك → زوهو → المطابقة → الديون → المستقبل ──
   { id: 'pnl',       path: '/pnl',      label: 'الربح الفعلي',  icon: TrendingUp, section: 'money', navOrder: 30, permKey: 'money.pnl' },
-  { id: 'money',     path: '/money',    label: 'حركة الأموال',  icon: Banknote,   section: 'money', navOrder: 10, permAny: ['cod.view', 'payments.view'],
+  { id: 'money',     path: '/money',    label: 'النقد والتسويات',  icon: Banknote,   section: 'money', navOrder: 10, permAny: ['bank.view', 'cod.view', 'payments.view'],
     subTabs: [
+      { tabId: 'bank',     label: 'البنوك',              icon: Wallet,     legacy: '/bank', perm: 'bank.view' },
       { tabId: 'cod',      label: 'تحصيل شركات الشحن', icon: Banknote,   legacy: '/cod-settlements', perm: 'cod.view' },
       { tabId: 'payments', label: 'دفعات الناقلين',     icon: CreditCard, legacy: '/payments', perm: 'payments.view' },
-      { tabId: 'bank',     label: 'الحسابات البنكية',   icon: Wallet,     legacy: '/bank', perm: 'bank.view' },
+      { tabId: 'unclassified', label: 'العمليات غير المصنفة', icon: ListFilter, perm: 'bank.view' },
     ] },
   { id: 'bank',      path: '/bank',     label: 'الحسابات البنكية', icon: Wallet, section: 'money', navOrder: 20, permKey: 'bank.view' },
   { id: 'cash-aging', path: '/cash-aging', label: 'أعمار التحصيل والسداد', icon: Wallet, section: 'money', navOrder: 40, permKey: 'ledger.view' },
@@ -300,7 +306,15 @@ const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank
 // as four tabs. Legacy paths land on the right tab automatically.
 const MONEY_HUB_PATHS = ['/money', '/cod-settlements', '/payments', '/bank'];
-const REPORTS_WORKSPACE_PATHS = ['/reports', '/monthly-report', '/internal-exports'];
+const ACCOUNTING_WORKSPACE_PATHS = ['/zoho-data', '/reconciliation'];
+const FINANCE_PLANNING_PATHS = ['/pnl', '/cash-aging', '/forecast', '/periods'];
+const OPERATIONS_CARRIER_PATHS = ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks'];
+const OPERATIONS_AUDIT_PATHS = ['/drop', '/audits', '/aramex-statements', '/ledger'];
+const OPERATIONS_BILLING_PATHS = ['/fulfillment', '/weight-billing'];
+const REPORTS_ANALYSIS_PATHS = ['/reports', '/monthly-report'];
+const REPORTS_ARCHIVE_PATHS = ['/internal-exports', '/activity-log'];
+const ADMIN_CARRIER_PATHS = ['/carriers', '/contracts'];
+const ADMIN_INTEGRATION_PATHS = ['/operations', '/uploads', '/webhook', '/work-agents'];
 
 const ROLE_LABEL = { admin: 'مدير', accountant: 'موظف' };
 
@@ -808,6 +822,7 @@ function AppInner({ theme, toggleTheme }) {
                   <CenterLanding
                     section={section}
                     groups={groups}
+                    workspaces={CENTER_WORKSPACES[section.id]}
                     visibleSubTabsFor={visibleSubTabsFor}
                     subTabPath={subTabPath}
                     onNavigate={goto}
@@ -820,21 +835,6 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/decisions'} scroll>
               <DecisionsBoard isActive={pathname==='/decisions'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/work-agents'} scroll>
-              <WorkAgents isActive={pathname==='/work-agents'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/operations'} scroll>
-              <OperationsCenter isActive={pathname==='/operations'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/uploads'} scroll>
-              <UploadsHub isActive={pathname==='/uploads'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/integrity'} scroll>
-              <IntegrityCheck isActive={pathname==='/integrity'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/activity-log'} scroll>
-              <ActivityLog isActive={pathname==='/activity-log'}/>
-            </PageSlot>
             <PageSlot active={pathname==='/accounting-cycle'} scroll>
               <AccountingCycle carriers={carriers} isActive={pathname==='/accounting-cycle'}/>
             </PageSlot>
@@ -844,22 +844,73 @@ function AppInner({ theme, toggleTheme }) {
             {pathname === '/next-actions' && (
               <Navigate to="/retargeting?tab=today" replace/>
             )}
-            {/* /hub + /carrier-kpi + /claims all render this workspace;
-                CarriersWorkspace reads ?tab= or the legacy path to pick
-                the right inner tab (cards / KPIs / claims). */}
-            <PageSlot active={CARRIER_WORKSPACE_PATHS.includes(pathname)} scroll>
-              <CarriersWorkspace carriers={carriers} isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/>
+            <PageSlot active={OPERATIONS_CARRIER_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="operations-carriers"
+                title="الناقلون والمتابعة"
+                subtitle="حالة الناقلين والأداء والمطالبات والأسعار والمهام"
+                tone="#2B68DE"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  { id: 'carriers', path: '/hub', label: 'حالة الناقلين', icon: Building2,
+                    eyebrow: 'صورة تشغيلية', purpose: 'ابدأ من حالة كل ناقل وما يحتاج متابعة',
+                    description: 'الأرصدة والفواتير والتحصيل وآخر المراجعات تبقى من مصادرها الحالية.',
+                    outcome: 'ناقل واضح وخطوة تالية', tone: 'var(--brand)',
+                    render: () => <CarriersWorkspace carriers={carriers} isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/> },
+                  { id: 'performance', path: '/carrier-kpi', label: 'مقارنة الأداء', icon: BarChart3,
+                    eyebrow: 'قرار تشغيلي', purpose: 'قارن الالتزام والجودة والتكلفة بين الناقلين',
+                    description: 'يفتح عرض الأداء التاريخي نفسه دون تغيير تعريف أي مؤشر.',
+                    outcome: 'مقارنة قابلة للقرار', tone: 'var(--accent3)',
+                    render: () => <CarriersWorkspace carriers={carriers} isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/> },
+                  { id: 'claims', path: '/claims', label: 'المطالبات', icon: Scale,
+                    eyebrow: 'استرداد الفروقات', purpose: 'تابع المطالبة من الاكتشاف حتى الاسترداد',
+                    description: 'الفروقات والمبالغ المستردة تبقى منفصلة وقابلة للتتبع.',
+                    outcome: 'مطالبة موثقة', tone: 'var(--gold)',
+                    render: () => <CarriersWorkspace carriers={carriers} isActive={CARRIER_WORKSPACE_PATHS.includes(pathname)}/> },
+                  { id: 'platforms', path: '/platform-carriers', label: 'أسعار المنصات', icon: DollarSign,
+                    eyebrow: 'مرجع الأسعار', purpose: 'قارن أسعار الناقلين بين المنصات',
+                    description: 'يبقى مصدر الأسعار وحساباته الحالية كما هي.',
+                    outcome: 'سعر واضح للمقارنة', tone: 'var(--green)',
+                    render: () => <PlatformCarriers isActive={pathname==='/platform-carriers'}/> },
+                  { id: 'tasks', path: '/tasks', label: 'المهام', icon: ListTodo,
+                    eyebrow: 'متابعة الاستحقاق', purpose: 'راجع مهام الناقلين ومواعيدها الصريحة',
+                    description: 'لا يغيّر العرض الجدولة أو قواعد اكتمال الدورة.',
+                    outcome: 'مهمة ومسؤول وموعد', tone: 'var(--red)',
+                    render: () => <Tasks carriers={carriers} isActive={pathname==='/tasks'}/> },
+                ]}
+              />
             </PageSlot>
             <PageSlot active={pathname==='/carrier'} scroll>
               <CarrierProfile/>
             </PageSlot>
-            {/* صفحات الإعدادات مستقلة: القائمة الجانبية هي نقطة التنقل الوحيدة،
-                فلا نكررها كشريط تبويبات غير متوافق داخل صفحة شركات الشحن. */}
-            <PageSlot active={pathname==='/carriers'} scroll>
-              <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/contracts'} scroll>
-              <ContractsOverview isActive={pathname==='/contracts'}/>
+            <PageSlot active={ADMIN_CARRIER_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="admin-carriers"
+                title="شركات الشحن والعقود"
+                subtitle="إعداد الناقل ثم مراجعة عقده وأسعاره في عرض مستقل"
+                tone="#31D5E1"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('carriers.view') ? [{
+                    id: 'carriers', path: '/carriers', label: 'شركات الشحن', icon: Truck,
+                    eyebrow: 'إعداد تشغيلي', purpose: 'أدر تعريف الناقل وخصائص تشغيله',
+                    description: 'لا يغيّر هذا الغلاف بيانات الناقل أو قواعد الملفات.',
+                    outcome: 'ناقل مضبوط بوضوح', tone: 'var(--brand)',
+                    render: () => <CarrierManager carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>,
+                  }] : []),
+                  ...(isAdmin || can('carriers.edit_contract') ? [{
+                    id: 'contracts', path: '/contracts', label: 'العقود والأسعار', icon: ClipboardList,
+                    eyebrow: 'مرجع تعاقدي', purpose: 'راجع العقود والأسعار وفترات سريانها',
+                    description: 'يبقى العقد مصدر قواعد التدقيق الحالي دون تعديل.',
+                    outcome: 'عقد نافذ وقاعدة سعر واضحة', tone: 'var(--gold)',
+                    render: () => <ContractsOverview isActive={pathname==='/contracts'}/>,
+                  }] : []),
+                ]}
+              />
             </PageSlot>
             <PageSlot active={pathname==='/employees'} scroll>
               <EmployeeManager/>
@@ -870,30 +921,103 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/results'}>
               <AuditResultsPage auditFromState={pendingAudit} carriers={carriers} onNewAudit={() => navigate('/upload')} isActive={pathname==='/results'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/audits'} scroll>
-              <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/aramex-statements'} scroll>
-              <CarrierStatements carriers={carriers}/>
-            </PageSlot>
-            <PageSlot active={REPORTS_WORKSPACE_PATHS.includes(pathname)} scroll>
+            <PageSlot active={OPERATIONS_AUDIT_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
-                scope="reports-center"
-                title="التقارير"
-                subtitle="التقارير المالية والتشغيلية والملفات المصدّرة"
-                tone="#22C55E"
+                scope="operations-audit"
+                title="تدقيق وفواتير الناقلين"
+                subtitle="استلام الملف ثم المراجعة والكشف ودفتر الحساب"
+                tone="#2B68DE"
                 activePath={pathname}
-                onNavigate={navigate}
+                onNavigate={goto}
+                showSwitcher
                 tabs={[
-                  ...(isAdmin || can('reports.view_operational') || can('reports.view_financial') || can('reports.view_bank_reconciliation') ? [
-                    { id: 'reports', path: '/reports', label: 'التقارير', icon: FileText, render: () => <ReportsCenter isActive={pathname==='/reports'}/> },
-                  ] : []),
-                  ...(isAdmin || can('reports.view_operational') ? [
-                    { id: 'monthly', path: '/monthly-report', label: 'التقرير الشهري', icon: CalendarRange, render: () => <MonthlyReport isActive={pathname==='/monthly-report'}/> },
-                  ] : []),
-                  ...(isAdmin || can('internal_exports.view') ? [{ id: 'exports', path: '/internal-exports', label: 'الملفات المصدّرة', icon: Download, render: () => <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/> }] : []),
+                  ...(isAdmin || can('audits.create') ? [{
+                    id: 'drop', path: '/drop', label: 'استلام الملفات', icon: Upload,
+                    eyebrow: 'بداية المسار', purpose: 'استقبل ملف الناقل وحدد مساره الصحيح',
+                    description: 'الرفع يستخدم القارئ الحالي ولا يغيّر قواعد التدقيق.',
+                    outcome: 'ملف معروف النوع والناقل', tone: 'var(--brand)',
+                    render: () => <SmartDrop carriers={carriers}/>,
+                  }] : []),
+                  ...(isAdmin || can('audits.view') ? [{
+                    id: 'audits', path: '/audits', label: 'المراجعات', icon: History,
+                    eyebrow: 'قرار التدقيق', purpose: 'راجع الفروقات وحالة كل ملف',
+                    description: 'الاعتماد والرفض والصلاحيات تبقى كما هي.',
+                    outcome: 'مراجعة موثقة وقابلة للفتح', tone: 'var(--accent3)',
+                    render: () => <AuditsHistory onOpen={handleOpenAudit} isActive={pathname==='/audits'}/>,
+                  }] : []),
+                  ...(isAdmin || can('carriers.view') ? [{
+                    id: 'statements', path: '/aramex-statements', label: 'كشوف الناقلين', icon: FileText,
+                    eyebrow: 'كشف ومطابقة', purpose: 'راجع كشف الناقل قبل الانتقال للحساب',
+                    description: 'تبقى بيانات الكشف في عرض مستقل عن المراجعات.',
+                    outcome: 'كشف واضح وحالة متابعة', tone: 'var(--gold)',
+                    render: () => <CarrierStatements carriers={carriers}/>,
+                  }] : []),
+                  ...(isAdmin || can('ledger.view') ? [{
+                    id: 'ledger', path: '/ledger', label: 'دفتر الناقل', icon: BookOpen,
+                    eyebrow: 'حركة الحساب', purpose: 'راجع عمليات الناقل ودفعاته وتسوياته',
+                    description: 'لا يخلط الدفتر بين المراجعة والكشف أو يغيّر القيود.',
+                    outcome: 'حركة قابلة للتتبع', tone: 'var(--green)',
+                    render: () => <CarrierLedger isActive={pathname==='/ledger'}/>,
+                  }] : []),
                 ]}
               />
+            </PageSlot>
+            <PageSlot active={REPORTS_ANALYSIS_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="reports-analysis"
+                title="التقارير والتحليل"
+                subtitle="التقارير الرسمية والتحليل التشغيلي الشهري"
+                tone="#22C55E"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('reports.view_operational') || can('reports.view_financial') || can('reports.view_bank_reconciliation') ? [
+                    { id: 'reports', path: '/reports', label: 'مكتبة التقارير', icon: FileText,
+                      eyebrow: 'إنشاء وتحليل', purpose: 'اختر التقرير ومعاملاته ثم راجع مصدره',
+                      description: 'كل تقرير يحافظ على مصدره وصلاحياته وسجل التصدير الحالي.',
+                      outcome: 'تقرير موثق وقابل للتنزيل', tone: 'var(--green)',
+                      render: () => <ReportsCenter isActive={pathname==='/reports'}/> },
+                  ] : []),
+                  ...(isAdmin || can('reports.view_operational') ? [
+                    { id: 'monthly', path: '/monthly-report', label: 'التقرير الشهري', icon: CalendarRange,
+                      eyebrow: 'متابعة شهرية', purpose: 'راجع حركة كل ناقل خلال الشهر المختار',
+                      description: 'المفوتر والتحصيل والمدفوعات والمراجعات من الخدمة الحالية نفسها.',
+                      outcome: 'صورة شهرية قابلة للمقارنة', tone: 'var(--brand)',
+                      render: () => <MonthlyReport isActive={pathname==='/monthly-report'}/> },
+                  ] : []),
+                ]}
+              />
+            </PageSlot>
+            <PageSlot active={REPORTS_ARCHIVE_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="reports-archive"
+                title="التصدير والأرشيف"
+                subtitle="الملفات الناتجة وسجل العمليات التاريخي في عرضين منفصلين"
+                tone="#22C55E"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('internal_exports.view') ? [{
+                    id: 'exports', path: '/internal-exports', label: 'الملفات المصدّرة', icon: Download,
+                    eyebrow: 'أرشيف الملفات', purpose: 'أعد تنزيل الملفات المصدّرة وتتبع مصدرها',
+                    description: 'السجل الحالي محفوظ كما هو ولا يعاد إنشاء الملف عند التنزيل.',
+                    outcome: 'ملف معروف المصدر والتاريخ', tone: 'var(--green)',
+                    render: () => <InternalExports carriers={carriers} isActive={pathname==='/internal-exports'}/>,
+                  }] : []),
+                  ...(isAdmin || can('system.view_audit_log') ? [{
+                    id: 'activity', path: '/activity-log', label: 'سجل النظام', icon: Activity,
+                    eyebrow: 'أثر تاريخي', purpose: 'اعرف من نفّذ الإجراء ومتى',
+                    description: 'سجل للقراءة والمراجعة ولا يغيّر العمليات المسجلة.',
+                    outcome: 'إجراء قابل للتتبع', tone: 'var(--brand)',
+                    render: () => <ActivityLog isActive={pathname==='/activity-log'}/>,
+                  }] : []),
+                ]}
+              />
+            </PageSlot>
+            <PageSlot active={pathname==='/integrity'} scroll>
+              <IntegrityCheck isActive={pathname==='/integrity'}/>
             </PageSlot>
             {/* هبوط موافقة زوهو OAuth — بلا عنصر قائمة */}
             <PageSlot active={pathname==='/zoho-callback'} scroll>
@@ -911,34 +1035,81 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/settings/hatif'} scroll>
-              <WhatsAppSettings isActive={pathname==='/settings/hatif'} settingsOnly/>
-            </PageSlot>
             <PageSlot active={pathname==='/support'} scroll>
               <SupportBoard isActive={pathname==='/support'}/>
             </PageSlot>
             <PageSlot active={pathname==='/marketers'} scroll>
               <Marketers isActive={pathname==='/marketers'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/zoho-data'} scroll>
-              <ZohoData isActive={pathname==='/zoho-data'}/>
+            <PageSlot active={ACCOUNTING_WORKSPACE_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="finance-accounting"
+                title="الحسابات والمطابقة"
+                subtitle="بيانات Zoho والمطابقات المحاسبية من مصادرها الحالية"
+                tone="#2563EB"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('zoho.view') ? [{
+                    id: 'zoho', path: '/zoho-data', label: 'زوهو والحسابات', icon: BookOpen,
+                    eyebrow: 'المصدر المحاسبي', purpose: 'راجع بيانات Zoho وحالة الربط',
+                    description: 'الفواتير والموردون والبنوك والقيود تبقى بعروض منفصلة داخل صفحة Zoho.',
+                    outcome: 'بيانات محاسبية قابلة للتتبع', tone: 'var(--brand)',
+                    render: () => <ZohoData isActive={pathname==='/zoho-data'}/>,
+                  }] : []),
+                  ...(isAdmin || can('reconciliation.view') ? [{
+                    id: 'reconciliation', path: '/reconciliation', label: 'مطابقة الأرصدة', icon: GitCompare,
+                    eyebrow: 'فحص الفروقات', purpose: 'قارن الرصيد الداخلي بمرجع Zoho',
+                    description: 'المطابقة لا تغيّر مصدر الدين؛ تعرض الفرق وتفتح إجراء المراجعة فقط.',
+                    outcome: 'فرق معروف ومصدر واضح', tone: 'var(--accent3)',
+                    render: () => <Reconciliation isActive={pathname==='/reconciliation'}/>,
+                  }] : []),
+                ]}
+              />
             </PageSlot>
-            <PageSlot active={pathname==='/pnl'} scroll>
-              <FinancialPosition isActive={pathname==='/pnl'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/drop'} scroll>
-              <SmartDrop carriers={carriers}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/cash-aging'} scroll>
-              <CashAging isActive={pathname==='/cash-aging'}/>
+            <PageSlot active={FINANCE_PLANNING_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="finance-planning"
+                title="الربحية والسيولة والإقفال"
+                subtitle="قراءة الربحية والتدفق المتوقع ثم إقفال الفترة"
+                tone="#F59E0B"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('money.pnl') ? [{
+                    id: 'pnl', path: '/pnl', label: 'قائمة الدخل', icon: TrendingUp,
+                    eyebrow: 'النتيجة المالية', purpose: 'اقرأ الربح الفعلي من التقرير الرسمي',
+                    description: 'تعرض قائمة الدخل وضريبة القيمة المضافة من Zoho دون إعادة حسابها في الواجهة.',
+                    outcome: 'ربحية موثقة للفترة', tone: 'var(--green)',
+                    render: () => <FinancialPosition isActive={pathname==='/pnl'}/>,
+                  }] : []),
+                  ...(isAdmin || can('ledger.view') ? [{
+                    id: 'aging', path: '/cash-aging', label: 'أعمار التحصيل والسداد', icon: Wallet,
+                    eyebrow: 'توقيت النقد', purpose: 'اعرف ما تأخر من التحصيل والسداد',
+                    description: 'تصنيف زمني للحركة الحالية مع إبقاء ذمم العملاء والناقلين منفصلة.',
+                    outcome: 'أولوية نقدية واضحة', tone: 'var(--gold)',
+                    render: () => <CashAging isActive={pathname==='/cash-aging'}/>,
+                  }] : []),
+                  ...(isAdmin || can('forecast.view') ? [{
+                    id: 'forecast', path: '/forecast', label: 'توقع السيولة', icon: Activity,
+                    eyebrow: 'نظرة مستقبلية', purpose: 'توقع الداخل والخارج قبل موعده',
+                    description: 'يستخدم الخدمات والحسابات الحالية كما هي، مع توضيح مصدر التقدير.',
+                    outcome: 'فجوة سيولة معروفة مبكراً', tone: 'var(--accent3)',
+                    render: () => <Forecast carriers={carriers} isActive={pathname==='/forecast'}/>,
+                  }] : []),
+                  ...(isAdmin || can('system.period_close') ? [{
+                    id: 'periods', path: '/periods', label: 'إقفال الشهور', icon: Lock,
+                    eyebrow: 'ضبط الفترة', purpose: 'راجع الجاهزية قبل إقفال الشهر',
+                    description: 'الإقفال يحافظ على صلاحياته ومساره الحالي ولا يغيّر أي قيد مالي.',
+                    outcome: 'فترة مكتملة ومقفلة بصلاحية', tone: 'var(--red)',
+                    render: () => <Periods isActive={pathname==='/periods'}/>,
+                  }] : []),
+                ]}
+              />
             </PageSlot>
             {/* /claims now renders inside CarriersWorkspace (claims tab) above */}
-            <PageSlot active={pathname==='/ledger'} scroll>
-              <CarrierLedger isActive={pathname==='/ledger'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/platform-carriers'} scroll>
-              <PlatformCarriers isActive={pathname==='/platform-carriers'}/>
-            </PageSlot>
             {/* /cod-settlements + /payments + /bank
                 all funnel through MoneyHub which selects the right tab
                 based on the path. */}
@@ -949,40 +1120,107 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={CUSTOMER_HUB_PATHS.includes(pathname)} scroll>
               <CustomerWatch isActive={CUSTOMER_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
-            <PageSlot active={pathname==='/periods'} scroll>
-              <Periods isActive={pathname==='/periods'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/forecast'} scroll>
-              <Forecast carriers={carriers} isActive={pathname==='/forecast'}/>
-            </PageSlot>
             {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
             {/* /collections القديم يهبط على تبويب «قائمة التحصيل» داخل CRM */}
             <PageSlot active={pathname==='/crm'} scroll>
               <CrmWorkspace isActive={pathname==='/crm'}/>
             </PageSlot>
-            {/* تدقيق التجهيز 3PL — مسار منفصل عن تدقيق الشحن */}
-            <PageSlot active={pathname==='/fulfillment'} scroll>
-              <FulfillmentAudit isActive={pathname==='/fulfillment'}/>
+            <PageSlot active={OPERATIONS_BILLING_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="operations-service-billing"
+                title="فوترة الخدمات والأوزان"
+                subtitle="خدمات التجهيز والأوزان الزائدة في عرضين مستقلين"
+                tone="#2B68DE"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('audits.view') ? [{
+                    id: 'fulfillment', path: '/fulfillment', label: 'فوترة التجهيز', icon: Briefcase,
+                    eyebrow: 'خدمات العملاء', purpose: 'راجع خدمات التجهيز القابلة للفوترة',
+                    description: 'يبقى تدقيق 3PL منفصلًا عن تدقيق فواتير الشحن.',
+                    outcome: 'خدمة موثقة وقابلة للفوترة', tone: 'var(--brand)',
+                    render: () => <FulfillmentAudit isActive={pathname==='/fulfillment'}/>,
+                  }] : []),
+                  ...(isAdmin || can('internal_exports.view') ? [{
+                    id: 'weight', path: '/weight-billing', label: 'الأوزان الزائدة', icon: Scale,
+                    eyebrow: 'فروقات الوزن', purpose: 'راجع الشحنات المؤهلة لفوترة الوزن',
+                    description: 'لا تدخل مراجعة قديمة أو غير موثقة إلى التصدير.',
+                    outcome: 'وزن موثق وملف قابل للتسليم', tone: 'var(--gold)',
+                    render: () => <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>,
+                  }] : []),
+                ]}
+              />
             </PageSlot>
             <PageSlot active={pathname==='/overview'} scroll>
               <Overview carriers={carriers} isActive={pathname==='/overview'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/reconciliation'} scroll>
-              <Reconciliation isActive={pathname==='/reconciliation'}/>
+            <PageSlot active={ADMIN_INTEGRATION_PATHS.includes(pathname)} scroll>
+              <CenterWorkspace
+                scope="admin-integrations"
+                title="التكاملات والأتمتة"
+                subtitle="المراقبة والمصادر وWebhooks ووكلاء العمل في Views واضحة"
+                tone="#31D5E1"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || ['agents.view', 'system.view_audit_log', 'system.view_settings', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr', 'webhook.view'].some(permission => can(permission)) ? [{
+                    id: 'monitor', path: '/operations', label: 'مراقبة التكاملات', icon: Activity,
+                    eyebrow: 'حالة التشغيل', purpose: 'اعرف ما يعمل وما تأخر من آخر أثر فعلي',
+                    description: 'المصدر غير المتاح يبقى ظاهرًا ولا يتحول إلى نجاح أو صفر.',
+                    outcome: 'تكامل وحالة وإجراء واضح', tone: 'var(--brand)',
+                    render: () => <OperationsCenter isActive={pathname==='/operations'}/>,
+                  }] : []),
+                  ...(isAdmin || can('uploads.view') ? [{
+                    id: 'sources', path: '/uploads', label: 'مصادر البيانات', icon: Layers,
+                    eyebrow: 'حداثة المصدر', purpose: 'راجع آخر ملف وحالة كل مصدر يدوي',
+                    description: 'يعرض آخر تحديث والفقد والتأخر من السجل الحالي.',
+                    outcome: 'مصدر حديث أو تنبيه صريح', tone: 'var(--green)',
+                    render: () => <UploadsHub isActive={pathname==='/uploads'}/>,
+                  }] : []),
+                  ...(isAdmin || can('webhook.view') ? [{
+                    id: 'webhooks', path: '/webhook', label: 'Webhooks', icon: Inbox,
+                    eyebrow: 'الوارد الخارجي', purpose: 'راجع الأحداث الواردة وحالة معالجتها',
+                    description: 'إعادة العرض لا تعيد تنفيذ الحدث ولا تغيّر منطقه.',
+                    outcome: 'حدث معروف وحالة معالجة', tone: 'var(--gold)',
+                    render: () => <WebhookEvents carriers={carriers} isActive={pathname==='/webhook'}/>,
+                  }] : []),
+                  ...(isAdmin || can('agents.view') ? [{
+                    id: 'agents', path: '/work-agents', label: 'وكلاء العمل', icon: Bot,
+                    eyebrow: 'أتمتة مراقبة', purpose: 'راجع الوكلاء وتشغيلاتهم وآخر نتائجهم',
+                    description: 'العرض يحافظ على صلاحيات التشغيل وسجل النتائج الحالي.',
+                    outcome: 'وكيل وحالة وتشغيل قابل للتتبع', tone: 'var(--accent3)',
+                    render: () => <WorkAgents isActive={pathname==='/work-agents'}/>,
+                  }] : []),
+                ]}
+              />
             </PageSlot>
-            <PageSlot active={pathname==='/weight-billing'} scroll>
-              <WeightBilling carriers={carriers} isActive={pathname==='/weight-billing'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/webhook'} scroll>
-              <WebhookEvents carriers={carriers} isActive={pathname==='/webhook'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/tasks'} scroll>
-              <Tasks carriers={carriers} isActive={pathname==='/tasks'}/>
-            </PageSlot>
-            <PageSlot active={isSettingsPath && pathname!=='/settings/hatif'} scroll>
-              <SettingsPage
-                carriers={carriers}
-                tab={pathname.startsWith('/settings/') ? pathname.replace('/settings/','') : 'ai'}
+            <PageSlot active={isSettingsPath} scroll>
+              <CenterWorkspace
+                scope="admin-system-settings"
+                title="إعدادات النظام والقنوات"
+                subtitle="إعدادات النظام والبيانات وقنوات هاتف وIVR"
+                tone="#31D5E1"
+                activePath={pathname}
+                onNavigate={goto}
+                showSwitcher
+                tabs={[
+                  ...(isAdmin || can('system.view_settings') || can('carriers.view') || can('carriers.edit_contract') ? [{
+                    id: 'settings', path: '/settings/ai', label: 'إعدادات النظام', icon: Settings,
+                    eyebrow: 'ضبط التطبيق', purpose: 'أدر إعدادات الذكاء الاصطناعي والبيانات',
+                    description: 'تبقى صفحات الفريق والناقلين والعقود في مساحاتها الإدارية الواضحة.',
+                    outcome: 'إعداد معروف وصلاحية واضحة', tone: 'var(--brand)',
+                    render: () => <SettingsPage carriers={carriers} tab={pathname.startsWith('/settings/') ? pathname.replace('/settings/','') : 'ai'}/>,
+                  }] : []),
+                  ...(isAdmin || can('whatsapp.configure') ? [{
+                    id: 'hatif', path: '/settings/hatif', label: 'هاتف وIVR', icon: MessageCircle,
+                    eyebrow: 'إعداد القنوات', purpose: 'راجع إعدادات هاتف والمكالمات الآلية',
+                    description: 'لا يرسل هذا العرض رسالة أو حملة بمجرد فتحه.',
+                    outcome: 'قناة مضبوطة وآمنة', tone: 'var(--accent3)',
+                    render: () => <WhatsAppSettings isActive={pathname==='/settings/hatif'} settingsOnly/>,
+                  }] : []),
+                ]}
               />
             </PageSlot>
 
@@ -1033,15 +1271,13 @@ function AppInner({ theme, toggleTheme }) {
           منفصلة عن الدرج — لا تخالف قاعدة «لا تثبيت عناصر جديدة» (§1.11f). */}
       <nav className="bottom-nav">
         {[
-          // design-v2 + الأنظمة السبعة: التحصيل والمبيعات (الاستخدام اليومي بالجوال)
-          // بدل رفع/وارد المكتبيّين. active يشمل مسارات الهَب القديمة.
-          { path: '/overview',       label: 'الرئيسية', icon: LayoutDashboard, permKey: 'overview.view' },
-          { path: '/decisions',      label: 'القرارات', icon: Gauge,           permKey: 'overview.view' },
-          { path: '/customer-money', label: 'التحصيل',  icon: HandCoins,       permKey: 'receivables.view', group: COLLECTIONS_HUB_PATHS },
-          { path: '/retargeting',    label: 'المبيعات', icon: Target,          permKey: 'sales.view',       group: SALES_HUB_PATHS },
-        ].filter(it => isAdmin || can(it.permKey)).map(it => {
+          { path: '/overview',            label: 'الرئيسية', icon: LayoutDashboard, show: isAdmin || can('overview.view') },
+          { path: '/workspace/customers', label: 'العملاء',  icon: Users, sectionId: 'customers', show: visibleNav.some(item => item.section === 'customers') },
+          { path: '/workspace/sales',     label: 'المبيعات', icon: Target, sectionId: 'sales', show: visibleNav.some(item => item.section === 'sales') },
+          { path: '/workspace/finance',   label: 'المالية',  icon: DollarSign, sectionId: 'finance', show: visibleNav.some(item => item.section === 'finance') },
+        ].filter(it => it.show).map(it => {
           const Icon = it.icon;
-          const active = it.group ? it.group.includes(location.pathname) : location.pathname === it.path;
+          const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;
           return (
             <button key={it.path} onClick={() => goto(it.path)}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>

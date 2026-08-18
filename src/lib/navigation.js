@@ -12,6 +12,112 @@ export const NAV_SECTIONS = [
 
 export const CENTER_PATHS = Object.fromEntries(NAV_SECTIONS.map(section => [section.id, section.path]));
 
+// بطاقات صفحات المراكز. كل بطاقة تمثل مساحة عمل كاملة، لا
+// تبويباً داخلياً. memberIds تُستخدم فقط لاشتقاق الصلاحية والأيقونة ومسار
+// الدخول الآمن؛ المسارات الأصلية تظل فعالة ولا يعاد تعريفها هنا.
+export const CENTER_WORKSPACES = {
+  customers: [
+    {
+      id: 'directory', label: 'دليل العملاء والمتاجر', entryId: 'customer-watch', memberIds: ['customer-watch'],
+      description: 'ابحث عن العميل أو المتجر، ثم افتح صفحة Customer 360 الموحدة.',
+    },
+    {
+      id: 'support', label: 'خدمة العملاء', entryId: 'support', memberIds: ['support'],
+      description: 'تابع التذاكر والمشكلات من التسجيل حتى الإغلاق.',
+    },
+  ],
+  sales: [
+    {
+      id: 'execution', label: 'عمل اليوم ومسار المنصة', entryId: 'sales-hub', memberIds: ['sales-hub'],
+      description: 'الأولويات اليومية والتفعيل والاستعادة ومرجع المتاجر في مساحة واحدة.',
+    },
+    {
+      id: 'pipeline', label: 'الصفقات والمواعيد', entryId: 'crm', memberIds: ['crm'],
+      description: 'أدر الصفقات والمواعيد وأداء فريق المبيعات.',
+    },
+    {
+      id: 'campaigns', label: 'الحملات والجمهور', entryId: 'campaign-center', memberIds: ['campaign-center'],
+      description: 'خطط الجمهور وراجع الحملة قبل أي تنفيذ أو إرسال.',
+    },
+    {
+      id: 'communications', label: 'التواصل والمكالمات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'],
+      description: 'راقب الرسائل والمكالمات وIVR وجودة التواصل ونتائجه.',
+    },
+    {
+      id: 'marketers', label: 'المسوّقون والعمولات', entryId: 'marketers', memberIds: ['marketers'],
+      description: 'راجع تكلفة الفريق والطلبات والعمولات ونتيجة كل مسوّق.',
+    },
+  ],
+  finance: [
+    {
+      id: 'receivables', label: 'المستحقات والتحصيل', entryId: 'collections-hub', memberIds: ['collections-hub'],
+      description: 'المستحقات وأعمار الدين وإجراءات التحصيل والوعود والتصعيد.',
+    },
+    {
+      id: 'cash-settlements', label: 'النقد والتسويات', entryId: 'money', memberIds: ['money', 'bank'],
+      description: 'البنوك وCOD ومدفوعات الناقلين والعمليات التي تحتاج تصنيفاً.',
+    },
+    {
+      id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'zoho-data', memberIds: ['zoho-data', 'reconciliation'],
+      description: 'بيانات Zoho وربط الحسابات ومطابقة أرصدة العملاء والناقلين.',
+    },
+    {
+      id: 'planning', label: 'الربحية والسيولة والإقفال', entryId: 'pnl', memberIds: ['pnl', 'cash-aging', 'forecast', 'periods'],
+      description: 'قائمة الدخل وأعمار النقد والتوقعات وإقفال الفترة.',
+    },
+  ],
+  shipping: [
+    {
+      id: 'carrier-control', label: 'الناقلون والمتابعة', entryId: 'hub', memberIds: ['hub', 'platform-carriers', 'tasks'],
+      description: 'حالة الناقلين وأداؤهم ومطالباتهم وأسعار المنصات والمهام المستحقة.',
+    },
+    {
+      id: 'accounting-cycle', label: 'دورة المحاسب', entryId: 'accounting-cycle', memberIds: ['accounting-cycle'],
+      description: 'نفّذ مراحل الشهر من المراجعات حتى اكتمال المصادر والإقفال التشغيلي.',
+    },
+    {
+      id: 'carrier-audit', label: 'تدقيق وفواتير الناقلين', entryId: 'drop', memberIds: ['drop', 'audits', 'aramex-stmt', 'ledger'],
+      description: 'استقبل الملفات وراجع الفواتير والكشوف ثم انتقل إلى دفتر الناقل.',
+    },
+    {
+      id: 'service-billing', label: 'فوترة الخدمات والأوزان', entryId: 'fulfillment', memberIds: ['fulfillment', 'weight-billing'],
+      description: 'راجع فوترة خدمات التجهيز والأوزان الزائدة في عروض مستقلة.',
+    },
+  ],
+  reports: [
+    {
+      id: 'analysis', label: 'التقارير والتحليل', entryId: 'reports', memberIds: ['reports', 'monthly-report'],
+      description: 'أنشئ التقارير الرسمية وافتح التقرير التشغيلي الشهري من نفس المساحة.',
+    },
+    {
+      id: 'exports-archive', label: 'التصدير والأرشيف', entryId: 'internal-exports', memberIds: ['internal-exports', 'activity-log'],
+      description: 'راجع الملفات المصدّرة وسجل العمليات التاريخي دون خلطهما بالتقرير الجاري.',
+    },
+    {
+      id: 'data-quality', label: 'سلامة البيانات والرقابة', entryId: 'integrity', memberIds: ['integrity'],
+      description: 'افحص تعارضات الأرقام وحالة المهام الدورية ومصادر الفشل الصريحة.',
+    },
+  ],
+  settings: [
+    {
+      id: 'team', label: 'الفريق والصلاحيات', entryId: 'employees', memberIds: ['employees'],
+      description: 'أدر الموظفين وأدوارهم وصلاحياتهم من المسار الإداري المعتمد.',
+    },
+    {
+      id: 'carrier-config', label: 'شركات الشحن والعقود', entryId: 'carriers', memberIds: ['carriers', 'contracts'],
+      description: 'إعداد شركات الشحن والعقود والأسعار مع إبقاء كل سجل في عرضه.',
+    },
+    {
+      id: 'integrations', label: 'التكاملات والأتمتة', entryId: 'operations', memberIds: ['operations', 'uploads', 'webhook', 'work-agents'],
+      description: 'راقب التكاملات والمصادر وWebhooks ووكلاء العمل من مساحة تشغيل إداري واحدة.',
+    },
+    {
+      id: 'system-config', label: 'إعدادات النظام والقنوات', entryId: 'app-settings', memberIds: ['app-settings', 'hatif-settings'],
+      description: 'إعدادات النظام والذكاء الاصطناعي والبيانات وقنوات هاتف وIVR.',
+    },
+  ],
+};
+
 // المستوى الثاني داخل كل مركز. المجموعات عناوين تنظيمية وليست طبقة تنقل
 // إضافية؛ جميع الصفحات والتبويبات التابعة لها تبقى ظاهرة داخل قائمة المركز.
 export const NAV_GROUPS = {
@@ -65,7 +171,7 @@ export const NAV_ITEM_IA = {
   fulfillment:         { label: 'فوترة خدمات العملاء', section: 'shipping', group: 'service_ops', order: 90, visible: true },
   'weight-billing':    { label: 'فوترة الأوزان الزائدة', section: 'shipping', group: 'service_ops', order: 100, visible: true },
 
-  'customer-watch':    { label: 'ملف العميل الموحد', section: 'customers', group: 'customer_ops', order: 10, visible: true },
+  'customer-watch':    { label: 'دليل العملاء والمتاجر', section: 'customers', group: 'customer_ops', order: 10, visible: true },
   support:             { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 20, visible: true },
 
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
@@ -75,7 +181,7 @@ export const NAV_ITEM_IA = {
   marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: true },
 
   'collections-hub':   { label: 'تحصيل العملاء', section: 'finance', group: 'receivables_ops', order: 10, visible: true },
-  money:               { label: 'تسويات الناقلين والدفع عند الاستلام', section: 'finance', group: 'cash_ops', order: 20, visible: true },
+  money:               { label: 'النقد والتسويات', section: 'finance', group: 'cash_ops', order: 20, visible: true },
   bank:                { label: 'الحسابات البنكية', section: 'finance', group: 'cash_ops', order: 30, visible: true },
   'cash-aging':        { label: 'أعمار التحصيل والسداد', section: 'finance', group: 'cash_ops', order: 40, visible: true },
   forecast:            { label: 'توقع السيولة', section: 'finance', group: 'cash_ops', order: 50, visible: true },
@@ -87,7 +193,8 @@ export const NAV_ITEM_IA = {
   reports:             { label: 'مكتبة التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
   'monthly-report':    { label: 'التقرير الشهري', section: 'reports', group: 'report_ops', order: 20, visible: true },
   'internal-exports':  { label: 'الملفات المصدرة', section: 'reports', group: 'report_ops', order: 30, visible: true },
-  'work-agents':       { label: 'وكلاء العمل', section: 'reports', group: 'automation_ops', order: 40, visible: true },
+  integrity:           { label: 'سلامة البيانات', section: 'reports', group: 'automation_ops', order: 40, visible: true },
+  'activity-log':      { label: 'سجل النظام', section: 'reports', group: 'automation_ops', order: 50, visible: true },
 
   employees:           { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
   carriers:            { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },
@@ -95,9 +202,8 @@ export const NAV_ITEM_IA = {
   operations:          { label: 'مركز التكاملات', section: 'settings', group: 'integration_settings', order: 40, visible: true },
   uploads:             { label: 'رفع ومزامنة ملفات لمحة', section: 'settings', group: 'integration_settings', order: 50, visible: true },
   webhook:             { label: 'وارد التكاملات', section: 'settings', group: 'integration_settings', order: 60, visible: true },
-  'hatif-settings':    { label: 'إعدادات هاتف وIVR', section: 'settings', group: 'integration_settings', order: 70, visible: true },
-  integrity:           { label: 'سلامة البيانات', section: 'settings', group: 'integration_settings', order: 80, visible: true },
-  'activity-log':      { label: 'سجل النظام', section: 'settings', group: 'integration_settings', order: 90, visible: true },
+  'work-agents':       { label: 'وكلاء العمل', section: 'settings', group: 'integration_settings', order: 70, visible: true },
+  'hatif-settings':    { label: 'إعدادات هاتف وIVR', section: 'settings', group: 'integration_settings', order: 80, visible: true },
   'app-settings':      { label: 'إعدادات النظام', section: 'settings', group: 'system_settings', order: 100, visible: true },
 };
 

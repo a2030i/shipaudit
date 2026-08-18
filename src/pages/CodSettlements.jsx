@@ -565,7 +565,7 @@ export default function CodSettlements({ isActive = true }) {
         subtitle="المعتمد للمراجعات يُغذّي «المتوقَّع»، والناقل يُحوّل النقد فعلياً كـ«مُستلَم» — الفرق = ما تبقّى"
         actions={
           <>
-            <select value={carrier} onChange={e => setCarrier(e.target.value)}
+            <select value={carrier} onChange={e => setCarrier(e.target.value)} aria-label="اختر شركة الشحن"
               className="page-action-select"
               style={{
                 padding: '10px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
@@ -961,6 +961,7 @@ export default function CodSettlements({ isActive = true }) {
             <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={14} color="var(--muted)"/>
               <input value={search} onChange={e => setSearch(e.target.value)}
+                aria-label="البحث برقم الشحنة"
                 placeholder="بحث برقم الشحنة (AWB)..."
                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
               {bulkSearch ? (
@@ -1047,6 +1048,7 @@ export default function CodSettlements({ isActive = true }) {
                       <tr>
                         <th style={{ width: 34, textAlign: 'center' }}>
                           <input type="checkbox"
+                            aria-label="تحديد كل الشحنات الظاهرة"
                             checked={visible.length > 0 && visible.every(r => selectedAwbs.has(r.awb))}
                             onChange={() => setSelectedAwbs(prev => {
                               const next = new Set(prev);
@@ -1242,7 +1244,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
   return (
     <tr style={checked ? { background: 'color-mix(in srgb, var(--accent) 6%, transparent)' } : undefined}>
       <td data-label="" style={{ textAlign: 'center' }}>
-        <input type="checkbox" checked={!!checked} onChange={onToggle}
+        <input type="checkbox" checked={!!checked} onChange={onToggle} aria-label={`تحديد الشحنة ${r.awb}`}
           style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
       </td>
       <td data-label="" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 11 }}>{r.awb}</td>

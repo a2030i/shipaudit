@@ -5,6 +5,7 @@
 // monthlyReportService. Exportable to Excel for sharing/filing.
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { RefreshCw, CalendarRange, Download, TrendingUp, Printer } from 'lucide-react';
@@ -23,23 +24,42 @@ const monthLabel = (m) => {
 };
 
 export default function MonthlyReport({ isActive }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [data, setData]       = useState(null);
   const [loading, setLoading] = useState(true);
-  const [month, setMonth]     = useState(null);
+  const [month, setMonth]     = useState(() => searchParams.get('month'));
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const r = await loadMonthlyReport();
       setData(r);
-      setMonth((cur) => (cur && r.months.includes(cur) ? cur : (r.months[0] || null)));
+      setMonth((cur) => {
+        const requested = searchParams.get('month');
+        if (requested && r.months.includes(requested)) return requested;
+        return cur && r.months.includes(cur) ? cur : (r.months[0] || null);
+      });
     } catch (e) {
       toast(`تعذّر تحميل التقرير: ${e.message}`, 'error');
     }
     setLoading(false);
-  }, []);
+  }, [searchParams]);
 
   useEffect(() => { if (isActive && !data) refresh(); }, [isActive, data, refresh]);
+
+  useEffect(() => {
+    if (!data) return;
+    const requested = searchParams.get('month');
+    if (requested && data.months.includes(requested) && requested !== month) setMonth(requested);
+  }, [data, month, searchParams]);
+
+  const changeMonth = (nextMonth) => {
+    setMonth(nextMonth);
+    const next = new URLSearchParams(searchParams);
+    if (nextMonth) next.set('month', nextMonth);
+    else next.delete('month');
+    setSearchParams(next, { replace: true });
+  };
 
   const rows = useMemo(() => {
     if (!data || !month) return [];
@@ -132,7 +152,7 @@ export default function MonthlyReport({ isActive }) {
       {data?.months?.length > 0 && (
         <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 20 }}>
           {data.months.map(m => (
-            <button key={m} onClick={() => setMonth(m)}
+            <button key={m} onClick={() => changeMonth(m)}
               style={{
                 padding: '6px 14px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 600,
                 border: '1px solid', borderColor: m === month ? 'var(--green)' : 'var(--border)',

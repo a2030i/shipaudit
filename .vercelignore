@@ -1,0 +1,13 @@
+tmp/
+.env
+.env.*
+supabase/
+docs/architecture/
+artifacts/
+outputs/
+tests/
+scripts/schema-baseline/
+*.sql
+.codex-*
+.tmp-*
+tmp-*

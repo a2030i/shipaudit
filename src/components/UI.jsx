@@ -1,4 +1,4 @@
-import { useState, useEffect, useId } from 'react';
+import { useState, useEffect, useId, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, TrendingUp, TrendingDown, AlertTriangle, CheckCircle2, XCircle, HelpCircle, AlertCircle, Upload as UploadIcon } from 'lucide-react';
 
@@ -1087,10 +1087,32 @@ export function Select({ label, children, style: outerStyle = {}, ...props }) {
 // ─── Modal ─────────────────────────────────────────────────────────────────────
 export function Modal({ title, children, onClose, width = 520, className = '', bodyClassName = '' }) {
   const titleId = useId();
+  const panelRef = useRef(null);
+  const closeButtonRef = useRef(null);
   useEffect(() => {
-    const fn = (e) => e.key === 'Escape' && onClose?.();
+    const previousFocus = document.activeElement;
+    const focusTimer = window.requestAnimationFrame(() => closeButtonRef.current?.focus());
+    const fn = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose?.();
+        return;
+      }
+      if (e.key !== 'Tab' || !panelRef.current) return;
+      const focusable = [...panelRef.current.querySelectorAll('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+        .filter(node => node.getClientRects().length > 0);
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+      else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+    };
     window.addEventListener('keydown', fn);
-    return () => window.removeEventListener('keydown', fn);
+    return () => {
+      window.cancelAnimationFrame(focusTimer);
+      window.removeEventListener('keydown', fn);
+      if (previousFocus instanceof HTMLElement && document.contains(previousFocus)) previousFocus.focus();
+    };
   }, [onClose]);
 
   return createPortal((
@@ -1106,6 +1128,7 @@ export function Modal({ title, children, onClose, width = 520, className = '', b
       onClick={e => e.target === e.currentTarget && onClose?.()}
     >
       <div
+        ref={panelRef}
         className={`scale-in modal-panel ${className}`.trim()}
         role="dialog"
         aria-modal="true"
@@ -1127,6 +1150,8 @@ export function Modal({ title, children, onClose, width = 520, className = '', b
             {title}
           </h3>
           <button
+            ref={closeButtonRef}
+            type="button"
             aria-label="إغلاق"
             onClick={() => onClose?.()}
             style={{

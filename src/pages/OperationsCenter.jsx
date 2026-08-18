@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Activity, AlertTriangle, Bot, CheckCircle2, Clock3, Database,
   ExternalLink, FileInput, Landmark, Link2,
@@ -173,12 +173,27 @@ function ActivityRow({ event, onOpen }) {
 
 export default function OperationsCenter({ isActive = true }) {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { can, canAny, isAdmin } = useAuth();
   const [state, setState] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [eventStatus, setEventStatus] = useState('all');
-  const [eventSource, setEventSource] = useState('all');
+  const [eventStatus, setEventStatus] = useState(() => eventStatusOptions.some(option => option.id === searchParams.get('status')) ? searchParams.get('status') : 'all');
+  const [eventSource, setEventSource] = useState(() => Object.hasOwn(eventSourceMeta, searchParams.get('source')) ? searchParams.get('source') : 'all');
   const period = useMemo(currentRiyadhPeriod, []);
+
+  useEffect(() => {
+    const nextStatus = searchParams.get('status');
+    const nextSource = searchParams.get('source');
+    setEventStatus(eventStatusOptions.some(option => option.id === nextStatus) ? nextStatus : 'all');
+    setEventSource(Object.hasOwn(eventSourceMeta, nextSource) ? nextSource : 'all');
+  }, [searchParams]);
+
+  const updateEventFilter = (key, value) => {
+    const next = new URLSearchParams(searchParams);
+    if (!value || value === 'all') next.delete(key);
+    else next.set(key, value);
+    setSearchParams(next, { replace: true });
+  };
 
   const allowed = useCallback((permission) => isAdmin || can(permission), [can, isAdmin]);
 
@@ -542,7 +557,7 @@ export default function OperationsCenter({ isActive = true }) {
             <div className="operations-filter-group" aria-label="تصفية حسب الحالة">
               <SlidersHorizontal size={15}/>
               {eventStatusOptions.map((option) => (
-                <button key={option.id} className={eventStatus === option.id ? 'is-active' : ''} onClick={() => setEventStatus(option.id)}>
+                <button key={option.id} className={eventStatus === option.id ? 'is-active' : ''} onClick={() => updateEventFilter('status', option.id)}>
                   {option.label}
                   <span>{option.id === 'all' ? model.events.length : model.events.filter((event) => event.status === option.id).length}</span>
                 </button>
@@ -550,7 +565,7 @@ export default function OperationsCenter({ isActive = true }) {
             </div>
             <label className="operations-source-filter">
               <span>المصدر</span>
-              <select value={eventSource} onChange={(event) => setEventSource(event.target.value)}>
+              <select value={eventSource} onChange={(event) => updateEventFilter('source', event.target.value)}>
                 <option value="all">كل المصادر</option>
                 {availableEventSources.map(([id, meta]) => <option key={id} value={id}>{meta.label}</option>)}
               </select>

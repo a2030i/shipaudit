@@ -2250,6 +2250,35 @@ tbody tr:hover td:first-child {
     radial-gradient(circle at 8% 18%, color-mix(in srgb, var(--accent3) 13%, transparent), transparent 34%),
     linear-gradient(135deg, color-mix(in srgb, var(--brand) 8%, var(--card)), var(--card)) !important;
   overflow: visible !important;
+  content-visibility: visible !important;
+  contain: none !important;
+  isolation: auto;
+}
+
+.customer-search-results {
+  overflow: hidden auto;
+}
+
+.customer-search-result {
+  width: 100%;
+  border: 0;
+  background: var(--card);
+  color: var(--text);
+  text-align: start;
+  font-family: var(--font-sans);
+}
+
+.customer-search-result:hover,
+.customer-search-result.is-active,
+.customer-search-result:focus-visible {
+  background: var(--surface2) !important;
+}
+
+.customer-search-result:focus-visible {
+  position: relative;
+  z-index: 1;
+  outline: 3px solid color-mix(in srgb, var(--brand) 28%, transparent) !important;
+  outline-offset: -3px !important;
 }
 
 .customer-search-copy {
@@ -2325,6 +2354,8 @@ tbody tr:hover td:first-child {
   border-radius: var(--r-lg);
   background: color-mix(in srgb, var(--surface2) 88%, var(--brand) 12%);
 }
+
+.customer-view-select { display: none; }
 
 .customer-view-tabs button {
   min-width: 0;
@@ -2406,8 +2437,29 @@ tbody tr:hover td:first-child {
   }
 
   .customer-search-scope { justify-content: flex-start; }
-  .customer-view-tabs { grid-template-columns: 1fr; }
-  .customer-view-tabs button span { white-space: normal; }
+  .customer-view-select {
+    display: grid;
+    gap: 5px;
+    margin-bottom: 14px;
+  }
+  .customer-view-select span {
+    color: var(--muted);
+    font-size: 10px;
+    font-weight: 800;
+  }
+  .customer-view-select select {
+    width: 100%;
+    min-height: 44px;
+    padding-inline: 12px;
+    border: 1px solid var(--border);
+    border-radius: 11px;
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 800;
+  }
+  .customer-view-tabs { display: none; }
   .customer-reference-grid { grid-template-columns: 1fr; }
   .customer-source-details > summary small { display: none; }
 }

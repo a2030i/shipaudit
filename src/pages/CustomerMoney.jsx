@@ -5,7 +5,7 @@
 // كل بطاقة عميل فيها 📞 اتصال و💬 واتساب مباشرين + فواتيره بنقرة.
 
 import { useState, useEffect, useMemo, useRef } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -57,7 +57,8 @@ const platformStatusMeta = (customer) => {
 
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
-  const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
   const [viewUpdatedAt, setViewUpdatedAt] = useState(null);
@@ -65,11 +66,29 @@ export default function CustomerMoney({ isActive = true }) {
   const [collectionTasks, setCollectionTasks] = useState([]);
   const [collectionTaskError, setCollectionTaskError] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
-  const [q, setQ] = useState('');
-  const [buckets, setBuckets] = useState(() => new Set());   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
-  const toggleBucket = (key) => setBuckets(prev => { const n = new Set(prev); n.has(key) ? n.delete(key) : n.add(key); return n; });
-  const [sortBy, setSortBy] = useState('owed');    // owed | oldest
-  const [platformFilter, setPlatformFilter] = useState('all'); // all | active | inactive | unknown
+  const [q, setQ] = useState(() => searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '');
+  const [buckets, setBuckets] = useState(() => {
+    const allowed = new Set(BUCKETS.map(bucket => bucket.key));
+    return new Set((searchParams.get('aging') || '').split(',').filter(key => allowed.has(key)));
+  });   // شرائح الأعمار المختارة (متعددة) — فارغ = كل الدين
+  const toggleBucket = (key) => setBuckets(prev => {
+    const next = new Set(prev);
+    next.has(key) ? next.delete(key) : next.add(key);
+    const params = new URLSearchParams(searchParams);
+    if (next.size) params.set('aging', [...next].join(','));
+    else params.delete('aging');
+    setSearchParams(params);
+    return next;
+  });
+  const clearBuckets = () => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('aging');
+    setSearchParams(params);
+    setBuckets(new Set());
+  };
+  const [sortBy, setSortBy] = useState(() => searchParams.get('sort') === 'oldest' ? 'oldest' : 'owed');
+  const [platformFilter, setPlatformFilter] = useState(() => ['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
+  const [decisionSegment, setDecisionSegment] = useState(() => searchParams.get('action') || 'all');
   const [waOpen, setWaOpen] = useState(false);
   const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
   const [waStatus, setWaStatus] = useState(() => new Map()); // حالة آخر حملة لكل هاتف
@@ -89,9 +108,26 @@ export default function CustomerMoney({ isActive = true }) {
   };
 
   useEffect(() => {
-    const customer = searchParams.get('customer');
-    if (customer) setQ(customer);
+    const customer = searchParams.get('search') || searchParams.get('customer') || searchParams.get('q');
+    setQ(customer || '');
+    const allowed = new Set(BUCKETS.map(bucket => bucket.key));
+    setBuckets(new Set((searchParams.get('aging') || '').split(',').filter(key => allowed.has(key))));
+    setSortBy(searchParams.get('sort') === 'oldest' ? 'oldest' : 'owed');
+    setPlatformFilter(['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
+    setDecisionSegment(searchParams.get('action') || 'all');
+    setUnclaimedOnly(searchParams.get('source') === 'unclaimed');
   }, [searchParams]);
+
+  const updateUrlFilters = (patch, { replace = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '' || value === false || value === 'all') next.delete(key);
+      else next.set(key, String(value));
+    }
+    next.delete('customer');
+    next.delete('q');
+    setSearchParams(next, { replace });
+  };
 
   const refresh = async () => {
     if (dashboardRefreshInFlightRef.current) return;
@@ -160,7 +196,7 @@ export default function CustomerMoney({ isActive = true }) {
   // مَن وصله قالب المطالبة (sadad) يوماً — لفلتر «لم تصلهم مطالبة» (فحص الوكلاء:
   // 29 من 40 مديناً بهاتف لم يُطالَبوا قط). يُعاد تحميله بعد كل إرسال.
   const [sadadSet, setSadadSet] = useState(() => new Set());
-  const [unclaimedOnly, setUnclaimedOnly] = useState(false);
+  const [unclaimedOnly, setUnclaimedOnly] = useState(() => searchParams.get('source') === 'unclaimed');
   const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
   useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
@@ -251,7 +287,7 @@ export default function CustomerMoney({ isActive = true }) {
   }, [d]);
 
   const focusCustomerFromPortfolio = (customer) => {
-    if (customer) setQ((customer.storeName || customer.name || '').trim());
+    if (customer) updateUrlFilters({ search: (customer.storeName || customer.name || '').trim() }, { replace: true });
     window.requestAnimationFrame(() => {
       const details = document.querySelector('.customer-portfolio-advanced');
       if (details) details.open = true;
@@ -343,7 +379,7 @@ export default function CustomerMoney({ isActive = true }) {
       <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
         title="تحصيل العملاء"
         subtitle="زوهو API هو المرجع — كم لك بالخارج وكيف تحصّله الآن"/>
-      <WorkspaceLoadingState title="جارٍ تحميل أرصدة العملاء" source="Zoho Books API" rows={4}/>
+      <WorkspaceLoadingState title="جارٍ تحميل أرصدة العملاء" source="Zoho Books API" rows={2}/>
     </div>
   );
 
@@ -364,7 +400,7 @@ export default function CustomerMoney({ isActive = true }) {
             اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
           </span>
         </div>
-        <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
+        <div className="collection-aging-overview" style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
           {INVOICE_CAMPAIGN_BUCKETS.map(b => {
             const v = d.campaignAging?.[b.key] || 0;
             const pct = Math.max((v / invoiceCampaignTotal) * 100, v > 0.5 ? 6 : 0);
@@ -382,14 +418,16 @@ export default function CustomerMoney({ isActive = true }) {
             );
           })}
         </div>
-        <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
+        <div className="collection-aging-options" style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginTop: 6, alignItems: 'center' }}>
           {INVOICE_CAMPAIGN_BUCKETS.map(b => (
             <button type="button" key={b.key} onClick={() => toggleBucket(b.key)}
               aria-pressed={buckets.has(b.key)}
+              className="collection-aging-option"
               style={{ border: 0, background: 'transparent', fontSize: 10.5, color: buckets.has(b.key) ? 'var(--text)' : 'var(--muted)', cursor: 'pointer',
                 display: 'inline-flex', alignItems: 'center', padding: '6px 4px',
                 fontWeight: buckets.has(b.key) ? 800 : 500 }}>
               <input type="checkbox" checked={buckets.has(b.key)} readOnly
+                aria-hidden="true" tabIndex={-1}
                 style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
               <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
               {b.label}: {fmt(d.campaignAging?.[b.key] || 0)}
@@ -421,7 +459,7 @@ export default function CustomerMoney({ isActive = true }) {
                   مراجعة الحملة
                 </Btn>
               )}
-              <button type="button" onClick={() => setBuckets(new Set())} style={{ border: 0, background: 'transparent', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</button>
+              <button type="button" onClick={clearBuckets} style={{ border: 0, background: 'transparent', fontSize: 10.5, color: 'var(--accent)', cursor: 'pointer', fontWeight: 700 }}>✕ مسح التحديد</button>
             </div>
           </div>
         )}
@@ -432,9 +470,11 @@ export default function CustomerMoney({ isActive = true }) {
   return (
     <div className="customer-money-page workspace-page">
       <FigmaCustomerPortfolio
-        customers={d.customers || []}
+        customers={filtered}
         query={q}
-        onQueryChange={setQ}
+        onQueryChange={(value) => updateUrlFilters({ search: value || null }, { replace: true })}
+        segment={decisionSegment}
+        onSegmentChange={(value) => updateUrlFilters({ action: value === 'all' ? null : value })}
         taskByCustomer={collectionTaskByCustomer}
         assigneeById={collectionAssigneeById}
         onFocusCustomer={focusCustomerFromPortfolio}
@@ -689,17 +729,18 @@ export default function CustomerMoney({ isActive = true }) {
       <summary>التفاصيل المتقدمة</summary>
       <div className="customer-portfolio-advanced__body">
       {/* ── أدوات القائمة ── */}
-      <div className="customer-money-toolbar" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
+      <div className="customer-money-toolbar workspace-filter-bar" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginBottom: 10 }}>
         <div style={{ position: 'relative', flex: 1, minWidth: 170 }}>
           <Search size={14} style={{ position: 'absolute', right: 12, top: 10, color: 'var(--muted)' }}/>
-          <input value={q} onChange={e => setQ(e.target.value)} placeholder="ابحث بالعميل/المتجر/الهاتف…"
+          <input value={q} onChange={e => updateUrlFilters({ search: e.target.value || null }, { replace: true })} placeholder="ابحث بالعميل/المتجر/الهاتف…"
+            aria-label="البحث في مستحقات العملاء"
             style={{ width: '100%', padding: '9px 36px 9px 12px', borderRadius: 8, fontSize: 13 }}/>
         </div>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12.5 }}>
+        <select value={sortBy} onChange={e => updateUrlFilters({ sort: e.target.value === 'owed' ? null : e.target.value })} aria-label="ترتيب مستحقات العملاء" style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value="owed">الأكبر ديناً أولاً</option>
           <option value="oldest">الأقدم ديناً أولاً</option>
         </select>
-        <select value={platformFilter} onChange={e => setPlatformFilter(e.target.value)}
+        <select value={platformFilter} onChange={e => updateUrlFilters({ status: e.target.value === 'all' ? null : e.target.value })}
           aria-label="فلتر حالة المتجر في المنصّة"
           style={{ padding: '8px 10px', borderRadius: 8, fontSize: 12.5 }}>
           <option value="all">كل حالات المنصّة ({platformCounts.all})</option>
@@ -713,7 +754,7 @@ export default function CustomerMoney({ isActive = true }) {
             c.phone && (c.owed || 0) > 0.5 && !sadadSet.has(normalizeSaudiPhone(c.phone))).length;
           return (
             <Btn size="sm" variant={unclaimedOnly ? 'primary' : 'outline'}
-              onClick={() => setUnclaimedOnly(v => !v)}
+              onClick={() => updateUrlFilters({ source: unclaimedOnly ? null : 'unclaimed' })}
               title="مدينون لهم هاتف ولم يصلهم قالب المطالبة (sadad) إطلاقاً">
               🔕 لم تصلهم مطالبة ({unclaimedCount})
             </Btn>
@@ -747,6 +788,7 @@ export default function CustomerMoney({ isActive = true }) {
               collectionTask={collectionTaskByCustomer.get(c.name) || null}
               collectionAssignee={collectionAssigneeById.get(collectionTaskByCustomer.get(c.name)?.assigned_to) || null}
               currentUserId={user?.id || null}
+              returnTo={`${location.pathname}${location.search}`}
               showCollectionWork={can('collections.view')}/>
           ))}
         </div>
@@ -1186,7 +1228,7 @@ function MorningBriefModal({ onClose }) {
 // wa = حالة آخر حملة واتساب لهذا الهاتف (من whatsapp_campaign_status) · onWa = يطلق حملة لعميل واحد
 function CustomerCard({
   c, highlight, wa: waStat, onWa,
-  collectionTask, collectionAssignee, currentUserId, showCollectionWork,
+  collectionTask, collectionAssignee, currentUserId, showCollectionWork, returnTo,
 }) {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -1214,7 +1256,8 @@ function CustomerCard({
     return 'التواصل وتسجيل النتيجة';
   })();
   const openCollectionTask = () => {
-    const params = new URLSearchParams({ tab: 'queue', customer: c.name });
+    const params = new URLSearchParams({ view: 'queue', search: c.name });
+    if (returnTo) params.set('returnTo', returnTo);
     navigate(`/customer-money?${params.toString()}`);
   };
 

@@ -8,8 +8,12 @@ test('final workspace layout layer is loaded before the Safari scroll contract',
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
   const scrollIndex = main.indexOf("import './mobile-scroll.css'");
+  const finalStyleIndex = Math.max(
+    ...[...main.matchAll(/import '\.\/(?:[^']+)\.css'/g)].map(match => match.index),
+  );
   assert.ok(layoutIndex > -1, 'workspace layout stylesheet must be imported');
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
+  assert.equal(scrollIndex, finalStyleIndex, 'mobile scroll contract must be the last stylesheet in the cascade');
 });
 
 test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
@@ -23,6 +27,12 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   assert.match(css, /\.page-slot\s*\{[\s\S]*overflow-y:\s*auto\s*!important/);
   assert.match(css, /--mobile-page-end-space:\s*calc\(144px \+ env\(safe-area-inset-bottom, 0px\)\)/);
   assert.match(css, /\.page-slot-scroll-end\s*\{[\s\S]*min-height:\s*var\(--mobile-page-end-space\)/);
+  assert.match(css, /#root \.app-layout\.primary-collapsed[\s\S]*display:\s*block\s*!important/);
+  assert.match(css, /#root \.app-layout,[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\) 0\s*!important/);
+  assert.match(css, /--sa-primary-rail:\s*0px/);
+  assert.match(css, /\.app-main,[\s\S]*\.page-content,[\s\S]*\.page-slot\s*\{[\s\S]*inline-size:\s*100%\s*!important/);
+  assert.match(css, /\.app-layout > \.sidebar,[\s\S]*position:\s*fixed\s*!important/);
+  assert.doesNotMatch(css, /100vw/);
 });
 
 test('mobile workspace removes repeated headings and keeps compact context', async () => {
@@ -206,7 +216,7 @@ test('customer debt cards bridge to an owned collection task and next action', a
   assert.match(money, /listTasks\(\)/);
   assert.match(money, /المسؤول:/);
   assert.match(money, /الإجراء التالي:/);
-  assert.match(money, /tab: 'queue', customer: c\.name/);
+  assert.match(money, /new URLSearchParams\(\{ view: 'queue', search: c\.name \}\)/);
   assert.match(queue, /focusedCustomer/);
   assert.match(queue, /مهمة العميل:/);
   assert.match(queue, /عرض كل المهام/);
@@ -332,4 +342,101 @@ test('stable work areas use one seven-entry rail and permission-aware center lau
   assert.match(app, /id: 'zoho-data'[\s\S]*tabId: 'banks'/);
   assert.match(app, /id: 'bank',\s+path: '\/bank'[^\n]*permKey: 'bank\.view'/);
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
+});
+
+test('phase one exposes approved workspaces without removing legacy routes', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+  const landing = await read('src/components/CenterLanding.jsx');
+  const tabs = await read('src/components/WorkspaceTabs.jsx');
+  const sales = await read('src/pages/SalesHub.jsx');
+  const collections = await read('src/pages/CollectionsHub.jsx');
+  const cash = await read('src/pages/MoneyHub.jsx');
+  const customers = await read('src/pages/CustomerWatch.jsx');
+
+  assert.match(navigation, /export const CENTER_WORKSPACES/);
+  assert.match(navigation, /label: 'دليل العملاء والمتاجر'/);
+  assert.match(navigation, /label: 'النقد والتسويات'/);
+  assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money', 'bank'\]/);
+  assert.match(landing, /workspaceDestinationsFor/);
+  assert.match(landing, /مساحات عمل متاحة حسب صلاحياتك/);
+  assert.match(tabs, />طريقة العرض</);
+
+  for (const source of [sales, collections]) {
+    assert.match(source, /<WorkspaceTabs/);
+    assert.match(source, /params\.set\('view', next\)/);
+    assert.match(source, /params\.get\('view'\) \|\| params\.get\('tab'\)/);
+  }
+  assert.match(cash, /<WorkspaceTabs/);
+  assert.match(cash, /params\.set\('tab', next\)/);
+  assert.match(cash, /id: 'bank'/);
+  assert.match(cash, /id: 'cod'/);
+  assert.match(cash, /id: 'payments'/);
+  assert.match(cash, /id: 'unclassified'/);
+  assert.match(cash, /defaultSavedClass: 'unclassified'/);
+  assert.match(customers, /title="دليل العملاء والمتاجر"/);
+  assert.match(customers, /params\.set\('customer', identity\)/);
+
+  for (const path of ['/cod-settlements', '/payments', '/bank', '/collections', '/legal', '/receivables', '/retargeting', '/hatif-leads', '/segments', '/merchants']) {
+    assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
+  }
+  assert.doesNotMatch(app, /label: 'القرارات', icon: Gauge/);
+  assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
+});
+
+test('phase one KPI and filter contracts expose source truth and URL state', async () => {
+  const commandCenter = await read('src/components/operations/FigmaCommandCenter.jsx');
+  const customerMoney = await read('src/pages/CustomerMoney.jsx');
+  const bank = await read('src/pages/BankStatement.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(commandCenter, /source="Zoho Books"/);
+  assert.match(commandCenter, /آخر تحديث/);
+  assert.match(commandCenter, /تعذرت القراءة؛ لم نعرض صفراً بديلاً/);
+  assert.match(customerMoney, /searchParams\.get\('aging'\)/);
+  assert.match(customerMoney, /params\.set\('aging'/);
+  assert.match(bank, /defaultSavedClass = 'all'/);
+  assert.match(bank, /isActive && view === 'saved'/);
+  assert.match(css, /\.workspace-filter-bar\s*\{/);
+});
+
+test('phase two groups operations reports and admin into approved workspaces', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+  const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
+
+  assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'الناقلون والمتابعة'[\s\S]*label: 'دورة المحاسب'[\s\S]*label: 'تدقيق وفواتير الناقلين'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'التقارير والتحليل'[\s\S]*label: 'التصدير والأرشيف'[\s\S]*label: 'سلامة البيانات والرقابة'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات والأتمتة'[\s\S]*label: 'إعدادات النظام والقنوات'/);
+  assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
+  assert.match(navigation, /integrity:\s*\{[^}]*section: 'reports'/);
+  assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'reports'/);
+
+  for (const scope of ['operations-carriers', 'operations-audit', 'operations-service-billing', 'reports-analysis', 'reports-archive', 'admin-carriers', 'admin-integrations', 'admin-system-settings']) {
+    assert.match(app, new RegExp(`scope="${scope}"[\\s\\S]*?showSwitcher`));
+  }
+  for (const path of ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks', '/drop', '/audits', '/aramex-statements', '/ledger', '/fulfillment', '/weight-billing', '/reports', '/monthly-report', '/internal-exports', '/activity-log', '/integrity', '/operations', '/uploads', '/webhook', '/work-agents', '/settings/hatif']) {
+    assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
+  }
+  assert.match(centerWorkspace, /params\.delete\('tab'\)/);
+  assert.match(centerWorkspace, /onNavigate\(`\$\{next\.path\}\$\{query/);
+});
+
+test('phase two important filters and unavailable sources are explicit', async () => {
+  const operations = await read('src/pages/OperationsCenter.jsx');
+  const reports = await read('src/pages/ReportsCenter.jsx');
+  const monthly = await read('src/pages/MonthlyReport.jsx');
+  const activity = await read('src/pages/ActivityLog.jsx');
+
+  assert.match(operations, /searchParams\.get\('status'\)/);
+  assert.match(operations, /searchParams\.get\('source'\)/);
+  assert.match(operations, /updateEventFilter\('status'/);
+  assert.match(reports, /searchParams\.get\('month'\)/);
+  assert.match(reports, /searchParams\.get\('carrier'\)/);
+  assert.match(reports, /المصدر غير متاح/);
+  assert.match(reports, /لم نعرض أصفارًا بديلة/);
+  assert.match(monthly, /searchParams\.get\('month'\)/);
+  assert.match(activity, /searchParams\.get\('action'\)/);
+  assert.match(activity, /آخر تحديث:/);
+  assert.match(activity, /لم نعرض سجلًا فارغًا/);
 });

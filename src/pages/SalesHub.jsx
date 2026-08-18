@@ -6,9 +6,10 @@
 //   /segments     → شرائح العملاء (كان داخل ملف العملاء)
 //   /merchants    → متاجر المنصّة (الدليل — كان داخل ملف العملاء)
 // نفس نمط CollectionsHub: الأبناء mounted، كلٌّ يجلب عند تفعيله فقط،
-// والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?tab=<id>.
+// والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?view=<id>
+// مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Workflow } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -20,6 +21,7 @@ import HatifLeads  from './HatifLeads.jsx';
 import { LeadsTab } from './CrmWorkspace.jsx';
 import Segments    from './Segments.jsx';
 import Merchants   from './Merchants.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 // تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
@@ -84,12 +86,13 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function SalesHub({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
-    const fromQuery = params.get('tab');
+    const fromQuery = params.get('view') || params.get('tab');
     if (fromQuery && visibleTabs.some(t => t.id === fromQuery)) return fromQuery;
     const fromPath = LEGACY_PATH_TO_TAB[location.pathname];
     if (fromPath && visibleTabs.some(t => t.id === fromPath)) return fromPath;
@@ -104,8 +107,26 @@ export default function SalesHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
+  const changeView = (next) => {
+    if (!visibleTabs.some(item => item.id === next)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('view', next);
+    params.delete('tab');
+    setTab(next);
+    navigate(`/retargeting?${params.toString()}`);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      <WorkspaceTabs
+        scope="sales-execution"
+        title="عمل اليوم ومسار المنصة"
+        subtitle="الأولوية والمرحلة والمتابعة والحملة من مساحة تنفيذ واحدة"
+        tone="#8B5CF6"
+        tabs={visibleTabs}
+        activeId={tab}
+        onChange={changeView}
+      />
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;

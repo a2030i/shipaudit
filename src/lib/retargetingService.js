@@ -412,9 +412,14 @@ export async function assignPlatformSalesAccounts(phones, ownerId) {
 
 export async function loadPlatformSalesAccount(phone) {
   if (!phone) throw new Error('رقم العميل مطلوب');
-  const { data, error } = await supabase.rpc('platform_commercial_account', {
+  let { data, error } = await supabase.rpc('platform_commercial_account', {
     p_phone: String(phone),
   });
+  if (error && /permission denied for view v_platform_commercial_routing/i.test(error.message || '')) {
+    ({ data, error } = await supabase.rpc('platform_sales_account', {
+      p_phone: String(phone),
+    }));
+  }
   if (error) throw error;
   return {
     account: data?.account || null,

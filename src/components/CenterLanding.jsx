@@ -33,13 +33,31 @@ function destinationsFor(group, visibleSubTabsFor, subTabPath) {
   });
 }
 
-export default function CenterLanding({ section, groups, visibleSubTabsFor, subTabPath, onNavigate, onQuickAction }) {
+function workspaceDestinationsFor(groups, workspaces) {
+  const itemById = new Map(groups.flatMap(group => group.items).map(item => [item.id, item]));
+  return workspaces.flatMap(workspace => {
+    const members = workspace.memberIds.map(id => itemById.get(id)).filter(Boolean);
+    if (!members.length) return [];
+    const entry = itemById.get(workspace.entryId) || members[0];
+    return [{
+      id: workspace.id,
+      label: workspace.label,
+      description: workspace.description,
+      icon: entry.icon,
+      path: entry.path,
+    }];
+  });
+}
+
+export default function CenterLanding({ section, groups, workspaces, visibleSubTabsFor, subTabPath, onNavigate, onQuickAction }) {
   if (!section) return null;
   const Icon = section.icon;
-  const destinationGroups = groups.map(group => ({
-    ...group,
-    destinations: destinationsFor(group, visibleSubTabsFor, subTabPath),
-  }));
+  const destinationGroups = workspaces?.length
+    ? [{ id: `${section.id}-workspaces`, label: 'مساحات العمل', destinations: workspaceDestinationsFor(groups, workspaces) }]
+    : groups.map(group => ({
+      ...group,
+      destinations: destinationsFor(group, visibleSubTabsFor, subTabPath),
+    }));
   const itemCount = destinationGroups.reduce((sum, group) => sum + group.destinations.length, 0);
 
   return (
@@ -58,7 +76,7 @@ export default function CenterLanding({ section, groups, visibleSubTabsFor, subT
 
       <div className="center-landing__summary">
         <strong>{itemCount}</strong>
-        <span>مسارات عمل متاحة حسب صلاحياتك</span>
+        <span>مساحات عمل متاحة حسب صلاحياتك</span>
       </div>
 
       <div className="center-landing__groups">

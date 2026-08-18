@@ -6168,6 +6168,58 @@ tbody tr,
 .center-landing__card-icon { display: grid; width: 38px; height: 38px; place-items: center; color: var(--center-accent); background: color-mix(in srgb, var(--center-accent) 10%, var(--surface)); border-radius: 11px; }
 .center-landing__card > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
 .center-landing__card strong { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pre-release UX pass: the daily queue is the primary surface. Operational
+   explanation and informational KPIs remain available without pushing the
+   first customer action below the fold on mobile. */
+.next-actions-context {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.next-actions-context > summary {
+  padding: 13px 15px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.next-actions-context__body { display: grid; gap: 10px; padding: 0 12px 12px; }
+.next-actions-secondary-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+
+@media (max-width: 768px) {
+  .collection-aging-overview { display: none !important; }
+  .collection-aging-options {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
+  }
+  .collection-aging-option {
+    min-height: 42px;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 8px 10px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 9px;
+    background: var(--surface2) !important;
+    font-size: 11.5px !important;
+    text-align: start;
+  }
+  .collection-aging-option[aria-pressed="true"] {
+    border-color: var(--brand) !important;
+    background: color-mix(in srgb, var(--brand) 7%, var(--surface2)) !important;
+  }
+  .customer-money-page .workspace-loading-state.is-informative {
+    min-height: 132px;
+    gap: 12px;
+    padding: 15px;
+  }
+  .customer-money-page .workspace-loading-skeleton { gap: 6px; }
+  .next-actions-context__body { padding-inline: 9px; }
+  .next-actions-secondary-kpis { grid-template-columns: 1fr 1fr; gap: 7px; }
+}
 .center-landing__card small { color: var(--muted); font-size: 9.5px; }
 
 .quick-action-backdrop {
@@ -6199,6 +6251,21 @@ tbody tr,
 .workspace-view-select.is-primary { display: grid; }
 .workspace-tabs.is-condensed { display: none !important; }
 
+.workspace-filter-bar {
+  padding: 10px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface2)) !important;
+}
+
+.workspace-filter-bar :is(input, select) {
+  min-height: 40px;
+  border-color: var(--border2) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+}
+
 @media (max-width: 900px) {
   .app-layout,
   .app-layout:has(.sidebar.collapsed) { display: block !important; }
@@ -6219,6 +6286,12 @@ tbody tr,
   .quick-action-grid > button.is-featured { grid-column: auto; }
   .workspace-view-select { display: grid; width: 100%; }
   .workspace-tabs { display: none !important; }
+  .workspace-filter-bar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+  .workspace-filter-bar > * { min-width: 0 !important; width: 100%; }
 }
 
 /* ========================================================================== */

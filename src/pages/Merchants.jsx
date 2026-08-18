@@ -28,6 +28,8 @@ import {
   loadUnmatchedCustomers, setCustomerMerchantLink,
   filterMerchantsByShipmentMonth, merchantLastShipmentMonth,
 } from '../lib/merchantsService.js';
+import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
+import useMobileLayout from '../lib/useMobileLayout.js';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -99,7 +101,7 @@ function InsightGrid({ insights }) {
 function MerchantInsightsPanels({ insights }) {
   if (!insights.topByVolume?.length && !insights.churnedTop?.length) return null;
   return (
-    <div style={{
+    <div className="merchant-insights-panels" style={{
       display: 'grid',
       gridTemplateColumns: 'repeat(auto-fit, minmax(360px, 1fr))',
       gap: 12, marginBottom: 14,
@@ -130,9 +132,9 @@ function MerchantInsightsPanels({ insights }) {
 
 function MiniMerchantTable({ icon: Icon, accent, title, sub, rows, valueLabel, valueFn, emptyMsg }) {
   return (
-    <Card style={{ padding: 0, overflow: 'hidden', borderTop: `2px solid ${accent}` }}>
+    <Card className="merchant-insight-card" style={{ padding: 0, overflow: 'hidden', borderTop: `2px solid ${accent}` }}>
       <div style={{ padding: '12px 14px', borderBottom: '1px solid var(--border)' }}>
-        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:10.5, color:'var(--muted)', fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase' }}>
+        <div className="merchant-insight-title" style={{ display:'flex', alignItems:'center', gap:6, fontSize:10.5, color:'var(--muted)', fontFamily:'var(--font-mono)', letterSpacing:2, textTransform:'uppercase' }}>
           <Icon size={13} color={accent}/>
           {title}
         </div>
@@ -157,7 +159,7 @@ function MiniMerchantTable({ icon: Icon, accent, title, sub, rows, valueLabel, v
                   </td>
                   <td style={{ padding:'7px 12px', textAlign:'left', whiteSpace:'nowrap', fontFamily:'var(--font-mono)', fontWeight:700, color: accent, fontSize:11 }}>
                     {valueFn(m)}
-                    <div style={{ fontSize:9, color:'var(--muted)', fontWeight:500, letterSpacing:1.5, textTransform:'uppercase' }}>{valueLabel}</div>
+                    <div className="merchant-insight-value-label" style={{ fontSize:9, color:'var(--muted)', fontWeight:500, letterSpacing:1.5, textTransform:'uppercase' }}>{valueLabel}</div>
                   </td>
                 </tr>
               ))}
@@ -303,6 +305,7 @@ function Row({ label, value, accent }) {
 // ── Main ───────────────────────────────────────────────────────
 export default function Merchants({ isActive = true }) {
   const { user, can } = useAuth();
+  const isMobile = useMobileLayout();
   const location = useLocation();
   const navigate = useNavigate();
   const [data, setData] = useState({ snapshot: null, merchants: [] });
@@ -574,6 +577,52 @@ export default function Merchants({ isActive = true }) {
           </Card>
 
           {/* Table */}
+          {isMobile ? (
+            <>
+              <SalesMobileList>
+                {visible.slice(0, 300).map(m => {
+                  const lastDays = daysAgo(m.last_shipment_at);
+                  const lastColor =
+                    lastDays == null ? 'var(--muted)' :
+                    lastDays <= 7 ? 'var(--green)' :
+                    lastDays <= 30 ? 'var(--gold)' :
+                    lastDays <= 60 ? '#F97316' : '#EF4444';
+                  return (
+                    <SalesMobileCard
+                      key={m.id}
+                      title={m.store_name}
+                      subtitle={<span dir="ltr">{m.phone || 'بلا رقم جوال'}</span>}
+                      eyebrow={`متجر ${m.store_id || 'بلا ID'}`}
+                      tone={m.status === 'نشط' ? 'var(--green)' : 'var(--muted)'}
+                      badges={<>
+                        <SalesMobileBadge color={m.status === 'نشط' ? 'var(--green)' : 'var(--muted)'}>
+                          {m.status === 'نشط' ? '● نشط' : '○ غير نشط'}
+                        </SalesMobileBadge>
+                        {m.billing_type && (
+                          <SalesMobileBadge color={m.billing_type === 'دفع لاحق' ? 'var(--gold)' : 'var(--brand)'}>
+                            {m.billing_type}
+                          </SalesMobileBadge>
+                        )}
+                      </>}
+                      metrics={[
+                        { label: 'الشحنات', value: fmtCount(m.shipment_count) },
+                        { label: 'آخر شحنة', value: m.last_shipment_at ? `${fmtDate(m.last_shipment_at)}${lastDays != null ? ` · ${lastDays}ي` : ''}` : '—', color: lastColor },
+                        { label: 'الرصيد', value: (m.wallet_balance || 0) > 0 ? `${fmt(m.wallet_balance)} ر.س` : '—', color: (m.wallet_balance || 0) > 0 ? 'var(--accent)' : 'var(--muted)', wide: true },
+                      ]}
+                      footer={(m.profile_status || m.vat_registered === true || m.zatca_completed === true || m.verification_status)
+                        ? <MerchantMetaChips merchant={m} compact/>
+                        : null}
+                    />
+                  );
+                })}
+              </SalesMobileList>
+              {visible.length > 300 && (
+                <div className="sales-mobile-list-note">
+                  + {fmtCount(visible.length - 300)} متجر إضافي — استخدم البحث أو الفلاتر لتضييق النتائج
+                </div>
+              )}
+            </>
+          ) : (
           <Card style={{ padding:0, overflow:'hidden' }}>
             <div style={{ maxHeight:600, overflowY:'auto' }}>
               <table className="m-cards" style={{ fontSize:12, width:'100%' }}>
@@ -641,6 +690,7 @@ export default function Merchants({ isActive = true }) {
               )}
             </div>
           </Card>
+          )}
         </>
       )}
 
@@ -885,7 +935,7 @@ function UnmatchedRow({ row, merchants, onLink, onSkip }) {
   );
 }
 
-function MerchantMetaChips({ merchant }) {
+function MerchantMetaChips({ merchant, compact = false }) {
   const chips = [];
   if (merchant.profile_status) {
     chips.push({
@@ -911,7 +961,7 @@ function MerchantMetaChips({ merchant }) {
   }
   if (!chips.length) return null;
   return (
-    <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:4 }}>
+    <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop: compact ? 0 : 4 }}>
       {chips.map(c => (
         <span key={c.key} title={c.title} style={miniMetaChip(c.color)}>
           {c.label}

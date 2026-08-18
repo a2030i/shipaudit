@@ -19,6 +19,7 @@ export default function WorkspaceTabs({
   activeId,
   onChange,
   tone = 'var(--brand)',
+  showContext = true,
 }) {
   const refs = useRef([]);
   const activeTab = tabs.find(tab => tab.id === activeId) || tabs[0];
@@ -31,7 +32,7 @@ export default function WorkspaceTabs({
     const node = refs.current[activeIndex];
     if (!node) return;
     node.scrollIntoView({ behavior: 'auto', block: 'nearest', inline: 'nearest' });
-  }, [activeTab?.id, tabs]);
+  }, [activeTab?.id, tabs.length]);
 
   const moveFocus = (currentIndex, key) => {
     if (!tabs.length) return;
@@ -58,7 +59,7 @@ export default function WorkspaceTabs({
         </div>
 
         <label className={`workspace-view-select${useCompactSelector ? ' is-primary' : ''}`}>
-          <span>العرض الحالي</span>
+          <span>طريقة العرض</span>
           <select value={activeTab?.id || ''} onChange={event => onChange(event.target.value)} aria-label={`العرض داخل ${title}`}>
             {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
           </select>
@@ -94,7 +95,7 @@ export default function WorkspaceTabs({
         </div>
       </section>
 
-      <WorkspaceContext tab={activeTab}/>
+      {showContext ? <WorkspaceContext tab={activeTab}/> : null}
     </>
   );
 }

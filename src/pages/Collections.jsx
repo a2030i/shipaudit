@@ -17,7 +17,7 @@
 // added.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -94,6 +94,7 @@ const RIYADH_TODAY = () => new Intl.DateTimeFormat('en-CA', {
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile, can } = useAuth();
   const canApproveWriteoff = can('receivables.approve_writeoff');
@@ -105,8 +106,8 @@ export default function Collections({ isActive = true }) {
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
-  const [stageFilter, setStageFilter] = useState('open');  // open|all|<stage>
-  const [workScope, setWorkScope] = useState('today'); // today|backlog
+  const [stageFilter, setStageFilter] = useState(() => searchParams.get('status') || 'open');
+  const [workScope, setWorkScope] = useState(() => searchParams.get('scope') || 'today');
   const [drawer, setDrawer]     = useState(null);
   const [ptpOpen, setPtpOpen]   = useState(null);
   const [snoozeOpen, setSnoozeOpen] = useState(null);
@@ -120,7 +121,7 @@ export default function Collections({ isActive = true }) {
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const focusedCustomer = searchParams.get('customer')?.trim() || '';
+  const focusedCustomer = (searchParams.get('search') || searchParams.get('customer'))?.trim() || '';
   const showSyncPrompt = searchParams.get('action') === 'sync';
 
   const refresh = useCallback(async () => {
@@ -152,6 +153,20 @@ export default function Collections({ isActive = true }) {
   }, [stageFilter, canAssign]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => {
+    setStageFilter(searchParams.get('status') || 'open');
+    setWorkScope(searchParams.get('scope') || 'today');
+  }, [searchParams]);
+
+  const updateQueueFilters = (patch) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '' || value === 'open' || value === 'today') next.delete(key);
+      else next.set(key, String(value));
+    }
+    next.delete('customer');
+    setSearchParams(next);
+  };
 
   const customerByName = useMemo(
     () => new Map(customers.map(c => [c.name, c])),
@@ -424,7 +439,10 @@ export default function Collections({ isActive = true }) {
             <Btn size="sm" variant="ghost" onClick={() => {
               const next = new URLSearchParams(searchParams);
               next.delete('customer');
-              setSearchParams(next);
+              next.delete('search');
+              const returnTo = next.get('returnTo');
+              if (returnTo?.startsWith('/') && !returnTo.startsWith('//')) navigate(returnTo);
+              else setSearchParams(next);
             }}>
               عرض كل المهام
             </Btn>
@@ -448,11 +466,11 @@ export default function Collections({ isActive = true }) {
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <Btn size="sm" variant={workScope === 'today' ? 'primary' : 'outline'}
-                 onClick={() => { setStageFilter('open'); setWorkScope('today'); }}>
+                 onClick={() => updateQueueFilters({ status: null, scope: null })}>
               عمل اليوم ({stats.daily})
             </Btn>
             <Btn size="sm" variant={workScope === 'backlog' ? 'primary' : 'outline'}
-                 onClick={() => { setStageFilter('open'); setWorkScope('backlog'); }}>
+                 onClick={() => updateQueueFilters({ status: null, scope: 'backlog' })}>
               المخزون ({stats.backlog})
             </Btn>
           </div>
@@ -561,7 +579,7 @@ export default function Collections({ isActive = true }) {
       {/* Stage filter chips */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
-          <button key={s} onClick={() => setStageFilter(s)} style={{
+          <button key={s} onClick={() => updateQueueFilters({ status: s === 'open' ? null : s })} style={{
             padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
             border: `1.5px solid ${stageFilter === s ? '#EF4444' : 'var(--border)'}`,
             background: stageFilter === s ? 'rgba(239,68,68,.12)' : 'transparent',

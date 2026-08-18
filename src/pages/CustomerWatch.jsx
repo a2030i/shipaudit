@@ -37,6 +37,11 @@ import { useAuth } from '../lib/auth.jsx';
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmtCount = (n) => (n == null) ? '—' : Number(n).toLocaleString('en-US');
+const CUSTOMER_DIRECTORY_VIEWS = [
+  ['overview', 'ملخص العملاء', 'الأرقام الرئيسية واتجاه النشاط'],
+  ['risks', 'مراقبة المخاطر', 'الحالات التي تحتاج انتباه'],
+  ['lists', 'القوائم المرجعية', 'الأعلى نشاطاً وديناً والأحدث'],
+];
 const fmtCompact = (n) => {
   if (n == null) return '—';
   const a = Math.abs(n);
@@ -206,12 +211,50 @@ export default function CustomerWatch({ isActive = true }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncingZoho, setSyncingZoho] = useState(false);
-  const [search, setSearch] = useState('');
-  const [view, setView] = useState('overview');
+  const [search, setSearch] = useState(() => {
+    const params = new URLSearchParams(location.search);
+    return params.get('search') || params.get('customer') || params.get('q') || '';
+  });
+  const [searchOpen, setSearchOpen] = useState(true);
+  const [activeSearchIndex, setActiveSearchIndex] = useState(-1);
+  const searchInputRef = useRef(null);
+  const searchResultRefs = useRef([]);
+  const [view, setView] = useState(() => {
+    const requested = new URLSearchParams(location.search).get('view');
+    return CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === requested) ? requested : 'overview';
+  });
   const [listGroup, setListGroup] = useState('finance');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
+  const [compactView, setCompactView] = useState(() => window.matchMedia('(max-width: 768px)').matches);
   const autoOpenedSearch = useRef('');
+
+  // Keep the visible search model aligned with browser history. This is
+  // required for direct Customer 360 links and refreshes because this page
+  // remains mounted while the shell swaps routes.
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const incoming = params.get('search')
+      || params.get('q')
+      || (params.get('open') === '1' ? params.get('customer') : '')
+      || '';
+    setSearch(current => current === incoming ? current : incoming);
+    setSearchOpen(params.get('open') !== '1' && !!incoming.trim());
+  }, [location.search]);
+
+  useEffect(() => {
+    if (new URLSearchParams(location.search).get('open') === '1') return;
+    setOpenCustomer(null);
+    autoOpenedSearch.current = '';
+  }, [location.search]);
+
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 768px)');
+    const sync = () => setCompactView(media.matches);
+    sync();
+    media.addEventListener?.('change', sync);
+    return () => media.removeEventListener?.('change', sync);
+  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -242,12 +285,67 @@ export default function CustomerWatch({ isActive = true }) {
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const incoming = params.get('customer') || params.get('q');
+    const incoming = params.get('search') || params.get('customer') || params.get('q');
     if (incoming) {
       setSearch(incoming);
       setView('overview');
     }
   }, [location.search]);
+
+  useEffect(() => {
+    if (isActive) return;
+    setOpenCustomer(null);
+    setOpenAnomaly(null);
+    setSearchOpen(false);
+  }, [isActive]);
+
+  const changeView = (next) => {
+    if (!CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === next)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('view', next);
+    setView(next);
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  };
+
+  const openCustomer360 = (entry) => {
+    const identity = entry?.merchant?.storeId || entry?.name;
+    setOpenCustomer(entry);
+    if (!identity) return;
+    const params = new URLSearchParams(location.search);
+    if (!params.get('returnTo')) params.set('returnTo', `${location.pathname}${location.search}`);
+    params.set('customer', identity);
+    params.set('open', '1');
+    params.delete('search');
+    params.delete('q');
+    navigate(`/customer-360?${params.toString()}`);
+  };
+
+  const closeCustomer360 = () => {
+    setOpenCustomer(null);
+    const params = new URLSearchParams(location.search);
+    const returnTo = params.get('returnTo');
+    if (returnTo?.startsWith('/') && !returnTo.startsWith('//')) {
+      navigate(returnTo);
+      return;
+    }
+    params.delete('customer');
+    params.delete('open');
+    params.delete('q');
+    params.delete('search');
+    params.delete('returnTo');
+    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
+  };
+
+  const updateSearch = (value, { open = true } = {}) => {
+    setSearch(value);
+    setSearchOpen(open && !!value.trim());
+    setActiveSearchIndex(-1);
+    const params = new URLSearchParams(location.search);
+    if (value.trim()) params.set('search', value.trim());
+    else params.delete('search');
+    params.delete('q');
+    navigate(`${location.pathname}${params.size ? `?${params.toString()}` : ''}`, { replace: true });
+  };
 
   const t = data?.totals;
 
@@ -300,8 +398,49 @@ export default function CustomerWatch({ isActive = true }) {
   }, [search, data]);
 
   useEffect(() => {
+    searchResultRefs.current = searchResultRefs.current.slice(0, searchResults.length);
+    setActiveSearchIndex(current => Math.min(current, searchResults.length - 1));
+  }, [searchResults.length]);
+
+  const chooseSearchResult = (entry) => {
+    setSearchOpen(false);
+    setActiveSearchIndex(-1);
+    openCustomer360(entry);
+    setSearch('');
+  };
+
+  const onSearchKeyDown = (event) => {
+    if (!search.trim()) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      setSearchOpen(false);
+      setActiveSearchIndex(-1);
+      return;
+    }
+    if (!searchOpen && ['ArrowDown', 'ArrowUp'].includes(event.key)) setSearchOpen(true);
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setActiveSearchIndex(current => {
+        const next = searchResults.length ? (current + 1 + searchResults.length) % searchResults.length : -1;
+        searchResultRefs.current[next]?.scrollIntoView({ block: 'nearest' });
+        return next;
+      });
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setActiveSearchIndex(current => {
+        const next = searchResults.length ? (current <= 0 ? searchResults.length - 1 : current - 1) : -1;
+        searchResultRefs.current[next]?.scrollIntoView({ block: 'nearest' });
+        return next;
+      });
+    } else if (event.key === 'Enter' && searchOpen && searchResults.length) {
+      event.preventDefault();
+      chooseSearchResult(searchResults[activeSearchIndex >= 0 ? activeSearchIndex : 0]);
+    }
+  };
+
+  useEffect(() => {
     const params = new URLSearchParams(location.search);
-    const incoming = params.get('customer') || params.get('q');
+    const incoming = params.get('customer') || params.get('search') || params.get('q');
     if (params.get('open') !== '1' || !incoming || !data || !searchResults.length) return;
     if (autoOpenedSearch.current === location.search) return;
     const normalized = incoming.replace(/\D/g, '');
@@ -343,8 +482,8 @@ export default function CustomerWatch({ isActive = true }) {
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Users size={22}/>}
-        title="ملفات العملاء"
-        subtitle="مرجع موحّد للعميل — هويته، وضعه المالي، نشاطه، وتاريخ التواصل"
+        title="دليل العملاء والمتاجر"
+        subtitle="ابحث عن العميل أو المتجر، ثم افتح ملف العميل 360 الموحد"
         meta={data?.snapshot?.receivables
           ? `بيانات الفواتير: snapshot ${data.snapshot.receivables.id}${data.snapshot.merchants ? ` · المتاجر: ${data.snapshot.merchants.id}` : ''}`
           : null}
@@ -390,7 +529,7 @@ export default function CustomerWatch({ isActive = true }) {
       ) : (
         <>
           {/* ── SEARCH BAR ─────────────────────────────────────── */}
-          <Card className="customer-search-hero" style={{ padding: '20px 22px', marginBottom: 16, position: 'relative' }}>
+          <Card className="customer-search-hero" style={{ padding: '20px 22px', marginBottom: 16, position: 'relative', zIndex: 50 }}>
             <div className="customer-search-copy">
               <div>
                 <div className="customer-search-eyebrow">ابدأ من هنا</div>
@@ -407,11 +546,21 @@ export default function CustomerWatch({ isActive = true }) {
             <div className="customer-search-input">
               <Search size={19} color="var(--brand)"/>
               <input
-                value={search} onChange={e => setSearch(e.target.value)}
+                ref={searchInputRef}
+                value={search}
+                onChange={e => updateSearch(e.target.value)}
+                onFocus={() => search.trim() && setSearchOpen(true)}
+                onKeyDown={onSearchKeyDown}
                 placeholder="اسم العميل، اسم المتجر، رقم المتجر، أو الجوال…"
                 autoComplete="off"
                 data-lpignore="true" data-form-type="other"
                 name="customer-watch-search"
+                role="combobox"
+                aria-label="البحث في دليل العملاء والمتاجر"
+                aria-autocomplete="list"
+                aria-expanded={searchOpen && !!search.trim()}
+                aria-controls="customer-search-results"
+                aria-activedescendant={activeSearchIndex >= 0 ? `customer-search-result-${activeSearchIndex}` : undefined}
                 style={{
                   flex: 1, border: 'none', outline: 'none', background: 'transparent',
                   fontSize: 15, padding: '8px 0', color: 'var(--text)',
@@ -419,7 +568,7 @@ export default function CustomerWatch({ isActive = true }) {
                 }}
               />
               {search && (
-                <button onClick={() => setSearch('')} style={{
+                <button type="button" aria-label="مسح البحث" onClick={() => updateSearch('', { open: false })} style={{
                   background: 'transparent', border: 'none', color: 'var(--muted)',
                   cursor: 'pointer', display: 'flex', alignItems: 'center',
                 }}>
@@ -427,12 +576,12 @@ export default function CustomerWatch({ isActive = true }) {
                 </button>
               )}
             </div>
-            {search.trim() && (
-              <div style={{
+            {searchOpen && search.trim() && (
+              <div id="customer-search-results" role="listbox" aria-label="نتائج البحث" className="customer-search-results" style={{
                 position: 'absolute', insetInline: 0, top: '100%',
                 background: 'var(--card)',
                 border: '1px solid var(--border)', borderRadius: 'var(--r-lg)',
-                marginTop: 8, zIndex: 10,
+                marginTop: 8, zIndex: 1000,
                 boxShadow: 'var(--shadow-lg)',
                 maxHeight: 420, overflowY: 'auto',
               }}>
@@ -441,13 +590,21 @@ export default function CustomerWatch({ isActive = true }) {
                     لا توجد نتائج لـ "{search}"
                   </div>
                 ) : searchResults.map((r, i) => (
-                  <div key={i} onClick={() => { setOpenCustomer(r); setSearch(''); }} style={{
+                  <button
+                    key={`${r.kind}-${r.merchant?.storeId || r.name}-${i}`}
+                    ref={node => { searchResultRefs.current[i] = node; }}
+                    id={`customer-search-result-${i}`}
+                    type="button"
+                    role="option"
+                    aria-selected={activeSearchIndex === i}
+                    className={`customer-search-result${activeSearchIndex === i ? ' is-active' : ''}`}
+                    onClick={() => chooseSearchResult(r)}
+                    onMouseEnter={() => setActiveSearchIndex(i)}
+                    style={{
                     padding: '11px 16px', cursor: 'pointer',
                     borderBottom: i === searchResults.length - 1 ? 'none' : '1px solid var(--border)',
                     display: 'grid', gridTemplateColumns: '1fr auto', gap: 12, alignItems: 'center',
-                  }}
-                  onMouseEnter={e => e.currentTarget.style.background = 'var(--surface2)'}
-                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}>
+                  }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
                         {r.merchant?.storeName || r.name}
@@ -472,31 +629,33 @@ export default function CustomerWatch({ isActive = true }) {
                         }}>متجر بدون فواتير</span>
                       )}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
           </Card>
 
-          <div className="customer-view-tabs" role="tablist" aria-label="أقسام ملفات العملاء">
-            {[
-              ['overview', 'ملخص العملاء', 'الأرقام الرئيسية واتجاه النشاط'],
-              ['risks', 'مراقبة المخاطر', `${fmtCount(t.anomalyCount)} حالة تحتاج انتباه`],
-              ['lists', 'القوائم المرجعية', 'الأعلى نشاطاً وديناً والأحدث'],
-            ].map(([id, label, sub]) => (
+          <label className="customer-view-select">
+            <span>طريقة العرض</span>
+            <select value={view} onChange={event => changeView(event.target.value)}>
+              {CUSTOMER_DIRECTORY_VIEWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </label>
+          {!compactView && <div className="customer-view-tabs" role="tablist" aria-label="أقسام دليل العملاء والمتاجر">
+            {CUSTOMER_DIRECTORY_VIEWS.map(([id, label, sub]) => (
               <button
                 key={id}
                 type="button"
                 role="tab"
                 aria-selected={view === id}
                 className={view === id ? 'active' : ''}
-                onClick={() => setView(id)}
+                onClick={() => changeView(id)}
               >
                 <strong>{label}</strong>
                 <span>{sub}</span>
               </button>
             ))}
-          </div>
+          </div>}
 
           {view === 'overview' && <CustomerPulseSummary t={t} />}
 
@@ -837,8 +996,8 @@ export default function CustomerWatch({ isActive = true }) {
           customers={data?.customers || []}
           merchants={data?.merchants || []}
           profile={profile}
-          onSelect={(e) => setOpenCustomer(e)}
-          onClose={() => setOpenCustomer(null)}
+          onSelect={openCustomer360}
+          onClose={closeCustomer360}
         />
       )}
 

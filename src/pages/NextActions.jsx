@@ -2,7 +2,7 @@
 // قائمة مرتّبة لكل عميل تحتاج إجراءً اليوم، بسبب واضح (ردّ/دين/محفظة/توقّف) +
 // الإجراء المقترح + أزرار تنفيذه (اتصال IVR / حملة واتساب / عرض العميل).
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import {
   RefreshCw, Phone, Eye, ShieldCheck, ListChecks, Activity, Target,
   Link2, CalendarClock, User, ExternalLink, CircleDollarSign,
@@ -28,6 +28,12 @@ const STAGE_LABELS = {
   at_risk: 'مهدد بالتوقف', stopped: 'متوقف', contacted: 'تم التواصل',
   qualified: 'مؤهل', nurture: 'متابعة', won: 'مكتسب', lost: 'مغلق',
 };
+const BALANCE_STATUS_LABELS = { valid: 'الرصيد متحقق', invalid: 'الرصيد يحتاج مراجعة', unknown: 'حالة الرصيد غير متاحة' };
+const LIFECYCLE_EVENT_LABELS = {
+  registered: 'تسجيل العميل', first_shipment: 'أول شحنة', stopped: 'توقف عن الشحن',
+  reactivated: 'عاد للشحن', disqualified: 'غير مؤهل للمتابعة', wallet_topped: 'شحن المحفظة',
+  payment: 'دفعة', shipment: 'شحنة',
+};
 const ACTIVITY_TYPES = [
   ['call', 'مكالمة'], ['whatsapp', 'واتساب يدوي'], ['meeting', 'اجتماع'],
   ['email', 'بريد'], ['note', 'ملاحظة'],
@@ -46,12 +52,14 @@ const tomorrowInput = () => {
 
 export default function NextActions({ isActive = true }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, canAny } = useAuth();
   const [rows, setRows] = useState(null);
   const [growth, setGrowth] = useState(null);
   const [employees, setEmployees] = useState([]);
-  const [mine, setMine] = useState(false);
-  const [group, setGroup] = useState('');
+  const [mine, setMine] = useState(() => searchParams.get('owner') === 'me');
+  const [group, setGroup] = useState(() => searchParams.get('status') || '');
   const [selected, setSelected] = useState(() => new Set());
   const [previewRows, setPreviewRows] = useState(null);
   const [outcomeRow, setOutcomeRow] = useState(null);
@@ -71,6 +79,26 @@ export default function NextActions({ isActive = true }) {
     } catch (e) { toast(`تعذّر التحميل: ${e.message}`, 'error'); setRows([]); }
   }, [mine, user?.id]);
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
+  useEffect(() => {
+    setMine(searchParams.get('owner') === 'me');
+    setGroup(searchParams.get('status') || '');
+  }, [searchParams]);
+  useEffect(() => {
+    if (isActive) return;
+    setPreviewRows(null);
+    setOutcomeRow(null);
+    setProfileRow(null);
+    setProfileData(null);
+  }, [isActive]);
+
+  const updateFilters = (patch) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '' || value === false) next.delete(key);
+      else next.set(key, String(value));
+    }
+    setSearchParams(next);
+  };
 
   const nameById = useMemo(() => { const m = new Map(); employees.forEach(e => m.set(e.id, e.name || e.email)); return m; }, [employees]);
   const filtered = useMemo(() => (rows || []).filter(r => !group || NBA_META[r.reasonCode]?.group === group), [rows, group]);
@@ -115,37 +143,15 @@ export default function NextActions({ isActive = true }) {
   return (
     <Pad>
       <PageHeader icon={<Phone size={22}/>} title="مهام العملاء اليوم" subtitle="قائمة تنفيذ موحّدة — من تتصل به، ولماذا، وما الخطوة المقترحة الآن"
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
-
-      <Card style={{ padding: '11px 14px', marginBottom: 12, borderColor: 'color-mix(in srgb, #2563EB 35%, var(--border2))', background: 'color-mix(in srgb, #2563EB 7%, var(--card))' }}>
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
-          <ShieldCheck size={18} color="#2563EB"/>
-          <div style={{ flex: 1, minWidth: 220 }}>
-            <b style={{ fontSize: 13 }}>وضع تجريبي — الإرسال غير مفعّل</b>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>النظام يبني الجمهور والقالب والحواجز للمعاينة فقط، ولا ترتبط هذه الشاشة بأي دالة إرسال واتساب.</div>
-          </div>
-          <Btn size="sm" variant="outline" icon={<Eye size={13}/>} disabled={!filtered.length} onClick={() => setPreviewRows(filtered)}>معاينة نتائج الفلتر</Btn>
-        </div>
-      </Card>
-
-      {growth ? <GrowthOperatingPulse growth={growth}/> : null}
-
-      {/* شريط الملخّص */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 10, marginBottom: 12 }}>
-        <Kpi label="إجراءات مطلوبة" value={fmt0(totals.count)} color="#06B6D4"/>
-        <Kpi label="مال معرّض (دين+محفظة)" value={`${fmt0(totals.money)} ر.س`} color="var(--red)"/>
-        <Kpi label="تحصيل" value={fmt0(totals.byGroup['تحصيل'] || 0)} color="var(--red)"/>
-        <Kpi label="مؤهل مبدئيًا" value={fmt0(totals.ready)} color="#16A34A"/>
-        <Kpi label="متابعة بشرية/محمي" value={fmt0(totals.held)} color="var(--gold)"/>
-      </div>
+        actions={<Btn size="sm" variant="ghost" ariaLabel="تحديث قائمة عمل المبيعات" onClick={refresh} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
       {/* الفلاتر */}
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
         <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: 'var(--muted)' }}>
-          <input type="checkbox" checked={mine} onChange={e => setMine(e.target.checked)}/> المسندة لي فقط
+          <input type="checkbox" checked={mine} onChange={e => updateFilters({ owner: e.target.checked ? 'me' : null })}/> المسندة لي فقط
         </label>
         {['', 'الجدد', 'المتوقفون', 'متابعة', 'تحصيل', 'تواصل'].map(g => (
-          <Btn key={g || 'all'} size="sm" variant={group === g ? 'primary' : 'outline'} onClick={() => setGroup(g)}>{g || 'الكل'}</Btn>
+          <Btn key={g || 'all'} size="sm" variant={group === g ? 'primary' : 'outline'} onClick={() => updateFilters({ status: g || null })}>{g || 'الكل'}</Btn>
         ))}
         <span style={{ flex: 1 }}/>
         <Btn size="sm" variant="outline" icon={<ListChecks size={13}/>} disabled={!filtered.length} onClick={selectFiltered}>تحديد نتائج الفلتر</Btn>
@@ -200,6 +206,30 @@ export default function NextActions({ isActive = true }) {
           </div>
         )}
 
+      <details className="next-actions-context">
+        <summary>معلومات القائمة وضوابط التواصل</summary>
+        <div className="next-actions-context__body">
+          <Card style={{ padding: '11px 14px', borderColor: 'color-mix(in srgb, #2563EB 35%, var(--border2))', background: 'color-mix(in srgb, #2563EB 7%, var(--card))' }}>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+              <ShieldCheck size={18} color="#2563EB"/>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <b style={{ fontSize: 13 }}>وضع تجريبي — الإرسال غير مفعّل</b>
+                <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 2 }}>النظام يبني الجمهور والقالب والحواجز للمعاينة فقط، ولا ترتبط هذه الشاشة بأي دالة إرسال واتساب.</div>
+              </div>
+              <Btn size="sm" variant="outline" icon={<Eye size={13}/>} disabled={!filtered.length} onClick={() => setPreviewRows(filtered)}>معاينة نتائج الفلتر</Btn>
+            </div>
+          </Card>
+          {growth ? <GrowthOperatingPulse growth={growth}/> : null}
+          <div className="next-actions-secondary-kpis">
+            <Kpi label="إجراءات مطلوبة" value={fmt0(totals.count)} color="#06B6D4"/>
+            <Kpi label="مبلغ مرتبط بالمتابعة" value={`${fmt0(totals.money)} ر.س`} color="var(--red)"/>
+            <Kpi label="تحصيل" value={fmt0(totals.byGroup['تحصيل'] || 0)} color="var(--red)"/>
+            <Kpi label="مؤهل مبدئيًا" value={fmt0(totals.ready)} color="#16A34A"/>
+            <Kpi label="متابعة بشرية/محمي" value={fmt0(totals.held)} color="var(--gold)"/>
+          </div>
+        </div>
+      </details>
+
       {previewRows ? <EngagementPlanPreview rows={previewRows} onClose={() => setPreviewRows(null)}/> : null}
       {outcomeRow ? <OutcomeModal row={outcomeRow} onClose={() => setOutcomeRow(null)} onSaved={async () => {
         setOutcomeRow(null);
@@ -207,7 +237,13 @@ export default function NextActions({ isActive = true }) {
       }}/> : null}
       {profileRow ? <CustomerGrowthProfile row={profileRow} data={profileData} loading={profileLoading}
         onClose={() => { setProfileRow(null); setProfileData(null); }}
-        onOpenFull={() => navigate(`/customer-360?q=${encodeURIComponent(profileRow.phone)}&open=1`)}/> : null}
+        onOpenFull={() => {
+          const phone = profileRow.phone;
+          const returnTo = `${location.pathname}${location.search}`;
+          setProfileRow(null);
+          setProfileData(null);
+          navigate(`/customer-360?search=${encodeURIComponent(phone)}&open=1&returnTo=${encodeURIComponent(returnTo)}`);
+        }}/> : null}
     </Pad>
   );
 }
@@ -348,16 +384,16 @@ function CustomerGrowthProfile({ row, data, loading, onClose, onOpenFull }) {
   const zoho = data?.identity?.zoho_customers || [];
   return <Modal title={`ملف النمو 360 — ${data?.name || row.name}`} onClose={onClose} width={860}>
     {loading ? <div style={{ padding: 45, textAlign: 'center' }}><Spinner/></div> : !data ? <Empty icon="⚠️" title="تعذر تحميل الملف"/> : <div style={{ display: 'grid', gap: 13 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><b>{data.phone}</b><div style={{ color: 'var(--muted)', fontSize: 11 }}>{data.customer_key}</div></div><span style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--surface)', fontSize: 12, fontWeight: 800 }}>{STAGE_LABELS[data.stage] || data.stage}</span></div>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}><div><b>{data.phone}</b><div style={{ color: 'var(--muted)', fontSize: 11 }}>ملف موحد مرتبط بـ{stores.length} متجر</div></div><span style={{ padding: '5px 10px', borderRadius: 999, background: 'var(--surface)', fontSize: 12, fontWeight: 800 }}>{STAGE_LABELS[data.stage] || 'مرحلة غير مصنفة'}</span></div>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(145px,1fr))', gap: 8 }}>
         <Kpi label="المتاجر المرتبطة" value={fmt0(stores.length)} color="#2563EB"/><Kpi label="حسابات زوهو" value={fmt0(zoho.length)} color="#8B5CF6"/><Kpi label="المستحق" value={`${fmtMoney(finance.total_due)} ر.س`} color="var(--red)"/><Kpi label="محاولات التواصل" value={fmt0(followup.contact_attempts)} color="var(--gold)"/>
       </div>
-      <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>الهوية الموحدة</b><div style={{ display: 'grid', gap: 6, marginTop: 8 }}>{stores.map(store => <div key={store.store_id} style={{ fontSize: 11.5 }}>متجر <b>{store.store_id}</b> · {store.store_name} · {fmt0(store.shipments)} شحنة</div>)}{zoho.map(customer => <div key={customer.zoho_id || customer.name} style={{ fontSize: 11.5 }}>زوهو: <b>{customer.name}</b> · {customer.balance_status || '—'}</div>)}</div></Card>
+      <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>الهوية الموحدة</b><div style={{ display: 'grid', gap: 6, marginTop: 8 }}>{stores.map(store => <div key={store.store_id} style={{ fontSize: 11.5 }}>متجر <b>{store.store_id}</b> · {store.store_name} · {fmt0(store.shipments)} شحنة</div>)}{zoho.map(customer => <div key={customer.zoho_id || customer.name} style={{ fontSize: 11.5 }}>زوهو: <b>{customer.name}</b> · {BALANCE_STATUS_LABELS[customer.balance_status] || customer.balance_status || '—'}</div>)}</div></Card>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(240px,1fr))', gap: 10 }}>
         <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>المتابعة الحالية</b><div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.8 }}>المسؤول: <b>{followup.owner_name || 'بلا مسؤول'}</b><br/>المرحلة: <b>{STAGE_LABELS[followup.sales_stage] || followup.sales_stage || 'لم تبدأ'}</b><br/>الإجراء التالي: <b>{fmtDateTime(followup.next_action_at)}</b></div></Card>
         <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>أثر بعد آخر تواصل</b><div style={{ marginTop: 8, fontSize: 11.5, lineHeight: 1.8 }}>سداد: <b>{fmtMoney(impact.paid_amount)} ر.س</b><br/>أحداث شحن: <b>{fmt0(impact.shipment_events)}</b><br/><small style={{ color: 'var(--muted2)' }}>ارتباط زمني، وليس إثباتًا أن التواصل هو السبب.</small></div></Card>
       </div>
-      <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>آخر تحولات العميل</b><div style={{ display: 'grid', gap: 6, marginTop: 8 }}>{(data.lifecycle || []).slice(0, 6).map(event => <div key={event.id} style={{ fontSize: 11.5, display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{event.store_name} · {event.event_type}</span><span style={{ color: 'var(--muted2)' }}>{fmtDateTime(event.observed_at)}</span></div>)}{!(data.lifecycle || []).length ? <span style={{ color: 'var(--muted2)', fontSize: 11.5 }}>لا توجد تحولات مسجلة بعد.</span> : null}</div></Card>
+      <Card style={{ padding: 12 }}><b style={{ fontSize: 12.5 }}>آخر تحولات العميل</b><div style={{ display: 'grid', gap: 6, marginTop: 8 }}>{(data.lifecycle || []).slice(0, 6).map(event => <div key={event.id} style={{ fontSize: 11.5, display: 'flex', justifyContent: 'space-between', gap: 10 }}><span>{event.store_name} · {LIFECYCLE_EVENT_LABELS[event.event_type] || event.event_type}</span><span style={{ color: 'var(--muted2)' }}>{fmtDateTime(event.observed_at)}</span></div>)}{!(data.lifecycle || []).length ? <span style={{ color: 'var(--muted2)', fontSize: 11.5 }}>لا توجد تحولات مسجلة بعد.</span> : null}</div></Card>
       <div style={{ display: 'flex', justifyContent: 'flex-end' }}><Btn variant="outline" icon={<ExternalLink size={13}/>} onClick={onOpenFull}>فتح ملف العميل الكامل</Btn></div>
     </div>}
   </Modal>;
@@ -366,7 +402,7 @@ function CustomerGrowthProfile({ row, data, loading, onClose, onOpenFull }) {
 const fieldLabel = { display: 'grid', gap: 6, fontSize: 12, fontWeight: 700 };
 const fieldInput = { width: '100%', border: '1px solid var(--border2)', borderRadius: 9, background: 'var(--surface)', color: 'var(--text)', padding: '9px 10px', font: 'inherit' };
 
-function Pad({ children }) { return <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>{children}</div>; }
+function Pad({ children }) { return <div className="next-actions-page" style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>{children}</div>; }
 function Kpi({ label, value, color }) {
   return (
     <div className="stat-card" style={{
