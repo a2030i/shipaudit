@@ -2,6 +2,9 @@
 const CARRIERS_KEY  = 'shipaudit_carriers_v2';
 const SETTINGS_KEY  = 'shipaudit_settings_v1';
 const AUDITS_KEY    = 'shipaudit_audits_v2';
+const ARAMEX_APPROVED_FROM = '2026-07-01';
+const ARAMEX_APPROVED_TO = '2026-07-31';
+const ARAMEX_NAME_RE = /aramex|أرامكس|ارامكس/i;
 
 // ─── Seed data ─────────────────────────────────────────────────────────────────
 export const SEED_CARRIERS = [
@@ -76,10 +79,32 @@ export const SEED_CARRIERS = [
 ];
 
 // ─── Carriers CRUD ─────────────────────────────────────────────────────────────
+export function applyApprovedAramexTerms(carriers = []) {
+  return carriers.map(carrier => {
+    if (!ARAMEX_NAME_RE.test(`${carrier?.id || ''} ${carrier?.name || ''}`)) return carrier;
+    return {
+      ...carrier,
+      contracts: (carrier.contracts || []).map(contract => {
+        const startsBeforePeriodEnds = (contract.startDate || '0000-01-01') <= ARAMEX_APPROVED_TO;
+        const endsAfterPeriodStarts = !contract.endDate || contract.endDate >= ARAMEX_APPROVED_FROM;
+        if (!startsBeforePeriodEnds || !endsAfterPeriodStarts) return contract;
+        return { ...contract, fuelPct: 0.10, codFee: 3 };
+      }),
+    };
+  });
+}
+
 export function loadCarriers() {
   try {
     const raw = localStorage.getItem(CARRIERS_KEY);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      const normalized = applyApprovedAramexTerms(parsed);
+      if (JSON.stringify(normalized) !== JSON.stringify(parsed)) {
+        localStorage.setItem(CARRIERS_KEY, JSON.stringify(normalized));
+      }
+      return normalized;
+    }
   } catch {}
   return SEED_CARRIERS;
 }
