@@ -58,6 +58,11 @@ test('stored Aramex contracts active in July receive the approved terms', () => 
   assert.equal(normalized[2].contracts[0].codFee, 5);
 });
 
+test('the production carrier read path applies the approved Aramex terms', async () => {
+  const source = await readFile(new URL('../src/lib/coreService.js', import.meta.url), 'utf8');
+  assert.match(source, /applyApprovedAramexTerms\(data\.map/);
+});
+
 test('UploadWizard records month precision without manufacturing shipment dates', async () => {
   const source = await readFile(new URL('../src/pages/UploadWizard.jsx', import.meta.url), 'utf8');
   assert.match(source, /periodPrecision:\s*periodFallback\.active \? 'month'/);

@@ -1,7 +1,7 @@
 import { supabase } from './supabase.js';
 import { hasAuditProofMetadata } from './auditProof.js';
 import { buildSummary } from '../engine/audit.js';
-import { SEED_CARRIERS } from '../data/carriers.js';
+import { applyApprovedAramexTerms, SEED_CARRIERS } from '../data/carriers.js';
 import { deriveAuditType } from '../engine/audit.js';
 
 const AUDIT_SOURCE_BUCKET = 'audit-source-files';
@@ -55,7 +55,7 @@ export async function loadCarriers() {
     return SEED_CARRIERS;
   }
 
-  return data.map(row => ({
+  return applyApprovedAramexTerms(data.map(row => ({
     id:               row.id,
     name:             row.name,
     logo:             row.logo,
@@ -74,7 +74,7 @@ export async function loadCarriers() {
     iban:             row.iban              ?? '',
     bankName:         row.bank_name         ?? '',
     contractPdfPath:  row.contract_pdf_path ?? null,
-  }));
+  })));
 }
 
 async function seedCarriers() {
