@@ -13,7 +13,7 @@ import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Work
 import { useAuth } from '../lib/auth.jsx';
 
 import PlatformSalesCrm from './PlatformSalesCrm.jsx';
-import SalesToday  from './SalesToday.jsx';
+import NextActions from './NextActions.jsx';
 import StoreActivation from './StoreActivation.jsx';
 import Retargeting from './Retargeting.jsx';
 import HatifLeads  from './HatifLeads.jsx';
@@ -32,7 +32,7 @@ const TABS = [
   },
   // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
   {
-    id: 'today', label: 'قائمة العمل اليوم', icon: Sunrise, component: SalesToday,
+    id: 'today', label: 'قائمة العمل اليوم', icon: Sunrise, component: NextActions,
     eyebrow: 'بوصلة الموظف', purpose: 'ابدأ بأعلى الفرص قيمة اليوم',
     description: 'تلخّص ما يستحق الاتصال الآن وتمنع تشتيت الفريق بين القوائم. هذه هي نقطة البداية اليومية وليست قاعدة بيانات جديدة.',
     outcome: 'أولوية واتصال ونتيجة', tone: 'var(--brand)',

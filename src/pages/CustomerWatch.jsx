@@ -9,7 +9,7 @@
 // cross-joins customer_receivables × merchants × customer_merchant_links
 // in one pass.
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -211,6 +211,7 @@ export default function CustomerWatch({ isActive = true }) {
   const [listGroup, setListGroup] = useState('finance');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
+  const autoOpenedSearch = useRef('');
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -297,6 +298,23 @@ export default function CustomerWatch({ isActive = true }) {
     }
     return out;
   }, [search, data]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const incoming = params.get('customer') || params.get('q');
+    if (params.get('open') !== '1' || !incoming || !data || !searchResults.length) return;
+    if (autoOpenedSearch.current === location.search) return;
+    const normalized = incoming.replace(/\D/g, '');
+    const exact = searchResults.find(result => {
+      const merchant = result.merchant || result.customer?.merchant;
+      return merchant?.phone?.replace(/\D/g, '') === normalized
+        || merchant?.storeId === incoming
+        || result.name === incoming;
+    }) || searchResults[0];
+    autoOpenedSearch.current = location.search;
+    setOpenCustomer(exact);
+    setSearch('');
+  }, [data, location.search, searchResults]);
 
   // Build chart series + labels from the monthsSeries
   const chartData = useMemo(() => {

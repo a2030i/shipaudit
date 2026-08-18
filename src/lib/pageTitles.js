@@ -18,6 +18,7 @@ export const PAGE_TITLES = {
   '/customer-money':    'تحصيل العملاء',
   '/legal':             'التصعيد القانوني',
   '/retargeting':       'فرص البيع من بيانات المنصة',
+  '/campaigns':         'مركز الحملات الذكي',
   '/whatsapp-settings': 'الحملات والاتصالات',
   '/hatif-leads':       'مرجع طلبات هاتف',
   '/support':           'خدمة العملاء',

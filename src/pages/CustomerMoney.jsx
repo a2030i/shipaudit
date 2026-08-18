@@ -358,8 +358,11 @@ export default function CustomerMoney({ isActive = true }) {
   const campaignSegmentsPanel = (
     <Card style={{ padding: '16px 18px', marginBottom: 12 }}>
       <div id="collection-campaign-segments" style={{ scrollMarginTop: 90 }}>
-        <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 6 }}>
-          شرائح حملات التحصيل — اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
+        <div style={{ marginBottom: 9 }}>
+          <strong style={{ display: 'block', fontSize: 13, color: 'var(--text)' }}>فلتر شرائح السداد</strong>
+          <span style={{ display: 'block', marginTop: 3, fontSize: 11.5, color: 'var(--muted)' }}>
+            اختر شريحة أو أكثر؛ فترات الأيام تخص الفواتير المتأخرة فقط
+          </span>
         </div>
         <div style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
           {INVOICE_CAMPAIGN_BUCKETS.map(b => {
@@ -437,11 +440,11 @@ export default function CustomerMoney({ isActive = true }) {
         onFocusCustomer={focusCustomerFromPortfolio}
         onExport={exportXlsx}
         onCampaign={openFocusedCampaign}
+        campaignPanel={campaignSegmentsPanel}
+        campaignActionLabel={buckets.size ? 'مراجعة الحملة' : 'اختيار شرائح الحملة'}
         sourceUpdatedAt={viewUpdatedAt}
         sourceHealthy={!loadError && !collectionTaskError}
       />
-
-      {campaignSegmentsPanel}
 
       {loadError && (
         <div className="data-load-error is-inline" role="status">

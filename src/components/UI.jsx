@@ -24,14 +24,14 @@ const VARIANTS = {
     color: '#FFFFFF',
     border: '1px solid var(--brand)',
     boxShadow: '0 1px 2px rgba(15,23,42,.08)',
-    _hover: { background: 'var(--brand-strong)', borderColor: 'var(--brand-strong)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px var(--accent-glow)' },
+    _hover: { background: 'var(--brand-strong)', border: '1px solid var(--brand-strong)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px var(--accent-glow)' },
   },
   accent: {
     background: 'var(--green)',
     color: '#fff',
     border: '1px solid var(--green)',
     boxShadow: '0 1px 2px rgba(15,23,42,.08)',
-    _hover: { background: 'var(--green2)', borderColor: 'var(--green2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(5,150,105,.18)' },
+    _hover: { background: 'var(--green2)', border: '1px solid var(--green2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(5,150,105,.18)' },
   },
   navy: {   // مهمل ≡ primary — مُحاذى لنفس براند design-v2 حتى لا يختلف قديمُ الكود
     background: 'var(--brand, var(--accent))',
@@ -45,7 +45,7 @@ const VARIANTS = {
     color: '#fff',
     border: '1px solid var(--red)',
     boxShadow: '0 1px 2px rgba(15,23,42,.08)',
-    _hover: { background: 'var(--red2)', borderColor: 'var(--red2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(220,38,38,.18)' },
+    _hover: { background: 'var(--red2)', border: '1px solid var(--red2)', transform: 'translateY(-1px)', boxShadow: '0 6px 16px rgba(220,38,38,.18)' },
   },
   success: {
     background: 'linear-gradient(135deg, var(--green), var(--green2))',

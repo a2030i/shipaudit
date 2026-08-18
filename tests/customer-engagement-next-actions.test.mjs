@@ -26,7 +26,7 @@ test('القرار محمي بالصلاحيات وحواجز التواصل و�
 });
 
 test('الواجهة تعرض خطة تجريبية بلا أي مسار إرسال', () => {
-  assert.match(service, /customer_engagement_next_actions/);
+  assert.match(service, /customer_growth_action_queue/);
   assert.match(service, /recommendedTemplateKey/);
   assert.match(page, /مؤهل مبدئيًا/);
   assert.match(page, /محمي من التواصل/);

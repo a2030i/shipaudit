@@ -9,10 +9,38 @@ const OUTCOMES = {
   settings: 'أدر الفريق والصلاحيات والعقود والتكاملات من مركز واحد.',
 };
 
-export default function CenterLanding({ section, groups, onNavigate, onQuickAction }) {
+function destinationsFor(group, visibleSubTabsFor, subTabPath) {
+  return group.items.flatMap(item => {
+    const tabs = visibleSubTabsFor?.(item) || [];
+    if (tabs.length === 0) return [{
+      id: item.id, label: item.label, description: item.description || 'فتح مساحة العمل',
+      icon: item.icon, path: item.path,
+    }];
+    if (tabs.length === 1) return [{
+      id: `${item.id}-${tabs[0].tabId}`,
+      label: item.label,
+      description: tabs[0].label,
+      icon: item.icon,
+      path: subTabPath(item, tabs[0]),
+    }];
+    return tabs.map(tab => ({
+      id: `${item.id}-${tab.tabId}`,
+      label: tab.label,
+      description: item.label,
+      icon: tab.icon || item.icon,
+      path: subTabPath(item, tab),
+    }));
+  });
+}
+
+export default function CenterLanding({ section, groups, visibleSubTabsFor, subTabPath, onNavigate, onQuickAction }) {
   if (!section) return null;
   const Icon = section.icon;
-  const itemCount = groups.reduce((sum, group) => sum + group.items.length, 0);
+  const destinationGroups = groups.map(group => ({
+    ...group,
+    destinations: destinationsFor(group, visibleSubTabsFor, subTabPath),
+  }));
+  const itemCount = destinationGroups.reduce((sum, group) => sum + group.destinations.length, 0);
 
   return (
     <div className="center-landing" style={{ '--center-accent': section.accent }}>
@@ -34,18 +62,18 @@ export default function CenterLanding({ section, groups, onNavigate, onQuickActi
       </div>
 
       <div className="center-landing__groups">
-        {groups.map(group => (
+        {destinationGroups.map(group => (
           <section className="center-landing__group" key={group.id}>
             {group.label && <h2>{group.label}</h2>}
             <div className="center-landing__grid">
-              {group.items.map(item => {
-                const ItemIcon = item.icon;
+              {group.destinations.map(destination => {
+                const ItemIcon = destination.icon;
                 return (
-                  <button type="button" className="center-landing__card" key={item.id} onClick={() => onNavigate(item.path)}>
+                  <button type="button" className="center-landing__card" key={destination.id} onClick={() => onNavigate(destination.path)}>
                     <span className="center-landing__card-icon"><ItemIcon size={19}/></span>
                     <span>
-                      <strong>{item.label}</strong>
-                      <small>{item.description || 'فتح مساحة العمل'}</small>
+                      <strong>{destination.label}</strong>
+                      <small>{destination.description}</small>
                     </span>
                     <ArrowLeft size={17}/>
                   </button>
