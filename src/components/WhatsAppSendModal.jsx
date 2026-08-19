@@ -76,7 +76,17 @@ const fieldValue = (fields, r, key) => {
 // recipients: [{ to, name, amount, count, vars:[] }]
 // البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
 // كل الصفحات التي تفتح المودال (والدالة hatif-send تعيد الفحص سيرفرياً).
-export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent, lockedTemplate = null, salesAudience = false }) {
+export default function WhatsAppSendModal({
+  open,
+  onClose,
+  recipients = [],
+  bucketLabel,
+  onSent,
+  lockedTemplate = null,
+  lockedCampaignName = null,
+  salesAudience = false,
+  assignedHatifUser = null,
+}) {
   const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
   const [verifying, setVer] = useState(false);
@@ -127,8 +137,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
   useEffect(() => {
     if (!open) return;
     setResults(null); setVerified(null); setSchedOn(false); setSchedAt('');
-    nameEdited.current = false;
-    setCampName(uniqueCampaignName(bucketLabel, [])); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
+    nameEdited.current = !!lockedCampaignName;
+    setCampName(lockedCampaignName || uniqueCampaignName(bucketLabel, [])); setExCamps(new Set()); setExPhones(new Set()); setExOpen(false);
     setPerStore(false); setProtectionsReady(false); setProtectionsError('');
     // الكل افتراضياً — بمفاتيح _rk (نفس صيغة rows: معرّف المتجر أو الهاتف+الترتيب)
     setSelected(new Set(recipients
@@ -358,10 +368,12 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           idempotency_ref: v._rk,
         })),
         bucketLabel: campName.trim(), userId: user?.id || null,
+        assignedHatifUserId: assignedHatifUser?.userId || null,
+        assignedHatifUserName: assignedHatifUser?.name || null,
       });
       if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
       toast(`⏰ جُدولت «${campName.trim()}» (${fmt(selectedValid.length)} مستلم على ${batches} دفعة) — تبدأ ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
-      onSent?.({ scheduled: true });
+      onSent?.({ scheduled: true, scheduledAt: new Date(schedAt).toISOString() });
       onClose?.();
     } catch (e) { toast(`فشلت الجدولة: ${e.message}`, 'error'); }
     setSending(false);
@@ -398,7 +410,13 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       try {
         r = await sendWhatsAppCampaign({
           templateName: tpl, templateLanguage: 'ar', channelId: null, items: chunk,
-          campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
+          campaign: {
+            name: campName.trim(),
+            bucket: bucketLabel || null,
+            userId: user?.id || null,
+            assignedHatifUserId: assignedHatifUser?.userId || null,
+            assignedHatifUserName: assignedHatifUser?.name || null,
+          },
         });
       } finally { clearInterval(ticker); }
       if (r?.ok) {
@@ -462,7 +480,7 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           {/* اسم الحملة — إلزامي (يظهر في السجل ويُستخدم للاستثناء مستقبلاً) */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
             <span style={{ fontSize: 12.5, fontWeight: 700, whiteSpace: 'nowrap' }}>اسم الحملة <span style={{ color: 'var(--red)' }}>*</span></span>
-            <input value={campName} onChange={e => { nameEdited.current = true; setCampName(e.target.value); }} placeholder="مثال: تحصيل متأخرين يوليو"
+            <input value={campName} disabled={!!lockedCampaignName} onChange={e => { nameEdited.current = true; setCampName(e.target.value); }} placeholder="مثال: تحصيل متأخرين يوليو"
               style={{ flex: 1, fontSize: 12.5, padding: '7px 11px', borderRadius: 8,
                 border: `1px solid ${campName.trim() ? 'var(--border)' : 'var(--red)'}`, background: 'var(--bg)', color: 'var(--text)' }}/>
           </div>
@@ -526,6 +544,20 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/></span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/></span>}
           </div>
+
+          {assignedHatifUser?.userId && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+              background: 'color-mix(in srgb, var(--blue) 7%, var(--surface2))',
+              border: '1px solid color-mix(in srgb, var(--blue) 28%, var(--border))',
+              borderRadius: 9, padding: '10px 12px',
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800 }}>الموظف المسؤول في هاتف: {assignedHatifUser.name || 'الموظف المحدد'}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>ستُسند محادثات وردود هذه الحملة إليه تلقائياً.</div>
+              </div>
+            </div>
+          )}
 
           {tpl === TAHSEEL_PORTAL_TEMPLATE_NAME && (
             <div style={{

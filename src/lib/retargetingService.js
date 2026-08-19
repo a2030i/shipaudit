@@ -412,9 +412,14 @@ export async function assignPlatformSalesAccounts(phones, ownerId) {
 
 export async function loadPlatformSalesAccount(phone) {
   if (!phone) throw new Error('رقم العميل مطلوب');
-  const { data, error } = await supabase.rpc('platform_commercial_account', {
+  let { data, error } = await supabase.rpc('platform_commercial_account', {
     p_phone: String(phone),
   });
+  if (error && /permission denied for view v_platform_commercial_routing/i.test(error.message || '')) {
+    ({ data, error } = await supabase.rpc('platform_sales_account', {
+      p_phone: String(phone),
+    }));
+  }
   if (error) throw error;
   return {
     account: data?.account || null,
@@ -454,7 +459,15 @@ export async function recordPlatformSalesActivity({
 }
 
 // جدولة حملة (طابور campaign_queue — ينفّذها campaign-runner كل 15 دقيقة)
-export async function scheduleCampaign({ scheduledAt, templateName, recipients, bucketLabel, userId }) {
+export async function scheduleCampaign({
+  scheduledAt,
+  templateName,
+  recipients,
+  bucketLabel,
+  userId,
+  assignedHatifUserId = null,
+  assignedHatifUserName = null,
+}) {
   // تقسيم 100/صف طابور (2026-07-21): مهلة campaign-runner ~150ث والقياس الفعلي
   // ≈ 1.1ث/رسالة — صف 100 ≈ 110ث يسع بأمان (150 سابقاً كان يلامس المهلة).
   const CHUNK = 100;
@@ -464,6 +477,8 @@ export async function scheduleCampaign({ scheduledAt, templateName, recipients, 
       scheduled_at: scheduledAt, template_name: templateName,
       recipients: recipients.slice(i, i + CHUNK),
       bucket_label: bucketLabel || null, created_by: userId || null,
+      assigned_hatif_user_id: assignedHatifUserId || null,
+      assigned_hatif_user_name: assignedHatifUserName || null,
     });
   }
   const { error } = await supabase.from('campaign_queue').insert(rows);

@@ -38,11 +38,12 @@ const isFastParser = (id) => FAST_PARSER_IDS.has(id) || /aramex|أرامكس|ا�
 // double-fires effects in dev — a ref would reset between mounts (§2.2).
 const CONSUMED_STATEMENT_IMPORTS = new Set();
 
-export default function CarrierStatements({ carriers = [] }) {
+export default function CarrierStatements({ carriers = [], initialCarrierId = '', embedded = false }) {
   const { user } = useAuth();
   // Default carrier = first one configured by the admin.
-  const initialId   = carriers[0]?.id   || '';
-  const initialName = carriers[0]?.name || '';
+  const initialCarrier = carriers.find(c => String(c.id) === String(initialCarrierId));
+  const initialId   = initialCarrier?.id || carriers[0]?.id || '';
+  const initialName = initialCarrier?.name || carriers[0]?.name || '';
   const [carrierId,   setCarrierId]   = useState(initialId);
   const [carrierName, setCarrierName] = useState(initialName);
   const [customName,  setCustomName]  = useState('');
@@ -52,6 +53,11 @@ export default function CarrierStatements({ carriers = [] }) {
   const location = useLocation();
   const fromWorkspace = location.pathname === '/aramex-statements'
     && !!new URLSearchParams(location.search).get('carrier');
+  useEffect(() => {
+    if (!initialCarrierId) return;
+    const found = carriers.find(c => String(c.id) === String(initialCarrierId));
+    if (found) { setCarrierId(found.id); setCarrierName(found.name); }
+  }, [initialCarrierId, carriers]);
   useEffect(() => {
     if (location.pathname !== '/aramex-statements') return;
     const wanted = new URLSearchParams(location.search).get('carrier');
@@ -324,8 +330,8 @@ export default function CarrierStatements({ carriers = [] }) {
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
-      {fromWorkspace && (
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
+      {fromWorkspace && !embedded && (
         <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
       )}
       <PageHeader
@@ -352,10 +358,11 @@ export default function CarrierStatements({ carriers = [] }) {
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: carrierId === '__custom' ? '1fr 1fr' : '1fr', gap: 10 }}>
-                <div>
+                {embedded && initialCarrierId ? null : <div>
                   <div style={{ fontSize: 10, color: 'var(--muted)', fontFamily: 'var(--font-mono)', marginBottom: 5 }}>الشركة</div>
                   <select
                     value={carrierId}
+                    disabled={Boolean(embedded && initialCarrierId)}
                     onChange={e => {
                       const v = e.target.value;
                       setCarrierId(v);
@@ -372,7 +379,7 @@ export default function CarrierStatements({ carriers = [] }) {
                     ))}
                     <option value="__custom">+ شركة أخرى (مرة واحدة)</option>
                   </select>
-                </div>
+                </div>}
                 {carrierId === '__custom' && (
                   <Input
                     label="اسم الشركة (يُحفَظ مع الكشف)"

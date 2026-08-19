@@ -32,13 +32,13 @@ export async function loadSlaBreaches() {
   return { overdue: Number(r.overdue) || 0, stale: Number(r.stale) || 0, total: Number(r.total) || 0, oldestDays: Number(r.oldest_days) || 0 };
 }
 export async function loadNextBestActions({ owner = null, journey = null, limit = 1000 } = {}) {
-  const { data, error } = await supabase.rpc('customer_engagement_next_actions', {
+  const { data, error } = await supabase.rpc('customer_growth_action_queue', {
     p_limit: limit,
     p_owner: owner,
     p_journey: journey,
   });
   if (error) throw error;
-  return (data || []).map(r => ({
+  return (Array.isArray(data) ? data : []).map(r => ({
     phone: r.phone,
     name: r.name || r.phone,
     storeId: r.store_id,
@@ -60,4 +60,40 @@ export async function loadNextBestActions({ owner = null, journey = null, limit 
     lastCallAt: r.last_call_at,
     sourceSnapshotAt: r.source_snapshot_at,
   }));
+}
+
+export async function loadCustomerGrowthSnapshot(days = 30) {
+  const { data, error } = await supabase.rpc('customer_growth_operating_snapshot', {
+    p_days: days,
+  });
+  if (error) throw error;
+  return data || null;
+}
+
+export async function loadCustomerGrowthProfile(phone) {
+  const { data, error } = await supabase.rpc('customer_growth_profile', {
+    p_phone: phone,
+  });
+  if (error) throw error;
+  return data || null;
+}
+
+export async function recordCustomerGrowthOutcome({
+  phone,
+  reasonCode,
+  outcome,
+  nextAt = null,
+  activityType = 'call',
+  note = null,
+}) {
+  const { data, error } = await supabase.rpc('record_customer_growth_outcome', {
+    p_phone: phone,
+    p_reason_code: reasonCode,
+    p_outcome: outcome,
+    p_next: nextAt,
+    p_activity_type: activityType,
+    p_note: note,
+  });
+  if (error) throw error;
+  return data;
 }

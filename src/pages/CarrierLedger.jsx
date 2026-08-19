@@ -94,13 +94,17 @@ const fmt = n => (n == null || Number.isNaN(n))
   ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function CarrierLedger({ isActive = true }) {
+export default function CarrierLedger({ isActive = true, carrierId = '', embedded = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
-  const [carrier, setCarrier] = useState(() => searchParams.get('carrier') || '');
+  const [carrier, setCarrier] = useState(() => carrierId || searchParams.get('carrier') || '');
   // دخلنا لناقل محدّد (من بطاقته/تبويباته) → لا نعرض قائمة اختيار (CarrierTabs
   // يعرض الناقل أصلاً). القائمة تظهر فقط عند الدخول العام (بلا ?carrier=).
-  const [locked] = useState(() => !!searchParams.get('carrier'));
+  const locked = Boolean(carrierId || searchParams.get('carrier'));
   const [uploadOpen, setUploadOpen] = useState(false);   // مودال رفع الكشف المباشر
+
+  useEffect(() => {
+    if (carrierId) setCarrier(carrierId);
+  }, [carrierId]);
   const [carrierList, setCarrierList] = useState([]);
   const [ops, setOps] = useState([]);
   const [bal, setBal] = useState(null);
@@ -587,7 +591,7 @@ export default function CarrierLedger({ isActive = true }) {
   // First-time empty state — no statement has been saved yet anywhere.
   if (!loading && carrierList.length === 0) {
     return (
-      <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
         <PageHeader icon={<BookOpen size={22}/>} title="كشف الحساب"/>
         <Card style={{ textAlign: 'center', padding: 44 }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>📒</div>
@@ -609,8 +613,8 @@ export default function CarrierLedger({ isActive = true }) {
   }
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      {!embedded && <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>}
       <PageHeader
         icon={<BookOpen size={22}/>}
         title="كشف الحساب"

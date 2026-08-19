@@ -59,7 +59,7 @@ export async function loadCarrierProfile(carrierId) {
   const [ops, codRows, audits, webhooks, zohoResult] = await Promise.all([
     loadAll('carrier_operations', 'id, doc_type, doc_no, doc_date, amount_dr, amount_cr, amount_paid, status, audit_id, payment_id, due_date, paid_at, notes, created_at, updated_at', { carrier_id: carrierId }),
     loadAll('cod_settlement',     'id, direction, awb, amount, upload_date, source_file, upload_id, created_at',                                                                       { carrier_id: carrierId }),
-    loadAll('audits',             'id, file_name, period, row_count, issue_count, total_billed, total_tax, diff, mismatch_count, drift_pre_tax, drift_tax, audit_type, review_status, approved_at, rejected_at, rejected_reason, created_at', { carrier_id: carrierId }),
+    loadAll('audits',             'id, file_name, contract_label, period, row_count, issue_count, total_expected, total_billed, total_tax, diff, mismatch_count, drift_pre_tax, drift_tax, audit_type, review_status, approved_at, rejected_at, rejected_reason, created_at, col_map', { carrier_id: carrierId }),
     loadAll('webhook_events',     'id, sender, subject, file_name, file_size, status, audit_id, received_at, file_path',                                                              { detected_carrier_id: carrierId }),
     supabase.rpc('carrier_zoho_financial_dossier', { p_carrier_id: carrierId }),
   ]);
@@ -100,9 +100,13 @@ export async function loadCarrierProfile(carrierId) {
   const codOutstanding = +(codOut - codIn).toFixed(2);
 
   // ── Audit summary ──────────────────────────────────────────────
-  const byStatus = { pending: 0, draft: 0, approved: 0, rejected: 0 };
+  const byStatus = { pending: 0, draft: 0, approved: 0, rejected: 0, legacy_unverified: 0 };
   for (const a of audits) {
-    const st = a.review_status || 'pending';
+    const control = a.col_map?.__control || null;
+    const verified = Number(control?.version) >= 3 && control?.valid === true
+      && Boolean(control?.sourceHash) && Boolean(control?.sourcePath)
+      && Boolean(a.file_name) && Boolean(a.contract_label);
+    const st = verified ? (a.review_status || 'pending') : 'legacy_unverified';
     if (byStatus[st] != null) byStatus[st]++;
   }
   audits.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
@@ -170,7 +174,7 @@ export async function loadCarrierProfile(carrierId) {
       // (positive = we owe them, negative = they owe us)
       netPosition:    +(balance - codOutstanding).toFixed(2),
     },
-    audits:    audits.slice(0, 25),
+    audits:    audits.slice(0, 100),
     webhooks:  webhooks.slice(0, 25),
     ops:       ops.slice(0, 50),
     codRows:   codRows.slice(0, 50),

@@ -20,6 +20,7 @@
 //   on_demand — no fixed slot; never marked "due" by the system
 
 import { supabase } from './supabase.js';
+import { carrierRequiredScheduleKinds } from './carrierOperatingModel.js';
 
 const DAY_MS = 86_400_000;
 
@@ -173,11 +174,8 @@ export function carrierHasActiveContract(carrier, period) {
 }
 
 export function requiredScheduleKindsForCarrier(carrier) {
-  const fileKind = String(carrier?.file_signature?.file_kind || '').trim();
-  if (fileKind === 'audit_with_cod' || fileKind === 'audit_only') return ['invoice'];
-  if (fileKind === 'audit_and_cod_separate') return ['invoice', 'cod_remittance'];
-  if (fileKind === 'cod_only') return ['cod_remittance'];
-  return [];
+  if (!carrier) return [];
+  return carrierRequiredScheduleKinds();
 }
 
 export function deriveCarrierScheduleCoverage({ carriers = [], schedules = [], period } = {}) {

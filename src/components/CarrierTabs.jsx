@@ -8,11 +8,11 @@
 import { useNavigate } from 'react-router-dom';
 
 const TABS = [
-  { key: 'overview',   label: 'نظرة عامة',  to: (id) => `/carrier?id=${id}` },
-  { key: 'audits',     label: 'المراجعات',   to: (id) => `/audits?carrier=${id}` },
-  { key: 'cod',        label: 'تحصيل COD',  to: (id) => `/cod-settlements?carrier=${id}` },
-  { key: 'statements', label: 'كشف الحساب', to: (id) => `/aramex-statements?carrier=${id}` },
-  { key: 'ledger',     label: 'حساب الشركة', to: (id) => `/ledger?carrier=${id}` },
+  { key: 'overview',   label: 'نظرة عامة',  to: (id) => `/carrier?id=${id}&view=overview` },
+  { key: 'audits',     label: 'الفواتير والمراجعة', to: (id) => `/carrier?id=${id}&view=invoices` },
+  { key: 'cod',        label: 'COD', to: (id) => `/carrier?id=${id}&view=account&panel=cod` },
+  { key: 'statements', label: 'الكشوف', to: (id) => `/carrier?id=${id}&view=account&panel=statements` },
+  { key: 'ledger',     label: 'الحساب والمدفوعات', to: (id) => `/carrier?id=${id}&view=account&panel=ledger` },
 ];
 
 export default function CarrierTabs({ carrierId, carrierName, active }) {

@@ -346,6 +346,8 @@ export async function loadCollectionCandidates({ creditLimit = 10000 } = {}) {
       creditLimit,
       phone: c.phone || '',
       merchant: {
+        storeId: c.store_id || '',
+        zohoId: c.zoho_id || '',
         billingType: c.billing_type || '',
         storeName: c.store_name || '',
         phone: c.phone || '',

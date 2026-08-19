@@ -10,21 +10,29 @@
 
 import { useState, useEffect, useMemo } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Banknote, CreditCard, Wallet } from 'lucide-react';
+import { Banknote, CreditCard, ListFilter, Wallet } from 'lucide-react';
 
 import CodSettlements   from './CodSettlements.jsx';
 import Payments         from './Payments.jsx';
 import BankStatement    from './BankStatement.jsx';
 import { Empty } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
   {
-    id: 'cod', label: 'تحصيل شركات الشحن', icon: Banknote, component: CodSettlements,
+    id: 'bank', label: 'البنوك', icon: Wallet, component: BankStatement,
+    perm: 'bank.view',
+    eyebrow: 'الرصيد والحركة', purpose: 'راجع كل حساب بنكي ضمن فترته المحددة',
+    description: 'يبقى رصيد كل بنك وحركاته في عرضه الخاص، دون خلطها بتحصيل COD أو دفعات الناقلين.',
+    outcome: 'رصيد وإقفال قابلان للتتبع', tone: 'var(--brand)',
+  },
+  {
+    id: 'cod', label: 'تصفية COD القديمة', icon: Banknote, component: CodSettlements,
     perm: 'cod.view',
-    eyebrow: 'أمانات العملاء', purpose: 'قارن المتوقع بما حوّلته شركة الشحن فعلاً',
-    description: 'هذه الأموال ليست دخلاً. الشاشة تتابع شحنات COD من الاستحقاق إلى الاستلام وتظهر الفرق بوضوح.',
-    outcome: 'تحصيل مستلم وفروقات معروفة', tone: 'var(--gold)',
+    eyebrow: 'مسار مؤقت', purpose: 'صفّر الأرصدة التاريخية المتبقية ثم أغلق المسار',
+    description: 'لا تُنشأ التزامات جديدة؛ تظهر الشركات ذات الرصيد المتبقي فقط حتى تصفيرها.',
+    outcome: 'رصيد تاريخي مصفّر', tone: 'var(--gold)',
   },
   {
     id: 'payments', label: 'دفعات الناقلين', icon: CreditCard, component: Payments,
@@ -34,11 +42,13 @@ const TABS = [
     outcome: 'دفعة موزعة بلا ازدواج', tone: 'var(--red)',
   },
   {
-    id: 'bank', label: 'الحسابات البنكية', icon: Wallet, component: BankStatement,
+    id: 'unclassified', label: 'العمليات غير المصنفة', icon: ListFilter, component: BankStatement,
     perm: 'bank.view',
-    eyebrow: 'مصدر الرصيد', purpose: 'راجع أرصدة البنوك وحركتها من الكشوف',
-    description: 'يعرض كل حساب بنكي على حدة ويجعل الرصيد الإجمالي نتيجة مجموع الحسابات، لا رصيد كشف واحد.',
-    outcome: 'رصيد بنكي قابل للتتبع', tone: 'var(--brand)',
+    secondary: true,
+    componentProps: { defaultSavedClass: 'unclassified' },
+    eyebrow: 'استثناءات البنك', purpose: 'صنّف العمليات التي لم ترتبط بوجهتها بعد',
+    description: 'هذا عرض مستقل لنفس مصدر البنك، ولا يدمج عملياته مع COD أو دفعات الناقلين.',
+    outcome: 'عملية مصنفة وسبب واضح', tone: 'var(--gold)',
   },
 ];
 
@@ -53,12 +63,13 @@ export default function MoneyHub({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = useMemo(() => TABS.filter(item => can(item.perm)), [can]);
+  const primaryTabs = useMemo(() => visibleTabs.filter(item => !item.secondary), [visibleTabs]);
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
     const fromQuery = params.get('tab');
     if (fromQuery && TABS.some(t => t.id === fromQuery)) return fromQuery;
-    return LEGACY_PATH_TO_TAB[location.pathname] || 'cod';
+    return LEGACY_PATH_TO_TAB[location.pathname] || 'bank';
   };
   const [tab, setTab] = useState(getInitialTab);
 
@@ -81,8 +92,39 @@ export default function MoneyHub({ isActive = true }) {
     return <Empty icon="🔒" title="لا تملك صلاحية حركة الأموال" sub="اطلب من المدير منح صلاحية التحصيل أو الدفعات أو الحسابات البنكية."/>;
   }
 
+  const changeView = (next) => {
+    if (!visibleTabs.some(item => item.id === next)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('tab', next);
+    setTab(next);
+    navigate(`/money?${params.toString()}`);
+  };
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
+      {primaryTabs.some(item => item.id === tab) ? (
+        <WorkspaceTabs
+          scope="cash-settlements"
+          title="النقد والتسويات"
+          subtitle="البنوك والمدفوعات، مع مسار مؤقت لتصفية COD التاريخي"
+          tone="#F59E0B"
+          tabs={primaryTabs}
+          activeId={tab}
+          onChange={changeView}
+          selectorLabel="نوع الحركة"
+        />
+      ) : (
+        <div className="workspace-secondary-context" role="status">
+          <span>فلتر محفوظ</span><strong>العمليات غير المصنفة</strong>
+          <button type="button" onClick={() => changeView('bank')}>العودة إلى البنوك</button>
+        </div>
+      )}
+      {visibleTabs.some(item => item.id === 'unclassified') ? (
+        <nav className="workspace-filter-bar workspace-saved-views" aria-label="فلاتر النقد والتسويات">
+          <span>فلتر محفوظ:</span>
+          <button type="button" aria-pressed={tab === 'unclassified'} onClick={() => changeView('unclassified')}>العمليات غير المصنفة</button>
+        </nav>
+      ) : null}
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
@@ -95,7 +137,7 @@ export default function MoneyHub({ isActive = true }) {
               className="ws-tab-panel"
               style={{ display: active ? 'block' : 'none', height: '100%' }}
             >
-              <Cmp isActive={isActive && active}/>
+              <Cmp isActive={isActive && active} {...(t.componentProps || {})}/>
             </div>
           );
         })}

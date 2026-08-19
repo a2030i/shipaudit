@@ -23,6 +23,9 @@ import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import './ZohoData.css';
+import useMobileLayout from '../lib/useMobileLayout.js';
+import { useWindowedRows } from '../hooks/useWindowedRows.js';
+import { ProgressiveListFooter } from '../components/MobileUX.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -441,7 +444,15 @@ export default function ZohoData({ isActive = true }) {
       return dir === 'asc' ? cmp : -cmp;
     });
   }, [rows, displayRows, q, status, amtMin, amtMax, sort, cfg]);
-  const displayed = useMemo(() => filtered.slice(0, 800), [filtered]);
+  const isMobile = useMobileLayout();
+  const {
+    visible: displayed,
+    count: displayedCount,
+    total: displayedTotal,
+    hasMore: hasMoreDisplayed,
+    sentinelRef: displayedSentinelRef,
+    loadMore: loadMoreDisplayed,
+  } = useWindowedRows(filtered, { batch: isMobile ? 30 : 800 });
   const displayedInvoiceIds = useMemo(() => type === 'invoices'
     ? displayed.map(r => String(r.zoho_id)) : [], [type, displayed]);
   const allDisplayedSelected = displayedInvoiceIds.length > 0
@@ -972,11 +983,7 @@ export default function ZohoData({ isActive = true }) {
                 </tbody>
               </table>
             </div>
-            {filtered.length > 800 && (
-              <div style={{ padding: '8px 12px', fontSize: 11, color: 'var(--muted)' }}>
-                عرض أول 800 من {filtered.length} — ضيّق الفترة أو ابحث، والتصدير يشمل الكل
-              </div>
-            )}
+            <ProgressiveListFooter hasMore={hasMoreDisplayed} shown={displayedCount} total={displayedTotal} onLoadMore={loadMoreDisplayed} sentinelRef={displayedSentinelRef}/>
           </Card>
         )}
 

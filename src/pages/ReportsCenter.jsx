@@ -5,8 +5,9 @@
 // قابلاً لإعادة التحميل من «السحبات السابقة» أسفل الصفحة.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
-import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt, Activity } from 'lucide-react';
+import { FileBarChart, Truck, Landmark, Download, RefreshCw, CalendarRange, Receipt, Activity, AlertTriangle } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Select, toast, PageHeader } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadMonthlyReport } from '../lib/monthlyReportService.js';
@@ -44,6 +45,7 @@ function HealthMetric({ label, value, sub, tone = 'normal' }) {
 }
 
 export default function ReportsCenter({ isActive = true }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user, can } = useAuth();
   const canOperational = can('reports.view_operational');
   const canFinancial = can('reports.view_financial');
@@ -54,22 +56,42 @@ export default function ReportsCenter({ isActive = true }) {
   const [monthlyData, setMonthlyData] = useState(null);
   const [carriers, setCarriers] = useState([]);
   const [history, setHistory] = useState(null);
-  const [historyKind, setHistoryKind] = useState('all');
-  const [historyPage, setHistoryPage] = useState(0);
+  const [historyKind, setHistoryKind] = useState(() => searchParams.get('kind') || 'all');
+  const [historyPage, setHistoryPage] = useState(() => Math.max(0, Number(searchParams.get('page')) || 0));
   const [busy, setBusy] = useState(null);          // معرّف التقرير قيد التوليد
   // معاملات البطاقات
-  const [pMonth, setPMonth] = useState('');        // للتقرير الشهري
-  const [pCarrier, setPCarrier] = useState('');    // لكشف الناقل
-  const [pReconMonth, setPReconMonth] = useState(''); // للمطابقة البنكية ('' = الكل)
+  const [pMonth, setPMonth] = useState(() => searchParams.get('month') || '');
+  const [pCarrier, setPCarrier] = useState(() => searchParams.get('carrier') || '');
+  const [pReconMonth, setPReconMonth] = useState(() => searchParams.get('reconMonth') || '');
   // تقارير زوهو الرسمية (الإقرار الضريبي ربعي · قائمة الدخل لأي فترة)
-  const [pQuarter, setPQuarter] = useState('');
-  const [pPnlFrom, setPPnlFrom] = useState('');
-  const [pPnlTo, setPPnlTo]     = useState('');
-  const [pFinReport, setPFinReport] = useState('balance_sheet');
+  const [pQuarter, setPQuarter] = useState(() => searchParams.get('quarter') || '');
+  const [pPnlFrom, setPPnlFrom] = useState(() => searchParams.get('from') || '');
+  const [pPnlTo, setPPnlTo]     = useState(() => searchParams.get('to') || '');
+  const [pFinReport, setPFinReport] = useState(() => searchParams.get('report') || 'balance_sheet');
   const [financialHealth, setFinancialHealth] = useState(undefined);
 
+  const updateParam = (key, value, { resetPage = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+    if (value == null || value === '' || value === 'all') next.delete(key);
+    else next.set(key, String(value));
+    if (resetPage) next.delete('page');
+    setSearchParams(next, { replace: true });
+  };
+
+  useEffect(() => {
+    setHistoryKind(searchParams.get('kind') || 'all');
+    setHistoryPage(Math.max(0, Number(searchParams.get('page')) || 0));
+    setPMonth(searchParams.get('month') || '');
+    setPCarrier(searchParams.get('carrier') || '');
+    setPReconMonth(searchParams.get('reconMonth') || '');
+    setPQuarter(searchParams.get('quarter') || '');
+    setPPnlFrom(searchParams.get('from') || '');
+    setPPnlTo(searchParams.get('to') || '');
+    setPFinReport(searchParams.get('report') || 'balance_sheet');
+  }, [searchParams]);
+
   const loadHistory = useCallback(() => {
-    loadExportHistory({ limit: 100 }).then(rows => { setHistory(rows); setHistoryPage(0); }).catch(() => setHistory([]));
+    loadExportHistory({ limit: 100 }).then(rows => { setHistory(rows); }).catch(() => setHistory([]));
   }, []);
 
   const filteredHistory = useMemo(() => (history || []).filter(row => historyKind === 'all' || row.kind === historyKind), [history, historyKind]);
@@ -197,7 +219,12 @@ export default function ReportsCenter({ isActive = true }) {
           <HealthMetric label="ضريبة القيمة المضافة" value={`${fmt(financialHealth.vat?.net_due)} ر.س`} sub={financialHealth.vat?.healthy ? `محدثة منذ ${financialHealth.vat?.age_minutes || 0} دقيقة` : 'التحديث متأخر — حدّث المصدر'} tone={financialHealth.vat?.healthy ? 'ok' : 'warn'}/>
           <HealthMetric label="استهلاك Zoho API اليوم" value={Number(financialHealth.api?.calls || 0).toLocaleString('en-US')} sub={`تنبيه عند ${Number(financialHealth.api?.warning_calls || 0).toLocaleString('en-US')} · تقييد ${financialHealth.api?.rate_limited || 0}`} tone={financialHealth.api?.status === 'healthy' ? 'ok' : 'warn'}/>
         </div>
-      </section> : null}
+      </section> : canFinancial && financialHealth === false ? (
+        <section aria-label="تعذّر تحميل المصدر المالي" style={{ marginBottom: 22, padding: 18, border: '1px solid color-mix(in srgb, var(--red) 35%, var(--border))', borderRadius: 18, background: 'color-mix(in srgb, var(--red) 6%, var(--card))', display: 'flex', alignItems: 'center', gap: 12 }}>
+          <AlertTriangle size={20} color="var(--red)"/>
+          <div><b>المصدر غير متاح</b><small style={{ display: 'block', color: 'var(--muted)', marginTop: 3 }}>تعذّر قراءة ملخص Zoho المالي؛ لم نعرض أصفارًا بديلة. أعد المحاولة قبل اتخاذ قرار من المؤشرات.</small></div>
+        </section>
+      ) : null}
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 14, marginBottom: 26 }}>
         {canOperational ? <>
@@ -205,7 +232,7 @@ export default function ReportsCenter({ isActive = true }) {
         <ReportCard icon={<CalendarRange size={18}/>} color="var(--green)"
           title="التقرير الشهري للناقلين"
           desc="مفوتر · تحصيل COD · إشعارات · مدفوعات · صافي — لكل ناقل في الشهر المختار">
-          <Select value={pMonth} onChange={e => setPMonth(e.target.value)}>
+          <Select value={pMonth} onChange={e => updateParam('month', e.target.value)}>
             {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </Select>
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'monthly' || !pMonth} icon={busy === 'monthly' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genMonthly}>
@@ -217,7 +244,7 @@ export default function ReportsCenter({ isActive = true }) {
         <ReportCard icon={<Truck size={18}/>} color="#3B82F6"
           title="كشف حساب ناقل رسمي"
           desc="كل الحركات برصيد جارٍ + COD المعلّق + سطر توقيع — مستند النزاع والمطالبة">
-          <Select value={pCarrier} onChange={e => setPCarrier(e.target.value)}>
+          <Select value={pCarrier} onChange={e => updateParam('carrier', e.target.value)}>
             {carriers.map(c => <option key={c.id} value={c.id}>{c.name || c.id}</option>)}
           </Select>
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'soa' || !pCarrier} icon={busy === 'soa' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genCarrierSoa}>
@@ -231,7 +258,7 @@ export default function ReportsCenter({ isActive = true }) {
         <ReportCard icon={<Landmark size={18}/>} color="var(--gold)"
           title="المطابقة البنكية (بنك × دفتر)"
           desc="3 أوراق: مطابَق · حركة بنك بلا سداد مسجّل (الخطر) · سداد مسجّل لم يظهر في البنك">
-          <Select value={pReconMonth} onChange={e => setPReconMonth(e.target.value)}>
+          <Select value={pReconMonth} onChange={e => updateParam('reconMonth', e.target.value)}>
             <option value="">كل الفترات</option>
             {months.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </Select>
@@ -246,7 +273,7 @@ export default function ReportsCenter({ isActive = true }) {
         <ReportCard icon={<Receipt size={18}/>} color="var(--brand)"
           title="مسودة الإقرار الضريبي PDF (القيمة المضافة)"
           desc="خانات نموذج الهيئة (1..16) من زوهو + مطابقة مستقلة لضريبة الخانتين 1 و7 قبل الإيداع">
-          <Select value={pQuarter} onChange={e => setPQuarter(e.target.value)}>
+          <Select value={pQuarter} onChange={e => updateParam('quarter', e.target.value)}>
             {QUARTERS.map(q => <option key={q.key} value={q.key}>{q.label}</option>)}
           </Select>
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'vat'} icon={busy === 'vat' ? <Spinner size={13}/> : <Download size={14}/>} onClick={genVat}>
@@ -259,9 +286,9 @@ export default function ReportsCenter({ isActive = true }) {
           title="قائمة الدخل PDF (الأرباح والخسائر)"
           desc="PDF رسمي بهوية لمحة — بنفس أقسام زوهو وحساباته حرفياً، لأي فترة تختارها">
           <div style={{ display: 'flex', gap: 8 }}>
-            <input type="date" value={pPnlFrom} onChange={e => setPPnlFrom(e.target.value)}
+            <input type="date" value={pPnlFrom} onChange={e => updateParam('from', e.target.value)}
               style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>
-            <input type="date" value={pPnlTo} onChange={e => setPPnlTo(e.target.value)}
+            <input type="date" value={pPnlTo} onChange={e => updateParam('to', e.target.value)}
               style={{ flex: 1, padding: '8px 10px', borderRadius: 9, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12.5 }}/>
           </div>
           <Btn variant="accent" size="full" disabled={!canExport || busy === 'pnl' || !pPnlFrom || !pPnlTo}
@@ -273,7 +300,7 @@ export default function ReportsCenter({ isActive = true }) {
         <ReportCard icon={<FileBarChart size={18}/>} color="var(--gold)"
           title="التقارير المالية الرسمية من زوهو"
           desc="ميزانية عمومية · تدفق نقدي · ميزان مراجعة · دفتر أستاذ — مع حفظ نسخة في سجل التقارير">
-          <Select value={pFinReport} onChange={e => setPFinReport(e.target.value)}>
+          <Select value={pFinReport} onChange={e => updateParam('report', e.target.value)}>
             <option value="balance_sheet">الميزانية العمومية</option>
             <option value="cash_flow">التدفق النقدي</option>
             <option value="trial_balance">ميزان المراجعة</option>
@@ -292,7 +319,7 @@ export default function ReportsCenter({ isActive = true }) {
       {canExport ? <>
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
         <div style={{ fontSize: 13.5, fontWeight: 800 }}>📁 التقارير الصادرة سابقاً</div>
-        <select value={historyKind} onChange={e => { setHistoryKind(e.target.value); setHistoryPage(0); }}
+        <select value={historyKind} onChange={e => updateParam('kind', e.target.value, { resetPage: true })}
           aria-label="فلترة التقارير الصادرة حسب النوع"
           style={{ marginInlineStart: 'auto', padding: '7px 10px', borderRadius: 8, border: '1px solid var(--border2)', background: 'var(--surface)', color: 'var(--text)', fontSize: 12 }}>
           <option value="all">كل الأنواع ({history?.length || 0})</option>
@@ -330,9 +357,9 @@ export default function ReportsCenter({ isActive = true }) {
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, padding: '10px 12px', borderTop: '1px solid var(--border)', fontSize: 11.5, color: 'var(--muted)' }}>
               <span>عرض {pagedHistory.length} من {filteredHistory.length} · الأحدث أولاً</span>
               <span style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-                <Btn size="sm" variant="ghost" disabled={historyPage === 0} onClick={() => setHistoryPage(p => Math.max(0, p - 1))}>السابق</Btn>
+                <Btn size="sm" variant="ghost" disabled={historyPage === 0} onClick={() => updateParam('page', Math.max(0, historyPage - 1) || '')}>السابق</Btn>
                 <span>{historyPage + 1} / {historyPages}</span>
-                <Btn size="sm" variant="ghost" disabled={historyPage + 1 >= historyPages} onClick={() => setHistoryPage(p => Math.min(historyPages - 1, p + 1))}>التالي</Btn>
+                <Btn size="sm" variant="ghost" disabled={historyPage + 1 >= historyPages} onClick={() => updateParam('page', Math.min(historyPages - 1, historyPage + 1))}>التالي</Btn>
               </span>
             </div>
           </Card>

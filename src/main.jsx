@@ -8,9 +8,11 @@ import './workspace-layout.css'
 import './product-shell.css'
 import './operations-os.css'
 import './shipaudit-os-v2.css'
+import './mobile-experience.css'
 // This is the final cascade layer by contract: Safari mobile sizing and the
 // real PageSlot end spacer must win over every historical/theme stylesheet.
 import './mobile-scroll.css'
+import './navigation-hub.css'
 
 // توقيت السعودية عالمياً: قاعدة البيانات تخزّن UTC، ونريد العرض بتوقيت الرياض مهما كان
 // جهاز المتصفّح. نحقن timeZone='Asia/Riyadh' في كل دوال Date.toLocale* حين لا يُمرَّر

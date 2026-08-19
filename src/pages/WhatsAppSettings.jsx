@@ -22,6 +22,7 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -86,6 +87,9 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
   const location = useLocation();
   const navigate = useNavigate();
   const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can) && (!settingsOnly || t.id === 'settings'));
+  const primaryTabs = settingsOnly
+    ? visibleTabs
+    : visibleTabs.filter(t => ['overview', 'campaigns', 'ivr'].includes(t.id));
   const tabFromUrl = () => {
     if (settingsOnly) return 'settings';
     const requested = new URLSearchParams(location.search).get('tab');
@@ -210,6 +214,31 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
 
   return (
     <div className="hatif-center workspace-page">
+      {!settingsOnly ? (
+        primaryTabs.some(item => item.id === tab) ? (
+          <WorkspaceTabs
+            scope="sales-communications"
+            title="التواصل"
+            subtitle="الرسائل والحملات والمكالمات من مسار تشغيلي واحد"
+            tone="#8B5CF6"
+            tabs={primaryTabs}
+            activeId={tab}
+            onChange={changeTab}
+            selectorLabel="قناة التواصل"
+          />
+        ) : (
+          <div className="workspace-secondary-context" role="status">
+            <span>تقرير تواصل</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
+            <button type="button" onClick={() => changeTab('overview')}>العودة إلى التواصل</button>
+          </div>
+        )
+      ) : null}
+      {!settingsOnly ? (
+        <nav className="workspace-filter-bar workspace-saved-views" aria-label="تقارير وإعدادات التواصل">
+          {visibleTabs.some(item => ['impact', 'agents', 'problems'].includes(item.id)) ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقارير التواصل والحملات</button> : null}
+          {can('whatsapp.configure') ? <button type="button" onClick={() => navigate('/settings/hatif')}>إعدادات القنوات</button> : null}
+        </nav>
+      ) : null}
       <div className="hatif-center__body">
         <div
           aria-label={activeMeta?.label}

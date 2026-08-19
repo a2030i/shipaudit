@@ -9,7 +9,7 @@ const fmt = n => (n == null || Number.isNaN(n))
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const pct = n => (n == null || Number.isNaN(n)) ? '—' : `${(n * 100).toFixed(0)}%`;
 
-export default function CarrierKpi({ isActive = true }) {
+export default function CarrierKpi({ isActive = true, carrierId = '', embedded = false }) {
   const [kpis, setKpis] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -26,29 +26,30 @@ export default function CarrierKpi({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
-  const totals = useMemo(() => kpis.reduce((acc, k) => ({
+  const visibleKpis = useMemo(() => carrierId ? kpis.filter(k => String(k.carrierId) === String(carrierId)) : kpis, [kpis, carrierId]);
+  const totals = useMemo(() => visibleKpis.reduce((acc, k) => ({
     ops:           acc.ops + k.ops,
     overcharges:   acc.overcharges + k.overcharges,
     overchargeAmt: acc.overchargeAmt + k.overchargeAmount,
     disputesOpen:  acc.disputesOpen + k.disputesOpen,
     totalBilled:   acc.totalBilled + k.totalBilled,
     totalPaid:     acc.totalPaid + k.totalPaid,
-  }), { ops: 0, overcharges: 0, overchargeAmt: 0, disputesOpen: 0, totalBilled: 0, totalPaid: 0 }), [kpis]);
+  }), { ops: 0, overcharges: 0, overchargeAmt: 0, disputesOpen: 0, totalBilled: 0, totalPaid: 0 }), [visibleKpis]);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={22}/></div>
   );
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<BarChart3 size={22}/>}
-        title="أداء الناقلين"
-        subtitle="مؤشرات الدقة، النزاعات، الالتزام بالسداد، والتغطية بالتدقيق لكل ناقل."
+        title={carrierId ? 'أداء شركة الشحن' : 'أداء شركات الشحن'}
+        subtitle={carrierId ? 'الدقة والمخالفات والمطالبات والالتزام بالسداد لهذه الشركة.' : 'مؤشرات الدقة، النزاعات، الالتزام بالسداد، والتغطية بالتدقيق لكل شركة.'}
         actions={<Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>}
       />
 
-      {kpis.length === 0 ? (
+      {visibleKpis.length === 0 ? (
         <Empty icon="📊" title="لا توجد بيانات بعد" sub="ارفع كشف حساب وفواتير لتظهر المؤشرات هنا"/>
       ) : (
         <>
@@ -64,7 +65,7 @@ export default function CarrierKpi({ isActive = true }) {
 
           {/* Per-carrier scorecards */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(420px,1fr))', gap: 14 }}>
-            {kpis.map(k => <CarrierCard key={k.carrierId} k={k}/>)}
+            {visibleKpis.map(k => <CarrierCard key={k.carrierId} k={k}/>)}
           </div>
         </>
       )}

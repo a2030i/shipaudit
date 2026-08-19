@@ -9,13 +9,14 @@ import {
 } from 'lucide-react';
 import { searchGlobalEntities } from '../lib/globalSearchService.js';
 
-// The 5 carrier-workspace screens (same set CarrierTabs links).
+// Carrier-scoped actions always resolve inside the Carrier 360 file.
 const CARRIER_PAGES = [
   { label: 'نظرة عامة',  to: (id) => `/carrier?id=${id}` },
-  { label: 'المراجعات', to: (id) => `/audits?carrier=${id}` },
-  { label: 'تحصيل COD', to: (id) => `/cod-settlements?carrier=${id}` },
-  { label: 'كشف الحساب', to: (id) => `/aramex-statements?carrier=${id}` },
-  { label: 'الدفتر',     to: (id) => `/ledger?carrier=${id}` },
+  { label: 'الفواتير والمراجعة', to: (id) => `/carrier?id=${id}&view=invoices` },
+  { label: 'رفع فاتورة للمراجعة', to: (id) => `/carrier?id=${id}&view=invoices&mode=upload` },
+  { label: 'COD', to: (id) => `/carrier?id=${id}&view=account&panel=cod` },
+  { label: 'الكشوف', to: (id) => `/carrier?id=${id}&view=account&panel=statements` },
+  { label: 'الحساب والمدفوعات', to: (id) => `/carrier?id=${id}&view=account&panel=ledger` },
 ];
 
 const ICONS = {

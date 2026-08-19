@@ -762,6 +762,7 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
 
   const control = data.col_map?.__control ?? null;
   const verificationStatus = Number(control?.version) >= 3 && control?.valid === true
+    && !!control?.sourceHash && !!control?.sourcePath
     && !!data.file_name && !!data.contract_label
     ? 'verified'
     : 'legacy_unverified';
@@ -797,7 +798,10 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
       ...rebuilt,
       total:         data.row_count || rebuilt.total,
       ok:            okCount,
-      mismatch:      data.mismatch_count ?? rebuilt.mismatch,
+      // Historical rows may retain a stale persisted counter while their
+      // stored shipment details still contain the reviewable variances.
+      // When details are present, keep the summary aligned with drill-down.
+      mismatch:      results.length ? rebuilt.mismatch : (data.mismatch_count ?? 0),
       totalBilled:   Number(data.total_billed)   || 0,
       totalExpected: Number(data.total_expected) || 0,
       totalTax:      Number(data.total_tax)      || 0,
@@ -942,47 +946,11 @@ export async function approveAudit(auditId, userId) {
     console.warn('audit.approve activity log failed:', e.message);
   }
 
-  // ── Auto-extract per-AWB COD shipments to cod_settlement (out) ONLY
-  //    when the carrier's profile says its invoice file ALSO carries
-  //    COD (file_kind='audit_with_cod' — e.g. DeliverNow). For carriers
-  //    whose COD comes in a SEPARATE remittance file (Aramex etc) we
-  //    skip extraction so we don't double-count later.
-  try {
-    const { data: carrierRow } = await supabase
-      .from('carriers')
-      .select('file_signature')
-      .eq('id', updated.carrier_id)
-      .maybeSingle();
-    const fileKind = carrierRow?.file_signature?.file_kind || null;
-    // Universal rule per the admin's spec: any COD info that comes from
-    // a carrier's own file is treated as a SETTLED (مُستلَم) statement.
-    // We only extract from the audit when the carrier's profile says the
-    // invoice IS the COD statement (audit_with_cod). For carriers that
-    // send a SEPARATE remittance file, the audit's COD column is just
-    // shipping metadata and we wait for the dedicated remittance upload
-    // to create the 'in' rows — otherwise we'd double-count once that
-    // file arrives.
-    if (fileKind === 'audit_with_cod') {
-      const { syncAuditCodOut } = await import('./codSettlementService.js');
-      const codRes = await syncAuditCodOut({
-        auditId:    updated.id,
-        carrierId:  updated.carrier_id,
-        sourceFile: updated.file_name || null,
-        userId:     userId || null,
-        direction:  'in',
-      });
-      if (codRes.count > 0) {
-        console.info(`audit ${updated.id}: extracted ${codRes.count} COD shipments (${codRes.total} SAR) as 'in' (carrier file = settlement)`);
-      }
-    } else {
-      console.info(`audit ${updated.id}: file_kind=${fileKind || 'unset'} — audit doesn't populate cod_settlement directly`);
-    }
-  } catch (e) {
-    // فشل استخراج COD يُرفَق بالنتيجة ويُعرَض (كان يُبتلع صامتاً بينما فشل قيد
-    // الدفتر المجاور يُعرَض) — فمراجعة audit_with_cod تُعتمد بصفر تحصيل بلا تنبيه.
-    console.error('COD auto-extract failed:', e.message);
-    updated.codExtractError = e.message;
-  }
+  // Carrier operations are invoice-audit only from 2026-08-19. Approval
+  // must never create a new COD expectation/remittance, even when a legacy
+  // parser profile is still `audit_with_cod`. Existing cod_settlement rows
+  // are preserved and can be reduced only from the dedicated wind-down flow.
+  console.info(`audit ${updated.id}: invoice-only policy — no COD rows created`);
 
   // ── Auto-post to the carrier sub-ledger (A/P sub-ledger). One DR
   //    line per audit, totalling the invoice amount + VAT. Idempotent

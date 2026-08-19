@@ -32,6 +32,9 @@ import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { loadHatifCallCommitments, hatifCommitmentMeta, summarizeHatifCommitments } from '../lib/hatifCommitmentsService.js';
 import { saDateTime, saTime } from '../lib/saTime.js';
 import { HUDHUD_LEAD_CATEGORIES, loadHudhudCoverage, runHudhudLeadScan, loadHudhudCandidates, approveHudhudCandidate, rejectHudhudCandidate } from '../lib/hudhudLeadDiscoveryService.js';
+import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
+import useMobileLayout from '../lib/useMobileLayout.js';
+import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -50,8 +53,8 @@ const shuffle = (arr) => {
 const TABS = [
   { id: 'deals', label: 'صفقات المبيعات', icon: TrendingUp },
   { id: 'tasks', label: 'المواعيد', icon: CalendarClock },
-  { id: 'board', label: 'أداء المبيعات', icon: BarChart3 },
-  { id: 'settings', label: 'الإعدادات', icon: Sliders, perm: 'crm.manage_statuses' },
+  { id: 'board', label: 'أداء المبيعات', icon: BarChart3, secondary: true },
+  { id: 'settings', label: 'الإعدادات', icon: Sliders, perm: 'crm.manage_statuses', secondary: true },
 ];
 const LEGACY = { '/crm': 'deals' };
 
@@ -60,6 +63,7 @@ export default function CrmWorkspace({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
+  const primaryTabs = visibleTabs.filter(t => !t.secondary);
   const initial = () => {
     const q = new URLSearchParams(location.search).get('tab');
     const normalized = q === 'queue' ? 'deals' : q;
@@ -74,26 +78,37 @@ export default function CrmWorkspace({ isActive = true }) {
     if (isActive && new URLSearchParams(location.search).get('tab') === 'sales') navigate('/retargeting', { replace: true });
   }, [isActive, location.search, navigate]);
 
-  const change = (t) => { setTab(t); navigate(`/crm?tab=${t}`, { replace: true }); };
+  const change = (t) => {
+    const params = new URLSearchParams(location.search);
+    params.set('tab', t);
+    setTab(t);
+    navigate(`/crm?${params.toString()}`, { replace: true });
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', rowGap: 6, padding: '12px 24px 0',
-        borderBottom: '1px solid var(--border)', background: 'var(--surface)', position: 'sticky', top: 0, zIndex: 5 }}>
-        {visibleTabs.map(t => {
-          const Icon = t.icon, active = tab === t.id;
-          return (
-            <button key={t.id} onClick={() => change(t.id)} style={{
-              padding: '10px 18px', border: 'none', background: 'transparent',
-              borderBottom: `2.5px solid ${active ? 'var(--accent3)' : 'transparent'}`,
-              color: active ? 'var(--text)' : 'var(--muted)', fontSize: 13, fontWeight: active ? 700 : 500,
-              fontFamily: 'var(--font-sans)', cursor: 'pointer', marginBottom: -1,
-              display: 'inline-flex', alignItems: 'center', gap: 7 }}>
-              <Icon size={14}/>{t.label}
-            </button>
-          );
-        })}
-      </div>
+      {primaryTabs.some(item => item.id === tab) ? (
+        <WorkspaceTabs
+          scope="sales-crm"
+          title="الفرص والصفقات"
+          subtitle="إدارة مراحل البيع والالتزامات"
+          tone="#8B5CF6"
+          tabs={primaryTabs}
+          activeId={tab}
+          onChange={change}
+          selectorLabel="مسار البيع"
+          showContext={false}
+        />
+      ) : (
+        <div className="workspace-secondary-context" role="status">
+          <span>{tab === 'settings' ? 'إعداد إداري' : 'تقرير'}</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
+          <button type="button" onClick={() => change('deals')}>العودة إلى الصفقات</button>
+        </div>
+      )}
+      <nav className="workspace-filter-bar workspace-saved-views" aria-label="تقارير وإعدادات المبيعات">
+        {visibleTabs.some(item => item.id === 'board') ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقرير أداء المبيعات</button> : null}
+        {visibleTabs.some(item => item.id === 'settings') ? <button type="button" onClick={() => change('settings')}>إعداد مراحل البيع</button> : null}
+      </nav>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         <div style={{ margin: '12px 24px 0', padding: '9px 13px', borderRadius: 10,
           background: 'color-mix(in srgb, var(--accent3) 7%, var(--surface))',
@@ -529,11 +544,13 @@ function EmailLink({ email }) {
 // ═══════════════ الجهات الخارجية (leads) ═══════════════
 export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض داخل مركز المبيعات
   const { user, can } = useAuth();
+  const isMobile = useMobileLayout();
   const [leads, setLeads] = useState([]);
   const [count, setCount] = useState(0);
   const [stats, setStats] = useState(null);
   const [options, setOptions] = useState({ categories: [], platforms: [], statuses: [] });
   const [employees, setEmployees] = useState([]);
+  const employeeById = useMemo(() => new Map(employees.map(employee => [employee.id, employee])), [employees]);
   const [loading, setLoading] = useState(false);
   const [modal, setModal] = useState(null); // 'upload' | 'new' | 'hudhud'
   const [sel, setSel] = useState(null);
@@ -641,7 +658,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
   };
   const bulkAssign = async () => {
     if (!bulkOwner || (!selIds.size && !selAllMatching)) return;
-    const emp = employees.find(e => e.id === bulkOwner);
+    const emp = employeeById.get(bulkOwner);
     // كل النتائج المطابقة (7,004 مثلاً): عملية واحدة على الخادم بنفس الفلاتر —
     // لا حلقة آلاف الطلبات. تأكيد صريح قبل التنفيذ (فعل واسع).
     if (selAllMatching) {
@@ -714,7 +731,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       </div>
 
       <Card style={{ padding: 12, marginBottom: 12 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr))', gap: 8 }} className="crm-lead-filters">
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(220px, 1.4fr) repeat(4, minmax(130px, 1fr))', gap: 8 }} className="crm-lead-filters workspace-filter-bar">
           <div style={{ position: 'relative' }}>
             <Search size={14} style={{ position: 'absolute', top: 11, insetInlineStart: 11, color: 'var(--muted)' }}/>
             {/* type=search + autoComplete=off + name محايد: كروم كان يظنه حقل بريد
@@ -834,6 +851,61 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
       )}
 
       {loading && !leads.length ? <Spin/> : !leads.length ? <Empty icon="🏪" title="لا جهات" sub="ارفع ملف متاجر أو خفف الفلاتر الحالية"/> : (
+        isMobile ? (
+        <>
+          <SalesMobileList>
+            {leads.map(l => {
+              const ownerName = employeeById.get(l.owner_id)?.name || 'بدون موظف';
+              return (
+                <SalesMobileCard
+                  key={l.id}
+                  title={l.name}
+                  subtitle={<span dir="ltr">{l.phone_normalized || l.phone || 'بلا رقم جوال'}</span>}
+                  eyebrow={l.name_en || (l.matched_store_name ? `مرتبط: ${l.matched_store_name}` : 'عميل محتمل')}
+                  tone={l.matched_store_id ? 'var(--accent)' : 'var(--green)'}
+                  selected={selIds.has(l.id)}
+                  onClick={() => setSel(l)}
+                  actionLabel="إدارة"
+                  selection={can('crm.assign') ? (
+                    <input
+                      type="checkbox"
+                      aria-label={`تحديد ${l.name}`}
+                      checked={selIds.has(l.id)}
+                      onChange={() => toggleSel(l.id)}
+                    />
+                  ) : null}
+                  badges={<>
+                    <SalesMobileBadge color={l.matched_store_id ? 'var(--accent)' : 'var(--green)'}>
+                      {l.matched_store_id ? 'عميل لدينا' : 'خارج المنصّة'}
+                    </SalesMobileBadge>
+                    <LeadStatusBadge status={l.status}/>
+                    {Number(l.duplicate_count) > 1 && <SalesMobileBadge color="var(--gold)">{l.duplicate_count} بنفس الرقم</SalesMobileBadge>}
+                    {l.lead_kind === 'inbound' && <SalesMobileBadge color="var(--green)">⚡ مهتم</SalesMobileBadge>}
+                  </>}
+                  metrics={[
+                    { label: 'القسم', value: l.category || '—' },
+                    { label: 'المنصة', value: l.platform || '—' },
+                  ]}
+                  footer={can('crm.assign') ? (
+                    <label className="sales-mobile__control" onClick={event => event.stopPropagation()}>
+                      <span>الموظف المسؤول</span>
+                      <Select value={l.owner_id || ''} onChange={event => assignLead(l, event.target.value)}>
+                        <option value="">— بدون —</option>
+                        {employees.map(employee => <option key={employee.id} value={employee.id}>{employee.name || employee.email}</option>)}
+                      </Select>
+                    </label>
+                  ) : <span>الموظف: {ownerName}</span>}
+                />
+              );
+            })}
+          </SalesMobileList>
+          <div className="sales-mobile-pagination">
+            <Btn size="sm" variant="ghost" disabled={filters.page <= 0} onClick={() => setFilter({ page: Math.max(0, filters.page - 1) })}>السابق</Btn>
+            <span>صفحة {filters.page + 1} من {totalPages}</span>
+            <Btn size="sm" variant="ghost" disabled={filters.page + 1 >= totalPages} onClick={() => setFilter({ page: filters.page + 1 })}>التالي</Btn>
+          </div>
+        </>
+        ) : (
         <Card style={{ padding: 0, overflow: 'hidden' }}>
           <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
@@ -884,7 +956,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
                         <option value="">— بدون —</option>
                         {employees.map(e => <option key={e.id} value={e.id}>{e.name || e.email}</option>)}
                       </Select>
-                    ) : (employees.find(e => e.id === l.owner_id)?.name || '—')}
+                    ) : (employeeById.get(l.owner_id)?.name || '—')}
                   </td>
                   <td data-label="الحالة" style={{ padding: '10px 12px' }}>
                     <LeadStatusBadge status={l.status}/>
@@ -902,6 +974,7 @@ export function LeadsTab({ active }) {   // §1.32 مرحلة 3: يُعرَض د
             <Btn size="sm" variant="ghost" disabled={filters.page + 1 >= totalPages} onClick={() => setFilter({ page: filters.page + 1 })}>التالي</Btn>
           </div>
         </Card>
+        )
       )}
       {modal === 'upload' && <LeadUploadModal employees={employees} userId={user?.id} onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }}/>}
       {modal === 'new' && <NewLeadModal onClose={() => setModal(null)} onSaved={() => { setModal(null); refresh(); }} userId={user?.id}/>}

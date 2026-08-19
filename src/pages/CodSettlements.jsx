@@ -16,6 +16,7 @@ import {
 import { INTERNAL_PARSER, REMITTANCE_PARSERS, listSupportedCarriers } from '../engine/codParsers/index.js';
 import { loadCarriers } from '../lib/coreService.js';
 import { useWindowedRows } from '../hooks/useWindowedRows.js';
+import { carrierHasOutstandingLegacyCod } from '../lib/carrierOperatingModel.js';
 
 // ─── Status meta ──────────────────────────────────────────────────────────
 // over_remit splits visually: recent (≤ 30d, blue) is just sequencing —
@@ -47,12 +48,12 @@ const fmt = n => (n == null || Number.isNaN(n))
 // both, so an import is consumed exactly once per click.
 const CONSUMED_COD_IMPORTS = new Set();
 
-export default function CodSettlements({ isActive = true }) {
+export default function CodSettlements({ isActive = true, carrierId = '', embedded = false }) {
   const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const carriers = listSupportedCarriers();
-  const [carrier, setCarrier] = useState(carriers[0]?.id || 'c_1777506662790');
+  const [carrier, setCarrier] = useState(carrierId || carriers[0]?.id || 'c_1777506662790');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('outstanding'); // outstanding|pending|disputed|matched|all
@@ -78,13 +79,13 @@ export default function CodSettlements({ isActive = true }) {
   // outstandingByCarrier: Map<carrier_id, sar> — drives the dropdown
   // labels so the user can see at a glance which carrier owes the most.
   const [outstandingByCarrier, setOutstandingByCarrier] = useState(new Map());
-  // fileKindById: Map<carrier_id, file_kind>. For audit_with_cod carriers
-  // (iMile/DeliverNow) the audit approval ALREADY creates the received
-  // ('in') rows — so the manual «ارفع تحويل» button is hidden to prevent
-  // double-counting the same COD.
-  const [fileKindById, setFileKindById] = useState(new Map());
+  const [outstandingReady, setOutstandingReady] = useState(false);
   // carrierMeta: كل شركات النظام (id+name) لبناء المنتقي الشامل (لا المحلّلات فقط).
   const [carrierMeta, setCarrierMeta] = useState([]);
+
+  useEffect(() => {
+    if (carrierId) setCarrier(carrierId);
+  }, [carrierId]);
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
@@ -95,9 +96,10 @@ export default function CodSettlements({ isActive = true }) {
         loadSettlementUploads({ carrierId: carrier }),
         loadOutstandingByCarrier(),
       ]);
-      setRows(data);
-      setUploads(uploadsList);
-      setOutstandingByCarrier(outstanding);
+        setRows(data);
+        setUploads(uploadsList);
+        setOutstandingByCarrier(outstanding);
+        setOutstandingReady(true);
     } catch (e) {
       toast(`فشل التحميل: ${e.message}`, 'error');
     }
@@ -368,16 +370,15 @@ export default function CodSettlements({ isActive = true }) {
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh]);
 
-  // Load each carrier's file_kind once — lets us hide «ارفع تحويل» for
-  // audit_with_cod carriers (their COD comes from audit approval).
+  // Load carrier labels. Operational mode is invoice-only for every carrier;
+  // this screen exists only to wind down balances created before the cutover.
   useEffect(() => {
     if (!isActive) return;
     loadCarriers()
       .then(list => {
-        setFileKindById(new Map((list || []).map(c => [c.id, c.file_signature?.file_kind || null])));
         setCarrierMeta(list || []);
       })
-      .catch(() => { /* non-fatal — buttons just stay visible */ });
+      .catch(() => { /* non-fatal — IDs remain usable */ });
   }, [isActive]);
 
   // ── Webhook → COD auto-import ───────────────────────────────────
@@ -467,9 +468,15 @@ export default function CodSettlements({ isActive = true }) {
     for (const c of carrierMeta) if (!labelById.has(c.id)) labelById.set(c.id, c.name || c.id); // كل شركات DB
     for (const id of outstandingByCarrier.keys()) if (!labelById.has(id)) labelById.set(id, id);
     return [...labelById].map(([id, label]) => ({ id, label, due: outstandingByCarrier.get(id) || 0 }))
+      .filter(item => carrierHasOutstandingLegacyCod(item.due))
       .sort((a, b) => Math.abs(b.due) - Math.abs(a.due) || String(a.label).localeCompare(String(b.label), 'ar'));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [carrierMeta, outstandingByCarrier]);
+
+  useEffect(() => {
+    if (!outstandingReady || !pickerCarriers.length) return;
+    if (!pickerCarriers.some(item => item.id === carrier)) setCarrier(pickerCarriers[0].id);
+  }, [carrier, outstandingReady, pickerCarriers]);
 
   const counts = useMemo(() => {
     const c = {
@@ -551,8 +558,8 @@ export default function CodSettlements({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {fromWorkspace && (
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      {fromWorkspace && !embedded && (
         <CarrierTabs
           carrierId={carrier}
           carrierName={carriers.find(c => c.id === carrier)?.name || carrier}
@@ -561,11 +568,11 @@ export default function CodSettlements({ isActive = true }) {
       )}
       <PageHeader
         icon={<Banknote size={22}/>}
-        title="تسويات الدفع عند الاستلام"
-        subtitle="المعتمد للمراجعات يُغذّي «المتوقَّع»، والناقل يُحوّل النقد فعلياً كـ«مُستلَم» — الفرق = ما تبقّى"
+        title="تصفية تحصيلات COD القديمة"
+        subtitle="لا تُنشأ التزامات جديدة. تظهر فقط الشركات ذات الرصيد المتبقي حتى تصفيرها"
         actions={
           <>
-            <select value={carrier} onChange={e => setCarrier(e.target.value)}
+            {embedded && carrierId ? null : <select value={carrier} onChange={e => setCarrier(e.target.value)} aria-label="اختر شركة الشحن"
               className="page-action-select"
               style={{
                 padding: '10px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
@@ -584,30 +591,19 @@ export default function CodSettlements({ isActive = true }) {
                 }
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
               })}
-            </select>
-            <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-              onClick={handleReviewUpload}
-              title="اختر فاتورة هذا الناقل هنا — تُفتح المراجعة جاهزة على النتائج">
-              رفع مراجعة
+              </select>}
+            <Btn size="md" variant="ghost"
+              onClick={() => navigate(`/carrier?id=${encodeURIComponent(carrier)}&view=invoices`)}>
+              مراجعات الفواتير
             </Btn>
             <Btn size="md" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refresh}>تحديث</Btn>
-            {/* audit_with_cod carriers (iMile/DeliverNow): the received COD
-                is auto-created on audit approval, so a manual «ارفع تحويل»
-                would double-count it. Hide the button; show a hint. */}
-            {fileKindById.get(carrier) === 'audit_with_cod' ? (
-              <span style={{
-                fontSize: 11.5, color: 'var(--muted)', maxWidth: 200, lineHeight: 1.5,
-                alignSelf: 'center', padding: '0 6px',
-              }}>
-                💡 التحصيل يُسجَّل تلقائياً عند اعتماد المراجعة لهذا الناقل
-              </span>
-            ) : (
+            {carrierHasOutstandingLegacyCod(outstandingByCarrier.get(carrier)) ? (
               <Btn size="md" variant="accent" icon={<Upload size={14}/>}
                 onClick={() => setUploadModal({ direction: 'in' })}
-                title="تحصيل شركة الشحن — المبلغ الذي حوّلته الشركة فعلياً (مُستلَم)">
-                تحصيل شركة الشحن
+                title="سجّل التحويل المستلم لتخفيض الرصيد التاريخي">
+                تسجيل تحويل مستلم
               </Btn>
-            )}
+            ) : null}
             <div className={`page-action-menu${moreActionsOpen ? ' is-open' : ''}`}>
               <button type="button" className="page-action-menu__trigger"
                 aria-expanded={moreActionsOpen} onClick={() => setMoreActionsOpen(open => !open)}>
@@ -628,42 +624,28 @@ export default function CodSettlements({ isActive = true }) {
                   title="تصدير غير المحصَّل لكل الناقلين في ملف واحد (عمود لكل ناقل)">
                   {exportingAll ? 'جارٍ التجميع…' : 'تصدير المتبقي لكل الناقلين'}
                 </Btn>
-                <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-                  onClick={() => setUploadModal({ direction: 'out' })}
-                  title="تحصيل لمحة — ما يتوقّع نظام لمحة الداخلي تحصيله (لناقل واحد)">
-                  تسجيل تحصيل لمحة لناقل واحد
-                </Btn>
-                {(!can || can('cod.upload_out')) && (
-                  <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
-                    onClick={() => setConsolidated({ pick: true })}
-                    title="تحصيل لمحة المجمّع — ملف واحد يغطّي كل الشركات (تم التوصيل + مبلغ>0)">
-                    تسجيل تحصيل لمحة المجمّع
-                  </Btn>
-                )}
               </div>}
             </div>
           </>
         }
       />
 
-      {loading ? (
+      {outstandingReady && pickerCarriers.length === 0 ? (
+        <Card style={{ padding: 44, textAlign: 'center' }}>
+          <div style={{ fontSize: 42, marginBottom: 10 }}>✓</div>
+          <div style={{ fontSize: 16, fontWeight: 800 }}>تم تصفير تحصيلات شركات الشحن</div>
+          <div style={{ marginTop: 7, color: 'var(--muted)', fontSize: 12.5 }}>بقي السجل التاريخي محفوظًا، ولا توجد شركة تحتاج متابعة COD الآن.</div>
+        </Card>
+      ) : loading ? (
         <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={22}/></div>
       ) : rows.length === 0 ? (
         <Card style={{ padding: 44, textAlign: 'center' }}>
           <div style={{ fontSize: 44, marginBottom: 12 }}>💰</div>
-          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>لا توجد تسويات بعد</div>
+          <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 8 }}>لا توجد تفاصيل متبقية لهذه الشركة</div>
           <div style={{ color: 'var(--muted)', fontSize: 13, lineHeight: 1.7, marginBottom: 22 }}>
-            اعتماد أي مراجعة فيها أعمدة COD يُغذّي «المتوقّع من الناقل» تلقائياً.
-            وعند وصول التحويل، ارفع ملف التحويل كـ«مُستلَم». النظام يُطابق رقم الشحنة (AWB) ويعرض الفرق.
+            أوقف النظام إنشاء COD جديد. استخدم هذا المسار فقط لتسجيل التحويلات التي تخص الرصيد التاريخي المتبقي.
           </div>
-          <div style={{ display: 'flex', gap: 8, justifyContent: 'center' }}>
-            <Btn variant="ghost" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'out' })}>
-              تحصيل لمحة (يدوي)
-            </Btn>
-            <Btn variant="accent" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>
-              تحصيل شركة الشحن
-            </Btn>
-          </div>
+          <Btn variant="accent" icon={<Upload size={14}/>} onClick={() => setUploadModal({ direction: 'in' })}>تسجيل تحويل مستلم</Btn>
         </Card>
       ) : (
         <>
@@ -961,6 +943,7 @@ export default function CodSettlements({ isActive = true }) {
             <div style={{ padding: 10, borderTop: '1px solid var(--border)', display: 'flex', gap: 8, alignItems: 'center' }}>
               <Search size={14} color="var(--muted)"/>
               <input value={search} onChange={e => setSearch(e.target.value)}
+                aria-label="البحث برقم الشحنة"
                 placeholder="بحث برقم الشحنة (AWB)..."
                 style={{ flex: 1, padding: '7px 10px', borderRadius: 7, fontSize: 12, fontFamily: 'var(--font-mono)' }}/>
               {bulkSearch ? (
@@ -1047,6 +1030,7 @@ export default function CodSettlements({ isActive = true }) {
                       <tr>
                         <th style={{ width: 34, textAlign: 'center' }}>
                           <input type="checkbox"
+                            aria-label="تحديد كل الشحنات الظاهرة"
                             checked={visible.length > 0 && visible.every(r => selectedAwbs.has(r.awb))}
                             onChange={() => setSelectedAwbs(prev => {
                               const next = new Set(prev);
@@ -1242,7 +1226,7 @@ function Row({ r, onAction, onReopen, checked, onToggle }) {
   return (
     <tr style={checked ? { background: 'color-mix(in srgb, var(--accent) 6%, transparent)' } : undefined}>
       <td data-label="" style={{ textAlign: 'center' }}>
-        <input type="checkbox" checked={!!checked} onChange={onToggle}
+        <input type="checkbox" checked={!!checked} onChange={onToggle} aria-label={`تحديد الشحنة ${r.awb}`}
           style={{ width: 15, height: 15, cursor: 'pointer', accentColor: 'var(--accent)' }}/>
       </td>
       <td data-label="" style={{ fontFamily: 'var(--font-mono)', color: 'var(--accent)', fontSize: 11 }}>{r.awb}</td>

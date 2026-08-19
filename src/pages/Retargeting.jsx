@@ -20,6 +20,8 @@ import { loadWhatsAppCampaignStatus, normalizeSaudiPhone, waStatusBadge } from '
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { CustomerCampaignHistory } from '../components/WhatsAppCampaignLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
+import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
+import useMobileLayout from '../lib/useMobileLayout.js';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US');
 const fmt2 = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -76,6 +78,7 @@ const LIMIT = 50;
 
 export default function Retargeting({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
+  const isMobile = useMobileLayout();
   const [exporting, setExporting] = useState(false);
   const [bulkOwner, setBulkOwner] = useState('');   // إسناد جماعي للنتائج المفلترة
   const [assigning, setAssigning] = useState(false);
@@ -470,6 +473,45 @@ export default function Retargeting({ isActive = true }) {
         {listLoading && !leads.length ? <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>
           : !leads.length ? <Empty icon="🎯" title="لا فرص بهذه الفلاتر" sub="خفّف الفلاتر أو ارفع كشف متاجر أحدث"/>
           : (
+          isMobile ? (
+          <SalesMobileList>
+            {leads.map((l, i) => {
+              const sm = segmentMeta(l.segment); const pm = priorityMeta(l.priority); const stm = statusMeta(l.status);
+              return (
+                <SalesMobileCard
+                  key={l.phone + i}
+                  title={l.storeName}
+                  subtitle={<span dir="ltr">{l.phone || 'بلا رقم جوال'}</span>}
+                  eyebrow={`${l.storeCount > 1 ? `${l.storeCount} متاجر مرتبطة` : 'فرصة استعادة'}${l.highValue ? ' · ⭐ قيمة عالية' : ''}`}
+                  tone={pm.color}
+                  onClick={() => setFollowUp(l)}
+                  actionLabel="متابعة"
+                  badges={<>
+                    <SalesMobileBadge color={sm.color}>{sm.icon} {sm.label}</SalesMobileBadge>
+                    <SalesMobileBadge color={pm.color}>أولوية {l.priority} · {CHANNELS[l.channel] || l.channel}</SalesMobileBadge>
+                    <SalesMobileBadge color={stm.color}>{stm.label}</SalesMobileBadge>
+                  </>}
+                  metrics={[
+                    { label: 'إجمالي الشحنات', value: fmt0(l.totalShipments) },
+                    { label: 'آخر شحنة', value: l.daysSinceLast == null ? '—' : `${l.daysSinceLast} يوم` },
+                    { label: 'المحفظة', value: fmt2(l.wallet), color: l.wallet < 0 ? 'var(--red)' : l.wallet > 0.5 ? 'var(--green)' : 'var(--muted)' },
+                    { label: 'الربط والفوترة', value: `${l.integrationType || 'بلا ربط'} · ${l.billingType || '—'}` },
+                  ]}
+                  footer={<>
+                    {(l.ownerName || l.nextActionAt) && (
+                      <span>{l.ownerName ? `👤 ${l.ownerName}` : ''}{l.ownerName && l.nextActionAt ? ' · ' : ''}{l.nextActionAt ? `⏰ ${new Date(l.nextActionAt).toLocaleDateString('en-CA')}` : ''}</span>
+                    )}
+                    <span onClick={event => event.stopPropagation()} style={{ display: 'inline-flex', gap: 7, marginInlineStart: 'auto' }}>
+                      {l.phone && <IvrCallButton phone={l.phone} name={l.storeName}
+                        fields={{ name: l.storeName, shipments: l.totalShipments, last_shipment: l.lastShipment, days_since: l.daysSinceLast, wallet: l.wallet }} size={15}/>}
+                      {l.phone && <button className="sales-mobile__icon-action" onClick={() => setWaRecipients([leadToRecipient(l)])} title="إرسال واتساب عبر هاتف"><Send size={15}/></button>}
+                    </span>
+                  </>}
+                />
+              );
+            })}
+          </SalesMobileList>
+          ) : (
           <Card style={{ padding: 0, overflow: 'hidden' }}>
             <table className="m-cards" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
               <thead><tr style={{ background: 'var(--surface2)', textAlign: 'right' }}>
@@ -525,6 +567,7 @@ export default function Retargeting({ isActive = true }) {
               </tbody>
             </table>
           </Card>
+          )
         )}
 
         {/* الترقيم */}

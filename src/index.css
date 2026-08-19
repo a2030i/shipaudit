@@ -901,8 +901,10 @@ button:active { transform: scale(.97); }
   /* AI chat: smaller floating button + nearly full-screen panel.
      مرفوع فوق شريط التنقّل السفلي (64px + أمان iOS). */
   .ai-chat-fab {
-    width: 50px !important; height: 50px !important;
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px)) !important; left: 16px !important;
+    width: 36px !important; height: 48px !important;
+    bottom: calc(88px + env(safe-area-inset-bottom, 0px)) !important; left: 0 !important;
+    border-radius: 0 12px 12px 0 !important;
+    opacity: .9;
   }
   .ai-chat-panel {
     bottom: calc(72px + env(safe-area-inset-bottom, 0px)) !important; left: 12px !important;

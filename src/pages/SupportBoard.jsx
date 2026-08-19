@@ -9,6 +9,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Select, Modal } from '../components/UI.jsx';
+import { MobileFilterBar } from '../components/MobileUX.jsx';
 import TicketCreateForm from '../components/TicketCreateForm.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { loadLamhaCarrierOptions } from '../lib/platformCarriersService.js';
@@ -355,9 +356,36 @@ export default function SupportBoard({ isActive = true }) {
     setOpenOnly(false);
     setAttention(attention === key ? '' : key);
   };
+  const supportFilterFields = (
+    <>
+      <Select aria-label="نوع التذكرة" value={category} onChange={(e) => setCategory(e.target.value)}>
+        <option value="">كل الأنواع</option>
+        {Object.entries(TICKET_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
+      </Select>
+      <Select aria-label="شركة الشحن" value={carrierId} onChange={(e) => setCarrierId(e.target.value)}>
+        <option value="">كل الشركات</option>
+        {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+      </Select>
+      <Select aria-label="المسؤول" value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)}>
+        <option value="">كل المسؤولين</option>
+        {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
+      </Select>
+    </>
+  );
+  const supportActiveFilters = [
+    category && { id: 'category', label: `النوع: ${TICKET_CATEGORIES[category]?.label || category}`, onRemove: () => setCategory('') },
+    carrierId && { id: 'carrier', label: `الشركة: ${carriers.find(c => c.id === carrierId)?.name || carrierId}`, onRemove: () => setCarrierId('') },
+    assignedTo && { id: 'owner', label: `المسؤول: ${employees.find(e => e.id === assignedTo)?.name || assignedTo}`, onRemove: () => setAssignedTo('') },
+    status && { id: 'status', label: `الحالة: ${ticketStatusMeta(status).label}`, onRemove: () => setStatus('') },
+    attention && { id: 'attention', label: 'يحتاج انتباهًا', onRemove: () => setAttention('') },
+    openOnly && { id: 'open', label: 'المفتوحة فقط', onRemove: () => setOpenOnly(false) },
+  ].filter(Boolean);
+  const clearSupportFilters = () => {
+    setCategory(''); setCarrierId(''); setAssignedTo(''); setStatus(''); setAttention(''); setOpenOnly(false);
+  };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div className="support-board-page" style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader icon={<LifeBuoy size={22}/>} iconColor="var(--accent3)"
         title="تذاكر خدمة العملاء"
         subtitle="سجّل المشكلة قبل أن تضيع — تابعها حتى تُحل"
@@ -394,13 +422,13 @@ export default function SupportBoard({ isActive = true }) {
       {stats && (
         <>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: 'var(--muted)', marginBottom: 7 }}>ما يحتاج انتباهك الآن</div>
-          <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 10 }}>
+          <div className="hero-grid support-decision-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 10, marginBottom: 10 }}>
             <StatCard label="متابعة متأخرة" value={stats.overdue} color="var(--red)" active={attention === 'overdue'} onClick={() => pickAttention('overdue')}/>
             <StatCard label="مستحقة خلال 24 ساعة" value={stats.due24h} color="var(--gold)" active={attention === 'due24h'} onClick={() => pickAttention('due24h')}/>
             <StatCard label="بلا مسؤول" value={stats.unassigned} color="var(--accent3)" active={attention === 'unassigned'} onClick={() => pickAttention('unassigned')}/>
             <StatCard label="بلا موعد متابعة" value={stats.noFollowup} color="var(--muted)" active={attention === 'without_followup'} onClick={() => pickAttention('without_followup')}/>
           </div>
-          <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 16 }}>
+          <div className="hero-grid support-status-kpis" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(130px,1fr))', gap: 8, marginBottom: 16 }}>
             <StatCard label="جديدة" value={stats.open} color="var(--accent3)" active={status === 'open'} onClick={() => pickStat('open')}/>
             <StatCard label="قيد المعالجة" value={stats.inProgress} color="var(--gold)" active={status === 'in_progress'} onClick={() => pickStat('in_progress')}/>
             <StatCard label="بانتظار العميل" value={stats.waiting} color="var(--accent)" active={status === 'waiting_customer'} onClick={() => pickStat('waiting_customer')}/>
@@ -411,31 +439,24 @@ export default function SupportBoard({ isActive = true }) {
       )}
 
       {/* ── شريط الفلاتر ── */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ position: 'relative', flex: '1 1 220px', maxWidth: 340 }}>
+      <MobileFilterBar
+        title="فلترة التذاكر"
+        search={(
+        <div style={{ position: 'relative', width: '100%' }}>
           <Search size={13} style={{ position: 'absolute', insetInlineStart: 10, top: '50%', transform: 'translateY(-50%)', color: 'var(--muted2)' }}/>
           <input value={q} onChange={(e) => setQ(e.target.value)}
+            aria-label="البحث في التذاكر"
             placeholder="بحث: متجر / عنوان / AWB / هاتف / TKT-…"
             style={{
               width: '100%', padding: '8px 30px 8px 10px', borderRadius: 9,
               border: '1.5px solid var(--border)', background: 'var(--surface)', color: 'var(--text)',
               fontSize: 12.5, fontFamily: 'var(--font-sans)', outline: 'none',
             }}/>
-        </div>
-        <Select value={category} onChange={(e) => setCategory(e.target.value)} style={{ minWidth: 140 }}>
-          <option value="">كل الأنواع</option>
-          {Object.entries(TICKET_CATEGORIES).map(([k, v]) => <option key={k} value={k}>{v.icon} {v.label}</option>)}
-        </Select>
-        <Select value={carrierId} onChange={(e) => setCarrierId(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">كل الشركات</option>
-          {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </Select>
-        <Select value={assignedTo} onChange={(e) => setAssignedTo(e.target.value)} style={{ minWidth: 150 }}>
-          <option value="">كل المسؤولين</option>
-          {employees.map(e => <option key={e.id} value={e.id}>{e.name}</option>)}
-        </Select>
-        <span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{count} تذكرة</span>
-      </div>
+        </div>)}
+        desktop={<div className="workspace-filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>{supportFilterFields}<span style={{ fontSize: 11.5, color: 'var(--muted)' }}>{count} تذكرة</span></div>}
+        activeFilters={supportActiveFilters}
+        onClear={clearSupportFilters}
+      >{supportFilterFields}</MobileFilterBar>
 
       {selected.size > 0 && can('support.manage') && (
         <div style={{

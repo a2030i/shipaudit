@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { RefreshCw, Filter, Activity } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { RefreshCw, Filter, Activity, Database, AlertTriangle, Clock3 } from 'lucide-react';
 import { Card, Btn, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
 import { loadActivityLog } from '../lib/carrierStatementsService.js';
 
@@ -18,16 +19,29 @@ const fmt = n => (n == null || Number.isNaN(n))
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 export default function ActivityLog({ isActive = true }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [actionFilter, setActionFilter] = useState('all');
+  const [sourceError, setSourceError] = useState('');
+  const [actionFilter, setActionFilter] = useState(() => searchParams.get('action') || 'all');
+
+  useEffect(() => { setActionFilter(searchParams.get('action') || 'all'); }, [searchParams]);
+
+  const changeActionFilter = (nextFilter) => {
+    const next = new URLSearchParams(searchParams);
+    if (nextFilter === 'all') next.delete('action');
+    else next.set('action', nextFilter);
+    setSearchParams(next, { replace: true });
+  };
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
       const data = await loadActivityLog({ limit: 200 });
       setRows(data);
+      setSourceError('');
     } catch (e) {
+      setSourceError(e.message || 'تعذّر تحميل سجل النظام');
       toast(`خطأ: ${e.message}`, 'error');
     }
     setLoading(false);
@@ -45,6 +59,10 @@ export default function ActivityLog({ isActive = true }) {
     for (const r of rows) c[r.action] = (c[r.action] ?? 0) + 1;
     return c;
   }, [rows]);
+  const lastUpdatedAt = useMemo(() => rows.reduce((latest, row) => {
+    const value = new Date(row.created_at || 0).getTime();
+    return Number.isFinite(value) && value > latest ? value : latest;
+  }, 0), [rows]);
 
   if (loading) return (
     <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><Spinner size={22}/></div>
@@ -61,7 +79,14 @@ export default function ActivityLog({ isActive = true }) {
         }
       />
 
-      {rows.length === 0 ? (
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', margin: '-10px 0 18px', padding: '10px 12px', border: '1px solid var(--border)', borderRadius: 10, background: 'var(--surface)', color: 'var(--muted)', fontSize: 11.5 }}>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Database size={13}/> المصدر: سجل العمليات الداخلي</span>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Clock3 size={13}/> آخر تحديث: {lastUpdatedAt ? new Date(lastUpdatedAt).toLocaleString('ar-SA') : 'لا توجد أحداث مسجلة'}</span>
+      </div>
+
+      {sourceError ? (
+        <Empty icon={<AlertTriangle size={28}/>} title="المصدر غير متاح" sub={`${sourceError} — لم نعرض سجلًا فارغًا على أنه لا يوجد نشاط.`}/>
+      ) : rows.length === 0 ? (
         <Empty
           icon="🕓"
           title="لا يوجد نشاط بعد"
@@ -70,14 +95,14 @@ export default function ActivityLog({ isActive = true }) {
       ) : (
         <>
           {/* Filter chips */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
+          <div className="workspace-filter-bar" style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
             {[
               { k: 'all', l: `الكل (${counts.all})` },
               ...Object.entries(ACTION_META).map(([k, m]) => ({
                 k, l: `${m.icon} ${m.label} (${counts[k] ?? 0})`,
               })),
             ].filter(t => t.k === 'all' || (counts[t.k] ?? 0) > 0).map(t => (
-              <button key={t.k} onClick={() => setActionFilter(t.k)}
+              <button key={t.k} onClick={() => changeActionFilter(t.k)}
                 style={{
                   background: actionFilter === t.k ? 'color-mix(in srgb, var(--accent) 12%, transparent)' : 'transparent',
                   border: `1px solid ${actionFilter === t.k ? 'var(--accent)' : 'var(--border)'}`,

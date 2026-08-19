@@ -3,7 +3,7 @@
 // Clicking a card drills into its ledger detail.
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   RefreshCw, Inbox, FileText, CheckCircle2, AlertTriangle,
   TrendingUp, TrendingDown, Building2, Webhook as WebhookIcon,
@@ -37,7 +37,7 @@ const relTime = (iso) => {
   return `قبل ${Math.floor(days / 365)} سنوات`;
 };
 
-function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefresh }) {
+function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefresh, onUpload }) {
   const owed   = totals?.totalDr - totals?.totalCr; // positive = we owe carriers
   const sign   = owed >= 0 ? '—' : '+';
   return (
@@ -45,8 +45,8 @@ function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefr
       <PageHero
         variant="dark"
         icon={<Building2 size={22}/>}
-        tag="LAMHA · CARRIERS OVERVIEW"
-        title="شركات الشحن — كشف موحّد"
+        tag="التشغيل · شركات الشحن"
+        title="شركات الشحن"
         subtitle={loading
           ? 'جارٍ تحميل حالة الشركات…'
           : `${carrierCount} ${carrierCount === 1 ? 'شركة' : 'شركات'} · ${totals?.pendingActions ?? 0} ${(totals?.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
@@ -62,6 +62,7 @@ function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefr
         ]}
         actions={
           <>
+            <Btn size="sm" variant="primary" icon={<FileText size={14}/>} onClick={onUpload}>+ رفع فاتورة شركة شحن</Btn>
             <Btn size="sm" variant="ghost" icon={<Inbox size={14}/>} onClick={onInbox}>فتح الوارد</Btn>
             <Btn size="sm" variant="ghost" icon={<SettingsIcon size={14}/>} onClick={onManage}>إدارة الشركات</Btn>
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={loading ? 'spin' : ''}/>} onClick={onRefresh} disabled={loading}>تحديث الحالة</Btn>
@@ -119,7 +120,7 @@ function HealthStrip({ row, onCod, onLedger }) {
   );
 }
 
-function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
+function CarrierCard({ row, onOpen, onUpload, onReview, onSetup, onWebhook, onCod, onLedger }) {
   const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → ننزل للبديل (الحرف الأول)
   const owed = row.balance; // > 0 = we owe them; < 0 = they owe us
   const balanceColor =
@@ -136,20 +137,20 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
                                    '#EF4444';
 
   const actionsCount = row.pendingAudits + row.webhookPending;
+  const needsInvoiceReview = row.pendingAudits > 0 || row.unauditedRv.count > 0;
   const setupGaps = [];
   if (!row.hasContract)       setupGaps.push('عقد');
   if (!row.hasFileSignature)  setupGaps.push('تعريف بريد الشركة');
   if (!row.fileKind)          setupGaps.push('نوع الملف');
 
   return (
-    <div
-      onClick={onClick}
+    <article
       style={{
         background: 'var(--card)',
         border: '1px solid transparent',
         borderRadius: 'var(--r-lg)',
         padding: '22px 24px',
-        cursor: 'pointer',
+        cursor: 'default',
         transition: 'transform .18s, box-shadow .18s',
         position: 'relative',
         boxShadow: 'var(--shadow-sm)',
@@ -230,6 +231,24 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
         </Btn>
       </div>
 
+      {needsInvoiceReview ? (
+        <button
+          type="button"
+          onClick={onReview}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10,
+            width: '100%', minHeight: 42, marginBottom: 14, padding: '9px 12px',
+            border: '1px solid color-mix(in srgb, var(--gold) 42%, var(--border))', borderRadius: 10,
+            background: 'color-mix(in srgb, var(--gold) 9%, var(--card))', color: 'var(--gold)',
+            font: 'inherit', fontSize: 12, fontWeight: 700, cursor: 'pointer', textAlign: 'right',
+          }}
+          aria-label={`فاتورة تحتاج مراجعة لدى ${row.name}`}
+        >
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 7 }}><AlertTriangle size={14}/> فاتورة تحتاج مراجعة</span>
+          <ArrowLeft size={14}/>
+        </button>
+      ) : null}
+
       {/* Health signals — COD held by carrier / unaudited invoices / audit staleness */}
       <HealthStrip row={row} onCod={onCod} onLedger={onLedger}/>
 
@@ -302,7 +321,16 @@ function CarrierCard({ row, onClick, onSetup, onWebhook, onCod, onLedger }) {
           </Btn>
         </div>
       )}
-    </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginTop: 16 }}>
+        <Btn variant="primary" size="sm" icon={<FileText size={14}/>} onClick={onUpload} style={{ justifyContent: 'center', minHeight: 42 }}>
+          رفع فاتورة
+        </Btn>
+        <Btn variant="ghost" size="sm" icon={<ArrowLeft size={14}/>} onClick={onOpen} style={{ justifyContent: 'center', minHeight: 42 }}>
+          فتح الشركة
+        </Btn>
+      </div>
+    </article>
   );
 }
 
@@ -332,6 +360,8 @@ function ActionPill({ icon, label, color, onClick }) {
 
 export default function CarriersHub({ isActive = true }) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const uploadMode = new URLSearchParams(location.search).get('action') === 'upload-invoice';
   const [data,    setData]    = useState({ rows: [], totals: {} });
   const [loading, setLoading] = useState(true);
 
@@ -357,8 +387,18 @@ export default function CarriersHub({ isActive = true }) {
         carrierCount={data.rows.length}
         onInbox={() => navigate('/webhook')}
         onManage={() => navigate('/carriers')}
+        onUpload={() => navigate('/hub?action=upload-invoice')}
         onRefresh={refresh}
       />
+
+      {uploadMode ? (
+        <Card style={{ marginBottom: 14, borderColor: 'color-mix(in srgb, var(--accent) 45%, var(--border))', background: 'color-mix(in srgb, var(--accent) 7%, var(--card))' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <FileText size={19} color="var(--accent)"/>
+            <div><strong style={{ display: 'block', marginBottom: 3 }}>اختر شركة الشحن</strong><span style={{ color: 'var(--muted)', fontSize: 12 }}>ستفتح مباشرة على «رفع فاتورة للمراجعة» داخل ملف الشركة.</span></div>
+          </div>
+        </Card>
+      ) : null}
 
       {/* Carrier grid */}
       {loading ? (
@@ -383,7 +423,9 @@ export default function CarriersHub({ isActive = true }) {
             <CarrierCard
               key={row.carrierId}
               row={row}
-              onClick={() => navigate(`/carrier?id=${row.carrierId}`)}
+              onOpen={() => navigate(`/carrier?id=${row.carrierId}`)}
+              onUpload={() => navigate(`/carrier?id=${row.carrierId}&view=invoices&mode=upload`)}
+              onReview={() => navigate(`/carrier?id=${row.carrierId}&view=invoices`)}
               onSetup={() => navigate(`/carrier?id=${row.carrierId}`)}
               onWebhook={() => navigate(`/webhook?carrier=${row.carrierId}`)}
               onCod={() => navigate(`/cod-settlements?carrier=${row.carrierId}`)}

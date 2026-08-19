@@ -776,8 +776,8 @@ function CarrierForm({ carrier, onSave, onClose }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
-export default function CarrierManager({ carriers, setCarriers }) {
-  const [selected,       setSelected]       = useState(carriers[0]?.id||null);
+export default function CarrierManager({ carriers, setCarriers, scopedCarrierId = '', onSaved }) {
+  const [selected,       setSelected]       = useState(scopedCarrierId || carriers[0]?.id || null);
   const [showCarrierForm,setShowCarrierForm] = useState(false);
   const [editCarrier,    setEditCarrier]     = useState(null);
   const [showContract,   setShowContract]    = useState(false);
@@ -786,11 +786,16 @@ export default function CarrierManager({ carriers, setCarriers }) {
 
   const carrier = carriers.find(c=>c.id===selected);
 
+  useEffect(() => {
+    if (scopedCarrierId) setSelected(scopedCarrierId);
+  }, [scopedCarrierId]);
+
   const saveAndPersist = async (updated) => {
     const n = updateCarrier(carriers, updated);
     setCarriers(n);
     try { await saveCarrier(updated); }
     catch (e) { toast(`خطأ في الحفظ: ${e.message}`, 'error'); }
+    await onSaved?.();
   };
 
   const handleSaveCarrier = async (c) => {
@@ -798,6 +803,7 @@ export default function CarrierManager({ carriers, setCarriers }) {
     setCarriers(updated);
     try { await saveCarrier(c); }
     catch (e) { toast(`خطأ في الحفظ: ${e.message}`, 'error'); return; }
+    await onSaved?.();
     setSelected(c.id); setShowCarrierForm(false); setEditCarrier(null);
     toast(`تم حفظ ${c.name}`, 'success');
   };
@@ -828,10 +834,10 @@ export default function CarrierManager({ carriers, setCarriers }) {
   };
 
   return (
-    <div className="cm-root" style={{display:'grid',gridTemplateColumns:'260px 1fr',height:'100%',overflow:'hidden'}}>
+    <div className="cm-root" style={{display:'grid',gridTemplateColumns:scopedCarrierId?'1fr':'260px 1fr',height:'100%',overflow:'hidden'}}>
 
       {/* Sidebar */}
-      <div style={{background:'var(--surface)',borderLeft:'1px solid var(--border)',padding:16,overflowY:'auto',height:'100%'}}>
+      {!scopedCarrierId && <div style={{background:'var(--surface)',borderLeft:'1px solid var(--border)',padding:16,overflowY:'auto',height:'100%'}}>
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:14}}>
           <span style={{fontFamily:'var(--font-mono)',fontSize:12,color:'var(--accent)'}}>شركات الشحن</span>
           <Btn size="sm" variant="primary" onClick={()=>{setEditCarrier(null);setShowCarrierForm(true);}}>+ جديد</Btn>
@@ -854,7 +860,7 @@ export default function CarrierManager({ carriers, setCarriers }) {
               </div>
             ))
         }
-      </div>
+      </div>}
 
       {/* Detail */}
       <div style={{padding:24,overflowY:'auto'}}>
@@ -873,7 +879,7 @@ export default function CarrierManager({ carriers, setCarriers }) {
                 </div>
                 <div style={{display:'flex',gap:8}}>
                   <Btn size="sm" variant="ghost" onClick={()=>{setEditCarrier(carrier);setShowCarrierForm(true);}}>✏️ تعديل</Btn>
-                  <Btn size="sm" variant="danger" onClick={()=>setConfirmDelete(carrier.id)}>🗑 حذف</Btn>
+                  {!scopedCarrierId && <Btn size="sm" variant="danger" onClick={()=>setConfirmDelete(carrier.id)}>🗑 حذف</Btn>}
                 </div>
               </div>
 

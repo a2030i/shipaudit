@@ -6144,6 +6144,34 @@ tbody tr,
   font-weight: 850;
 }
 .center-landing__summary { display: flex; align-items: baseline; gap: 8px; margin: 22px 2px 12px; color: var(--muted); font-size: 11px; }
+.center-landing__view-select {
+  display: none;
+  grid-template-columns: auto minmax(220px, 360px);
+  align-items: center;
+  justify-content: end;
+  gap: 10px;
+  margin: 16px 2px 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+.center-landing__view-select select {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 12px;
+  border: 1px solid var(--border2);
+  border-radius: 11px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 800;
+}
+.center-landing__view-select select:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--center-accent) 26%, transparent);
+  outline-offset: 2px;
+  border-color: color-mix(in srgb, var(--center-accent) 58%, var(--border));
+}
 .center-landing__summary strong { color: var(--text); font-size: 20px; }
 .center-landing__groups { display: grid; gap: 22px; }
 .center-landing__group h2 { margin: 0 2px 10px; color: var(--text2); font-size: 13px; }
@@ -6168,6 +6196,58 @@ tbody tr,
 .center-landing__card-icon { display: grid; width: 38px; height: 38px; place-items: center; color: var(--center-accent); background: color-mix(in srgb, var(--center-accent) 10%, var(--surface)); border-radius: 11px; }
 .center-landing__card > span:nth-child(2) { display: grid; gap: 4px; min-width: 0; }
 .center-landing__card strong { overflow: hidden; font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Pre-release UX pass: the daily queue is the primary surface. Operational
+   explanation and informational KPIs remain available without pushing the
+   first customer action below the fold on mobile. */
+.next-actions-context {
+  margin-top: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--card);
+}
+.next-actions-context > summary {
+  padding: 13px 15px;
+  color: var(--text2);
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.next-actions-context__body { display: grid; gap: 10px; padding: 0 12px 12px; }
+.next-actions-secondary-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+
+@media (max-width: 768px) {
+  .collection-aging-overview { display: none !important; }
+  .collection-aging-options {
+    display: grid !important;
+    grid-template-columns: 1fr !important;
+    gap: 6px !important;
+    margin-top: 10px !important;
+  }
+  .collection-aging-option {
+    min-height: 42px;
+    width: 100%;
+    justify-content: flex-start;
+    padding: 8px 10px !important;
+    border: 1px solid var(--border) !important;
+    border-radius: 9px;
+    background: var(--surface2) !important;
+    font-size: 11.5px !important;
+    text-align: start;
+  }
+  .collection-aging-option[aria-pressed="true"] {
+    border-color: var(--brand) !important;
+    background: color-mix(in srgb, var(--brand) 7%, var(--surface2)) !important;
+  }
+  .customer-money-page .workspace-loading-state.is-informative {
+    min-height: 132px;
+    gap: 12px;
+    padding: 15px;
+  }
+  .customer-money-page .workspace-loading-skeleton { gap: 6px; }
+  .next-actions-context__body { padding-inline: 9px; }
+  .next-actions-secondary-kpis { grid-template-columns: 1fr 1fr; gap: 7px; }
+}
 .center-landing__card small { color: var(--muted); font-size: 9.5px; }
 
 .quick-action-backdrop {
@@ -6199,6 +6279,59 @@ tbody tr,
 .workspace-view-select.is-primary { display: grid; }
 .workspace-tabs.is-condensed { display: none !important; }
 
+.workspace-filter-bar {
+  padding: 10px !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 12px !important;
+  background: color-mix(in srgb, var(--surface) 94%, var(--surface2)) !important;
+}
+.workspace-secondary-context {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text);
+}
+.workspace-secondary-context > span {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+.workspace-secondary-context > strong { font-size: 12px; }
+.workspace-secondary-context > button,
+.workspace-saved-views > button {
+  min-height: 34px;
+  padding: 7px 10px;
+  border: 1px solid var(--border2);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--text2);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+.workspace-secondary-context > button { margin-inline-start: auto; }
+.workspace-saved-views { margin: 0 0 10px; }
+.workspace-saved-views > span { color: var(--muted); font-size: 10px; font-weight: 800; }
+.workspace-saved-views > button[aria-pressed="true"] {
+  border-color: color-mix(in srgb, var(--brand) 42%, var(--border));
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface));
+  color: var(--brand);
+}
+
+.workspace-filter-bar :is(input, select) {
+  min-height: 40px;
+  border-color: var(--border2) !important;
+  background: var(--surface) !important;
+  color: var(--text) !important;
+  font-family: var(--font-sans) !important;
+}
+
 @media (max-width: 900px) {
   .app-layout,
   .app-layout:has(.sidebar.collapsed) { display: block !important; }
@@ -6210,8 +6343,12 @@ tbody tr,
   .center-landing__hero h1 { font-size: 23px; }
   .center-landing__hero p { display: -webkit-box; overflow: hidden; margin-top: 4px; font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .center-landing__action { grid-column: 1 / -1; justify-content: center; width: 100%; }
-  .center-landing__summary { margin-top: 16px; }
-  .center-landing__groups { gap: 17px; }
+  /* On small screens the select is the single workspace navigator. Showing
+     the same destinations again as cards adds length without adding choice. */
+  .center-landing__view-select { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 12px; }
+  .center-landing__view-select select { min-height: 46px; }
+  .center-landing__summary,
+  .center-landing__groups { display: none; }
   .center-landing__grid { grid-template-columns: 1fr; gap: 8px; }
   .center-landing__card { min-height: 72px; padding: 12px; }
   .quick-action-dialog { padding: 16px; border-radius: 17px; }
@@ -6219,6 +6356,12 @@ tbody tr,
   .quick-action-grid > button.is-featured { grid-column: auto; }
   .workspace-view-select { display: grid; width: 100%; }
   .workspace-tabs { display: none !important; }
+  .workspace-filter-bar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr) !important;
+    width: 100%;
+  }
+  .workspace-filter-bar > * { min-width: 0 !important; width: 100%; }
 }
 
 /* ========================================================================== */
@@ -7827,4 +7970,32 @@ tbody td { border-color: var(--border) !important; }
   .overview-page .ops-command-grid { grid-template-columns: 1fr; }
   .overview-page .overview-secondary-analysis { margin-block: 8px; }
   .overview-page .overview-secondary-analysis__content { padding: 10px; }
+}
+@media (max-width: 768px) {
+  .workspace-secondary-context { align-items: flex-start; flex-wrap: wrap; }
+  .workspace-secondary-context > button { width: 100%; margin-inline-start: 0; }
+  .workspace-filter-bar.workspace-saved-views {
+    display: flex !important;
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 7px !important;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .workspace-filter-bar.workspace-saved-views::-webkit-scrollbar { display: none; }
+  .workspace-filter-bar.workspace-saved-views > span {
+    width: auto !important;
+    flex: 0 0 auto;
+    padding-inline: 3px;
+    white-space: nowrap;
+  }
+  .workspace-filter-bar.workspace-saved-views > button {
+    width: auto !important;
+    min-height: 34px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
 }

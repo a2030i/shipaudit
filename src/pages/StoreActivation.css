@@ -1,9 +1,43 @@
-.activation-hero-card.ui-card {
+.page-content .activation-hero-card.ui-card {
   padding: 0 !important;
   color: #fff !important;
   background: linear-gradient(135deg, #162a53 0%, #244da0 100%) !important;
   border-color: rgba(73, 118, 214, 0.42) !important;
   box-shadow: 0 16px 34px rgba(16, 35, 73, 0.18) !important;
+}
+
+.activation-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.activation-state {
+  width: min(520px, calc(100% - 28px));
+  min-height: 180px;
+  margin: 24px auto 110px;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 9px;
+  text-align: center;
+  color: var(--red);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--red) 24%, var(--border));
+  border-radius: 18px;
+}
+
+.activation-state > span {
+  max-width: 40ch;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.activation-state--loading {
+  color: var(--brand);
+  border-color: var(--border);
 }
 
 .activation-hero-card .activation-hero-kicker,
@@ -42,8 +76,16 @@
     padding: 16px 14px 112px !important;
   }
 
-  .activation-hero-card.ui-card {
+  .page-content .activation-hero-card.ui-card {
     border-radius: 18px !important;
+  }
+
+  .activation-page-actions {
+    width: 100%;
+  }
+
+  .activation-page-actions > :first-child {
+    flex: 1;
   }
 
   .page-content .activation-hero-card .activation-hero-grid {
@@ -53,7 +95,7 @@
   }
 
   .activation-hero-summary > div:nth-child(2) strong {
-    font-size: 42px !important;
+    font-size: 36px !important;
   }
 
   .page-content .activation-hero-card .activation-hero-stats {
@@ -62,28 +104,28 @@
   }
 
   .activation-hero-card .activation-hero-stat {
-    min-height: 86px;
-    padding: 12px !important;
+    min-height: 72px;
+    padding: 10px !important;
     display: flex !important;
     flex-direction: column;
     justify-content: space-between;
   }
 
   .activation-hero-card .activation-hero-stat--wide {
-    min-height: 58px;
+    min-height: 52px;
     grid-column: 1 / -1 !important;
     flex-direction: row;
     align-items: center;
   }
 
   .activation-hero-card .activation-hero-stat-label {
-    font-size: 12px !important;
+    font-size: 10.5px !important;
     line-height: 1.55;
   }
 
   .activation-hero-card .activation-hero-stat-value {
     margin-top: 7px !important;
-    font-size: 24px !important;
+    font-size: 20px !important;
     line-height: 1.1;
   }
 
@@ -93,5 +135,11 @@
     gap: 4px !important;
     font-size: 11px !important;
     line-height: 1.65;
+  }
+
+  .activation-state {
+    min-height: 150px;
+    margin-top: 16px;
+    padding: 20px 16px;
   }
 }

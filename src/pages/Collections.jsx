@@ -17,7 +17,7 @@
 // added.
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useLocation, useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import {
@@ -39,6 +39,7 @@ import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
   WRITEOFF_STATUS_LABELS,
 } from '../lib/writeoffsService.js';
+import { readAudienceHandoff } from '../lib/agingOperations.js';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -94,6 +95,7 @@ const RIYADH_TODAY = () => new Intl.DateTimeFormat('en-CA', {
 
 export default function Collections({ isActive = true }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const { profile, can } = useAuth();
   const canApproveWriteoff = can('receivables.approve_writeoff');
@@ -105,8 +107,8 @@ export default function Collections({ isActive = true }) {
   const [loading, setLoading]   = useState(true);
   const [tasks, setTasks]       = useState([]);
   const [customers, setCustomers] = useState([]);  // for regenerate + lookup
-  const [stageFilter, setStageFilter] = useState('open');  // open|all|<stage>
-  const [workScope, setWorkScope] = useState('today'); // today|backlog
+  const [stageFilter, setStageFilter] = useState(() => searchParams.get('status') || 'open');
+  const [workScope, setWorkScope] = useState(() => searchParams.get('scope') || 'today');
   const [drawer, setDrawer]     = useState(null);
   const [ptpOpen, setPtpOpen]   = useState(null);
   const [snoozeOpen, setSnoozeOpen] = useState(null);
@@ -120,7 +122,9 @@ export default function Collections({ isActive = true }) {
   const [bulkAssignee, setBulkAssignee] = useState('');
   const [assigning, setAssigning] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
-  const focusedCustomer = searchParams.get('customer')?.trim() || '';
+  const focusedCustomer = (searchParams.get('search') || searchParams.get('customer'))?.trim() || '';
+  const batchContext = useMemo(() => readAudienceHandoff(searchParams.get('batchContext')), [searchParams]);
+  const batchSelectionKeys = useMemo(() => new Set(batchContext?.selectionKeys || []), [batchContext]);
   const showSyncPrompt = searchParams.get('action') === 'sync';
 
   const refresh = useCallback(async () => {
@@ -152,6 +156,20 @@ export default function Collections({ isActive = true }) {
   }, [stageFilter, canAssign]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => {
+    setStageFilter(searchParams.get('status') || 'open');
+    setWorkScope(searchParams.get('scope') || 'today');
+  }, [searchParams]);
+
+  const updateQueueFilters = (patch) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '' || value === 'open' || value === 'today') next.delete(key);
+      else next.set(key, String(value));
+    }
+    next.delete('customer');
+    setSearchParams(next);
+  };
 
   const customerByName = useMemo(
     () => new Map(customers.map(c => [c.name, c])),
@@ -197,6 +215,11 @@ export default function Collections({ isActive = true }) {
       pool = pool.filter(t => t.stage === stageFilter);
     }
     if (focusedCustomer) pool = pool.filter(t => t.customer_name === focusedCustomer);
+    if (batchSelectionKeys.size) pool = pool.filter(task => {
+      const merchant = customerByName.get(task.customer_name)?.merchant;
+      return (merchant?.storeId && batchSelectionKeys.has(`store:${merchant.storeId}`))
+        || (merchant?.zohoId && batchSelectionKeys.has(`zoho:${merchant.zohoId}`));
+    });
     pool = pool.filter(isLiveTask);
     // حاجز احتياطي: مهمة واحدة لكل عميل (الأكثر تقدّماً) — يمنع أي تكرار
     // متبقٍ من بيانات قديمة قبل إصلاح regenerateTasks.
@@ -226,7 +249,7 @@ export default function Collections({ isActive = true }) {
       if (priorityDiff) return priorityDiff;
       return taskDebt(b) - taskDebt(a);
     });
-  }, [tasks, stageFilter, focusedCustomer, isLiveTask, taskDebt]);
+  }, [tasks, stageFilter, focusedCustomer, batchSelectionKeys, customerByName, isLiveTask, taskDebt]);
 
   const visibleTasks = useMemo(() => {
     if (stageFilter !== 'open') return prioritizedTasks;
@@ -386,6 +409,16 @@ export default function Collections({ isActive = true }) {
         }
       />
 
+      {batchContext && (
+        <Card style={{ marginBottom: 14, padding: 12, borderColor: 'color-mix(in srgb,var(--accent) 32%,var(--border))' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}><b style={{ fontSize: 12 }}>متابعة جماعية من Aging</b><div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>يعرض المهام الموجودة للمحدد فقط؛ لم تُنشأ أي مهمة صامتة.</div></div>
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>{batchSelectionKeys.size} هوية محددة · {visibleTasks.length} مهمة موجودة</span>
+            <Btn size="sm" variant="ghost" onClick={() => navigate(batchContext.returnTo || '/customer-money')}>العودة إلى Aging</Btn>
+          </div>
+        </Card>
+      )}
+
       {showSyncPrompt && (
         <Card className="collection-sync-prompt" style={{ marginBottom: 14, padding: 14 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -424,7 +457,10 @@ export default function Collections({ isActive = true }) {
             <Btn size="sm" variant="ghost" onClick={() => {
               const next = new URLSearchParams(searchParams);
               next.delete('customer');
-              setSearchParams(next);
+              next.delete('search');
+              const returnTo = next.get('returnTo');
+              if (returnTo?.startsWith('/') && !returnTo.startsWith('//')) navigate(returnTo);
+              else setSearchParams(next);
             }}>
               عرض كل المهام
             </Btn>
@@ -448,11 +484,11 @@ export default function Collections({ isActive = true }) {
           </div>
           <div style={{ display: 'flex', gap: 6 }}>
             <Btn size="sm" variant={workScope === 'today' ? 'primary' : 'outline'}
-                 onClick={() => { setStageFilter('open'); setWorkScope('today'); }}>
+                 onClick={() => updateQueueFilters({ status: null, scope: null })}>
               عمل اليوم ({stats.daily})
             </Btn>
             <Btn size="sm" variant={workScope === 'backlog' ? 'primary' : 'outline'}
-                 onClick={() => { setStageFilter('open'); setWorkScope('backlog'); }}>
+                 onClick={() => updateQueueFilters({ status: null, scope: 'backlog' })}>
               المخزون ({stats.backlog})
             </Btn>
           </div>
@@ -561,7 +597,7 @@ export default function Collections({ isActive = true }) {
       {/* Stage filter chips */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14, flexWrap: 'wrap' }}>
         {['open', 'todo', 'contacted', 'promised', 'snoozed', 'done', 'cancelled', 'all'].map(s => (
-          <button key={s} onClick={() => setStageFilter(s)} style={{
+          <button key={s} onClick={() => updateQueueFilters({ status: s === 'open' ? null : s })} style={{
             padding: '6px 14px', borderRadius: 999, cursor: 'pointer',
             border: `1.5px solid ${stageFilter === s ? '#EF4444' : 'var(--border)'}`,
             background: stageFilter === s ? 'rgba(239,68,68,.12)' : 'transparent',
@@ -872,6 +908,20 @@ function QuickActions({ task, canPromise, onContact, onPromise, onDone, onSnooze
 }
 
 function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff, canUpdate }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const openStore360 = () => {
+    const identity = customer?.merchant?.storeId || task.customer_name;
+    const params = new URLSearchParams({
+      customer: identity,
+      open: '1',
+      view: 'work',
+      source: 'collections',
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    onClose();
+    navigate(`/customer-360?${params.toString()}`);
+  };
   return (
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
@@ -904,6 +954,9 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
           <KV label="منشأة" value={fmtRel(task.created_at)}/>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn size="md" variant="accent" icon={<ChevronLeft size={13}/>} onClick={openStore360}>
+            فتح Store 360
+          </Btn>
           {onPromise && (
             <Btn size="md" variant="primary" icon={<Calendar size={13}/>} onClick={onPromise}>
               سجّل وعد دفع

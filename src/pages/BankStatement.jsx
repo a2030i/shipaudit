@@ -26,7 +26,7 @@ const CARRIER_ALIASES = {
   smsa:   ['سمسا', 'smsa', 'SMSA'],
 };
 
-export default function BankStatement() {
+export default function BankStatement({ isActive = true, defaultSavedClass = 'all' }) {
   const { user, can } = useAuth();
   const [state, setState] = useState('idle');           // idle | processing | done | error
   const [errorMsg, setErrorMsg] = useState('');
@@ -38,7 +38,7 @@ export default function BankStatement() {
   const [reconciledTxIds, setReconciledTxIds] = useState(new Set()); // tx index → matched
 
   // View: the current (in-memory) upload, or the accumulated saved ledger.
-  const [view, setView]               = useState('current'); // current | saved
+  const [view, setView]               = useState(() => defaultSavedClass === 'all' ? 'current' : 'saved'); // current | saved
   const [saving, setSaving]           = useState(false);
   const [saved, setSaved]             = useState(null);      // null = not loaded yet
   const [savedLoading, setSavedLoading] = useState(false);
@@ -47,7 +47,7 @@ export default function BankStatement() {
   const [savedTo, setSavedTo]           = useState('');       // فلتر الفترة: إلى
   const [savedType, setSavedType]       = useState('all');    // all | debit | credit
   const [savedBank, setSavedBank]       = useState('all');    // all | اسم البنك
-  const [savedClass, setSavedClass]     = useState('all');    // all | unclassified | classified | matched
+  const [savedClass, setSavedClass]     = useState(defaultSavedClass);    // all | unclassified | classified | matched
   const [stmtSummaries, setStmtSummaries] = useState([]);      // ملخّصات الكشوف (ختامي/افتتاحي لكل فترة)
   const [confirmDel, setConfirmDel]     = useState(null);     // العملية المطلوب حذفها (تأكيد)
   const [noteFor, setNoteFor]           = useState(null);     // العملية المطلوب إضافة ملاحظة لها
@@ -69,7 +69,9 @@ export default function BankStatement() {
     catch (e) { toast(`فشل تحميل الدفتر البنكي: ${e.message}`, 'error'); }
     setSavedLoading(false);
   }, []);
-  useEffect(() => { if (view === 'saved' && saved == null) loadSaved(); }, [view, saved, loadSaved]);
+  useEffect(() => {
+    if (isActive && view === 'saved' && saved == null) loadSaved();
+  }, [isActive, view, saved, loadSaved]);
 
   // Persist the parsed statement so uploads accumulate across periods.
   const handleSave = async () => {
@@ -763,7 +765,7 @@ export default function BankStatement() {
                 )}
 
                 {/* شريط الفلاتر: فترة مخصّصة + نوع + بحث + تصدير */}
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
+                <div className="workspace-filter-bar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 10 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 5, flexWrap: 'wrap' }}>
                     <Calendar size={13} style={{ color: 'var(--muted)' }}/>
                     <input type="date" value={savedFrom} onChange={e => setSavedFrom(e.target.value)}

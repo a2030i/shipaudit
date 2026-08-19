@@ -102,7 +102,7 @@ function mapTicket(r) {
 }
 
 // قائمة التذاكر مع الفلاتر. قاعدة §6: أي .range() يلزمه .order('id') tiebreaker.
-export async function loadTickets({ status = '', carrierId = '', assignedTo = '', category = '', q = '', attention = '', openOnly = false, from = 0, limit = 200 } = {}) {
+export async function loadTickets({ status = '', carrierId = '', assignedTo = '', category = '', q = '', attention = '', openOnly = false, storeId = '', customerPhone = '', from = 0, limit = 200 } = {}) {
   let query = supabase.from('support_tickets')
     .select(TICKET_SELECT, { count: 'exact' })
     .order('created_at', { ascending: false })
@@ -115,6 +115,12 @@ export async function loadTickets({ status = '', carrierId = '', assignedTo = ''
   if (category) query = category === 'other'
     ? query.or('category.eq.other,category.is.null')
     : query.eq('category', category);
+  if (storeId && customerPhone) {
+    const safeStoreId = String(storeId).replace(/[",()]/g, '');
+    const safePhone = String(customerPhone).replace(/[",()]/g, '');
+    query = query.or(`store_id.eq.${safeStoreId},customer_phone.eq.${safePhone}`);
+  } else if (storeId) query = query.eq('store_id', storeId);
+  else if (customerPhone) query = query.eq('customer_phone', customerPhone);
   if (attention === 'overdue') query = query.in('status', OPEN_STATUSES).lt('next_followup_at', new Date().toISOString());
   if (attention === 'due24h') query = query.in('status', OPEN_STATUSES)
     .gte('next_followup_at', new Date().toISOString())

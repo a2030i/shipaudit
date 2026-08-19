@@ -283,7 +283,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
                 <Upload size={28} color="var(--accent)"/>
               </div>
               <div style={{ fontWeight: 700, marginBottom: 6, fontSize: 15, color: 'var(--text)' }}>
-                اسحب وأفلت ملف Excel هنا
+                اسحب وأفلت ملف Excel أو PDF هنا
               </div>
               <div style={{ color: 'var(--muted)', fontSize: 12.5 }}>
                 أو اضغط للاختيار · يقبل <code style={{ fontFamily: 'var(--font-mono)' }}>.xlsx</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.xls</code> و <code style={{ fontFamily: 'var(--font-mono)' }}>.pdf</code> (فاتورة أرامكس)
@@ -312,7 +312,7 @@ function Step2({ carrierName, carrierLogo, period, onUpload, onBack, uploading, 
           marginTop: 18, marginBottom: 18,
         }}>
           {[
-            { icon: <FileSpreadsheet size={14}/>, label: 'Excel فقط', hint: 'xlsx / xls' },
+            { icon: <FileSpreadsheet size={14}/>, label: 'Excel أو PDF', hint: 'xlsx / xls · PDF لفاتورة أرامكس' },
             { icon: <FileCheck    size={14}/>, label: 'كشف الفاتورة كاملاً', hint: 'بدون تعديل' },
             { icon: <Sparkles     size={14}/>, label: 'AI يخمّن الأعمدة', hint: 'أو التعرّف التلقائي بالأنماط' },
           ].map(t => (
@@ -347,7 +347,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
                  detectedRow, aiNotes, missingFields, rowCount,
                  carriers, carrierId, setCarrierId, carrierDetect,
                  scheduleSlots, scheduleSlot, setScheduleSlot, scheduleLoading, scheduleError,
-                 period, manualPeriodConfirmed, setManualPeriodConfirmed }) {
+                 period, manualPeriodConfirmed, setManualPeriodConfirmed, lockCarrier = false }) {
 
   const carrier = carriers?.find(c => c.id === carrierId);
   const detectConfidence = carrierDetect?.confidence ?? 0;
@@ -409,7 +409,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
                   )}
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>
-                  لو الشركة خطأ، غيّرها من القائمة أدناه
+                  {lockCarrier ? 'تم تثبيت الشركة من ملفها المفتوح' : 'لو الشركة خطأ، غيّرها من القائمة أدناه'}
                 </div>
               </>
             ) : (
@@ -419,7 +419,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
             )}
           </div>
         </div>
-        {(!detectedOk || !carrierId) && (
+        {!lockCarrier && (!detectedOk || !carrierId) && (
           <select
             value={carrierId || ''}
             onChange={e => setCarrierId(e.target.value)}
@@ -617,7 +617,7 @@ function Step3({ headers, colMap, setColMap, onConfirm, onBack, aiLoading, onAiM
 }
 
 // ── Main ───────────────────────────────────────────────────────────────────────
-export default function UploadWizard({ carriers, onComplete, initialPeriod = '', lockPeriod = false }) {
+export default function UploadWizard({ carriers, onComplete, initialPeriod = '', lockPeriod = false, initialCarrierId = '', lockCarrier = false, embedded = false }) {
   const { user } = useAuth();
   const location = useLocation();
   const now = new Date();
@@ -625,8 +625,8 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
   const [step,         setStep]        = useState(() => lockPeriod && initialPeriodMatch ? 2 : 1);
   // carrierId is now set automatically after the file is read.
   // Stays empty during step 1 (period picker).
-  const [carrierId,    setCarrierId]   = useState('');
-  const [carrierDetect, setCarrierDetect] = useState(null); // { confidence, method, reasons }
+  const [carrierId,    setCarrierId]   = useState(initialCarrierId || '');
+  const [carrierDetect, setCarrierDetect] = useState(() => initialCarrierId ? { carrierId: initialCarrierId, confidence: 1, method: 'carrier-profile', reasons: ['ملف شركة الشحن المفتوح'] } : null); // { confidence, method, reasons }
   const [month,        setMonth]       = useState(() => initialPeriodMatch ? Number(initialPeriodMatch[2]) : now.getMonth() + 1);
   const [year,         setYear]        = useState(() => initialPeriodMatch ? Number(initialPeriodMatch[1]) : now.getFullYear());
   const [headers,      setHeaders]     = useState([]);
@@ -654,6 +654,12 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
   // (أعمدة ناقصة/مراجعة سابقة لنفس الفترة) يطفئ العلم ويترك المسار يدوياً.
   const [autoApproveFlag, setAutoApproveFlag] = useState(false);
   const autoConfirmFiredRef = useRef(false);
+
+  useEffect(() => {
+    if (!initialCarrierId) return;
+    setCarrierId(initialCarrierId);
+    setCarrierDetect({ carrierId: initialCarrierId, confidence: 1, method: 'carrier-profile', reasons: ['ملف شركة الشحن المفتوح'] });
+  }, [initialCarrierId]);
 
   const carrier = carriers.find(c => c.id === carrierId);
   const period  = buildPeriod(month, year);
@@ -749,6 +755,10 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
             sourceSize: Number(file?.size || 0),
           });
           const aramexId = (carriers.find(c => /aramex|أرامكس|ارامكس/i.test(c.name))?.id) || 'c_1777506662790';
+          if (lockCarrier && initialCarrierId && String(initialCarrierId) !== String(aramexId)) {
+            toast('الملف يبدو فاتورة أرامكس ولا يطابق شركة الشحن المفتوحة', 'error');
+            setUploading(false); return;
+          }
           setAllRawRows([Object.values(H), ...ships.map(s => [s.awb, s.shipDate, s.dest, s.weight, s.deliveryCharges, s.fuelSurcharge, s.tax, s.serviceType])]);
           setHeaders(Object.values(H));
           setRawRows(ships.map(s => ({ [H.awb]: s.awb, [H.date]: s.shipDate, [H.dest]: s.dest, [H.weight]: s.weight, [H.base]: s.deliveryCharges, [H.fuel]: s.fuelSurcharge, [H.tax]: s.tax, [H.svc]: s.serviceType })));
@@ -818,11 +828,20 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
         // Skipped if the user is re-running with a manual override
         // (i.e. carrierId is already set from a prior attempt).
         const detected = detectCarrierFromFile(allRows, carriers);
-        if (detected && detected.confidence >= 0.5) {
-          setCarrierId(detected.carrierId);
-          setCarrierDetect(detected);
-          const dname = carriers.find(c => c.id === detected.carrierId)?.name;
-          toast(`تم التعرف على الشركة: ${dname} (${Math.round(detected.confidence * 100)}%)`, 'success');
+        if (lockCarrier && initialCarrierId && detected?.confidence >= 0.5 && String(detected.carrierId) !== String(initialCarrierId)) {
+          const detectedName = carriers.find(c => c.id === detected.carrierId)?.name || detected.carrierId;
+          toast(`الملف يبدو تابعًا لـ${detectedName} ولا يطابق شركة الشحن المفتوحة`, 'error');
+          setUploading(false); return;
+        }
+        const effectiveCarrierId = lockCarrier && initialCarrierId ? initialCarrierId : detected?.carrierId;
+        if (effectiveCarrierId) {
+          setCarrierId(effectiveCarrierId);
+          const effectiveDetection = lockCarrier
+            ? { carrierId: effectiveCarrierId, confidence: 1, method: 'carrier-profile', reasons: ['ملف شركة الشحن المفتوح'] }
+            : detected;
+          setCarrierDetect(effectiveDetection);
+          const dname = carriers.find(c => c.id === effectiveCarrierId)?.name;
+          toast(`تم تحديد الشركة: ${dname} (${Math.round((effectiveDetection?.confidence || 1) * 100)}%)`, 'success');
         } else {
           setCarrierDetect(detected); // may be a low-confidence guess
         }
@@ -858,7 +877,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
         // a few lines above is async and won't reflect in this closure.
         // Pass the full carriers list so getFieldSchema can resolve the
         // kind from id+name regardless of what id the DB uses.
-        setColMap(detectColumns(hdrs, detected?.carrierId || null, carriers));
+        setColMap(detectColumns(hdrs, effectiveCarrierId || null, carriers));
         setStep(3);
       } catch (err) {
         toast(`خطأ في قراءة الملف: ${err.message}`, 'error');
@@ -873,7 +892,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
     // always returns null ("ما قدرنا نتعرف على الشركة"). Re-create when the
     // list arrives. The webhook-import effect re-runs harmlessly (guarded by
     // CONSUMED_WEBHOOK_IMPORTS + sessionStorage clear).
-  }, [carriers]);
+  }, [carriers, initialCarrierId, lockCarrier]);
 
   // ── Auto-import from /webhook ──────────────────────────────────
   // When the user clicks "حفظ كمراجعة" on the Webhook Events page we
@@ -1228,17 +1247,17 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
 
   const stepLabels = [
     { n: 1, title: 'حدد الفترة',   sub: 'الشهر والسنة'     },
-    { n: 2, title: 'ارفع الملف',  sub: 'فاتورة Excel'      },
+    { n: 2, title: 'ارفع الملف',  sub: 'فاتورة Excel أو PDF' },
     { n: 3, title: 'راجع',         sub: 'الأعمدة والنتائج' },
   ];
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div style={{ padding: embedded ? '20px 22px 72px' : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
 
       <PageHeader
         icon={<UploadIcon size={22}/>}
-        title="تدقيق فاتورة جديدة"
-        subtitle="ارفع الفاتورة، دع النظام يقرأ الناقل والأعمدة، ثم اعتمد المراجعة بثقة"
+        title="رفع فاتورة للمراجعة"
+        subtitle={lockCarrier && carrier ? `فاتورة ${carrier.name} — اختر الفترة ثم ارفع الملف لعرض نتيجة المراجعة` : 'اختر الفترة وارفع الفاتورة، ثم راجع النتيجة قبل الاعتماد'}
         meta={`الخطوة ${step}/3 — ${step === 1 ? 'الفترة' : step === 2 ? 'الرفع' : 'المراجعة'} · الفترة ${period}`}
       />
 
@@ -1319,7 +1338,7 @@ export default function UploadWizard({ carriers, onComplete, initialPeriod = '',
           scheduleSlots={scheduleSlots} scheduleSlot={scheduleSlot} setScheduleSlot={setScheduleSlot}
           scheduleLoading={schedules == null} scheduleError={scheduleError}
           period={period} manualPeriodConfirmed={manualPeriodConfirmed}
-          setManualPeriodConfirmed={setManualPeriodConfirmed}/>
+          setManualPeriodConfirmed={setManualPeriodConfirmed} lockCarrier={lockCarrier}/>
       )}
     </div>
   );
