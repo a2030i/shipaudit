@@ -230,8 +230,16 @@ export default function CustomerMoney({ isActive = true }) {
     loadCustomerActivationCommandCenter(5, 500, 24)
       .then(data => { if (!cancelled) setGrowthPulse({ status: 'available', data, error: null }); })
       .catch(error => { if (!cancelled) setGrowthPulse({ status: 'unavailable', data: null, error: error.message }); });
-    return () => { cancelled = true; };
-  }, [d, growthPulse.status, isActive]);
+    return () => {
+      cancelled = true;
+      setGrowthPulse(current => current.status === 'loading'
+        ? { status: 'idle', data: null, error: null }
+        : current);
+    };
+    // growthPulse.status is deliberately not a dependency: changing idle to
+    // loading must not cancel the request that is responsible for resolving it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [d, isActive]);
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
   // مبلغ التحصيل لكل عميل = مجموع الشرائح المختارة فقط (أو كامل الدين إن لم تُختَر شريحة).
   // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.

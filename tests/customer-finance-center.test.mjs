@@ -21,6 +21,8 @@ test('مركز العملاء المالي يجمع القرار والتحصي�
 test('نشاط لمحة تحميل تدريجي ولا يعطل أرقام التحصيل عند فشل المصدر', async () => {
   const page = await read('src/pages/CustomerMoney.jsx');
   assert.match(page, /loadCustomerActivationCommandCenter/);
+  assert.match(page, /\}, \[d, isActive\]\);/);
+  assert.doesNotMatch(page, /\[d, growthPulse\.status, isActive\]/);
   assert.match(page, /نشاط لمحة غير متاح/);
   assert.match(page, /بقيت الأرقام المالية وإجراءات التحصيل متاحة/);
 });
