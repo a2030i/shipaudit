@@ -245,21 +245,6 @@ export default function Overview({ carriers = [], isActive = true }) {
 
       <ExecutivePulse data={data} onNavigate={navigate}/>
 
-      <nav className="overview-jump-nav" aria-label="الوصول السريع داخل مركز العمليات">
-        <button type="button" className="is-primary" onClick={() => document.getElementById('customer-decisions')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Users size={14}/> قرارات العملاء
-        </button>
-        <button type="button" onClick={() => document.getElementById('cash-now')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Wallet size={14}/> السيولة الآن
-        </button>
-        <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
-          <Users size={14}/> تحصيل العملاء
-        </button>
-        <button type="button" onClick={() => navigate('/retargeting?view=today&source=overview')}>
-          <Target size={14}/> المبيعات والنمو
-        </button>
-      </nav>
-
       <CustomerPortfolioFocus data={data} onNavigate={navigate}/>
 
       {/* أرقام النقد (البنك/العملاء/الناقلين) خلف overview.cash_position —

@@ -22,7 +22,6 @@ import { loadWhatsAppConfig, saveWhatsAppConfig, verifyWhatsAppKey,
 import { CampaignLogTable } from '../components/WhatsAppCampaignLog.jsx';
 import CallTranscript from '../components/CallTranscript.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
-import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
@@ -87,9 +86,6 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
   const location = useLocation();
   const navigate = useNavigate();
   const visibleTabs = HATIF_TABS.filter(t => tabAllowed(t, can) && (!settingsOnly || t.id === 'settings'));
-  const primaryTabs = settingsOnly
-    ? visibleTabs
-    : visibleTabs.filter(t => ['overview', 'campaigns', 'ivr'].includes(t.id));
   const tabFromUrl = () => {
     if (settingsOnly) return 'settings';
     const requested = new URLSearchParams(location.search).get('tab');
@@ -214,31 +210,6 @@ export default function WhatsAppSettings({ isActive = true, settingsOnly = false
 
   return (
     <div className="hatif-center workspace-page">
-      {!settingsOnly ? (
-        primaryTabs.some(item => item.id === tab) ? (
-          <WorkspaceTabs
-            scope="sales-communications"
-            title="التواصل"
-            subtitle="الرسائل والحملات والمكالمات من مسار تشغيلي واحد"
-            tone="#8B5CF6"
-            tabs={primaryTabs}
-            activeId={tab}
-            onChange={changeTab}
-            selectorLabel="قناة التواصل"
-          />
-        ) : (
-          <div className="workspace-secondary-context" role="status">
-            <span>تقرير تواصل</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
-            <button type="button" onClick={() => changeTab('overview')}>العودة إلى التواصل</button>
-          </div>
-        )
-      ) : null}
-      {!settingsOnly ? (
-        <nav className="workspace-filter-bar workspace-saved-views" aria-label="تقارير وإعدادات التواصل">
-          {visibleTabs.some(item => ['impact', 'agents', 'problems'].includes(item.id)) ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقارير التواصل والحملات</button> : null}
-          {can('whatsapp.configure') ? <button type="button" onClick={() => navigate('/settings/hatif')}>إعدادات القنوات</button> : null}
-        </nav>
-      ) : null}
       <div className="hatif-center__body">
         <div
           aria-label={activeMeta?.label}
@@ -1083,7 +1054,13 @@ const reasonAr = (r) => /undeliverable/i.test(r) ? 'الرقم بلا واتسا
 
 function CampaignsTab() {
   const { user, can } = useAuth();
-  const [view, setView] = useState('summary');
+  const location = useLocation();
+  const navigate = useNavigate();
+  const allowedViews = can('whatsapp.configure')
+    ? ['summary', 'quality', 'messages', 'controls']
+    : ['summary', 'quality', 'messages'];
+  const requestedView = new URLSearchParams(location.search).get('panel');
+  const [view, setView] = useState(() => allowedViews.includes(requestedView) ? requestedView : 'summary');
   const [showAllCampaigns, setShowAllCampaigns] = useState(false);
   const [ivrOpen, setIvrOpen] = useState(false);
   const [rows, setRows] = useState(null);
@@ -1230,24 +1207,22 @@ function CampaignsTab() {
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
   const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
-  const campaignViews = [
-    ['summary', 'أداء الحملات', BarChart3],
-    ['quality', 'جودة القوالب', ShieldCheck],
-    ['messages', 'مستكشف الرسائل', MessagesSquare],
-    ...(can('whatsapp.configure') ? [['controls', 'ضوابط الإرسال', Tags]] : []),
-  ];
+  useEffect(() => {
+    const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
+    if (next !== view) setView(next);
+  }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeCampaignView = next => {
+    if (!allowedViews.includes(next)) return;
+    const params = new URLSearchParams(location.search);
+    params.set('tab', 'campaigns');
+    params.set('panel', next);
+    setView(next);
+    navigate(`/whatsapp-settings?${params.toString()}`);
+  };
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-      <div className="hatif-subtabs" role="tablist" aria-label="تفاصيل الحملات والرسائل">
-        {campaignViews.map(([id, label, Icon]) => (
-          <button key={id} type="button" role="tab" aria-selected={view === id}
-            className={view === id ? 'is-active' : ''} onClick={() => setView(id)}>
-            <Icon size={15}/><span>{label}</span>
-          </button>
-        ))}
-      </div>
-
       {view === 'summary' && <>
       {/* ── صحة التسليم عبر كل الحملات (تسليم/قراءة/رفض + أسباب) ── */}
       {health && health.total > 0 && (
@@ -1512,7 +1487,7 @@ function CampaignsTab() {
       {liveCamp && (
         <CampaignLiveModal name={liveCamp}
           onClose={() => setLiveCamp('')}
-          onShowMessages={() => { setCamp(liveCamp); setView('messages'); setLiveCamp(''); }}/>
+          onShowMessages={() => { setCamp(liveCamp); changeCampaignView('messages'); setLiveCamp(''); }}/>
       )}
     </div>
   );

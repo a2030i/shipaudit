@@ -234,7 +234,6 @@ export default function CustomerWatch({ isActive = true }) {
   const [listGroup, setListGroup] = useState('finance');
   const [openCustomer, setOpenCustomer] = useState(null);
   const [openAnomaly, setOpenAnomaly] = useState(null);
-  const [compactView, setCompactView] = useState(() => window.matchMedia('(max-width: 768px)').matches);
   const autoOpenedSearch = useRef('');
 
   // Keep the visible search model aligned with browser history. This is
@@ -255,14 +254,6 @@ export default function CustomerWatch({ isActive = true }) {
     setOpenCustomer(null);
     autoOpenedSearch.current = '';
   }, [location.search]);
-
-  useEffect(() => {
-    const media = window.matchMedia('(max-width: 768px)');
-    const sync = () => setCompactView(media.matches);
-    sync();
-    media.addEventListener?.('change', sync);
-    return () => media.removeEventListener?.('change', sync);
-  }, []);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -296,8 +287,9 @@ export default function CustomerWatch({ isActive = true }) {
     const incoming = params.get('search') || params.get('customer') || params.get('q');
     if (incoming) {
       setSearch(incoming);
-      setView('overview');
     }
+    const requested = params.get('view');
+    setView(CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === requested) ? requested : 'overview');
   }, [location.search]);
 
   useEffect(() => {
@@ -306,14 +298,6 @@ export default function CustomerWatch({ isActive = true }) {
     setOpenAnomaly(null);
     setSearchOpen(false);
   }, [isActive]);
-
-  const changeView = (next) => {
-    if (!CUSTOMER_DIRECTORY_VIEWS.some(([id]) => id === next)) return;
-    const params = new URLSearchParams(location.search);
-    params.set('view', next);
-    setView(next);
-    navigate(`${location.pathname}?${params.toString()}`, { replace: true });
-  };
 
   const openCustomer360 = (entry) => {
     const identity = entry?.merchant?.storeId || entry?.name;
@@ -650,28 +634,6 @@ export default function CustomerWatch({ isActive = true }) {
               </div>
             )}
           </Card>
-
-          <label className="customer-view-select">
-            <span>طريقة العرض</span>
-            <select value={view} onChange={event => changeView(event.target.value)}>
-              {CUSTOMER_DIRECTORY_VIEWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-          </label>
-          {!compactView && <div className="customer-view-tabs" role="tablist" aria-label="أقسام دليل العملاء والمتاجر">
-            {CUSTOMER_DIRECTORY_VIEWS.map(([id, label, sub]) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                aria-selected={view === id}
-                className={view === id ? 'active' : ''}
-                onClick={() => changeView(id)}
-              >
-                <strong>{label}</strong>
-                <span>{sub}</span>
-              </button>
-            ))}
-          </div>}
 
           {view === 'overview' && <CustomerPulseSummary t={t} />}
 

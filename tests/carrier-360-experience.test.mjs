@@ -38,10 +38,13 @@ test('carrier-scoped legacy routes resolve to Carrier 360 sections', async () =>
   assert.match(app, /navigate\(`\/carrier\?\$\{next\.toString\(\)\}`/);
 });
 
-test('mobile Carrier 360 uses a compact view selector and card layouts', async () => {
+test('mobile Carrier 360 keeps section navigation in the shared hub and uses card layouts', async () => {
   const css = await read('src/pages/carrier-360.css');
+  const page = await read('src/pages/CarrierProfile.jsx');
+  const hub = await read('src/components/NavigationHub.jsx');
   assert.match(css, /@media \(max-width: 700px\)/);
-  assert.match(css, /\.carrier360-view-nav select/);
+  assert.doesNotMatch(page, /carrier360-view-nav/);
+  assert.match(hub, /ملف شركة الشحن الحالية/);
   assert.match(css, /\.carrier360-invoice-list > button/);
   assert.match(css, /\.carrier360-shipment-list article/);
   assert.match(css, /\.carrier360-shipment-list \{ grid-template-columns: 1fr; \}/);

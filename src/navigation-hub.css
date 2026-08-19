@@ -185,6 +185,29 @@
 .navigation-hub__section-heading > span:nth-child(2) { min-width: 0; flex: 1; }
 .navigation-hub__back { padding: 0 13px; }
 
+.navigation-hub__trail {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 0 14px;
+  overflow: hidden;
+  color: var(--sa-muted, #667085);
+  font-size: 10.5px;
+  white-space: nowrap;
+}
+
+.navigation-hub__trail span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.navigation-hub__trail span + span::before {
+  content: '‹';
+  margin-inline-end: 6px;
+  color: var(--sa-line-strong, #d0d5dd);
+}
+
 .navigation-hub__destinations {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -203,6 +226,13 @@
 .navigation-hub__destination-icon { width: 52px; height: 52px; }
 .navigation-hub__destination strong { font-size: 15px; font-weight: 880; }
 .navigation-hub__destination small { max-width: 30ch; color: var(--sa-muted, #667085); font-size: 11px; line-height: 1.55; }
+.navigation-hub__destination-arrow {
+  position: absolute;
+  inset-inline-end: 13px;
+  top: 50%;
+  color: var(--sa-muted, #667085);
+  transform: translateY(-50%);
+}
 
 @keyframes navigation-hub-fade { from { opacity: 0; } }
 @keyframes navigation-hub-rise { from { opacity: .7; transform: translateY(24px); } }

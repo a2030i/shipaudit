@@ -336,7 +336,7 @@ test('stable work areas use one seven-entry modal hub and permission-aware secon
   assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
   assert.match(hub, /sectionDestinations/);
   assert.match(hub, /setSectionId\(section\.id\)/);
-  assert.match(hub, />كل المراكز</);
+  assert.match(hub, /'كل المراكز'/);
   assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
   assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.doesNotMatch(shell, /grid-template-areas:\s*"main context primary"/);
@@ -351,28 +351,37 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const hub = await read('src/components/NavigationHub.jsx');
-  const tabs = await read('src/components/WorkspaceTabs.jsx');
   const sales = await read('src/pages/SalesHub.jsx');
   const collections = await read('src/pages/CollectionsHub.jsx');
   const cash = await read('src/pages/MoneyHub.jsx');
   const customers = await read('src/pages/CustomerWatch.jsx');
+  const store = await read('src/pages/Store360Page.jsx');
+  const carrier = await read('src/pages/CarrierProfile.jsx');
+  const zoho = await read('src/pages/ZohoData.jsx');
+  const communications = await read('src/pages/WhatsAppSettings.jsx');
 
   assert.match(navigation, /export const CENTER_WORKSPACES/);
   assert.match(navigation, /label: 'دليل العملاء والمتاجر'/);
   assert.match(navigation, /label: 'النقد والتسويات'/);
-  assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money', 'bank'\]/);
+  assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
   assert.match(hub, /sectionDestinations/);
   assert.match(hub, /اختر المركز، ثم القسم المطلوب/);
   assert.doesNotMatch(hub, /طريقة العرض/);
-  assert.match(tabs, /selectorLabel = 'القسم'/);
+  assert.match(hub, /const \[trail, setTrail\]/);
+  assert.match(hub, /destination\.children\?\.length/);
+  assert.match(hub, /ملف المتجر الحالي/);
+  assert.match(hub, /ملف شركة الشحن الحالية/);
 
-  for (const source of [sales, collections]) {
-    assert.match(source, /<WorkspaceTabs/);
-    assert.match(source, /params\.set\('view', next\)/);
-    assert.match(source, /params\.get\('view'\) \|\| params\.get\('tab'\)/);
+  for (const source of [sales, collections, cash, customers, store, carrier, zoho, communications]) {
+    assert.doesNotMatch(source, /<WorkspaceTabs/);
+    assert.doesNotMatch(source, /workspace-saved-views/);
   }
-  assert.match(cash, /<WorkspaceTabs/);
-  assert.match(cash, /params\.set\('tab', next\)/);
+  assert.doesNotMatch(customers, /customer-view-select/);
+  assert.doesNotMatch(store, /s360-view-nav/);
+  assert.doesNotMatch(carrier, /CarrierViewNav/);
+  assert.doesNotMatch(zoho, /zoho-subtabs/);
+  assert.doesNotMatch(communications, /hatif-subtabs/);
+  assert.match(collections, /params\.get\('view'\) \|\| params\.get\('tab'\)/);
   assert.match(cash, /id: 'bank'/);
   assert.match(cash, /id: 'cod'/);
   assert.match(cash, /id: 'payments'/);
@@ -442,8 +451,9 @@ test('phase two groups operations reports and admin into approved workspaces', a
   for (const path of ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks', '/drop', '/audits', '/aramex-statements', '/ledger', '/fulfillment', '/weight-billing', '/reports', '/monthly-report', '/internal-exports', '/activity-log', '/integrity', '/operations', '/uploads', '/webhook', '/work-agents', '/settings/hatif']) {
     assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
   }
-  assert.match(centerWorkspace, /params\.delete\('tab'\)/);
-  assert.match(centerWorkspace, /onNavigate\(`\$\{next\.path\}\$\{query/);
+  assert.doesNotMatch(centerWorkspace, /WorkspaceTabs/);
+  assert.doesNotMatch(centerWorkspace, /onNavigate/);
+  assert.match(centerWorkspace, /role="tabpanel"/);
 });
 
 test('center view menus stay task-oriented and never exceed six entries', async () => {

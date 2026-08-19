@@ -174,14 +174,33 @@ const ROUTE_ITEMS = [
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
-  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
+  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view',
+    subTabs: [
+      { tabId: 'list', label: 'التذاكر', icon: ListTodo, queryKey: 'view' },
+      { tabId: 'dash', label: 'لوحة الأرقام', icon: BarChart3, queryKey: 'view' },
+    ] },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view',
     subTabs: [
       { tabId: 'overview',  label: 'مراقبة اتصال زوهو',       icon: Activity },
-      { tabId: 'customers', label: 'العملاء والفواتير',       icon: Users },
-      { tabId: 'vendors',   label: 'الموردون والمصروفات',     icon: Briefcase },
-      { tabId: 'banks',     label: 'البنوك والمطابقة',        icon: Landmark, legacyTabIds: ['bank_accounts'] },
-      { tabId: 'accounts',  label: 'القيود ودليل الحسابات',   icon: BookOpen },
+      { tabId: 'customers', label: 'العملاء والفواتير',       icon: Users, children: [
+        { tabId: 'invoices', label: 'فواتير العملاء', icon: FileText },
+        { tabId: 'payments', label: 'دفعات العملاء', icon: CreditCard },
+      ] },
+      { tabId: 'vendors',   label: 'الموردون والمصروفات',     icon: Briefcase, children: [
+        { tabId: 'bills', label: 'فواتير الموردين', icon: FileText },
+        { tabId: 'vendor_payments', label: 'دفعات الموردين', icon: CreditCard },
+        { tabId: 'purchase_orders', label: 'أوامر الشراء', icon: ClipboardList },
+        { tabId: 'expenses', label: 'المصروفات', icon: Wallet },
+        { tabId: 'vendor_credits', label: 'أرصدة الموردين', icon: DollarSign },
+        { tabId: 'items', label: 'الأصناف', icon: Boxes },
+      ] },
+      { tabId: 'banks',     label: 'البنوك والمطابقة',        icon: Landmark, legacyTabIds: ['bank_accounts'], children: [
+        { tabId: 'bank_accounts', label: 'الحسابات البنكية', icon: Landmark },
+      ] },
+      { tabId: 'accounts',  label: 'القيود ودليل الحسابات',   icon: BookOpen, children: [
+        { tabId: 'journals', label: 'القيود اليومية', icon: BookOpen },
+        { tabId: 'chart_accounts', label: 'دليل الحسابات', icon: ListFilter },
+      ] },
     ] },
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
@@ -190,7 +209,12 @@ const ROUTE_ITEMS = [
     permAny: ['whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr'],
     subTabs: [
       { tabId: 'overview',  label: 'نظرة عامة',       icon: Activity },
-      { tabId: 'campaigns', label: 'الحملات والرسائل', icon: MessageCircle },
+      { tabId: 'campaigns', label: 'الحملات والرسائل', icon: MessageCircle, children: [
+        { tabId: 'summary', label: 'أداء الحملات', icon: BarChart3, queryKey: 'panel' },
+        { tabId: 'quality', label: 'جودة القوالب', icon: FileCheck, queryKey: 'panel' },
+        { tabId: 'messages', label: 'مستكشف الرسائل', icon: MessageCircle, queryKey: 'panel' },
+        { tabId: 'controls', label: 'ضوابط الإرسال', icon: Settings, queryKey: 'panel', perm: 'whatsapp.configure' },
+      ] },
       { tabId: 'impact',    label: 'التحصيل المرتبط',  icon: DollarSign },
       { tabId: 'ivr',       label: 'المكالمات وIVR',   icon: Phone },
       { tabId: 'agents',    label: 'نشاط فريق هاتف',   icon: Users },
@@ -543,7 +567,8 @@ function AppInner({ theme, toggleTheme }) {
   const subTabOf = (item) => {
     if (!item.subTabs) return null;
     if (location.pathname === item.path) {
-      const cur = new URLSearchParams(location.search).get('tab');
+      const params = new URLSearchParams(location.search);
+      const cur = params.get('view') || params.get('tab');
       const effective = cur || item.subTabs[0].tabId;
       return item.subTabs.find(s => s.tabId === effective || s.legacyTabIds?.includes(effective)) || null;
     }
@@ -604,7 +629,9 @@ function AppInner({ theme, toggleTheme }) {
     || (rawPath === '/whatsapp-settings' && (contextParams.get('tab') === 'settings'))
   );
   const forcedSectionId = reportScoped ? 'reports' : adminScoped ? 'settings' : null;
+  const detailSectionId = rawPath === '/carrier' ? 'shipping' : null;
   const contextSection = (forcedSectionId ? NAV_SECTIONS.find(section => section.id === forcedSectionId) : null)
+    || (detailSectionId ? NAV_SECTIONS.find(section => section.id === detailSectionId) : null)
     || centerRouteSection
     || currentSection;
   const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
@@ -660,7 +687,10 @@ function AppInner({ theme, toggleTheme }) {
         workspaces={CENTER_WORKSPACES}
         navItems={visibleNav}
         canOpenHome={isAdmin || can('overview.view')}
+        canOpenSubTab={tab => isAdmin || (!tab.adminOnly && (!tab.perm || can(tab.perm)) && (!tab.anyPerm || tab.anyPerm.some(key => can(key))))}
         currentSectionId={contextSection?.id || null}
+        currentPath={location.pathname}
+        currentSearch={location.search}
         profile={profile}
         roleLabel={ROLE_LABEL[profile.role] ?? profile.role}
         onClose={() => setMobileOpen(false)}
@@ -676,7 +706,7 @@ function AppInner({ theme, toggleTheme }) {
 
           {/* Topbar */}
           <div className="topbar">
-            <button className="hamburger-btn" aria-label="فتح قائمة المراكز" onClick={() => openNavigation()}>
+            <button className="hamburger-btn" aria-label="فتح قائمة أقسام المركز" onClick={() => openNavigation(contextSection?.id || null)}>
               <Menu size={20}/>
             </button>
 

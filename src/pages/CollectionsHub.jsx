@@ -8,7 +8,7 @@
 // يجلب فقط عند تفعيله (isActive). المسارات القديمة تهبط على تبويبها،
 // والرابط القانوني /customer-money?view=<id> مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { HandCoins, PhoneCall, Scale, FileText, BarChart3 } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -17,7 +17,6 @@ import Collections         from './Collections.jsx';
 import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
 import CollectionTeamPerformance from './CollectionTeamPerformance.jsx';
-import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 const TABS = [
   {
@@ -64,10 +63,8 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function CollectionsHub({ isActive = true }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
-  const primaryTabs = visibleTabs.filter(t => !t.secondary);
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -86,40 +83,8 @@ export default function CollectionsHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
-  const changeView = (next) => {
-    if (!visibleTabs.some(item => item.id === next)) return;
-    const params = new URLSearchParams(location.search);
-    params.set('view', next);
-    params.delete('tab');
-    setTab(next);
-    navigate(`/customer-money?${params.toString()}`);
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {primaryTabs.some(item => item.id === tab) ? (
-        <WorkspaceTabs
-          scope="customer-collections"
-          title="المستحقات والتحصيل"
-          subtitle="من المديونية إلى الفاتورة ثم إجراء التحصيل والنتيجة"
-          tone="#16A34A"
-          tabs={primaryTabs}
-          activeId={tab}
-          onChange={changeView}
-          selectorLabel="مسار التحصيل"
-        />
-      ) : (
-        <div className="workspace-secondary-context" role="status">
-          <span>{tab === 'legal' ? 'فلتر محفوظ' : tab === 'performance' ? 'تقرير' : 'مطابقة'}</span>
-          <strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
-          <button type="button" onClick={() => changeView('money')}>العودة إلى المستحقات</button>
-        </div>
-      )}
-      <nav className="workspace-filter-bar workspace-saved-views" aria-label="فلاتر وإجراءات التحصيل">
-        {visibleTabs.some(item => item.id === 'legal') ? <button type="button" aria-pressed={tab === 'legal'} onClick={() => changeView('legal')}>قانوني</button> : null}
-        {visibleTabs.some(item => item.id === 'performance') ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقرير أداء التحصيل</button> : null}
-        {visibleTabs.some(item => item.id === 'internal') ? <button type="button" onClick={() => navigate('/zoho-data?tab=customers')}>الأرصدة والمطابقة</button> : null}
-      </nav>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
