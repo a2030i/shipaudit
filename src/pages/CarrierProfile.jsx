@@ -78,7 +78,7 @@ const fmtDate = (iso) => {
 function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
   const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → الحرف الأول
   return (
-    <div style={{
+    <div className="carrier360-hero" style={{
       position: 'relative',
       padding: '22px 28px',
       marginBottom: 22,
@@ -88,7 +88,7 @@ function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
       overflow: 'hidden',
       boxShadow: '0 16px 40px rgba(0,0,0,.18), 0 4px 12px rgba(0,0,0,.06)',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
+      <div className="carrier360-hero__main" style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
         <Btn
           variant="ghost"
           size="sm"
@@ -116,7 +116,7 @@ function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
           </div>
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 4 }}>
+          <div className="carrier360-identity-code" style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 4 }}>
             ملف شركة الشحن · {carrier.id}
           </div>
           <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800, color: '#fff', margin: 0 }}>
@@ -795,7 +795,7 @@ function CarrierViewNav({ view, onChange }) {
     <nav className="carrier360-view-nav" aria-label="أقسام ملف شركة الشحن">
       <label>
         القسم
-        <select value={view} onChange={event => onChange(event.target.value)}>
+        <select aria-label="قسم ملف شركة الشحن" value={view} onChange={event => onChange(event.target.value)}>
           {CARRIER_VIEWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
         </select>
       </label>

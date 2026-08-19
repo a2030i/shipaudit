@@ -38,6 +38,9 @@ import {
 } from '../lib/customerCampaignBuckets.js';
 import { loadCustomerActivationCommandCenter } from '../lib/retargetingService.js';
 import './CustomerFinanceCenter.css';
+import useMobileLayout from '../lib/useMobileLayout.js';
+import { useWindowedRows } from '../hooks/useWindowedRows.js';
+import { ProgressiveListFooter } from '../components/MobileUX.jsx';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -316,6 +319,15 @@ export default function CustomerMoney({ isActive = true }) {
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
   }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet, campaignProjection, agingLinesReady]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
+  const isMobile = useMobileLayout();
+  const {
+    visible: visibleCustomerRows,
+    count: visibleCustomerCount,
+    total: visibleCustomerTotal,
+    hasMore: hasMoreCustomers,
+    sentinelRef: customerRowsSentinelRef,
+    loadMore: loadMoreCustomers,
+  } = useWindowedRows(filtered, { batch: isMobile ? 20 : 120 });
   const collectionTaskByCustomer = useMemo(() => {
     const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
     const indexed = new Map();
@@ -419,6 +431,13 @@ export default function CustomerMoney({ isActive = true }) {
   const handleAgingFilter = (key, value) => {
     if (key === 'agingToggle') {
       toggleBucket(value);
+      return;
+    }
+    if (key === 'clearSecondary') {
+      updateUrlFilters({
+        minAmount: null, maxAmount: null, owner: null, collection: null,
+        promise: null, contact: null, sort: null, action: null, page: null,
+      });
       return;
     }
     const urlKey = key === 'actionOnly' ? 'action' : key;
@@ -722,10 +741,15 @@ export default function CustomerMoney({ isActive = true }) {
         <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
           <Btn variant="accent" onClick={scrollToAging} icon={<HandCoins size={15}/>}>ابدأ التحصيل</Btn>
           {can('campaigns.send') ? <Btn variant="ghost" onClick={() => document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth' })} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
-          <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=campaigns&source=customer-finance')} icon={<MessageCircle size={15}/>}>هاتف وWhatsApp</Btn>
-          {can('campaigns.ivr') ? <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=ivr&source=customer-finance')} icon={<PhoneCall size={15}/>}>مراجعة IVR</Btn> : null}
-          <Btn variant="ghost" onClick={() => openWithContext('/retargeting?view=today&source=customer-finance')} icon={<TrendingUp size={15}/>}>عملاء لمحة اليوم</Btn>
-          <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة الأرصدة</Btn>
+          <details className="customer-finance-command__more-actions">
+            <summary>إجراءات أخرى</summary>
+            <div className="customer-finance-command__more-actions-body">
+              <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=campaigns&source=customer-finance')} icon={<MessageCircle size={15}/>}>هاتف وWhatsApp</Btn>
+              {can('campaigns.ivr') ? <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=ivr&source=customer-finance')} icon={<PhoneCall size={15}/>}>مراجعة IVR</Btn> : null}
+              <Btn variant="ghost" onClick={() => openWithContext('/retargeting?view=today&source=customer-finance')} icon={<TrendingUp size={15}/>}>عملاء لمحة اليوم</Btn>
+              <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة الأرصدة</Btn>
+            </div>
+          </details>
         </div>
         {growthPulse.status === 'unavailable' ? <div className="customer-finance-command__warning" role="status">تعذر تحميل نشاط عملاء لمحة: {growthPulse.error}. بقيت الأرقام المالية وإجراءات التحصيل متاحة.</div> : null}
       </section>
@@ -1050,9 +1074,9 @@ export default function CustomerMoney({ isActive = true }) {
       </div>
 
       {/* ── بطاقات العملاء ── */}
-      {!filtered.length ? <Card><Empty icon="🎉" title="لا ديون في هذا العرض" sub="جرّب فلتراً آخر"/></Card> : (
+      {!filtered.length ? <Card><Empty icon="🎉" title="لا ديون في هذا العرض" sub="جرّب فلتراً آخر"/></Card> : (<>
         <div className="customer-money-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(min(330px,100%),1fr))', gap: 10 }}>
-          {filtered.map(c => (
+          {visibleCustomerRows.map(c => (
             <CustomerCard key={c.name} c={c} highlight={buckets}
               wa={waStatus.get(normalizeSaudiPhone(c.phone))}
               onWa={can('campaigns.send') ? openSingleWa : null}
@@ -1063,7 +1087,8 @@ export default function CustomerMoney({ isActive = true }) {
               showCollectionWork={can('collections.view')}/>
           ))}
         </div>
-      )}
+        <ProgressiveListFooter hasMore={hasMoreCustomers} shown={visibleCustomerCount} total={visibleCustomerTotal} onLoadMore={loadMoreCustomers} sentinelRef={customerRowsSentinelRef}/>
+      </>)}
       </div>
       </details>
 

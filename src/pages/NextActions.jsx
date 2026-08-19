@@ -39,6 +39,9 @@ const ACTIVITY_TYPES = [
   ['email', 'بريد'], ['note', 'ملاحظة'],
 ];
 import IvrCallButton from '../components/IvrCallButton.jsx';
+import useMobileLayout from '../lib/useMobileLayout.js';
+import { useWindowedRows } from '../hooks/useWindowedRows.js';
+import { MobileFilterBar, MobileStickyActionBar, ProgressiveListFooter } from '../components/MobileUX.jsx';
 
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
 const daysAgo = (d) => d ? Math.floor((Date.now() - new Date(d).getTime()) / 86_400_000) : null;
@@ -102,6 +105,15 @@ export default function NextActions({ isActive = true }) {
 
   const nameById = useMemo(() => { const m = new Map(); employees.forEach(e => m.set(e.id, e.name || e.email)); return m; }, [employees]);
   const filtered = useMemo(() => (rows || []).filter(r => !group || NBA_META[r.reasonCode]?.group === group), [rows, group]);
+  const isMobile = useMobileLayout();
+  const {
+    visible: visibleNextRows,
+    count: visibleNextCount,
+    total: visibleNextTotal,
+    hasMore: hasMoreNextRows,
+    sentinelRef: nextRowsSentinelRef,
+    loadMore: loadMoreNextRows,
+  } = useWindowedRows(filtered, { batch: isMobile ? 20 : 120 });
   const totals = useMemo(() => {
     const t = { count: filtered.length, money: 0, ready: 0, held: 0, byGroup: {} };
     for (const r of filtered) {
@@ -140,20 +152,37 @@ export default function NextActions({ isActive = true }) {
     setProfileLoading(false);
   };
 
+  const renderFilters = () => <>
+    <label className="mobile-filter-check">
+      <input type="checkbox" checked={mine} onChange={e => updateFilters({ owner: e.target.checked ? 'me' : null })}/>
+      <span>المسندة لي فقط</span>
+    </label>
+    <div className="mobile-segment-grid" aria-label="نوع قائمة العمل">
+      {['', 'الجدد', 'المتوقفون', 'متابعة', 'تحصيل', 'تواصل'].map(g => (
+        <Btn key={g || 'all'} size="sm" variant={group === g ? 'primary' : 'outline'} onClick={() => updateFilters({ status: g || null })}>{g || 'الكل'}</Btn>
+      ))}
+    </div>
+  </>;
+  const activeFilters = [
+    ...(mine ? [{ key: 'owner', label: 'المسندة لي', onRemove: () => updateFilters({ owner: null }) }] : []),
+    ...(group ? [{ key: 'status', label: group, onRemove: () => updateFilters({ status: null }) }] : []),
+  ];
+  const clearFilters = () => updateFilters({ owner: null, status: null });
+
   return (
     <Pad>
       <PageHeader icon={<Phone size={22}/>} title="مهام العملاء اليوم" subtitle="قائمة تنفيذ موحّدة — من تتصل به، ولماذا، وما الخطوة المقترحة الآن"
         actions={<Btn size="sm" variant="ghost" ariaLabel="تحديث قائمة عمل المبيعات" onClick={refresh} disabled={rows == null}><RefreshCw size={14} className={rows == null ? 'spin' : ''}/></Btn>}/>
 
-      {/* الفلاتر */}
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 12 }}>
-        <label style={{ display: 'inline-flex', gap: 6, alignItems: 'center', fontSize: 12.5, color: 'var(--muted)' }}>
-          <input type="checkbox" checked={mine} onChange={e => updateFilters({ owner: e.target.checked ? 'me' : null })}/> المسندة لي فقط
-        </label>
-        {['', 'الجدد', 'المتوقفون', 'متابعة', 'تحصيل', 'تواصل'].map(g => (
-          <Btn key={g || 'all'} size="sm" variant={group === g ? 'primary' : 'outline'} onClick={() => updateFilters({ status: g || null })}>{g || 'الكل'}</Btn>
-        ))}
-        <span style={{ flex: 1 }}/>
+      <MobileFilterBar
+        title="فلترة قائمة العمل"
+        activeFilters={activeFilters}
+        onClear={clearFilters}
+        desktop={<div className="next-actions-filters workspace-filter-bar">{renderFilters()}</div>}
+      >
+        {renderFilters()}
+      </MobileFilterBar>
+      <div className="next-actions-selection-toolbar">
         <Btn size="sm" variant="outline" icon={<ListChecks size={13}/>} disabled={!filtered.length} onClick={selectFiltered}>تحديد نتائج الفلتر</Btn>
         {selected.size ? <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>إلغاء التحديد ({selected.size})</Btn> : null}
         <Btn size="sm" variant="primary" icon={<Eye size={13}/>} disabled={!selectedRows.length} onClick={() => setPreviewRows(selectedRows)}>معاينة المحدد ({selectedRows.length})</Btn>
@@ -163,7 +192,7 @@ export default function NextActions({ isActive = true }) {
         : !filtered.length ? <Empty icon="✅" title="لا إجراءات مطلوبة" sub="لا عميل يحتاج فعلاً الآن بهذا الفلتر."/>
         : (
           <div style={{ display: 'grid', gap: 8 }}>
-            {filtered.map((r, i) => {
+            {visibleNextRows.map((r, i) => {
               const m = NBA_META[r.reasonCode] || { icon: '•', label: r.reasonCode, color: 'var(--muted)' };
               return (
                 <Card key={`${r.phone}-${i}`} style={{ padding: '10px 14px', borderInlineStart: `4px solid ${m.color}`, display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
@@ -203,8 +232,20 @@ export default function NextActions({ isActive = true }) {
                 </Card>
               );
             })}
+            <ProgressiveListFooter
+              hasMore={hasMoreNextRows}
+              shown={visibleNextCount}
+              total={visibleNextTotal}
+              onLoadMore={loadMoreNextRows}
+              sentinelRef={nextRowsSentinelRef}
+            />
           </div>
         )}
+
+      {isMobile && selected.size ? <MobileStickyActionBar>
+        <Btn size="sm" variant="ghost" onClick={() => setSelected(new Set())}>إلغاء ({selected.size})</Btn>
+        <Btn size="sm" variant="primary" icon={<Eye size={13}/>} onClick={() => setPreviewRows(selectedRows)}>معاينة المحدد</Btn>
+      </MobileStickyActionBar> : null}
 
       <details className="next-actions-context">
         <summary>معلومات القائمة وضوابط التواصل</summary>

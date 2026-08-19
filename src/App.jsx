@@ -10,6 +10,7 @@ import AIChat from './components/AIChat.jsx';
 import CenterLanding from './components/CenterLanding.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
+import { MobileExperienceManager } from './components/MobileUX.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
@@ -848,7 +849,7 @@ function AppInner({ theme, toggleTheme }) {
               </button>
             </div>
 
-            <button type="button" className="topbar-quick-action" onClick={() => setQuickActionOpen(true)}>
+            <button type="button" className="topbar-quick-action" aria-label={quickActionLabel || 'إجراء جديد'} title={quickActionLabel || 'إجراء جديد'} onClick={() => setQuickActionOpen(true)}>
               <Upload size={16}/><span>{quickActionLabel}</span>
             </button>
 
@@ -1321,20 +1322,21 @@ function AppInner({ theme, toggleTheme }) {
           const Icon = it.icon;
           const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;
           return (
-            <button key={it.path} onClick={() => goto(it.path)}
+            <button key={it.path} onClick={() => goto(it.path)} aria-current={active ? 'page' : undefined}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>
               <Icon size={19}/>
               <span>{it.label}</span>
             </button>
           );
         })}
-        <button className="bottom-nav-btn" onClick={() => setMobileOpen(true)}>
+        <button className="bottom-nav-btn" aria-label="فتح قائمة المراكز" onClick={() => setMobileOpen(true)}>
           <Menu size={19}/>
           <span>القائمة</span>
         </button>
       </nav>
 
       {/* Floating AI assistant — always available once logged in */}
+      <MobileExperienceManager routeKey={`${location.pathname}${location.search}`}/>
       <AIChat/>
     </>
   );

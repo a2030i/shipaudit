@@ -359,9 +359,16 @@
 
 @media (max-width: 700px) {
   .carrier360-root { padding: 14px 12px 96px; }
-  .carrier360-root > div:first-child { padding: 17px 15px !important; }
-  .carrier360-root > div:first-child > div { align-items: flex-start !important; flex-wrap: wrap; }
+  .carrier360-hero { padding: 14px !important; margin-bottom: 10px !important; border-radius: 15px !important; }
+  .carrier360-hero__main { display: grid !important; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center !important; gap: 10px !important; }
+  .carrier360-hero__main > .ui-btn:first-child { grid-column: 3; grid-row: 1; min-width: 44px; padding-inline: 10px !important; }
+  .carrier360-hero__main > img,
+  .carrier360-hero__main > div:nth-child(2) { grid-column: 1; grid-row: 1; width: 48px !important; height: 48px !important; }
+  .carrier360-hero__main > div:nth-child(3) { grid-column: 1 / -1; grid-row: 2; }
+  .carrier360-identity-code { letter-spacing: .4px !important; overflow-wrap: anywhere; }
+  .carrier360-hero-meta { display: grid; grid-template-columns: 1fr 1fr; gap: 5px 10px; line-height: 1.5; }
   .carrier360-upload-cta { order: 4; width: 100%; justify-content: center; }
+  .carrier360-hero__main > .carrier360-upload-cta { grid-column: 1 / -1; grid-row: 3; }
   .carrier360-view-nav { top: 4px; margin-top: -5px; }
   .carrier360-view-nav > div { display: none !important; }
   .carrier360-view-nav label { display: grid !important; gap: 5px; color: var(--muted); font-size: 10px; }

@@ -10,6 +10,8 @@ import { markEventProcessed } from '../lib/webhookService.js';
 import { createClaim } from '../lib/claimsService.js';
 import { useAuth } from '../lib/auth.jsx';
 import { useNavigate } from 'react-router-dom';
+import useMobileLayout from '../lib/useMobileLayout.js';
+import { MobileDecisionCard } from '../components/MobileUX.jsx';
 
 // اعتماد بنقرة (فواتير-1): حارس على مستوى الـmodule — الاعتماد الآلي
 // يشتعل مرة واحدة لكل مسودة مهما تكرر الرندر/StrictMode (§2.2).
@@ -284,6 +286,7 @@ function resultMatchesFilter(row, filter) {
 }
 
 function ResultsTable({ results, filter, showDetail, contract, startIndex = 0 }) {
+  const isMobile = useMobileLayout();
   const displayed = results.filter(row => resultMatchesFilter(row, filter));
   if (!displayed.length) return <Empty icon="🔍" title="لا توجد نتائج" sub="جرب فلتراً مختلفاً"/>;
 
@@ -374,6 +377,41 @@ function ResultsTable({ results, filter, showDetail, contract, startIndex = 0 })
   // Excess-column header styles (info-side, not a per-group diff trio)
   const excessColor = 'var(--gold)';
   const excessBg    = 'color-mix(in srgb, var(--gold) 6%, transparent)';
+
+  if (isMobile) return (
+    <div className="audit-mobile-results" aria-label="شحنات الفاتورة">
+      {displayed.map((r, i) => {
+        const iD = r.invoiced?.delivery ?? r.deliveryCharges ?? 0;
+        const iR = r.invoiced?.rss ?? r.rss ?? 0;
+        const iF = r.invoiced?.fuel ?? r.fuelSurcharge ?? 0;
+        const total = cellsFor(allGroups.total, r, iD, iR, iF);
+        const excess = hasExcess ? computeExcess(r, contract) : { kg: 0, charge: 0 };
+        const mismatch = r.status === 'mismatch';
+        return <MobileDecisionCard
+          key={`${r.awb || 'shipment'}-${startIndex + i}`}
+          title={r.awb || 'AWB غير متاح'}
+          meta={`${r.shipDate || 'تاريخ غير متاح'} · ${r.domestic && r.destCity ? `${r.destCity} · محلي` : r.dest || 'وجهة غير متاحة'}`}
+          status={mismatch ? 'تحتاج مراجعة' : 'مطابقة'}
+          amount={`${num(total.diff)} ر.س`}
+          amountLabel="الفرق"
+        >
+          <span>المفوتر <b>{num(total.inv)} ر.س</b></span>
+          <span>المتوقع <b>{num(total.exp)} ر.س</b></span>
+          <span>الوزن <b>{num(r.weight)} كغ</b></span>
+          {excess.kg > 0 ? <span>وزن زائد <b>+{num(excess.kg)} كغ</b></span> : null}
+          {excess.charge > 0 ? <span>رسم الزيادة <b>{num(excess.charge)} ر.س</b></span> : null}
+          {r.serviceType ? <span>الخدمة <b>{r.serviceType}</b></span> : null}
+          <details className="audit-mobile-results__details">
+            <summary>تفاصيل الرسوم</summary>
+            <div>{groups.map(group => {
+              const values = cellsFor(group, r, iD, iR, iF);
+              return <span key={group.key}><b>{group.label}</b><small>مفوتر {num(values.inv)} · متوقع {num(values.exp)} · فرق {num(values.diff)}</small></span>;
+            })}</div>
+          </details>
+        </MobileDecisionCard>;
+      })}
+    </div>
+  );
 
   return (
     <div style={{ overflowX: 'auto' }}>

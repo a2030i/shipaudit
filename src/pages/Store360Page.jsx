@@ -28,6 +28,12 @@ const VIEWS = [
 const VIEW_IDS = new Set(VIEWS.map(([id]) => id));
 const OPEN_TASK_STAGES = new Set(['todo', 'contacted', 'promised', 'snoozed']);
 const STAGE_AR = { todo: 'جديدة', contacted: 'تم التواصل', promised: 'وعد دفع', snoozed: 'مؤجلة', done: 'مكتملة', cancelled: 'ملغاة' };
+const STATUS_AR = {
+  overdue: 'متأخرة', open: 'مفتوحة', paid: 'مدفوعة', partially_paid: 'مدفوعة جزئيًا',
+  over_credit_limit: 'تجاوزت الحد الائتماني', resolved: 'محلولة', closed: 'مغلقة',
+  in_progress: 'قيد المعالجة', waiting_customer: 'بانتظار العميل', active: 'نشط', inactive: 'غير نشط',
+};
+const STATUS_LABEL = value => STATUS_AR[String(value || '').toLowerCase()] || value || 'غير متاحة';
 const MONEY = (value) => Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const DATE = (value, withTime = false) => {
   if (!value) return '—';
@@ -265,7 +271,7 @@ function InvoiceDetailModal({ invoice, task, canRecordPromise, contextAmount, co
         <div><span>تاريخ الإصدار</span><b>{DATE(invoice.date)}</b></div>
         <div><span>تاريخ الاستحقاق</span><b>{DATE(invoice.due_date)}</b></div>
         <div><span>عمر الاستحقاق</span><b>{Number(invoice.age_days) || 0} يوم</b></div>
-        <div><span>الحالة</span><b>{invoice.status || 'مفتوحة'}</b></div>
+        <div><span>الحالة</span><b>{STATUS_LABEL(invoice.status || 'open')}</b></div>
       </div>
       <div className="s360-invoice-detail__collection">
         <strong>إجراء التحصيل الحالي</strong>
@@ -321,7 +327,7 @@ function FinanceView({ core, data, work, invoiceFocus, agingBuckets = [], canRec
         const focused = invoiceFocus && invoiceFocus !== 'open' && String(invoice.invoice_number) === invoiceFocus;
         return <button type="button" key={invoice.invoice_number || `${invoice.date}-${invoice.balance}`} className={`s360-invoice-row${focused ? ' is-focused' : ''}`} onClick={() => onOpenInvoice(invoice)}>
           <div><ReceiptText size={17}/><span><b>{invoice.invoice_number || 'فاتورة'}</b><small>صدرت {DATE(invoice.date)} · تستحق {DATE(invoice.due_date)}</small></span></div>
-          <div><b>{MONEY(invoice.balance)} ر.س</b><small>{invoice.status || 'مفتوحة'}</small><span className="s360-invoice-row__open">فتح التفاصيل <ChevronLeft size={12}/></span></div>
+          <div><b>{MONEY(invoice.balance)} ر.س</b><small>{STATUS_LABEL(invoice.status || 'open')}</small><span className="s360-invoice-row__open">فتح التفاصيل <ChevronLeft size={12}/></span></div>
         </button>;
       })}</div>}
     </section>
@@ -375,7 +381,7 @@ function SupportView({ data }) {
     <div className="s360-contact-notice">هذا السجل مرتبط <b>برقم التواصل</b>، وليس إثباتًا أن جميع أحداث الاتصال تخص هوية متجر مضمونة.</div>
     <section><SectionHeader title="التذاكر" subtitle={`${openTickets.length} مفتوحة`} source={data?.sources?.support}/>
       {data?.sources?.support?.status === 'unavailable' ? <UnavailableBlock source={data.sources.support}/> : !data?.tickets?.length ? <Empty icon="🎫" title="لا توجد تذاكر" sub="يمكن إنشاء تذكرة من مركز الإجراءات"/> : <div className="s360-card-list">{data.tickets.slice(0, 20).map(ticket => <article key={ticket.id}>
-        <div><TicketCheck size={17}/><span><b>{ticket.ref || 'تذكرة'}</b><small>{ticket.title} · {DATE(ticket.createdAt)}</small></span></div><div><b>{ticket.status}</b><small>{ticket.assigneeName || 'غير مسندة'}</small></div>
+        <div><TicketCheck size={17}/><span><b>{ticket.ref || 'تذكرة'}</b><small>{ticket.title} · {DATE(ticket.createdAt)}</small></span></div><div><b>{STATUS_LABEL(ticket.status)}</b><small>{ticket.assigneeName || 'غير مسندة'}</small></div>
       </article>)}</div>}
     </section>
     <section><SectionHeader title="التواصل" subtitle="WhatsApp وHatif وIVR والحملات والردود" source={data?.sources?.communications}/>
