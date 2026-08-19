@@ -28,7 +28,7 @@ const RESULT_META = {
               sub: (t) => 'لم تُنشأ تذكرة مكررة — أُضيفت التفاصيل الجديدة إليها' },
 };
 
-export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose }) {
+export default function TicketCreateForm({ prefillPhone = '', prefillStore = null, onCreated, onClose }) {
   const { can, user, profile } = useAuth();
   const [carriers, setCarriers] = useState([]);
   const [merchants, setMerchants] = useState(null);   // null = يحمّل
@@ -79,6 +79,15 @@ export default function TicketCreateForm({ prefillPhone = '', onCreated, onClose
   }, [user?.id]); // eslint-disable-line
 
   // ?phone= → اختيار المتجر تلقائياً بالهاتف المطبَّع
+  useEffect(() => {
+    if (!prefillStore || store) return;
+    setStore({
+      store_id: prefillStore.storeId || prefillStore.store_id,
+      store_name: prefillStore.storeName || prefillStore.store_name,
+      phone: prefillStore.phone || prefillPhone,
+    });
+    setStoreQ(prefillStore.storeName || prefillStore.store_name || '');
+  }, [prefillStore, prefillPhone, store]);
   useEffect(() => {
     if (!prefillPhone || !merchants?.length || store) return;
     const norm = normalizeSaudiPhone(prefillPhone);

@@ -6,24 +6,27 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Download, Phone, MessageCircle, ChevronDown, HandCoins } from 'lucide-react';
+import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input, WorkspaceLoadingState } from '../components/UI.jsx';
 import DataConfidenceBar from '../components/DataConfidenceBar.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import { loadCustomerMoneyDashboard, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
+import { loadCustomerMoneyDashboard, loadCustomerCollectibleLines, loadZohoOpenInvoices, zohoStatusAr, loadZohoUnusedCredits,
   planZohoApplyCredits, applyZohoCredits, getZohoWriteAuthUrl, syncZohoDocs } from '../lib/pnlService.js';
 import { normalizeSaudiPhone, loadMorningBriefConfig, saveMorningBriefConfig,
   previewMorningBrief, sendMorningBriefNow, loadWhatsAppCampaignStatus, loadTemplateSentSet } from '../lib/whatsappService.js';
-import { listTasks, loadCollectionAssignmentCandidates, STAGE_LABELS } from '../lib/collectionsService.js';
+import { assignCollectionTasks, listTasks, loadCollectionAssignmentCandidates, STAGE_LABELS } from '../lib/collectionsService.js';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { describeCollectionAgingFilter } from '../lib/tahseelPortalTemplate.js';
 import IvrCallButton from '../components/IvrCallButton.jsx';
 import CustomerCallLog from '../components/CustomerCallLog.jsx';
 import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
-import FigmaCustomerPortfolio from '../components/operations/FigmaCustomerPortfolio.jsx';
+import AgingOperationsQueue from '../components/operations/AgingOperationsQueue.jsx';
+import {
+  AGING_PAGE_SIZE, buildAgingRows, evaluateBulkEligibility, saveAudienceHandoff,
+} from '../lib/agingOperations.js';
 import {
   CUSTOMER_CAMPAIGN_BUCKETS,
   INVOICE_CAMPAIGN_BUCKETS,
@@ -58,6 +61,7 @@ const platformStatusMeta = (customer) => {
 export default function CustomerMoney({ isActive = true }) {
   const { can, user, isAdmin } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [applyTarget, setApplyTarget] = useState(null);   // { zohoId, name } عند فتح مودال التطبيق
   const [d, setD] = useState(null);
@@ -65,6 +69,8 @@ export default function CustomerMoney({ isActive = true }) {
   const [loadError, setLoadError] = useState(null);
   const [collectionTasks, setCollectionTasks] = useState([]);
   const [collectionTaskError, setCollectionTaskError] = useState(false);
+  const [agingLines, setAgingLines] = useState([]);
+  const [agingLinesError, setAgingLinesError] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
   const [q, setQ] = useState(() => searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '');
   const [buckets, setBuckets] = useState(() => {
@@ -77,18 +83,22 @@ export default function CustomerMoney({ isActive = true }) {
     const params = new URLSearchParams(searchParams);
     if (next.size) params.set('aging', [...next].join(','));
     else params.delete('aging');
+    params.delete('page');
     setSearchParams(params);
     return next;
   });
   const clearBuckets = () => {
     const params = new URLSearchParams(searchParams);
     params.delete('aging');
+    params.delete('page');
     setSearchParams(params);
     setBuckets(new Set());
   };
   const [sortBy, setSortBy] = useState(() => searchParams.get('sort') === 'oldest' ? 'oldest' : 'owed');
   const [platformFilter, setPlatformFilter] = useState(() => ['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
-  const [decisionSegment, setDecisionSegment] = useState(() => searchParams.get('action') || 'all');
+  const [selectedAging, setSelectedAging] = useState(() => new Set());
+  const [bulkAction, setBulkAction] = useState(null);
+  const [bulkAssignee, setBulkAssignee] = useState('');
   const [waOpen, setWaOpen] = useState(false);
   const [waSingle, setWaSingle] = useState(null);          // مستلِم واحد عند «واتساب» من البطاقة
   const [waStatus, setWaStatus] = useState(() => new Map()); // حالة آخر حملة لكل هاتف
@@ -114,7 +124,6 @@ export default function CustomerMoney({ isActive = true }) {
     setBuckets(new Set((searchParams.get('aging') || '').split(',').filter(key => allowed.has(key))));
     setSortBy(searchParams.get('sort') === 'oldest' ? 'oldest' : 'owed');
     setPlatformFilter(['active', 'inactive', 'unknown'].includes(searchParams.get('status')) ? searchParams.get('status') : 'all');
-    setDecisionSegment(searchParams.get('action') || 'all');
     setUnclaimedOnly(searchParams.get('source') === 'unclaimed');
   }, [searchParams]);
 
@@ -137,16 +146,19 @@ export default function CustomerMoney({ isActive = true }) {
     try {
       const canViewTasks = can('collections.view');
       const canReadAssignees = can('collections.assign');
-      const [dashboard, tasks, assignees] = await Promise.all([
+      const [dashboard, tasks, assignees, collectibleLines] = await Promise.all([
         loadCustomerMoneyDashboard(),
         canViewTasks ? listTasks().catch(() => null) : Promise.resolve([]),
         canReadAssignees ? loadCollectionAssignmentCandidates().catch(() => []) : Promise.resolve([]),
+        loadCustomerCollectibleLines().catch(() => null),
       ]);
       setD(dashboard);
       setViewUpdatedAt(new Date().toISOString());
       if (tasks !== null) setCollectionTasks(tasks);
       setCollectionTaskError(tasks === null);
       setCollectionAssignees(assignees);
+      if (collectibleLines !== null) setAgingLines(collectibleLines);
+      setAgingLinesError(collectibleLines === null);
     } catch (e) {
       setLoadError(e);
       toast(`فشل التحميل: ${e.message}`, 'error');
@@ -277,6 +289,74 @@ export default function CustomerMoney({ isActive = true }) {
     () => new Map(collectionAssignees.map(employee => [employee.id, employee.name])),
     [collectionAssignees],
   );
+  const agingFilterState = useMemo(() => ({
+    aging: buckets,
+    search: searchParams.get('search') || '',
+    minAmount: searchParams.get('minAmount') || '',
+    maxAmount: searchParams.get('maxAmount') || '',
+    owner: searchParams.get('owner') || 'all',
+    collection: searchParams.get('collection') || 'all',
+    promise: searchParams.get('promise') || 'all',
+    contact: searchParams.get('contact') || 'all',
+    sort: searchParams.get('sort') || 'amount',
+    actionOnly: searchParams.get('action') === 'needed',
+  }), [buckets, searchParams]);
+  const allAgingRows = useMemo(() => buildAgingRows({
+    customers: d?.customers || [], lines: agingLines, buckets,
+    taskByCustomer: collectionTaskByCustomer, assigneeById: collectionAssigneeById,
+    communicationByPhone: waStatus,
+  }), [d, agingLines, buckets, collectionTaskByCustomer, collectionAssigneeById, waStatus]);
+  const agingRows = useMemo(() => {
+    const today = new Date().toLocaleDateString('en-CA');
+    const now = Date.now();
+    const min = agingFilterState.minAmount === '' ? null : Number(agingFilterState.minAmount);
+    const max = agingFilterState.maxAmount === '' ? null : Number(agingFilterState.maxAmount);
+    const needle = agingFilterState.search.trim().toLowerCase();
+    const list = allAgingRows.filter(row => {
+      const { customer, task, summary } = row;
+      if (needle && ![customer.storeName, customer.storeId, customer.zohoId, customer.name]
+        .some(value => String(value || '').toLowerCase().includes(needle))) return false;
+      if (min != null && summary.amount < min) return false;
+      if (max != null && summary.amount > max) return false;
+      if (agingFilterState.owner === 'unassigned' && task?.assigned_to) return false;
+      if (!['all', 'unassigned'].includes(agingFilterState.owner) && task?.assigned_to !== agingFilterState.owner) return false;
+      if (agingFilterState.collection === 'no_task' && task) return false;
+      if (!['all', 'no_task'].includes(agingFilterState.collection) && task?.stage !== agingFilterState.collection) return false;
+      if (agingFilterState.promise === 'today' && task?.promise_date !== today) return false;
+      if (agingFilterState.promise === 'overdue' && !(task?.promise_date && task.promise_date < today)) return false;
+      if (agingFilterState.promise === 'none' && task?.promise_date) return false;
+      const contactAt = row.lastCommunicationAt ? new Date(row.lastCommunicationAt).getTime() : null;
+      if (agingFilterState.contact === 'none' && contactAt) return false;
+      if (agingFilterState.contact === '7d' && (!contactAt || now - contactAt > 7 * 86_400_000)) return false;
+      if (agingFilterState.contact === '30d' && (!contactAt || now - contactAt > 30 * 86_400_000)) return false;
+      if (agingFilterState.actionOnly) {
+        const actionable = !task || !task.assigned_to || task.stage !== 'snoozed'
+          || !task.snooze_until || new Date(task.snooze_until).getTime() <= now;
+        if (!actionable) return false;
+      }
+      return true;
+    });
+    return [...list].sort((a, b) => {
+      if (agingFilterState.sort === 'oldest') return b.summary.oldestDays - a.summary.oldestDays;
+      if (agingFilterState.sort === 'promise') return String(a.task?.promise_date || '9999').localeCompare(String(b.task?.promise_date || '9999'));
+      if (agingFilterState.sort === 'last_contact') return String(b.lastCommunicationAt || '').localeCompare(String(a.lastCommunicationAt || ''));
+      return b.summary.amount - a.summary.amount;
+    });
+  }, [allAgingRows, agingFilterState]);
+  const agingPage = Math.max(1, Number(searchParams.get('page')) || 1);
+  const agingPageRows = useMemo(() => agingRows.slice((agingPage - 1) * AGING_PAGE_SIZE, agingPage * AGING_PAGE_SIZE), [agingRows, agingPage]);
+  const agingFilteredTotal = useMemo(() => +agingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2), [agingRows]);
+  const agingDetailsTotal = useMemo(() => +allAgingRows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2), [allAgingRows]);
+  const agingDashboardTotal = useMemo(() => {
+    if (!d) return 0;
+    if (!buckets.size) return +Number(d.outstanding || 0).toFixed(2);
+    return +[...buckets].reduce((sum, key) => sum + Number(d.campaignAging?.[key] || 0), 0).toFixed(2);
+  }, [d, buckets]);
+  const agingReconciliation = useMemo(() => ({
+    detailsTotal: agingDetailsTotal,
+    dashboardTotal: agingDashboardTotal,
+    ok: !agingLinesError && Math.abs(agingDetailsTotal - agingDashboardTotal) <= 0.01,
+  }), [agingDetailsTotal, agingDashboardTotal, agingLinesError]);
   const platformCounts = useMemo(() => {
     const counts = { all: 0, active: 0, inactive: 0, unknown: 0 };
     for (const customer of d?.customers || []) {
@@ -286,13 +366,104 @@ export default function CustomerMoney({ isActive = true }) {
     return counts;
   }, [d]);
 
-  const focusCustomerFromPortfolio = (customer) => {
-    if (customer) updateUrlFilters({ search: (customer.storeName || customer.name || '').trim() }, { replace: true });
-    window.requestAnimationFrame(() => {
-      const details = document.querySelector('.customer-portfolio-advanced');
-      if (details) details.open = true;
-      details?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  useEffect(() => {
+    const visibleKeys = new Set(agingRows.map(row => row.identityKey));
+    setSelectedAging(current => {
+      const next = new Set([...current].filter(key => visibleKeys.has(key)));
+      return next.size === current.size ? current : next;
     });
+  }, [agingRows]);
+
+  const handleAgingFilter = (key, value) => {
+    if (key === 'agingToggle') {
+      toggleBucket(value);
+      return;
+    }
+    const urlKey = key === 'actionOnly' ? 'action' : key;
+    updateUrlFilters({ [urlKey]: key === 'actionOnly' ? (value ? 'needed' : null) : value, page: null }, { replace: key === 'search' });
+  };
+  const toggleAgingSelection = key => setSelectedAging(current => {
+    const next = new Set(current);
+    next.has(key) ? next.delete(key) : next.add(key);
+    return next;
+  });
+  const toggleAgingPage = checked => setSelectedAging(current => {
+    if (!checked) return new Set();
+    const next = new Set(current);
+    agingPageRows.forEach(row => next.add(row.identityKey));
+    return next;
+  });
+  const openStoreFromAging = (row, invoice = false) => {
+    if (!row.customer.storeId) {
+      toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
+      return;
+    }
+    const returnTo = `${location.pathname}${location.search}`;
+    const params = new URLSearchParams({
+      customer: row.customer.storeId,
+      open: '1',
+      view: 'finance',
+      source: 'aging',
+      returnTo,
+    });
+    if (buckets.size) params.set('aging', [...buckets].join(','));
+    if (invoice) params.set('invoice', 'bucket');
+    navigate(`/customer-360?${params.toString()}`);
+  };
+  const selectedAgingRows = useMemo(() => agingRows.filter(row => selectedAging.has(row.identityKey)), [agingRows, selectedAging]);
+  const bulkPermissions = useMemo(() => ({
+    canAssign: can('collections.assign'), canCampaign: can('campaigns.send'), canIvr: can('campaigns.ivr'),
+  }), [can]);
+  const bulkReview = useMemo(
+    () => evaluateBulkEligibility(selectedAgingRows, bulkAction, bulkPermissions),
+    [selectedAgingRows, bulkAction, bulkPermissions],
+  );
+  const eligibleBulkRows = useMemo(() => bulkReview.filter(row => row.eligible), [bulkReview]);
+  const openBulkReview = action => {
+    if (!selectedAging.size) return;
+    if (!agingReconciliation.ok && action !== 'export') {
+      toast('توقفت الإجراءات: مبلغ الشريحة لا يطابق تفاصيلها بالهللة.', 'error');
+      return;
+    }
+    setBulkAssignee('');
+    setBulkAction(action);
+  };
+  const handoffContext = (channel, rows) => ({
+    version: 1,
+    source: 'aging_operations',
+    channel,
+    aging: [...buckets],
+    filters: Object.fromEntries([...searchParams.entries()].filter(([key]) => key !== 'page')),
+    snapshotAt: viewUpdatedAt || new Date().toISOString(),
+    count: rows.length,
+    totalAmount: +rows.reduce((sum, row) => sum + row.summary.amount, 0).toFixed(2),
+    selectionKeys: rows.map(row => row.identityKey),
+    returnTo: `${location.pathname}${location.search}`,
+  });
+  const confirmBulkAction = async () => {
+    if (!eligibleBulkRows.length) return;
+    if (bulkAction === 'assign') {
+      if (!bulkAssignee) return toast('اختر المحصل قبل تنفيذ الإسناد', 'info');
+      try {
+        const result = await assignCollectionTasks(eligibleBulkRows.map(row => row.task.id), bulkAssignee);
+        toast(`أُسندت ${result.updated || 0} مهمة تحصيل`, 'success');
+        setBulkAction(null); setSelectedAging(new Set()); await refresh();
+      } catch (error) { toast(`تعذر الإسناد: ${error.message}`, 'error'); }
+      return;
+    }
+    if (bulkAction === 'export') {
+      await exportXlsx(eligibleBulkRows.map(row => row.customer), 'Aging_المحدد');
+      setBulkAction(null);
+      return;
+    }
+    const context = handoffContext(bulkAction, eligibleBulkRows);
+    const token = saveAudienceHandoff(context);
+    setBulkAction(null);
+    if (bulkAction === 'followup') {
+      navigate(`/collections?view=queue&batchContext=${encodeURIComponent(token)}&returnTo=${encodeURIComponent(context.returnTo)}`);
+      return;
+    }
+    navigate(`/campaigns?audienceContext=${encodeURIComponent(token)}&channel=${bulkAction === 'ivr' ? 'ivr' : 'whatsapp'}&step=5&returnTo=${encodeURIComponent(context.returnTo)}`);
   };
 
   // مرّر كل نتائج الفلتر إلى نافذة الحملة، بما فيها الصف بلا هاتف. نافذة
@@ -322,27 +493,28 @@ export default function CustomerMoney({ isActive = true }) {
 
   // ملف الحملة — زوهو المرجع للدين + سياق المتجر (هاتف/نوع فوترة/حالة/محفظة/آخر
   // شحنة) للفريق. يمرّ عبر persistAndDownloadExport (تخزين + سجل السحبات، §1.13).
-  const exportXlsx = async () => {
-    if (!filtered.length) return;
+  const exportXlsx = async (exportRows = filtered, exportLabel = null) => {
+    if (!exportRows.length) return;
     const campLabel = buckets.size ? 'مبلغ الشرائح المختارة' : 'مبلغ التحصيل';
     // «رقم المتجر» = معرّفه في نظام لمحة — يسبق الاسم لأنه المفتاح الذي
     // يُبحَث به في المنصّة الداخلية (الاسم قد يتكرّر بين متجرين §1.53).
     const headers = ['العميل', 'رقم المتجر', 'المتجر', 'الهاتف', 'نوع الفوترة', 'الحالة في المنصّة',
       'الرصيد المدين في زوهو', 'الرصيد الدائن المقابل', 'المطلوب تحصيله', 'متأخر',
       'فواتير', 'أقدم استحقاق (يوم)', '1-15', '16-30', '31-60', '61-90', '+90 فواتير فقط', 'رصيد افتتاحي', 'المحفظة', 'آخر شحنة', 'آخر دفعة', 'مبلغها', campLabel];
-    const grossTotal = +filtered.reduce((s, c) => s + (c.grossDue || 0), 0).toFixed(2);
-    const creditTotal = +filtered.reduce((s, c) => s + (c.creditOffset || 0), 0).toFixed(2);
-    const owedTotal = +filtered.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
+    const grossTotal = +exportRows.reduce((s, c) => s + (c.grossDue || 0), 0).toFixed(2);
+    const creditTotal = +exportRows.reduce((s, c) => s + (c.creditOffset || 0), 0).toFixed(2);
+    const owedTotal = +exportRows.reduce((s, c) => s + (c.owed || 0), 0).toFixed(2);
+    const exportSelectedTotal = +exportRows.reduce((s, c) => s + bandAmt(c), 0).toFixed(2);
     const aoa = [
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       buckets.size ? [`الشرائح المختارة: ${campaignBucketLabel(buckets)} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
-      ...filtered.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
+      ...exportRows.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
         c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.inv1_15, c.inv16_30, c.inv31_60, c.inv61_90, c.inv90p, c.opening,
         c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
         c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
       [],
-      ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(headers.length - 10).fill(''), filteredTotal],
+      ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(headers.length - 10).fill(''), exportSelectedTotal],
     ];
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     // 0 = العميل · 1 = رقم المتجر (ضيّق) · 2 = اسم المتجر
@@ -351,10 +523,10 @@ export default function CustomerMoney({ isActive = true }) {
     XLSX.utils.book_append_sheet(wb, ws, 'تحصيل العملاء');
     try {
       await persistAndDownloadExport({
-        wb, fileName: `تحصيل_العملاء_${new Date().toISOString().slice(0, 10)}.xlsx`,
-        kind: 'zoho_campaign', rowCount: filtered.length, total: +filteredTotal.toFixed(2), userId: user?.id || null,
+        wb, fileName: `${exportLabel || 'تحصيل_العملاء'}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        kind: 'zoho_campaign', rowCount: exportRows.length, total: exportSelectedTotal, userId: user?.id || null,
       });
-      toast(`صُدّر ${filtered.length} عميلاً ✓ (محفوظ في سجل السحبات)`, 'success');
+      toast(`صُدّر ${exportRows.length} عميلاً ✓ (محفوظ في سجل السحبات)`, 'success');
     } catch (e) { toast(`فشل التصدير: ${e.message}`, 'error'); }
   };
 
@@ -469,21 +641,25 @@ export default function CustomerMoney({ isActive = true }) {
 
   return (
     <div className="customer-money-page workspace-page">
-      <FigmaCustomerPortfolio
-        customers={filtered}
-        query={q}
-        onQueryChange={(value) => updateUrlFilters({ search: value || null }, { replace: true })}
-        segment={decisionSegment}
-        onSegmentChange={(value) => updateUrlFilters({ action: value === 'all' ? null : value })}
-        taskByCustomer={collectionTaskByCustomer}
-        assigneeById={collectionAssigneeById}
-        onFocusCustomer={focusCustomerFromPortfolio}
-        onExport={exportXlsx}
-        onCampaign={openFocusedCampaign}
-        campaignPanel={campaignSegmentsPanel}
-        campaignActionLabel={buckets.size ? 'مراجعة الحملة' : 'اختيار شرائح الحملة'}
+      <AgingOperationsQueue
+        rows={agingPageRows}
+        totalRows={agingRows.length}
+        totalAmount={agingFilteredTotal}
+        filters={agingFilterState}
+        onFilter={handleAgingFilter}
+        assignees={collectionAssignees}
+        selected={selectedAging}
+        onToggle={toggleAgingSelection}
+        onTogglePage={toggleAgingPage}
+        page={agingPage}
+        onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
+        onOpen={row => openStoreFromAging(row, false)}
+        onInvoices={row => openStoreFromAging(row, true)}
+        onBulk={openBulkReview}
+        reconciliation={agingReconciliation}
+        sourceHealthy={!agingLinesError && !loadError}
         sourceUpdatedAt={viewUpdatedAt}
-        sourceHealthy={!loadError && !collectionTaskError}
+        campaignPanel={campaignSegmentsPanel}
       />
 
       {loadError && (
@@ -765,7 +941,7 @@ export default function CustomerMoney({ isActive = true }) {
             {buckets.size ? `مراجعة حملة (${waRecipients.length})` : 'اختر شريحة للحملة'}
           </Btn>
         )}
-        <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={exportXlsx} disabled={!filtered.length}>تصدير</Btn>
+        <Btn size="sm" variant="ghost" icon={<Download size={13}/>} onClick={() => exportXlsx(filtered)} disabled={!filtered.length}>تصدير</Btn>
       </div>
       <div style={{ fontSize: 11.5, color: 'var(--muted)', marginBottom: 10 }}>
         عرض <b style={{ color: 'var(--text)' }}>{filtered.length}</b> من {d.customers.length} عميلاً
@@ -795,6 +971,37 @@ export default function CustomerMoney({ isActive = true }) {
       )}
       </div>
       </details>
+
+      {bulkAction && (
+        <Modal title={{ assign: 'مراجعة الإسناد الجماعي', followup: 'مراجعة قائمة المتابعة', campaign: 'مراجعة Draft الحملة', ivr: 'مراجعة جمهور IVR', export: 'مراجعة التصدير' }[bulkAction]} onClose={() => setBulkAction(null)} width={680}>
+          <div className="aging-bulk-review">
+            <div className="aging-bulk-review__equation">
+              <div><span>المحدد</span><b>{bulkReview.length}</b></div><i>−</i>
+              <div className="is-excluded"><span>المستبعد</span><b>{bulkReview.length - eligibleBulkRows.length}</b></div><i>=</i>
+              <div className="is-ready"><span>المؤهل</span><b>{eligibleBulkRows.length}</b></div>
+            </div>
+            <div className="aging-bulk-review__amount">إجمالي مبلغ المؤهل <strong>{fmt(eligibleBulkRows.reduce((sum, row) => sum + row.summary.amount, 0))} ر.س</strong></div>
+            {bulkAction === 'assign' && (
+              <label className="aging-bulk-review__assignee">المحصل
+                <select value={bulkAssignee} onChange={e => setBulkAssignee(e.target.value)}>
+                  <option value="">اختر المحصل</option>
+                  {collectionAssignees.map(employee => <option value={employee.id} key={employee.id}>{employee.name}</option>)}
+                </select>
+              </label>
+            )}
+            {bulkAction === 'campaign' && <div className="aging-bulk-review__notice">سيُفتح مركز الحملات كـDraft غير مرسل. سيُعاد احتساب الجمهور والحماية قبل أي تنفيذ.</div>}
+            {bulkAction === 'ivr' && <div className="aging-bulk-review__notice">سيُفتح IVR Review فقط. لن تبدأ أي مكالمة من هذه الشاشة.</div>}
+            {bulkAction === 'followup' && <div className="aging-bulk-review__notice">ستُفتح مهام التحصيل الموجودة فقط؛ لن تُنشأ مهمة صامتة لأي متجر.</div>}
+            <div className="aging-bulk-review__rows">
+              {bulkReview.map(row => <div key={row.identityKey} className={row.eligible ? 'is-ready' : 'is-excluded'}>
+                <span><b>{row.customer.storeName || row.customer.name}</b><small>{fmt(row.summary.amount)} ر.س</small></span>
+                <strong>{row.eligible ? 'مؤهل' : row.exclusionReason}</strong>
+              </div>)}
+            </div>
+            <div className="aging-bulk-review__actions"><Btn variant="ghost" onClick={() => setBulkAction(null)}>إلغاء</Btn><Btn variant="accent" onClick={confirmBulkAction} disabled={!eligibleBulkRows.length || (bulkAction === 'assign' && !bulkAssignee)}>{bulkAction === 'assign' ? 'تنفيذ الإسناد' : bulkAction === 'campaign' ? 'فتح Draft الحملة' : bulkAction === 'ivr' ? 'فتح IVR Review' : bulkAction === 'followup' ? 'فتح قائمة المتابعة' : 'تصدير المؤهل'}</Btn></div>
+          </div>
+        </Modal>
+      )}
 
       <WhatsAppSendModal open={waOpen}
         onClose={() => { setWaOpen(false); setWaSingle(null); }}
@@ -1284,6 +1491,17 @@ function CustomerCard({
   const bandLabel = banded
     ? bandKeys.map(k => (BUCKETS.find(b => b.key === k) || {}).label).filter(Boolean).join(' + ')
     : null;
+  const openStore360 = () => {
+    const params = new URLSearchParams({
+      customer: c.storeId || c.name,
+      open: '1',
+      view: 'finance',
+      source: 'aging',
+      returnTo: returnTo || '/customer-money',
+    });
+    if (bandKeys.length) params.set('aging', bandKeys.join(','));
+    navigate(`/customer-360?${params.toString()}`);
+  };
 
   return (
     <Card style={{ padding: '13px 15px', display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -1401,6 +1619,13 @@ function CustomerCard({
       )}
 
       <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+        <button type="button" onClick={openStore360} title="فتح ملف المتجر المالي الكامل"
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5,
+            padding: '8px 10px', borderRadius: 8, background: 'color-mix(in srgb, var(--accent) 9%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--accent) 28%, var(--border))',
+            color: 'var(--accent)', cursor: 'pointer', fontSize: 11.5, fontWeight: 700 }}>
+          ملف 360 <ChevronLeft size={12}/>
+        </button>
         {digits && (
           /* `amount` = المطلوب سداده (يتبع الفلتر) كي ينطق النص الآلي نفس
              الرقم الظاهر على البطاقة — لا كامل الدين. */

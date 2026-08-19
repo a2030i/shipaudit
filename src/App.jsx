@@ -456,6 +456,44 @@ function AppInner({ theme, toggleTheme }) {
     }
   }, [profile, location.pathname]);
 
+  // Carrier 360 is the canonical user-facing home for carrier-scoped work.
+  // Legacy pages remain valid for global/cross-carrier queues; once a carrier
+  // is present they resolve to the matching section inside the carrier file.
+  useEffect(() => {
+    if (!profile || !pathAllowed) return;
+    const params = new URLSearchParams(location.search);
+    if (rawPath === '/upload' && !params.get('carrier')) {
+      navigate('/hub?action=upload-invoice', { replace: true });
+      return;
+    }
+    if (rawPath === '/merchants') {
+      const next = new URLSearchParams(params);
+      next.set('source', next.get('source') || 'merchants');
+      navigate(`/customer-360?${next.toString()}`, { replace: true });
+      return;
+    }
+    const scopedCarrier = params.get('carrier') || (rawPath === '/contracts' ? params.get('edit') : null);
+    if (!scopedCarrier) return;
+    const destinations = {
+      '/upload': ['invoices', { mode: 'upload' }],
+      '/audits': ['invoices', {}],
+      '/claims': ['claims', {}],
+      '/ledger': ['account', { panel: 'ledger' }],
+      '/cod-settlements': ['account', { panel: 'cod' }],
+      '/aramex-statements': ['account', { panel: 'statements' }],
+      '/payments': ['account', { panel: 'ledger' }],
+      '/carrier-kpi': ['performance', {}],
+      '/contracts': ['contract', {}],
+    };
+    const destination = destinations[rawPath];
+    if (!destination) return;
+    const [view, extra] = destination;
+    const next = new URLSearchParams({ id: scopedCarrier, view, ...extra });
+    const auditId = params.get('audit');
+    if (auditId) next.set('invoice', auditId);
+    navigate(`/carrier?${next.toString()}`, { replace: true });
+  }, [profile, pathAllowed, rawPath, location.search, navigate]);
+
   useEffect(() => {
     const title = PAGE_TITLES[rawPath]
       ?? (rawPath.startsWith('/settings') ? 'الإعدادات' : 'ShipAudit');
@@ -501,11 +539,11 @@ function AppInner({ theme, toggleTheme }) {
   };
   const handleAuditComplete = (audit) => {
     rememberAudit(audit);
-    navigate('/results');
+    navigate(`/carrier?id=${encodeURIComponent(audit.carrierId)}&view=invoices&mode=result&invoice=${encodeURIComponent(audit.id)}`);
   };
   const handleOpenAudit = (audit) => {
     rememberAudit(audit);
-    navigate('/results');
+    navigate(`/carrier?id=${encodeURIComponent(audit.carrierId)}&view=invoices&mode=result&invoice=${encodeURIComponent(audit.id)}`);
   };
 
   const activeFor = (item) => {
@@ -571,7 +609,23 @@ function AppInner({ theme, toggleTheme }) {
   const currentSubTab = currentNavItem ? subTabOf(currentNavItem) : null;
   const currentSection = NAV_SECTIONS.find(section => section.id === currentNavItem?.section);
   const centerRouteSection = NAV_SECTIONS.find(section => section.path === pathname);
-  const contextSection = centerRouteSection || currentSection;
+  const contextParams = new URLSearchParams(location.search);
+  const reportScoped = (
+    rawPath === '/carrier-kpi'
+    || rawPath === '/platform-carriers'
+    || (rawPath === '/crm' && contextParams.get('source') === 'reports')
+    || (rawPath === '/customer-money' && contextParams.get('source') === 'reports')
+    || (rawPath === '/whatsapp-settings' && contextParams.get('source') === 'reports')
+  );
+  const adminScoped = (
+    (rawPath === '/crm' && (contextParams.get('view') || contextParams.get('tab')) === 'settings')
+    || (rawPath === '/zoho-data' && !['customers', 'vendors', 'banks', 'accounts'].includes(contextParams.get('tab')))
+    || (rawPath === '/whatsapp-settings' && (contextParams.get('tab') === 'settings'))
+  );
+  const forcedSectionId = reportScoped ? 'reports' : adminScoped ? 'settings' : null;
+  const contextSection = (forcedSectionId ? NAV_SECTIONS.find(section => section.id === forcedSectionId) : null)
+    || centerRouteSection
+    || currentSection;
   const contextItems = contextSection
     ? visibleNav.filter(item => item.section === contextSection.id)
       .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
@@ -823,6 +877,7 @@ function AppInner({ theme, toggleTheme }) {
                     section={section}
                     groups={groups}
                     workspaces={CENTER_WORKSPACES[section.id]}
+                    allItems={visibleNav}
                     visibleSubTabsFor={visibleSubTabsFor}
                     subTabPath={subTabPath}
                     onNavigate={goto}
@@ -852,7 +907,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#2B68DE"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   { id: 'carriers', path: '/hub', label: 'حالة الناقلين', icon: Building2,
                     eyebrow: 'صورة تشغيلية', purpose: 'ابدأ من حالة كل ناقل وما يحتاج متابعة',
@@ -883,7 +937,7 @@ function AppInner({ theme, toggleTheme }) {
               />
             </PageSlot>
             <PageSlot active={pathname==='/carrier'} scroll>
-              <CarrierProfile/>
+              <CarrierProfile carriers={carriers} setCarriers={setCarriers} onCarriersChange={reloadCarriers}/>
             </PageSlot>
             <PageSlot active={ADMIN_CARRIER_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
@@ -893,7 +947,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#31D5E1"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('carriers.view') ? [{
                     id: 'carriers', path: '/carriers', label: 'شركات الشحن', icon: Truck,
@@ -929,7 +982,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#2B68DE"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('audits.create') ? [{
                     id: 'drop', path: '/drop', label: 'استلام الملفات', icon: Upload,
@@ -970,7 +1022,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#22C55E"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('reports.view_operational') || can('reports.view_financial') || can('reports.view_bank_reconciliation') ? [
                     { id: 'reports', path: '/reports', label: 'مكتبة التقارير', icon: FileText,
@@ -997,7 +1048,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#22C55E"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('internal_exports.view') ? [{
                     id: 'exports', path: '/internal-exports', label: 'الملفات المصدّرة', icon: Download,
@@ -1049,7 +1099,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#2563EB"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('zoho.view') ? [{
                     id: 'zoho', path: '/zoho-data', label: 'زوهو والحسابات', icon: BookOpen,
@@ -1076,7 +1125,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#F59E0B"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('money.pnl') ? [{
                     id: 'pnl', path: '/pnl', label: 'قائمة الدخل', icon: TrendingUp,
@@ -1133,7 +1181,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#2B68DE"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('audits.view') ? [{
                     id: 'fulfillment', path: '/fulfillment', label: 'فوترة التجهيز', icon: Briefcase,
@@ -1163,7 +1210,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#31D5E1"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || ['agents.view', 'system.view_audit_log', 'system.view_settings', 'uploads.view', 'zoho.view', 'whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr', 'webhook.view'].some(permission => can(permission)) ? [{
                     id: 'monitor', path: '/operations', label: 'مراقبة التكاملات', icon: Activity,
@@ -1204,7 +1250,6 @@ function AppInner({ theme, toggleTheme }) {
                 tone="#31D5E1"
                 activePath={pathname}
                 onNavigate={goto}
-                showSwitcher
                 tabs={[
                   ...(isAdmin || can('system.view_settings') || can('carriers.view') || can('carriers.edit_contract') ? [{
                     id: 'settings', path: '/settings/ai', label: 'إعدادات النظام', icon: Settings,
@@ -1308,7 +1353,7 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
     if (!isActive) return;
     let live = true;
     if (auditFromState) {
-      setAudit(auditFromState);
+      navigate(`/carrier?id=${encodeURIComponent(auditFromState.carrierId)}&view=invoices&mode=result&invoice=${encodeURIComponent(auditFromState.id)}`, { replace: true });
       return;
     }
     const auditId = new URLSearchParams(location.search).get('audit');
@@ -1318,7 +1363,7 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
         .then(a => {
           if (!live) return;
           try { sessionStorage.setItem('lastAudit', JSON.stringify(a)); } catch { /* ignore */ }
-          setAudit(a);
+          navigate(`/carrier?id=${encodeURIComponent(a.carrierId)}&view=invoices&mode=result&invoice=${encodeURIComponent(a.id)}`, { replace: true });
         })
         .catch(() => {
           if (live) navigate('/audits', { replace: true });
@@ -1327,9 +1372,9 @@ function AuditResultsPage({ auditFromState, carriers, onNewAudit, isActive }) {
     }
     try {
       const data = JSON.parse(sessionStorage.getItem('lastAudit') || 'null');
-      if (data) { setAudit(data); }
-      else { navigate('/upload', { replace: true }); }
-    } catch { navigate('/upload', { replace: true }); }
+      if (data) navigate(`/carrier?id=${encodeURIComponent(data.carrierId)}&view=invoices&mode=result&invoice=${encodeURIComponent(data.id)}`, { replace: true });
+      else navigate('/hub', { replace: true });
+    } catch { navigate('/hub', { replace: true }); }
     return () => { live = false; };
   }, [isActive, auditFromState, navigate, location.search]);
 

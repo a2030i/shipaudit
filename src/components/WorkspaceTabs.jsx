@@ -20,6 +20,7 @@ export default function WorkspaceTabs({
   onChange,
   tone = 'var(--brand)',
   showContext = true,
+  selectorLabel = 'القسم',
 }) {
   const refs = useRef([]);
   const activeTab = tabs.find(tab => tab.id === activeId) || tabs[0];
@@ -59,7 +60,7 @@ export default function WorkspaceTabs({
         </div>
 
         <label className={`workspace-view-select${useCompactSelector ? ' is-primary' : ''}`}>
-          <span>طريقة العرض</span>
+          <span>{selectorLabel}</span>
           <select value={activeTab?.id || ''} onChange={event => onChange(event.target.value)} aria-label={`العرض داخل ${title}`}>
             {tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.label}</option>)}
           </select>

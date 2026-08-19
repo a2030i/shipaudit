@@ -41,18 +41,21 @@ const TABS = [
   },
   {
     id: 'activation', label: 'تحليل التفعيل', icon: TrendingUp, component: StoreActivation,
+    secondary: true,
     eyebrow: 'نمو مبكر', purpose: 'حوّل التسجيل الجديد إلى أول شحنة',
     description: 'لوحة قياس لفهم سرعة الوصول لأول شحنة؛ المتابعة الفردية وتسجيل الملاحظات تتم من «مسار عملاء المنصّة».',
     outcome: 'أول شحنة ناجحة', tone: 'var(--green)',
   },
   {
     id: 'retargeting', label: 'حملات الاستعادة', icon: Target, component: Retargeting, perm: 'sales.view',
+    secondary: true,
     eyebrow: 'استعادة الإيراد', purpose: 'أعد العملاء الذين شحنوا ثم توقفوا',
     description: 'مساحة تقسيم وتنفيذ حملات عودة جماعية. متابعة العميل الفردية ومواعيده تبقى في مسار العملاء.',
     outcome: 'عودة عميل ذي قيمة', tone: 'var(--gold)',
   },
   {
     id: 'hatif', label: 'مرجع طلبات هاتف', icon: UserPlus, component: HatifLeads, perm: 'sales.hatif_leads',
+    secondary: true,
     eyebrow: 'مرجع قناة التواصل', purpose: 'راجع الطلبات الواردة عند الحاجة',
     description: 'مرجع لما ظهر في هاتف، وليس مولّد Leads تلقائياً. رد العميل يبقى لدى فريق هاتف ولا يفتح فرصة بيع في نظامنا.',
     outcome: 'سياق إضافي بلا ازدواج متابعة', tone: 'var(--accent3)',
@@ -65,12 +68,14 @@ const TABS = [
   },
   {
     id: 'segments', label: 'شرائح الجمهور', icon: Layers, component: Segments, perm: 'sales.segments',
+    secondary: true,
     eyebrow: 'رسائل أدق', purpose: 'قسّم العملاء حسب القيمة والسلوك',
     description: 'أداة تخطيط للحملات وليست قائمة اتصال مستقلة. استخدم الشريحة لاختيار الرسالة، ثم نفّذ من مسار الحملة المناسب.',
     outcome: 'جمهور واضح ورسالة مناسبة', tone: 'var(--accent)',
   },
   {
     id: 'merchants', label: 'دليل المتاجر', icon: ShoppingBag, component: Merchants, perm: 'merchants.view',
+    secondary: true,
     eyebrow: 'مرجع العملاء', purpose: 'ابحث في بيانات المتاجر وحالتها التشغيلية',
     description: 'مرجع معلومات المتجر وربطه، وليس مسار متابعة مبيعات. لا تسجّل نشاطاً بيعياً هنا حتى تبقى المسؤوليات واضحة.',
     outcome: 'بيانات متجر موثوقة', tone: 'var(--muted)',
@@ -89,6 +94,8 @@ export default function SalesHub({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
+  const primaryTabs = visibleTabs.filter(t => !t.secondary);
+  const secondaryTabs = visibleTabs.filter(t => t.secondary && t.id !== 'merchants' && t.id !== 'segments');
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -118,15 +125,31 @@ export default function SalesHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="sales-execution"
-        title="عمل اليوم ومسار المنصة"
-        subtitle="الأولوية والمرحلة والمتابعة والحملة من مساحة تنفيذ واحدة"
-        tone="#8B5CF6"
-        tabs={visibleTabs}
-        activeId={tab}
-        onChange={changeView}
-      />
+      {primaryTabs.some(item => item.id === tab) ? (
+        <WorkspaceTabs
+          scope="sales-execution"
+          title="عمل اليوم والفرص"
+          subtitle="الأولوية والمرحلة والمتابعة دون خلط الفلاتر بالمسارات الرئيسية"
+          tone="#8B5CF6"
+          tabs={primaryTabs}
+          activeId={tab}
+          onChange={changeView}
+          selectorLabel="مسار العمل"
+        />
+      ) : (
+        <div className="workspace-secondary-context" role="status">
+          <span>قائمة محفوظة</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
+          <button type="button" onClick={() => changeView('today')}>العودة إلى عمل اليوم</button>
+        </div>
+      )}
+      <nav className="workspace-filter-bar workspace-saved-views" aria-label="قوائم المبيعات المحفوظة">
+        <span>قوائم محفوظة:</span>
+        {secondaryTabs.map(item => (
+          <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => changeView(item.id)}>{item.label}</button>
+        ))}
+        {visibleTabs.some(item => item.id === 'segments') ? <button type="button" onClick={() => navigate('/campaigns?source=segments')}>شرائح الجمهور</button> : null}
+        {visibleTabs.some(item => item.id === 'merchants') ? <button type="button" onClick={() => navigate('/customer-360?source=sales')}>فتح دليل المتاجر</button> : null}
+      </nav>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;

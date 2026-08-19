@@ -9,7 +9,7 @@
 // cross-joins customer_receivables × merchants × customer_merchant_links
 // in one pass.
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -32,6 +32,8 @@ import InteractionsLog from '../components/InteractionsLog.jsx';
 import WhatsAppSendModal from '../components/WhatsAppSendModal.jsx';
 import { normalizeSaudiPhone } from '../lib/whatsappService.js';
 import { useAuth } from '../lib/auth.jsx';
+
+const Store360Page = lazy(() => import('./Store360Page.jsx'));
 
 // ── Formatters ───────────────────────────────────────────────────
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
@@ -208,6 +210,12 @@ export default function CustomerWatch({ isActive = true }) {
   const location = useLocation();
   const navigate = useNavigate();
   const { profile, can } = useAuth();
+  const routeParams = new URLSearchParams(location.search);
+  const isFullProfile = location.pathname === '/customer-360'
+    && (routeParams.has('customer') || routeParams.get('open') === '1');
+  const profileIdentity = isFullProfile
+    ? routeParams.get('customer') || routeParams.get('search') || routeParams.get('q') || ''
+    : '';
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [syncingZoho, setSyncingZoho] = useState(false);
@@ -281,7 +289,7 @@ export default function CustomerWatch({ isActive = true }) {
     setSyncingZoho(false);
   }, [refresh]);
 
-  useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+  useEffect(() => { if (isActive && !isFullProfile) refresh(); }, [isActive, isFullProfile, refresh, location.pathname]);
 
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -309,7 +317,9 @@ export default function CustomerWatch({ isActive = true }) {
 
   const openCustomer360 = (entry) => {
     const identity = entry?.merchant?.storeId || entry?.name;
-    setOpenCustomer(entry);
+    // Full Store 360 owns the active experience. Keeping the legacy modal
+    // state here would make it reappear as a ghost when the user returns.
+    setOpenCustomer(null);
     if (!identity) return;
     const params = new URLSearchParams(location.search);
     if (!params.get('returnTo')) params.set('returnTo', `${location.pathname}${location.search}`);
@@ -477,6 +487,12 @@ export default function CustomerWatch({ isActive = true }) {
     XLSX.writeFile(rtl(wb), `${listName}_${dateStr}.xlsx`);
     toast(`تم تصدير ${rows.length} صف`, 'success');
   };
+
+  if (isFullProfile && profileIdentity) {
+    return <Suspense fallback={<div style={{ display: 'flex', justifyContent: 'center', padding: 80 }}><Spinner size={28}/></div>}>
+      <Store360Page identity={profileIdentity}/>
+    </Suspense>;
+  }
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
@@ -689,7 +705,7 @@ export default function CustomerWatch({ isActive = true }) {
                   const meta = ANOMALY_META[a.kind];
                   const Icon = meta?.icon || AlertTriangle;
                   return (
-                    <div key={i} onClick={() => setOpenCustomer({
+                    <div key={i} onClick={() => openCustomer360({
                       kind: a.c.merchant ? 'customer' : 'phantom',
                       name: a.c.name, customer: a.c, merchant: a.c.merchant,
                     })} style={{
@@ -868,7 +884,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: c.daysOutstanding ? `${c.daysOutstanding}ي متأخر` : null,
               })}
               empty="لا توجد مديونيات"
-              onRowClick={(c) => setOpenCustomer({ kind: 'customer', name: c.name, customer: c, merchant: c.merchant })}
+              onRowClick={(c) => openCustomer360({ kind: 'customer', name: c.name, customer: c, merchant: c.merchant })}
               onExport={() => handleExport('أعلى_المديونيات', data.top.byDebt, (kind, c) => kind === 'headers'
                 ? ['اسم العميل', 'المتجر', 'الهاتف', 'الإجمالي', 'عدد الفواتير', 'أقدم فاتورة', 'الأيام']
                 : [c.name, c.merchant?.storeName || '', c.merchant?.phone || '', c.total?.toFixed(2) || 0, c.invoiceCount || 0, c.oldestInvoiceDate || '', c.daysOutstanding || ''])}
@@ -889,7 +905,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.last_shipment_at ? `آخر شحنة ${daysAgo(m.last_shipment_at)}ي` : null,
               })}
               empty="لا توجد بيانات شحن"
-              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+              onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
               onExport={() => handleExport('أنشط_المتاجر', data.top.byShipments, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'حالة المتجر', 'نوع الفوترة']
@@ -911,7 +927,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.last_topup_at ? `آخر شحن ${daysAgo(m.last_topup_at)}ي` : null,
               })}
               empty="لا توجد محافظ نشطة"
-              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+              onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
               onExport={() => handleExport('أكبر_المحافظ', data.top.byWallet, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد', 'آخر شحن للمحفظة']
@@ -933,7 +949,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: m.billing_type || null,
               })}
               empty="لا توجد أرصدة سالبة"
-              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+              onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
               onExport={() => handleExport('محافظ_سالبة', data.top.walletDebtors, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'الرصيد السالب', 'نوع الفوترة']
@@ -955,7 +971,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: (m.shipment_count || 0) === 0 ? 'لم يشحن بعد' : `${m.shipment_count} شحنة`,
               })}
               empty="لا تسجيلات جديدة"
-              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+              onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
               onExport={() => handleExport('أحدث_التسجيلات', data.top.newest, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'تاريخ التسجيل', 'عدد الشحنات', 'حالة المتجر']
@@ -977,7 +993,7 @@ export default function CustomerWatch({ isActive = true }) {
                 meta: `${m.shipment_count} شحنة في حياته`,
               })}
               empty="لا يوجد عملاء فُقدوا — ممتاز"
-              onRowClick={(m) => setOpenCustomer({ kind: 'merchant', name: m.store_name, customer: null,
+              onRowClick={(m) => openCustomer360({ kind: 'merchant', name: m.store_name, customer: null,
                 merchant: { storeId: m.store_id, storeName: m.store_name, phone: m.phone, billingType: m.billing_type, platformStatus: m.status, shipmentCount: m.shipment_count, lastShipmentAt: m.last_shipment_at, walletBalance: Number(m.wallet_balance) || 0, createdAt: m.created_at_platform, lastTopupAt: m.last_topup_at, integrationType: m.integration_type } })}
               onExport={() => handleExport('فُقدوا', data.top.churned, (kind, m) => kind === 'headers'
                 ? ['اسم المتجر', 'رقم المتجر', 'الهاتف', 'عدد الشحنات', 'آخر شحنة', 'تاريخ التسجيل']
@@ -1007,7 +1023,7 @@ export default function CustomerWatch({ isActive = true }) {
           rows={data.anomalies[openAnomaly] || []}
           onClose={() => setOpenAnomaly(null)}
           onRowClick={(c) => {
-            setOpenCustomer({
+            openCustomer360({
               kind: c.merchant ? 'customer' : 'phantom',
               name: c.name,
               customer: c,

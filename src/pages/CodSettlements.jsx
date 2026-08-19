@@ -47,12 +47,12 @@ const fmt = n => (n == null || Number.isNaN(n))
 // both, so an import is consumed exactly once per click.
 const CONSUMED_COD_IMPORTS = new Set();
 
-export default function CodSettlements({ isActive = true }) {
+export default function CodSettlements({ isActive = true, carrierId = '', embedded = false }) {
   const { user, can } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
   const carriers = listSupportedCarriers();
-  const [carrier, setCarrier] = useState(carriers[0]?.id || 'c_1777506662790');
+  const [carrier, setCarrier] = useState(carrierId || carriers[0]?.id || 'c_1777506662790');
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState('outstanding'); // outstanding|pending|disputed|matched|all
@@ -85,6 +85,10 @@ export default function CodSettlements({ isActive = true }) {
   const [fileKindById, setFileKindById] = useState(new Map());
   // carrierMeta: كل شركات النظام (id+name) لبناء المنتقي الشامل (لا المحلّلات فقط).
   const [carrierMeta, setCarrierMeta] = useState([]);
+
+  useEffect(() => {
+    if (carrierId) setCarrier(carrierId);
+  }, [carrierId]);
 
   const refresh = useCallback(async () => {
     if (!carrier) return;
@@ -551,8 +555,8 @@ export default function CodSettlements({ isActive = true }) {
   };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {fromWorkspace && (
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+      {fromWorkspace && !embedded && (
         <CarrierTabs
           carrierId={carrier}
           carrierName={carriers.find(c => c.id === carrier)?.name || carrier}
@@ -565,7 +569,7 @@ export default function CodSettlements({ isActive = true }) {
         subtitle="المعتمد للمراجعات يُغذّي «المتوقَّع»، والناقل يُحوّل النقد فعلياً كـ«مُستلَم» — الفرق = ما تبقّى"
         actions={
           <>
-            <select value={carrier} onChange={e => setCarrier(e.target.value)} aria-label="اختر شركة الشحن"
+            {embedded && carrierId ? null : <select value={carrier} onChange={e => setCarrier(e.target.value)} aria-label="اختر شركة الشحن"
               className="page-action-select"
               style={{
                 padding: '10px 14px', borderRadius: 999, fontSize: 13, fontWeight: 600,
@@ -584,7 +588,7 @@ export default function CodSettlements({ isActive = true }) {
                 }
                 return <option key={c.id} value={c.id}>{c.label}{dueLabel}</option>;
               })}
-            </select>
+              </select>}
             <Btn size="md" variant="ghost" icon={<Upload size={14}/>}
               onClick={handleReviewUpload}
               title="اختر فاتورة هذا الناقل هنا — تُفتح المراجعة جاهزة على النتائج">

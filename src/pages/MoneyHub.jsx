@@ -44,6 +44,7 @@ const TABS = [
   {
     id: 'unclassified', label: 'العمليات غير المصنفة', icon: ListFilter, component: BankStatement,
     perm: 'bank.view',
+    secondary: true,
     componentProps: { defaultSavedClass: 'unclassified' },
     eyebrow: 'استثناءات البنك', purpose: 'صنّف العمليات التي لم ترتبط بوجهتها بعد',
     description: 'هذا عرض مستقل لنفس مصدر البنك، ولا يدمج عملياته مع COD أو دفعات الناقلين.',
@@ -62,6 +63,7 @@ export default function MoneyHub({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = useMemo(() => TABS.filter(item => can(item.perm)), [can]);
+  const primaryTabs = useMemo(() => visibleTabs.filter(item => !item.secondary), [visibleTabs]);
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -100,15 +102,29 @@ export default function MoneyHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="cash-settlements"
-        title="النقد والتسويات"
-        subtitle="البنوك وCOD ومدفوعات الناقلين في Views منفصلة وواضحة"
-        tone="#F59E0B"
-        tabs={visibleTabs}
-        activeId={tab}
-        onChange={changeView}
-      />
+      {primaryTabs.some(item => item.id === tab) ? (
+        <WorkspaceTabs
+          scope="cash-settlements"
+          title="النقد والتسويات"
+          subtitle="البنوك وCOD ومدفوعات الناقلين تبقى أقسامًا مستقلة"
+          tone="#F59E0B"
+          tabs={primaryTabs}
+          activeId={tab}
+          onChange={changeView}
+          selectorLabel="نوع الحركة"
+        />
+      ) : (
+        <div className="workspace-secondary-context" role="status">
+          <span>فلتر محفوظ</span><strong>العمليات غير المصنفة</strong>
+          <button type="button" onClick={() => changeView('bank')}>العودة إلى البنوك</button>
+        </div>
+      )}
+      {visibleTabs.some(item => item.id === 'unclassified') ? (
+        <nav className="workspace-filter-bar workspace-saved-views" aria-label="فلاتر النقد والتسويات">
+          <span>فلتر محفوظ:</span>
+          <button type="button" aria-pressed={tab === 'unclassified'} onClick={() => changeView('unclassified')}>العمليات غير المصنفة</button>
+        </nav>
+      ) : null}
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;

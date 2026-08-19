@@ -30,6 +30,22 @@ test('collection audience amount is calculated only from selected aging buckets'
   assert.equal(rows[0].fields.aging_filter, 'inv61_90,inv90p');
 });
 
+test('general campaigns accept manual rows without using collections or Zoho', () => {
+  const definition = defaultAudienceDefinition('general');
+  definition.manualRows = [
+    { name: 'عميل أول', phone: '0501234567' },
+    { name: 'مكرر', phone: '+966501234567' },
+    { name: 'عميل ثان', phone: '0557654321', amount: 120 },
+    { name: 'غير صالح', phone: '123' },
+  ];
+
+  const rows = filterSmartAudience({ rows: [] }, 'general', definition);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].name, 'عميل أول');
+  assert.equal(rows[1].amount, 120);
+  assert.ok(rows.every(row => row.source === 'manual_campaign'));
+});
+
 test('campaign center is a Sales workspace card and not an eighth primary center', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
@@ -51,6 +67,8 @@ test('all outbound channels keep their existing review gates', async () => {
   assert.match(center, /<IvrCampaignModal/);
   assert.match(center, /prepareWhatsAppAudienceRows/);
   assert.match(center, /summarizeWhatsAppAudience/);
+  assert.match(center, /الموظف المسؤول في هاتف/);
+  assert.match(center, /رفع Excel/);
   assert.doesNotMatch(center, /sendWhatsAppCampaign/);
   assert.match(whatsappModal, /lockedCampaignName/);
   assert.match(ivrModal, /lockedCampaignName/);

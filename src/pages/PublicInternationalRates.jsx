@@ -1,18 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
-import {
-  ArrowLeft, ChevronDown, Info, PackageCheck, Plane, Sparkles,
-} from 'lucide-react';
+import { ArrowLeft, ChevronDown, Info, Sparkles } from 'lucide-react';
 import { LamhaLogo } from '../components/BrandLogo.jsx';
 import {
+  calculateChargeableWeight,
   calculateInternationalQuotes,
   INTERNATIONAL_COUNTRIES,
 } from '../lib/internationalRates.js';
 import './PublicInternationalRates.css';
 
 const INITIAL_FORM = {
-  direction: 'outbound',
-  country: 'ae',
+  country: '',
   weight: 0.5,
+  length: 25,
+  width: 10,
+  height: 10,
 };
 
 const money = value => Number(value || 0).toLocaleString('en-US', {
@@ -20,91 +21,66 @@ const money = value => Number(value || 0).toLocaleString('en-US', {
   maximumFractionDigits: 2,
 });
 
-function Segment({ value, onChange, options, ariaLabel }) {
-  return (
-    <div className="ir-segment" role="group" aria-label={ariaLabel}>
-      {options.map(option => (
-        <button
-          key={option.value}
-          type="button"
-          className={value === option.value ? 'active' : ''}
-          onClick={() => onChange(option.value)}
-          aria-pressed={value === option.value}
-        >
-          {option.icon}
-          {option.label}
-        </button>
-      ))}
-    </div>
-  );
-}
-
 function CarrierWordmark({ id }) {
   if (id === 'aramex') return <span className="ir-wordmark aramex">أرامكس</span>;
   return <span className="ir-wordmark smsa">سمسا</span>;
 }
 
-function QuoteRow({ quote, quoteKey }) {
-  const metrics = [
-    { label: 'السعر الأساسي', value: `${money(quote.basePrice)} ر.س` },
-    { label: 'الوزن الإضافي', value: `${money(quote.additionalWeightCharge)} ر.س` },
-    { label: 'رسوم الوقود', value: `${money(quote.fuelCharge)} ر.س` },
-    { label: 'رسوم أخرى', value: `${money(quote.otherChargesSar)} ر.س` },
-  ];
+function QuoteRow({ quote }) {
   return (
-    <details className={`ir-quote ${quote.cheapest ? 'best' : ''}`} defaultOpen={quote.cheapest} key={`${quoteKey}-${quote.id}`}>
-      <summary>
+    <article className={`ir-quote ${quote.cheapest ? 'best' : ''}`}>
+      <div className="ir-quote-summary">
         <div className="ir-carrier">
           <CarrierWordmark id={quote.id} />
           <span>{quote.service}</span>
         </div>
         <div className="ir-quote-breakdown">
-          {metrics.map(metric => (
-            <div className="ir-quote-metric" key={metric.label}>
-              <span>{metric.label}</span>
-              <strong>{metric.value}</strong>
-            </div>
-          ))}
-          <div className="ir-quote-total">
-            <span>المجموع</span>
-            <strong>{money(quote.total)} ر.س</strong>
-          </div>
+          <table className="ir-cost-table">
+            <thead>
+              <tr>
+                <th>الجزء</th>
+                <th>سعر الشحن</th>
+                <th>الوقود</th>
+                <th>RSS</th>
+                <th>إجمالي الجزء</th>
+              </tr>
+            </thead>
+            <tbody>
+              {quote.costBreakdown.map(row => (
+                <tr key={row.key}>
+                  <th scope="row">{row.label}</th>
+                  <td>{money(row.shipping)} ر.س</td>
+                  <td>{money(row.fuel)} ر.س</td>
+                  <td>{money(row.rss)} ر.س</td>
+                  <td>{money(row.total)} ر.س</td>
+                </tr>
+              ))}
+              <tr className="ir-cost-total">
+                <th scope="row">المجموع النهائي</th>
+                <td>{money(quote.basePrice + quote.additionalWeightCharge)} ر.س</td>
+                <td>{money(quote.fuelCharge)} ر.س</td>
+                <td>{money(quote.otherChargesSar)} ر.س</td>
+                <td>{money(quote.total)} ر.س</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
         {quote.cheapest ? <span className="ir-best-label"><Sparkles size={15} /> الأوفر</span> : null}
-        <ChevronDown className="ir-chevron" size={21} aria-hidden="true" />
-      </summary>
-      <div className="ir-quote-details">
-        <div className="ir-lines">
-          {quote.lines.map(line => (
-            <div key={line.key}>
-              <span>{line.label}</span>
-              <strong>{money(line.amount)} ر.س</strong>
-            </div>
-          ))}
-          <div className="ir-billed-weight">
-            <span>الوزن المحتسب</span>
-            <strong>{quote.billedWeight} كجم</strong>
-          </div>
-        </div>
       </div>
-    </details>
+    </article>
   );
 }
 
 export default function PublicInternationalRates() {
   const [form, setForm] = useState(INITIAL_FORM);
-  const [submitted, setSubmitted] = useState(INITIAL_FORM);
+  const [submitted, setSubmitted] = useState(null);
 
   const country = useMemo(
-    () => INTERNATIONAL_COUNTRIES.find(item => item.code === submitted.country),
-    [submitted.country],
+    () => INTERNATIONAL_COUNTRIES.find(item => item.code === submitted?.country),
+    [submitted?.country],
   );
-  const availableCountries = useMemo(
-    () => INTERNATIONAL_COUNTRIES.filter(item => form.direction === 'outbound' || item.zone !== 'smsa_only'),
-    [form.direction],
-  );
-  const quotes = useMemo(() => calculateInternationalQuotes(submitted), [submitted]);
-  const quoteKey = `${submitted.direction}-${submitted.country}-${submitted.weight}`;
+  const quotes = useMemo(() => (submitted ? calculateInternationalQuotes(submitted) : []), [submitted]);
+  const formWeights = useMemo(() => calculateChargeableWeight(form), [form]);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -113,15 +89,9 @@ export default function PublicInternationalRates() {
   }, []);
 
   const update = (key, value) => setForm(current => ({ ...current, [key]: value }));
-  const setDirection = direction => {
-    setForm(current => ({
-      ...current,
-      direction,
-      country: direction === 'inbound' && current.country === 'tr' ? 'ae' : current.country,
-    }));
-  };
   const submit = event => {
     event.preventDefault();
+    if (!form.country) return;
     setSubmitted({
       ...form,
       weight: Math.max(0.01, Number(form.weight) || 0.5),
@@ -145,21 +115,11 @@ export default function PublicInternationalRates() {
         <form className="ir-form" onSubmit={submit}>
           <h2>بيانات الشحنة</h2>
 
-          <label className="ir-label">الاتجاه</label>
-          <Segment
-            value={form.direction}
-            onChange={setDirection}
-            ariaLabel="اتجاه الشحنة"
-            options={[
-              { value: 'outbound', label: 'تصدير من السعودية', icon: <Plane size={18} /> },
-              { value: 'inbound', label: 'استيراد إلى السعودية', icon: <PackageCheck size={18} /> },
-            ]}
-          />
-
-          <label className="ir-label" htmlFor="ir-country">الدولة</label>
+          <label className="ir-label" htmlFor="ir-country">الوجهة</label>
           <div className="ir-select-wrap">
-            <select id="ir-country" value={form.country} onChange={event => update('country', event.target.value)}>
-              {availableCountries.map(item => (
+            <select id="ir-country" aria-label="الوجهة" value={form.country} onChange={event => update('country', event.target.value)} required>
+              <option value="" disabled>اختر الوجهة</option>
+              {INTERNATIONAL_COUNTRIES.map(item => (
                 <option key={item.code} value={item.code}>{item.name}</option>
               ))}
             </select>
@@ -173,50 +133,61 @@ export default function PublicInternationalRates() {
             </label>
           </div>
 
+          <fieldset className="ir-dimensions">
+            <legend>أبعاد الشحنة (سم)</legend>
+            {[
+              { key: 'length', label: 'الطول' },
+              { key: 'width', label: 'العرض' },
+              { key: 'height', label: 'الارتفاع' },
+            ].map(dimension => (
+              <label key={dimension.key} htmlFor={`ir-${dimension.key}`}>
+                <span>{dimension.label}</span>
+                <input
+                  id={`ir-${dimension.key}`}
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  inputMode="decimal"
+                  value={form[dimension.key]}
+                  onChange={event => update(dimension.key, event.target.value)}
+                  placeholder="0"
+                  required
+                />
+              </label>
+            ))}
+          </fieldset>
+
+          <div className="ir-weight-summary" aria-live="polite">
+            <div><span>الوزن الحجمي</span><strong>{money(formWeights.volumetricWeight)} كجم</strong></div>
+            <div><span>الوزن المعتمد</span><strong>{money(formWeights.chargeableWeight)} كجم</strong></div>
+            <small>الطول × العرض × الارتفاع ÷ 5000، ويُعتمد الأعلى بين الحجمي والفعلي.</small>
+          </div>
+
           <button className="ir-submit" type="submit">احسب السعر</button>
         </form>
 
         <section className="ir-results" aria-live="polite">
-          <div className="ir-results-head">
-            <div>
-              <h2>نتائج أفضل الأسعار</h2>
-              <p>{country?.name} · طرد مدفوع · {submitted.weight} كجم</p>
-            </div>
-            <span>{submitted.direction === 'outbound' ? 'من السعودية' : 'إلى السعودية'}</span>
-          </div>
+          {submitted ? (
+            <>
+              <div className="ir-results-head">
+                <div>
+                  <h2>نتائج أفضل الأسعار</h2>
+                  <p>{country?.name} · طرد مدفوع · {money(quotes[0]?.chargeableWeight || submitted.weight)} كجم معتمد</p>
+                </div>
+                <span>من السعودية</span>
+              </div>
 
-          <div className="ir-quotes">
-            {quotes.length ? quotes.map(quote => <QuoteRow key={quote.id} quote={quote} quoteKey={quoteKey} />) : (
-              <div className="ir-empty"><Info size={22} /> لا يوجد سعر منشور لهذه الحالة في المرفقات.</div>
-            )}
-          </div>
+              <div className="ir-quotes">
+                {quotes.length ? quotes.map(quote => <QuoteRow key={quote.id} quote={quote} />) : (
+                  <div className="ir-empty"><Info size={22} /> لا يوجد سعر منشور لهذه الحالة في المرفقات.</div>
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="ir-empty"><Info size={22} /> اختر الوجهة ثم اضغط «احسب السعر» لعرض النتائج.</div>
+          )}
 
         </section>
-      </section>
-
-      <section className="ir-detail-band">
-        <div className="ir-comparison">
-          <h2>تفاصيل المقارنة</h2>
-          <div className="ir-table-scroll">
-            <table>
-              <thead><tr><th>الناقل</th><th>الخدمة</th><th>السعر الأساسي</th><th>الوزن الإضافي</th><th>رسوم الوقود</th><th>رسوم أخرى</th><th>المجموع</th></tr></thead>
-              <tbody>
-                {quotes.map(quote => (
-                  <tr key={quote.id}>
-                    <td><CarrierWordmark id={quote.id} /></td>
-                    <td>{quote.service}</td>
-                    <td>{money(quote.basePrice)} ر.س</td>
-                    <td>{money(quote.additionalWeightCharge)} ر.س</td>
-                    <td>{money(quote.fuelCharge)} ر.س</td>
-                    <td>{money(quote.otherChargesSar)} ر.س</td>
-                    <td className={quote.cheapest ? 'lowest' : ''}>{money(quote.total)} ر.س</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
       </section>
 
       <footer className="ir-footer">

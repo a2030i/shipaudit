@@ -762,6 +762,7 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
 
   const control = data.col_map?.__control ?? null;
   const verificationStatus = Number(control?.version) >= 3 && control?.valid === true
+    && !!control?.sourceHash && !!control?.sourcePath
     && !!data.file_name && !!data.contract_label
     ? 'verified'
     : 'legacy_unverified';
@@ -797,7 +798,10 @@ export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
       ...rebuilt,
       total:         data.row_count || rebuilt.total,
       ok:            okCount,
-      mismatch:      data.mismatch_count ?? rebuilt.mismatch,
+      // Historical rows may retain a stale persisted counter while their
+      // stored shipment details still contain the reviewable variances.
+      // When details are present, keep the summary aligned with drill-down.
+      mismatch:      results.length ? rebuilt.mismatch : (data.mismatch_count ?? 0),
       totalBilled:   Number(data.total_billed)   || 0,
       totalExpected: Number(data.total_expected) || 0,
       totalTax:      Number(data.total_tax)      || 0,

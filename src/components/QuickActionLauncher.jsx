@@ -1,4 +1,4 @@
-import { Building2, FileSpreadsheet, HandCoins, Landmark, Target, Upload, X } from 'lucide-react';
+import { Building2, FileSpreadsheet, HandCoins, Landmark, Lock, Target, Upload, X } from 'lucide-react';
 
 const ACTIONS = [
   {
@@ -11,10 +11,10 @@ const ACTIONS = [
   },
   {
     id: 'carrier-file',
-    title: 'رفع ملف شركة شحن',
-    description: 'استقبال الملف وتحديد مسار التدقيق الصحيح.',
+    title: 'رفع فاتورة شركة شحن',
+    description: 'اختر الشركة ثم ارفع الفاتورة للمراجعة من ملفها.',
     icon: Upload,
-    path: '/drop',
+    path: '/hub?action=upload-invoice',
   },
   {
     id: 'collection',
@@ -29,6 +29,13 @@ const ACTIONS = [
     description: 'فتح كشوف الحساب والأرصدة والعمليات غير المصنفة.',
     icon: Landmark,
     path: '/bank',
+  },
+  {
+    id: 'period-close',
+    title: 'إقفال الفترة',
+    description: 'راجع جاهزية الفترة ثم نفّذ الإقفال بصلاحيتك الحالية.',
+    icon: Lock,
+    path: '/periods',
   },
   {
     id: 'lead',

@@ -9,12 +9,12 @@ import { useAuth } from '../lib/auth.jsx';
 
 const fmt = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export default function Claims({ carriers = [], isActive }) {
+export default function Claims({ carriers = [], isActive, carrierId = '', embedded = false }) {
   const { user } = useAuth();
   const [claims, setClaims]   = useState(null);
   const [loading, setLoading] = useState(false);
   const [modal, setModal]     = useState(false);
-  const [form, setForm]       = useState({ carrierId: '', title: '', amount: '', reference: '', notes: '' });
+  const [form, setForm]       = useState({ carrierId: carrierId || '', title: '', amount: '', reference: '', notes: '' });
   const [filter, setFilter]   = useState('active'); // active | all
 
   const nameById = useMemo(() => new Map(carriers.map(c => [c.id, c.name])), [carriers]);
@@ -26,6 +26,9 @@ export default function Claims({ carriers = [], isActive }) {
     setLoading(false);
   }, []);
   useEffect(() => { if (isActive && !claims) refresh(); }, [isActive, claims, refresh]);
+  useEffect(() => {
+    if (carrierId) setForm(current => ({ ...current, carrierId }));
+  }, [carrierId]);
 
   const submit = async () => {
     if (!form.carrierId || !form.title || !(Number(form.amount) > 0)) {
@@ -35,7 +38,7 @@ export default function Claims({ carriers = [], isActive }) {
       await createClaim({ ...form, userId: user?.id });
       toast('سُجّلت المطالبة', 'success');
       setModal(false);
-      setForm({ carrierId: '', title: '', amount: '', reference: '', notes: '' });
+      setForm({ carrierId: carrierId || '', title: '', amount: '', reference: '', notes: '' });
       refresh();
     } catch (e) { toast(`فشل: ${e.message}`, 'error'); }
   };
@@ -60,11 +63,12 @@ export default function Claims({ carriers = [], isActive }) {
     catch (e) { toast(`فشل: ${e.message}`, 'error'); }
   };
 
-  const visible = (claims || []).filter(c => filter === 'all' || c.status === 'open' || c.status === 'submitted');
-  const sum = summarizeClaims(claims || []);
+  const scopedClaims = carrierId ? (claims || []).filter(c => String(c.carrier_id) === String(carrierId)) : (claims || []);
+  const visible = scopedClaims.filter(c => filter === 'all' || c.status === 'open' || c.status === 'submitted');
+  const sum = summarizeClaims(scopedClaims);
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
+    <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
         icon={<Scale size={22}/>}
         title="المطالبات"
@@ -164,10 +168,16 @@ export default function Claims({ carriers = [], isActive }) {
 
       {modal && (
         <Modal title="⚖️ مطالبة جديدة" onClose={() => setModal(false)} width={480}>
-          <Select label="الناقل" value={form.carrierId} onChange={e => setForm(f => ({ ...f, carrierId: e.target.value }))}>
-            <option value="">— اختر —</option>
-            {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </Select>
+          {carrierId ? (
+            <div style={{ padding: 11, marginBottom: 10, borderRadius: 9, background: 'var(--surface)', border: '1px solid var(--border)', fontSize: 12 }}>
+              شركة الشحن: <strong>{nameById.get(carrierId) || carrierId}</strong>
+            </div>
+          ) : (
+            <Select label="شركة الشحن" value={form.carrierId} onChange={e => setForm(f => ({ ...f, carrierId: e.target.value }))}>
+              <option value="">— اختر —</option>
+              {carriers.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </Select>
+          )}
           <Input label="عنوان المطالبة" value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))}
             placeholder="مثال: زيادة رسوم وقود — فواتير مايو"/>
           <Input label="المبلغ (ر.س)" type="number" value={form.amount} onChange={e => setForm(f => ({ ...f, amount: e.target.value }))}/>

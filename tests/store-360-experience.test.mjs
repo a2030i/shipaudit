@@ -1,0 +1,129 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+import { normalizeStoreTimeline, STORE_TIMELINE_FILTERS } from '../src/lib/store360Timeline.js';
+
+const pagePath = new URL('../src/pages/Store360Page.jsx', import.meta.url);
+const servicePath = new URL('../src/lib/store360Service.js', import.meta.url);
+const customerWatchPath = new URL('../src/pages/CustomerWatch.jsx', import.meta.url);
+const collectionsPath = new URL('../src/pages/Collections.jsx', import.meta.url);
+const customerMoneyPath = new URL('../src/pages/CustomerMoney.jsx', import.meta.url);
+
+test('unified timeline keeps the experience contract, removes undated rows, and sorts newest first', () => {
+  const rows = normalizeStoreTimeline({
+    payments: [{ id: 1, date: '2026-08-18T10:00:00Z', amount: 120 }],
+    sales: [
+      { id: 2, created_at: '2026-08-19T10:00:00Z', outcome: 'interested' },
+      { id: 3, outcome: 'must-not-be-invented' },
+    ],
+    shipments: [{ id: 4, order_date: '2026-08-17', awb: 'AWB-4', order_status: 'delivered' }],
+  });
+
+  assert.equal(rows.length, 3);
+  assert.deepEqual(rows.map(row => row.type), ['sales', 'payment', 'shipment']);
+  for (const row of rows) {
+    assert.deepEqual(Object.keys(row), [
+      'id', 'type', 'group', 'occurredAt', 'source', 'actor', 'title', 'outcome',
+      'details', 'amount', 'status', 'detailUrl', 'sourceAvailability',
+    ]);
+    assert.match(row.occurredAt, /^2026-/);
+  }
+});
+
+test('timeline exposes only the approved filters', () => {
+  assert.deepEqual(STORE_TIMELINE_FILTERS.map(([id]) => id), [
+    'all', 'finance', 'sales', 'collections', 'shipments', 'support', 'communications',
+  ]);
+});
+
+test('Store 360 contains the approved six views and preserves URL context', async () => {
+  const source = await readFile(pagePath, 'utf8');
+  for (const label of [
+    'نظرة عامة', 'المالية والفواتير', 'المبيعات والتحصيل',
+    'الشحنات والناقلون', 'الدعم والتواصل', 'النشاط الكامل',
+  ]) assert.match(source, new RegExp(label));
+
+  assert.match(source, /new URLSearchParams\(location\.search\)/);
+  assert.match(source, /params\.get\('returnTo'\)/);
+  assert.match(source, /params\.get\('invoice'\)/);
+  assert.match(source, /contextParams\.get\('aging'\)/);
+  assert.match(source, /next\.set\('view', nextView\)/);
+  assert.match(source, /safeReturnTo\(params\.get\('returnTo'\), '\/customer-money'\)/);
+});
+
+test('Aging invoice drill-down remains inside Store 360 and labels promise balances', async () => {
+  const source = await readFile(pagePath, 'utf8');
+  assert.match(source, /s360-invoice-row/);
+  assert.match(source, /onOpenInvoice\(invoice\)/);
+  assert.match(source, /تفاصيل الفاتورة/);
+  assert.match(source, /رصيد الشريحة/);
+  assert.match(source, /رصيد المهمة عند إنشائها/);
+  assert.match(source, /collection_tasks\.debt_at_creation/);
+  assert.match(source, /إجمالي المتجر الحالي/);
+  assert.match(source, /changeView\('finance', \{ invoice: null \}\)/);
+});
+
+test('financial attachment is exact by Store ID and shared phone stores stay informational', async () => {
+  const source = await readFile(servicePath, 'utf8');
+  assert.match(source, /moneyRows\.find\(row => exactText\(row\.storeId, merchant\?\.storeId\)\)/);
+  assert.doesNotMatch(source, /directMoney[\s\S]{0,180}normalizePhone/);
+  assert.match(source, /sharedContactStores/);
+
+  const page = await readFile(pagePath, 'utf8');
+  assert.match(page, /متاجر تشترك في رقم التواصل/);
+  assert.match(page, /تشابه رقم الاتصال لا يعني ملكية واحدة ولا تُجمع المبالغ بينها/);
+  assert.match(page, /لا توجد بيانات مالية مرتبطة بهذا المتجر/);
+});
+
+test('secondary Store 360 data is loaded per selected view, not in the core request', async () => {
+  const source = await readFile(pagePath, 'utf8');
+  assert.match(source, /if \(target === 'finance'\) result = await loadStore360Finance/);
+  assert.match(source, /if \(target === 'shipments'\) result = await loadStore360Shipments/);
+  assert.match(source, /if \(target === 'support'\) result = await loadStore360Support/);
+  assert.match(source, /if \(target === 'timeline'\) result = await loadStore360Timeline/);
+  assert.match(source, /if \(!core \|\| target === 'overview'/);
+  assert.match(source, /view !== 'work'/);
+
+  const service = await readFile(servicePath, 'utf8');
+  const financeLoader = service.slice(service.indexOf('export async function loadStore360Finance'), service.indexOf('export async function loadStore360Shipments'));
+  assert.doesNotMatch(financeLoader, /listTasks/);
+});
+
+test('legacy customer directory opens the full Store 360 page and retains the previous location', async () => {
+  const source = await readFile(customerWatchPath, 'utf8');
+  assert.match(source, /params\.set\('returnTo', `\$\{location\.pathname\}\$\{location\.search\}`\)/);
+  assert.match(source, /Full Store 360 owns the active experience/);
+  assert.match(source, /setOpenCustomer\(null\)/);
+  assert.match(source, /params\.set\('customer', identity\)/);
+  assert.match(source, /params\.set\('open', '1'\)/);
+  assert.match(source, /<Store360Page identity=\{profileIdentity\}/);
+});
+
+test('action center exposes permission-gated current actions and an unavailable reason', async () => {
+  const source = await readFile(pagePath, 'utf8');
+  for (const permission of [
+    'sales.manage', 'collections.record_promise', 'support.create', 'campaigns.send', 'campaigns.ivr',
+  ]) assert.match(source, new RegExp(permission.replace('.', '\\.')));
+  assert.match(source, /const disabled = !onClick/);
+  assert.match(source, /disabled && reason/);
+  assert.match(source, /تحتاج صلاحية تشغيل IVR/);
+});
+
+test('collection task drawer opens Store 360 with exact store when available and preserves return context', async () => {
+  const source = await readFile(collectionsPath, 'utf8');
+  assert.match(source, /customer\?\.merchant\?\.storeId \|\| task\.customer_name/);
+  assert.match(source, /view: 'work'/);
+  assert.match(source, /source: 'collections'/);
+  assert.match(source, /returnTo: `\$\{location\.pathname\}\$\{location\.search\}`/);
+  assert.match(source, /فتح Store 360/);
+});
+
+test('Aging customer card opens Store 360 with bucket, source, and return context', async () => {
+  const source = await readFile(customerMoneyPath, 'utf8');
+  assert.match(source, /customer: c\.storeId \|\| c\.name/);
+  assert.match(source, /view: 'finance'/);
+  assert.match(source, /source: 'aging'/);
+  assert.match(source, /params\.set\('aging', bandKeys\.join\(','\)\)/);
+  assert.match(source, /فتح ملف المتجر المالي الكامل/);
+});

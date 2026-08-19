@@ -1,0 +1,384 @@
+.carrier360-root {
+  width: min(100%, 1320px);
+  margin: 0 auto;
+  padding: 24px 28px 92px;
+}
+
+.carrier360-hero-meta {
+  display: flex;
+  gap: 8px 14px;
+  flex-wrap: wrap;
+  margin-top: 7px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .72);
+}
+
+.carrier360-upload-cta {
+  min-height: 46px;
+  flex: 0 0 auto;
+  background: #fff !important;
+  color: var(--brand-navy) !important;
+  border-color: rgba(255, 255, 255, .9) !important;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .18);
+}
+
+.carrier360-view-nav {
+  position: sticky;
+  top: 0;
+  z-index: 12;
+  margin: -8px 0 18px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(14px);
+}
+
+.carrier360-view-nav > div {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.carrier360-view-nav button,
+.carrier360-subnav button,
+.carrier360-filter-pills button {
+  min-height: 40px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.carrier360-view-nav button[aria-selected="true"],
+.carrier360-subnav button.active,
+.carrier360-filter-pills button.active {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 11%, transparent);
+  color: var(--accent);
+}
+
+.carrier360-view-nav label {
+  display: none;
+}
+
+.carrier360-section-stack {
+  display: grid;
+  gap: 16px;
+}
+
+.carrier360-section-heading {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 4px 2px 0;
+}
+
+.carrier360-section-heading span {
+  display: block;
+  margin-bottom: 3px;
+  color: var(--accent);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.carrier360-section-heading h2 {
+  margin: 0;
+  color: var(--text);
+  font-size: 21px;
+}
+
+.carrier360-section-heading p {
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.carrier360-mini-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.carrier360-invoice-list {
+  display: grid;
+  gap: 9px;
+}
+
+.carrier360-invoice-list > button {
+  display: grid;
+  grid-template-columns: minmax(230px, 1.6fr) repeat(5, minmax(90px, .7fr)) auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 13px 15px;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--card);
+  color: var(--text);
+  text-align: right;
+  cursor: pointer;
+  box-shadow: var(--shadow-sm);
+}
+
+.carrier360-invoice-list > button:hover,
+.carrier360-invoice-list > button:focus-visible {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  outline: 3px solid color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.carrier360-invoice-list > button > div:not(.carrier360-invoice-primary) {
+  display: grid;
+  gap: 3px;
+}
+
+.carrier360-invoice-list small,
+.carrier360-shipment-list small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.carrier360-invoice-list strong {
+  font-size: 12px;
+}
+
+.carrier360-invoice-primary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--accent);
+}
+
+.carrier360-invoice-primary span {
+  display: grid;
+  min-width: 0;
+}
+
+.carrier360-invoice-primary strong {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.carrier360-status {
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--status-color) 38%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--status-color) 10%, transparent);
+  color: var(--status-color);
+  font-size: 10px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.carrier360-contained-flow {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--card);
+}
+
+.carrier360-contained-flow > div:not(.carrier360-flow-bar) {
+  max-width: none !important;
+}
+
+.carrier360-result-summary {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 4%, var(--card));
+}
+
+.carrier360-result-summary > div {
+  display: grid;
+  align-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 11px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--card);
+}
+
+.carrier360-result-summary small {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.carrier360-result-summary strong {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.carrier360-flow-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.carrier360-flow-bar button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.carrier360-loading,
+.carrier360-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 140px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.carrier360-error {
+  min-height: 70px;
+  justify-content: flex-start;
+  color: var(--red);
+}
+
+.carrier360-filter-pills,
+.carrier360-subnav {
+  display: flex;
+  gap: 7px;
+  flex-wrap: wrap;
+}
+
+.carrier360-filter-pills button,
+.carrier360-subnav button {
+  min-height: 38px;
+  padding: 7px 13px;
+  border-color: var(--border);
+}
+
+.carrier360-shipment-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.carrier360-shipment-list article {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 13px;
+  background: var(--card);
+}
+
+.carrier360-shipment-list article header,
+.carrier360-shipment-list article footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 13px;
+  background: var(--surface);
+  font-size: 11px;
+}
+
+.carrier360-shipment-list article header span:first-child {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.carrier360-shipment-list article footer {
+  justify-content: flex-start;
+  border-top: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.carrier360-shipment-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 11px;
+  padding: 13px;
+}
+
+.carrier360-shipment-grid > div {
+  display: grid;
+  gap: 3px;
+}
+
+.carrier360-shipment-grid strong {
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.carrier360-root .is-danger { color: var(--red) !important; }
+.carrier360-root .is-good { color: var(--green) !important; }
+
+.carrier360-embedded > div {
+  max-width: none !important;
+  padding: 0 !important;
+}
+
+.carrier360-manager .cm-root {
+  min-height: 640px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+}
+
+@media (max-width: 1050px) {
+  .carrier360-view-nav > div {
+    display: flex;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .carrier360-view-nav button { flex: 0 0 auto; padding-inline: 13px; }
+  .carrier360-invoice-list > button { grid-template-columns: minmax(220px, 1.5fr) repeat(3, minmax(90px, .7fr)) auto; }
+  .carrier360-invoice-list > button > div:nth-of-type(4),
+  .carrier360-invoice-list > button > div:nth-of-type(5) { display: none; }
+  .carrier360-result-summary { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+@media (max-width: 700px) {
+  .carrier360-root { padding: 14px 12px 96px; }
+  .carrier360-root > div:first-child { padding: 17px 15px !important; }
+  .carrier360-root > div:first-child > div { align-items: flex-start !important; flex-wrap: wrap; }
+  .carrier360-upload-cta { order: 4; width: 100%; justify-content: center; }
+  .carrier360-view-nav { top: 4px; margin-top: -5px; }
+  .carrier360-view-nav > div { display: none !important; }
+  .carrier360-view-nav label { display: grid !important; gap: 5px; color: var(--muted); font-size: 10px; }
+  .carrier360-view-nav select { min-height: 44px; width: 100%; font-size: 14px; font-weight: 700; }
+  .carrier360-section-heading { align-items: stretch; flex-direction: column; }
+  .carrier360-section-heading > button { width: 100%; justify-content: center; }
+  .carrier360-mini-kpis { grid-template-columns: 1fr; }
+  .carrier360-invoice-list > button { display: flex; align-items: stretch; flex-direction: column; gap: 8px; }
+  .carrier360-invoice-list > button > div:not(.carrier360-invoice-primary) { display: flex; justify-content: space-between; }
+  .carrier360-invoice-list > button > div:nth-of-type(4),
+  .carrier360-invoice-list > button > div:nth-of-type(5) { display: flex; }
+  .carrier360-status { align-self: flex-start; }
+  .carrier360-shipment-list { grid-template-columns: 1fr; }
+  .carrier360-shipment-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .carrier360-contained-flow > div:not(.carrier360-flow-bar) { padding: 14px 10px 80px !important; }
+  .carrier360-result-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 10px; }
+  .carrier360-result-summary > div:last-child { grid-column: 1 / -1; }
+  .carrier360-flow-bar { align-items: flex-start; flex-direction: column-reverse; }
+  .carrier360-manager .cm-root { display: block !important; min-height: 0; overflow: visible !important; }
+}

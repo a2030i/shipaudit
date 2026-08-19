@@ -26,7 +26,7 @@ export const PAGE_TITLES = {
   '/ticket':            'تذكرة دعم جديدة',
   '/uploads':           'مزامنة مصادر البيانات',
   '/hub':               'مركز شركات الشحن',
-  '/carrier':           'بروفايل الشركة',
+  '/carrier':           'ملف شركة الشحن',
   '/webhook':           'وارد التكاملات',
   '/customers':         'ملفات العملاء',
   '/payment-requests':  'طلبات السداد',

@@ -4,20 +4,43 @@
 // file_kind radio so the admin can flip a carrier's accounting mode
 // without leaving the page.
 
-import { useState, useEffect, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, RefreshCw, ExternalLink, FileText, Banknote, BookOpen,
   Mail, Inbox, AlertTriangle, CheckCircle2, Truck, Edit3, Save, X,
   Building2, ClipboardList, Link2, WalletCards, ReceiptText, CircleDollarSign,
+  UploadCloud, PackageSearch, Scale, CreditCard, BarChart3, ChevronLeft,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, toast, Modal } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
-import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   loadCarrierProfile, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
   loadCarrierZohoLinkOptions, saveCarrierZohoFinancialLinks,
 } from '../lib/carrierProfileService.js';
+import { countAuditShipments, loadAuditByIdFromDB, loadAuditShipments } from '../lib/coreService.js';
+import { auditPresentation, AUDIT_REVIEW_LABELS } from '../lib/auditPresentation.js';
+import './carrier-360.css';
+
+const UploadWizard = lazy(() => import('./UploadWizard.jsx'));
+const AuditResults = lazy(() => import('./AuditResults.jsx'));
+const Claims = lazy(() => import('./Claims.jsx'));
+const CarrierLedger = lazy(() => import('./CarrierLedger.jsx'));
+const CarrierStatements = lazy(() => import('./CarrierStatements.jsx'));
+const CodSettlements = lazy(() => import('./CodSettlements.jsx'));
+const CarrierManager = lazy(() => import('./CarrierManager.jsx'));
+const CarrierKpi = lazy(() => import('./CarrierKpi.jsx'));
+
+const CARRIER_VIEWS = [
+  ['overview', 'نظرة عامة'],
+  ['invoices', 'الفواتير والمراجعة'],
+  ['shipments', 'الشحنات'],
+  ['claims', 'المطالبات'],
+  ['account', 'الحساب والمدفوعات'],
+  ['contract', 'العقد والأسعار'],
+  ['performance', 'الأداء'],
+];
+const CARRIER_VIEW_IDS = new Set(CARRIER_VIEWS.map(([id]) => id));
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -51,7 +74,7 @@ const fmtDate = (iso) => {
 };
 
 // ── Hero ────────────────────────────────────────────────────────
-function Hero({ carrier, onBack }) {
+function Hero({ carrier, summary, onBack, onUpload, canUpload }) {
   const [logoErr, setLogoErr] = useState(false);   // شعار مكسور → الحرف الأول
   return (
     <div style={{
@@ -93,12 +116,27 @@ function Hero({ carrier, onBack }) {
         )}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 11, fontFamily: 'var(--font-mono)', letterSpacing: 3, textTransform: 'uppercase', opacity: .7, marginBottom: 4 }}>
-            CARRIER PROFILE · {carrier.id}
+            ملف شركة الشحن · {carrier.id}
           </div>
           <h1 style={{ fontFamily: 'var(--font-sans)', fontSize: 22, fontWeight: 800, color: '#fff', margin: 0 }}>
             {carrier.name}
           </h1>
+          <div className="carrier360-hero-meta">
+            <span>{carrier.contact_phone || 'الهاتف غير مسجل'}</span>
+            <span>{carrier.account_manager || 'لا يوجد مسؤول مسجل'}</span>
+            <span>آخر نشاط: {relTime(summary?.lastActivityAt)}</span>
+          </div>
         </div>
+        <Btn
+          variant="primary"
+          icon={<UploadCloud size={17}/>}
+          onClick={onUpload}
+          disabled={!canUpload}
+          title={canUpload ? 'رفع فاتورة لهذه الشركة وبدء المراجعة' : 'تحتاج صلاحية إنشاء مراجعة'}
+          className="carrier360-upload-cta"
+        >
+          + رفع فاتورة للمراجعة
+        </Btn>
       </div>
     </div>
   );
@@ -591,14 +629,11 @@ function AuditsList({ audits, onOpen }) {
   return (
     <div style={{ display: 'grid', gap: 8 }}>
       {audits.slice(0, 8).map(a => {
-        const drift = Math.abs(Number(a.drift_pre_tax) || 0);
+        const result = auditPresentation(a);
+        const drift = Math.abs(result.variance);
         const driftColor = drift < 0.50 ? 'var(--accent)' : drift < 5 ? 'var(--gold)' : 'var(--red)';
-        const stChip = {
-          pending:  { color: 'var(--gold)', label: 'قيد الانتظار' },
-          draft:    { color: 'var(--muted)', label: 'مسودة' },
-          approved: { color: 'var(--accent)', label: 'معتمدة' },
-          rejected: { color: 'var(--red)', label: 'مرفوضة' },
-        }[a.review_status] || { color: 'var(--muted)', label: a.review_status || '—' };
+        const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
+        const stChip = { color: statusColor, label: statusLabel };
         return (
           <div key={a.id} onClick={() => onOpen?.(a)} style={{
             padding: '10px 12px',
@@ -745,9 +780,269 @@ function OpsList({ ops }) {
   );
 }
 
+function LazyPanel({ children }) {
+  return (
+    <Suspense fallback={<div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل القسم…</span></div>}>
+      {children}
+    </Suspense>
+  );
+}
+
+function CarrierViewNav({ view, onChange }) {
+  return (
+    <nav className="carrier360-view-nav" aria-label="أقسام ملف شركة الشحن">
+      <label>
+        القسم
+        <select value={view} onChange={event => onChange(event.target.value)}>
+          {CARRIER_VIEWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+        </select>
+      </label>
+      <div role="tablist">
+        {CARRIER_VIEWS.map(([id, label]) => (
+          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => onChange(id)}>
+            {label}
+          </button>
+        ))}
+      </div>
+    </nav>
+  );
+}
+
+const REVIEW_STATUS = AUDIT_REVIEW_LABELS;
+
+function CarrierInvoiceResultSummary({ audit }) {
+  const result = auditPresentation(audit);
+  const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
+  const values = [
+    ['قيمة الفاتورة', `${fmt(result.totalBilled)} ر.س`],
+    ['المتوقع', `${fmt(result.totalExpected)} ر.س`],
+    ['الفرق', `${fmt(result.variance)} ر.س`, result.variance > 0 ? 'is-danger' : 'is-good'],
+    ['عدد الشحنات', result.shipmentCount.toLocaleString('en-US')],
+    ['المخالفات', result.issueCount.toLocaleString('en-US')],
+    ['قيمة الاعتراض', `${fmt(result.claimAmount)} ر.س`, result.claimAmount > 0 ? 'is-danger' : ''],
+  ];
+  return (
+    <div className="carrier360-result-summary" aria-label="ملخص مراجعة الفاتورة">
+      {values.map(([label, value, tone]) => (
+        <div key={label}><small>{label}</small><strong className={tone || ''}>{value}</strong></div>
+      ))}
+      <div><small>حالة المراجعة</small><span className="carrier360-status" style={{ '--status-color': statusColor }}>{statusLabel}</span></div>
+    </div>
+  );
+}
+
+function CarrierInvoicesView({ carrier, audits, carriers, mode, invoiceId, onState, onRefresh }) {
+  const [audit, setAudit] = useState(null);
+  const [loadingAudit, setLoadingAudit] = useState(false);
+  const [auditError, setAuditError] = useState('');
+
+  useEffect(() => {
+    if (!invoiceId) {
+      setAudit(null);
+      setAuditError('');
+      return;
+    }
+    let live = true;
+    const cached = (() => {
+      try {
+        const value = JSON.parse(sessionStorage.getItem('lastAudit') || 'null');
+        return value?.id === invoiceId ? value : null;
+      } catch { return null; }
+    })();
+    if (cached) {
+      setAudit(cached);
+      return () => { live = false; };
+    }
+    setLoadingAudit(true);
+    setAuditError('');
+    Promise.all([loadAuditByIdFromDB(invoiceId), countAuditShipments(invoiceId)])
+      .then(([value, accessibleRowCount]) => {
+        if (!live) return;
+        if (String(value?.carrierId) !== String(carrier.id)) throw new Error('هذه المراجعة لا تخص شركة الشحن المفتوحة');
+        setAudit({
+          ...value,
+          accessibleRowCount: accessibleRowCount || value?.results?.length || 0,
+        });
+      })
+      .catch(error => { if (live) setAuditError(error.message || 'تعذر تحميل المراجعة'); })
+      .finally(() => { if (live) setLoadingAudit(false); });
+    return () => { live = false; };
+  }, [invoiceId, carrier.id]);
+
+  const startUpload = () => onState({ mode: 'upload', invoice: null });
+  if (mode === 'upload') {
+    return (
+      <div className="carrier360-contained-flow">
+        <div className="carrier360-flow-bar">
+          <button type="button" onClick={() => onState({ mode: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
+          <strong>رفع فاتورة للمراجعة</strong>
+        </div>
+        <LazyPanel>
+          <UploadWizard
+            carriers={carriers}
+            initialCarrierId={carrier.id}
+            lockCarrier
+            embedded
+            onComplete={nextAudit => {
+              try { sessionStorage.setItem('lastAudit', JSON.stringify(nextAudit)); } catch { /* large drafts can exceed quota */ }
+              setAudit(nextAudit);
+              onState({ mode: 'result', invoice: nextAudit.id });
+            }}
+          />
+        </LazyPanel>
+      </div>
+    );
+  }
+
+  if (invoiceId) {
+    return (
+      <div className="carrier360-contained-flow">
+        <div className="carrier360-flow-bar">
+          <button type="button" onClick={() => onState({ mode: null, invoice: null })}><ChevronLeft size={15}/> فواتير {carrier.name}</button>
+          <strong>نتيجة مراجعة الفاتورة</strong>
+        </div>
+        {loadingAudit ? <div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل نتيجة المراجعة…</span></div> : null}
+        {auditError ? <Card className="carrier360-error"><AlertTriangle size={18}/><span>{auditError}</span></Card> : null}
+        {audit ? (
+          <LazyPanel>
+            <CarrierInvoiceResultSummary audit={audit}/>
+            <AuditResults
+              audit={audit}
+              carriers={carriers}
+              embedded
+              onNewAudit={startUpload}
+              onApproved={onRefresh}
+            />
+          </LazyPanel>
+        ) : null}
+      </div>
+    );
+  }
+
+  const totalVariance = (audits || []).reduce((sum, item) => sum + auditPresentation(item).variance, 0);
+  const needsReview = (audits || []).filter(item => !['approved', 'rejected'].includes(auditPresentation(item).reviewStatus)).length;
+  return (
+    <div className="carrier360-section-stack">
+      <div className="carrier360-section-heading">
+        <div><span>فواتير شركة الشحن</span><h2>الفواتير والمراجعة</h2><p>كل فاتورة ونتيجتها ومخالفاتها تبقى داخل ملف {carrier.name}.</p></div>
+        <Btn variant="primary" icon={<UploadCloud size={15}/>} onClick={startUpload}>+ رفع فاتورة للمراجعة</Btn>
+      </div>
+      <div className="carrier360-mini-kpis">
+        <StatCard label="الفواتير" value={(audits || []).length} sub="آخر الفواتير المسجلة" icon={ReceiptText}/>
+        <StatCard label="تحتاج مراجعة" value={needsReview} sub="لم تعتمد أو ترفض بعد" color={needsReview ? 'var(--gold)' : 'var(--green)'} icon={AlertTriangle}/>
+        <StatCard label="إجمالي الفروقات" value={`${fmt(totalVariance)} ر.س`} sub="من نفس نتائج التدقيق" color={totalVariance > 0 ? 'var(--red)' : 'var(--green)'} icon={Scale}/>
+      </div>
+      {!(audits || []).length ? (
+        <Card><Empty icon="🧾" title="لا توجد فواتير مراجعة" sub="ابدأ من زر رفع فاتورة للمراجعة؛ لن تُحفظ أي نتيجة قبل الاعتماد"/></Card>
+      ) : (
+        <div className="carrier360-invoice-list">
+          {(audits || []).map(item => {
+            const result = auditPresentation(item);
+            const [statusLabel, statusColor] = REVIEW_STATUS[result.reviewStatus] || REVIEW_STATUS.pending;
+            return (
+              <button type="button" key={item.id} onClick={() => onState({ mode: 'result', invoice: item.id })}>
+                <div className="carrier360-invoice-primary">
+                  <ReceiptText size={18}/>
+                  <span><strong>{item.file_name || `فاتورة ${item.period || ''}`}</strong><small>{item.period || 'الفترة غير متاحة'} · {item.row_count || 0} شحنة</small></span>
+                </div>
+                <div><small>قيمة الفاتورة</small><strong>{fmt(item.total_billed)} ر.س</strong></div>
+                <div><small>المتوقع</small><strong>{fmt(item.total_expected)} ر.س</strong></div>
+                <div><small>الفرق</small><strong className={result.variance > 0 ? 'is-danger' : 'is-good'}>{fmt(result.variance)} ر.س</strong></div>
+                <div><small>المخالفات</small><strong>{result.issueCount}</strong></div>
+                <div><small>قيمة الاعتراض</small><strong>{fmt(result.claimAmount)} ر.س</strong></div>
+                <span className="carrier360-status" style={{ '--status-color': statusColor }}>{statusLabel}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CarrierShipmentsView({ carrier, audits }) {
+  const [rows, setRows] = useState(null);
+  const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all');
+  const auditIds = useMemo(() => (audits || []).slice(0, 8).map(item => `${item.id}:${item.period || ''}`), [audits]);
+
+  useEffect(() => {
+    let live = true;
+    setRows(null);
+    setError('');
+    Promise.all(auditIds.map(async token => {
+      const [id, period] = token.split(':');
+      const shipments = await loadAuditShipments(id, { from: 0, limit: 150 });
+      return shipments.map(row => ({ ...row, auditId: id, period }));
+    }))
+      .then(groups => { if (live) setRows(groups.flat().slice(0, 500)); })
+      .catch(loadError => { if (live) setError(loadError.message || 'تعذر تحميل الشحنات'); })
+    return () => { live = false; };
+  }, [auditIds.join('|')]);
+
+  const visible = useMemo(() => (rows || []).filter(row => {
+    if (filter === 'all') return true;
+    if (filter === 'issues') return row.status !== 'ok';
+    if (filter === 'weight') return row.issues?.some(issue => /weight|وزن/i.test(`${issue.field || ''} ${issue.label || ''}`));
+    if (filter === 'cod') return row.isCod || row.issues?.some(issue => /cod|تحصيل/i.test(`${issue.field || ''} ${issue.label || ''}`));
+    return true;
+  }), [rows, filter]);
+
+  return (
+    <div className="carrier360-section-stack">
+      <div className="carrier360-section-heading"><div><span>مصدر البيانات: ملفات المراجعة</span><h2>الشحنات</h2><p>هذه الشحنات ظهرت فعليًا في أحدث فواتير {carrier.name}، وليست ادعاءً بسجل شحن شامل.</p></div></div>
+      <div className="carrier360-filter-pills">
+        {[['all', 'كل الشحنات'], ['issues', 'بها مخالفات'], ['weight', 'فروقات الوزن'], ['cod', 'COD']].map(([id, label]) => <button key={id} type="button" className={filter === id ? 'active' : ''} onClick={() => setFilter(id)}>{label}</button>)}
+      </div>
+      {error ? <Card className="carrier360-error"><AlertTriangle size={18}/><span>المصدر غير متاح: {error}</span></Card> : null}
+      {!rows && !error ? <div className="carrier360-loading"><Spinner size={24}/><span>جارٍ تحميل شحنات المراجعات…</span></div> : null}
+      {rows && !visible.length ? <Card><Empty icon="📦" title="لا توجد شحنات بهذا الفلتر"/></Card> : null}
+      {visible.length ? <div className="carrier360-shipment-list">{visible.map((row, index) => {
+        const invoice = row.invoiced?.total ?? 0;
+        const expected = row.expected?.total ?? 0;
+        const variance = row.diffs?.total ?? 0;
+        return <article key={`${row.auditId}-${row.awb}-${index}`}>
+          <header><span><PackageSearch size={17}/><strong>{row.awb || 'AWB غير متاح'}</strong></span><span className={row.status === 'ok' ? 'is-good' : 'is-danger'}>{row.status === 'ok' ? 'مطابقة' : 'تحتاج مراجعة'}</span></header>
+          <div className="carrier360-shipment-grid">
+            <div><small>الفترة</small><strong>{row.period || '—'}</strong></div>
+            <div><small>الوزن المفوتر</small><strong>{row.weight || '—'} كغ</strong></div>
+            <div><small>الوزن المرجعي</small><strong>{row.expected?.weight ?? row.referenceWeight ?? 'غير متاح'}</strong></div>
+            <div><small>المبلغ المفوتر</small><strong>{fmt(invoice)} ر.س</strong></div>
+            <div><small>المتوقع</small><strong>{fmt(expected)} ر.س</strong></div>
+            <div><small>الفرق</small><strong className={variance > 0 ? 'is-danger' : 'is-good'}>{fmt(variance)} ر.س</strong></div>
+          </div>
+          <footer><span>{row.issues?.map(issue => issue.label).filter(Boolean).join(' · ') || 'لا يوجد سبب فرق مسجل'}</span></footer>
+        </article>;
+      })}</div> : null}
+    </div>
+  );
+}
+
+function CarrierAccountView({ carrier, summary, ops, zohoFinancial, canConfigure, onConfigure, carriers, panel, onPanel }) {
+  const panels = [['overview', 'ملخص الحساب'], ['ledger', 'الحركات والمدفوعات'], ['cod', 'COD'], ['statements', 'الكشوف']];
+  return (
+    <div className="carrier360-section-stack">
+      <div className="carrier360-section-heading"><div><span>الحساب الحالي للشركة</span><h2>الحساب والمدفوعات</h2><p>الرصيد والمدفوعات وCOD والكشوف في سياق {carrier.name} نفسه.</p></div></div>
+      <div className="carrier360-subnav">{panels.map(([id, label]) => <button type="button" key={id} className={panel === id ? 'active' : ''} onClick={() => onPanel(id)}>{label}</button>)}</div>
+      {panel === 'overview' ? <>
+        <div className="carrier360-mini-kpis">
+          <StatCard icon={BookOpen} label="الرصيد المفتوح" value={`${fmt(Math.abs(summary.balance))} ر.س`} sub={summary.balance > 0 ? 'لها علينا' : summary.balance < 0 ? 'لنا عليها' : 'متعادل'} color={summary.balance ? 'var(--red)' : 'var(--green)'}/>
+          <StatCard icon={Banknote} label="COD متبقٍ" value={`${fmt(summary.codOutstanding)} ر.س`} sub={`${summary.codOutCount} متوقعة · ${summary.codInCount} مستلمة`} color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--green)'}/>
+          <StatCard icon={CreditCard} label="إجمالي الحركات المدينة" value={`${fmt(summary.totalDr)} ر.س`} sub="من دفتر الشركة الحالي"/>
+        </div>
+        <ZohoFinancialSection financial={zohoFinancial} canConfigure={canConfigure} onConfigure={onConfigure}/>
+        <SectionCard title="آخر الحركات" accent="var(--accent)"><OpsList ops={ops}/></SectionCard>
+      </> : null}
+      {panel === 'ledger' ? <div className="carrier360-embedded"><LazyPanel><CarrierLedger isActive carrierId={carrier.id} embedded/></LazyPanel></div> : null}
+      {panel === 'cod' ? <div className="carrier360-embedded"><LazyPanel><CodSettlements isActive carrierId={carrier.id} embedded/></LazyPanel></div> : null}
+      {panel === 'statements' ? <div className="carrier360-embedded"><LazyPanel><CarrierStatements carriers={carriers} initialCarrierId={carrier.id} embedded/></LazyPanel></div> : null}
+    </div>
+  );
+}
+
 // ── Main ───────────────────────────────────────────────────────
-export default function CarrierProfile() {
-  const [searchParams] = useSearchParams();
+export default function CarrierProfile({ carriers = [], setCarriers, onCarriersChange }) {
+  const [searchParams, setSearchParams] = useSearchParams();
   const carrierId = searchParams.get('id');
   const navigate = useNavigate();
   const { can } = useAuth();
@@ -807,11 +1102,36 @@ export default function CarrierProfile() {
   const balColor = Math.abs(summary.balance) < 0.01 ? 'var(--muted)' : summary.balance > 0 ? 'var(--red)' : 'var(--accent)';
   const balLabel = Math.abs(summary.balance) < 0.01 ? 'صفر' : summary.balance > 0 ? 'لها علينا' : 'لنا عليها';
   const netColor = Math.abs(summary.netPosition) < 0.01 ? 'var(--muted)' : summary.netPosition > 0 ? 'var(--red)' : 'var(--accent)';
+  const requestedView = searchParams.get('view');
+  const view = CARRIER_VIEW_IDS.has(requestedView) ? requestedView : 'overview';
+  const invoiceMode = searchParams.get('mode');
+  const invoiceId = searchParams.get('invoice');
+  const accountPanel = ['overview', 'ledger', 'cod', 'statements'].includes(searchParams.get('panel')) ? searchParams.get('panel') : 'overview';
+  const returnTo = searchParams.get('returnTo');
+  const updateLocation = (patch, { replace = false } = {}) => {
+    const next = new URLSearchParams(searchParams);
+    for (const [key, value] of Object.entries(patch)) {
+      if (value == null || value === '') next.delete(key);
+      else next.set(key, value);
+    }
+    setSearchParams(next, { replace });
+  };
+  const changeView = nextView => updateLocation({ view: nextView, mode: null, invoice: null, panel: nextView === 'account' ? accountPanel : null });
+  const returnToCarrierList = () => {
+    if (returnTo) navigate(returnTo);
+    else navigate('/hub');
+  };
 
   return (
-    <div style={{ padding: '24px 28px 80px', maxWidth: 1200, margin: '0 auto' }}>
-      <CarrierTabs carrierId={carrierId} carrierName={carrier.name} active="overview"/>
-      <Hero carrier={carrier} onBack={() => navigate('/hub')}/>
+    <div className="carrier360-root">
+      <Hero
+        carrier={carrier}
+        summary={summary}
+        onBack={returnToCarrierList}
+        canUpload={can('audits.create')}
+        onUpload={() => updateLocation({ view: 'invoices', mode: 'upload', invoice: null })}
+      />
+      <CarrierViewNav view={view} onChange={changeView}/>
 
       {showZohoLink && (
         <ZohoLinkModal
@@ -822,8 +1142,7 @@ export default function CarrierProfile() {
         />
       )}
 
-      {/* Setup warning */}
-      {summary.setupGaps.length > 0 && (
+      {view === 'overview' && summary.setupGaps.length > 0 && (
         <Card style={{ marginBottom: 14, borderColor: 'rgba(239,68,68,.40)' }}>
           <div style={{ display: 'flex', alignItems: 'flex-start', gap: 10 }}>
             <AlertTriangle size={18} color="var(--red)" style={{ flexShrink: 0, marginTop: 2 }}/>
@@ -839,7 +1158,7 @@ export default function CarrierProfile() {
         </Card>
       )}
 
-      {/* Stats grid */}
+      {view === 'overview' ? <>
       <div style={{
         display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
         gap: 10, marginBottom: 14,
@@ -850,8 +1169,8 @@ export default function CarrierProfile() {
           value={`${fmt(Math.abs(summary.balance))} ر.س`}
           sub={`الرصيد المفتوح بعد المدفوعات الجزئية · فواتير ${fmtCompact(summary.totalDr)}`}
           color={balColor}
-          title="فتح دفتر الناقل"
-          onClick={() => navigate(`/ledger?carrier=${carrierId}`)}
+          title="فتح حساب الشركة"
+          onClick={() => updateLocation({ view: 'account', panel: 'ledger' })}
         />
         <StatCard
           icon={Banknote}
@@ -859,8 +1178,8 @@ export default function CarrierProfile() {
           value={`${fmt(summary.codOutstanding)} ر.س`}
           sub={`${summary.codOutCount} متوقّعة − ${summary.codInCount} مستلَمة`}
           color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--muted)'}
-          title="فتح تحصيل COD لهذا الناقل"
-          onClick={() => navigate(`/money?tab=cod&carrier=${carrierId}`)}
+          title="فتح COD لهذه الشركة"
+          onClick={() => updateLocation({ view: 'account', panel: 'cod' })}
         />
         <StatCard
           icon={Building2}
@@ -868,16 +1187,16 @@ export default function CarrierProfile() {
           value={`${fmt(Math.abs(summary.netPosition))} ر.س`}
           sub={summary.netPosition > 0 ? 'بعد خصم COD: مدينون لها' : summary.netPosition < 0 ? 'بعد خصم COD: مدينة لنا' : 'متعادل'}
           color={netColor}
-          title="فتح الدفتر لمراجعة الصافي"
-          onClick={() => navigate(`/ledger?carrier=${carrierId}`)}
+          title="فتح حساب الشركة لمراجعة الصافي"
+          onClick={() => updateLocation({ view: 'account', panel: 'overview' })}
         />
         <StatCard
           icon={FileText}
           label="المراجعات"
           value={summary.audits}
-          sub={`${summary.auditsByStatus.approved} معتمدة · ${summary.auditsByStatus.pending} معلّقة`}
-          title="فتح مراجعات هذا الناقل"
-          onClick={() => navigate(`/audits?carrier=${carrierId}`)}
+          sub={`${summary.auditsByStatus.approved} معتمدة · ${summary.auditsByStatus.pending} معلّقة${summary.auditsByStatus.legacy_unverified ? ` · ${summary.auditsByStatus.legacy_unverified} تاريخية غير موثقة` : ''}`}
+          title="فتح فواتير ومراجعات هذه الشركة"
+          onClick={() => updateLocation({ view: 'invoices' })}
         />
         <StatCard
           icon={Inbox}
@@ -885,8 +1204,8 @@ export default function CarrierProfile() {
           value={summary.webhooks}
           sub={summary.webhookPending > 0 ? `${summary.webhookPending} بانتظار` : 'كلها معالَجة'}
           color={summary.webhookPending > 0 ? 'var(--gold)' : 'var(--muted)'}
-          title="فتح وارد هذا الناقل"
-          onClick={() => navigate(`/webhook?carrier=${carrierId}`)}
+          title="الملفات الواردة تلقائيًا لهذه الشركة"
+          onClick={() => updateLocation({ view: 'invoices' })}
         />
         <StatCard
           icon={CheckCircle2}
@@ -901,23 +1220,22 @@ export default function CarrierProfile() {
         onConfigure={() => setShowZohoLink(true)}
       />
 
-      {/* Sections */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <div>
           <FileShapeSection signature={carrier.file_signature} onSaveKind={handleSaveKind} onSaveEmails={handleSaveEmails}/>
-          <ContractSection contracts={carrier.contracts} onEdit={() => navigate(`/carriers?edit=${carrierId}`)}/>
+          <ContractSection contracts={carrier.contracts} onEdit={() => updateLocation({ view: 'contract' })}/>
         </div>
         <div>
           <SectionCard
             title="آخر المراجعات"
-            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/audits?carrier=${carrierId}`)}>كل المراجعات</Btn>}
+            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => updateLocation({ view: 'invoices' })}>كل الفواتير</Btn>}
             accent="var(--gold)"
           >
-            <AuditsList audits={audits} onOpen={() => navigate(`/audits?carrier=${carrierId}`)}/>
+            <AuditsList audits={audits} onOpen={() => updateLocation({ view: 'invoices' })}/>
           </SectionCard>
           <SectionCard
-            title="آخر ملفات الـ Webhook"
-            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/webhook?carrier=${carrierId}`)}>صندوق الوارد</Btn>}
+            title="آخر الملفات الواردة تلقائيًا"
+            action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => updateLocation({ view: 'invoices' })}>كل الملفات</Btn>}
             accent="var(--brand)"
           >
             <WebhookList webhooks={webhooks}/>
@@ -927,11 +1245,46 @@ export default function CarrierProfile() {
 
       <SectionCard
         title="آخر الحركات"
-        action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => navigate(`/ledger?carrier=${carrierId}`)}>الكشف الكامل</Btn>}
+        action={<Btn size="sm" variant="ghost" icon={<ExternalLink size={12}/>} onClick={() => updateLocation({ view: 'account', panel: 'ledger' })}>الحساب الكامل</Btn>}
         accent="var(--accent)"
       >
         <OpsList ops={ops}/>
       </SectionCard>
+      </> : null}
+
+      {view === 'invoices' ? (
+        <CarrierInvoicesView
+          carrier={carrier}
+          audits={audits}
+          carriers={carriers}
+          mode={invoiceMode}
+          invoiceId={invoiceId}
+          onState={patch => updateLocation({ view: 'invoices', ...patch })}
+          onRefresh={refresh}
+        />
+      ) : null}
+
+      {view === 'shipments' ? <CarrierShipmentsView carrier={carrier} audits={audits}/> : null}
+
+      {view === 'claims' ? <div className="carrier360-embedded"><LazyPanel><Claims carriers={carriers} carrierId={carrier.id} isActive embedded/></LazyPanel></div> : null}
+
+      {view === 'account' ? (
+        <CarrierAccountView
+          carrier={carrier}
+          summary={summary}
+          ops={ops}
+          zohoFinancial={zohoFinancial}
+          canConfigure={can('zoho.configure')}
+          onConfigure={() => setShowZohoLink(true)}
+          carriers={carriers}
+          panel={accountPanel}
+          onPanel={panel => updateLocation({ view: 'account', panel })}
+        />
+      ) : null}
+
+      {view === 'contract' ? <div className="carrier360-embedded carrier360-manager"><LazyPanel><CarrierManager carriers={carriers} setCarriers={setCarriers} scopedCarrierId={carrier.id} onSaved={async () => { await onCarriersChange?.(); await refresh(); }}/></LazyPanel></div> : null}
+
+      {view === 'performance' ? <div className="carrier360-embedded"><LazyPanel><CarrierKpi isActive carrierId={carrier.id} embedded/></LazyPanel></div> : null}
     </div>
   );
 }

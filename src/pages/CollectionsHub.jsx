@@ -34,18 +34,21 @@ const TABS = [
   },
   {
     id: 'performance', label: 'أداء فريق التحصيل', icon: BarChart3, component: CollectionTeamPerformance, perm: 'collections.view_all',
+    secondary: true,
     eyebrow: 'إشراف الفريق', purpose: 'قِس التحصيل المتحقق والوفاء بالوعود حسب الموظف',
     description: 'تقرير إشرافي يربط وعود السداد بدفعات Zoho الفعلية، ويكشف المهام غير المسندة والوعود المتأخرة دون تقييم الموظف بعدد المكالمات فقط.',
     outcome: 'مسؤولية ونتيجة مالية قابلة للقياس', tone: 'var(--accent3)',
   },
   {
     id: 'legal', label: 'الحالات القانونية', icon: Scale, component: LegalEscalation, perm: 'legal.view',
+    secondary: true,
     eyebrow: 'تصعيد مضبوط', purpose: 'انقل فقط الحالات التي استنفدت التحصيل المعتاد',
     description: 'لا تبدأ الحالة من هنا. تصل بعد محاولات موثقة، ثم تُدار المستندات والإجراءات القانونية دون خلطها بقائمة الاتصالات اليومية.',
     outcome: 'ملف قانوني مكتمل المسار', tone: 'var(--gold)',
   },
   {
     id: 'internal', label: 'الأرصدة والمطابقة', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
+    secondary: true,
     eyebrow: 'تدقيق ومطابقة', purpose: 'قارن كشف النظام الداخلي مع المرجع المالي',
     description: 'هذه شاشة فحص فروقات وربط بيانات، وليست المصدر الذي يُطالب العميل بناءً عليه. المطالبة تبدأ من «من يدين لك؟».',
     outcome: 'فروقات معروفة بلا تضارب', tone: 'var(--accent3)',
@@ -64,6 +67,7 @@ export default function CollectionsHub({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
+  const primaryTabs = visibleTabs.filter(t => !t.secondary);
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -93,15 +97,29 @@ export default function CollectionsHub({ isActive = true }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      <WorkspaceTabs
-        scope="customer-collections"
-        title="المستحقات والتحصيل"
-        subtitle="من المديونية إلى الفاتورة ثم إجراء التحصيل والنتيجة"
-        tone="#16A34A"
-        tabs={visibleTabs}
-        activeId={tab}
-        onChange={changeView}
-      />
+      {primaryTabs.some(item => item.id === tab) ? (
+        <WorkspaceTabs
+          scope="customer-collections"
+          title="المستحقات والتحصيل"
+          subtitle="من المديونية إلى الفاتورة ثم إجراء التحصيل والنتيجة"
+          tone="#16A34A"
+          tabs={primaryTabs}
+          activeId={tab}
+          onChange={changeView}
+          selectorLabel="مسار التحصيل"
+        />
+      ) : (
+        <div className="workspace-secondary-context" role="status">
+          <span>{tab === 'legal' ? 'فلتر محفوظ' : tab === 'performance' ? 'تقرير' : 'مطابقة'}</span>
+          <strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
+          <button type="button" onClick={() => changeView('money')}>العودة إلى المستحقات</button>
+        </div>
+      )}
+      <nav className="workspace-filter-bar workspace-saved-views" aria-label="فلاتر وإجراءات التحصيل">
+        {visibleTabs.some(item => item.id === 'legal') ? <button type="button" aria-pressed={tab === 'legal'} onClick={() => changeView('legal')}>قانوني</button> : null}
+        {visibleTabs.some(item => item.id === 'performance') ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقرير أداء التحصيل</button> : null}
+        {visibleTabs.some(item => item.id === 'internal') ? <button type="button" onClick={() => navigate('/zoho-data?tab=customers')}>الأرصدة والمطابقة</button> : null}
+      </nav>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;

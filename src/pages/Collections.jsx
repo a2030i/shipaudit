@@ -39,6 +39,7 @@ import {
   requestWriteoff, approveWriteoff, rejectWriteoff, listWriteoffs,
   WRITEOFF_STATUS_LABELS,
 } from '../lib/writeoffsService.js';
+import { readAudienceHandoff } from '../lib/agingOperations.js';
 
 const fmt = (n) =>
   n == null || Number.isNaN(n) ? '—'
@@ -122,6 +123,8 @@ export default function Collections({ isActive = true }) {
   const [assigning, setAssigning] = useState(false);
   const [regenerating, setRegenerating] = useState(false);
   const focusedCustomer = (searchParams.get('search') || searchParams.get('customer'))?.trim() || '';
+  const batchContext = useMemo(() => readAudienceHandoff(searchParams.get('batchContext')), [searchParams]);
+  const batchSelectionKeys = useMemo(() => new Set(batchContext?.selectionKeys || []), [batchContext]);
   const showSyncPrompt = searchParams.get('action') === 'sync';
 
   const refresh = useCallback(async () => {
@@ -212,6 +215,11 @@ export default function Collections({ isActive = true }) {
       pool = pool.filter(t => t.stage === stageFilter);
     }
     if (focusedCustomer) pool = pool.filter(t => t.customer_name === focusedCustomer);
+    if (batchSelectionKeys.size) pool = pool.filter(task => {
+      const merchant = customerByName.get(task.customer_name)?.merchant;
+      return (merchant?.storeId && batchSelectionKeys.has(`store:${merchant.storeId}`))
+        || (merchant?.zohoId && batchSelectionKeys.has(`zoho:${merchant.zohoId}`));
+    });
     pool = pool.filter(isLiveTask);
     // حاجز احتياطي: مهمة واحدة لكل عميل (الأكثر تقدّماً) — يمنع أي تكرار
     // متبقٍ من بيانات قديمة قبل إصلاح regenerateTasks.
@@ -241,7 +249,7 @@ export default function Collections({ isActive = true }) {
       if (priorityDiff) return priorityDiff;
       return taskDebt(b) - taskDebt(a);
     });
-  }, [tasks, stageFilter, focusedCustomer, isLiveTask, taskDebt]);
+  }, [tasks, stageFilter, focusedCustomer, batchSelectionKeys, customerByName, isLiveTask, taskDebt]);
 
   const visibleTasks = useMemo(() => {
     if (stageFilter !== 'open') return prioritizedTasks;
@@ -400,6 +408,16 @@ export default function Collections({ isActive = true }) {
           </div>
         }
       />
+
+      {batchContext && (
+        <Card style={{ marginBottom: 14, padding: 12, borderColor: 'color-mix(in srgb,var(--accent) 32%,var(--border))' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: 1, minWidth: 220 }}><b style={{ fontSize: 12 }}>متابعة جماعية من Aging</b><div style={{ marginTop: 3, color: 'var(--muted)', fontSize: 10.5 }}>يعرض المهام الموجودة للمحدد فقط؛ لم تُنشأ أي مهمة صامتة.</div></div>
+            <span style={{ fontSize: 10, color: 'var(--muted)' }}>{batchSelectionKeys.size} هوية محددة · {visibleTasks.length} مهمة موجودة</span>
+            <Btn size="sm" variant="ghost" onClick={() => navigate(batchContext.returnTo || '/customer-money')}>العودة إلى Aging</Btn>
+          </div>
+        </Card>
+      )}
 
       {showSyncPrompt && (
         <Card className="collection-sync-prompt" style={{ marginBottom: 14, padding: 14 }}>
@@ -890,6 +908,20 @@ function QuickActions({ task, canPromise, onContact, onPromise, onDone, onSnooze
 }
 
 function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff, canUpdate }) {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const openStore360 = () => {
+    const identity = customer?.merchant?.storeId || task.customer_name;
+    const params = new URLSearchParams({
+      customer: identity,
+      open: '1',
+      view: 'work',
+      source: 'collections',
+      returnTo: `${location.pathname}${location.search}`,
+    });
+    onClose();
+    navigate(`/customer-360?${params.toString()}`);
+  };
   return (
     <Modal title={`مهمة تحصيل — ${task.customer_name}`} onClose={onClose} width={560}>
       <div style={{ padding: '4px 4px 0' }}>
@@ -922,6 +954,9 @@ function TaskDrawer({ task, customer, onClose, onRefresh, onPromise, onWriteoff,
           <KV label="منشأة" value={fmtRel(task.created_at)}/>
         </div>
         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Btn size="md" variant="accent" icon={<ChevronLeft size={13}/>} onClick={openStore360}>
+            فتح Store 360
+          </Btn>
           {onPromise && (
             <Btn size="md" variant="primary" icon={<Calendar size={13}/>} onClick={onPromise}>
               سجّل وعد دفع

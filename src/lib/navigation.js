@@ -28,19 +28,19 @@ export const CENTER_WORKSPACES = {
   ],
   sales: [
     {
-      id: 'execution', label: 'عمل اليوم ومسار المنصة', entryId: 'sales-hub', memberIds: ['sales-hub'],
-      description: 'الأولويات اليومية والتفعيل والاستعادة ومرجع المتاجر في مساحة واحدة.',
+      id: 'today', label: 'عمل اليوم', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=today',
+      description: 'الأولويات والمتابعات التي تحتاج إجراء الآن.',
     },
     {
-      id: 'pipeline', label: 'الصفقات والمواعيد', entryId: 'crm', memberIds: ['crm'],
-      description: 'أدر الصفقات والمواعيد وأداء فريق المبيعات.',
+      id: 'pipeline', label: 'الفرص والصفقات', entryId: 'crm', memberIds: ['crm', 'sales-hub'], path: '/crm',
+      description: 'العملاء المحتملون والصفقات ومراحل البيع.',
     },
     {
-      id: 'campaigns', label: 'الحملات والجمهور', entryId: 'campaign-center', memberIds: ['campaign-center'],
+      id: 'campaigns', label: 'الحملات', entryId: 'campaign-center', memberIds: ['campaign-center'],
       description: 'خطط الجمهور وراجع الحملة قبل أي تنفيذ أو إرسال.',
     },
     {
-      id: 'communications', label: 'التواصل والمكالمات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'],
+      id: 'communications', label: 'التواصل', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=overview',
       description: 'راقب الرسائل والمكالمات وIVR وجودة التواصل ونتائجه.',
     },
     {
@@ -58,44 +58,56 @@ export const CENTER_WORKSPACES = {
       description: 'البنوك وCOD ومدفوعات الناقلين والعمليات التي تحتاج تصنيفاً.',
     },
     {
-      id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'zoho-data', memberIds: ['zoho-data', 'reconciliation'],
+      id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'zoho-data', memberIds: ['zoho-data', 'reconciliation'], path: '/zoho-data?tab=customers',
       description: 'بيانات Zoho وربط الحسابات ومطابقة أرصدة العملاء والناقلين.',
     },
     {
-      id: 'planning', label: 'الربحية والسيولة والإقفال', entryId: 'pnl', memberIds: ['pnl', 'cash-aging', 'forecast', 'periods'],
-      description: 'قائمة الدخل وأعمار النقد والتوقعات وإقفال الفترة.',
+      id: 'planning', label: 'الربحية والسيولة', entryId: 'pnl', memberIds: ['pnl', 'cash-aging', 'forecast', 'periods'],
+      description: 'قائمة الدخل وأعمار النقد والتوقعات، مع الإقفال كإجراء مستقل.',
     },
   ],
   shipping: [
     {
-      id: 'carrier-control', label: 'الناقلون والمتابعة', entryId: 'hub', memberIds: ['hub', 'platform-carriers', 'tasks'],
-      description: 'حالة الناقلين وأداؤهم ومطالباتهم وأسعار المنصات والمهام المستحقة.',
+      id: 'carrier-control', label: 'شركات الشحن', entryId: 'hub', memberIds: ['hub'],
+      description: 'اختر شركة الشحن وافتح ملفها الموحد للفواتير والشحنات والمطالبات والحساب والعقد والأداء.',
     },
     {
-      id: 'accounting-cycle', label: 'دورة المحاسب', entryId: 'accounting-cycle', memberIds: ['accounting-cycle'],
+      id: 'exceptions', label: 'المهام والاستثناءات', entryId: 'tasks', memberIds: ['tasks', 'audits'],
+      description: 'المهام المتأخرة والاستثناءات التي تحتاج قرارًا أو متابعة.',
+    },
+    {
+      id: 'accounting-cycle', label: 'دورة الشهر', entryId: 'accounting-cycle', memberIds: ['accounting-cycle'],
       description: 'نفّذ مراحل الشهر من المراجعات حتى اكتمال المصادر والإقفال التشغيلي.',
     },
     {
-      id: 'carrier-audit', label: 'تدقيق وفواتير الناقلين', entryId: 'drop', memberIds: ['drop', 'audits', 'aramex-stmt', 'ledger'],
-      description: 'استقبل الملفات وراجع الفواتير والكشوف ثم انتقل إلى دفتر الناقل.',
-    },
-    {
-      id: 'service-billing', label: 'فوترة الخدمات والأوزان', entryId: 'fulfillment', memberIds: ['fulfillment', 'weight-billing'],
+      id: 'service-billing', label: 'فوترة الخدمات والأوزان', entryId: 'fulfillment', memberIds: ['fulfillment', 'weight-billing'], path: '/fulfillment',
       description: 'راجع فوترة خدمات التجهيز والأوزان الزائدة في عروض مستقلة.',
     },
   ],
   reports: [
     {
-      id: 'analysis', label: 'التقارير والتحليل', entryId: 'reports', memberIds: ['reports', 'monthly-report'],
-      description: 'أنشئ التقارير الرسمية وافتح التقرير التشغيلي الشهري من نفس المساحة.',
+      id: 'library', label: 'مكتبة التقارير', entryId: 'reports', memberIds: ['reports', 'monthly-report'], path: '/reports',
+      description: 'التقارير الرسمية والشهرية ومعاملات التصدير.',
     },
     {
-      id: 'exports-archive', label: 'التصدير والأرشيف', entryId: 'internal-exports', memberIds: ['internal-exports', 'activity-log'],
-      description: 'راجع الملفات المصدّرة وسجل العمليات التاريخي دون خلطهما بالتقرير الجاري.',
+      id: 'commercial-performance', label: 'الأداء التجاري', entryId: 'crm', memberIds: ['crm', 'collections-hub'],
+      pathsByMemberId: {
+        crm: '/crm?view=board&source=reports',
+        'collections-hub': '/customer-money?view=performance&source=reports',
+      },
+      description: 'أداء المبيعات والتحصيل ونتائج الفريق.',
     },
     {
-      id: 'data-quality', label: 'سلامة البيانات والرقابة', entryId: 'integrity', memberIds: ['integrity'],
-      description: 'افحص تعارضات الأرقام وحالة المهام الدورية ومصادر الفشل الصريحة.',
+      id: 'carrier-performance', label: 'أداء شركات الشحن', entryId: 'hub', memberIds: ['hub', 'platform-carriers'], path: '/carrier-kpi?source=reports',
+      description: 'مقارنة أداء الناقلين والأسعار على مستوى جميع الشركات.',
+    },
+    {
+      id: 'communications-performance', label: 'التواصل والحملات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=impact&source=reports',
+      description: 'أثر الحملات ونشاط الفريق وجودة التواصل.',
+    },
+    {
+      id: 'exports', label: 'الملفات المصدّرة', entryId: 'internal-exports', memberIds: ['internal-exports'], path: '/internal-exports',
+      description: 'أرشيف الملفات الناتجة وإعادة تنزيلها من مصدرها.',
     },
   ],
   settings: [
@@ -104,16 +116,24 @@ export const CENTER_WORKSPACES = {
       description: 'أدر الموظفين وأدوارهم وصلاحياتهم من المسار الإداري المعتمد.',
     },
     {
-      id: 'carrier-config', label: 'شركات الشحن والعقود', entryId: 'carriers', memberIds: ['carriers', 'contracts'],
+      id: 'carrier-config', label: 'شركات الشحن والعقود', entryId: 'carriers', memberIds: ['carriers', 'contracts'], path: '/carriers',
       description: 'إعداد شركات الشحن والعقود والأسعار مع إبقاء كل سجل في عرضه.',
     },
     {
-      id: 'integrations', label: 'التكاملات والأتمتة', entryId: 'operations', memberIds: ['operations', 'uploads', 'webhook', 'work-agents'],
-      description: 'راقب التكاملات والمصادر وWebhooks ووكلاء العمل من مساحة تشغيل إداري واحدة.',
+      id: 'integrations', label: 'التكاملات ومصادر البيانات', entryId: 'operations', memberIds: ['operations', 'uploads', 'webhook'], path: '/operations',
+      description: 'راقب التكاملات والمصادر وWebhooks من مساحة إدارية واحدة.',
     },
     {
-      id: 'system-config', label: 'إعدادات النظام والقنوات', entryId: 'app-settings', memberIds: ['app-settings', 'hatif-settings'],
-      description: 'إعدادات النظام والذكاء الاصطناعي والبيانات وقنوات هاتف وIVR.',
+      id: 'automation', label: 'الأتمتة ووكلاء العمل', entryId: 'work-agents', memberIds: ['work-agents'], path: '/work-agents',
+      description: 'حالة الوكلاء وتشغيلاتهم وآخر نتائج الأتمتة.',
+    },
+    {
+      id: 'channels', label: 'القنوات والاتصال', entryId: 'hatif-settings', memberIds: ['hatif-settings'], path: '/settings/hatif',
+      description: 'إعدادات هاتف وIVR والقنوات المصرح بها.',
+    },
+    {
+      id: 'system-config', label: 'إعدادات النظام', entryId: 'app-settings', memberIds: ['app-settings'], path: '/settings/ai',
+      description: 'إعدادات النظام والذكاء الاصطناعي والبيانات العامة.',
     },
   ],
 };
@@ -160,8 +180,8 @@ export const NAV_ITEM_IA = {
   // ثامنًا بجانب المراكز السبعة الثابتة.
   decisions:           { label: 'مهام وقرارات اليوم', visible: false },
 
-  hub:                 { label: 'مركز شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 10, visible: true },
-  'platform-carriers': { label: 'مقارنة أسعار المنصات', section: 'shipping', group: 'carrier_ops', order: 20, visible: true },
+  hub:                 { label: 'شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 10, visible: true },
+  'platform-carriers': { label: 'مقارنة أسعار المنصات', section: 'reports', group: 'report_ops', order: 25, visible: true },
   tasks:               { label: 'مهام شركات الشحن', section: 'shipping', group: 'carrier_ops', order: 30, visible: true },
   'accounting-cycle':  { label: 'الدورة المحاسبية الشهرية', section: 'shipping', group: 'monthly_cycle', order: 40, visible: true },
   drop:                { label: 'رفع ملفات الناقلين', section: 'shipping', group: 'invoice_ops', order: 50, visible: true },
@@ -193,8 +213,8 @@ export const NAV_ITEM_IA = {
   reports:             { label: 'مكتبة التقارير', section: 'reports', group: 'report_ops', order: 10, visible: true },
   'monthly-report':    { label: 'التقرير الشهري', section: 'reports', group: 'report_ops', order: 20, visible: true },
   'internal-exports':  { label: 'الملفات المصدرة', section: 'reports', group: 'report_ops', order: 30, visible: true },
-  integrity:           { label: 'سلامة البيانات', section: 'reports', group: 'automation_ops', order: 40, visible: true },
-  'activity-log':      { label: 'سجل النظام', section: 'reports', group: 'automation_ops', order: 50, visible: true },
+  integrity:           { label: 'سلامة البيانات', section: 'settings', group: 'integration_settings', order: 65, visible: true },
+  'activity-log':      { label: 'سجل النظام', section: 'settings', group: 'system_settings', order: 95, visible: true },
 
   employees:           { label: 'الفريق والصلاحيات', section: 'settings', group: 'team_ops', order: 10, visible: true },
   carriers:            { label: 'شركات الشحن', section: 'settings', group: 'shipping_settings', order: 20, visible: true },

@@ -4,7 +4,8 @@ import { Card, Btn, StatCard, Badge, DiffCell, Spinner, Modal, Empty, toast, Pag
 import { exportAuditExcel, exportWeightsForExternalSystem, exportExcessWeights, exportInboundReturns } from '../engine/export.js';
 import { aiAnalyzeAudit, aiChat } from '../engine/openrouter.js';
 import { loadSettings, getActiveContract } from '../data/carriers.js';
-import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX, loadAuditShipments } from '../lib/coreService.js';
+import { approveAudit, rejectAudit, reopenAudit, saveAuditToDB, evaluateApprovalGate, APPROVAL_DRIFT_TOLERANCE_PRE_TAX, APPROVAL_DRIFT_TOLERANCE_TAX, countAuditShipments, loadAuditShipments } from '../lib/coreService.js';
+import { auditPresentation } from '../lib/auditPresentation.js';
 import { markEventProcessed } from '../lib/webhookService.js';
 import { createClaim } from '../lib/claimsService.js';
 import { useAuth } from '../lib/auth.jsx';
@@ -269,8 +270,21 @@ function computeExcess(row, contract) {
   return { kg, charge };
 }
 
-function ResultsTable({ results, filter, showDetail, contract }) {
-  const displayed = filter === 'all' ? results : results.filter(r => r.status === filter);
+function resultMatchesFilter(row, filter) {
+  if (filter === 'all') return true;
+  if (['ok', 'mismatch', 'favorable', 'inbound', 'unknown'].includes(filter)) return row.status === filter;
+  const issues = Array.isArray(row.issues) ? row.issues : [];
+  const fields = issues.map(issue => `${issue.field || ''} ${issue.label || ''}`.toLowerCase());
+  if (filter === 'weight') return fields.some(value => /weight|وزن/.test(value));
+  if (filter === 'pricing') return fields.some(value => /delivery|price|شحن|سعر|تعرفة/.test(value));
+  if (filter === 'extra') return fields.some(value => /rss|fuel|وقود|pos|بطاقة|other|أخرى|إضاف/.test(value));
+  if (filter === 'cod') return row.isCod || fields.some(value => /cod|تحصيل/.test(value));
+  if (filter === 'excluded') return row.status === 'unknown' || fields.some(value => /unverifiable|غير قابل|مستبعد|ناقص/.test(value));
+  return true;
+}
+
+function ResultsTable({ results, filter, showDetail, contract, startIndex = 0 }) {
+  const displayed = results.filter(row => resultMatchesFilter(row, filter));
   if (!displayed.length) return <Empty icon="🔍" title="لا توجد نتائج" sub="جرب فلتراً مختلفاً"/>;
 
   const mis = displayed.filter(r => r.status === 'mismatch');
@@ -421,7 +435,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
             const rowBg    = isMis ? 'color-mix(in srgb, var(--red) 3%, transparent)' : 'transparent';
             return (
               <tr key={i} style={{ background: rowBg }}>
-                <td style={{ color:'var(--muted)', fontFamily:'var(--font-mono)', fontSize:10 }}>{i + 1}</td>
+                <td style={{ color:'var(--muted)', fontFamily:'var(--font-mono)', fontSize:10 }}>{startIndex + i + 1}</td>
                 <td style={{ fontFamily:'var(--font-mono)', fontSize:11, color:'var(--accent)', whiteSpace:'nowrap', maxWidth:140, overflow:'hidden', textOverflow:'ellipsis' }}>
                   {r.awb || '—'}
                 </td>
@@ -510,7 +524,7 @@ function ResultsTable({ results, filter, showDetail, contract }) {
 }
 
 // ── Main page ──────────────────────────────────────────────────────────────────
-export default function AuditResults({ audit, carriers, onNewAudit, onApproved }) {
+export default function AuditResults({ audit, carriers, onNewAudit, onApproved, embedded = false }) {
   const { profile, can } = useAuth();
   const navigate = useNavigate();
   const [filter,     setFilter]     = useState('all');
@@ -527,13 +541,16 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
   const [rejecting,    setRejecting]    = useState(false);
   const [rejectModal,  setRejectModal]  = useState(false);
   const [rejectReason, setRejectReason] = useState('');
-  // Lazy-loaded 'ok' rows. loadAuditByIdFromDB hydrates only the issue
-  // rows to keep payloads small for 100K+ audits — but the "الكل" tab
-  // needs the rest too. Fetched on demand the first time the user
-  // switches to 'all' (or 'ok'). Big audits paginate by raising the
-  // limit; 5K is enough for nearly every real-world invoice.
-  const [okRows, setOkRows] = useState(null);
-  const [okLoading, setOkLoading] = useState(false);
+  // Persisted audits keep their row details in audit_shipments. Read a real
+  // server page instead of asking PostgREST for 5,000 rows (the gateway caps
+  // that request at 1,000). This makes every stored shipment reachable while
+  // keeping the result screen responsive.
+  const SHIPMENT_PAGE_SIZE = 100;
+  const [shipmentPage, setShipmentPage] = useState(0);
+  const [shipmentRows, setShipmentRows] = useState([]);
+  const [shipmentTotal, setShipmentTotal] = useState(0);
+  const [shipmentLoading, setShipmentLoading] = useState(false);
+  const [shipmentError, setShipmentError] = useState('');
   const { results=[], summary={} } = audit;
 
   // Keep local state in sync if the page re-mounts with a DIFFERENT audit.
@@ -545,47 +562,63 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
   // re-assigned on the in-memory object).
   useEffect(() => {
     setReviewStatus(audit.isDraft ? 'draft' : (audit.reviewStatus || 'pending'));
-    // Reset the lazy-loaded OK rows whenever the audit identity flips.
-    setOkRows(null);
-    setOkLoading(false);
+    setShipmentPage(0);
+    setShipmentRows([]);
+    setShipmentTotal(0);
+    setShipmentError('');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audit.id]);
 
-  // Lazy-load the OK rows when the user switches to a tab that needs
-  // them. For audits with zero issues the hydrated results array is
-  // empty (loadAuditByIdFromDB only hydrates issue rows by default),
-  // so without this fetch the table on "الكل" would render empty even
-  // though summary.total = 109. Drafts (in-memory audits not yet
-  // persisted) already have the full results array — no fetch needed.
+  const remotePageFilter = filter === 'ok' ? 'ok' : 'all';
+  const usesRemotePage = !audit.isDraft && (filter === 'all' || filter === 'ok');
   useEffect(() => {
-    if (audit.isDraft) return;
-    if (filter !== 'all' && filter !== 'ok') return;
-    if (okRows !== null) return;
-    const issueCount = results.filter(r => r.status !== 'ok').length;
-    const okExpected = (summary.total || 0) - issueCount;
-    if (okExpected <= 0) { setOkRows([]); return; }
-    setOkLoading(true);
-    loadAuditShipments(audit.id, { status: 'ok', from: 0, limit: 5000 })
-      .then(rows => setOkRows(rows || []))
-      .catch(err => {
-        console.warn('lazy-load ok rows failed:', err.message);
-        setOkRows([]);
+    if (!usesRemotePage) return undefined;
+    let live = true;
+    setShipmentLoading(true);
+    setShipmentError('');
+    Promise.all([
+      countAuditShipments(audit.id, { status: remotePageFilter }),
+      loadAuditShipments(audit.id, {
+        status: remotePageFilter,
+        from: shipmentPage * SHIPMENT_PAGE_SIZE,
+        limit: SHIPMENT_PAGE_SIZE,
+      }),
+    ])
+      .then(([count, rows]) => {
+        if (!live) return;
+        // Audits created before audit_shipments retain their readable legacy
+        // rows in the audit JSON. Keep that compatibility path explicit.
+        if (!count && results.length) {
+          const compatible = remotePageFilter === 'ok'
+            ? results.filter(row => row.status === 'ok')
+            : results;
+          setShipmentRows(compatible.slice(shipmentPage * SHIPMENT_PAGE_SIZE, (shipmentPage + 1) * SHIPMENT_PAGE_SIZE));
+          setShipmentTotal(compatible.length);
+          return;
+        }
+        setShipmentRows(rows || []);
+        setShipmentTotal(count || 0);
       })
-      .finally(() => setOkLoading(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audit.id, filter, audit.isDraft]);
+      .catch(err => {
+        if (!live) return;
+        console.warn('audit shipment page failed:', err.message);
+        setShipmentRows([]);
+        setShipmentError(err.message || 'تعذر تحميل شحنات الفاتورة');
+      })
+      .finally(() => { if (live) setShipmentLoading(false); });
+    return () => { live = false; };
+  }, [audit.id, audit.isDraft, remotePageFilter, results, shipmentPage, usesRemotePage]);
 
-  // results that the ResultsTable should iterate over for the active tab
-  const tabResults = useMemo(() => {
-    if (audit.isDraft)               return results;
-    if (filter === 'ok')             return okRows || [];
-    if (filter === 'all' && okRows)  return [...results, ...okRows];
-    return results;
-  }, [results, okRows, filter, audit.isDraft]);
+  const tabResults = usesRemotePage ? shipmentRows : results;
+  const shipmentPages = Math.max(1, Math.ceil(shipmentTotal / SHIPMENT_PAGE_SIZE));
+
+  useEffect(() => { setShipmentPage(0); }, [filter, audit.id]);
 
   // Penny-perfect gate — recomputes on every render so the banner stays
   // in sync if numbers shift (e.g., after a re-analyze).
   const approvalGate = useMemo(() => evaluateApprovalGate(audit), [audit]);
+  const presentation = useMemo(() => auditPresentation(audit, { reviewStatus }), [audit, reviewStatus]);
+  const displayReviewStatus = presentation.reviewStatus;
 
   const handleApprove = async (notifyParent = true) => {
     // Client-side gate check first — gives a fast, specific error before
@@ -784,7 +817,7 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
   // إنشاء مطالبة استرداد من الفروق «لصالحك» — يُغلق دورة «الاكتشاف→الاسترداد»
   // (كان السجل يبقى فارغاً رغم فروقات معروفة). يعبّئ الناقل/الفترة/المبلغ آلياً.
   const [claiming, setClaiming] = useState(false);
-  const overbill = +(Number(summary.totalDiff) || 0).toFixed(2);   // موجب = فوترة زائدة
+  const overbill = +presentation.claimAmount.toFixed(2);   // موجب = فوترة زائدة
   const handleCreateClaim = async () => {
     if (overbill <= 1) { toast('لا فروق لصالحك تستحق مطالبة', 'info'); return; }
     if (!window.confirm(`إنشاء مطالبة استرداد على ${audit.carrierName} بمبلغ ${overbill.toFixed(2)} ر.س (${audit.period})؟`)) return;
@@ -804,13 +837,13 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
   };
 
   return (
-    <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:'100%',overflow:'hidden'}}>
+    <div style={{display:'grid',gridTemplateColumns:showAI?'1fr 360px':'1fr',height:embedded?'auto':'100%',minHeight:embedded?640:undefined,overflow:'hidden'}}>
 
       {/* Main */}
       <div className="ar-panel-pad" style={{overflowY:'auto',padding:'20px 24px'}}>
 
         {/* ── Review status banner ─────────────────────────────────── */}
-        {(reviewStatus === 'draft' || reviewStatus === 'pending') && (
+        {(displayReviewStatus === 'draft' || displayReviewStatus === 'pending') && (
           <div style={{
             marginBottom: 16, padding: '14px 18px', borderRadius: 12,
             background: approvalGate.canApprove
@@ -901,7 +934,7 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
             )}
           </div>
         )}
-        {reviewStatus === 'approved' && (
+        {displayReviewStatus === 'approved' && (
           <div style={{
             marginBottom: 16, padding: '10px 16px', borderRadius: 11,
             background: 'color-mix(in srgb, var(--accent) 8%, transparent)',
@@ -922,7 +955,7 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
             )}
           </div>
         )}
-        {reviewStatus === 'rejected' && (
+        {displayReviewStatus === 'rejected' && (
           <div style={{
             marginBottom: 16, padding: '10px 16px', borderRadius: 11,
             background: 'color-mix(in srgb, var(--red) 8%, transparent)',
@@ -945,11 +978,30 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
             )}
           </div>
         )}
+        {displayReviewStatus === 'legacy_unverified' && (
+          <div className="audit-legacy-status" style={{
+            marginBottom: 16, padding: '12px 16px', borderRadius: 11,
+            background: 'color-mix(in srgb, var(--gold) 8%, transparent)',
+            border: '1px solid color-mix(in srgb, var(--gold) 38%, transparent)',
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+          }}>
+            <AlertCircle size={18} color="var(--gold)"/>
+            <div style={{ flex: 1, fontSize: 12.5 }}>
+              <strong style={{ color: 'var(--gold)' }}>مراجعة تاريخية غير موثقة عقديًا</strong>
+              <span style={{ color: 'var(--muted)', marginInlineStart: 8 }}>
+                حالتها التاريخية محفوظة، لكنها ليست معتمدة تشغيليًا ولا مؤهلة للربط المالي.
+              </span>
+            </div>
+            {reviewStatus === 'approved' && can('audits.reopen') ? (
+              <Btn size="sm" variant="ghost" onClick={handleReopen} disabled={approving} icon={<RotateCcw size={12}/>}>إعادة فتح</Btn>
+            ) : null}
+          </div>
+        )}
 
         {/* Header */}
         <PageHeader
           icon={<ClipboardCheck size={22}/>}
-          title={<>نتائج تدقيق <span style={{color:'var(--accent3)'}}>{audit.carrierName}</span></>}
+          title={<>نتيجة مراجعة فاتورة <span style={{color:'var(--accent3)'}}>{audit.carrierName}</span></>}
           subtitle={`${audit.period} · ${displayedContractLabel} · ${summary.total || results.length} شحنة${audit.fileName ? ` · ${audit.fileName}` : ''}`}
           actions={<>
             <Btn size="sm" variant="ghost" onClick={onNewAudit}>+ مراجعة جديدة</Btn>
@@ -963,7 +1015,7 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
             )}
             {overbill > 1 && (can('audits.approve') || can('carriers.view')) && (
               <Btn size="sm" variant="gold" onClick={handleCreateClaim} disabled={claiming} icon="⚖️">
-                {claiming ? 'يُنشئ…' : `أنشئ مطالبة (${overbill.toFixed(0)} ر.س)`}
+                {claiming ? 'يُنشئ…' : `أنشئ مطالبة (${overbill.toFixed(2)} ر.س)`}
               </Btn>
             )}
             {summary.inbound>0 && (
@@ -1043,10 +1095,10 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
           )}
           <StatCard label="؟ غير معروف" value={summary.unknown} color="var(--muted)" onClick={()=>setFilter('unknown')}/>
           <div style={{background:'var(--card)',border:'1px solid var(--border)',borderRadius:11,padding:'13px 18px',
-            borderTop:`3px solid ${summary.totalDiff>0?'var(--red)':'var(--green)'}`}}>
+            borderTop:`3px solid ${presentation.variance>0?'var(--red)':'var(--green)'}`}}>
             <div style={{color:'var(--muted)',fontSize:10,fontFamily:'var(--font-mono)',marginBottom:3}}>إجمالي الفرق</div>
-            <div style={{color:summary.totalDiff>0?'var(--red)':'var(--green)',fontSize:20,fontFamily:'var(--font-mono)',fontWeight:700}}>
-              {summary.totalDiff>=0?'+':''}{summary.totalDiff?.toFixed(2)} ر.س
+            <div style={{color:presentation.variance>0?'var(--red)':'var(--green)',fontSize:20,fontFamily:'var(--font-mono)',fontWeight:700}}>
+              {presentation.variance>=0?'+':''}{presentation.variance.toFixed(2)} ر.س
             </div>
           </div>
         </div>
@@ -1124,12 +1176,12 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
         {/* Filters */}
         <div style={{display:'flex',gap:7,marginBottom:14,flexWrap:'wrap',rowGap:7}}>
           {[
-            { k:'all',       l:`الكل (${summary.total})` },
-            { k:'mismatch',  l:`✗ فروق (${summary.mismatch})` },
-            { k:'ok',        l:`✓ مطابق (${summary.ok})` },
-            ...(summary.favorable > 0 ? [{ k:'favorable', l:`↓ لصالحك (${summary.favorable})` }] : []),
-            ...(summary.inbound > 0 ? [{ k:'inbound', l:`🛬 وارد (${summary.inbound})` }] : []),
-            { k:'unknown',   l:`؟ (${summary.unknown})` },
+            { k:'all', l:'كل الشحنات' },
+            { k:'weight', l:'فروقات الوزن' },
+            { k:'pricing', l:'فروقات الأسعار' },
+            { k:'extra', l:'الرسوم الإضافية' },
+            { k:'cod', l:'COD' },
+            { k:'excluded', l:'الاستبعادات' },
           ].map(t=>(
             <button key={t.k} onClick={()=>setFilter(t.k)} style={{
               background:filter===t.k?'var(--accent)20':'transparent',
@@ -1143,15 +1195,29 @@ export default function AuditResults({ audit, carriers, onNewAudit, onApproved }
 
         {/* Table */}
         <Card style={{padding:0,overflow:'hidden'}}>
-          {okLoading && (filter === 'all' || filter === 'ok') ? (
+          {shipmentLoading && usesRemotePage ? (
             <div style={{ display:'flex', justifyContent:'center', alignItems:'center', padding:48, gap:10 }}>
               <Spinner size={20}/>
-              <span style={{ fontSize: 12, color: 'var(--muted)' }}>جارٍ تحميل الشحنات المطابقة…</span>
+              <span style={{ fontSize: 12, color: 'var(--muted)' }}>جارٍ تحميل صفحة الشحنات…</span>
             </div>
           ) : (
-            <ResultsTable results={tabResults} filter={filter} showDetail={showDetail} contract={contract}/>
+            <ResultsTable
+              results={tabResults}
+              filter={filter}
+              showDetail={showDetail}
+              contract={contract}
+              startIndex={usesRemotePage ? shipmentPage * SHIPMENT_PAGE_SIZE : 0}
+            />
           )}
         </Card>
+        {shipmentError ? <div className="data-load-error is-inline" role="alert">المصدر غير متاح: {shipmentError}</div> : null}
+        {usesRemotePage && !shipmentLoading && !shipmentError && shipmentTotal > 0 ? (
+          <div className="s360-pagination" aria-label="صفحات شحنات الفاتورة">
+            <Btn size="sm" variant="ghost" disabled={shipmentPage <= 0} onClick={() => setShipmentPage(page => Math.max(0, page - 1))}>السابق</Btn>
+            <span>صفحة {shipmentPage + 1} من {shipmentPages} · {shipmentTotal.toLocaleString('en-US')} شحنة قابلة للمراجعة</span>
+            <Btn size="sm" variant="ghost" disabled={shipmentPage + 1 >= shipmentPages} onClick={() => setShipmentPage(page => Math.min(shipmentPages - 1, page + 1))}>التالي</Btn>
+          </div>
+        ) : null}
       </div>
 
       {/* AI sidebar */}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   AlertTriangle,
   Check,
@@ -17,6 +17,7 @@ import {
   Save,
   ShieldCheck,
   Target,
+  UserRound,
   Users,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -37,13 +38,14 @@ import {
   SMART_CAMPAIGN_OBJECTIVES,
   updateSmartCampaignOutcome,
 } from '../lib/smartCampaignService.js';
-import { loadOutreachImpact, loadWhatsAppCampaignReport } from '../lib/whatsappService.js';
+import { loadHatifUsers, loadOutreachImpact, loadWhatsAppCampaignReport } from '../lib/whatsappService.js';
 import {
   prepareWhatsAppAudienceRows,
   summarizeWhatsAppAudience,
   whatsappAudienceExclusionBreakdown,
 } from '../lib/whatsappAudience.js';
 import './smart-campaign-center.css';
+import { readAudienceHandoff } from '../lib/agingOperations.js';
 
 const STEPS = ['الهدف', 'الجمهور', 'الحماية', 'القناة', 'المراجعة'];
 const COLLECTION_BUCKETS = [
@@ -82,12 +84,97 @@ const dateStamp = () => new Date().toLocaleDateString('en-CA');
 
 function suggestedName(objective) {
   const base = {
+    general: 'حملة عامة',
     collection: 'حملة سداد مركزة',
     reactivation: 'إعادة تنشيط المتوقفين',
     sales: 'فرص نمو العملاء',
     service: 'تنبيه خدمة العملاء',
   }[objective] || 'حملة ذكية';
   return `${base} — ${dateStamp()}`;
+}
+
+const manualRowsToText = rows => (rows || [])
+  .map(row => [row.name || row['الاسم'] || '', row.phone || row.to || row.mobile || row['رقم الجوال'] || ''].filter(Boolean).join(','))
+  .join('\n');
+
+const parseManualAudienceText = text => String(text || '')
+  .split(/\r?\n/)
+  .map(line => line.trim())
+  .filter(Boolean)
+  .map(line => {
+    const parts = line.split(/[\t,;،]/).map(value => value.trim()).filter(Boolean);
+    if (parts.length === 1) return { phone: parts[0] };
+    const phoneIndex = parts.findIndex(value => /(?:\+?966|00966|05|5)?\d{8,9}/.test(value.replace(/\D/g, '')));
+    const phone = phoneIndex >= 0 ? parts[phoneIndex] : parts.at(-1);
+    return { phone, name: parts.filter((_, index) => index !== phoneIndex).join(' ') };
+  });
+
+function ManualAudienceEditor({ definition, onChange }) {
+  const currentRows = definition.manualRows || [];
+  const [draft, setDraft] = useState(() => definition.manualText || manualRowsToText(currentRows));
+  const [fileName, setFileName] = useState('');
+
+  useEffect(() => {
+    setDraft(definition.manualText || manualRowsToText(definition.manualRows || []));
+  }, [definition.manualText, definition.manualRows]);
+
+  const updateText = value => {
+    setDraft(value);
+    onChange({ ...definition, manualText: value, manualRows: parseManualAudienceText(value).slice(0, 5000) });
+  };
+
+  const importExcel = async event => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    try {
+      const workbook = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+      const imported = workbook.SheetNames.flatMap(sheetName => XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: '' }))
+        .map(row => {
+          const entries = Object.entries(row || {});
+          const get = aliases => entries.find(([key]) => aliases.includes(String(key).trim().toLowerCase()))?.[1] || '';
+          return {
+            name: get(['name', 'customer', 'customer name', 'الاسم', 'العميل', 'اسم العميل']),
+            phone: get(['phone', 'mobile', 'whatsapp', 'phone number', 'الجوال', 'رقم الجوال', 'الهاتف', 'رقم الهاتف']),
+            amount: get(['amount', 'المبلغ']),
+          };
+        })
+        .filter(row => row.phone)
+        .slice(0, 5000);
+      if (!imported.length) throw new Error('لم أجد عمود جوال واضحاً في الملف');
+      const nextText = manualRowsToText(imported);
+      setDraft(nextText);
+      setFileName(file.name);
+      onChange({ ...definition, manualText: nextText, manualRows: imported });
+      toast(`تمت قراءة ${fmt0(imported.length)} صف من ${file.name}`, 'success');
+    } catch (error) {
+      toast(`تعذّرت قراءة الجمهور: ${error.message}`, 'error');
+    } finally {
+      event.target.value = '';
+    }
+  };
+
+  return (
+    <div className="scc-manual-audience">
+      <label>
+        <span>الأسماء والأرقام</span>
+        <textarea
+          value={draft}
+          onChange={event => updateText(event.target.value)}
+          placeholder={'اسم العميل, 05XXXXXXXX\nأو الصق رقماً واحداً في كل سطر'}
+          rows={6}
+        />
+      </label>
+      <div className="scc-manual-audience__actions">
+        <label className="scc-file-button">
+          <FileDown size={15}/>
+          <span>رفع Excel</span>
+          <input type="file" accept=".xlsx,.xls,.csv" onChange={importExcel}/>
+        </label>
+        <span>{fileName || `${fmt0(currentRows.length)} صف قبل إزالة التكرار والأرقام غير الصالحة`}</span>
+      </div>
+      <small>الأعمدة المقبولة: الاسم، الجوال. يمكن إضافة المبلغ اختيارياً. لا تُنشأ أي سجلات في تحصيل أو زوهو.</small>
+    </div>
+  );
 }
 
 function SummaryStrip({ campaigns }) {
@@ -158,6 +245,9 @@ function AudienceFilters({ objective, definition, onChange }) {
     current.has(key) ? current.delete(key) : current.add(key);
     onChange({ ...definition, [field]: [...current] });
   };
+  if (objective === 'general') {
+    return <ManualAudienceEditor definition={definition} onChange={onChange}/>;
+  }
   if (objective === 'collection') {
     return (
       <>
@@ -233,6 +323,8 @@ function CampaignList({ rows, loading, onOpen, onOpenLegacy }) {
 
 export default function SmartCampaignCenter({ isActive = true }) {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const audienceContextToken = searchParams.get('audienceContext');
   const { user, can } = useAuth();
   const canWhatsApp = can('campaigns.send');
   const canIvr = can('campaigns.ivr');
@@ -255,6 +347,35 @@ export default function SmartCampaignCenter({ isActive = true }) {
   const [saving, setSaving] = useState(false);
   const [waCampaign, setWaCampaign] = useState(null);
   const [ivrCampaign, setIvrCampaign] = useState(null);
+  const [hatifUsers, setHatifUsers] = useState([]);
+  const [hatifUsersLoading, setHatifUsersLoading] = useState(false);
+  const [assignedHatifUserId, setAssignedHatifUserId] = useState('');
+  const [audienceHandoff, setAudienceHandoff] = useState(null);
+
+  useEffect(() => {
+    if (!isActive) return;
+    const context = readAudienceHandoff(audienceContextToken);
+    if (!context || context.source !== 'aging_operations') return;
+    setAudienceHandoff(context);
+    setObjective('collection');
+    setDefinition({
+      ...defaultAudienceDefinition('collection'),
+      buckets: Array.isArray(context.aging) ? context.aging : [],
+      selectionKeys: Array.isArray(context.selectionKeys) ? context.selectionKeys : [],
+      audienceContext: {
+        source: context.source,
+        filters: context.filters || {},
+        snapshotAt: context.snapshotAt,
+        count: context.count,
+        totalAmount: context.totalAmount,
+        returnTo: context.returnTo,
+      },
+    });
+    const requestedChannel = searchParams.get('channel');
+    setChannel(requestedChannel === 'ivr' ? 'ivr' : 'whatsapp');
+    setName(`تحصيل ${Array.isArray(context.aging) && context.aging.length ? context.aging.join(' + ') : 'Aging'} — ${dateStamp()}`);
+    setStep(5);
+  }, [isActive, audienceContextToken]);
 
   const refreshCampaigns = useCallback(async () => {
     setLoadingCampaigns(true);
@@ -278,6 +399,17 @@ export default function SmartCampaignCenter({ isActive = true }) {
   }, [isActive, refreshCampaigns]);
 
   useEffect(() => {
+    if (!isActive || !canWhatsApp) return undefined;
+    let live = true;
+    setHatifUsersLoading(true);
+    loadHatifUsers()
+      .then(rows => { if (live) setHatifUsers(rows || []); })
+      .catch(() => { if (live) setHatifUsers([]); })
+      .finally(() => { if (live) setHatifUsersLoading(false); });
+    return () => { live = false; };
+  }, [isActive, canWhatsApp]);
+
+  useEffect(() => {
     if (!isActive) return;
     let live = true;
     setUniverseLoading(true); setUniverseError('');
@@ -295,13 +427,17 @@ export default function SmartCampaignCenter({ isActive = true }) {
     : new Set(), [audience, objective]);
   const audienceSummary = useMemo(() => summarizeWhatsAppAudience({
     rows: preparedRows,
-    noWhatsapp: channel === 'whatsapp' ? (protections?.noWhatsapp || new Set()) : new Set(),
+    noWhatsapp: channel === 'whatsapp' || channel === 'ivr' ? (protections?.noWhatsapp || new Set()) : new Set(),
     hatifTouched: channel === 'export' || channel === 'employee_task' ? new Map() : (protections?.hatifTouched || new Map()),
     weakPhones: channel === 'whatsapp' ? (protections?.weakPhones || new Set()) : new Set(),
     debtorPhones,
   }), [preparedRows, protections, channel, debtorPhones]);
   const exclusionReasons = useMemo(() => whatsappAudienceExclusionBreakdown(audienceSummary.counts), [audienceSummary.counts]);
   const financialAmount = useMemo(() => audience.reduce((sum, row) => sum + (Number(row.amount) || 0), 0), [audience]);
+  const assignedHatifUser = useMemo(
+    () => hatifUsers.find(row => row.userId === assignedHatifUserId) || null,
+    [hatifUsers, assignedHatifUserId],
+  );
 
   const campaignRows = useMemo(() => {
     const smartByName = new Map(campaigns.map(row => [row.name, row]));
@@ -336,13 +472,14 @@ export default function SmartCampaignCenter({ isActive = true }) {
   };
   const resetComposer = (draft = false) => {
     setEditingId(null); setObjective('collection'); setDefinition(defaultAudienceDefinition('collection'));
-    setName(suggestedName('collection')); setChannel('whatsapp'); setStep(draft ? 1 : 2);
+    setName(suggestedName('collection')); setChannel('whatsapp'); setAssignedHatifUserId(''); setStep(draft ? 1 : 2);
     document.querySelector('.scc-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   const openCampaign = campaign => {
     setEditingId(campaign.id); setObjective(campaign.objective);
     setDefinition({ ...defaultAudienceDefinition(campaign.objective), ...campaign.audienceDefinition });
-    setName(campaign.name); setChannel(campaign.channel || 'whatsapp'); setStep(2);
+    setName(campaign.name); setChannel(campaign.channel || 'whatsapp');
+    setAssignedHatifUserId(campaign.assignedHatifUserId || ''); setStep(2);
     document.querySelector('.scc-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
@@ -354,6 +491,8 @@ export default function SmartCampaignCenter({ isActive = true }) {
     audienceDefinition: definition,
     sourceKeys: universe?.sources || [],
     channel,
+    assignedHatifUserId: channel === 'whatsapp' ? (assignedHatifUser?.userId || null) : null,
+    assignedHatifUserName: channel === 'whatsapp' ? (assignedHatifUser?.name || null) : null,
     protectionSnapshot: {
       checked_at: new Date().toISOString(),
       source: audienceSummary.source,
@@ -414,6 +553,7 @@ export default function SmartCampaignCenter({ isActive = true }) {
       toast(universe.sourceState.message, 'error'); return;
     }
     if (channel === 'whatsapp' && !canWhatsApp) { toast('تحتاج صلاحية إطلاق حملة واتساب', 'error'); return; }
+    if (channel === 'whatsapp' && !assignedHatifUser) { toast('اختر الموظف المسؤول عن ردود الحملة في هاتف', 'error'); return; }
     if (channel === 'ivr' && !canIvr) { toast('تحتاج صلاحية إطلاق IVR', 'error'); return; }
     try {
       const saved = await persistCampaign('ready', true);
@@ -457,6 +597,19 @@ export default function SmartCampaignCenter({ isActive = true }) {
       </header>
 
       <SummaryStrip campaigns={campaignRows}/>
+
+      {audienceHandoff && (
+        <div className="scc-audience-handoff">
+          <div><strong>جمهور من Aging Operations</strong><span>Snapshot: {new Date(audienceHandoff.snapshotAt).toLocaleString('ar-SA')} · لا توجد هواتف أو أسماء في الرابط</span></div>
+          <div className={audienceHandoff.count === audience.length ? 'is-same' : 'is-changed'}>
+            <span>عند الاختيار <b>{fmt0(audienceHandoff.count)}</b></span>
+            <span>مبلغ الاختيار <b>{fmtMoney(audienceHandoff.totalAmount)} ر.س</b></span>
+            <span>الآن <b>{fmt0(audience.length)}</b></span>
+            <span>المبلغ الآن <b>{fmtMoney(financialAmount)} ر.س</b></span>
+          </div>
+          <button type="button" onClick={() => navigate(audienceHandoff.returnTo || '/customer-money')}>العودة إلى Aging</button>
+        </div>
+      )}
 
       <div className="scc-workspace">
         <section className="scc-campaign-list">
@@ -519,6 +672,31 @@ export default function SmartCampaignCenter({ isActive = true }) {
               <ChannelButton id="employee_task" icon={ClipboardList} selected={channel === 'employee_task'} disabled={!canManage} onClick={setChannel}/>
               <ChannelButton id="export" icon={Download} selected={channel === 'export'} disabled={!canManage} onClick={setChannel}/>
             </div>
+            {channel === 'whatsapp' && (
+              <div className="scc-hatif-owner">
+                <div className="scc-hatif-owner__heading">
+                  <UserRound size={17}/>
+                  <div>
+                    <strong>الموظف المسؤول في هاتف</strong>
+                    <span>كل رد على هذه الحملة سيتجه إليه تلقائياً، حتى لو كان للقالب مسؤول افتراضي مختلف.</span>
+                  </div>
+                </div>
+                <select
+                  value={assignedHatifUserId}
+                  onChange={event => setAssignedHatifUserId(event.target.value)}
+                  disabled={hatifUsersLoading || !canWhatsApp}
+                  aria-label="الموظف المسؤول في هاتف"
+                >
+                  <option value="">{hatifUsersLoading ? 'يجري تحميل موظفي هاتف…' : 'اختر الموظف المسؤول'}</option>
+                  {hatifUsers.map(row => <option key={row.userId} value={row.userId}>{row.name}{row.email ? ` — ${row.email}` : ''}</option>)}
+                </select>
+                {!hatifUsersLoading && !hatifUsers.length && (
+                  <button type="button" className="scc-hatif-owner__settings" onClick={() => navigate('/whatsapp-settings?tab=connection')}>
+                    لم يظهر موظفو هاتف — افتح إعدادات الربط
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {!canManage && <div className="scc-alert is-warning"><AlertTriangle size={15}/>يمكنك قراءة المركز، لكن إنشاء الحملة يتطلب صلاحية واتساب أو IVR.</div>}
@@ -538,6 +716,10 @@ export default function SmartCampaignCenter({ isActive = true }) {
         recipients={waCampaign ? audience : []}
         bucketLabel={waCampaign?.name || ''}
         lockedCampaignName={waCampaign?.name || null}
+        assignedHatifUser={waCampaign ? {
+          userId: waCampaign.assignedHatifUserId,
+          name: waCampaign.assignedHatifUserName,
+        } : null}
         salesAudience={objective === 'sales' || objective === 'reactivation'}
         onSent={result => handleChannelDone(waCampaign, result, 'whatsapp')}
       />

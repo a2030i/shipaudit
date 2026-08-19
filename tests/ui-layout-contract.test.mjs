@@ -149,7 +149,8 @@ test('carrier hub owns one summary surface with navigation actions', async () =>
   const hub = await read('src/pages/CarriersHub.jsx');
 
   assert.doesNotMatch(hub, /PageHeader/);
-  assert.match(hub, /title="شركات الشحن — كشف موحّد"/);
+  assert.match(hub, /title="شركات الشحن"/);
+  assert.match(hub, /\+ رفع فاتورة شركة شحن/);
   assert.match(hub, /فتح الوارد/);
   assert.match(hub, /إدارة الشركات/);
   assert.match(hub, /تحديث الحالة/);
@@ -359,8 +360,9 @@ test('phase one exposes approved workspaces without removing legacy routes', asy
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money', 'bank'\]/);
   assert.match(landing, /workspaceDestinationsFor/);
-  assert.match(landing, /مساحات عمل متاحة حسب صلاحياتك/);
-  assert.match(tabs, />طريقة العرض</);
+  assert.match(landing, /طرق عرض رئيسية متاحة حسب صلاحياتك/);
+  assert.match(landing, />طريقة العرض</);
+  assert.match(tabs, /selectorLabel = 'القسم'/);
 
   for (const source of [sales, collections]) {
     assert.match(source, /<WorkspaceTabs/);
@@ -405,21 +407,45 @@ test('phase two groups operations reports and admin into approved workspaces', a
   const navigation = await read('src/lib/navigation.js');
   const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
 
-  assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'الناقلون والمتابعة'[\s\S]*label: 'دورة المحاسب'[\s\S]*label: 'تدقيق وفواتير الناقلين'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
-  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'التقارير والتحليل'[\s\S]*label: 'التصدير والأرشيف'[\s\S]*label: 'سلامة البيانات والرقابة'/);
-  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات والأتمتة'[\s\S]*label: 'إعدادات النظام والقنوات'/);
+  assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'الأداء التجاري'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات ومصادر البيانات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
-  assert.match(navigation, /integrity:\s*\{[^}]*section: 'reports'/);
-  assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'reports'/);
+  assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
+  assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'settings'/);
 
-  for (const scope of ['operations-carriers', 'operations-audit', 'operations-service-billing', 'reports-analysis', 'reports-archive', 'admin-carriers', 'admin-integrations', 'admin-system-settings']) {
-    assert.match(app, new RegExp(`scope="${scope}"[\\s\\S]*?showSwitcher`));
-  }
+  assert.doesNotMatch(app, /showSwitcher/);
   for (const path of ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks', '/drop', '/audits', '/aramex-statements', '/ledger', '/fulfillment', '/weight-billing', '/reports', '/monthly-report', '/internal-exports', '/activity-log', '/integrity', '/operations', '/uploads', '/webhook', '/work-agents', '/settings/hatif']) {
     assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
   }
   assert.match(centerWorkspace, /params\.delete\('tab'\)/);
   assert.match(centerWorkspace, /onNavigate\(`\$\{next\.path\}\$\{query/);
+});
+
+test('center view menus stay task-oriented and never exceed six entries', async () => {
+  const { CENTER_WORKSPACES } = await import('../src/lib/navigation.js');
+  const expected = {
+    sales: ['عمل اليوم', 'الفرص والصفقات', 'الحملات', 'التواصل', 'المسوّقون والعمولات'],
+    finance: ['المستحقات والتحصيل', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
+    shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
+    reports: ['مكتبة التقارير', 'الأداء التجاري', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
+    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'التكاملات ومصادر البيانات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
+  };
+  for (const [center, labels] of Object.entries(expected)) {
+    assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);
+    assert.ok(CENTER_WORKSPACES[center].length <= 6, `${center} exceeds six center views`);
+  }
+});
+
+test('legacy entity and action routes resolve to canonical homes without removing route guards', async () => {
+  const app = await read('src/App.jsx');
+  assert.match(app, /rawPath === '\/upload'[\s\S]*navigate\('\/hub\?action=upload-invoice'/);
+  assert.match(app, /rawPath === '\/merchants'[\s\S]*navigate\(`\/customer-360\?/);
+  for (const path of ['/audits', '/claims', '/ledger', '/cod-settlements', '/aramex-statements', '/payments', '/carrier-kpi', '/contracts']) {
+    assert.ok(app.includes(`'${path}':`), `${path} must keep a Carrier 360 legacy mapping`);
+  }
+  assert.match(app, /rawPath === '\/zoho-data'[\s\S]*forcedSectionId/);
+  assert.match(app, /rawPath === '\/carrier-kpi'[\s\S]*forcedSectionId/);
 });
 
 test('phase two important filters and unavailable sources are explicit', async () => {

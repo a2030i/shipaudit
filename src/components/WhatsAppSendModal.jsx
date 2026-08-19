@@ -76,7 +76,17 @@ const fieldValue = (fields, r, key) => {
 // recipients: [{ to, name, amount, count, vars:[] }]
 // البوابة المركزية: الإرسال يتطلّب campaigns.send — تُفحَص هنا مرة واحدة فتحمي
 // كل الصفحات التي تفتح المودال (والدالة hatif-send تعيد الفحص سيرفرياً).
-export default function WhatsAppSendModal({ open, onClose, recipients = [], bucketLabel, onSent, lockedTemplate = null, lockedCampaignName = null, salesAudience = false }) {
+export default function WhatsAppSendModal({
+  open,
+  onClose,
+  recipients = [],
+  bucketLabel,
+  onSent,
+  lockedTemplate = null,
+  lockedCampaignName = null,
+  salesAudience = false,
+  assignedHatifUser = null,
+}) {
   const { user, can } = useAuth();
   const [cfg, setCfg]       = useState(null);
   const [verifying, setVer] = useState(false);
@@ -358,6 +368,8 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
           idempotency_ref: v._rk,
         })),
         bucketLabel: campName.trim(), userId: user?.id || null,
+        assignedHatifUserId: assignedHatifUser?.userId || null,
+        assignedHatifUserName: assignedHatifUser?.name || null,
       });
       if (mapCustomized) saveTemplateVarMap(tpl, varMap).catch(() => {});
       toast(`⏰ جُدولت «${campName.trim()}» (${fmt(selectedValid.length)} مستلم على ${batches} دفعة) — تبدأ ${new Date(schedAt).toLocaleString('ar-SA')}`, 'success');
@@ -398,7 +410,13 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
       try {
         r = await sendWhatsAppCampaign({
           templateName: tpl, templateLanguage: 'ar', channelId: null, items: chunk,
-          campaign: { name: campName.trim(), bucket: bucketLabel || null, userId: user?.id || null },
+          campaign: {
+            name: campName.trim(),
+            bucket: bucketLabel || null,
+            userId: user?.id || null,
+            assignedHatifUserId: assignedHatifUser?.userId || null,
+            assignedHatifUserName: assignedHatifUser?.name || null,
+          },
         });
       } finally { clearInterval(ticker); }
       if (r?.ok) {
@@ -526,6 +544,20 @@ export default function WhatsAppSendModal({ open, onClose, recipients = [], buck
             {verified === true  && <span style={{ color: 'var(--green2)', fontSize: 12 }}><CheckCircle2 size={13}/></span>}
             {verified === false && <span style={{ color: 'var(--red)', fontSize: 12 }}><X size={13}/></span>}
           </div>
+
+          {assignedHatifUser?.userId && (
+            <div style={{
+              display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12,
+              background: 'color-mix(in srgb, var(--blue) 7%, var(--surface2))',
+              border: '1px solid color-mix(in srgb, var(--blue) 28%, var(--border))',
+              borderRadius: 9, padding: '10px 12px',
+            }}>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12.5, fontWeight: 800 }}>الموظف المسؤول في هاتف: {assignedHatifUser.name || 'الموظف المحدد'}</div>
+                <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 2 }}>ستُسند محادثات وردود هذه الحملة إليه تلقائياً.</div>
+              </div>
+            </div>
+          )}
 
           {tpl === TAHSEEL_PORTAL_TEMPLATE_NAME && (
             <div style={{

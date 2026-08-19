@@ -10,6 +10,7 @@ import {
 } from './whatsappService.js';
 
 export const SMART_CAMPAIGN_OBJECTIVES = Object.freeze({
+  general: Object.freeze({ label: 'حملة عامة', description: 'أرقام يدوية أو Excel دون ربطها بالتحصيل أو زوهو' }),
   collection: Object.freeze({ label: 'تحصيل وسداد', description: 'فواتير زوهو والمحفظة وأعمار الدين' }),
   reactivation: Object.freeze({ label: 'إعادة تنشيط', description: 'متاجر توقفت عن الشحن حديثاً أو قديماً' }),
   sales: Object.freeze({ label: 'مبيعات وترقية', description: 'فرص المنصة والعملاء الجدد والنشطون' }),
@@ -24,6 +25,9 @@ export const SMART_CAMPAIGN_CHANNELS = Object.freeze({
 });
 
 export const DEFAULT_AUDIENCE_DEFINITIONS = Object.freeze({
+  general: Object.freeze({
+    manualRows: Object.freeze([]),
+  }),
   collection: Object.freeze({
     buckets: Object.freeze(['inv61_90', 'inv90p']),
     platformStatus: 'all',
@@ -52,6 +56,7 @@ const cloneDefinition = (objective) => {
     ...base,
     ...(base.buckets ? { buckets: [...base.buckets] } : {}),
     ...(base.segments ? { segments: [...base.segments] } : {}),
+    ...(base.manualRows ? { manualRows: base.manualRows.map(row => ({ ...row })) } : {}),
   };
 };
 
@@ -172,6 +177,15 @@ function debtorPhoneSet(money) {
 }
 
 export async function loadSmartAudienceUniverse(objective = 'collection') {
+  if (objective === 'general') {
+    return {
+      objective,
+      rows: [],
+      sources: ['أرقام يدوية أو ملف Excel'],
+      sourceState: { status: 'fresh', message: 'الحملة العامة مستقلة عن التحصيل وزوهو ولمحة.' },
+    };
+  }
+
   if (objective === 'collection') {
     const money = await loadCustomerMoneyDashboard();
     return {
@@ -215,9 +229,14 @@ function campaignAmount(row, buckets) {
 
 export function filterSmartAudience(universe, objective, definition) {
   const rows = Array.isArray(universe?.rows) ? universe.rows : [];
+  if (objective === 'general') {
+    return normalizeManualAudienceRows(definition?.manualRows || []);
+  }
   if (objective === 'collection') {
     const buckets = Array.isArray(definition?.buckets) ? definition.buckets : [];
+    const selectionKeys = new Set(Array.isArray(definition?.selectionKeys) ? definition.selectionKeys : []);
     return rows.flatMap(row => {
+      if (selectionKeys.size && !selectionKeys.has(row.key)) return [];
       if (definition?.platformStatus && definition.platformStatus !== 'all') {
         const status = row.platformStatus === 'نشط' || row.platformStatus === 'active' ? 'active'
           : row.platformStatus === 'غير نشط' || row.platformStatus === 'inactive' ? 'inactive' : 'unknown';
@@ -257,6 +276,33 @@ export function filterSmartAudience(universe, objective, definition) {
   });
 }
 
+export function normalizeManualAudienceRows(rows = []) {
+  const seen = new Set();
+  return (Array.isArray(rows) ? rows : []).flatMap((row, index) => {
+    const raw = row && typeof row === 'object' ? row : { phone: row };
+    const phone = normalizeSaudiPhone(raw.phone || raw.to || raw.mobile || raw['رقم الجوال'] || raw['الجوال']);
+    if (!phone || seen.has(phone)) return [];
+    seen.add(phone);
+    const name = String(raw.name || raw['الاسم'] || raw.customer || raw['العميل'] || `مستلم ${index + 1}`).trim();
+    return [{
+      key: `manual:${phone}`,
+      to: phone,
+      phone,
+      name,
+      source: 'manual_campaign',
+      amount: Math.max(0, Number(raw.amount || raw['المبلغ']) || 0),
+      count: Math.max(0, Number(raw.count || raw['العدد']) || 0),
+      financialHold: false,
+      debtor: false,
+      fields: {
+        name,
+        phone,
+        source: 'manual_campaign',
+      },
+    }];
+  });
+}
+
 export async function loadSmartCampaignProtections() {
   const [noWhatsapp, hatifTouched, weakPhones] = await Promise.all([
     loadNoWhatsappSet(),
@@ -276,6 +322,8 @@ function fromCampaignRow(row) {
     sourceKeys: row.source_keys || [],
     channel: row.channel || null,
     channelConfig: row.channel_config || {},
+    assignedHatifUserId: row.assigned_hatif_user_id || null,
+    assignedHatifUserName: row.assigned_hatif_user_name || null,
     protectionSnapshot: row.protection_snapshot || {},
     audienceCount: Number(row.audience_count) || 0,
     readyCount: Number(row.ready_count) || 0,
@@ -310,6 +358,8 @@ export async function saveSmartCampaign(payload, userId) {
     source_keys: payload.sourceKeys || [],
     channel: payload.channel || null,
     channel_config: payload.channelConfig || {},
+    assigned_hatif_user_id: payload.assignedHatifUserId || null,
+    assigned_hatif_user_name: payload.assignedHatifUserName || null,
     protection_snapshot: payload.protectionSnapshot || {},
     audience_count: Math.max(0, Number(payload.audienceCount) || 0),
     ready_count: Math.max(0, Number(payload.readyCount) || 0),

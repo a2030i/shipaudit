@@ -8,6 +8,7 @@
 // «تحصيل COD ليس دخلاً، أمانة التجار تمرّ عبرنا».
 
 import { supabase } from './supabase.js';
+import { lineMatchesAging } from './agingOperations.js';
 
 async function functionErrorMessage(error, fallback) {
   let payload = null;
@@ -470,16 +471,56 @@ export async function loadCustomerMoneyDashboard() {
 }
 
 // الفواتير المفتوحة لعميل واحد (drill-down في بطاقة العميل)
-export async function loadZohoOpenInvoices(customerName) {
-  const { data, error } = await supabase.from('customer_collectible_lines')
-    .select('invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status')
-    .eq('contact_name', customerName)
+export async function loadZohoOpenInvoices(customerName, { zohoId = null } = {}) {
+  let query = supabase.from('customer_collectible_lines')
+    .select('contact_id, line_kind, line_id, invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status, age_days')
     .eq('line_kind', 'invoice')
     .gt('collectible_amount', 0.005)
     .order('due_date', { ascending: true })
     .order('line_date', { ascending: true });
+  query = zohoId ? query.eq('contact_id', zohoId) : query.eq('contact_name', customerName);
+  const { data, error } = await query;
   if (error) throw error;
   return (data || []).map(row => ({
+    ...row,
+    date: row.line_date,
+    balance: Number(row.collectible_amount) || 0,
+    grossBalance: Number(row.gross_amount) || 0,
+    allocatedCredit: Number(row.allocated_credit) || 0,
+  }));
+}
+
+// سطور Aging التفصيلية للواجهة التشغيلية. القراءة من نفس الإسقاط الذي
+// يستخدمه customer_collection_campaign_buckets، وبـ contact_id الثابت.
+export async function loadCustomerCollectibleLines() {
+  const rows = [];
+  const pageSize = 1000;
+  for (let page = 0; ; page += 1) {
+    const from = page * pageSize;
+    const { data, error } = await supabase.from('customer_collectible_lines')
+      .select('contact_id, contact_name, line_kind, line_id, invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status, age_days')
+      .gt('collectible_amount', 0.005)
+      .order('contact_id', { ascending: true })
+      .order('due_date', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data?.length || data.length < pageSize) break;
+  }
+  return rows;
+}
+
+export async function loadZohoAgingDetails({ zohoId, customerName, agingBuckets = [] }) {
+  let query = supabase.from('customer_collectible_lines')
+    .select('contact_id, line_kind, line_id, invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status, age_days')
+    .gt('collectible_amount', 0.005)
+    .order('due_date', { ascending: true })
+    .order('line_date', { ascending: true });
+  query = zohoId ? query.eq('contact_id', zohoId) : query.eq('contact_name', customerName);
+  const { data, error } = await query;
+  if (error) throw error;
+  const buckets = new Set((agingBuckets || []).filter(Boolean));
+  return (data || []).filter(row => lineMatchesAging(row, buckets)).map(row => ({
     ...row,
     date: row.line_date,
     balance: Number(row.collectible_amount) || 0,
