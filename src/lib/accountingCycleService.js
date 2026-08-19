@@ -1,5 +1,6 @@
 import * as XLSX from 'xlsx';
 import { supabase } from './supabase.js';
+import { carrierCollectionRequirement } from './carrierOperatingModel.js';
 import { hasVerifiedAuditProof } from './auditProof.js';
 import { REMITTANCE_PARSERS } from '../engine/codParsers/index.js';
 import {
@@ -725,80 +726,10 @@ export function deriveCarrierCollectionChecklist({
       lastUpload: latest(uploadEvents),
     };
 
-    if (scheduleAware && fileKind !== 'audit_only') {
-      const taskKind = fileKind === 'audit_with_cod' ? 'invoice' : 'cod_remittance';
-      const matchingSchedules = activeSchedulesFor(schedules, carrierId, taskKind);
-      if (!matchingSchedules.length) {
-        return { ...base, status: 'unclassified', expectedCount: null, receivedCount: null, missingCount: null,
-          note: fileKind === 'audit_with_cod' ? 'جدول الملف الموحّد (فاتورة + تحصيل) غير محدد' : 'جدول دفعات التحصيل غير محدد' };
-      }
-      const slots = matchingSchedules.flatMap(schedule => expectedScheduleSlots(schedule, period));
-      const invalidSchedule = matchingSchedules.some(schedule => schedule.cadence !== 'on_demand'
-        && expectedScheduleSlots(schedule, period).length === 0);
-      const eventBatches = receivedEventBatchRecords(events, carrierId);
-      const uploadBatches = receivedUploadBatchRecords(codUploads, carrierId);
-      const gap = fileKind === 'audit_with_cod'
-        ? scheduledRecordCoverage(slots, carrierAudits, auditScheduleSlot, asOf)
-        : strongestScheduledCoverage(
-          scheduledRecordCoverage(slots, eventBatches, eventScheduleSlot, asOf),
-          scheduledRecordCoverage(slots, uploadBatches, eventScheduleSlot, asOf),
-        );
-      const expectedCount = gap.expectedCount;
-      const receivedCount = gap.receivedCount;
-      const missingCount = gap.missingCount;
-      const scheduleText = matchingSchedules.map(schedule => scheduleRequirementLabel(schedule, period)).join(' · ');
-      const scheduled = {
-        ...base,
-        uploadCount: receivedCount,
-        expectedCount,
-        receivedCount,
-        missingCount,
-        dueExpectedCount: gap.dueExpectedCount,
-        dueMissingCount: gap.dueMissingCount,
-        upcomingMissingCount: gap.upcomingMissingCount,
-        receivedSlots: gap.receivedSlots,
-        missingSlots: gap.missingSlots,
-        unassignedCount: gap.unassignedCount,
-        duplicateSlotCount: gap.duplicateSlotCount,
-        extraCount: gap.extraCount,
-        scheduleText,
-        dueDates: slots.map(slot => slot.dueDate),
-      };
-      if (invalidSchedule) return { ...scheduled, status: 'unclassified', expectedCount: null, receivedCount,
-        missingCount: null, note: 'جدول التحصيل موجود لكن موعده غير مكتمل' };
-      if (!expectedCount) return { ...scheduled, status: 'not_required', note: 'لا توجد دفعة تحصيل مجدولة لهذه الفترة' };
-      if (missingCount) {
-        if (fileKind === 'audit_with_cod') {
-          return { ...scheduled, status: 'pending', requiresManualUpload: false,
-            note: `ملف موحد (فاتورة + تحصيل) · المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} مراجعة غير منسوبة لموعد` : ''}${gap.duplicateSlotCount ? ` · ${gap.duplicateSlotCount} تكرار لنفس الموعد` : ''} · يُرفع في مرحلة الفواتير` };
-        }
-        if (MANUAL_COLLECTION_KINDS.has(fileKind) && !REMITTANCE_PARSERS[carrierId]) {
-          return { ...scheduled, status: 'unsupported', requiresManualUpload: false,
-            note: `المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} ملف غير منسوب لموعد` : ''}، وقارئ الملف غير مهيأ` };
-        }
-        return { ...scheduled, status: 'pending', requiresManualUpload: true,
-          note: `المطلوب ${expectedCount} · المغطى فعليًا ${receivedCount} · مستحق الآن ${gap.dueMissingCount} · لاحقًا ${gap.upcomingMissingCount}${gap.unassignedCount ? ` · ${gap.unassignedCount} ملف غير منسوب لموعد` : ''}${gap.duplicateSlotCount ? ` · ${gap.duplicateSlotCount} تكرار لنفس الموعد` : ''}` };
-      }
-      return fileKind === 'audit_with_cod'
-        ? { ...scheduled, status: 'automatic', requiresManualUpload: false, note: `اكتملت ${receivedCount} من ${expectedCount} ملفات موحّدة (فاتورة + تحصيل)${gap.duplicateSlotCount ? ` · يوجد ${gap.duplicateSlotCount} ملف زائد لنفس الموعد` : ''}` }
-        : { ...scheduled, status: 'uploaded', requiresManualUpload: true, note: `اكتملت ${receivedCount} من ${expectedCount} دفعات تحصيل${gap.duplicateSlotCount ? ` · يوجد ${gap.duplicateSlotCount} ملف زائد لنفس الموعد` : ''}` };
-    }
-
-    if (fileKind === 'audit_with_cod') {
-      return { ...base, status: 'automatic', note: 'يُسجّل التحصيل تلقائيًا عند اعتماد المراجعة' };
-    }
-    if (fileKind === 'audit_only') {
-      return { ...base, status: 'not_required', note: 'هذا الناقل لا يرسل تحصيلًا ضمن ملف المراجعة' };
-    }
-    if (uploadEvents.length) {
-      return { ...base, status: 'uploaded', note: `تم رفع ${uploadEvents.length} ملف تحصيل` };
-    }
-    if (MANUAL_COLLECTION_KINDS.has(fileKind)) {
-      return REMITTANCE_PARSERS[carrierId]
-        ? { ...base, status: 'pending', note: 'بانتظار رفع ملف التحصيل المستلم من الناقل' }
-        : { ...base, status: 'unsupported', note: 'طريقة التحصيل يدوية لكن قارئ ملف هذا الناقل غير مهيأ' };
-    }
-    return { ...base, status: 'unclassified', note: 'طريقة التحصيل غير محددة في إعدادات الناقل' };
+    // COD is no longer a monthly operating requirement. Keep the rows in
+    // the returned checklist for historical traceability, but never block
+    // the current accounting cycle or request a new remittance file.
+    return { ...base, ...carrierCollectionRequirement() };
   }).sort((a, b) => a.carrierName.localeCompare(b.carrierName, 'ar'));
 }
 
@@ -1018,7 +949,7 @@ export function deriveAccountingCycleStages({
   } : null;
   let carrierCollectionState;
   if (checklistAvailable && completedCarriers.length === carrierChecklist.length) {
-    carrierCollectionState = statusMeta('complete', `اكتملت معالجة تحصيلات ${carrierChecklist.length} ناقل`);
+    carrierCollectionState = statusMeta('complete', 'لا يوجد تحصيل COD تشغيلي جديد؛ الأرصدة التاريخية تُصفّى من المالية');
   } else if (checklistAvailable && setupCarriers.length) {
     carrierCollectionState = statusMeta('attention', `${setupCarriers.length} ناقل يحتاج ضبط طريقة التحصيل قبل الإقفال`);
   } else if (checklistAvailable && pendingCarriers.length) {

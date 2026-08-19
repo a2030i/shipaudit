@@ -2,6 +2,71 @@ import { CUSTOMER_CAMPAIGN_BUCKETS } from './customerCampaignBuckets.js';
 
 export const AGING_PAGE_SIZE = 20;
 export const AGING_BUCKET_KEYS = Object.freeze(CUSTOMER_CAMPAIGN_BUCKETS.map(bucket => bucket.key));
+export const OPENING_BALANCE_DOCUMENT_LABEL = 'الرصيد الافتتاحي';
+
+const EMPTY_CAMPAIGN_AMOUNTS = Object.freeze({
+  inv1_15: 0,
+  inv16_30: 0,
+  inv31_60: 0,
+  inv61_90: 0,
+  inv90p: 0,
+  opening: 0,
+});
+
+function normalizedSearchText(value) {
+  return String(value || '').normalize('NFKC').replace(/\s+/g, ' ').trim();
+}
+
+// Zoho sometimes represents the configured opening balance as an invoice-like
+// document. The same explicit label is already excluded from ZATCA automation;
+// classify it here as opening balance so it cannot leak into the +90 bucket.
+export function isOpeningBalanceDocument(line) {
+  if (line?.line_kind === 'opening_balance') return true;
+  if (line?.line_kind !== 'invoice') return false;
+  return normalizedSearchText(line.invoice_number).includes(OPENING_BALANCE_DOCUMENT_LABEL);
+}
+
+export function effectiveCollectibleLineKind(line) {
+  return isOpeningBalanceDocument(line) ? 'opening_balance' : line?.line_kind;
+}
+
+export function normalizeCollectibleLine(line) {
+  const lineKind = effectiveCollectibleLineKind(line);
+  return lineKind === line?.line_kind ? line : { ...line, line_kind: lineKind };
+}
+
+function campaignBucketForLine(line) {
+  if (effectiveCollectibleLineKind(line) === 'opening_balance') return 'opening';
+  if (line?.line_kind !== 'invoice') return null;
+  const age = Number(line.age_days) || 0;
+  if (age >= 1 && age <= 15) return 'inv1_15';
+  if (age >= 16 && age <= 30) return 'inv16_30';
+  if (age >= 31 && age <= 60) return 'inv31_60';
+  if (age >= 61 && age <= 90) return 'inv61_90';
+  if (age > 90) return 'inv90p';
+  return null;
+}
+
+export function buildCampaignAgingProjection(lines = [], allowedContactIds = null) {
+  const allowed = allowedContactIds == null
+    ? null
+    : new Set([...allowedContactIds].map(value => String(value || '').trim()).filter(Boolean));
+  const totals = { ...EMPTY_CAMPAIGN_AMOUNTS };
+  const byContact = new Map();
+  for (const line of lines) {
+    const contactId = String(line?.contact_id || '').trim();
+    if (!contactId || (allowed && !allowed.has(contactId))) continue;
+    const bucket = campaignBucketForLine(line);
+    if (!bucket) continue;
+    const amount = Math.max(0, Number(line.collectible_amount) || 0);
+    if (amount <= 0.005) continue;
+    const contact = byContact.get(contactId) || { ...EMPTY_CAMPAIGN_AMOUNTS };
+    contact[bucket] = +(contact[bucket] + amount).toFixed(2);
+    totals[bucket] = +(totals[bucket] + amount).toFixed(2);
+    byContact.set(contactId, contact);
+  }
+  return { totals, byContact };
+}
 
 export function agingEntityKey(customer) {
   const storeId = String(customer?.storeId || '').trim();
@@ -12,8 +77,9 @@ export function agingEntityKey(customer) {
 
 export function lineMatchesAging(line, buckets) {
   if (!buckets?.size) return true;
-  if (line?.line_kind === 'opening_balance') return buckets.has('opening');
-  if (line?.line_kind !== 'invoice') return false;
+  const lineKind = effectiveCollectibleLineKind(line);
+  if (lineKind === 'opening_balance') return buckets.has('opening');
+  if (lineKind !== 'invoice') return false;
   const age = Number(line.age_days) || 0;
   return (buckets.has('inv1_15') && age >= 1 && age <= 15)
     || (buckets.has('inv16_30') && age >= 16 && age <= 30)
@@ -24,8 +90,8 @@ export function lineMatchesAging(line, buckets) {
 
 export function summarizeAgingLines(lines = [], buckets = new Set()) {
   const selected = lines.filter(line => lineMatchesAging(line, buckets));
-  const invoiceRows = selected.filter(line => line.line_kind === 'invoice');
-  const openingRows = selected.filter(line => line.line_kind === 'opening_balance');
+  const invoiceRows = selected.filter(line => effectiveCollectibleLineKind(line) === 'invoice');
+  const openingRows = selected.filter(line => effectiveCollectibleLineKind(line) === 'opening_balance');
   return {
     rows: selected,
     amount: +selected.reduce((sum, line) => sum + (Number(line.collectible_amount) || 0), 0).toFixed(2),

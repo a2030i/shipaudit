@@ -255,7 +255,7 @@ export default function Overview({ carriers = [], isActive = true }) {
         <button type="button" onClick={() => document.getElementById('customers-risk')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}>
           <Users size={14}/> تحصيل العملاء
         </button>
-        <button type="button" onClick={() => navigate('/sales')}>
+        <button type="button" onClick={() => navigate('/retargeting?view=today&source=overview')}>
           <Target size={14}/> المبيعات والنمو
         </button>
       </nav>
@@ -715,7 +715,7 @@ function CustomerPortfolioFocus({ data, onNavigate }) {
 
       <footer className="overview-customer-focus__actions">
         <button type="button" onClick={() => onNavigate('/customer-money')}>عرض جميع المديونيات</button>
-        <button type="button" onClick={() => onNavigate('/sales')}>متابعة فرص البيع</button>
+        <button type="button" onClick={() => onNavigate('/retargeting?view=today&source=overview')}>متابعة فرص البيع</button>
       </footer>
     </section>
   );
@@ -753,7 +753,7 @@ function ExecutivePulse({ data, onNavigate }) {
       key: 'growth', tone: 'violet', label: 'المبيعات والنمو',
       value: 'متابعة', unit: 'المسار',
       detail: 'الفرص والحملات ومراحل إغلاق الصفقات',
-      icon: <Target size={19}/>, action: () => onNavigate('/sales'),
+      icon: <Target size={19}/>, action: () => onNavigate('/retargeting?view=today&source=overview'),
     },
   ];
 

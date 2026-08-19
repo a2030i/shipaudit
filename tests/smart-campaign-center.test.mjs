@@ -46,16 +46,19 @@ test('general campaigns accept manual rows without using collections or Zoho', (
   assert.ok(rows.every(row => row.source === 'manual_campaign'));
 });
 
-test('campaign center is a Sales workspace card and not an eighth primary center', async () => {
+test('campaign center is action-only and retired from visible Sales workspaces', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const titles = await read('src/lib/pageTitles.js');
 
-  assert.match(app, /path:\s*'\/campaigns'[\s\S]*label:\s*'مركز الحملات الذكي'/);
-  assert.match(app, /<SmartCampaignCenter isActive=\{pathname==='\/campaigns'\}/);
-  assert.match(navigation, /'campaign-center':[\s\S]*section:\s*'sales'[\s\S]*group:\s*'outreach_ops'/);
+  assert.doesNotMatch(app, /id:\s*'campaign-center'[\s\S]*path:\s*'\/campaigns'/);
+  assert.match(app, /PATH_PERM\.set\('\/campaigns'/);
+  assert.match(app, /campaignActionActive[\s\S]*audienceContext/);
+  assert.match(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
+  assert.match(app, /<SmartCampaignCenter isActive=\{campaignActionActive\}/);
+  assert.match(navigation, /'campaign-center':[\s\S]*visible:\s*false/);
   assert.match(titles, /'\/campaigns':\s*'مركز الحملات الذكي'/);
-  assert.doesNotMatch(navigation, /id:\s*'campaigns'\s*,\s*label:\s*'مركز الحملات الذكي'/);
+  assert.doesNotMatch(navigation, /id:\s*'campaigns'\s*,\s*label:\s*'الحملات'/);
 });
 
 test('all outbound channels keep their existing review gates', async () => {

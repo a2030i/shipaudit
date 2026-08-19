@@ -18,6 +18,7 @@ import {
   loadCarrierProfile, updateCarrierFileSignature, FILE_KIND_OPTIONS, FILE_KIND_LABELS,
   loadCarrierZohoLinkOptions, saveCarrierZohoFinancialLinks,
 } from '../lib/carrierProfileService.js';
+import { carrierHasOutstandingLegacyCod } from '../lib/carrierOperatingModel.js';
 import { countAuditShipments, loadAuditByIdFromDB, loadAuditShipments } from '../lib/coreService.js';
 import { auditPresentation, AUDIT_REVIEW_LABELS } from '../lib/auditPresentation.js';
 import './carrier-360.css';
@@ -502,16 +503,17 @@ function FileShapeSection({ signature, onSaveKind, onSaveEmails }) {
 
   return (
     <SectionCard
-      title="شكل الملفات"
+      title="معالجة ملفات الفاتورة"
       action={!editing && (
         <Btn size="sm" variant="ghost" icon={<Edit3 size={12}/>} onClick={() => { setEditing(true); setPick(signature?.file_kind || ''); }}>
-          تعديل النوع
+          إعداد تنسيق القارئ
         </Btn>
       )}
       accent="var(--brand)"
     >
       <div style={{ display: 'grid', gap: 12 }}>
-        <Row label="نوع الملف" value={
+        <Row label="التشغيل الحالي" value={<span style={{ color: 'var(--green)', fontWeight: 800 }}>مراجعة فاتورة فقط — بلا COD جديد</span>}/>
+        <Row label="تنسيق القارئ التاريخي" value={
           editing ? (
             <div style={{ display: 'grid', gap: 6, marginTop: 4 }}>
               {FILE_KIND_OPTIONS.map(opt => (
@@ -1018,16 +1020,16 @@ function CarrierShipmentsView({ carrier, audits }) {
   );
 }
 
-function CarrierAccountView({ carrier, summary, ops, zohoFinancial, canConfigure, onConfigure, carriers, panel, onPanel }) {
-  const panels = [['overview', 'ملخص الحساب'], ['ledger', 'الحركات والمدفوعات'], ['cod', 'COD'], ['statements', 'الكشوف']];
+function CarrierAccountView({ carrier, summary, ops, zohoFinancial, canConfigure, onConfigure, carriers, panel, onPanel, showCod }) {
+  const panels = [['overview', 'ملخص الحساب'], ['ledger', 'الحركات والمدفوعات'], ...(showCod ? [['cod', 'تصفية COD القديمة']] : []), ['statements', 'الكشوف']];
   return (
     <div className="carrier360-section-stack">
-      <div className="carrier360-section-heading"><div><span>الحساب الحالي للشركة</span><h2>الحساب والمدفوعات</h2><p>الرصيد والمدفوعات وCOD والكشوف في سياق {carrier.name} نفسه.</p></div></div>
+      <div className="carrier360-section-heading"><div><span>الحساب الحالي للشركة</span><h2>الحساب والمدفوعات</h2><p>الرصيد والمدفوعات والكشوف في سياق {carrier.name} نفسه{showCod ? '، مع تصفية الرصيد التاريخي المتبقي' : ''}.</p></div></div>
       <div className="carrier360-subnav">{panels.map(([id, label]) => <button type="button" key={id} className={panel === id ? 'active' : ''} onClick={() => onPanel(id)}>{label}</button>)}</div>
       {panel === 'overview' ? <>
         <div className="carrier360-mini-kpis">
           <StatCard icon={BookOpen} label="الرصيد المفتوح" value={`${fmt(Math.abs(summary.balance))} ر.س`} sub={summary.balance > 0 ? 'لها علينا' : summary.balance < 0 ? 'لنا عليها' : 'متعادل'} color={summary.balance ? 'var(--red)' : 'var(--green)'}/>
-          <StatCard icon={Banknote} label="COD متبقٍ" value={`${fmt(summary.codOutstanding)} ر.س`} sub={`${summary.codOutCount} متوقعة · ${summary.codInCount} مستلمة`} color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--green)'}/>
+          {showCod ? <StatCard icon={Banknote} label="COD تاريخي متبقٍ" value={`${fmt(summary.codOutstanding)} ر.س`} sub={`${summary.codOutCount} متوقعة · ${summary.codInCount} مستلمة`} color="var(--gold)"/> : null}
           <StatCard icon={CreditCard} label="إجمالي الحركات المدينة" value={`${fmt(summary.totalDr)} ر.س`} sub="من دفتر الشركة الحالي"/>
         </div>
         <ZohoFinancialSection financial={zohoFinancial} canConfigure={canConfigure} onConfigure={onConfigure}/>
@@ -1099,6 +1101,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
   }
 
   const { carrier, summary, audits, webhooks, ops, zohoFinancial } = data;
+  const hasLegacyCod = carrierHasOutstandingLegacyCod(summary.codOutstanding);
   const balColor = Math.abs(summary.balance) < 0.01 ? 'var(--muted)' : summary.balance > 0 ? 'var(--red)' : 'var(--accent)';
   const balLabel = Math.abs(summary.balance) < 0.01 ? 'صفر' : summary.balance > 0 ? 'لها علينا' : 'لنا عليها';
   const netColor = Math.abs(summary.netPosition) < 0.01 ? 'var(--muted)' : summary.netPosition > 0 ? 'var(--red)' : 'var(--accent)';
@@ -1106,7 +1109,8 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
   const view = CARRIER_VIEW_IDS.has(requestedView) ? requestedView : 'overview';
   const invoiceMode = searchParams.get('mode');
   const invoiceId = searchParams.get('invoice');
-  const accountPanel = ['overview', 'ledger', 'cod', 'statements'].includes(searchParams.get('panel')) ? searchParams.get('panel') : 'overview';
+  const requestedPanel = searchParams.get('panel');
+  const accountPanel = ['overview', 'ledger', 'statements', ...(hasLegacyCod ? ['cod'] : [])].includes(requestedPanel) ? requestedPanel : 'overview';
   const returnTo = searchParams.get('returnTo');
   const updateLocation = (patch, { replace = false } = {}) => {
     const next = new URLSearchParams(searchParams);
@@ -1172,16 +1176,16 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           title="فتح حساب الشركة"
           onClick={() => updateLocation({ view: 'account', panel: 'ledger' })}
         />
-        <StatCard
+        {hasLegacyCod ? <StatCard
           icon={Banknote}
-          label="COD متبقّي من الناقل"
+          label="COD تاريخي متبقّي"
           value={`${fmt(summary.codOutstanding)} ر.س`}
           sub={`${summary.codOutCount} متوقّعة − ${summary.codInCount} مستلَمة`}
-          color={summary.codOutstanding > 0 ? 'var(--gold)' : 'var(--muted)'}
-          title="فتح COD لهذه الشركة"
+          color="var(--gold)"
+          title="فتح تصفية الرصيد التاريخي"
           onClick={() => updateLocation({ view: 'account', panel: 'cod' })}
-        />
-        <StatCard
+        /> : null}
+        {hasLegacyCod ? <StatCard
           icon={Building2}
           label="المتبقّي بعد خصم التحصيل"
           value={`${fmt(Math.abs(summary.netPosition))} ر.س`}
@@ -1189,7 +1193,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           color={netColor}
           title="فتح حساب الشركة لمراجعة الصافي"
           onClick={() => updateLocation({ view: 'account', panel: 'overview' })}
-        />
+        /> : null}
         <StatCard
           icon={FileText}
           label="المراجعات"
@@ -1279,6 +1283,7 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
           carriers={carriers}
           panel={accountPanel}
           onPanel={panel => updateLocation({ view: 'account', panel })}
+          showCod={hasLegacyCod}
         />
       ) : null}
 

@@ -2,9 +2,9 @@
 // تعريف المسار والصلاحية يبقى في App لأنه مرتبط بتركيب الصفحات، أما قرار
 // الظهور والقسم والترتيب والمسمى فيؤخذ حصراً من هذا الملف.
 export const NAV_SECTIONS = [
+  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', accent: '#F59E0B', hint: 'مال العملاء · التحصيل · المطابقة' },
   { id: 'customers', path: '/workspace/customers',  label: 'العملاء',  icon: 'Users',      accent: '#EF4444', hint: 'الملف الموحد · الخدمة · حالة العميل' },
-  { id: 'sales',     path: '/workspace/sales',      label: 'المبيعات', icon: 'Target',     accent: '#8B5CF6', hint: 'الفرص · الصفقات · الحملات' },
-  { id: 'finance',   path: '/workspace/finance',    label: 'المالية',  icon: 'DollarSign', accent: '#F59E0B', hint: 'التحصيل · البنوك · زوهو · الربحية' },
+  { id: 'sales',     path: '/workspace/sales',      label: 'المبيعات', icon: 'Target',     accent: '#8B5CF6', hint: 'نمو عملاء لمحة · العملاء المحتملون · التواصل' },
   { id: 'shipping',  path: '/workspace/operations', label: 'التشغيل',  icon: 'Truck',      accent: '#2B68DE', hint: 'الشحن · الفوترة · الدورة الشهرية' },
   { id: 'reports',   path: '/workspace/reports',    label: 'التقارير', icon: 'FileCheck',  accent: '#22C55E', hint: 'المؤشرات · الرقابة · الأتمتة' },
   { id: 'settings',  path: '/workspace/admin',      label: 'الإدارة',  icon: 'Settings',   accent: '#31D5E1', hint: 'الفريق · العقود · التكاملات' },
@@ -28,34 +28,26 @@ export const CENTER_WORKSPACES = {
   ],
   sales: [
     {
-      id: 'today', label: 'عمل اليوم', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=today',
-      description: 'الأولويات والمتابعات التي تحتاج إجراء الآن.',
+      id: 'lamha-growth', label: 'نمو عملاء لمحة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=activation',
+      description: 'النشطون والداخلون والخارجون والشرائح، مع انتقال مباشر إلى عمل اليوم.',
     },
     {
-      id: 'pipeline', label: 'الفرص والصفقات', entryId: 'crm', memberIds: ['crm', 'sales-hub'], path: '/crm',
-      description: 'العملاء المحتملون والصفقات ومراحل البيع.',
-    },
-    {
-      id: 'campaigns', label: 'الحملات', entryId: 'campaign-center', memberIds: ['campaign-center'],
-      description: 'خطط الجمهور وراجع الحملة قبل أي تنفيذ أو إرسال.',
+      id: 'external', label: 'العملاء خارج المنصة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=external',
+      description: 'العملاء المحتملون والحملات التسويقية قبل دخولهم إلى لمحة.',
     },
     {
       id: 'communications', label: 'التواصل', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=overview',
       description: 'راقب الرسائل والمكالمات وIVR وجودة التواصل ونتائجه.',
     },
-    {
-      id: 'marketers', label: 'المسوّقون والعمولات', entryId: 'marketers', memberIds: ['marketers'],
-      description: 'راجع تكلفة الفريق والطلبات والعمولات ونتيجة كل مسوّق.',
-    },
   ],
   finance: [
     {
-      id: 'receivables', label: 'المستحقات والتحصيل', entryId: 'collections-hub', memberIds: ['collections-hub'],
-      description: 'المستحقات وأعمار الدين وإجراءات التحصيل والوعود والتصعيد.',
+      id: 'customer-finance', label: 'مركز العملاء المالي', entryId: 'collections-hub', memberIds: ['collections-hub'],
+      description: 'مال العملاء ونشاطهم ومطابقة أرصدتهم وإجراءات التحصيل والتواصل من مكان واحد.',
     },
     {
       id: 'cash-settlements', label: 'النقد والتسويات', entryId: 'money', memberIds: ['money', 'bank'],
-      description: 'البنوك وCOD ومدفوعات الناقلين والعمليات التي تحتاج تصنيفاً.',
+      description: 'البنوك والمدفوعات والعمليات غير المصنفة، مع تصفية COD التاريخية حتى الصفر.',
     },
     {
       id: 'accounting', label: 'الحسابات والمطابقة', entryId: 'zoho-data', memberIds: ['zoho-data', 'reconciliation'], path: '/zoho-data?tab=customers',
@@ -90,12 +82,8 @@ export const CENTER_WORKSPACES = {
       description: 'التقارير الرسمية والشهرية ومعاملات التصدير.',
     },
     {
-      id: 'commercial-performance', label: 'الأداء التجاري', entryId: 'crm', memberIds: ['crm', 'collections-hub'],
-      pathsByMemberId: {
-        crm: '/crm?view=board&source=reports',
-        'collections-hub': '/customer-money?view=performance&source=reports',
-      },
-      description: 'أداء المبيعات والتحصيل ونتائج الفريق.',
+      id: 'commercial-performance', label: 'أداء التحصيل', entryId: 'collections-hub', memberIds: ['collections-hub'], path: '/customer-money?view=performance&source=reports',
+      description: 'نتائج فريق التحصيل والمهام والوعود من المسار التشغيلي الحالي.',
     },
     {
       id: 'carrier-performance', label: 'أداء شركات الشحن', entryId: 'hub', memberIds: ['hub', 'platform-carriers'], path: '/carrier-kpi?source=reports',
@@ -195,10 +183,11 @@ export const NAV_ITEM_IA = {
   support:             { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 20, visible: true },
 
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
-  crm:                 { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: true },
-  'campaign-center':   { label: 'مركز الحملات الذكي', section: 'sales', group: 'outreach_ops', order: 25, visible: true },
+  // مسارات متقاعدة: تبقى Redirects للتوافق ولا تظهر كبطاقات أو وجهات.
+  crm:                 { label: 'إدارة المبيعات', section: 'sales', group: 'sales_ops', order: 20, visible: false },
+  'campaign-center':   { label: 'مركز الحملات الذكي', section: 'sales', group: 'outreach_ops', order: 25, visible: false },
   'whatsapp-settings': { label: 'الحملات والاتصالات', section: 'sales', group: 'outreach_ops', order: 30, visible: true },
-  marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: true },
+  marketers:           { label: 'المسوّقون والعمولات', section: 'sales', group: 'outreach_ops', order: 40, visible: false },
 
   'collections-hub':   { label: 'تحصيل العملاء', section: 'finance', group: 'receivables_ops', order: 10, visible: true },
   money:               { label: 'النقد والتسويات', section: 'finance', group: 'cash_ops', order: 20, visible: true },

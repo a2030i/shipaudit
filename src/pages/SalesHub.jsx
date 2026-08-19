@@ -27,9 +27,9 @@ import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
 const TABS = [
   {
-    id: 'pipeline', label: 'مسار عملاء المنصّة', icon: Workflow, component: PlatformSalesCrm, perm: 'sales.view',
-    eyebrow: 'CRM المبيعات', purpose: 'تابع العميل من التسجيل إلى الاستمرار أو الخسارة',
-    description: 'قاعدة العمل اليومية للفريق: مرحلة بيع، مسؤول، ملاحظة، موعد تواصل، وسجل موضوعي لما فعله المتجر داخل المنصّة.',
+    id: 'pipeline', label: 'قائمة عملاء لمحة', icon: Workflow, component: PlatformSalesCrm, perm: 'sales.view', secondary: true,
+    eyebrow: 'قائمة تشغيلية', purpose: 'افتح العميل وسجّل المتابعة التالية',
+    description: 'قائمة تفصيلية للعملاء والمسؤول والمتابعة، وليست مراحل بيع مستقلة عن نشاط المنصة.',
     outcome: 'عميل واضح وخطوة تالية محددة', tone: 'var(--brand)',
   },
   // «خطة اليوم» (§1.37): بوصلة الموظف — بلا perm خاص (يظهر لكل من دخل المركز)
@@ -40,11 +40,10 @@ const TABS = [
     outcome: 'أولوية واتصال ونتيجة', tone: 'var(--brand)',
   },
   {
-    id: 'activation', label: 'تحليل التفعيل', icon: TrendingUp, component: StoreActivation,
-    secondary: true,
-    eyebrow: 'نمو مبكر', purpose: 'حوّل التسجيل الجديد إلى أول شحنة',
-    description: 'لوحة قياس لفهم سرعة الوصول لأول شحنة؛ المتابعة الفردية وتسجيل الملاحظات تتم من «مسار عملاء المنصّة».',
-    outcome: 'أول شحنة ناجحة', tone: 'var(--green)',
+    id: 'activation', label: 'نمو عملاء لمحة', icon: TrendingUp, component: StoreActivation,
+    eyebrow: 'نبض العملاء', purpose: 'راقب من دخل النشاط ومن خرج وما يحتاج تدخلاً',
+    description: 'النشطون وصافي الزيادة والنقص والشرائح، مع انتقال مباشر إلى قائمة العمل والمتابعة.',
+    outcome: 'نمو صافٍ وخطوة واضحة', tone: 'var(--green)',
   },
   {
     id: 'retargeting', label: 'حملات الاستعادة', icon: Target, component: Retargeting, perm: 'sales.view',
@@ -61,7 +60,7 @@ const TABS = [
     outcome: 'سياق إضافي بلا ازدواج متابعة', tone: 'var(--accent3)',
   },
   {
-    id: 'external', label: 'العملاء المحتملون', icon: Store, component: LeadsTab, perm: 'sales.external_leads', activeProp: true,
+    id: 'external', label: 'العملاء خارج المنصة', icon: Store, component: LeadsTab, perm: 'sales.external_leads', activeProp: true,
     eyebrow: 'استحواذ جديد', purpose: 'أدر القوائم الخارجية قبل دخول العميل للمنصة',
     description: 'للعملاء الذين لم يسجلوا ولم يطلبوا التواصل بعد. تبقى منفصلة عن العملاء المهتمين حتى لا تختلط حرارة الفرص.',
     outcome: 'عميل مؤهل وجاهز للتواصل', tone: 'var(--red)',
@@ -128,8 +127,8 @@ export default function SalesHub({ isActive = true }) {
       {primaryTabs.some(item => item.id === tab) ? (
         <WorkspaceTabs
           scope="sales-execution"
-          title="عمل اليوم والفرص"
-          subtitle="الأولوية والمرحلة والمتابعة دون خلط الفلاتر بالمسارات الرئيسية"
+          title="نمو العملاء والعمل اليوم"
+          subtitle="نشاط عملاء لمحة والعملاء خارج المنصة والتواصل في مسارات واضحة"
           tone="#8B5CF6"
           tabs={primaryTabs}
           activeId={tab}
@@ -147,7 +146,7 @@ export default function SalesHub({ isActive = true }) {
         {secondaryTabs.map(item => (
           <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => changeView(item.id)}>{item.label}</button>
         ))}
-        {visibleTabs.some(item => item.id === 'segments') ? <button type="button" onClick={() => navigate('/campaigns?source=segments')}>شرائح الجمهور</button> : null}
+        {visibleTabs.some(item => item.id === 'segments') ? <button type="button" aria-pressed={tab === 'segments'} onClick={() => changeView('segments')}>شرائح الجمهور</button> : null}
         {visibleTabs.some(item => item.id === 'merchants') ? <button type="button" onClick={() => navigate('/customer-360?source=sales')}>فتح دليل المتاجر</button> : null}
       </nav>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>

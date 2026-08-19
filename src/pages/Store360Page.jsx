@@ -285,7 +285,17 @@ function FinanceView({ core, data, work, invoiceFocus, agingBuckets = [], canRec
   const finance = core.financial;
   const activeTask = work?.activeTask;
   const selectedAgingLabel = agingBuckets.map(key => AGING_LABELS[key]).filter(Boolean).join(' + ');
-  const selectedExpected = selectedAgingAmount(finance, agingBuckets);
+  const selectedExpected = agingBuckets.length && data?.campaignAging
+    ? +agingBuckets.reduce((sum, key) => sum + Number(data.campaignAging[key] || 0), 0).toFixed(2)
+    : selectedAgingAmount(finance, agingBuckets);
+  const displayedAging = {
+    b0_15: finance?.aging?.b0_15,
+    b16_30: finance?.aging?.b16_30,
+    b31_60: finance?.aging?.b31_60,
+    b61_90: finance?.aging?.b61_90,
+    b90p: data?.campaignAging?.inv90p ?? finance?.aging?.b90p,
+    opening: data?.campaignAging?.opening ?? finance?.aging?.opening,
+  };
   const selectedInvoice = invoiceFocus && !['open', 'bucket'].includes(invoiceFocus)
     ? data?.invoices?.find(invoice => String(invoice.invoice_number) === String(invoiceFocus))
     : null;
@@ -302,7 +312,7 @@ function FinanceView({ core, data, work, invoiceFocus, agingBuckets = [], canRec
     </div> : null}
     <section><SectionHeader title="تركيب المستحق" subtitle="المبالغ تخص هذا المتجر المرتبط فقط" source={core.sources.finance} action={<Btn size="sm" variant="ghost" onClick={onOpenAllAging}>عرض كل العملاء في Aging</Btn>}/>
       <div className="s360-aging-grid">
-        {[['0–15', finance?.aging?.b0_15], ['16–30', finance?.aging?.b16_30], ['31–60', finance?.aging?.b31_60], ['61–90', finance?.aging?.b61_90], ['+90', finance?.aging?.b90p], ['رصيد افتتاحي', finance?.aging?.opening]].map(([label, value]) => <div key={label}><span>{label}</span><b>{MONEY(value)} ر.س</b></div>)}
+        {[['0–15', displayedAging.b0_15], ['16–30', displayedAging.b16_30], ['31–60', displayedAging.b31_60], ['61–90', displayedAging.b61_90], ['+90', displayedAging.b90p], ['رصيد افتتاحي', displayedAging.opening]].map(([label, value]) => <div key={label}><span>{label}</span><b>{MONEY(value)} ر.س</b></div>)}
       </div>
     </section>
     <section id="invoices"><SectionHeader title="الفواتير المكونة للمبلغ" subtitle={`${data?.invoices?.length || 0} فاتورة${data?.openingRows?.length ? ' + رصيد افتتاحي' : ''}`} source={data?.source}/>
@@ -452,11 +462,22 @@ export default function Store360Page({ identity }) {
 
   const store = core.store;
   const finance = core.financial;
+  const financeMissingLabel = core.sources.finance?.status === 'unavailable' ? 'المصدر غير متاح' : 'لا توجد بيانات مالية';
+  const financeDetails = viewData.finance;
+  const financeInvoiceCount = financeDetails?.invoiceCount ?? finance?.invoiceCount;
+  const financeOpeningCount = financeDetails?.openingCount || 0;
+  const openingOnly = Boolean(financeDetails && financeInvoiceCount === 0 && financeOpeningCount > 0);
+  const financeDocumentDetail = finance
+    ? `${financeInvoiceCount || 0} فاتورة مفتوحة${financeOpeningCount ? ` + ${financeOpeningCount} رصيد افتتاحي` : ''}`
+    : 'لا يوجد حساب مالي مرتبط';
+  const agingValue = openingOnly ? 'رصيد افتتاحي' : finance ? AGE_LABEL(finance.oldestDays) : financeMissingLabel;
+  const agingDetail = openingOnly
+    ? `${financeOpeningCount} رصيد افتتاحي غير مدفوع`
+    : finance?.oldestDays ? `${finance.oldestDays} يوم` : finance ? 'لا يوجد استحقاق' : 'لا يوجد حساب مالي مرتبط';
   const sourceValues = Object.values(core.sources);
   const hasUnavailable = sourceValues.some(item => item.status === 'unavailable');
   const latestUpdate = sourceValues.map(item => item.updatedAt).filter(Boolean).sort().at(-1) || null;
   const activeSource = view === 'finance' ? core.sources.finance : core.sources.identity;
-  const financeMissingLabel = core.sources.finance?.status === 'unavailable' ? 'المصدر غير متاح' : 'لا توجد بيانات مالية';
   return <div className="s360-page">
     <header className="s360-header">
       <button type="button" className="s360-back" onClick={goBack}><ArrowRight size={16}/> رجوع</button>
@@ -474,9 +495,9 @@ export default function Store360Page({ identity }) {
     <ActionCenter core={core} work={work} can={can} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork}/>
 
     <div className="s360-kpi-row">
-      <KpiCard label="المستحق" value={finance ? `${MONEY(finance.outstanding)} ر.س` : financeMissingLabel} detail={finance ? `${finance.invoiceCount} فاتورة مفتوحة` : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
-      <KpiCard label="المتأخر" value={finance ? `${MONEY(finance.overdue)} ر.س` : financeMissingLabel} detail={finance ? AGE_LABEL(finance.oldestDays) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} tone="warning" onClick={() => changeView('finance')}/>
-      <KpiCard label="أقدم استحقاق / Aging" value={finance ? AGE_LABEL(finance.oldestDays) : financeMissingLabel} detail={finance?.oldestDays ? `${finance.oldestDays} يوم` : finance ? 'لا يوجد استحقاق' : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} onClick={() => changeView('finance')}/>
+      <KpiCard label="المستحق" value={finance ? `${MONEY(finance.outstanding)} ر.س` : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
+      <KpiCard label="المتأخر" value={finance ? `${MONEY(finance.overdue)} ر.س` : financeMissingLabel} detail={openingOnly ? 'رصيد افتتاحي غير مدفوع' : finance ? AGE_LABEL(finance.oldestDays) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.finance} tone="warning" onClick={() => changeView('finance')}/>
+      <KpiCard label="أقدم استحقاق / Aging" value={agingValue} detail={agingDetail} source={core.sources.finance} onClick={() => changeView('finance')}/>
       <KpiCard label="آخر دفعة" value={finance?.lastPaymentDate ? `${MONEY(finance.lastPaymentAmount)} ر.س` : finance ? 'لا توجد دفعة' : financeMissingLabel} detail={finance ? DATE(finance.lastPaymentDate) : 'لا يوجد حساب مالي مرتبط'} source={core.sources.payments} tone="success" onClick={() => changeView('finance')}/>
       <KpiCard label="آخر شحنة · دليل المتاجر" value={store.lastShipmentAt ? DATE(store.lastShipmentAt) : 'لا توجد شحنة'} detail={`${store.shipmentCount} شحنة في دليل متاجر لمحة`} source={core.sources.identity} onClick={() => changeView('shipments')}/>
       <KpiCard label="الإجراء التالي" value={workLoading ? 'جارٍ التحميل…' : work?.nextAction?.label || 'لا يوجد إجراء'} detail={work?.nextAction ? DATE(work.nextAction.at, true) : 'لا يوجد موعد حالي'} source={work?.nextAction?.source === 'التحصيل' ? work?.sources?.collections : work?.sources?.sales} loading={workLoading} onClick={() => changeView('work')}/>

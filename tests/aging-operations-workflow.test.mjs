@@ -2,8 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import {
-  agingEntityKey, buildAgingRows, evaluateBulkEligibility, lineMatchesAging,
-  summarizeAgingLines,
+  agingEntityKey, buildAgingRows, buildCampaignAgingProjection, evaluateBulkEligibility,
+  lineMatchesAging, normalizeCollectibleLine, summarizeAgingLines,
 } from '../src/lib/agingOperations.js';
 
 const lines = [
@@ -25,6 +25,27 @@ test('opening balance is isolated from +90 invoices', () => {
   assert.equal(lineMatchesAging(lines[3], new Set(['inv90p'])), false);
   assert.equal(lineMatchesAging(lines[3], new Set(['opening'])), true);
   assert.equal(summarizeAgingLines(lines, new Set(['opening'])).amount, 10.44);
+});
+
+test('Zoho opening-balance documents are reclassified from +90 without using name or phone', () => {
+  const sourceLine = {
+    contact_id: '7589996000000301333',
+    contact_name: 'متجر الأندية',
+    line_kind: 'invoice',
+    invoice_number: 'الرصيد الافتتاحي للالعملاء',
+    age_days: 221,
+    collectible_amount: 30270.63,
+    due_date: '2026-01-10',
+  };
+  const normalized = normalizeCollectibleLine(sourceLine);
+  assert.equal(normalized.line_kind, 'opening_balance');
+  assert.equal(lineMatchesAging(sourceLine, new Set(['inv90p'])), false);
+  assert.equal(lineMatchesAging(sourceLine, new Set(['opening'])), true);
+
+  const projection = buildCampaignAgingProjection([sourceLine], new Set(['7589996000000301333']));
+  assert.equal(projection.totals.opening, 30270.63);
+  assert.equal(projection.totals.inv90p, 0);
+  assert.equal(projection.byContact.get('7589996000000301333').opening, 30270.63);
 });
 
 test('Aging rows join money to invoice lines by Zoho contact id, not name or phone', () => {
@@ -70,7 +91,9 @@ test('Store 360 receives the Aging buckets and resolves detail lines with the st
   const page = await readFile(new URL('../src/pages/Store360Page.jsx', import.meta.url), 'utf8');
   const service = await readFile(new URL('../src/lib/store360Service.js', import.meta.url), 'utf8');
   assert.match(page, /agingBuckets=\{agingBuckets\}/);
-  assert.match(service, /loadZohoAgingDetails\(\{ zohoId, customerName, agingBuckets \}\)/);
+  assert.match(service, /loadZohoOpenInvoices\(customerName, \{ zohoId \}\)/);
+  assert.match(service, /allDetails\.filter\(row => lineMatchesAging\(row, selectedBuckets\)\)/);
+  assert.match(service, /buildCampaignAgingProjection\(allDetails\)/);
   assert.match(service, /selectedAmount/);
 });
 

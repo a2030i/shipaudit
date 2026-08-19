@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, Megaphone, UserPlus, LifeBuoy, BadgeDollarSign, Bot, Landmark, ListFilter,
+  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, Bot, Landmark, ListFilter,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
 import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
@@ -41,7 +41,6 @@ const ContractsOverview = lazy(() => import('./pages/ContractsOverview.jsx'));
 const Tasks = lazy(() => import('./pages/Tasks.jsx'));
 const CustomerWatch = lazy(() => import('./pages/CustomerWatch.jsx'));
 const CarriersWorkspace = lazy(() => import('./pages/CarriersWorkspace.jsx'));
-const CrmWorkspace = lazy(() => import('./pages/CrmWorkspace.jsx'));
 const FulfillmentAudit = lazy(() => import('./pages/FulfillmentAudit.jsx'));
 const MoneyHub = lazy(() => import('./pages/MoneyHub.jsx'));
 const Periods = lazy(() => import('./pages/Periods.jsx'));
@@ -66,7 +65,6 @@ const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
 const UploadsHub = lazy(() => import('./pages/UploadsHub.jsx'));
 const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
 const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
-const Marketers = lazy(() => import('./pages/Marketers.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
 const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
@@ -176,18 +174,8 @@ const ROUTE_ITEMS = [
       { tabId: 'segments',    label: 'شرائح العملاء',        icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
     ] },
-  // قائمة التحصيل دُمجت تبويباً أول داخل CRM (موافقة المستخدم 2026-07-02) —
-  // /collections القديم يهبط على تبويبها داخل CrmWorkspace.
-  { id: 'crm',             path: '/crm',             label: 'صفقات ومواعيد المبيعات', icon: TrendingUp, section: 'customers', navOrder: 30, permKey: 'crm.view',
-    subTabs: [
-      { tabId: 'deals', label: 'صفقات المبيعات',  icon: TrendingUp },
-      { tabId: 'tasks', label: 'المواعيد',         icon: CalendarRange },
-      { tabId: 'board', label: 'أداء المبيعات',    icon: BarChart3 },
-      { tabId: 'settings', label: 'إعدادات مراحل البيع', icon: Settings, perm: 'crm.manage_statuses' },
-    ] },
   // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
   { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view' },
-  { id: 'marketers',       path: '/marketers',       label: 'المسوّقون والعمولات', icon: BadgeDollarSign, section: 'customers', navOrder: 60, permKey: 'marketers.view' },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view',
     subTabs: [
       { tabId: 'overview',  label: 'مراقبة اتصال زوهو',       icon: Activity },
@@ -199,8 +187,6 @@ const ROUTE_ITEMS = [
   { id: 'reconciliation',  path: '/reconciliation',  label: 'مطابقة زوهو', icon: GitCompare, section: 'money', navOrder: 70, permKey: 'reconciliation.view' },
 
   // ── الحملات والاتصالات — ضمن رحلة العملاء والنمو ────────────────
-  { id: 'campaign-center', path: '/campaigns', label: 'مركز الحملات الذكي', icon: Megaphone, section: 'customers', navOrder: 45,
-    permAny: ['campaigns.send', 'campaigns.ivr', 'whatsapp.view_log', 'receivables.view', 'sales.view'] },
   { id: 'whatsapp-settings', path: '/whatsapp-settings', label: 'الحملات والاتصالات', icon: MessageCircle, section: 'customers', navOrder: 50,
     permAny: ['whatsapp.view_log', 'whatsapp.configure', 'campaigns.ivr'],
     subTabs: [
@@ -292,6 +278,9 @@ PATH_PERM.set('/carrier',   'carriers.view');
 PATH_PERM.set('/upload',    'audits.create');
 PATH_PERM.set('/results',   'audits.view');
 PATH_PERM.set('/customers', 'receivables.view');
+// /campaigns لم يعد وجهة مستقلة؛ بقي كمسار إجراء لمراجعة جمهور قادم من
+// التحصيل قبل الإرسال/الاتصال. الحارس الصريح يحميه بعد إزالة بطاقة المركز.
+PATH_PERM.set('/campaigns', ['campaigns.send', 'campaigns.ivr', 'whatsapp.view_log', 'receivables.view', 'sales.view']);
 
 // Paths that all render the CustomerHub page (which selects the
 // right tab based on which path was used). Used to scope the
@@ -388,8 +377,10 @@ function AppInner({ theme, toggleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
+  const campaignActionActive = pathname === '/campaigns'
+    && new URLSearchParams(location.search).has('audienceContext');
 
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
@@ -462,6 +453,20 @@ function AppInner({ theme, toggleTheme }) {
   useEffect(() => {
     if (!profile || !pathAllowed) return;
     const params = new URLSearchParams(location.search);
+    // صفحات تقاعدت من تجربة المستخدم. نحافظ على الروابط القديمة بتحويلها
+    // إلى الوظيفة الحالية بدل عرض صفحة فارغة أو كسر Deep Link محفوظ.
+    if (rawPath === '/sales' || rawPath === '/crm') {
+      navigate('/retargeting?view=today&source=legacy-sales', { replace: true });
+      return;
+    }
+    if (rawPath === '/marketers') {
+      navigate('/workspace/sales?source=legacy-marketers', { replace: true });
+      return;
+    }
+    if (rawPath === '/campaigns' && !params.get('audienceContext')) {
+      navigate('/whatsapp-settings?tab=campaigns&source=legacy-campaign-center', { replace: true });
+      return;
+    }
     if (rawPath === '/upload' && !params.get('carrier')) {
       navigate('/hub?action=upload-invoice', { replace: true });
       return;
@@ -1079,17 +1084,14 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={SALES_HUB_PATHS.includes(pathname)} scroll>
               <SalesHub isActive={SALES_HUB_PATHS.includes(pathname)}/>
             </PageSlot>
-            <PageSlot active={pathname==='/campaigns'} scroll>
-              <SmartCampaignCenter isActive={pathname==='/campaigns'}/>
+            <PageSlot active={campaignActionActive} scroll>
+              <SmartCampaignCenter isActive={campaignActionActive}/>
             </PageSlot>
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
             </PageSlot>
             <PageSlot active={pathname==='/support'} scroll>
               <SupportBoard isActive={pathname==='/support'}/>
-            </PageSlot>
-            <PageSlot active={pathname==='/marketers'} scroll>
-              <Marketers isActive={pathname==='/marketers'}/>
             </PageSlot>
             <PageSlot active={ACCOUNTING_WORKSPACE_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
@@ -1167,11 +1169,6 @@ function AppInner({ theme, toggleTheme }) {
             {/* متابعة العملاء — كانت hub بأربعة تبويبات؛ بعد المرحلتين 2+3 بقيت المتابعة فقط */}
             <PageSlot active={CUSTOMER_HUB_PATHS.includes(pathname)} scroll>
               <CustomerWatch isActive={CUSTOMER_HUB_PATHS.includes(pathname)}/>
-            </PageSlot>
-            {/* CRM/المتابعة — صفحة واحدة بـ5 تبويبات تقرأ ?tab= */}
-            {/* /collections القديم يهبط على تبويب «قائمة التحصيل» داخل CRM */}
-            <PageSlot active={pathname==='/crm'} scroll>
-              <CrmWorkspace isActive={pathname==='/crm'}/>
             </PageSlot>
             <PageSlot active={OPERATIONS_BILLING_PATHS.includes(pathname)} scroll>
               <CenterWorkspace

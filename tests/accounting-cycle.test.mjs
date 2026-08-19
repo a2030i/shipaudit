@@ -92,7 +92,7 @@ test('دليل مواعيد الناقل يعرض الملفات الفعلية 
   });
 });
 
-test('لوحة اكتمال الجداول تطلب جدولًا موحدًا أو جدولين منفصلين حسب طريقة الناقل', () => {
+test('لوحة اكتمال الجداول تطلب جدول فاتورة واحدًا لكل ناقل بعد إيقاف COD', () => {
   const contract = [{ startDate: '2026-01-01', endDate: null }];
   const carriers = [
     { id: 'combined', name: 'موحد', contracts: contract, file_signature: { file_kind: 'audit_with_cod' } },
@@ -107,8 +107,9 @@ test('لوحة اكتمال الجداول تطلب جدولًا موحدًا أ
   const coverage = deriveCarrierScheduleCoverage({ carriers, schedules, period: '2026-08' });
   assert.equal(coverage.length, 3);
   assert.equal(coverage.find(row => row.carrierId === 'combined').status, 'complete');
-  assert.deepEqual(coverage.find(row => row.carrierId === 'separate').missingKinds, ['cod_remittance']);
-  assert.equal(coverage.find(row => row.carrierId === 'unknown').status, 'unclassified');
+  assert.deepEqual(coverage.find(row => row.carrierId === 'separate').missingKinds, []);
+  assert.equal(coverage.find(row => row.carrierId === 'unknown').status, 'incomplete');
+  assert.deepEqual(coverage.find(row => row.carrierId === 'unknown').missingKinds, ['invoice']);
 });
 
 test('تنبيه الموعد يتبع تاريخ الشركة ولا يتحرك بسبب رفع الملف متأخرًا', () => {
@@ -143,15 +144,15 @@ test('الناقل ذو العقد الساري لا يختفي من الدور�
   assert.equal(invoiceChecklist.length, 1);
   assert.equal(invoiceChecklist[0].status, 'unclassified');
   assert.equal(collectionChecklist.length, 1);
-  assert.equal(collectionChecklist[0].status, 'unclassified');
+  assert.equal(collectionChecklist[0].status, 'not_required');
 
   const stages = deriveAccountingCycleStages({ period: '2026-08', carriers, schedules: [] });
   assert.equal(stages.stages[0].status, 'attention');
-  assert.equal(stages.stages[4].status, 'attention');
+  assert.equal(stages.stages[4].status, 'complete');
   assert.equal(stages.prerequisiteComplete, false);
 });
 
-test('ناقل التحصيل فقط لا يُطلب منه جدول فاتورة ولا يمنع مرحلة مراجعات الناقلين', () => {
+test('تصنيف التحصيل فقط التاريخي لا يعفي الناقل من مراجعة الفاتورة الجديدة', () => {
   const carriers = [{
     id: 'cod-only', name: 'ناقل تحصيل فقط',
     file_signature: { file_kind: 'cod_only' },
@@ -163,19 +164,16 @@ test('ناقل التحصيل فقط لا يُطلب منه جدول فاتور�
   }];
   const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
   assert.equal(invoiceChecklist.length, 1);
-  assert.equal(invoiceChecklist[0].status, 'not_required');
-  assert.equal(invoiceChecklist[0].expectedCount, 0);
+  assert.equal(invoiceChecklist[0].status, 'unclassified');
+  assert.equal(invoiceChecklist[0].expectedCount, null);
   assert.equal(invoiceChecklist[0].fileKind, 'cod_only');
 
   const stages = deriveAccountingCycleStages({ period: '2026-08', carriers, schedules });
-  assert.equal(stages.stages[0].status, 'complete');
-  assert.equal(stages.stages[0].detail.completedCarrierCount, 1);
-  assert.equal(stages.stages[1].status, 'complete');
-  assert.equal(stages.stages[2].status, 'complete');
-  assert.notEqual(stages.stages[4].status, 'complete');
+  assert.equal(stages.stages[0].status, 'attention');
+  assert.equal(stages.stages[4].status, 'complete');
 });
 
-test('الناقل غير المصنف يبقى مانعًا للإقفال حتى لو أضيف له جدول فاتورة يدويًا', () => {
+test('تنسيق القارئ القديم لا يمنع تشغيل مراجعة الفاتورة عند وجود جدول صالح', () => {
   const carriers = [{
     id: 'unknown', name: 'ناقل غير مصنف', file_signature: {},
     contracts: [{ startDate: '2026-01-01', endDate: null }],
@@ -185,8 +183,8 @@ test('الناقل غير المصنف يبقى مانعًا للإقفال حت
     cadence: 'monthly', schedule_basis: 'month_days', due_days: [1],
   }];
   const checklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
-  assert.equal(checklist[0].status, 'unclassified');
-  assert.match(checklist[0].note, /غير مصنفة/);
+  assert.equal(checklist[0].status, 'pending');
+  assert.match(checklist[0].note, /المطلوب/);
 });
 
 test('الجدول الأسبوعي بلا يوم يمنع الإقفال ولا يتحول إلى الأحد', () => {
@@ -195,10 +193,10 @@ test('الجدول الأسبوعي بلا يوم يمنع الإقفال ولا
   const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', carriers, schedules });
   const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules });
   assert.equal(invoiceChecklist[0].status, 'unclassified');
-  assert.equal(collectionChecklist[0].status, 'unclassified');
+  assert.equal(collectionChecklist[0].status, 'not_required');
 });
 
-test('الفاتورة الشهرية لا تغطي تحصيلات الناقل الأسبوعية المنفصلة', () => {
+test('الفاتورة الشهرية هي المتطلب التشغيلي ولا ينشأ متطلب COD أسبوعي', () => {
   const schedules = [
     { id: 'invoice', carrier_id: 'jnt', task_kind: 'invoice', active: true, cadence: 'monthly', day_of_period: 1 },
     { id: 'cod', carrier_id: 'jnt', task_kind: 'cod_remittance', active: true, cadence: 'weekly', day_of_period: 8 },
@@ -215,12 +213,8 @@ test('الفاتورة الشهرية لا تغطي تحصيلات الناقل 
     asOf: '2026-08-16',
     events: [{ stage: 'carrier_collections', status: 'success', result: { carrier: 'jnt', fileCount: 1, scheduleSlot: '2026-08-08' } }],
   });
-  assert.equal(collectionChecklist[0].status, 'pending');
-  assert.equal(collectionChecklist[0].expectedCount, 4);
-  assert.equal(collectionChecklist[0].receivedCount, 1);
-  assert.equal(collectionChecklist[0].missingCount, 3);
-  assert.equal(collectionChecklist[0].dueMissingCount, 1);
-  assert.equal(collectionChecklist[0].upcomingMissingCount, 2);
+  assert.equal(collectionChecklist[0].status, 'not_required');
+  assert.equal(collectionChecklist[0].requiresManualUpload, false);
 });
 
 test('إعادة رفع ملف تحصيل مكرر لا تُحسب دفعة أسبوعية جديدة', () => {
@@ -234,8 +228,8 @@ test('إعادة رفع ملف تحصيل مكرر لا تُحسب دفعة أس
       { id: 'duplicate', stage: 'carrier_collections', status: 'success', file_name: 'week-1.xlsx', result: { carrier: 'jnt', fileCount: 1, savedCount: 0, skippedCount: 20, scheduleSlot: '2026-08-08' } },
     ],
   });
-  assert.equal(checklist[0].receivedCount, 1);
-  assert.equal(checklist[0].missingCount, 3);
+  assert.equal(checklist[0].status, 'not_required');
+  assert.equal(checklist[0].requiresManualUpload, false);
 });
 
 test('موعد التحصيل المخزن في صفوف COD يبقى إثباتاً للدورة إذا غاب من سجل الحدث', () => {
@@ -255,9 +249,8 @@ test('موعد التحصيل المخزن في صفوف COD يبقى إثبات
       upload_date: '2026-09-02', schedule_slot: '2026-08-08',
     }],
   });
-  assert.equal(checklist[0].receivedCount, 1);
-  assert.deepEqual(checklist[0].receivedSlots, ['2026-08-08']);
-  assert.equal(checklist[0].missingCount, 3);
+  assert.equal(checklist[0].status, 'not_required');
+  assert.equal(checklist[0].requiresManualUpload, false);
 });
 
 test('ملفان مختلفان لنفس موعد التحصيل الأسبوعي لا يُكملان موعدين', () => {
@@ -272,9 +265,8 @@ test('ملفان مختلفان لنفس موعد التحصيل الأسبوع�
     result: { carrier: 'jnt', fileCount: 1, savedCount: 20, scheduleSlot: '2026-08-08' },
   }));
   const checklist = deriveCarrierCollectionChecklist({ period: '2026-08', carriers, schedules, events });
-  assert.equal(checklist[0].receivedCount, 1);
-  assert.equal(checklist[0].missingCount, 3);
-  assert.equal(checklist[0].duplicateSlotCount, 1);
+  assert.equal(checklist[0].status, 'not_required');
+  assert.equal(checklist[0].requiresManualUpload, false);
 });
 
 test('ملفان مختلفان لنفس موعد الفاتورة الأسبوعية لا يُكملان موعدين', () => {
@@ -292,11 +284,10 @@ test('ملفان مختلفان لنفس موعد الفاتورة الأسبو�
   assert.equal(invoiceChecklist[0].receivedCount, 1);
   assert.equal(invoiceChecklist[0].missingCount, 3);
   assert.equal(invoiceChecklist[0].duplicateSlotCount, 1);
-  assert.equal(collectionChecklist[0].receivedCount, 1);
-  assert.equal(collectionChecklist[0].missingCount, 3);
+  assert.equal(collectionChecklist[0].status, 'not_required');
 });
 
-test('الملف الأسبوعي الموحّد يثبت الفاتورة والتحصيل معًا ولا يكتمل بملف واحد', () => {
+test('الملف الأسبوعي يثبت الفاتورة فقط ولا ينشئ التزام تحصيل جديدًا', () => {
   const schedules = [{ id: 'combined', carrier_id: 'imile', task_kind: 'invoice', active: true, cadence: 'weekly', day_of_period: 3 }];
   const carriers = [{ id: 'imile', name: 'أي مايل', file_signature: { file_kind: 'audit_with_cod' } }];
   const weeklySlots = ['2026-08-05', '2026-08-12', '2026-08-19'];
@@ -309,10 +300,9 @@ test('الملف الأسبوعي الموحّد يثبت الفاتورة وا�
   const invoiceChecklist = deriveCarrierAuditChecklist({ period: '2026-08', audits, carriers, schedules });
   const collectionChecklist = deriveCarrierCollectionChecklist({ period: '2026-08', approvedAudits: audits, carriers, schedules });
   assert.equal(invoiceChecklist[0].missingCount, 1);
-  assert.equal(collectionChecklist[0].missingCount, 1);
-  assert.equal(collectionChecklist[0].status, 'pending');
+  assert.equal(collectionChecklist[0].status, 'not_required');
   assert.equal(collectionChecklist[0].requiresManualUpload, false);
-  assert.match(collectionChecklist[0].note, /يُرفع في مرحلة الفواتير/);
+  assert.match(collectionChecklist[0].note, /توقف إنشاء تحصيل COD جديد/);
 });
 
 test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتفصل الفاتورة الشهرية عن التحصيل الأسبوعي', () => {
@@ -330,6 +320,7 @@ test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتف
     ...['2026-08-05', '2026-08-12', '2026-08-19', '2026-08-26']
       .map((slot, index) => approvedAudit(`combined-${index + 1}`, 'combined', slot)),
     approvedAudit('separate-month', 'separate', '2026-08-01'),
+    approvedAudit('cod-only-month', 'cod-only', '2026-08-01'),
   ];
   const carriers = [
     {
@@ -353,6 +344,7 @@ test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتف
     { id: 'separate-invoice', carrier_id: 'separate', task_kind: 'invoice', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [1] },
     { id: 'separate-cod', carrier_id: 'separate', task_kind: 'cod_remittance', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] },
     { id: 'cod-only-weekly', carrier_id: 'cod-only', task_kind: 'cod_remittance', active: true, cadence: 'weekly', schedule_basis: 'month_days', due_days: [8, 15, 22, 29] },
+    { id: 'cod-only-invoice', carrier_id: 'cod-only', task_kind: 'invoice', active: true, cadence: 'monthly', schedule_basis: 'month_days', due_days: [1] },
   ];
   const events = ['separate', 'cod-only'].flatMap(carrierId =>
     [8, 15, 22, 29].map((day, index) => ({
@@ -384,7 +376,7 @@ test('دورة شهر كاملة تقبل الأسبوعي الموحّد وتف
   assert.equal(cycle.stages[6].status, 'ready');
 });
 
-test('قائمة تحصيل الناقلين تفصل التلقائي واليدوي وغير المهيأ لكل ناقل في الشهر', () => {
+test('قائمة التحصيل التاريخية لا تطلب رفعًا جديدًا لأي ناقل', () => {
   const approvedAudits = [
     { id: 'a-auto', carrier_id: 'imile', carrier_name: 'أي مايل' },
     { id: 'a-uploaded', carrier_id: 'jnt', carrier_name: 'J&T' },
@@ -409,16 +401,16 @@ test('قائمة تحصيل الناقلين تفصل التلقائي والي�
   const byCarrier = Object.fromEntries(checklist.map(item => [item.carrierId, item.status]));
 
   assert.deepEqual(byCarrier, {
-    imile: 'automatic',
-    jnt: 'uploaded',
-    smsa: 'pending',
+    imile: 'not_required',
+    jnt: 'not_required',
+    smsa: 'not_required',
     'audit-only': 'not_required',
-    'manual-x': 'unsupported',
-    'unknown-x': 'unclassified',
+    'manual-x': 'not_required',
+    'unknown-x': 'not_required',
   });
 });
 
-test('ملف تحصيل ناقل واحد لا يكمل مرحلة تحصيلات كل الناقلين', () => {
+test('مرحلة COD لا تعتمد على عدد ملفات التحصيل بعد قرار الإيقاف', () => {
   const control = { version: 3, valid: true, fileName: 'invoice.xlsx', contractLabels: ['عقد 2026'] };
   const audits = [
     { id: 'j1', carrier_id: 'jnt', review_status: 'approved', weight_billing_status: 'skipped', col_map: { __control: control } },
@@ -432,9 +424,9 @@ test('ملف تحصيل ناقل واحد لا يكمل مرحلة تحصيلا�
     period: '2026-08', audits, carriers,
     events: [{ stage: 'carrier_collections', status: 'success', row_count: 20, result: { carrier: 'jnt' } }],
   });
-  assert.equal(partial.stages[4].status, 'attention');
-  assert.equal(partial.stages[4].detail.completedCarrierCount, 1);
-  assert.equal(partial.stages[4].detail.pendingCarrierCount, 1);
+  assert.equal(partial.stages[4].status, 'complete');
+  assert.equal(partial.stages[4].detail.completedCarrierCount, 2);
+  assert.equal(partial.stages[4].detail.pendingCarrierCount, 0);
   assert.equal(partial.stages[4].history[0].carrier_name, 'J&T');
   assert.equal(partial.prerequisiteComplete, false);
 

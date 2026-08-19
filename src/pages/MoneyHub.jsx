@@ -28,11 +28,11 @@ const TABS = [
     outcome: 'رصيد وإقفال قابلان للتتبع', tone: 'var(--brand)',
   },
   {
-    id: 'cod', label: 'COD', icon: Banknote, component: CodSettlements,
+    id: 'cod', label: 'تصفية COD القديمة', icon: Banknote, component: CodSettlements,
     perm: 'cod.view',
-    eyebrow: 'أمانات العملاء', purpose: 'قارن المتوقع بما حوّلته شركة الشحن فعلاً',
-    description: 'هذه الأموال ليست دخلاً. الشاشة تتابع شحنات COD من الاستحقاق إلى الاستلام وتظهر الفرق بوضوح.',
-    outcome: 'تحصيل مستلم وفروقات معروفة', tone: 'var(--gold)',
+    eyebrow: 'مسار مؤقت', purpose: 'صفّر الأرصدة التاريخية المتبقية ثم أغلق المسار',
+    description: 'لا تُنشأ التزامات جديدة؛ تظهر الشركات ذات الرصيد المتبقي فقط حتى تصفيرها.',
+    outcome: 'رصيد تاريخي مصفّر', tone: 'var(--gold)',
   },
   {
     id: 'payments', label: 'دفعات الناقلين', icon: CreditCard, component: Payments,
@@ -106,7 +106,7 @@ export default function MoneyHub({ isActive = true }) {
         <WorkspaceTabs
           scope="cash-settlements"
           title="النقد والتسويات"
-          subtitle="البنوك وCOD ومدفوعات الناقلين تبقى أقسامًا مستقلة"
+          subtitle="البنوك والمدفوعات، مع مسار مؤقت لتصفية COD التاريخي"
           tone="#F59E0B"
           tabs={primaryTabs}
           activeId={tab}

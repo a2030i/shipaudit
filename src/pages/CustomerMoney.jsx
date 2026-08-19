@@ -6,7 +6,8 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
-import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins } from 'lucide-react';
+import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
+  TrendingUp, UserPlus, UserMinus, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input, WorkspaceLoadingState } from '../components/UI.jsx';
@@ -25,7 +26,7 @@ import CustomerCommTimeline from '../components/CustomerCommTimeline.jsx';
 import TagButton from '../components/TagButton.jsx';
 import AgingOperationsQueue from '../components/operations/AgingOperationsQueue.jsx';
 import {
-  AGING_PAGE_SIZE, buildAgingRows, evaluateBulkEligibility, saveAudienceHandoff,
+  AGING_PAGE_SIZE, buildAgingRows, buildCampaignAgingProjection, evaluateBulkEligibility, saveAudienceHandoff,
 } from '../lib/agingOperations.js';
 import {
   CUSTOMER_CAMPAIGN_BUCKETS,
@@ -35,6 +36,8 @@ import {
   campaignBucketLabel,
   selectedCampaignAmount,
 } from '../lib/customerCampaignBuckets.js';
+import { loadCustomerActivationCommandCenter } from '../lib/retargetingService.js';
+import './CustomerFinanceCenter.css';
 
 const fmt = (n) => (n == null || Number.isNaN(n)) ? '—'
   : Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -71,7 +74,9 @@ export default function CustomerMoney({ isActive = true }) {
   const [collectionTaskError, setCollectionTaskError] = useState(false);
   const [agingLines, setAgingLines] = useState([]);
   const [agingLinesError, setAgingLinesError] = useState(false);
+  const [agingLinesReady, setAgingLinesReady] = useState(false);
   const [collectionAssignees, setCollectionAssignees] = useState([]);
+  const [growthPulse, setGrowthPulse] = useState({ status: 'idle', data: null, error: null });
   const [q, setQ] = useState(() => searchParams.get('search') || searchParams.get('customer') || searchParams.get('q') || '');
   const [buckets, setBuckets] = useState(() => {
     const allowed = new Set(BUCKETS.map(bucket => bucket.key));
@@ -157,7 +162,10 @@ export default function CustomerMoney({ isActive = true }) {
       if (tasks !== null) setCollectionTasks(tasks);
       setCollectionTaskError(tasks === null);
       setCollectionAssignees(assignees);
-      if (collectibleLines !== null) setAgingLines(collectibleLines);
+      if (collectibleLines !== null) {
+        setAgingLines(collectibleLines);
+        setAgingLinesReady(true);
+      }
       setAgingLinesError(collectibleLines === null);
     } catch (e) {
       setLoadError(e);
@@ -211,10 +219,36 @@ export default function CustomerMoney({ isActive = true }) {
   const [unclaimedOnly, setUnclaimedOnly] = useState(() => searchParams.get('source') === 'unclaimed');
   const loadSadad = () => loadTemplateSentSet('sadad').then(setSadadSet).catch(() => {});
   useEffect(() => { if (isActive) loadSadad(); }, [isActive]); // eslint-disable-line
+
+  // Progressive load: customer money is the primary content. Platform
+  // activity starts only after that content is available, avoiding another
+  // request on the critical path while still giving Finance one customer view.
+  useEffect(() => {
+    if (!isActive || !d || growthPulse.status !== 'idle') return undefined;
+    let cancelled = false;
+    setGrowthPulse({ status: 'loading', data: null, error: null });
+    loadCustomerActivationCommandCenter(5, 500, 24)
+      .then(data => { if (!cancelled) setGrowthPulse({ status: 'available', data, error: null }); })
+      .catch(error => { if (!cancelled) setGrowthPulse({ status: 'unavailable', data: null, error: error.message }); });
+    return () => { cancelled = true; };
+  }, [d, growthPulse.status, isActive]);
   // فتح حملة لعميل واحد من زر «واتساب» في بطاقته
   // مبلغ التحصيل لكل عميل = مجموع الشرائح المختارة فقط (أو كامل الدين إن لم تُختَر شريحة).
   // فحملة على شريحة 61–90 ترسل مبلغ تلك الشريحة لا كامل دين العميل.
-  const bandAmt = (c) => selectedCampaignAmount(c, buckets);
+  const campaignProjection = useMemo(() => buildCampaignAgingProjection(
+    agingLines,
+    (d?.customers || []).map(customer => customer.zohoId),
+  ), [agingLines, d]);
+  const campaignAging = agingLinesReady ? campaignProjection.totals : (d?.campaignAging || {});
+  const campaignCustomer = (customer) => {
+    const projected = agingLinesReady
+      ? campaignProjection.byContact.get(String(customer.zohoId || '').trim())
+      : null;
+    return projected ? { ...customer, ...projected } : customer;
+  };
+  const bandAmt = (c) => {
+    return selectedCampaignAmount(campaignCustomer(c), buckets);
+  };
   // أعمدة التحصيل المتاحة لربط متغيرات القالب ديناميكياً (مودال الإرسال)
   const collectionFields = (c, amt = c.owed) => ({
     name: (c.storeName || c.name || '').trim(), amount: amt, full_amount: c.owed,
@@ -272,7 +306,7 @@ export default function CustomerMoney({ isActive = true }) {
     if (s) list = list.filter(c =>
       [c.name, c.storeName, c.phone].some(v => String(v ?? '').toLowerCase().includes(s)));
     return [...list].sort((a, b) => sortBy === 'oldest' ? b.oldestDays - a.oldestDays : bandAmt(b) - bandAmt(a));
-  }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet]);  // eslint-disable-line
+  }, [d, q, buckets, platformFilter, sortBy, unclaimedOnly, sadadSet, campaignProjection, agingLinesReady]);  // eslint-disable-line
   const filteredTotal = useMemo(() => +filtered.reduce((s, c) => s + bandAmt(c), 0).toFixed(2), [filtered, buckets]);  // eslint-disable-line
   const collectionTaskByCustomer = useMemo(() => {
     const rank = { promised: 4, contacted: 3, snoozed: 2, todo: 1 };
@@ -350,8 +384,8 @@ export default function CustomerMoney({ isActive = true }) {
   const agingDashboardTotal = useMemo(() => {
     if (!d) return 0;
     if (!buckets.size) return +Number(d.outstanding || 0).toFixed(2);
-    return +[...buckets].reduce((sum, key) => sum + Number(d.campaignAging?.[key] || 0), 0).toFixed(2);
-  }, [d, buckets]);
+    return +[...buckets].reduce((sum, key) => sum + Number(campaignAging?.[key] || 0), 0).toFixed(2);
+  }, [d, buckets, campaignAging]);
   const agingReconciliation = useMemo(() => ({
     detailsTotal: agingDetailsTotal,
     dashboardTotal: agingDashboardTotal,
@@ -479,7 +513,7 @@ export default function CustomerMoney({ isActive = true }) {
         vars: [name, Number(amt).toLocaleString('en-US', { maximumFractionDigits: 2 }), String(c.invCnt)],
         fields: collectionFields(c, amt),
       };
-    }), [filtered, buckets]);  // eslint-disable-line
+    }), [filtered, buckets, campaignProjection, agingLinesReady]);  // eslint-disable-line
 
   const openFocusedCampaign = () => {
     if (!buckets.size) {
@@ -509,10 +543,14 @@ export default function CustomerMoney({ isActive = true }) {
       ['تحصيل العملاء — زوهو API المرجع', '', new Date().toISOString().slice(0, 10)],
       buckets.size ? [`الشرائح المختارة: ${campaignBucketLabel(buckets)} — «مبلغ الشرائح المختارة» هو مجموع هذه الشرائح فقط`] : [],
       headers,
-      ...exportRows.map(c => [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
-        c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, c.inv1_15, c.inv16_30, c.inv31_60, c.inv61_90, c.inv90p, c.opening,
-        c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
-        c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)]),
+      ...exportRows.map(c => {
+        const bucketed = campaignCustomer(c);
+        return [c.name, c.storeId || '', c.storeName || '', c.phone || '', c.billingType || '', c.platformStatus || '',
+          c.grossDue, c.creditOffset, c.owed, c.overdue, c.invCnt, c.oldestDays, bucketed.inv1_15, bucketed.inv16_30,
+          bucketed.inv31_60, bucketed.inv61_90, bucketed.inv90p, bucketed.opening,
+          c.walletBalance || 0, c.lastShipmentAt ? new Date(c.lastShipmentAt).toLocaleDateString('en-CA') : '',
+          c.lastPaymentDate || '', c.lastPaymentAmount || '', bandAmt(c)];
+      }),
       [],
       ['الإجمالي', ...Array(5).fill(''), grossTotal, creditTotal, owedTotal, ...Array(headers.length - 10).fill(''), exportSelectedTotal],
     ];
@@ -555,13 +593,24 @@ export default function CustomerMoney({ isActive = true }) {
     </div>
   );
 
-  const invoiceCampaignTotal = INVOICE_CAMPAIGN_BUCKETS.reduce((s, b) => s + (d.campaignAging?.[b.key] || 0), 0) || 1;
+  const invoiceCampaignTotal = INVOICE_CAMPAIGN_BUCKETS.reduce((s, b) => s + (campaignAging?.[b.key] || 0), 0) || 1;
   const colDelta = d.collectedPrevMonth > 0
     ? Math.round(((d.collectedThisMonth - d.collectedPrevMonth) / d.collectedPrevMonth) * 100) : null;
 
   // أرصدة دائنة: قابل للتطبيق (رصيد + فاتورة مفتوحة) مقابل «رصيد قائم» (بلا فواتير)
   const applicableRows = (credits?.rows || []).filter(r => r.applicable > 0.5);
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
+  const growth = growthPulse.data || {};
+  const growthCurrent = growth.current || {};
+  const movement = growth.movement || {};
+  const currentReturnTo = `${location.pathname}${location.search}`;
+  const openWithContext = (path) => {
+    const [pathname, query = ''] = path.split('?');
+    const params = new URLSearchParams(query);
+    params.set('returnTo', currentReturnTo);
+    navigate(`${pathname}?${params.toString()}`);
+  };
+  const scrollToAging = () => document.querySelector('.aging-operations')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 
   const campaignSegmentsPanel = (
     <Card style={{ padding: '16px 18px', marginBottom: 12 }}>
@@ -574,7 +623,7 @@ export default function CustomerMoney({ isActive = true }) {
         </div>
         <div className="collection-aging-overview" style={{ display: 'flex', height: 26, borderRadius: 8, overflow: 'hidden', cursor: 'pointer' }}>
           {INVOICE_CAMPAIGN_BUCKETS.map(b => {
-            const v = d.campaignAging?.[b.key] || 0;
+            const v = campaignAging?.[b.key] || 0;
             const pct = Math.max((v / invoiceCampaignTotal) * 100, v > 0.5 ? 6 : 0);
             if (pct === 0) return null;
             const active = buckets.has(b.key);
@@ -602,7 +651,7 @@ export default function CustomerMoney({ isActive = true }) {
                 aria-hidden="true" tabIndex={-1}
                 style={{ verticalAlign: 'middle', marginInlineEnd: 4, pointerEvents: 'none' }}/>
               <span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, background: b.color, marginInlineEnd: 4 }}/>
-              {b.label}: {fmt(d.campaignAging?.[b.key] || 0)}
+              {b.label}: {fmt(campaignAging?.[b.key] || 0)}
             </button>
           ))}
         </div>
@@ -615,7 +664,7 @@ export default function CustomerMoney({ isActive = true }) {
             background: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'color-mix(in srgb, var(--accent3) 10%, transparent)' : 'var(--surface2)',
             color: buckets.has(OPENING_CAMPAIGN_BUCKET.key) ? 'var(--accent3)' : 'var(--text2)' }}>
           <span><b>رصيد افتتاحي غير مدفوع</b><small style={{ display: 'block', marginTop: 2, color: 'var(--muted)' }}>شريحة مستقلة ولا تدخل ضمن «أكثر من 90 يوم»</small></span>
-          <strong style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{fmt(d.campaignAging?.opening || 0)} ر.س</strong>
+          <strong style={{ whiteSpace: 'nowrap', fontFamily: 'var(--font-mono)' }}>{fmt(campaignAging?.opening || 0)} ر.س</strong>
         </button>
         {buckets.size > 0 && (
           <div style={{ marginTop: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
@@ -641,6 +690,34 @@ export default function CustomerMoney({ isActive = true }) {
 
   return (
     <div className="customer-money-page workspace-page">
+      <PageHeader icon={<HandCoins size={22}/>} iconColor="var(--green)"
+        title="مركز العملاء المالي"
+        subtitle="الرصيد والنشاط والتحصيل والتواصل — افتح العميل مرة واحدة ونفّذ الإجراء من نفس السياق"/>
+
+      <section className="customer-finance-command" aria-label="مركز إجراءات مال العملاء">
+        <div className="customer-finance-command__head">
+          <div><span>القرار الآن</span><h2>من يحتاج تحصيلًا أو تواصلًا اليوم؟</h2><p>Zoho للأرقام المالية · لمحة للنشاط · هاتف وWhatsApp وIVR للتنفيذ.</p></div>
+          <div className="customer-finance-command__source"><i className={growthPulse.status === 'available' ? 'is-live' : ''}/>{growthPulse.status === 'loading' ? 'جارٍ تحميل نشاط لمحة' : growthPulse.status === 'available' ? 'المصادر متاحة' : 'نشاط لمحة غير متاح'}</div>
+        </div>
+        <div className="customer-finance-command__kpis">
+          <button type="button" onClick={scrollToAging}><HandCoins/><span>المطلوب تحصيله</span><strong>{fmt(d.outstanding)} ر.س</strong><small>{d.outstandingCnt} عميلًا</small></button>
+          <button type="button" onClick={() => updateUrlFilters({ aging: 'inv90p', page: null })}><Scale/><span>أكثر من 90 يومًا</span><strong>{fmt(campaignAging?.inv90p || 0)} ر.س</strong><small>فتح الشريحة</small></button>
+          <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><TrendingUp/><span>نشطون خلال 5 أيام</span><strong>{growthPulse.status === 'available' ? growthCurrent.active ?? 0 : '—'}</strong><small>{growthPulse.status === 'available' ? `الهدف ${growthCurrent.target || 500}` : 'المصدر غير متاح'}</small></button>
+          <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><UserPlus/><span>دخلوا النشاط</span><strong>{growthPulse.status === 'available' ? `+${movement.entered || 0}` : '—'}</strong><small>من آخر لقطة مقارنة</small></button>
+          <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><UserMinus/><span>خرجوا من النشاط</span><strong>{growthPulse.status === 'available' ? `−${movement.exited || 0}` : '—'}</strong><small>يحتاجون استعادة</small></button>
+          <button type="button" onClick={() => openWithContext('/reconciliation?tab=customers')}><ListChecks/><span>فروق المطابقة</span><strong>{d.balanceSyncIssueCount || 0}</strong><small>{d.balanceSyncIssueCount ? `${fmt(d.balanceSyncGapTotal)} ر.س` : 'لا فروق محجوبة'}</small></button>
+        </div>
+        <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
+          <Btn variant="accent" onClick={scrollToAging} icon={<HandCoins size={15}/>}>ابدأ التحصيل</Btn>
+          {can('campaigns.send') ? <Btn variant="ghost" onClick={() => document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth' })} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
+          <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=campaigns&source=customer-finance')} icon={<MessageCircle size={15}/>}>هاتف وWhatsApp</Btn>
+          {can('campaigns.ivr') ? <Btn variant="ghost" onClick={() => openWithContext('/whatsapp-settings?tab=ivr&source=customer-finance')} icon={<PhoneCall size={15}/>}>مراجعة IVR</Btn> : null}
+          <Btn variant="ghost" onClick={() => openWithContext('/retargeting?view=today&source=customer-finance')} icon={<TrendingUp size={15}/>}>عملاء لمحة اليوم</Btn>
+          <Btn variant="ghost" onClick={() => openWithContext('/reconciliation?tab=customers&source=customer-finance')} icon={<Scale size={15}/>}>مطابقة الأرصدة</Btn>
+        </div>
+        {growthPulse.status === 'unavailable' ? <div className="customer-finance-command__warning" role="status">تعذر تحميل نشاط عملاء لمحة: {growthPulse.error}. بقيت الأرقام المالية وإجراءات التحصيل متاحة.</div> : null}
+      </section>
+
       <AgingOperationsQueue
         rows={agingPageRows}
         totalRows={agingRows.length}
@@ -717,18 +794,22 @@ export default function CustomerMoney({ isActive = true }) {
       <Card style={{ padding: '18px 20px', marginBottom: 12 }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>الرصيد المدين في زوهو</div>
-            <div className="customer-money-kpi-value" title={`${fmt(d.grossOutstanding)} ر.س`} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
-              {fmt(d.grossOutstanding)}
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>رصيد Zoho الإجمالي</div>
+            <div className="customer-money-kpi-value" title={d.zohoMatchedOutstandingAvailable ? `${fmt(d.zohoMatchedOutstanding)} ر.س` : 'مصدر Zoho غير متاح'} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
+              {d.zohoMatchedOutstandingAvailable ? fmt(d.zohoMatchedOutstanding) : 'المصدر غير متاح'}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>قبل احتساب الأرصدة الدائنة</div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>قبل الأرصدة الدائنة · مطابق للمستندات في Zoho</div>
           </div>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>رصيد دائن يغطي منه</div>
-            <div className="customer-money-kpi-value" title={`${fmt(d.creditOffset)} ر.س`} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
-              {fmt(d.creditOffset)}
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>مستبعد قبل التحصيل</div>
+            <div className="customer-money-kpi-value" title={d.zohoMatchedOutstandingAvailable ? `${fmt(d.zohoMatchedDeduction)} ر.س` : 'مصدر Zoho غير متاح'} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
+              {d.zohoMatchedOutstandingAvailable ? fmt(d.zohoMatchedDeduction) : 'المصدر غير متاح'}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>{d.settlementCount} تسوية مطلوبة في زوهو</div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>
+              {d.zohoMatchedOutstandingAvailable
+                ? `${fmt(d.zohoMatchedCreditOffset)} أرصدة دائنة + ${fmt(d.zohoMatchedSmallBalanceExcluded)} فروقات صغيرة`
+                : 'تعذر مطابقة الأرصدة الدائنة والفروقات'}
+            </div>
           </div>
           <div>
             <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>💰 المطلوب تحصيله</div>

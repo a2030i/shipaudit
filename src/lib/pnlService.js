@@ -8,7 +8,10 @@
 // «تحصيل COD ليس دخلاً، أمانة التجار تمرّ عبرنا».
 
 import { supabase } from './supabase.js';
-import { lineMatchesAging } from './agingOperations.js';
+import { lineMatchesAging, normalizeCollectibleLine } from './agingOperations.js';
+import {
+  calculateZohoDocumentBackedBalance, calculateZohoDocumentBackedCreditOffset,
+} from './customerMoneyTotals.js';
 
 async function functionErrorMessage(error, fallback) {
   let payload = null;
@@ -349,11 +352,15 @@ export async function loadCustomerMoneyDashboard() {
     { data, error },
     { data: campaignData, error: campaignError },
     { data: integrityRows, error: integrityError },
+    { data: zohoMatchedRows, error: zohoMatchedError },
   ] = await Promise.all([
     supabase.rpc('customer_money_dashboard'),
     supabase.rpc('customer_collection_campaign_buckets'),
     supabase.from('customer_balance_integrity_issues')
       .select('zoho_id, contact_name, balance_sync_gap, balance_sync_overage, balance_integrity_status'),
+    supabase.from('customer_ar')
+      .select('invoiced_due, opening_due, balance_residual, balance_sync_gap, unused_credits')
+      .or('invoiced_due.gt.0,opening_due.gt.0,balance_sync_gap.gt.0'),
   ]);
   if (error) throw error;
   if (campaignError) throw campaignError;
@@ -385,12 +392,28 @@ export async function loadCustomerMoneyDashboard() {
     const zohoId = customer.zoho_id || customer.zohoId;
     return zohoId ? (issueByZohoId.get(String(zohoId)) || null) : (issueByName.get(customer.name) || null);
   };
+  const zohoMatchedOutstanding = zohoMatchedError
+    ? null
+    : calculateZohoDocumentBackedBalance(zohoMatchedRows || []);
+  const zohoMatchedCreditOffset = zohoMatchedError
+    ? null
+    : calculateZohoDocumentBackedCreditOffset(zohoMatchedRows || []);
+  const collectibleOutstanding = Number(d.outstanding) || 0;
   return {
     grossOutstanding: Number(d.gross_outstanding) || 0,
+    zohoMatchedOutstanding,
+    zohoMatchedCreditOffset,
+    zohoMatchedSmallBalanceExcluded: zohoMatchedError
+      ? null
+      : Number(Math.max(zohoMatchedOutstanding - zohoMatchedCreditOffset - collectibleOutstanding, 0).toFixed(2)),
+    zohoMatchedDeduction: zohoMatchedError
+      ? null
+      : Number(Math.max(zohoMatchedOutstanding - collectibleOutstanding, 0).toFixed(2)),
+    zohoMatchedOutstandingAvailable: !zohoMatchedError,
     creditOffset:     Number(d.credit_offset) || 0,
     unusedCredits:    Number(d.unused_credits) || 0,
     creditSurplus:    Number(d.credit_surplus) || 0,
-    outstanding:    Number(d.outstanding) || 0,
+    outstanding:    collectibleOutstanding,
     outstandingCnt: Number(d.outstanding_cnt) || 0,
     settlementCount: Number(d.settlement_count) || 0,
     settlementTotal: Number(d.settlement_total) || 0,
@@ -474,20 +497,22 @@ export async function loadCustomerMoneyDashboard() {
 export async function loadZohoOpenInvoices(customerName, { zohoId = null } = {}) {
   let query = supabase.from('customer_collectible_lines')
     .select('contact_id, line_kind, line_id, invoice_number, line_date, due_date, gross_amount, allocated_credit, collectible_amount, status, age_days')
-    .eq('line_kind', 'invoice')
     .gt('collectible_amount', 0.005)
     .order('due_date', { ascending: true })
     .order('line_date', { ascending: true });
   query = zohoId ? query.eq('contact_id', zohoId) : query.eq('contact_name', customerName);
   const { data, error } = await query;
   if (error) throw error;
-  return (data || []).map(row => ({
+  return (data || []).map(sourceRow => {
+    const row = normalizeCollectibleLine(sourceRow);
+    return ({
     ...row,
     date: row.line_date,
     balance: Number(row.collectible_amount) || 0,
     grossBalance: Number(row.gross_amount) || 0,
     allocatedCredit: Number(row.allocated_credit) || 0,
-  }));
+    });
+  });
 }
 
 // سطور Aging التفصيلية للواجهة التشغيلية. القراءة من نفس الإسقاط الذي
@@ -507,7 +532,7 @@ export async function loadCustomerCollectibleLines() {
     rows.push(...(data || []));
     if (!data?.length || data.length < pageSize) break;
   }
-  return rows;
+  return rows.map(normalizeCollectibleLine);
 }
 
 export async function loadZohoAgingDetails({ zohoId, customerName, agingBuckets = [] }) {
@@ -520,7 +545,7 @@ export async function loadZohoAgingDetails({ zohoId, customerName, agingBuckets 
   const { data, error } = await query;
   if (error) throw error;
   const buckets = new Set((agingBuckets || []).filter(Boolean));
-  return (data || []).filter(row => lineMatchesAging(row, buckets)).map(row => ({
+  return (data || []).map(normalizeCollectibleLine).filter(row => lineMatchesAging(row, buckets)).map(row => ({
     ...row,
     date: row.line_date,
     balance: Number(row.collectible_amount) || 0,

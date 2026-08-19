@@ -251,8 +251,9 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.match(app, /<QuickActionLauncher/);
   assert.match(app, /className="topbar-quick-action"/);
   assert.match(app, /tabId: 'performance'/);
-  assert.match(app, /tabId: 'pipeline'/);
-  assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);
+  assert.match(workspaces[0], /id: 'pipeline'/);
+  assert.doesNotMatch(app, /label: 'صفقات ومواعيد المبيعات'/);
+  assert.doesNotMatch(app, /tabId: 'settings'.*crm\.manage_statuses/);
   assert.match(app, /tabId: 'exports'.*legacy: '\/internal-exports'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'employees'[\s\S]*legacy: '\/employees'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'carriers'[\s\S]*legacy: '\/carriers'/);
@@ -408,7 +409,7 @@ test('phase two groups operations reports and admin into approved workspaces', a
   const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
 
   assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
-  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'الأداء التجاري'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء التحصيل'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
   assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات ومصادر البيانات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
@@ -425,10 +426,10 @@ test('phase two groups operations reports and admin into approved workspaces', a
 test('center view menus stay task-oriented and never exceed six entries', async () => {
   const { CENTER_WORKSPACES } = await import('../src/lib/navigation.js');
   const expected = {
-    sales: ['عمل اليوم', 'الفرص والصفقات', 'الحملات', 'التواصل', 'المسوّقون والعمولات'],
-    finance: ['المستحقات والتحصيل', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
+    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل'],
+    finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
-    reports: ['مكتبة التقارير', 'الأداء التجاري', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
+    reports: ['مكتبة التقارير', 'أداء التحصيل', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
     settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'التكاملات ومصادر البيانات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
   };
   for (const [center, labels] of Object.entries(expected)) {
@@ -441,6 +442,11 @@ test('legacy entity and action routes resolve to canonical homes without removin
   const app = await read('src/App.jsx');
   assert.match(app, /rawPath === '\/upload'[\s\S]*navigate\('\/hub\?action=upload-invoice'/);
   assert.match(app, /rawPath === '\/merchants'[\s\S]*navigate\(`\/customer-360\?/);
+  assert.match(app, /rawPath === '\/sales' \|\| rawPath === '\/crm'[\s\S]*\/retargeting\?view=today/);
+  assert.match(app, /rawPath === '\/marketers'[\s\S]*\/workspace\/sales\?source=legacy-marketers/);
+  assert.match(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
+  assert.doesNotMatch(app, /<Marketers /);
+  assert.doesNotMatch(app, /<CrmWorkspace /);
   for (const path of ['/audits', '/claims', '/ledger', '/cod-settlements', '/aramex-statements', '/payments', '/carrier-kpi', '/contracts']) {
     assert.ok(app.includes(`'${path}':`), `${path} must keep a Carrier 360 legacy mapping`);
   }

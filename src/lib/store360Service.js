@@ -1,6 +1,7 @@
 import { supabase } from './supabase.js';
 import { loadLatestMerchants } from './merchantsService.js';
-import { loadCustomerMoneyDashboard, loadZohoAgingDetails, loadZohoOpenInvoices } from './pnlService.js';
+import { loadCustomerMoneyDashboard, loadZohoOpenInvoices } from './pnlService.js';
+import { buildCampaignAgingProjection, lineMatchesAging } from './agingOperations.js';
 import { listTasks } from './collectionsService.js';
 import { loadPlatformSalesAccount } from './retargetingService.js';
 import { listInteractions } from './customerInteractionsService.js';
@@ -134,13 +135,22 @@ export async function loadStore360Work({ phone, customerName }) {
 export async function loadStore360Finance({ customerName, zohoId = null, agingBuckets = [] }) {
   if (!customerName) return { invoices: [], source: source('empty', 'Zoho Books', null, 'المتجر غير مرتبط بحساب مالي حالي') };
   try {
+    const allDetails = await loadZohoOpenInvoices(customerName, { zohoId });
+    const selectedBuckets = new Set(agingBuckets);
     const details = agingBuckets.length
-      ? await loadZohoAgingDetails({ zohoId, customerName, agingBuckets })
-      : await loadZohoOpenInvoices(customerName, { zohoId });
+      ? allDetails.filter(row => lineMatchesAging(row, selectedBuckets))
+      : allDetails;
+    const campaignAging = buildCampaignAgingProjection(allDetails).totals;
+    const allInvoiceRows = allDetails.filter(row => row.line_kind === 'invoice');
+    const allOpeningRows = allDetails.filter(row => row.line_kind === 'opening_balance');
     return {
       invoices: details.filter(row => row.line_kind === 'invoice'),
       openingRows: details.filter(row => row.line_kind === 'opening_balance'),
+      invoiceCount: allInvoiceRows.length,
+      openingCount: allOpeningRows.length,
+      oldestInvoiceDays: allInvoiceRows.reduce((max, row) => Math.max(max, Number(row.age_days) || 0), 0),
       selectedAmount: +details.reduce((sum, row) => sum + (Number(row.balance) || 0), 0).toFixed(2),
+      campaignAging,
       agingBuckets,
       source: source('available', 'سطور التحصيل من Zoho Books'),
     };
