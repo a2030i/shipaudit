@@ -7972,7 +7972,28 @@ tbody td { border-color: var(--border) !important; }
 @media (max-width: 768px) {
   .workspace-secondary-context { align-items: flex-start; flex-wrap: wrap; }
   .workspace-secondary-context > button { width: 100%; margin-inline-start: 0; }
-  .workspace-saved-views { flex-wrap: nowrap !important; overflow-x: auto; padding-bottom: 4px; }
-  .workspace-saved-views > span,
-  .workspace-saved-views > button { flex: 0 0 auto; }
+  .workspace-filter-bar.workspace-saved-views {
+    display: flex !important;
+    width: 100%;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 7px !important;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .workspace-filter-bar.workspace-saved-views::-webkit-scrollbar { display: none; }
+  .workspace-filter-bar.workspace-saved-views > span {
+    width: auto !important;
+    flex: 0 0 auto;
+    padding-inline: 3px;
+    white-space: nowrap;
+  }
+  .workspace-filter-bar.workspace-saved-views > button {
+    width: auto !important;
+    min-height: 34px;
+    flex: 0 0 auto;
+    white-space: nowrap;
+    scroll-snap-align: start;
+  }
 }

@@ -979,10 +979,10 @@
 
   .psc-table.m-cards tbody tr {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 0;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
     margin-bottom: 12px;
-    padding: 0 14px 12px;
+    padding: 0 12px 12px;
     border: 1px solid var(--border);
     border-radius: 16px;
     background: var(--card);
@@ -991,21 +991,25 @@
   }
 
   .page-content .psc-table.m-cards td {
-    display: grid;
-    grid-template-columns: minmax(86px, 28%) minmax(0, 1fr);
-    align-items: start;
-    justify-content: stretch;
-    gap: 10px;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: flex-start;
+    gap: 6px;
     max-width: none;
-    padding: 10px 0;
-    border-bottom: 1px solid var(--border2) !important;
+    padding: 10px;
+    border: 1px solid var(--border2) !important;
+    border-radius: 11px;
+    background: color-mix(in srgb, var(--surface2) 74%, var(--card));
     text-align: start;
   }
 
   .page-content .psc-table.m-cards td::before {
-    padding-top: 2px;
+    padding-top: 0;
     color: var(--muted2);
-    font-size: 10.5px;
+    font-size: 9.5px;
+    font-weight: 800;
     line-height: 1.45;
     white-space: normal;
   }
@@ -1015,10 +1019,13 @@
     grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
     gap: 8px 10px;
-    margin: 0 -14px;
-    padding: 14px;
+    grid-column: 1 / -1;
+    margin: 0 -12px;
+    padding: 13px 12px;
     background: color-mix(in srgb, var(--brand) 4%, var(--card));
+    border: 0 !important;
     border-bottom: 1px solid var(--border) !important;
+    border-radius: 0;
   }
 
   .page-content .psc-table.m-cards td[data-label="العميل"]::before {
@@ -1061,6 +1068,28 @@
     line-height: 1.55;
   }
 
+  .page-content .psc-table.m-cards td[data-label="الإجراء الآن"] {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px 9px;
+    border-color: color-mix(in srgb, var(--brand) 20%, var(--border2)) !important;
+    background: color-mix(in srgb, var(--brand) 5%, var(--card));
+  }
+
+  .page-content .psc-table.m-cards td[data-label="الإجراء الآن"]::before {
+    content: none;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="الإجراء الآن"] .psc-action-pill {
+    grid-row: 1 / 3;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="الإجراء الآن"] .psc-priority-score {
+    grid-column: 2;
+  }
+
   .psc-signal-reason,
   .psc-priority-score,
   .psc-age-detail {
@@ -1069,7 +1098,7 @@
   }
 
   .page-content .psc-table.m-cards td[data-label="ملاحظة"] {
-    grid-template-columns: 1fr;
+    grid-column: 1 / -1;
   }
 
   .page-content .psc-table.m-cards td[data-label="ملاحظة"]::before {
@@ -1083,10 +1112,27 @@
     -webkit-line-clamp: 3;
   }
 
+  .page-content .psc-table.m-cards td.psc-note-cell.is-empty {
+    display: none;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="المسؤول والمتابعة"] {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    align-items: center;
+  }
+
+  .page-content .psc-table.m-cards td[data-label="المسؤول والمتابعة"]::before {
+    grid-column: 1 / -1;
+  }
+
   .page-content .psc-table.m-cards td[data-label="إجراءات"] {
+    grid-column: 1 / -1;
     display: block;
-    padding: 12px 0 0;
-    border-bottom: 0 !important;
+    padding: 4px 0 0;
+    border: 0 !important;
+    background: transparent;
   }
 
   .page-content .psc-table.m-cards td[data-label="إجراءات"]::before {

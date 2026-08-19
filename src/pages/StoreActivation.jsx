@@ -73,17 +73,20 @@ export default function StoreActivation({ isActive = true }) {
   const [cfg, setCfg] = useState(null);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState('');
   const [editTarget, setEditTarget] = useState('');
   const [saving, setSaving] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
+    setLoadError('');
     try {
       const config = await loadActivationConfig();
       setCfg(config);
       setEditTarget(String(config.target));
       setData(await loadCustomerActivationCommandCenter(config.days, config.target, 24));
     } catch (error) {
+      setLoadError(error.message || 'تعذر تحميل بيانات تفعيل المتاجر');
       toast(`فشل تحميل مركز القيادة: ${error.message}`, 'error');
     } finally {
       setLoading(false);
@@ -108,7 +111,21 @@ export default function StoreActivation({ isActive = true }) {
     }
   };
 
-  if (!cfg || data == null) return <div style={{ padding: 40, textAlign: 'center' }}><Spinner/></div>;
+  if ((!cfg || data == null) && loadError) return (
+    <div className="activation-state" role="alert">
+      <AlertTriangle size={22}/>
+      <strong>تعذر تحميل بيانات تفعيل المتاجر</strong>
+      <span>{loadError}</span>
+      <Btn size="sm" variant="primary" onClick={refresh}>إعادة المحاولة</Btn>
+    </div>
+  );
+  if (!cfg || data == null) return (
+    <div className="activation-state activation-state--loading" role="status" aria-live="polite">
+      <Spinner/>
+      <strong>جارٍ تحميل بيانات التفعيل</strong>
+      <span>نجهّز قائمة العمل وأحدث حالة للمتاجر.</span>
+    </div>
+  );
   if (!data.trend.length) return (
     <div style={{ padding: '24px 28px' }}>
       <Empty icon="📈" title="لا توجد لقطات متاجر بعد" sub="ارفع كشف المتاجر أو أرسل لقطة كاملة عبر Webhook"/>
@@ -133,13 +150,16 @@ export default function StoreActivation({ isActive = true }) {
         icon={<TrendingUp size={22}/>} iconColor="var(--green)"
         title={`مركز قيادة ${fmt(current.target)} عميل نشط`}
         subtitle={`العميل النشط = رقم هاتف فريد نفّذ شحنة خلال آخر ${cfg.days} أيام؛ تعدد المتاجر لا يكرر العميل`}
-        actions={<Btn size="sm" variant="ghost" onClick={refresh} disabled={loading} title="تحديث"><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>}
+        actions={<div className="activation-page-actions">
+          <Btn size="sm" variant="primary" onClick={() => openPipeline()}>فتح قائمة العمل</Btn>
+          <Btn size="sm" variant="ghost" onClick={refresh} disabled={loading} title="تحديث" aria-label="تحديث بيانات التفعيل"><RefreshCw size={14} className={loading ? 'spin' : ''}/></Btn>
+        </div>}
       />
 
       <Card className="activation-hero-card" style={{
         overflow: 'hidden', marginBottom: 14,
         border: '1px solid color-mix(in srgb, var(--brand) 24%, var(--border))',
-        background: 'linear-gradient(135deg, color-mix(in srgb, var(--brand-navy) 97%, black) 0%, color-mix(in srgb, var(--brand) 78%, var(--brand-navy)) 100%)',
+        background: 'linear-gradient(135deg, #162a53 0%, #244da0 100%)',
         color: '#fff',
       }}>
         <div className="activation-hero-grid" style={{ padding: '22px 24px 18px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(min(260px,100%),1fr))', gap: 24 }}>

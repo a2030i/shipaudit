@@ -1124,7 +1124,10 @@ export default function PlatformSalesCrm({ isActive = true }) {
                           </small>
                         ) : <small className="psc-missing-date">لا يوجد موعد قادم</small>}
                       </td>
-                      <td data-label="ملاحظة">
+                      <td
+                        data-label="ملاحظة"
+                        className={`psc-note-cell${row.notes ? '' : ' is-empty'}`}
+                      >
                         <span className={`psc-note-preview${row.notes ? '' : ' empty'}`}>
                           {row.notes || 'لا توجد ملاحظة مسجلة'}
                         </span>
