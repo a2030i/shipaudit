@@ -34,7 +34,6 @@ import { saDateTime, saTime } from '../lib/saTime.js';
 import { HUDHUD_LEAD_CATEGORIES, loadHudhudCoverage, runHudhudLeadScan, loadHudhudCandidates, approveHudhudCandidate, rejectHudhudCandidate } from '../lib/hudhudLeadDiscoveryService.js';
 import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
-import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 const fmt  = (n) => Number(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const fmt0 = (n) => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 });
@@ -63,7 +62,6 @@ export default function CrmWorkspace({ isActive = true }) {
   const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
-  const primaryTabs = visibleTabs.filter(t => !t.secondary);
   const initial = () => {
     const q = new URLSearchParams(location.search).get('tab');
     const normalized = q === 'queue' ? 'deals' : q;
@@ -78,37 +76,8 @@ export default function CrmWorkspace({ isActive = true }) {
     if (isActive && new URLSearchParams(location.search).get('tab') === 'sales') navigate('/retargeting', { replace: true });
   }, [isActive, location.search, navigate]);
 
-  const change = (t) => {
-    const params = new URLSearchParams(location.search);
-    params.set('tab', t);
-    setTab(t);
-    navigate(`/crm?${params.toString()}`, { replace: true });
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {primaryTabs.some(item => item.id === tab) ? (
-        <WorkspaceTabs
-          scope="sales-crm"
-          title="الفرص والصفقات"
-          subtitle="إدارة مراحل البيع والالتزامات"
-          tone="#8B5CF6"
-          tabs={primaryTabs}
-          activeId={tab}
-          onChange={change}
-          selectorLabel="مسار البيع"
-          showContext={false}
-        />
-      ) : (
-        <div className="workspace-secondary-context" role="status">
-          <span>{tab === 'settings' ? 'إعداد إداري' : 'تقرير'}</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
-          <button type="button" onClick={() => change('deals')}>العودة إلى الصفقات</button>
-        </div>
-      )}
-      <nav className="workspace-filter-bar workspace-saved-views" aria-label="تقارير وإعدادات المبيعات">
-        {visibleTabs.some(item => item.id === 'board') ? <button type="button" onClick={() => navigate('/workspace/reports')}>تقرير أداء المبيعات</button> : null}
-        {visibleTabs.some(item => item.id === 'settings') ? <button type="button" onClick={() => change('settings')}>إعداد مراحل البيع</button> : null}
-      </nav>
       <div className="ws-tab-body" style={{ flex: 1, minHeight: 0 }}>
         <div style={{ margin: '12px 24px 0', padding: '9px 13px', borderRadius: 10,
           background: 'color-mix(in srgb, var(--accent3) 7%, var(--surface))',

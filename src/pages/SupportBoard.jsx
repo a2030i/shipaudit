@@ -3,7 +3,7 @@
 // تغيير الحالة من الصف مباشرة (بلا مودال) + درج تفاصيل بسجل الأحداث.
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { LifeBuoy, Plus, RefreshCw, Download, Search, X, BarChart3, ListTodo, Lock, Paperclip, Clock3, CalendarClock, ListChecks } from 'lucide-react';
+import { LifeBuoy, Plus, RefreshCw, Download, Search, X, Lock, Paperclip, Clock3, CalendarClock, ListChecks } from 'lucide-react';
 import { useRef } from 'react';
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
@@ -91,7 +91,7 @@ export default function SupportBoard({ isActive = true }) {
   const [assignedTo, setAssignedTo] = useState('');
   const [category, setCategory] = useState('');
   const [attention, setAttention] = useState('');
-  const [view, setView] = useState('list');         // list | dash
+  const [view, setView] = useState(() => new URLSearchParams(location.search).get('view') === 'dash' ? 'dash' : 'list');
   const [dash, setDash] = useState(null);           // بيانات لوحة الأرقام
   const [drawer, setDrawer] = useState(null);       // التذكرة المفتوحة في الدرج
   const [events, setEvents] = useState(null);
@@ -133,6 +133,9 @@ export default function SupportBoard({ isActive = true }) {
     setBusy(false);
   };
   useEffect(() => { if (isActive) refresh(); }, [isActive, status, carrierId, assignedTo, category, attention, openOnly, location.pathname]); // eslint-disable-line
+  useEffect(() => {
+    setView(new URLSearchParams(location.search).get('view') === 'dash' ? 'dash' : 'list');
+  }, [location.search]);
   // بحث حر بتأخير بسيط
   useEffect(() => {
     if (!isActive) return;
@@ -397,25 +400,6 @@ export default function SupportBoard({ isActive = true }) {
             <Btn size="sm" variant="ghost" icon={<RefreshCw size={14} className={busy ? 'spin' : ''}/>} onClick={() => refresh()} disabled={busy}>تحديث</Btn>
           </>
         }/>
-
-      {/* ── مبدّل العرض: قائمة التذاكر | لوحة الأرقام ── */}
-      <div style={{ display: 'inline-flex', gap: 4, padding: 4, borderRadius: 11, background: 'var(--surface)', border: '1px solid var(--border)', marginBottom: 14 }}>
-        {[{ id: 'list', label: 'التذاكر', icon: ListTodo }, { id: 'dash', label: 'لوحة الأرقام', icon: BarChart3 }].map(v => {
-          const Icon = v.icon; const on = view === v.id;
-          return (
-            <button key={v.id} onClick={() => setView(v.id)} style={{
-              display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 16px',
-              borderRadius: 8, border: 'none', cursor: 'pointer', fontFamily: 'var(--font-sans)',
-              fontSize: 12.5, fontWeight: on ? 700 : 500,
-              background: on ? 'var(--card)' : 'transparent',
-              color: on ? 'var(--text)' : 'var(--muted)',
-              boxShadow: on ? '0 1px 4px rgba(0,0,0,.08)' : 'none',
-            }}>
-              <Icon size={14}/>{v.label}
-            </button>
-          );
-        })}
-      </div>
 
       {view === 'list' && (<>
       {/* ── ما يحتاج متابعة إدارية الآن ── */}

@@ -790,26 +790,6 @@ function LazyPanel({ children }) {
   );
 }
 
-function CarrierViewNav({ view, onChange }) {
-  return (
-    <nav className="carrier360-view-nav" aria-label="أقسام ملف شركة الشحن">
-      <label>
-        القسم
-        <select aria-label="قسم ملف شركة الشحن" value={view} onChange={event => onChange(event.target.value)}>
-          {CARRIER_VIEWS.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-        </select>
-      </label>
-      <div role="tablist">
-        {CARRIER_VIEWS.map(([id, label]) => (
-          <button key={id} type="button" role="tab" aria-selected={view === id} onClick={() => onChange(id)}>
-            {label}
-          </button>
-        ))}
-      </div>
-    </nav>
-  );
-}
-
 const REVIEW_STATUS = AUDIT_REVIEW_LABELS;
 
 function CarrierInvoiceResultSummary({ audit }) {
@@ -1120,7 +1100,6 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
     }
     setSearchParams(next, { replace });
   };
-  const changeView = nextView => updateLocation({ view: nextView, mode: null, invoice: null, panel: nextView === 'account' ? accountPanel : null });
   const returnToCarrierList = () => {
     if (returnTo) navigate(returnTo);
     else navigate('/hub');
@@ -1135,8 +1114,6 @@ export default function CarrierProfile({ carriers = [], setCarriers, onCarriersC
         canUpload={can('audits.create')}
         onUpload={() => updateLocation({ view: 'invoices', mode: 'upload', invoice: null })}
       />
-      <CarrierViewNav view={view} onChange={changeView}/>
-
       {showZohoLink && (
         <ZohoLinkModal
           carrierId={carrierId}

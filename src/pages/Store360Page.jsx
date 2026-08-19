@@ -483,7 +483,6 @@ export default function Store360Page({ identity }) {
   const sourceValues = Object.values(core.sources);
   const hasUnavailable = sourceValues.some(item => item.status === 'unavailable');
   const latestUpdate = sourceValues.map(item => item.updatedAt).filter(Boolean).sort().at(-1) || null;
-  const activeSource = view === 'finance' ? core.sources.finance : core.sources.identity;
   return <div className="s360-page">
     <header className="s360-header">
       <button type="button" className="s360-back" onClick={goBack}><ArrowRight size={16}/> رجوع</button>
@@ -508,12 +507,6 @@ export default function Store360Page({ identity }) {
       <KpiCard label="آخر شحنة · دليل المتاجر" value={store.lastShipmentAt ? DATE(store.lastShipmentAt) : 'لا توجد شحنة'} detail={`${store.shipmentCount} شحنة في دليل متاجر لمحة`} source={core.sources.identity} onClick={() => changeView('shipments')}/>
       <KpiCard label="الإجراء التالي" value={workLoading ? 'جارٍ التحميل…' : work?.nextAction?.label || 'لا يوجد إجراء'} detail={work?.nextAction ? DATE(work.nextAction.at, true) : 'لا يوجد موعد حالي'} source={work?.nextAction?.source === 'التحصيل' ? work?.sources?.collections : work?.sources?.sales} loading={workLoading} onClick={() => changeView('work')}/>
     </div>
-
-    <nav className="s360-view-nav" aria-label="طريقة العرض">
-      <label>طريقة العرض<select value={view} onChange={e => changeView(e.target.value)}>{VIEWS.map(([id, label]) => <option value={id} key={id}>{label}</option>)}</select></label>
-      <div role="tablist">{VIEWS.map(([id, label]) => <button type="button" role="tab" aria-selected={view === id} key={id} onClick={() => changeView(id)}>{label}</button>)}</div>
-      <SourceState value={activeSource}/>
-    </nav>
 
     <main className="s360-main">
       {viewLoading[view] || (view === 'work' && workLoading) ? <LoadingBlock/> : null}

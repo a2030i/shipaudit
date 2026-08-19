@@ -186,10 +186,12 @@ export default function ZohoData({ isActive = true }) {
   const navigate = useNavigate();
   const requestedSectionRaw = new URLSearchParams(location.search).get('tab');
   const requestedSection = WORKSPACE_SECTION_ALIASES[requestedSectionRaw] || requestedSectionRaw;
+  const requestedType = new URLSearchParams(location.search).get('type');
   const initialSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
     ? requestedSection
     : 'overview';
-  const initialType = WORKSPACE_SECTIONS.find(item => item.id === initialSection)?.types?.[0] || 'invoices';
+  const initialTypes = WORKSPACE_SECTIONS.find(item => item.id === initialSection)?.types || [];
+  const initialType = initialTypes.includes(requestedType) ? requestedType : initialTypes[0] || 'invoices';
   const [type, setType] = useState(initialType);
   const [section, setSection] = useState(initialSection);
   const [periodTo, setPeriodTo] = useState('');   // '' = نفس «من» (شهر واحد)
@@ -384,16 +386,25 @@ export default function ZohoData({ isActive = true }) {
   const cols = COLS[type];
   const referenceType = type === 'bank_accounts' || type === 'chart_accounts';
   const downloadableType = type === 'invoices' || type === 'bills';
-  const openType = (nextType) => { setType(nextType); setSection(sectionForType(nextType)); };
+  const openType = (nextType) => {
+    const nextSection = sectionForType(nextType);
+    const params = new URLSearchParams(location.search);
+    params.set('tab', nextSection);
+    params.set('type', nextType);
+    setType(nextType);
+    setSection(nextSection);
+    navigate(`/zoho-data?${params.toString()}`);
+  };
 
   useEffect(() => {
     const nextSection = WORKSPACE_SECTIONS.some(item => item.id === requestedSection)
       ? requestedSection
       : 'overview';
     setSection(nextSection);
-    const firstType = WORKSPACE_SECTIONS.find(item => item.id === nextSection)?.types?.[0];
-    if (firstType) setType(firstType);
-  }, [requestedSection]);
+    const types = WORKSPACE_SECTIONS.find(item => item.id === nextSection)?.types || [];
+    const nextType = types.includes(requestedType) ? requestedType : types[0];
+    if (nextType) setType(nextType);
+  }, [requestedSection, requestedType]);
   const needsZohoAuth = Object.values(financial?.capabilities || {}).some(capability => capability?.status === 'needs_reauthorization');
 
   // الحالات المتاحة فعلياً في البيانات المحمّلة (ديناميكي لكل نوع)
@@ -710,18 +721,7 @@ export default function ZohoData({ isActive = true }) {
           onOpenAccount={() => openType('bank_accounts')}
           onOpenVendors={() => openType('bills')}
         />
-      ) : (
-        <div className="zoho-subtabs" aria-label={`تفاصيل ${WORKSPACE_SECTIONS.find(item => item.id === section)?.label || ''}`}>
-          {(WORKSPACE_SECTIONS.find(item => item.id === section)?.types || []).map(id => (
-            <Btn key={id} size="sm" variant={type === id ? 'primary' : 'outline'} onClick={() => openType(id)}>
-              {ZOHO_MIRRORS[id].label.replace(/^[^\s]+\s/, '')}
-            </Btn>
-          ))}
-          {section === 'banks' && can('reconciliation.view') ? (
-            <Btn size="sm" variant="ghost" onClick={() => navigate('/reconciliation')}>فتح مطابقة الحسابات مع زوهو</Btn>
-          ) : null}
-        </div>
-      )}
+      ) : null}
 
       {/* لوحة الفواتير — نظرة شهرية + أعلى المدينين + حملة المتأخرين */}
       {/* النقر على مدين = كامل دينه عبر كل الشهور — كان فلتر الشهر يبقى مفعّلاً

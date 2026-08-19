@@ -4,16 +4,18 @@ import { readFile } from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('final workspace layout layer is loaded before the Safari scroll contract', async () => {
+test('navigation hub is the final shell layer after the Safari scroll contract', async () => {
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
   const scrollIndex = main.indexOf("import './mobile-scroll.css'");
+  const navigationIndex = main.indexOf("import './navigation-hub.css'");
   const finalStyleIndex = Math.max(
     ...[...main.matchAll(/import '\.\/(?:[^']+)\.css'/g)].map(match => match.index),
   );
   assert.ok(layoutIndex > -1, 'workspace layout stylesheet must be imported');
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
-  assert.equal(scrollIndex, finalStyleIndex, 'mobile scroll contract must be the last stylesheet in the cascade');
+  assert.ok(navigationIndex > scrollIndex, 'navigation shell must override historical sidebar layers');
+  assert.equal(navigationIndex, finalStyleIndex, 'navigation hub must be the last stylesheet in the cascade');
 });
 
 test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
@@ -89,28 +91,25 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('visual system v6 keeps one navigation shell, calm canvas and mobile drawer contract', async () => {
+test('visual system keeps one two-level navigation hub and no rendered sidebar', async () => {
   const app = await read('src/App.jsx');
-  const css = await read('src/workspace-layout.css');
+  const css = await read('src/navigation-hub.css');
 
-  assert.match(css, /System-wide visual layer/);
-  assert.match(css, /--shell-primary-width:\s*176px/);
-  assert.match(css, /single-level information architecture/);
-  assert.match(css, /\.app-layout\s*\{[\s\S]*grid-template-columns:\s*var\(--shell-primary-width\) minmax\(0, 1fr\)\s*!important/);
-  assert.match(css, /\.context-sidebar,[\s\S]*display:\s*none\s*!important/);
-  assert.match(css, /\.primary-center-item\.active\s*\{[\s\S]*inset -3px 0 0/);
-  assert.match(css, /\.workspace-page\s*\{[\s\S]*max-width:\s*1540px/);
-  assert.match(css, /\.page-summary--dark\s*\{[\s\S]*linear-gradient/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.modal-panel\s*\{[\s\S]*border-radius:\s*18px 18px 0 0/);
-  assert.match(app, /sidebar-brand-logo--desktop/);
-  assert.match(app, /sidebar-brand-logo--mobile/);
+  assert.match(app, /<NavigationHub/);
+  assert.doesNotMatch(app, /<aside className=\{`sidebar/);
+  assert.doesNotMatch(app, /<CenterLanding/);
+  assert.match(css, /\.navigation-hub__centers\s*\{[\s\S]*repeat\(4,/);
+  assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.navigation-hub__centers\s*\{[\s\S]*repeat\(3,/);
+  assert.match(css, /\.app-layout,[\s\S]*display:\s*block\s*!important/);
 });
 
 test('primary navigation rail leaves center labels comfortably readable', async () => {
   const shell = await readFile(new URL('../src/shipaudit-os-v2.css', import.meta.url), 'utf8');
   assert.match(shell, /--sa-primary-rail:\s*124px/);
   assert.match(shell, /max-width:\s*108px\s*!important/);
-  assert.match(shell, /--sa-primary-rail:\s*100px;\s*--sa-context-rail:\s*220px/);
+  assert.match(shell, /--sa-primary-rail:\s*100px;/);
+  assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.match(shell, /\.app-layout\.primary-collapsed\s*\{[\s\S]*--sa-primary-rail:\s*76px/);
   assert.match(shell, /width:\s*min\(86vw,\s*340px\)\s*!important/);
 });
@@ -148,7 +147,8 @@ test('carrier hub owns one summary surface with navigation actions', async () =>
   const hub = await read('src/pages/CarriersHub.jsx');
 
   assert.doesNotMatch(hub, /PageHeader/);
-  assert.match(hub, /title="شركات الشحن — كشف موحّد"/);
+  assert.match(hub, /title="شركات الشحن"/);
+  assert.match(hub, /\+ رفع فاتورة شركة شحن/);
   assert.match(hub, /فتح الوارد/);
   assert.match(hub, /إدارة الشركات/);
   assert.match(hub, /تحديث الحالة/);
@@ -215,7 +215,7 @@ test('customer debt cards bridge to an owned collection task and next action', a
   assert.match(money, /listTasks\(\)/);
   assert.match(money, /المسؤول:/);
   assert.match(money, /الإجراء التالي:/);
-  assert.match(money, /tab: 'queue', customer: c\.name/);
+  assert.match(money, /new URLSearchParams\(\{ view: 'queue', search: c\.name \}\)/);
   assert.match(queue, /focusedCustomer/);
   assert.match(queue, /مهمة العميل:/);
   assert.match(queue, /عرض كل المهام/);
@@ -249,8 +249,9 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.match(app, /<QuickActionLauncher/);
   assert.match(app, /className="topbar-quick-action"/);
   assert.match(app, /tabId: 'performance'/);
-  assert.match(app, /tabId: 'pipeline'/);
-  assert.match(app, /tabId: 'settings'.*crm\.manage_statuses/);
+  assert.match(workspaces[0], /id: 'pipeline'/);
+  assert.doesNotMatch(app, /label: 'صفقات ومواعيد المبيعات'/);
+  assert.doesNotMatch(app, /tabId: 'settings'.*crm\.manage_statuses/);
   assert.match(app, /tabId: 'exports'.*legacy: '\/internal-exports'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'employees'[\s\S]*legacy: '\/employees'/);
   assert.match(app, /id: 'app-settings'[\s\S]*tabId: 'carriers'[\s\S]*legacy: '\/carriers'/);
@@ -308,9 +309,11 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
 });
 
-test('stable work areas restore complete center and contextual navigation', async () => {
+test('stable work areas use one seven-entry modal hub and permission-aware second level', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
+  const hub = await read('src/components/NavigationHub.jsx');
+  const shell = await read('src/navigation-hub.css');
 
   for (const id of ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings']) {
     assert.match(navigation, new RegExp(`id: '${id}'`));
@@ -323,12 +326,182 @@ test('stable work areas restore complete center and contextual navigation', asyn
     assert.match(navigation, new RegExp(`(?:^|\\n)\\s*'?${id}'?:\\s*\\{[^}]*visible: true`));
   }
 
-  assert.match(app, /className="context-subnav"/);
-  assert.match(app, /className="mobile-context-picker"/);
-  assert.match(app, /visibleSubTabsFor/);
+  assert.doesNotMatch(app, /<aside className="context-sidebar"/);
+  assert.doesNotMatch(app, /<aside className=\{`sidebar/);
+  assert.doesNotMatch(app, /className="mobile-context-picker"/);
+  assert.doesNotMatch(app, /className="context-subnav"/);
+  assert.doesNotMatch(app, /<CenterLanding/);
+  assert.match(app, /<NavigationHub/);
+  assert.match(app, /firstSectionDestination/);
+  assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
+  assert.match(hub, /sectionDestinations/);
+  assert.match(hub, /setSectionId\(section\.id\)/);
+  assert.match(hub, /'كل المراكز'/);
+  assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
+  assert.doesNotMatch(shell, /--sa-context-rail/);
+  assert.doesNotMatch(shell, /grid-template-areas:\s*"main context primary"/);
   assert.match(app, /tabId: 'segments'/);
   assert.match(app, /tabId: 'ivr'/);
   assert.match(app, /id: 'zoho-data'[\s\S]*tabId: 'banks'/);
   assert.match(app, /id: 'bank',\s+path: '\/bank'[^\n]*permKey: 'bank\.view'/);
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
+});
+
+test('approved workspaces live in the navigation hub without removing legacy routes', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+  const hub = await read('src/components/NavigationHub.jsx');
+  const sales = await read('src/pages/SalesHub.jsx');
+  const collections = await read('src/pages/CollectionsHub.jsx');
+  const cash = await read('src/pages/MoneyHub.jsx');
+  const customers = await read('src/pages/CustomerWatch.jsx');
+  const store = await read('src/pages/Store360Page.jsx');
+  const carrier = await read('src/pages/CarrierProfile.jsx');
+  const zoho = await read('src/pages/ZohoData.jsx');
+  const communications = await read('src/pages/WhatsAppSettings.jsx');
+
+  assert.match(navigation, /export const CENTER_WORKSPACES/);
+  assert.match(navigation, /label: 'دليل العملاء والمتاجر'/);
+  assert.match(navigation, /label: 'النقد والتسويات'/);
+  assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
+  assert.match(hub, /sectionDestinations/);
+  assert.match(hub, /اختر المركز، ثم القسم المطلوب/);
+  assert.doesNotMatch(hub, /طريقة العرض/);
+  assert.match(hub, /const \[trail, setTrail\]/);
+  assert.match(hub, /destination\.children\?\.length/);
+  assert.match(hub, /ملف المتجر الحالي/);
+  assert.match(hub, /ملف شركة الشحن الحالية/);
+
+  for (const source of [sales, collections, cash, customers, store, carrier, zoho, communications]) {
+    assert.doesNotMatch(source, /<WorkspaceTabs/);
+    assert.doesNotMatch(source, /workspace-saved-views/);
+  }
+  assert.doesNotMatch(customers, /customer-view-select/);
+  assert.doesNotMatch(store, /s360-view-nav/);
+  assert.doesNotMatch(carrier, /CarrierViewNav/);
+  assert.doesNotMatch(zoho, /zoho-subtabs/);
+  assert.doesNotMatch(communications, /hatif-subtabs/);
+  assert.match(collections, /params\.get\('view'\) \|\| params\.get\('tab'\)/);
+  assert.match(cash, /id: 'bank'/);
+  assert.match(cash, /id: 'cod'/);
+  assert.match(cash, /id: 'payments'/);
+  assert.match(cash, /id: 'unclassified'/);
+  assert.match(cash, /defaultSavedClass: 'unclassified'/);
+  assert.match(customers, /title="دليل العملاء والمتاجر"/);
+  assert.match(customers, /params\.set\('customer', identity\)/);
+
+  for (const path of ['/cod-settlements', '/payments', '/bank', '/collections', '/legal', '/receivables', '/retargeting', '/hatif-leads', '/segments', '/merchants']) {
+    assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
+  }
+  assert.doesNotMatch(app, /label: 'القرارات', icon: Gauge/);
+  assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
+});
+
+test('navigation hub exposes centers first and destinations second on every viewport', async () => {
+  const component = await read('src/components/NavigationHub.jsx');
+  const css = await read('src/navigation-hub.css');
+
+  assert.match(component, /navigation-hub__centers/);
+  assert.match(component, /navigation-hub__destinations/);
+  assert.match(component, /activeSection \?/);
+  assert.match(css, /\.navigation-hub__centers\s*\{/);
+  assert.match(css, /\.navigation-hub__destinations\s*\{/);
+  assert.doesNotMatch(component, /<select/);
+});
+
+test('mobile customer finance actions stay in document flow', async () => {
+  const css = await read('src/pages/CustomerFinanceCenter.css');
+  const mobile = css.slice(css.indexOf('@media (max-width: 600px)'));
+
+  assert.match(mobile, /\.customer-finance-command__actions\s*\{[^}]*position:\s*static;/);
+  assert.doesNotMatch(mobile, /\.customer-finance-command__actions\s*\{[^}]*position:\s*sticky;/);
+  assert.doesNotMatch(mobile, /\.customer-finance-command__actions\s*\{[^}]*bottom:/);
+  assert.match(mobile, /\.customer-finance-command__kpis button:hover\s*\{\s*transform:\s*none;/);
+});
+
+test('phase one KPI and filter contracts expose source truth and URL state', async () => {
+  const commandCenter = await read('src/components/operations/FigmaCommandCenter.jsx');
+  const customerMoney = await read('src/pages/CustomerMoney.jsx');
+  const bank = await read('src/pages/BankStatement.jsx');
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(commandCenter, /source="Zoho Books"/);
+  assert.match(commandCenter, /آخر تحديث/);
+  assert.match(commandCenter, /تعذرت القراءة؛ لم نعرض صفراً بديلاً/);
+  assert.match(customerMoney, /searchParams\.get\('aging'\)/);
+  assert.match(customerMoney, /params\.set\('aging'/);
+  assert.match(bank, /defaultSavedClass = 'all'/);
+  assert.match(bank, /isActive && view === 'saved'/);
+  assert.match(css, /\.workspace-filter-bar\s*\{/);
+});
+
+test('phase two groups operations reports and admin into approved workspaces', async () => {
+  const app = await read('src/App.jsx');
+  const navigation = await read('src/lib/navigation.js');
+  const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
+
+  assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء التحصيل'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات ومصادر البيانات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
+  assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
+  assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
+  assert.match(navigation, /'activity-log':\s*\{[^}]*section: 'settings'/);
+
+  assert.doesNotMatch(app, /showSwitcher/);
+  for (const path of ['/hub', '/carrier-kpi', '/claims', '/platform-carriers', '/tasks', '/drop', '/audits', '/aramex-statements', '/ledger', '/fulfillment', '/weight-billing', '/reports', '/monthly-report', '/internal-exports', '/activity-log', '/integrity', '/operations', '/uploads', '/webhook', '/work-agents', '/settings/hatif']) {
+    assert.ok(app.includes(`'${path}'`), `legacy path ${path} must remain registered`);
+  }
+  assert.doesNotMatch(centerWorkspace, /WorkspaceTabs/);
+  assert.doesNotMatch(centerWorkspace, /onNavigate/);
+  assert.match(centerWorkspace, /role="tabpanel"/);
+});
+
+test('center view menus stay task-oriented and never exceed six entries', async () => {
+  const { CENTER_WORKSPACES } = await import('../src/lib/navigation.js');
+  const expected = {
+    sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل'],
+    finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
+    shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
+    reports: ['مكتبة التقارير', 'أداء التحصيل', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
+    settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'التكاملات ومصادر البيانات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
+  };
+  for (const [center, labels] of Object.entries(expected)) {
+    assert.deepEqual(CENTER_WORKSPACES[center].map(item => item.label), labels);
+    assert.ok(CENTER_WORKSPACES[center].length <= 6, `${center} exceeds six center views`);
+  }
+});
+
+test('legacy entity and action routes resolve to canonical homes without removing route guards', async () => {
+  const app = await read('src/App.jsx');
+  assert.match(app, /rawPath === '\/upload'[\s\S]*navigate\('\/hub\?action=upload-invoice'/);
+  assert.match(app, /rawPath === '\/merchants'[\s\S]*navigate\(`\/customer-360\?/);
+  assert.match(app, /rawPath === '\/sales' \|\| rawPath === '\/crm'[\s\S]*\/retargeting\?view=today/);
+  assert.match(app, /rawPath === '\/marketers'[\s\S]*\/workspace\/sales\?source=legacy-marketers/);
+  assert.match(app, /rawPath === '\/campaigns'[\s\S]*!params\.get\('audienceContext'\)[\s\S]*\/whatsapp-settings\?tab=campaigns/);
+  assert.doesNotMatch(app, /<Marketers /);
+  assert.doesNotMatch(app, /<CrmWorkspace /);
+  for (const path of ['/audits', '/claims', '/ledger', '/cod-settlements', '/aramex-statements', '/payments', '/carrier-kpi', '/contracts']) {
+    assert.ok(app.includes(`'${path}':`), `${path} must keep a Carrier 360 legacy mapping`);
+  }
+  assert.match(app, /rawPath === '\/zoho-data'[\s\S]*forcedSectionId/);
+  assert.match(app, /rawPath === '\/carrier-kpi'[\s\S]*forcedSectionId/);
+});
+
+test('phase two important filters and unavailable sources are explicit', async () => {
+  const operations = await read('src/pages/OperationsCenter.jsx');
+  const reports = await read('src/pages/ReportsCenter.jsx');
+  const monthly = await read('src/pages/MonthlyReport.jsx');
+  const activity = await read('src/pages/ActivityLog.jsx');
+
+  assert.match(operations, /searchParams\.get\('status'\)/);
+  assert.match(operations, /searchParams\.get\('source'\)/);
+  assert.match(operations, /updateEventFilter\('status'/);
+  assert.match(reports, /searchParams\.get\('month'\)/);
+  assert.match(reports, /searchParams\.get\('carrier'\)/);
+  assert.match(reports, /المصدر غير متاح/);
+  assert.match(reports, /لم نعرض أصفارًا بديلة/);
+  assert.match(monthly, /searchParams\.get\('month'\)/);
+  assert.match(activity, /searchParams\.get\('action'\)/);
+  assert.match(activity, /آخر تحديث:/);
+  assert.match(activity, /لم نعرض سجلًا فارغًا/);
 });

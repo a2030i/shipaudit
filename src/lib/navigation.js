@@ -29,10 +29,12 @@ export const CENTER_WORKSPACES = {
   sales: [
     {
       id: 'lamha-growth', label: 'نمو عملاء لمحة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=activation',
+      subTabIds: ['today', 'activation', 'pipeline', 'retargeting', 'hatif', 'segments'],
       description: 'النشطون والداخلون والخارجون والشرائح، مع انتقال مباشر إلى عمل اليوم.',
     },
     {
       id: 'external', label: 'العملاء خارج المنصة', entryId: 'sales-hub', memberIds: ['sales-hub'], path: '/retargeting?view=external',
+      subTabIds: ['external'],
       description: 'العملاء المحتملون والحملات التسويقية قبل دخولهم إلى لمحة.',
     },
     {
@@ -46,7 +48,7 @@ export const CENTER_WORKSPACES = {
       description: 'مال العملاء ونشاطهم ومطابقة أرصدتهم وإجراءات التحصيل والتواصل من مكان واحد.',
     },
     {
-      id: 'cash-settlements', label: 'النقد والتسويات', entryId: 'money', memberIds: ['money', 'bank'],
+      id: 'cash-settlements', label: 'النقد والتسويات', entryId: 'money', memberIds: ['money'],
       description: 'البنوك والمدفوعات والعمليات غير المصنفة، مع تصفية COD التاريخية حتى الصفر.',
     },
     {
@@ -78,19 +80,22 @@ export const CENTER_WORKSPACES = {
   ],
   reports: [
     {
-      id: 'library', label: 'مكتبة التقارير', entryId: 'reports', memberIds: ['reports', 'monthly-report'], path: '/reports',
+      id: 'library', label: 'مكتبة التقارير', entryId: 'reports', memberIds: ['reports'], path: '/reports',
       description: 'التقارير الرسمية والشهرية ومعاملات التصدير.',
     },
     {
       id: 'commercial-performance', label: 'أداء التحصيل', entryId: 'collections-hub', memberIds: ['collections-hub'], path: '/customer-money?view=performance&source=reports',
+      skipSubTabs: true,
       description: 'نتائج فريق التحصيل والمهام والوعود من المسار التشغيلي الحالي.',
     },
     {
       id: 'carrier-performance', label: 'أداء شركات الشحن', entryId: 'hub', memberIds: ['hub', 'platform-carriers'], path: '/carrier-kpi?source=reports',
+      skipSubTabs: true,
       description: 'مقارنة أداء الناقلين والأسعار على مستوى جميع الشركات.',
     },
     {
       id: 'communications-performance', label: 'التواصل والحملات', entryId: 'whatsapp-settings', memberIds: ['whatsapp-settings'], path: '/whatsapp-settings?tab=impact&source=reports',
+      skipSubTabs: true,
       description: 'أثر الحملات ونشاط الفريق وجودة التواصل.',
     },
     {
@@ -108,7 +113,7 @@ export const CENTER_WORKSPACES = {
       description: 'إعداد شركات الشحن والعقود والأسعار مع إبقاء كل سجل في عرضه.',
     },
     {
-      id: 'integrations', label: 'التكاملات ومصادر البيانات', entryId: 'operations', memberIds: ['operations', 'uploads', 'webhook'], path: '/operations',
+      id: 'integrations', label: 'التكاملات ومصادر البيانات', entryId: 'operations', memberIds: ['operations'], path: '/operations',
       description: 'راقب التكاملات والمصادر وWebhooks من مساحة إدارية واحدة.',
     },
     {
@@ -121,6 +126,7 @@ export const CENTER_WORKSPACES = {
     },
     {
       id: 'system-config', label: 'إعدادات النظام', entryId: 'app-settings', memberIds: ['app-settings'], path: '/settings/ai',
+      subTabIds: ['ai', 'data'],
       description: 'إعدادات النظام والذكاء الاصطناعي والبيانات العامة.',
     },
   ],

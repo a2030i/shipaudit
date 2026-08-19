@@ -9,7 +9,7 @@
 // والمسارات القديمة تهبط على تبويبها. الرابط القانوني /retargeting?view=<id>
 // مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
 import { Target, UserPlus, Store, Layers, ShoppingBag, Sunrise, TrendingUp, Workflow } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
@@ -21,7 +21,6 @@ import HatifLeads  from './HatifLeads.jsx';
 import { LeadsTab } from './CrmWorkspace.jsx';
 import Segments    from './Segments.jsx';
 import Merchants   from './Merchants.jsx';
-import WorkspaceTabs from '../components/WorkspaceTabs.jsx';
 
 // تفصيص الصلاحيات (قرار المستخدم 2026-07-16): مفتاح مستقل لكل تبويب —
 // sales.view لم يعد يفتح إلا إعادة الاستهداف.
@@ -90,11 +89,8 @@ const LEGACY_PATH_TO_TAB = {
 
 export default function SalesHub({ isActive = true }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const { can } = useAuth();
   const visibleTabs = TABS.filter(t => !t.perm || can(t.perm));
-  const primaryTabs = visibleTabs.filter(t => !t.secondary);
-  const secondaryTabs = visibleTabs.filter(t => t.secondary && t.id !== 'merchants' && t.id !== 'segments');
 
   const getInitialTab = () => {
     const params = new URLSearchParams(location.search);
@@ -113,42 +109,8 @@ export default function SalesHub({ isActive = true }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, location.search]);
 
-  const changeView = (next) => {
-    if (!visibleTabs.some(item => item.id === next)) return;
-    const params = new URLSearchParams(location.search);
-    params.set('view', next);
-    params.delete('tab');
-    setTab(next);
-    navigate(`/retargeting?${params.toString()}`);
-  };
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100%' }}>
-      {primaryTabs.some(item => item.id === tab) ? (
-        <WorkspaceTabs
-          scope="sales-execution"
-          title="نمو العملاء والعمل اليوم"
-          subtitle="نشاط عملاء لمحة والعملاء خارج المنصة والتواصل في مسارات واضحة"
-          tone="#8B5CF6"
-          tabs={primaryTabs}
-          activeId={tab}
-          onChange={changeView}
-          selectorLabel="مسار العمل"
-        />
-      ) : (
-        <div className="workspace-secondary-context" role="status">
-          <span>قائمة محفوظة</span><strong>{visibleTabs.find(item => item.id === tab)?.label}</strong>
-          <button type="button" onClick={() => changeView('today')}>العودة إلى عمل اليوم</button>
-        </div>
-      )}
-      <nav className="workspace-filter-bar workspace-saved-views" aria-label="قوائم المبيعات المحفوظة">
-        <span>قوائم محفوظة:</span>
-        {secondaryTabs.map(item => (
-          <button type="button" key={item.id} aria-pressed={tab === item.id} onClick={() => changeView(item.id)}>{item.label}</button>
-        ))}
-        {visibleTabs.some(item => item.id === 'segments') ? <button type="button" aria-pressed={tab === 'segments'} onClick={() => changeView('segments')}>شرائح الجمهور</button> : null}
-        {visibleTabs.some(item => item.id === 'merchants') ? <button type="button" onClick={() => navigate('/customer-360?source=sales')}>فتح دليل المتاجر</button> : null}
-      </nav>
       <div className="ws-tab-body" style={{ position: 'relative', flex: 1, minHeight: 0 }}>
         {visibleTabs.map(t => {
           const Cmp = t.component;
