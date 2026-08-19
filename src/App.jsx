@@ -2,21 +2,19 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense, Component } f
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import {
   LayoutDashboard, Truck, Upload, Download, History, Settings,
-  ChevronLeft, ChevronRight, ChevronDown, Menu, X, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, LogOut, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, Bot, Landmark, ListFilter,
+  Menu, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, Bot, Landmark, ListFilter,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
-import { LamhaMark, LamhaLogo } from './components/BrandLogo.jsx';
 import AIChat from './components/AIChat.jsx';
-import CenterLanding from './components/CenterLanding.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
+import NavigationHub, { firstSectionDestination } from './components/NavigationHub.jsx';
 import { MobileExperienceManager } from './components/MobileUX.jsx';
 import { AuthProvider, useAuth } from './lib/auth.jsx';
 import { logLogin, logPageView, logDenied } from './lib/activityLogger.js';
 import { PAGE_TITLES } from './lib/pageTitles.js';
 import {
   NAV_SECTIONS as NAV_SECTION_MODEL,
-  NAV_GROUPS as NAV_GROUP_MODEL,
   CENTER_WORKSPACES,
   applyNavigationIA,
 } from './lib/navigation.js';
@@ -243,24 +241,6 @@ const NAV_SECTIONS = NAV_SECTION_MODEL.map(section => ({
   icon: SECTION_ICONS[section.icon] || Layers,
 }));
 
-function groupNavItems(sectionId, items, compact) {
-  if (compact) return [{ id: `${sectionId}-all`, label: '', items }];
-
-  const definitions = NAV_GROUP_MODEL[sectionId] || [];
-  const buckets = new Map(definitions.map(group => [group.id, []]));
-  const ungrouped = [];
-  for (const item of items) {
-    const bucket = buckets.get(item.navGroup);
-    if (bucket) bucket.push(item);
-    else ungrouped.push(item);
-  }
-
-  const groups = definitions
-    .map(group => ({ ...group, items: buckets.get(group.id) || [] }))
-    .filter(group => group.items.length > 0);
-  if (ungrouped.length > 0) groups.push({ id: `${sectionId}-other`, label: 'أخرى', items: ungrouped });
-  return groups;
-}
 // ── الحارس المركزي للمسارات (2026-07-16) ──────────────────────────────
 // 31 صفحة كانت بلا حارس داخلي — موظف محدود يكتب /bank أو /ledger في
 // العنوان يرى كل المال (القائمة تخفي العنصر لكن الصفحة تُعرض).
@@ -385,12 +365,8 @@ function AppInner({ theme, toggleTheme }) {
 
   const [carriers,        setCarriers]        = useState([]);
   const [carriersLoading, setCarriersLoading] = useState(false);
-  // على اللابتوب/التابلت الأفقي كان الشريط الكامل يترك قرابة 600px فقط
-  // للمحتوى. ابدأ مصغّراً بين 769–1100px، مع بقاء زر التوسيع متاحاً.
-  const [collapsed,       setCollapsed]       = useState(() => (
-    typeof window !== 'undefined' && window.matchMedia('(min-width: 769px) and (max-width: 1100px)').matches
-  ));
   const [mobileOpen,      setMobileOpen]      = useState(false);
+  const [navSectionId,    setNavSectionId]    = useState(null);
   const [quickActionOpen, setQuickActionOpen] = useState(false);
   const [pendingAudit,    setPendingAudit]    = useState(null);
   // الجانبية الأساسية للمراكز فقط. اختيار المركز يفتح صفحة مركزية تجمع
@@ -398,12 +374,6 @@ function AppInner({ theme, toggleTheme }) {
   // Command palette (Ctrl/Cmd+K) — instant jump to any page or carrier
   // screen, so buried sections and carrier-page hopping aren't a chore.
   const [paletteOpen, setPaletteOpen] = useState(false);
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 769px) and (max-width: 1100px)');
-    const onViewport = (event) => setCollapsed(event.matches);
-    mq.addEventListener?.('change', onViewport);
-    return () => mq.removeEventListener?.('change', onViewport);
-  }, []);
   useEffect(() => {
     const onKey = (e) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === 'k' || e.key === 'K')) {
@@ -531,6 +501,11 @@ function AppInner({ theme, toggleTheme }) {
     setMobileOpen(false);
   };
 
+  const openNavigation = (sectionId = null) => {
+    setNavSectionId(sectionId);
+    setMobileOpen(true);
+  };
+
   // ── Audit results: keep the fresh draft in memory. sessionStorage is
   // best-effort only: large audits can exceed the browser quota, and that
   // must never block navigation to /results.
@@ -632,22 +607,6 @@ function AppInner({ theme, toggleTheme }) {
   const contextSection = (forcedSectionId ? NAV_SECTIONS.find(section => section.id === forcedSectionId) : null)
     || centerRouteSection
     || currentSection;
-  const contextItems = contextSection
-    ? visibleNav.filter(item => item.section === contextSection.id)
-      .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999))
-    : [];
-  const contextGroups = contextSection ? groupNavItems(contextSection.id, contextItems, false) : [];
-  const visibleSubTabsFor = (item) => (item?.subTabs || []).filter(tab => {
-    // إذا كان التبويب التاريخي صفحة ظاهرة مستقلة داخل المركز، فلا نكررها
-    // مرة أخرى تحت صفحة أخرى. تبقى كل بقية التبويبات الداخلية متاحة.
-    if (tab.legacy && contextItems.some(other => other.id !== item.id && other.path === tab.legacy)) return false;
-    if (tab.adminOnly && !isAdmin) return false;
-    if (isAdmin) return true;
-    if (tab.anyPerm) return tab.anyPerm.some(key => can(key));
-    if (tab.perm) return can(tab.perm);
-    return true;
-  });
-  const subTabPath = (item, tab) => tab.legacy || `${item.path}?tab=${encodeURIComponent(tab.tabId)}`;
   const currentTitle = centerRouteSection?.label ?? currentSubTab?.label
     ?? currentNavItem?.label
     ?? PAGE_TITLES[location.pathname]
@@ -663,8 +622,6 @@ function AppInner({ theme, toggleTheme }) {
 
   return (
     <>
-      {mobileOpen && <div className="sidebar-backdrop" onClick={() => setMobileOpen(false)}/>}
-
       {/* New-version banner — one click replaces the stale bundle. */}
       {updateAvailable && (
         <button
@@ -696,128 +653,30 @@ function AppInner({ theme, toggleTheme }) {
         onNavigate={goto}
       />
 
-      <div className={`app-layout${collapsed ? ' primary-collapsed' : ''}`}>
+      <NavigationHub
+        open={mobileOpen}
+        initialSectionId={navSectionId}
+        sections={NAV_SECTIONS}
+        workspaces={CENTER_WORKSPACES}
+        navItems={visibleNav}
+        canOpenHome={isAdmin || can('overview.view')}
+        currentSectionId={contextSection?.id || null}
+        profile={profile}
+        roleLabel={ROLE_LABEL[profile.role] ?? profile.role}
+        onClose={() => setMobileOpen(false)}
+        onNavigate={goto}
+        onQuickAction={() => setQuickActionOpen(true)}
+        onSignOut={signOut}
+      />
 
-        {/* ═══════════════ SIDEBAR ═══════════════ */}
-        <aside className={`sidebar ${collapsed ? 'collapsed' : ''} ${mobileOpen ? 'mobile-open' : ''}`}>
-
-          {/* الجانبية داكنة في الثيمين، لذلك يبقى الشعار الأبيض ثابتاً وواضحاً. */}
-          <div className="sidebar-logo">
-            {collapsed ? (
-              <LamhaMark size={32}/>
-            ) : (
-              <div className="sidebar-brand-lockup">
-                <span className="sidebar-brand-logo sidebar-brand-logo--desktop">
-                  <LamhaLogo height={36} variant="white"/>
-                </span>
-                <span className="sidebar-brand-logo sidebar-brand-logo--mobile">
-                  <LamhaLogo height={36} variant="white"/>
-                </span>
-                <div className="sidebar-product-label">
-                  <span className="live-dot"/>
-                  <span>
-                    منصة العمليات المالية
-                  </span>
-                </div>
-              </div>
-            )}
-            {mobileOpen && <strong className="sidebar-mobile-title">المراكز</strong>}
-            {mobileOpen && (
-              <button className="sidebar-close" aria-label="إغلاق القائمة" onClick={() => setMobileOpen(false)}>
-                <X size={20}/>
-              </button>
-            )}
-          </div>
-
-          {/* قائمة واحدة فقط: الرئيسية ثم مراكز النظام السبعة. */}
-          <nav className="sidebar-nav">
-            <div className="primary-center-nav">
-            {visibleNav.length === 0 && (
-              <div style={{
-                padding: '20px 14px', fontSize: 12, color: 'var(--nav-text)',
-                textAlign: 'center', lineHeight: 1.7,
-              }}>
-                <div style={{ marginBottom: 8, fontSize: 22 }}>🔒</div>
-                لم يتم تفعيل أي صلاحية لهذا الحساب.
-                <br/>
-                تواصل مع المدير لإضافة الصفحات.
-              </div>
-            )}
-            {/* عناصر عامة فقط عند تعريفها صراحةً؛ الرئيسية المالية ليست صفًا مكررًا هنا. */}
-            {visibleNav.filter(n => n.pinned).map(n => (
-              <NavBtn key={n.id} n={n} active={activeFor(n)} collapsed={collapsed} onClick={() => goto(n.path)}/>
-            ))}
-
-            {/* مراكز العمل — لا أقسام فرعية داخل الجانبية الأساسية. */}
-            {NAV_SECTIONS.map((sec) => {
-              const items = visibleNav
-                .filter(n => n.section === sec.id)
-                .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
-              if (!items.length) return null;
-              const sectionHasActive = contextSection?.id === sec.id;
-              const SecIcon = sec.icon;
-              return (
-                <button
-                  key={sec.id}
-                  type="button"
-                  className={`primary-center-item${sectionHasActive ? ' active' : ''}`}
-                  aria-current={sectionHasActive ? 'true' : undefined}
-                  title={collapsed ? sec.label : undefined}
-                  onClick={() => goto(sec.path)}
-                >
-                  <span className="primary-center-item__icon" style={{ '--center-accent': sec.accent }}><SecIcon size={18}/></span>
-                  {!collapsed && <span><strong>{sec.label}</strong><small>{sec.hint}</small></span>}
-                  {!collapsed && <ChevronLeft size={15}/>}
-                </button>
-              );
-            })}
-            </div>
-
-          </nav>
-
-          {/* Footer */}
-          <div className="sidebar-footer">
-            <div className={`sidebar-account${collapsed ? ' is-collapsed' : ''}`}>
-              <div className="sidebar-account__identity">
-                <div style={{
-                  width:36, height:36, borderRadius:'50%', flexShrink:0,
-                  background: profile.avatar_color || 'var(--brand-gradient)',
-                  display:'flex', alignItems:'center', justifyContent:'center',
-                  fontSize:14, fontWeight:700, color:'#fff',
-                  boxShadow:'0 4px 12px var(--accent-glow)',
-                }}>
-                  {profile.name?.[0] ?? '?'}
-                </div>
-                {!collapsed && (
-                  <div className="sidebar-account__copy">
-                    <strong>{profile.name}</strong>
-                    <span>{ROLE_LABEL[profile.role] ?? profile.role}</span>
-                  </div>
-                )}
-              </div>
-              <button className="sidebar-logout-action" onClick={signOut} title="تسجيل الخروج" aria-label="تسجيل الخروج">
-                <LogOut size={15}/>
-                {!collapsed && <span>تسجيل الخروج</span>}
-              </button>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            className="sidebar-toggle"
-            aria-label={collapsed ? 'توسيع القائمة الجانبية' : 'تصغير القائمة الجانبية'}
-            onClick={() => setCollapsed(c => !c)}
-          >
-            {collapsed ? <ChevronLeft size={12}/> : <ChevronRight size={12}/>}
-          </button>
-        </aside>
+      <div className="app-layout">
 
         {/* ═══════════════ MAIN ═══════════════ */}
         <main className="app-main">
 
           {/* Topbar */}
           <div className="topbar">
-            <button className="hamburger-btn" aria-label="فتح القائمة" onClick={() => setMobileOpen(true)}>
+            <button className="hamburger-btn" aria-label="فتح قائمة المراكز" onClick={() => openNavigation()}>
               <Menu size={20}/>
             </button>
 
@@ -873,22 +732,9 @@ function AppInner({ theme, toggleTheme }) {
           <div className="page-content">
 
             {NAV_SECTIONS.map(section => {
-              const items = visibleNav
-                .filter(item => item.section === section.id)
-                .sort((a, b) => (a.navOrder ?? 999) - (b.navOrder ?? 999));
-              const groups = groupNavItems(section.id, items, false);
               return (
                 <PageSlot key={section.id} active={pathname === section.path} scroll>
-                  <CenterLanding
-                    section={section}
-                    groups={groups}
-                    workspaces={CENTER_WORKSPACES[section.id]}
-                    allItems={visibleNav}
-                    visibleSubTabsFor={visibleSubTabsFor}
-                    subTabPath={subTabPath}
-                    onNavigate={goto}
-                    onQuickAction={() => setQuickActionOpen(true)}
-                  />
+                  <Navigate to={firstSectionDestination(section.id, CENTER_WORKSPACES, visibleNav)} replace/>
                 </PageSlot>
               );
             })}
@@ -1322,14 +1168,14 @@ function AppInner({ theme, toggleTheme }) {
           const Icon = it.icon;
           const active = it.sectionId ? contextSection?.id === it.sectionId : location.pathname === it.path;
           return (
-            <button key={it.path} onClick={() => goto(it.path)} aria-current={active ? 'page' : undefined}
+            <button key={it.path} onClick={() => it.sectionId ? openNavigation(it.sectionId) : goto(it.path)} aria-current={active ? 'page' : undefined}
               className={`bottom-nav-btn ${active ? 'active' : ''}`}>
               <Icon size={19}/>
               <span>{it.label}</span>
             </button>
           );
         })}
-        <button className="bottom-nav-btn" aria-label="فتح قائمة المراكز" onClick={() => setMobileOpen(true)}>
+        <button className="bottom-nav-btn" aria-label="فتح قائمة المراكز" onClick={() => openNavigation()}>
           <Menu size={19}/>
           <span>القائمة</span>
         </button>
@@ -1447,64 +1293,6 @@ function PageSlot({ active, scroll = false, children }) {
       )}
       {scroll && <div className="page-slot-scroll-end" aria-hidden="true" />}
     </div>
-  );
-}
-
-// ── Helpers ───────────────────────────────────────────────────────────────────
-function NavBtn({ n, active, ancestorActive = false, accent, collapsed, onClick, nested, expandable, expanded, onToggleExpand }) {
-  const Icon = n.icon;
-  // Section-tinted active state — when an `accent` prop is passed
-  // (from a sectioned item) the active background, icon and dot all
-  // take the section color. Pinned items (no accent) fall back to
-  // the default green-accent CSS class.
-  const inlineStyle = {
-    ...(nested && !collapsed ? { marginInlineStart: 10 } : {}),
-    ...(active && accent ? { '--item-accent': accent } : {}),
-  };
-  if (active && accent) {
-    inlineStyle.color      = 'var(--text)';
-    inlineStyle.fontWeight = 700;
-  }
-  const iconColor = active && accent ? accent : undefined;
-  return (
-    <button
-      className={`nav-item ${active ? 'active' : ''} ${accent ? 'section-nav' : ''}`}
-      onClick={onClick}
-      title={collapsed ? n.label : undefined}
-      style={inlineStyle}
-    >
-      <span className="nav-icon" style={iconColor ? { color: iconColor } : undefined}>
-        <Icon
-          size={15}
-          strokeWidth={active ? 2.2 : 1.8}
-        />
-      </span>
-      <span className="nav-label" style={{ flex: 1 }}>{n.label}</span>
-      {expandable && !collapsed ? (
-        // chevron توسيع/طيّ التبويبات الفرعية — لا يُنقّل (يوقف الانتشار)
-        <span
-          role="button"
-          title={expanded ? 'طيّ' : 'توسيع'}
-          onClick={(e) => { e.stopPropagation(); onToggleExpand?.(); }}
-          style={{
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            width: 20, height: 20, borderRadius: 6, flexShrink: 0,
-            color: (active || ancestorActive) && accent ? accent : 'var(--muted)', cursor: 'pointer',
-          }}
-        >
-          <ChevronDown size={14} style={{ transition: 'transform .15s', transform: expanded ? 'rotate(180deg)' : 'none' }}/>
-        </span>
-      ) : active && (
-        <span
-          className={accent ? '' : 'nav-dot'}
-          style={accent ? {
-            width: 6, height: 6, borderRadius: '50%',
-            background: accent, boxShadow: `0 0 8px ${accent}`,
-            flexShrink: 0,
-          } : undefined}
-        />
-      )}
-    </button>
   );
 }
 

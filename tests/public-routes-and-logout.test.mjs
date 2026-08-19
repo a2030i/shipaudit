@@ -15,15 +15,16 @@ test('public tools bypass the authenticated workspace with or without a trailing
   assert.match(app, /if \(PublicPage\)[\s\S]*<PublicPage\/>[\s\S]*return <AppInner/);
 });
 
-test('logout remains a named visible action in expanded and collapsed navigation', async () => {
+test('logout remains a named visible action in the global navigation hub', async () => {
   const app = await read('src/App.jsx');
-  const css = await read('src/shipaudit-os-v2.css');
+  const hub = await read('src/components/NavigationHub.jsx');
+  const css = await read('src/navigation-hub.css');
 
-  assert.match(app, /sidebar-account\$\{collapsed \? ' is-collapsed' : ''\}/);
-  assert.match(app, /className="sidebar-logout-action" onClick=\{signOut\}/);
-  assert.match(app, /<span>تسجيل الخروج<\/span>/);
-  assert.match(css, /sidebar-footer > \.sidebar-account > \.sidebar-logout-action\s*\{[\s\S]*display:\s*flex\s*!important/);
-  assert.match(css, /\.sidebar\.collapsed \.sidebar-account__identity\s*\{[\s\S]*justify-content:\s*center\s*!important/);
+  assert.match(app, /onSignOut=\{signOut\}/);
+  assert.match(hub, /className="navigation-hub__logout" onClick=\{onSignOut\} aria-label="تسجيل الخروج"/);
+  assert.match(hub, /<span>خروج<\/span>/);
+  assert.match(css, /\.navigation-hub__logout,[\s\S]*min-height:\s*44px/);
+  assert.match(css, /\.navigation-hub__logout\s*\{[\s\S]*color:\s*var\(--sa-danger/);
 });
 
 test('sign out clears sensitive browser state before ending the Supabase session', async () => {

@@ -4,16 +4,18 @@ import { readFile } from 'node:fs/promises';
 
 const read = path => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
-test('final workspace layout layer is loaded before the Safari scroll contract', async () => {
+test('navigation hub is the final shell layer after the Safari scroll contract', async () => {
   const main = await read('src/main.jsx');
   const layoutIndex = main.indexOf("import './workspace-layout.css'");
   const scrollIndex = main.indexOf("import './mobile-scroll.css'");
+  const navigationIndex = main.indexOf("import './navigation-hub.css'");
   const finalStyleIndex = Math.max(
     ...[...main.matchAll(/import '\.\/(?:[^']+)\.css'/g)].map(match => match.index),
   );
   assert.ok(layoutIndex > -1, 'workspace layout stylesheet must be imported');
   assert.ok(scrollIndex > layoutIndex, 'mobile scroll contract must remain the final stylesheet');
-  assert.equal(scrollIndex, finalStyleIndex, 'mobile scroll contract must be the last stylesheet in the cascade');
+  assert.ok(navigationIndex > scrollIndex, 'navigation shell must override historical sidebar layers');
+  assert.equal(navigationIndex, finalStyleIndex, 'navigation hub must be the last stylesheet in the cascade');
 });
 
 test('mobile PageSlot uses normal flow and a real safe-area end spacer', async () => {
@@ -89,21 +91,17 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('visual system v6 keeps one navigation shell, calm canvas and mobile drawer contract', async () => {
+test('visual system keeps one two-level navigation hub and no rendered sidebar', async () => {
   const app = await read('src/App.jsx');
-  const css = await read('src/workspace-layout.css');
+  const css = await read('src/navigation-hub.css');
 
-  assert.match(css, /System-wide visual layer/);
-  assert.match(css, /--shell-primary-width:\s*176px/);
-  assert.match(css, /single-level information architecture/);
-  assert.match(css, /\.app-layout\s*\{[\s\S]*grid-template-columns:\s*var\(--shell-primary-width\) minmax\(0, 1fr\)\s*!important/);
-  assert.match(css, /\.context-sidebar,[\s\S]*display:\s*none\s*!important/);
-  assert.match(css, /\.primary-center-item\.active\s*\{[\s\S]*inset -3px 0 0/);
-  assert.match(css, /\.workspace-page\s*\{[\s\S]*max-width:\s*1540px/);
-  assert.match(css, /\.page-summary--dark\s*\{[\s\S]*linear-gradient/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.modal-panel\s*\{[\s\S]*border-radius:\s*18px 18px 0 0/);
-  assert.match(app, /sidebar-brand-logo--desktop/);
-  assert.match(app, /sidebar-brand-logo--mobile/);
+  assert.match(app, /<NavigationHub/);
+  assert.doesNotMatch(app, /<aside className=\{`sidebar/);
+  assert.doesNotMatch(app, /<CenterLanding/);
+  assert.match(css, /\.navigation-hub__centers\s*\{[\s\S]*repeat\(4,/);
+  assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.navigation-hub__centers\s*\{[\s\S]*repeat\(3,/);
+  assert.match(css, /\.app-layout,[\s\S]*display:\s*block\s*!important/);
 });
 
 test('primary navigation rail leaves center labels comfortably readable', async () => {
@@ -311,11 +309,11 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
 });
 
-test('stable work areas use one seven-entry rail and permission-aware center launchpads', async () => {
+test('stable work areas use one seven-entry modal hub and permission-aware second level', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
-  const center = await read('src/components/CenterLanding.jsx');
-  const shell = await read('src/shipaudit-os-v2.css');
+  const hub = await read('src/components/NavigationHub.jsx');
+  const shell = await read('src/navigation-hub.css');
 
   for (const id of ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings']) {
     assert.match(navigation, new RegExp(`id: '${id}'`));
@@ -329,13 +327,16 @@ test('stable work areas use one seven-entry rail and permission-aware center lau
   }
 
   assert.doesNotMatch(app, /<aside className="context-sidebar"/);
+  assert.doesNotMatch(app, /<aside className=\{`sidebar/);
   assert.doesNotMatch(app, /className="mobile-context-picker"/);
   assert.doesNotMatch(app, /className="context-subnav"/);
-  assert.match(app, /<CenterLanding/);
-  assert.match(app, /onClick=\{\(\) => goto\(sec\.path\)\}/);
-  assert.match(app, /visibleSubTabsFor/);
-  assert.match(center, /destinationsFor/);
-  assert.match(center, /subTabPath\(item, tab\)/);
+  assert.doesNotMatch(app, /<CenterLanding/);
+  assert.match(app, /<NavigationHub/);
+  assert.match(app, /firstSectionDestination/);
+  assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
+  assert.match(hub, /sectionDestinations/);
+  assert.match(hub, /setSectionId\(section\.id\)/);
+  assert.match(hub, />كل المراكز</);
   assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
   assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.doesNotMatch(shell, /grid-template-areas:\s*"main context primary"/);
@@ -346,10 +347,10 @@ test('stable work areas use one seven-entry rail and permission-aware center lau
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
 });
 
-test('phase one exposes approved workspaces without removing legacy routes', async () => {
+test('approved workspaces live in the navigation hub without removing legacy routes', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
-  const landing = await read('src/components/CenterLanding.jsx');
+  const hub = await read('src/components/NavigationHub.jsx');
   const tabs = await read('src/components/WorkspaceTabs.jsx');
   const sales = await read('src/pages/SalesHub.jsx');
   const collections = await read('src/pages/CollectionsHub.jsx');
@@ -360,9 +361,9 @@ test('phase one exposes approved workspaces without removing legacy routes', asy
   assert.match(navigation, /label: 'دليل العملاء والمتاجر'/);
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money', 'bank'\]/);
-  assert.match(landing, /workspaceDestinationsFor/);
-  assert.match(landing, /طرق عرض رئيسية متاحة حسب صلاحياتك/);
-  assert.match(landing, />طريقة العرض</);
+  assert.match(hub, /sectionDestinations/);
+  assert.match(hub, /اختر المركز، ثم القسم المطلوب/);
+  assert.doesNotMatch(hub, /طريقة العرض/);
   assert.match(tabs, /selectorLabel = 'القسم'/);
 
   for (const source of [sales, collections]) {
@@ -387,12 +388,16 @@ test('phase one exposes approved workspaces without removing legacy routes', asy
   assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
 });
 
-test('center landing uses one workspace navigator per viewport', async () => {
-  const css = await read('src/workspace-layout.css');
+test('navigation hub exposes centers first and destinations second on every viewport', async () => {
+  const component = await read('src/components/NavigationHub.jsx');
+  const css = await read('src/navigation-hub.css');
 
-  assert.match(css, /\.center-landing__view-select\s*\{[\s\S]*?display:\s*none;/);
-  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.center-landing__view-select\s*\{\s*display:\s*grid;/);
-  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.center-landing__summary,\s*\.center-landing__groups\s*\{\s*display:\s*none;/);
+  assert.match(component, /navigation-hub__centers/);
+  assert.match(component, /navigation-hub__destinations/);
+  assert.match(component, /activeSection \?/);
+  assert.match(css, /\.navigation-hub__centers\s*\{/);
+  assert.match(css, /\.navigation-hub__destinations\s*\{/);
+  assert.doesNotMatch(component, /<select/);
 });
 
 test('mobile customer finance actions stay in document flow', async () => {
