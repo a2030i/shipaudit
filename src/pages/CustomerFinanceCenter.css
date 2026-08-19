@@ -30,7 +30,8 @@
   .customer-finance-command__source { width:max-content; margin-top:10px; }
   .customer-finance-command__kpis { grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
   .customer-finance-command__kpis button { min-height:84px; padding:10px; }
+  .customer-finance-command__kpis button:hover { transform:none; }
   .customer-finance-command__kpis strong { font-size:15px; }
-  .customer-finance-command__actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); position:sticky; bottom:78px; z-index:12; padding:10px; margin-inline:-7px; border:1px solid var(--border); border-radius:14px; background:color-mix(in srgb,var(--surface) 95%,transparent); backdrop-filter:blur(14px); box-shadow:0 10px 24px rgba(15,23,42,.12); }
+  .customer-finance-command__actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); position:static; padding:10px; margin-inline:-7px; border:1px solid var(--border); border-radius:14px; background:var(--surface); box-shadow:0 6px 18px rgba(15,23,42,.07); }
   .customer-finance-command__actions .ui-btn { width:100%; justify-content:center; min-height:42px; }
 }

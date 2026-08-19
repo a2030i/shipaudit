@@ -6145,7 +6145,7 @@ tbody tr,
 }
 .center-landing__summary { display: flex; align-items: baseline; gap: 8px; margin: 22px 2px 12px; color: var(--muted); font-size: 11px; }
 .center-landing__view-select {
-  display: grid;
+  display: none;
   grid-template-columns: auto minmax(220px, 360px);
   align-items: center;
   justify-content: end;
@@ -6343,10 +6343,12 @@ tbody tr,
   .center-landing__hero h1 { font-size: 23px; }
   .center-landing__hero p { display: -webkit-box; overflow: hidden; margin-top: 4px; font-size: 11px; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
   .center-landing__action { grid-column: 1 / -1; justify-content: center; width: 100%; }
-  .center-landing__summary { margin-top: 16px; }
-  .center-landing__view-select { grid-template-columns: 1fr; gap: 6px; margin-top: 12px; }
+  /* On small screens the select is the single workspace navigator. Showing
+     the same destinations again as cards adds length without adding choice. */
+  .center-landing__view-select { display: grid; grid-template-columns: 1fr; gap: 6px; margin-top: 12px; }
   .center-landing__view-select select { min-height: 46px; }
-  .center-landing__groups { gap: 17px; }
+  .center-landing__summary,
+  .center-landing__groups { display: none; }
   .center-landing__grid { grid-template-columns: 1fr; gap: 8px; }
   .center-landing__card { min-height: 72px; padding: 12px; }
   .quick-action-dialog { padding: 16px; border-radius: 17px; }

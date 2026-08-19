@@ -108,3 +108,14 @@ test('source failures and permission failures remain explicit and block unsafe b
   assert.equal(evaluateBulkEligibility([base], 'ivr', { canIvr: false })[0].eligible, false);
   assert.equal(evaluateBulkEligibility([base], 'campaign', { canCampaign: false })[0].eligible, false);
 });
+
+test('Aging can explicitly select every filtered result across pages', async () => {
+  const page = await readFile(new URL('../src/pages/CustomerMoney.jsx', import.meta.url), 'utf8');
+  const queue = await readFile(new URL('../src/components/operations/AgingOperationsQueue.jsx', import.meta.url), 'utf8');
+
+  assert.match(page, /new Set\(agingRows\.map\(row => row\.identityKey\)\)/);
+  assert.match(page, /allResultsSelected=\{allAgingSelected\}/);
+  assert.match(queue, /تحديد كل النتائج \(\{totalRows\}\)/);
+  assert.match(queue, /onToggleAll\(true\)/);
+  assert.match(queue, /إلغاء تحديد الكل/);
+});

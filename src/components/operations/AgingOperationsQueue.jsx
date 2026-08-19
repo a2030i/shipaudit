@@ -41,12 +41,14 @@ function RowCard({ row, selected, onSelect, onOpen, onInvoices }) {
 
 export default function AgingOperationsQueue({
   rows = [], totalRows = 0, totalAmount = 0, filters, onFilter,
-  assignees = [], selected = new Set(), onToggle, onTogglePage,
+  assignees = [], selected = new Set(), onToggle, onTogglePage, onToggleAll,
+  allResultsSelected = false,
   page = 1, onPage, onOpen, onInvoices, onBulk,
   reconciliation, sourceHealthy = true, sourceUpdatedAt,
 }) {
   const pages = Math.max(1, Math.ceil(totalRows / AGING_PAGE_SIZE));
   const allSelected = rows.length > 0 && rows.every(row => selected.has(row.identityKey));
+  const hasMoreResults = totalRows > rows.length;
   return <section className="aging-operations" dir="rtl">
     <header className="aoq-header">
       <div><span>AGING OPERATIONS</span><h1>قائمة عمل أعمار المستحقات</h1><p>اختر الشريحة، افتح الفواتير التي صنعت مبلغها، ثم نفّذ الإجراء وارجع إلى السياق نفسه.</p></div>
@@ -83,6 +85,19 @@ export default function AgingOperationsQueue({
       <span>* سجل التواصل مرتبط برقم التواصل للعرض فقط، ولا يُستخدم لإثبات هوية المتجر أو احتساب مديونيته.</span>
     </div>
 
+    <div className="aoq-select-page">
+      <label><input type="checkbox" checked={allSelected} onChange={e => onTogglePage(e.target.checked)}/> تحديد نتائج هذه الصفحة</label>
+      <div className="aoq-select-page__meta">
+        {hasMoreResults && !allResultsSelected ? <button type="button" onClick={() => onToggleAll(true)}>تحديد كل النتائج ({totalRows})</button> : null}
+        <span>صفحة {page} من {pages}</span>
+      </div>
+    </div>
+
+    {allResultsSelected && totalRows > 0 ? <div className="aoq-selection-scope is-all" role="status">
+      <strong>تم تحديد جميع النتائج المطابقة للفلاتر ({totalRows})</strong>
+      <button type="button" onClick={() => onToggleAll(false)}>إلغاء تحديد الكل</button>
+    </div> : null}
+
     {selected.size ? <div className="aoq-bulk" role="toolbar" aria-label="إجراءات جماعية">
       <strong>{selected.size} متجر محدد</strong>
       <Btn size="sm" variant="ghost" icon={<UserRoundCog size={14}/>} onClick={() => onBulk('assign')}>إسناد</Btn>
@@ -90,10 +105,8 @@ export default function AgingOperationsQueue({
       <Btn size="sm" variant="accent" icon={<Megaphone size={14}/>} onClick={() => onBulk('campaign')}>Draft حملة</Btn>
       <Btn size="sm" variant="ghost" icon={<PhoneCall size={14}/>} onClick={() => onBulk('ivr')}>IVR Review</Btn>
       <Btn size="sm" variant="ghost" icon={<Download size={14}/>} onClick={() => onBulk('export')}>تصدير</Btn>
-      <button type="button" onClick={() => onTogglePage(false)}>إلغاء التحديد</button>
+      <button type="button" onClick={() => onToggleAll(false)}>إلغاء التحديد</button>
     </div> : null}
-
-    <div className="aoq-select-page"><label><input type="checkbox" checked={allSelected} onChange={e => onTogglePage(e.target.checked)}/> تحديد نتائج هذه الصفحة</label><span>صفحة {page} من {pages}</span></div>
 
     <div className="aoq-list">
       {rows.map(row => <RowCard key={row.identityKey} row={row} selected={selected.has(row.identityKey)} onSelect={() => onToggle(row.identityKey)} onOpen={() => onOpen(row)} onInvoices={() => onInvoices(row)}/>) }

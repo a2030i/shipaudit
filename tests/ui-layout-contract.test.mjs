@@ -387,6 +387,24 @@ test('phase one exposes approved workspaces without removing legacy routes', asy
   assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
 });
 
+test('center landing uses one workspace navigator per viewport', async () => {
+  const css = await read('src/workspace-layout.css');
+
+  assert.match(css, /\.center-landing__view-select\s*\{[\s\S]*?display:\s*none;/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.center-landing__view-select\s*\{\s*display:\s*grid;/);
+  assert.match(css, /@media \(max-width: 900px\)[\s\S]*?\.center-landing__summary,\s*\.center-landing__groups\s*\{\s*display:\s*none;/);
+});
+
+test('mobile customer finance actions stay in document flow', async () => {
+  const css = await read('src/pages/CustomerFinanceCenter.css');
+  const mobile = css.slice(css.indexOf('@media (max-width: 600px)'));
+
+  assert.match(mobile, /\.customer-finance-command__actions\s*\{[^}]*position:\s*static;/);
+  assert.doesNotMatch(mobile, /\.customer-finance-command__actions\s*\{[^}]*position:\s*sticky;/);
+  assert.doesNotMatch(mobile, /\.customer-finance-command__actions\s*\{[^}]*bottom:/);
+  assert.match(mobile, /\.customer-finance-command__kpis button:hover\s*\{\s*transform:\s*none;/);
+});
+
 test('phase one KPI and filter contracts expose source truth and URL state', async () => {
   const commandCenter = await read('src/components/operations/FigmaCommandCenter.jsx');
   const customerMoney = await read('src/pages/CustomerMoney.jsx');

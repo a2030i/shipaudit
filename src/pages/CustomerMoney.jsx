@@ -435,6 +435,10 @@ export default function CustomerMoney({ isActive = true }) {
     agingPageRows.forEach(row => next.add(row.identityKey));
     return next;
   });
+  const allAgingSelected = agingRows.length > 0 && agingRows.every(row => selectedAging.has(row.identityKey));
+  const toggleAllAgingResults = checked => setSelectedAging(
+    checked ? new Set(agingRows.map(row => row.identityKey)) : new Set(),
+  );
   const openStoreFromAging = (row, invoice = false) => {
     if (!row.customer.storeId) {
       toast('لا يمكن فتح Store 360 قبل وجود Store ID مؤكد لهذا الحساب المالي.', 'info');
@@ -736,6 +740,8 @@ export default function CustomerMoney({ isActive = true }) {
         selected={selectedAging}
         onToggle={toggleAgingSelection}
         onTogglePage={toggleAgingPage}
+        onToggleAll={toggleAllAgingResults}
+        allResultsSelected={allAgingSelected}
         page={agingPage}
         onPage={(value) => updateUrlFilters({ page: value <= 1 ? null : value })}
         onOpen={row => openStoreFromAging(row, false)}
