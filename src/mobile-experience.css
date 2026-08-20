@@ -71,13 +71,15 @@
   .mobile-active-filters button { min-height: 44px; display: inline-flex; flex: 0 0 auto; align-items: center; gap: 5px; padding: 6px 9px; border: 1px solid color-mix(in srgb, var(--brand) 28%, var(--border)); border-radius: 999px; background: var(--brand-soft); color: var(--brand); font: inherit; font-size: 10.5px; font-weight: 800; }
   .mobile-active-filters .mobile-active-filters__clear { color: var(--muted); background: var(--surface); border-color: var(--border); }
 
-  .mobile-sheet-backdrop { position: fixed; inset: 0; z-index: 12000; display: flex; align-items: flex-end; background: rgba(15,23,42,.5); backdrop-filter: blur(4px); }
+  .mobile-sheet-backdrop { position: fixed; inset: 0; z-index: 12000; display: flex; align-items: flex-end; overflow: hidden; overscroll-behavior: none; touch-action: none; background: rgba(15,23,42,.5); backdrop-filter: blur(4px); }
   .mobile-sheet { width: 100%; max-height: calc(100dvh - 36px); display: flex; flex-direction: column; overflow: hidden; background: var(--surface); border-radius: 20px 20px 0 0; box-shadow: 0 -18px 50px rgba(15,23,42,.2); }
   .mobile-sheet > header { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
   .mobile-sheet > header span { color: var(--muted); font-size: 10px; }
   .mobile-sheet > header h2 { margin: 2px 0 0; font-size: 18px; }
   .mobile-icon-button { display: grid; place-items: center; border: 1px solid var(--border); border-radius: 12px; background: var(--surface2); color: var(--text); }
-  .mobile-sheet__body { flex: 1; min-height: 0; overflow-y: auto; padding: 14px 14px 24px; overscroll-behavior: contain; }
+  .mobile-sheet__body { flex: 1; min-height: 0; overflow-x: hidden; overflow-y: auto; padding: 14px 14px 24px; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; touch-action: pan-y; }
+  .mobile-action-sheet__body { display: grid; align-content: start; gap: 8px; padding-bottom: calc(24px + var(--mobile-safe-bottom)); scroll-padding-bottom: calc(24px + var(--mobile-safe-bottom)); }
+  .mobile-action-sheet__body .s360-action { width: 100%; min-height: 52px; }
   .mobile-filter-fields { display: grid; gap: 12px; }
   .mobile-filter-fields > *, .mobile-filter-fields label { width: 100% !important; }
   .mobile-filter-fields .ui-btn { justify-content: center; }

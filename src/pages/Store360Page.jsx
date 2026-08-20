@@ -3,10 +3,11 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BadgeDollarSign, Building2, CalendarClock, ChevronLeft, CircleDollarSign,
   ExternalLink, HandCoins, ListChecks, MessageCircle, PackageSearch, PhoneCall,
-  Power, PowerOff, ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards, X,
+  Power, PowerOff, ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards,
 } from 'lucide-react';
 import { Btn, Card, Empty, Modal, Spinner, toast } from '../components/UI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
+import { MobileActionSheet } from '../components/MobileUX.jsx';
 import { useAuth } from '../lib/auth.jsx';
 import { recordPlatformSalesActivity } from '../lib/retargetingService.js';
 import { recordPromise } from '../lib/collectionsService.js';
@@ -200,6 +201,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
   const [waOpen, setWaOpen] = useState(false);
   const [lamhaStatus, setLamhaStatus] = useState({ state: 'idle', value: null, canCreateShipments: null, error: null });
   const [statusBusy, setStatusBusy] = useState(false);
+  const closeMobileActions = useCallback(() => setMobileOpen(false), []);
   const store = core.store;
   const task = work?.activeTask;
   const salesAllowed = can('sales.manage');
@@ -290,13 +292,12 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
         ? <IvrCallButton phone={store.phone} name={store.storeName} fields={{ name: store.storeName, amount: core.financial?.outstanding || 0 }} label labelText="تشغيل IVR"/>
         : <ActionButton icon={PhoneCall} label="تشغيل IVR" reason={!store.phone ? 'لا يوجد رقم تواصل' : 'تحتاج صلاحية تشغيل IVR'}/>}</div>
     </Card>
-    {mobileOpen ? <div className="s360-sheet-backdrop" onClick={() => setMobileOpen(false)}><div className="s360-action-sheet" role="dialog" aria-modal="true" aria-label="إجراءات المتجر" onClick={e => e.stopPropagation()}>
-      <div className="s360-sheet-head"><b>إجراءات المتجر</b><button type="button" aria-label="إغلاق" onClick={() => setMobileOpen(false)}><X size={18}/></button></div>
-      {actions.map(item => <ActionButton key={item.label} {...item} onClick={item.onClick ? () => { setMobileOpen(false); item.onClick(); } : null}/>)}
+    <MobileActionSheet open={mobileOpen} title="إجراءات المتجر" eyebrow={store.storeName} onClose={closeMobileActions}>
+      {actions.map(item => <ActionButton key={item.label} {...item} onClick={item.onClick ? () => { closeMobileActions(); item.onClick(); } : null}/>)}
       {store.phone && ivrAllowed
         ? <IvrCallButton phone={store.phone} name={store.storeName} fields={{ name: store.storeName, amount: core.financial?.outstanding || 0 }} label labelText="تشغيل IVR" style={{ width: '100%', justifyContent: 'center', minHeight: 46 }}/>
         : <ActionButton icon={PhoneCall} label="تشغيل IVR" reason={!store.phone ? 'لا يوجد رقم تواصل' : 'تحتاج صلاحية تشغيل IVR'}/>}
-    </div></div> : null}
+    </MobileActionSheet>
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.outstanding} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'store-activate' || modal === 'store-deactivate' ? <StoreStatusConfirmModal store={store} currentStatus={lamhaStatus.value} canCreateShipments={lamhaStatus.canCreateShipments} activate={modal === 'store-activate'} busy={statusBusy} onClose={() => setModal(null)} onConfirm={runStoreStatusAction}/> : null}

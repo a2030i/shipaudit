@@ -5,23 +5,7 @@ import useMobileLayout from '../lib/useMobileLayout.js';
 
 const focusableSelector = 'button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-export function ActiveFilterChips({ items = [], onClear }) {
-  if (!items.length) return null;
-  return (
-    <div className="mobile-active-filters" aria-label="الفلاتر النشطة">
-      {items.map(item => (
-        <button type="button" key={item.key || item.id || item.label} onClick={item.onRemove} aria-label={`إزالة فلتر ${item.label}`}>
-          <span>{item.label}</span><X size={13}/>
-        </button>
-      ))}
-      {onClear ? <button type="button" className="mobile-active-filters__clear" onClick={onClear}>مسح الكل</button> : null}
-    </div>
-  );
-}
-
-export function MobileFilterSheet({ open, title = 'فلترة النتائج', count = 0, onClose, onClear, children }) {
-  const titleId = useId();
-  const panelRef = useRef(null);
+function useMobileSheetLifecycle(open, onClose, panelRef) {
   useEffect(() => {
     if (!open) return undefined;
     const previous = document.activeElement;
@@ -43,7 +27,27 @@ export function MobileFilterSheet({ open, title = 'فلترة النتائج', c
       document.body.classList.remove('mobile-overlay-open');
       if (previous instanceof HTMLElement && document.contains(previous)) previous.focus();
     };
-  }, [open, onClose]);
+  }, [open, onClose, panelRef]);
+}
+
+export function ActiveFilterChips({ items = [], onClear }) {
+  if (!items.length) return null;
+  return (
+    <div className="mobile-active-filters" aria-label="الفلاتر النشطة">
+      {items.map(item => (
+        <button type="button" key={item.key || item.id || item.label} onClick={item.onRemove} aria-label={`إزالة فلتر ${item.label}`}>
+          <span>{item.label}</span><X size={13}/>
+        </button>
+      ))}
+      {onClear ? <button type="button" className="mobile-active-filters__clear" onClick={onClear}>مسح الكل</button> : null}
+    </div>
+  );
+}
+
+export function MobileFilterSheet({ open, title = 'فلترة النتائج', count = 0, onClose, onClear, children }) {
+  const titleId = useId();
+  const panelRef = useRef(null);
+  useMobileSheetLifecycle(open, onClose, panelRef);
   if (!open) return null;
   return createPortal(
     <div className="mobile-sheet-backdrop" onMouseDown={event => event.target === event.currentTarget && onClose?.()}>
@@ -57,6 +61,25 @@ export function MobileFilterSheet({ open, title = 'فلترة النتائج', c
           {onClear ? <button type="button" className="mobile-sheet__clear" onClick={onClear}><RotateCcw size={16}/>مسح الكل</button> : <span/>}
           <button type="button" className="mobile-sheet__apply" onClick={onClose}>عرض النتائج</button>
         </footer>
+      </section>
+    </div>,
+    document.body,
+  );
+}
+
+export function MobileActionSheet({ open, title = 'الإجراءات', eyebrow = 'إجراءات سريعة', onClose, children }) {
+  const titleId = useId();
+  const panelRef = useRef(null);
+  useMobileSheetLifecycle(open, onClose, panelRef);
+  if (!open) return null;
+  return createPortal(
+    <div className="mobile-sheet-backdrop" onClick={event => event.target === event.currentTarget && onClose?.()}>
+      <section ref={panelRef} className="mobile-sheet mobile-action-sheet" role="dialog" aria-modal="true" aria-labelledby={titleId}>
+        <header>
+          <div><span>{eyebrow}</span><h2 id={titleId}>{title}</h2></div>
+          <button type="button" className="mobile-icon-button" onClick={onClose} aria-label="إغلاق قائمة الإجراءات"><X size={20}/></button>
+        </header>
+        <div className="mobile-sheet__body mobile-action-sheet__body">{children}</div>
       </section>
     </div>,
     document.body,
