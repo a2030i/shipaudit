@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  ArrowRight, ChevronLeft, LayoutDashboard, LogOut, Plus, X,
+  ArrowRight, LayoutDashboard, LogOut, Plus, X,
 } from 'lucide-react';
 
 const CENTER_ORDER = ['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'];
@@ -135,6 +135,31 @@ export function firstSectionDestination(sectionId, workspaces, navItems) {
   return sectionDestinations(sectionId, workspaces, navItems)[0]?.path || '/overview';
 }
 
+// القائمة هي فهرس تنفيذ لا شجرة تقنية. كل عقدة قابلة للفتح تُرفع إلى
+// مستوى المركز مباشرة، مع الاحتفاظ باسم مساحتها كسياق بصري فقط. بهذا لا
+// يحتاج المستخدم إلى المرور عبر مركز ← مساحة عمل ← تبويب ← تبويب فرعي.
+function promoteDestinationLeaves(nodes) {
+  const promoted = [];
+  const seenPaths = new Set();
+
+  const visit = (node, lineage = []) => {
+    if (node.children?.length) {
+      node.children.forEach(child => visit(child, [...lineage, node.label]));
+      return;
+    }
+    if (!node.path || seenPaths.has(node.path)) return;
+    seenPaths.add(node.path);
+    promoted.push({
+      ...node,
+      children: undefined,
+      navigationContext: lineage.join(' · '),
+    });
+  };
+
+  nodes.forEach(node => visit(node));
+  return promoted;
+}
+
 export default function NavigationHub({
   open,
   initialSectionId,
@@ -154,14 +179,12 @@ export default function NavigationHub({
   onSignOut,
 }) {
   const [sectionId, setSectionId] = useState(null);
-  const [trail, setTrail] = useState([]);
   const panelRef = useRef(null);
   const closeRef = useRef(null);
 
   useEffect(() => {
     if (!open) return undefined;
     setSectionId(initialSectionId || null);
-    setTrail([]);
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     requestAnimationFrame(() => closeRef.current?.focus());
@@ -173,37 +196,41 @@ export default function NavigationHub({
     .filter(Boolean)
     .map(section => ({
       ...section,
-      destinations: sectionDestinations(section.id, workspaces, navItems, {
-        canOpenSubTab, currentPath, currentSearch,
-      }),
+      destinations: promoteDestinationLeaves(
+        sectionDestinations(section.id, workspaces, navItems, {
+          canOpenSubTab, currentPath, currentSearch,
+        }),
+      ),
     }))
     .filter(section => section.destinations.length > 0), [
       sections, workspaces, navItems, canOpenSubTab, currentPath, currentSearch,
     ]);
 
   const activeSection = orderedSections.find(section => section.id === sectionId) || null;
-  const activeNode = trail.at(-1) || null;
-  const destinations = activeNode?.children || activeSection?.destinations || [];
-  const heading = activeNode?.label || activeSection?.label;
 
   if (!open) return null;
 
   const activate = (node) => {
-    if (node.children?.length) {
-      setTrail(previous => [...previous, node]);
-      return;
-    }
     onNavigate(node.path);
     onClose();
   };
 
-  const goBack = () => {
-    if (trail.length) {
-      setTrail(previous => previous.slice(0, -1));
-      return;
-    }
-    setSectionId(null);
-  };
+  const goBack = () => setSectionId(null);
+
+  const renderDestinations = (section, destinations = section.destinations) => (
+    <div className="navigation-hub__destinations" aria-label={`أقسام ${section.label}`}>
+      {destinations.map(destination => {
+        const Icon = destination.icon || section.icon;
+        return (
+          <button type="button" key={destination.id} className="navigation-hub__destination" onClick={() => activate(destination)}>
+            <span className="navigation-hub__destination-icon"><Icon size={25}/></span>
+            <strong>{destination.label}</strong>
+            <small>{destination.description || destination.navigationContext || 'فتح القسم'}</small>
+          </button>
+        );
+      })}
+    </div>
+  );
 
   const handleKeyDown = (event) => {
     if (event.key === 'Escape') {
@@ -269,70 +296,63 @@ export default function NavigationHub({
                 <activeSection.icon size={25}/>
               </span>
               <span>
-                <h2 id="navigation-hub-title">{heading}</h2>
-                <p>{activeNode ? activeSection.label : 'اختر القسم الذي تريد فتحه'}</p>
+                <h2 id="navigation-hub-title">{activeSection.label}</h2>
+                <p>كل الأقسام المتاحة مباشرة، دون مستويات إضافية</p>
               </span>
-              <button type="button" className="navigation-hub__back" onClick={goBack} aria-label={trail.length ? 'المستوى السابق' : 'كل المراكز'}>
-                <ArrowRight size={17}/><span>{trail.length ? 'رجوع' : 'كل المراكز'}</span>
+              <button type="button" className="navigation-hub__back" onClick={goBack} aria-label="كل أقسام النظام">
+                <ArrowRight size={17}/><span>كل الأقسام</span>
               </button>
             </div>
 
-            {trail.length ? (
-              <div className="navigation-hub__trail" aria-label="مسار الأقسام">
-                <span>{activeSection.label}</span>{trail.map(node => <span key={node.id}>{node.label}</span>)}
-              </div>
-            ) : (
-              <button type="button" className="navigation-hub__quick-action" onClick={() => { onClose(); onQuickAction(); }}>
-                <Plus size={20}/><span>إجراء جديد</span>
-              </button>
-            )}
+            <button type="button" className="navigation-hub__quick-action" onClick={() => { onClose(); onQuickAction(); }}>
+              <Plus size={20}/><span>إجراء جديد</span>
+            </button>
 
-            <div className="navigation-hub__destinations" aria-label={`أقسام ${heading}`}>
-              {destinations.map(destination => {
-                const Icon = destination.icon || activeSection.icon;
-                return (
-                  <button type="button" key={destination.id} className="navigation-hub__destination" onClick={() => activate(destination)}>
-                    <span className="navigation-hub__destination-icon"><Icon size={25}/></span>
-                    <strong>{destination.label}</strong>
-                    <small>{destination.description || (destination.children?.length ? `${destination.children.length} أقسام` : 'فتح القسم')}</small>
-                    {destination.children?.length ? <ChevronLeft className="navigation-hub__destination-arrow" size={18} aria-hidden="true"/> : null}
-                  </button>
-                );
-              })}
-            </div>
+            {renderDestinations(activeSection)}
           </>
         ) : (
           <>
             <div className="navigation-hub__title-row">
               <span>
-                <h2 id="navigation-hub-title">أين تريد أن تذهب؟</h2>
-                <p>اختر المركز، ثم القسم المطلوب</p>
+                <h2 id="navigation-hub-title">كل أقسام النظام</h2>
+                <p>افتح وجهتك مباشرة؛ المراكز عناوين تنظيمية فقط</p>
               </span>
               <button type="button" className="navigation-hub__quick-action navigation-hub__quick-action--compact" onClick={() => { onClose(); onQuickAction(); }}>
                 <Plus size={18}/><span>إجراء جديد</span>
               </button>
             </div>
 
-            <div className="navigation-hub__centers" aria-label="مراكز النظام">
+            <div className="navigation-hub__catalog" aria-label="أقسام النظام">
               {canOpenHome ? (
-                <button type="button" className={`navigation-hub__center${!currentSectionId ? ' is-active' : ''}`} onClick={() => activate({ path: '/overview' })}>
-                  <span className="navigation-hub__center-icon"><LayoutDashboard size={25}/></span>
-                  <strong>الرئيسية</strong>
-                </button>
+                <section className="navigation-hub__group">
+                  <div className="navigation-hub__group-heading">
+                    <span className="navigation-hub__group-icon"><LayoutDashboard size={19}/></span>
+                    <strong>الرئيسية</strong>
+                  </div>
+                  <div className="navigation-hub__destinations">
+                    <button type="button" className="navigation-hub__destination" onClick={() => activate({ path: '/overview' })}>
+                      <span className="navigation-hub__destination-icon"><LayoutDashboard size={25}/></span>
+                      <strong>لوحة العمل</strong>
+                      <small>القرارات والمؤشرات ومصادر البيانات</small>
+                    </button>
+                  </div>
+                </section>
               ) : null}
               {orderedSections.map(section => {
                 const Icon = section.icon;
                 return (
-                  <button
-                    type="button"
+                  <section
                     key={section.id}
-                    className={`navigation-hub__center${currentSectionId === section.id ? ' is-active' : ''}`}
+                    className={`navigation-hub__group${currentSectionId === section.id ? ' is-active' : ''}`}
                     style={{ '--section-accent': section.accent }}
-                    onClick={() => { setSectionId(section.id); setTrail([]); }}
                   >
-                    <span className="navigation-hub__center-icon"><Icon size={25}/></span>
-                    <strong>{section.label}</strong>
-                  </button>
+                    <div className="navigation-hub__group-heading">
+                      <span className="navigation-hub__group-icon"><Icon size={19}/></span>
+                      <strong>{section.label}</strong>
+                      <small>{section.destinations.length} وجهة</small>
+                    </div>
+                    {renderDestinations(section)}
+                  </section>
                 );
               })}
             </div>

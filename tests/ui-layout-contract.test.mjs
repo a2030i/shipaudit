@@ -98,16 +98,16 @@ test('permissions modal has one scroll region and a persistent action bar', asyn
   assert.match(css, /\.permission-modal-footer\s*\{[\s\S]*position:\s*sticky/);
 });
 
-test('visual system keeps one two-level navigation hub and no rendered sidebar', async () => {
+test('visual system keeps one direct navigation catalog and no rendered sidebar', async () => {
   const app = await read('src/App.jsx');
   const css = await read('src/navigation-hub.css');
 
   assert.match(app, /<NavigationHub/);
   assert.doesNotMatch(app, /<aside className=\{`sidebar/);
   assert.doesNotMatch(app, /<CenterLanding/);
-  assert.match(css, /\.navigation-hub__centers\s*\{[\s\S]*repeat\(4,/);
+  assert.match(css, /\.navigation-hub__catalog\s*\{/);
+  assert.match(css, /\.navigation-hub__group\s*\{[\s\S]*content-visibility:\s*auto/);
   assert.match(css, /\.navigation-hub__destinations\s*\{[\s\S]*repeat\(2,/);
-  assert.match(css, /@media \(max-width: 768px\)[\s\S]*\.navigation-hub__centers\s*\{[\s\S]*repeat\(3,/);
   assert.match(css, /\.app-layout,[\s\S]*display:\s*block\s*!important/);
 });
 
@@ -316,7 +316,7 @@ test.skip('legacy four-center navigation contract', async () => {
   assert.doesNotMatch(whatsappRouteBlock, /tabId: 'settings'/);
 });
 
-test('stable work areas use one seven-entry modal hub and permission-aware second level', async () => {
+test('stable work areas use one permission-aware direct catalog', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');
   const hub = await read('src/components/NavigationHub.jsx');
@@ -342,8 +342,8 @@ test('stable work areas use one seven-entry modal hub and permission-aware secon
   assert.match(app, /firstSectionDestination/);
   assert.match(hub, /CENTER_ORDER = \['customers', 'sales', 'finance', 'shipping', 'reports', 'settings'\]/);
   assert.match(hub, /sectionDestinations/);
-  assert.match(hub, /setSectionId\(section\.id\)/);
-  assert.match(hub, /'كل المراكز'/);
+  assert.match(hub, /promoteDestinationLeaves/);
+  assert.match(hub, /كل أقسام النظام/);
   assert.match(navigation, /decisions:\s*\{[^}]*visible: false/);
   assert.doesNotMatch(shell, /--sa-context-rail/);
   assert.doesNotMatch(shell, /grid-template-areas:\s*"main context primary"/);
@@ -372,10 +372,10 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.match(navigation, /label: 'النقد والتسويات'/);
   assert.match(navigation, /id: 'cash-settlements'[\s\S]*memberIds: \['money'\]/);
   assert.match(hub, /sectionDestinations/);
-  assert.match(hub, /اختر المركز، ثم القسم المطلوب/);
+  assert.match(hub, /افتح وجهتك مباشرة/);
   assert.doesNotMatch(hub, /طريقة العرض/);
-  assert.match(hub, /const \[trail, setTrail\]/);
-  assert.match(hub, /destination\.children\?\.length/);
+  assert.doesNotMatch(hub, /const \[trail, setTrail\]/);
+  assert.doesNotMatch(hub, /destination\.children\?\.length/);
   assert.match(hub, /ملف المتجر الحالي/);
   assert.match(hub, /ملف شركة الشحن الحالية/);
 
@@ -404,14 +404,15 @@ test('approved workspaces live in the navigation hub without removing legacy rou
   assert.doesNotMatch(app, /label: 'التحصيل',\s+icon: HandCoins/);
 });
 
-test('navigation hub exposes centers first and destinations second on every viewport', async () => {
+test('navigation hub exposes direct destinations grouped by center on every viewport', async () => {
   const component = await read('src/components/NavigationHub.jsx');
   const css = await read('src/navigation-hub.css');
 
-  assert.match(component, /navigation-hub__centers/);
+  assert.match(component, /navigation-hub__catalog/);
+  assert.match(component, /navigation-hub__group/);
   assert.match(component, /navigation-hub__destinations/);
   assert.match(component, /activeSection \?/);
-  assert.match(css, /\.navigation-hub__centers\s*\{/);
+  assert.match(css, /\.navigation-hub__catalog\s*\{/);
   assert.match(css, /\.navigation-hub__destinations\s*\{/);
   assert.doesNotMatch(component, /<select/);
 });

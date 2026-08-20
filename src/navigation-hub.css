@@ -121,13 +121,6 @@
 
 .navigation-hub__quick-action--compact { width: auto; min-width: 148px; margin: 0; }
 
-.navigation-hub__centers {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 11px;
-}
-
-.navigation-hub__center,
 .navigation-hub__destination {
   position: relative;
   min-width: 0;
@@ -142,15 +135,6 @@
   transition: transform .15s ease, border-color .15s ease, background .15s ease, box-shadow .15s ease;
 }
 
-.navigation-hub__center {
-  min-height: 116px;
-  gap: 10px;
-  padding: 14px 9px;
-  border-radius: 17px;
-}
-
-.navigation-hub__center:hover,
-.navigation-hub__center:focus-visible,
 .navigation-hub__destination:hover,
 .navigation-hub__destination:focus-visible {
   transform: translateY(-1px);
@@ -160,15 +144,9 @@
   box-shadow: 0 8px 22px rgba(16, 24, 40, .07);
 }
 
-.navigation-hub__center.is-active {
-  color: var(--sa-brand, #2768ee);
-  background: var(--sa-brand-soft, #edf3ff);
-  border-color: color-mix(in srgb, var(--sa-brand, #2768ee) 32%, var(--sa-line, #e4e7ec));
-}
-
-.navigation-hub__center-icon,
 .navigation-hub__destination-icon,
-.navigation-hub__section-icon {
+.navigation-hub__section-icon,
+.navigation-hub__group-icon {
   display: grid;
   place-items: center;
   color: var(--section-accent, var(--sa-brand, #2768ee));
@@ -177,36 +155,33 @@
   border-radius: 14px;
 }
 
-.navigation-hub__center-icon { width: 48px; height: 48px; }
-.navigation-hub__center strong { font-size: 13px; font-weight: 850; }
-
 .navigation-hub__section-heading { margin: 20px 0 2px; }
 .navigation-hub__section-icon { width: 54px; height: 54px; flex: 0 0 54px; }
 .navigation-hub__section-heading > span:nth-child(2) { min-width: 0; flex: 1; }
 .navigation-hub__back { padding: 0 13px; }
 
-.navigation-hub__trail {
+
+.navigation-hub__catalog {
+  display: grid;
+  gap: 22px;
+}
+
+.navigation-hub__group {
+  content-visibility: auto;
+  contain-intrinsic-size: 340px;
+}
+
+.navigation-hub__group-heading {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin: 10px 0 14px;
-  overflow: hidden;
-  color: var(--sa-muted, #667085);
-  font-size: 10.5px;
-  white-space: nowrap;
+  gap: 9px;
+  margin: 0 0 10px;
+  color: var(--sa-ink, #101828);
 }
 
-.navigation-hub__trail span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.navigation-hub__trail span + span::before {
-  content: '‹';
-  margin-inline-end: 6px;
-  color: var(--sa-line-strong, #d0d5dd);
-}
+.navigation-hub__group-heading strong { font-size: 15px; font-weight: 900; }
+.navigation-hub__group-heading small { margin-inline-start: auto; color: var(--sa-muted, #667085); font-size: 10.5px; }
+.navigation-hub__group-icon { width: 36px; height: 36px; flex: 0 0 36px; border-radius: 11px; }
 
 .navigation-hub__destinations {
   display: grid;
@@ -226,14 +201,6 @@
 .navigation-hub__destination-icon { width: 52px; height: 52px; }
 .navigation-hub__destination strong { font-size: 15px; font-weight: 880; }
 .navigation-hub__destination small { max-width: 30ch; color: var(--sa-muted, #667085); font-size: 11px; line-height: 1.55; }
-.navigation-hub__destination-arrow {
-  position: absolute;
-  inset-inline-end: 13px;
-  top: 50%;
-  color: var(--sa-muted, #667085);
-  transform: translateY(-50%);
-}
-
 @keyframes navigation-hub-fade { from { opacity: 0; } }
 @keyframes navigation-hub-rise { from { opacity: .7; transform: translateY(24px); } }
 
@@ -267,14 +234,12 @@
   .navigation-hub__title-row { margin: 17px 0 14px; }
   .navigation-hub h2 { font-size: 20px; }
   .navigation-hub__title-row .navigation-hub__quick-action--compact { min-width: 132px; min-height: 44px; padding: 0 12px; font-size: 12px; }
-  .navigation-hub__centers { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
-  .navigation-hub__center { min-height: 96px; gap: 7px; padding: 10px 6px; border-radius: 15px; }
-  .navigation-hub__center-icon { width: 43px; height: 43px; }
-  .navigation-hub__center strong { font-size: 12px; }
   .navigation-hub__section-heading { margin-top: 16px; }
   .navigation-hub__section-icon { width: 48px; height: 48px; flex-basis: 48px; }
   .navigation-hub__back { min-width: 44px; padding: 0 10px; }
   .navigation-hub__quick-action { min-height: 46px; margin: 13px 0; }
+  .navigation-hub__catalog { gap: 19px; }
+  .navigation-hub__group-heading { margin-bottom: 8px; }
   .navigation-hub__destinations { gap: 8px; }
   .navigation-hub__destination { min-height: 132px; padding: 13px 10px; border-radius: 15px; }
   .navigation-hub__destination-icon { width: 46px; height: 46px; }
