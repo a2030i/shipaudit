@@ -1,5 +1,6 @@
 // lamha-sync v0 (ping) — فحص قراءة-فقط لواجهة لمحة الداخلية.
 import { createClient } from 'npm:@supabase/supabase-js@2';
+import { waitForLamhaApiSlot } from '../_shared/lamhaRateLimit.ts';
 
 const svc = () => createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 const BASE = 'https://app.lamha.sa/api/v2';
@@ -25,6 +26,7 @@ Deno.serve(async (req) => {
   else if (style === 'apikey') headers['api-key'] = token;
 
   try {
+    await waitForLamhaApiSlot(db, `lamha-sync:${style}`);
     const r = await fetch(`${BASE}${path}`, { headers });
     const text = await r.text();
     let parsed: any = null;

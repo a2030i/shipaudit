@@ -9,6 +9,12 @@ const servicePath = new URL('../src/lib/store360Service.js', import.meta.url);
 const customerWatchPath = new URL('../src/pages/CustomerWatch.jsx', import.meta.url);
 const collectionsPath = new URL('../src/pages/Collections.jsx', import.meta.url);
 const customerMoneyPath = new URL('../src/pages/CustomerMoney.jsx', import.meta.url);
+const lamhaStatusServicePath = new URL('../src/lib/lamhaStoreStatusService.js', import.meta.url);
+const lamhaStatusFunctionPath = new URL('../supabase/functions/lamha-store-status/index.ts', import.meta.url);
+const lamhaSyncFunctionPath = new URL('../supabase/functions/lamha-sync/index.ts', import.meta.url);
+const lamhaRateLimitPath = new URL('../supabase/functions/_shared/lamhaRateLimit.ts', import.meta.url);
+const lamhaRateLimitMigrationPath = new URL('../supabase/migrations/20260820083409_lamha_global_rate_limit.sql', import.meta.url);
+const supabaseConfigPath = new URL('../supabase/config.toml', import.meta.url);
 
 test('unified timeline keeps the experience contract, removes undated rows, and sorts newest first', () => {
   const rows = normalizeStoreTimeline({
@@ -108,6 +114,54 @@ test('action center exposes permission-gated current actions and an unavailable 
   assert.match(source, /const disabled = !onClick/);
   assert.match(source, /disabled && reason/);
   assert.match(source, /تحتاج صلاحية تشغيل IVR/);
+});
+
+test('Lamha store status action is admin-only, exact by Store ID, verified, and audited', async () => {
+  const [page, service, edgeFunction, config] = await Promise.all([
+    readFile(pagePath, 'utf8'),
+    readFile(lamhaStatusServicePath, 'utf8'),
+    readFile(lamhaStatusFunctionPath, 'utf8'),
+    readFile(supabaseConfigPath, 'utf8'),
+  ]);
+
+  assert.match(page, /isAdmin/);
+  assert.match(page, /store\.storeId/);
+  assert.match(page, /إيقاف حساب لمحة/);
+  assert.match(page, /تشغيل حساب لمحة/);
+  assert.match(page, /هذا الإجراء متاح للمدير فقط/);
+  assert.doesNotMatch(service, /phone|storeName|customer_name/);
+  assert.match(service, /Number\.isSafeInteger\(id\)/);
+  assert.match(service, /supabase\.functions\.invoke\('lamha-store-status'/);
+
+  assert.match(edgeFunction, /profile\?\.role === 'admin'/);
+  assert.match(edgeFunction, /Number\.isSafeInteger\(storeId\)/);
+  assert.match(edgeFunction, /Authorization: `Bearer \$\{employeeToken\}`/);
+  assert.match(edgeFunction, /const before = await lamhaRequest/);
+  assert.match(edgeFunction, /const after = await lamhaRequest/);
+  assert.match(edgeFunction, /after\.store\.id !== storeId \|\| after\.store\.status !== desiredStatus/);
+  assert.match(edgeFunction, /user_activity_log/);
+  assert.match(config, /\[functions\.lamha-store-status\]\s+verify_jwt = true/);
+});
+
+test('every outbound Lamha function claims the same server-side 30/minute budget', async () => {
+  const [statusFunction, syncFunction, limiter, migration] = await Promise.all([
+    readFile(lamhaStatusFunctionPath, 'utf8'),
+    readFile(lamhaSyncFunctionPath, 'utf8'),
+    readFile(lamhaRateLimitPath, 'utf8'),
+    readFile(lamhaRateLimitMigrationPath, 'utf8'),
+  ]);
+
+  assert.match(statusFunction, /waitForLamhaApiSlot\(admin,/);
+  assert.match(syncFunction, /waitForLamhaApiSlot\(db,/);
+  assert.match(limiter, /claim_lamha_api_request/);
+  assert.match(limiter, /lamha_rate_limit_wait_timeout/);
+  assert.match(migration, /create table if not exists private\.lamha_api_rate_limit_state/);
+  assert.match(migration, /for update/);
+  assert.match(migration, /interval '2100 milliseconds'/);
+  assert.match(migration, /'limit_per_minute', 30/);
+  assert.match(migration, /coalesce\(auth\.role\(\), ''\) <> 'service_role'/);
+  assert.match(migration, /revoke all on function public\.claim_lamha_api_request\(text\) from public, anon, authenticated/);
+  assert.match(migration, /grant execute on function public\.claim_lamha_api_request\(text\) to service_role/);
 });
 
 test('collection task drawer opens Store 360 with exact store when available and preserves return context', async () => {

@@ -167,6 +167,9 @@ verify_jwt = false
 [functions.lamha-sync]
 verify_jwt = false
 
+[functions.lamha-store-status]
+verify_jwt = true
+
 [functions.manage-users]
 verify_jwt = true
 

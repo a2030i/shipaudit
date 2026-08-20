@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BadgeDollarSign, Building2, CalendarClock, ChevronLeft, CircleDollarSign,
   ExternalLink, HandCoins, ListChecks, MessageCircle, PackageSearch, PhoneCall,
-  ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards, X,
+  Power, PowerOff, ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards, X,
 } from 'lucide-react';
 import { Btn, Card, Empty, Modal, Spinner, toast } from '../components/UI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
@@ -15,6 +15,7 @@ import {
   loadStore360Communications, loadStore360Timeline, loadStore360Work,
 } from '../lib/store360Service.js';
 import { STORE_TIMELINE_FILTERS } from '../lib/store360Timeline.js';
+import { loadLamhaStoreStatus, updateLamhaStoreStatus } from '../lib/lamhaStoreStatusService.js';
 import './store-360.css';
 
 const WhatsAppSendModal = lazy(() => import('../components/WhatsAppSendModal.jsx'));
@@ -175,10 +176,27 @@ function PromiseModal({ task, contextAmount = null, contextLabel = '', currentBa
   </Modal>;
 }
 
-function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork }) {
+function StoreStatusConfirmModal({ store, currentStatus, busy, onClose, onConfirm }) {
+  const activating = currentStatus === 'inactive';
+  return <Modal title={`${activating ? 'تشغيل' : 'إيقاف'} حساب لمحة`} onClose={busy ? undefined : onClose} width={460}>
+    <div className="s360-status-confirm">
+      <div className={`s360-status-confirm__icon ${activating ? 'is-active' : 'is-danger'}`}>{activating ? <Power size={24}/> : <PowerOff size={24}/>}</div>
+      <div><b>{store.storeName}</b><span>Store ID: {store.storeId}</span></div>
+      <p>{activating
+        ? 'سيُعاد تشغيل حساب المتجر في لمحة فورًا. سيتم التحقق من الحالة بعد التنفيذ.'
+        : 'سيُوقف حساب المتجر في لمحة فورًا ولن يتمكن من متابعة العمليات الجديدة حتى إعادة تشغيله.'}</p>
+      <div className="s360-status-confirm__state"><span>الحالة الحالية</span><strong>{currentStatus === 'active' ? 'نشط' : 'موقوف'}</strong></div>
+      <div className="s360-form-actions"><Btn variant="ghost" onClick={onClose} disabled={busy}>إلغاء</Btn><Btn variant={activating ? 'accent' : 'danger'} onClick={onConfirm} disabled={busy}>{busy ? 'جارٍ التحقق…' : activating ? 'تشغيل الحساب' : 'إيقاف الحساب'}</Btn></div>
+    </div>
+  </Modal>;
+}
+
+function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onReloadWork }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [waOpen, setWaOpen] = useState(false);
+  const [lamhaStatus, setLamhaStatus] = useState({ state: 'idle', value: null, error: null });
+  const [statusBusy, setStatusBusy] = useState(false);
   const store = core.store;
   const task = work?.activeTask;
   const salesAllowed = can('sales.manage');
@@ -189,6 +207,34 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
   const agingKeys = (contextParams.get('aging') || '').split(',').filter(Boolean);
   const agingAmount = selectedAgingAmount(core.financial, agingKeys);
   const agingLabel = agingKeys.map(key => AGING_LABELS[key]).filter(Boolean).join(' + ');
+  const validStoreId = Number.isSafeInteger(Number(store.storeId)) && Number(store.storeId) > 0;
+  useEffect(() => {
+    let cancelled = false;
+    if (!isAdmin || !validStoreId) return undefined;
+    setLamhaStatus({ state: 'loading', value: null, error: null });
+    loadLamhaStoreStatus(store.storeId)
+      .then(result => { if (!cancelled) setLamhaStatus({ state: 'available', value: result.store?.status || null, error: null }); })
+      .catch(error => { if (!cancelled) setLamhaStatus({ state: 'error', value: null, error: error.message }); });
+    return () => { cancelled = true; };
+  }, [isAdmin, store.storeId, validStoreId]);
+
+  const runStoreStatusAction = async () => {
+    const activate = lamhaStatus.value === 'inactive';
+    setStatusBusy(true);
+    try {
+      const result = await updateLamhaStoreStatus(store.storeId, activate);
+      setLamhaStatus({ state: 'available', value: result.store?.status || (activate ? 'active' : 'inactive'), error: null });
+      setModal(null);
+      toast(activate ? 'تم تشغيل حساب المتجر في لمحة' : 'تم إيقاف حساب المتجر في لمحة', 'success');
+    } catch (error) {
+      toast(`تعذر تحديث حساب لمحة: ${error.message}`, 'error');
+    } finally { setStatusBusy(false); }
+  };
+  const statusReason = !isAdmin ? 'هذا الإجراء متاح للمدير فقط'
+    : !validStoreId ? 'لا يوجد Store ID صالح'
+      : lamhaStatus.state === 'loading' ? 'جارٍ قراءة الحالة الحية من لمحة'
+        : lamhaStatus.state === 'error' ? `تعذر قراءة الحالة: ${lamhaStatus.error}`
+          : !['active', 'inactive'].includes(lamhaStatus.value) ? 'حالة الحساب غير معروفة' : null;
   const actions = [
     { icon: Target, label: 'تسجيل نتيجة مبيعات', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
     { icon: CalendarClock, label: 'جدولة متابعة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('followup') : null },
@@ -199,6 +245,7 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
     { icon: Truck, label: 'فتح الشحنات', onClick: () => changeView('shipments') },
     { icon: CircleDollarSign, label: 'التفاصيل المالية', onClick: () => changeView('finance') },
     { icon: Send, label: 'إضافة إلى حملة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? () => setWaOpen(true) : null },
+    { icon: lamhaStatus.value === 'inactive' ? Power : PowerOff, label: lamhaStatus.value === 'inactive' ? 'تشغيل حساب لمحة' : 'إيقاف حساب لمحة', reason: statusReason, onClick: !statusReason ? () => setModal('store-status') : null },
   ];
   return <>
     <Card className="s360-action-center">
@@ -219,6 +266,7 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
     </div></div> : null}
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.outstanding} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
+    {modal === 'store-status' ? <StoreStatusConfirmModal store={store} currentStatus={lamhaStatus.value} busy={statusBusy} onClose={() => setModal(null)} onConfirm={runStoreStatusAction}/> : null}
     {waOpen ? <Suspense fallback={null}><WhatsAppSendModal open recipients={[{ to: store.phone, name: store.storeName, amount: core.financial?.outstanding || 0, vars: [store.storeName, MONEY(core.financial?.outstanding)] }]} bucketLabel={`متجر 360 · ${store.storeName}`} onClose={() => setWaOpen(false)} onSent={() => setWaOpen(false)}/></Suspense> : null}
   </>;
 }
@@ -398,7 +446,7 @@ function TimelineView({ data }) {
 export default function Store360Page({ identity }) {
   const location = useLocation();
   const navigate = useNavigate();
-  const { can } = useAuth();
+  const { can, isAdmin } = useAuth();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const agingBuckets = useMemo(() => (params.get('aging') || '').split(',').filter(Boolean), [params]);
   const requestedView = params.get('view') === 'support' ? 'communications' : params.get('view');
@@ -487,7 +535,7 @@ export default function Store360Page({ identity }) {
       <div className="s360-meta-chips"><span>{store.status || 'حالة غير متاحة'}</span><span>{store.billingType || 'نوع الفوترة غير متاح'}</span><span>{store.integrationType || 'التكامل غير متاح'}</span><span>{workLoading ? 'المسؤول…' : work?.owner || 'بلا مسؤول'}</span></div>
     </header>
 
-    <ActionCenter core={core} work={work} can={can} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork}/>
+    <ActionCenter core={core} work={work} can={can} isAdmin={isAdmin} changeView={changeView} currentUrl={currentUrl} onReloadWork={loadWork}/>
 
     <div className="s360-kpi-row">
       <KpiCard label="المستحق" value={finance ? `${MONEY(finance.outstanding)} ر.س` : financeMissingLabel} detail={financeDocumentDetail} source={core.sources.finance} tone="danger" onClick={() => changeView('finance')}/>
