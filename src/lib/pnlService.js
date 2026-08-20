@@ -347,12 +347,50 @@ export async function loadZohoOverdueCampaign() {
 
 // «تحصيل العملاء» — مصدر الحقيقة الواحد لشاشة التحصيل (RPC واحد):
 // مستحق/متأخر/أعمار/تحصيل شهري + عملاء بهواتفهم وآخر دفعة.
+async function loadZohoInvoiceBalanceBreakdown() {
+  const rows = [];
+  const pageSize = 1000;
+  for (let page = 0; ; page += 1) {
+    const from = page * pageSize;
+    const { data, error } = await supabase.from('zoho_invoices')
+      .select('status,balance')
+      .gt('balance', 0.005)
+      .order('zoho_id', { ascending: true })
+      .range(from, from + pageSize - 1);
+    if (error) throw error;
+    rows.push(...(data || []));
+    if (!data?.length || data.length < pageSize) break;
+  }
+
+  const ignoredStatuses = new Set(['paid', 'void', 'cancelled', 'canceled']);
+  let unpaid = 0;
+  let draft = 0;
+  let draftCount = 0;
+  for (const row of rows) {
+    const status = String(row.status || '').trim().toLowerCase();
+    const balance = Math.max(Number(row.balance) || 0, 0);
+    if (status === 'draft') {
+      draft += balance;
+      draftCount += 1;
+    } else if (!ignoredStatuses.has(status)) {
+      unpaid += balance;
+    }
+  }
+  return {
+    available: true,
+    unpaid: Number(unpaid.toFixed(2)),
+    draft: Number(draft.toFixed(2)),
+    draftCount,
+  };
+}
+
 export async function loadCustomerMoneyDashboard() {
   const [
     { data, error },
     { data: campaignData, error: campaignError },
     { data: integrityRows, error: integrityError },
     { data: zohoMatchedRows, error: zohoMatchedError },
+    invoiceBalanceBreakdown,
   ] = await Promise.all([
     supabase.rpc('customer_money_dashboard'),
     supabase.rpc('customer_collection_campaign_buckets'),
@@ -361,6 +399,9 @@ export async function loadCustomerMoneyDashboard() {
     supabase.from('customer_ar')
       .select('invoiced_due, opening_due, balance_residual, balance_sync_gap, unused_credits')
       .or('invoiced_due.gt.0,opening_due.gt.0,balance_sync_gap.gt.0'),
+    loadZohoInvoiceBalanceBreakdown().catch(error => ({
+      available: false, unpaid: null, draft: null, draftCount: null, error: error?.message || 'تعذرت قراءة فواتير زوهو',
+    })),
   ]);
   if (error) throw error;
   if (campaignError) throw campaignError;
@@ -399,8 +440,18 @@ export async function loadCustomerMoneyDashboard() {
     ? null
     : calculateZohoDocumentBackedCreditOffset(zohoMatchedRows || []);
   const collectibleOutstanding = Number(d.outstanding) || 0;
+  const grossOutstanding = Number(d.gross_outstanding) || 0;
+  const zohoUnpaidInvoices = invoiceBalanceBreakdown?.available ? Number(invoiceBalanceBreakdown.unpaid) || 0 : null;
   return {
-    grossOutstanding: Number(d.gross_outstanding) || 0,
+    grossOutstanding,
+    zohoUnpaidInvoices,
+    zohoUnpaidInvoicesAvailable: !!invoiceBalanceBreakdown?.available,
+    zohoUnpaidInvoicesError: invoiceBalanceBreakdown?.error || null,
+    zohoDraftOutstanding: invoiceBalanceBreakdown?.available ? Number(invoiceBalanceBreakdown.draft) || 0 : null,
+    zohoDraftCount: invoiceBalanceBreakdown?.available ? Number(invoiceBalanceBreakdown.draftCount) || 0 : null,
+    zohoOpeningAndAdjustments: zohoUnpaidInvoices == null
+      ? null
+      : Number((grossOutstanding - zohoUnpaidInvoices).toFixed(2)),
     zohoMatchedOutstanding,
     zohoMatchedCreditOffset,
     zohoMatchedSmallBalanceExcluded: zohoMatchedError

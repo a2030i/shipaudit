@@ -21,6 +21,13 @@
 .customer-finance-command__kpis strong { font:800 17px/1.25 var(--font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .customer-finance-command__kpis small { grid-column:1 / -1; margin-top:4px; color:var(--muted2); font-size:9.5px; }
 .customer-finance-command__actions { display:flex; gap:7px; align-items:center; flex-wrap:wrap; margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+.customer-finance-command__drafts { width:100%; margin-top:10px; padding:10px 12px; display:flex; align-items:center; gap:10px; text-align:right; color:var(--text); border:1px solid color-mix(in srgb,var(--gold) 38%,var(--border)); border-radius:12px; background:color-mix(in srgb,var(--gold) 8%,var(--surface)); cursor:pointer; }
+.customer-finance-command__drafts>span { min-width:0; flex:1; display:grid; gap:2px; }
+.customer-finance-command__drafts strong { font-size:11.5px; }
+.customer-finance-command__drafts small { color:var(--muted); font-size:10px; line-height:1.55; }
+.customer-money-equation { margin-top:14px; padding-top:12px; border-top:1px dashed var(--border); display:flex; align-items:center; gap:8px 14px; flex-wrap:wrap; color:var(--muted); font-size:10.5px; }
+.customer-money-equation b { color:var(--text); font-family:var(--font-mono); }
+.customer-money-equation>strong { color:var(--gold); font-family:var(--font-mono); }
 .customer-finance-command__warning { margin-top:10px; padding:9px 11px; border-radius:10px; background:color-mix(in srgb,var(--gold) 10%,transparent); color:var(--gold); font-size:11px; }
 @media (max-width: 980px) { .customer-finance-command__kpis { grid-template-columns:repeat(3,minmax(0,1fr)); } }
 @media (max-width: 600px) {
@@ -34,4 +41,6 @@
   .customer-finance-command__kpis strong { font-size:15px; }
   .customer-finance-command__actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); position:static; padding:10px; margin-inline:-7px; border:1px solid var(--border); border-radius:14px; background:var(--surface); box-shadow:0 6px 18px rgba(15,23,42,.07); }
   .customer-finance-command__actions .ui-btn { width:100%; justify-content:center; min-height:42px; }
+  .customer-finance-command__drafts { min-height:54px; }
+  .customer-money-equation { display:grid; gap:7px; }
 }

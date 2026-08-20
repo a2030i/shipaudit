@@ -18,7 +18,7 @@ import * as XLSX from 'xlsx';
 import {
   Upload, RefreshCw, Download, Search, Users, ShoppingBag,
   CheckCircle2, AlertTriangle, Wallet, TrendingUp, ZapOff,
-  Link as LinkIcon, X, Phone,
+  Link as LinkIcon, X, Phone, ShieldCheck,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, Modal, toast, PageHeader, DropZone } from '../components/UI.jsx';
 import { useAuth } from '../lib/auth.jsx';
@@ -30,6 +30,7 @@ import {
 } from '../lib/merchantsService.js';
 import { SalesMobileBadge, SalesMobileCard, SalesMobileList } from '../components/SalesMobileCard.jsx';
 import useMobileLayout from '../lib/useMobileLayout.js';
+import LamhaStoreOperations from '../components/LamhaStoreOperations.jsx';
 
 const fmt = (n) =>
   (n == null || Number.isNaN(n)) ? '—'
@@ -304,7 +305,7 @@ function Row({ label, value, accent }) {
 
 // ── Main ───────────────────────────────────────────────────────
 export default function Merchants({ isActive = true }) {
-  const { user, can } = useAuth();
+  const { user, profile, can } = useAuth();
   const isMobile = useMobileLayout();
   const location = useLocation();
   const navigate = useNavigate();
@@ -321,6 +322,13 @@ export default function Merchants({ isActive = true }) {
   const [autoLinking, setAutoLinking] = useState(false);
   const [showUnmatched, setShowUnmatched] = useState(false);
   const [unmatchedCount, setUnmatchedCount] = useState(null);
+  const showLamhaOperations = new URLSearchParams(location.search).get('mode') === 'lamha-status';
+  const setShowLamhaOperations = useCallback((open) => {
+    const params = new URLSearchParams(location.search);
+    if (open) params.set('mode', 'lamha-status');
+    else params.delete('mode');
+    navigate({ pathname: location.pathname, search: params.toString() ? `?${params.toString()}` : '' });
+  }, [location.pathname, location.search, navigate]);
 
   const refreshUnmatchedCount = useCallback(async () => {
     try {
@@ -451,6 +459,10 @@ export default function Merchants({ isActive = true }) {
     return <div style={{ padding: 40 }}><Empty icon="🔒" title="لا صلاحية" sub="تحتاج صلاحية «عرض دليل المتاجر»"/></div>;
   }
 
+  if (showLamhaOperations && profile?.role === 'admin') {
+    return <LamhaStoreOperations merchants={data.merchants} onClose={() => setShowLamhaOperations(false)}/>;
+  }
+
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
       <PageHeader
@@ -463,6 +475,11 @@ export default function Merchants({ isActive = true }) {
         ].filter(Boolean).join('  —  ') || null}
         actions={
           <>
+            {profile?.role === 'admin' && data.merchants.length > 0 && (
+              <Btn size="md" variant="accent" icon={<ShieldCheck size={14}/>} onClick={() => setShowLamhaOperations(true)}>
+                حالة لمحة الحية
+              </Btn>
+            )}
             {data.merchants.length > 0 && (
               <Btn size="md" variant="ghost" icon={<LinkIcon size={14}/>} onClick={handleAutoLink} disabled={autoLinking}>
                 {autoLinking ? 'جارٍ الربط…' : 'ربط تلقائي'}
