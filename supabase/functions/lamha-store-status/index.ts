@@ -64,12 +64,47 @@ function parseOperationalActive(value: unknown): boolean | null {
   return null;
 }
 
+function nestedRecords(value: unknown, maxDepth = 5) {
+  const records: Record<string, unknown>[] = [];
+  const queue: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
+  const seen = new Set<object>();
+  while (queue.length) {
+    const current = queue.shift()!;
+    if (!current.value || typeof current.value !== 'object' || seen.has(current.value as object)) continue;
+    seen.add(current.value as object);
+    if (Array.isArray(current.value)) {
+      if (current.depth < maxDepth) current.value.forEach(item => queue.push({ value: item, depth: current.depth + 1 }));
+      continue;
+    }
+    const record = current.value as Record<string, unknown>;
+    records.push(record);
+    if (current.depth < maxDepth) {
+      Object.values(record).forEach(item => {
+        if (item && typeof item === 'object') queue.push({ value: item, depth: current.depth + 1 });
+      });
+    }
+  }
+  return records;
+}
+
+const recordStoreId = (record: Record<string, unknown>) =>
+  Number(record.id ?? record.store_id ?? record.storeId ?? record.business_id ?? record.businessId) || null;
+
+const hasOperationalField = (record: Record<string, unknown>) =>
+  ['is_active', 'isActive', 'account_active', 'accountActive'].some(key => Object.hasOwn(record, key));
+
 // Lamha exposes two different facts. is_active controls shipment creation;
 // status is a visual lifecycle/activity label such as idle or stopped. Never
 // derive the operational switch from the visual label.
-export function storeSummary(payload: unknown) {
-  const root = asRecord(payload);
-  const candidate = asRecord(root.data && typeof root.data === 'object' ? root.data : root);
+export function storeSummary(payload: unknown, expectedStoreId: number | null = null) {
+  const records = nestedRecords(payload);
+  const identity = records.find(record => expectedStoreId != null && recordStoreId(record) === expectedStoreId)
+    || records.find(record => recordStoreId(record) != null)
+    || asRecord(payload);
+  const operational = records.find(record => expectedStoreId != null && recordStoreId(record) === expectedStoreId && hasOperationalField(record))
+    || records.find(hasOperationalField)
+    || identity;
+  const candidate = { ...identity, ...operational };
   const visual = asRecord(candidate.status);
   const canCreateShipments = parseOperationalActive(
     candidate.is_active ?? candidate.isActive ?? candidate.account_active ?? candidate.accountActive,
@@ -81,7 +116,7 @@ export function storeSummary(payload: unknown) {
     visual.label ?? candidate.status_label ?? candidate.lifecycle_status_label ?? visualStatus ?? '',
   ).trim() || null;
   return {
-    id: Number(candidate.id ?? candidate.store_id ?? candidate.business_id) || null,
+    id: recordStoreId(identity),
     name: String(candidate.name ?? candidate.store_name ?? candidate.title ?? '') || null,
     status: visualStatus,
     visualStatus,
@@ -110,7 +145,7 @@ async function lamhaRequest(
     signal: AbortSignal.timeout(15_000),
   });
   const payload = await response.json().catch(() => ({}));
-  return { ok: response.ok, http: response.status, store: storeSummary(payload) };
+  return { ok: response.ok, http: response.status, store: storeSummary(payload, storeId) };
 }
 
 type AuthContext = NonNullable<Awaited<ReturnType<typeof requireAdmin>>>;
