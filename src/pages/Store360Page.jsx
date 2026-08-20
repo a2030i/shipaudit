@@ -2,8 +2,8 @@ import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   ArrowRight, BadgeDollarSign, Building2, CalendarClock, ChevronLeft, CircleDollarSign,
-  ExternalLink, HandCoins, LifeBuoy, ListChecks, MessageCircle, PackageSearch, PhoneCall,
-  ReceiptText, Send, ShieldAlert, ShoppingBag, Target, TicketCheck, Truck, WalletCards, X,
+  ExternalLink, HandCoins, ListChecks, MessageCircle, PackageSearch, PhoneCall,
+  ReceiptText, Send, ShieldAlert, ShoppingBag, Target, Truck, WalletCards, X,
 } from 'lucide-react';
 import { Btn, Card, Empty, Modal, Spinner, toast } from '../components/UI.jsx';
 import IvrCallButton from '../components/IvrCallButton.jsx';
@@ -12,18 +12,17 @@ import { recordPlatformSalesActivity } from '../lib/retargetingService.js';
 import { recordPromise } from '../lib/collectionsService.js';
 import {
   loadStore360Core, loadStore360Finance, loadStore360Shipments,
-  loadStore360Support, loadStore360Timeline, loadStore360Work,
+  loadStore360Communications, loadStore360Timeline, loadStore360Work,
 } from '../lib/store360Service.js';
 import { STORE_TIMELINE_FILTERS } from '../lib/store360Timeline.js';
 import './store-360.css';
 
-const TicketCreateForm = lazy(() => import('../components/TicketCreateForm.jsx'));
 const WhatsAppSendModal = lazy(() => import('../components/WhatsAppSendModal.jsx'));
 
 const VIEWS = [
   ['overview', 'نظرة عامة'], ['finance', 'المالية والفواتير'],
   ['work', 'المبيعات والتحصيل'], ['shipments', 'الشحنات والناقلون'],
-  ['support', 'الدعم والتواصل'], ['timeline', 'النشاط الكامل'],
+  ['communications', 'التواصل'], ['timeline', 'النشاط الكامل'],
 ];
 const VIEW_IDS = new Set(VIEWS.map(([id]) => id));
 const OPEN_TASK_STAGES = new Set(['todo', 'contacted', 'promised', 'snoozed']);
@@ -184,7 +183,6 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
   const task = work?.activeTask;
   const salesAllowed = can('sales.manage');
   const promiseAllowed = can('collections.record_promise');
-  const supportAllowed = can('support.create');
   const campaignAllowed = can('campaigns.send');
   const ivrAllowed = can('campaigns.ivr');
   const contextParams = new URLSearchParams(currentUrl.split('?')[1] || '');
@@ -198,7 +196,6 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
     { icon: ReceiptText, label: 'فتح الفواتير', onClick: () => changeView('finance', { invoice: 'open' }) },
     { icon: WalletCards, label: 'فتح Aging', onClick: () => changeView('finance', { invoice: null }) },
     { icon: MessageCircle, label: 'بدء تواصل', reason: !store.phone ? 'لا يوجد رقم تواصل' : null, onClick: store.phone ? () => window.open(`https://wa.me/${String(store.phone).replace(/\D/g, '')}`, '_blank', 'noopener,noreferrer') : null, external: true },
-    { icon: LifeBuoy, label: 'إنشاء/فتح تذكرة', reason: !supportAllowed ? 'تحتاج صلاحية إنشاء تذكرة' : null, onClick: supportAllowed ? () => setModal('ticket') : null },
     { icon: Truck, label: 'فتح الشحنات', onClick: () => changeView('shipments') },
     { icon: CircleDollarSign, label: 'التفاصيل المالية', onClick: () => changeView('finance') },
     { icon: Send, label: 'إضافة إلى حملة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? () => setWaOpen(true) : null },
@@ -222,7 +219,6 @@ function ActionCenter({ core, work, can, changeView, currentUrl, onReloadWork })
     </div></div> : null}
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.outstanding} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
-    {modal === 'ticket' ? <Modal title={`تذكرة — ${store.storeName}`} onClose={() => setModal(null)} width={760}><Suspense fallback={<LoadingBlock/>}><TicketCreateForm prefillPhone={store.phone} prefillStore={store} onClose={() => setModal(null)}/></Suspense></Modal> : null}
     {waOpen ? <Suspense fallback={null}><WhatsAppSendModal open recipients={[{ to: store.phone, name: store.storeName, amount: core.financial?.outstanding || 0, vars: [store.storeName, MONEY(core.financial?.outstanding)] }]} bucketLabel={`متجر 360 · ${store.storeName}`} onClose={() => setWaOpen(false)} onSent={() => setWaOpen(false)}/></Suspense> : null}
   </>;
 }
@@ -373,17 +369,11 @@ function ShipmentsView({ data, page, onPage }) {
   </section>;
 }
 
-function SupportView({ data }) {
-  const openTickets = (data?.tickets || []).filter(ticket => !['resolved', 'closed'].includes(ticket.status));
+function CommunicationView({ data }) {
   const communications = data?.communications || [];
   const kinds = communications.reduce((map, row) => map.set(row.kind, (map.get(row.kind) || 0) + 1), new Map());
   return <div className="s360-view-stack">
     <div className="s360-contact-notice">هذا السجل مرتبط <b>برقم التواصل</b>، وليس إثباتًا أن جميع أحداث الاتصال تخص هوية متجر مضمونة.</div>
-    <section><SectionHeader title="التذاكر" subtitle={`${openTickets.length} مفتوحة`} source={data?.sources?.support}/>
-      {data?.sources?.support?.status === 'unavailable' ? <UnavailableBlock source={data.sources.support}/> : !data?.tickets?.length ? <Empty icon="🎫" title="لا توجد تذاكر" sub="يمكن إنشاء تذكرة من مركز الإجراءات"/> : <div className="s360-card-list">{data.tickets.slice(0, 20).map(ticket => <article key={ticket.id}>
-        <div><TicketCheck size={17}/><span><b>{ticket.ref || 'تذكرة'}</b><small>{ticket.title} · {DATE(ticket.createdAt)}</small></span></div><div><b>{STATUS_LABEL(ticket.status)}</b><small>{ticket.assigneeName || 'غير مسندة'}</small></div>
-      </article>)}</div>}
-    </section>
     <section><SectionHeader title="التواصل" subtitle="WhatsApp وHatif وIVR والحملات والردود" source={data?.sources?.communications}/>
       {data?.sources?.communications?.status === 'unavailable' ? <UnavailableBlock source={data.sources.communications}/> : <>
         <div className="s360-channel-grid">{[['campaign', 'حملات وWhatsApp'], ['voice_call', 'مكالمات Hatif'], ['ivr', 'IVR'], ['handled', 'محادثات تولّاها الفريق']].map(([key, label]) => <div key={key}><b>{kinds.get(key) || 0}</b><span>{label}</span></div>)}</div>
@@ -411,7 +401,7 @@ export default function Store360Page({ identity }) {
   const { can } = useAuth();
   const params = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const agingBuckets = useMemo(() => (params.get('aging') || '').split(',').filter(Boolean), [params]);
-  const requestedView = params.get('view');
+  const requestedView = params.get('view') === 'support' ? 'communications' : params.get('view');
   const view = VIEW_IDS.has(requestedView) ? requestedView : 'overview';
   const [core, setCore] = useState(null);
   const [coreError, setCoreError] = useState(null);
@@ -447,7 +437,7 @@ export default function Store360Page({ identity }) {
       let result;
       if (target === 'finance') result = await loadStore360Finance({ customerName: core.customerName, zohoId: core.financial?.zohoId, agingBuckets });
       if (target === 'shipments') result = await loadStore360Shipments({ storeName: core.store.storeName, page, pageSize: 20 });
-      if (target === 'support') result = await loadStore360Support({ storeId: core.store.storeId, phone: core.store.phone });
+      if (target === 'communications') result = await loadStore360Communications({ phone: core.store.phone });
       if (target === 'timeline') result = await loadStore360Timeline({ core });
       setViewData(current => ({ ...current, [target]: result }));
     } catch (error) { setViewData(current => ({ ...current, [target]: { source: { status: 'unavailable', label: target, error: error.message } } })); }
@@ -525,7 +515,7 @@ export default function Store360Page({ identity }) {
       /> : null}
       {!viewLoading[view] && !workLoading && view === 'work' ? <WorkView data={work}/> : null}
       {!viewLoading[view] && view === 'shipments' ? <ShipmentsView data={viewData.shipments} page={shipmentPage} onPage={setShipmentPage}/> : null}
-      {!viewLoading[view] && view === 'support' ? <SupportView data={viewData.support}/> : null}
+      {!viewLoading[view] && view === 'communications' ? <CommunicationView data={viewData.communications}/> : null}
       {!viewLoading[view] && view === 'timeline' ? <TimelineView data={viewData.timeline}/> : null}
     </main>
   </div>;

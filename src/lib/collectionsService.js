@@ -290,41 +290,6 @@ export async function loadAgingTrend() {
   return { rows, cur: n ? rows[n - 1] : null, prev: n >= 2 ? rows[n - 2] : null, hasHistory: n >= 2 };
 }
 
-// تقرير إشرافي: لا يعرضه الخادم إلا للمدير أو لمن يملك collections.view_all.
-// «المحصّل المتحقق» لا يُستنتج من عدد الاتصالات؛ هو دفعات Zoho التي جاءت
-// بعد وعد مسجل، مع منع احتساب الدفعة لأكثر من وعد أو أكثر من موظف.
-export async function loadCollectionTeamPerformance(period = null) {
-  const { data, error } = await supabase.rpc('collection_team_performance', {
-    p_period: period ? `${period}-01` : null,
-  });
-  if (error) throw error;
-  const raw = data || {};
-  const normalize = (row = {}) => ({
-    collectorId: row.collector_id || null,
-    collectorName: row.collector_name || 'غير مسند',
-    isUnassigned: !!row.is_unassigned,
-    openTasks: Number(row.open_tasks) || 0,
-    openDebt: Number(row.open_debt) || 0,
-    avgOpenAgeDays: Number(row.avg_open_age_days) || 0,
-    completedInPeriod: Number(row.completed_in_period) || 0,
-    promisesMade: Number(row.promises_made) || 0,
-    promisesDue: Number(row.promises_due) || 0,
-    promisesKept: Number(row.promises_kept) || 0,
-    promisesBroken: Number(row.promises_broken) || 0,
-    overduePromises: Number(row.overdue_promises) || 0,
-    verifiedCollected: Number(row.verified_collected) || 0,
-    promiseFulfillmentPct: Number(row.promise_fulfillment_pct) || 0,
-  });
-  return {
-    period: raw.period || period || new Date().toISOString().slice(0, 7),
-    periodStart: raw.period_start || null,
-    periodEnd: raw.period_end || null,
-    generatedAt: raw.generated_at || null,
-    summary: normalize(raw.summary || {}),
-    rows: (Array.isArray(raw.rows) ? raw.rows : []).map(normalize),
-  };
-}
-
 // ── مرشّحو التحصيل من دين زوهو الحيّ (توحيد طابور التحصيل) ────────────────────
 // يُغذّي regenerateTasks بنفس مصدر بطاقة الإيقاف (RPC customer_money_dashboard =
 // فواتير زوهو المفتوحة §1.24) بدل الكشف الداخلي (snapshot) — فطابور /crm?tab=

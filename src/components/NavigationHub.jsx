@@ -78,7 +78,7 @@ function currentEntityNodes(workspace, entry, currentPath, currentSearch) {
       id: 'directory:current', label: 'ملف المتجر الحالي', description: 'كل ما يخص المتجر المفتوح', icon: entry.icon,
       children: [
         ['overview', 'نظرة عامة'], ['finance', 'المالية والفواتير'], ['work', 'المبيعات والتحصيل'],
-        ['shipments', 'الشحنات والناقلون'], ['support', 'الدعم والتواصل'], ['timeline', 'النشاط الكامل'],
+        ['shipments', 'الشحنات والناقلون'], ['communications', 'التواصل'], ['timeline', 'النشاط الكامل'],
       ].map(([id, label]) => ({
         id: `store:${id}`, label, icon: entry.icon,
         path: queryPath('/customer-360', 'view', id, currentSearch, true),

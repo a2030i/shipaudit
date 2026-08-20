@@ -5,7 +5,6 @@ import { buildCampaignAgingProjection, lineMatchesAging } from './agingOperation
 import { listTasks } from './collectionsService.js';
 import { loadPlatformSalesAccount } from './retargetingService.js';
 import { listInteractions } from './customerInteractionsService.js';
-import { loadTickets } from './supportService.js';
 import { normalizeStoreTimeline } from './store360Timeline.js';
 
 const normalizePhone = (raw) => {
@@ -172,23 +171,17 @@ export async function loadStore360Shipments({ storeName, page = 0, pageSize = 20
   return { rows: data || [], count: count || 0, page, source: source('available', 'آخر snapshot لشحنات لمحة', data?.[0]?.created_at || data?.[0]?.order_date || null) };
 }
 
-export async function loadStore360Support({ storeId, phone }) {
-  const [ticketsResult, commResult] = await Promise.allSettled([
-    loadTickets({ storeId, customerPhone: phone, limit: 100 }),
-    phone ? supabase.rpc('customer_comm_timeline', { p_phone: String(phone) }) : Promise.resolve({ data: [], error: null }),
-  ]);
-  const commFailed = commResult.status === 'rejected' || commResult.value?.error;
-  const tickets = ticketsResult.status === 'fulfilled' ? ticketsResult.value.rows : [];
-  const communications = commFailed ? [] : commResult.value.data || [];
+export async function loadStore360Communications({ phone }) {
+  const commResult = await Promise.resolve(
+    phone ? supabase.rpc('customer_comm_timeline', { p_phone: String(phone) }) : { data: [], error: null },
+  ).catch(error => ({ data: [], error }));
+  const commFailed = Boolean(commResult?.error);
+  const communications = commFailed ? [] : commResult.data || [];
   return {
-    tickets,
     communications,
     sources: {
-      support: ticketsResult.status === 'fulfilled'
-        ? source('available', 'نظام التذاكر', tickets[0]?.updatedAt || tickets[0]?.createdAt || null)
-        : source('unavailable', 'نظام التذاكر', null, ticketsResult.reason?.message),
       communications: commFailed
-        ? source('unavailable', 'سجل التواصل المرتبط بالرقم', null, commResult.reason?.message || commResult.value?.error?.message)
+        ? source('unavailable', 'سجل التواصل المرتبط بالرقم', null, commResult.error?.message)
         : source('available', 'WhatsApp + Hatif + IVR المرتبط برقم التواصل', communications[0]?.occurred_at || null),
     },
   };
@@ -196,26 +189,26 @@ export async function loadStore360Support({ storeId, phone }) {
 
 export async function loadStore360Timeline({ core }) {
   const store = core.store;
-  const [workResult, financeResult, shipmentsResult, supportResult, interactionResult] = await Promise.allSettled([
+  const [workResult, financeResult, shipmentsResult, communicationsResult, interactionResult] = await Promise.allSettled([
     loadStore360Work({ phone: store.phone, customerName: core.customerName }),
     loadStore360Finance({ customerName: core.customerName, zohoId: core.financial?.zohoId }),
     loadStore360Shipments({ storeName: store.storeName, page: 0, pageSize: 50 }),
-    loadStore360Support({ storeId: store.storeId, phone: store.phone }),
+    loadStore360Communications({ phone: store.phone }),
     listInteractions({ customerName: core.customerName, storeId: store.storeId, limit: 100 }),
   ]);
   const work = workResult.status === 'fulfilled' ? workResult.value : {};
   const finance = financeResult.status === 'fulfilled' ? financeResult.value : {};
   const shipments = shipmentsResult.status === 'fulfilled' ? shipmentsResult.value : {};
-  const support = supportResult.status === 'fulfilled' ? supportResult.value : {};
+  const communications = communicationsResult.status === 'fulfilled' ? communicationsResult.value : {};
   const interactions = interactionResult.status === 'fulfilled' ? interactionResult.value : [];
   const payment = core.financial?.lastPaymentDate ? [{ date: core.financial.lastPaymentDate, amount: core.financial.lastPaymentAmount, source: 'Zoho Books' }] : [];
   return {
     rows: normalizeStoreTimeline({
       sales: work.sales?.activities || [], collections: work.tasks || [], interactions,
       payments: payment, invoices: finance.invoices || [], shipments: shipments.rows || [],
-      support: support.tickets || [], communications: support.communications || [],
+      communications: communications.communications || [],
     }),
-    sources: { ...work.sources, finance: finance.source, shipments: shipments.source, ...support.sources,
+    sources: { ...work.sources, finance: finance.source, shipments: shipments.source, ...communications.sources,
       interactions: interactionResult.status === 'fulfilled' ? source('available', 'سجل المتابعة الداخلي') : source('unavailable', 'سجل المتابعة الداخلي', null, interactionResult.reason?.message) },
   };
 }

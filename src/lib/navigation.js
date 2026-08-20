@@ -21,10 +21,6 @@ export const CENTER_WORKSPACES = {
       id: 'directory', label: 'دليل العملاء والمتاجر', entryId: 'customer-watch', memberIds: ['customer-watch'],
       description: 'ابحث عن العميل أو المتجر، ثم افتح صفحة Customer 360 الموحدة.',
     },
-    {
-      id: 'support', label: 'خدمة العملاء', entryId: 'support', memberIds: ['support'],
-      description: 'تابع التذاكر والمشكلات من التسجيل حتى الإغلاق.',
-    },
   ],
   sales: [
     {
@@ -84,11 +80,6 @@ export const CENTER_WORKSPACES = {
       description: 'التقارير الرسمية والشهرية ومعاملات التصدير.',
     },
     {
-      id: 'commercial-performance', label: 'أداء التحصيل', entryId: 'collections-hub', memberIds: ['collections-hub'], path: '/customer-money?view=performance&source=reports',
-      skipSubTabs: true,
-      description: 'نتائج فريق التحصيل والمهام والوعود من المسار التشغيلي الحالي.',
-    },
-    {
       id: 'carrier-performance', label: 'أداء شركات الشحن', entryId: 'hub', memberIds: ['hub', 'platform-carriers'], path: '/carrier-kpi?source=reports',
       skipSubTabs: true,
       description: 'مقارنة أداء الناقلين والأسعار على مستوى جميع الشركات.',
@@ -142,7 +133,7 @@ export const NAV_GROUPS = {
     { id: 'service_ops', label: 'فوترة الخدمات والأوزان' },
   ],
   customers: [
-    { id: 'customer_ops', label: 'ملفات وخدمة العملاء' },
+    { id: 'customer_ops', label: 'ملفات العملاء' },
   ],
   sales: [
     { id: 'sales_ops', label: 'الفرص والصفقات' },
@@ -186,7 +177,6 @@ export const NAV_ITEM_IA = {
   'weight-billing':    { label: 'فوترة الأوزان الزائدة', section: 'shipping', group: 'service_ops', order: 100, visible: true },
 
   'customer-watch':    { label: 'دليل العملاء والمتاجر', section: 'customers', group: 'customer_ops', order: 10, visible: true },
-  support:             { label: 'خدمة العملاء', section: 'customers', group: 'customer_ops', order: 20, visible: true },
 
   'sales-hub':         { label: 'فرص البيع من بيانات المنصة', section: 'sales', group: 'sales_ops', order: 10, visible: true },
   // مسارات متقاعدة: تبقى Redirects للتوافق ولا تظهر كبطاقات أو وجهات.

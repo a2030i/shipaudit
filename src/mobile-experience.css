@@ -23,7 +23,19 @@
   .mobile-context-picker > span { display: none !important; }
   .mobile-context-picker select { height: 42px !important; font-size: 14px !important; }
 
-  .page-content :is(input, select, textarea) { min-height: 44px; font-size: 16px !important; }
+  /* iOS Safari zooms the visual viewport when a focused editable control is
+     rendered below 16px. Overlays and sheets are mounted outside
+     `.page-content`, so this contract must be global rather than page-scoped.
+     Non-text controls keep their compact native sizing. */
+  :is(
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]):not([type="hidden"]),
+    select,
+    textarea,
+    [contenteditable="true"]
+  ) {
+    min-height: 44px;
+    font-size: 16px !important;
+  }
   .page-content :is(button, [role="button"], a[href]) { touch-action: manipulation; }
   .page-content :is(button, [role="button"]):focus-visible, .bottom-nav-btn:focus-visible, .hamburger-btn:focus-visible {
     outline: 3px solid color-mix(in srgb, var(--brand) 28%, transparent) !important;
@@ -200,8 +212,6 @@
 
   /* Support starts with action-driving KPIs. Status totals remain available
      in the dedicated dashboard view instead of occupying the work-list top. */
-  .support-board-page .support-status-kpis { display: none !important; }
-  .support-board-page button { min-height: 44px; }
 
   .ui-card, .stat-card { box-shadow: none !important; }
   .stat-card { min-width: 0 !important; min-height: 96px !important; padding: 13px !important; }

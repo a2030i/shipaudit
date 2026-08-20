@@ -33,7 +33,7 @@ test('unified timeline keeps the experience contract, removes undated rows, and 
 
 test('timeline exposes only the approved filters', () => {
   assert.deepEqual(STORE_TIMELINE_FILTERS.map(([id]) => id), [
-    'all', 'finance', 'sales', 'collections', 'shipments', 'support', 'communications',
+    'all', 'finance', 'sales', 'collections', 'shipments', 'communications',
   ]);
 });
 
@@ -41,7 +41,7 @@ test('Store 360 contains the approved six views and preserves URL context', asyn
   const source = await readFile(pagePath, 'utf8');
   for (const label of [
     'نظرة عامة', 'المالية والفواتير', 'المبيعات والتحصيل',
-    'الشحنات والناقلون', 'الدعم والتواصل', 'النشاط الكامل',
+    'الشحنات والناقلون', 'التواصل', 'النشاط الكامل',
   ]) assert.match(source, new RegExp(label));
 
   assert.match(source, /new URLSearchParams\(location\.search\)/);
@@ -80,7 +80,7 @@ test('secondary Store 360 data is loaded per selected view, not in the core requ
   const source = await readFile(pagePath, 'utf8');
   assert.match(source, /if \(target === 'finance'\) result = await loadStore360Finance/);
   assert.match(source, /if \(target === 'shipments'\) result = await loadStore360Shipments/);
-  assert.match(source, /if \(target === 'support'\) result = await loadStore360Support/);
+  assert.match(source, /if \(target === 'communications'\) result = await loadStore360Communications/);
   assert.match(source, /if \(target === 'timeline'\) result = await loadStore360Timeline/);
   assert.match(source, /if \(!core \|\| target === 'overview'/);
   assert.match(source, /view !== 'work'/);
@@ -103,7 +103,7 @@ test('legacy customer directory opens the full Store 360 page and retains the pr
 test('action center exposes permission-gated current actions and an unavailable reason', async () => {
   const source = await readFile(pagePath, 'utf8');
   for (const permission of [
-    'sales.manage', 'collections.record_promise', 'support.create', 'campaigns.send', 'campaigns.ivr',
+    'sales.manage', 'collections.record_promise', 'campaigns.send', 'campaigns.ivr',
   ]) assert.match(source, new RegExp(permission.replace('.', '\\.')));
   assert.match(source, /const disabled = !onClick/);
   assert.match(source, /disabled && reason/);

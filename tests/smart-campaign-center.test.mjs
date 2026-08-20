@@ -79,6 +79,20 @@ test('all outbound channels keep their existing review gates', async () => {
   assert.match(ivrModal, /scheduledAt:\s*new Date\(schedAt\)\.toISOString\(\)/);
 });
 
+test('campaign builder is first and step navigation scrolls to channel and Hatif owner controls', async () => {
+  const center = await read('src/pages/SmartCampaignCenter.jsx');
+  const css = await read('src/pages/smart-campaign-center.css');
+  assert.ok(center.indexOf('<aside className="scc-composer">') < center.indexOf('<SummaryStrip campaigns={campaignRows}/>'));
+  assert.ok(center.indexOf('<aside className="scc-composer">') < center.indexOf('<section className="scc-campaign-list">'));
+  assert.match(center, /const goToStep = nextStep/);
+  assert.match(center, /4: '\.scc-channels'/);
+  assert.match(center, /scrollIntoView\(\{ behavior: 'smooth', block: 'center' \}\)/);
+  assert.match(center, /<StepRail step=\{step\} onStep=\{goToStep\}/);
+  assert.match(center, /goToStep\(step \+ 1\)/);
+  assert.match(css, /\.scc-composer\{overflow:visible\}/);
+  assert.match(css, /\.scc-channels[^\{]*\{scroll-margin-block:110px\}/);
+});
+
 test('smart campaign schema is RLS protected and anonymous access is revoked', async () => {
   const migration = await read('supabase/migrations/20260815214845_smart_campaign_center.sql');
 

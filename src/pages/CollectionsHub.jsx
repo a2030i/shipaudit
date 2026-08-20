@@ -1,22 +1,19 @@
 // «مركز التحصيل» — دمج المرحلة 2 من خطة الموديولات (§1.32، معتمدة 2026-07-15):
-// 4 شاشات كانت مبعثرة على مسارات منفصلة صارت تبويبات مكان واحد:
+// ثلاث شاشات تشغيلية من مصادرها الحالية في مكان واحد:
 //   /customer-money → تحصيل العملاء (زوهو حي — الرئيسي)
 //   /collections    → قائمة التحصيل (المهمات والوعود)
-//   /legal          → التصعيد القانوني
 //   /receivables    → الكشف الداخلي (snapshot — كان داخل ملف العملاء)
 // نفس نمط CustomerHub المجرَّب: الأبناء يبقون mounted (display:none)، كلٌّ
 // يجلب فقط عند تفعيله (isActive). المسارات القديمة تهبط على تبويبها،
 // والرابط القانوني /customer-money?view=<id> مع قبول tab للروابط التاريخية.
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { HandCoins, PhoneCall, Scale, FileText, BarChart3 } from 'lucide-react';
+import { HandCoins, PhoneCall, FileText } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 
 import CustomerMoney       from './CustomerMoney.jsx';
 import Collections         from './Collections.jsx';
-import LegalEscalation     from './LegalEscalation.jsx';
 import CustomerReceivables from './CustomerReceivables.jsx';
-import CollectionTeamPerformance from './CollectionTeamPerformance.jsx';
 
 const TABS = [
   {
@@ -32,20 +29,6 @@ const TABS = [
     outcome: 'مالك واضح وخطوة تالية', tone: 'var(--red)',
   },
   {
-    id: 'performance', label: 'أداء فريق التحصيل', icon: BarChart3, component: CollectionTeamPerformance, perm: 'collections.view_all',
-    secondary: true,
-    eyebrow: 'إشراف الفريق', purpose: 'قِس التحصيل المتحقق والوفاء بالوعود حسب الموظف',
-    description: 'تقرير إشرافي يربط وعود السداد بدفعات Zoho الفعلية، ويكشف المهام غير المسندة والوعود المتأخرة دون تقييم الموظف بعدد المكالمات فقط.',
-    outcome: 'مسؤولية ونتيجة مالية قابلة للقياس', tone: 'var(--accent3)',
-  },
-  {
-    id: 'legal', label: 'الحالات القانونية', icon: Scale, component: LegalEscalation, perm: 'legal.view',
-    secondary: true,
-    eyebrow: 'تصعيد مضبوط', purpose: 'انقل فقط الحالات التي استنفدت التحصيل المعتاد',
-    description: 'لا تبدأ الحالة من هنا. تصل بعد محاولات موثقة، ثم تُدار المستندات والإجراءات القانونية دون خلطها بقائمة الاتصالات اليومية.',
-    outcome: 'ملف قانوني مكتمل المسار', tone: 'var(--gold)',
-  },
-  {
     id: 'internal', label: 'الأرصدة والمطابقة', icon: FileText, component: CustomerReceivables, perm: 'receivables.view',
     secondary: true,
     eyebrow: 'تدقيق ومطابقة', purpose: 'قارن كشف النظام الداخلي مع المرجع المالي',
@@ -57,7 +40,6 @@ const TABS = [
 const LEGACY_PATH_TO_TAB = {
   '/customer-money': 'money',
   '/collections':    'queue',
-  '/legal':          'legal',
   '/receivables':    'internal',
 };
 
