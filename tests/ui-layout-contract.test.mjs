@@ -37,6 +37,13 @@ test('mobile PageSlot uses normal flow and a real safe-area end spacer', async (
   assert.doesNotMatch(css, /100vw/);
 });
 
+test('mobile editable controls prevent iOS focus zoom inside pages and overlays', async () => {
+  const css = await read('src/mobile-experience.css');
+
+  assert.match(css, /@media \(max-width: 768px\)[\s\S]*input:not\(\[type="checkbox"\]\)[\s\S]*select,[\s\S]*textarea,[\s\S]*\[contenteditable="true"\][\s\S]*font-size:\s*16px\s*!important/);
+  assert.doesNotMatch(css, /\.page-content\s+:is\(input,\s*select,\s*textarea\)/);
+});
+
 test('mobile workspace removes repeated headings and keeps compact context', async () => {
   const css = await read('src/workspace-layout.css');
   assert.match(css, /\.workspace-switcher__copy\s*\{\s*display:\s*none;/s);
@@ -441,7 +448,8 @@ test('phase two groups operations reports and admin into approved workspaces', a
   const centerWorkspace = await read('src/components/CenterWorkspace.jsx');
 
   assert.match(navigation, /shipping:\s*\[[\s\S]*label: 'شركات الشحن'[\s\S]*label: 'المهام والاستثناءات'[\s\S]*label: 'دورة الشهر'[\s\S]*label: 'فوترة الخدمات والأوزان'/);
-  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء التحصيل'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.match(navigation, /reports:\s*\[[\s\S]*label: 'مكتبة التقارير'[\s\S]*label: 'أداء شركات الشحن'[\s\S]*label: 'التواصل والحملات'[\s\S]*label: 'الملفات المصدّرة'/);
+  assert.doesNotMatch(navigation, /label: 'أداء التحصيل'/);
   assert.match(navigation, /settings:\s*\[[\s\S]*label: 'الفريق والصلاحيات'[\s\S]*label: 'شركات الشحن والعقود'[\s\S]*label: 'التكاملات ومصادر البيانات'[\s\S]*label: 'الأتمتة ووكلاء العمل'[\s\S]*label: 'القنوات والاتصال'[\s\S]*label: 'إعدادات النظام'/);
   assert.match(navigation, /'work-agents':\s*\{[^}]*section: 'settings'/);
   assert.match(navigation, /integrity:\s*\{[^}]*section: 'settings'/);
@@ -462,7 +470,7 @@ test('center view menus stay task-oriented and never exceed six entries', async 
     sales: ['نمو عملاء لمحة', 'العملاء خارج المنصة', 'التواصل'],
     finance: ['مركز العملاء المالي', 'النقد والتسويات', 'الحسابات والمطابقة', 'الربحية والسيولة'],
     shipping: ['شركات الشحن', 'المهام والاستثناءات', 'دورة الشهر', 'فوترة الخدمات والأوزان'],
-    reports: ['مكتبة التقارير', 'أداء التحصيل', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
+    reports: ['مكتبة التقارير', 'أداء شركات الشحن', 'التواصل والحملات', 'الملفات المصدّرة'],
     settings: ['الفريق والصلاحيات', 'شركات الشحن والعقود', 'التكاملات ومصادر البيانات', 'الأتمتة ووكلاء العمل', 'القنوات والاتصال', 'إعدادات النظام'],
   };
   for (const [center, labels] of Object.entries(expected)) {

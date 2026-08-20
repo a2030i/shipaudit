@@ -16,22 +16,15 @@ test('legal workflow stores cases and an append-only event timeline', async () =
   assert.match(migration, /revoke update, delete on public\.legal_case_events/);
 });
 
-test('legal management permission is separate from legal read access', async () => {
+test('retired legal workflow is no longer exposed in UI permissions', async () => {
   const permissions = await read('src/lib/permissions.js');
-  assert.match(permissions, /key: 'legal\.view'/);
-  assert.match(permissions, /key: 'legal\.manage'/);
+  assert.doesNotMatch(permissions, /key: 'legal\.view'/);
+  assert.doesNotMatch(permissions, /key: 'legal\.manage'/);
 });
 
-test('legal page exposes case metadata, appointments and immutable actions', async () => {
-  const page = await read('src/pages/LegalEscalation.jsx');
-  const service = await read('src/lib/legalService.js');
-
-  assert.match(page, /CaseWorkspace/);
-  assert.match(page, /nextActionAt/);
-  assert.match(page, /caseNumber/);
-  assert.match(page, /documentUrl/);
-  assert.match(page, /addLegalCaseEvent/);
-  assert.match(page, /loadLegalCases/);
-  assert.match(service, /from\('legal_cases'\)/);
-  assert.match(service, /from\('legal_case_events'\)/);
+test('legacy legal route resolves to the current receivables workspace', async () => {
+  const app = await read('src/App.jsx');
+  const collections = await read('src/pages/CollectionsHub.jsx');
+  assert.match(app, /rawPath === '\/legal'[\s\S]*\/customer-money\?view=money&source=retired-legal/);
+  assert.doesNotMatch(collections, /LegalEscalation|id: 'legal'/);
 });

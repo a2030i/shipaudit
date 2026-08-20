@@ -19,7 +19,6 @@ import { loadTreasuryBalances, loadVendorReconciliation } from '../lib/reconcili
 import { loadCrmDecisionSignals } from '../lib/crmService.js';
 import { loadPnlSnapshots, currentPnlPeriod, loadZatcaPending } from '../lib/pnlService.js';
 import { loadInvoicesAwaitingReview } from '../lib/webhookService.js';
-import { loadLegalDashboard } from '../lib/legalService.js';
 import { loadIntegrityChecks } from '../lib/integrityService.js';
 import { loadClaims, summarizeClaims } from '../lib/claimsService.js';
 import { loadHatifCallOps, loadWhatsAppNumberHealth } from '../lib/whatsappService.js';
@@ -62,7 +61,7 @@ export default function DecisionsBoard({ isActive = true }) {
       .catch(error => setPulseError(error?.message || 'تعذّر تحميل نبض الفرق'))
       .finally(() => setPulseLoading(false));
     try {
-      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, legal, creditStop, zatca, integrity, claims, callOps, waHealth, sla] = await Promise.all([
+      const [watch, codNet, treasury, vendor, crm, pnlSnaps, awaiting, creditStop, zatca, integrity, claims, callOps, waHealth, sla] = await Promise.all([
         loadCustomerWatch().catch(() => null),
         loadCarrierNetBalances().catch(() => new Map()),
         loadTreasuryBalances().catch(() => ({ rows: [], uploadedAt: null })),
@@ -70,7 +69,6 @@ export default function DecisionsBoard({ isActive = true }) {
         loadCrmDecisionSignals().catch(() => ({ brokenCount: 0, brokenTotal: 0, dueCount: 0, brokenPromises: [], dueFollowups: [] })),
         loadPnlSnapshots().catch(() => []),
         loadInvoicesAwaitingReview().catch(() => []),
-        loadLegalDashboard().catch(() => ({ overdue90: [], prepaidNegative: [], aging: {} })),
         loadCreditStopList().catch(() => null),
         loadZatcaPending().catch((error) => {
           zatcaLoadError = error?.message || 'تعذرت قراءة حالة زاتكا';
@@ -103,19 +101,6 @@ export default function DecisionsBoard({ isActive = true }) {
         .sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff));
       const vgapTotal = vgaps.reduce((s, v) => s + Math.abs(Number(v.diff) || 0), 0);
 
-      // تحويلات قانونية: تجاوز 90 يوم (زوهو) + دفع مسبق برصيد سالب (المنصّة).
-      const over90 = legal.overdue90 || [], negWal = legal.prepaidNegative || [];
-      const legalTop = [
-        ...over90.slice(0, 2).map(r => `${r.storeName || r.name} · ${fmtK(r.amount90)} · +90ي`),
-        ...negWal.slice(0, 1).map(r => `${r.storeName} · ${fmtK(r.wallet)} · رصيد محفظة تحت الصفر`),
-      ];
-      const legalSig = {
-        count: over90.length + negWal.length, over90N: over90.length, negN: negWal.length,
-        over90Amt: over90.reduce((s, r) => s + (Number(r.amount90) || 0), 0),
-        negAmt: negWal.reduce((s, r) => s + Math.abs(Number(r.wallet) || 0), 0),
-        top: legalTop,
-      };
-
       setD({
         creditStop: creditStop || { activeCount: 0, activeTotal: 0, count: 0, total: 0, limit: 10000, rows: [] },
         anomalyCount: watch?.totals?.anomalyCount || 0,
@@ -126,7 +111,6 @@ export default function DecisionsBoard({ isActive = true }) {
         crm,
         pnl: pnlCur,
         awaiting,
-        legal: legalSig,
         zatca,
         zatcaError: zatcaLoadError,
         integ: { count: integ.length, top: integTop,
@@ -207,15 +191,6 @@ export default function DecisionsBoard({ isActive = true }) {
               top: (d.creditStop?.rows || []).filter(r => r.active).slice(0, 3)
                 .map(r => `${r.storeName || r.customerName} · ${fmtK(r.totalOpen)} ر.س · ${stopReasonAr(r.reason)}`),
               cta: 'قائمة التحصيل', onClick: () => navigate('/customer-money?tab=queue'),
-            },
-          },
-          {
-            key: 'legal', active: (d.legal?.count || 0) > 0, okLabel: 'لا تحويلات قانونية',
-            props: {
-              color: 'var(--red)', icon: '⚖️', title: 'تحويلات قانونية', value: d.legal?.count || 0, unit: 'حالة',
-              sub: `${d.legal?.over90N || 0} تجاوز 90ي (${fmt(d.legal?.over90Amt || 0)} ر.س) · ${d.legal?.negN || 0} رصيد محفظة تحت الصفر (${fmt(d.legal?.negAmt || 0)} ر.س) — حوّلهم فوراً`,
-              top: d.legal?.top || [],
-              cta: 'الصفحة القانونية', onClick: () => navigate('/legal'),
             },
           },
           {
@@ -370,15 +345,6 @@ function OperatingPulse({ pulse, loading, error, onRetry, navigate }) {
       detail: `${fmt(pulse.collections.openAmount)} ر.س مفتوحة · بلا مسؤول ${pulse.collections.unassigned}`,
       warning: pulse.collections.snoozeExpired > 0
         ? `${pulse.collections.snoozeExpired} تأجيل انتهى ويحتاج عودة للعمل`
-        : '',
-    },
-    pulse?.support && {
-      key: 'support', icon: '🎧', title: 'خدمة العملاء', color: 'var(--accent3)',
-      path: '/support', data: pulse.support,
-      thirdLabel: 'متأخر', thirdValue: pulse.support.overdue,
-      detail: `بلا مسؤول ${pulse.support.unassigned} · بلا موعد ${pulse.support.withoutFollowup}`,
-      warning: pulse.support.urgent > 0
-        ? `${pulse.support.urgent} تذكرة عاجلة`
         : '',
     },
   ].filter(Boolean);

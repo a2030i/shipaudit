@@ -5,7 +5,6 @@ import {
   Menu, Users, Sun, Moon, Wallet, FileText, BookOpen, Banknote, CreditCard, BarChart3, Activity, Scale, Webhook, ClipboardList, Building2, Inbox, ShoppingBag, Briefcase, FileCheck, DollarSign, UserCog, ListTodo, Layers, Lock, TrendingUp, GitCompare, Phone, CalendarRange, Search, Gauge, Headset, Boxes, HandCoins, Target, MessageCircle, UserPlus, LifeBuoy, Bot, Landmark, ListFilter,
 } from 'lucide-react';
 import { ToastContainer, Spinner } from './components/UI.jsx';
-import AIChat from './components/AIChat.jsx';
 import CenterWorkspace from './components/CenterWorkspace.jsx';
 import QuickActionLauncher from './components/QuickActionLauncher.jsx';
 import NavigationHub, { firstSectionDestination } from './components/NavigationHub.jsx';
@@ -62,8 +61,6 @@ import CommandPalette    from './components/CommandPalette.jsx';
 const Overview = lazy(() => import('./pages/Overview.jsx'));
 const Reconciliation = lazy(() => import('./pages/Reconciliation.jsx'));
 const UploadsHub = lazy(() => import('./pages/UploadsHub.jsx'));
-const TicketForm = lazy(() => import('./pages/TicketForm.jsx'));
-const SupportBoard = lazy(() => import('./pages/SupportBoard.jsx'));
 const WorkAgents = lazy(() => import('./pages/WorkAgents.jsx'));
 const OperationsCenter = lazy(() => import('./pages/OperationsCenter.jsx'));
 const AccountingCycle = lazy(() => import('./pages/AccountingCycle.jsx'));
@@ -149,13 +146,11 @@ const ROUTE_ITEMS = [
   // existing deep links still land on the right tab.
   { id: 'customer-watch',  path: '/customer-360',    label: 'ملف العميل 360', icon: Users,     section: 'customers', navOrder: 10, permKey: 'receivables.view' },
   // «تحصيل العملاء» — شاشة التحصيل الأولى (زوهو API المرجع)، أول عنصر بالقسم
-  // §1.32 مرحلة 2: مركز التحصيل = تحصيل العملاء + قائمة التحصيل + القانوني + الكشف الداخلي
+  // مركز التحصيل: الرصيد الحي + قائمة العمل + أداة المطابقة الداخلية.
   { id: 'collections-hub', path: '/customer-money',  label: 'الديون والتحصيل',  icon: HandCoins, section: 'money', navOrder: 20, permKey: 'receivables.view',
     subTabs: [
       { tabId: 'money',    label: 'أرصدة العملاء',   icon: HandCoins },
       { tabId: 'queue',    label: 'قائمة التحصيل',    icon: Phone,  legacy: '/collections' },
-      { tabId: 'performance', label: 'أداء فريق التحصيل', icon: BarChart3, perm: 'collections.view_all' },
-      { tabId: 'legal',    label: 'التصعيد القانوني', icon: Scale,  legacy: '/legal' },
       { tabId: 'internal', label: 'الكشف الداخلي',   icon: FileText, legacy: '/receivables' },
     ] },
   // §1.32 مرحلة 3: مركز المبيعات = إعادة الاستهداف + فرص هاتف + خارج المنصّة + الشرائح + المتاجر
@@ -172,12 +167,6 @@ const ROUTE_ITEMS = [
       { tabId: 'external',    label: 'عملاء خارج المنصّة', icon: ShoppingBag },
       { tabId: 'segments',    label: 'شرائح العملاء',        icon: Layers,      legacy: '/segments' },
       { tabId: 'merchants',   label: 'متاجر المنصّة',      icon: ShoppingBag, legacy: '/merchants' },
-    ] },
-  // تذاكر خدمة العملاء (§1.35) — لوحة المتابعة؛ نموذج الإدخال السريع على /ticket (شاشة مستقلة)
-  { id: 'support',         path: '/support',         label: 'خدمة العملاء', icon: LifeBuoy, section: 'customers', navOrder: 40, permKey: 'support.view',
-    subTabs: [
-      { tabId: 'list', label: 'التذاكر', icon: ListTodo, queryKey: 'view' },
-      { tabId: 'dash', label: 'لوحة الأرقام', icon: BarChart3, queryKey: 'view' },
     ] },
   { id: 'zoho-data',       path: '/zoho-data',       label: 'زوهو: الفواتير والربط', icon: BookOpen,   section: 'money', navOrder: 60, permKey: 'zoho.view',
     subTabs: [
@@ -294,7 +283,7 @@ const CUSTOMER_HUB_PATHS = ['/customer-360', '/customers'];
 // مركز المبيعات (§1.32 المرحلة 3): الفرص الثلاث + الشرائح + دليل المتاجر
 const SALES_HUB_PATHS = ['/retargeting', '/hatif-leads', '/segments', '/merchants'];
 // مركز التحصيل (§1.32 المرحلة 2): 4 شاشات كانت متفرّقة — المسارات القديمة تهبط على تبويبها
-const COLLECTIONS_HUB_PATHS = ['/customer-money', '/collections', '/legal', '/receivables'];
+const COLLECTIONS_HUB_PATHS = ['/customer-money', '/collections', '/receivables'];
 // /hub, /carrier-kpi, /claims all render the CarriersWorkspace (3 tabs).
 const CARRIER_WORKSPACE_PATHS = ['/hub', '/carrier-kpi', '/claims'];
 // /money hosts cod-settlements / payments / bank
@@ -382,7 +371,7 @@ function AppInner({ theme, toggleTheme }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawPath, pathAllowed, user, profile]);
   const CENTER_ROUTES = NAV_SECTIONS.map(section => section.path);
-  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
+  const KNOWN_PATHS = ['/hub','/carrier','/carriers','/contracts','/upload','/results','/audits','/bank','/aramex-statements','/ledger','/cod-settlements','/payments','/receivables','/merchants','/customers','/customer-360','/weight-billing','/internal-exports','/carrier-kpi','/activity-log','/webhook','/employees','/tasks','/segments','/periods','/forecast','/overview','/reconciliation','/uploads','/money','/collections','/monthly-report','/drop','/cash-aging','/integrity','/claims','/decisions','/crm','/sales','/fulfillment','/reports','/zoho-callback','/pnl','/zoho-data','/customer-money','/legal','/retargeting','/campaigns','/whatsapp-settings','/hatif-leads','/support','/ticket','/marketers','/platform-carriers','/next-actions','/work-agents','/operations','/accounting-cycle','/workspace/customers','/workspace/operations','/workspace/reports', ...CENTER_ROUTES];
   const isKnownPath = KNOWN_PATHS.includes(pathname) || isSettingsPath;
   const campaignActionActive = pathname === '/campaigns'
     && new URLSearchParams(location.search).has('audienceContext');
@@ -456,6 +445,18 @@ function AppInner({ theme, toggleTheme }) {
     }
     if (rawPath === '/marketers') {
       navigate('/workspace/sales?source=legacy-marketers', { replace: true });
+      return;
+    }
+    if (rawPath === '/support' || rawPath === '/ticket') {
+      navigate('/customer-360?source=retired-support', { replace: true });
+      return;
+    }
+    if (rawPath === '/legal') {
+      navigate('/customer-money?view=money&source=retired-legal', { replace: true });
+      return;
+    }
+    if (rawPath === '/customer-money' && ['performance', 'legal'].includes(params.get('view') || params.get('tab'))) {
+      navigate('/customer-money?view=money&source=retired-collection-view', { replace: true });
       return;
     }
     if (rawPath === '/campaigns' && !params.get('audienceContext')) {
@@ -583,10 +584,6 @@ function AppInner({ theme, toggleTheme }) {
   );
 
   if (!user || !profile) return <LoginPage/>;
-
-  // «/ticket» — نموذج تذكرة الدعم السريع (§1.35): شاشة كاملة بلا قائمة جانبية.
-  // خلف بوابة الدخول (ليس عاماً) — رابط مباشر يحفظه فريق خدمة العملاء.
-  if (pathname === '/ticket') return <TicketForm/>;
 
   // Filter nav items by per-user permissions (src/lib/permissions.js).
   //   • admin → everything
@@ -967,9 +964,6 @@ function AppInner({ theme, toggleTheme }) {
             <PageSlot active={pathname==='/whatsapp-settings'} scroll>
               <WhatsAppSettings isActive={pathname==='/whatsapp-settings'}/>
             </PageSlot>
-            <PageSlot active={pathname==='/support'} scroll>
-              <SupportBoard isActive={pathname==='/support'}/>
-            </PageSlot>
             <PageSlot active={ACCOUNTING_WORKSPACE_PATHS.includes(pathname)} scroll>
               <CenterWorkspace
                 scope="finance-accounting"
@@ -1211,9 +1205,7 @@ function AppInner({ theme, toggleTheme }) {
         </button>
       </nav>
 
-      {/* Floating AI assistant — always available once logged in */}
       <MobileExperienceManager routeKey={`${location.pathname}${location.search}`}/>
-      <AIChat/>
     </>
   );
 }

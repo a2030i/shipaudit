@@ -109,8 +109,6 @@ export const PERMISSION_CATALOG = [
       { key: 'receivables.tag_customer', label: 'تصنيف عميل (مستبعد/أولوية)' },
       { key: 'receivables.request_writeoff', label: 'تقديم طلب شطب دين' },
       { key: 'receivables.approve_writeoff', label: 'اعتماد/رفض طلب شطب', sensitive: true },
-      { key: 'legal.view',                   label: 'التصعيد القانوني (تجاوز 90 يوم/محافظ سالبة)' },
-      { key: 'legal.manage',                 label: 'إدارة الملفات والإجراءات القانونية', sensitive: true },
     ],
   },
   {
@@ -164,15 +162,6 @@ export const PERMISSION_CATALOG = [
       { key: 'sales.segments',       label: 'تبويب مجموعات العملاء' },
       { key: 'sales.manage', label: 'تحديث حالة/ملاحظة/إسناد الفرص' },
       { key: 'sales.export', label: 'تصدير قوائم الفرص' },
-    ],
-  },
-  {
-    id: 'support', label: 'تذاكر خدمة العملاء', icon: 'LifeBuoy', color: 'var(--accent3)',
-    perms: [
-      { key: 'support.view',   label: 'عرض لوحة التذاكر' },
-      { key: 'support.create', label: 'إنشاء تذكرة جديدة' },
-      { key: 'support.manage', label: 'تغيير حالة التذاكر وإسنادها', sensitive: true },
-      { key: 'support.delete', label: 'حذف تذكرة', sensitive: true },
     ],
   },
   {
@@ -310,17 +299,10 @@ export const SALES_ROLE_KEYS = [
 // «محصّل ديون»: المديونيات والتصعيد والحملات — صفر مبيعات/مالية عامة.
 export const COLLECTOR_ROLE_KEYS = [
   'receivables.view', 'receivables.export', 'receivables.tag_customer', 'receivables.request_writeoff',
-  'legal.view',
   'collections.view', 'collections.regenerate', 'collections.update_stage',
   'collections.record_promise', 'collections.snooze', 'collections.create_task',
   'campaigns.send', 'whatsapp.view_log',
   'crm.view', 'crm.log_activity', 'crm.record_promise', 'crm.change_status', 'crm.manage_tasks',
-  'merchants.view',
-];
-
-// «موظف خدمة عملاء»: التذاكر + دليل المتاجر فقط — صفر مالية/تدقيق/حملات.
-export const SUPPORT_ROLE_KEYS = [
-  'support.view', 'support.create', 'support.manage',
   'merchants.view',
 ];
 
@@ -358,7 +340,6 @@ export const PRESETS = [
   { id: 'readonly',  label: 'قراءة فقط',     keys: READ_ONLY_KEYS           },
   { id: 'sales',     label: 'موظف مبيعات — فرص وحملات', keys: SALES_ROLE_KEYS },
   { id: 'collector', label: 'محصّل — مديونيات وحملات',  keys: COLLECTOR_ROLE_KEYS },
-  { id: 'support',   label: 'موظف خدمة عملاء — تذاكر',  keys: SUPPORT_ROLE_KEYS },
   { id: 'standard',  label: 'محاسب — قراءة وكتابة', keys: READ_WRITE_KEYS    },
   { id: 'full',      label: 'محاسب — صلاحيات كاملة (عدا الموظفين)', keys: FULL_ACCOUNTANT_KEYS },
   { id: 'accounting-supervisor', label: '+ مشرف دورة المحاسب والإقفال', keys: ACCOUNTING_SUPERVISOR_KEYS, mode: 'merge' },

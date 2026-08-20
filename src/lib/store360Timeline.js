@@ -26,7 +26,7 @@ const event = (row) => {
 
 export function normalizeStoreTimeline({
   sales = [], collections = [], interactions = [], payments = [],
-  invoices = [], shipments = [], support = [], communications = [],
+  invoices = [], shipments = [], communications = [],
 } = {}) {
   const rows = [];
 
@@ -75,14 +75,7 @@ export function normalizeStoreTimeline({
     occurredAt: item.delivered_at || item.pickup_at || item.order_date || item.created_at,
     source: 'شحنات لمحة', title: `شحنة ${item.awb || item.order_no || ''}`.trim(),
     outcome: item.order_status, details: item.carrier_name, amount: item.shipping_cost,
-    status: item.order_status, detailUrl: item.awb ? `/support?search=${encodeURIComponent(item.awb)}` : null,
-  }));
-
-  for (const item of support || []) rows.push(event({
-    id: `support:${item.id}`, type: 'support', group: 'support', occurredAt: item.createdAt || item.created_at,
-    source: 'الدعم', actor: item.creatorName || item.creator_name, title: item.ref ? `تذكرة ${item.ref}` : 'تذكرة دعم',
-    outcome: item.category, details: item.title || item.description, status: item.status,
-    detailUrl: item.ref ? `/support?search=${encodeURIComponent(item.ref)}` : '/support',
+    status: item.order_status,
   }));
 
   for (const item of communications || []) rows.push(event({
@@ -99,5 +92,5 @@ export function normalizeStoreTimeline({
 
 export const STORE_TIMELINE_FILTERS = [
   ['all', 'الكل'], ['finance', 'مالية'], ['sales', 'مبيعات'], ['collections', 'تحصيل'],
-  ['shipments', 'شحنات'], ['support', 'دعم'], ['communications', 'تواصل'],
+  ['shipments', 'شحنات'], ['communications', 'تواصل'],
 ];

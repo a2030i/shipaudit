@@ -482,6 +482,20 @@ export default function SmartCampaignCenter({ isActive = true }) {
     setAssignedHatifUserId(campaign.assignedHatifUserId || ''); setStep(2);
     document.querySelector('.scc-composer')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
+  const goToStep = nextStep => {
+    const safeStep = Math.max(1, Math.min(5, Number(nextStep) || 1));
+    setStep(safeStep);
+    const targets = {
+      1: '.scc-name-field',
+      2: '.scc-audience-block',
+      3: '.scc-protection',
+      4: '.scc-channels',
+      5: '.scc-composer__footer',
+    };
+    requestAnimationFrame(() => {
+      document.querySelector(targets[safeStep])?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  };
 
   const campaignPayload = status => ({
     id: editingId,
@@ -596,8 +610,6 @@ export default function SmartCampaignCenter({ isActive = true }) {
         </div>
       </header>
 
-      <SummaryStrip campaigns={campaignRows}/>
-
       {audienceHandoff && (
         <div className="scc-audience-handoff">
           <div><strong>جمهور من Aging Operations</strong><span>Snapshot: {new Date(audienceHandoff.snapshotAt).toLocaleString('ar-SA')} · لا توجد هواتف أو أسماء في الرابط</span></div>
@@ -612,32 +624,21 @@ export default function SmartCampaignCenter({ isActive = true }) {
       )}
 
       <div className="scc-workspace">
-        <section className="scc-campaign-list">
-          <div className="scc-section-head">
-            <div><h2>قائمة الحملات</h2><span>{fmt0(campaignRows.length)} حملة موحدة وسجل تاريخي</span></div>
-            <div className="scc-section-actions">
-              <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refreshCampaigns} disabled={loadingCampaigns}>تحديث</Btn>
-              <Btn size="sm" variant="ghost" icon={<ExternalLink size={14}/>} onClick={() => navigate('/whatsapp-settings?tab=campaigns')}>سجل القنوات</Btn>
-            </div>
-          </div>
-          <CampaignList rows={campaignRows} loading={loadingCampaigns} onOpen={openCampaign} onOpenLegacy={() => navigate('/whatsapp-settings?tab=campaigns')}/>
-        </section>
-
         <aside className="scc-composer">
           <div className="scc-composer__head">
             <div><h2>منشئ الحملة</h2><span>{editingId ? 'تعديل حملة قائمة' : 'حملة جديدة غير مرسلة'}</span></div>
             {editingId && <button type="button" onClick={() => resetComposer(false)}>بدء أخرى</button>}
           </div>
-          <StepRail step={step} onStep={setStep}/>
+          <StepRail step={step} onStep={goToStep}/>
 
           <label className="scc-name-field"><span>اسم الحملة</span><input value={name} onChange={event => setName(event.target.value)} disabled={!canManage}/></label>
 
-          <div className="scc-block">
+          <div className="scc-block scc-objective-block">
             <div className="scc-block__title"><Target size={16}/><span>الهدف</span></div>
             <ObjectiveSelector objective={objective} onChange={changeObjective}/>
           </div>
 
-          <div className="scc-block">
+          <div className="scc-block scc-audience-block">
             <div className="scc-block__title"><Users size={16}/><span>مصادر الجمهور</span></div>
             <div className="scc-source-list">{(universe?.sources || []).map(source => <span key={source}>{source}</span>)}</div>
             <div className="scc-block__title is-sub"><ClipboardList size={15}/><span>فلاتر الجمهور</span></div>
@@ -702,12 +703,25 @@ export default function SmartCampaignCenter({ isActive = true }) {
           {!canManage && <div className="scc-alert is-warning"><AlertTriangle size={15}/>يمكنك قراءة المركز، لكن إنشاء الحملة يتطلب صلاحية واتساب أو IVR.</div>}
           <div className="scc-composer__footer">
             <Btn variant="ghost" icon={<Save size={14}/>} onClick={saveDraft} disabled={!canManage || saving || universeLoading}>حفظ كمسودة</Btn>
-            <Btn variant="primary" icon={step < 5 ? <ChevronLeft size={15}/> : <FileDown size={15}/>} onClick={() => step < 5 ? setStep(value => Math.min(5, value + 1)) : launch()}
+            <Btn variant="primary" icon={step < 5 ? <ChevronLeft size={15}/> : <FileDown size={15}/>} onClick={() => step < 5 ? goToStep(step + 1) : launch()}
               disabled={!canManage || saving || universeLoading || !audience.length || !!protectionsError || !protections}>
               {step < 3 ? 'متابعة إلى الحماية' : step < 4 ? 'متابعة إلى القناة' : step < 5 ? 'مراجعة الحملة' : channel === 'employee_task' ? 'إنشاء مهام الفريق' : channel === 'export' ? 'تصدير الجمهور' : 'فتح مراجعة القناة'}
             </Btn>
           </div>
         </aside>
+
+        <SummaryStrip campaigns={campaignRows}/>
+
+        <section className="scc-campaign-list">
+          <div className="scc-section-head">
+            <div><h2>قائمة الحملات</h2><span>{fmt0(campaignRows.length)} حملة موحدة وسجل تاريخي</span></div>
+            <div className="scc-section-actions">
+              <Btn size="sm" variant="ghost" icon={<RefreshCw size={14}/>} onClick={refreshCampaigns} disabled={loadingCampaigns}>تحديث</Btn>
+              <Btn size="sm" variant="ghost" icon={<ExternalLink size={14}/>} onClick={() => navigate('/whatsapp-settings?tab=campaigns')}>سجل القنوات</Btn>
+            </div>
+          </div>
+          <CampaignList rows={campaignRows} loading={loadingCampaigns} onOpen={openCampaign} onOpenLegacy={() => navigate('/whatsapp-settings?tab=campaigns')}/>
+        </section>
       </div>
 
       <WhatsAppSendModal
