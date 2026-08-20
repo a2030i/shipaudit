@@ -64,6 +64,21 @@ function parseOperationalActive(value: unknown): boolean | null {
   return null;
 }
 
+function normalizeStatusText(value: unknown) {
+  return typeof value === 'string'
+    ? value.trim().toLowerCase().replace(/[\s_-]+/g, ' ')
+    : '';
+}
+
+function parseLamhaVisualActive(...values: unknown[]): boolean | null {
+  for (const value of values) {
+    const normalized = normalizeStatusText(value);
+    if (['active', 'نشط'].includes(normalized)) return true;
+    if (['inactive', 'غير نشط'].includes(normalized)) return false;
+  }
+  return null;
+}
+
 function nestedRecords(value: unknown, maxDepth = 5) {
   const records: Record<string, unknown>[] = [];
   const queue: Array<{ value: unknown; depth: number }> = [{ value, depth: 0 }];
@@ -93,9 +108,9 @@ const recordStoreId = (record: Record<string, unknown>) =>
 const hasOperationalField = (record: Record<string, unknown>) =>
   ['is_active', 'isActive', 'account_active', 'accountActive'].some(key => Object.hasOwn(record, key));
 
-// Lamha exposes two different facts. is_active controls shipment creation;
-// status is a visual lifecycle/activity label such as idle or stopped. Never
-// derive the operational switch from the visual label.
+// Lamha's employee API does not expose a separate operational flag. Shipment
+// creation follows the direct Lamha status only when it is exactly active or
+// inactive. Idle/stopped remain informational and never trigger an action.
 export function storeSummary(payload: unknown, expectedStoreId: number | null = null) {
   const records = nestedRecords(payload);
   const identity = records.find(record => expectedStoreId != null && recordStoreId(record) === expectedStoreId)
@@ -106,15 +121,21 @@ export function storeSummary(payload: unknown, expectedStoreId: number | null = 
     || identity;
   const candidate = { ...identity, ...operational };
   const visual = asRecord(candidate.status);
-  const canCreateShipments = parseOperationalActive(
-    candidate.is_active ?? candidate.isActive ?? candidate.account_active ?? candidate.accountActive,
-  );
   const visualStatus = String(
-    visual.value ?? visual.key ?? candidate.lifecycle_status ?? (typeof candidate.status === 'string' ? candidate.status : ''),
+    visual.value ?? visual.key ?? visual.slug ?? visual.name
+      ?? candidate.store_status ?? candidate.storeStatus ?? candidate.lifecycle_status
+      ?? (typeof candidate.status === 'string' ? candidate.status : ''),
   ).trim().toLowerCase() || null;
   const visualStatusLabel = String(
-    visual.label ?? candidate.status_label ?? candidate.lifecycle_status_label ?? visualStatus ?? '',
+    visual.label ?? visual.name ?? candidate.status_label ?? candidate.statusLabel
+      ?? candidate.store_status_label ?? candidate.storeStatusLabel
+      ?? candidate.lifecycle_status_label ?? visualStatus ?? '',
   ).trim() || null;
+  const explicitOperational = parseOperationalActive(
+    candidate.is_active ?? candidate.isActive ?? candidate.account_active ?? candidate.accountActive,
+  );
+  const visualActive = parseLamhaVisualActive(visualStatus, visualStatusLabel);
+  const canCreateShipments = explicitOperational ?? visualActive;
   return {
     id: recordStoreId(identity),
     name: String(candidate.name ?? candidate.store_name ?? candidate.title ?? '') || null,
@@ -123,6 +144,7 @@ export function storeSummary(payload: unknown, expectedStoreId: number | null = 
     visualStatusLabel,
     isActive: canCreateShipments,
     canCreateShipments,
+    shipmentPermissionSource: explicitOperational != null ? 'explicit_field' : visualActive != null ? 'lamha_status' : null,
   };
 }
 
@@ -170,7 +192,7 @@ async function processStore(
     return {
       ok: false,
       storeId,
-      error: 'operational_status_unavailable',
+      error: 'lamha_status_not_actionable',
       visualStatus: before.store.visualStatus,
       visualStatusLabel: before.store.visualStatusLabel,
     };
@@ -268,7 +290,7 @@ Deno.serve(async (req) => {
       return json(req, { ok: false, error: 'invalid_store_id' }, 400);
     }
     const result = await processStore(req, auth, employeeToken, storeId, action as 'get' | 'activate' | 'deactivate');
-    if (!result.ok) return json(req, result, result.error === 'operational_status_unavailable' ? 409 : 502);
+    if (!result.ok) return json(req, result, result.error === 'lamha_status_not_actionable' ? 409 : 502);
     return json(req, { ...result, source: 'Lamha Employee API (live)', rateLimitPerMinute: 30 });
   } catch (error) {
     return json(req, { ok: false, error: error instanceof Error ? error.message : String(error) }, 500);

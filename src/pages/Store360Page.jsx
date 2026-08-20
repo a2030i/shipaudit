@@ -237,7 +237,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     : !validStoreId ? 'لا يوجد Store ID صالح'
       : lamhaStatus.state === 'loading' ? 'جارٍ قراءة الحالة الحية من لمحة'
         : lamhaStatus.state === 'error' ? `تعذر قراءة الحالة: ${lamhaStatus.error}`
-          : typeof lamhaStatus.canCreateShipments !== 'boolean' ? 'تعذر تحديد صلاحية إنشاء الشحنات' : null;
+          : typeof lamhaStatus.canCreateShipments !== 'boolean' ? 'حالة لمحة ليست نشط أو غير نشط' : null;
   const actions = [
     { icon: Target, label: 'تسجيل نتيجة مبيعات', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
     { icon: CalendarClock, label: 'جدولة متابعة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('followup') : null },

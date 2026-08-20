@@ -142,7 +142,10 @@ test('Lamha store status action is admin-only, exact by Store ID, verified, and 
   assert.match(edgeFunction, /const before = await lamhaRequest/);
   assert.match(edgeFunction, /const after = await lamhaRequest/);
   assert.match(edgeFunction, /candidate\.is_active \?\? candidate\.isActive/);
-  assert.match(edgeFunction, /status is a visual lifecycle\/activity label/);
+  assert.match(edgeFunction, /parseLamhaVisualActive/);
+  assert.match(edgeFunction, /\['active', 'نشط'\]/);
+  assert.match(edgeFunction, /\['inactive', 'غير نشط'\]/);
+  assert.match(edgeFunction, /Idle\/stopped remain informational/);
   assert.match(edgeFunction, /visualStatusLabel/);
   assert.doesNotMatch(edgeFunction, /canCreateShipments: status == null/);
   assert.match(edgeFunction, /after\.store\.canCreateShipments !== desiredCanCreateShipments/);
@@ -153,7 +156,7 @@ test('Lamha store status action is admin-only, exact by Store ID, verified, and 
   assert.match(config, /\[functions\.lamha-store-status\]\s+verify_jwt = true/);
 });
 
-test('Lamha operations supports reviewed bulk checks and writes without treating visual states as actions', async () => {
+test('Lamha operations supports reviewed bulk checks and uses only active/inactive Lamha statuses', async () => {
   const [component, service, edgeFunction, merchantsPage] = await Promise.all([
     readFile(lamhaOperationsPath, 'utf8'),
     readFile(lamhaStatusServicePath, 'utf8'),
@@ -166,7 +169,7 @@ test('Lamha operations supports reviewed bulk checks and writes without treating
   assert.match(component, /تحديد كل النتائج/);
   assert.match(component, /مراجعة .* متاجر لمحة/);
   assert.match(component, /فحص كل النتائج/);
-  assert.match(component, /خامل ومتوقف حالات بصرية/);
+  assert.match(component, /خامل ومتوقف حالات متابعة/);
   assert.match(component, /إيقاف بعد الدفعة الحالية/);
   assert.match(component, /30 طلبًا في الدقيقة/);
   assert.match(service, /LAMHA_BATCH_SIZE = 10/);

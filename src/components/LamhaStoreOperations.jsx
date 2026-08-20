@@ -17,7 +17,7 @@ const VISUAL_LABELS = {
 };
 const ERROR_LABELS = {
   lamha_store_read_failed: 'تعذر قراءة المتجر من لمحة',
-  operational_status_unavailable: 'لم ترجع لمحة حالة التشغيل الفعلية',
+  lamha_status_not_actionable: 'حالة لمحة ليست نشط أو غير نشط',
   lamha_status_write_failed: 'رفضت لمحة تغيير الحالة',
   lamha_status_verification_failed: 'تم الطلب لكن تعذر إثبات النتيجة',
   lamha_rate_limit_wait_timeout: 'انتهت مهلة انتظار حد الطلبات',
@@ -62,7 +62,7 @@ function OperationReview({ mode, rows, onClose, onConfirm }) {
       </div>
       <strong>{actionLabel} {fmtCount(rows.length)} متجر</strong>
       <p>{isRead
-        ? 'سيُقرأ is_active مباشرة من لمحة دون تغيير أي متجر.'
+        ? 'ستُقرأ حالة نشط أو غير نشط مباشرة من لمحة دون تغيير أي متجر.'
         : 'سيُفحص كل متجر أولًا، ويُتجاوز المطابق، ثم يُغيّر المختلف ويُعاد فحصه لإثبات النتيجة.'}</p>
       <div className="lamha-operation-review__facts">
         <span><b>حد التوكن</b> 30 طلبًا في الدقيقة على جميع نقاط لمحة</span>
@@ -177,16 +177,16 @@ export default function LamhaStoreOperations({ merchants, onClose }) {
     <PageHeader
       icon={<ShieldCheck size={22}/>}
       title="حالة متاجر لمحة الحية"
-      subtitle="تشغيل وإيقاف إنشاء الشحنات من is_active فقط"
-      meta="خامل ومتوقف حالات بصرية للمتابعة ولا تنفذ أي إجراء"
+      subtitle="تشغيل وإيقاف إنشاء الشحنات من حالة لمحة: نشط أو غير نشط"
+      meta="خامل ومتوقف حالات متابعة فقط ولا تنفذ أي إجراء"
       actions={<Btn variant="ghost" onClick={onClose} disabled={busy}>العودة إلى دليل المتاجر</Btn>}
     />
 
     <div className="lamha-operations-summary">
       <Card><span>المتاجر المتاحة</span><strong>{fmtCount(normalizedRows.length)}</strong><small>من أحدث دليل متاجر</small></Card>
       <Card><span>فُحصت حيًا</span><strong>{fmtCount(checked)}</strong><small>المصدر: لمحة مباشرة</small></Card>
-      <Card className="is-active"><span>يسمح بإنشاء الشحنات</span><strong>{fmtCount(active)}</strong><small>is_active = true</small></Card>
-      <Card className="is-inactive"><span>إنشاء الشحنات متوقف</span><strong>{fmtCount(inactive)}</strong><small>is_active = false</small></Card>
+      <Card className="is-active"><span>يسمح بإنشاء الشحنات</span><strong>{fmtCount(active)}</strong><small>حالة لمحة: نشط</small></Card>
+      <Card className="is-inactive"><span>إنشاء الشحنات متوقف</span><strong>{fmtCount(inactive)}</strong><small>حالة لمحة: غير نشط</small></Card>
       <Card className={failed ? 'is-error' : ''}><span>تحتاج مراجعة</span><strong>{fmtCount(failed)}</strong><small>تعذر الفحص أو الإثبات</small></Card>
     </div>
 
