@@ -7,7 +7,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { Search, Download, Phone, MessageCircle, ChevronDown, ChevronLeft, HandCoins,
-  TrendingUp, UserPlus, UserMinus, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
+  TrendingUp, PhoneCall, Scale, Megaphone, ListChecks } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { Card, Btn, Spinner, Empty, toast, PageHeader, Modal, Input, WorkspaceLoadingState } from '../components/UI.jsx';
@@ -633,7 +633,6 @@ export default function CustomerMoney({ isActive = true }) {
   const standingCount = (credits?.rows?.length || 0) - applicableRows.length;
   const growth = growthPulse.data || {};
   const growthCurrent = growth.current || {};
-  const movement = growth.movement || {};
   const currentReturnTo = `${location.pathname}${location.search}`;
   const openWithContext = (path) => {
     const [pathname, query = ''] = path.split('?');
@@ -737,11 +736,11 @@ export default function CustomerMoney({ isActive = true }) {
           <div className="customer-finance-command__source"><i className={growthPulse.status === 'available' ? 'is-live' : ''}/>{growthPulse.status === 'loading' ? 'جارٍ تحميل نشاط لمحة' : growthPulse.status === 'available' ? 'المصادر متاحة' : 'نشاط لمحة غير متاح'}</div>
         </div>
         <div className="customer-finance-command__kpis">
-          <button type="button" onClick={scrollToAging}><HandCoins/><span>المطلوب تحصيله</span><strong>{fmt(d.outstanding)} ر.س</strong><small>{d.outstandingCnt} عميلًا</small></button>
+          <button type="button" onClick={scrollToAging}><ListChecks/><span>فواتير زوهو غير المدفوعة</span><strong>{d.zohoUnpaidInvoicesAvailable ? fmt(d.zohoUnpaidInvoices) : '—'} ر.س</strong><small>{d.zohoUnpaidInvoicesAvailable ? 'نفس إجمالي الفواتير في Aging · دون المسودات' : 'المصدر غير متاح'}</small></button>
+          <button type="button" onClick={() => setSettlementsOpen(true)}><Scale/><span>أرصدة دائنة</span><strong>− {fmt(d.creditOffset)} ر.س</strong><small>تُخصم قبل مطالبة العميل</small></button>
+          <button type="button" onClick={scrollToAging}><HandCoins/><span>صافي المطلوب تحصيله</span><strong>{fmt(d.outstanding)} ر.س</strong><small>{d.outstandingCnt} عميلًا</small></button>
           <button type="button" onClick={() => updateUrlFilters({ aging: 'inv90p', page: null })}><Scale/><span>أكثر من 90 يومًا</span><strong>{fmt(campaignAging?.inv90p || 0)} ر.س</strong><small>فتح الشريحة</small></button>
           <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><TrendingUp/><span>نشطون خلال 5 أيام</span><strong>{growthPulse.status === 'available' ? growthCurrent.active ?? 0 : '—'}</strong><small>{growthPulse.status === 'available' ? `الهدف ${growthCurrent.target || 500}` : 'المصدر غير متاح'}</small></button>
-          <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><UserPlus/><span>دخلوا النشاط</span><strong>{growthPulse.status === 'available' ? `+${movement.entered || 0}` : '—'}</strong><small>من آخر لقطة مقارنة</small></button>
-          <button type="button" onClick={() => openWithContext('/retargeting?view=activation')}><UserMinus/><span>خرجوا من النشاط</span><strong>{growthPulse.status === 'available' ? `−${movement.exited || 0}` : '—'}</strong><small>يحتاجون استعادة</small></button>
           <button type="button" onClick={() => openWithContext('/reconciliation?tab=customers')}><ListChecks/><span>فروق المطابقة</span><strong>{d.balanceSyncIssueCount || 0}</strong><small>{d.balanceSyncIssueCount ? `${fmt(d.balanceSyncGapTotal)} ر.س` : 'لا فروق محجوبة'}</small></button>
         </div>
         <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
@@ -757,6 +756,13 @@ export default function CustomerMoney({ isActive = true }) {
             </div>
           </details>
         </div>
+        {d.zohoDraftCount > 0 ? (
+          <button type="button" className="customer-finance-command__drafts" onClick={() => openWithContext('/zoho-data?tab=customers&status=draft')}>
+            <ListChecks size={16}/>
+            <span><strong>{d.zohoDraftCount} فاتورة مسودة في زوهو</strong><small>قيمتها {fmt(d.zohoDraftOutstanding)} ر.س · لا تدخل إجمالي الفواتير غير المدفوعة حتى تتحول إلى مرسلة</small></span>
+            <ChevronLeft size={17}/>
+          </button>
+        ) : null}
         {growthPulse.status === 'unavailable' ? <div className="customer-finance-command__warning" role="status">تعذر تحميل نشاط عملاء لمحة: {growthPulse.error}. بقيت الأرقام المالية وإجراءات التحصيل متاحة.</div> : null}
       </section>
 
@@ -838,21 +844,19 @@ export default function CustomerMoney({ isActive = true }) {
       <Card style={{ padding: '18px 20px', marginBottom: 12 }}>
         <div className="hero-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(150px,1fr))', gap: 14 }}>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>رصيد Zoho الإجمالي</div>
-            <div className="customer-money-kpi-value" title={d.zohoMatchedOutstandingAvailable ? `${fmt(d.zohoMatchedOutstanding)} ر.س` : 'مصدر Zoho غير متاح'} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
-              {d.zohoMatchedOutstandingAvailable ? fmt(d.zohoMatchedOutstanding) : 'المصدر غير متاح'}
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>فواتير زوهو غير المدفوعة</div>
+            <div className="customer-money-kpi-value" title={d.zohoUnpaidInvoicesAvailable ? `${fmt(d.zohoUnpaidInvoices)} ر.س` : 'مصدر Zoho غير متاح'} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--text)', lineHeight: 1.2 }}>
+              {d.zohoUnpaidInvoicesAvailable ? fmt(d.zohoUnpaidInvoices) : 'المصدر غير متاح'}
             </div>
-            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>قبل الأرصدة الدائنة · مطابق للمستندات في Zoho</div>
+            <div style={{ fontSize: 11, color: 'var(--muted2)' }}>نفس إجمالي تقرير Aging في زوهو · لا يشمل المسودات</div>
           </div>
           <div>
-            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>مستبعد قبل التحصيل</div>
-            <div className="customer-money-kpi-value" title={d.zohoMatchedOutstandingAvailable ? `${fmt(d.zohoMatchedDeduction)} ر.س` : 'مصدر Zoho غير متاح'} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
-              {d.zohoMatchedOutstandingAvailable ? fmt(d.zohoMatchedDeduction) : 'المصدر غير متاح'}
+            <div style={{ fontSize: 11.5, color: 'var(--muted)' }}>أرصدة دائنة</div>
+            <div className="customer-money-kpi-value" title={`${fmt(d.creditOffset)} ر.س`} style={{ fontSize: 26, fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--green)', lineHeight: 1.2 }}>
+              − {fmt(d.creditOffset)}
             </div>
             <div style={{ fontSize: 11, color: 'var(--muted2)' }}>
-              {d.zohoMatchedOutstandingAvailable
-                ? `${fmt(d.zohoMatchedCreditOffset)} أرصدة دائنة + ${fmt(d.zohoMatchedSmallBalanceExcluded)} فروقات صغيرة`
-                : 'تعذر مطابقة الأرصدة الدائنة والفروقات'}
+              مبالغ لصالح العملاء تُخصم قبل المطالبة
             </div>
           </div>
           <div>
@@ -879,6 +883,15 @@ export default function CustomerMoney({ isActive = true }) {
             </div>
           </div>
         </div>
+
+        {d.zohoUnpaidInvoicesAvailable ? (
+          <div className="customer-money-equation" role="status">
+            <span><b>{fmt(d.zohoUnpaidInvoices)}</b> فواتير غير مدفوعة</span>
+            <span>{Number(d.zohoOpeningAndAdjustments || 0) >= 0 ? '+' : '−'} <b>{fmt(Math.abs(d.zohoOpeningAndAdjustments || 0))}</b> رصيد افتتاحي/تسويات</span>
+            <span>− <b>{fmt(d.creditOffset)}</b> أرصدة دائنة</span>
+            <strong>= {fmt(d.outstanding)} ر.س صافي التحصيل</strong>
+          </div>
+        ) : null}
 
       </Card>
       </div>

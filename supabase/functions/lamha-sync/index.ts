@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
   else if (style === 'apikey') headers['api-key'] = token;
 
   try {
-    await waitForLamhaApiSlot(db, `lamha-sync:${style}`);
+    await waitForLamhaApiSlot(db, token, `lamha-sync:${style}`);
     const r = await fetch(`${BASE}${path}`, { headers });
     const text = await r.text();
     let parsed: any = null;

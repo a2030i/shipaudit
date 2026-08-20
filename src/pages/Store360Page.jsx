@@ -176,8 +176,10 @@ function PromiseModal({ task, contextAmount = null, contextLabel = '', currentBa
   </Modal>;
 }
 
-function StoreStatusConfirmModal({ store, currentStatus, busy, onClose, onConfirm }) {
-  const activating = currentStatus === 'inactive';
+const LAMHA_STATUS_LABELS = { active: 'نشط', inactive: 'غير نشط', idle: 'خامل', stopped: 'متوقف' };
+
+function StoreStatusConfirmModal({ store, currentStatus, canCreateShipments, busy, onClose, onConfirm }) {
+  const activating = canCreateShipments === false;
   return <Modal title={`${activating ? 'تشغيل' : 'إيقاف'} حساب لمحة`} onClose={busy ? undefined : onClose} width={460}>
     <div className="s360-status-confirm">
       <div className={`s360-status-confirm__icon ${activating ? 'is-active' : 'is-danger'}`}>{activating ? <Power size={24}/> : <PowerOff size={24}/>}</div>
@@ -185,7 +187,8 @@ function StoreStatusConfirmModal({ store, currentStatus, busy, onClose, onConfir
       <p>{activating
         ? 'سيُعاد تشغيل حساب المتجر في لمحة فورًا. سيتم التحقق من الحالة بعد التنفيذ.'
         : 'سيُوقف حساب المتجر في لمحة فورًا ولن يتمكن من متابعة العمليات الجديدة حتى إعادة تشغيله.'}</p>
-      <div className="s360-status-confirm__state"><span>الحالة الحالية</span><strong>{currentStatus === 'active' ? 'نشط' : 'موقوف'}</strong></div>
+      <div className="s360-status-confirm__state"><span>الحالة الحالية</span><strong>{LAMHA_STATUS_LABELS[currentStatus] || currentStatus || 'غير معروفة'}</strong></div>
+      <div className="s360-status-confirm__state"><span>إنشاء الشحنات</span><strong>{canCreateShipments ? 'مسموح' : 'متوقف'}</strong></div>
       <div className="s360-form-actions"><Btn variant="ghost" onClick={onClose} disabled={busy}>إلغاء</Btn><Btn variant={activating ? 'accent' : 'danger'} onClick={onConfirm} disabled={busy}>{busy ? 'جارٍ التحقق…' : activating ? 'تشغيل الحساب' : 'إيقاف الحساب'}</Btn></div>
     </div>
   </Modal>;
@@ -195,7 +198,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
   const [mobileOpen, setMobileOpen] = useState(false);
   const [modal, setModal] = useState(null);
   const [waOpen, setWaOpen] = useState(false);
-  const [lamhaStatus, setLamhaStatus] = useState({ state: 'idle', value: null, error: null });
+  const [lamhaStatus, setLamhaStatus] = useState({ state: 'idle', value: null, canCreateShipments: null, error: null });
   const [statusBusy, setStatusBusy] = useState(false);
   const store = core.store;
   const task = work?.activeTask;
@@ -211,19 +214,19 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
   useEffect(() => {
     let cancelled = false;
     if (!isAdmin || !validStoreId) return undefined;
-    setLamhaStatus({ state: 'loading', value: null, error: null });
+    setLamhaStatus({ state: 'loading', value: null, canCreateShipments: null, error: null });
     loadLamhaStoreStatus(store.storeId)
-      .then(result => { if (!cancelled) setLamhaStatus({ state: 'available', value: result.store?.status || null, error: null }); })
-      .catch(error => { if (!cancelled) setLamhaStatus({ state: 'error', value: null, error: error.message }); });
+      .then(result => { if (!cancelled) setLamhaStatus({ state: 'available', value: result.store?.status || null, canCreateShipments: result.store?.canCreateShipments ?? null, error: null }); })
+      .catch(error => { if (!cancelled) setLamhaStatus({ state: 'error', value: null, canCreateShipments: null, error: error.message }); });
     return () => { cancelled = true; };
   }, [isAdmin, store.storeId, validStoreId]);
 
   const runStoreStatusAction = async () => {
-    const activate = lamhaStatus.value === 'inactive';
+    const activate = lamhaStatus.canCreateShipments === false;
     setStatusBusy(true);
     try {
       const result = await updateLamhaStoreStatus(store.storeId, activate);
-      setLamhaStatus({ state: 'available', value: result.store?.status || (activate ? 'active' : 'inactive'), error: null });
+      setLamhaStatus({ state: 'available', value: result.store?.status || (activate ? 'active' : 'inactive'), canCreateShipments: result.store?.canCreateShipments ?? activate, error: null });
       setModal(null);
       toast(activate ? 'تم تشغيل حساب المتجر في لمحة' : 'تم إيقاف حساب المتجر في لمحة', 'success');
     } catch (error) {
@@ -234,7 +237,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     : !validStoreId ? 'لا يوجد Store ID صالح'
       : lamhaStatus.state === 'loading' ? 'جارٍ قراءة الحالة الحية من لمحة'
         : lamhaStatus.state === 'error' ? `تعذر قراءة الحالة: ${lamhaStatus.error}`
-          : !['active', 'inactive'].includes(lamhaStatus.value) ? 'حالة الحساب غير معروفة' : null;
+          : typeof lamhaStatus.canCreateShipments !== 'boolean' ? 'تعذر تحديد صلاحية إنشاء الشحنات' : null;
   const actions = [
     { icon: Target, label: 'تسجيل نتيجة مبيعات', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('sales') : null },
     { icon: CalendarClock, label: 'جدولة متابعة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !salesAllowed ? 'تحتاج صلاحية إدارة المبيعات' : null, onClick: store.phone && salesAllowed ? () => setModal('followup') : null },
@@ -245,7 +248,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     { icon: Truck, label: 'فتح الشحنات', onClick: () => changeView('shipments') },
     { icon: CircleDollarSign, label: 'التفاصيل المالية', onClick: () => changeView('finance') },
     { icon: Send, label: 'إضافة إلى حملة', reason: !store.phone ? 'لا يوجد رقم تواصل' : !campaignAllowed ? 'تحتاج صلاحية الحملات' : null, onClick: store.phone && campaignAllowed ? () => setWaOpen(true) : null },
-    { icon: lamhaStatus.value === 'inactive' ? Power : PowerOff, label: lamhaStatus.value === 'inactive' ? 'تشغيل حساب لمحة' : 'إيقاف حساب لمحة', reason: statusReason, onClick: !statusReason ? () => setModal('store-status') : null },
+    { icon: lamhaStatus.canCreateShipments === false ? Power : PowerOff, label: lamhaStatus.canCreateShipments === false ? 'تشغيل حساب لمحة' : 'إيقاف حساب لمحة', reason: statusReason, onClick: !statusReason ? () => setModal('store-status') : null },
   ];
   return <>
     <Card className="s360-action-center">
@@ -266,7 +269,7 @@ function ActionCenter({ core, work, can, isAdmin, changeView, currentUrl, onRelo
     </div></div> : null}
     {modal === 'sales' || modal === 'followup' ? <SalesActionModal store={store} mode={modal} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
     {modal === 'promise' && task ? <PromiseModal task={task} contextAmount={agingAmount || null} contextLabel={agingLabel} currentBalance={core.financial?.outstanding} onClose={() => setModal(null)} onSaved={onReloadWork}/> : null}
-    {modal === 'store-status' ? <StoreStatusConfirmModal store={store} currentStatus={lamhaStatus.value} busy={statusBusy} onClose={() => setModal(null)} onConfirm={runStoreStatusAction}/> : null}
+    {modal === 'store-status' ? <StoreStatusConfirmModal store={store} currentStatus={lamhaStatus.value} canCreateShipments={lamhaStatus.canCreateShipments} busy={statusBusy} onClose={() => setModal(null)} onConfirm={runStoreStatusAction}/> : null}
     {waOpen ? <Suspense fallback={null}><WhatsAppSendModal open recipients={[{ to: store.phone, name: store.storeName, amount: core.financial?.outstanding || 0, vars: [store.storeName, MONEY(core.financial?.outstanding)] }]} bucketLabel={`متجر 360 · ${store.storeName}`} onClose={() => setWaOpen(false)} onSent={() => setWaOpen(false)}/></Suspense> : null}
   </>;
 }

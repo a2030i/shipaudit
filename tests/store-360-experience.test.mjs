@@ -10,10 +10,13 @@ const customerWatchPath = new URL('../src/pages/CustomerWatch.jsx', import.meta.
 const collectionsPath = new URL('../src/pages/Collections.jsx', import.meta.url);
 const customerMoneyPath = new URL('../src/pages/CustomerMoney.jsx', import.meta.url);
 const lamhaStatusServicePath = new URL('../src/lib/lamhaStoreStatusService.js', import.meta.url);
+const lamhaOperationsPath = new URL('../src/components/LamhaStoreOperations.jsx', import.meta.url);
+const merchantsPagePath = new URL('../src/pages/Merchants.jsx', import.meta.url);
 const lamhaStatusFunctionPath = new URL('../supabase/functions/lamha-store-status/index.ts', import.meta.url);
 const lamhaSyncFunctionPath = new URL('../supabase/functions/lamha-sync/index.ts', import.meta.url);
 const lamhaRateLimitPath = new URL('../supabase/functions/_shared/lamhaRateLimit.ts', import.meta.url);
 const lamhaRateLimitMigrationPath = new URL('../supabase/migrations/20260820083409_lamha_global_rate_limit.sql', import.meta.url);
+const lamhaTokenRateLimitMigrationPath = new URL('../supabase/migrations/20260820133223_lamha_token_scoped_rate_limit.sql', import.meta.url);
 const supabaseConfigPath = new URL('../supabase/config.toml', import.meta.url);
 
 test('unified timeline keeps the experience contract, removes undated rows, and sorts newest first', () => {
@@ -138,30 +141,70 @@ test('Lamha store status action is admin-only, exact by Store ID, verified, and 
   assert.match(edgeFunction, /Authorization: `Bearer \$\{employeeToken\}`/);
   assert.match(edgeFunction, /const before = await lamhaRequest/);
   assert.match(edgeFunction, /const after = await lamhaRequest/);
-  assert.match(edgeFunction, /after\.store\.id !== storeId \|\| after\.store\.status !== desiredStatus/);
+  assert.match(edgeFunction, /candidate\.is_active \?\? candidate\.isActive/);
+  assert.match(edgeFunction, /status is a visual lifecycle\/activity label/);
+  assert.match(edgeFunction, /visualStatusLabel/);
+  assert.doesNotMatch(edgeFunction, /canCreateShipments: status == null/);
+  assert.match(edgeFunction, /after\.store\.canCreateShipments !== desiredCanCreateShipments/);
+  assert.doesNotMatch(edgeFunction, /!\['active', 'inactive'\]\.includes/);
+  assert.match(page, /typeof lamhaStatus\.canCreateShipments !== 'boolean'/);
+  assert.match(page, /إنشاء الشحنات/);
   assert.match(edgeFunction, /user_activity_log/);
   assert.match(config, /\[functions\.lamha-store-status\]\s+verify_jwt = true/);
 });
 
-test('every outbound Lamha function claims the same server-side 30/minute budget', async () => {
-  const [statusFunction, syncFunction, limiter, migration] = await Promise.all([
+test('Lamha operations supports reviewed bulk checks and writes without treating visual states as actions', async () => {
+  const [component, service, edgeFunction, merchantsPage] = await Promise.all([
+    readFile(lamhaOperationsPath, 'utf8'),
+    readFile(lamhaStatusServicePath, 'utf8'),
+    readFile(lamhaStatusFunctionPath, 'utf8'),
+    readFile(merchantsPagePath, 'utf8'),
+  ]);
+
+  assert.match(merchantsPage, /حالة لمحة الحية/);
+  assert.match(merchantsPage, /profile\?\.role === 'admin'/);
+  assert.match(component, /تحديد كل النتائج/);
+  assert.match(component, /مراجعة .* متاجر لمحة/);
+  assert.match(component, /فحص كل النتائج/);
+  assert.match(component, /خامل ومتوقف حالات بصرية/);
+  assert.match(component, /إيقاف بعد الدفعة الحالية/);
+  assert.match(component, /30 طلبًا في الدقيقة/);
+  assert.match(service, /LAMHA_BATCH_SIZE = 10/);
+  assert.match(service, /batch-\$\{action\}/);
+  assert.match(service, /runLamhaStoreOperation/);
+  assert.match(edgeFunction, /MAX_BATCH_SIZE = 10/);
+  assert.match(edgeFunction, /batch-get/);
+  assert.match(edgeFunction, /batch-activate/);
+  assert.match(edgeFunction, /batch-deactivate/);
+  assert.match(edgeFunction, /before\.store\.canCreateShipments === desiredCanCreateShipments/);
+  assert.match(edgeFunction, /after\.store\.canCreateShipments !== desiredCanCreateShipments/);
+});
+
+test('every outbound Lamha function shares a server-side 30/minute budget by token, not endpoint', async () => {
+  const [statusFunction, syncFunction, limiter, migration, tokenMigration] = await Promise.all([
     readFile(lamhaStatusFunctionPath, 'utf8'),
     readFile(lamhaSyncFunctionPath, 'utf8'),
     readFile(lamhaRateLimitPath, 'utf8'),
     readFile(lamhaRateLimitMigrationPath, 'utf8'),
+    readFile(lamhaTokenRateLimitMigrationPath, 'utf8'),
   ]);
 
-  assert.match(statusFunction, /waitForLamhaApiSlot\(admin,/);
-  assert.match(syncFunction, /waitForLamhaApiSlot\(db,/);
+  assert.match(statusFunction, /waitForLamhaApiSlot\(admin, employeeToken,/);
+  assert.match(syncFunction, /waitForLamhaApiSlot\(db, token,/);
+  assert.match(limiter, /crypto\.subtle\.digest\('SHA-256'/);
+  assert.match(limiter, /p_credential_key: credentialKey/);
   assert.match(limiter, /claim_lamha_api_request/);
   assert.match(limiter, /lamha_rate_limit_wait_timeout/);
   assert.match(migration, /create table if not exists private\.lamha_api_rate_limit_state/);
-  assert.match(migration, /for update/);
-  assert.match(migration, /interval '2100 milliseconds'/);
-  assert.match(migration, /'limit_per_minute', 30/);
-  assert.match(migration, /coalesce\(auth\.role\(\), ''\) <> 'service_role'/);
-  assert.match(migration, /revoke all on function public\.claim_lamha_api_request\(text\) from public, anon, authenticated/);
-  assert.match(migration, /grant execute on function public\.claim_lamha_api_request\(text\) to service_role/);
+  assert.match(tokenMigration, /create table if not exists private\.lamha_api_token_rate_limit_state/);
+  assert.match(tokenMigration, /credential_key text primary key/);
+  assert.match(tokenMigration, /where credential_key = p_credential_key\s+for update/);
+  assert.match(tokenMigration, /interval '2100 milliseconds'/);
+  assert.match(tokenMigration, /'limit_per_minute', 30/);
+  assert.match(tokenMigration, /coalesce\(auth\.jwt\(\) ->> 'role', ''\) <> 'service_role'/);
+  assert.match(tokenMigration, /revoke all on function public\.claim_lamha_api_request\(text, text\) from public, anon, authenticated/);
+  assert.match(tokenMigration, /grant execute on function public\.claim_lamha_api_request\(text, text\) to service_role/);
+  assert.doesNotMatch(tokenMigration, /raw_token|employeeToken|LAMHA_EMPLOYEE_TOKEN/);
 });
 
 test('collection task drawer opens Store 360 with exact store when available and preserves return context', async () => {

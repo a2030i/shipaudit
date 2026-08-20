@@ -27,6 +27,21 @@ test('نشاط لمحة تحميل تدريجي ولا يعطل أرقام ال�
   assert.match(page, /بقيت الأرقام المالية وإجراءات التحصيل متاحة/);
 });
 
+test('العرض المالي يفصل فواتير زوهو والمسودات والأرصدة الدائنة عن صافي التحصيل', async () => {
+  const [page, service] = await Promise.all([
+    read('src/pages/CustomerMoney.jsx'),
+    read('src/lib/pnlService.js'),
+  ]);
+  assert.match(page, /فواتير زوهو غير المدفوعة/);
+  assert.match(page, /أرصدة دائنة/);
+  assert.match(page, /صافي المطلوب تحصيله/);
+  assert.match(page, /فاتورة مسودة في زوهو/);
+  assert.match(page, /لا تدخل إجمالي الفواتير غير المدفوعة حتى تتحول إلى مرسلة/);
+  assert.match(service, /status === 'draft'/);
+  assert.match(service, /zohoUnpaidInvoices/);
+  assert.match(service, /zohoOpeningAndAdjustments/);
+});
+
 test('التنقل يضع المالية أولًا ويُبقي هاتف والحملات للعملاء خارج المنصة', async () => {
   const navigation = await read('src/lib/navigation.js');
   const financeIndex = navigation.indexOf("id: 'finance'");
