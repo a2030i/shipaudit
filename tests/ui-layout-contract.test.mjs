@@ -347,6 +347,31 @@ test('stable work areas use one seven-entry modal hub and permission-aware secon
   assert.match(app, /id: 'hatif-settings'[^\n]*path: '\/settings\/hatif'[^\n]*permKey: 'whatsapp\.configure'/);
 });
 
+test('navigation hierarchy removes redundant single-choice levels and keeps permission fallbacks safe', async () => {
+  const hub = await read('src/components/NavigationHub.jsx');
+
+  assert.match(hub, /function collapseSingleChild\(node\)/);
+  assert.match(hub, /member\.id === workspace\.entryId \? workspace\.path : null/);
+  assert.match(hub, /members\.length === 1 \? memberNodes\[0\]\.path : entryPath/);
+  assert.doesNotMatch(hub, /member\.id === entry\.id \? workspace\.path : null/);
+  assert.match(hub, /if \(count === 1\) return 'قسم واحد'/);
+  assert.match(hub, /if \(count === 2\) return 'قسمان'/);
+});
+
+test('carrier compatibility pages rely on the unified navigation hub only', async () => {
+  const pages = await Promise.all([
+    'src/pages/CarrierLedger.jsx',
+    'src/pages/CarrierStatements.jsx',
+    'src/pages/CodSettlements.jsx',
+    'src/pages/Settings.jsx',
+  ].map(read));
+
+  for (const page of pages) {
+    assert.doesNotMatch(page, /CarrierTabs/);
+    assert.doesNotMatch(page, /<WorkspaceTabs/);
+  }
+});
+
 test('approved workspaces live in the navigation hub without removing legacy routes', async () => {
   const app = await read('src/App.jsx');
   const navigation = await read('src/lib/navigation.js');

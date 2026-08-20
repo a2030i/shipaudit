@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, CalendarClock,
-  CheckCircle2, CircleDollarSign, Clock3, PlugZap, RefreshCw, Save,
+  CheckCircle2, CircleDollarSign, Clock3, Megaphone, MessagesSquare, PhoneCall, PlugZap, RefreshCw, Save,
   ShieldAlert, Target as TargetIcon, TrendingUp, UserRoundCheck, UsersRound,
 } from 'lucide-react';
 import { Card, Btn, Spinner, Empty, PageHeader, toast } from '../components/UI.jsx';
@@ -14,6 +14,7 @@ import {
   loadCustomerActivationCommandCenter,
   saveActivationConfig,
 } from '../lib/retargetingService.js';
+import { loadHatifCallStats, loadWhatsAppCampaignReport, loadWhatsAppDeliveryHealth } from '../lib/whatsappService.js';
 import './StoreActivation.css';
 
 const fmt = value => Number(value || 0).toLocaleString('en-US');
@@ -67,6 +68,29 @@ function QueueRow({ label, value, hint, color, icon, onClick }) {
   );
 }
 
+function MarketingPulse({ data, onCampaigns, onExternal }) {
+  const unavailable = !data || data.status === 'unavailable';
+  return (
+    <Card className="activation-marketing-pulse" style={{ padding: '16px 18px', marginBottom: 14 }}>
+      <div className="activation-marketing-pulse__header">
+        <div><span>التواصل والتسويق</span><strong>نبض الوصول إلى العملاء</strong><small>قراءة موحدة من هاتف وواتساب؛ لا تنسب الشحن أو السداد للحملة.</small></div>
+        <div className="activation-marketing-pulse__actions">
+          <Btn size="sm" variant="primary" icon={<Megaphone size={14}/>} onClick={onCampaigns}>فتح الحملات</Btn>
+          <Btn size="sm" variant="ghost" onClick={onExternal}>جمهور خارج المنصة</Btn>
+        </div>
+      </div>
+      {unavailable ? <div className="activation-marketing-pulse__unavailable" role="status">مصدر هاتف/واتساب غير متاح الآن؛ بيانات نشاط المتاجر أعلاه لم تتأثر.</div> : (
+        <div className="activation-marketing-pulse__metrics">
+          <div><MessagesSquare size={17}/><span>تغطية حالات الرسائل</span><strong>{data.coverage == null ? 'لا توجد عينة' : `${data.coverage}%`}</strong></div>
+          <div><Megaphone size={17}/><span>آخر حملة</span><strong>{data.latestCampaign?.name || 'لا توجد حملة'}</strong><small>{data.latestCampaign?.lastSent ? fmtDate(data.latestCampaign.lastSent) : '—'}</small></div>
+          <div><PhoneCall size={17}/><span>مكالمات 30 يومًا</span><strong>{fmt(data.calls)}</strong><small>{data.calls ? `${data.answerRate}% مردودة` : 'لا توجد مكالمات'}</small></div>
+          <div><MessagesSquare size={17}/><span>ردود واتساب</span><strong>{fmt(data.replied)}</strong><small>من الرسائل ذات الحالة المرصودة</small></div>
+        </div>
+      )}
+    </Card>
+  );
+}
+
 export default function StoreActivation({ isActive = true }) {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
@@ -76,15 +100,41 @@ export default function StoreActivation({ isActive = true }) {
   const [loadError, setLoadError] = useState('');
   const [editTarget, setEditTarget] = useState('');
   const [saving, setSaving] = useState(false);
+  const [marketing, setMarketing] = useState(null);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     setLoadError('');
     try {
+      const marketingPromise = Promise.all([
+        loadWhatsAppCampaignReport().catch(() => null),
+        loadWhatsAppDeliveryHealth().catch(() => null),
+        loadHatifCallStats(30).catch(() => null),
+      ]);
       const config = await loadActivationConfig();
       setCfg(config);
       setEditTarget(String(config.target));
-      setData(await loadCustomerActivationCommandCenter(config.days, config.target, 24));
+      const [command, marketingSources] = await Promise.all([
+        loadCustomerActivationCommandCenter(config.days, config.target, 24),
+        marketingPromise,
+      ]);
+      setData(command);
+      const [campaigns, delivery, calls] = marketingSources;
+      if (!campaigns && !delivery && !calls) setMarketing({ status: 'unavailable' });
+      else {
+        const latestCampaign = [...(campaigns || [])].filter(row => row.lastSent).sort((a, b) => new Date(b.lastSent) - new Date(a.lastSent))[0] || null;
+        const total = Number(delivery?.total) || 0;
+        const observed = Math.max(0, total - (Number(delivery?.pending) || 0));
+        const callTotal = (calls || []).reduce((sum, row) => sum + (Number(row.calls) || 0), 0);
+        const answered = (calls || []).reduce((sum, row) => sum + (Number(row.answered) || 0), 0);
+        setMarketing({
+          status: 'available', latestCampaign,
+          coverage: total ? Math.round((observed / total) * 100) : null,
+          replied: Number(delivery?.replied) || 0,
+          calls: callTotal,
+          answerRate: callTotal ? Math.round((answered / callTotal) * 100) : 0,
+        });
+      }
     } catch (error) {
       setLoadError(error.message || 'تعذر تحميل بيانات تفعيل المتاجر');
       toast(`فشل تحميل مركز القيادة: ${error.message}`, 'error');
@@ -198,6 +248,12 @@ export default function StoreActivation({ isActive = true }) {
           <span>{fmt(current.total_customers)} عميل فريد · {fmt(current.total_stores)} متجر</span>
         </div>
       </Card>
+
+      <MarketingPulse
+        data={marketing}
+        onCampaigns={() => navigate('/whatsapp-settings?tab=campaigns&source=activation')}
+        onExternal={() => navigate('/retargeting?view=external&source=activation')}
+      />
 
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(210px,1fr))', gap: 12, marginBottom: 14 }}>
         <Metric icon={<TargetIcon size={17}/>} label="المطلوب إدخالهم أسبوعيًا" value={current.required_weekly_entrants}

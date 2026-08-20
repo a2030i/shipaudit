@@ -405,6 +405,19 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
         meta="الرفع هنا للدفتر الداخلي فقط؛ رفع كشف Zoho يتم يدويًا من Zoho."
       />
 
+      <Card className="bank-upload-contract" style={{ padding: '13px 15px', marginBottom: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(230px,1fr))', gap: 10 }}>
+          <div style={{ padding: 10, borderRadius: 10, background: 'color-mix(in srgb,var(--accent) 6%,var(--surface2))' }}>
+            <strong style={{ display: 'block', fontSize: 12 }}>1 · داخل ShipAudit</strong>
+            <span style={{ display: 'block', marginTop: 4, color: 'var(--muted)', fontSize: 11, lineHeight: 1.6 }}>ارفع الكشف للمقارنة الداخلية، راجع العمليات، وأنشئ ملف النواقص الآمن عند الحاجة.</span>
+          </div>
+          <div style={{ padding: 10, borderRadius: 10, background: 'color-mix(in srgb,var(--gold) 6%,var(--surface2))' }}>
+            <strong style={{ display: 'block', fontSize: 12 }}>2 · داخل Zoho Books</strong>
+            <span style={{ display: 'block', marginTop: 4, color: 'var(--muted)', fontSize: 11, lineHeight: 1.6 }}>الرفع النهائي يتم يدويًا في Zoho. ShipAudit لا يرسل كشفًا بنكيًا ولا ينشئ عمليات هناك.</span>
+          </div>
+        </div>
+      </Card>
+
       {/* View toggle: this upload vs the accumulated saved ledger */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 18 }}>
         <Btn variant={view === 'current' ? 'primary' : 'outline'} icon={<Upload size={13}/>} onClick={() => setView('current')}>
@@ -432,7 +445,7 @@ export default function BankStatement({ isActive = true, defaultSavedClass = 'al
           }}
         >
           <Upload size={42} color="var(--muted)" style={{ marginBottom: 12 }}/>
-          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>اسحب ملف كشف الحساب هنا</div>
+          <div style={{ fontWeight: 600, fontSize: 16, marginBottom: 6 }}>ارفع كشفًا للمقارنة الداخلية</div>
           <div style={{ color: 'var(--muted)', fontSize: 12 }}>
             يدعم ملفات Excel من بنك الإنماء وغيره
           </div>

@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Upload, FileText, AlertCircle, Search, Trash2, Save, Sparkles, RefreshCw } from 'lucide-react';
-import CarrierTabs from '../components/CarrierTabs.jsx';
 import { Card, Btn, Input, Spinner, Empty, Badge, toast, PageHeader } from '../components/UI.jsx';
 import { parseAramexStatement } from '../engine/aramexStatementParser.js';
 import { parseSmsaStatement, sniffStatementCarrier } from '../engine/smsaStatementParser.js';
@@ -48,11 +47,8 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
   const [carrierName, setCarrierName] = useState(initialName);
   const [customName,  setCustomName]  = useState('');
   // Carrier-workspace scoping: /aramex-statements?carrier=X preselects the
-  // carrier and shows the workspace tab bar. Depends on location (not [])
-  // because PageSlot keeps the page mounted across navigations.
+  // carrier. Depends on location because PageSlot stays mounted across routes.
   const location = useLocation();
-  const fromWorkspace = location.pathname === '/aramex-statements'
-    && !!new URLSearchParams(location.search).get('carrier');
   useEffect(() => {
     if (!initialCarrierId) return;
     const found = carriers.find(c => String(c.id) === String(initialCarrierId));
@@ -331,9 +327,6 @@ export default function CarrierStatements({ carriers = [], initialCarrierId = ''
   // ── Render ────────────────────────────────────────────────────────────
   return (
     <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1300, margin: '0 auto' }}>
-      {fromWorkspace && !embedded && (
-        <CarrierTabs carrierId={carrierId} carrierName={carrierName} active="statements"/>
-      )}
       <PageHeader
         icon={<FileText size={22}/>}
         title="كشوف الحساب الخارجية"

@@ -4,7 +4,6 @@ import { Search, RefreshCw, Link2, FileText, Download, BookOpen } from 'lucide-r
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader } from '../components/UI.jsx';
-import CarrierTabs from '../components/CarrierTabs.jsx';
 import StatementUploadModal from '../components/StatementUploadModal.jsx';
 import {
   loadOperations,
@@ -97,8 +96,8 @@ const fmt = n => (n == null || Number.isNaN(n))
 export default function CarrierLedger({ isActive = true, carrierId = '', embedded = false }) {
   const [searchParams, setSearchParams] = useSearchParams();
   const [carrier, setCarrier] = useState(() => carrierId || searchParams.get('carrier') || '');
-  // دخلنا لناقل محدّد (من بطاقته/تبويباته) → لا نعرض قائمة اختيار (CarrierTabs
-  // يعرض الناقل أصلاً). القائمة تظهر فقط عند الدخول العام (بلا ?carrier=).
+  // عند الدخول لناقل محدّد لا نعرض قائمة اختيار؛ التنقل بين أقسام الشركة
+  // أصبح مسؤولية مربع التنقل الموحد.
   const locked = Boolean(carrierId || searchParams.get('carrier'));
   const [uploadOpen, setUploadOpen] = useState(false);   // مودال رفع الكشف المباشر
 
@@ -614,12 +613,11 @@ export default function CarrierLedger({ isActive = true, carrierId = '', embedde
 
   return (
     <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {!embedded && <CarrierTabs carrierId={carrier} carrierName={currentCarrierName} active="ledger"/>}
       <PageHeader
         icon={<BookOpen size={22}/>}
         title="كشف الحساب"
         meta={
-          /* دخول لناقل محدّد → لا قائمة (CarrierTabs يعرضه). الدخول العام → قائمة اختيار */
+          /* الدخول العام فقط يعرض اختيار الشركة؛ السياق المحدد يبقى ثابتًا. */
           !locked && carrierList.length > 0 && (
             <select
               value={carrier}

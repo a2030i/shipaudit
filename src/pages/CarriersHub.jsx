@@ -49,7 +49,7 @@ function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefr
         title="شركات الشحن"
         subtitle={loading
           ? 'جارٍ تحميل حالة الشركات…'
-          : `${carrierCount} ${carrierCount === 1 ? 'شركة' : 'شركات'} · ${totals?.pendingActions ?? 0} ${(totals?.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
+          : `${carrierCount} ${carrierCount === 1 ? 'شركة' : 'شركات'} · مراجعة الفواتير هي المسار التشغيلي الحالي · ${totals?.pendingActions ?? 0} ${(totals?.pendingActions ?? 0) === 1 ? 'مهمة معلّقة' : 'مهام معلّقة'}`}
         stats={[
           { label: 'المطلوب منّا (DR)', value: loading ? '…' : `${fmtCompact(totals?.totalDr)} ر.س` },
           { label: 'المدفوع/لنا (CR)',   value: loading ? '…' : `${fmtCompact(totals?.totalCr)} ر.س` },
@@ -73,7 +73,7 @@ function HeaderTotals({ totals, loading, carrierCount, onInbox, onManage, onRefr
   );
 }
 
-// One compact line per health signal: COD still with the carrier, open
+// One compact line per health signal: historical COD still with the carrier, open
 // un-audited invoices, and how stale the audit trail is. These are the
 // three questions the operator asks per carrier every morning — surfacing
 // them here saves a tour through /cod-settlements + /ledger + /audits.
@@ -82,7 +82,7 @@ function HealthStrip({ row, onCod, onLedger }) {
   if (row.codOutstanding > 0.5) {
     items.push({
       key: 'cod', color: '#D97706', onClick: onCod,
-      label: `COD معلّق ${fmtCompact(row.codOutstanding)} ر.س`,
+      label: `رصيد COD تاريخي يحتاج تصفية · ${fmtCompact(row.codOutstanding)} ر.س`,
     });
   }
   if (row.unauditedRv.count > 0) {
@@ -210,8 +210,10 @@ function CarrierCard({ row, onOpen, onUpload, onReview, onSetup, onWebhook, onCo
         </div>
         <div style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8, display: 'flex', gap: 14 }}>
           <span>فواتير <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalDr)}</span></span>
-          <span style={{ color: 'var(--muted3)' }}>·</span>
-          <span>تحصيل <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalCr)}</span></span>
+          {Math.abs(Number(row.totalCr) || 0) > 0.5 ? <>
+            <span style={{ color: 'var(--muted3)' }}>·</span>
+            <span>دفعات تاريخية مسجلة <span style={{ color: 'var(--text2)', fontFamily: 'var(--font-mono)', fontWeight: 600 }}>{fmtCompact(row.totalCr)}</span></span>
+          </> : null}
         </div>
       </div>
 
@@ -249,7 +251,7 @@ function CarrierCard({ row, onOpen, onUpload, onReview, onSetup, onWebhook, onCo
         </button>
       ) : null}
 
-      {/* Health signals — COD held by carrier / unaudited invoices / audit staleness */}
+      {/* Health signals — historical COD awaiting closure / invoice review / audit staleness */}
       <HealthStrip row={row} onCod={onCod} onLedger={onLedger}/>
 
       {/* Setup completeness — horizontal progress bar */}

@@ -26,6 +26,7 @@ import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { persistAndDownloadExport } from '../lib/internalExportsService.js';
 import { loadZohoWebhookHealth } from '../lib/pnlService.js';
+import { assessHatifHealth } from '../lib/integrationHealth.js';
 import {
   TAHSEEL_PORTAL_TEMPLATE_BODY,
   TAHSEEL_PORTAL_TEMPLATE_MAP,
@@ -434,19 +435,20 @@ function HatifOverviewTab({ isActive, onOpen, availableTabs = [] }) {
   const load = useCallback(async () => {
     setRefreshing(true); setError('');
     try {
-      const [delivery, campaigns, callRows, tags, zoho] = await Promise.all([
+      const [delivery, campaigns, callRows, tags, zoho, callSync] = await Promise.all([
         loadWhatsAppDeliveryHealth().catch(() => null),
         loadWhatsAppCampaignReport().catch(() => []),
         loadHatifCallStats(30).catch(() => []),
         loadTagSyncStatus().catch(() => null),
         loadZohoWebhookHealth().catch(() => null),
+        loadHatifCallSyncHealth().catch(() => null),
       ]);
       const latestCampaign = [...(campaigns || [])]
         .filter(c => c.lastSent)
         .sort((a, b) => new Date(b.lastSent) - new Date(a.lastSent))[0] || null;
       const callTotal = (callRows || []).reduce((sum, r) => sum + (Number(r.calls) || 0), 0);
       const answered = (callRows || []).reduce((sum, r) => sum + (Number(r.answered) || 0), 0);
-      setData({ delivery, latestCampaign, campaignCount: campaigns?.length || 0, callTotal, answered, tags, zoho });
+      setData({ delivery, latestCampaign, campaignCount: campaigns?.length || 0, callTotal, answered, tags, zoho, callSync });
     } catch (e) {
       setError(e.message || 'تعذّر تحميل نبض التكامل');
     } finally { setRefreshing(false); }
@@ -463,15 +465,12 @@ function HatifOverviewTab({ isActive, onOpen, availableTabs = [] }) {
   );
   if (!data) return null;
 
-  const d = data.delivery || {};
-  const total = Number(d.total) || 0;
-  const pending = Number(d.pending) || 0;
-  const observed = Math.max(0, total - pending);
-  const coverage = total ? Math.round((observed / total) * 100) : null;
+  const health = assessHatifHealth({ delivery: data.delivery, callSync: data.callSync, zoho: data.zoho });
+  const total = health.total;
+  const observed = health.observed;
+  const coverage = health.coverage;
   const callsAnswered = data.callTotal ? Math.round((data.answered / data.callTotal) * 100) : null;
-  const zohoAge = data.zoho?.lastSyncAt ? Date.now() - new Date(data.zoho.lastSyncAt).getTime() : Infinity;
-  const zohoFresh = zohoAge < 2 * 60 * 60 * 1000;
-  const needsAttention = (coverage != null && coverage < 60) || !zohoFresh;
+  const needsAttention = health.status !== 'healthy';
 
   const pulses = [
     {
@@ -506,8 +505,9 @@ function HatifOverviewTab({ isActive, onOpen, availableTabs = [] }) {
         <div className="hatif-overview__hero-icon"><Activity size={25}/></div>
         <div className="hatif-overview__hero-copy">
           <span>نبض التكامل الآن</span>
-          <h2>{needsAttention ? 'القنوات تعمل، لكن اكتمال القياس يحتاج متابعة' : 'القنوات والقياس في حالة جيدة'}</h2>
+          <h2>{health.status === 'unavailable' ? 'تعذّر التحقق من جاهزية القنوات' : needsAttention ? 'القنوات تعمل، لكن توجد نقاط تحتاج متابعة' : 'القنوات والقياس في حالة جيدة'}</h2>
           <p>هذه الشاشة لا تستبدل صندوق المحادثات في هاتف؛ وظيفتها أن تخبرك هل الحملات والمكالمات والتاقات وبيانات التحصيل تصل إلى لمحة بوضوح.</p>
+          {health.reasons.length > 0 && <ul className="hatif-overview__health-reasons" aria-label="أسباب الحاجة إلى المتابعة">{health.reasons.map(reason => <li key={reason}>{reason}</li>)}</ul>}
         </div>
         <Btn size="sm" variant="ghost" onClick={load} disabled={refreshing} title="تحديث نبض التكامل">
           <RefreshCw size={14} className={refreshing ? 'spin' : ''}/> تحديث
@@ -537,7 +537,7 @@ function HatifOverviewTab({ isActive, onOpen, availableTabs = [] }) {
             <div className="hatif-source-card__icon zoho"><BadgeDollarSign size={20}/></div>
             <div>
               <span>مصدر التحصيل للحملات</span>
-              <strong>Zoho Books · {zohoFresh ? 'المزامنة حديثة' : 'تحتاج مراجعة آخر مزامنة'}</strong>
+              <strong>Zoho Books · {health.zoho.healthy ? 'المزامنة والاستقبال سليمَان' : 'يحتاج مراجعة'}</strong>
               <small>{data.zoho?.lastSyncAt ? `آخر مزامنة ${agoAr(data.zoho.lastSyncAt)}` : 'لا يوجد وقت مزامنة متاح'}</small>
             </div>
         </Card></div>
@@ -1129,6 +1129,10 @@ function CampaignsTab() {
     setLoading(false);
   }, [camp]);
   useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
+    if (next !== view) setView(next);
+  }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // تصدير أرقام «بلا واتساب» لفريق الاتصال (رقم/اسم/آخر محاولة/الحملات)
   const exportNoWa = async () => {
@@ -1207,10 +1211,6 @@ function CampaignsTab() {
   const rtd = { padding: '9px 11px', fontSize: 12, whiteSpace: 'nowrap' };
 
   const HEALTH_TONE = { delivered: 'var(--green)', read: 'var(--green2)', replied: 'var(--accent)', failed: 'var(--red)', pending: 'var(--gold)' };
-  useEffect(() => {
-    const next = allowedViews.includes(requestedView) ? requestedView : 'summary';
-    if (next !== view) setView(next);
-  }, [requestedView]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const changeCampaignView = next => {
     if (!allowedViews.includes(next)) return;

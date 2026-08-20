@@ -15,6 +15,7 @@ import { loadWebhookEvents, countWebhookStatuses } from '../lib/webhookService.j
 import { loadCronHealth } from '../lib/integrityService.js';
 import { loadRecentAgentRuns, loadWorkAgents } from '../lib/workAgentService.js';
 import { probeTahseelConnection } from '../lib/tahseelService.js';
+import { assessHatifHealth, assessZohoHealth } from '../lib/integrationHealth.js';
 import './OperationsCenter.css';
 
 const HOUR = 60 * 60 * 1000;
@@ -289,20 +290,19 @@ export default function OperationsCenter({ isActive = true }) {
     }
 
     if (allowed('zoho.view')) {
-      const syncAt = state.zoho?.lastSyncAt;
-      const syncAge = safeDate(syncAt) ? Date.now() - safeDate(syncAt).getTime() : Infinity;
-      const healthy = Boolean(state.zoho?.webhookReady) && syncAge <= 2 * HOUR;
+      const zohoHealth = assessZohoHealth(state.zoho);
+      const syncAt = zohoHealth.syncAt;
       cards.push({
         key: 'zoho', title: 'Zoho Books', subtitle: 'الفواتير والحسابات وزاتكا', icon: Database,
-        status: state.zoho ? (healthy ? 'healthy' : 'attention') : 'unavailable', path: '/zoho-data', action: 'فتح زوهو',
+        status: zohoHealth.status, path: '/zoho-data', action: 'فتح زوهو',
         facts: [
-          { label: 'المزامنة الدورية', value: relativeTime(syncAt), tone: syncAge > 2 * HOUR ? 'gold' : 'green' },
+          { label: 'المزامنة الدورية', value: relativeTime(syncAt), tone: zohoHealth.syncFresh ? 'green' : 'gold' },
           { label: 'آخر Webhook', value: relativeTime(state.zoho?.webhookLastAt) },
-          { label: 'الاستقبال الفوري', value: state.zoho?.webhookReady ? 'مفعّل' : 'غير مؤكد', tone: state.zoho?.webhookReady ? 'green' : 'red' },
+          { label: 'الاستقبال الفوري', value: zohoHealth.webhookReady ? 'مفعّل' : 'غير مؤكد', tone: zohoHealth.webhookReady ? 'green' : 'red' },
         ],
-        note: 'زوهو هو المرجع المحاسبي؛ لا تنشئ هذه الشاشة فواتير أو دفعات.',
+        note: zohoHealth.reasons[0] || 'زوهو هو المرجع المحاسبي؛ لا تنشئ هذه الشاشة فواتير أو دفعات.',
       });
-      if (!healthy) actions.push({ title: 'راجع مزامنة زوهو وصلاحيات Webhook', path: '/zoho-data', tone: 'red' });
+      if (!zohoHealth.healthy) actions.push({ title: 'راجع مزامنة زوهو وصلاحيات Webhook', path: '/zoho-data', tone: 'red' });
     }
 
     if (allowed('uploads.view')) {
@@ -324,27 +324,19 @@ export default function OperationsCenter({ isActive = true }) {
     }
 
     if (allowed('whatsapp.view_log')) {
-      const syncAt = state.hatifSync?.synced_at;
-      const syncAge = safeDate(syncAt) ? Date.now() - safeDate(syncAt).getTime() : Infinity;
-      const delivery = state.hatifDelivery || {};
-      const total = Number(delivery.total) || 0;
-      const observed = Math.max(0, total - (Number(delivery.pending) || 0));
-      const coverage = total ? Math.round((observed / total) * 100) : null;
-      const failedMessages = Number(delivery.failed) || 0;
-      const failureRate = total ? Math.round((failedMessages / total) * 100) : null;
-      const healthy = syncAge <= 12 * HOUR && (failureRate == null || failureRate <= 10);
+      const hatifHealth = assessHatifHealth({ delivery: state.hatifDelivery, callSync: state.hatifSync, zoho: state.zoho });
       cards.push({
         key: 'hatif', title: 'هاتف وواتساب', subtitle: 'المحادثات والمكالمات والحملات', icon: MessageCircle,
-        status: syncAt || total ? (healthy ? 'healthy' : 'attention') : 'unavailable',
+        status: hatifHealth.status,
         path: '/whatsapp-settings', action: 'فتح مركز هاتف',
         facts: [
-          { label: 'آخر سحب مكالمات', value: relativeTime(syncAt), tone: syncAge > 12 * HOUR ? 'gold' : 'green' },
-          { label: 'تغطية حالات الرسائل', value: coverage == null ? 'لا توجد عينة' : `${coverage}%`, tone: coverage != null && coverage < 60 ? 'gold' : 'green' },
-          { label: 'نسبة الفشل المسجلة', value: failureRate == null ? 'لا توجد عينة' : `${failureRate}%`, tone: failureRate != null && failureRate > 10 ? 'red' : 'green' },
+          { label: 'آخر سحب مكالمات', value: relativeTime(hatifHealth.syncAt), tone: hatifHealth.syncFresh ? 'green' : 'gold' },
+          { label: 'تغطية حالات الرسائل', value: hatifHealth.coverage == null ? 'لا توجد عينة' : `${hatifHealth.coverage}%`, tone: hatifHealth.coverage != null && hatifHealth.coverage < 60 ? 'gold' : 'green' },
+          { label: 'نسبة الفشل المسجلة', value: hatifHealth.failureRate == null ? 'لا توجد عينة' : `${hatifHealth.failureRate}%`, tone: hatifHealth.failureRate != null && hatifHealth.failureRate > 10 ? 'red' : 'green' },
         ],
-        note: 'المحادثات تظل داخل هاتف؛ ShipAudit يراقب الحالة والأثر فقط.',
+        note: hatifHealth.reasons[0] || 'المحادثات تظل داخل هاتف؛ ShipAudit يراقب الحالة والأثر فقط.',
       });
-      if (!healthy) actions.push({ title: 'راجع نبض هاتف ونتائج التسليم', path: '/whatsapp-settings', tone: 'gold' });
+      if (!hatifHealth.healthy) actions.push({ title: 'راجع نبض هاتف ونتائج التسليم', path: '/whatsapp-settings', tone: 'gold' });
     }
 
     if (allowed('webhook.view')) {

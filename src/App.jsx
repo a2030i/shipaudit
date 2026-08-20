@@ -122,7 +122,7 @@ const ROUTE_ITEMS = [
   // ── التقارير والرقابة ───────────────────────────────────────────
   { id: 'reports',          path: '/reports',          label: 'مكتبة التقارير',         icon: FileText,      section: 'outreach', navOrder: 10, permAny: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'],
     subTabs: [
-      { tabId: 'reports',   label: 'مكتبة التقارير',       icon: FileText, anyPerm: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
+      { tabId: 'reports',   label: 'كل التقارير',           icon: FileText, anyPerm: ['reports.view_operational', 'reports.view_financial', 'reports.view_bank_reconciliation'] },
       { tabId: 'monthly',   label: 'التقرير الشهري',       icon: CalendarRange, legacy: '/monthly-report', perm: 'reports.view_operational' },
       { tabId: 'exports',   label: 'الملفات المصدّرة',      icon: Download, legacy: '/internal-exports', perm: 'internal_exports.view' },
     ] },

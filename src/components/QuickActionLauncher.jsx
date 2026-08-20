@@ -1,4 +1,4 @@
-import { Building2, FileSpreadsheet, HandCoins, Landmark, Lock, Target, Upload, X } from 'lucide-react';
+import { Building2, FileSpreadsheet, HandCoins, Landmark, Lock, Megaphone, Target, Upload, X } from 'lucide-react';
 
 const ACTIONS = [
   {
@@ -22,6 +22,13 @@ const ACTIONS = [
     description: 'فتح مديونيات العملاء والحملة المناسبة.',
     icon: HandCoins,
     path: '/customer-money',
+  },
+  {
+    id: 'marketing-campaign',
+    title: 'إنشاء حملة تسويقية',
+    description: 'اختر جمهور العملاء خارج المنصة وراجع الأهلية قبل فتح الحملة.',
+    icon: Megaphone,
+    path: '/retargeting?view=external',
   },
   {
     id: 'bank',

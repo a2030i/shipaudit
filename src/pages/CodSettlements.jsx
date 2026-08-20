@@ -4,7 +4,6 @@ import { Upload, RefreshCw, Search, AlertCircle, CheckCircle2, XCircle, MessageS
 import * as XLSX from 'xlsx';
 import { rtl } from '../lib/xlsxRtl.js';
 import { Card, Btn, Input, Select, Modal, Empty, Spinner, toast, PageHeader, DropZone } from '../components/UI.jsx';
-import CarrierTabs from '../components/CarrierTabs.jsx';
 import { Banknote } from 'lucide-react';
 import { useAuth } from '../lib/auth.jsx';
 import {
@@ -392,8 +391,7 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
   // this page mounted, so an empty deps useEffect would never re-fire
   // on later visits. We depend on location.pathname instead.
   // Carrier-workspace scoping: /cod-settlements?carrier=X selects that
-  // carrier and shows the workspace tab bar. location.search as dep (not
-  // empty deps) because PageSlot keeps the page mounted across visits.
+  // carrier. location.search remains a dependency because PageSlot stays mounted.
   // MoneyHub links use /money?tab=cod&carrier=X, so accept that canonical
   // route too.
   useEffect(() => {
@@ -403,8 +401,6 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
     const wanted = new URLSearchParams(location.search).get('carrier');
     if (wanted) setCarrier(wanted);
   }, [location.pathname, location.search]);
-  const fromWorkspace = (location.pathname === '/cod-settlements' || location.pathname === '/money')
-    && !!new URLSearchParams(location.search).get('carrier');
 
   useEffect(() => {
     if (location.pathname !== '/cod-settlements') return;
@@ -559,13 +555,6 @@ export default function CodSettlements({ isActive = true, carrierId = '', embedd
 
   return (
     <div style={{ padding: embedded ? 0 : '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {fromWorkspace && !embedded && (
-        <CarrierTabs
-          carrierId={carrier}
-          carrierName={carriers.find(c => c.id === carrier)?.name || carrier}
-          active="cod"
-        />
-      )}
       <PageHeader
         icon={<Banknote size={22}/>}
         title="تصفية تحصيلات COD القديمة"

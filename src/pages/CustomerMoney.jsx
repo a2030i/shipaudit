@@ -642,10 +642,16 @@ export default function CustomerMoney({ isActive = true }) {
     navigate(`${pathname}?${params.toString()}`);
   };
   const scrollToAging = () => document.querySelector('.aging-operations')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const guideCollectionCampaign = () => {
+    const target = document.getElementById('collection-campaign-segments');
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    window.setTimeout(() => target?.focus({ preventScroll: true }), 250);
+    toast('اختر شريحة، ثم حدّد النتائج، وبعدها اضغط «Draft حملة» لمراجعة الجمهور دون إرسال مباشر.', 'info');
+  };
 
   const campaignSegmentsPanel = (
     <Card style={{ padding: '16px 18px', marginBottom: 12 }}>
-      <div id="collection-campaign-segments" style={{ scrollMarginTop: 90 }}>
+      <div id="collection-campaign-segments" tabIndex={-1} aria-label="اختيار شريحة حملة التحصيل" style={{ scrollMarginTop: 90, outline: 'none' }}>
         <div style={{ marginBottom: 9 }}>
           <strong style={{ display: 'block', fontSize: 13, color: 'var(--text)' }}>فلتر شرائح السداد</strong>
           <span style={{ display: 'block', marginTop: 3, fontSize: 11.5, color: 'var(--muted)' }}>
@@ -740,7 +746,7 @@ export default function CustomerMoney({ isActive = true }) {
         </div>
         <div className="customer-finance-command__actions" role="toolbar" aria-label="إجراءات سريعة">
           <Btn variant="accent" onClick={scrollToAging} icon={<HandCoins size={15}/>}>ابدأ التحصيل</Btn>
-          {can('campaigns.send') ? <Btn variant="ghost" onClick={() => document.getElementById('collection-campaign-segments')?.scrollIntoView({ behavior: 'smooth' })} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
+          {can('campaigns.send') ? <Btn variant="ghost" onClick={guideCollectionCampaign} icon={<Megaphone size={15}/>}>جهّز حملة تحصيل</Btn> : null}
           <details className="customer-finance-command__more-actions">
             <summary>إجراءات أخرى</summary>
             <div className="customer-finance-command__more-actions-body">

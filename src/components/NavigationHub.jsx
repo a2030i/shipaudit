@@ -17,11 +17,28 @@ function subTabPath(item, subTab) {
   return queryPath(item.path, subTab.queryKey || item.queryKey || 'tab', subTab.tabId);
 }
 
+function collapseSingleChild(node) {
+  if (node.children?.length !== 1) return node;
+  const onlyChild = node.children[0];
+  return {
+    ...node,
+    path: onlyChild.path || node.path,
+    children: onlyChild.children?.length ? onlyChild.children : undefined,
+  };
+}
+
+function sectionCountLabel(count) {
+  if (count === 1) return 'قسم واحد';
+  if (count === 2) return 'قسمان';
+  if (count >= 3 && count <= 10) return `${count} أقسام`;
+  return `${count} قسمًا`;
+}
+
 function subTabNodes(item, canOpenSubTab, allowedIds) {
   return (item.subTabs || [])
     .filter(tab => !allowedIds || allowedIds.includes(tab.tabId))
     .filter(tab => !canOpenSubTab || canOpenSubTab(tab))
-    .map(tab => ({
+    .map(tab => collapseSingleChild({
       id: `${item.id}:${tab.tabId}`,
       label: tab.label,
       description: tab.description,
@@ -48,7 +65,7 @@ function currentEntityNodes(workspace, entry, currentPath, currentSearch) {
   const params = new URLSearchParams(currentSearch);
   if (workspace.id === 'directory') {
     const base = [
-      ['overview', 'دليل العملاء والمتاجر', 'البحث وفتح ملف المتجر'],
+      ['overview', 'البحث في دليل العملاء', 'البحث وفتح ملف المتجر'],
       ['risks', 'الحالات التي تحتاج متابعة', 'المتاجر ذات المخاطر والتنبيهات'],
       ['lists', 'القوائم المحفوظة', 'قوائم العمل المصنفة'],
     ].map(([id, label, description]) => ({
@@ -104,30 +121,36 @@ export function sectionDestinations(sectionId, workspaces, navItems, options = {
       const children = workspace.skipSubTabs
         ? []
         : subTabNodes(member, options.canOpenSubTab, workspace.subTabIds);
-      const path = workspace.pathsByMemberId?.[member.id] || (member.id === entry.id ? workspace.path : null) || member.path;
+      const path = workspace.pathsByMemberId?.[member.id]
+        || (member.id === workspace.entryId ? workspace.path : null)
+        || member.path;
       if (children.length) {
-        return {
+        return collapseSingleChild({
           id: `${workspace.id}:${member.id}`,
           label: member.label,
           description: member.description,
           icon: member.icon,
           path,
           children,
-        };
+        });
       }
       return { id: `${workspace.id}:${member.id}`, label: member.label, icon: member.icon, path };
     });
     const children = entityChildren || (workspace.skipSubTabs
       ? []
       : (members.length === 1 ? memberNodes[0]?.children : memberNodes));
-    return [{
+    const entryPath = workspace.pathsByMemberId?.[entry.id]
+      || (entry.id === workspace.entryId ? workspace.path : null)
+      || entry.path;
+    const destination = {
       id: workspace.id,
       label: workspace.label,
       description: workspace.description,
       icon: entry.icon,
-      path: workspace.pathsByMemberId?.[entry.id] || workspace.path || entry.path,
+      path: members.length === 1 ? memberNodes[0].path : entryPath,
       children: children?.length ? children : undefined,
-    }];
+    };
+    return [collapseSingleChild(destination)];
   });
 }
 
@@ -294,7 +317,7 @@ export default function NavigationHub({
                   <button type="button" key={destination.id} className="navigation-hub__destination" onClick={() => activate(destination)}>
                     <span className="navigation-hub__destination-icon"><Icon size={25}/></span>
                     <strong>{destination.label}</strong>
-                    <small>{destination.description || (destination.children?.length ? `${destination.children.length} أقسام` : 'فتح القسم')}</small>
+                    <small>{destination.description || (destination.children?.length ? sectionCountLabel(destination.children.length) : 'فتح القسم')}</small>
                     {destination.children?.length ? <ChevronLeft className="navigation-hub__destination-arrow" size={18} aria-hidden="true"/> : null}
                   </button>
                 );

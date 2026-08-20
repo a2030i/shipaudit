@@ -88,6 +88,16 @@
   line-height: var(--lh-relaxed);
 }
 
+.hatif-overview__health-reasons {
+  margin: 9px 0 0;
+  padding-inline-start: 18px;
+  display: grid;
+  gap: 3px;
+  color: var(--gold);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
 .hatif-overview__hero .ui-btn {
   position: relative;
   z-index: 1;

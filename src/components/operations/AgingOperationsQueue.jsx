@@ -120,6 +120,9 @@ export default function AgingOperationsQueue({
         <span>صفحة {page} من {pages}</span>
       </div>
     </div>
+    {!selected.size && totalRows > 0 ? <div className="aoq-selection-hint" role="note">
+      للحملة: حدّد نتائج الصفحة أو كل النتائج، ثم افتح <b>Draft حملة</b> لمراجعة المؤهل والمستبعد قبل أي إرسال.
+    </div> : null}
 
     {allResultsSelected && totalRows > 0 ? <div className="aoq-selection-scope is-all" role="status">
       <strong>تم تحديد جميع النتائج المطابقة للفلاتر ({totalRows})</strong>

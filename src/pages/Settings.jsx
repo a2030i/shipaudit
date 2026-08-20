@@ -1,6 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import CarrierTabs from '../components/CarrierTabs.jsx';
 import {
   ExternalLink, Package, History, Search, Filter, Trash2,
   CheckCircle2, AlertTriangle, Calendar, FileText, Truck, X,
@@ -149,8 +148,7 @@ const AUDIT_TYPE_META = {
 export function AuditsHistory({ onOpen, isActive = true }) {
   const navigate = useNavigate();
   // Carrier-workspace scoping: /audits?carrier=X narrows the history to one
-  // carrier and shows the workspace tab bar (CarrierTabs) so the user can hop
-  // between the carrier's screens without losing context.
+  // carrier while navigation remains in the unified navigation hub.
   const [historySearchParams] = useSearchParams();
   const scopedCarrierId = historySearchParams.get('carrier') || null;
   const [audits,  setAudits]  = useState([]);
@@ -279,16 +277,10 @@ export function AuditsHistory({ onOpen, isActive = true }) {
   const scopedAudits = scopedCarrierId
     ? audits.filter(a => a.carrierId === scopedCarrierId)
     : audits;
-  const scopedCarrierName = scopedCarrierId
-    ? (scopedAudits[0]?.carrierName || scopedCarrierId)
-    : null;
   const legacyCount = scopedAudits.filter(a => a.verificationStatus !== 'verified').length;
 
   return (
     <div style={{ padding: '24px 28px 80px', maxWidth: 1320, margin: '0 auto' }}>
-      {scopedCarrierId && (
-        <CarrierTabs carrierId={scopedCarrierId} carrierName={scopedCarrierName} active="audits"/>
-      )}
       <PageHeader
         icon={<HistoryIcon size={22}/>}
         title="سجل المراجعات"
