@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const root = process.cwd();
 const read = (file) => fs.readFileSync(path.join(root, file), 'utf8');
-const migration = read('supabase/migrations/20260821040618_security_foundation_authorization_hardening.sql');
+const migration = read('supabase/migrations/20260821120516_security_foundation_authorization_hardening.sql');
 
 test('self-service role escalation and generic money writes fail closed', () => {
   assert.match(migration, /drop policy if exists profiles_update_own/i);
