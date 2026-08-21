@@ -19,7 +19,7 @@ import {
   loadCarrierZohoLinkOptions, saveCarrierZohoFinancialLinks,
 } from '../lib/carrierProfileService.js';
 import { carrierHasOutstandingLegacyCod } from '../lib/carrierOperatingModel.js';
-import { countAuditShipments, loadAuditByIdFromDB, loadAuditShipments } from '../lib/coreService.js';
+import { countAuditShipments, loadAuditByIdFromDB, loadCarrierAuditShipmentsPage } from '../lib/coreService.js';
 import { auditPresentation, AUDIT_REVIEW_LABELS } from '../lib/auditPresentation.js';
 import './carrier-360.css';
 
@@ -989,20 +989,18 @@ function CarrierShipmentsView({ carrier, audits, auditId, page, filter, onState 
     setRows(null);
     setError('');
     const status = filter === 'issues' ? 'issues' : 'all';
-    const from = (page - 1) * pageSize;
     Promise.all([
       loadAuditByIdFromDB(selectedAuditId, { hydrateRows: false }),
-      countAuditShipments(selectedAuditId, { status }),
-      loadAuditShipments(selectedAuditId, { status, from, limit: pageSize }),
+      loadCarrierAuditShipmentsPage(carrier.id, selectedAuditId, { status, page, pageSize }),
     ])
-      .then(([audit, count, shipments]) => {
+      .then(([audit, shipmentPage]) => {
         if (!live) return;
         if (String(audit?.carrierId) !== String(carrier.id)) {
           throw new Error('هذه المراجعة لا تخص شركة الشحن المفتوحة');
         }
         setSelectedAudit(audit);
-        setTotalRows(count);
-        setRows(shipments.map(row => ({ ...row, auditId: selectedAuditId, period: audit.period || '' })));
+        setTotalRows(shipmentPage.totalRows || 0);
+        setRows((shipmentPage.rows || []).map(row => ({ ...row, auditId: selectedAuditId, period: audit.period || '' })));
       })
       .catch(loadError => { if (live) setError(loadError.message || 'تعذر تحميل الشحنات'); })
     return () => { live = false; };

@@ -49,9 +49,15 @@ test('invoice details use server pagination and preserve URL context', async () 
 });
 
 test('shipment detail is paginated without a hidden browser cap', async () => {
+  const sql = await read('supabase/migrations/20260821224500_carrier_360_audit_shipments_page.sql');
+  const core = await read('src/lib/coreService.js');
   const page = await read('src/pages/CarrierProfile.jsx');
-  assert.match(page, /countAuditShipments\(selectedAuditId, \{ status \}\)/);
-  assert.match(page, /loadAuditShipments\(selectedAuditId, \{ status, from, limit: pageSize \}\)/);
+  assert.match(sql, /security invoker/i);
+  assert.match(sql, /jsonb_array_elements/i);
+  assert.match(sql, /public\.audit_shipments/i);
+  assert.doesNotMatch(sql, /\b(insert|update|delete|merge)\s+(into|public\.)/i);
+  assert.match(core, /client|supabase\.rpc\('carrier_360_audit_shipments_page'/);
+  assert.match(page, /loadCarrierAuditShipmentsPage\(carrier\.id, selectedAuditId/);
   assert.match(page, /pageSize = 100/);
   assert.doesNotMatch(page, /groups\.flat\(\)\.slice\(0, 500\)/);
   assert.match(page, /searchParams\.get\('audit'\) \|\| searchParams\.get\('invoice'\)/);

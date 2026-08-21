@@ -727,6 +727,28 @@ export async function countAuditShipments(auditId, { status = 'all' } = {}) {
   return count || 0;
 }
 
+// Carrier 360 detail adapter. It pages both modern audit_shipments rows and
+// historical audits.results JSON on the server, so old invoices stay fully
+// reviewable without loading their entire payload into the browser.
+export async function loadCarrierAuditShipmentsPage(carrierId, auditId, {
+  status = 'all', page = 1, pageSize = 100,
+} = {}) {
+  const safePage = Math.max(1, Number(page) || 1);
+  const safeSize = Math.min(100, Math.max(1, Number(pageSize) || 100));
+  const { data, error } = await supabase.rpc('carrier_360_audit_shipments_page', {
+    p_carrier_id: carrierId,
+    p_audit_id: auditId,
+    p_filter: status === 'issues' ? 'issues' : 'all',
+    p_page: safePage,
+    p_page_size: safeSize,
+  });
+  if (error) throw error;
+  const rows = data?.rowSource === 'audit_shipments'
+    ? (data?.rows || []).map(fromShipmentRow)
+    : (data?.rows || []);
+  return { ...data, rows };
+}
+
 export async function loadAuditByIdFromDB(id, { hydrateRows = true } = {}) {
   const { data, error } = await supabase
     .from('audits').select('*').eq('id', id).single();
