@@ -104,7 +104,7 @@ export function buildLamhaFinancialPolicyRows({
   };
 }
 
-export function lamhaFinancialDecision(row, liveResult) {
+export function lamhaFinancialDecision(row, liveResult, { financialHold = false } = {}) {
   if (!row?.eligible) return { key: 'excluded', label: row?.exclusionReason || 'مستبعد من الإجراء' };
   if (!liveResult) return { key: 'unchecked', label: 'لم يُفحص حساب لمحة' };
   if (!liveResult.ok) return { key: 'error', label: 'فشل فحص حساب لمحة' };
@@ -114,6 +114,9 @@ export function lamhaFinancialDecision(row, liveResult) {
     return { key: 'deactivate', label: 'مرشح للإيقاف' };
   }
   if (row.policyGroup === 'clear' && active === false) {
+    if (!financialHold) {
+      return { key: 'protected', label: 'غير نشط لسبب غير مالي — لا يُشغّل' };
+    }
     return { key: 'activate', label: 'مرشح للتشغيل' };
   }
   return {
@@ -122,6 +125,8 @@ export function lamhaFinancialDecision(row, liveResult) {
   };
 }
 
-export function policyCandidates(rows, liveResults, action) {
-  return (rows || []).filter(row => lamhaFinancialDecision(row, liveResults?.get?.(row.storeId)).key === action);
+export function policyCandidates(rows, liveResults, action, financialHoldStoreIds = new Set()) {
+  return (rows || []).filter(row => lamhaFinancialDecision(row, liveResults?.get?.(row.storeId), {
+    financialHold: financialHoldStoreIds?.has?.(row.storeId) === true,
+  }).key === action);
 }

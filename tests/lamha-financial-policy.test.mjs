@@ -4,6 +4,9 @@ import { readFile } from 'node:fs/promises';
 import {
   buildLamhaFinancialPolicyRows, lamhaFinancialDecision, policyCandidates,
 } from '../src/lib/lamhaFinancialPolicy.js';
+import {
+  isLamhaStatusResultFresh, needsLamhaStatusRefresh,
+} from '../src/lib/lamhaStoreStatusService.js';
 
 const merchants = [
   { store_id: 10, store_name: 'متجر ألف', status: 'متوقف' },
@@ -47,9 +50,11 @@ test('bulk decisions use live Lamha account state, never the visual merchant sta
     [20, { ok: true, store: { canCreateShipments: false } }],
   ]);
   assert.equal(lamhaFinancialDecision(overdue, live.get(10)).key, 'deactivate');
-  assert.equal(lamhaFinancialDecision(clear, live.get(20)).key, 'activate');
+  assert.equal(lamhaFinancialDecision(clear, live.get(20)).key, 'protected');
+  assert.equal(lamhaFinancialDecision(clear, live.get(20), { financialHold: true }).key, 'activate');
   assert.deepEqual(policyCandidates(rows, live, 'deactivate').map(row => row.storeId), [10]);
-  assert.deepEqual(policyCandidates(rows, live, 'activate').map(row => row.storeId), [20]);
+  assert.deepEqual(policyCandidates(rows, live, 'activate').map(row => row.storeId), []);
+  assert.deepEqual(policyCandidates(rows, live, 'activate', new Set([20])).map(row => row.storeId), [20]);
 });
 
 test('balance mismatches and stores without explicit links cannot be changed automatically', () => {
@@ -58,6 +63,18 @@ test('balance mismatches and stores without explicit links cannot be changed aut
   assert.equal(row.eligible, false);
   assert.equal(lamhaFinancialDecision(row, { ok: true, store: { canCreateShipments: true } }).key, 'excluded');
   assert.equal(result.rows.some(item => item.storeId === 30), false);
+});
+
+test('saved Lamha observations are reused only inside the freshness window', () => {
+  const now = Date.parse('2026-08-21T05:00:00.000Z');
+  const recent = { ok: true, checkedAt: '2026-08-21T04:50:00.000Z' };
+  const stale = { ok: true, checkedAt: '2026-08-21T04:40:00.000Z' };
+  const failed = { ok: false, checkedAt: '2026-08-21T04:59:00.000Z' };
+  assert.equal(isLamhaStatusResultFresh(recent, now), true);
+  assert.equal(needsLamhaStatusRefresh(recent, now), false);
+  assert.equal(isLamhaStatusResultFresh(stale, now), false);
+  assert.equal(needsLamhaStatusRefresh(stale, now), true);
+  assert.equal(needsLamhaStatusRefresh(failed, now), true);
 });
 
 test('UI requires review, refreshes finance before writes, and keeps Lamha throttling in the shared runner', async () => {
@@ -71,6 +88,14 @@ test('UI requires review, refreshes finance before writes, and keeps Lamha throt
   assert.match(component, /مراجعة إيقاف/);
   assert.match(component, /مراجعة تشغيل/);
   assert.match(service, /runLamhaStoreOperation/);
+  assert.match(service, /loadCachedLamhaStoreStatuses/);
+  assert.match(service, /LAMHA_STATUS_FRESH_MS/);
   assert.match(service, /LAMHA_BATCH_SIZE = 10/);
+  assert.match(component, /فحص من زال عنهم الحجز المالي/);
+  assert.match(component, /needsLamhaStatusRefresh/);
+  const edge = await readFile(new URL('../supabase/functions/lamha-store-status/index.ts', import.meta.url), 'utf8');
+  assert.match(edge, /restore-scan/);
+  assert.match(edge, /STATUS_SCAN_ACTION/);
+  assert.match(edge, /financial_policy/);
   assert.match(merchantsService, /customer_merchant_links'[\s\S]*?\.range\(from, from \+ PAGE - 1\)/);
 });
