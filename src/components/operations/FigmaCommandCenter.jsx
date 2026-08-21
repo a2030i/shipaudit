@@ -61,12 +61,14 @@ const updatedLabel = (iso) => {
 
 const sourceTone = (state) => {
   if (!state || state.status === 'unavailable') return 'red';
+  if (state.status === 'loading') return 'amber';
   if (state.status === 'fresh') return 'green';
   return 'amber';
 };
 
 const sourceLabel = (state) => {
   if (!state || state.status === 'unavailable') return 'غير متاح';
+  if (state.status === 'loading') return 'جارٍ التحميل';
   if (state.status === 'fresh') return 'محدّث';
   return 'يحتاج تحديث';
 };
@@ -85,7 +87,7 @@ function ActionCard({ tone, icon: Icon, title, count, value, note, action, onCli
   );
 }
 
-function KpiCard({ label, value, note, icon: Icon, tone = 'blue', onClick, source, updatedAt, unavailable = false }) {
+function KpiCard({ label, value, note, icon: Icon, tone = 'blue', onClick, source, updatedAt, unavailable = false, loading = false }) {
   const Tag = onClick ? 'button' : 'article';
   return (
     <Tag
@@ -97,8 +99,8 @@ function KpiCard({ label, value, note, icon: Icon, tone = 'blue', onClick, sourc
       <span className="fco-kpi__icon"><Icon size={18}/></span>
       <span className="fco-kpi__copy">
         <small>{label}</small>
-        <strong>{unavailable ? 'المصدر غير متاح' : value}</strong>
-        <em>{unavailable ? 'تعذرت القراءة؛ لم نعرض صفراً بديلاً' : note}</em>
+        <strong>{loading ? 'جارٍ التحميل…' : unavailable ? 'المصدر غير متاح' : value}</strong>
+        <em>{loading ? 'سيظهر الملخص بعد أول عرض للصفحة' : unavailable ? 'تعذرت القراءة؛ لم نعرض صفراً بديلاً' : note}</em>
         <span className="fco-kpi__source">{source || 'المصدر غير محدد'} · {updatedLabel(updatedAt)}</span>
       </span>
       {onClick && <ArrowLeft size={15}/>}
@@ -153,11 +155,17 @@ export default function FigmaCommandCenter({
   navigate,
 }) {
   const decisions = data?.customerDecisions || {};
+  const decisionSummary = data?.customerDecisionSummary || {};
   const stopRows = decisions.stopPostpaid || [];
   const activateRows = decisions.activatePostpaid || [];
   const deductRows = decisions.deductPrepaid || [];
-  const stopAmount = stopRows.reduce((sum, row) => sum + Number(row.over30 || 0), 0);
-  const deductAmount = deductRows.reduce((sum, row) => sum + Math.min(Number(row.walletBalance || 0), Number(row.debt || 0)), 0);
+  const stopCount = decisionSummary.stopPostpaid?.count ?? stopRows.length;
+  const activateCount = decisionSummary.activatePostpaid?.count ?? activateRows.length;
+  const deductCount = decisionSummary.deductPrepaid?.count ?? deductRows.length;
+  const stopAmount = decisionSummary.stopPostpaid?.amount
+    ?? stopRows.reduce((sum, row) => sum + Number(row.over30 || 0), 0);
+  const deductAmount = decisionSummary.deductPrepaid?.amount
+    ?? deductRows.reduce((sum, row) => sum + Math.min(Number(row.walletBalance || 0), Number(row.debt || 0)), 0);
   const invoiceOps = data?.invoiceOperations || {};
   const zatcaCount = Number(invoiceOps.zatcaTodayCount || 0) + Number(invoiceOps.zatcaOverdueCount || 0);
   const zatcaAmount = Number(invoiceOps.zatcaTodayTotal || 0) + Number(invoiceOps.zatcaOverdueTotal || 0);
@@ -166,14 +174,14 @@ export default function FigmaCommandCenter({
   const overdue30 = Number(aging.b31_60 || 0) + Number(aging.b61_90 || 0) + Number(aging.b90p || 0);
   const cash = data?.cashPosition || {};
   const states = data?.sourceStates || {};
-  const sourceEntries = Object.values(states);
+  const sourceEntries = Object.values(data?.primarySourceStates || states);
   const availableSources = sourceEntries.filter((source) => source?.status !== 'unavailable').length;
   const freshSources = sourceEntries.filter((source) => source?.status === 'fresh').length;
   const availabilityPercent = sourceEntries.length ? Math.round((availableSources / sourceEntries.length) * 100) : 0;
   const sourcePercent = sourceEntries.length ? Math.round((freshSources / sourceEntries.length) * 100) : 0;
   const closeReadiness = data?.closeReadiness || { ready: false, completed: 0, required: 6, blockers: [] };
   const firstCloseBlocker = closeReadiness.blockers?.[0];
-  const merchantNeedsUpdate = !merchantPulse.available || sourceTone(states.merchants) !== 'green';
+  const merchantNeedsUpdate = data?.lamhaSourceNeedsUpdate ?? (!merchantPulse.available || sourceTone(states.merchants) !== 'green');
 
   return (
     <div className="figma-command-center" dir="rtl">
@@ -214,8 +222,8 @@ export default function FigmaCommandCenter({
       <section className="fco-section">
         <div className="fco-section__heading"><div><span>أولوية اليوم</span><h2>قرارات تحتاج إجراءً الآن</h2></div><small>مرتبة حسب الخطر المالي والتشغيلي</small></div>
         <div className="fco-actions-grid">
-          <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopRows.length} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="مراجعة وإيقاف" onClick={() => navigate('/customer-money?decision=stop')} unavailable={!data?.customerDecisionFresh}/>
-          <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductRows.length} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="مراجعة الخصم" onClick={() => navigate('/customer-money?decision=deduct')} unavailable={!data?.customerDecisionFresh}/>
+          <ActionCard tone="red" icon={UserRoundX} title="أوقف الحسابات المتأخرة" count={stopCount} value={`${compactMoney(stopAmount)} ر.س`} note="دفع لاحق · نشط · دين +30 يومًا" action="مراجعة وإيقاف" onClick={() => navigate('/customer-money?decision=stop')} unavailable={!data?.customerDecisionFresh}/>
+          <ActionCard tone="blue" icon={WalletCards} title="اخصم الرصيد المدفوع مقدمًا" count={deductCount} value={`${compactMoney(deductAmount)} ر.س`} note="رصيد محفظة مع فواتير مفتوحة" action="مراجعة الخصم" onClick={() => navigate('/customer-money?decision=deduct')} unavailable={!data?.customerDecisionFresh}/>
           <ActionCard tone={zatcaCount ? 'amber' : 'green'} icon={ReceiptText} title="اعتمد وأرسل فواتير زاتكا" count={zatcaCount} value={`${compactMoney(zatcaAmount)} ر.س`} note={`${invoiceOps.draftCount || 0} مسودة في زوهو`} action="فتح دورة الفاتورة" onClick={() => navigate('/zoho-data?tab=customers')} unavailable={!invoiceOps.zatcaAvailable}/>
           <ActionCard tone={merchantNeedsUpdate ? 'amber' : 'green'} icon={FileSpreadsheet} title="حدّث ملفات لمحة" count={merchantNeedsUpdate ? 1 : 0} value={merchantPulse.total ? `${money(merchantPulse.total)} متجر` : ''} note="دليل المتاجر · كشف الحساب" action="رفع الملفات الآن" onClick={() => navigate(`/accounting-cycle?period=${period}&stage=lamha_sources`)} unavailable={!merchantPulse.available}/>
         </div>
@@ -226,7 +234,7 @@ export default function FigmaCommandCenter({
         <div className="fco-kpi-grid">
           <KpiCard icon={Landmark} label="إجمالي مديونيات العملاء" value={`${compactMoney(cash.totalAR)} ر.س`} note={`${compactMoney(overdue30)} ر.س تجاوزت 30 يومًا`} source="Zoho Books" updatedAt={(states.customerMoney || states.zohoInvoices)?.sourceUpdatedAt || (states.customerMoney || states.zohoInvoices)?.checkedAt} unavailable={(states.customerMoney || states.zohoInvoices)?.status === 'unavailable'} tone="red" onClick={() => navigate('/customer-money')}/>
           <KpiCard icon={ReceiptText} label={`ضريبة ${vat?.quarter || 'الربع الحالي'}`} value={vat ? `${compactMoney(vat.netDue)} ر.س` : 'غير متاح'} note={vat ? `${vat.from} ← ${vat.to} · مخرجات ${compactMoney(vat.outputTax)} · مدخلات ${compactMoney(vat.inputTax)}` : 'تحتاج قراءة زوهو'} source="Zoho Books" updatedAt={vat?.fetchedAt || states.zatcaPending?.checkedAt} unavailable={!vat} tone="amber" onClick={() => navigate('/zoho-data?tab=reports')}/>
-          <KpiCard icon={UserRoundCheck} label="نشطون خلال آخر 5 أيام" value={money(merchantPulse.recentFiveDays)} note={merchantPulse.snapshotAt ? `حسب لقطة ${new Date(merchantPulse.snapshotAt).toLocaleDateString('ar-SA')}` : 'ارفع ملف متاجر لمحة'} source="دليل متاجر لمحة" updatedAt={merchantPulse.snapshotAt || states.merchants?.checkedAt} unavailable={!merchantPulse.available} tone="green" onClick={() => navigate('/customer-360?view=lists')}/>
+          <KpiCard icon={UserRoundCheck} label="نشطون خلال آخر 5 أيام" value={money(merchantPulse.recentFiveDays)} note={merchantPulse.snapshotAt ? `حسب لقطة ${new Date(merchantPulse.snapshotAt).toLocaleDateString('ar-SA')}` : 'ارفع ملف متاجر لمحة'} source="دليل متاجر لمحة" updatedAt={merchantPulse.snapshotAt || states.merchants?.checkedAt} loading={merchantPulse.loading} unavailable={!merchantPulse.loading && !merchantPulse.available} tone="green" onClick={() => navigate('/customer-360?view=lists')}/>
           <KpiCard icon={FileSpreadsheet} label="فواتير مسودة" value={money(invoiceOps.draftCount)} note={`${compactMoney(invoiceOps.draftTotal)} ر.س بانتظار الاعتماد`} source="Zoho Books" updatedAt={states.zohoInvoiceSync?.sourceUpdatedAt || states.zatcaPending?.checkedAt} unavailable={!invoiceOps.zatcaAvailable} tone="blue" onClick={() => navigate('/zoho-data?tab=customers')}/>
         </div>
       </section>
@@ -261,7 +269,7 @@ export default function FigmaCommandCenter({
             <MovementMetric label="سجلوا ولم يشحنوا" value={merchantPulse.available ? merchantPulse.neverShipped : '—'} note="فرصة تفعيل" tone="amber"/>
             <MovementMetric label="متوقفون ولديهم رصيد" value={merchantPulse.available ? merchantPulse.stoppedWithWallet : '—'} note={`${compactMoney(merchantPulse.stoppedWalletAmount)} ر.س`} tone="red"/>
           </div>
-          <div className="fco-movement__summary"><UserPlus size={17}/><span><b>{activateRows.length}</b> حساب دفع لاحق جاهز لإعادة التشغيل الآن</span><button type="button" onClick={() => navigate('/merchants?decision=activate')}>فتح القائمة</button></div>
+          <div className="fco-movement__summary"><UserPlus size={17}/><span><b>{activateCount}</b> حساب دفع لاحق جاهز لإعادة التشغيل الآن</span><button type="button" onClick={() => navigate('/merchants?decision=activate')}>فتح القائمة</button></div>
         </section>
 
         <section className="fco-panel fco-routine">
@@ -283,8 +291,8 @@ export default function FigmaCommandCenter({
 
         <section className="fco-panel fco-cash">
           <div className="fco-card-heading fco-card-heading--light"><span><Landmark size={18}/> السيولة والبنوك</span><button type="button" onClick={() => navigate('/bank')}>فتح البنوك <ArrowLeft size={14}/></button></div>
-          <div className="fco-cash__amount"><strong>{cash.bankBalance == null ? 'غير متاح' : money(cash.bankBalance, 2)}</strong>{cash.bankBalance != null && <span>ر.س</span>}</div>
-          <p>{cash.bankBalanceComplete ? 'رصيد ختامي مكتمل من الحسابات المرتبطة' : 'الرصيد المقروء من الحسابات المتاحة فقط'}</p>
+          <div className="fco-cash__amount"><strong>{cash.loading ? 'جارٍ التحميل…' : cash.bankBalance == null ? 'غير متاح' : money(cash.bankBalance, 2)}</strong>{!cash.loading && cash.bankBalance != null && <span>ر.س</span>}</div>
+          <p>{cash.loading ? 'يُحمّل ملخص البنوك بعد ظهور الصفحة' : cash.bankBalanceComplete ? 'رصيد ختامي مكتمل من الحسابات المرتبطة' : 'الرصيد المقروء من الحسابات المتاحة فقط'}</p>
           <div className="fco-cash__footer"><span>الذمم القابلة للتحصيل <b>{compactMoney(cash.totalAR)} ر.س</b></span><span>صافي المركز <b>{cash.net == null ? '—' : `${compactMoney(cash.net)} ر.س`}</b></span></div>
         </section>
       </div>

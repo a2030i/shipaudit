@@ -32,7 +32,7 @@ import {
   Card, Btn, Spinner, Empty, Modal, toast, PageHeader, WorkspaceLoadingState,
 } from '../components/UI.jsx';
 import {
-  loadOverviewRead, currentPeriod, prevPeriodOf,
+  loadOverviewRead, loadOverviewLiteLazy, mergeOverviewLiteLazy, currentPeriod, prevPeriodOf,
 } from '../lib/overviewService.js';
 import { scoreLevel } from '../lib/carrierScore.js';
 import TeamReadinessPanel from '../components/TeamReadinessPanel.jsx';
@@ -106,6 +106,44 @@ export default function Overview({ carriers = [], isActive = true }) {
   }, [period]);
 
   useEffect(() => { if (isActive) refresh(); }, [isActive, refresh, location.pathname]);
+
+  // The first paint is intentionally powered by overview_core_lite alone.
+  // Merchant movement and cash are requested only after the browser has had a
+  // chance to paint; a failure swaps the whole page back to the proven legacy
+  // path instead of showing zeros or a partially trusted dashboard.
+  useEffect(() => {
+    if (!isActive || data?.readPath !== 'overview_core_lite' || data?.lazyStatus !== 'pending') return undefined;
+    let cancelled = false;
+    const loadLazy = async () => {
+      try {
+        const lazy = await loadOverviewLiteLazy({ period });
+        if (!cancelled) setData(current => mergeOverviewLiteLazy(current, lazy.merchant, lazy.cash));
+      } catch (error) {
+        console.warn('[overview-read] lite lazy section unavailable; using legacy fallback', error?.code || error?.message);
+        try {
+          const fallback = await loadOverviewRead({ period, topN: 5, mode: 'legacy' });
+          if (!cancelled) {
+            setData(fallback.overview);
+            setVat(fallback.vat);
+          }
+        } catch (fallbackError) {
+          if (!cancelled) {
+            setLoadError(fallbackError);
+            toast(`فشل التحميل: ${fallbackError.message}`, 'error');
+          }
+        }
+      }
+    };
+    const start = () => { if (!cancelled) loadLazy(); };
+    const idleId = typeof window.requestIdleCallback === 'function'
+      ? window.requestIdleCallback(start, { timeout: 1_000 })
+      : window.setTimeout(start, 0);
+    return () => {
+      cancelled = true;
+      if (typeof window.cancelIdleCallback === 'function') window.cancelIdleCallback(idleId);
+      else window.clearTimeout(idleId);
+    };
+  }, [data?.loadedAt, data?.lazyStatus, data?.readPath, isActive, period]);
 
   // حارس الصفحة (§1.32): كانت غرفة العمليات بلا أي حارس — موظف بصلاحية
   // sales.view فقط هبط عليها ورأى كل الأرقام المالية (اكتُشف 2026-07-16).

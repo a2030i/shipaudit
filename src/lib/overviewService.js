@@ -17,9 +17,11 @@ import { deriveAccountingCycleStages } from './accountingCycleService.js';
 import { merchantSnapshotSourceState } from './merchantsService.js';
 
 const runtimeEnv = import.meta.env || {};
-// Production stays on the proven path until the shadow gate is green. The
-// feature flag is the only supported cutover switch.
-export const OVERVIEW_READ_MODE = runtimeEnv.VITE_OVERVIEW_READ_MODE || 'legacy';
+// The production cutover is deliberately limited to the first-screen Lite
+// projection. Setting the environment flag to `legacy` is the instant
+// rollback; `core` keeps the former oversized projection available for
+// shadow diagnostics only.
+export const OVERVIEW_READ_MODE = runtimeEnv.VITE_OVERVIEW_READ_MODE || 'lite';
 
 // A slow optional dashboard source must not hold the whole home page in its
 // loading state forever. The underlying request may still finish later, but
@@ -880,6 +882,173 @@ export function adaptOverviewCore(payload) {
   };
 }
 
+const liteSourceLabels = {
+  finance: 'مديونيات العملاء',
+  merchants: 'حالة المتاجر في المنصة',
+  vat: 'ضريبة القيمة المضافة',
+  accountingCycle: 'جاهزية إقفال دورة المحاسب',
+};
+
+function adaptLiteSource(key, source, checkedAt) {
+  const status = source?.status || 'unavailable';
+  return {
+    key,
+    label: liteSourceLabels[key] || key,
+    status,
+    checkedAt,
+    sourceUpdatedAt: source?.dataAsOf || source?.lastSuccessfulSyncAt || null,
+    dataAsOf: source?.dataAsOf || null,
+    lastSuccessfulSyncAt: source?.lastSuccessfulSyncAt || null,
+    error: source?.error || null,
+  };
+}
+
+export function adaptOverviewLite(payload) {
+  if (!payload?.financial || !payload?.sources || !payload?.period) {
+    throw new Error('استجابة overview_core_lite غير مكتملة');
+  }
+  const checkedAt = payload.generatedAt || new Date().toISOString();
+  const sourceStates = Object.fromEntries(Object.entries(liteSourceLabels).map(([key]) => (
+    [key, adaptLiteSource(key, payload.sources[key], checkedAt)]
+  )));
+  // Compatibility aliases keep the current UI labels/drill-downs intact while
+  // the actual first-screen contract remains four compact source states.
+  sourceStates.customerMoney = sourceStates.finance;
+  sourceStates.zohoInvoiceSync = sourceStates.finance;
+  sourceStates.banks = {
+    key: 'banks', label: 'أرصدة البنوك', status: 'loading', checkedAt,
+    sourceUpdatedAt: null,
+  };
+
+  const financial = payload.financial || {};
+  const aging = financial.aging || {};
+  const actions = payload.actions || {};
+  const zatca = actions.zatca || {};
+  const drafts = actions.draftInvoices || {};
+  const customerDecisionFresh = sourceStates.finance.status === 'fresh'
+    && sourceStates.merchants.status === 'fresh';
+
+  return {
+    overview: {
+      period: payload.period,
+      loadedAt: checkedAt,
+      readPath: 'overview_core_lite',
+      lazyStatus: 'pending',
+      primarySourceStates: {
+        finance: sourceStates.finance,
+        merchants: sourceStates.merchants,
+        vat: sourceStates.vat,
+        accountingCycle: sourceStates.accountingCycle,
+      },
+      sourceStates,
+      closeReadiness: payload.closeReadiness,
+      customerDecisions: null,
+      customerDecisionSummary: {
+        stopPostpaid: actions.stopPostpaid || { count: 0, amount: 0 },
+        deductPrepaid: actions.deductPrepaid || { count: 0, amount: 0 },
+        activatePostpaid: actions.activatePostpaid || { count: 0 },
+      },
+      customerDecisionFresh,
+      merchantPulse: { available: false, loading: true },
+      customerAging: {
+        b0_15: Number(aging.b0_15) || 0,
+        b16_30: Number(aging.b16_30) || 0,
+        b31_60: Number(aging.b31_60) || 0,
+        b61_90: Number(aging.b61_90) || 0,
+        b90p: Number(aging.b90p) || 0,
+        openingBalanceExcluded: Number(aging.openingBalanceExcluded) || 0,
+        total: Number(aging.total) || 0,
+      },
+      cashPosition: {
+        totalAR: Number(financial.collectibleDue) || 0,
+        openingBalanceExcluded: Number(aging.openingBalanceExcluded) || 0,
+        bankBalance: null,
+        bankBalanceComplete: false,
+        loading: true,
+      },
+      invoiceOperations: {
+        draftCount: Number(drafts.count) || 0,
+        draftTotal: Number(drafts.amount) || 0,
+        zatcaTodayCount: Number(zatca.count) || 0,
+        zatcaTodayTotal: Number(zatca.amount) || 0,
+        zatcaOverdueCount: 0,
+        zatcaOverdueTotal: 0,
+        zatcaNeedsLiveCheck: 0,
+        zatcaAvailable: zatca.available !== false,
+      },
+      lamhaSourceNeedsUpdate: Number(actions.refreshLamhaSources?.count) > 0,
+      lamhaUploads: {
+        merchants: {
+          uploadedAt: payload.sources.merchants?.dataAsOf || null,
+          rowCount: payload.sources.merchants?.recordCount ?? null,
+          available: payload.sources.merchants?.status !== 'unavailable',
+        },
+        balance: { loading: true, available: false },
+      },
+      drilldowns: payload.drilldowns || {},
+    },
+    vat: mapCoreVat(payload.vat),
+    readPath: 'overview_core_lite',
+  };
+}
+
+export function mergeOverviewLiteLazy(overview, merchantPayload, cashPayload) {
+  if (overview?.readPath !== 'overview_core_lite') return overview;
+  if (!merchantPayload?.merchantPulse || !cashPayload?.cashPosition) {
+    throw new Error('استجابة أقسام overview_core_lite غير مكتملة');
+  }
+  const bank = cashPayload.cashPosition;
+  const totalAR = Number(overview.cashPosition?.totalAR) || 0;
+  const totalAP = Number(bank.totalAP) || 0;
+  const bankBalance = bank.bankBalance == null ? null : Number(bank.bankBalance);
+  const checkedAt = cashPayload.generatedAt || overview.loadedAt || new Date().toISOString();
+  return {
+    ...overview,
+    lazyStatus: 'ready',
+    merchantPulse: { ...merchantPayload.merchantPulse, loading: false },
+    lamhaUploads: merchantPayload.lamhaUploads || overview.lamhaUploads,
+    cashPosition: {
+      ...overview.cashPosition,
+      ...bank,
+      totalAR,
+      totalAP,
+      netNoBank: +(totalAR - totalAP).toFixed(2),
+      net: bankBalance == null ? null : +(bankBalance + totalAR - totalAP).toFixed(2),
+      loading: false,
+    },
+    sourceStates: {
+      ...overview.sourceStates,
+      merchants: adaptLiteSource('merchants', merchantPayload.source, merchantPayload.generatedAt || overview.loadedAt),
+      banks: {
+        ...adaptLiteSource('banks', cashPayload.source, checkedAt),
+        label: 'أرصدة البنوك',
+      },
+    },
+    primarySourceStates: {
+      ...(overview.primarySourceStates || {}),
+      merchants: adaptLiteSource('merchants', merchantPayload.source, merchantPayload.generatedAt || overview.loadedAt),
+    },
+  };
+}
+
+export async function loadOverviewLite({ period = null, client = supabase } = {}) {
+  const { data, error } = await client.rpc('overview_core_lite', {
+    p_period: period || currentPeriod(),
+  });
+  if (error) throw error;
+  return adaptOverviewLite(data);
+}
+
+export async function loadOverviewLiteLazy({ period = null, client = supabase } = {}) {
+  const [merchantResult, cashResult] = await Promise.all([
+    client.rpc('overview_merchant_pulse_lite', { p_period: period || currentPeriod() }),
+    client.rpc('overview_cash_lite'),
+  ]);
+  if (merchantResult.error) throw merchantResult.error;
+  if (cashResult.error) throw cashResult.error;
+  return { merchant: merchantResult.data, cash: cashResult.data };
+}
+
 export async function loadOverviewCore({ period = null, topN = 5, client = supabase } = {}) {
   const { data, error } = await client.rpc('overview_core', {
     p_period: period || currentPeriod(), p_top_n: Math.min(20, Math.max(1, Number(topN) || 5)),
@@ -889,7 +1058,12 @@ export async function loadOverviewCore({ period = null, topN = 5, client = supab
 }
 
 export async function loadOverviewRead({ period = null, topN = 5, mode = OVERVIEW_READ_MODE, client = supabase } = {}) {
-  if (mode !== 'legacy') {
+  if (mode === 'lite') {
+    try { return await loadOverviewLite({ period, client }); }
+    catch (error) {
+      console.warn('[overview-read] lite unavailable; using legacy fallback', error?.code || error?.message);
+    }
+  } else if (mode === 'core') {
     try { return await loadOverviewCore({ period, topN, client }); }
     catch (error) {
       console.warn('[overview-read] core unavailable; using legacy fallback', error?.code || error?.message);

@@ -6,8 +6,10 @@ const service = fs.readFileSync(new URL('../src/lib/overviewService.js', import.
 const page = fs.readFileSync(new URL('../src/pages/Overview.jsx', import.meta.url), 'utf8');
 const sql = fs.readFileSync(new URL('../supabase/migrations/20260821210653_overview_core_read_path.sql', import.meta.url), 'utf8');
 
-test('overview stays on legacy until its explicit feature flag is enabled', () => {
-  assert.match(service, /VITE_OVERVIEW_READ_MODE \|\| 'legacy'/);
+test('overview cuts over to lite with an explicit legacy rollback flag', () => {
+  assert.match(service, /VITE_OVERVIEW_READ_MODE \|\| 'lite'/);
+  assert.match(service, /mode === 'lite'/);
+  assert.match(service, /lite unavailable; using legacy fallback/);
   assert.match(service, /core unavailable; using legacy fallback/);
   assert.match(page, /loadOverviewRead\(\{ period, topN: 5 \}\)/);
 });
@@ -24,6 +26,6 @@ test('overview core is local, additive, invoker-safe and permission scoped', () 
 
 test('oversized accounting facts cannot cut over without passing the feature gate', () => {
   assert.match(sql, /accountingCycleRaw/);
-  assert.match(service, /VITE_OVERVIEW_READ_MODE \|\| 'legacy'/);
+  assert.match(service, /else if \(mode === 'core'\)/);
   assert.match(service, /readPath: 'overview_core'/);
 });
